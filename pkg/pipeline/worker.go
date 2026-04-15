@@ -160,7 +160,35 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 		}
 	}
 
-	// 5. Post-crawl health score and scheduling updates.
+	// 5. Auto-discover new job sites from crawled pages (best-effort, async).
+	if w.extractor != nil && len(iter.RawPayload()) > 0 {
+		go func() {
+			sites, err := w.extractor.DiscoverSites(context.Background(), string(iter.RawPayload()), source.BaseURL)
+			if err != nil || len(sites) == 0 {
+				return
+			}
+			for _, site := range sites {
+				if site.URL == "" || site.URL == source.BaseURL {
+					continue
+				}
+				newSource := &domain.Source{
+					Type:             domain.SourceGenericHTML,
+					BaseURL:          site.URL,
+					Country:          site.Country,
+					Status:           domain.SourceActive,
+					Priority:         domain.PriorityNormal,
+					CrawlIntervalSec: 7200,
+					HealthScore:      1.0,
+					Config:           "{}",
+				}
+				if err := w.sourceRepo.Upsert(context.Background(), newSource); err == nil {
+					log.Printf("auto-discovered new job site: %s (%s)", site.URL, site.Name)
+				}
+			}
+		}()
+	}
+
+	// 6. Post-crawl health score and scheduling updates.
 	now := time.Now().UTC()
 	healthScore := source.HealthScore
 	if iter.Err() != nil {

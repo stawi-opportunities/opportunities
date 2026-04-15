@@ -253,6 +253,87 @@ func parseLinksResponse(raw string, pageURL string) ([]string, error) {
 	return resolved, nil
 }
 
+const discoverSitesPrompt = `You are a job board discovery engine. Given the content of a web page, identify any EXTERNAL job boards, career sites, or job listing platforms linked from this page that we should also crawl for job postings.
+
+Return ONLY a JSON object with this structure:
+{"sites": [{"url": "https://...", "name": "Site Name", "country": "XX", "type": "job_board"}]}
+
+Rules:
+- Only include sites that host job listings (job boards, career pages, recruitment platforms)
+- Use the ROOT URL of the job board (e.g. "https://www.jobberman.com" not a specific job page)
+- Include the 2-letter country code if identifiable, empty string if global
+- Type should be "job_board", "career_page", "recruitment_agency", or "aggregator"
+- Do NOT include the current site itself
+- Do NOT include social media (linkedin, twitter, facebook)
+- Do NOT include generic sites (google, wikipedia)
+- It's OK to return an empty array if no job boards are found
+
+Page URL: %s
+
+Page content:
+%s`
+
+// DiscoveredSite represents a new job site found during crawling.
+type DiscoveredSite struct {
+	URL     string `json:"url"`
+	Name    string `json:"name"`
+	Country string `json:"country"`
+	Type    string `json:"type"`
+}
+
+// DiscoverSites uses AI to find links to other job boards on a page.
+func (e *Extractor) DiscoverSites(ctx context.Context, rawHTML string, pageURL string) ([]DiscoveredSite, error) {
+	text := stripHTMLKeepLinks(rawHTML)
+	text = truncateText(text, maxContentChars)
+
+	prompt := fmt.Sprintf(discoverSitesPrompt, pageURL, text)
+
+	reqBody := map[string]interface{}{
+		"model":  e.model,
+		"prompt": prompt,
+		"stream": false,
+		"format": "json",
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("discover-sites: marshal: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("discover-sites: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("discover-sites: ollama request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("discover-sites: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ollamaResp struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return nil, fmt.Errorf("discover-sites: decode: %w", err)
+	}
+
+	var result struct {
+		Sites []DiscoveredSite `json:"sites"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(ollamaResp.Response)), &result); err != nil {
+		return nil, fmt.Errorf("discover-sites: parse: %w", err)
+	}
+
+	return result.Sites, nil
+}
+
 // resolveBaseURL extracts the scheme+host from a URL for resolving relative links.
 func resolveBaseURL(pageURL string) (string, string) {
 	// Find scheme://host
