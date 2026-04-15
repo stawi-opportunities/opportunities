@@ -7,6 +7,7 @@ import (
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
+	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/normalize"
 	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
@@ -14,14 +15,15 @@ import (
 
 // CrawlResult summarises the outcome of processing a single CrawlRequest.
 type CrawlResult struct {
-	SourceID     int64
-	SourceType   domain.SourceType
-	JobsFetched  int
-	JobsAccepted int
-	JobsRejected int
-	PagesCrawled int
-	Duration     time.Duration
-	Error        error
+	SourceID        int64
+	SourceType      domain.SourceType
+	JobsFetched     int
+	JobsAccepted    int
+	JobsRejected    int
+	JobsAIExtracted int
+	PagesCrawled    int
+	Duration        time.Duration
+	Error           error
 }
 
 // Worker processes a single CrawlRequest through the full pipeline:
@@ -34,10 +36,11 @@ type Worker struct {
 	rejectRepo *repository.RejectedJobRepository
 	dedupeEng  *dedupe.Engine
 	batch      *BatchBuffer
+	extractor  *extraction.Extractor // optional; nil disables AI extraction
 }
 
 // NewWorker creates a Worker wired to the given repositories, registry, dedupe
-// engine, and batch buffer.
+// engine, batch buffer, and an optional AI extractor (may be nil).
 func NewWorker(
 	registry *connectors.Registry,
 	sourceRepo *repository.SourceRepository,
@@ -46,6 +49,7 @@ func NewWorker(
 	rejectRepo *repository.RejectedJobRepository,
 	dedupeEng *dedupe.Engine,
 	batch *BatchBuffer,
+	extractor *extraction.Extractor,
 ) *Worker {
 	return &Worker{
 		registry:   registry,
@@ -55,6 +59,7 @@ func NewWorker(
 		rejectRepo: rejectRepo,
 		dedupeEng:  dedupeEng,
 		batch:      batch,
+		extractor:  extractor,
 	}
 }
 
@@ -105,20 +110,41 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 		}
 
 		// Process each job on this page.
+		pageHTML := string(raw)
 		for _, extJob := range iter.Jobs() {
 			result.JobsFetched++
 
 			// Quality gate.
 			if qErr := quality.Check(extJob); qErr != nil {
-				rejected := &domain.RejectedJob{
-					SourceID:   req.SourceID,
-					ExternalID: extJob.ExternalID,
-					Reason:     qErr.Error(),
-					RejectedAt: scrapedAt,
+				// If an AI extractor is configured, attempt to fill missing fields.
+				if w.extractor != nil {
+					if fields, aiErr := w.extractor.Extract(ctx, pageHTML, extJob.ApplyURL); aiErr == nil {
+						mergeExtractedFields(&extJob, fields)
+						result.JobsAIExtracted++
+					}
+					// Re-run quality gate after enrichment.
+					if qErr2 := quality.Check(extJob); qErr2 != nil {
+						rejected := &domain.RejectedJob{
+							SourceID:   req.SourceID,
+							ExternalID: extJob.ExternalID,
+							Reason:     qErr2.Error(),
+							RejectedAt: scrapedAt,
+						}
+						_ = w.rejectRepo.Create(ctx, rejected)
+						result.JobsRejected++
+						continue
+					}
+				} else {
+					rejected := &domain.RejectedJob{
+						SourceID:   req.SourceID,
+						ExternalID: extJob.ExternalID,
+						Reason:     qErr.Error(),
+						RejectedAt: scrapedAt,
+					}
+					_ = w.rejectRepo.Create(ctx, rejected)
+					result.JobsRejected++
+					continue
 				}
-				_ = w.rejectRepo.Create(ctx, rejected)
-				result.JobsRejected++
-				continue
 			}
 
 			// Normalize.
@@ -159,6 +185,35 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 
 	result.Duration = time.Since(start)
 	return result
+}
+
+// mergeExtractedFields copies non-empty fields from JobFields into an ExternalJob,
+// only filling fields that are currently empty (AI enrichment, not overwrite).
+func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields) {
+	if job.Title == "" && fields.Title != "" {
+		job.Title = fields.Title
+	}
+	if job.Company == "" && fields.Company != "" {
+		job.Company = fields.Company
+	}
+	if job.LocationText == "" && fields.Location != "" {
+		job.LocationText = fields.Location
+	}
+	if job.Description == "" && fields.Description != "" {
+		job.Description = fields.Description
+	}
+	if job.ApplyURL == "" && fields.ApplyURL != "" {
+		job.ApplyURL = fields.ApplyURL
+	}
+	if job.EmploymentType == "" && fields.EmploymentType != "" {
+		job.EmploymentType = fields.EmploymentType
+	}
+	if job.RemoteType == "" && fields.RemoteType != "" {
+		job.RemoteType = fields.RemoteType
+	}
+	if job.Currency == "" && fields.Currency != "" {
+		job.Currency = fields.Currency
+	}
 }
 
 // errNoConnector is returned when the registry has no connector for a source type.

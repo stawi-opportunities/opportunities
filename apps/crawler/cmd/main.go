@@ -22,6 +22,7 @@ import (
 	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
+	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/normalize"
 	"stawi.jobs/pkg/pipeline"
 	"stawi.jobs/pkg/quality"
@@ -97,6 +98,13 @@ func main() {
 		time.Duration(cfg.BatchFlushSec)*time.Second,
 	)
 
+	// AI extractor (optional — only enabled when OLLAMA_URL is set).
+	var extractor *extraction.Extractor
+	if cfg.OllamaURL != "" {
+		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
+		log.Printf("AI extraction enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
+	}
+
 	// Health endpoint.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +127,7 @@ func main() {
 	}()
 
 	// Start crawl scheduling loop.
-	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient)
+	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
 
 	// Graceful shutdown.
 	sig := make(chan os.Signal, 1)
@@ -154,19 +162,20 @@ func crawlLoop(
 	dedupeEngine *dedupe.Engine,
 	batchBuf *pipeline.BatchBuffer,
 	_ *httpx.Client,
+	extractor *extraction.Extractor,
 ) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	// Process once immediately, then on every tick.
-	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf)
+	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf)
+			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
 		}
 	}
 }
@@ -180,6 +189,7 @@ func processDueSources(
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
 	batchBuf *pipeline.BatchBuffer,
+	extractor *extraction.Extractor,
 ) {
 	now := time.Now().UTC()
 	sources, err := sourceRepo.ListDue(ctx, now, 100)
@@ -204,7 +214,7 @@ func processDueSources(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			processSource(ctx, s, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf)
+			processSource(ctx, s, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
 		}(src)
 	}
 
@@ -220,6 +230,7 @@ func processSource(
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
 	batchBuf *pipeline.BatchBuffer,
+	extractor *extraction.Extractor,
 ) {
 	conn, ok := registry.Get(src.Type)
 	if !ok {
@@ -251,19 +262,39 @@ func processSource(
 	var jobsFound, jobsStored int
 
 	for iter.Next(ctx) {
+		pageHTML := string(iter.RawPayload())
+
 		for _, ext := range iter.Jobs() {
 			jobsFound++
 
 			// Quality gate.
-			if err := quality.Check(ext); err != nil {
-				_ = rejectedRepo.Create(ctx, &domain.RejectedJob{
-					CrawlJobID: crawlJob.ID,
-					SourceID:   src.ID,
-					ExternalID: ext.ExternalID,
-					Reason:     err.Error(),
-					RejectedAt: time.Now().UTC(),
-				})
-				continue
+			if qErr := quality.Check(ext); qErr != nil {
+				// If an AI extractor is configured, attempt to fill missing fields.
+				if extractor != nil {
+					if fields, aiErr := extractor.Extract(ctx, pageHTML, ext.ApplyURL); aiErr == nil {
+						mergeExtractedFields(&ext, fields)
+					}
+					// Re-run quality gate after enrichment.
+					if qErr2 := quality.Check(ext); qErr2 != nil {
+						_ = rejectedRepo.Create(ctx, &domain.RejectedJob{
+							CrawlJobID: crawlJob.ID,
+							SourceID:   src.ID,
+							ExternalID: ext.ExternalID,
+							Reason:     qErr2.Error(),
+							RejectedAt: time.Now().UTC(),
+						})
+						continue
+					}
+				} else {
+					_ = rejectedRepo.Create(ctx, &domain.RejectedJob{
+						CrawlJobID: crawlJob.ID,
+						SourceID:   src.ID,
+						ExternalID: ext.ExternalID,
+						Reason:     qErr.Error(),
+						RejectedAt: time.Now().UTC(),
+					})
+					continue
+				}
 			}
 
 			// Normalize to variant.
@@ -296,4 +327,33 @@ func processSource(
 	_ = sourceRepo.UpdateNextCrawl(ctx, src.ID, nextCrawl, time.Now().UTC(), src.HealthScore)
 
 	log.Printf("source %d (%s): found=%d stored=%d", src.ID, src.Type, jobsFound, jobsStored)
+}
+
+// mergeExtractedFields copies non-empty fields from JobFields into an ExternalJob,
+// only filling fields that are currently empty (AI enrichment, not overwrite).
+func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields) {
+	if job.Title == "" && fields.Title != "" {
+		job.Title = fields.Title
+	}
+	if job.Company == "" && fields.Company != "" {
+		job.Company = fields.Company
+	}
+	if job.LocationText == "" && fields.Location != "" {
+		job.LocationText = fields.Location
+	}
+	if job.Description == "" && fields.Description != "" {
+		job.Description = fields.Description
+	}
+	if job.ApplyURL == "" && fields.ApplyURL != "" {
+		job.ApplyURL = fields.ApplyURL
+	}
+	if job.EmploymentType == "" && fields.EmploymentType != "" {
+		job.EmploymentType = fields.EmploymentType
+	}
+	if job.RemoteType == "" && fields.RemoteType != "" {
+		job.RemoteType = fields.RemoteType
+	}
+	if job.Currency == "" && fields.Currency != "" {
+		job.Currency = fields.Currency
+	}
 }

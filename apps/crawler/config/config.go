@@ -10,4 +10,6 @@ type CrawlerConfig struct {
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 	ServerPort        string `env:"SERVER_PORT" envDefault:":8080"`
 	DatabaseURL       string `env:"DATABASE_URL" envDefault:""`
+	OllamaURL         string `env:"OLLAMA_URL" envDefault:""`
+	OllamaModel       string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
 }
