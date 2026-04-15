@@ -1,0 +1,7 @@
+name: Release
+on:
+  push:
+    tags: ["v*.*.*"]
+jobs:
+  docker:
+    uses: antinvestor/common/.github/workflows/docker-release.yml@main
