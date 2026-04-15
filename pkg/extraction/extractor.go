@@ -92,11 +92,62 @@ func NewExtractor(baseURL, model string) *Extractor {
 	}
 }
 
+// scriptContentRe matches <script type="application/ld+json">...</script>.
+var scriptContentRe = regexp.MustCompile(`(?is)<script[^>]*type=["']application/ld\+json["'][^>]*>(.*?)</script>`)
+
+// nextDataRe matches <script id="__NEXT_DATA__">...</script>.
+var nextDataRe = regexp.MustCompile(`(?is)<script[^>]*id=["']__NEXT_DATA__["'][^>]*>(.*?)</script>`)
+
+// windowDataRe matches any script block containing common SPA state variable patterns.
+var windowDataRe = regexp.MustCompile(`(?is)<script[^>]*>(.*?(?:__INITIAL_STATE__|__NUXT__|__DATA__|__NEXT_DATA__|window\.jobs|window\.listings).*?)</script>`)
+
+// extractEmbeddedJSON finds all embedded JSON data blobs in script tags and
+// returns them concatenated with newlines. Returns empty string if none found.
+func extractEmbeddedJSON(rawHTML string) string {
+	var parts []string
+
+	for _, m := range scriptContentRe.FindAllStringSubmatch(rawHTML, -1) {
+		if content := strings.TrimSpace(m[1]); content != "" {
+			parts = append(parts, content)
+		}
+	}
+
+	for _, m := range nextDataRe.FindAllStringSubmatch(rawHTML, -1) {
+		if content := strings.TrimSpace(m[1]); content != "" {
+			parts = append(parts, content)
+		}
+	}
+
+	for _, m := range windowDataRe.FindAllStringSubmatch(rawHTML, -1) {
+		if content := strings.TrimSpace(m[1]); content != "" {
+			parts = append(parts, content)
+		}
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+// hasVisibleContent returns true if the stripped HTML contains more than 200
+// characters of text content. A false result on a page with embedded JSON
+// indicates a JS-rendered page where the JSON is the primary content source.
+func hasVisibleContent(rawHTML string) bool {
+	return len([]rune(stripHTML(rawHTML))) > 200
+}
+
 // Extract strips HTML from rawHTML, truncates it, sends it to Ollama, and returns
 // the parsed job fields. Returns nil and an error if Ollama is unreachable or the
 // model produces unparseable output.
 func (e *Extractor) Extract(ctx context.Context, rawHTML string, pageURL string) (*JobFields, error) {
-	text := stripHTML(rawHTML)
+	// Try to extract embedded JSON data first (handles JS-rendered pages)
+	embeddedJSON := extractEmbeddedJSON(rawHTML)
+
+	var text string
+	if embeddedJSON != "" {
+		// Use embedded JSON + stripped HTML for maximum context
+		text = embeddedJSON + "\n\n" + stripHTML(rawHTML)
+	} else {
+		text = stripHTML(rawHTML)
+	}
 	text = truncateText(text, maxContentChars)
 
 	prompt := fmt.Sprintf("%s\n\nPage URL: %s\n\nPage content:\n%s", systemPrompt, pageURL, text)
@@ -166,7 +217,14 @@ Page content:
 // It returns absolute URLs found on the page and optionally a "next page" URL
 // (returned as the last element prefixed with "NEXT:").
 func (e *Extractor) DiscoverLinks(ctx context.Context, rawHTML string, pageURL string) ([]string, error) {
-	text := stripHTMLKeepLinks(rawHTML)
+	// Prepend any embedded JSON so the AI can find job URLs from SPA state data.
+	embeddedJSON := extractEmbeddedJSON(rawHTML)
+	var text string
+	if embeddedJSON != "" {
+		text = embeddedJSON + "\n\n" + stripHTMLKeepLinks(rawHTML)
+	} else {
+		text = stripHTMLKeepLinks(rawHTML)
+	}
 	text = truncateText(text, maxContentChars)
 
 	prompt := fmt.Sprintf(discoverLinksPrompt, pageURL, text)
