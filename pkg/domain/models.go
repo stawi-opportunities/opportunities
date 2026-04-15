@@ -82,7 +82,7 @@ type Source struct {
 	Priority         Priority       `gorm:"type:smallint;not null;default:1" json:"priority"`
 	CrawlIntervalSec int            `gorm:"not null;default:3600" json:"crawl_interval_sec"`
 	HealthScore      float64        `gorm:"type:real;not null;default:1.0" json:"health_score"`
-	Config           string         `gorm:"type:jsonb" json:"config"`
+	Config           string         `gorm:"type:jsonb;default:'{}'" json:"config"`
 	LastSeenAt       *time.Time     `json:"last_seen_at"`
 	NextCrawlAt      time.Time      `gorm:"index" json:"next_crawl_at"`
 	CreatedAt        time.Time      `json:"created_at"`

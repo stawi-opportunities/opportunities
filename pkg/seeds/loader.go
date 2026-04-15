@@ -82,6 +82,7 @@ func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.Source
 				Priority:         prio,
 				CrawlIntervalSec: e.CrawlIntervalSec,
 				HealthScore:      1.0,
+				Config:           "{}",
 				NextCrawlAt:      now,
 			}
 
