@@ -105,6 +105,55 @@ func (e *Extractor) Extract(ctx context.Context, rawHTML string, pageURL string)
 	return fields, nil
 }
 
+const maxEmbedChars = 2000
+
+// Embed generates an embedding vector for the given text by calling Ollama's
+// /api/embeddings endpoint. Input text is truncated to 2000 characters.
+// Returns nil and an error if Ollama is unreachable.
+func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
+	text = truncateText(text, maxEmbedChars)
+
+	reqBody := map[string]interface{}{
+		"model":  e.model,
+		"prompt": text,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("embed: marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/embeddings", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("embed: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("embed: ollama request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("embed: ollama returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var embResp struct {
+		Embedding []float32 `json:"embedding"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
+		return nil, fmt.Errorf("embed: decode response: %w", err)
+	}
+
+	if len(embResp.Embedding) == 0 {
+		return nil, fmt.Errorf("embed: empty embedding returned")
+	}
+
+	return embResp.Embedding, nil
+}
+
 // stripHTML removes HTML tags and decodes common entities, returning plain text.
 func stripHTML(html string) string {
 	// Remove script and style blocks entirely (with their content).

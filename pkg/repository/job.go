@@ -85,9 +85,11 @@ func (r *JobRepository) AddClusterMember(ctx context.Context, m *domain.JobClust
 		Create(m).Error
 }
 
-// UpsertCanonical inserts or updates a canonical job on conflict of cluster_id.
+// UpsertCanonical inserts or updates a canonical job on conflict of cluster_id,
+// then updates the tsvector search_vector column via raw SQL.
 func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.CanonicalJob) error {
-	return r.db(ctx, false).
+	db := r.db(ctx, false)
+	if err := db.
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "cluster_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
@@ -97,24 +99,54 @@ func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.Canonica
 				"is_active", "updated_at",
 			}),
 		}).
-		Create(cj).Error
+		Create(cj).Error; err != nil {
+		return err
+	}
+
+	// Update the tsvector search_vector for full-text search.
+	return db.Exec(`UPDATE canonical_jobs SET search_vector =
+		setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+		setweight(to_tsvector('english', coalesce(company, '')), 'A') ||
+		setweight(to_tsvector('english', coalesce(location_text, '')), 'B') ||
+		setweight(to_tsvector('english', coalesce(description, '')), 'C')
+		WHERE id = ?`, cj.ID).Error
 }
 
-// SearchCanonical performs a case-insensitive search against title, company,
-// and description_text on active canonical jobs, ordered by last_seen_at DESC.
+// SearchCanonical performs a full-text search using tsvector/tsquery on active
+// canonical jobs, ranked by ts_rank. Falls back to last_seen_at ordering when
+// no query is provided.
 func (r *JobRepository) SearchCanonical(ctx context.Context, query string, limit, offset int) ([]*domain.CanonicalJob, error) {
-	like := "%" + query + "%"
 	var jobs []*domain.CanonicalJob
+	if query != "" {
+		err := r.db(ctx, true).
+			Where("is_active = true AND search_vector @@ plainto_tsquery('english', ?)", query).
+			Clauses(clause.OrderBy{
+				Expression: clause.Expr{
+					SQL:                "ts_rank(search_vector, plainto_tsquery('english', ?)) DESC",
+					Vars:               []interface{}{query},
+					WithoutParentheses: true,
+				},
+			}).
+			Limit(limit).
+			Offset(offset).
+			Find(&jobs).Error
+		return jobs, err
+	}
 	err := r.db(ctx, true).
-		Where(
-			"is_active = true AND (title ILIKE ? OR company ILIKE ? OR description ILIKE ?)",
-			like, like, like,
-		).
+		Where("is_active = true").
 		Order("last_seen_at DESC").
 		Limit(limit).
 		Offset(offset).
 		Find(&jobs).Error
 	return jobs, err
+}
+
+// UpdateEmbedding stores a JSON-encoded embedding vector for a canonical job.
+func (r *JobRepository) UpdateEmbedding(ctx context.Context, canonicalID int64, embedding string) error {
+	return r.db(ctx, false).
+		Model(&domain.CanonicalJob{}).
+		Where("id = ?", canonicalID).
+		Update("embedding", embedding).Error
 }
 
 // CountVariants returns the total number of job variant records.

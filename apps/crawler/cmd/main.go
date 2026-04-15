@@ -127,7 +127,7 @@ func main() {
 	}()
 
 	// Start crawl scheduling loop.
-	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
+	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
 
 	// Graceful shutdown.
 	sig := make(chan os.Signal, 1)
@@ -157,6 +157,7 @@ func crawlLoop(
 	concurrency int,
 	sourceRepo *repository.SourceRepository,
 	crawlRepo *repository.CrawlRepository,
+	jobRepo *repository.JobRepository,
 	rejectedRepo *repository.RejectedJobRepository,
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
@@ -168,14 +169,14 @@ func crawlLoop(
 	defer ticker.Stop()
 
 	// Process once immediately, then on every tick.
-	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
+	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
+			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
 		}
 	}
 }
@@ -185,6 +186,7 @@ func processDueSources(
 	concurrency int,
 	sourceRepo *repository.SourceRepository,
 	crawlRepo *repository.CrawlRepository,
+	jobRepo *repository.JobRepository,
 	rejectedRepo *repository.RejectedJobRepository,
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
@@ -214,7 +216,7 @@ func processDueSources(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			processSource(ctx, s, sourceRepo, crawlRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
+			processSource(ctx, s, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
 		}(src)
 	}
 
@@ -226,6 +228,7 @@ func processSource(
 	src *domain.Source,
 	sourceRepo *repository.SourceRepository,
 	crawlRepo *repository.CrawlRepository,
+	jobRepo *repository.JobRepository,
 	rejectedRepo *repository.RejectedJobRepository,
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
@@ -301,9 +304,15 @@ func processSource(
 			variant := normalize.ExternalToVariant(ext, src.ID, src.Country, string(src.Type), time.Now().UTC())
 
 			// Dedupe and persist canonical.
-			if _, err := dedupeEngine.UpsertAndCluster(ctx, &variant); err != nil {
+			canonical, err := dedupeEngine.UpsertAndCluster(ctx, &variant)
+			if err != nil {
 				log.Printf("ERROR: dedupe source %d ext %s: %v", src.ID, ext.ExternalID, err)
 				continue
+			}
+
+			// Generate embedding asynchronously if extractor is available.
+			if extractor != nil && canonical != nil && canonical.ID > 0 {
+				go generateEmbedding(ctx, extractor, jobRepo, canonical)
 			}
 
 			// Add to batch buffer.
@@ -327,6 +336,25 @@ func processSource(
 	_ = sourceRepo.UpdateNextCrawl(ctx, src.ID, nextCrawl, time.Now().UTC(), src.HealthScore)
 
 	log.Printf("source %d (%s): found=%d stored=%d", src.ID, src.Type, jobsFound, jobsStored)
+}
+
+// generateEmbedding creates an embedding for a canonical job and stores it.
+// This runs asynchronously and logs errors silently to avoid blocking the pipeline.
+func generateEmbedding(ctx context.Context, ext *extraction.Extractor, repo *repository.JobRepository, cj *domain.CanonicalJob) {
+	text := cj.Title + " " + cj.Company + " " + cj.Description
+	embedding, err := ext.Embed(ctx, text)
+	if err != nil {
+		log.Printf("WARN: embedding for canonical %d: %v", cj.ID, err)
+		return
+	}
+	embJSON, err := json.Marshal(embedding)
+	if err != nil {
+		log.Printf("WARN: marshal embedding for canonical %d: %v", cj.ID, err)
+		return
+	}
+	if err := repo.UpdateEmbedding(ctx, cj.ID, string(embJSON)); err != nil {
+		log.Printf("WARN: store embedding for canonical %d: %v", cj.ID, err)
+	}
 }
 
 // mergeExtractedFields copies non-empty fields from JobFields into an ExternalJob,

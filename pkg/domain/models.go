@@ -212,6 +212,8 @@ type CanonicalJob struct {
 	FirstSeenAt    time.Time  `gorm:"not null" json:"first_seen_at"`
 	LastSeenAt     time.Time  `gorm:"not null" json:"last_seen_at"`
 	IsActive       bool       `gorm:"not null;default:true;index" json:"is_active"`
+	SearchVector   string     `gorm:"type:tsvector;index:idx_canonical_search,type:gin" json:"-"`
+	Embedding      string     `gorm:"type:text" json:"-"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
