@@ -2,9 +2,11 @@ package pipeline
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"stawi.jobs/pkg/connectors"
+	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
@@ -27,7 +29,7 @@ type CrawlResult struct {
 }
 
 // Worker processes a single CrawlRequest through the full pipeline:
-// fetch → quality gate → normalize → batch write.
+// fetch -> quality gate -> normalize -> batch write.
 type Worker struct {
 	registry   *connectors.Registry
 	sourceRepo *repository.SourceRepository
@@ -37,10 +39,12 @@ type Worker struct {
 	dedupeEng  *dedupe.Engine
 	batch      *BatchBuffer
 	extractor  *extraction.Extractor // optional; nil disables AI extraction
+	httpClient *httpx.Client         // for fetching detail pages
 }
 
 // NewWorker creates a Worker wired to the given repositories, registry, dedupe
-// engine, batch buffer, and an optional AI extractor (may be nil).
+// engine, batch buffer, an optional AI extractor (may be nil), and an HTTP
+// client for fetching detail pages.
 func NewWorker(
 	registry *connectors.Registry,
 	sourceRepo *repository.SourceRepository,
@@ -50,6 +54,7 @@ func NewWorker(
 	dedupeEng *dedupe.Engine,
 	batch *BatchBuffer,
 	extractor *extraction.Extractor,
+	httpClient *httpx.Client,
 ) *Worker {
 	return &Worker{
 		registry:   registry,
@@ -60,6 +65,7 @@ func NewWorker(
 		dedupeEng:  dedupeEng,
 		batch:      batch,
 		extractor:  extractor,
+		httpClient: httpClient,
 	}
 }
 
@@ -105,24 +111,30 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 				Body:       raw,
 				FetchedAt:  scrapedAt,
 			}
-			// Best-effort — ignore save errors to keep the pipeline moving.
+			// Best-effort -- ignore save errors to keep the pipeline moving.
 			_ = w.crawlRepo.SaveRawPayload(ctx, payload)
 		}
 
 		// Process each job on this page.
-		pageHTML := string(raw)
 		for _, extJob := range iter.Jobs() {
 			result.JobsFetched++
 
-			// For HTML-based sources, use AI as the primary extractor.
-			if w.extractor != nil && needsAIExtraction(source.Type) {
-				if fields, aiErr := w.extractor.Extract(ctx, pageHTML, extJob.ApplyURL); aiErr == nil {
-					mergeExtractedFields(&extJob, fields)
-					result.JobsAIExtracted++
+			// For HTML-based sources, fetch the detail page and use AI to extract fields.
+			if w.extractor != nil && needsAIExtraction(source.Type) && extJob.ApplyURL != "" {
+				detailHTML, _, fetchErr := w.httpClient.Get(ctx, extJob.ApplyURL, nil)
+				if fetchErr == nil {
+					if fields, aiErr := w.extractor.Extract(ctx, string(detailHTML), extJob.ApplyURL); aiErr == nil {
+						mergeExtractedFields(&extJob, fields)
+						result.JobsAIExtracted++
+					} else {
+						log.Printf("pipeline: AI extraction failed for %s: %v", extJob.ApplyURL, aiErr)
+					}
+				} else {
+					log.Printf("pipeline: fetch detail page failed for %s: %v", extJob.ApplyURL, fetchErr)
 				}
 			}
 
-			// Quality gate — applies to all sources.
+			// Quality gate -- applies to all sources.
 			if qErr := quality.Check(extJob); qErr != nil {
 				rejected := &domain.RejectedJob{
 					SourceID:   req.SourceID,

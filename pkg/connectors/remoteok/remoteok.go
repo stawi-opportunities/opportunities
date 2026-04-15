@@ -32,7 +32,8 @@ func (c *Connector) Type() domain.SourceType { return domain.SourceRemoteOK }
 // Crawl fetches the single-page RemoteOK API and returns a CrawlIterator.
 func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.CrawlIterator {
 	raw, status, err := c.client.Get(ctx, apiURL, map[string]string{
-		"Accept": "application/json",
+		"Accept":     "application/json",
+		"User-Agent": "stawi.jobs/1.0 (job aggregator; +https://stawi.jobs)",
 	})
 	if err != nil {
 		return connectors.NewSinglePageIterator(nil, raw, status, err)

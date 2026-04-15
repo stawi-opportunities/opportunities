@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"regexp"
-	"strings"
 	"time"
 
 	"stawi.jobs/pkg/connectors"
@@ -17,34 +16,7 @@ import (
 
 const maxPages = 100
 
-var (
-	jobLinkRe  = regexp.MustCompile(`href=["'](/jobs/[^"']+)["']`)
-	titleTagRe = regexp.MustCompile(`(?i)<title[^>]*>(.*?)</title>`)
-	h1Re       = regexp.MustCompile(`(?i)<h1[^>]*>(.*?)</h1>`)
-	companyRe  = regexp.MustCompile(`(?i)class="[^"]*company[^"]*"[^>]*>(.*?)<`)
-	locationRe = regexp.MustCompile(`(?i)class="[^"]*location[^"]*"[^>]*>(.*?)<`)
-	descRe     = regexp.MustCompile(`(?is)class="[^"]*description[^"]*"[^>]*>(.*?)</div>`)
-	tagRe      = regexp.MustCompile(`<[^>]+>`)
-)
-
-func extractFirst(re *regexp.Regexp, html string) string {
-	m := re.FindStringSubmatch(html)
-	if len(m) < 2 {
-		return ""
-	}
-	return strings.TrimSpace(m[1])
-}
-
-func extractTitle(html string) string {
-	if t := extractFirst(h1Re, html); t != "" {
-		return stripTags(t)
-	}
-	return stripTags(extractFirst(titleTagRe, html))
-}
-
-func stripTags(s string) string {
-	return strings.TrimSpace(tagRe.ReplaceAllString(s, ""))
-}
+var jobLinkRe = regexp.MustCompile(`href=["'](/jobs/[^"']+)["']`)
 
 // Connector fetches jobs from Careers24.
 type Connector struct {
@@ -107,55 +79,23 @@ func (it *iterator) Next(ctx context.Context) bool {
 	}
 
 	seen := make(map[string]struct{})
-	var links []string
+	var jobs []domain.ExternalJob
 	for _, m := range matches {
 		path := m[1]
 		if _, ok := seen[path]; ok {
 			continue
 		}
 		seen[path] = struct{}{}
-		links = append(links, it.baseURL+path)
-	}
-
-	var jobs []domain.ExternalJob
-	for _, link := range links {
-		job, err := fetchDetail(ctx, it.client, link)
-		if err != nil {
-			log.Printf("careers24: detail %s: %v", link, err)
-			continue
-		}
-		jobs = append(jobs, job)
+		link := it.baseURL + path
+		jobs = append(jobs, domain.ExternalJob{
+			ExternalID: link,
+			ApplyURL:   link,
+		})
 	}
 
 	it.jobs = jobs
 	it.page++
 	return true
-}
-
-func fetchDetail(ctx context.Context, client *httpx.Client, url string) (domain.ExternalJob, error) {
-	raw, status, err := client.Get(ctx, url, nil)
-	if err != nil {
-		return domain.ExternalJob{}, err
-	}
-	if status != 200 {
-		return domain.ExternalJob{}, fmt.Errorf("status %d", status)
-	}
-	html := string(raw)
-
-	title := extractTitle(html)
-	company := stripTags(extractFirst(companyRe, html))
-	location := stripTags(extractFirst(locationRe, html))
-	description := stripTags(extractFirst(descRe, html))
-
-	return domain.ExternalJob{
-		ExternalID:   url,
-		SourceURL:    url,
-		ApplyURL:     url,
-		Title:        title,
-		Company:      company,
-		LocationText: location,
-		Description:  description,
-	}, nil
 }
 
 func (it *iterator) Jobs() []domain.ExternalJob { return it.jobs }

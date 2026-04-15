@@ -129,6 +129,7 @@ func main() {
 	// Start crawl scheduling loop.
 	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
 
+
 	// Graceful shutdown.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -162,21 +163,21 @@ func crawlLoop(
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
 	batchBuf *pipeline.BatchBuffer,
-	_ *httpx.Client,
+	httpClient *httpx.Client,
 	extractor *extraction.Extractor,
 ) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	// Process once immediately, then on every tick.
-	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
+	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
+			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
 		}
 	}
 }
@@ -191,6 +192,7 @@ func processDueSources(
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
 	batchBuf *pipeline.BatchBuffer,
+	httpClient *httpx.Client,
 	extractor *extraction.Extractor,
 ) {
 	now := time.Now().UTC()
@@ -216,7 +218,7 @@ func processDueSources(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			processSource(ctx, s, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, extractor)
+			processSource(ctx, s, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
 		}(src)
 	}
 
@@ -233,6 +235,7 @@ func processSource(
 	registry *connectors.Registry,
 	dedupeEngine *dedupe.Engine,
 	batchBuf *pipeline.BatchBuffer,
+	httpClient *httpx.Client,
 	extractor *extraction.Extractor,
 ) {
 	conn, ok := registry.Get(src.Type)
@@ -265,39 +268,33 @@ func processSource(
 	var jobsFound, jobsStored int
 
 	for iter.Next(ctx) {
-		pageHTML := string(iter.RawPayload())
-
 		for _, ext := range iter.Jobs() {
 			jobsFound++
 
-			// Quality gate.
-			if qErr := quality.Check(ext); qErr != nil {
-				// If an AI extractor is configured, attempt to fill missing fields.
-				if extractor != nil {
-					if fields, aiErr := extractor.Extract(ctx, pageHTML, ext.ApplyURL); aiErr == nil {
+			// For HTML-based sources, fetch the detail page and use AI to extract fields.
+			if extractor != nil && needsAIExtraction(src.Type) && ext.ApplyURL != "" {
+				detailHTML, _, fetchErr := httpClient.Get(ctx, ext.ApplyURL, nil)
+				if fetchErr == nil {
+					if fields, aiErr := extractor.Extract(ctx, string(detailHTML), ext.ApplyURL); aiErr == nil {
 						mergeExtractedFields(&ext, fields)
-					}
-					// Re-run quality gate after enrichment.
-					if qErr2 := quality.Check(ext); qErr2 != nil {
-						_ = rejectedRepo.Create(ctx, &domain.RejectedJob{
-							CrawlJobID: crawlJob.ID,
-							SourceID:   src.ID,
-							ExternalID: ext.ExternalID,
-							Reason:     qErr2.Error(),
-							RejectedAt: time.Now().UTC(),
-						})
-						continue
+					} else {
+						log.Printf("processSource: AI extraction failed for %s: %v", ext.ApplyURL, aiErr)
 					}
 				} else {
-					_ = rejectedRepo.Create(ctx, &domain.RejectedJob{
-						CrawlJobID: crawlJob.ID,
-						SourceID:   src.ID,
-						ExternalID: ext.ExternalID,
-						Reason:     qErr.Error(),
-						RejectedAt: time.Now().UTC(),
-					})
-					continue
+					log.Printf("processSource: fetch detail page failed for %s: %v", ext.ApplyURL, fetchErr)
 				}
+			}
+
+			// Quality gate.
+			if qErr := quality.Check(ext); qErr != nil {
+				_ = rejectedRepo.Create(ctx, &domain.RejectedJob{
+					CrawlJobID: crawlJob.ID,
+					SourceID:   src.ID,
+					ExternalID: ext.ExternalID,
+					Reason:     qErr.Error(),
+					RejectedAt: time.Now().UTC(),
+				})
+				continue
 			}
 
 			// Normalize to variant.
@@ -383,5 +380,20 @@ func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields)
 	}
 	if job.Currency == "" && fields.Currency != "" {
 		job.Currency = fields.Currency
+	}
+}
+
+// needsAIExtraction returns true for HTML-based source types where the connector
+// only discovers links and AI should be used to extract fields from detail pages.
+func needsAIExtraction(st domain.SourceType) bool {
+	switch st {
+	case domain.SourceBrighterMonday, domain.SourceJobberman,
+		domain.SourceMyJobMag, domain.SourceNjorku,
+		domain.SourceCareers24, domain.SourcePNet,
+		domain.SourceSchemaOrg, domain.SourceSitemap,
+		domain.SourceHostedBoards, domain.SourceGenericHTML:
+		return true
+	default:
+		return false
 	}
 }

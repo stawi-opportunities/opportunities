@@ -102,7 +102,7 @@ type CrawlJob struct {
 	Status         CrawlJobStatus `gorm:"type:varchar(20);not null;default:'scheduled'" json:"status"`
 	Attempt        int            `gorm:"not null;default:1" json:"attempt"`
 	IdempotencyKey string         `gorm:"type:varchar(255);uniqueIndex" json:"idempotency_key"`
-	ErrorCode      string         `gorm:"type:varchar(100)" json:"error_code"`
+	ErrorCode      string         `gorm:"type:text" json:"error_code"`
 	ErrorMessage   string         `gorm:"type:text" json:"error_message"`
 	JobsFound      int            `gorm:"not null;default:0" json:"jobs_found"`
 	JobsStored     int            `gorm:"not null;default:0" json:"jobs_stored"`
