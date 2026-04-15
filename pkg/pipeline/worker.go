@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -213,6 +214,46 @@ func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields)
 	}
 	if job.Currency == "" && fields.Currency != "" {
 		job.Currency = fields.Currency
+	}
+	if fields.SalaryMin != "" && job.SalaryMin == 0 {
+		fmt.Sscanf(fields.SalaryMin, "%f", &job.SalaryMin)
+	}
+	if fields.SalaryMax != "" && job.SalaryMax == 0 {
+		fmt.Sscanf(fields.SalaryMax, "%f", &job.SalaryMax)
+	}
+	// Extended fields — always fill from AI
+	if job.Seniority == "" && fields.Seniority != "" {
+		job.Seniority = fields.Seniority
+	}
+	if len(job.Skills) == 0 && len(fields.Skills) > 0 {
+		job.Skills = fields.Skills
+	}
+	if len(job.Roles) == 0 && len(fields.Roles) > 0 {
+		job.Roles = fields.Roles
+	}
+	if len(job.Benefits) == 0 && len(fields.Benefits) > 0 {
+		job.Benefits = fields.Benefits
+	}
+	if job.ContactName == "" && fields.ContactName != "" {
+		job.ContactName = fields.ContactName
+	}
+	if job.ContactEmail == "" && fields.ContactEmail != "" {
+		job.ContactEmail = fields.ContactEmail
+	}
+	if job.Department == "" && fields.Department != "" {
+		job.Department = fields.Department
+	}
+	if job.Industry == "" && fields.Industry != "" {
+		job.Industry = fields.Industry
+	}
+	if job.Education == "" && fields.Education != "" {
+		job.Education = fields.Education
+	}
+	if job.Experience == "" && fields.Experience != "" {
+		job.Experience = fields.Experience
+	}
+	if job.Deadline == "" && fields.Deadline != "" {
+		job.Deadline = fields.Deadline
 	}
 }
 

@@ -137,6 +137,11 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBo
 	region := DetectRegion(country)
 	_ = region // region will be used once JobVariant has a Region field
 
+	// Serialize array fields to comma-separated strings for storage.
+	skills := strings.Join(ext.Skills, ", ")
+	roles := strings.Join(ext.Roles, ", ")
+	benefits := strings.Join(ext.Benefits, ", ")
+
 	return domain.JobVariant{
 		ExternalJobID:  externalID,
 		SourceID:       sourceID,
@@ -153,6 +158,17 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBo
 		SalaryMax:      ext.SalaryMax,
 		Currency:       currency,
 		Description:    description,
+		Seniority:      strings.ToLower(strings.TrimSpace(ext.Seniority)),
+		Skills:         skills,
+		Roles:          roles,
+		Benefits:       benefits,
+		ContactName:    strings.TrimSpace(ext.ContactName),
+		ContactEmail:   strings.TrimSpace(ext.ContactEmail),
+		Department:     strings.TrimSpace(ext.Department),
+		Industry:       strings.TrimSpace(ext.Industry),
+		Education:      strings.TrimSpace(ext.Education),
+		Experience:     strings.TrimSpace(ext.Experience),
+		Deadline:       strings.TrimSpace(ext.Deadline),
 		PostedAt:       ext.PostedAt,
 		ScrapedAt:      scrapedAt,
 		ContentHash:    hash,

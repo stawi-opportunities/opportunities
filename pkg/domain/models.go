@@ -142,6 +142,18 @@ type ExternalJob struct {
 	Description    string            `json:"description"`
 	PostedAt       *time.Time        `json:"posted_at"`
 	Metadata       map[string]string `json:"metadata"`
+	// Extended fields extracted by AI
+	Seniority    string   `json:"seniority"`
+	Skills       []string `json:"skills"`
+	Roles        []string `json:"roles"`
+	Benefits     []string `json:"benefits"`
+	ContactName  string   `json:"contact_name"`
+	ContactEmail string   `json:"contact_email"`
+	Department   string   `json:"department"`
+	Industry     string   `json:"industry"`
+	Education    string   `json:"education"`
+	Experience   string   `json:"experience"`
+	Deadline     string   `json:"deadline"`
 }
 
 // JobVariant represents one observed posting of a job from a specific source.
@@ -162,6 +174,17 @@ type JobVariant struct {
 	SalaryMax      float64   `gorm:"type:real" json:"salary_max"`
 	Currency       string    `gorm:"type:varchar(10)" json:"currency"`
 	Description    string    `gorm:"type:text" json:"description"`
+	Seniority      string    `gorm:"type:varchar(30)" json:"seniority"`
+	Skills         string    `gorm:"type:text" json:"skills"`
+	Roles          string    `gorm:"type:text" json:"roles"`
+	Benefits       string    `gorm:"type:text" json:"benefits"`
+	ContactName    string    `gorm:"type:varchar(255)" json:"contact_name"`
+	ContactEmail   string    `gorm:"type:varchar(255)" json:"contact_email"`
+	Department     string    `gorm:"type:varchar(255)" json:"department"`
+	Industry       string    `gorm:"type:varchar(100)" json:"industry"`
+	Education      string    `gorm:"type:text" json:"education"`
+	Experience     string    `gorm:"type:varchar(100)" json:"experience"`
+	Deadline       string    `gorm:"type:varchar(100)" json:"deadline"`
 	PostedAt       *time.Time `json:"posted_at"`
 	ScrapedAt      time.Time  `gorm:"not null" json:"scraped_at"`
 	ContentHash    string    `gorm:"type:varchar(64)" json:"content_hash"`
@@ -208,6 +231,17 @@ type CanonicalJob struct {
 	SalaryMax      float64    `gorm:"type:real" json:"salary_max"`
 	Currency       string     `gorm:"type:varchar(10)" json:"currency"`
 	ApplyURL       string     `gorm:"type:text" json:"apply_url"`
+	Seniority      string     `gorm:"type:varchar(30)" json:"seniority"`
+	Skills         string     `gorm:"type:text" json:"skills"`
+	Roles          string     `gorm:"type:text" json:"roles"`
+	Benefits       string     `gorm:"type:text" json:"benefits"`
+	ContactName    string     `gorm:"type:varchar(255)" json:"contact_name"`
+	ContactEmail   string     `gorm:"type:varchar(255)" json:"contact_email"`
+	Department     string     `gorm:"type:varchar(255)" json:"department"`
+	Industry       string     `gorm:"type:varchar(100)" json:"industry"`
+	Education      string     `gorm:"type:text" json:"education"`
+	Experience     string     `gorm:"type:varchar(100)" json:"experience"`
+	Deadline       string     `gorm:"type:varchar(100)" json:"deadline"`
 	PostedAt       *time.Time `json:"posted_at"`
 	FirstSeenAt    time.Time  `gorm:"not null" json:"first_seen_at"`
 	LastSeenAt     time.Time  `gorm:"not null" json:"last_seen_at"`

@@ -15,23 +15,63 @@ import (
 
 // JobFields holds the structured fields extracted from a job posting page.
 type JobFields struct {
-	Title          string `json:"title"`
-	Company        string `json:"company"`
-	Location       string `json:"location"`
-	Description    string `json:"description"`
-	ApplyURL       string `json:"apply_url"`
-	EmploymentType string `json:"employment_type"`
-	RemoteType     string `json:"remote_type"`
-	SalaryMin      string `json:"salary_min"`
-	SalaryMax      string `json:"salary_max"`
-	Currency       string `json:"currency"`
+	Title          string   `json:"title"`
+	Company        string   `json:"company"`
+	Location       string   `json:"location"`
+	Description    string   `json:"description"`
+	ApplyURL       string   `json:"apply_url"`
+	EmploymentType string   `json:"employment_type"`
+	RemoteType     string   `json:"remote_type"`
+	SalaryMin      string   `json:"salary_min"`
+	SalaryMax      string   `json:"salary_max"`
+	Currency       string   `json:"currency"`
+	Seniority      string   `json:"seniority"`
+	Skills         []string `json:"skills"`
+	Roles          []string `json:"roles"`
+	Benefits       []string `json:"benefits"`
+	ContactName    string   `json:"contact_name"`
+	ContactEmail   string   `json:"contact_email"`
+	Department     string   `json:"department"`
+	Industry       string   `json:"industry"`
+	Education      string   `json:"education"`
+	Experience     string   `json:"experience"`
+	Deadline       string   `json:"deadline"`
 }
 
-const systemPrompt = `You are a job posting data extractor. Given the text content of a job posting page, extract the following fields as JSON. If a field is not found, use an empty string. Only output valid JSON, nothing else.
+const systemPrompt = `You are a job posting data extractor. Extract ALL available information from this job posting page. Output ONLY valid JSON, nothing else. If a field is not found, use empty string for text or empty array for lists.
 
-Fields: title, company, location, description, apply_url, employment_type, remote_type, salary_min, salary_max, currency
+Required fields:
+- title: exact job title
+- company: employer/organization name
+- location: city, country or "Remote"
+- description: comprehensive summary of the role, responsibilities and requirements (max 300 words)
+- apply_url: application link if visible on the page
 
-The description should be a brief summary (max 200 words) of the job requirements and responsibilities.`
+Compensation (estimate from context if not stated explicitly):
+- salary_min: minimum salary as number string, estimate based on role/location/seniority if not stated
+- salary_max: maximum salary as number string, estimate if not stated
+- currency: salary currency code (e.g. "USD", "KES", "ZAR", "GBP")
+
+Classification:
+- employment_type: "full-time", "part-time", "contract", "internship", or "freelance"
+- remote_type: "remote", "hybrid", "onsite", or ""
+- seniority: "intern", "junior", "mid", "senior", "lead", "manager", "director", "executive"
+- department: department or team name
+- industry: industry sector (e.g. "technology", "finance", "healthcare")
+
+Skills and requirements:
+- skills: array of specific technical and soft skills mentioned (e.g. ["Python", "SQL", "Project Management"])
+- roles: array of role categories this fits (e.g. ["Software Engineering", "Backend Development"])
+- education: minimum education requirement (e.g. "Bachelor's in Computer Science")
+- experience: years of experience required (e.g. "3-5 years")
+
+Benefits and perks:
+- benefits: array of benefits mentioned (e.g. ["Health Insurance", "Remote Work", "Stock Options"])
+
+Contact information:
+- contact_name: hiring manager or recruiter name if mentioned
+- contact_email: contact email if mentioned
+- deadline: application deadline date if mentioned`
 
 const maxContentChars = 3000
 const extractionTimeout = 30 * time.Second
