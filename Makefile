@@ -1,40 +1,31 @@
 SHELL := /bin/bash
 
-SERVICES := source-discovery scheduler worker dedupe search-api ops-control-plane
+APP_DIRS := apps/crawler apps/scheduler apps/api
 
-.PHONY: deps build test run-discovery run-scheduler run-worker run-search run-ops infra-up infra-down migrate
+.PHONY: deps build test run-crawler run-scheduler run-api infra-up infra-down
 
 deps:
 	go mod tidy
 
 build:
-	for svc in $(SERVICES); do \
-		go build -o bin/$$svc ./cmd/$$svc; \
+	for app in $(APP_DIRS); do \
+		go build -o bin/$$(basename $$app) ./$$app/cmd; \
 	done
 
 test:
 	go test ./...
 
-run-discovery:
-	go run ./cmd/source-discovery
+run-crawler:
+	go run ./apps/crawler/cmd
 
 run-scheduler:
-	go run ./cmd/scheduler
+	go run ./apps/scheduler/cmd
 
-run-worker:
-	go run ./cmd/worker
-
-run-search:
-	go run ./cmd/search-api
-
-run-ops:
-	go run ./cmd/ops-control-plane
+run-api:
+	go run ./apps/api/cmd
 
 infra-up:
 	docker compose -f deploy/docker-compose.yml up -d
 
 infra-down:
 	docker compose -f deploy/docker-compose.yml down -v
-
-migrate:
-	psql "$${POSTGRES_DSN}" -f db/migrations/0001_init.sql
