@@ -114,37 +114,25 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 		for _, extJob := range iter.Jobs() {
 			result.JobsFetched++
 
-			// Quality gate.
-			if qErr := quality.Check(extJob); qErr != nil {
-				// If an AI extractor is configured, attempt to fill missing fields.
-				if w.extractor != nil {
-					if fields, aiErr := w.extractor.Extract(ctx, pageHTML, extJob.ApplyURL); aiErr == nil {
-						mergeExtractedFields(&extJob, fields)
-						result.JobsAIExtracted++
-					}
-					// Re-run quality gate after enrichment.
-					if qErr2 := quality.Check(extJob); qErr2 != nil {
-						rejected := &domain.RejectedJob{
-							SourceID:   req.SourceID,
-							ExternalID: extJob.ExternalID,
-							Reason:     qErr2.Error(),
-							RejectedAt: scrapedAt,
-						}
-						_ = w.rejectRepo.Create(ctx, rejected)
-						result.JobsRejected++
-						continue
-					}
-				} else {
-					rejected := &domain.RejectedJob{
-						SourceID:   req.SourceID,
-						ExternalID: extJob.ExternalID,
-						Reason:     qErr.Error(),
-						RejectedAt: scrapedAt,
-					}
-					_ = w.rejectRepo.Create(ctx, rejected)
-					result.JobsRejected++
-					continue
+			// For HTML-based sources, use AI as the primary extractor.
+			if w.extractor != nil && needsAIExtraction(source.Type) {
+				if fields, aiErr := w.extractor.Extract(ctx, pageHTML, extJob.ApplyURL); aiErr == nil {
+					mergeExtractedFields(&extJob, fields)
+					result.JobsAIExtracted++
 				}
+			}
+
+			// Quality gate — applies to all sources.
+			if qErr := quality.Check(extJob); qErr != nil {
+				rejected := &domain.RejectedJob{
+					SourceID:   req.SourceID,
+					ExternalID: extJob.ExternalID,
+					Reason:     qErr.Error(),
+					RejectedAt: scrapedAt,
+				}
+				_ = w.rejectRepo.Create(ctx, rejected)
+				result.JobsRejected++
+				continue
 			}
 
 			// Normalize.
@@ -213,6 +201,21 @@ func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields)
 	}
 	if job.Currency == "" && fields.Currency != "" {
 		job.Currency = fields.Currency
+	}
+}
+
+// needsAIExtraction returns true for HTML-based source types where regex parsing
+// is unreliable and AI should be the primary field extractor.
+func needsAIExtraction(st domain.SourceType) bool {
+	switch st {
+	case domain.SourceBrighterMonday, domain.SourceJobberman,
+		domain.SourceMyJobMag, domain.SourceNjorku,
+		domain.SourceCareers24, domain.SourcePNet,
+		domain.SourceSchemaOrg, domain.SourceSitemap,
+		domain.SourceHostedBoards, domain.SourceGenericHTML:
+		return true
+	default:
+		return false
 	}
 }
 
