@@ -74,9 +74,9 @@ const (
 // Source represents a configured job board or careers page to crawl.
 type Source struct {
 	ID               int64          `gorm:"primaryKey;autoIncrement" json:"id"`
-	Type             SourceType     `gorm:"type:varchar(50);not null;index" json:"type"`
+	Type             SourceType     `gorm:"type:varchar(50);not null;uniqueIndex:idx_source_type_url" json:"type"`
 	Name             string         `gorm:"type:varchar(255)" json:"name"`
-	BaseURL          string         `gorm:"type:text;not null" json:"base_url"`
+	BaseURL          string         `gorm:"type:text;not null;uniqueIndex:idx_source_type_url" json:"base_url"`
 	Country          string         `gorm:"type:varchar(10)" json:"country"`
 	Status           SourceStatus   `gorm:"type:varchar(20);not null;default:'active'" json:"status"`
 	Priority         Priority       `gorm:"type:smallint;not null;default:1" json:"priority"`
