@@ -39,8 +39,9 @@ type Worker struct {
 	rejectRepo *repository.RejectedJobRepository
 	dedupeEng  *dedupe.Engine
 	batch      *BatchBuffer
-	extractor  *extraction.Extractor // optional; nil disables AI extraction
-	httpClient *httpx.Client         // for fetching detail pages
+	extractor     *extraction.Extractor  // optional; nil disables AI extraction
+	httpClient    *httpx.Client          // for fetching detail pages
+	browserClient *httpx.BrowserClient   // optional; nil disables headless rendering
 }
 
 // NewWorker creates a Worker wired to the given repositories, registry, dedupe
@@ -56,17 +57,19 @@ func NewWorker(
 	batch *BatchBuffer,
 	extractor *extraction.Extractor,
 	httpClient *httpx.Client,
+	browserClient *httpx.BrowserClient,
 ) *Worker {
 	return &Worker{
-		registry:   registry,
-		sourceRepo: sourceRepo,
-		crawlRepo:  crawlRepo,
-		jobRepo:    jobRepo,
-		rejectRepo: rejectRepo,
-		dedupeEng:  dedupeEng,
-		batch:      batch,
-		extractor:  extractor,
-		httpClient: httpClient,
+		registry:      registry,
+		sourceRepo:    sourceRepo,
+		crawlRepo:     crawlRepo,
+		jobRepo:       jobRepo,
+		rejectRepo:    rejectRepo,
+		dedupeEng:     dedupeEng,
+		batch:         batch,
+		extractor:     extractor,
+		httpClient:    httpClient,
+		browserClient: browserClient,
 	}
 }
 
@@ -124,6 +127,14 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 			if w.extractor != nil && needsAIExtraction(source.Type) && extJob.ApplyURL != "" {
 				detailHTML, _, fetchErr := w.httpClient.Get(ctx, extJob.ApplyURL, nil)
 				if fetchErr == nil {
+					// If page has very little visible content, it's likely JS-rendered.
+					// Fall back to headless browser if available.
+					if w.browserClient != nil && !extraction.HasVisibleContent(string(detailHTML)) {
+						log.Printf("pipeline: thin content for %s, using headless browser", extJob.ApplyURL)
+						if browserHTML, _, browserErr := w.browserClient.Get(ctx, extJob.ApplyURL); browserErr == nil {
+							detailHTML = browserHTML
+						}
+					}
 					if fields, aiErr := w.extractor.Extract(ctx, string(detailHTML), extJob.ApplyURL); aiErr == nil {
 						mergeExtractedFields(&extJob, fields)
 						result.JobsAIExtracted++

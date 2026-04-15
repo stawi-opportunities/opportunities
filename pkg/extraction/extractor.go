@@ -127,10 +127,10 @@ func extractEmbeddedJSON(rawHTML string) string {
 	return strings.Join(parts, "\n")
 }
 
-// hasVisibleContent returns true if the stripped HTML contains more than 200
+// HasVisibleContent returns true if the stripped HTML contains more than 200
 // characters of text content. A false result on a page with embedded JSON
 // indicates a JS-rendered page where the JSON is the primary content source.
-func hasVisibleContent(rawHTML string) bool {
+func HasVisibleContent(rawHTML string) bool {
 	return len([]rune(stripHTML(rawHTML))) > 200
 }
 
