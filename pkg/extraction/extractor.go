@@ -73,8 +73,8 @@ Contact information:
 - contact_email: contact email if mentioned
 - deadline: application deadline date if mentioned`
 
-const maxContentChars = 6000
-const extractionTimeout = 30 * time.Second
+const maxContentChars = 4000
+const extractionTimeout = 120 * time.Second
 
 // Extractor calls an Ollama instance to extract structured job fields from HTML.
 type Extractor struct {
