@@ -44,7 +44,7 @@ Required fields:
 - title: exact job title
 - company: employer/organization name
 - location: city, country or "Remote"
-- description: comprehensive summary of the role, responsibilities and requirements (max 300 words)
+- description: comprehensive summary of the role, responsibilities and requirements (max 1000 words)
 - apply_url: application link if visible on the page
 
 Compensation (estimate from context if not stated explicitly):
@@ -73,7 +73,7 @@ Contact information:
 - contact_email: contact email if mentioned
 - deadline: application deadline date if mentioned`
 
-const maxContentChars = 3000
+const maxContentChars = 6000
 const extractionTimeout = 30 * time.Second
 
 // Extractor calls an Ollama instance to extract structured job fields from HTML.
