@@ -1,0 +1,4 @@
+[
+  {"source_type": "jobberman", "base_url": "https://www.jobberman.com", "country": "NG", "region": "africa", "crawl_interval_sec": 3600, "priority": "hot"},
+  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.com", "country": "NG", "region": "africa", "crawl_interval_sec": 3600, "priority": "hot"}
+]

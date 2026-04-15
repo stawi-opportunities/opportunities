@@ -1,0 +1,4 @@
+[
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/deliveroo", "country": "GB", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "lever", "base_url": "https://jobs.lever.co/revolut", "country": "GB", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"}
+]

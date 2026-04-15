@@ -1,0 +1,3 @@
+[
+  {"source_type": "jobberman", "base_url": "https://www.jobberman.com.gh", "country": "GH", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"}
+]
