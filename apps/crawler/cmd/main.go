@@ -85,8 +85,15 @@ func main() {
 		cfg.UserAgent,
 	)
 
+	// AI extractor (optional — only enabled when OLLAMA_URL is set).
+	var extractor *extraction.Extractor
+	if cfg.OllamaURL != "" {
+		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
+		log.Printf("AI extraction enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
+	}
+
 	// Connector registry.
-	registry := service.BuildRegistry(httpClient)
+	registry := service.BuildRegistry(httpClient, extractor)
 
 	// Dedupe engine.
 	dedupeEngine := dedupe.NewEngine(jobRepo)
@@ -97,13 +104,6 @@ func main() {
 		cfg.BatchSize,
 		time.Duration(cfg.BatchFlushSec)*time.Second,
 	)
-
-	// AI extractor (optional — only enabled when OLLAMA_URL is set).
-	var extractor *extraction.Extractor
-	if cfg.OllamaURL != "" {
-		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
-		log.Printf("AI extraction enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
-	}
 
 	// Health endpoint.
 	mux := http.NewServeMux()

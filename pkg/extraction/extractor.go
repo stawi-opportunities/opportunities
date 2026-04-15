@@ -145,6 +145,199 @@ func (e *Extractor) Extract(ctx context.Context, rawHTML string, pageURL string)
 	return fields, nil
 }
 
+const discoverLinksPrompt = `You are a web page analyzer. Given the HTML content of a job board listing page, identify ALL URLs that link to individual job posting detail pages.
+
+Return ONLY a JSON array of full URLs. Do not include:
+- Navigation links (about, contact, login, categories)
+- Pagination links
+- Social media links
+- Employer/company profile links
+
+Only include links that lead to a page describing a single specific job opening.
+
+Also identify the "next page" URL if pagination exists. Return it as the last element with prefix "NEXT:"
+
+Page URL: %s
+
+Page content:
+%s`
+
+// DiscoverLinks uses AI to find job detail links on a listing page.
+// It returns absolute URLs found on the page and optionally a "next page" URL
+// (returned as the last element prefixed with "NEXT:").
+func (e *Extractor) DiscoverLinks(ctx context.Context, rawHTML string, pageURL string) ([]string, error) {
+	text := stripHTMLKeepLinks(rawHTML)
+	text = truncateText(text, maxContentChars)
+
+	prompt := fmt.Sprintf(discoverLinksPrompt, pageURL, text)
+
+	reqBody := map[string]interface{}{
+		"model":  e.model,
+		"prompt": prompt,
+		"stream": false,
+		"format": "json",
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("discover: marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("discover: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("discover: ollama request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("discover: ollama returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ollamaResp struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return nil, fmt.Errorf("discover: decode ollama response: %w", err)
+	}
+
+	links, err := parseLinksResponse(ollamaResp.Response, pageURL)
+	if err != nil {
+		return nil, fmt.Errorf("discover: parse model output: %w", err)
+	}
+
+	return links, nil
+}
+
+// parseLinksResponse unmarshals a JSON array (or object with a "urls"/"links" key)
+// from the model and resolves relative URLs against pageURL.
+func parseLinksResponse(raw string, pageURL string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("empty response from model")
+	}
+
+	// Try direct array first.
+	var links []string
+	if err := json.Unmarshal([]byte(raw), &links); err != nil {
+		// Try as object with common keys.
+		var obj map[string]json.RawMessage
+		if err2 := json.Unmarshal([]byte(raw), &obj); err2 != nil {
+			return nil, fmt.Errorf("unmarshal links: %w", err)
+		}
+		for _, key := range []string{"urls", "links", "job_links", "results"} {
+			if v, ok := obj[key]; ok {
+				if err3 := json.Unmarshal(v, &links); err3 == nil {
+					break
+				}
+			}
+		}
+	}
+
+	// Resolve relative URLs.
+	baseURL, _ := resolveBaseURL(pageURL)
+	var resolved []string
+	for _, link := range links {
+		abs := resolveURL(link, baseURL)
+		if abs != "" {
+			resolved = append(resolved, abs)
+		}
+	}
+
+	return resolved, nil
+}
+
+// resolveBaseURL extracts the scheme+host from a URL for resolving relative links.
+func resolveBaseURL(pageURL string) (string, string) {
+	// Find scheme://host
+	idx := strings.Index(pageURL, "://")
+	if idx < 0 {
+		return pageURL, ""
+	}
+	rest := pageURL[idx+3:]
+	slashIdx := strings.Index(rest, "/")
+	if slashIdx < 0 {
+		return pageURL, ""
+	}
+	origin := pageURL[:idx+3+slashIdx]
+	// Path up to last slash for relative resolution
+	lastSlash := strings.LastIndex(pageURL, "/")
+	pathBase := pageURL[:lastSlash+1]
+	_ = pathBase
+	return origin, pathBase
+}
+
+// resolveURL resolves a possibly-relative URL against the origin.
+func resolveURL(link string, origin string) string {
+	link = strings.TrimSpace(link)
+	if link == "" {
+		return ""
+	}
+	if strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://") {
+		return link
+	}
+	if strings.HasPrefix(link, "//") {
+		return "https:" + link
+	}
+	if strings.HasPrefix(link, "/") {
+		return origin + link
+	}
+	return origin + "/" + link
+}
+
+// stripHTMLKeepLinks removes script/style blocks and most HTML tags but preserves
+// anchor tags as markdown-style [text](url) so the AI can see link text and URLs.
+func stripHTMLKeepLinks(html string) string {
+	// Remove script and style blocks.
+	scriptRe := regexp.MustCompile(`(?is)<(script|style)[^>]*>.*?</(script|style)>`)
+	html = scriptRe.ReplaceAllString(html, " ")
+
+	// Convert <a href="url">text</a> to [text](url).
+	anchorRe := regexp.MustCompile(`(?is)<a\s[^>]*href=["']([^"']*)["'][^>]*>(.*?)</a>`)
+	html = anchorRe.ReplaceAllStringFunc(html, func(match string) string {
+		parts := anchorRe.FindStringSubmatch(match)
+		if len(parts) < 3 {
+			return match
+		}
+		href := parts[1]
+		text := stripAllTags(parts[2])
+		text = strings.TrimSpace(text)
+		return fmt.Sprintf("[%s](%s)", text, href)
+	})
+
+	// Remove all remaining tags.
+	tagRe := regexp.MustCompile(`<[^>]+>`)
+	html = tagRe.ReplaceAllString(html, " ")
+
+	// Decode common HTML entities.
+	html = strings.NewReplacer(
+		"&amp;", "&",
+		"&lt;", "<",
+		"&gt;", ">",
+		"&quot;", `"`,
+		"&#39;", "'",
+		"&nbsp;", " ",
+	).Replace(html)
+
+	// Collapse whitespace.
+	wsRe := regexp.MustCompile(`\s+`)
+	html = wsRe.ReplaceAllString(html, " ")
+
+	return strings.TrimSpace(html)
+}
+
+// stripAllTags removes all HTML tags from a string.
+func stripAllTags(s string) string {
+	tagRe := regexp.MustCompile(`<[^>]+>`)
+	return tagRe.ReplaceAllString(s, " ")
+}
+
 const maxEmbedChars = 2000
 
 // Embed generates an embedding vector for the given text by calling Ollama's
