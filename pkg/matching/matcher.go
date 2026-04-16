@@ -29,7 +29,7 @@ func NewMatcher(
 	}
 }
 
-const minMatchScore = 0.6
+const minMatchScore = 0.3
 
 // MatchCandidateToJobs runs the full matching pipeline for a single candidate:
 //  1. Stage 1 hard filter — retrieve up to 5000 active jobs that pass the
@@ -48,12 +48,24 @@ func (m *Matcher) MatchCandidateToJobs(ctx context.Context, candidate *domain.Ca
 
 	candidateEmb := parseEmbedding(candidate.Embedding)
 
+	// Combine all candidate skills for matching
+	candidateSkills := candidate.Skills
+	if candidateSkills == "" {
+		candidateSkills = candidate.StrongSkills
+	}
+
 	var matches []*domain.CandidateMatch
 	for _, job := range jobs {
 		jobEmb := parseEmbedding(job.Embedding)
 		embSim := cosineSimilarity(candidateEmb, jobEmb)
 
-		skillsScore := SkillsOverlap(candidate.Skills, job.RequiredSkills)
+		// Use RequiredSkills first, fall back to Skills
+		jobSkills := job.RequiredSkills
+		if jobSkills == "" {
+			jobSkills = job.Skills
+		}
+
+		skillsScore := SkillsOverlap(candidateSkills, jobSkills)
 		salaryScore := SalaryFit(
 			float64(candidate.SalaryMin), float64(candidate.SalaryMax),
 			job.SalaryMin, job.SalaryMax,
@@ -61,7 +73,10 @@ func (m *Matcher) MatchCandidateToJobs(ctx context.Context, candidate *domain.Ca
 		recencyScore := Recency(job.LastSeenAt)
 		seniorityScore := SeniorityFit(candidate.Seniority, job.Seniority)
 
-		score := ComputeMatchScore(skillsScore, embSim, job.QualityScore, salaryScore, recencyScore, seniorityScore)
+		hasEmbeddings := len(candidateEmb) > 0 && len(jobEmb) > 0
+		hasSkills := candidateSkills != "" && jobSkills != ""
+
+		score := ComputeMatchScore(skillsScore, embSim, job.QualityScore, salaryScore, recencyScore, seniorityScore, hasEmbeddings, hasSkills)
 		if score < minMatchScore {
 			continue
 		}
@@ -100,7 +115,16 @@ func (m *Matcher) MatchJobToCandidates(ctx context.Context, job *domain.Canonica
 		candidateEmb := parseEmbedding(candidate.Embedding)
 		embSim := cosineSimilarity(candidateEmb, jobEmb)
 
-		skillsScore := SkillsOverlap(candidate.Skills, job.RequiredSkills)
+		candidateSkills := candidate.Skills
+		if candidateSkills == "" {
+			candidateSkills = candidate.StrongSkills
+		}
+		jobSkills := job.RequiredSkills
+		if jobSkills == "" {
+			jobSkills = job.Skills
+		}
+
+		skillsScore := SkillsOverlap(candidateSkills, jobSkills)
 		salaryScore := SalaryFit(
 			float64(candidate.SalaryMin), float64(candidate.SalaryMax),
 			job.SalaryMin, job.SalaryMax,
@@ -108,7 +132,10 @@ func (m *Matcher) MatchJobToCandidates(ctx context.Context, job *domain.Canonica
 		recencyScore := Recency(job.LastSeenAt)
 		seniorityScore := SeniorityFit(candidate.Seniority, job.Seniority)
 
-		score := ComputeMatchScore(skillsScore, embSim, job.QualityScore, salaryScore, recencyScore, seniorityScore)
+		hasEmbeddings := len(candidateEmb) > 0 && len(jobEmb) > 0
+		hasSkills := candidateSkills != "" && jobSkills != ""
+
+		score := ComputeMatchScore(skillsScore, embSim, job.QualityScore, salaryScore, recencyScore, seniorityScore, hasEmbeddings, hasSkills)
 		if score < minMatchScore {
 			continue
 		}

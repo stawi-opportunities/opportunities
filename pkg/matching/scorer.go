@@ -5,16 +5,44 @@ import (
 	"time"
 )
 
-// ComputeMatchScore returns a weighted composite score in [0, 1] from the six
-// sub-scores.  Weights: skills 35%, embedding 25%, quality 15%, salary 10%,
-// recency 10%, seniority 5%.
-func ComputeMatchScore(skillsOverlap, embeddingSimilarity, qualityScore, salaryFit, recency, seniorityFit float64) float64 {
-	return 0.35*skillsOverlap +
-		0.25*embeddingSimilarity +
-		0.15*(qualityScore/100.0) +
-		0.10*salaryFit +
-		0.10*recency +
-		0.05*seniorityFit
+// ComputeMatchScore returns a weighted composite score in [0, 1].
+// When data is sparse (missing embeddings or skills), the scoring adapts
+// by redistributing weight to available signals instead of scoring 0.
+func ComputeMatchScore(skillsOverlap, embeddingSimilarity, qualityScore, salaryFit, recency, seniorityFit float64, hasEmbeddings, hasSkills bool) float64 {
+	if hasEmbeddings && hasSkills {
+		// Full scoring — all signals available
+		return 0.35*skillsOverlap +
+			0.25*embeddingSimilarity +
+			0.15*(qualityScore/100.0) +
+			0.10*salaryFit +
+			0.10*recency +
+			0.05*seniorityFit
+	}
+
+	if hasSkills && !hasEmbeddings {
+		// No embeddings — shift embedding weight to skills + recency
+		return 0.50*skillsOverlap +
+			0.15*(qualityScore/100.0) +
+			0.15*salaryFit +
+			0.15*recency +
+			0.05*seniorityFit
+	}
+
+	if hasEmbeddings && !hasSkills {
+		// No skills — shift skills weight to embeddings + recency
+		return 0.50*embeddingSimilarity +
+			0.15*(qualityScore/100.0) +
+			0.15*salaryFit +
+			0.15*recency +
+			0.05*seniorityFit
+	}
+
+	// Neither embeddings nor skills — use only structural signals
+	// This is the MVP case: just recency + salary + seniority + quality
+	return 0.30*(qualityScore/100.0) +
+		0.30*salaryFit +
+		0.25*recency +
+		0.15*seniorityFit
 }
 
 // SkillsOverlap computes Jaccard similarity between two comma-separated skill
