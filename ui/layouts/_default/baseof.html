@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en" x-data="appRoot()" x-init="init()">
+<head>
+  {{ partial "head.html" . }}
+</head>
+<body class="min-h-screen flex flex-col bg-white">
+  {{ partial "skip-nav.html" . }}
+  {{ partial "navbar.html" . }}
+
+  <main id="main-content" class="flex-1" role="main">
+    {{ block "main" . }}{{ end }}
+  </main>
+
+  {{ partial "footer.html" . }}
+
+  {{ $appJS := resources.Get "js/app.js" | js.Build (dict "minify" hugo.IsProduction) }}
+  {{ $authJS := resources.Get "js/auth.js" | js.Build (dict "minify" hugo.IsProduction) }}
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <script src="{{ $appJS.RelPermalink }}"></script>
+  <script src="{{ $authJS.RelPermalink }}"></script>
+  {{ block "scripts" . }}{{ end }}
+</body>
+</html>
