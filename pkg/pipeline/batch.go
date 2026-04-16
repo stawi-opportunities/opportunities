@@ -64,8 +64,8 @@ func (b *BatchBuffer) Add(ctx context.Context, variant domain.JobVariant) error 
 	return nil
 }
 
-// Flush swaps the current buffer with a fresh one and writes all accumulated
-// variants to the repository. It is safe to call concurrently.
+// Flush swaps the current buffer with a fresh one, deduplicates by hard_key,
+// and writes all accumulated variants to the repository.
 func (b *BatchBuffer) Flush(ctx context.Context) error {
 	b.mu.Lock()
 	if len(b.variants) == 0 {
@@ -76,7 +76,21 @@ func (b *BatchBuffer) Flush(ctx context.Context) error {
 	b.variants = make([]*domain.JobVariant, 0, b.maxSize)
 	b.mu.Unlock()
 
-	return b.repo.UpsertVariants(ctx, batch)
+	// Deduplicate within the batch — Postgres ON CONFLICT fails if the same
+	// hard_key appears twice in one INSERT statement.
+	seen := make(map[string]bool, len(batch))
+	deduped := make([]*domain.JobVariant, 0, len(batch))
+	for _, v := range batch {
+		if v.HardKey != "" && seen[v.HardKey] {
+			continue
+		}
+		if v.HardKey != "" {
+			seen[v.HardKey] = true
+		}
+		deduped = append(deduped, v)
+	}
+
+	return b.repo.UpsertVariants(ctx, deduped)
 }
 
 // Close stops the background ticker, closes the done channel, and performs a
