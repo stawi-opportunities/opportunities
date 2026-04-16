@@ -555,6 +555,51 @@ func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
 	return embResp.Embedding, nil
 }
 
+// Prompt sends an arbitrary system prompt and user content to Ollama and returns
+// the raw JSON response string. This is a generic escape hatch for handlers that
+// need to call the LLM with a custom prompt (e.g. validation, scoring).
+func (e *Extractor) Prompt(ctx context.Context, systemPrompt, userContent string) (string, error) {
+	combined := systemPrompt + "\n\n" + userContent
+
+	reqBody := map[string]interface{}{
+		"model":  e.model,
+		"prompt": combined,
+		"stream": false,
+		"format": "json",
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("prompt: marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", fmt.Errorf("prompt: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("prompt: ollama request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", fmt.Errorf("prompt: ollama returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ollamaResp struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return "", fmt.Errorf("prompt: decode ollama response: %w", err)
+	}
+
+	return strings.TrimSpace(ollamaResp.Response), nil
+}
+
 // stripHTML removes HTML tags and decodes common entities, returning plain text.
 func stripHTML(html string) string {
 	// Remove script and style blocks entirely (with their content).
