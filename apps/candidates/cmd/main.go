@@ -19,6 +19,7 @@ import (
 	"stawi.jobs/apps/candidates/service/events"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
+	"stawi.jobs/pkg/matching"
 	"stawi.jobs/pkg/repository"
 )
 
@@ -58,7 +59,9 @@ func main() {
 	candidateRepo := repository.NewCandidateRepository(dbFn)
 	matchRepo := repository.NewMatchRepository(dbFn)
 	jobRepo := repository.NewJobRepository(dbFn)
-	_ = jobRepo // available for future matching integration
+
+	// Matcher
+	matcher := matching.NewMatcher(jobRepo, matchRepo, candidateRepo)
 
 	// Extractor
 	var extractor *extraction.Extractor
@@ -95,6 +98,7 @@ func main() {
 
 	// Admin
 	r.Get("/admin/candidates", listCandidatesHandler(candidateRepo))
+	r.Post("/admin/match/run", forceMatchHandler(matcher, candidateRepo))
 
 	// Webhook
 	r.Post("/webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
@@ -561,5 +565,34 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 		}
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(candidate)
+	}
+}
+
+// forceMatchHandler runs matching for all active candidates.
+func forceMatchHandler(matcher *matching.Matcher, candidateRepo *repository.CandidateRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		candidates, err := candidateRepo.ListActive(ctx, 1000)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		totalMatches := 0
+		results := make([]map[string]any, 0, len(candidates))
+		for _, c := range candidates {
+			n, matchErr := matcher.MatchCandidateToJobs(ctx, c)
+			if matchErr != nil {
+				results = append(results, map[string]any{"candidate_id": c.ID, "name": c.Name, "error": matchErr.Error()})
+				continue
+			}
+			totalMatches += n
+			results = append(results, map[string]any{"candidate_id": c.ID, "name": c.Name, "matches": n})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"candidates":    len(candidates),
+			"total_matches": totalMatches,
+			"results":       results,
+		})
 	}
 }
