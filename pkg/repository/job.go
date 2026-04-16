@@ -407,6 +407,25 @@ func (r *JobRepository) ListByStage(ctx context.Context, stage string, limit int
 	return variants, err
 }
 
+// GetVariantByID returns a single JobVariant by primary key.
+// Returns nil, nil when no record is found.
+func (r *JobRepository) GetVariantByID(ctx context.Context, id int64) (*domain.JobVariant, error) {
+	var v domain.JobVariant
+	err := r.db(ctx, true).Where("id = ?", id).First(&v).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &v, nil
+}
+
+// UpdateVariantFields updates arbitrary fields on a job variant by ID.
+func (r *JobRepository) UpdateVariantFields(ctx context.Context, id int64, updates map[string]any) error {
+	return r.db(ctx, false).Model(&domain.JobVariant{}).Where("id = ?", id).Updates(updates).Error
+}
+
 // CountByStage returns the count of variants at each stage.
 func (r *JobRepository) CountByStage(ctx context.Context) (map[string]int64, error) {
 	type result struct {
