@@ -1,0 +1,77 @@
+{{ define "main" }}
+<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
+     x-data="searchPage()"
+     role="search"
+     aria-label="Job search">
+
+  <h1 class="text-3xl font-bold text-gray-900">Search Jobs</h1>
+
+  <!-- Mode toggle -->
+  <div class="mt-6 flex items-center gap-4" role="tablist" aria-label="Search mode">
+    <button @click="switchMode('keyword')"
+            :class="mode === 'keyword' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+            class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
+            role="tab"
+            :aria-selected="mode === 'keyword'">
+      Keyword Search
+    </button>
+    <button @click="switchMode('semantic')"
+            x-show="$store.auth.isAuthenticated"
+            :class="mode === 'semantic' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+            class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
+            role="tab"
+            :aria-selected="mode === 'semantic'">
+      Best Fit
+    </button>
+  </div>
+
+  <!-- Pagefind (keyword mode) -->
+  <div x-show="mode === 'keyword'" class="mt-6">
+    <div id="pagefind-search"></div>
+    <link href="/pagefind/pagefind-ui.css" rel="stylesheet">
+    <script src="/pagefind/pagefind-ui.js" defer></script>
+  </div>
+
+  <!-- Semantic search (best fit mode) -->
+  <div x-show="mode === 'semantic'" x-cloak class="mt-6">
+    <div class="flex gap-3">
+      <input type="text"
+             x-model="query"
+             @keydown.enter="searchSemantic()"
+             class="input-field flex-1"
+             placeholder="Describe your ideal job..."
+             aria-label="Semantic search query">
+      <button @click="searchSemantic()"
+              :disabled="semanticLoading"
+              class="btn-primary">
+        <span x-show="!semanticLoading">Search</span>
+        <span x-show="semanticLoading" x-cloak>Searching...</span>
+      </button>
+    </div>
+
+    <div x-show="semanticError" x-cloak class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert" x-text="semanticError"></div>
+
+    <div class="mt-6 space-y-4" aria-live="polite">
+      <p x-show="semanticResults.length > 0" class="text-sm text-gray-500" x-text="semanticResults.length + ' jobs matched'"></p>
+      <template x-for="job in semanticResults" :key="job.id">
+        <article class="card p-4 sm:p-6">
+          <a :href="'/jobs/'" class="block group">
+            <p class="text-sm font-medium text-gray-500" x-text="job.company"></p>
+            <h3 class="mt-1 text-lg font-semibold text-gray-900 group-hover:text-accent-600" x-text="job.title"></h3>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <span class="badge-type" x-text="job.employment_type"></span>
+              <span x-show="job.salary_min > 0" class="text-sm font-medium text-green-700" x-text="formatSalary(job)"></span>
+            </div>
+            <p class="mt-2 text-sm text-gray-500" x-text="job.location_text"></p>
+          </a>
+        </article>
+      </template>
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{ define "scripts" }}
+{{ $searchJS := resources.Get "js/search.js" | js.Build (dict "minify" hugo.IsProduction) }}
+<script src="{{ $searchJS.RelPermalink }}"></script>
+{{ end }}
