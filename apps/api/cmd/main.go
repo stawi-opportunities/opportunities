@@ -14,7 +14,6 @@ import (
 	"time"
 
 	env "github.com/caarlos0/env/v11"
-	"github.com/go-chi/chi/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
@@ -70,10 +69,10 @@ func main() {
 		log.Printf("Semantic search enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
 	}
 
-	r := chi.NewRouter()
+	mux := http.NewServeMux()
 
 	// GET /healthz — returns counts.
-	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 
 		totalJobs, _ := jobRepo.CountCanonical(ctx)
@@ -93,7 +92,7 @@ func main() {
 	})
 
 	// GET /search?q=&limit=20
-	r.Get("/search", func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("GET /search", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		q := req.URL.Query().Get("q")
 		limitStr := req.URL.Query().Get("limit")
@@ -119,7 +118,7 @@ func main() {
 	})
 
 	// GET /sources?limit=200
-	r.Get("/sources", func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("GET /sources", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 
 		sources, err := sourceRepo.ListAll(ctx)
@@ -148,7 +147,7 @@ func main() {
 	})
 
 	// GET /jobs/top?limit=20&min_score=60 — returns top jobs by quality score.
-	r.Get("/jobs/top", func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("GET /jobs/top", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		limitStr := req.URL.Query().Get("limit")
 		limit := 20
@@ -181,7 +180,7 @@ func main() {
 
 	// GET /search/semantic?q=<text>&limit=20
 	// Hybrid search: tsvector candidates re-ranked by embedding cosine similarity.
-	r.Get("/search/semantic", func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("GET /search/semantic", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		q := req.URL.Query().Get("q")
 		if q == "" {
@@ -272,7 +271,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    cfg.ServerPort,
-		Handler: r,
+		Handler: mux,
 	}
 
 	go func() {

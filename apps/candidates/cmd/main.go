@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
@@ -99,35 +98,33 @@ func main() {
 		log.Warn("no SecurityManager configured — endpoints are UNPROTECTED")
 	}
 
-	// HTTP routes with chi
-	r := chi.NewRouter()
+	// HTTP routes with standard ServeMux
+	mux := http.NewServeMux()
+
+	// authWrap wraps a handler with auth middleware when configured.
+	authWrap := func(h http.HandlerFunc) http.Handler {
+		if authMiddleware != nil {
+			return authMiddleware(h)
+		}
+		return h
+	}
 
 	// Public routes (no auth required)
-	r.Get("/healthz", healthHandler(candidateRepo))
-	r.Post("/candidates/register", registerHandler(candidateRepo, extractor, svc))
-	r.Post("/webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
+	mux.HandleFunc("GET /healthz", healthHandler(candidateRepo))
+	mux.HandleFunc("POST /candidates/register", registerHandler(candidateRepo, extractor, svc))
+	mux.HandleFunc("POST /webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
 
 	// Authenticated candidate routes
-	r.Group(func(r chi.Router) {
-		if authMiddleware != nil {
-			r.Use(authMiddleware)
-		}
-		r.Get("/candidates/profile", getProfileHandler(candidateRepo))
-		r.Put("/candidates/profile", updateProfileHandler(candidateRepo))
-		r.Get("/candidates/matches", listMatchesHandler(matchRepo))
-		r.Post("/candidates/matches/{id}/view", viewMatchHandler(matchRepo))
-	})
+	mux.Handle("GET /candidates/profile", authWrap(getProfileHandler(candidateRepo)))
+	mux.Handle("PUT /candidates/profile", authWrap(updateProfileHandler(candidateRepo)))
+	mux.Handle("GET /candidates/matches", authWrap(listMatchesHandler(matchRepo)))
+	mux.Handle("POST /candidates/matches/{id}/view", authWrap(viewMatchHandler(matchRepo)))
 
 	// Authenticated admin routes
-	r.Group(func(r chi.Router) {
-		if authMiddleware != nil {
-			r.Use(authMiddleware)
-		}
-		r.Get("/admin/candidates", listCandidatesHandler(candidateRepo))
-		r.Post("/admin/match/run", forceMatchHandler(matcher, candidateRepo))
-	})
+	mux.Handle("GET /admin/candidates", authWrap(listCandidatesHandler(candidateRepo)))
+	mux.Handle("POST /admin/match/run", authWrap(forceMatchHandler(matcher, candidateRepo)))
 
-	eventOpts = append(eventOpts, frame.WithHTTPHandler(r))
+	eventOpts = append(eventOpts, frame.WithHTTPHandler(mux))
 	svc.Init(ctx, eventOpts...)
 
 	if runErr := svc.Run(ctx, ""); runErr != nil {
@@ -447,7 +444,7 @@ func listMatchesHandler(matchRepo *repository.MatchRepository) http.HandlerFunc 
 // viewMatchHandler handles POST /candidates/matches/{id}/view
 func viewMatchHandler(matchRepo *repository.MatchRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idStr := chi.URLParam(r, "id")
+		idStr := r.PathValue("id")
 		matchID, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil || matchID <= 0 {
 			http.Error(w, `{"error":"valid match id is required"}`, http.StatusBadRequest)

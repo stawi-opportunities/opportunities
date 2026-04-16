@@ -7,7 +7,6 @@ toolchain go1.26.1
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
 	github.com/caarlos0/env/v11 v11.4.0
-	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-rod/rod v0.116.2
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
