@@ -237,6 +237,49 @@ func (r *JobRepository) GetPageState(ctx context.Context, sourceID int64, pageKe
 	return &ps, nil
 }
 
+// FindClusterByVariantID finds the cluster that a variant belongs to.
+func (r *JobRepository) FindClusterByVariantID(ctx context.Context, variantID int64) (*domain.JobCluster, error) {
+	var member domain.JobClusterMember
+	err := r.db(ctx, true).Where("variant_id = ?", variantID).First(&member).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var cluster domain.JobCluster
+	err = r.db(ctx, true).Where("id = ?", member.ClusterID).First(&cluster).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &cluster, nil
+}
+
+// TruncateCanonicals deletes all canonical_jobs, job_clusters, and job_cluster_members.
+func (r *JobRepository) TruncateCanonicals(ctx context.Context) error {
+	db := r.db(ctx, false)
+	if err := db.Exec("DELETE FROM job_cluster_members").Error; err != nil {
+		return err
+	}
+	if err := db.Exec("DELETE FROM canonical_jobs").Error; err != nil {
+		return err
+	}
+	return db.Exec("DELETE FROM job_clusters").Error
+}
+
+// ListAllVariants returns variants in batches for rebuild processing.
+func (r *JobRepository) ListAllVariants(ctx context.Context, batchSize, offset int) ([]*domain.JobVariant, error) {
+	var variants []*domain.JobVariant
+	err := r.db(ctx, true).
+		Order("scraped_at ASC, id ASC").
+		Limit(batchSize).Offset(offset).
+		Find(&variants).Error
+	return variants, err
+}
+
 // UpsertPageState inserts or updates page state on conflict of
 // (crawl_job_id, page_url), which map to source_id and page_key semantically.
 func (r *JobRepository) UpsertPageState(ctx context.Context, ps *domain.CrawlPageState) error {
