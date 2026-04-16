@@ -18,5 +18,11 @@ type CrawlerConfig struct {
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 	OllamaURL         string `env:"OLLAMA_URL" envDefault:""`
 	OllamaModel       string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
-	ValkeyAddr        string `env:"VALKEY_ADDR" envDefault:""`
+	ValkeyAddr        string  `env:"VALKEY_ADDR" envDefault:""`
+	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
+	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`
+	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2Bucket          string  `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
+	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
+	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 }

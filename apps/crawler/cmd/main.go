@@ -12,6 +12,7 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/events"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
@@ -25,6 +26,7 @@ import (
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/normalize"
 	"stawi.jobs/pkg/pipeline/handlers"
+	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
@@ -125,23 +127,41 @@ func main() {
 	bloomFilter := bloom.NewFilter(cfg.ValkeyAddr, dbFn)
 	svc.AddCleanupMethod(func(_ context.Context) { bloomFilter.Close() })
 
+	// R2 publisher for job content.
+	var r2Publisher *publish.R2Publisher
+	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
+		r2Publisher = publish.NewR2Publisher(
+			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
+			cfg.R2Bucket, cfg.R2DeployHookURL,
+		)
+		log.WithField("bucket", cfg.R2Bucket).Info("R2 publisher enabled")
+	}
+
 	// Register pipeline stage handlers.
 	pipelineHandlers := []frame.Option{}
 	if extractor != nil {
-		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(
+		eventHandlers := []events.EventI{
 			handlers.NewDedupHandler(jobRepo, svc),
 			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, httpClient, svc),
 			handlers.NewValidateHandler(jobRepo, sourceRepo, extractor, svc),
 			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, extractor, svc),
 			handlers.NewSourceExpansionHandler(sourceRepo),
 			handlers.NewSourceQualityHandler(sourceRepo, jobRepo, extractor),
-		))
+		}
+		if r2Publisher != nil {
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cfg.PublishMinQuality))
+		}
+		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
 	} else {
 		// Without extractor, only register dedup + canonical (no AI stages)
-		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(
+		eventHandlers := []events.EventI{
 			handlers.NewDedupHandler(jobRepo, svc),
 			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, svc),
-		))
+		}
+		if r2Publisher != nil {
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cfg.PublishMinQuality))
+		}
+		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
 	}
 	svc.Init(ctx, pipelineHandlers...)
 
