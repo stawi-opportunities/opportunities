@@ -163,3 +163,44 @@ func (r *SourceRepository) CountByStatus(ctx context.Context, status domain.Sour
 	err := r.db(ctx, true).Model(&domain.Source{}).Where("status = ?", status).Count(&count).Error
 	return count, err
 }
+
+// IncrementQualityValidated increments the validated count in the quality window.
+func (r *SourceRepository) IncrementQualityValidated(ctx context.Context, id int64) error {
+	return r.db(ctx, false).Model(&domain.Source{}).
+		Where("id = ?", id).
+		UpdateColumn("quality_validated", gorm.Expr("quality_validated + 1")).Error
+}
+
+// IncrementQualityFlagged increments the flagged count in the quality window.
+func (r *SourceRepository) IncrementQualityFlagged(ctx context.Context, id int64) error {
+	return r.db(ctx, false).Model(&domain.Source{}).
+		Where("id = ?", id).
+		UpdateColumn("quality_flagged", gorm.Expr("quality_flagged + 1")).Error
+}
+
+// GetQualityRate returns the failure rate for a source's quality window.
+func (r *SourceRepository) GetQualityRate(ctx context.Context, id int64) (float64, int, error) {
+	var src domain.Source
+	err := r.db(ctx, true).Select("quality_validated, quality_flagged").Where("id = ?", id).First(&src).Error
+	if err != nil {
+		return 0, 0, err
+	}
+	total := src.QualityValidated + src.QualityFlagged
+	if total == 0 {
+		return 0, 0, nil
+	}
+	return float64(src.QualityFlagged) / float64(total), total, nil
+}
+
+// ResetQualityWindow resets counters and doubles the window (cap 14 days).
+func (r *SourceRepository) ResetQualityWindow(ctx context.Context, id int64) error {
+	now := time.Now()
+	return r.db(ctx, false).Model(&domain.Source{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"quality_window_start": now,
+			"quality_window_days":  gorm.Expr("LEAST(quality_window_days * 2, 14)"),
+			"quality_validated":    0,
+			"quality_flagged":      0,
+		}).Error
+}

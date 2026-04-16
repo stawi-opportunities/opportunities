@@ -365,3 +365,66 @@ func (r *JobRepository) ListUnenriched(ctx context.Context, limit int) ([]*domai
 		Find(&jobs).Error
 	return jobs, err
 }
+
+// UpdateStage sets the pipeline stage for a variant.
+func (r *JobRepository) UpdateStage(ctx context.Context, variantID int64, stage string) error {
+	return r.db(ctx, false).Model(&domain.JobVariant{}).
+		Where("id = ?", variantID).
+		Update("stage", stage).Error
+}
+
+// UpdateStageWithContent sets stage and content fields together.
+func (r *JobRepository) UpdateStageWithContent(ctx context.Context, variantID int64, stage string, rawHTML, cleanHTML, markdown string) error {
+	return r.db(ctx, false).Model(&domain.JobVariant{}).
+		Where("id = ?", variantID).
+		Updates(map[string]any{
+			"stage":      stage,
+			"raw_html":   rawHTML,
+			"clean_html": cleanHTML,
+			"markdown":   markdown,
+		}).Error
+}
+
+// UpdateValidation sets validation results on a variant.
+func (r *JobRepository) UpdateValidation(ctx context.Context, variantID int64, stage string, score float64, notes string) error {
+	return r.db(ctx, false).Model(&domain.JobVariant{}).
+		Where("id = ?", variantID).
+		Updates(map[string]any{
+			"stage":            stage,
+			"validation_score": score,
+			"validation_notes": notes,
+		}).Error
+}
+
+// ListByStage returns variants at a given pipeline stage.
+func (r *JobRepository) ListByStage(ctx context.Context, stage string, limit int) ([]*domain.JobVariant, error) {
+	var variants []*domain.JobVariant
+	err := r.db(ctx, true).
+		Where("stage = ?", stage).
+		Order("id ASC").
+		Limit(limit).
+		Find(&variants).Error
+	return variants, err
+}
+
+// CountByStage returns the count of variants at each stage.
+func (r *JobRepository) CountByStage(ctx context.Context) (map[string]int64, error) {
+	type result struct {
+		Stage string
+		Count int64
+	}
+	var results []result
+	err := r.db(ctx, true).
+		Model(&domain.JobVariant{}).
+		Select("stage, count(*) as count").
+		Group("stage").
+		Find(&results).Error
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]int64, len(results))
+	for _, r := range results {
+		m[r.Stage] = r.Count
+	}
+	return m, nil
+}
