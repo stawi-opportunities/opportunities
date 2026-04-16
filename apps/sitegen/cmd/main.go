@@ -69,7 +69,7 @@ func main() {
 	r2AccountID := flag.String("r2-account-id", os.Getenv("R2_ACCOUNT_ID"), "Cloudflare account ID")
 	r2AccessKey := flag.String("r2-access-key", os.Getenv("R2_ACCESS_KEY_ID"), "R2 access key")
 	r2SecretKey := flag.String("r2-secret-key", os.Getenv("R2_SECRET_ACCESS_KEY"), "R2 secret key")
-	r2Bucket := flag.String("r2-bucket", "stawi-jobs-content", "R2 bucket name")
+	r2Bucket := flag.String("r2-bucket", envOrDefault("R2_BUCKET", "stawi-jobs-content"), "R2 bucket name")
 	deployHook := flag.String("deploy-hook-url", os.Getenv("R2_DEPLOY_HOOK_URL"), "CF Pages deploy hook URL")
 	flag.Parse()
 
@@ -330,6 +330,13 @@ func slugify(s string) string {
 		s = strings.ReplaceAll(s, "--", "-")
 	}
 	return strings.Trim(s, "-")
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func splitCSV(s string) []string {
