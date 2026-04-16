@@ -149,6 +149,18 @@ func (r *JobRepository) UpdateEmbedding(ctx context.Context, canonicalID int64, 
 		Update("embedding", embedding).Error
 }
 
+// ListMissingEmbeddings returns canonical jobs that have no embedding yet, limited
+// to the given batch size. Used by the backfill loop to retry failed embeddings.
+func (r *JobRepository) ListMissingEmbeddings(ctx context.Context, limit int) ([]*domain.CanonicalJob, error) {
+	var jobs []*domain.CanonicalJob
+	err := r.db(ctx, true).
+		Where("is_active = true AND (embedding IS NULL OR embedding = '')").
+		Order("id ASC").
+		Limit(limit).
+		Find(&jobs).Error
+	return jobs, err
+}
+
 // CountVariants returns the total number of job variant records.
 func (r *JobRepository) CountVariants(ctx context.Context) (int64, error) {
 	var count int64

@@ -129,6 +129,10 @@ func main() {
 	// Start crawl scheduling loop.
 	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
 
+	// Background embedding backfill — retries jobs that missed embeddings due to Ollama outages.
+	if extractor != nil {
+		go embeddingBackfillLoop(ctx, extractor, jobRepo)
+	}
 
 	// Graceful shutdown.
 	sig := make(chan os.Signal, 1)
@@ -333,6 +337,39 @@ func processSource(
 	_ = sourceRepo.UpdateNextCrawl(ctx, src.ID, nextCrawl, time.Now().UTC(), src.HealthScore)
 
 	log.Printf("source %d (%s): found=%d stored=%d", src.ID, src.Type, jobsFound, jobsStored)
+}
+
+// embeddingBackfillLoop periodically finds canonical jobs without embeddings
+// and generates them. Handles Ollama outages gracefully — jobs that failed
+// embedding during crawl will be picked up on the next backfill cycle.
+func embeddingBackfillLoop(ctx context.Context, ext *extraction.Extractor, repo *repository.JobRepository) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			jobs, err := repo.ListMissingEmbeddings(ctx, 50)
+			if err != nil {
+				log.Printf("embedding backfill: list error: %v", err)
+				continue
+			}
+			if len(jobs) == 0 {
+				continue
+			}
+			log.Printf("embedding backfill: processing %d jobs", len(jobs))
+			for _, cj := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				generateEmbedding(ctx, ext, repo, cj)
+			}
+		}
+	}
 }
 
 // generateEmbedding creates an embedding for a canonical job and stores it.
