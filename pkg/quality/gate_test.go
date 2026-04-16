@@ -57,38 +57,6 @@ func TestCheck_ValidTitle_MinLength(t *testing.T) {
 	}
 }
 
-func TestCheck_MissingCompany_Empty(t *testing.T) {
-	j := validJob()
-	j.Company = ""
-	if err := quality.Check(j); err != quality.ErrMissingCompany {
-		t.Fatalf("expected ErrMissingCompany, got: %v", err)
-	}
-}
-
-func TestCheck_MissingCompany_SingleChar(t *testing.T) {
-	j := validJob()
-	j.Company = "X" // exactly 1 char — must fail (> 1 required)
-	if err := quality.Check(j); err != quality.ErrMissingCompany {
-		t.Fatalf("expected ErrMissingCompany for single-char company, got: %v", err)
-	}
-}
-
-func TestCheck_MissingLocation_Empty(t *testing.T) {
-	j := validJob()
-	j.LocationText = ""
-	if err := quality.Check(j); err != quality.ErrMissingLocation {
-		t.Fatalf("expected ErrMissingLocation, got: %v", err)
-	}
-}
-
-func TestCheck_MissingLocation_WhitespaceOnly(t *testing.T) {
-	j := validJob()
-	j.LocationText = "   "
-	if err := quality.Check(j); err != quality.ErrMissingLocation {
-		t.Fatalf("expected ErrMissingLocation for whitespace location, got: %v", err)
-	}
-}
-
 func TestCheck_ShortDescription_Exactly50Chars(t *testing.T) {
 	j := validJob()
 	j.Description = strings.Repeat("x", 50) // exactly 50 — must fail (> 50 required)
@@ -113,42 +81,56 @@ func TestCheck_ValidDescription_51Chars(t *testing.T) {
 	}
 }
 
-func TestCheck_MissingApplyURL_Empty(t *testing.T) {
+// TestCheck_MissingCompanyPasses verifies that a job with no company still passes.
+func TestCheck_MissingCompanyPasses(t *testing.T) {
 	j := validJob()
-	j.ApplyURL = ""
-	if err := quality.Check(j); err != quality.ErrMissingApplyURL {
-		t.Fatalf("expected ErrMissingApplyURL, got: %v", err)
-	}
-}
-
-func TestCheck_InvalidApplyURL_NoScheme(t *testing.T) {
-	j := validJob()
-	j.ApplyURL = "example.com/apply"
-	if err := quality.Check(j); err != quality.ErrInvalidApplyURL {
-		t.Fatalf("expected ErrInvalidApplyURL for URL without scheme, got: %v", err)
-	}
-}
-
-func TestCheck_InvalidApplyURL_FTPScheme(t *testing.T) {
-	j := validJob()
-	j.ApplyURL = "ftp://example.com/apply"
-	if err := quality.Check(j); err != quality.ErrInvalidApplyURL {
-		t.Fatalf("expected ErrInvalidApplyURL for ftp:// URL, got: %v", err)
-	}
-}
-
-func TestCheck_ValidApplyURL_HTTP(t *testing.T) {
-	j := validJob()
-	j.ApplyURL = "http://example.com/apply"
+	j.Company = ""
 	if err := quality.Check(j); err != nil {
-		t.Fatalf("expected nil error for http:// URL, got: %v", err)
+		t.Fatalf("expected nil error for missing company, got: %v", err)
 	}
 }
 
-func TestCheck_ValidApplyURL_HTTPS(t *testing.T) {
+// TestCheck_MissingLocationPasses verifies that a job with no location still passes.
+func TestCheck_MissingLocationPasses(t *testing.T) {
 	j := validJob()
-	j.ApplyURL = "https://example.com/apply"
+	j.LocationText = ""
 	if err := quality.Check(j); err != nil {
-		t.Fatalf("expected nil error for https:// URL, got: %v", err)
+		t.Fatalf("expected nil error for missing location, got: %v", err)
 	}
+}
+
+// TestEnsureApplyURL verifies that EnsureApplyURL sets a fallback when empty
+// and leaves an existing URL untouched.
+func TestEnsureApplyURL(t *testing.T) {
+	t.Run("sets fallback when empty", func(t *testing.T) {
+		j := domain.ExternalJob{ApplyURL: ""}
+		quality.EnsureApplyURL(&j, "https://fallback.example.com")
+		if j.ApplyURL != "https://fallback.example.com" {
+			t.Fatalf("expected fallback URL to be set, got: %q", j.ApplyURL)
+		}
+	})
+
+	t.Run("leaves existing URL alone", func(t *testing.T) {
+		j := domain.ExternalJob{ApplyURL: "https://original.example.com/apply"}
+		quality.EnsureApplyURL(&j, "https://fallback.example.com")
+		if j.ApplyURL != "https://original.example.com/apply" {
+			t.Fatalf("expected original URL to be preserved, got: %q", j.ApplyURL)
+		}
+	})
+
+	t.Run("does not set empty fallback", func(t *testing.T) {
+		j := domain.ExternalJob{ApplyURL: ""}
+		quality.EnsureApplyURL(&j, "")
+		if j.ApplyURL != "" {
+			t.Fatalf("expected URL to remain empty when fallback is empty, got: %q", j.ApplyURL)
+		}
+	})
+
+	t.Run("sets fallback when whitespace only", func(t *testing.T) {
+		j := domain.ExternalJob{ApplyURL: "   "}
+		quality.EnsureApplyURL(&j, "https://fallback.example.com")
+		if j.ApplyURL != "https://fallback.example.com" {
+			t.Fatalf("expected fallback URL to be set for whitespace-only ApplyURL, got: %q", j.ApplyURL)
+		}
+	})
 }

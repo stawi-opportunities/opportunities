@@ -292,6 +292,12 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 				}
 			}
 
+			// Ensure apply_url has a fallback before quality gate
+			quality.EnsureApplyURL(&ext, ext.SourceURL)
+			if ext.ApplyURL == "" {
+				quality.EnsureApplyURL(&ext, src.BaseURL)
+			}
+
 			// Quality gate.
 			if qErr := quality.Check(ext); qErr != nil {
 				_ = d.rejectedRepo.Create(ctx, &domain.RejectedJob{

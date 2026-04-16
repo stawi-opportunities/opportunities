@@ -44,14 +44,14 @@ func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.Crawl
 	}
 
 	type jobicyJob struct {
-		ID             int     `json:"id"`
-		URL            string  `json:"url"`
-		JobTitle       string  `json:"jobTitle"`
-		CompanyName    string  `json:"companyName"`
-		JobGeo         string  `json:"jobGeo"`
-		JobType        string  `json:"jobType"`
-		JobExcerpt     string  `json:"jobExcerpt"`
-		SalaryCurrency string  `json:"salaryCurrency"`
+		ID             int                   `json:"id"`
+		URL            string                `json:"url"`
+		JobTitle       string                `json:"jobTitle"`
+		CompanyName    string                `json:"companyName"`
+		JobGeo         string                `json:"jobGeo"`
+		JobType        connectors.FlexString `json:"jobType"`
+		JobExcerpt     string                `json:"jobExcerpt"`
+		SalaryCurrency string                `json:"salaryCurrency"`
 	}
 
 	type jobicyResponse struct {
@@ -72,7 +72,7 @@ func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.Crawl
 			Title:          item.JobTitle,
 			Company:        item.CompanyName,
 			LocationText:   item.JobGeo,
-			EmploymentType: item.JobType,
+			EmploymentType: item.JobType.String(),
 			Description:    item.JobExcerpt,
 			Currency:       item.SalaryCurrency,
 			RemoteType:     "remote",

@@ -146,6 +146,12 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 				}
 			}
 
+			// Ensure apply_url has a fallback before quality gate
+			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
+			if extJob.ApplyURL == "" {
+				quality.EnsureApplyURL(&extJob, source.BaseURL)
+			}
+
 			// Quality gate -- applies to all sources.
 			if qErr := quality.Check(extJob); qErr != nil {
 				rejected := &domain.RejectedJob{

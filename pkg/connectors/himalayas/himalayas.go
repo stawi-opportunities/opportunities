@@ -47,16 +47,18 @@ type iterator struct {
 }
 
 type himalayasJob struct {
-	ID              interface{} `json:"id"`
-	Title           string      `json:"title"`
-	CompanyName     string      `json:"companyName"`
-	Location        string      `json:"location"`
-	Description     string      `json:"description"`
-	ApplicationLink string      `json:"applicationLink"`
-	ExternalURL     string      `json:"externalUrl"`
-	SalaryCurrency  string      `json:"salaryCurrency"`
-	SalaryMin       float64     `json:"salaryMin"`
-	SalaryMax       float64     `json:"salaryMax"`
+	ID                   interface{}            `json:"id"`
+	Title                string                 `json:"title"`
+	CompanyName          string                 `json:"companyName"`
+	LocationRestrictions connectors.FlexString  `json:"locationRestrictions"`
+	Excerpt              string                 `json:"excerpt"`
+	ApplicationLink      string                 `json:"applicationLink"`
+	ExternalURL          string                 `json:"externalUrl"`
+	Currency             string                 `json:"currency"`
+	MinSalary            float64                `json:"minSalary"`
+	MaxSalary            float64                `json:"maxSalary"`
+	EmploymentType       string                 `json:"employmentType"`
+	Seniority            connectors.FlexString  `json:"seniority"`
 }
 
 type himalayasResponse struct {
@@ -115,16 +117,17 @@ func (it *iterator) Next(ctx context.Context) bool {
 		}
 
 		jobs = append(jobs, domain.ExternalJob{
-			ExternalID:   externalID,
-			Title:        item.Title,
-			Company:      item.CompanyName,
-			LocationText: item.Location,
-			Description:  item.Description,
-			ApplyURL:     applyURL,
-			Currency:     item.SalaryCurrency,
-			SalaryMin:    item.SalaryMin,
-			SalaryMax:    item.SalaryMax,
-			RemoteType:   "remote",
+			ExternalID:     externalID,
+			Title:          item.Title,
+			Company:        item.CompanyName,
+			LocationText:   item.LocationRestrictions.String(),
+			Description:    item.Excerpt,
+			ApplyURL:       applyURL,
+			Currency:       item.Currency,
+			SalaryMin:      item.MinSalary,
+			SalaryMax:      item.MaxSalary,
+			EmploymentType: item.EmploymentType,
+			RemoteType:     "remote",
 		})
 	}
 	it.jobs = jobs
