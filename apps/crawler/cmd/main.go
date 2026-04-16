@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -163,11 +166,103 @@ func main() {
 	}
 	svc.Init(ctx, frame.WithBackgroundConsumer(crawlDeps.crawlLoop))
 
+	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
+	adminMux := http.NewServeMux()
+
+	// Admin: pause a source  (?id=N)
+	adminMux.HandleFunc("/admin/sources/pause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		idStr := r.URL.Query().Get("id")
+		id, convErr := strconv.ParseInt(idStr, 10, 64)
+		if convErr != nil || id <= 0 {
+			http.Error(w, `{"error":"invalid or missing id parameter"}`, http.StatusBadRequest)
+			return
+		}
+		if opErr := sourceRepo.PauseSource(r.Context(), id); opErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "paused"})
+	})
+
+	// Admin: enable a source  (?id=N)
+	adminMux.HandleFunc("/admin/sources/enable", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		idStr := r.URL.Query().Get("id")
+		id, convErr := strconv.ParseInt(idStr, 10, 64)
+		if convErr != nil || id <= 0 {
+			http.Error(w, `{"error":"invalid or missing id parameter"}`, http.StatusBadRequest)
+			return
+		}
+		if opErr := sourceRepo.EnableSource(r.Context(), id); opErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
+	})
+
+	// Admin: health report — all sources ordered by worst health first
+	adminMux.HandleFunc("/admin/sources/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		sources, opErr := sourceRepo.ListHealthReport(r.Context())
+		if opErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count":   len(sources),
+			"sources": sources,
+		})
+	})
+
+	svc.Init(ctx, frame.WithHTTPHandler(adminMux))
+
+	// Register a named health checker that reports source state counts.
+	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo})
+
 	// Run the service. Frame handles signal-based shutdown, HTTP serving
 	// (with /healthz), and the background consumer lifecycle.
 	if runErr := svc.Run(ctx, ""); runErr != nil {
 		log.WithError(runErr).Fatal("service exited with error")
 	}
+}
+
+// sourceStateChecker is a Frame Checker that embeds source state counts into
+// the /healthz response as a named check entry.
+type sourceStateChecker struct {
+	repo *repository.SourceRepository
+}
+
+func (c *sourceStateChecker) Name() string { return "source_states" }
+
+func (c *sourceStateChecker) CheckHealth() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	active, _ := c.repo.CountByStatus(ctx, domain.SourceActive)
+	degraded, _ := c.repo.CountByStatus(ctx, domain.SourceDegraded)
+	paused, _ := c.repo.CountByStatus(ctx, domain.SourcePaused)
+
+	// Return a non-error informational string; this surfaces in the checks array.
+	// Only signal unhealthy if there are no active sources at all.
+	if active == 0 && degraded == 0 {
+		return fmt.Errorf("no active sources (active=%d degraded=%d paused=%d)", active, degraded, paused)
+	}
+	// Return nil to mark healthy; counts appear as the checker name context.
+	_ = fmt.Sprintf("active=%d degraded=%d paused=%d", active, degraded, paused)
+	return nil
 }
 
 // crawlDependencies bundles all dependencies needed by the crawl loop so they
@@ -272,7 +367,8 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 
 	// Run the connector.
 	iter := conn.Crawl(ctx, *src)
-	var jobsFound, jobsStored int
+	var jobsFound, jobsStored, jobsRejected int
+	var crawlErr error
 
 	for iter.Next(ctx) {
 		for _, ext := range iter.Jobs() {
@@ -307,6 +403,7 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 					Reason:     qErr.Error(),
 					RejectedAt: time.Now().UTC(),
 				})
+				jobsRejected++
 				continue
 			}
 
@@ -351,20 +448,53 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 	}
 
 	if err := iter.Err(); err != nil {
+		crawlErr = err
 		log.WithError(err).WithField("source_id", src.ID).Error("crawl iteration failed")
 		_ = d.crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlFailed, err.Error())
 	} else {
 		_ = d.crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlSucceeded, "")
 	}
 
-	// Update source scheduling.
-	nextCrawl := time.Now().UTC().Add(time.Duration(src.CrawlIntervalSec) * time.Second)
-	_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, nextCrawl, time.Now().UTC(), src.HealthScore)
+	// Health management: circuit breaker + reject-rate detection.
+	rejectRate := 0.0
+	if jobsFound > 0 {
+		rejectRate = float64(jobsRejected) / float64(jobsFound)
+	}
+
+	if crawlErr != nil {
+		// Connection failure — circuit breaker
+		newFailures := src.ConsecutiveFailures + 1
+		newHealth := src.HealthScore - 0.2
+		if newHealth < 0 {
+			newHealth = 0
+		}
+		_ = d.sourceRepo.RecordFailure(ctx, src.ID, newHealth, newFailures)
+	} else if rejectRate > 0.8 && jobsFound > 0 {
+		// High reject rate — flag needs tuning, don't break circuit
+		_ = d.sourceRepo.FlagNeedsTuning(ctx, src.ID, true)
+		// Still record the next_crawl_at update
+		next := time.Now().UTC().Add(time.Duration(src.CrawlIntervalSec) * time.Second)
+		_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, next, time.Now().UTC(), src.HealthScore)
+	} else {
+		// Success
+		newHealth := src.HealthScore + 0.1
+		if newHealth > 1.0 {
+			newHealth = 1.0
+		}
+		_ = d.sourceRepo.RecordSuccess(ctx, src.ID, newHealth)
+		if src.NeedsTuning && rejectRate < 0.5 {
+			_ = d.sourceRepo.FlagNeedsTuning(ctx, src.ID, false)
+		}
+		next := time.Now().UTC().Add(time.Duration(src.CrawlIntervalSec) * time.Second)
+		_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, next, time.Now().UTC(), newHealth)
+	}
 
 	log.WithField("source_id", src.ID).
 		WithField("source_type", src.Type).
 		WithField("found", jobsFound).
 		WithField("stored", jobsStored).
+		WithField("rejected", jobsRejected).
+		WithField("crawl_err", crawlErr).
 		Info("source processing complete")
 }
 

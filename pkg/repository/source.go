@@ -47,12 +47,13 @@ func (r *SourceRepository) GetByID(ctx context.Context, id int64) (*domain.Sourc
 	return &s, nil
 }
 
-// ListDue returns active sources whose next_crawl_at is due, ordered by
-// next_crawl_at ASC NULLS FIRST, limited to limit rows.
+// ListDue returns active and degraded sources whose next_crawl_at is due,
+// ordered by next_crawl_at ASC NULLS FIRST, limited to limit rows.
+// Paused and disabled sources are excluded.
 func (r *SourceRepository) ListDue(ctx context.Context, now time.Time, limit int) ([]*domain.Source, error) {
 	var sources []*domain.Source
 	err := r.db(ctx, true).
-		Where("status = ? AND next_crawl_at <= ?", domain.SourceActive, now).
+		Where("status IN ? AND next_crawl_at <= ?", []domain.SourceStatus{domain.SourceActive, domain.SourceDegraded}, now).
 		Order("next_crawl_at ASC NULLS FIRST").
 		Limit(limit).
 		Find(&sources).Error
@@ -104,5 +105,61 @@ func (r *SourceRepository) Count(ctx context.Context) (int64, error) {
 		Model(&domain.Source{}).
 		Where("status = ?", domain.SourceActive).
 		Count(&count).Error
+	return count, err
+}
+
+// RecordSuccess resets failure count, bumps health score, returns source to active.
+func (r *SourceRepository) RecordSuccess(ctx context.Context, id int64, healthScore float64) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"health_score":         healthScore,
+			"consecutive_failures": 0,
+			"status":               domain.SourceActive,
+			"last_seen_at":         time.Now(),
+		}).Error
+}
+
+// RecordFailure increments failures, drops health, transitions status:
+// active (3 failures) → degraded (5 failures) → paused
+func (r *SourceRepository) RecordFailure(ctx context.Context, id int64, healthScore float64, consecutiveFailures int) error {
+	updates := map[string]any{
+		"health_score":         healthScore,
+		"consecutive_failures": consecutiveFailures,
+	}
+	if consecutiveFailures >= 5 {
+		updates["status"] = domain.SourcePaused
+	} else if consecutiveFailures >= 3 {
+		updates["status"] = domain.SourceDegraded
+	}
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// FlagNeedsTuning marks a source as having connector quality issues.
+func (r *SourceRepository) FlagNeedsTuning(ctx context.Context, id int64, needsTuning bool) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Update("needs_tuning", needsTuning).Error
+}
+
+// PauseSource manually pauses a source.
+func (r *SourceRepository) PauseSource(ctx context.Context, id int64) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Update("status", domain.SourcePaused).Error
+}
+
+// EnableSource re-enables a paused or disabled source.
+func (r *SourceRepository) EnableSource(ctx context.Context, id int64) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
+		Updates(map[string]any{"status": domain.SourceActive, "consecutive_failures": 0}).Error
+}
+
+// ListHealthReport returns all sources with health info ordered by worst first.
+func (r *SourceRepository) ListHealthReport(ctx context.Context) ([]domain.Source, error) {
+	var sources []domain.Source
+	err := r.db(ctx, true).Order("health_score ASC, consecutive_failures DESC").Find(&sources).Error
+	return sources, err
+}
+
+// CountByStatus returns the number of sources with the given status.
+func (r *SourceRepository) CountByStatus(ctx context.Context, status domain.SourceStatus) (int64, error) {
+	var count int64
+	err := r.db(ctx, true).Model(&domain.Source{}).Where("status = ?", status).Count(&count).Error
 	return count, err
 }
