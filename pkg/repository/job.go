@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"gorm.io/gorm"
@@ -397,6 +398,52 @@ func (r *JobRepository) ListByStage(ctx context.Context, stage string, limit int
 		Limit(limit).
 		Find(&variants).Error
 	return variants, err
+}
+
+// GetCanonicalByID retrieves an active canonical job by primary key.
+// Returns nil, nil when no record is found.
+func (r *JobRepository) GetCanonicalByID(ctx context.Context, id int64) (*domain.CanonicalJob, error) {
+	var j domain.CanonicalJob
+	err := r.db(ctx, true).Where("id = ? AND is_active = true", id).First(&j).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &j, nil
+}
+
+// ListActiveCanonical returns active canonical jobs above a quality threshold,
+// ordered by posted_at DESC with pagination.
+func (r *JobRepository) ListActiveCanonical(ctx context.Context, minQuality float64, limit, offset int) ([]*domain.CanonicalJob, error) {
+	var jobs []*domain.CanonicalJob
+	err := r.db(ctx, true).
+		Where("is_active = true AND quality_score >= ?", minQuality).
+		Order("posted_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&jobs).Error
+	return jobs, err
+}
+
+// CountByCategory returns counts of active canonical jobs grouped by derived category.
+func (r *JobRepository) CountByCategory(ctx context.Context) (map[string]int64, error) {
+	var jobs []*domain.CanonicalJob
+	err := r.db(ctx, true).
+		Select("roles, industry").
+		Where("is_active = true").
+		Find(&jobs).Error
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64)
+	for _, j := range jobs {
+		cat := string(domain.DeriveCategory(j.Roles, j.Industry))
+		counts[cat]++
+	}
+	return counts, nil
 }
 
 // ListByStageAndSource returns variants at a given pipeline stage for a specific
