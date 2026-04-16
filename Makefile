@@ -35,7 +35,10 @@ sitegen:
 	go run ./apps/sitegen/cmd --output-dir ui/data
 
 hugo-build: sitegen
-	cd ui && hugo --minify
+	cd ui && chmod +x scripts/sync-r2.sh && ./scripts/sync-r2.sh; hugo --minify
+
+r2-backfill:
+	go run ./apps/sitegen/cmd --r2-upload
 
 pagefind: hugo-build
 	cd ui && npx pagefind --site public --glob "jobs/**/*.html"
