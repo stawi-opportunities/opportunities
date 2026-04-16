@@ -88,6 +88,13 @@ type Source struct {
 	Config              string         `gorm:"type:jsonb;default:'{}'" json:"config"`
 	LastSeenAt       *time.Time     `json:"last_seen_at"`
 	NextCrawlAt      time.Time      `gorm:"index" json:"next_crawl_at"`
+
+	// Source quality sliding window
+	QualityWindowStart  *time.Time `json:"quality_window_start"`
+	QualityWindowDays   int        `gorm:"not null;default:1" json:"quality_window_days"`
+	QualityValidated    int        `gorm:"not null;default:0" json:"quality_validated"`
+	QualityFlagged      int        `gorm:"not null;default:0" json:"quality_flagged"`
+
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `gorm:"index" json:"deleted_at"`
@@ -179,6 +186,18 @@ type ExternalJob struct {
 	ReportsTo        string   `json:"reports_to"`
 }
 
+// VariantStage tracks a job variant's position in the processing pipeline.
+type VariantStage string
+
+const (
+	StageRaw        VariantStage = "raw"
+	StageDeduped    VariantStage = "deduped"
+	StageNormalized VariantStage = "normalized"
+	StageValidated  VariantStage = "validated"
+	StageReady      VariantStage = "ready"
+	StageFlagged    VariantStage = "flagged"
+)
+
 // JobVariant represents one observed posting of a job from a specific source.
 type JobVariant struct {
 	ID             int64     `gorm:"primaryKey;autoIncrement" json:"id"`
@@ -229,6 +248,22 @@ type JobVariant struct {
 	PostedAt         *time.Time `json:"posted_at"`
 	ScrapedAt        time.Time  `gorm:"not null" json:"scraped_at"`
 	ContentHash      string    `gorm:"type:varchar(64)" json:"content_hash"`
+
+	// Pipeline stage tracking
+	Stage           VariantStage `gorm:"type:varchar(20);not null;default:'raw';index" json:"stage"`
+
+	// Stored content forms (for reprocessing without recrawling)
+	RawHTML         string  `gorm:"type:text" json:"-"`
+	CleanHTML       string  `gorm:"type:text" json:"-"`
+	Markdown        string  `gorm:"type:text" json:"-"`
+
+	// Validation (populated in Stage 3)
+	ValidationScore *float64 `gorm:"type:real" json:"validation_score"`
+	ValidationNotes string   `gorm:"type:text" json:"validation_notes"`
+
+	// Source discovery (populated in Stage 2)
+	DiscoveredURLs  string  `gorm:"type:text" json:"discovered_urls"`
+
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 }
