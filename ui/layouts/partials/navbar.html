@@ -51,7 +51,7 @@
         </div>
       </div>
       <div x-show="!$store.auth.isAuthenticated" x-cloak>
-        <a href="/auth/login/" class="btn-primary text-sm">Sign In</a>
+        <button @click="$store.auth.login()" class="btn-primary text-sm">Sign In</button>
       </div>
 
       <button @click="mobileMenuOpen = !mobileMenuOpen"

@@ -17,7 +17,7 @@
       <p class="font-semibold">Let us find your perfect job and apply for you</p>
       <p class="mt-1 text-sm text-gray-300">Create a profile and we'll match you to positions you're qualified for, then apply on your behalf.</p>
     </div>
-    <a href="/auth/login/" class="btn-primary mt-4 shrink-0 bg-white text-navy-900 hover:bg-gray-100 sm:mt-0 sm:ml-6">Get Started</a>
+    <button @click="$store.auth.login()" class="btn-primary mt-4 shrink-0 bg-white text-navy-900 hover:bg-gray-100 sm:mt-0 sm:ml-6">Get Started</button>
   </div>
 
   <div class="mt-6 space-y-4">

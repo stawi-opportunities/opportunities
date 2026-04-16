@@ -1,75 +1,103 @@
 // Alpine.js global initialization for Stawi Jobs
+// Uses @stawi/auth-runtime for OIDC authentication
+import { getAuthRuntime } from "@stawi/auth-runtime";
+
 document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
   const config = params ? JSON.parse(params.content) : {};
 
-  // Global auth store
+  // Initialize auth runtime singleton
+  const auth = getAuthRuntime({
+    clientId: config.oidcClientID || "",
+    idpBaseUrl: config.oidcIssuer || "https://oauth2.stawi.org",
+    apiBaseUrl: config.candidatesAPIURL || "https://api.stawi.org",
+  });
+
+  // Global auth store — reactive bridge between auth-runtime and Alpine.js
   Alpine.store("auth", {
     isAuthenticated: false,
-    accessToken: null,
     profile: null,
     name: "",
     initials: "",
     roles: [],
+    _runtime: auth,
 
-    async init() {
-      const token = sessionStorage.getItem("stawi_access_token");
-      if (token && !isTokenExpired(token)) {
-        this.accessToken = token;
-        this.isAuthenticated = true;
-        await this.fetchProfile();
-      }
-    },
+    init() {
+      // Subscribe to auth state changes
+      auth.onAuthStateChange(async (state) => {
+        if (state === "authenticated") {
+          this.isAuthenticated = true;
+          try {
+            const user = await auth.getUser();
+            this.name = user?.name || "User";
+            this.initials = this.name
+              .split(" ")
+              .map((w) => w[0])
+              .join("")
+              .toUpperCase()
+              .slice(0, 2);
+            this.roles = (await auth.getRoles()) || [];
+          } catch (e) {
+            console.error("Failed to load user:", e);
+          }
 
-    setToken(token) {
-      this.accessToken = token;
-      this.isAuthenticated = true;
-      sessionStorage.setItem("stawi_access_token", token);
-    },
-
-    async fetchProfile() {
-      try {
-        const resp = await apiFetch("/me");
-        if (resp.ok) {
-          const data = await resp.json();
-          this.profile = data;
-          this.name = data.name || "User";
-          this.initials = this.name
-            .split(" ")
-            .map((w) => w[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
-          this.roles = data.roles || [];
+          // Load candidate domain data from our API
+          try {
+            const resp = await apiFetch("/me");
+            if (resp.ok) {
+              this.profile = await resp.json();
+            }
+          } catch (e) {
+            // Non-fatal — profile may not exist yet (new user)
+          }
+        } else if (state === "unauthenticated") {
+          this.isAuthenticated = false;
+          this.profile = null;
+          this.name = "";
+          this.initials = "";
+          this.roles = [];
         }
+      });
+    },
+
+    async login() {
+      try {
+        await auth.ensureAuthenticated();
       } catch (e) {
-        console.error("Failed to fetch profile:", e);
+        console.error("Login failed:", e);
       }
     },
 
-    hasRole(role) {
-      return this.roles.includes(role);
-    },
-
-    logout() {
-      this.accessToken = null;
+    async logout() {
+      try {
+        await auth.logout();
+      } catch (e) {
+        console.error("Logout failed:", e);
+      }
       this.isAuthenticated = false;
       this.profile = null;
       this.name = "";
       this.initials = "";
       this.roles = [];
-      sessionStorage.removeItem("stawi_access_token");
       window.location.href = "/";
+    },
+
+    hasRole(role) {
+      return this.roles.includes(role);
     },
   });
 
-  // API fetch wrapper
+  // API fetch wrapper — uses auth-runtime for token management
   window.apiFetch = async function (path, options = {}) {
     const baseURL = config.candidatesAPIURL || "";
-    const token = Alpine.store("auth").accessToken;
     const headers = { ...options.headers };
-    if (token) {
-      headers["Authorization"] = "Bearer " + token;
+    try {
+      const token = await auth.getAccessToken();
+      if (token) {
+        headers["Authorization"] = "Bearer " + token;
+      }
+    } catch (e) {
+      // No token available — proceed without auth
     }
     if (
       !headers["Content-Type"] &&
@@ -81,7 +109,7 @@ document.addEventListener("alpine:init", () => {
     return fetch(baseURL + path, { ...options, headers });
   };
 
-  // Jobs API fetch (separate base URL)
+  // Jobs API fetch (separate base URL, no auth needed)
   window.jobsApiFetch = async function (path, options = {}) {
     const baseURL = config.apiURL || "";
     return fetch(baseURL + path, options);
@@ -118,7 +146,7 @@ document.addEventListener("alpine:init", () => {
       },
       async toggle() {
         if (!Alpine.store("auth").isAuthenticated) {
-          window.location.href = "/auth/login/";
+          await Alpine.store("auth").login();
           return;
         }
         if (this.saved) {
@@ -134,12 +162,3 @@ document.addEventListener("alpine:init", () => {
     };
   };
 });
-
-function isTokenExpired(token) {
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload.exp * 1000 < Date.now();
-  } catch {
-    return true;
-  }
-}

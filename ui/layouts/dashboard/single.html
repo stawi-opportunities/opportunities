@@ -83,15 +83,16 @@
         </div>
       </div>
 
-      <!-- Profile view -->
+      <!-- Profile view — uses @stawi/profile widget -->
       <div x-show="view === 'profile' && !loading" x-cloak>
-        <h1 class="text-2xl font-bold text-gray-900">Profile & Preferences</h1>
+        <h1 class="text-2xl font-bold text-gray-900">Your Profile</h1>
+        <!-- @stawi/profile widget mounts here (Shadow DOM) -->
+        <div id="profile-widget-mount" class="mt-6"></div>
+
+        <!-- Job preferences (stawi-jobs domain data, not in the profile widget) -->
         <div class="mt-6 card p-6">
-          <dl class="space-y-4 text-sm">
-            <div class="flex justify-between">
-              <dt class="font-medium text-gray-500">Name</dt>
-              <dd class="text-gray-900" x-text="$store.auth.name"></dd>
-            </div>
+          <h2 class="text-lg font-semibold text-gray-900">Job Preferences</h2>
+          <dl class="mt-4 space-y-4 text-sm">
             <div class="flex justify-between">
               <dt class="font-medium text-gray-500">Status</dt>
               <dd class="text-gray-900 capitalize" x-text="profile?.status || 'Unknown'"></dd>

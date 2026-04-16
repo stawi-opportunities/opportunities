@@ -79,7 +79,7 @@
        class="mt-8 rounded-lg bg-navy-900 p-6 text-center text-white">
     <p class="text-lg font-semibold">Want us to apply to this job for you?</p>
     <p class="mt-1 text-sm text-gray-300">Create your profile and we'll apply to matching positions on your behalf until you get hired.</p>
-    <a href="/auth/login/" class="btn-primary mt-4 inline-block bg-white text-navy-900 hover:bg-gray-100">Create Profile</a>
+    <button @click="$store.auth.login()" class="btn-primary mt-4 inline-block bg-white text-navy-900 hover:bg-gray-100">Create Profile</button>
   </div>
 </div>
 

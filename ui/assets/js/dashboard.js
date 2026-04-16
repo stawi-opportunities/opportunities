@@ -1,3 +1,5 @@
+import { mount as mountProfile } from "@stawi/profile";
+
 document.addEventListener("alpine:init", () => {
   window.dashboardApp = function () {
     return {
@@ -7,11 +9,13 @@ document.addEventListener("alpine:init", () => {
       loading: true,
       error: "",
       profile: null,
+      _profileWidget: null,
 
       async init() {
         const store = Alpine.store("auth");
         if (!store.isAuthenticated) {
-          window.location.href = "/auth/login/";
+          // Trigger login flow instead of redirecting
+          await store.login();
           return;
         }
         this.profile = store.profile?.candidate;
@@ -22,7 +26,10 @@ document.addEventListener("alpine:init", () => {
         this.loading = true;
         try {
           const candidateId = this.profile?.id;
-          if (!candidateId) { this.loading = false; return; }
+          if (!candidateId) {
+            this.loading = false;
+            return;
+          }
           const resp = await apiFetch(
             "/candidates/matches?candidate_id=" + candidateId + "&limit=50"
           );
@@ -57,6 +64,18 @@ document.addEventListener("alpine:init", () => {
         this.error = "";
         if (newView === "matches") await this.loadMatches();
         else if (newView === "saved") await this.loadSaved();
+        else if (newView === "profile") this.mountProfileWidget();
+        else if (newView !== "profile" && this._profileWidget) {
+          this._profileWidget.unmount();
+          this._profileWidget = null;
+        }
+      },
+
+      mountProfileWidget() {
+        const container = document.getElementById("profile-widget-mount");
+        if (container && !this._profileWidget) {
+          this._profileWidget = mountProfile({ element: container });
+        }
       },
 
       matchScoreColor(score) {
