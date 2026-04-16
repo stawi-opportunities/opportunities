@@ -1,0 +1,91 @@
+{{ define "main" }}
+<!-- Hero -->
+<section class="bg-navy-900 py-16 text-white sm:py-24">
+  <div class="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+    <h1 class="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+      Find Remote Jobs in Africa and Beyond
+    </h1>
+    <p class="mx-auto mt-6 max-w-2xl text-lg text-gray-300">
+      Browse {{ with .Site.Data.stats }}{{ .total_jobs | lang.FormatNumber 0 }}{{ end }}+ remote job listings from top companies hiring worldwide.
+    </p>
+    <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+      <a href="/jobs/" class="btn-primary px-8 py-4 text-base">Browse All Jobs</a>
+      <a href="/onboarding/" class="btn-secondary border-white/20 bg-white/10 text-white hover:bg-white/20 px-8 py-4 text-base">
+        Get Personalized Matches
+      </a>
+    </div>
+    <div class="mt-12 flex items-center justify-center gap-12 text-center">
+      <div>
+        <div class="text-3xl font-bold">{{ with .Site.Data.stats }}{{ .total_jobs | lang.FormatNumber 0 }}+{{ end }}</div>
+        <div class="mt-1 text-sm text-gray-400">Jobs Posted</div>
+      </div>
+      <div class="h-8 w-px bg-white/20" aria-hidden="true"></div>
+      <div>
+        <div class="text-3xl font-bold">{{ with .Site.Data.stats }}{{ .total_companies | lang.FormatNumber 0 }}+{{ end }}</div>
+        <div class="mt-1 text-sm text-gray-400">Companies Hiring</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Categories -->
+<section class="py-16" aria-labelledby="categories-heading">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <h2 id="categories-heading" class="text-2xl font-bold text-gray-900">Browse by Category</h2>
+    <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {{ range .Site.Data.categories }}
+      <a href="/categories/{{ .slug }}/" class="card flex items-center gap-4 p-4 hover:border-accent-300">
+        <div>
+          <h3 class="font-semibold text-gray-900">{{ .name }}</h3>
+          <p class="text-sm text-gray-500">{{ .job_count | lang.FormatNumber 0 }} jobs</p>
+        </div>
+      </a>
+      {{ end }}
+    </div>
+  </div>
+</section>
+
+<!-- Testimonials -->
+<section class="bg-gray-50 py-16" aria-labelledby="testimonials-heading">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <h2 id="testimonials-heading" class="text-center text-2xl font-bold text-gray-900">
+      What Job Seekers Say
+    </h2>
+    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+      {{ range .Site.Data.testimonials }}
+      <blockquote class="card p-6">
+        <p class="text-gray-700">"{{ .quote }}"</p>
+        <footer class="mt-4">
+          <p class="font-semibold text-gray-900">{{ .name }}</p>
+          <p class="text-sm text-gray-500">{{ .role }}</p>
+        </footer>
+      </blockquote>
+      {{ end }}
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="py-16" aria-labelledby="how-it-works-heading">
+  <div class="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+    <h2 id="how-it-works-heading" class="text-2xl font-bold text-gray-900">How It Works</h2>
+    <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3">
+      <div>
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">1</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Browse Jobs</h3>
+        <p class="mt-2 text-gray-600">Search thousands of remote positions by category, location, or keyword.</p>
+      </div>
+      <div>
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">2</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Create Your Profile</h3>
+        <p class="mt-2 text-gray-600">Upload your CV and set preferences. Our AI matches you to the best opportunities.</p>
+      </div>
+      <div>
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">3</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Get Hired</h3>
+        <p class="mt-2 text-gray-600">Apply directly or let our matching engine connect you with top employers.</p>
+      </div>
+    </div>
+  </div>
+</section>
+{{ end }}
