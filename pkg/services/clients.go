@@ -10,7 +10,6 @@ import (
 	"buf.build/gen/go/antinvestor/profile/connectrpc/go/profile/v1/profilev1connect"
 	apis "github.com/antinvestor/common"
 	"github.com/antinvestor/common/connection"
-	"stawi.jobs/pkg/services/redirectpb/redirectv1connect"
 	"github.com/pitabwire/util"
 )
 
@@ -19,7 +18,7 @@ import (
 type Clients struct {
 	Notification notificationv1connect.NotificationServiceClient
 	Files        filesv1connect.FilesServiceClient
-	Redirect     redirectv1connect.RedirectServiceClient
+	Redirect     *RedirectClient
 	Payment      paymentv1connect.PaymentServiceClient
 	Profile      profilev1connect.ProfileServiceClient
 }
@@ -72,15 +71,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	}
 
 	if cc.RedirectURI != "" {
-		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
-			Endpoint:  cc.RedirectURI,
-			Audiences: []string{"service_files"},
-		}, redirectv1connect.NewRedirectServiceClient)
-		if err != nil {
-			record("redirect", err)
-		} else {
-			clients.Redirect = cli
-		}
+		clients.Redirect = NewRedirectClient(cc.RedirectURI)
 	}
 
 	if cc.BillingURI != "" {
