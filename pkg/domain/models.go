@@ -3,6 +3,7 @@ package domain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
@@ -296,6 +297,7 @@ func (JobClusterMember) TableName() string { return "job_cluster_members" }
 type CanonicalJob struct {
 	ID             int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	ClusterID      int64      `gorm:"not null;uniqueIndex" json:"cluster_id"`
+	Slug           string     `gorm:"type:varchar(255);uniqueIndex" json:"slug"`
 	Title          string     `gorm:"type:text;not null" json:"title"`
 	Company        string     `gorm:"type:varchar(255);not null" json:"company"`
 	Description    string     `gorm:"type:text" json:"description"`
@@ -439,6 +441,34 @@ func containsAny(s string, substrs ...string) bool {
 		}
 	}
 	return false
+}
+
+// Slugify converts a string into a URL-safe slug.
+func Slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	replacer := strings.NewReplacer(
+		" ", "-", "/", "-", "\\", "-", ".", "-",
+		",", "", "'", "", "\"", "", "(", "", ")", "",
+		"&", "and", "+", "plus",
+	)
+	s = replacer.Replace(s)
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	return strings.Trim(s, "-")
+}
+
+// BuildSlug creates a permanent, unique, human-readable slug for a canonical job.
+// Format: {title}-at-{company}-{6-char-hash}
+// The hash is deterministic: SHA256(company|title|id), first 6 hex chars.
+func BuildSlug(title, company string, id int64) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", company, title, id)))
+	shortHash := hex.EncodeToString(h[:3])
+	slug := fmt.Sprintf("%s-at-%s-%s", Slugify(title), Slugify(company), shortHash)
+	if len(slug) > 250 {
+		slug = slug[:250]
+	}
+	return slug
 }
 
 // NormalizeToken lowercases and collapses punctuation and whitespace in a string.
