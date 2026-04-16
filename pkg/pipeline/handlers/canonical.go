@@ -112,6 +112,14 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 
+	// 3b. Generate permanent slug if not yet set.
+	if canonical != nil && canonical.Slug == "" {
+		canonical.Slug = domain.BuildSlug(canonical.Title, canonical.Company, canonical.ID)
+		if slugErr := h.jobRepo.UpdateCanonicalFields(ctx, canonical.ID, map[string]any{"slug": canonical.Slug}); slugErr != nil {
+			log.Printf("canonical: set slug for canonical %d (non-fatal): %v", canonical.ID, slugErr)
+		}
+	}
+
 	// 4. Generate and store embedding (non-fatal on failure).
 	if canonical != nil {
 		embText := canonical.Title + " " + canonical.Skills + " " + canonical.Description
