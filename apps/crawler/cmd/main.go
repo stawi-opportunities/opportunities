@@ -44,30 +44,35 @@ func main() {
 		frame.WithDatastore(),
 	}
 
-	// Create the Frame service. This sets up signal handling, telemetry,
-	// logging, datastore, worker pool, queue manager, and events queue.
+	// Create the Frame service.
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 
 	log := util.Log(ctx)
 
-	// Obtain the database pool and build the accessor function.
+	// Obtain the database pool.
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	dbFn := pool.DB
 
-	// Run auto-migrations using the write connection.
-	migrationDB := dbFn(ctx, false)
-	if err := migrationDB.AutoMigrate(
-		&domain.Source{},
-		&domain.CrawlJob{},
-		&domain.RawPayload{},
-		&domain.JobVariant{},
-		&domain.JobCluster{},
-		&domain.JobClusterMember{},
-		&domain.CanonicalJob{},
-		&domain.CrawlPageState{},
-		&domain.RejectedJob{},
-	); err != nil {
-		log.WithError(err).Fatal("auto-migrate failed")
+	// Handle database migration if configured (colony Helm chart sets
+	// DO_DATABASE_MIGRATE=true for the pre-install migration job).
+	// Pattern follows service-profile: migrate, then return immediately.
+	if cfg.DoDatabaseMigrate() {
+		migrationDB := dbFn(ctx, false)
+		if err := migrationDB.AutoMigrate(
+			&domain.Source{},
+			&domain.CrawlJob{},
+			&domain.RawPayload{},
+			&domain.JobVariant{},
+			&domain.JobCluster{},
+			&domain.JobClusterMember{},
+			&domain.CanonicalJob{},
+			&domain.CrawlPageState{},
+			&domain.RejectedJob{},
+		); err != nil {
+			log.WithError(err).Fatal("auto-migrate failed")
+		}
+		log.Info("migration complete")
+		return
 	}
 
 	// Repositories.
