@@ -12,6 +12,7 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/security"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
@@ -48,6 +49,7 @@ func main() {
 			&domain.CandidateProfile{},
 			&domain.CandidateMatch{},
 			&domain.CandidateApplication{},
+			&domain.SavedJob{},
 		); migErr != nil {
 			log.WithError(migErr).Fatal("auto-migrate failed")
 		}
@@ -59,6 +61,7 @@ func main() {
 	candidateRepo := repository.NewCandidateRepository(dbFn)
 	matchRepo := repository.NewMatchRepository(dbFn)
 	jobRepo := repository.NewJobRepository(dbFn)
+	savedJobRepo := repository.NewSavedJobRepository(dbFn)
 
 	// Matcher
 	matcher := matching.NewMatcher(jobRepo, matchRepo, candidateRepo)
@@ -115,10 +118,15 @@ func main() {
 	mux.HandleFunc("POST /webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
 
 	// Authenticated candidate routes
+	mux.Handle("GET /me", authWrap(meHandler(candidateRepo, cfg.ProfileServiceURL)))
+	mux.Handle("POST /candidates/onboard", authWrap(onboardHandler(candidateRepo, extractor, svc)))
 	mux.Handle("GET /candidates/profile", authWrap(getProfileHandler(candidateRepo)))
 	mux.Handle("PUT /candidates/profile", authWrap(updateProfileHandler(candidateRepo)))
 	mux.Handle("GET /candidates/matches", authWrap(listMatchesHandler(matchRepo)))
 	mux.Handle("POST /candidates/matches/{id}/view", authWrap(viewMatchHandler(matchRepo)))
+	mux.Handle("POST /jobs/{id}/save", authWrap(saveJobHandler(savedJobRepo)))
+	mux.Handle("DELETE /jobs/{id}/save", authWrap(unsaveJobHandler(savedJobRepo)))
+	mux.Handle("GET /saved-jobs", authWrap(listSavedJobsHandler(savedJobRepo)))
 
 	// Authenticated admin routes
 	mux.Handle("GET /admin/candidates", authWrap(listCandidatesHandler(candidateRepo)))
@@ -584,6 +592,215 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 		}
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(candidate)
+	}
+}
+
+// meHandler returns the authenticated user's identity and candidate state.
+func meHandler(candidateRepo *repository.CandidateRepository, profileServiceURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims := security.ClaimsFromContext(ctx)
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
+		profileID := claims.GetProfileID()
+		if profileID == "" {
+			http.Error(w, `{"error":"no profile_id in claims"}`, http.StatusUnauthorized)
+			return
+		}
+
+		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		roles := claims.GetRoles()
+
+		response := map[string]any{
+			"profile_id": profileID,
+			"name":       "",
+			"avatar_url": "",
+			"email":      "",
+			"roles":      roles,
+			"candidate":  candidate,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}
+}
+
+// onboardHandler creates a CandidateProfile for the authenticated user.
+func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor, svc *frame.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims := security.ClaimsFromContext(ctx)
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		profileID := claims.GetProfileID()
+
+		existing, err := candidateRepo.GetByProfileID(ctx, profileID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		if existing != nil {
+			http.Error(w, `{"error":"already onboarded"}`, http.StatusConflict)
+			return
+		}
+
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			http.Error(w, `{"error":"invalid multipart form"}`, http.StatusBadRequest)
+			return
+		}
+
+		candidate := &domain.CandidateProfile{
+			ProfileID:          profileID,
+			Status:             domain.CandidateActive,
+			TargetJobTitle:     r.FormValue("target_job_title"),
+			ExperienceLevel:    r.FormValue("experience_level"),
+			JobSearchStatus:    r.FormValue("job_search_status"),
+			PreferredRegions:   r.FormValue("preferred_regions"),
+			PreferredTimezones: r.FormValue("preferred_timezones"),
+			WantsATSReport:     r.FormValue("wants_ats_report") == "true",
+			Currency:           r.FormValue("currency"),
+		}
+
+		if v := r.FormValue("salary_min"); v != "" {
+			if f, err := strconv.ParseFloat(v, 32); err == nil {
+				candidate.SalaryMin = float32(f)
+			}
+		}
+		if v := r.FormValue("salary_max"); v != "" {
+			if f, err := strconv.ParseFloat(v, 32); err == nil {
+				candidate.SalaryMax = float32(f)
+			}
+		}
+		if v := r.FormValue("us_work_auth"); v != "" {
+			b := v == "true"
+			candidate.USWorkAuth = &b
+		}
+		if v := r.FormValue("needs_sponsorship"); v != "" {
+			b := v == "true"
+			candidate.NeedsSponsorship = &b
+		}
+
+		file, header, fileErr := r.FormFile("cv")
+		if fileErr == nil {
+			defer file.Close()
+			data, readErr := io.ReadAll(file)
+			if readErr != nil {
+				http.Error(w, `{"error":"failed to read CV file"}`, http.StatusBadRequest)
+				return
+			}
+			cvText, extractErr := extraction.ExtractTextFromFile(data, header.Filename)
+			if extractErr != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"CV extraction failed: %s"}`, extractErr.Error()), http.StatusBadRequest)
+				return
+			}
+			candidate.CVRawText = cvText
+
+			if extractor != nil && cvText != "" {
+				fields, aiErr := extractor.ExtractCV(ctx, cvText)
+				if aiErr == nil {
+					applyCVFields(candidate, fields)
+				}
+			}
+		}
+
+		if err := candidateRepo.Create(ctx, candidate); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(candidate)
+	}
+}
+
+// saveJobHandler handles POST /jobs/{id}/save — bookmarks a job for the authenticated user.
+func saveJobHandler(savedJobRepo *repository.SavedJobRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims := security.ClaimsFromContext(r.Context())
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		idStr := r.PathValue("id")
+		jobID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || jobID <= 0 {
+			http.Error(w, `{"error":"valid job id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		if err := savedJobRepo.Save(r.Context(), claims.GetProfileID(), jobID); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}
+}
+
+// unsaveJobHandler handles DELETE /jobs/{id}/save — removes a saved job.
+func unsaveJobHandler(savedJobRepo *repository.SavedJobRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims := security.ClaimsFromContext(r.Context())
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		idStr := r.PathValue("id")
+		jobID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || jobID <= 0 {
+			http.Error(w, `{"error":"valid job id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		if err := savedJobRepo.Delete(r.Context(), claims.GetProfileID(), jobID); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}
+}
+
+// listSavedJobsHandler handles GET /saved-jobs — returns saved jobs for the authenticated user.
+func listSavedJobsHandler(savedJobRepo *repository.SavedJobRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims := security.ClaimsFromContext(r.Context())
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
+		limit := 50
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
+				limit = parsed
+			}
+		}
+
+		saved, err := savedJobRepo.ListForProfile(r.Context(), claims.GetProfileID(), limit)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count": len(saved),
+			"saved": saved,
+		})
 	}
 }
 
