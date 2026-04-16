@@ -8,6 +8,7 @@ const (
 	EventSourceURLsDiscovered = "source.urls.discovered"
 	EventSourceQualityReview  = "source.quality.review"
 	EventJobReady             = "job.ready"
+	EventJobPublished         = "job.published"
 )
 
 type VariantPayload struct {
