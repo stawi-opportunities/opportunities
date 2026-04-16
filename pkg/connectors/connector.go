@@ -5,8 +5,10 @@ package connectors
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 
+	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 )
 
@@ -32,6 +34,10 @@ type CrawlIterator interface {
 	// Cursor returns an opaque JSON token that can be used to resume
 	// pagination from the current position. Nil means "start from beginning".
 	Cursor() json.RawMessage
+
+	// Content returns the extracted content for the current page, or nil if
+	// content extraction was not performed.
+	Content() *content.Extracted
 }
 
 // Connector is implemented by every source-specific crawl driver.
@@ -99,15 +105,28 @@ type SinglePageIterator struct {
 	httpStatus int
 	err        error
 	consumed   bool
+	extracted  *content.Extracted
 }
 
 // NewSinglePageIterator creates a SinglePageIterator for a single-page result.
+// If raw bytes are provided it will attempt content extraction: HTML payloads
+// are run through content.ExtractFromHTML; everything else is treated as JSON.
 func NewSinglePageIterator(jobs []domain.ExternalJob, raw []byte, status int, err error) *SinglePageIterator {
+	var ext *content.Extracted
+	if len(raw) > 0 {
+		rawStr := string(raw)
+		if strings.Contains(rawStr, "<") {
+			ext, _ = content.ExtractFromHTML(rawStr)
+		} else {
+			ext = content.ExtractFromJSON(rawStr, "")
+		}
+	}
 	return &SinglePageIterator{
 		jobs:       jobs,
 		raw:        raw,
 		httpStatus: status,
 		err:        err,
+		extracted:  ext,
 	}
 }
 
@@ -136,3 +155,6 @@ func (s *SinglePageIterator) Err() error { return s.err }
 
 // Cursor always returns nil — single-page sources have no pagination state.
 func (s *SinglePageIterator) Cursor() json.RawMessage { return nil }
+
+// Content returns the extracted content for the single page.
+func (s *SinglePageIterator) Content() *content.Extracted { return s.extracted }

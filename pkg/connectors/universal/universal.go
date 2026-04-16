@@ -12,6 +12,7 @@ import (
 
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
+	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 )
@@ -58,6 +59,7 @@ type iterator struct {
 	raw       []byte
 	status    int
 	err       error
+	extracted *content.Extracted
 }
 
 func (it *iterator) Next(ctx context.Context) bool {
@@ -79,7 +81,17 @@ func (it *iterator) Next(ctx context.Context) bool {
 		return false
 	}
 
-	links, err := it.extractor.DiscoverLinks(ctx, string(raw), it.nextURL)
+	// Extract main content; use Markdown for AI (cleaner than raw HTML).
+	ext, _ := content.ExtractFromHTML(string(raw))
+	it.extracted = ext
+
+	// Use Markdown for AI link discovery when available, else fall back to raw.
+	discoverInput := string(raw)
+	if ext != nil && ext.Markdown != "" {
+		discoverInput = ext.Markdown
+	}
+
+	links, err := it.extractor.DiscoverLinks(ctx, discoverInput, it.nextURL)
 	if err != nil {
 		log.Printf("universal: AI discover links failed for %s: %v", it.nextURL, err)
 		it.err = err
@@ -125,11 +137,12 @@ func (it *iterator) Next(ctx context.Context) bool {
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalJob  { return it.jobs }
-func (it *iterator) RawPayload() []byte           { return it.raw }
-func (it *iterator) HTTPStatus() int              { return it.status }
-func (it *iterator) Err() error                   { return it.err }
-func (it *iterator) Cursor() json.RawMessage      { return nil }
+func (it *iterator) Jobs() []domain.ExternalJob       { return it.jobs }
+func (it *iterator) RawPayload() []byte                { return it.raw }
+func (it *iterator) HTTPStatus() int                   { return it.status }
+func (it *iterator) Err() error                        { return it.err }
+func (it *iterator) Cursor() json.RawMessage           { return nil }
+func (it *iterator) Content() *content.Extracted       { return it.extracted }
 
 var commonJobPatterns = regexp.MustCompile(
 	`href=["']([^"']*/(?:jobs?|listings?|vacancies|careers?|positions?)/[^"']+)["']`,

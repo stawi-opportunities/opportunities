@@ -71,6 +71,9 @@ func main() {
 		); err != nil {
 			log.WithError(err).Fatal("auto-migrate failed")
 		}
+		// Set existing variants without a stage to 'ready'
+		migrationDB.Exec("UPDATE job_variants SET stage = 'ready' WHERE stage IS NULL OR stage = ''")
+		log.Info("set existing variants to stage=ready")
 		log.Info("migration complete")
 		return
 	}

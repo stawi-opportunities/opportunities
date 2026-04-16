@@ -10,6 +10,7 @@ import (
 
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
+	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 )
 
@@ -140,3 +141,4 @@ func (it *iterator) RawPayload() []byte            { return it.raw }
 func (it *iterator) HTTPStatus() int               { return it.httpStatus }
 func (it *iterator) Err() error                    { return it.err }
 func (it *iterator) Cursor() json.RawMessage       { return nil }
+func (it *iterator) Content() *content.Extracted   { return nil }
