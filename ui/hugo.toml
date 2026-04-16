@@ -20,8 +20,13 @@ title = "Stawi.jobs — Remote Jobs in Africa and Beyond"
   pagerSize = 20
 
 [outputs]
-  home = ["HTML"]
-  section = ["HTML"]
+  home = ["HTML", "RSS"]
+  section = ["HTML", "RSS"]
+
+[sitemap]
+  changefreq = "daily"
+  priority = 0.5
+  filename = "sitemap.xml"
 
 [build]
   [build.buildStats]
