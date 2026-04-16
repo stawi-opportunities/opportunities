@@ -31,14 +31,8 @@ infra-down:
 	docker compose -f deploy/docker-compose.yml down -v
 
 # UI targets
-sitegen:
-	go run ./apps/sitegen/cmd --output-dir ui/data
-
-hugo-build: sitegen
+hugo-build:
 	cd ui && chmod +x scripts/sync-r2.sh && ./scripts/sync-r2.sh; hugo --minify
-
-r2-backfill:
-	go run ./apps/sitegen/cmd --r2-upload
 
 pagefind: hugo-build
 	cd ui && npx pagefind --site public --glob "jobs/**/*.html"

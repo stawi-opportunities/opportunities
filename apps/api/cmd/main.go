@@ -19,15 +19,22 @@ import (
 
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
+	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
 )
 
 type apiConfig struct {
-	ServerPort         string `env:"SERVER_PORT" envDefault:":8082"`
-	DatabaseURL        string `env:"DATABASE_URL" envDefault:""`
-	OllamaURL          string `env:"OLLAMA_URL" envDefault:""`
-	OllamaModel        string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
-	DoDatabaseMigrate  bool   `env:"DO_DATABASE_MIGRATE" envDefault:"false"`
+	ServerPort        string  `env:"SERVER_PORT" envDefault:":8082"`
+	DatabaseURL       string  `env:"DATABASE_URL" envDefault:""`
+	OllamaURL         string  `env:"OLLAMA_URL" envDefault:""`
+	OllamaModel       string  `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
+	DoDatabaseMigrate bool    `env:"DO_DATABASE_MIGRATE" envDefault:"false"`
+	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
+	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`
+	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2Bucket          string  `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
+	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
+	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 }
 
 func main() {
@@ -67,6 +74,16 @@ func main() {
 	if cfg.OllamaURL != "" {
 		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
 		log.Printf("Semantic search enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
+	}
+
+	// Optional R2 publisher for backfill endpoint.
+	var r2Publisher *publish.R2Publisher
+	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
+		r2Publisher = publish.NewR2Publisher(
+			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
+			cfg.R2Bucket, cfg.R2DeployHookURL,
+		)
+		log.Printf("R2 publisher enabled: bucket=%s", cfg.R2Bucket)
 	}
 
 	mux := http.NewServeMux()
@@ -325,6 +342,124 @@ func main() {
 			"count":    len(results),
 			"results":  results,
 			"semantic": true,
+		})
+	})
+
+	// POST /admin/backfill — publish jobs to R2 for Hugo site generation.
+	// Query params: from_id, to_id, since (RFC3339 date), batch_size, min_quality, trigger_deploy
+	mux.HandleFunc("POST /admin/backfill", func(w http.ResponseWriter, req *http.Request) {
+		if r2Publisher == nil {
+			http.Error(w, `{"error":"R2 publisher not configured"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		ctx := req.Context()
+		q := req.URL.Query()
+
+		batchSize := 500
+		if v := q.Get("batch_size"); v != "" {
+			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 5000 {
+				batchSize = parsed
+			}
+		}
+
+		minQuality := cfg.PublishMinQuality
+		if v := q.Get("min_quality"); v != "" {
+			if parsed, err := strconv.ParseFloat(v, 64); err == nil && parsed >= 0 {
+				minQuality = parsed
+			}
+		}
+
+		triggerDeploy := q.Get("trigger_deploy") != "false"
+
+		// Build query conditions.
+		query := db.Model(&domain.CanonicalJob{}).
+			Where("is_active = true AND quality_score >= ?", minQuality).
+			Order("id ASC")
+
+		if v := q.Get("from_id"); v != "" {
+			if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+				query = query.Where("id >= ?", id)
+			}
+		}
+		if v := q.Get("to_id"); v != "" {
+			if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+				query = query.Where("id <= ?", id)
+			}
+		}
+		if v := q.Get("since"); v != "" {
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				query = query.Where("created_at >= ?", t)
+			} else if t, err := time.Parse("2006-01-02", v); err == nil {
+				query = query.Where("created_at >= ?", t)
+			}
+		}
+
+		// Stream results in batches.
+		var total, uploaded, skipped int
+		offset := 0
+
+		// Set response headers for streaming progress.
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		flusher, _ := w.(http.Flusher)
+
+		for {
+			var jobs []*domain.CanonicalJob
+			if err := query.Limit(batchSize).Offset(offset).Find(&jobs).Error; err != nil {
+				json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+				return
+			}
+			if len(jobs) == 0 {
+				break
+			}
+
+			for _, job := range jobs {
+				total++
+
+				// Ensure slug exists.
+				if job.Slug == "" {
+					job.Slug = domain.BuildSlug(job.Title, job.Company, job.ID)
+					_ = jobRepo.UpdateCanonicalFields(ctx, job.ID, map[string]any{"slug": job.Slug})
+				}
+
+				md := publish.RenderJobMarkdown(job)
+				key := "jobs/" + job.Slug + ".md"
+				if err := r2Publisher.Upload(ctx, key, md); err != nil {
+					log.Printf("backfill: failed to upload %s: %v", key, err)
+					skipped++
+					continue
+				}
+				uploaded++
+			}
+
+			// Stream progress.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"progress": true,
+				"offset":   offset,
+				"batch":    len(jobs),
+				"uploaded": uploaded,
+				"skipped":  skipped,
+			})
+			if flusher != nil {
+				flusher.Flush()
+			}
+
+			offset += batchSize
+		}
+
+		// Trigger deploy hook if requested.
+		if triggerDeploy && uploaded > 0 {
+			if err := r2Publisher.TriggerDeploy(); err != nil {
+				log.Printf("backfill: deploy hook failed: %v", err)
+			}
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"done":     true,
+			"total":    total,
+			"uploaded": uploaded,
+			"skipped":  skipped,
+			"deployed": triggerDeploy && uploaded > 0,
 		})
 	})
 
