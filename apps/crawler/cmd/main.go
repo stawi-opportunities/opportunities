@@ -18,6 +18,7 @@ import (
 
 	"stawi.jobs/apps/crawler/config"
 	"stawi.jobs/apps/crawler/service"
+	"stawi.jobs/apps/crawler/service/events"
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/dedupe"
@@ -92,6 +93,12 @@ func main() {
 		log.Printf("AI extraction enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
 	}
 
+	// Embedding event handler (used in place of the old backfill loop).
+	var embeddingHandler *events.EmbeddingGenerationHandler
+	if extractor != nil {
+		embeddingHandler = events.NewEmbeddingGenerationHandler(extractor, jobRepo)
+	}
+
 	// Connector registry.
 	registry := service.BuildRegistry(httpClient, extractor)
 
@@ -127,12 +134,7 @@ func main() {
 	}()
 
 	// Start crawl scheduling loop.
-	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
-
-	// Background embedding backfill — retries jobs that missed embeddings due to Ollama outages.
-	if extractor != nil {
-		go embeddingBackfillLoop(ctx, extractor, jobRepo)
-	}
+	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
 
 	// Graceful shutdown.
 	sig := make(chan os.Signal, 1)
@@ -169,19 +171,20 @@ func crawlLoop(
 	batchBuf *pipeline.BatchBuffer,
 	httpClient *httpx.Client,
 	extractor *extraction.Extractor,
+	embeddingHandler *events.EmbeddingGenerationHandler,
 ) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	// Process once immediately, then on every tick.
-	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
+	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
+			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
 		}
 	}
 }
@@ -198,6 +201,7 @@ func processDueSources(
 	batchBuf *pipeline.BatchBuffer,
 	httpClient *httpx.Client,
 	extractor *extraction.Extractor,
+	embeddingHandler *events.EmbeddingGenerationHandler,
 ) {
 	now := time.Now().UTC()
 	sources, err := sourceRepo.ListDue(ctx, now, 100)
@@ -222,7 +226,7 @@ func processDueSources(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			processSource(ctx, s, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor)
+			processSource(ctx, s, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
 		}(src)
 	}
 
@@ -241,6 +245,7 @@ func processSource(
 	batchBuf *pipeline.BatchBuffer,
 	httpClient *httpx.Client,
 	extractor *extraction.Extractor,
+	embeddingHandler *events.EmbeddingGenerationHandler,
 ) {
 	conn, ok := registry.Get(src.Type)
 	if !ok {
@@ -311,9 +316,19 @@ func processSource(
 				continue
 			}
 
-			// Generate embedding asynchronously if extractor is available.
-			if extractor != nil && canonical != nil && canonical.ID > 0 {
-				go generateEmbedding(ctx, extractor, jobRepo, canonical)
+			// Emit embedding event asynchronously if handler is available.
+			if embeddingHandler != nil && canonical != nil && canonical.ID > 0 {
+				payload := &events.EmbeddingPayload{
+					CanonicalJobID: canonical.ID,
+					Title:          canonical.Title,
+					Company:        canonical.Company,
+					Description:    canonical.Description,
+				}
+				go func() {
+					if err := embeddingHandler.Execute(ctx, payload); err != nil {
+						log.Printf("WARN: embedding event for canonical %d: %v", canonical.ID, err)
+					}
+				}()
 			}
 
 			// Add to batch buffer.
@@ -337,58 +352,6 @@ func processSource(
 	_ = sourceRepo.UpdateNextCrawl(ctx, src.ID, nextCrawl, time.Now().UTC(), src.HealthScore)
 
 	log.Printf("source %d (%s): found=%d stored=%d", src.ID, src.Type, jobsFound, jobsStored)
-}
-
-// embeddingBackfillLoop periodically finds canonical jobs without embeddings
-// and generates them. Handles Ollama outages gracefully — jobs that failed
-// embedding during crawl will be picked up on the next backfill cycle.
-func embeddingBackfillLoop(ctx context.Context, ext *extraction.Extractor, repo *repository.JobRepository) {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			jobs, err := repo.ListMissingEmbeddings(ctx, 50)
-			if err != nil {
-				log.Printf("embedding backfill: list error: %v", err)
-				continue
-			}
-			if len(jobs) == 0 {
-				continue
-			}
-			log.Printf("embedding backfill: processing %d jobs", len(jobs))
-			for _, cj := range jobs {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				generateEmbedding(ctx, ext, repo, cj)
-			}
-		}
-	}
-}
-
-// generateEmbedding creates an embedding for a canonical job and stores it.
-// This runs asynchronously and logs errors silently to avoid blocking the pipeline.
-func generateEmbedding(ctx context.Context, ext *extraction.Extractor, repo *repository.JobRepository, cj *domain.CanonicalJob) {
-	text := cj.Title + " " + cj.Company + " " + cj.Description
-	embedding, err := ext.Embed(ctx, text)
-	if err != nil {
-		log.Printf("WARN: embedding for canonical %d: %v", cj.ID, err)
-		return
-	}
-	embJSON, err := json.Marshal(embedding)
-	if err != nil {
-		log.Printf("WARN: marshal embedding for canonical %d: %v", cj.ID, err)
-		return
-	}
-	if err := repo.UpdateEmbedding(ctx, cj.ID, string(embJSON)); err != nil {
-		log.Printf("WARN: store embedding for canonical %d: %v", cj.ID, err)
-	}
 }
 
 // mergeExtractedFields copies non-empty fields from JobFields into an ExternalJob,
