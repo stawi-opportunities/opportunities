@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"stawi.jobs/pkg/domain"
+	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
 )
 
@@ -64,6 +65,12 @@ func main() {
 	databaseURL := flag.String("database-url", os.Getenv("DATABASE_URL"), "Postgres connection string")
 	outputDir := flag.String("output-dir", "ui/data", "Path to output directory for JSON data files")
 	minQuality := flag.Float64("min-quality", 50, "Minimum quality score for inclusion")
+	r2Upload := flag.Bool("r2-upload", false, "Upload markdown files to R2 instead of local JSON")
+	r2AccountID := flag.String("r2-account-id", os.Getenv("R2_ACCOUNT_ID"), "Cloudflare account ID")
+	r2AccessKey := flag.String("r2-access-key", os.Getenv("R2_ACCESS_KEY_ID"), "R2 access key")
+	r2SecretKey := flag.String("r2-secret-key", os.Getenv("R2_SECRET_ACCESS_KEY"), "R2 secret key")
+	r2Bucket := flag.String("r2-bucket", "stawi-jobs-content", "R2 bucket name")
+	deployHook := flag.String("deploy-hook-url", os.Getenv("R2_DEPLOY_HOOK_URL"), "CF Pages deploy hook URL")
 	flag.Parse()
 
 	if *databaseURL == "" {
@@ -78,6 +85,87 @@ func main() {
 	ctx := context.Background()
 	dbFn := func(_ context.Context, _ bool) *gorm.DB { return db }
 	jobRepo := repository.NewJobRepository(dbFn)
+
+	if *r2Upload {
+		if *r2AccountID == "" || *r2AccessKey == "" {
+			log.Fatal("--r2-account-id and --r2-access-key are required for R2 upload")
+		}
+
+		publisher := publish.NewR2Publisher(*r2AccountID, *r2AccessKey, *r2SecretKey, *r2Bucket, *deployHook)
+
+		log.Println("R2 backfill: exporting jobs as markdown...")
+		batchSize := 1000
+		offset := 0
+		total := 0
+		for {
+			jobs, err := jobRepo.ListActiveCanonical(ctx, *minQuality, batchSize, offset)
+			if err != nil {
+				log.Fatalf("list jobs: %v", err)
+			}
+			if len(jobs) == 0 {
+				break
+			}
+
+			for _, job := range jobs {
+				if job.Slug == "" {
+					job.Slug = domain.BuildSlug(job.Title, job.Company, job.ID)
+					_ = jobRepo.UpdateCanonicalFields(ctx, job.ID, map[string]any{"slug": job.Slug})
+				}
+
+				md := publish.RenderJobMarkdown(job)
+				key := "jobs/" + job.Slug + ".md"
+				if err := publisher.Upload(ctx, key, md); err != nil {
+					log.Printf("  failed to upload %s: %v", key, err)
+					continue
+				}
+				total++
+			}
+			log.Printf("  uploaded batch at offset %d (%d jobs so far)", offset, total)
+			offset += batchSize
+		}
+
+		log.Printf("R2 backfill: uploaded %d jobs", total)
+
+		// Upload stats and categories
+		log.Println("R2 backfill: uploading stats and categories...")
+
+		catCounts, _ := jobRepo.CountByCategory(ctx)
+		categoryNames := map[string]string{
+			"programming": "Programming", "design": "Design",
+			"customer-support": "Customer Support", "marketing": "Marketing",
+			"sales": "Sales", "devops": "DevOps & Infrastructure",
+			"product": "Product", "data": "Data Science & Analytics",
+			"management": "Management & Executive", "other": "Other",
+		}
+		var categories []categoryEntry
+		for slug, count := range catCounts {
+			name := categoryNames[slug]
+			if name == "" {
+				name = slug
+			}
+			categories = append(categories, categoryEntry{Slug: slug, Name: name, JobCount: count})
+		}
+		catJSON, _ := json.MarshalIndent(categories, "", "  ")
+		_ = publisher.UploadJSON(ctx, "data/categories.json", catJSON)
+
+		totalJobs, _ := jobRepo.CountCanonical(ctx)
+		oneWeekAgo := time.Now().Add(-7 * 24 * time.Hour)
+		var jobsThisWeek int64
+		db.Model(&domain.CanonicalJob{}).Where("is_active = true AND created_at >= ?", oneWeekAgo).Count(&jobsThisWeek)
+		statsJSON, _ := json.MarshalIndent(statsEntry{
+			TotalJobs: totalJobs, TotalCompanies: int64(total),
+			JobsThisWeek: jobsThisWeek, GeneratedAt: time.Now().Format(time.RFC3339),
+		}, "", "  ")
+		_ = publisher.UploadJSON(ctx, "data/stats.json", statsJSON)
+
+		log.Println("R2 backfill: triggering deploy hook...")
+		if err := publisher.TriggerDeploy(); err != nil {
+			log.Printf("deploy hook failed: %v", err)
+		}
+
+		log.Println("R2 backfill: done")
+		return
+	}
 
 	if err := os.MkdirAll(*outputDir, 0o755); err != nil {
 		log.Fatalf("create output dir: %v", err)
