@@ -120,6 +120,31 @@ func main() {
 	if extractor != nil {
 		embeddingHandler := events.NewEmbeddingGenerationHandler(extractor, jobRepo)
 		svc.Init(ctx, frame.WithRegisterEvents(embeddingHandler))
+
+		// One-time backfill: emit embedding events for all canonical jobs that
+		// missed embeddings due to previous Ollama outages. Runs once at startup,
+		// then the event system handles all future embeddings via Emit.
+		svc.AddPreStartMethod(func(preCtx context.Context, _ *frame.Service) {
+			backfillLog := util.Log(preCtx)
+			missing, listErr := jobRepo.ListMissingEmbeddings(preCtx, 500)
+			if listErr != nil {
+				backfillLog.WithError(listErr).Warn("embedding backfill: failed to list")
+				return
+			}
+			if len(missing) == 0 {
+				return
+			}
+			backfillLog.WithField("count", len(missing)).Info("embedding backfill: emitting events for missed jobs")
+			evtsMan := svc.EventsManager()
+			for _, cj := range missing {
+				_ = evtsMan.Emit(preCtx, events.EmbeddingGenerationEventName, &events.EmbeddingPayload{
+					CanonicalJobID: cj.ID,
+					Title:          cj.Title,
+					Company:        cj.Company,
+					Description:    cj.Description,
+				})
+			}
+		})
 	}
 
 	// Register the crawl loop as Frame's background consumer.
