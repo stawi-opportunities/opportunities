@@ -99,7 +99,7 @@ Application: application_type ("ats" if ATS link,"email" if email apply,"portal"
 Role: role_scope ("ic"/"manager"/"hybrid"/"executive"), team_size ("solo"/"small_team"/"large_team"/""), reports_to (e.g. "CTO","VP Engineering","")`
 
 const maxContentChars = 4000
-const extractionTimeout = 120 * time.Second
+const extractionTimeout = 10 * time.Minute // was 120s — let AI finish on CPU
 
 // Extractor calls an Ollama instance to extract structured job fields from HTML.
 type Extractor struct {
@@ -508,6 +508,10 @@ const maxEmbedChars = 2000
 // /api/embeddings endpoint. Input text is truncated to 2000 characters.
 // Returns nil and an error if Ollama is unreachable.
 func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
+	// Use a shorter timeout for embeddings (5 minutes vs 10 for extraction)
+	embedCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
 	text = truncateText(text, maxEmbedChars)
 
 	reqBody := map[string]interface{}{
@@ -520,7 +524,7 @@ func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
 		return nil, fmt.Errorf("embed: marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/embeddings", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(embedCtx, http.MethodPost, e.baseURL+"/api/embeddings", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("embed: create request: %w", err)
 	}

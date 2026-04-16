@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"stawi.jobs/pkg/connectors"
@@ -42,6 +43,7 @@ func (c *Connector) Crawl(_ context.Context, source domain.Source) connectors.Cr
 		client:    c.client,
 		extractor: c.extractor,
 		nextURL:   source.BaseURL,
+		baseURL:   source.BaseURL,
 		page:      0,
 	}
 }
@@ -50,6 +52,7 @@ type iterator struct {
 	client    *httpx.Client
 	extractor *extraction.Extractor
 	nextURL   string
+	baseURL   string
 	page      int
 	jobs      []domain.ExternalJob
 	raw       []byte
@@ -94,6 +97,11 @@ func (it *iterator) Next(ctx context.Context) bool {
 		}
 	}
 
+	// If AI found no links, fall back to pattern matching
+	if len(jobLinks) == 0 {
+		jobLinks = patternMatchLinks(string(raw), it.baseURL)
+	}
+
 	if len(jobLinks) == 0 {
 		return false
 	}
@@ -122,3 +130,38 @@ func (it *iterator) RawPayload() []byte           { return it.raw }
 func (it *iterator) HTTPStatus() int              { return it.status }
 func (it *iterator) Err() error                   { return it.err }
 func (it *iterator) Cursor() json.RawMessage      { return nil }
+
+var commonJobPatterns = regexp.MustCompile(
+	`href=["']([^"']*/(?:jobs?|listings?|vacancies|careers?|positions?)/[^"']+)["']`,
+)
+
+func patternMatchLinks(html string, baseURL string) []string {
+	matches := commonJobPatterns.FindAllStringSubmatch(html, -1)
+	seen := make(map[string]bool)
+	var links []string
+
+	// Extract origin from baseURL for resolving relative links
+	origin := baseURL
+	if idx := strings.Index(baseURL, "://"); idx >= 0 {
+		rest := baseURL[idx+3:]
+		if slashIdx := strings.Index(rest, "/"); slashIdx >= 0 {
+			origin = baseURL[:idx+3+slashIdx]
+		}
+	}
+
+	for _, m := range matches {
+		link := m[1]
+		if !strings.HasPrefix(link, "http") {
+			if strings.HasPrefix(link, "/") {
+				link = origin + link
+			} else {
+				link = origin + "/" + link
+			}
+		}
+		if !seen[link] {
+			seen[link] = true
+			links = append(links, link)
+		}
+	}
+	return links
+}
