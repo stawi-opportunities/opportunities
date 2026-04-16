@@ -2,21 +2,16 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
-	env "github.com/caarlos0/env/v11"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
+	"github.com/pitabwire/frame"
+	fconfig "github.com/pitabwire/frame/config"
+	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/util"
 
-	"stawi.jobs/apps/crawler/config"
+	crawlerconfig "stawi.jobs/apps/crawler/config"
 	"stawi.jobs/apps/crawler/service"
 	"stawi.jobs/apps/crawler/service/events"
 	"stawi.jobs/pkg/connectors"
@@ -32,19 +27,33 @@ import (
 )
 
 func main() {
-	var cfg config.CrawlerConfig
-	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("parse config: %v", err)
-	}
+	ctx := context.Background()
 
-	// Database connection.
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	// Load configuration (embeds Frame's ConfigurationDefault).
+	cfg, err := fconfig.FromEnv[crawlerconfig.CrawlerConfig]()
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		panic(fmt.Sprintf("config: %v", err))
 	}
 
-	// Auto-migrate all domain tables.
-	if err := db.AutoMigrate(
+	// Build Frame options.
+	opts := []frame.Option{
+		frame.WithConfig(&cfg),
+		frame.WithDatastore(),
+	}
+
+	// Create the Frame service. This sets up signal handling, telemetry,
+	// logging, datastore, worker pool, queue manager, and events queue.
+	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
+
+	log := util.Log(ctx)
+
+	// Obtain the database pool and build the accessor function.
+	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
+	dbFn := pool.DB
+
+	// Run auto-migrations using the write connection.
+	migrationDB := dbFn(ctx, false)
+	if err := migrationDB.AutoMigrate(
 		&domain.Source{},
 		&domain.CrawlJob{},
 		&domain.RawPayload{},
@@ -55,12 +64,7 @@ func main() {
 		&domain.CrawlPageState{},
 		&domain.RejectedJob{},
 	); err != nil {
-		log.Fatalf("auto-migrate: %v", err)
-	}
-
-	// Build the DB accessor that repositories expect.
-	dbFn := func(_ context.Context, _ bool) *gorm.DB {
-		return db
+		log.WithError(err).Fatal("auto-migrate failed")
 	}
 
 	// Repositories.
@@ -70,14 +74,11 @@ func main() {
 	rejectedRepo := repository.NewRejectedJobRepository(dbFn)
 
 	// Load seed sources.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	n, err := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo)
-	if err != nil {
-		log.Printf("WARN: seed loading: %v (loaded %d)", err, n)
+	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo)
+	if seedErr != nil {
+		log.WithError(seedErr).WithField("loaded", n).Warn("seed loading incomplete")
 	} else {
-		log.Printf("loaded %d seed sources", n)
+		log.WithField("count", n).Info("seed sources loaded")
 	}
 
 	// HTTP client for connectors.
@@ -86,17 +87,13 @@ func main() {
 		cfg.UserAgent,
 	)
 
-	// AI extractor (optional — only enabled when OLLAMA_URL is set).
+	// AI extractor (optional -- only enabled when OLLAMA_URL is set).
 	var extractor *extraction.Extractor
 	if cfg.OllamaURL != "" {
 		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
-		log.Printf("AI extraction enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
-	}
-
-	// Embedding event handler (used in place of the old backfill loop).
-	var embeddingHandler *events.EmbeddingGenerationHandler
-	if extractor != nil {
-		embeddingHandler = events.NewEmbeddingGenerationHandler(extractor, jobRepo)
+		log.WithField("url", cfg.OllamaURL).
+			WithField("model", cfg.OllamaModel).
+			Info("AI extraction enabled")
 	}
 
 	// Connector registry.
@@ -112,110 +109,95 @@ func main() {
 		time.Duration(cfg.BatchFlushSec)*time.Second,
 	)
 
-	// Health endpoint.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	// Register cleanup for the batch buffer so it flushes on shutdown.
+	svc.AddCleanupMethod(func(cleanupCtx context.Context) {
+		if flushErr := batchBuf.Close(cleanupCtx); flushErr != nil {
+			util.Log(cleanupCtx).WithError(flushErr).Error("batch buffer close failed")
+		}
 	})
 
-	srv := &http.Server{
-		Addr:    cfg.ServerPort,
-		Handler: mux,
+	// Register the embedding event handler through Frame's events system.
+	if extractor != nil {
+		embeddingHandler := events.NewEmbeddingGenerationHandler(extractor, jobRepo)
+		svc.Init(ctx, frame.WithRegisterEvents(embeddingHandler))
 	}
 
-	// Start HTTP server in background.
-	go func() {
-		log.Printf("HTTP server listening on %s", cfg.ServerPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("http server: %v", err)
-		}
-	}()
-
-	// Start crawl scheduling loop.
-	go crawlLoop(ctx, cfg.WorkerConcurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
-
-	// Graceful shutdown.
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
-	log.Println("shutting down...")
-
-	cancel()
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer shutdownCancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("http shutdown: %v", err)
+	// Register the crawl loop as Frame's background consumer.
+	crawlDeps := &crawlDependencies{
+		cfg:          &cfg,
+		sourceRepo:   sourceRepo,
+		crawlRepo:    crawlRepo,
+		jobRepo:      jobRepo,
+		rejectedRepo: rejectedRepo,
+		registry:     registry,
+		dedupeEngine: dedupeEngine,
+		batchBuf:     batchBuf,
+		httpClient:   httpClient,
+		extractor:    extractor,
+		svc:          svc,
 	}
-	if err := batchBuf.Close(shutdownCtx); err != nil {
-		log.Printf("batch buffer close: %v", err)
-	}
+	svc.Init(ctx, frame.WithBackgroundConsumer(crawlDeps.crawlLoop))
 
-	log.Println("crawler stopped")
+	// Run the service. Frame handles signal-based shutdown, HTTP serving
+	// (with /healthz), and the background consumer lifecycle.
+	if runErr := svc.Run(ctx, ""); runErr != nil {
+		log.WithError(runErr).Fatal("service exited with error")
+	}
+}
+
+// crawlDependencies bundles all dependencies needed by the crawl loop so they
+// can be passed cleanly into WithBackgroundConsumer.
+type crawlDependencies struct {
+	cfg          *crawlerconfig.CrawlerConfig
+	sourceRepo   *repository.SourceRepository
+	crawlRepo    *repository.CrawlRepository
+	jobRepo      *repository.JobRepository
+	rejectedRepo *repository.RejectedJobRepository
+	registry     *connectors.Registry
+	dedupeEngine *dedupe.Engine
+	batchBuf     *pipeline.BatchBuffer
+	httpClient   *httpx.Client
+	extractor    *extraction.Extractor
+	svc          *frame.Service
 }
 
 // crawlLoop runs a ticker that finds due sources and processes them with
-// bounded concurrency.
-func crawlLoop(
-	ctx context.Context,
-	concurrency int,
-	sourceRepo *repository.SourceRepository,
-	crawlRepo *repository.CrawlRepository,
-	jobRepo *repository.JobRepository,
-	rejectedRepo *repository.RejectedJobRepository,
-	registry *connectors.Registry,
-	dedupeEngine *dedupe.Engine,
-	batchBuf *pipeline.BatchBuffer,
-	httpClient *httpx.Client,
-	extractor *extraction.Extractor,
-	embeddingHandler *events.EmbeddingGenerationHandler,
-) {
+// bounded concurrency. It blocks until the context is cancelled.
+func (d *crawlDependencies) crawlLoop(ctx context.Context) error {
+	log := util.Log(ctx)
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	// Process once immediately, then on every tick.
-	processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
+	d.processDueSources(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			log.Info("crawl loop stopping")
+			return nil
 		case <-ticker.C:
-			processDueSources(ctx, concurrency, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
+			d.processDueSources(ctx)
 		}
 	}
 }
 
-func processDueSources(
-	ctx context.Context,
-	concurrency int,
-	sourceRepo *repository.SourceRepository,
-	crawlRepo *repository.CrawlRepository,
-	jobRepo *repository.JobRepository,
-	rejectedRepo *repository.RejectedJobRepository,
-	registry *connectors.Registry,
-	dedupeEngine *dedupe.Engine,
-	batchBuf *pipeline.BatchBuffer,
-	httpClient *httpx.Client,
-	extractor *extraction.Extractor,
-	embeddingHandler *events.EmbeddingGenerationHandler,
-) {
+func (d *crawlDependencies) processDueSources(ctx context.Context) {
+	log := util.Log(ctx)
 	now := time.Now().UTC()
-	sources, err := sourceRepo.ListDue(ctx, now, 100)
+
+	sources, err := d.sourceRepo.ListDue(ctx, now, 100)
 	if err != nil {
-		log.Printf("ERROR: list due sources: %v", err)
+		log.WithError(err).Error("list due sources failed")
 		return
 	}
 	if len(sources) == 0 {
 		return
 	}
 
-	log.Printf("found %d due sources", len(sources))
+	log.WithField("count", len(sources)).Info("processing due sources")
 
-	sem := make(chan struct{}, concurrency)
+	sem := make(chan struct{}, d.cfg.WorkerConcurrency)
 	var wg sync.WaitGroup
 
 	for _, src := range sources {
@@ -226,30 +208,21 @@ func processDueSources(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			processSource(ctx, s, sourceRepo, crawlRepo, jobRepo, rejectedRepo, registry, dedupeEngine, batchBuf, httpClient, extractor, embeddingHandler)
+			d.processSource(ctx, s)
 		}(src)
 	}
 
 	wg.Wait()
 }
 
-func processSource(
-	ctx context.Context,
-	src *domain.Source,
-	sourceRepo *repository.SourceRepository,
-	crawlRepo *repository.CrawlRepository,
-	jobRepo *repository.JobRepository,
-	rejectedRepo *repository.RejectedJobRepository,
-	registry *connectors.Registry,
-	dedupeEngine *dedupe.Engine,
-	batchBuf *pipeline.BatchBuffer,
-	httpClient *httpx.Client,
-	extractor *extraction.Extractor,
-	embeddingHandler *events.EmbeddingGenerationHandler,
-) {
-	conn, ok := registry.Get(src.Type)
+func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Source) {
+	log := util.Log(ctx)
+
+	conn, ok := d.registry.Get(src.Type)
 	if !ok {
-		log.Printf("WARN: no connector for source type %q (source %d)", src.Type, src.ID)
+		log.WithField("source_type", src.Type).
+			WithField("source_id", src.ID).
+			Warn("no connector for source type")
 		return
 	}
 
@@ -263,12 +236,12 @@ func processSource(
 		Attempt:        1,
 		IdempotencyKey: fmt.Sprintf("%d-%d", src.ID, now.UnixNano()),
 	}
-	if err := crawlRepo.Create(ctx, crawlJob); err != nil {
-		log.Printf("ERROR: create crawl job for source %d: %v", src.ID, err)
+	if err := d.crawlRepo.Create(ctx, crawlJob); err != nil {
+		log.WithError(err).WithField("source_id", src.ID).Error("create crawl job failed")
 		return
 	}
-	if err := crawlRepo.Start(ctx, crawlJob.ID); err != nil {
-		log.Printf("ERROR: start crawl job %d: %v", crawlJob.ID, err)
+	if err := d.crawlRepo.Start(ctx, crawlJob.ID); err != nil {
+		log.WithError(err).WithField("crawl_job_id", crawlJob.ID).Error("start crawl job failed")
 		return
 	}
 
@@ -281,22 +254,22 @@ func processSource(
 			jobsFound++
 
 			// For HTML-based sources, fetch the detail page and use AI to extract fields.
-			if extractor != nil && needsAIExtraction(src.Type) && ext.ApplyURL != "" {
-				detailHTML, _, fetchErr := httpClient.Get(ctx, ext.ApplyURL, nil)
+			if d.extractor != nil && needsAIExtraction(src.Type) && ext.ApplyURL != "" {
+				detailHTML, _, fetchErr := d.httpClient.Get(ctx, ext.ApplyURL, nil)
 				if fetchErr == nil {
-					if fields, aiErr := extractor.Extract(ctx, string(detailHTML), ext.ApplyURL); aiErr == nil {
+					if fields, aiErr := d.extractor.Extract(ctx, string(detailHTML), ext.ApplyURL); aiErr == nil {
 						mergeExtractedFields(&ext, fields)
 					} else {
-						log.Printf("processSource: AI extraction failed for %s: %v", ext.ApplyURL, aiErr)
+						log.WithError(aiErr).WithField("url", ext.ApplyURL).Warn("AI extraction failed")
 					}
 				} else {
-					log.Printf("processSource: fetch detail page failed for %s: %v", ext.ApplyURL, fetchErr)
+					log.WithError(fetchErr).WithField("url", ext.ApplyURL).Warn("fetch detail page failed")
 				}
 			}
 
 			// Quality gate.
 			if qErr := quality.Check(ext); qErr != nil {
-				_ = rejectedRepo.Create(ctx, &domain.RejectedJob{
+				_ = d.rejectedRepo.Create(ctx, &domain.RejectedJob{
 					CrawlJobID: crawlJob.ID,
 					SourceID:   src.ID,
 					ExternalID: ext.ExternalID,
@@ -310,30 +283,36 @@ func processSource(
 			variant := normalize.ExternalToVariant(ext, src.ID, src.Country, string(src.Type), time.Now().UTC())
 
 			// Dedupe and persist canonical.
-			canonical, err := dedupeEngine.UpsertAndCluster(ctx, &variant)
-			if err != nil {
-				log.Printf("ERROR: dedupe source %d ext %s: %v", src.ID, ext.ExternalID, err)
+			canonical, dedupeErr := d.dedupeEngine.UpsertAndCluster(ctx, &variant)
+			if dedupeErr != nil {
+				log.WithError(dedupeErr).
+					WithField("source_id", src.ID).
+					WithField("external_id", ext.ExternalID).
+					Error("dedupe failed")
 				continue
 			}
 
-			// Emit embedding event asynchronously if handler is available.
-			if embeddingHandler != nil && canonical != nil && canonical.ID > 0 {
-				payload := &events.EmbeddingPayload{
-					CanonicalJobID: canonical.ID,
-					Title:          canonical.Title,
-					Company:        canonical.Company,
-					Description:    canonical.Description,
-				}
-				go func() {
-					if err := embeddingHandler.Execute(ctx, payload); err != nil {
-						log.Printf("WARN: embedding event for canonical %d: %v", canonical.ID, err)
+			// Emit embedding event through Frame's events manager.
+			if canonical != nil && canonical.ID > 0 {
+				evtMgr := d.svc.EventsManager()
+				if evtMgr != nil {
+					payload := &events.EmbeddingPayload{
+						CanonicalJobID: canonical.ID,
+						Title:          canonical.Title,
+						Company:        canonical.Company,
+						Description:    canonical.Description,
 					}
-				}()
+					if emitErr := evtMgr.Emit(ctx, events.EmbeddingGenerationEventName, payload); emitErr != nil {
+						log.WithError(emitErr).
+							WithField("canonical_id", canonical.ID).
+							Warn("embedding event emission failed")
+					}
+				}
 			}
 
 			// Add to batch buffer.
-			if err := batchBuf.Add(ctx, variant); err != nil {
-				log.Printf("ERROR: batch add source %d: %v", src.ID, err)
+			if batchErr := d.batchBuf.Add(ctx, variant); batchErr != nil {
+				log.WithError(batchErr).WithField("source_id", src.ID).Error("batch add failed")
 			}
 
 			jobsStored++
@@ -341,17 +320,21 @@ func processSource(
 	}
 
 	if err := iter.Err(); err != nil {
-		log.Printf("ERROR: crawl source %d: %v", src.ID, err)
-		_ = crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlFailed, err.Error())
+		log.WithError(err).WithField("source_id", src.ID).Error("crawl iteration failed")
+		_ = d.crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlFailed, err.Error())
 	} else {
-		_ = crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlSucceeded, "")
+		_ = d.crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlSucceeded, "")
 	}
 
 	// Update source scheduling.
 	nextCrawl := time.Now().UTC().Add(time.Duration(src.CrawlIntervalSec) * time.Second)
-	_ = sourceRepo.UpdateNextCrawl(ctx, src.ID, nextCrawl, time.Now().UTC(), src.HealthScore)
+	_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, nextCrawl, time.Now().UTC(), src.HealthScore)
 
-	log.Printf("source %d (%s): found=%d stored=%d", src.ID, src.Type, jobsFound, jobsStored)
+	log.WithField("source_id", src.ID).
+		WithField("source_type", src.Type).
+		WithField("found", jobsFound).
+		WithField("stored", jobsStored).
+		Info("source processing complete")
 }
 
 // mergeExtractedFields copies non-empty fields from JobFields into an ExternalJob,
