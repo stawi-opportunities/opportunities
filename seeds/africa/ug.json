@@ -1,3 +1,4 @@
 [
-  {"source_type": "brightermonday", "base_url": "https://www.brightermonday.co.ug", "country": "UG", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"}
+  {"source_type": "brightermonday", "base_url": "https://www.brightermonday.co.ug", "country": "UG", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"},
+  {"source_type": "sitemap", "base_url": "https://www.brightermonday.co.ug", "country": "UG", "region": "east_africa", "crawl_interval_sec": 7200, "priority": "normal"}
 ]

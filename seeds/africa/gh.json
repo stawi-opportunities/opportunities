@@ -1,3 +1,4 @@
 [
-  {"source_type": "jobberman", "base_url": "https://www.jobberman.com.gh", "country": "GH", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"}
+  {"source_type": "jobberman", "base_url": "https://www.jobberman.com.gh", "country": "GH", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"},
+  {"source_type": "sitemap", "base_url": "https://www.jobberman.com.gh", "country": "GH", "region": "west_africa", "crawl_interval_sec": 7200, "priority": "normal"}
 ]

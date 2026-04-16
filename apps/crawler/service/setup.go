@@ -8,6 +8,7 @@ import (
 	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/connectors/jobicy"
 	"stawi.jobs/pkg/connectors/remoteok"
+	"stawi.jobs/pkg/connectors/sitemapcrawler"
 	"stawi.jobs/pkg/connectors/smartrecruiters"
 	"stawi.jobs/pkg/connectors/themuse"
 	"stawi.jobs/pkg/connectors/universal"
@@ -35,6 +36,9 @@ func BuildRegistry(client *httpx.Client, extractor *extraction.Extractor) *conne
 	reg.Register(workday.New(client))
 	reg.Register(smartrecruiters.New(client))
 
+	// Sitemap crawler — discovers job URLs from robots.txt sitemaps.
+	reg.Register(sitemapcrawler.New(client))
+
 	// Universal AI connector for all HTML-based source types.
 	if extractor != nil {
 		for _, st := range []domain.SourceType{
@@ -45,7 +49,6 @@ func BuildRegistry(client *httpx.Client, extractor *extraction.Extractor) *conne
 			domain.SourceCareers24,
 			domain.SourcePNet,
 			domain.SourceSchemaOrg,
-			domain.SourceSitemap,
 			domain.SourceHostedBoards,
 			domain.SourceGenericHTML,
 			domain.SourceSmartRecruitersPage,
