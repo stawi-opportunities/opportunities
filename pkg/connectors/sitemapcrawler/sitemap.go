@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
@@ -77,11 +78,13 @@ func NewTyped(client *httpx.Client, st domain.SourceType) *Connector {
 func (c *Connector) Type() domain.SourceType { return c.sourceType }
 
 // Crawl begins a sitemap-based crawl of the given source.
+// Uses source.LastSeenAt to skip sitemap entries that haven't changed since last crawl.
 func (c *Connector) Crawl(_ context.Context, source domain.Source) connectors.CrawlIterator {
 	return &iterator{
-		client:    c.client,
-		baseURL:   strings.TrimRight(source.BaseURL, "/"),
-		batchSize: batchSize,
+		client:      c.client,
+		baseURL:     strings.TrimRight(source.BaseURL, "/"),
+		batchSize:   batchSize,
+		lastSeenAt:  source.LastSeenAt,
 	}
 }
 
@@ -90,16 +93,17 @@ func (c *Connector) Crawl(_ context.Context, source domain.Source) connectors.Cr
 // --------------------------------------------------------------------------
 
 type iterator struct {
-	client    *httpx.Client
-	baseURL   string
-	jobURLs   []string // all discovered job URLs
-	pos       int      // current position in jobURLs
-	batchSize int
-	raw       []byte
-	status    int
-	err       error
-	done      bool
-	jobs      []domain.ExternalJob
+	client     *httpx.Client
+	baseURL    string
+	lastSeenAt *time.Time // skip sitemap entries older than this
+	jobURLs    []string   // all discovered job URLs
+	pos        int        // current position in jobURLs
+	batchSize  int
+	raw        []byte
+	status     int
+	err        error
+	done       bool
+	jobs       []domain.ExternalJob
 }
 
 func (it *iterator) Next(ctx context.Context) bool {
@@ -258,9 +262,24 @@ func (it *iterator) parseSitemap(ctx context.Context, sitemapURL string) ([]stri
 
 	urls := make([]string, 0, len(us.URLs))
 	for _, u := range us.URLs {
-		if u.Loc != "" {
-			urls = append(urls, u.Loc)
+		if u.Loc == "" {
+			continue
 		}
+		// Skip entries older than our last crawl (incremental refresh)
+		if it.lastSeenAt != nil && u.LastMod != "" {
+			if lastMod, err := time.Parse(time.RFC3339, u.LastMod); err == nil {
+				if lastMod.Before(*it.lastSeenAt) {
+					continue // unchanged since last crawl
+				}
+			}
+			// Also try date-only format (2026-04-16)
+			if lastMod, err := time.Parse("2006-01-02", u.LastMod); err == nil {
+				if lastMod.Before(*it.lastSeenAt) {
+					continue
+				}
+			}
+		}
+		urls = append(urls, u.Loc)
 	}
 	return urls, nil
 }

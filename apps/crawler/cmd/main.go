@@ -122,7 +122,7 @@ func main() {
 	if extractor != nil {
 		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(
 			handlers.NewDedupHandler(jobRepo, svc),
-			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, svc),
+			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, httpClient, svc),
 			handlers.NewValidateHandler(jobRepo, sourceRepo, extractor, svc),
 			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, extractor, svc),
 			handlers.NewSourceExpansionHandler(sourceRepo),

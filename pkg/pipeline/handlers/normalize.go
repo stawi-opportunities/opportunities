@@ -9,6 +9,8 @@ import (
 
 	"github.com/pitabwire/frame"
 
+	"stawi.jobs/pkg/connectors/httpx"
+	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/repository"
@@ -20,6 +22,7 @@ type NormalizeHandler struct {
 	jobRepo    *repository.JobRepository
 	sourceRepo *repository.SourceRepository
 	extractor  *extraction.Extractor
+	httpClient *httpx.Client
 	svc        *frame.Service
 }
 
@@ -28,12 +31,14 @@ func NewNormalizeHandler(
 	jobRepo *repository.JobRepository,
 	sourceRepo *repository.SourceRepository,
 	extractor *extraction.Extractor,
+	httpClient *httpx.Client,
 	svc *frame.Service,
 ) *NormalizeHandler {
 	return &NormalizeHandler{
 		jobRepo:    jobRepo,
 		sourceRepo: sourceRepo,
 		extractor:  extractor,
+		httpClient: httpClient,
 		svc:        svc,
 	}
 }
@@ -84,14 +89,32 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	// 3. Choose content source: prefer Markdown, fall back to Description.
-	content := variant.Markdown
-	if content == "" {
-		content = variant.Description
+	// If both are empty (sitemap stubs), fetch the detail page.
+	contentText := variant.Markdown
+	if contentText == "" {
+		contentText = variant.Description
+	}
+	if contentText == "" && variant.ApplyURL != "" && h.httpClient != nil {
+		log.Printf("normalize: fetching detail page for variant %d: %s", variant.ID, variant.ApplyURL)
+		if raw, _, fetchErr := h.httpClient.Get(ctx, variant.ApplyURL, nil); fetchErr == nil {
+			extracted, _ := content.ExtractFromHTML(string(raw))
+			if extracted != nil {
+				contentText = extracted.Markdown
+				// Store the fetched content for future reprocessing
+				h.jobRepo.UpdateStageWithContent(ctx, variant.ID, string(domain.StageDeduped),
+					string(raw), extracted.CleanHTML, extracted.Markdown)
+			}
+		}
+	}
+
+	if contentText == "" {
+		log.Printf("normalize: variant %d has no content to extract, skipping", variant.ID)
+		return nil
 	}
 
 	// 4. Build the extraction input.
 	input := fmt.Sprintf("Job Title: %s\nCompany: %s\n\n%s",
-		variant.Title, variant.Company, content)
+		variant.Title, variant.Company, contentText)
 
 	// 5. Call AI extractor — no artificial timeout, let the model finish.
 	fields, err := h.extractor.Extract(ctx, input, variant.ApplyURL)
