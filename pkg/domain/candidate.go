@@ -41,7 +41,7 @@ const (
 // CandidateProfile stores all data for a registered job seeker.
 type CandidateProfile struct {
 	ID           int64            `gorm:"primaryKey;autoIncrement" json:"id"`
-	ProfileID    string           `gorm:"type:varchar(255);uniqueIndex;not null" json:"profile_id"`
+	ProfileID    string           `gorm:"type:varchar(255);index" json:"profile_id"`
 	Status       CandidateStatus  `gorm:"type:varchar(20);not null;default:'unverified'" json:"status"`
 	Subscription SubscriptionTier `gorm:"type:varchar(20);not null;default:'free'" json:"subscription"`
 	AutoApply    bool             `gorm:"not null;default:false" json:"auto_apply"`
