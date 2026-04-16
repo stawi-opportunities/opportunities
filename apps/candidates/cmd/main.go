@@ -5,9 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
+
+	notificationpb "buf.build/gen/go/antinvestor/notification/protocolbuffers/go/notification/v1"
+	commonpb "buf.build/gen/go/antinvestor/common/protocolbuffers/go/common/v1"
+	filespb "buf.build/gen/go/antinvestor/files/protocolbuffers/go/files/v1"
+	"connectrpc.com/connect"
 
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
@@ -22,6 +28,7 @@ import (
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/matching"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/services"
 )
 
 func main() {
@@ -75,6 +82,21 @@ func main() {
 			Info("AI extraction enabled")
 	}
 
+	// Antinvestor service clients (each is optional).
+	svcClients, clientsErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+		NotificationURI: cfg.NotificationServiceURI,
+		FileURI:         cfg.FileServiceURI,
+		RedirectURI:     cfg.RedirectServiceURI,
+		BillingURI:      cfg.BillingServiceURI,
+		ProfileURI:      cfg.ProfileServiceURI,
+	})
+	if clientsErr != nil {
+		log.WithError(clientsErr).Warn("some service clients failed to initialize")
+	}
+	if svcClients == nil {
+		svcClients = &services.Clients{}
+	}
+
 	// Events
 	var eventOpts []frame.Option
 	if extractor != nil {
@@ -114,8 +136,9 @@ func main() {
 
 	// Public routes (no auth required)
 	mux.HandleFunc("GET /healthz", healthHandler(candidateRepo))
-	mux.HandleFunc("POST /candidates/register", registerHandler(candidateRepo, extractor, svc))
+	mux.HandleFunc("POST /candidates/register", registerHandler(candidateRepo, extractor, svc, svcClients))
 	mux.HandleFunc("POST /webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
+	mux.HandleFunc("POST /webhooks/billing", billingWebhookHandler(candidateRepo))
 
 	// Authenticated candidate routes
 	mux.Handle("GET /me", authWrap(meHandler(candidateRepo, cfg.ProfileServiceURL)))
@@ -243,7 +266,7 @@ func healthHandler(candidateRepo *repository.CandidateRepository) http.HandlerFu
 
 // registerHandler handles POST /candidates/register with multipart form (profile_id + CV file).
 // TODO(task5): Rewrite to use JWT-based registration flow.
-func registerHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor, svc *frame.Service) http.HandlerFunc {
+func registerHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor, svc *frame.Service, svcClients *services.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -300,6 +323,16 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 			}
 		}
 
+		// Upload CV to Files service if available and file was provided.
+		if svcClients.Files != nil && candidate.CVRawText != "" {
+			cvURL, uploadErr := uploadCVToFiles(ctx, svcClients, candidate.ProfileID, file, header)
+			if uploadErr != nil {
+				util.Log(ctx).WithError(uploadErr).Warn("CV upload to files service failed, continuing without")
+			} else if cvURL != "" {
+				candidate.CVUrl = cvURL
+			}
+		}
+
 		if err := candidateRepo.Create(ctx, candidate); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -318,6 +351,13 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 			_ = evtMgr.Emit(ctx, events.ProfileCreatedEventName, &events.ProfileCreatedPayload{
 				CandidateID: candidate.ID,
 			})
+		}
+
+		// Send verification notification if Notification client is available.
+		if svcClients.Notification != nil {
+			if notifErr := sendRegistrationNotification(ctx, svcClients, candidate); notifErr != nil {
+				util.Log(ctx).WithError(notifErr).Warn("registration notification failed")
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -840,5 +880,170 @@ func forceMatchHandler(matcher *matching.Matcher, candidateRepo *repository.Cand
 			"total_matches": totalMatches,
 			"results":       results,
 		})
+	}
+}
+
+// uploadCVToFiles uploads a CV file to the Files service via streaming RPC
+// and returns the content URI. The file multipart.File may be nil if already
+// consumed; in that case the function returns early.
+func uploadCVToFiles(
+	ctx context.Context,
+	clients *services.Clients,
+	profileID string,
+	file multipart.File,
+	header *multipart.FileHeader,
+) (string, error) {
+	if clients.Files == nil || file == nil || header == nil {
+		return "", nil
+	}
+
+	// Reset file reader to beginning.
+	if seeker, ok := file.(io.Seeker); ok {
+		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+			return "", fmt.Errorf("seek CV file: %w", err)
+		}
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", fmt.Errorf("read CV file for upload: %w", err)
+	}
+
+	stream := clients.Files.UploadContent(ctx)
+
+	// Send metadata first.
+	if err := stream.Send(&filespb.UploadContentRequest{
+		Data: &filespb.UploadContentRequest_Metadata{
+			Metadata: &filespb.UploadMetadata{
+				ContentType: header.Header.Get("Content-Type"),
+				Filename:    header.Filename,
+				TotalSize:   int64(len(data)),
+			},
+		},
+	}); err != nil {
+		return "", fmt.Errorf("upload metadata: %w", err)
+	}
+
+	// Send file content in chunks.
+	const chunkSize = 64 * 1024
+	for offset := 0; offset < len(data); offset += chunkSize {
+		end := offset + chunkSize
+		if end > len(data) {
+			end = len(data)
+		}
+		if err := stream.Send(&filespb.UploadContentRequest{
+			Data: &filespb.UploadContentRequest_Chunk{
+				Chunk: data[offset:end],
+			},
+		}); err != nil {
+			return "", fmt.Errorf("upload chunk: %w", err)
+		}
+	}
+
+	resp, err := stream.CloseAndReceive()
+	if err != nil {
+		return "", fmt.Errorf("upload close: %w", err)
+	}
+
+	return resp.Msg.GetContentUri(), nil
+}
+
+// sendRegistrationNotification sends a verification email notification
+// for a newly registered candidate via the Notification service.
+func sendRegistrationNotification(
+	ctx context.Context,
+	clients *services.Clients,
+	candidate *domain.CandidateProfile,
+) error {
+	if clients.Notification == nil {
+		return nil
+	}
+
+	stream, err := clients.Notification.Send(ctx, connect.NewRequest(&notificationpb.SendRequest{
+		Data: []*notificationpb.Notification{
+			{
+				Recipient: &commonpb.ContactLink{
+					ProfileId: candidate.ProfileID,
+				},
+				Type:     "email",
+				Template: "candidate_registration_verification",
+				OutBound: true,
+			},
+		},
+	}))
+	if err != nil {
+		return fmt.Errorf("notification send: %w", err)
+	}
+
+	// Drain the response stream.
+	for stream.Receive() {
+		// Response acknowledged.
+	}
+	if err := stream.Err(); err != nil {
+		return fmt.Errorf("notification stream: %w", err)
+	}
+
+	return nil
+}
+
+// billingWebhookHandler handles POST /webhooks/billing — payment status callbacks.
+// When billing confirms payment, the candidate's subscription and auto_apply are updated.
+func billingWebhookHandler(candidateRepo *repository.CandidateRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		var payload struct {
+			ProfileID    string `json:"profile_id"`
+			Status       string `json:"status"`
+			PlanID       string `json:"plan_id"`
+			SubscriptionID string `json:"subscription_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+			return
+		}
+
+		if payload.ProfileID == "" {
+			http.Error(w, `{"error":"profile_id is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		candidate, err := candidateRepo.GetByProfileID(ctx, payload.ProfileID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		if candidate == nil {
+			http.Error(w, `{"error":"candidate not found"}`, http.StatusNotFound)
+			return
+		}
+
+		switch payload.Status {
+		case "paid", "active":
+			candidate.Subscription = domain.SubscriptionPaid
+			candidate.AutoApply = true
+			if payload.SubscriptionID != "" {
+				candidate.SubscriptionID = payload.SubscriptionID
+			}
+			if payload.PlanID != "" {
+				candidate.PlanID = payload.PlanID
+			}
+		case "cancelled", "expired":
+			candidate.Subscription = domain.SubscriptionCancelled
+			candidate.AutoApply = false
+		case "trial":
+			candidate.Subscription = domain.SubscriptionTrial
+		default:
+			http.Error(w, `{"error":"unknown status"}`, http.StatusBadRequest)
+			return
+		}
+
+		if err := candidateRepo.Update(ctx, candidate); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "subscription": candidate.Subscription})
 	}
 }

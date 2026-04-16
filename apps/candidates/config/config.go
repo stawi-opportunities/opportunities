@@ -11,4 +11,11 @@ type CandidatesConfig struct {
 	MaxFreeMatches    int    `env:"MAX_FREE_MATCHES" envDefault:"5"`
 	PaymentServiceURL string `env:"PAYMENT_SERVICE_URL" envDefault:""`
 	ProfileServiceURL string `env:"PROFILE_SERVICE_URL" envDefault:""`
+
+	// Antinvestor service URIs (optional — nil client on empty URI).
+	NotificationServiceURI string `env:"NOTIFICATION_SERVICE_URI" envDefault:""`
+	FileServiceURI         string `env:"FILE_SERVICE_URI" envDefault:""`
+	RedirectServiceURI     string `env:"REDIRECT_SERVICE_URI" envDefault:""`
+	BillingServiceURI      string `env:"BILLING_SERVICE_URI" envDefault:""`
+	ProfileServiceURI      string `env:"PROFILE_SERVICE_URI" envDefault:""`
 }
