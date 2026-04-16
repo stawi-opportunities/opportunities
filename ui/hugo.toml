@@ -1,4 +1,4 @@
-baseURL = "https://stawi.jobs/"
+baseURL = "https://jobs.stawi.org/"
 languageCode = "en"
 title = "Stawi.jobs — Remote Jobs in Africa and Beyond"
 
@@ -6,8 +6,8 @@ title = "Stawi.jobs — Remote Jobs in Africa and Beyond"
   description = "Find remote jobs from top companies hiring worldwide. Browse 37,000+ positions in programming, design, marketing, and more."
   apiURL = "http://localhost:8082"
   candidatesAPIURL = "http://localhost:8080"
-  oidcIssuer = ""
-  oidcClientID = ""
+  oidcIssuer = "https://auth-dev.antinvestor.com"
+  oidcClientID = "stawi-jobs-web-dev"
   oidcRedirectURI = "http://localhost:1313/auth/callback/"
 
 [params.nav]

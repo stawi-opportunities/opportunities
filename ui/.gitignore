@@ -3,3 +3,6 @@ public/
 resources/
 .hugo_build.lock
 pagefind/
+
+# R2-synced content (pulled during CF Pages build)
+# Keep sample files in git for local dev, but real content comes from R2
