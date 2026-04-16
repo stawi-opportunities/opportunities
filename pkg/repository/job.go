@@ -328,3 +328,13 @@ func (r *JobRepository) UpsertPageState(ctx context.Context, ps *domain.CrawlPag
 		}).
 		Create(ps).Error
 }
+
+// AdvisoryLock acquires a PostgreSQL session-level advisory lock.
+func (r *JobRepository) AdvisoryLock(ctx context.Context, key int64) error {
+	return r.db(ctx, false).Exec("SELECT pg_advisory_lock(?)", key).Error
+}
+
+// AdvisoryUnlock releases a PostgreSQL session-level advisory lock.
+func (r *JobRepository) AdvisoryUnlock(ctx context.Context, key int64) error {
+	return r.db(ctx, false).Exec("SELECT pg_advisory_unlock(?)", key).Error
+}

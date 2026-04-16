@@ -2,6 +2,7 @@ package dedupe
 
 import (
 	"context"
+	"hash/fnv"
 	"time"
 
 	"stawi.jobs/pkg/domain"
@@ -43,7 +44,14 @@ func (e *Engine) UpsertAndCluster(ctx context.Context, variant *domain.JobVarian
 		return nil, err
 	}
 
-	// 2. Look up the variant by its hard key to detect pre-existing matches.
+	// 2. Acquire advisory lock on the hard key to prevent concurrent cluster creation.
+	lockKey := advisoryLockKey(variant.HardKey)
+	if err := e.jobRepo.AdvisoryLock(ctx, lockKey); err != nil {
+		return nil, err
+	}
+	defer e.jobRepo.AdvisoryUnlock(ctx, lockKey)
+
+	// 3. Look up the variant by its hard key to detect pre-existing matches.
 	existing, err := e.jobRepo.FindByHardKey(ctx, variant.HardKey)
 	if err != nil {
 		return nil, err
@@ -117,6 +125,13 @@ func (e *Engine) UpsertAndCluster(ctx context.Context, variant *domain.JobVarian
 
 	// 8. Return the canonical job.
 	return canonical, nil
+}
+
+// advisoryLockKey converts a hard key string to a int64 for pg_advisory_lock.
+func advisoryLockKey(hardKey string) int64 {
+	h := fnv.New64a()
+	h.Write([]byte(hardKey))
+	return int64(h.Sum64())
 }
 
 // buildCanonicalFromVariant copies all fields from a variant into a new

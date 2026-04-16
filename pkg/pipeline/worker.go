@@ -177,10 +177,12 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 		}
 	}
 
-	// 5. Auto-discover new job sites from crawled pages (best-effort, async).
+	// 5. Auto-discover new job sites from crawled pages (best-effort, async with timeout).
 	if w.extractor != nil && len(iter.RawPayload()) > 0 {
 		go func() {
-			sites, err := w.extractor.DiscoverSites(context.Background(), string(iter.RawPayload()), source.BaseURL)
+			discoverCtx, discoverCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer discoverCancel()
+			sites, err := w.extractor.DiscoverSites(discoverCtx, string(iter.RawPayload()), source.BaseURL)
 			if err != nil || len(sites) == 0 {
 				return
 			}

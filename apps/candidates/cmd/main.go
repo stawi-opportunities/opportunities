@@ -229,8 +229,8 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 		}
 
 		email := strings.TrimSpace(r.FormValue("email"))
-		if email == "" {
-			http.Error(w, `{"error":"email is required"}`, http.StatusBadRequest)
+		if email == "" || !isValidEmail(email) {
+			http.Error(w, `{"error":"valid email is required"}`, http.StatusBadRequest)
 			return
 		}
 
@@ -374,7 +374,7 @@ func updateProfileHandler(candidateRepo *repository.CandidateRepository) http.Ha
 		if update.SalaryMax != nil {
 			candidate.SalaryMax = *update.SalaryMax
 		}
-		if update.Status != nil {
+		if update.Status != nil && isValidCandidateStatus(*update.Status) {
 			candidate.Status = domain.CandidateStatus(*update.Status)
 		}
 
@@ -565,6 +565,23 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 		}
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(candidate)
+	}
+}
+
+// isValidEmail performs basic email validation.
+func isValidEmail(email string) bool {
+	at := strings.Index(email, "@")
+	dot := strings.LastIndex(email, ".")
+	return at > 0 && dot > at+1 && dot < len(email)-1 && len(email) <= 254
+}
+
+// isValidCandidateStatus checks if a status string is a valid CandidateStatus enum.
+func isValidCandidateStatus(s string) bool {
+	switch domain.CandidateStatus(s) {
+	case domain.CandidateUnverified, domain.CandidateActive, domain.CandidatePaused, domain.CandidateHired:
+		return true
+	default:
+		return false
 	}
 }
 
