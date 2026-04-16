@@ -407,6 +407,18 @@ func (r *JobRepository) ListByStage(ctx context.Context, stage string, limit int
 	return variants, err
 }
 
+// ListByStageAndSource returns variants at a given pipeline stage for a specific
+// source, ordered by most-recent first and capped at limit rows.
+func (r *JobRepository) ListByStageAndSource(ctx context.Context, sourceID int64, stage string, limit int) ([]*domain.JobVariant, error) {
+	var variants []*domain.JobVariant
+	err := r.db(ctx, true).
+		Where("source_id = ? AND stage = ?", sourceID, stage).
+		Order("id DESC").
+		Limit(limit).
+		Find(&variants).Error
+	return variants, err
+}
+
 // GetVariantByID returns a single JobVariant by primary key.
 // Returns nil, nil when no record is found.
 func (r *JobRepository) GetVariantByID(ctx context.Context, id int64) (*domain.JobVariant, error) {
