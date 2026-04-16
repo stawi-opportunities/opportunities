@@ -1,4 +1,4 @@
-// Alpine.js global initialization for stawi.jobs
+// Alpine.js global initialization for Stawi Jobs
 document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
   const config = params ? JSON.parse(params.content) : {};

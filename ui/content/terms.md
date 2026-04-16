@@ -1,15 +1,15 @@
 ---
 title: "Terms of Service"
-description: "Terms of service for Stawi.jobs"
+description: "Terms of service for Stawi Jobs"
 ---
 
 _Last updated: April 2026_
 
-By using Stawi.jobs, you agree to these terms.
+By using Stawi Jobs, you agree to these terms.
 
 ## Use of Service
 
-Stawi.jobs provides a job listing aggregation and matching platform. We do not guarantee employment outcomes.
+Stawi Jobs provides a job listing aggregation and matching platform. We do not guarantee employment outcomes.
 
 ## Subscriptions
 

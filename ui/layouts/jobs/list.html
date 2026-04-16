@@ -10,6 +10,16 @@
 
   <div id="job-search" class="mt-6"></div>
 
+  <!-- Sign-up CTA for unauthenticated users -->
+  <div x-show="!$store.auth.isAuthenticated" x-cloak
+       class="mt-6 rounded-lg bg-navy-900 p-6 text-white sm:flex sm:items-center sm:justify-between">
+    <div>
+      <p class="font-semibold">Let us find your perfect job and apply for you</p>
+      <p class="mt-1 text-sm text-gray-300">Create a profile and we'll match you to positions you're qualified for, then apply on your behalf.</p>
+    </div>
+    <a href="/auth/login/" class="btn-primary mt-4 shrink-0 bg-white text-navy-900 hover:bg-gray-100 sm:mt-0 sm:ml-6">Get Started</a>
+  </div>
+
   <div class="mt-6 space-y-4">
     {{ $paginator := .Paginate .Pages }}
     {{ range $paginator.Pages }}

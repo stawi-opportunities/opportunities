@@ -1,4 +1,4 @@
-// OIDC Authorization Code + PKCE flow for stawi.jobs
+// OIDC Authorization Code + PKCE flow for Stawi Jobs
 document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
   const config = params ? JSON.parse(params.content) : {};

@@ -1,6 +1,6 @@
 ---
 title: "Privacy Policy"
-description: "Privacy policy for Stawi.jobs"
+description: "Privacy policy for Stawi Jobs"
 ---
 
 _Last updated: April 2026_
@@ -9,7 +9,7 @@ _Last updated: April 2026_
 
 - **Profile data**: Information you provide during onboarding (CV, preferences, experience level).
 - **Usage data**: Pages visited, jobs viewed, search queries.
-- **Payment data**: Processed by our payment partners (Polar.sh, M-PESA). We do not store card numbers.
+- **Payment data**: Processed by our payment partners. We do not store card numbers or mobile money PINs.
 
 ## How We Use Your Data
 

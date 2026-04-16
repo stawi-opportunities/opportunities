@@ -26,11 +26,13 @@
         </a>
         {{ end }}
 
-        <button x-data="{ saved: false }" @click="saved = !saved"
-                :class="saved ? 'bg-accent-50 border-accent-300 text-accent-700' : ''"
-                class="btn-secondary mt-3 w-full" :aria-pressed="saved">
-          <span x-text="saved ? 'Saved' : 'Save Job'"></span>
-        </button>
+        <div x-data="saveJob({{ .Params.id }})">
+          <button @click="toggle()"
+                  :class="saved ? 'bg-accent-50 border-accent-300 text-accent-700' : ''"
+                  class="btn-secondary mt-3 w-full" :aria-pressed="saved">
+            <span x-text="saved ? 'Saved' : 'Save Job'"></span>
+          </button>
+        </div>
 
         <dl class="mt-6 space-y-4 text-sm">
           {{ with .Params.location_text }}
@@ -70,6 +72,14 @@
         </dl>
       </div>
     </aside>
+  </div>
+
+  <!-- Sign-up CTA -->
+  <div x-show="!$store.auth.isAuthenticated" x-cloak
+       class="mt-8 rounded-lg bg-navy-900 p-6 text-center text-white">
+    <p class="text-lg font-semibold">Want us to apply to this job for you?</p>
+    <p class="mt-1 text-sm text-gray-300">Create your profile and we'll apply to matching positions on your behalf until you get hired.</p>
+    <a href="/auth/login/" class="btn-primary mt-4 inline-block bg-white text-navy-900 hover:bg-gray-100">Create Profile</a>
   </div>
 </div>
 

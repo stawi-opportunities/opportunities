@@ -1,6 +1,6 @@
 baseURL = "https://jobs.stawi.org/"
 languageCode = "en"
-title = "Stawi.jobs — Remote Jobs in Africa and Beyond"
+title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
 
 [params]
   description = "Find remote jobs from top companies hiring worldwide. Browse 37,000+ positions in programming, design, marketing, and more."
@@ -35,4 +35,4 @@ title = "Stawi.jobs — Remote Jobs in Africa and Beyond"
 [module]
   [module.hugoVersion]
     extended = true
-    min = "0.123.0"
+    min = "0.128.0"
