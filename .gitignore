@@ -5,3 +5,4 @@ ui/resources/
 ui/.hugo_build.lock
 .superpowers/
 bin/
+cmd
