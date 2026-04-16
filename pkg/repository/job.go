@@ -304,7 +304,7 @@ func (r *JobRepository) FilterForCandidate(ctx context.Context, c *domain.Candid
 			}
 		}
 		if len(countries) > 0 {
-			q = q.Where("country IN ?", countries)
+			q = q.Where("country IN ? OR country = '' OR country IS NULL", countries)
 		}
 	}
 
