@@ -178,6 +178,65 @@ func main() {
 		})
 	})
 
+	// GET /jobs/{id} — single job detail.
+	mux.HandleFunc("GET /jobs/{id}", func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		idStr := req.PathValue("id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, `{"error":"valid job id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		job, err := jobRepo.GetCanonicalByID(ctx, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if job == nil {
+			http.Error(w, `{"error":"job not found"}`, http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(job)
+	})
+
+	// GET /categories — category list with job counts.
+	mux.HandleFunc("GET /categories", func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		counts, err := jobRepo.CountByCategory(ctx)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"categories": counts,
+		})
+	})
+
+	// GET /stats — live site statistics.
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		totalJobs, _ := jobRepo.CountCanonical(ctx)
+		totalSources, _ := sourceRepo.Count(ctx)
+
+		var totalCompanies int64
+		db.Model(&domain.CanonicalJob{}).
+			Where("is_active = true").
+			Select("COUNT(DISTINCT company)").
+			Scan(&totalCompanies)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_jobs":      totalJobs,
+			"total_companies": totalCompanies,
+			"active_sources":  totalSources,
+		})
+	})
+
 	// GET /search/semantic?q=<text>&limit=20
 	// Hybrid search: tsvector candidates re-ranked by embedding cosine similarity.
 	mux.HandleFunc("GET /search/semantic", func(w http.ResponseWriter, req *http.Request) {
