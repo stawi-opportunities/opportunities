@@ -18,4 +18,5 @@ type CrawlerConfig struct {
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 	OllamaURL         string `env:"OLLAMA_URL" envDefault:""`
 	OllamaModel       string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
+	ValkeyAddr        string `env:"VALKEY_ADDR" envDefault:""`
 }

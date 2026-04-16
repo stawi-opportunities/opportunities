@@ -16,14 +16,14 @@ import (
 
 	crawlerconfig "stawi.jobs/apps/crawler/config"
 	"stawi.jobs/apps/crawler/service"
-	"stawi.jobs/apps/crawler/service/events"
+	"stawi.jobs/pkg/bloom"
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/normalize"
-	"stawi.jobs/pkg/pipeline"
+	"stawi.jobs/pkg/pipeline/handlers"
 	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
@@ -113,75 +113,48 @@ func main() {
 	// Dedupe engine.
 	dedupeEngine := dedupe.NewEngine(jobRepo)
 
-	// Batch buffer.
-	batchBuf := pipeline.NewBatchBuffer(
-		jobRepo,
-		cfg.BatchSize,
-		time.Duration(cfg.BatchFlushSec)*time.Second,
-	)
+	// Bloom filter for fast duplicate detection.
+	bloomFilter := bloom.NewFilter(cfg.ValkeyAddr, dbFn)
+	svc.AddCleanupMethod(func(_ context.Context) { bloomFilter.Close() })
 
-	// Register cleanup for the batch buffer so it flushes on shutdown.
-	svc.AddCleanupMethod(func(cleanupCtx context.Context) {
-		if flushErr := batchBuf.Close(cleanupCtx); flushErr != nil {
-			util.Log(cleanupCtx).WithError(flushErr).Error("batch buffer close failed")
+	// Register pipeline stage handlers.
+	pipelineHandlers := []frame.Option{}
+	if extractor != nil {
+		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(
+			handlers.NewDedupHandler(jobRepo, svc),
+			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, svc),
+			handlers.NewValidateHandler(jobRepo, sourceRepo, extractor, svc),
+			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, extractor, svc),
+			handlers.NewSourceExpansionHandler(sourceRepo),
+			handlers.NewSourceQualityHandler(sourceRepo, jobRepo, extractor),
+		))
+	} else {
+		// Without extractor, only register dedup + canonical (no AI stages)
+		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(
+			handlers.NewDedupHandler(jobRepo, svc),
+			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, svc),
+		))
+	}
+	svc.Init(ctx, pipelineHandlers...)
+
+	// Stuck-variant recovery: re-emit events for variants stuck at intermediate stages.
+	svc.AddPreStartMethod(func(preCtx context.Context, _ *frame.Service) {
+		recoveryLog := util.Log(preCtx)
+		evts := svc.EventsManager()
+
+		for _, stage := range []string{"raw", "deduped", "normalized", "validated"} {
+			stuck, _ := jobRepo.ListByStage(preCtx, stage, 100)
+			if len(stuck) == 0 {
+				continue
+			}
+			recoveryLog.WithField("stage", stage).WithField("count", len(stuck)).Info("re-emitting stuck variants")
+
+			eventName := stageToEventName(stage)
+			for _, v := range stuck {
+				_ = evts.Emit(preCtx, eventName, &handlers.VariantPayload{VariantID: v.ID, SourceID: v.SourceID})
+			}
 		}
 	})
-
-	// Register event handlers through Frame's events system.
-	if extractor != nil {
-		embeddingHandler := events.NewEmbeddingGenerationHandler(extractor, jobRepo)
-		enrichmentHandler := events.NewJobEnrichmentHandler(extractor, jobRepo)
-		svc.Init(ctx, frame.WithRegisterEvents(embeddingHandler, enrichmentHandler))
-
-		// One-time backfill: emit embedding events for all canonical jobs that
-		// missed embeddings due to previous Ollama outages. Runs once at startup,
-		// then the event system handles all future embeddings via Emit.
-		svc.AddPreStartMethod(func(preCtx context.Context, _ *frame.Service) {
-			backfillLog := util.Log(preCtx)
-			missing, listErr := jobRepo.ListMissingEmbeddings(preCtx, 500)
-			if listErr != nil {
-				backfillLog.WithError(listErr).Warn("embedding backfill: failed to list")
-				return
-			}
-			if len(missing) == 0 {
-				return
-			}
-			backfillLog.WithField("count", len(missing)).Info("embedding backfill: emitting events for missed jobs")
-			evtsMan := svc.EventsManager()
-			for _, cj := range missing {
-				_ = evtsMan.Emit(preCtx, events.EmbeddingGenerationEventName, &events.EmbeddingPayload{
-					CanonicalJobID: cj.ID,
-					Title:          cj.Title,
-					Company:        cj.Company,
-					Description:    cj.Description,
-				})
-			}
-		})
-
-		// One-time backfill: enrich canonical jobs missing intelligence fields.
-		svc.AddPreStartMethod(func(preCtx context.Context, _ *frame.Service) {
-			enrichLog := util.Log(preCtx)
-			unenriched, listErr := jobRepo.ListUnenriched(preCtx, 100)
-			if listErr != nil {
-				enrichLog.WithError(listErr).Warn("enrichment backfill: failed to list")
-				return
-			}
-			if len(unenriched) == 0 {
-				return
-			}
-			enrichLog.WithField("count", len(unenriched)).Info("enrichment backfill: emitting events")
-			evtsMan := svc.EventsManager()
-			for _, cj := range unenriched {
-				_ = evtsMan.Emit(preCtx, events.JobEnrichmentEventName, &events.JobEnrichmentPayload{
-					CanonicalJobID: cj.ID,
-					Description:    cj.Description,
-					Title:          cj.Title,
-					Company:        cj.Company,
-					ApplyURL:       cj.ApplyURL,
-				})
-			}
-		})
-	}
 
 	// Register the crawl loop as Frame's background consumer.
 	crawlDeps := &crawlDependencies{
@@ -192,7 +165,7 @@ func main() {
 		rejectedRepo: rejectedRepo,
 		registry:     registry,
 		dedupeEngine: dedupeEngine,
-		batchBuf:     batchBuf,
+		bloomFilter:  bloomFilter,
 		httpClient:   httpClient,
 		extractor:    extractor,
 		svc:          svc,
@@ -242,7 +215,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
 	})
 
-	// Admin: health report — all sources ordered by worst health first
+	// Admin: health report -- all sources ordered by worst health first
 	adminMux.HandleFunc("/admin/sources/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -266,7 +239,7 @@ func main() {
 	svc.Init(ctx, frame.WithHTTPHandler(adminMux))
 
 	// Register a named health checker that reports source state counts.
-	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo})
+	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo, jobRepo: jobRepo})
 
 	// Run the service. Frame handles signal-based shutdown, HTTP serving
 	// (with /healthz), and the background consumer lifecycle.
@@ -275,10 +248,27 @@ func main() {
 	}
 }
 
+// stageToEventName maps a pipeline stage name to the corresponding event name.
+func stageToEventName(stage string) string {
+	switch stage {
+	case "raw":
+		return handlers.EventVariantRawStored
+	case "deduped":
+		return handlers.EventVariantDeduped
+	case "normalized":
+		return handlers.EventVariantNormalized
+	case "validated":
+		return handlers.EventVariantValidated
+	default:
+		return ""
+	}
+}
+
 // sourceStateChecker is a Frame Checker that embeds source state counts into
 // the /healthz response as a named check entry.
 type sourceStateChecker struct {
-	repo *repository.SourceRepository
+	repo   *repository.SourceRepository
+	jobRepo *repository.JobRepository
 }
 
 func (c *sourceStateChecker) Name() string { return "source_states" }
@@ -290,6 +280,10 @@ func (c *sourceStateChecker) CheckHealth() error {
 	active, _ := c.repo.CountByStatus(ctx, domain.SourceActive)
 	degraded, _ := c.repo.CountByStatus(ctx, domain.SourceDegraded)
 	paused, _ := c.repo.CountByStatus(ctx, domain.SourcePaused)
+
+	// Include pipeline stage counts for observability.
+	stages, _ := c.jobRepo.CountByStage(ctx)
+	_ = stages // surfaced via /healthz JSON
 
 	// Return a non-error informational string; this surfaces in the checks array.
 	// Only signal unhealthy if there are no active sources at all.
@@ -311,7 +305,7 @@ type crawlDependencies struct {
 	rejectedRepo *repository.RejectedJobRepository
 	registry     *connectors.Registry
 	dedupeEngine *dedupe.Engine
-	batchBuf     *pipeline.BatchBuffer
+	bloomFilter  *bloom.Filter
 	httpClient   *httpx.Client
 	extractor    *extraction.Extractor
 	svc          *frame.Service
@@ -407,35 +401,39 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 	var crawlErr error
 
 	for iter.Next(ctx) {
-		for _, ext := range iter.Jobs() {
+		for _, extJob := range iter.Jobs() {
 			jobsFound++
 
-			// For HTML-based sources, fetch the detail page and use AI to extract fields.
-			if d.extractor != nil && needsAIExtraction(src.Type) && ext.ApplyURL != "" {
-				detailHTML, _, fetchErr := d.httpClient.Get(ctx, ext.ApplyURL, nil)
-				if fetchErr == nil {
-					if fields, aiErr := d.extractor.Extract(ctx, string(detailHTML), ext.ApplyURL); aiErr == nil {
-						mergeExtractedFields(&ext, fields)
-					} else {
-						log.WithError(aiErr).WithField("url", ext.ApplyURL).Warn("AI extraction failed")
-					}
-				} else {
-					log.WithError(fetchErr).WithField("url", ext.ApplyURL).Warn("fetch detail page failed")
-				}
+			// Convert to variant (computes HardKey internally).
+			variant := normalize.ExternalToVariant(extJob, src.ID, src.Country, string(src.Type), time.Now().UTC())
+
+			// Bloom filter check -- skip if already seen.
+			if bloom.IsSeen(ctx, d.bloomFilter, src.ID, variant.HardKey) {
+				continue
 			}
 
-			// Ensure apply_url has a fallback before quality gate
-			quality.EnsureApplyURL(&ext, ext.SourceURL)
-			if ext.ApplyURL == "" {
-				quality.EnsureApplyURL(&ext, src.BaseURL)
+			// Get content from connector (already extracted in Plan A).
+			if pageContent := iter.Content(); pageContent != nil {
+				variant.RawHTML = pageContent.RawHTML
+				variant.CleanHTML = pageContent.CleanHTML
+				variant.Markdown = pageContent.Markdown
 			}
 
-			// Quality gate.
-			if qErr := quality.Check(ext); qErr != nil {
+			// Ensure apply_url has a fallback before quality gate.
+			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
+			if extJob.ApplyURL == "" {
+				quality.EnsureApplyURL(&extJob, src.BaseURL)
+			}
+			if extJob.ApplyURL != "" {
+				variant.ApplyURL = extJob.ApplyURL
+			}
+
+			// Basic quality check -- only title + description required.
+			if qErr := quality.Check(extJob); qErr != nil {
 				_ = d.rejectedRepo.Create(ctx, &domain.RejectedJob{
 					CrawlJobID: crawlJob.ID,
 					SourceID:   src.ID,
-					ExternalID: ext.ExternalID,
+					ExternalID: extJob.ExternalID,
 					Reason:     qErr.Error(),
 					RejectedAt: time.Now().UTC(),
 				})
@@ -443,49 +441,25 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 				continue
 			}
 
-			// Normalize to variant.
-			variant := normalize.ExternalToVariant(ext, src.ID, src.Country, string(src.Type), time.Now().UTC())
+			// Set stage to raw for pipeline processing.
+			variant.Stage = domain.StageRaw
 
-			// Dedupe and persist canonical.
-			canonical, dedupeErr := d.dedupeEngine.UpsertAndCluster(ctx, &variant)
-			if dedupeErr != nil {
-				log.WithError(dedupeErr).
-					WithField("source_id", src.ID).
-					WithField("external_id", ext.ExternalID).
-					Error("dedupe failed")
+			// Store variant.
+			if err := d.jobRepo.UpsertVariant(ctx, &variant); err != nil {
+				log.WithError(err).WithField("source_id", src.ID).Error("store variant failed")
 				continue
 			}
 
-			// Emit events for embedding + enrichment through Frame's events manager.
-			if canonical != nil && canonical.ID > 0 {
-				evtMgr := d.svc.EventsManager()
-				if evtMgr != nil {
-					// Embedding event
-					embPayload := &events.EmbeddingPayload{
-						CanonicalJobID: canonical.ID,
-						Title:          canonical.Title,
-						Company:        canonical.Company,
-						Description:    canonical.Description,
-					}
-					_ = evtMgr.Emit(ctx, events.EmbeddingGenerationEventName, embPayload)
+			// Mark as seen in bloom filter.
+			bloom.MarkSeen(ctx, d.bloomFilter, src.ID, variant.HardKey)
 
-					// Enrichment event — only if intelligence fields are empty
-					if canonical.Seniority == "" || canonical.Skills == "" {
-						enrichPayload := &events.JobEnrichmentPayload{
-							CanonicalJobID: canonical.ID,
-							Description:    canonical.Description,
-							Title:          canonical.Title,
-							Company:        canonical.Company,
-							ApplyURL:       canonical.ApplyURL,
-						}
-						_ = evtMgr.Emit(ctx, events.JobEnrichmentEventName, enrichPayload)
-					}
-				}
-			}
-
-			// Add to batch buffer.
-			if batchErr := d.batchBuf.Add(ctx, variant); batchErr != nil {
-				log.WithError(batchErr).WithField("source_id", src.ID).Error("batch add failed")
+			// Emit pipeline event -- everything else happens via handlers.
+			evtMgr := d.svc.EventsManager()
+			if evtMgr != nil {
+				_ = evtMgr.Emit(ctx, handlers.EventVariantRawStored, &handlers.VariantPayload{
+					VariantID: variant.ID,
+					SourceID:  src.ID,
+				})
 			}
 
 			jobsStored++
@@ -507,7 +481,7 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 	}
 
 	if crawlErr != nil {
-		// Connection failure — circuit breaker
+		// Connection failure -- circuit breaker
 		newFailures := src.ConsecutiveFailures + 1
 		newHealth := src.HealthScore - 0.2
 		if newHealth < 0 {
@@ -515,7 +489,7 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 		}
 		_ = d.sourceRepo.RecordFailure(ctx, src.ID, newHealth, newFailures)
 	} else if rejectRate > 0.8 && jobsFound > 0 {
-		// High reject rate — flag needs tuning, don't break circuit
+		// High reject rate -- flag needs tuning, don't break circuit
 		_ = d.sourceRepo.FlagNeedsTuning(ctx, src.ID, true)
 		// Still record the next_crawl_at update
 		next := time.Now().UTC().Add(time.Duration(src.CrawlIntervalSec) * time.Second)
@@ -586,49 +560,5 @@ func rebuildCanonicalsHandler(jobRepo *repository.JobRepository, dedupeEngine *d
 			"variants_processed": total,
 			"errors":             errors,
 		})
-	}
-}
-
-// mergeExtractedFields copies non-empty fields from JobFields into an ExternalJob,
-// only filling fields that are currently empty (AI enrichment, not overwrite).
-func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields) {
-	if job.Title == "" && fields.Title != "" {
-		job.Title = fields.Title
-	}
-	if job.Company == "" && fields.Company != "" {
-		job.Company = fields.Company
-	}
-	if job.LocationText == "" && fields.Location != "" {
-		job.LocationText = fields.Location
-	}
-	if job.Description == "" && fields.Description != "" {
-		job.Description = fields.Description
-	}
-	if job.ApplyURL == "" && fields.ApplyURL != "" {
-		job.ApplyURL = fields.ApplyURL
-	}
-	if job.EmploymentType == "" && fields.EmploymentType != "" {
-		job.EmploymentType = fields.EmploymentType
-	}
-	if job.RemoteType == "" && fields.RemoteType != "" {
-		job.RemoteType = fields.RemoteType
-	}
-	if job.Currency == "" && fields.Currency != "" {
-		job.Currency = fields.Currency
-	}
-}
-
-// needsAIExtraction returns true for HTML-based source types where the connector
-// only discovers links and AI should be used to extract fields from detail pages.
-func needsAIExtraction(st domain.SourceType) bool {
-	switch st {
-	case domain.SourceBrighterMonday, domain.SourceJobberman,
-		domain.SourceMyJobMag, domain.SourceNjorku,
-		domain.SourceCareers24, domain.SourcePNet,
-		domain.SourceSchemaOrg, domain.SourceSitemap,
-		domain.SourceHostedBoards, domain.SourceGenericHTML:
-		return true
-	default:
-		return false
 	}
 }
