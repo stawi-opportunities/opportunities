@@ -29,3 +29,22 @@ infra-up:
 
 infra-down:
 	docker compose -f deploy/docker-compose.yml down -v
+
+# UI targets
+sitegen:
+	go run ./apps/sitegen/cmd --output-dir ui/data
+
+hugo-build: sitegen
+	cd ui && hugo --minify
+
+pagefind: hugo-build
+	cd ui && npx pagefind --site public --glob "jobs/**/*.html"
+
+ui-dev:
+	cd ui && hugo server --bind 0.0.0.0 --port 1313
+
+ui-build: pagefind
+	@echo "Static site built at ui/public/"
+
+ui-deps:
+	cd ui && npm install

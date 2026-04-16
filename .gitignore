@@ -1,1 +1,6 @@
 WORK_STATE.md
+ui/node_modules/
+ui/public/
+ui/resources/
+ui/.hugo_build.lock
+.superpowers/
