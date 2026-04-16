@@ -26,13 +26,29 @@ Stage 4: CANONICAL → cluster, embed, score, ready for matching
 
 ### Stage 0: CRAWL
 
-Connector fetches data. Before storing:
-1. Check **Valkey bloom filter**: `GETBIT bloom:seen:{source_id} {crc32(hard_key) % 2^20}`. If set → skip.
-2. If not in bloom → check `job_variants` table for `hard_key`. If exists → skip.
-3. If truly new → store as variant with `stage = 'raw'`, set bloom bit.
-4. Emit: `variant.raw.stored`
+Connector fetches data. For each page:
+
+**Content extraction pipeline (before storing):**
+1. Fetch raw HTML
+2. Normalize encoding / decompress (handle gzip, charset detection)
+3. Extract main content using go-trafilatura or go-domdistiller (strips nav, ads, footers, sidebars)
+4. Sanitize remaining junk (script remnants, tracking pixels, etc.)
+5. Convert extracted HTML to Markdown using html-to-markdown
+6. Store all three forms on the variant:
+   - `raw_html` — original HTTP response body (for replay without recrawling)
+   - `clean_html` — extracted main content HTML (for future reprocessing with better extractors)
+   - `markdown` — clean markdown (what AI and humans see, what Stage 2 normalizes from)
+
+**Dedup check:**
+7. Compute hard_key from extracted content
+8. Check **Valkey bloom filter**: `GETBIT bloom:seen:{source_id} {crc32(hard_key) % 2^20}`. If set → skip.
+9. If not in bloom → check `job_variants` table for `hard_key`. If exists → skip.
+10. If truly new → store variant with `stage = 'raw'`, set bloom bit.
+11. Emit: `variant.raw.stored`
 
 Crawler moves to next job immediately. No AI, no normalization.
+
+**For JSON API connectors:** Steps 1-5 are skipped (data is already structured). The connector output is stored directly. Markdown is generated from the description field for consistency.
 
 ### Stage 1: DEDUP
 
@@ -48,8 +64,8 @@ Pure code, no AI.
 ### Stage 2: NORMALIZE
 
 Event: `variant.deduped`
-1. Load variant's description + title + company
-2. Call Ollama — extract ALL intelligence fields:
+1. Load variant's **markdown** content (clean, focused, no HTML noise)
+2. Call Ollama with markdown + title + company — extract ALL intelligence fields:
    - seniority, skills (required + nice-to-have), tools_frameworks
    - industry, department, education, experience
    - salary estimate, currency, remote_type, employment_type
@@ -157,10 +173,24 @@ Flow:
 
 ```sql
 stage              VARCHAR(20) NOT NULL DEFAULT 'raw'
+raw_html           TEXT        -- original HTTP response (for replay)
+clean_html         TEXT        -- main content extracted (for reprocessing)
+markdown           TEXT        -- clean markdown (AI input, human readable)
 validation_score   REAL
 validation_notes   TEXT
 discovered_urls    TEXT
 ```
+
+### Storage Strategy
+
+| Field | Purpose | When populated |
+|---|---|---|
+| `raw_html` | Replay without recrawling | Stage 0, always |
+| `clean_html` | Reprocess with better extractors | Stage 0, HTML sources only |
+| `markdown` | AI normalization input, human readable | Stage 0, always |
+| `description` | Legacy field, kept for backward compat | Stage 0 (connector output) |
+
+For JSON API connectors: `raw_html` stores the JSON response, `clean_html` is empty, `markdown` is generated from the description field.
 
 ### Index
 
