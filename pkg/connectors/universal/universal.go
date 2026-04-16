@@ -5,10 +5,12 @@ package universal
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"regexp"
 	"strings"
+	"time"
 
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
@@ -38,8 +40,21 @@ func NewTyped(client *httpx.Client, extractor *extraction.Extractor, st domain.S
 // Type returns the SourceType this connector was created for.
 func (c *Connector) Type() domain.SourceType { return c.srcType }
 
-// Crawl starts an AI-driven crawl of the source's listing page(s).
-func (c *Connector) Crawl(_ context.Context, source domain.Source) connectors.CrawlIterator {
+// Crawl starts a crawl of the source. Tries sitemaps first (fastest, most
+// complete). Falls back to AI link discovery if no sitemaps found. Falls back
+// to pattern matching if AI is unavailable.
+func (c *Connector) Crawl(ctx context.Context, source domain.Source) connectors.CrawlIterator {
+	// Try sitemap discovery first — most reliable
+	sitemapURLs := discoverSitemapJobURLs(ctx, c.client, source.BaseURL, source.LastSeenAt)
+	if len(sitemapURLs) > 0 {
+		log.Printf("universal: found %d job URLs via sitemap for %s", len(sitemapURLs), source.BaseURL)
+		return &sitemapIterator{
+			jobURLs:   sitemapURLs,
+			batchSize: 50,
+		}
+	}
+
+	// No sitemaps — fall back to AI link discovery
 	return &iterator{
 		client:    c.client,
 		extractor: c.extractor,
@@ -178,3 +193,175 @@ func patternMatchLinks(html string, baseURL string) []string {
 	}
 	return links
 }
+
+// --------------------------------------------------------------------------
+// Sitemap-first discovery
+// --------------------------------------------------------------------------
+
+// discoverSitemapJobURLs tries to find job URLs via sitemaps. Returns nil
+// if no sitemaps are found (caller should fall back to AI discovery).
+func discoverSitemapJobURLs(ctx context.Context, client *httpx.Client, baseURL string, lastSeenAt *time.Time) []string {
+	base := strings.TrimRight(baseURL, "/")
+
+	// 1. Check robots.txt for Sitemap directives
+	sitemapURLs := findSitemapsInRobotsTxt(ctx, client, base)
+
+	// 2. Fallback: try /sitemap.xml
+	if len(sitemapURLs) == 0 {
+		fallback := base + "/sitemap.xml"
+		if raw, status, err := client.Get(ctx, fallback, nil); err == nil && status == 200 && len(raw) > 0 {
+			sitemapURLs = []string{fallback}
+		}
+	}
+
+	if len(sitemapURLs) == 0 {
+		return nil
+	}
+
+	// 3. Parse all sitemaps and collect job URLs
+	seen := make(map[string]bool)
+	var jobURLs []string
+
+	for _, smURL := range sitemapURLs {
+		urls := parseSitemapRecursive(ctx, client, smURL, lastSeenAt)
+		for _, u := range urls {
+			if !seen[u] && isJobURL(u) {
+				seen[u] = true
+				jobURLs = append(jobURLs, u)
+			}
+		}
+	}
+
+	return jobURLs
+}
+
+func findSitemapsInRobotsTxt(ctx context.Context, client *httpx.Client, baseURL string) []string {
+	raw, status, err := client.Get(ctx, baseURL+"/robots.txt", nil)
+	if err != nil || status != 200 {
+		return nil
+	}
+	var urls []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(line), "sitemap:") {
+			u := strings.TrimSpace(line[len("sitemap:"):])
+			if u != "" {
+				urls = append(urls, u)
+			}
+		}
+	}
+	return urls
+}
+
+func parseSitemapRecursive(ctx context.Context, client *httpx.Client, sitemapURL string, lastSeenAt *time.Time) []string {
+	raw, status, err := client.Get(ctx, sitemapURL, nil)
+	if err != nil || status != 200 {
+		return nil
+	}
+
+	// Try sitemapindex first
+	type smEntry struct {
+		Loc string `xml:"loc"`
+	}
+	type smIndex struct {
+		XMLName  xml.Name  `xml:"sitemapindex"`
+		Sitemaps []smEntry `xml:"sitemap>loc"`
+	}
+	var idx smIndex
+	if xml.Unmarshal(raw, &idx) == nil && len(idx.Sitemaps) > 0 {
+		var all []string
+		for _, sm := range idx.Sitemaps {
+			all = append(all, parseSitemapRecursive(ctx, client, sm.Loc, lastSeenAt)...)
+		}
+		return all
+	}
+
+	// Parse as urlset
+	type urlEntry struct {
+		Loc     string `xml:"loc"`
+		LastMod string `xml:"lastmod"`
+	}
+	type urlSet struct {
+		XMLName xml.Name   `xml:"urlset"`
+		URLs    []urlEntry `xml:"url"`
+	}
+	var us urlSet
+	if xml.Unmarshal(raw, &us) != nil {
+		return nil
+	}
+
+	var urls []string
+	for _, u := range us.URLs {
+		if u.Loc == "" {
+			continue
+		}
+		// Filter by lastmod if we have a previous crawl time
+		if lastSeenAt != nil && u.LastMod != "" {
+			if t, err := time.Parse(time.RFC3339, u.LastMod); err == nil && t.Before(*lastSeenAt) {
+				continue
+			}
+			if t, err := time.Parse("2006-01-02", u.LastMod); err == nil && t.Before(*lastSeenAt) {
+				continue
+			}
+			// Also try datetime without timezone
+			if t, err := time.Parse("2006-01-02T15:04:05", u.LastMod); err == nil && t.Before(*lastSeenAt) {
+				continue
+			}
+		}
+		urls = append(urls, u.Loc)
+	}
+	return urls
+}
+
+var jobPathPatterns = []string{
+	"/listing", "/listings/", "/job/", "/jobs/",
+	"/position/", "/vacancy/", "/career/", "/posting/",
+	"/opening/", "/adverts/", "/apply/",
+}
+
+func isJobURL(u string) bool {
+	lower := strings.ToLower(u)
+	for _, p := range jobPathPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// sitemapIterator yields job URLs discovered from sitemaps in batches.
+type sitemapIterator struct {
+	jobURLs   []string
+	pos       int
+	batchSize int
+	jobs      []domain.ExternalJob
+	raw       []byte
+}
+
+func (it *sitemapIterator) Next(_ context.Context) bool {
+	if it.pos >= len(it.jobURLs) {
+		return false
+	}
+	end := it.pos + it.batchSize
+	if end > len(it.jobURLs) {
+		end = len(it.jobURLs)
+	}
+	batch := it.jobURLs[it.pos:end]
+	it.pos = end
+
+	it.jobs = make([]domain.ExternalJob, 0, len(batch))
+	for _, u := range batch {
+		it.jobs = append(it.jobs, domain.ExternalJob{
+			ExternalID: u,
+			ApplyURL:   u,
+		})
+	}
+	return true
+}
+
+func (it *sitemapIterator) Jobs() []domain.ExternalJob       { return it.jobs }
+func (it *sitemapIterator) RawPayload() []byte                { return it.raw }
+func (it *sitemapIterator) HTTPStatus() int                   { return 200 }
+func (it *sitemapIterator) Err() error                        { return nil }
+func (it *sitemapIterator) Cursor() json.RawMessage           { return nil }
+func (it *sitemapIterator) Content() *content.Extracted       { return nil }
