@@ -1,0 +1,270 @@
+{{ define "main" }}
+<div x-data="onboardingWizard()" id="wizard-top" class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+  <!-- Progress bar -->
+  <div class="mb-8" aria-label="Onboarding progress">
+    <p class="text-sm font-semibold text-gray-900">STEP <span x-text="step"></span> OF 3</p>
+    <div class="mt-2 flex gap-1" role="progressbar" :aria-valuenow="step" aria-valuemin="1" aria-valuemax="3">
+      <div class="h-1.5 flex-1 rounded-full" :class="step >= 1 ? 'bg-accent-500' : 'bg-gray-200'"></div>
+      <div class="h-1.5 flex-1 rounded-full" :class="step >= 2 ? 'bg-accent-500' : 'bg-gray-200'"></div>
+      <div class="h-1.5 flex-1 rounded-full" :class="step >= 3 ? 'bg-accent-500' : 'bg-gray-200'"></div>
+    </div>
+  </div>
+
+  <!-- Error banner -->
+  <div x-show="error" x-cloak class="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700" role="alert" x-text="error"></div>
+
+  <div class="grid gap-8 lg:grid-cols-5">
+    <!-- Left: Form (3 cols) -->
+    <div class="lg:col-span-3">
+
+      <!-- Step 1: About You -->
+      <div x-show="step === 1">
+        <h1 class="text-3xl font-bold text-gray-900">About you</h1>
+        <p class="mt-2 text-gray-600">Hi, <span x-text="userName"></span>. Tell us about yourself so companies know who you are.</p>
+
+        <div class="mt-8 space-y-6">
+          <!-- CV Upload with drag-and-drop -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Upload Your Resume/CV</label>
+            <div class="mt-2 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 px-6 py-8"
+                 @dragover.prevent
+                 @drop="handleFileDrop($event)"
+                 :class="cvFileName && 'border-accent-300 bg-accent-50'">
+              <div class="text-center">
+                <p x-show="!cvFileName" class="text-sm text-gray-500">
+                  Drag and drop your CV, or
+                  <label class="cursor-pointer text-accent-600 hover:text-accent-500">
+                    browse
+                    <input type="file" class="sr-only" accept=".pdf,.doc,.docx" @change="handleFileSelect($event)" aria-label="Upload CV file">
+                  </label>
+                </p>
+                <p x-show="cvFileName" x-cloak class="text-sm font-medium text-accent-700" x-text="cvFileName"></p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label for="target-title" class="block text-sm font-medium text-gray-700">Target job title <span class="text-accent-500" aria-hidden="true">*</span></label>
+            <input type="text" id="target-title" x-model="targetJobTitle" class="input-field mt-1" placeholder="e.g. Senior Developer" aria-required="true">
+          </div>
+
+          <div>
+            <label for="exp-level" class="block text-sm font-medium text-gray-700">Experience Level <span class="text-accent-500" aria-hidden="true">*</span></label>
+            <select id="exp-level" x-model="experienceLevel" class="select-field mt-1" aria-required="true">
+              <option value="">Select...</option>
+              <option value="entry">Entry Level (0-2 years)</option>
+              <option value="junior">Junior (2-4 years)</option>
+              <option value="mid">Mid-Level (4-6 years)</option>
+              <option value="senior">Senior (6-10 years)</option>
+              <option value="lead">Lead (10+ years)</option>
+              <option value="executive">Executive</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="job-status" class="block text-sm font-medium text-gray-700">Job Status <span class="text-accent-500" aria-hidden="true">*</span></label>
+            <select id="job-status" x-model="jobSearchStatus" class="select-field mt-1" aria-required="true">
+              <option value="">Select...</option>
+              <option value="actively_looking">Actively Looking</option>
+              <option value="open_to_offers">Open to Offers</option>
+              <option value="casually_browsing">Casually Browsing</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="salary-range" class="block text-sm font-medium text-gray-700">Preferred Salary Range</label>
+            <select id="salary-range" x-model="salaryRange" class="select-field mt-1">
+              <option value="">Select...</option>
+              <option value="30k-50k">$30,000-$50,000 USD</option>
+              <option value="50k-75k">$50,000-$75,000 USD</option>
+              <option value="75k-100k">$75,000-$100,000 USD</option>
+              <option value="100k+">$100,000+ USD</option>
+            </select>
+          </div>
+
+          <label class="flex items-center gap-3">
+            <input type="checkbox" x-model="wantsATSReport" class="h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500">
+            <span class="text-sm text-gray-700">Yes, please email me a free ATS score and resume report</span>
+          </label>
+        </div>
+
+        <div class="mt-8 flex justify-end">
+          <button @click="nextStep()" :disabled="!canProceedStep1" class="btn-primary" :class="!canProceedStep1 && 'opacity-50 cursor-not-allowed'">Continue</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Curate Search -->
+      <div x-show="step === 2" x-cloak>
+        <h1 class="text-3xl font-bold text-gray-900">Curate your search</h1>
+        <p class="mt-2 text-gray-600">Select your preferences. You can always edit this later.</p>
+
+        <div class="mt-8 space-y-6">
+          <fieldset>
+            <legend class="block text-sm font-medium text-gray-700">Region(s) You're Able To Work In <span class="text-accent-500" aria-hidden="true">*</span></legend>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <template x-for="region in ['Anywhere in the World', 'Africa', 'Europe', 'North America', 'South America', 'Asia', 'Oceania']" :key="region">
+                <button @click="toggleRegion(region)"
+                        :class="preferredRegions.includes(region) ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+                        class="rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+                        :aria-pressed="preferredRegions.includes(region)"
+                        x-text="region">
+                </button>
+              </template>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend class="block text-sm font-medium text-gray-700">Preferred Time Zones</legend>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <template x-for="tz in ['EAT (UTC+3)', 'WAT (UTC+1)', 'CAT (UTC+2)', 'SAST (UTC+2)', 'GMT (UTC+0)', 'CET (UTC+1)', 'EST (UTC-5)', 'PST (UTC-8)']" :key="tz">
+                <button @click="toggleTimezone(tz)"
+                        :class="preferredTimezones.includes(tz) ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+                        class="rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+                        :aria-pressed="preferredTimezones.includes(tz)"
+                        x-text="tz">
+                </button>
+              </template>
+            </div>
+          </fieldset>
+
+          <div>
+            <label for="country" class="block text-sm font-medium text-gray-700">Country <span class="text-accent-500" aria-hidden="true">*</span></label>
+            <input type="text" id="country" x-model="country" class="input-field mt-1" placeholder="e.g. Kenya" aria-required="true">
+          </div>
+
+          <fieldset>
+            <legend class="block text-sm font-medium text-gray-700">Are you authorized to work in the US?</legend>
+            <div class="mt-2 flex gap-6">
+              <label class="flex items-center gap-2">
+                <input type="radio" x-model="usWorkAuth" value="true" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="us-auth">
+                <span class="text-sm text-gray-700">Yes</span>
+              </label>
+              <label class="flex items-center gap-2">
+                <input type="radio" x-model="usWorkAuth" value="false" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="us-auth">
+                <span class="text-sm text-gray-700">No</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset x-show="usWorkAuth === 'false'" x-cloak>
+            <legend class="block text-sm font-medium text-gray-700">Will you require visa sponsorship?</legend>
+            <div class="mt-2 flex gap-6">
+              <label class="flex items-center gap-2">
+                <input type="radio" x-model="needsSponsorship" value="true" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="sponsorship">
+                <span class="text-sm text-gray-700">Yes</span>
+              </label>
+              <label class="flex items-center gap-2">
+                <input type="radio" x-model="needsSponsorship" value="false" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="sponsorship">
+                <span class="text-sm text-gray-700">No</span>
+              </label>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="mt-8 flex justify-between">
+          <button @click="prevStep()" class="btn-secondary">Previous</button>
+          <button @click="nextStep()" :disabled="!canProceedStep2" class="btn-primary" :class="!canProceedStep2 && 'opacity-50 cursor-not-allowed'">Continue</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Subscription -->
+      <div x-show="step === 3" x-cloak>
+        <h1 class="text-3xl font-bold text-gray-900">Get Full Access</h1>
+        <p class="mt-2 text-gray-600">Accelerate your remote job search</p>
+
+        <div class="card mt-8 p-6">
+          <p class="text-sm text-gray-500 line-through">$14.95/month</p>
+          <p class="text-3xl font-bold text-gray-900">$2.95<span class="text-base font-normal text-gray-500">/first month</span></p>
+          <p class="mt-2 text-sm text-accent-600">Unlock everything for just $2.95 for your first month, then $14.95/month.</p>
+          <ul class="mt-4 space-y-2 text-sm text-gray-600">
+            <li class="flex items-center gap-2">
+              <svg class="h-4 w-4 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              AI-powered job matching
+            </li>
+            <li class="flex items-center gap-2">
+              <svg class="h-4 w-4 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              Unlimited saved jobs
+            </li>
+            <li class="flex items-center gap-2">
+              <svg class="h-4 w-4 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              ATS resume score report
+            </li>
+            <li class="flex items-center gap-2">
+              <svg class="h-4 w-4 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              Priority job alerts
+            </li>
+          </ul>
+        </div>
+
+        <div class="mt-6">
+          <label class="block text-sm font-medium text-gray-700">Payment Method</label>
+          <div class="mt-2 flex gap-4">
+            <button @click="paymentMethod = 'card'"
+                    :class="paymentMethod === 'card' ? 'border-accent-500 bg-accent-50' : 'border-gray-200'"
+                    class="card flex-1 px-4 py-3 text-center text-sm font-medium transition-colors">
+              Card / International
+            </button>
+            <button @click="paymentMethod = 'mobile'"
+                    :class="paymentMethod === 'mobile' ? 'border-accent-500 bg-accent-50' : 'border-gray-200'"
+                    class="card flex-1 px-4 py-3 text-center text-sm font-medium transition-colors">
+              Mobile Money
+            </button>
+          </div>
+        </div>
+
+        <label class="mt-6 flex items-start gap-3">
+          <input type="checkbox" x-model="agreeTerms" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500">
+          <span class="text-sm text-gray-600">I agree to the <a href="/terms/" class="text-accent-600 underline">Terms &amp; Conditions</a> and the renewal terms above.</span>
+        </label>
+
+        <div class="mt-8 flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <button @click="prevStep()" class="btn-secondary">Previous</button>
+            <button @click="skipPayment()" class="text-sm text-gray-500 underline hover:text-gray-700">Skip for now</button>
+          </div>
+          <button @click="submitOnboarding()"
+                  :disabled="!agreeTerms || loading"
+                  class="btn-primary"
+                  :class="(!agreeTerms || loading) && 'opacity-50 cursor-not-allowed'">
+            <span x-show="!loading">Get Full Access</span>
+            <span x-show="loading" x-cloak>Processing...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Social proof panel (2 cols) -->
+    <div class="hidden lg:col-span-2 lg:block">
+      <div x-show="step === 1" class="rounded-xl bg-gray-50 p-8 text-center">
+        <p class="text-lg font-semibold text-gray-900">Thousands of professionals hired and top companies posting jobs daily.</p>
+        <div class="mt-8 flex justify-center gap-8">
+          <div>
+            <p class="text-sm text-gray-500">Trusted by jobseekers</p>
+            <p class="text-2xl font-bold text-gray-900">6M+</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-500">Jobs Posted</p>
+            <p class="text-2xl font-bold text-gray-900">37,000+</p>
+          </div>
+        </div>
+      </div>
+      <div x-show="step >= 2" x-cloak class="rounded-xl bg-navy-900 p-8 text-white">
+        <p class="text-lg font-semibold">Thousands of professionals hired and top companies posting jobs daily.</p>
+        <div class="mt-8 rounded-lg bg-white/10 p-6">
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Testimonial</p>
+          <blockquote class="mt-3 text-sm text-gray-200">
+            "Stawi has been a great resource during my job hunt. I've discovered new companies and feel more confident about finding the right fit."
+          </blockquote>
+          <p class="mt-4 font-semibold">Diego Ardura</p>
+          <p class="text-sm text-gray-400">Data Analyst</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{ define "scripts" }}
+{{ $onboardingJS := resources.Get "js/onboarding.js" | js.Build (dict "minify" hugo.IsProduction) }}
+<script src="{{ $onboardingJS.RelPermalink }}"></script>
+{{ end }}
