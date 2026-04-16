@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
+	"hash/fnv"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -12,6 +13,7 @@ import (
 )
 
 const bitmapSize = 1 << 20 // 1M bits per source (~128KB, <1% FPR at 50K items)
+const numHashes = 3
 
 // Filter provides fast duplicate detection using Valkey (Redis-compatible) bitmaps,
 // with a database fallback when Valkey is unavailable.
@@ -36,9 +38,22 @@ func NewFilter(valkeyAddr string, db func(ctx context.Context, readOnly bool) *g
 	return f
 }
 
-// bloomOffset returns the bit offset for hardKey within the per-source bitmap.
-func bloomOffset(hardKey string) int64 {
-	return int64(crc32.ChecksumIEEE([]byte(hardKey)) % bitmapSize)
+// bloomOffsets returns k independent hash offsets for a key.
+func bloomOffsets(key string) []int64 {
+	data := []byte(key)
+	h1 := crc32.ChecksumIEEE(data)
+	h2 := fnv.New32a()
+	h2.Write(data)
+	base1 := int64(h1 % uint32(bitmapSize))
+	base2 := int64(h2.Sum32() % uint32(bitmapSize))
+	offsets := make([]int64, numHashes)
+	for i := 0; i < numHashes; i++ {
+		offsets[i] = (base1 + int64(i)*base2) % int64(bitmapSize)
+		if offsets[i] < 0 {
+			offsets[i] = -offsets[i]
+		}
+	}
+	return offsets
 }
 
 // IsSeen reports whether hardKey has been seen for the given sourceID.
@@ -47,9 +62,16 @@ func bloomOffset(hardKey string) int64 {
 func IsSeen(ctx context.Context, f *Filter, sourceID int64, hardKey string) bool {
 	if f.valkey != nil {
 		key := fmt.Sprintf("bloom:seen:%d", sourceID)
-		offset := bloomOffset(hardKey)
-		bit, err := f.valkey.GetBit(ctx, key, offset).Result()
-		if err == nil && bit == 1 {
+		offsets := bloomOffsets(hardKey)
+		allSet := true
+		for _, offset := range offsets {
+			bit, err := f.valkey.GetBit(ctx, key, offset).Result()
+			if err != nil || bit != 1 {
+				allSet = false
+				break
+			}
+		}
+		if allSet {
 			return true
 		}
 	}
@@ -69,8 +91,10 @@ func MarkSeen(ctx context.Context, f *Filter, sourceID int64, hardKey string) {
 		return
 	}
 	key := fmt.Sprintf("bloom:seen:%d", sourceID)
-	offset := bloomOffset(hardKey)
-	f.valkey.SetBit(ctx, key, offset, 1)
+	offsets := bloomOffsets(hardKey)
+	for _, offset := range offsets {
+		f.valkey.SetBit(ctx, key, offset, 1)
+	}
 }
 
 // Close releases the Valkey connection, if any.

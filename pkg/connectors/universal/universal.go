@@ -223,7 +223,7 @@ func discoverSitemapJobURLs(ctx context.Context, client *httpx.Client, baseURL s
 	var jobURLs []string
 
 	for _, smURL := range sitemapURLs {
-		urls := parseSitemapRecursive(ctx, client, smURL, lastSeenAt)
+		urls := parseSitemapRecursive(ctx, client, smURL, lastSeenAt, 0)
 		for _, u := range urls {
 			if !seen[u] && isJobURL(u) {
 				seen[u] = true
@@ -253,7 +253,10 @@ func findSitemapsInRobotsTxt(ctx context.Context, client *httpx.Client, baseURL 
 	return urls
 }
 
-func parseSitemapRecursive(ctx context.Context, client *httpx.Client, sitemapURL string, lastSeenAt *time.Time) []string {
+func parseSitemapRecursive(ctx context.Context, client *httpx.Client, sitemapURL string, lastSeenAt *time.Time, depth int) []string {
+	if depth > 3 {
+		return nil
+	}
 	raw, status, err := client.Get(ctx, sitemapURL, nil)
 	if err != nil || status != 200 {
 		return nil
@@ -271,7 +274,7 @@ func parseSitemapRecursive(ctx context.Context, client *httpx.Client, sitemapURL
 	if xml.Unmarshal(raw, &idx) == nil && len(idx.Sitemaps) > 0 {
 		var all []string
 		for _, sm := range idx.Sitemaps {
-			all = append(all, parseSitemapRecursive(ctx, client, sm.Loc, lastSeenAt)...)
+			all = append(all, parseSitemapRecursive(ctx, client, sm.Loc, lastSeenAt, depth+1)...)
 		}
 		return all
 	}

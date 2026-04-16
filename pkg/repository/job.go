@@ -330,16 +330,6 @@ func (r *JobRepository) UpsertPageState(ctx context.Context, ps *domain.CrawlPag
 		Create(ps).Error
 }
 
-// AdvisoryLock acquires a PostgreSQL session-level advisory lock.
-func (r *JobRepository) AdvisoryLock(ctx context.Context, key int64) error {
-	return r.db(ctx, false).Exec("SELECT pg_advisory_lock(?)", key).Error
-}
-
-// AdvisoryUnlock releases a PostgreSQL session-level advisory lock.
-func (r *JobRepository) AdvisoryUnlock(ctx context.Context, key int64) error {
-	return r.db(ctx, false).Exec("SELECT pg_advisory_unlock(?)", key).Error
-}
-
 // UpdateCanonicalFields updates specific fields on a canonical job by ID.
 func (r *JobRepository) UpdateCanonicalFields(ctx context.Context, id int64, updates map[string]any) error {
 	return r.db(ctx, false).Model(&domain.CanonicalJob{}).Where("id = ?", id).Updates(updates).Error

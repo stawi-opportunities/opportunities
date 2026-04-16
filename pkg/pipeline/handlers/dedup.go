@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"hash/fnv"
 	"log"
 
 	"github.com/pitabwire/frame"
@@ -72,28 +71,16 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
-	// 3. Acquire advisory lock keyed on the hard_key hash to serialise
-	//    concurrent dedup checks for the same logical posting.
-	h64 := fnv.New64a()
-	_, _ = h64.Write([]byte(variant.HardKey))
-	lockKey := int64(h64.Sum64()) // nolint:gosec — intentional truncation
-
-	if err := h.jobRepo.AdvisoryLock(ctx, lockKey); err != nil {
-		return err
-	}
-	defer func() {
-		_ = h.jobRepo.AdvisoryUnlock(ctx, lockKey)
-	}()
-
-	// 4. Check for an existing variant with the same hard_key but a different ID.
+	// 3. Check for an existing variant with the same hard_key but a different ID.
 	existing, err := h.jobRepo.FindByHardKey(ctx, variant.HardKey)
 	if err != nil {
 		return err
 	}
 	if existing != nil && existing.ID != variant.ID {
-		// Duplicate — skip further processing.
-		log.Printf("dedup: variant %d is a duplicate of %d (hard_key=%s), skipping",
+		// Duplicate — mark as flagged so stuck-variant recovery doesn't re-emit it.
+		log.Printf("dedup: variant %d is a duplicate of %d (hard_key=%s), flagging",
 			variant.ID, existing.ID, variant.HardKey)
+		_ = h.jobRepo.UpdateStage(ctx, variant.ID, string(domain.StageFlagged))
 		return nil
 	}
 

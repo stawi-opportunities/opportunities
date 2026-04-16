@@ -141,7 +141,7 @@ func (h *SourceExpansionHandler) Execute(ctx context.Context, payload any) error
 // the http.Client's CheckRedirect kicks in) and returns the scheme+host of the
 // final destination.
 func (h *SourceExpansionHandler) resolveBaseURL(ctx context.Context, rawURL string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -155,7 +155,7 @@ func (h *SourceExpansionHandler) resolveBaseURL(ctx context.Context, rawURL stri
 		}
 		return "", err
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 
 	// resp.Request.URL is the final URL after all redirects.
 	return schemeHost(resp.Request.URL), nil

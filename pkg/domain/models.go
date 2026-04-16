@@ -201,9 +201,9 @@ const (
 // JobVariant represents one observed posting of a job from a specific source.
 type JobVariant struct {
 	ID             int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	ExternalJobID  string    `gorm:"type:varchar(255);not null" json:"external_job_id"`
-	SourceID       int64     `gorm:"not null;index" json:"source_id"`
-	HardKey        string    `gorm:"type:varchar(64);uniqueIndex" json:"hard_key"`
+	ExternalJobID  string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_variant_source_ext" json:"external_job_id"`
+	SourceID       int64     `gorm:"not null;index;uniqueIndex:idx_variant_source_ext" json:"source_id"`
+	HardKey        string    `gorm:"type:varchar(64);index" json:"hard_key"`
 	SourceURL      string    `gorm:"type:text" json:"source_url"`
 	ApplyURL       string    `gorm:"type:text" json:"apply_url"`
 	Title          string    `gorm:"type:text;not null" json:"title"`

@@ -174,7 +174,7 @@ func (it *iterator) discover(ctx context.Context) error {
 
 	seen := make(map[string]struct{})
 	for _, sURL := range sitemapURLs {
-		urls, err := it.parseSitemap(ctx, sURL)
+		urls, err := it.parseSitemap(ctx, sURL, 0)
 		if err != nil {
 			log.Printf("sitemapcrawler: error parsing sitemap %s: %v", sURL, err)
 			continue
@@ -228,7 +228,10 @@ func parseSitemapDirectives(body string) []string {
 
 // parseSitemap fetches a sitemap URL and returns all <loc> entries.
 // If the response is a sitemapindex, it recursively fetches each sub-sitemap.
-func (it *iterator) parseSitemap(ctx context.Context, sitemapURL string) ([]string, error) {
+func (it *iterator) parseSitemap(ctx context.Context, sitemapURL string, depth int) ([]string, error) {
+	if depth > 3 {
+		return nil, nil
+	}
 	raw, status, err := it.client.Get(ctx, sitemapURL, nil)
 	it.raw = raw
 	it.status = status
@@ -244,7 +247,7 @@ func (it *iterator) parseSitemap(ctx context.Context, sitemapURL string) ([]stri
 	if err := xml.Unmarshal(raw, &idx); err == nil && len(idx.Sitemaps) > 0 {
 		var allURLs []string
 		for _, sm := range idx.Sitemaps {
-			sub, err := it.parseSitemap(ctx, sm.Loc)
+			sub, err := it.parseSitemap(ctx, sm.Loc, depth+1)
 			if err != nil {
 				log.Printf("sitemapcrawler: sub-sitemap %s: %v", sm.Loc, err)
 				continue

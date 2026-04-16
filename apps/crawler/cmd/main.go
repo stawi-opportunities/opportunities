@@ -12,6 +12,7 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
 	crawlerconfig "stawi.jobs/apps/crawler/config"
@@ -175,6 +176,20 @@ func main() {
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()
 
+	// Wrap admin mux with authentication if SecurityManager is configured.
+	var adminHandler http.Handler = adminMux
+
+	if secMgr := svc.SecurityManager(); secMgr != nil {
+		if authenticator := secMgr.GetAuthenticator(ctx); authenticator != nil {
+			adminHandler = securityhttp.AuthenticationMiddleware(adminMux, authenticator)
+			log.Info("admin endpoints protected with JWT authentication")
+		} else {
+			log.Warn("SecurityManager present but no authenticator configured — admin endpoints are UNPROTECTED")
+		}
+	} else {
+		log.Warn("no SecurityManager configured — admin endpoints are UNPROTECTED")
+	}
+
 	// Admin: pause a source  (?id=N)
 	adminMux.HandleFunc("/admin/sources/pause", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -236,7 +251,7 @@ func main() {
 	// Admin: rebuild canonical jobs from all variants
 	adminMux.HandleFunc("/admin/rebuild-canonicals", rebuildCanonicalsHandler(jobRepo, dedupeEngine))
 
-	svc.Init(ctx, frame.WithHTTPHandler(adminMux))
+	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 
 	// Register a named health checker that reports source state counts.
 	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo, jobRepo: jobRepo})
@@ -448,6 +463,13 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 			if err := d.jobRepo.UpsertVariant(ctx, &variant); err != nil {
 				log.WithError(err).WithField("source_id", src.ID).Error("store variant failed")
 				continue
+			}
+			// GORM may not populate ID on conflict-update — load it.
+			if variant.ID == 0 {
+				existing, _ := d.jobRepo.FindByHardKey(ctx, variant.HardKey)
+				if existing != nil {
+					variant.ID = existing.ID
+				}
 			}
 
 			// Mark as seen in bloom filter.
