@@ -36,42 +36,67 @@ type JobFields struct {
 	Education      string   `json:"education"`
 	Experience     string   `json:"experience"`
 	Deadline       string   `json:"deadline"`
+
+	// Urgency & hiring intent
+	UrgencyLevel   string   `json:"urgency_level"`
+	UrgencySignals []string `json:"urgency_signals"`
+	HiringTimeline string   `json:"hiring_timeline"`
+
+	// Hiring funnel complexity
+	InterviewStages  int    `json:"interview_stages"`
+	HasTakeHome      bool   `json:"has_take_home"`
+	FunnelComplexity string `json:"funnel_complexity"`
+
+	// Company profile
+	CompanySize  string `json:"company_size"`
+	FundingStage string `json:"funding_stage"`
+
+	// Skills classification
+	RequiredSkills   []string `json:"required_skills"`
+	NiceToHaveSkills []string `json:"nice_to_have_skills"`
+	ToolsFrameworks  []string `json:"tools_frameworks"`
+
+	// Work model details
+	GeoRestrictions string `json:"geo_restrictions"`
+	TimezoneReq     string `json:"timezone_req"`
+
+	// Application channel
+	ApplicationType string `json:"application_type"`
+	ATSPlatform     string `json:"ats_platform"`
+
+	// Role clarity
+	RoleScope string `json:"role_scope"`
+	TeamSize  string `json:"team_size"`
+	ReportsTo string `json:"reports_to"`
 }
 
-const systemPrompt = `You are a job posting data extractor. Extract ALL available information from this job posting page. Output ONLY valid JSON, nothing else. If a field is not found, use empty string for text or empty array for lists.
+const systemPrompt = `You are a job posting data extractor. Output ONLY valid JSON. If a field is not found, use "" for strings, [] for arrays, 0 for numbers, false for booleans.
 
-Required fields:
-- title: exact job title
-- company: employer/organization name
-- location: city, country or "Remote"
-- description: comprehensive summary of the role, responsibilities and requirements (max 1000 words)
-- apply_url: application link if visible on the page
+Extract these fields:
 
-Compensation (estimate from context if not stated explicitly):
-- salary_min: minimum salary as number string, estimate based on role/location/seniority if not stated
-- salary_max: maximum salary as number string, estimate if not stated
-- currency: salary currency code (e.g. "USD", "KES", "ZAR", "GBP")
+title, company, location, description (max 500 words), apply_url
 
-Classification:
-- employment_type: "full-time", "part-time", "contract", "internship", or "freelance"
-- remote_type: "remote", "hybrid", "onsite", or ""
-- seniority: "intern", "junior", "mid", "senior", "lead", "manager", "director", "executive"
-- department: department or team name
-- industry: industry sector (e.g. "technology", "finance", "healthcare")
+Compensation: salary_min (number string), salary_max (number string), currency (e.g. "USD")
 
-Skills and requirements:
-- skills: array of specific technical and soft skills mentioned (e.g. ["Python", "SQL", "Project Management"])
-- roles: array of role categories this fits (e.g. ["Software Engineering", "Backend Development"])
-- education: minimum education requirement (e.g. "Bachelor's in Computer Science")
-- experience: years of experience required (e.g. "3-5 years")
+Classification: employment_type ("full-time"/"part-time"/"contract"/"internship"/"freelance"), remote_type ("remote"/"hybrid"/"onsite"/""), seniority ("intern"/"junior"/"mid"/"senior"/"lead"/"manager"/"director"/"executive"), department, industry
 
-Benefits and perks:
-- benefits: array of benefits mentioned (e.g. ["Health Insurance", "Remote Work", "Stock Options"])
+Skills: skills (array of all skills), roles (array of role categories), education, experience
 
-Contact information:
-- contact_name: hiring manager or recruiter name if mentioned
-- contact_email: contact email if mentioned
-- deadline: application deadline date if mentioned`
+required_skills (must-have skills array), nice_to_have_skills (preferred skills array), tools_frameworks (specific tech stack array)
+
+Benefits: benefits (array), contact_name, contact_email, deadline
+
+Urgency: urgency_level ("urgent" if words like "immediately","ASAP","urgent"; "normal" otherwise; "low" if no rush), urgency_signals (array of urgency phrases found), hiring_timeline ("immediate"/"2-4 weeks"/"1-3 months"/"")
+
+Hiring funnel: interview_stages (estimated number, 0 if unknown), has_take_home (true if take-home/assignment mentioned), funnel_complexity ("low" if 1-2 stages, "medium" if 3-4, "high" if 5+)
+
+Company: company_size ("startup"/"small"/"medium"/"large"/"enterprise" from context), funding_stage ("bootstrapped"/"seed"/"series_a"/"series_b"/"public"/"")
+
+Work model: geo_restrictions ("global"/"us_only"/"emea"/"africa"/"" from location requirements), timezone_req (e.g. "UTC+/-3","US hours","any","")
+
+Application: application_type ("ats" if ATS link,"email" if email apply,"portal","direct"), ats_platform ("greenhouse"/"lever"/"workday"/"" from URL patterns)
+
+Role: role_scope ("ic"/"manager"/"hybrid"/"executive"), team_size ("solo"/"small_team"/"large_team"/""), reports_to (e.g. "CTO","VP Engineering","")`
 
 const maxContentChars = 4000
 const extractionTimeout = 120 * time.Second

@@ -137,6 +137,38 @@ func main() {
 		})
 	})
 
+	// GET /jobs/top?limit=20&min_score=60 — returns top jobs by quality score.
+	r.Get("/jobs/top", func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		limitStr := req.URL.Query().Get("limit")
+		limit := 20
+		if limitStr != "" {
+			if v, err := strconv.Atoi(limitStr); err == nil && v > 0 && v <= 200 {
+				limit = v
+			}
+		}
+		minScoreStr := req.URL.Query().Get("min_score")
+		minScore := 60.0
+		if minScoreStr != "" {
+			if v, err := strconv.ParseFloat(minScoreStr, 64); err == nil && v >= 0 {
+				minScore = v
+			}
+		}
+
+		jobs, err := jobRepo.TopByQualityScore(ctx, minScore, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"min_score": minScore,
+			"count":     len(jobs),
+			"results":   jobs,
+		})
+	})
+
 	// GET /search/semantic?q=<text>&limit=20
 	// Hybrid search: tsvector candidates re-ranked by embedding cosine similarity.
 	r.Get("/search/semantic", func(w http.ResponseWriter, req *http.Request) {

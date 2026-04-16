@@ -95,8 +95,15 @@ func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.Canonica
 			DoUpdates: clause.AssignmentColumns([]string{
 				"title", "company", "description", "location_text", "country",
 				"remote_type", "employment_type", "salary_min", "salary_max",
-				"currency", "apply_url", "posted_at", "last_seen_at",
-				"is_active", "updated_at",
+				"currency", "apply_url", "seniority", "skills", "roles",
+				"benefits", "contact_name", "contact_email", "department",
+				"industry", "education", "experience", "deadline",
+				"urgency_level", "hiring_timeline", "funnel_complexity",
+				"company_size", "funding_stage", "required_skills",
+				"nice_to_have_skills", "tools_frameworks", "geo_restrictions",
+				"timezone_req", "application_type", "ats_platform",
+				"role_scope", "quality_score",
+				"posted_at", "last_seen_at", "is_active", "updated_at",
 			}),
 		}).
 		Create(cj).Error; err != nil {
@@ -173,6 +180,23 @@ func (r *JobRepository) CountCanonical(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db(ctx, true).Model(&domain.CanonicalJob{}).Count(&count).Error
 	return count, err
+}
+
+// UpdateQualityScore updates just the quality_score field of a canonical job.
+func (r *JobRepository) UpdateQualityScore(ctx context.Context, id int64, score float64) error {
+	return r.db(ctx, false).Model(&domain.CanonicalJob{}).Where("id = ?", id).Update("quality_score", score).Error
+}
+
+// TopByQualityScore returns active canonical jobs sorted by quality_score DESC,
+// optionally filtered by a minimum score threshold.
+func (r *JobRepository) TopByQualityScore(ctx context.Context, minScore float64, limit int) ([]*domain.CanonicalJob, error) {
+	var jobs []*domain.CanonicalJob
+	err := r.db(ctx, true).
+		Where("is_active = true AND quality_score >= ?", minScore).
+		Order("quality_score DESC").
+		Limit(limit).
+		Find(&jobs).Error
+	return jobs, err
 }
 
 // CountVariantsByCountry returns variant counts grouped by country code.

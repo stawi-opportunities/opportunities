@@ -294,6 +294,61 @@ func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields)
 	if job.Deadline == "" && fields.Deadline != "" {
 		job.Deadline = fields.Deadline
 	}
+	// Intelligence fields
+	if job.UrgencyLevel == "" && fields.UrgencyLevel != "" {
+		job.UrgencyLevel = fields.UrgencyLevel
+	}
+	if len(job.UrgencySignals) == 0 && len(fields.UrgencySignals) > 0 {
+		job.UrgencySignals = fields.UrgencySignals
+	}
+	if job.HiringTimeline == "" && fields.HiringTimeline != "" {
+		job.HiringTimeline = fields.HiringTimeline
+	}
+	if job.InterviewStages == 0 && fields.InterviewStages > 0 {
+		job.InterviewStages = fields.InterviewStages
+	}
+	if !job.HasTakeHome && fields.HasTakeHome {
+		job.HasTakeHome = fields.HasTakeHome
+	}
+	if job.FunnelComplexity == "" && fields.FunnelComplexity != "" {
+		job.FunnelComplexity = fields.FunnelComplexity
+	}
+	if job.CompanySize == "" && fields.CompanySize != "" {
+		job.CompanySize = fields.CompanySize
+	}
+	if job.FundingStage == "" && fields.FundingStage != "" {
+		job.FundingStage = fields.FundingStage
+	}
+	if len(job.RequiredSkills) == 0 && len(fields.RequiredSkills) > 0 {
+		job.RequiredSkills = fields.RequiredSkills
+	}
+	if len(job.NiceToHaveSkills) == 0 && len(fields.NiceToHaveSkills) > 0 {
+		job.NiceToHaveSkills = fields.NiceToHaveSkills
+	}
+	if len(job.ToolsFrameworks) == 0 && len(fields.ToolsFrameworks) > 0 {
+		job.ToolsFrameworks = fields.ToolsFrameworks
+	}
+	if job.GeoRestrictions == "" && fields.GeoRestrictions != "" {
+		job.GeoRestrictions = fields.GeoRestrictions
+	}
+	if job.TimezoneReq == "" && fields.TimezoneReq != "" {
+		job.TimezoneReq = fields.TimezoneReq
+	}
+	if job.ApplicationType == "" && fields.ApplicationType != "" {
+		job.ApplicationType = fields.ApplicationType
+	}
+	if job.ATSPlatform == "" && fields.ATSPlatform != "" {
+		job.ATSPlatform = fields.ATSPlatform
+	}
+	if job.RoleScope == "" && fields.RoleScope != "" {
+		job.RoleScope = fields.RoleScope
+	}
+	if job.TeamSize == "" && fields.TeamSize != "" {
+		job.TeamSize = fields.TeamSize
+	}
+	if job.ReportsTo == "" && fields.ReportsTo != "" {
+		job.ReportsTo = fields.ReportsTo
+	}
 }
 
 // needsAIExtraction returns true for HTML-based source types where regex parsing

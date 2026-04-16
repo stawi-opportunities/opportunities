@@ -6,6 +6,7 @@ import (
 
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/scoring"
 )
 
 // Engine orchestrates variant upsert, cluster creation, and canonical job
@@ -73,23 +74,50 @@ func (e *Engine) UpsertAndCluster(ctx context.Context, variant *domain.JobVarian
 	// 6. Build the canonical job from the variant.
 	now := time.Now().UTC()
 	canonical := &domain.CanonicalJob{
-		ClusterID:      cluster.ID,
-		Title:          variant.Title,
-		Company:        variant.Company,
-		Description:    variant.Description,
-		LocationText:   variant.LocationText,
-		Country:        variant.Country,
-		RemoteType:     variant.RemoteType,
-		EmploymentType: variant.EmploymentType,
-		SalaryMin:      variant.SalaryMin,
-		SalaryMax:      variant.SalaryMax,
-		Currency:       variant.Currency,
-		ApplyURL:       variant.ApplyURL,
-		PostedAt:       variant.PostedAt,
-		FirstSeenAt:    now,
-		LastSeenAt:     now,
-		IsActive:       true,
+		ClusterID:        cluster.ID,
+		Title:            variant.Title,
+		Company:          variant.Company,
+		Description:      variant.Description,
+		LocationText:     variant.LocationText,
+		Country:          variant.Country,
+		RemoteType:       variant.RemoteType,
+		EmploymentType:   variant.EmploymentType,
+		SalaryMin:        variant.SalaryMin,
+		SalaryMax:        variant.SalaryMax,
+		Currency:         variant.Currency,
+		ApplyURL:         variant.ApplyURL,
+		Seniority:        variant.Seniority,
+		Skills:           variant.Skills,
+		Roles:            variant.Roles,
+		Benefits:         variant.Benefits,
+		ContactName:      variant.ContactName,
+		ContactEmail:     variant.ContactEmail,
+		Department:       variant.Department,
+		Industry:         variant.Industry,
+		Education:        variant.Education,
+		Experience:       variant.Experience,
+		Deadline:         variant.Deadline,
+		UrgencyLevel:     variant.UrgencyLevel,
+		HiringTimeline:   variant.HiringTimeline,
+		FunnelComplexity: variant.FunnelComplexity,
+		CompanySize:      variant.CompanySize,
+		FundingStage:     variant.FundingStage,
+		RequiredSkills:   variant.RequiredSkills,
+		NiceToHaveSkills: variant.NiceToHaveSkills,
+		ToolsFrameworks:  variant.ToolsFrameworks,
+		GeoRestrictions:  variant.GeoRestrictions,
+		TimezoneReq:      variant.TimezoneReq,
+		ApplicationType:  variant.ApplicationType,
+		ATSPlatform:      variant.ATSPlatform,
+		RoleScope:        variant.RoleScope,
+		PostedAt:         variant.PostedAt,
+		FirstSeenAt:      now,
+		LastSeenAt:       now,
+		IsActive:         true,
 	}
+
+	// 6b. Compute quality score.
+	canonical.QualityScore = scoring.Score(canonical)
 
 	// 7. Persist the canonical record.
 	if err := e.jobRepo.UpsertCanonical(ctx, canonical); err != nil {

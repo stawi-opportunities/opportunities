@@ -154,6 +154,26 @@ type ExternalJob struct {
 	Education    string   `json:"education"`
 	Experience   string   `json:"experience"`
 	Deadline     string   `json:"deadline"`
+
+	// Intelligence fields
+	UrgencyLevel     string   `json:"urgency_level"`
+	UrgencySignals   []string `json:"urgency_signals"`
+	HiringTimeline   string   `json:"hiring_timeline"`
+	InterviewStages  int      `json:"interview_stages"`
+	HasTakeHome      bool     `json:"has_take_home"`
+	FunnelComplexity string   `json:"funnel_complexity"`
+	CompanySize      string   `json:"company_size"`
+	FundingStage     string   `json:"funding_stage"`
+	RequiredSkills   []string `json:"required_skills"`
+	NiceToHaveSkills []string `json:"nice_to_have_skills"`
+	ToolsFrameworks  []string `json:"tools_frameworks"`
+	GeoRestrictions  string   `json:"geo_restrictions"`
+	TimezoneReq      string   `json:"timezone_req"`
+	ApplicationType  string   `json:"application_type"`
+	ATSPlatform      string   `json:"ats_platform"`
+	RoleScope        string   `json:"role_scope"`
+	TeamSize         string   `json:"team_size"`
+	ReportsTo        string   `json:"reports_to"`
 }
 
 // JobVariant represents one observed posting of a job from a specific source.
@@ -184,12 +204,30 @@ type JobVariant struct {
 	Industry       string    `gorm:"type:varchar(100)" json:"industry"`
 	Education      string    `gorm:"type:text" json:"education"`
 	Experience     string    `gorm:"type:varchar(100)" json:"experience"`
-	Deadline       string    `gorm:"type:varchar(100)" json:"deadline"`
-	PostedAt       *time.Time `json:"posted_at"`
-	ScrapedAt      time.Time  `gorm:"not null" json:"scraped_at"`
-	ContentHash    string    `gorm:"type:varchar(64)" json:"content_hash"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	Deadline         string    `gorm:"type:varchar(100)" json:"deadline"`
+	UrgencyLevel     string    `gorm:"type:varchar(20)" json:"urgency_level"`
+	UrgencySignals   string    `gorm:"type:text" json:"urgency_signals"`
+	HiringTimeline   string    `gorm:"type:varchar(30)" json:"hiring_timeline"`
+	InterviewStages  int       `gorm:"type:int" json:"interview_stages"`
+	HasTakeHome      bool      `gorm:"type:bool" json:"has_take_home"`
+	FunnelComplexity string    `gorm:"type:varchar(20)" json:"funnel_complexity"`
+	CompanySize      string    `gorm:"type:varchar(20)" json:"company_size"`
+	FundingStage     string    `gorm:"type:varchar(20)" json:"funding_stage"`
+	RequiredSkills   string    `gorm:"type:text" json:"required_skills"`
+	NiceToHaveSkills string    `gorm:"type:text" json:"nice_to_have_skills"`
+	ToolsFrameworks  string    `gorm:"type:text" json:"tools_frameworks"`
+	GeoRestrictions  string    `gorm:"type:varchar(30)" json:"geo_restrictions"`
+	TimezoneReq      string    `gorm:"type:varchar(30)" json:"timezone_req"`
+	ApplicationType  string    `gorm:"type:varchar(20)" json:"application_type"`
+	ATSPlatform      string    `gorm:"type:varchar(30)" json:"ats_platform"`
+	RoleScope        string    `gorm:"type:varchar(20)" json:"role_scope"`
+	TeamSize         string    `gorm:"type:varchar(20)" json:"team_size"`
+	ReportsTo        string    `gorm:"type:varchar(100)" json:"reports_to"`
+	PostedAt         *time.Time `json:"posted_at"`
+	ScrapedAt        time.Time  `gorm:"not null" json:"scraped_at"`
+	ContentHash      string    `gorm:"type:varchar(64)" json:"content_hash"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 func (JobVariant) TableName() string { return "job_variants" }
@@ -241,10 +279,24 @@ type CanonicalJob struct {
 	Industry       string     `gorm:"type:varchar(100)" json:"industry"`
 	Education      string     `gorm:"type:text" json:"education"`
 	Experience     string     `gorm:"type:varchar(100)" json:"experience"`
-	Deadline       string     `gorm:"type:varchar(100)" json:"deadline"`
-	PostedAt       *time.Time `json:"posted_at"`
-	FirstSeenAt    time.Time  `gorm:"not null" json:"first_seen_at"`
-	LastSeenAt     time.Time  `gorm:"not null" json:"last_seen_at"`
+	Deadline         string     `gorm:"type:varchar(100)" json:"deadline"`
+	UrgencyLevel     string     `gorm:"type:varchar(20)" json:"urgency_level"`
+	HiringTimeline   string     `gorm:"type:varchar(30)" json:"hiring_timeline"`
+	FunnelComplexity string     `gorm:"type:varchar(20)" json:"funnel_complexity"`
+	CompanySize      string     `gorm:"type:varchar(20)" json:"company_size"`
+	FundingStage     string     `gorm:"type:varchar(20)" json:"funding_stage"`
+	RequiredSkills   string     `gorm:"type:text" json:"required_skills"`
+	NiceToHaveSkills string     `gorm:"type:text" json:"nice_to_have_skills"`
+	ToolsFrameworks  string     `gorm:"type:text" json:"tools_frameworks"`
+	GeoRestrictions  string     `gorm:"type:varchar(30)" json:"geo_restrictions"`
+	TimezoneReq      string     `gorm:"type:varchar(30)" json:"timezone_req"`
+	ApplicationType  string     `gorm:"type:varchar(20)" json:"application_type"`
+	ATSPlatform      string     `gorm:"type:varchar(30)" json:"ats_platform"`
+	RoleScope        string     `gorm:"type:varchar(20)" json:"role_scope"`
+	QualityScore     float64    `gorm:"type:real;index" json:"quality_score"`
+	PostedAt         *time.Time `json:"posted_at"`
+	FirstSeenAt      time.Time  `gorm:"not null" json:"first_seen_at"`
+	LastSeenAt       time.Time  `gorm:"not null" json:"last_seen_at"`
 	IsActive       bool       `gorm:"not null;default:true;index" json:"is_active"`
 	SearchVector   string     `gorm:"type:tsvector;index:idx_canonical_search,type:gin" json:"-"`
 	Embedding      string     `gorm:"type:text" json:"-"`
