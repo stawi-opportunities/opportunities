@@ -22,7 +22,7 @@
 <meta name="site-params" content='{{ dict "apiURL" .Site.Params.apiURL "candidatesAPIURL" .Site.Params.candidatesAPIURL "oidcIssuer" .Site.Params.oidcIssuer "oidcClientID" .Site.Params.oidcClientID "oidcRedirectURI" .Site.Params.oidcRedirectURI | jsonify }}'>
 
 <!-- CSS -->
-{{ $css := resources.Get "css/main.css" | resources.PostCSS | minify | fingerprint }}
+{{ $css := resources.Get "css/main.css" | css.PostCSS | minify | fingerprint }}
 <link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
 
 <!-- Preload fonts -->
