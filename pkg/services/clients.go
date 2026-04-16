@@ -10,7 +10,7 @@ import (
 	"buf.build/gen/go/antinvestor/profile/connectrpc/go/profile/v1/profilev1connect"
 	apis "github.com/antinvestor/common"
 	"github.com/antinvestor/common/connection"
-	"github.com/antinvestor/service-files/apps/redirect/gen/redirect/v1/redirectv1connect"
+	"stawi.jobs/pkg/services/redirectpb/redirectv1connect"
 	"github.com/pitabwire/util"
 )
 

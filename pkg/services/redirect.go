@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	redirectpb "github.com/antinvestor/service-files/apps/redirect/gen/redirect/v1"
-	"github.com/antinvestor/service-files/apps/redirect/gen/redirect/v1/redirectv1connect"
+	redirectpb "stawi.jobs/pkg/services/redirectpb"
+	"stawi.jobs/pkg/services/redirectpb/redirectv1connect"
 	"connectrpc.com/connect"
 )
 
