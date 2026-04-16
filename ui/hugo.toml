@@ -1,0 +1,33 @@
+baseURL = "https://stawi.jobs/"
+languageCode = "en"
+title = "Stawi.jobs — Remote Jobs in Africa and Beyond"
+
+[params]
+  description = "Find remote jobs from top companies hiring worldwide. Browse 37,000+ positions in programming, design, marketing, and more."
+  apiURL = "http://localhost:8082"
+  candidatesAPIURL = "http://localhost:8080"
+  oidcIssuer = ""
+  oidcClientID = ""
+  oidcRedirectURI = "http://localhost:1313/auth/callback/"
+
+[params.nav]
+  logo = "/images/logo.svg"
+
+[taxonomies]
+  category = "categories"
+
+[pagination]
+  pagerSize = 20
+
+[outputs]
+  home = ["HTML"]
+  section = ["HTML"]
+
+[build]
+  [build.buildStats]
+    enable = true
+
+[module]
+  [module.hugoVersion]
+    extended = true
+    min = "0.123.0"

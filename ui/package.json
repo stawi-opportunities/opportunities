@@ -1,0 +1,21 @@
+{
+  "name": "stawi-jobs-ui",
+  "private": true,
+  "scripts": {
+    "dev": "hugo server --bind 0.0.0.0 --port 1313",
+    "build": "hugo --minify",
+    "pagefind": "npx pagefind --site public --glob 'jobs/**/*.html'"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/typography": "^0.5.15",
+    "autoprefixer": "^10.4.20",
+    "pagefind": "^1.3.0",
+    "postcss": "^8.4.49",
+    "postcss-cli": "^11.0.0",
+    "tailwindcss": "^3.4.17"
+  },
+  "dependencies": {
+    "alpinejs": "^3.14.8"
+  }
+}
