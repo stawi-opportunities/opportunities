@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"stawi.jobs/pkg/domain"
+	"stawi.jobs/pkg/scoring"
 )
 
 // JobRepository wraps GORM operations for job-related entities.
@@ -337,4 +338,30 @@ func (r *JobRepository) AdvisoryLock(ctx context.Context, key int64) error {
 // AdvisoryUnlock releases a PostgreSQL session-level advisory lock.
 func (r *JobRepository) AdvisoryUnlock(ctx context.Context, key int64) error {
 	return r.db(ctx, false).Exec("SELECT pg_advisory_unlock(?)", key).Error
+}
+
+// UpdateCanonicalFields updates specific fields on a canonical job by ID.
+func (r *JobRepository) UpdateCanonicalFields(ctx context.Context, id int64, updates map[string]any) error {
+	return r.db(ctx, false).Model(&domain.CanonicalJob{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// RecomputeQualityScore loads a canonical job, recomputes its score, and saves it.
+func (r *JobRepository) RecomputeQualityScore(ctx context.Context, id int64) error {
+	var job domain.CanonicalJob
+	if err := r.db(ctx, true).Where("id = ?", id).First(&job).Error; err != nil {
+		return err
+	}
+	score := scoring.Score(&job)
+	return r.db(ctx, false).Model(&domain.CanonicalJob{}).Where("id = ?", id).Update("quality_score", score).Error
+}
+
+// ListUnenriched returns canonical jobs that have empty intelligence fields.
+func (r *JobRepository) ListUnenriched(ctx context.Context, limit int) ([]*domain.CanonicalJob, error) {
+	var jobs []*domain.CanonicalJob
+	err := r.db(ctx, true).
+		Where("is_active = true AND (seniority IS NULL OR seniority = '') AND description != ''").
+		Order("id ASC").
+		Limit(limit).
+		Find(&jobs).Error
+	return jobs, err
 }

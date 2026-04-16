@@ -124,10 +124,11 @@ func main() {
 		}
 	})
 
-	// Register the embedding event handler through Frame's events system.
+	// Register event handlers through Frame's events system.
 	if extractor != nil {
 		embeddingHandler := events.NewEmbeddingGenerationHandler(extractor, jobRepo)
-		svc.Init(ctx, frame.WithRegisterEvents(embeddingHandler))
+		enrichmentHandler := events.NewJobEnrichmentHandler(extractor, jobRepo)
+		svc.Init(ctx, frame.WithRegisterEvents(embeddingHandler, enrichmentHandler))
 
 		// One-time backfill: emit embedding events for all canonical jobs that
 		// missed embeddings due to previous Ollama outages. Runs once at startup,
@@ -150,6 +151,30 @@ func main() {
 					Title:          cj.Title,
 					Company:        cj.Company,
 					Description:    cj.Description,
+				})
+			}
+		})
+
+		// One-time backfill: enrich canonical jobs missing intelligence fields.
+		svc.AddPreStartMethod(func(preCtx context.Context, _ *frame.Service) {
+			enrichLog := util.Log(preCtx)
+			unenriched, listErr := jobRepo.ListUnenriched(preCtx, 100)
+			if listErr != nil {
+				enrichLog.WithError(listErr).Warn("enrichment backfill: failed to list")
+				return
+			}
+			if len(unenriched) == 0 {
+				return
+			}
+			enrichLog.WithField("count", len(unenriched)).Info("enrichment backfill: emitting events")
+			evtsMan := svc.EventsManager()
+			for _, cj := range unenriched {
+				_ = evtsMan.Emit(preCtx, events.JobEnrichmentEventName, &events.JobEnrichmentPayload{
+					CanonicalJobID: cj.ID,
+					Description:    cj.Description,
+					Title:          cj.Title,
+					Company:        cj.Company,
+					ApplyURL:       cj.ApplyURL,
 				})
 			}
 		})
@@ -428,20 +453,29 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 				continue
 			}
 
-			// Emit embedding event through Frame's events manager.
+			// Emit events for embedding + enrichment through Frame's events manager.
 			if canonical != nil && canonical.ID > 0 {
 				evtMgr := d.svc.EventsManager()
 				if evtMgr != nil {
-					payload := &events.EmbeddingPayload{
+					// Embedding event
+					embPayload := &events.EmbeddingPayload{
 						CanonicalJobID: canonical.ID,
 						Title:          canonical.Title,
 						Company:        canonical.Company,
 						Description:    canonical.Description,
 					}
-					if emitErr := evtMgr.Emit(ctx, events.EmbeddingGenerationEventName, payload); emitErr != nil {
-						log.WithError(emitErr).
-							WithField("canonical_id", canonical.ID).
-							Warn("embedding event emission failed")
+					_ = evtMgr.Emit(ctx, events.EmbeddingGenerationEventName, embPayload)
+
+					// Enrichment event — only if intelligence fields are empty
+					if canonical.Seniority == "" || canonical.Skills == "" {
+						enrichPayload := &events.JobEnrichmentPayload{
+							CanonicalJobID: canonical.ID,
+							Description:    canonical.Description,
+							Title:          canonical.Title,
+							Company:        canonical.Company,
+							ApplyURL:       canonical.ApplyURL,
+						}
+						_ = evtMgr.Emit(ctx, events.JobEnrichmentEventName, enrichPayload)
 					}
 				}
 			}
