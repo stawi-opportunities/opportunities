@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -278,6 +279,38 @@ func (r *JobRepository) ListAllVariants(ctx context.Context, batchSize, offset i
 		Limit(batchSize).Offset(offset).
 		Find(&variants).Error
 	return variants, err
+}
+
+// FilterForCandidate returns active canonical jobs matching a candidate's hard
+// filters (remote preference, salary floor, preferred countries), ordered by
+// quality_score DESC.
+func (r *JobRepository) FilterForCandidate(ctx context.Context, c *domain.CandidateProfile, limit int) ([]*domain.CanonicalJob, error) {
+	q := r.db(ctx, true).Where("is_active = true")
+
+	if c.RemotePreference == "remote_only" {
+		q = q.Where("remote_type = ?", "remote")
+	}
+
+	if c.SalaryMin > 0 {
+		q = q.Where("salary_max >= ? OR salary_max = 0", c.SalaryMin)
+	}
+
+	if c.PreferredCountries != "" {
+		parts := strings.Split(c.PreferredCountries, ",")
+		countries := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				countries = append(countries, t)
+			}
+		}
+		if len(countries) > 0 {
+			q = q.Where("country IN ?", countries)
+		}
+	}
+
+	var jobs []*domain.CanonicalJob
+	err := q.Order("quality_score DESC").Limit(limit).Find(&jobs).Error
+	return jobs, err
 }
 
 // UpsertPageState inserts or updates page state on conflict of
