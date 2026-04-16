@@ -4,12 +4,19 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/pitabwire/frame"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/telemetry"
 )
+
+var dedupTracer = otel.Tracer("stawi.jobs.pipeline")
 
 // DedupHandler processes variant.raw.stored events and advances deduplicated
 // variants to the variant.deduped stage.
@@ -56,6 +63,22 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		return errors.New("invalid payload type")
 	}
 
+	ctx, span := dedupTracer.Start(ctx, "pipeline.dedup")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("variant_id", p.VariantID),
+		attribute.Int64("source_id", p.SourceID),
+	)
+
+	start := time.Now()
+	defer func() {
+		if telemetry.StageDuration != nil {
+			telemetry.StageDuration.Record(ctx, time.Since(start).Seconds(),
+				metric.WithAttributes(attribute.String("stage", "dedup")),
+			)
+		}
+	}()
+
 	// 1. Load the variant.
 	variant, err := h.jobRepo.GetVariantByID(ctx, p.VariantID)
 	if err != nil {
@@ -87,6 +110,15 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	// 5. Advance stage to "deduped".
 	if err := h.jobRepo.UpdateStage(ctx, variant.ID, string(domain.StageDeduped)); err != nil {
 		return err
+	}
+
+	if telemetry.StageTransitions != nil {
+		telemetry.StageTransitions.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("from", "raw"),
+				attribute.String("to", "deduped"),
+			),
+		)
 	}
 
 	// 6. Emit the next pipeline event.

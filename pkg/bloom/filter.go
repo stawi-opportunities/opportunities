@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"stawi.jobs/pkg/domain"
+	"stawi.jobs/pkg/telemetry"
 )
 
 const bitmapSize = 1 << 20 // 1M bits per source (~128KB, <1% FPR at 50K items)
@@ -72,6 +73,9 @@ func IsSeen(ctx context.Context, f *Filter, sourceID int64, hardKey string) bool
 			}
 		}
 		if allSet {
+			if telemetry.BloomHits != nil {
+				telemetry.BloomHits.Add(ctx, 1)
+			}
 			return true
 		}
 	}
@@ -81,7 +85,17 @@ func IsSeen(ctx context.Context, f *Filter, sourceID int64, hardKey string) bool
 	f.db(ctx, true).Model(&domain.JobVariant{}).
 		Where("hard_key = ?", hardKey).
 		Count(&count)
-	return count > 0
+	seen := count > 0
+	if seen {
+		if telemetry.BloomHits != nil {
+			telemetry.BloomHits.Add(ctx, 1)
+		}
+	} else {
+		if telemetry.BloomMisses != nil {
+			telemetry.BloomMisses.Add(ctx, 1)
+		}
+	}
+	return seen
 }
 
 // MarkSeen records hardKey as seen for sourceID in the Valkey bitmap.

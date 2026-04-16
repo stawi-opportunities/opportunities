@@ -28,6 +28,7 @@ import (
 	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
+	"stawi.jobs/pkg/telemetry"
 )
 
 func main() {
@@ -49,6 +50,12 @@ func main() {
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 
 	log := util.Log(ctx)
+
+	// Initialize pipeline telemetry metrics. Frame has already configured the
+	// global OTel provider, so this registers our custom instruments into it.
+	if err := telemetry.Init(); err != nil {
+		log.WithError(err).Warn("telemetry metrics init failed")
+	}
 
 	// Obtain the database pool.
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)

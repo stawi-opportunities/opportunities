@@ -5,14 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/pitabwire/frame"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/telemetry"
 )
+
+var canonicalTracer = otel.Tracer("stawi.jobs.pipeline")
 
 // CanonicalHandler processes variant.validated events, runs deduplication and
 // clustering, generates embeddings, and advances variants to the ready stage.
@@ -68,6 +75,22 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		return errors.New("invalid payload type")
 	}
 
+	ctx, span := canonicalTracer.Start(ctx, "pipeline.canonical")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("variant_id", p.VariantID),
+		attribute.Int64("source_id", p.SourceID),
+	)
+
+	start := time.Now()
+	defer func() {
+		if telemetry.StageDuration != nil {
+			telemetry.StageDuration.Record(ctx, time.Since(start).Seconds(),
+				metric.WithAttributes(attribute.String("stage", "canonical")),
+			)
+		}
+	}()
+
 	// 1. Load the variant.
 	variant, err := h.jobRepo.GetVariantByID(ctx, p.VariantID)
 	if err != nil {
@@ -115,6 +138,18 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	// 5. Advance stage to "ready".
 	if err := h.jobRepo.UpdateStage(ctx, variant.ID, string(domain.StageReady)); err != nil {
 		return err
+	}
+
+	if telemetry.StageTransitions != nil {
+		telemetry.StageTransitions.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("from", "validated"),
+				attribute.String("to", "ready"),
+			),
+		)
+	}
+	if telemetry.JobsReady != nil {
+		telemetry.JobsReady.Add(ctx, 1)
 	}
 
 	// 6. Emit job.ready.

@@ -7,13 +7,20 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/frame"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/telemetry"
 )
+
+var validateTracer = otel.Tracer("stawi.jobs.pipeline")
 
 const validationPrompt = `You are a job data quality reviewer. Given extracted job posting data, assess its completeness and correctness. Output ONLY valid JSON.
 
@@ -94,6 +101,22 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		return errors.New("invalid payload type")
 	}
 
+	ctx, span := validateTracer.Start(ctx, "pipeline.validate")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("variant_id", p.VariantID),
+		attribute.Int64("source_id", p.SourceID),
+	)
+
+	start := time.Now()
+	defer func() {
+		if telemetry.StageDuration != nil {
+			telemetry.StageDuration.Record(ctx, time.Since(start).Seconds(),
+				metric.WithAttributes(attribute.String("stage", "validate")),
+			)
+		}
+	}()
+
 	// 1. Load the variant.
 	variant, err := h.jobRepo.GetVariantByID(ctx, p.VariantID)
 	if err != nil {
@@ -148,6 +171,14 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		}
 		if err := h.sourceRepo.IncrementQualityValidated(ctx, variant.SourceID); err != nil {
 			log.Printf("validate: increment quality validated for source %d: %v", variant.SourceID, err)
+		}
+		if telemetry.StageTransitions != nil {
+			telemetry.StageTransitions.Add(ctx, 1,
+				metric.WithAttributes(
+					attribute.String("from", "normalized"),
+					attribute.String("to", "validated"),
+				),
+			)
 		}
 		return h.svc.EventsManager().Emit(ctx, EventVariantValidated, &VariantPayload{
 			VariantID: variant.ID,

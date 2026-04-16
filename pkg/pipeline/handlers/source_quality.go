@@ -7,11 +7,19 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/telemetry"
 )
+
+var sourceQualityTracer = otel.Tracer("stawi.jobs.pipeline")
 
 const sourceReviewPrompt = `You are a job source quality assessor. Given sample job postings from a source, assess whether this source provides valuable job data worth continuing to crawl.
 
@@ -85,6 +93,21 @@ func (h *SourceQualityHandler) Execute(ctx context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type")
 	}
+
+	ctx, span := sourceQualityTracer.Start(ctx, "pipeline.source_quality")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("source_id", p.SourceID),
+	)
+
+	start := time.Now()
+	defer func() {
+		if telemetry.StageDuration != nil {
+			telemetry.StageDuration.Record(ctx, time.Since(start).Seconds(),
+				metric.WithAttributes(attribute.String("stage", "source_quality")),
+			)
+		}
+	}()
 
 	// 1. Load the source.
 	src, err := h.sourceRepo.GetByID(ctx, p.SourceID)

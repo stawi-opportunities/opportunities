@@ -6,15 +6,22 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/frame"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/telemetry"
 )
+
+var normalizeTracer = otel.Tracer("stawi.jobs.pipeline")
 
 // NormalizeHandler processes variant.deduped events, runs AI extraction on the
 // variant content, and advances variants to the normalized stage.
@@ -73,6 +80,22 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		return errors.New("invalid payload type")
 	}
 
+	ctx, span := normalizeTracer.Start(ctx, "pipeline.normalize")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("variant_id", p.VariantID),
+		attribute.Int64("source_id", p.SourceID),
+	)
+
+	start := time.Now()
+	defer func() {
+		if telemetry.StageDuration != nil {
+			telemetry.StageDuration.Record(ctx, time.Since(start).Seconds(),
+				metric.WithAttributes(attribute.String("stage", "normalize")),
+			)
+		}
+	}()
+
 	// 1. Load the variant.
 	variant, err := h.jobRepo.GetVariantByID(ctx, p.VariantID)
 	if err != nil {
@@ -117,8 +140,14 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		variant.Title, variant.Company, contentText)
 
 	// 5. Call AI extractor — no artificial timeout, let the model finish.
+	if telemetry.AIExtractions != nil {
+		telemetry.AIExtractions.Add(ctx, 1)
+	}
 	fields, err := h.extractor.Extract(ctx, input, variant.ApplyURL)
 	if err != nil {
+		if telemetry.AIFailures != nil {
+			telemetry.AIFailures.Add(ctx, 1)
+		}
 		return fmt.Errorf("normalize: extraction failed for variant %d: %w", variant.ID, err)
 	}
 
@@ -254,6 +283,15 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	// 7. Persist all normalized fields + stage change in a single update.
 	if err := h.jobRepo.UpdateVariantFields(ctx, variant.ID, updates); err != nil {
 		return fmt.Errorf("normalize: persist fields for variant %d: %w", variant.ID, err)
+	}
+
+	if telemetry.StageTransitions != nil {
+		telemetry.StageTransitions.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("from", "deduped"),
+				attribute.String("to", "normalized"),
+			),
+		)
 	}
 
 	// 8. Emit variant.normalized.

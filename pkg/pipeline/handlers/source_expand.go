@@ -10,9 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/telemetry"
 )
+
+var sourceExpandTracer = otel.Tracer("stawi.jobs.pipeline")
 
 // blockedDomains lists domains that are not job boards and should be skipped
 // during source expansion.
@@ -83,6 +90,22 @@ func (h *SourceExpansionHandler) Execute(ctx context.Context, payload any) error
 	if !ok {
 		return errors.New("invalid payload type")
 	}
+
+	ctx, span := sourceExpandTracer.Start(ctx, "pipeline.source_expand")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("source_id", p.SourceID),
+		attribute.Int("url_count", len(p.URLs)),
+	)
+
+	start := time.Now()
+	defer func() {
+		if telemetry.StageDuration != nil {
+			telemetry.StageDuration.Record(ctx, time.Since(start).Seconds(),
+				metric.WithAttributes(attribute.String("stage", "source_expand")),
+			)
+		}
+	}()
 
 	// Load the source to know its own domain so we can skip self-references.
 	src, err := h.sourceRepo.GetByID(ctx, p.SourceID)
