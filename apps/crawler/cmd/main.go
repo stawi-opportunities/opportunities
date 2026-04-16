@@ -227,6 +227,9 @@ func main() {
 		})
 	})
 
+	// Admin: rebuild canonical jobs from all variants
+	adminMux.HandleFunc("/admin/rebuild-canonicals", rebuildCanonicalsHandler(jobRepo, dedupeEngine))
+
 	svc.Init(ctx, frame.WithHTTPHandler(adminMux))
 
 	// Register a named health checker that reports source state counts.
@@ -496,6 +499,52 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 		WithField("rejected", jobsRejected).
 		WithField("crawl_err", crawlErr).
 		Info("source processing complete")
+}
+
+// rebuildCanonicalsHandler returns an HTTP handler that truncates all canonical
+// tables and rebuilds canonical jobs by re-running every variant through the
+// dedupe engine. Useful for recovering from dedupe bugs that produced inflated
+// canonical counts.
+func rebuildCanonicalsHandler(jobRepo *repository.JobRepository, dedupeEngine *dedupe.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		ctx := r.Context()
+
+		// 1. Truncate canonical tables.
+		if err := jobRepo.TruncateCanonicals(ctx); err != nil {
+			http.Error(w, "truncate failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// 2. Rebuild in batches.
+		offset := 0
+		batchSize := 500
+		total := 0
+		errors := 0
+		for {
+			variants, err := jobRepo.ListAllVariants(ctx, batchSize, offset)
+			if err != nil || len(variants) == 0 {
+				break
+			}
+			for _, v := range variants {
+				if _, err := dedupeEngine.UpsertAndCluster(ctx, v); err != nil {
+					errors++
+				}
+				total++
+			}
+			offset += batchSize
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":             "complete",
+			"variants_processed": total,
+			"errors":             errors,
+		})
+	}
 }
 
 // mergeExtractedFields copies non-empty fields from JobFields into an ExternalJob,
