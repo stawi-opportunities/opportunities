@@ -129,10 +129,16 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		return fmt.Errorf("validate: prompt failed for variant %d: %w", p.VariantID, err)
 	}
 
-	// 5. Parse response.
+	// 5. Parse response. If the AI returned non-JSON, flag the variant
+	//    instead of returning an error that would cause infinite retries.
 	var result validationResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return fmt.Errorf("validate: parse response for variant %d: %w", p.VariantID, err)
+		log.Printf("validate: AI response not parseable for variant %d, flagging: %v", p.VariantID, err)
+		if updateErr := h.jobRepo.UpdateValidation(ctx, variant.ID, string(domain.StageFlagged), 0, "AI response not parseable: "+err.Error()); updateErr != nil {
+			return updateErr
+		}
+		_ = h.sourceRepo.IncrementQualityFlagged(ctx, variant.SourceID)
+		return nil
 	}
 
 	// 6. Accept or flag the variant.

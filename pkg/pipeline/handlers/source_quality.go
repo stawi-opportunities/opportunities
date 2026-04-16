@@ -169,8 +169,16 @@ func (h *SourceQualityHandler) Execute(ctx context.Context, payload any) error {
 		}
 
 	case "disable":
-		if err := h.sourceRepo.DisableSource(ctx, p.SourceID); err != nil {
-			return fmt.Errorf("source_quality: disable source: %w", err)
+		// Safety guard: only disable if already paused — can't jump straight to disabled.
+		if src.Status == domain.SourcePaused {
+			if err := h.sourceRepo.DisableSource(ctx, p.SourceID); err != nil {
+				return fmt.Errorf("source_quality: disable source: %w", err)
+			}
+		} else {
+			log.Printf("source_quality: source %d not paused (status=%s), pausing first instead of disabling", p.SourceID, src.Status)
+			if err := h.sourceRepo.PauseSource(ctx, p.SourceID); err != nil {
+				return fmt.Errorf("source_quality: pause source (before disable): %w", err)
+			}
 		}
 
 	default:

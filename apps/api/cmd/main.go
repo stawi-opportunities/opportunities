@@ -24,10 +24,11 @@ import (
 )
 
 type apiConfig struct {
-	ServerPort  string `env:"SERVER_PORT" envDefault:":8082"`
-	DatabaseURL string `env:"DATABASE_URL" envDefault:""`
-	OllamaURL   string `env:"OLLAMA_URL" envDefault:""`
-	OllamaModel string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
+	ServerPort         string `env:"SERVER_PORT" envDefault:":8082"`
+	DatabaseURL        string `env:"DATABASE_URL" envDefault:""`
+	OllamaURL          string `env:"OLLAMA_URL" envDefault:""`
+	OllamaModel        string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
+	DoDatabaseMigrate  bool   `env:"DO_DATABASE_MIGRATE" envDefault:"false"`
 }
 
 func main() {
@@ -41,15 +42,24 @@ func main() {
 		log.Fatalf("open database: %v", err)
 	}
 
-	if err := db.AutoMigrate(
-		&domain.Source{},
-		&domain.CanonicalJob{},
-		&domain.JobVariant{},
-	); err != nil {
-		log.Fatalf("auto-migrate: %v", err)
+	if cfg.DoDatabaseMigrate {
+		if err := db.AutoMigrate(
+			&domain.Source{},
+			&domain.CanonicalJob{},
+			&domain.JobVariant{},
+		); err != nil {
+			log.Fatalf("auto-migrate: %v", err)
+		}
+		log.Println("migration complete")
+		return
 	}
 
-	dbFn := func(_ context.Context, _ bool) *gorm.DB { return db }
+	dbFn := func(_ context.Context, readOnly bool) *gorm.DB {
+		if readOnly {
+			return db.Session(&gorm.Session{}).Set("gorm:query_option", "/*readonly*/")
+		}
+		return db
+	}
 	sourceRepo := repository.NewSourceRepository(dbFn)
 	jobRepo := repository.NewJobRepository(dbFn)
 

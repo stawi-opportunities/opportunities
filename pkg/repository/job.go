@@ -260,16 +260,18 @@ func (r *JobRepository) FindClusterByVariantID(ctx context.Context, variantID in
 	return &cluster, nil
 }
 
-// TruncateCanonicals deletes all canonical_jobs, job_clusters, and job_cluster_members.
+// TruncateCanonicals deletes all canonical_jobs, job_clusters, and job_cluster_members
+// within a single transaction to maintain referential consistency.
 func (r *JobRepository) TruncateCanonicals(ctx context.Context) error {
-	db := r.db(ctx, false)
-	if err := db.Exec("DELETE FROM job_cluster_members").Error; err != nil {
-		return err
-	}
-	if err := db.Exec("DELETE FROM canonical_jobs").Error; err != nil {
-		return err
-	}
-	return db.Exec("DELETE FROM job_clusters").Error
+	return r.db(ctx, false).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM job_cluster_members").Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM canonical_jobs").Error; err != nil {
+			return err
+		}
+		return tx.Exec("DELETE FROM job_clusters").Error
+	})
 }
 
 // ListAllVariants returns variants in batches for rebuild processing.

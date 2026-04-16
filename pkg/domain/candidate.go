@@ -69,8 +69,8 @@ type CandidateProfile struct {
 	PreferredLocations  string  `gorm:"type:text" json:"preferred_locations"`
 	PreferredCountries  string  `gorm:"type:text" json:"preferred_countries"`
 	RemotePreference    string  `gorm:"type:varchar(20)" json:"remote_preference"`
-	SalaryMin           float32 `gorm:"type:real" json:"salary_min"`
-	SalaryMax           float32 `gorm:"type:real" json:"salary_max"`
+	SalaryMin           float64 `gorm:"type:real" json:"salary_min"`
+	SalaryMax           float64 `gorm:"type:real" json:"salary_max"`
 	Currency            string  `gorm:"type:varchar(10)" json:"currency"`
 
 	// Additional profile fields

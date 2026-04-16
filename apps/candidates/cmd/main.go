@@ -13,6 +13,7 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
 	"stawi.jobs/apps/candidates/config"
@@ -83,25 +84,48 @@ func main() {
 		)
 	}
 
+	// Build auth middleware if SecurityManager is configured.
+	var authMiddleware func(http.Handler) http.Handler
+	if secMgr := svc.SecurityManager(); secMgr != nil {
+		if authenticator := secMgr.GetAuthenticator(ctx); authenticator != nil {
+			authMiddleware = func(next http.Handler) http.Handler {
+				return securityhttp.AuthenticationMiddleware(next, authenticator)
+			}
+			log.Info("authenticated endpoints protected with JWT authentication")
+		} else {
+			log.Warn("SecurityManager present but no authenticator configured — endpoints are UNPROTECTED")
+		}
+	} else {
+		log.Warn("no SecurityManager configured — endpoints are UNPROTECTED")
+	}
+
 	// HTTP routes with chi
 	r := chi.NewRouter()
 
-	// Health
+	// Public routes (no auth required)
 	r.Get("/healthz", healthHandler(candidateRepo))
-
-	// Candidate API
 	r.Post("/candidates/register", registerHandler(candidateRepo, extractor, svc))
-	r.Get("/candidates/profile", getProfileHandler(candidateRepo))
-	r.Put("/candidates/profile", updateProfileHandler(candidateRepo))
-	r.Get("/candidates/matches", listMatchesHandler(matchRepo))
-	r.Post("/candidates/matches/{id}/view", viewMatchHandler(matchRepo))
-
-	// Admin
-	r.Get("/admin/candidates", listCandidatesHandler(candidateRepo))
-	r.Post("/admin/match/run", forceMatchHandler(matcher, candidateRepo))
-
-	// Webhook
 	r.Post("/webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
+
+	// Authenticated candidate routes
+	r.Group(func(r chi.Router) {
+		if authMiddleware != nil {
+			r.Use(authMiddleware)
+		}
+		r.Get("/candidates/profile", getProfileHandler(candidateRepo))
+		r.Put("/candidates/profile", updateProfileHandler(candidateRepo))
+		r.Get("/candidates/matches", listMatchesHandler(matchRepo))
+		r.Post("/candidates/matches/{id}/view", viewMatchHandler(matchRepo))
+	})
+
+	// Authenticated admin routes
+	r.Group(func(r chi.Router) {
+		if authMiddleware != nil {
+			r.Use(authMiddleware)
+		}
+		r.Get("/admin/candidates", listCandidatesHandler(candidateRepo))
+		r.Post("/admin/match/run", forceMatchHandler(matcher, candidateRepo))
+	})
 
 	eventOpts = append(eventOpts, frame.WithHTTPHandler(r))
 	svc.Init(ctx, eventOpts...)
@@ -165,13 +189,13 @@ func applyCVFields(candidate *domain.CandidateProfile, fields *extraction.CVFiel
 		candidate.Currency = fields.Currency
 	}
 	if fields.SalaryMin != "" {
-		if v, err := strconv.ParseFloat(fields.SalaryMin, 32); err == nil {
-			candidate.SalaryMin = float32(v)
+		if v, err := strconv.ParseFloat(fields.SalaryMin, 64); err == nil {
+			candidate.SalaryMin = v
 		}
 	}
 	if fields.SalaryMax != "" {
-		if v, err := strconv.ParseFloat(fields.SalaryMax, 32); err == nil {
-			candidate.SalaryMax = float32(v)
+		if v, err := strconv.ParseFloat(fields.SalaryMax, 64); err == nil {
+			candidate.SalaryMax = v
 		}
 	}
 
@@ -350,8 +374,8 @@ func updateProfileHandler(candidateRepo *repository.CandidateRepository) http.Ha
 			RemotePreference   *string  `json:"remote_preference"`
 			AutoApply          *bool    `json:"auto_apply"`
 			PreferredCountries *string  `json:"preferred_countries"`
-			SalaryMin          *float32 `json:"salary_min"`
-			SalaryMax          *float32 `json:"salary_max"`
+			SalaryMin          *float64 `json:"salary_min"`
+			SalaryMax          *float64 `json:"salary_max"`
 			Status             *string  `json:"status"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {

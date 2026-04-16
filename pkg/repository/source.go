@@ -192,11 +192,12 @@ func (r *SourceRepository) GetQualityRate(ctx context.Context, id int64) (float6
 	return float64(src.QualityFlagged) / float64(total), total, nil
 }
 
-// ReduceCrawlFrequency multiplies crawl_interval_sec by 3 (reduces crawl rate).
+// ReduceCrawlFrequency multiplies crawl_interval_sec by 3 (reduces crawl rate),
+// capped at 604800 seconds (7 days) to prevent unbounded growth.
 func (r *SourceRepository) ReduceCrawlFrequency(ctx context.Context, id int64) error {
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).
-		UpdateColumn("crawl_interval_sec", gorm.Expr("crawl_interval_sec * 3")).Error
+		UpdateColumn("crawl_interval_sec", gorm.Expr("LEAST(crawl_interval_sec * 3, 604800)")).Error
 }
 
 // DisableSource sets a source's status to disabled.
