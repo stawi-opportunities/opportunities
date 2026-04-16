@@ -41,50 +41,60 @@ const (
 // CandidateProfile stores all data for a registered job seeker.
 type CandidateProfile struct {
 	ID           int64            `gorm:"primaryKey;autoIncrement" json:"id"`
-	Email        string           `gorm:"type:text;uniqueIndex;not null" json:"email"`
-	Name         string           `gorm:"type:text" json:"name"`
-	Phone        string           `gorm:"type:text" json:"phone"`
+	ProfileID    string           `gorm:"type:varchar(255);uniqueIndex;not null" json:"profile_id"`
 	Status       CandidateStatus  `gorm:"type:varchar(20);not null;default:'unverified'" json:"status"`
 	Subscription SubscriptionTier `gorm:"type:varchar(20);not null;default:'free'" json:"subscription"`
 	AutoApply    bool             `gorm:"not null;default:false" json:"auto_apply"`
 
 	// CV storage
-	CVUrl      string `gorm:"type:text" json:"cv_url"`
-	CVRawText  string `gorm:"type:text" json:"-"`
+	CVUrl     string `gorm:"type:text" json:"cv_url"`
+	CVRawText string `gorm:"type:text" json:"-"`
 
 	// AI-extracted profile fields
-	CurrentTitle     string `gorm:"type:text" json:"current_title"`
-	Seniority        string `gorm:"type:varchar(30)" json:"seniority"`
-	YearsExperience  int    `gorm:"type:int" json:"years_experience"`
-	Skills           string `gorm:"type:text" json:"skills"`
-	StrongSkills     string `gorm:"type:text" json:"strong_skills"`
-	WorkingSkills    string `gorm:"type:text" json:"working_skills"`
-	ToolsFrameworks  string `gorm:"type:text" json:"tools_frameworks"`
-	Certifications   string `gorm:"type:text" json:"certifications"`
-	PreferredRoles   string `gorm:"type:text" json:"preferred_roles"`
-	Industries       string `gorm:"type:text" json:"industries"`
-	Education        string `gorm:"type:text" json:"education"`
+	CurrentTitle    string `gorm:"type:text" json:"current_title"`
+	Seniority       string `gorm:"type:varchar(30)" json:"seniority"`
+	YearsExperience int    `gorm:"type:int" json:"years_experience"`
+	Skills          string `gorm:"type:text" json:"skills"`
+	StrongSkills    string `gorm:"type:text" json:"strong_skills"`
+	WorkingSkills   string `gorm:"type:text" json:"working_skills"`
+	ToolsFrameworks string `gorm:"type:text" json:"tools_frameworks"`
+	Certifications  string `gorm:"type:text" json:"certifications"`
+	PreferredRoles  string `gorm:"type:text" json:"preferred_roles"`
+	Industries      string `gorm:"type:text" json:"industries"`
+	Education       string `gorm:"type:text" json:"education"`
 
 	// Job preferences
-	PreferredLocations  string  `gorm:"type:text" json:"preferred_locations"`
-	PreferredCountries  string  `gorm:"type:text" json:"preferred_countries"`
-	RemotePreference    string  `gorm:"type:varchar(20)" json:"remote_preference"`
-	SalaryMin           float64 `gorm:"type:real" json:"salary_min"`
-	SalaryMax           float64 `gorm:"type:real" json:"salary_max"`
-	Currency            string  `gorm:"type:varchar(10)" json:"currency"`
+	PreferredLocations string  `gorm:"type:text" json:"preferred_locations"`
+	PreferredCountries string  `gorm:"type:text" json:"preferred_countries"`
+	RemotePreference   string  `gorm:"type:varchar(20)" json:"remote_preference"`
+	SalaryMin          float32 `gorm:"type:real" json:"salary_min"`
+	SalaryMax          float32 `gorm:"type:real" json:"salary_max"`
+	Currency           string  `gorm:"type:varchar(10)" json:"currency"`
+
+	// Onboarding domain fields
+	TargetJobTitle     string `gorm:"type:text" json:"target_job_title"`
+	ExperienceLevel    string `gorm:"type:varchar(30)" json:"experience_level"`
+	JobSearchStatus    string `gorm:"type:varchar(30)" json:"job_search_status"`
+	PreferredRegions   string `gorm:"type:text" json:"preferred_regions"`
+	PreferredTimezones string `gorm:"type:text" json:"preferred_timezones"`
+	USWorkAuth         *bool  `gorm:"type:bool" json:"us_work_auth"`
+	NeedsSponsorship   *bool  `gorm:"type:bool" json:"needs_sponsorship"`
+	WantsATSReport     bool   `gorm:"not null;default:false" json:"wants_ats_report"`
+
+	// Subscription billing (links to service-payment)
+	SubscriptionID string `gorm:"type:varchar(255)" json:"subscription_id"`
+	PlanID         string `gorm:"type:varchar(100)" json:"plan_id"`
 
 	// Additional profile fields
 	Languages   string `gorm:"type:text" json:"languages"`
 	Bio         string `gorm:"type:text" json:"bio"`
 	WorkHistory string `gorm:"type:jsonb;default:'[]'" json:"work_history"`
 
-	// Communication preferences
-	CommEmail      bool   `gorm:"not null;default:true" json:"comm_email"`
-	CommWhatsapp   bool   `gorm:"not null;default:false" json:"comm_whatsapp"`
-	CommTelegram   bool   `gorm:"not null;default:false" json:"comm_telegram"`
-	CommSMS        bool   `gorm:"not null;default:false" json:"comm_sms"`
-	WhatsappNumber string `gorm:"type:text" json:"whatsapp_number"`
-	TelegramHandle string `gorm:"type:text" json:"telegram_handle"`
+	// Communication channel preferences (not contact details)
+	CommEmail    bool `gorm:"not null;default:true" json:"comm_email"`
+	CommWhatsapp bool `gorm:"not null;default:false" json:"comm_whatsapp"`
+	CommTelegram bool `gorm:"not null;default:false" json:"comm_telegram"`
+	CommSMS      bool `gorm:"not null;default:false" json:"comm_sms"`
 
 	// Matching metadata
 	Embedding       string     `gorm:"type:text" json:"-"`
@@ -101,17 +111,17 @@ func (CandidateProfile) TableName() string { return "candidate_profiles" }
 
 // CandidateMatch records a scored pairing between a candidate and a canonical job.
 type CandidateMatch struct {
-	ID                int64       `gorm:"primaryKey;autoIncrement" json:"id"`
-	CandidateID       int64       `gorm:"not null;index;uniqueIndex:idx_candidate_job" json:"candidate_id"`
-	CanonicalJobID    int64       `gorm:"not null;index;uniqueIndex:idx_candidate_job" json:"canonical_job_id"`
-	MatchScore        float32     `gorm:"type:real;not null" json:"match_score"`
-	SkillsOverlap     float32     `gorm:"type:real" json:"skills_overlap"`
-	EmbeddingSimilarity float32   `gorm:"type:real" json:"embedding_similarity"`
-	Status            MatchStatus `gorm:"type:varchar(20);not null;default:'new'" json:"status"`
-	SentAt            *time.Time  `json:"sent_at"`
-	ViewedAt          *time.Time  `json:"viewed_at"`
-	AppliedAt         *time.Time  `json:"applied_at"`
-	CreatedAt         time.Time   `json:"created_at"`
+	ID                  int64       `gorm:"primaryKey;autoIncrement" json:"id"`
+	CandidateID         int64       `gorm:"not null;index;uniqueIndex:idx_candidate_job" json:"candidate_id"`
+	CanonicalJobID      int64       `gorm:"not null;index;uniqueIndex:idx_candidate_job" json:"canonical_job_id"`
+	MatchScore          float32     `gorm:"type:real;not null" json:"match_score"`
+	SkillsOverlap       float32     `gorm:"type:real" json:"skills_overlap"`
+	EmbeddingSimilarity float32     `gorm:"type:real" json:"embedding_similarity"`
+	Status              MatchStatus `gorm:"type:varchar(20);not null;default:'new'" json:"status"`
+	SentAt              *time.Time  `json:"sent_at"`
+	ViewedAt            *time.Time  `json:"viewed_at"`
+	AppliedAt           *time.Time  `json:"applied_at"`
+	CreatedAt           time.Time   `json:"created_at"`
 }
 
 func (CandidateMatch) TableName() string { return "candidate_matches" }

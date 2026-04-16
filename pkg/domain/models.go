@@ -379,6 +379,68 @@ type CrawlRequest struct {
 	Priority     Priority   `json:"priority"`
 }
 
+// SavedJob records a job that a candidate has bookmarked.
+type SavedJob struct {
+	ID             int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	ProfileID      string    `gorm:"type:varchar(255);not null;index;uniqueIndex:idx_saved_profile_job" json:"profile_id"`
+	CanonicalJobID int64     `gorm:"not null;index;uniqueIndex:idx_saved_profile_job" json:"canonical_job_id"`
+	SavedAt        time.Time `gorm:"not null" json:"saved_at"`
+}
+
+func (SavedJob) TableName() string { return "saved_jobs" }
+
+// JobCategory classifies a job into a broad functional area.
+type JobCategory string
+
+const (
+	CategoryProgramming     JobCategory = "programming"
+	CategoryDesign          JobCategory = "design"
+	CategoryCustomerSupport JobCategory = "customer-support"
+	CategoryMarketing       JobCategory = "marketing"
+	CategorySales           JobCategory = "sales"
+	CategoryDevOps          JobCategory = "devops"
+	CategoryProduct         JobCategory = "product"
+	CategoryData            JobCategory = "data"
+	CategoryManagement      JobCategory = "management"
+	CategoryOther           JobCategory = "other"
+)
+
+// DeriveCategory infers a JobCategory from role and industry text.
+func DeriveCategory(roles, industry string) JobCategory {
+	lower := strings.ToLower(roles + " " + industry)
+	switch {
+	case containsAny(lower, "developer", "engineer", "programmer", "software", "backend", "frontend", "full-stack", "fullstack"):
+		return CategoryProgramming
+	case containsAny(lower, "designer", "ux", "ui", "graphic", "visual"):
+		return CategoryDesign
+	case containsAny(lower, "support", "customer success", "customer service", "help desk"):
+		return CategoryCustomerSupport
+	case containsAny(lower, "marketing", "growth", "seo", "content", "social media"):
+		return CategoryMarketing
+	case containsAny(lower, "sales", "account executive", "business development", "revenue"):
+		return CategorySales
+	case containsAny(lower, "devops", "sre", "infrastructure", "platform", "reliability"):
+		return CategoryDevOps
+	case containsAny(lower, "product manager", "product owner", "product lead"):
+		return CategoryProduct
+	case containsAny(lower, "data scientist", "data engineer", "analyst", "machine learning", "ai"):
+		return CategoryData
+	case containsAny(lower, "manager", "director", "vp", "head of", "chief", "lead"):
+		return CategoryManagement
+	default:
+		return CategoryOther
+	}
+}
+
+func containsAny(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // NormalizeToken lowercases and collapses punctuation and whitespace in a string.
 func NormalizeToken(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))

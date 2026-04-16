@@ -38,11 +38,11 @@ func (r *CandidateRepository) GetByID(ctx context.Context, id int64) (*domain.Ca
 	return &c, nil
 }
 
-// GetByEmail retrieves a candidate profile by email address.
+// GetByProfileID retrieves a candidate profile by external profile ID (JWT sub claim).
 // Returns nil, nil if no record is found.
-func (r *CandidateRepository) GetByEmail(ctx context.Context, email string) (*domain.CandidateProfile, error) {
+func (r *CandidateRepository) GetByProfileID(ctx context.Context, profileID string) (*domain.CandidateProfile, error) {
 	var c domain.CandidateProfile
-	err := r.db(ctx, true).Where("email = ?", email).First(&c).Error
+	err := r.db(ctx, true).Where("profile_id = ?", profileID).First(&c).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil

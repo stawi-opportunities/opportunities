@@ -134,12 +134,6 @@ func main() {
 
 // applyCVFields maps extracted CV fields onto a CandidateProfile.
 func applyCVFields(candidate *domain.CandidateProfile, fields *extraction.CVFields) {
-	if fields.Name != "" {
-		candidate.Name = fields.Name
-	}
-	if fields.Phone != "" {
-		candidate.Phone = fields.Phone
-	}
 	if fields.CurrentTitle != "" {
 		candidate.CurrentTitle = fields.CurrentTitle
 	}
@@ -186,13 +180,13 @@ func applyCVFields(candidate *domain.CandidateProfile, fields *extraction.CVFiel
 		candidate.Currency = fields.Currency
 	}
 	if fields.SalaryMin != "" {
-		if v, err := strconv.ParseFloat(fields.SalaryMin, 64); err == nil {
-			candidate.SalaryMin = v
+		if v, err := strconv.ParseFloat(fields.SalaryMin, 32); err == nil {
+			candidate.SalaryMin = float32(v)
 		}
 	}
 	if fields.SalaryMax != "" {
-		if v, err := strconv.ParseFloat(fields.SalaryMax, 64); err == nil {
-			candidate.SalaryMax = v
+		if v, err := strconv.ParseFloat(fields.SalaryMax, 32); err == nil {
+			candidate.SalaryMax = float32(v)
 		}
 	}
 
@@ -239,7 +233,8 @@ func healthHandler(candidateRepo *repository.CandidateRepository) http.HandlerFu
 	}
 }
 
-// registerHandler handles POST /candidates/register with multipart form (email + CV file).
+// registerHandler handles POST /candidates/register with multipart form (profile_id + CV file).
+// TODO(task5): Rewrite to use JWT-based registration flow.
 func registerHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor, svc *frame.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -249,14 +244,14 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 			return
 		}
 
-		email := strings.TrimSpace(r.FormValue("email"))
-		if email == "" || !isValidEmail(email) {
-			http.Error(w, `{"error":"valid email is required"}`, http.StatusBadRequest)
+		profileID := strings.TrimSpace(r.FormValue("profile_id"))
+		if profileID == "" {
+			http.Error(w, `{"error":"profile_id is required"}`, http.StatusBadRequest)
 			return
 		}
 
 		// Check if candidate already exists.
-		existing, err := candidateRepo.GetByEmail(ctx, email)
+		existing, err := candidateRepo.GetByProfileID(ctx, profileID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -267,8 +262,8 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 		}
 
 		candidate := &domain.CandidateProfile{
-			Email:  email,
-			Status: domain.CandidateUnverified,
+			ProfileID: profileID,
+			Status:    domain.CandidateUnverified,
 		}
 
 		// Process CV file if provided.
@@ -323,16 +318,17 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 	}
 }
 
-// getProfileHandler handles GET /candidates/profile?email=...
+// getProfileHandler handles GET /candidates/profile?profile_id=...
+// TODO(task5): Rewrite to extract profile_id from JWT.
 func getProfileHandler(candidateRepo *repository.CandidateRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		email := strings.TrimSpace(r.URL.Query().Get("email"))
-		if email == "" {
-			http.Error(w, `{"error":"email parameter is required"}`, http.StatusBadRequest)
+		profileID := strings.TrimSpace(r.URL.Query().Get("profile_id"))
+		if profileID == "" {
+			http.Error(w, `{"error":"profile_id parameter is required"}`, http.StatusBadRequest)
 			return
 		}
 
-		candidate, err := candidateRepo.GetByEmail(r.Context(), email)
+		candidate, err := candidateRepo.GetByProfileID(r.Context(), profileID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -347,17 +343,18 @@ func getProfileHandler(candidateRepo *repository.CandidateRepository) http.Handl
 	}
 }
 
-// updateProfileHandler handles PUT /candidates/profile?email=...
+// updateProfileHandler handles PUT /candidates/profile?profile_id=...
+// TODO(task5): Rewrite to extract profile_id from JWT.
 func updateProfileHandler(candidateRepo *repository.CandidateRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		email := strings.TrimSpace(r.URL.Query().Get("email"))
-		if email == "" {
-			http.Error(w, `{"error":"email parameter is required"}`, http.StatusBadRequest)
+		profileID := strings.TrimSpace(r.URL.Query().Get("profile_id"))
+		if profileID == "" {
+			http.Error(w, `{"error":"profile_id parameter is required"}`, http.StatusBadRequest)
 			return
 		}
 
-		candidate, err := candidateRepo.GetByEmail(ctx, email)
+		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -371,8 +368,8 @@ func updateProfileHandler(candidateRepo *repository.CandidateRepository) http.Ha
 			RemotePreference   *string  `json:"remote_preference"`
 			AutoApply          *bool    `json:"auto_apply"`
 			PreferredCountries *string  `json:"preferred_countries"`
-			SalaryMin          *float64 `json:"salary_min"`
-			SalaryMax          *float64 `json:"salary_max"`
+			SalaryMin          *float32 `json:"salary_min"`
+			SalaryMax          *float32 `json:"salary_max"`
 			Status             *string  `json:"status"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
@@ -496,6 +493,7 @@ func listCandidatesHandler(candidateRepo *repository.CandidateRepository) http.H
 }
 
 // inboundEmailHandler handles POST /webhooks/inbound-email with multipart (sender, attachment).
+// TODO(task5): Rewrite to use ProfileID-based lookup.
 func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor, svc *frame.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -505,14 +503,14 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 			return
 		}
 
-		senderEmail := strings.TrimSpace(r.FormValue("sender"))
-		if senderEmail == "" {
-			http.Error(w, `{"error":"sender is required"}`, http.StatusBadRequest)
+		profileID := strings.TrimSpace(r.FormValue("profile_id"))
+		if profileID == "" {
+			http.Error(w, `{"error":"profile_id is required"}`, http.StatusBadRequest)
 			return
 		}
 
 		// Find or create candidate.
-		candidate, err := candidateRepo.GetByEmail(ctx, senderEmail)
+		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -520,8 +518,8 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 		isNew := false
 		if candidate == nil {
 			candidate = &domain.CandidateProfile{
-				Email:  senderEmail,
-				Status: domain.CandidateUnverified,
+				ProfileID: profileID,
+				Status:    domain.CandidateUnverified,
 			}
 			if createErr := candidateRepo.Create(ctx, candidate); createErr != nil {
 				http.Error(w, fmt.Sprintf(`{"error":%q}`, createErr.Error()), http.StatusInternalServerError)
@@ -589,13 +587,6 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 	}
 }
 
-// isValidEmail performs basic email validation.
-func isValidEmail(email string) bool {
-	at := strings.Index(email, "@")
-	dot := strings.LastIndex(email, ".")
-	return at > 0 && dot > at+1 && dot < len(email)-1 && len(email) <= 254
-}
-
 // isValidCandidateStatus checks if a status string is a valid CandidateStatus enum.
 func isValidCandidateStatus(s string) bool {
 	switch domain.CandidateStatus(s) {
@@ -620,11 +611,11 @@ func forceMatchHandler(matcher *matching.Matcher, candidateRepo *repository.Cand
 		for _, c := range candidates {
 			n, matchErr := matcher.MatchCandidateToJobs(ctx, c)
 			if matchErr != nil {
-				results = append(results, map[string]any{"candidate_id": c.ID, "name": c.Name, "error": matchErr.Error()})
+				results = append(results, map[string]any{"candidate_id": c.ID, "profile_id": c.ProfileID, "error": matchErr.Error()})
 				continue
 			}
 			totalMatches += n
-			results = append(results, map[string]any{"candidate_id": c.ID, "name": c.Name, "matches": n})
+			results = append(results, map[string]any{"candidate_id": c.ID, "profile_id": c.ProfileID, "matches": n})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
