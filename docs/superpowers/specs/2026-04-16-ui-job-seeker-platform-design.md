@@ -180,9 +180,9 @@ Map from existing domain fields to display categories:
 Three-step wizard matching the WWR screenshots:
 
 **Step 1 — About You**
+- Greeting: "Hi, {name}" (name from `/me` → service-profile, read-only)
 - CV upload (drag-and-drop + file picker, max 10MB, PDF/DOCX)
 - Target job title (text input with autocomplete from categories)
-- Full name (text input, required)
 - Experience level (select: Entry/Junior/Mid/Senior/Lead/Executive)
 - Job status (select: Actively Looking / Open to Offers / Casually Browsing)
 - Preferred salary range (select: ranges in USD)
@@ -209,17 +209,25 @@ Three-step wizard matching the WWR screenshots:
 
 **Data flow:**
 ```
+Prerequisites: User must be OIDC-authenticated before reaching /onboarding/
+  → ProfileID available from JWT claims
+
 Step 1 + Step 2 → collected in Alpine.js state (no API calls yet)
 Step 3 "Get Full Access" click →
-  1. POST /candidates/register (multipart: CV file + all profile fields)
-  2. POST to service-payment BillingService.CreateSubscription
-  3. POST to service-payment PaymentService.CreatePaymentLink or InitiatePrompt
-  4. Redirect to payment flow (Polar.sh checkout or STK push waiting screen)
+  1. POST /candidates/onboard (multipart: CV file + all preference fields)
+     → Backend reads ProfileID from JWT claims
+     → Creates CandidateProfile linked by ProfileID
+     → Calls service-profile to get name/email for any welcome comms
+  2. POST /billing/subscribe → service-payment BillingService.CreateSubscription
+  3. POST /billing/checkout or /billing/mobile-pay → payment flow
+  4. Redirect to Polar.sh checkout or M-PESA STK push waiting screen
   5. Webhook confirms payment → subscription updated to "paid"
   6. Redirect to /dashboard/
 ```
 
-**"Skip for now"** link on Step 3 → registers with free tier, redirects to dashboard with limited features.
+**"Skip for now"** link on Step 3 → creates CandidateProfile with free tier, redirects to dashboard with limited features.
+
+**Identity note:** The onboarding form does NOT ask for name or email — these already exist in service-profile from the OIDC registration. Step 1 shows the user's name (fetched from `/me`) as read-only context. The form only collects job-seeking domain data: CV, target title, experience, salary preferences, etc.
 
 #### Dashboard (`/dashboard/`)
 Requires authentication. Full SPA experience within the Hugo shell.
@@ -280,12 +288,38 @@ OIDC Authorization Code + PKCE flow:
   4. Receive access_token + id_token + refresh_token
   5. Store access_token in memory (Alpine.js store)
   6. Store refresh_token in httpOnly cookie (via a thin API endpoint)
-  7. Redirect to /dashboard/ or /onboarding/ (if new user)
+  7. Call GET /me → returns identity (name, avatar from service-profile) + candidate state
+  8. If candidate is null → redirect to /onboarding/ (new user)
+  9. If candidate exists → redirect to /dashboard/
 ```
 
 Token refresh: Alpine.js interceptor checks token expiry before each API call; if expired, uses refresh token to get new access token silently.
 
-## Authentication & Authorization
+## Authentication, Identity & Authorization
+
+### Identity Model
+
+**Principle: domain models never store identity data.** A user's name, avatar URL, and contacts are not duplicated into `CandidateProfile` or any other stawi.jobs table. Identity is resolved at runtime from two sources:
+
+1. **JWT claims** (via Frame's `security.ClaimsFromContext(ctx)`) provide IDs:
+   - `GetProfileID()` — the user's unique ID (JWT `sub` claim)
+   - `GetContactID()` — the email/phone used to log in
+   - `GetTenantID()` — organization/tenant scope
+   - `GetPartitionID()` — data partition
+   - `GetRoles()` — role array (jobseeker, employer, admin)
+
+2. **antinvestor/service-profile** provides display data:
+   - `ProfileService.GetById(profileID)` → `ProfileObject`
+   - `properties` (Struct): `name`, `avatar`, bio, etc.
+   - `contacts` (repeated): type (EMAIL/MSISDN), detail, verified flag
+   - `addresses`: physical addresses
+
+**How this works in practice:**
+
+- **Backend**: All stawi.jobs domain models link to the external profile via `ProfileID string` (the JWT `sub` claim). When a handler needs the user's name or avatar (e.g., for a response), it calls service-profile. No identity data is persisted locally.
+- **Frontend**: After OIDC login, Alpine.js calls a `/me` endpoint on the candidates service. That endpoint reads `claims.GetProfileID()`, calls service-profile, and returns `{ name, avatar_url, email, roles }`. This is cached in the Alpine.js global store for the session.
+
+**For organizations/employers** (future sub-project): same pattern. An employer is an authenticated profile with a `tenant_id` claim. The organization's name, logo, and contacts come from service-profile scoped to that tenant.
 
 ### OIDC Provider
 
@@ -297,11 +331,11 @@ OAUTH2_WELL_KNOWN_JWK=https://idp.example.com/.well-known/jwks.json
 
 ### Roles
 
-JWT claims include a `role` field:
+JWT `roles` claim determines access:
 
 | Role | Access |
 |------|--------|
-| `jobseeker` | Dashboard, matches, applications, profile, search |
+| `jobseeker` | Dashboard, matches, applications, preferences, search |
 | `employer` | ATS, job posting, applicant review (future sub-project) |
 | `admin` | All of above + data browser + analytics (future sub-project) |
 
@@ -560,9 +594,15 @@ Usage: sitegen [flags]
 
 ### New Candidates Service Endpoints
 
-Added to `apps/candidates/cmd/main.go`:
+Added to `apps/candidates/cmd/main.go`. All authenticated endpoints extract `ProfileID` from `security.ClaimsFromContext(ctx).GetProfileID()` — never from query params or request body.
 
 ```go
+// Identity (composes service-profile + local domain data)
+r.Get("/me", meHandler(...))                       // Returns profile identity + candidate state
+
+// Onboarding (replaces register — user is already OIDC-authenticated)
+r.Post("/candidates/onboard", onboardHandler(...)) // Creates CandidateProfile linked by ProfileID
+
 // Billing (proxies to service-payment)
 r.Post("/billing/subscribe", subscribeHandler(...))
 r.Post("/billing/checkout", checkoutHandler(...))
@@ -572,10 +612,10 @@ r.Get("/billing/invoices", listInvoicesHandler(...))
 r.Post("/billing/cancel", cancelSubscriptionHandler(...))
 r.Post("/webhooks/payment", paymentWebhookHandler(...))
 
-// Job seeker extras
-r.Get("/jobs/{id}", getJobHandler(...))         // Single job detail for SPA
-r.Post("/jobs/{id}/save", saveJobHandler(...))   // Bookmark a job
-r.Get("/saved-jobs", listSavedJobsHandler(...))  // List bookmarks
+// Job seeker extras (ProfileID from claims, not params)
+r.Get("/jobs/{id}", getJobHandler(...))
+r.Post("/jobs/{id}/save", saveJobHandler(...))
+r.Get("/saved-jobs", listSavedJobsHandler(...))
 ```
 
 ### New API Endpoints on API Service
@@ -588,40 +628,85 @@ r.Get("/stats", liveStatsHandler(...))
 
 ## Domain Model Changes
 
+### Design Principle: Sharp Domain Models
+
+Domain models contain only domain-specific data. Identity (name, avatar, contacts) is never stored — it's resolved from service-profile via the `ProfileID` at runtime. This avoids stale copies and keeps models focused on their purpose.
+
+### Changes to `CandidateProfile`
+
+**Remove identity fields** that now come from service-profile:
+- Remove `Email` as unique key (replaced by `ProfileID`)
+- Remove `Name`, `Phone` (come from service-profile)
+- Keep `CVRawText`, `CVUrl` (domain-specific, not identity)
+
+**Replace with profile link:**
+
+```go
+// Identity link (from JWT sub claim — never store name/email/avatar here)
+ProfileID string `gorm:"type:varchar(255);uniqueIndex;not null" json:"profile_id"`
+```
+
+**Add onboarding domain fields:**
+
+```go
+// Job search preferences (domain-specific to stawi.jobs)
+TargetJobTitle     string `gorm:"type:text" json:"target_job_title"`
+ExperienceLevel    string `gorm:"type:varchar(30)" json:"experience_level"`
+JobSearchStatus    string `gorm:"type:varchar(30)" json:"job_search_status"`
+PreferredRegions   string `gorm:"type:text" json:"preferred_regions"`
+PreferredTimezones string `gorm:"type:text" json:"preferred_timezones"`
+USWorkAuth         *bool  `gorm:"type:bool" json:"us_work_auth"`
+NeedsSponsorship   *bool  `gorm:"type:bool" json:"needs_sponsorship"`
+WantsATSReport     bool   `gorm:"not null;default:false" json:"wants_ats_report"`
+
+// Subscription billing (links to service-payment)
+SubscriptionID string `gorm:"type:varchar(255)" json:"subscription_id"`
+PlanID         string `gorm:"type:varchar(100)" json:"plan_id"`
+```
+
+**Fields that remain unchanged** (these are domain data, not identity):
+- `CVUrl`, `CVRawText` — CV storage
+- `CurrentTitle`, `Seniority`, `YearsExperience` — AI-extracted profile
+- `Skills`, `StrongSkills`, `WorkingSkills`, `ToolsFrameworks` — competencies
+- `PreferredLocations`, `PreferredCountries`, `RemotePreference` — preferences
+- `SalaryMin`, `SalaryMax`, `Currency` — compensation
+- `Subscription`, `AutoApply` — feature flags
+- `Embedding`, `MatchesSent`, `LastMatchedAt` — matching metadata
+- `CommEmail`, `CommWhatsapp`, `CommTelegram`, `CommSMS` — delivery channel *preferences* (not the actual contact details)
+
 ### New: `SavedJob`
 
 ```go
 type SavedJob struct {
     ID             int64     `gorm:"primaryKey;autoIncrement"`
-    CandidateID    int64     `gorm:"not null;index;uniqueIndex:idx_saved_candidate_job"`
-    CanonicalJobID int64     `gorm:"not null;index;uniqueIndex:idx_saved_candidate_job"`
+    ProfileID      string    `gorm:"type:varchar(255);not null;index;uniqueIndex:idx_saved_profile_job"`
+    CanonicalJobID int64     `gorm:"not null;index;uniqueIndex:idx_saved_profile_job"`
     SavedAt        time.Time `gorm:"not null"`
 }
 ```
 
-### Changes to `CandidateProfile`
+### New Endpoint: `GET /me`
 
-New fields:
+Returns the authenticated user's display identity + stawi.jobs domain state in one call:
 
-```go
-// Subscription billing
-SubscriptionID   string `gorm:"type:varchar(255)" json:"subscription_id"`  // service-payment subscription ID
-PlanID           string `gorm:"type:varchar(100)" json:"plan_id"`
-
-// Onboarding data
-TargetJobTitle    string `gorm:"type:text" json:"target_job_title"`
-ExperienceLevel   string `gorm:"type:varchar(30)" json:"experience_level"`
-JobSearchStatus   string `gorm:"type:varchar(30)" json:"job_search_status"`
-PreferredRegions  string `gorm:"type:text" json:"preferred_regions"`
-PreferredTimezones string `gorm:"type:text" json:"preferred_timezones"`
-USWorkAuth        *bool  `gorm:"type:bool" json:"us_work_auth"`
-NeedsSponsorship  *bool  `gorm:"type:bool" json:"needs_sponsorship"`
-WantsATSReport    bool   `gorm:"not null;default:false" json:"wants_ats_report"`
-
-// Auth
-ExternalID string `gorm:"type:varchar(255);uniqueIndex" json:"external_id"` // OIDC subject claim
-Role       string `gorm:"type:varchar(20);not null;default:'jobseeker'" json:"role"`
+```json
+{
+  "profile_id": "prf_abc123",
+  "name": "Peter Bwire",
+  "avatar_url": "https://...",
+  "email": "bwire517@gmail.com",
+  "roles": ["jobseeker"],
+  "candidate": {
+    "id": 42,
+    "status": "active",
+    "subscription": "paid",
+    "current_title": "Full Stack Developer",
+    "matches_sent": 15
+  }
+}
 ```
+
+The `name`, `avatar_url`, and `email` come from service-profile (fetched server-side). The `candidate` block comes from the local `CandidateProfile` table. This is the only place identity and domain data are composed — at the API boundary, never in storage.
 
 ## Build & Deploy Pipeline
 
