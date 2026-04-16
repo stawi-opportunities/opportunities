@@ -3,6 +3,5 @@
   {"source_type": "arbeitnow", "base_url": "https://arbeitnow.com", "country": "", "region": "europe", "crawl_interval_sec": 3600, "priority": "hot"},
   {"source_type": "jobicy", "base_url": "https://jobicy.com", "country": "", "region": "", "crawl_interval_sec": 3600, "priority": "hot"},
   {"source_type": "themuse", "base_url": "https://www.themuse.com", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "himalayas", "base_url": "https://himalayas.app", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "findwork", "base_url": "https://findwork.dev", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"}
+  {"source_type": "himalayas", "base_url": "https://himalayas.app", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"}
 ]
