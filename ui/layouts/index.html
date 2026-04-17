@@ -31,12 +31,12 @@
   </div>
 </section>
 
-<!-- Who we're for. Five profession photos in an asymmetric mosaic.
-     Hotlinked from the Unsplash CDN (free licence); preconnect hint
-     in head.html. Swap IDs here to change the set. -->
-<section class="bg-white py-20">
+<!-- Who we're for. Five industries alternating image/text, text/image.
+     Copy is deliberately specific — which roles we place, for whom —
+     so a visitor understands the product reaches their vertical. -->
+<section class="bg-white py-20 sm:py-24">
   <div class="mx-auto max-w-6xl px-6 sm:px-8 lg:px-12">
-    <div class="max-w-2xl">
+    <header class="max-w-2xl">
       <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
         Every industry
       </p>
@@ -47,75 +47,173 @@
         Healthcare, aviation, hospitality, technology, personal care — we
         match against the CV you upload, whatever industry it's from.
       </p>
-    </div>
+    </header>
 
-    <div class="mt-12 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
-      <figure class="relative aspect-[4/5] overflow-hidden rounded-md bg-gray-100 lg:row-span-2 lg:aspect-auto">
+    <!-- Healthcare — image left, text right -->
+    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
         <img
-          src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=800&q=70"
+          src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=1200&q=75"
           alt="A doctor outside her practice"
           loading="lazy"
           class="absolute inset-0 h-full w-full object-cover"
-          width="800"
-          height="1000"
+          width="1200"
+          height="900"
         />
-        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy-900/85 to-transparent p-5 text-base font-semibold text-white">
+      </figure>
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
           Healthcare
-        </figcaption>
-      </figure>
+        </p>
+        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
+          Clinical, care, and allied health.
+        </h3>
+        <p class="mt-4 text-lg leading-relaxed text-gray-700">
+          From care assistants and community nurses to consultant
+          surgeons and hospital administrators — we match by speciality,
+          clinical setting, and shift pattern. Strong demand right now in
+          mental health, community care, and clinical research.
+        </p>
+        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
+          Browse healthcare roles
+          <span aria-hidden="true" class="ml-1">→</span>
+        </a>
+      </div>
+    </article>
+
+    <!-- Computer networks & technology — text left, image right -->
+    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+      <div class="lg:order-2">
+        <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
+          <img
+            src="https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=1200&q=75"
+            alt="Network and systems engineers at their workstation"
+            loading="lazy"
+            class="absolute inset-0 h-full w-full object-cover"
+            width="1200"
+            height="900"
+          />
+        </figure>
+      </div>
+      <div class="lg:order-1">
+        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
+          Computer networks &amp; technology
+        </p>
+        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
+          Engineering from the wire to the cloud.
+        </h3>
+        <p class="mt-4 text-lg leading-relaxed text-gray-700">
+          Network engineers, systems admins, security analysts, cloud
+          architects, SRE and DevOps. On-site, hybrid, and remote roles
+          from ISPs, banks, telcos, and SaaS companies. We read your
+          stack, seniority, and clearance before we suggest a single
+          role.
+        </p>
+        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
+          Browse technology roles
+          <span aria-hidden="true" class="ml-1">→</span>
+        </a>
+      </div>
+    </article>
+
+    <!-- Aviation — image left, text right -->
+    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
       <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
         <img
-          src="https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=800&q=70"
-          alt="Network and systems engineers working at their desks"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="800"
-          height="600"
-        />
-        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy-900/85 to-transparent p-5 text-base font-semibold text-white">
-          Computer networks
-        </figcaption>
-      </figure>
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=800&q=70"
+          src="https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=1200&q=75"
           alt="A passenger aircraft at the gate"
           loading="lazy"
           class="absolute inset-0 h-full w-full object-cover"
-          width="800"
-          height="600"
+          width="1200"
+          height="900"
         />
-        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy-900/85 to-transparent p-5 text-base font-semibold text-white">
+      </figure>
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
           Aviation
-        </figcaption>
-      </figure>
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=800&q=70"
-          alt="A modern hotel suite"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="800"
-          height="600"
-        />
-        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy-900/85 to-transparent p-5 text-base font-semibold text-white">
+        </p>
+        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
+          Flight deck, cabin, and ground.
+        </h3>
+        <p class="mt-4 text-lg leading-relaxed text-gray-700">
+          Pilots, cabin crew, ground operations, aircraft maintenance,
+          and dispatch. Airlines hire on specific rotations and
+          seniority bands — we know the cycles and surface roles when
+          they open, not when they're about to expire.
+        </p>
+        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
+          Browse aviation roles
+          <span aria-hidden="true" class="ml-1">→</span>
+        </a>
+      </div>
+    </article>
+
+    <!-- Hospitality — text left, image right -->
+    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+      <div class="lg:order-2">
+        <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
+          <img
+            src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=75"
+            alt="A modern hotel suite"
+            loading="lazy"
+            class="absolute inset-0 h-full w-full object-cover"
+            width="1200"
+            height="900"
+          />
+        </figure>
+      </div>
+      <div class="lg:order-1">
+        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
           Hospitality
-        </figcaption>
-      </figure>
+        </p>
+        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
+          Hotels, F&amp;B, and venues.
+        </h3>
+        <p class="mt-4 text-lg leading-relaxed text-gray-700">
+          Front-of-house, housekeeping, chefs, food and beverage, duty
+          managers, and GMs. Boutique hotels to international chains,
+          seasonal and permanent, local contracts and expat packages —
+          filtered by region, property type, and the cuisine or brand
+          you've worked with before.
+        </p>
+        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
+          Browse hospitality roles
+          <span aria-hidden="true" class="ml-1">→</span>
+        </a>
+      </div>
+    </article>
+
+    <!-- Salon & personal care — image left, text right -->
+    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
       <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
         <img
-          src="https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=800&q=70"
+          src="https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1200&q=75"
           alt="A hair stylist at work in a salon"
           loading="lazy"
           class="absolute inset-0 h-full w-full object-cover"
-          width="800"
-          height="600"
+          width="1200"
+          height="900"
         />
-        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy-900/85 to-transparent p-5 text-base font-semibold text-white">
-          Salon &amp; personal care
-        </figcaption>
       </figure>
-    </div>
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
+          Salon &amp; personal care
+        </p>
+        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
+          Stylists, therapists, and spa professionals.
+        </h3>
+        <p class="mt-4 text-lg leading-relaxed text-gray-700">
+          Hair stylists, barbers, nail technicians, beauty therapists,
+          and spa managers. Salaried, booth-rent, and commission
+          arrangements across chains, boutique salons, and wellness
+          centres — matched by discipline, clientele, and schedule.
+        </p>
+        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
+          Browse personal-care roles
+          <span aria-hidden="true" class="ml-1">→</span>
+        </a>
+      </div>
+    </article>
   </div>
 </section>
 
@@ -182,7 +280,7 @@
       href="/onboarding/"
       class="inline-flex shrink-0 items-center justify-center rounded-md bg-navy-900 px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-navy-800"
     >
-      Create your profile
+      Get started
     </a>
   </div>
 </section>
