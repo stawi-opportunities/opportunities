@@ -1,114 +1,69 @@
 {{ define "main" }}
 <section class="bg-white">
-  <div class="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
     <div class="text-center">
       <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">Pricing</p>
       <h1 class="mt-2 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-        Simple, honest pricing
+        Pay for the service you need
       </h1>
       <p class="mx-auto mt-4 max-w-2xl text-lg text-gray-600">
-        Free forever for browsing and saving roles. Upgrade any time for
-        priority matching and weekly email digests.
+        Free for browsing, $10 for matches in your inbox, $50 for 5× the
+        matches and better tools, $200 for a real person running your job
+        search.
       </p>
     </div>
 
-    <div class="mt-12 grid gap-6 lg:grid-cols-2">
-      <!-- Free plan -->
-      <article class="flex flex-col rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-        <header>
-          <h2 class="text-lg font-semibold text-gray-900">Free</h2>
-          <p class="mt-2 text-sm text-gray-600">
-            Everything you need to start a job search.
-          </p>
-          <p class="mt-6 flex items-baseline gap-x-1">
-            <span class="text-5xl font-bold tracking-tight text-gray-900">$0</span>
-            <span class="text-base text-gray-500">/month</span>
-          </p>
-        </header>
-        <ul class="mt-8 space-y-3 text-sm text-gray-700" role="list">
-          {{ range slice "Browse every open role" "Save jobs to your dashboard" "Search with filters and facets" "Apply directly on the employer's site" "Weekly job alerts via email" }}
-          <li class="flex items-start gap-2">
-            <svg class="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-              <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>
-            </svg>
-            <span>{{ . }}</span>
-          </li>
-          {{ end }}
-        </ul>
-        <div class="mt-auto pt-8">
-          <a href="/onboarding/" class="block rounded-md bg-navy-900 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm hover:bg-navy-800">
-            Create your free profile
-          </a>
-        </div>
-      </article>
-
-      <!-- Premium plan -->
-      <article class="relative flex flex-col rounded-2xl border-2 border-accent-500 bg-white p-8 shadow-lg">
-        <span class="absolute -top-3 right-6 inline-block rounded-full bg-accent-500 px-3 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
-          Most popular
-        </span>
-        <header>
-          <h2 class="text-lg font-semibold text-gray-900">Premium</h2>
-          <p class="mt-2 text-sm text-gray-600">
-            For active job seekers who want every edge.
-          </p>
-          <p class="mt-6 flex items-baseline gap-x-1">
-            <span class="text-sm text-gray-500 line-through">$14.95</span>
-            <span class="text-5xl font-bold tracking-tight text-gray-900">$2.95</span>
-            <span class="text-base text-gray-500">/first month</span>
-          </p>
-          <p class="mt-1 text-xs text-gray-500">
-            Then $14.95/month. Cancel any time.
-          </p>
-        </header>
-        <ul class="mt-8 space-y-3 text-sm text-gray-700" role="list">
-          {{ range slice "Everything in Free" "Priority matching from our AI engine" "Weekly personalised digest" "ATS compatibility check for your resume" "Early access to new features" "Support via email within one business day" }}
-          <li class="flex items-start gap-2">
-            <svg class="mt-0.5 h-5 w-5 shrink-0 text-accent-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-              <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>
-            </svg>
-            <span>{{ . }}</span>
-          </li>
-          {{ end }}
-        </ul>
-        <div class="mt-auto pt-8">
-          <a href="/onboarding/" class="block rounded-md bg-accent-500 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm hover:bg-accent-600">
-            Start for $2.95
-          </a>
-        </div>
-      </article>
+    <div class="mt-12">
+      {{ partial "pricing-cards.html" (dict "mode" "full") }}
     </div>
 
     <!-- FAQ -->
-    <section class="mt-16" aria-labelledby="faq-heading">
+    <section class="mt-20" aria-labelledby="faq-heading">
       <h2 id="faq-heading" class="text-2xl font-bold text-gray-900">Questions</h2>
       <dl class="mt-6 grid gap-6 sm:grid-cols-2">
         <div>
           <dt class="text-sm font-semibold text-gray-900">Can I cancel any time?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Yes — Premium is month-to-month. Cancel in one click from your
-            dashboard. You keep access until the end of the billing period.
+            Yes. Starter and Pro are month-to-month. Managed is a rolling
+            engagement you pause or cancel when your search wraps up.
           </dd>
         </div>
         <div>
-          <dt class="text-sm font-semibold text-gray-900">Which payment methods?</dt>
+          <dt class="text-sm font-semibold text-gray-900">What counts as a "match"?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Credit or debit card, and mobile money in selected markets (KES,
-            NGN, ZAR). USD is the default display currency.
+            A role our matching engine (or your agent, on Managed) believes
+            fits your CV, target title, seniority, region, and salary. You
+            see them on your dashboard and in your weekly email digest.
           </dd>
         </div>
         <div>
-          <dt class="text-sm font-semibold text-gray-900">Do you apply for me?</dt>
+          <dt class="text-sm font-semibold text-gray-900">How fast are matches delivered?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Every listing links to the employer's own application page. We
-            surface the matches; you control what gets submitted.
+            Starter matches are queued and delivered in a weekly digest. Pro
+            subscribers jump the queue and get near-real-time notifications
+            as roles come in. Managed subscribers get whatever cadence their
+            agent agrees.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-gray-900">Does Pro get priority support?</dt>
+          <dd class="mt-1 text-sm text-gray-600">
+            No — Starter and Pro both receive email support. Only the
+            Managed tier comes with a direct line and same-day responses.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-gray-900">What payment methods?</dt>
+          <dd class="mt-1 text-sm text-gray-600">
+            Credit and debit cards, plus mobile money in selected markets
+            (KES, NGN, ZAR). Prices shown in USD.
           </dd>
         </div>
         <div>
           <dt class="text-sm font-semibold text-gray-900">Is the Free tier really free?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Yes. No credit card, no trial clock. You can browse, save, and
-            search forever without paying.
+            Yes — no credit card, no trial clock. Browse, search, and save
+            jobs without paying a cent.
           </dd>
         </div>
       </dl>

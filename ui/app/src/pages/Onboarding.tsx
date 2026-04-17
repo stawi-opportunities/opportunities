@@ -1,12 +1,17 @@
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
 import { submitOnboarding } from "@/api/candidates";
+import { PLANS, planById, type PlanId } from "@/utils/plans";
 
 // Each step owns a contiguous slice of fields; we validate one step at a
 // time before advancing so errors surface close to the inputs the user
 // just touched.
+//
+// Step 3 is the plan picker + terms. The user arrives at /onboarding/
+// with an optional ?plan=<id> query param from the home / pricing CTAs —
+// we preselect that tier but they can change before finishing.
 
 const Step1 = z.object({
   targetJobTitle: z.string().min(2, "Enter a target job title"),
@@ -14,6 +19,20 @@ const Step1 = z.object({
   jobSearchStatus: z.enum(["actively_looking", "open_to_offers", "casually_browsing"]),
   salaryRange: z.string().optional(),
   wantsATSReport: z.boolean(),
+  cv: z
+    .any()
+    .optional()
+    .refine(
+      (v) => !v || (v instanceof File && v.size <= 10 * 1024 * 1024),
+      "CV must be 10 MB or smaller",
+    )
+    .refine(
+      (v) =>
+        !v ||
+        (v instanceof File &&
+          /\.(pdf|docx?|rtf|txt)$/i.test(v.name)),
+      "Upload a PDF, DOCX, RTF, or TXT file",
+    ),
 });
 
 const Step2 = z.object({
@@ -23,7 +42,7 @@ const Step2 = z.object({
 });
 
 const Step3 = z.object({
-  paymentMethod: z.enum(["card", "mobile"]).optional(),
+  plan: z.enum(["free", "starter", "pro", "managed"]),
   agreeTerms: z.literal(true, {
     errorMap: () => ({ message: "Please agree to the Terms before finishing" }),
   }),
@@ -31,7 +50,7 @@ const Step3 = z.object({
 
 type FormValues = z.infer<typeof Step1> & z.infer<typeof Step2> & z.infer<typeof Step3>;
 
-const STEP_LABELS = ["About you", "Your preferences", "Review"] as const;
+const STEP_LABELS = ["About you", "Your preferences", "Choose a plan"] as const;
 
 const REGIONS = [
   "Anywhere",
@@ -53,11 +72,19 @@ const TIMEZONES = [
   "PST (UTC-8)",
 ];
 
+function readPlanFromQuery(): PlanId {
+  if (typeof window === "undefined") return "starter";
+  const p = new URL(window.location.href).searchParams.get("plan");
+  if (p === "free" || p === "starter" || p === "pro" || p === "managed") return p;
+  return "starter";
+}
+
 export default function Onboarding() {
   const { state, login } = useAuth();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const initialPlan = useMemo(readPlanFromQuery, []);
   const form = useForm<FormValues>({
     defaultValues: {
       targetJobTitle: "",
@@ -67,7 +94,9 @@ export default function Onboarding() {
       preferredRegions: [],
       preferredTimezones: [],
       country: "",
+      plan: initialPlan,
       agreeTerms: false as unknown as true,
+      cv: undefined,
     },
     mode: "onBlur",
   });
@@ -87,13 +116,17 @@ export default function Onboarding() {
         preferred_regions:   data.preferredRegions,
         preferred_timezones: data.preferredTimezones,
         country:             data.country,
-        payment_method:      data.paymentMethod ?? "",
+        plan:                data.plan,
         agree_terms:         data.agreeTerms,
+        cv:                  data.cv instanceof File ? data.cv : null,
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         throw new Error(body.slice(0, 200) || res.statusText);
       }
+      // Free → dashboard. Paid → payment flow (stubbed): land on dashboard
+      // which prompts to complete payment. Backend issues the checkout URL
+      // in the response body; when that's wired we'll redirect there.
       window.location.href = "/dashboard/";
     } catch (e) {
       setSubmitError(
@@ -120,6 +153,13 @@ export default function Onboarding() {
     if (step < 3) setStep((s) => (s + 1) as 1 | 2 | 3);
     else await form.handleSubmit(onSubmit)();
   }
+
+  const selectedPlan = form.watch("plan");
+  const finishLabel = step === 3
+    ? selectedPlan === "free"
+      ? "Finish — start browsing"
+      : `Continue to payment · $${planById(selectedPlan).price}/mo`
+    : "Continue";
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -156,7 +196,7 @@ export default function Onboarding() {
             disabled={submitting}
             className="rounded bg-navy-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500 disabled:opacity-60"
           >
-            {submitting ? "Submitting…" : step === 3 ? "Finish" : "Continue"}
+            {submitting ? "Submitting…" : finishLabel}
           </button>
         </div>
       </form>
@@ -208,8 +248,11 @@ type FormProps = { form: UseFormReturn<FormValues> };
 function Step1Form({ form }: FormProps) {
   const {
     register,
+    watch,
+    setValue,
     formState: { errors },
   } = form;
+  const cv = watch("cv") as File | undefined;
   return (
     <div className="space-y-6">
       <header>
@@ -275,6 +318,64 @@ function Step1Form({ form }: FormProps) {
           </select>
         )}
       </Field>
+      <Field
+        label="Upload your CV (optional)"
+        error={errors.cv?.message as string | undefined}
+      >
+        {(id) => (
+          <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4">
+            {cv ? (
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900">
+                    {cv.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {(cv.size / 1024).toFixed(1)} KB · ready to upload
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setValue("cv", undefined, { shouldValidate: true })}
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="text-center">
+                <input
+                  id={id}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.rtf,.txt"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    setValue("cv", f ?? undefined, { shouldValidate: true });
+                  }}
+                  className="sr-only"
+                />
+                <label
+                  htmlFor={id}
+                  className="inline-flex cursor-pointer items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                >
+                  <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  Choose file
+                </label>
+                <p className="mt-2 text-xs text-gray-500">
+                  PDF, DOCX, RTF, or TXT · up to 10 MB
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </Field>
+      <p className="text-xs text-gray-500">
+        Your CV is used to match you with relevant jobs. It's never shared
+        with employers without your action — every application goes through
+        you (or your agent, on Managed).
+      </p>
       <label className="flex items-start gap-3 rounded-md border border-gray-200 p-3">
         <input
           type="checkbox"
@@ -283,7 +384,7 @@ function Step1Form({ form }: FormProps) {
         />
         <span className="text-sm text-gray-700">
           Email me a free resume score (ATS-compatibility check). We scan for
-          common formatting issues that hiring-software rejects.
+          common formatting issues hiring software rejects.
         </span>
       </label>
     </div>
@@ -406,76 +507,62 @@ function Step3Form({ form }: FormProps) {
     setValue,
     formState: { errors },
   } = form;
-  const method = watch("paymentMethod");
+  const plan = watch("plan");
+
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-gray-900">Almost done</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Choose your plan</h1>
         <p className="mt-1 text-gray-600">
-          Start free — browse jobs, save favourites, and receive matches.
-          Upgrade any time for priority matching and weekly email digests.
+          Start free and upgrade any time — or skip straight to matches.
         </p>
       </header>
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-        <div className="flex items-baseline justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-gray-900">Free</p>
-            <p className="text-sm text-gray-600">Browse, save, and get matched.</p>
-          </div>
-          <p className="text-lg font-semibold text-gray-900">$0</p>
-        </div>
-        <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-gray-200 pt-4">
-          <div>
-            <p className="text-sm font-medium text-gray-900">
-              Premium{" "}
-              <span className="ml-1 rounded-full bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700">
-                Optional
-              </span>
-            </p>
-            <p className="text-sm text-gray-600">
-              Priority matching, weekly digest, resume review.
-            </p>
-          </div>
-          <p className="text-sm text-gray-700">
-            <span className="line-through">$14.95</span>{" "}
-            <span className="font-semibold text-gray-900">$2.95</span>
-            <span className="text-gray-500"> first month</span>
-          </p>
-        </div>
-        <a
-          href="/pricing/"
-          className="mt-3 inline-block text-sm font-medium text-accent-600 hover:text-accent-700"
-        >
-          Compare plans →
-        </a>
-      </div>
-      <Field label="Add payment now (optional)">
+
+      <Field error={errors.plan?.message as string | undefined}>
         {() => (
-          <div
-            className="flex flex-col gap-3 sm:flex-row"
-            role="group"
-            aria-label="Payment method"
-          >
-            {(["card", "mobile"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={method === m}
-                className={`min-h-[44px] flex-1 rounded-md border px-4 py-3 text-sm font-medium transition-colors ${
-                  method === m
-                    ? "border-accent-500 bg-accent-50 text-accent-700"
-                    : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
-                }`}
-                onClick={() =>
-                  setValue("paymentMethod", method === m ? undefined : m)
-                }
-              >
-                {m === "card" ? "Card" : "Mobile money"}
-              </button>
-            ))}
+          <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Plan">
+            {PLANS.map((p) => {
+              const on = plan === p.id;
+              const priceLabel = p.price === null ? "Free" : `$${p.price}/mo`;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setValue("plan", p.id, { shouldValidate: true })}
+                  className={`flex flex-col items-start gap-1 rounded-lg border-2 p-4 text-left transition-colors ${
+                    on
+                      ? "border-accent-500 bg-accent-50"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <span className="text-base font-semibold text-gray-900">
+                      {p.name}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {priceLabel}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600">{p.tagline}</p>
+                  {p.matchesPerWeek !== null && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Up to {p.matchesPerWeek} matches per week
+                    </p>
+                  )}
+                  {p.meta.agent && (
+                    <p className="mt-1 text-xs font-medium text-accent-700">
+                      Includes a dedicated agent
+                    </p>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </Field>
+
       <Field error={errors.agreeTerms?.message as string | undefined}>
         {() => (
           <label className="flex items-start gap-3">
@@ -498,6 +585,12 @@ function Step3Form({ form }: FormProps) {
           </label>
         )}
       </Field>
+
+      <p className="text-xs text-gray-500">
+        {plan === "free"
+          ? "You can upgrade to a paid plan any time from your dashboard."
+          : "You'll be redirected to our payment partner to complete the subscription. Cancel any time."}
+      </p>
     </div>
   );
 }

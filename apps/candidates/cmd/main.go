@@ -142,6 +142,7 @@ func main() {
 
 	// Authenticated candidate routes
 	mux.Handle("GET /me", authWrap(meHandler(candidateRepo, cfg.ProfileServiceURL)))
+	mux.Handle("GET /me/subscription", authWrap(meSubscriptionHandler(candidateRepo, matchRepo)))
 	mux.Handle("POST /candidates/onboard", authWrap(onboardHandler(candidateRepo, extractor, svc)))
 	mux.Handle("GET /candidates/profile", authWrap(getProfileHandler(candidateRepo)))
 	mux.Handle("PUT /candidates/profile", authWrap(updateProfileHandler(candidateRepo)))
@@ -673,6 +674,63 @@ func meHandler(candidateRepo *repository.CandidateRepository, profileServiceURL 
 	}
 }
 
+// meSubscriptionHandler returns the candidate's current plan tier + queue
+// stats. Used by the dashboard to render the right tier-specific surface.
+func meSubscriptionHandler(candidateRepo *repository.CandidateRepository, matchRepo *repository.MatchRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims := security.ClaimsFromContext(ctx)
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		profileID := claims.GetProfileID()
+		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		plan := "free"
+		status := "none"
+		queued := int64(0)
+		if candidate != nil {
+			if candidate.PlanID != "" {
+				plan = candidate.PlanID
+			}
+			switch candidate.Subscription {
+			case domain.SubscriptionPaid, domain.SubscriptionTrial:
+				status = "active"
+			case domain.SubscriptionCancelled:
+				status = "cancelled"
+			default:
+				if plan == "free" {
+					status = "active"
+				} else {
+					status = "none"
+				}
+			}
+			// Queue depth: rough cut — total matches we haven't delivered yet.
+			// When we wire the scoring cron, this will be replaced by a
+			// proper status='new' filter.
+			if n, err := matchRepo.CountForCandidate(ctx, candidate.ID); err == nil {
+				queued = n
+			}
+		}
+
+		response := map[string]any{
+			"plan":                 plan,
+			"status":               status,
+			"queued_matches":       queued,
+			"delivered_this_week":  0,
+			"agent":                nil,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}
+}
+
 // onboardHandler creates a CandidateProfile for the authenticated user.
 func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor, svc *frame.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -699,14 +757,27 @@ func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *ex
 			return
 		}
 
+		// Subscription plan chosen during onboarding. Free lands the
+		// candidate on the Free tier immediately; any paid plan writes the
+		// PlanID but leaves Subscription at "free" until the billing
+		// webhook confirms payment and flips it to "paid".
+		plan := r.FormValue("plan")
+		subscription := domain.SubscriptionFree
+		if plan == "" {
+			plan = "free"
+		}
+
 		candidate := &domain.CandidateProfile{
 			ProfileID:          profileID,
 			Status:             domain.CandidateActive,
+			Subscription:       subscription,
+			PlanID:             plan,
 			TargetJobTitle:     r.FormValue("target_job_title"),
 			ExperienceLevel:    r.FormValue("experience_level"),
 			JobSearchStatus:    r.FormValue("job_search_status"),
 			PreferredRegions:   r.FormValue("preferred_regions"),
 			PreferredTimezones: r.FormValue("preferred_timezones"),
+			PreferredCountries: r.FormValue("country"),
 			WantsATSReport:     r.FormValue("wants_ats_report") == "true",
 			Currency:           r.FormValue("currency"),
 		}

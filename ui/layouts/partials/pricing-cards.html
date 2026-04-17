@@ -1,0 +1,113 @@
+{{/*
+  Pricing cards (server-rendered — zero DB queries). Mirrors the PLANS
+  array in ui/app/src/utils/plans.ts; when you add a tier there, update
+  this partial too.
+
+  Param `emphasis` ("full" or "compact"):
+    full    — shown on the /pricing/ page: 4 cards, CTAs, tagline.
+    compact — shown on the home: 3 paid cards prominent, Free linked below.
+*/}}
+{{ $mode := .mode | default "full" }}
+<div class="grid gap-6 {{ if eq $mode "compact" }}lg:grid-cols-3{{ else }}lg:grid-cols-4{{ end }}">
+
+  {{ if eq $mode "full" }}
+  <article class="flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <header>
+      <h3 class="text-base font-semibold text-gray-900">Free</h3>
+      <p class="mt-1 text-sm text-gray-600">Search jobs yourself — forever free.</p>
+      <p class="mt-5 flex items-baseline gap-x-1">
+        <span class="text-4xl font-bold tracking-tight text-gray-900">$0</span>
+        <span class="text-sm text-gray-500">/month</span>
+      </p>
+    </header>
+    <ul class="mt-6 flex-1 space-y-2.5 text-sm text-gray-700" role="list">
+      {{ range slice "Browse every job in the database" "Filter by category, region, salary, seniority" "Save jobs to your dashboard" "Apply directly on the employer's site" }}
+      <li class="flex items-start gap-2">
+        <svg class="mt-0.5 h-4 w-4 shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        <span>{{ . }}</span>
+      </li>
+      {{ end }}
+    </ul>
+    <a href="/jobs/" class="mt-6 block rounded-md border border-gray-300 bg-white px-4 py-2 text-center text-sm font-semibold text-gray-700 hover:bg-gray-50">
+      Start browsing
+    </a>
+  </article>
+  {{ end }}
+
+  <article class="flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <header>
+      <h3 class="text-base font-semibold text-gray-900">Starter</h3>
+      <p class="mt-1 text-sm text-gray-600">Five AI-matched jobs a week, delivered.</p>
+      <p class="mt-5 flex items-baseline gap-x-1">
+        <span class="text-4xl font-bold tracking-tight text-gray-900">$10</span>
+        <span class="text-sm text-gray-500">/month</span>
+      </p>
+    </header>
+    <ul class="mt-6 flex-1 space-y-2.5 text-sm text-gray-700" role="list">
+      {{ range slice "Everything in Free" "Upload your CV once — we parse and learn what fits" "Up to 5 matches per week, queued as jobs come in" "Weekly email digest of your top matches" "One ATS-compatibility report per month" }}
+      <li class="flex items-start gap-2">
+        <svg class="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        <span>{{ . }}</span>
+      </li>
+      {{ end }}
+    </ul>
+    <a href="/onboarding/?plan=starter" class="mt-6 block rounded-md bg-navy-900 px-4 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-navy-800">
+      Start for $10/month
+    </a>
+  </article>
+
+  <article class="relative flex flex-col rounded-2xl border-2 border-accent-500 bg-white p-6 shadow-lg">
+    <span class="absolute -top-3 right-6 inline-block rounded-full bg-accent-500 px-3 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
+      Most popular
+    </span>
+    <header>
+      <h3 class="text-base font-semibold text-gray-900">Pro</h3>
+      <p class="mt-1 text-sm text-gray-600">5× the matches. Priority queue.</p>
+      <p class="mt-5 flex items-baseline gap-x-1">
+        <span class="text-4xl font-bold tracking-tight text-gray-900">$50</span>
+        <span class="text-sm text-gray-500">/month</span>
+      </p>
+    </header>
+    <ul class="mt-6 flex-1 space-y-2.5 text-sm text-gray-700" role="list">
+      {{ range slice "Everything in Starter" "Up to 25 matches per week" "Priority placement in the matching queue" "Cover-letter drafts for each match" "Unlimited ATS reports" "Résumé refinement suggestions" }}
+      <li class="flex items-start gap-2">
+        <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        <span>{{ . }}</span>
+      </li>
+      {{ end }}
+    </ul>
+    <a href="/onboarding/?plan=pro" class="mt-6 block rounded-md bg-accent-500 px-4 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-accent-600">
+      Upgrade to Pro — $50/month
+    </a>
+  </article>
+
+  <article class="flex flex-col rounded-2xl border border-navy-900 bg-navy-900 p-6 text-white shadow-sm">
+    <header>
+      <h3 class="text-base font-semibold text-white">Managed</h3>
+      <p class="mt-1 text-sm text-gray-300">A real person running your search.</p>
+      <p class="mt-5 flex items-baseline gap-x-1">
+        <span class="text-4xl font-bold tracking-tight text-white">$200</span>
+        <span class="text-sm text-gray-400">/month</span>
+      </p>
+    </header>
+    <ul class="mt-6 flex-1 space-y-2.5 text-sm text-gray-200" role="list">
+      {{ range slice "Everything in Pro" "A dedicated agent for the duration of your search" "Your agent handles applications on your behalf" "Weekly 1:1 strategy calls" "Direct line for same-day support" "Interview prep and salary negotiation coaching" }}
+      <li class="flex items-start gap-2">
+        <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        <span>{{ . }}</span>
+      </li>
+      {{ end }}
+    </ul>
+    <a href="/onboarding/?plan=managed" class="mt-6 block rounded-md bg-white px-4 py-2 text-center text-sm font-semibold text-navy-900 shadow-sm hover:bg-gray-100">
+      Hire an agent — $200/month
+    </a>
+  </article>
+</div>

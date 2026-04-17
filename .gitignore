@@ -5,3 +5,8 @@ ui/resources/
 ui/.hugo_build.lock
 .superpowers/
 bin/
+
+# Stray Go build outputs when `go build ./...` is run from repo root
+# (Go names the binary after the last path segment — here `cmd` — which
+# collides with apps/*/cmd dirs).
+/cmd

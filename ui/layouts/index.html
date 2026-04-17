@@ -1,122 +1,247 @@
 {{ define "main" }}
-<!-- Hero -->
-<section class="relative overflow-hidden bg-navy-900 py-16 text-white sm:py-24">
+<!-- Hero ------------------------------------------------------------ -->
+<section class="relative overflow-hidden bg-navy-900 py-20 text-white sm:py-28">
   <div class="mx-auto max-w-5xl px-4 text-center sm:px-6 lg:px-8">
     <p class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-wider text-accent-200">
       <span class="h-1.5 w-1.5 rounded-full bg-accent-400 animate-pulse" aria-hidden="true"></span>
-      Live job board
+      Built for job seekers who are done searching
     </p>
     <h1 class="mt-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-      Find your next role.
+      Stop searching. <br class="hidden sm:inline">
+      Get matched jobs delivered.
     </h1>
     <p class="mx-auto mt-5 max-w-2xl text-lg text-gray-300">
-      Fresh jobs from companies hiring worldwide — filter by category, remote status, salary, and seniority. Save your favourites and get matches in your inbox.
+      Upload your CV once. Our matching engine — and, on Managed, a real
+      person — brings relevant roles to your inbox every week. No endless
+      scrolling, no missed postings.
     </p>
 
-    <form
-      action="/search/"
-      method="get"
-      class="mx-auto mt-8 flex max-w-xl flex-col gap-2 sm:flex-row"
-      role="search"
-      aria-label="Search jobs"
-    >
-      <label for="hero-search" class="sr-only">Search jobs</label>
-      <div class="relative flex-1">
-        <svg class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
-        <input
-          type="search"
-          id="hero-search"
-          name="q"
-          placeholder="Job title, skill, or company"
-          class="w-full rounded-md border border-transparent bg-white py-3 pl-10 pr-4 text-base text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
-        />
-      </div>
-      <button type="submit" class="rounded-md bg-accent-500 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-        Search jobs
-      </button>
-    </form>
+    <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+      <a href="/onboarding/?plan=starter" class="inline-flex w-full items-center justify-center rounded-md bg-accent-500 px-8 py-3 text-base font-semibold text-white shadow-sm hover:bg-accent-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto">
+        Upload your CV — from $10/month
+      </a>
+      <a href="/jobs/" class="inline-flex w-full items-center justify-center text-sm font-medium text-white underline underline-offset-4 hover:text-accent-200 sm:w-auto">
+        or keep searching for free →
+      </a>
+    </div>
 
-    <p class="mt-4 text-sm text-gray-400">
-      or
-      <a href="/onboarding/" class="font-medium text-white underline underline-offset-2 hover:text-accent-200">create a free profile</a>
-      and get matches delivered weekly.
+    <p class="mt-6 text-xs text-gray-400">
+      Cancel any time. $10 Starter → $50 Pro → $200 Managed. Free forever if you'd rather browse yourself.
     </p>
-
-    <div id="mount-home-stats" class="mt-12 min-h-[80px]"></div>
   </div>
 </section>
 
-<!-- Latest jobs -->
-<section class="py-16" aria-labelledby="latest-heading">
-  <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-    <div class="flex items-end justify-between gap-4">
-      <h2 id="latest-heading" class="text-2xl font-bold text-gray-900">
-        Latest jobs
+<!-- Pricing --------------------------------------------------------- -->
+<section class="py-20" aria-labelledby="pricing-heading">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">Plans</p>
+      <h2 id="pricing-heading" class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+        Pick the level of service you need
       </h2>
-      <a href="/jobs/" class="text-sm font-medium text-accent-600 hover:text-accent-700">
-        Browse all →
-      </a>
+      <p class="mt-4 text-gray-600">
+        Three subscription tiers that scale from hands-off matching to a
+        dedicated agent running your search. A free tier stays available for
+        everyone who wants to browse on their own.
+      </p>
     </div>
-    <div id="mount-home-latest" class="mt-6 min-h-[320px]"></div>
+    <div class="mt-12">
+      {{ partial "pricing-cards.html" (dict "mode" "full") }}
+    </div>
+    <p class="mt-6 text-center text-sm text-gray-500">
+      Need more? <a href="mailto:hello@stawi.org" class="font-medium text-accent-600 hover:text-accent-700">Talk to us about teams and bulk hiring.</a>
+    </p>
   </div>
 </section>
 
-<!-- Categories -->
-<section class="bg-gray-50 py-16" aria-labelledby="categories-heading">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="flex items-end justify-between gap-4">
-      <div>
-        <h2 id="categories-heading" class="text-2xl font-bold text-gray-900">
-          Browse by category
-        </h2>
-        <p class="mt-1 text-gray-600">
-          Jump straight to the roles you're targeting.
-        </p>
-      </div>
-      <a href="/categories/" class="hidden text-sm font-medium text-accent-600 hover:text-accent-700 sm:inline">
-        All categories →
-      </a>
-    </div>
-    <div id="mount-home-categories" class="mt-8 min-h-[240px]"></div>
-  </div>
-</section>
-
-<!-- How it works -->
-<section class="py-16" aria-labelledby="how-it-works-heading">
+<!-- How it works ---------------------------------------------------- -->
+<section class="bg-gray-50 py-20" aria-labelledby="how-heading">
   <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-    <h2 id="how-it-works-heading" class="text-center text-2xl font-bold text-gray-900">
-      How it works
-    </h2>
-    <div class="mt-10 grid grid-cols-1 gap-8 md:grid-cols-3">
-      <div class="text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-700 text-lg font-bold" aria-hidden="true">1</div>
-        <h3 class="mt-4 text-lg font-semibold text-gray-900">Browse</h3>
+    <div class="mx-auto max-w-2xl text-center">
+      <h2 id="how-heading" class="text-3xl font-bold tracking-tight text-gray-900">
+        How it works
+      </h2>
+      <p class="mt-3 text-gray-600">
+        Three steps from "I need a job" to "matches in my inbox".
+      </p>
+    </div>
+    <div class="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3">
+      <div>
+        <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-navy-900 text-base font-bold text-white" aria-hidden="true">1</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Tell us what you want</h3>
         <p class="mt-2 text-gray-600">
-          Thousands of fresh roles. Filter by remote status, category, seniority, and salary.
+          Target role, seniority, regions, salary range, time zones. Two minutes.
         </p>
       </div>
-      <div class="text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-700 text-lg font-bold" aria-hidden="true">2</div>
-        <h3 class="mt-4 text-lg font-semibold text-gray-900">Create your profile</h3>
+      <div>
+        <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-navy-900 text-base font-bold text-white" aria-hidden="true">2</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Upload your CV</h3>
         <p class="mt-2 text-gray-600">
-          Tell us what you're looking for. We'll surface roles that match your
-          target title, seniority, and region.
+          Our engine reads it, learns your skills and experience, and filters thousands of jobs down to the ones worth your time.
         </p>
       </div>
-      <div class="text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-700 text-lg font-bold" aria-hidden="true">3</div>
-        <h3 class="mt-4 text-lg font-semibold text-gray-900">Apply with one click</h3>
+      <div>
+        <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-navy-900 text-base font-bold text-white" aria-hidden="true">3</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Get matches, or let an agent apply</h3>
         <p class="mt-2 text-gray-600">
-          Every listing links straight to the employer's application page.
-          Save favourites and get weekly digests.
+          Starter and Pro deliver matches to your inbox and dashboard. Managed hands your search to a real person who applies on your behalf.
         </p>
       </div>
     </div>
-    <div class="mt-10 text-center">
-      <a href="/onboarding/" class="inline-flex items-center rounded-md bg-navy-900 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-navy-800">
-        Create your free profile
+  </div>
+</section>
+
+<!-- Comparison table ------------------------------------------------ -->
+<section class="py-20" aria-labelledby="compare-heading">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+    <h2 id="compare-heading" class="text-3xl font-bold tracking-tight text-gray-900 text-center">
+      What's in each tier
+    </h2>
+    <div class="mt-10 overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <table class="min-w-full divide-y divide-gray-200 text-left text-sm">
+        <thead class="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <tr>
+            <th scope="col" class="px-4 py-3">Feature</th>
+            <th scope="col" class="px-4 py-3 text-center">Free</th>
+            <th scope="col" class="px-4 py-3 text-center">Starter<br><span class="font-normal normal-case text-gray-400">$10</span></th>
+            <th scope="col" class="px-4 py-3 text-center">Pro<br><span class="font-normal normal-case text-gray-400">$50</span></th>
+            <th scope="col" class="px-4 py-3 text-center">Managed<br><span class="font-normal normal-case text-gray-400">$200</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 text-gray-700">
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Browse and search jobs</th>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Save jobs to dashboard</th>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">CV upload + AI matching</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Matches per week</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">Up to 5</td>
+            <td class="px-4 py-3 text-center">Up to 25</td>
+            <td class="px-4 py-3 text-center">Unlimited, agent-filtered</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Queue priority</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">Standard</td>
+            <td class="px-4 py-3 text-center">Priority</td>
+            <td class="px-4 py-3 text-center">Agent-managed</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Weekly email digest</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+            <td class="px-4 py-3 text-center">✓</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">ATS compatibility report</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">Monthly</td>
+            <td class="px-4 py-3 text-center">Unlimited</td>
+            <td class="px-4 py-3 text-center">Unlimited</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Cover-letter drafts</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">Per match</td>
+            <td class="px-4 py-3 text-center">Written by agent</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Applies on your behalf</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">✓</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Dedicated agent</th>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center text-gray-300">—</td>
+            <td class="px-4 py-3 text-center">✓</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-4 py-3 font-medium text-gray-900">Support</th>
+            <td class="px-4 py-3 text-center">Self-serve</td>
+            <td class="px-4 py-3 text-center">Email</td>
+            <td class="px-4 py-3 text-center">Email</td>
+            <td class="px-4 py-3 text-center">Same-day direct line</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ ------------------------------------------------------------- -->
+<section class="bg-gray-50 py-20" aria-labelledby="faq-heading">
+  <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+    <h2 id="faq-heading" class="text-3xl font-bold tracking-tight text-gray-900 text-center">
+      Questions, answered
+    </h2>
+    <dl class="mt-12 space-y-8">
+      <div>
+        <dt class="text-base font-semibold text-gray-900">What happens if I don't find a job?</dt>
+        <dd class="mt-2 text-gray-600">Cancel any time. Starter and Pro are month-to-month. Managed is a rolling engagement — if you stop hunting, your agent steps back and you cancel when you're ready.</dd>
+      </div>
+      <div>
+        <dt class="text-base font-semibold text-gray-900">How is Pro different from Starter?</dt>
+        <dd class="mt-2 text-gray-600">You get 5× the matches (25/week instead of 5), your profile is placed ahead of Starter subscribers in the matching queue, and every match comes with a draft cover letter. Both receive the same email-based support.</dd>
+      </div>
+      <div>
+        <dt class="text-base font-semibold text-gray-900">What exactly does the Managed agent do?</dt>
+        <dd class="mt-2 text-gray-600">They review your CV, write cover letters, apply on your behalf, prep you for interviews, coach you through salary negotiation, and give you a direct line for same-day responses. Think of it as renting an experienced recruiter who works for you, not an employer.</dd>
+      </div>
+      <div>
+        <dt class="text-base font-semibold text-gray-900">Is the Free tier really free?</dt>
+        <dd class="mt-2 text-gray-600">Yes. No credit card, no trial. You browse, save, and search forever without paying. You just don't get the matching engine or an agent.</dd>
+      </div>
+      <div>
+        <dt class="text-base font-semibold text-gray-900">Do you actually apply to jobs on my behalf?</dt>
+        <dd class="mt-2 text-gray-600">Only on the Managed tier. Starter and Pro surface matches — every listing still links straight to the employer's application page so you control what gets sent. We never auto-submit without your say-so.</dd>
+      </div>
+      <div>
+        <dt class="text-base font-semibold text-gray-900">What payment methods work?</dt>
+        <dd class="mt-2 text-gray-600">Credit and debit cards, plus mobile money in selected markets (KES, NGN, ZAR). Prices shown in USD.</dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<!-- Final CTA ------------------------------------------------------- -->
+<section class="py-20">
+  <div class="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
+    <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+      Ready to stop scrolling job boards?
+    </h2>
+    <p class="mt-4 text-gray-600">
+      Two minutes of setup, then matches come to you.
+    </p>
+    <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+      <a href="/onboarding/?plan=starter" class="inline-flex items-center rounded-md bg-navy-900 px-8 py-3 text-base font-semibold text-white shadow-sm hover:bg-navy-800">
+        Start with Starter — $10/month
+      </a>
+      <a href="/pricing/" class="text-sm font-medium text-navy-900 hover:text-accent-600">
+        Compare all plans →
       </a>
     </div>
   </div>

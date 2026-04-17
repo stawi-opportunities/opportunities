@@ -30,10 +30,14 @@ export default function Nav() {
     };
   }, [findJobsOpen]);
 
+  // Categories are fetched lazily — only when the user actually opens the
+  // Find Jobs dropdown or the mobile menu. Keeps the landing page free of
+  // backend calls on first paint.
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
     queryFn: () => listCategories(),
     staleTime: 5 * 60_000,
+    enabled: findJobsOpen || mobileOpen,
   });
   const categories: FacetEntry[] = categoriesQuery.data?.categories ?? [];
   const closeMobile = () => setMobileOpen(false);
