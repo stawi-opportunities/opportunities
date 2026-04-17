@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
          -X github.com/pitabwire/frame/version.Version=${VERSION} \
          -X github.com/pitabwire/frame/version.Commit=${REVISION} \
          -X github.com/pitabwire/frame/version.Date=${BUILDTIME}" \
-     -o /app/binary ./apps/api/cmd/main.go
+     -o /app/binary ./apps/api/cmd
 
 FROM cgr.dev/chainguard/static:latest
 LABEL maintainer="Bwire Peter <bwire517@gmail.com>"
