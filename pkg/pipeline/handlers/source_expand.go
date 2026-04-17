@@ -178,7 +178,7 @@ func (h *SourceExpansionHandler) resolveBaseURL(ctx context.Context, rawURL stri
 		}
 		return "", err
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// resp.Request.URL is the final URL after all redirects.
 	return schemeHost(resp.Request.URL), nil

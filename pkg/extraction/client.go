@@ -138,7 +138,7 @@ func (e *Extractor) chat(ctx context.Context, prompt string, expectJSON bool) (s
 	if err != nil {
 		return "", fmt.Errorf("chat: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return "", fmt.Errorf("chat: status %d: %s", resp.StatusCode, string(b))
@@ -232,7 +232,7 @@ func (e *Extractor) rerank(ctx context.Context, query string, texts []string) ([
 	if err != nil {
 		return nil, fmt.Errorf("rerank: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return nil, fmt.Errorf("rerank: status %d: %s", resp.StatusCode, string(b))
@@ -293,7 +293,7 @@ func (e *Extractor) embed(ctx context.Context, text string) ([]float32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("embed: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return nil, fmt.Errorf("embed: status %d: %s", resp.StatusCode, string(b))

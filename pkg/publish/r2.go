@@ -108,7 +108,7 @@ func (p *R2Publisher) Download(ctx context.Context, key string) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer out.Body.Close()
+	defer func() { _ = out.Body.Close() }()
 	return io.ReadAll(out.Body)
 }
 
@@ -121,7 +121,7 @@ func (p *R2Publisher) TriggerDeploy() error {
 	if err != nil {
 		return fmt.Errorf("deploy hook POST failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("deploy hook returned status %d", resp.StatusCode)
 	}

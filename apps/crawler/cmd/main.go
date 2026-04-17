@@ -143,7 +143,7 @@ func main() {
 
 	// Bloom filter for fast duplicate detection.
 	bloomFilter := bloom.NewFilter(cfg.ValkeyAddr, dbFn)
-	svc.AddCleanupMethod(func(_ context.Context) { bloomFilter.Close() })
+	svc.AddCleanupMethod(func(_ context.Context) { _ = bloomFilter.Close() })
 
 	// R2 publisher for job content.
 	var r2Publisher *publish.R2Publisher

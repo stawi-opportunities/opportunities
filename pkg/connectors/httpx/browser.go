@@ -64,7 +64,7 @@ func (c *BrowserClient) Get(ctx context.Context, url string) ([]byte, int, error
 	if err != nil {
 		return nil, 0, fmt.Errorf("browser new page: %w", err)
 	}
-	defer page.Close()
+	defer func() { _ = page.Close() }()
 
 	page = page.Timeout(c.timeout)
 
@@ -79,11 +79,10 @@ func (c *BrowserClient) Get(ctx context.Context, url string) ([]byte, int, error
 		return nil, 0, fmt.Errorf("browser navigate: %w", err)
 	}
 
-	// Wait for network idle (page finished loading JS)
-	err = page.WaitStable(2 * time.Second)
-	if err != nil {
-		// Not fatal — page may still have useful content
-	}
+	// Wait for network idle (page finished loading JS). Timeout isn't
+	// fatal — partial pages often still contain enough content for
+	// extraction.
+	_ = page.WaitStable(2 * time.Second)
 
 	html, err := page.HTML()
 	if err != nil {
@@ -98,7 +97,7 @@ func (c *BrowserClient) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.browser != nil {
-		c.browser.Close()
+		_ = c.browser.Close()
 		c.browser = nil
 	}
 }

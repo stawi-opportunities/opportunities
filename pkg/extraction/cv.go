@@ -78,7 +78,7 @@ func ExtractTextFromDOCX(data []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cv: open docx: %w", err)
 	}
-	defer doc.Close()
+	defer func() { _ = doc.Close() }()
 
 	// GetContent returns the raw word/document.xml; strip tags to get text.
 	raw := doc.Editable().GetContent()

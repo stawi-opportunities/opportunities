@@ -328,7 +328,7 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 		// Process CV file if provided.
 		file, header, fileErr := r.FormFile("cv")
 		if fileErr == nil {
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			data, readErr := io.ReadAll(file)
 			if readErr != nil {
 				http.Error(w, `{"error":"failed to read CV file"}`, http.StatusBadRequest)
@@ -610,7 +610,7 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 			http.Error(w, `{"error":"attachment is required"}`, http.StatusBadRequest)
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		data, readErr := io.ReadAll(file)
 		if readErr != nil {
@@ -830,7 +830,7 @@ func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *ex
 
 		file, header, fileErr := r.FormFile("cv")
 		if fileErr == nil {
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			data, readErr := io.ReadAll(file)
 			if readErr != nil {
 				http.Error(w, `{"error":"failed to read CV file"}`, http.StatusBadRequest)
@@ -973,7 +973,7 @@ func forceMatchHandler(matcher *matching.Matcher, candidateRepo *repository.Cand
 			results = append(results, map[string]any{"candidate_id": c.ID, "profile_id": c.ProfileID, "matches": n})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"candidates":    len(candidates),
 			"total_matches": totalMatches,
 			"results":       results,

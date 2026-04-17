@@ -58,9 +58,9 @@ func TestExtractFromHTML_Empty(t *testing.T) {
 		if result == nil {
 			t.Fatalf("expected non-nil result for input %q", input)
 		}
-		if result.RawHTML != "" && result.RawHTML != input {
-			// empty struct is fine either way
-		}
+		// RawHTML may round-trip verbatim or be normalised — both are
+		// acceptable for this smoke test.
+		_ = result.RawHTML
 	}
 }
 

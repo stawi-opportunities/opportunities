@@ -124,7 +124,7 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 			if extracted != nil {
 				contentText = extracted.Markdown
 				// Store the fetched content for future reprocessing
-				h.jobRepo.UpdateStageWithContent(ctx, variant.ID, string(domain.StageDeduped),
+				_ = h.jobRepo.UpdateStageWithContent(ctx, variant.ID, string(domain.StageDeduped),
 					string(raw), extracted.CleanHTML, extracted.Markdown)
 			}
 		}

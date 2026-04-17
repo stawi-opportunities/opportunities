@@ -263,10 +263,10 @@ func mergeExtractedFields(job *domain.ExternalJob, fields *extraction.JobFields)
 		job.Currency = fields.Currency
 	}
 	if fields.SalaryMin != "" && job.SalaryMin == 0 {
-		fmt.Sscanf(fields.SalaryMin, "%f", &job.SalaryMin)
+		_, _ = fmt.Sscanf(fields.SalaryMin, "%f", &job.SalaryMin)
 	}
 	if fields.SalaryMax != "" && job.SalaryMax == 0 {
-		fmt.Sscanf(fields.SalaryMax, "%f", &job.SalaryMax)
+		_, _ = fmt.Sscanf(fields.SalaryMax, "%f", &job.SalaryMax)
 	}
 	// Extended fields — always fill from AI
 	if job.Seniority == "" && fields.Seniority != "" {

@@ -135,31 +135,31 @@ func (h *SourceQualityHandler) Execute(ctx context.Context, payload any) error {
 
 	// 4. Build sample text from all variants.
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Source: %s (ID: %d)\n\n", src.BaseURL, src.ID))
+	fmt.Fprintf(&sb, "Source: %s (ID: %d)\n\n", src.BaseURL, src.ID)
 
 	goodSamples := append(validated, ready...)
 	if len(goodSamples) > 10 {
 		goodSamples = goodSamples[:10]
 	}
 
-	sb.WriteString(fmt.Sprintf("Good samples (%d):\n", len(goodSamples)))
+	fmt.Fprintf(&sb, "Good samples (%d):\n", len(goodSamples))
 	for i, v := range goodSamples {
 		desc := v.Description
 		if len([]rune(desc)) > 200 {
 			desc = string([]rune(desc)[:200])
 		}
-		sb.WriteString(fmt.Sprintf("%d. Title: %s | Company: %s | Description: %s\n",
-			i+1, v.Title, v.Company, desc))
+		fmt.Fprintf(&sb, "%d. Title: %s | Company: %s | Description: %s\n",
+			i+1, v.Title, v.Company, desc)
 	}
 
-	sb.WriteString(fmt.Sprintf("\nFlagged samples (%d):\n", len(flagged)))
+	fmt.Fprintf(&sb, "\nFlagged samples (%d):\n", len(flagged))
 	for i, v := range flagged {
 		desc := v.Description
 		if len([]rune(desc)) > 200 {
 			desc = string([]rune(desc)[:200])
 		}
-		sb.WriteString(fmt.Sprintf("%d. Title: %s | Company: %s | Description: %s\n",
-			i+1, v.Title, v.Company, desc))
+		fmt.Fprintf(&sb, "%d. Title: %s | Company: %s | Description: %s\n",
+			i+1, v.Title, v.Company, desc)
 	}
 
 	// 5–6. Call AI for review.

@@ -89,7 +89,7 @@ func (c *Client) doGet(ctx context.Context, url string, headers map[string]strin
 	if err != nil {
 		return nil, 0, fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB max
 	if err != nil {

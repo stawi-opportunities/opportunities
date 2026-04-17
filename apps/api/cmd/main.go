@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -632,7 +631,7 @@ func main() {
 		for {
 			var jobs []*domain.CanonicalJob
 			if err := query.Limit(batchSize).Offset(offset).Find(&jobs).Error; err != nil {
-				json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 				return
 			}
 			if len(jobs) == 0 {
@@ -723,20 +722,3 @@ func main() {
 	log.Println("API stopped")
 }
 
-// cosineSimilarity computes the cosine similarity between two float32 vectors.
-func cosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
-	}
-	var dotProduct, normA, normB float64
-	for i := range a {
-		dotProduct += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	denom := math.Sqrt(normA) * math.Sqrt(normB)
-	if denom == 0 {
-		return 0
-	}
-	return dotProduct / denom
-}
