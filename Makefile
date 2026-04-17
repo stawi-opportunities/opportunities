@@ -58,10 +58,13 @@ $(HUGO_BIN):
 
 # Produces ui/public/ — the artifact Cloudflare Pages serves.
 # CF Pages build command: `make ui-build` (from repo root).
+# Two npm installs: ui/ hosts PostCSS+Tailwind (Hugo's css.PostCSS pipe shells
+# out to `npx postcss`); ui/app/ hosts the React app itself.
 ui-build: $(HUGO_BIN)
+	cd ui     && npm ci --prefer-offline --no-audit --no-fund
 	cd ui/app && npm ci --prefer-offline --no-audit --no-fund
 	cd ui/app && npm run build
-	cd ui && $(HUGO_BIN) --minify
+	cd ui     && $(HUGO_BIN) --minify
 
 # Vite on :5173 + Hugo on :5170 concurrently. ^C stops both. OIDC env vars
 # swap in the Development partition client so local sign-in doesn't hit the
