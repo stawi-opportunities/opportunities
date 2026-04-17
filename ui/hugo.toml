@@ -7,7 +7,9 @@ title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
   # Defaults point at the exposed Stawi cluster so `make ui-dev` works out of
   # the box against real data. For developers running the backend locally,
   # use `make ui-dev-local` (overrides apiURL/candidatesAPIURL to localhost).
-  apiURL = "https://jobs-api.stawi.org"
+  # The gateway exposes the jobs service under a /jobs path prefix on the
+  # shared api.stawi.org host.
+  apiURL = "https://api.stawi.org/jobs"
   candidatesAPIURL = "https://api.stawi.org"
   contentOrigin = "https://jobs-repo.stawi.org"
   # OIDC — Thesa-registered clients (see

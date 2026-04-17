@@ -36,8 +36,12 @@ export async function fetchCategoriesIndex() {
 }
 
 function apiURL(path, params = {}) {
-  const origin = API_ORIGIN || window.location.origin;
-  const u = new URL(path, origin);
+  // Preserve any base path on API_ORIGIN (e.g. "https://api.stawi.org/jobs")
+  // by string-concatenating rather than using URL resolution, which would
+  // replace the base path whenever `path` starts with "/".
+  const base = (API_ORIGIN || window.location.origin).replace(/\/$/, "");
+  const rel = path.startsWith("/") ? path : "/" + path;
+  const u = new URL(base + rel);
   for (const [k, v] of Object.entries(params)) {
     if (v !== "" && v != null) u.searchParams.set(k, v);
   }
