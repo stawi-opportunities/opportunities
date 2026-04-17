@@ -1,7 +1,9 @@
 ---
 title: "Design"
+description: "Product, UI/UX, brand, and research design roles from companies hiring worldwide."
 params:
   slug: "design"
-  job_count: 3500
 ---
-Browse Design jobs.
+
+Product, UI/UX, brand, illustration, and research roles. Filter by
+remote, seniority, or salary.

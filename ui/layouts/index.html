@@ -1,79 +1,123 @@
 {{ define "main" }}
 <!-- Hero -->
-<section class="bg-navy-900 py-16 text-white sm:py-24">
-  <div class="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-    <h1 class="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-      Find Your Next Role
-    </h1>
-    <p class="mx-auto mt-6 max-w-2xl text-lg text-gray-300">
-      Thousands of open jobs from companies hiring worldwide — upload your CV, we match you, we apply.
+<section class="relative overflow-hidden bg-navy-900 py-16 text-white sm:py-24">
+  <div class="mx-auto max-w-5xl px-4 text-center sm:px-6 lg:px-8">
+    <p class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-wider text-accent-200">
+      <span class="h-1.5 w-1.5 rounded-full bg-accent-400 animate-pulse" aria-hidden="true"></span>
+      Live job board
     </p>
-    <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-      <a href="/jobs/" class="btn-primary px-8 py-4 text-base">Browse All Jobs</a>
-      <a href="/onboarding/" class="btn-secondary border-white/20 bg-white/10 text-white hover:bg-white/20 px-8 py-4 text-base">
-        Get Personalized Matches
-      </a>
-    </div>
-    <div id="mount-home-stats"></div>
+    <h1 class="mt-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+      Find your next role.
+    </h1>
+    <p class="mx-auto mt-5 max-w-2xl text-lg text-gray-300">
+      Fresh jobs from companies hiring worldwide — filter by category, remote status, salary, and seniority. Save your favourites and get matches in your inbox.
+    </p>
+
+    <form
+      action="/search/"
+      method="get"
+      class="mx-auto mt-8 flex max-w-xl flex-col gap-2 sm:flex-row"
+      role="search"
+      aria-label="Search jobs"
+    >
+      <label for="hero-search" class="sr-only">Search jobs</label>
+      <div class="relative flex-1">
+        <svg class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input
+          type="search"
+          id="hero-search"
+          name="q"
+          placeholder="Job title, skill, or company"
+          class="w-full rounded-md border border-transparent bg-white py-3 pl-10 pr-4 text-base text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
+        />
+      </div>
+      <button type="submit" class="rounded-md bg-accent-500 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+        Search jobs
+      </button>
+    </form>
+
+    <p class="mt-4 text-sm text-gray-400">
+      or
+      <a href="/onboarding/" class="font-medium text-white underline underline-offset-2 hover:text-accent-200">create a free profile</a>
+      and get matches delivered weekly.
+    </p>
+
+    <div id="mount-home-stats" class="mt-12 min-h-[80px]"></div>
   </div>
 </section>
 
 <!-- Latest jobs -->
 <section class="py-16" aria-labelledby="latest-heading">
   <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-    <h2 id="latest-heading" class="text-2xl font-bold text-gray-900">Latest jobs</h2>
-    <div id="mount-home-latest"></div>
+    <div class="flex items-end justify-between gap-4">
+      <h2 id="latest-heading" class="text-2xl font-bold text-gray-900">
+        Latest jobs
+      </h2>
+      <a href="/jobs/" class="text-sm font-medium text-accent-600 hover:text-accent-700">
+        Browse all →
+      </a>
+    </div>
+    <div id="mount-home-latest" class="mt-6 min-h-[320px]"></div>
   </div>
 </section>
 
 <!-- Categories -->
-<section class="py-16 bg-gray-50" aria-labelledby="categories-heading">
+<section class="bg-gray-50 py-16" aria-labelledby="categories-heading">
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <h2 id="categories-heading" class="text-2xl font-bold text-gray-900">Browse by Category</h2>
-    <div id="mount-home-categories"></div>
-  </div>
-</section>
-
-<!-- Testimonials -->
-<section class="py-16" aria-labelledby="testimonials-heading">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <h2 id="testimonials-heading" class="text-center text-2xl font-bold text-gray-900">
-      What Job Seekers Say
-    </h2>
-    <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
-      {{ range hugo.Data.testimonials }}
-      <blockquote class="rounded-lg border border-gray-200 p-6">
-        <p class="text-gray-700">"{{ .quote }}"</p>
-        <footer class="mt-4">
-          <p class="font-semibold text-gray-900">{{ .name }}</p>
-          <p class="text-sm text-gray-500">{{ .role }}</p>
-        </footer>
-      </blockquote>
-      {{ end }}
+    <div class="flex items-end justify-between gap-4">
+      <div>
+        <h2 id="categories-heading" class="text-2xl font-bold text-gray-900">
+          Browse by category
+        </h2>
+        <p class="mt-1 text-gray-600">
+          Jump straight to the roles you're targeting.
+        </p>
+      </div>
+      <a href="/categories/" class="hidden text-sm font-medium text-accent-600 hover:text-accent-700 sm:inline">
+        All categories →
+      </a>
     </div>
+    <div id="mount-home-categories" class="mt-8 min-h-[240px]"></div>
   </div>
 </section>
 
 <!-- How it works -->
-<section class="py-16 bg-gray-50" aria-labelledby="how-it-works-heading">
-  <div class="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-    <h2 id="how-it-works-heading" class="text-2xl font-bold text-gray-900">How It Works</h2>
-    <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3">
-      <div>
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">1</div>
-        <h3 class="mt-4 text-lg font-semibold text-gray-900">Browse Jobs</h3>
-        <p class="mt-2 text-gray-600">Search thousands of open positions by category, location, or keyword.</p>
+<section class="py-16" aria-labelledby="how-it-works-heading">
+  <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+    <h2 id="how-it-works-heading" class="text-center text-2xl font-bold text-gray-900">
+      How it works
+    </h2>
+    <div class="mt-10 grid grid-cols-1 gap-8 md:grid-cols-3">
+      <div class="text-center">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-700 text-lg font-bold" aria-hidden="true">1</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Browse</h3>
+        <p class="mt-2 text-gray-600">
+          Thousands of fresh roles. Filter by remote status, category, seniority, and salary.
+        </p>
       </div>
-      <div>
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">2</div>
-        <h3 class="mt-4 text-lg font-semibold text-gray-900">Create Your Profile</h3>
-        <p class="mt-2 text-gray-600">Upload your CV and set preferences. Our AI matches you to the best-fit opportunities automatically.</p>
+      <div class="text-center">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-700 text-lg font-bold" aria-hidden="true">2</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Create your profile</h3>
+        <p class="mt-2 text-gray-600">
+          Tell us what you're looking for. We'll surface roles that match your
+          target title, seniority, and region.
+        </p>
       </div>
-      <div>
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">3</div>
-        <h3 class="mt-4 text-lg font-semibold text-gray-900">We Apply, You Get Hired</h3>
-        <p class="mt-2 text-gray-600">We apply to matching positions on your behalf until you get hired or cancel your subscription. You focus on interviews.</p>
+      <div class="text-center">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-700 text-lg font-bold" aria-hidden="true">3</div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">Apply with one click</h3>
+        <p class="mt-2 text-gray-600">
+          Every listing links straight to the employer's application page.
+          Save favourites and get weekly digests.
+        </p>
       </div>
+    </div>
+    <div class="mt-10 text-center">
+      <a href="/onboarding/" class="inline-flex items-center rounded-md bg-navy-900 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-navy-800">
+        Create your free profile
+      </a>
     </div>
   </div>
 </section>

@@ -1,11 +1,16 @@
 <!-- The navbar is rendered by React on mount. See ui/app/src/components/Nav.tsx.
-     While the JS is still loading we render a skeleton of the bar so the
-     viewport doesn't jump when React takes over. -->
+     Until the JS loads we render a near-identical skeleton (matching dimensions)
+     so the viewport doesn't jump when React takes over, and users always have
+     a visible home link + sign-in fallback even if the widget fails. -->
 <div id="mount-nav">
   <header class="sticky top-0 z-40 border-b border-gray-200 bg-white">
     <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-      <a href="/" class="text-xl font-bold text-navy-900">STAWI JOBS</a>
-      <div class="h-9 w-24 animate-pulse rounded bg-gray-100"></div>
+      <a href="/" class="flex items-center" aria-label="Stawi Jobs — home">
+        <img src="/images/logo.svg" alt="Stawi Jobs" height="28" class="h-7 w-auto"/>
+      </a>
+      <a href="/onboarding/" class="text-sm font-medium text-navy-900 hover:text-accent-600">
+        Sign in
+      </a>
     </div>
   </header>
 </div>

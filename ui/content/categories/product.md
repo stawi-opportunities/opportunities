@@ -1,7 +1,9 @@
 ---
 title: "Product"
+description: "Product management, product operations, and product marketing roles from companies hiring worldwide."
 params:
   slug: "product"
-  job_count: 1500
 ---
-Browse Product jobs.
+
+Product management, product operations, and product marketing roles.
+Filter by remote, seniority, or salary.

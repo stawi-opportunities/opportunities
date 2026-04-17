@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 32" role="img" aria-label="Stawi Jobs">
+  <rect x="0" y="2" width="28" height="28" rx="6" fill="#0f172a"/>
+  <path d="M6 11h16v2.7H6z" fill="#e74c3c"/>
+  <path d="M6 15h11v2.7H6z" fill="#f8fafc"/>
+  <path d="M6 19h16v2.7H6z" fill="#e74c3c"/>
+  <text x="36" y="22" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="700" fill="#0f172a" letter-spacing="0.5">STAWI</text>
+  <text x="94" y="22" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="500" fill="#475569" letter-spacing="0.5">Jobs</text>
+</svg>

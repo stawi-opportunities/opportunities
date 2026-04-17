@@ -51,14 +51,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsub = runtime.onAuthStateChange(setState);
 
-    // Kick the runtime out of "initializing" on first mount. Try to restore
-    // a live token silently; if there's nothing valid, force a logout so
-    // the state machine settles on "unauthenticated" and the widget renders
-    // its sign-in button. Without this, the auth badge sits on
-    // "Loading authentication" forever because nothing else prompts a
-    // state change.
+    // Kick the runtime out of "initializing" on first mount by asking for
+    // a token silently. A rejection here means "no live session" — the
+    // runtime emits an `unauthenticated` state as a side effect of the
+    // failure, so we don't need to force it with logout() (which would
+    // bounce fresh visitors to Hydra's end-session endpoint).
     if (runtime.getState() === "initializing") {
-      runtime.getAccessToken().catch(() => runtime.logout().catch(() => {}));
+      runtime.getAccessToken().catch(() => {});
     }
 
     return unsub;

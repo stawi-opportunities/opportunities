@@ -1,7 +1,9 @@
 ---
 title: "Sales"
+description: "Inbound, outbound, AE, SDR, and revenue operations roles from companies hiring worldwide."
 params:
   slug: "sales"
-  job_count: 1800
 ---
-Browse Sales jobs.
+
+Inbound, outbound, AE, SDR, and revenue operations roles. Filter by
+remote, seniority, or salary.

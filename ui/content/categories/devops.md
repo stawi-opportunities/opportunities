@@ -1,7 +1,9 @@
 ---
 title: "DevOps & Infrastructure"
+description: "SRE, platform, infrastructure, and security roles from companies hiring worldwide."
 params:
   slug: "devops"
-  job_count: 2500
 ---
-Browse DevOps & Infrastructure jobs.
+
+SRE, platform, infrastructure, and security roles. Filter by remote,
+seniority, or salary.

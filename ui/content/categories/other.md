@@ -1,7 +1,9 @@
 ---
 title: "Other"
+description: "Operations, finance, HR, legal, and other roles from companies hiring worldwide."
 params:
   slug: "other"
-  job_count: 6500
 ---
-Browse jobs in this category.
+
+Operations, finance, HR, legal, and roles that don't fit a single
+category. Filter by remote, seniority, or salary.

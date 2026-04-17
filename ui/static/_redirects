@@ -1,7 +1,13 @@
-# Cloudflare Pages catch-all rewrites.
-# 200 = rewrite (URL unchanged in browser); 301 would be a redirect.
-# Dynamic routes are served by a single pre-built shell page; JS reads the
-# URL and hydrates from R2 or the search API.
-/jobs/*         /jobs/         200
-/categories/*   /categories/   200
-/companies/*    /companies/    200
+# Cloudflare Pages rewrites (200 = silent rewrite, 301 = redirect).
+#
+# Dynamic detail routes are served by a single pre-built shell page; the
+# React island reads the URL and hydrates from R2 / the search API.
+#
+# Order matters — first match wins. Literal section roots must come before
+# their splat siblings, otherwise the splat swallows the listing page.
+
+/jobs/          /jobs/        200
+/jobs/*         /job/         200
+
+/categories/    /categories/  200
+/categories/*   /categories/  200

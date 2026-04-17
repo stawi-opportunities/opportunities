@@ -1,3 +1,30 @@
+// Keys come straight from the backend facets. Anything not explicitly
+// mapped falls back to title-case slug (e.g. "media_production" → "Media
+// Production").
+const CATEGORY_LABELS: Record<string, string> = {
+  programming: "Programming",
+  design: "Design",
+  customer_support: "Customer Support",
+  marketing: "Marketing",
+  sales: "Sales",
+  devops: "DevOps & Infrastructure",
+  product: "Product",
+  data: "Data Science & Analytics",
+  data_science: "Data Science & Analytics",
+  management: "Management & Executive",
+  other: "Other",
+};
+
+export function categoryLabel(key?: string | null): string {
+  if (!key) return "Uncategorised";
+  return (
+    CATEGORY_LABELS[key] ??
+    key
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
 export function fmtMoney(
   min: number | undefined,
   max: number | undefined,

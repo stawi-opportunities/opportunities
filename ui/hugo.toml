@@ -1,6 +1,6 @@
 baseURL = "https://jobs.stawi.org/"
 languageCode = "en"
-title = "Stawi Jobs — Find Your Next Role"
+title = "Stawi Jobs"
 
 [params]
   description = "Browse jobs from companies hiring worldwide across programming, design, marketing, and more. Apply to anything you're qualified for."

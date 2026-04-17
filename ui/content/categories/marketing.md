@@ -1,7 +1,9 @@
 ---
 title: "Marketing"
+description: "Content, SEO, performance marketing, brand, and growth roles from companies hiring worldwide."
 params:
   slug: "marketing"
-  job_count: 2200
 ---
-Browse Marketing jobs.
+
+Content, SEO, performance marketing, brand, and growth roles. Filter
+by remote, seniority, or salary.

@@ -1,0 +1,18 @@
+{{ define "main" }}
+<section class="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center px-4 py-16 text-center">
+  <p class="text-6xl font-bold tracking-tight text-accent-500">404</p>
+  <h1 class="mt-4 text-2xl font-bold text-gray-900">Page not found</h1>
+  <p class="mt-2 text-gray-600">
+    The page you're looking for doesn't exist — or the job it described has
+    expired.
+  </p>
+  <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+    <a href="/" class="rounded-md bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-navy-800">
+      Back to home
+    </a>
+    <a href="/jobs/" class="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+      Browse all jobs
+    </a>
+  </div>
+</section>
+{{ end }}

@@ -1,7 +1,6 @@
 {{ define "main" }}
-<!-- Rendered by ui/app/src/components/JobDetail.tsx. Every /jobs/<slug>/
-     URL is rewritten to /jobs/ by CF Pages _redirects; this shell is what
-     the parent window polls against during the OAuth popup flow. -->
+<!-- Shell for /jobs/<slug>/. CF Pages rewrites /jobs/* (except /jobs/) to
+     this page; React reads the slug from window.location.pathname. -->
 <div id="mount-job-detail">
   <div class="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
     <div class="animate-pulse space-y-3">

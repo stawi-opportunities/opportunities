@@ -1,7 +1,9 @@
 ---
 title: "Management & Executive"
+description: "People leadership, directors, and executive roles from companies hiring worldwide."
 params:
   slug: "management"
-  job_count: 1200
 ---
-Browse Management & Executive jobs.
+
+People leadership, directors, and executive roles. Filter by remote,
+seniority, or salary.

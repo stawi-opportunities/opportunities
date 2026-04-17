@@ -1,4 +1,10 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://stawi.jobs/sitemap.xml
+# Per-job pages are served from a shared shell rewrite under /jobs/*;
+# crawlers should follow the listing pages to discover individual roles.
+Disallow: /auth/
+Disallow: /dashboard/
+Disallow: /onboarding/
+
+Sitemap: https://jobs.stawi.org/sitemap.xml
