@@ -3,9 +3,10 @@ languageCode = "en"
 title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
 
 [params]
-  description = "Find remote jobs from top companies hiring worldwide. Browse 37,000+ positions in programming, design, marketing, and more."
+  description = "Find remote jobs from top companies hiring worldwide. Browse positions in programming, design, marketing, and more."
   apiURL = "http://localhost:8082"
   candidatesAPIURL = "http://localhost:8080"
+  contentOrigin = "https://content.stawi.jobs"
   oidcIssuer = "https://auth-dev.antinvestor.com"
   oidcClientID = "stawi-jobs-web-dev"
   oidcRedirectURI = "http://localhost:1313/auth/callback/"
@@ -13,8 +14,9 @@ title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
 [params.nav]
   logo = "/images/logo.svg"
 
-[taxonomies]
-  category = "categories"
+# [taxonomies] intentionally omitted — category pages are API-driven, not
+# taxonomy-generated. At millions of jobs, taxonomy-term pages are not a
+# useful or scalable surface.
 
 [pagination]
   pagerSize = 20

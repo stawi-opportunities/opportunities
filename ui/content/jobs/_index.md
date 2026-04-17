@@ -1,4 +1,10 @@
 ---
-title: "All Remote Jobs"
-description: "Browse all remote job listings on Stawi Jobs"
+title: "Job"
+type: jobs
+layout: single
+sitemap:
+  disable: true
+build:
+  list: never
+  render: always
 ---

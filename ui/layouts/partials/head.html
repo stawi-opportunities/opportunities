@@ -20,6 +20,8 @@
 
 <!-- Site params for JS -->
 <meta name="site-params" content='{{ dict "apiURL" .Site.Params.apiURL "candidatesAPIURL" .Site.Params.candidatesAPIURL "oidcIssuer" .Site.Params.oidcIssuer "oidcClientID" .Site.Params.oidcClientID "oidcRedirectURI" .Site.Params.oidcRedirectURI | jsonify }}'>
+<meta name="content-origin" content="{{ .Site.Params.contentOrigin | default "https://content.stawi.jobs" }}">
+<meta name="api-origin" content="{{ .Site.Params.apiURL | default "" }}">
 
 <!-- CSS -->
 {{ $css := resources.Get "css/main.css" | css.PostCSS | minify | fingerprint }}
