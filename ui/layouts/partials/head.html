@@ -19,13 +19,18 @@
 <link rel="canonical" href="{{ .Permalink }}">
 
 <!-- Site params for JS -->
-<meta name="site-params" content='{{ dict "apiURL" .Site.Params.apiURL "candidatesAPIURL" .Site.Params.candidatesAPIURL "oidcIssuer" .Site.Params.oidcIssuer "oidcClientID" .Site.Params.oidcClientID "oidcRedirectURI" .Site.Params.oidcRedirectURI | jsonify }}'>
+<meta name="site-params" content='{{ dict "apiURL" .Site.Params.apiURL "candidatesAPIURL" .Site.Params.candidatesAPIURL "oidcIssuer" .Site.Params.oidcIssuer "oidcClientID" .Site.Params.oidcClientID "oidcInstallationID" .Site.Params.oidcInstallationID "oidcRedirectURI" .Site.Params.oidcRedirectURI | jsonify }}'>
 <meta name="content-origin" content="{{ .Site.Params.contentOrigin | default "https://jobs-repo.stawi.org" }}">
 <meta name="api-origin" content="{{ .Site.Params.apiURL | default "" }}">
 
 <!-- CSS -->
 {{ $css := resources.Get "css/main.css" | css.PostCSS | minify | fingerprint }}
 <link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+
+<!-- Warm auth + content connections so the first sign-in click / snapshot
+     fetch doesn't pay cold DNS + TLS latency. -->
+<link rel="preconnect" href="{{ .Site.Params.oidcIssuer | default "https://oauth2.stawi.org" }}" crossorigin>
+<link rel="preconnect" href="{{ .Site.Params.contentOrigin | default "https://jobs-repo.stawi.org" }}" crossorigin>
 
 <!-- Preload fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">

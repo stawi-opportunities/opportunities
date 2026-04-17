@@ -6,13 +6,21 @@ document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
   const config = params ? JSON.parse(params.content) : {};
 
-  // Initialize auth runtime singleton. Fallbacks match the Thesa-registered
-  // stawi-jobs realm (see ui/hugo.toml and the deployment spec). Concrete
-  // values are provided by hugo.toml params / HUGO_PARAMS_* at build time.
+  // Initialize auth runtime singleton.
+  //
+  // Values come from hugo.toml params (see [params] block) with
+  // HUGO_PARAMS_* env overrides at build time for staging/production.
+  // Fallbacks match the Thesa "Stawi Jobs Development" tenant.
+  //
+  // skipFedCM: Thesa's Ory Hydra does not publish a /.well-known/web-identity
+  // config, so FedCM probes add ~1s per sign-in click for no benefit.
   const auth = getAuthRuntime({
     clientId: config.oidcClientID || "stawi-jobs-web-dev",
+    installationId: config.oidcInstallationID || "d7gi6lkpf2t67dlsqrh0",
     idpBaseUrl: config.oidcIssuer || "https://oauth2.stawi.org",
     apiBaseUrl: config.candidatesAPIURL || "https://api.stawi.org",
+    redirectUri: config.oidcRedirectURI,
+    skipFedCM: true,
   });
 
   // Global auth store — reactive bridge between auth-runtime and Alpine.js

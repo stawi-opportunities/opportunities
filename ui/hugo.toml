@@ -15,13 +15,16 @@ title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
   # OIDC — Thesa's Ory Hydra at oauth2.stawi.org.
   # JWKS:       https://oauth2.stawi.org/.well-known/jwks.json
   # Discovery:  https://oauth2.stawi.org/.well-known/openid-configuration
-  # Both staging and production use the same issuer; only the client ID and
-  # redirect URI differ. Deploy-time overrides via
-  # HUGO_PARAMS_oidcClientID / HUGO_PARAMS_oidcRedirectURI
-  # (production: client_id=stawi-jobs-web, redirect=https://jobs.stawi.org/auth/callback/).
-  oidcIssuer = "https://oauth2.stawi.org"
-  oidcClientID = "stawi-jobs-web-dev"
-  oidcRedirectURI = "http://localhost:5170/auth/callback/"
+  #
+  # Staging values default here (stawi.jobs Development tenant in Thesa).
+  # Production overrides via HUGO_PARAMS_oidc* on the CF Pages project:
+  #   HUGO_PARAMS_oidcClientID=stawi-jobs-web
+  #   HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqre0
+  #   HUGO_PARAMS_oidcRedirectURI=https://jobs.stawi.org/auth/callback/
+  oidcIssuer         = "https://oauth2.stawi.org"
+  oidcClientID       = "stawi-jobs-web-dev"
+  oidcInstallationID = "d7gi6lkpf2t67dlsqrh0"
+  oidcRedirectURI    = "http://localhost:5170/auth/callback/"
 
 [params.nav]
   logo = "/images/logo.svg"
