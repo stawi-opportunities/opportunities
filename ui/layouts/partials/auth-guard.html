@@ -1,8 +1,0 @@
-<div x-show="$store.auth.isAuthenticated" x-cloak>
-  {{ block "guarded" . }}{{ end }}
-</div>
-<div x-show="!$store.auth.isAuthenticated" x-cloak class="mx-auto max-w-lg py-20 text-center">
-  <h2 class="text-2xl font-bold text-gray-900">Sign in to continue</h2>
-  <p class="mt-2 text-gray-600">You need to be signed in to access this page.</p>
-  <button @click="$store.auth.login()" class="btn-primary mt-6">Sign In</button>
-</div>

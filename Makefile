@@ -30,24 +30,20 @@ infra-up:
 infra-down:
 	docker compose -f deploy/docker-compose.yml down -v
 
-# UI targets
-UI_PORT ?= 5170
-
-hugo-build:
-	cd ui && hugo --minify
-
-# Runs Hugo with the hugo.toml defaults — which point at the exposed
-# Stawi cluster (api.stawi.org, jobs-repo.stawi.org, stawi.org for OIDC).
-ui-dev:
-	cd ui && hugo server --bind 0.0.0.0 --port $(UI_PORT)
-
-# Alias kept for muscle memory. Currently identical to ui-dev — we always
-# point at the real cluster until a local backend-running workflow is re-
-# introduced.
-ui-dev-local: ui-dev
-
-ui-build: hugo-build
-	@echo "Static site built at ui/public/"
+# UI targets — delegate to ui/scripts/{dev,build}.sh which orchestrate Vite
+# (React island bundle → static/app/) and Hugo (templates + final /public).
 
 ui-deps:
 	cd ui && npm install
+	cd ui/app && npm install
+
+# Starts Vite on :5173 and Hugo on :5170 concurrently; ^C stops both.
+ui-dev:
+	cd ui && npm run dev
+
+# Produces ui/public/ — the artifact CF Pages serves.
+ui-build:
+	cd ui && npm run build
+
+# Alias kept for muscle memory.
+ui-dev-local: ui-dev

@@ -10,12 +10,16 @@ function hugoManifestPlugin() {
     name: "hugo-manifest",
     writeBundle(_options: unknown, bundle: Record<string, { type: string; isEntry?: boolean; fileName: string }>) {
       const manifest: Record<string, string> = {};
+      // Vite emits to ui/static/app/assets/<file>, which Hugo then copies
+      // into ui/public/app/assets/<file> and serves at /app/assets/<file>.
+      // We record the /app/-prefixed path so head.html can drop it directly
+      // into a <script src="/…"> tag without extra logic.
       for (const [fileName, chunk] of Object.entries(bundle)) {
         if (chunk.type === "chunk" && chunk.isEntry) {
-          manifest["main.js"] = fileName;
+          manifest["main.js"] = "app/" + fileName;
         }
         if (fileName.endsWith(".css")) {
-          manifest["main.css"] = fileName;
+          manifest["main.css"] = "app/" + fileName;
         }
       }
       const outDir = resolve(__dirname, "../data");
