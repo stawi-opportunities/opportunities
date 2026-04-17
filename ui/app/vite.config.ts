@@ -34,6 +34,10 @@ function hugoManifestPlugin() {
 
 export default defineConfig({
   plugins: [react(), hugoManifestPlugin()],
+  // Everything Vite emits is served under /app/ because Hugo copies
+  // static/app/ to public/app/. Without this, dynamic import() URLs
+  // embedded in main.js point to /assets/... and 404.
+  base: "/app/",
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
