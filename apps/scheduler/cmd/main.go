@@ -15,12 +15,24 @@ import (
 	"gorm.io/gorm"
 
 	"stawi.jobs/pkg/domain"
+	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
 )
 
 type schedulerConfig struct {
 	ServerPort  string `env:"SERVER_PORT" envDefault:":8081"`
 	DatabaseURL string `env:"DATABASE_URL" envDefault:""`
+
+	// R2 + Cloudflare — optional; if missing, retention stage 2 is skipped.
+	R2AccountID        string `env:"R2_ACCOUNT_ID" envDefault:""`
+	R2AccessKeyID      string `env:"R2_ACCESS_KEY_ID" envDefault:""`
+	R2SecretAccessKey  string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2Bucket           string `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
+	ContentOrigin      string `env:"CONTENT_ORIGIN" envDefault:"https://content.stawi.jobs"`
+	CloudflareZoneID   string `env:"CLOUDFLARE_ZONE_ID" envDefault:""`
+	CloudflareAPIToken string `env:"CLOUDFLARE_API_TOKEN" envDefault:""`
+
+	RetentionGraceDays int `env:"RETENTION_GRACE_DAYS" envDefault:"7"`
 }
 
 func main() {
@@ -40,6 +52,18 @@ func main() {
 
 	dbFn := func(_ context.Context, _ bool) *gorm.DB { return db }
 	sourceRepo := repository.NewSourceRepository(dbFn)
+	facetRepo := repository.NewFacetRepository(dbFn)
+	retentionRepo := repository.NewRetentionRepository(dbFn)
+
+	var r2Publisher *publish.R2Publisher
+	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
+		r2Publisher = publish.NewR2Publisher(
+			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
+			cfg.R2Bucket, "",
+		)
+		publish.SetContentOrigin(cfg.ContentOrigin)
+	}
+	purger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -63,6 +87,21 @@ func main() {
 			}
 		}
 	}()
+
+	// Retention: expire stage 1 every 15 min.
+	go runEvery(ctx, 15*time.Minute, func(ctx context.Context) {
+		runExpire(ctx, retentionRepo)
+	})
+
+	// mv_job_facets refresh every 5 min.
+	go runEvery(ctx, 5*time.Minute, func(ctx context.Context) {
+		runMVRefresh(ctx, facetRepo)
+	})
+
+	// Retention stage 2 daily.
+	go runEvery(ctx, 24*time.Hour, func(ctx context.Context) {
+		runRetention(ctx, retentionRepo, r2Publisher, purger, cfg.RetentionGraceDays)
+	})
 
 	// Health endpoint.
 	mux := http.NewServeMux()
