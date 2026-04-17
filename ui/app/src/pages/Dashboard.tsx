@@ -4,20 +4,23 @@ import { mount as mountProfile, type MountHandle } from "@stawi/profile";
 import { useAuth } from "@/providers/AuthProvider";
 import { getConfig } from "@/utils/config";
 import { fetchMeSubscription } from "@/api/candidates";
-import { planById, type PlanId } from "@/utils/plans";
+import { normalizePlan, planById, type PlanId } from "@/utils/plans";
 
 /**
- * /dashboard/ — the working surface for signed-in candidates. The view
- * adapts to the active subscription tier:
+ * /dashboard/ — the working surface for signed-in candidates.
  *
- *   free     — upgrade nudge + saved-jobs + browse shortcut
- *   starter  — match queue, weekly digest toggle, upgrade-to-pro nudge
- *   pro      — larger queue + cover-letter shortcuts
- *   managed  — agent card (name, email, direct line) replaces the queue UI
+ * There is no free tier. Every dashboard visitor is in one of two
+ * states:
  *
- * Tier is read from GET /me/subscription; the call falls back to the free
- * view on 401/404 so the page is never broken for unauthenticated visitors
- * or while the endpoint is still stubbed on the backend.
+ *   1. No active subscription yet — profile exists but payment hasn't
+ *      completed. We show a "Complete payment" nudge + access to their
+ *      onboarded preferences.
+ *   2. Active on starter / pro / managed — tier-specific surface:
+ *        starter  → match queue, weekly digest, upgrade-to-pro nudge
+ *        pro      → larger queue + cover-letter shortcuts
+ *        managed  → agent card (name, email, direct line) + curated matches
+ *
+ * Tier comes from GET /me/subscription.
  */
 export default function Dashboard() {
   const { state, login } = useAuth();
@@ -33,48 +36,70 @@ export default function Dashboard() {
   if (state !== "authenticated") return <SignedOut onSignIn={login} />;
 
   const sub = subQ.data;
-  const plan = sub?.plan ?? "free";
-  const planInfo = planById(plan);
+  const plan = normalizePlan(sub?.plan ?? null);
+  const isActive = sub?.status === "active";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <DashboardHeader plan={plan} />
+      <DashboardHeader plan={plan} active={isActive} />
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[320px_1fr]">
         <aside>
           <ProfileMount />
         </aside>
         <section className="space-y-6">
-          {plan === "managed" && sub?.agent && (
-            <AgentCard agent={sub.agent} />
+          {plan === null || !isActive ? (
+            <CompletePaymentPanel plan={plan} status={sub?.status ?? "none"} />
+          ) : (
+            <>
+              {plan === "managed" && sub?.agent && (
+                <AgentCard agent={sub.agent} />
+              )}
+              <MatchesPanel
+                plan={plan}
+                queued={sub?.queued_matches ?? 0}
+                delivered={sub?.delivered_this_week ?? 0}
+              />
+            </>
           )}
-          {plan === "free" && <UpgradeCta />}
-          <MatchesPanel
-            plan={plan}
-            queued={sub?.queued_matches ?? 0}
-            delivered={sub?.delivered_this_week ?? 0}
-          />
           <SavedJobsPanel />
-          {plan !== "managed" && <ApplicationsPanel plan={plan} />}
-          <BillingPanel plan={plan} status={sub?.status ?? "none"} renewsAt={sub?.renews_at} />
-          <PlanFeaturesNote plan={plan} features={planInfo.features.slice(0, 4)} />
+          {plan && plan !== "managed" && isActive && <ApplicationsPanel plan={plan} />}
+          {plan && isActive && (
+            <BillingPanel plan={plan} renewsAt={sub?.renews_at} />
+          )}
         </section>
       </div>
     </div>
   );
 }
 
-function DashboardHeader({ plan }: { plan: PlanId }) {
-  const planInfo = planById(plan);
+function DashboardHeader({
+  plan,
+  active,
+}: {
+  plan: PlanId | null;
+  active: boolean;
+}) {
+  const label = plan && active ? planById(plan).name : "Setup incomplete";
+  const tagline =
+    plan && active
+      ? planById(plan).tagline
+      : "Finish payment to unlock matching.";
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Your dashboard</h1>
         <p className="mt-1 flex items-center gap-2 text-gray-600">
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
-            {planInfo.name} plan
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              plan && active
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {label}
           </span>
-          <span>{planInfo.tagline}</span>
+          <span>{tagline}</span>
         </p>
       </div>
       <div className="flex items-center gap-3">
@@ -89,11 +114,57 @@ function DashboardHeader({ plan }: { plan: PlanId }) {
             href="/pricing/"
             className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
           >
-            {plan === "free" ? "Upgrade" : "Change plan"}
+            {active ? "Change plan" : "View plans"}
           </a>
         )}
       </div>
     </header>
+  );
+}
+
+function CompletePaymentPanel({
+  plan,
+  status,
+}: {
+  plan: PlanId | null;
+  status: string;
+}) {
+  const headline =
+    status === "past_due"
+      ? "Your last payment didn't go through"
+      : status === "cancelled"
+        ? "Your subscription is cancelled"
+        : plan
+          ? `Finish setting up your ${planById(plan).name} plan`
+          : "Pick a plan to start matching";
+  const body =
+    status === "past_due"
+      ? "Update your payment details to resume matching."
+      : status === "cancelled"
+        ? "Re-activate any time to start receiving matches again."
+        : "We'll only run our matching engine on your CV once a plan is active. It takes two minutes.";
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-6">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+        Action needed
+      </p>
+      <h2 className="mt-2 text-xl font-bold text-gray-900">{headline}</h2>
+      <p className="mt-1 text-sm text-gray-700">{body}</p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <a
+          href="/pricing/"
+          className="inline-flex items-center rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-accent-600"
+        >
+          {plan && status !== "cancelled" ? `Pay $${planById(plan).price}/mo` : "Choose a plan"}
+        </a>
+        <a
+          href="/onboarding/"
+          className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Edit preferences
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -126,38 +197,6 @@ function AgentCard({ agent }: { agent: { name: string; email: string } }) {
   );
 }
 
-function UpgradeCta() {
-  return (
-    <div className="rounded-lg border border-navy-900 bg-navy-900 p-6 text-white">
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">
-        Unlock matching
-      </p>
-      <h2 className="mt-2 text-xl font-bold">
-        Upgrade to get matches delivered to you
-      </h2>
-      <p className="mt-1 text-sm text-gray-300">
-        Starter ($10/month) gives you 5 AI-matched roles every week based on
-        your CV. Pro ($50) gives you 25/week plus cover-letter drafts.
-        Managed ($200) assigns a real person to run your search.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <a
-          href="/onboarding/?plan=starter"
-          className="inline-flex items-center rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-accent-600"
-        >
-          Start Starter — $10/month
-        </a>
-        <a
-          href="/pricing/"
-          className="inline-flex items-center rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20"
-        >
-          Compare plans
-        </a>
-      </div>
-    </div>
-  );
-}
-
 function MatchesPanel({
   plan,
   queued,
@@ -167,7 +206,6 @@ function MatchesPanel({
   queued: number;
   delivered: number;
 }) {
-  if (plan === "free") return null;
   if (plan === "managed") {
     return (
       <Panel title="Matches">
@@ -210,7 +248,7 @@ function MatchesPanel({
       )}
       {delivered === 0 && (
         <p className="mt-4 text-sm text-gray-500">
-          Your first matches will arrive within 24 hours of onboarding.
+          Your first matches will arrive within 24 hours of payment.
         </p>
       )}
     </Panel>
@@ -247,46 +285,19 @@ function ApplicationsPanel({ plan }: { plan: PlanId }) {
 
 function BillingPanel({
   plan,
-  status,
   renewsAt,
 }: {
   plan: PlanId;
-  status: "none" | "active" | "past_due" | "cancelled";
   renewsAt?: string;
 }) {
-  if (plan === "free") {
-    return (
-      <Panel title="Billing">
-        <p className="text-sm text-gray-600">
-          You're on the Free plan — no card on file.
-        </p>
-      </Panel>
-    );
-  }
   const info = planById(plan);
   return (
     <Panel title="Billing">
       <p className="text-sm text-gray-700">
         <span className="font-medium">{info.name}</span> · ${info.price}/month ·{" "}
-        <span
-          className={
-            status === "active"
-              ? "text-emerald-700"
-              : status === "past_due"
-                ? "text-amber-700"
-                : "text-gray-500"
-          }
-        >
-          {status === "active"
-            ? "Active"
-            : status === "past_due"
-              ? "Past due"
-              : status === "cancelled"
-                ? "Cancelled"
-                : "Pending payment"}
-        </span>
+        <span className="text-emerald-700">Active</span>
       </p>
-      {renewsAt && status === "active" && (
+      {renewsAt && (
         <p className="mt-1 text-xs text-gray-500">
           Renews on {new Date(renewsAt).toLocaleDateString()}
         </p>
@@ -298,36 +309,6 @@ function BillingPanel({
         Change plan or cancel →
       </a>
     </Panel>
-  );
-}
-
-function PlanFeaturesNote({ plan, features }: { plan: PlanId; features: string[] }) {
-  if (plan === "free") return null;
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        What's included
-      </p>
-      <ul className="mt-3 space-y-1.5 text-sm text-gray-700" role="list">
-        {features.map((f) => (
-          <li key={f} className="flex items-start gap-2">
-            <svg
-              className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 

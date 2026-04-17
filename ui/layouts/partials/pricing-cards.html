@@ -1,41 +1,12 @@
 {{/*
-  Pricing cards (server-rendered — zero DB queries). Mirrors the PLANS
-  array in ui/app/src/utils/plans.ts; when you add a tier there, update
-  this partial too.
+  Pricing cards (server-rendered — zero DB queries). Three paid tiers
+  only. Mirrors the PLANS array in ui/app/src/utils/plans.ts.
 
-  Param `emphasis` ("full" or "compact"):
-    full    — shown on the /pricing/ page: 4 cards, CTAs, tagline.
-    compact — shown on the home: 3 paid cards prominent, Free linked below.
+  Rendered on /pricing/ and inside authenticated flows. NOT rendered on
+  the home page — we don't show price until the user has created a
+  profile, uploaded their CV, and set their preferences.
 */}}
-{{ $mode := .mode | default "full" }}
-<div class="grid gap-6 {{ if eq $mode "compact" }}lg:grid-cols-3{{ else }}lg:grid-cols-4{{ end }}">
-
-  {{ if eq $mode "full" }}
-  <article class="flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-    <header>
-      <h3 class="text-base font-semibold text-gray-900">Free</h3>
-      <p class="mt-1 text-sm text-gray-600">Search jobs yourself — forever free.</p>
-      <p class="mt-5 flex items-baseline gap-x-1">
-        <span class="text-4xl font-bold tracking-tight text-gray-900">$0</span>
-        <span class="text-sm text-gray-500">/month</span>
-      </p>
-    </header>
-    <ul class="mt-6 flex-1 space-y-2.5 text-sm text-gray-700" role="list">
-      {{ range slice "Browse every job in the database" "Filter by category, region, salary, seniority" "Save jobs to your dashboard" "Apply directly on the employer's site" }}
-      <li class="flex items-start gap-2">
-        <svg class="mt-0.5 h-4 w-4 shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-          <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>
-        </svg>
-        <span>{{ . }}</span>
-      </li>
-      {{ end }}
-    </ul>
-    <a href="/jobs/" class="mt-6 block rounded-md border border-gray-300 bg-white px-4 py-2 text-center text-sm font-semibold text-gray-700 hover:bg-gray-50">
-      Start browsing
-    </a>
-  </article>
-  {{ end }}
-
+<div class="grid gap-6 lg:grid-cols-3">
   <article class="flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
     <header>
       <h3 class="text-base font-semibold text-gray-900">Starter</h3>
@@ -46,7 +17,7 @@
       </p>
     </header>
     <ul class="mt-6 flex-1 space-y-2.5 text-sm text-gray-700" role="list">
-      {{ range slice "Everything in Free" "Upload your CV once — we parse and learn what fits" "Up to 5 matches per week, queued as jobs come in" "Weekly email digest of your top matches" "One ATS-compatibility report per month" }}
+      {{ range slice "Upload your CV — we parse and learn what fits" "Up to 5 matches per week, queued as jobs come in" "Weekly email digest of your top matches" "One ATS-compatibility report per month" }}
       <li class="flex items-start gap-2">
         <svg class="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
           <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L8 12.584l7.29-7.294a1 1 0 011.414 0z" clip-rule="evenodd"/>

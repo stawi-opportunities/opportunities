@@ -21,16 +21,13 @@ const Step1 = z.object({
   wantsATSReport: z.boolean(),
   cv: z
     .any()
-    .optional()
+    .refine((v) => v instanceof File, "Upload your CV to continue")
     .refine(
-      (v) => !v || (v instanceof File && v.size <= 10 * 1024 * 1024),
+      (v) => !(v instanceof File) || v.size <= 10 * 1024 * 1024,
       "CV must be 10 MB or smaller",
     )
     .refine(
-      (v) =>
-        !v ||
-        (v instanceof File &&
-          /\.(pdf|docx?|rtf|txt)$/i.test(v.name)),
+      (v) => !(v instanceof File) || /\.(pdf|docx?|rtf|txt)$/i.test(v.name),
       "Upload a PDF, DOCX, RTF, or TXT file",
     ),
 });
@@ -39,16 +36,24 @@ const Step2 = z.object({
   preferredRegions: z.array(z.string()).min(1, "Pick at least one region"),
   country: z.string().min(2, "Enter your country"),
   preferredTimezones: z.array(z.string()),
+  preferredLanguages: z.array(z.string()).min(1, "Pick at least one language"),
+  jobTypes: z.array(z.string()).min(1, "Pick at least one job type"),
 });
 
 const Step3 = z.object({
-  plan: z.enum(["free", "starter", "pro", "managed"]),
+  plan: z.enum(["starter", "pro", "managed"]),
   agreeTerms: z.literal(true, {
     errorMap: () => ({ message: "Please agree to the Terms before finishing" }),
   }),
 });
 
-type FormValues = z.infer<typeof Step1> & z.infer<typeof Step2> & z.infer<typeof Step3>;
+// Zod infers cv as File from the `.refine(v => v instanceof File)` chain.
+// But we also need to allow clearing the field (setValue("cv", undefined)),
+// so widen it to File | undefined explicitly.
+type FormValues =
+  Omit<z.infer<typeof Step1>, "cv"> & { cv?: File } &
+  z.infer<typeof Step2> &
+  z.infer<typeof Step3>;
 
 const STEP_LABELS = ["About you", "Your preferences", "Choose a plan"] as const;
 
@@ -72,10 +77,29 @@ const TIMEZONES = [
   "PST (UTC-8)",
 ];
 
+const LANGUAGES = [
+  "English",
+  "French",
+  "Arabic",
+  "Swahili",
+  "Portuguese",
+  "Spanish",
+  "German",
+  "Mandarin",
+];
+
+const JOB_TYPES = [
+  "Full-time",
+  "Part-time",
+  "Contract",
+  "Freelance",
+  "Internship",
+];
+
 function readPlanFromQuery(): PlanId {
   if (typeof window === "undefined") return "starter";
   const p = new URL(window.location.href).searchParams.get("plan");
-  if (p === "free" || p === "starter" || p === "pro" || p === "managed") return p;
+  if (p === "starter" || p === "pro" || p === "managed") return p;
   return "starter";
 }
 
@@ -93,6 +117,8 @@ export default function Onboarding() {
       wantsATSReport: true,
       preferredRegions: [],
       preferredTimezones: [],
+      preferredLanguages: ["English"],
+      jobTypes: ["Full-time"],
       country: "",
       plan: initialPlan,
       agreeTerms: false as unknown as true,
@@ -115,6 +141,8 @@ export default function Onboarding() {
         wants_ats_report:    data.wantsATSReport,
         preferred_regions:   data.preferredRegions,
         preferred_timezones: data.preferredTimezones,
+        preferred_languages: data.preferredLanguages,
+        job_types:           data.jobTypes,
         country:             data.country,
         plan:                data.plan,
         agree_terms:         data.agreeTerms,
@@ -156,9 +184,7 @@ export default function Onboarding() {
 
   const selectedPlan = form.watch("plan");
   const finishLabel = step === 3
-    ? selectedPlan === "free"
-      ? "Finish — start browsing"
-      : `Continue to payment · $${planById(selectedPlan).price}/mo`
+    ? `Continue to payment · $${planById(selectedPlan).price}/mo`
     : "Continue";
 
   return (
@@ -400,7 +426,26 @@ function Step2Form({ form }: FormProps) {
   } = form;
   const selectedRegions = watch("preferredRegions");
   const selectedTZ = watch("preferredTimezones");
+  const selectedLangs = watch("preferredLanguages");
+  const selectedJobTypes = watch("jobTypes");
   const anywhereSelected = selectedRegions.includes("Anywhere");
+
+  function toggleLang(lang: string) {
+    const on = selectedLangs.includes(lang);
+    setValue(
+      "preferredLanguages",
+      on ? selectedLangs.filter((x) => x !== lang) : [...selectedLangs, lang],
+      { shouldValidate: true },
+    );
+  }
+  function toggleJobType(t: string) {
+    const on = selectedJobTypes.includes(t);
+    setValue(
+      "jobTypes",
+      on ? selectedJobTypes.filter((x) => x !== t) : [...selectedJobTypes, t],
+      { shouldValidate: true },
+    );
+  }
 
   function toggleRegion(r: string) {
     if (r === "Anywhere") {
@@ -484,6 +529,60 @@ function Step2Form({ form }: FormProps) {
           </div>
         )}
       </Field>
+      <Field
+        label="Languages you work in"
+        error={errors.preferredLanguages?.message as string | undefined}
+      >
+        {() => (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Languages">
+            {LANGUAGES.map((lang) => {
+              const on = selectedLangs.includes(lang);
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  aria-pressed={on}
+                  className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                    on
+                      ? "border-navy-900 bg-navy-900 text-white"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                  }`}
+                  onClick={() => toggleLang(lang)}
+                >
+                  {lang}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Field>
+      <Field
+        label="Job type"
+        error={errors.jobTypes?.message as string | undefined}
+      >
+        {() => (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Job type">
+            {JOB_TYPES.map((t) => {
+              const on = selectedJobTypes.includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={on}
+                  className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                    on
+                      ? "border-navy-900 bg-navy-900 text-white"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                  }`}
+                  onClick={() => toggleJobType(t)}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Field>
       <Field label="Country" error={errors.country?.message}>
         {(id) => (
           <input
@@ -514,16 +613,17 @@ function Step3Form({ form }: FormProps) {
       <header>
         <h1 className="text-3xl font-bold text-gray-900">Choose your plan</h1>
         <p className="mt-1 text-gray-600">
-          Start free and upgrade any time — or skip straight to matches.
+          You can upgrade or cancel any time. All plans include weekly
+          matches to your inbox.
         </p>
       </header>
 
       <Field error={errors.plan?.message as string | undefined}>
         {() => (
-          <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Plan">
+          <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Plan">
             {PLANS.map((p) => {
               const on = plan === p.id;
-              const priceLabel = p.price === null ? "Free" : `$${p.price}/mo`;
+              const priceLabel = `$${p.price}/mo`;
               return (
                 <button
                   key={p.id}
@@ -587,9 +687,8 @@ function Step3Form({ form }: FormProps) {
       </Field>
 
       <p className="text-xs text-gray-500">
-        {plan === "free"
-          ? "You can upgrade to a paid plan any time from your dashboard."
-          : "You'll be redirected to our payment partner to complete the subscription. Cancel any time."}
+        You'll be redirected to our payment partner to complete the
+        subscription. Cancel any time from your dashboard.
       </p>
     </div>
   );

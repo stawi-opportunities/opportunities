@@ -111,9 +111,6 @@ export default function Nav() {
           <a href="/about/" className="text-sm font-medium text-gray-700 hover:text-navy-900">
             About
           </a>
-          <a href="/pricing/" className="text-sm font-medium text-gray-700 hover:text-navy-900">
-            Pricing
-          </a>
         </div>
 
         <div className="flex items-center gap-3">
@@ -170,13 +167,6 @@ export default function Nav() {
               className="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               About
-            </a>
-            <a
-              href="/pricing/"
-              onClick={closeMobile}
-              className="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Pricing
             </a>
           </div>
         </div>

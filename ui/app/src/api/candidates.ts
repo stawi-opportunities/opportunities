@@ -25,12 +25,14 @@ export interface OnboardingPayload {
   wants_ats_report: boolean;
   preferred_regions: string[];
   preferred_timezones: string[];
+  preferred_languages: string[];
+  job_types: string[];
   country: string;
   plan: PlanId;
   agree_terms: boolean;
-  /** Optional CV file (PDF or DOCX). When present the backend extracts
-   * text + AI-structured fields and stores them alongside the profile. */
-  cv?: File | null;
+  /** CV file (PDF or DOCX). Required — the backend extracts text + AI
+   * fields before creating the profile, and matching depends on it. */
+  cv: File | null;
 }
 
 /**
@@ -46,9 +48,11 @@ export async function submitOnboarding(payload: OnboardingPayload): Promise<Resp
   form.set("job_search_status",  payload.job_search_status);
   form.set("salary_range",       payload.salary_range ?? "");
   form.set("wants_ats_report",   String(payload.wants_ats_report));
-  form.set("preferred_regions",  JSON.stringify(payload.preferred_regions));
+  form.set("preferred_regions",   JSON.stringify(payload.preferred_regions));
   form.set("preferred_timezones", JSON.stringify(payload.preferred_timezones));
-  form.set("country",            payload.country);
+  form.set("preferred_languages", JSON.stringify(payload.preferred_languages));
+  form.set("job_types",           JSON.stringify(payload.job_types));
+  form.set("country",             payload.country);
   form.set("plan",               payload.plan);
   form.set("agree_terms",        String(payload.agree_terms));
   if (payload.cv) form.set("cv", payload.cv);
@@ -61,7 +65,10 @@ export async function submitOnboarding(payload: OnboardingPayload): Promise<Resp
 }
 
 export interface MeSubscription {
-  plan: PlanId;
+  /** The server may return legacy "free" or an unknown string; the
+   * Dashboard normalises this via `normalizePlan(raw)` — anything not in
+   * {starter, pro, managed} means "no active subscription". */
+  plan: string | null;
   status: "none" | "active" | "past_due" | "cancelled";
   renews_at?: string;
   agent?: { name: string; email: string } | null;
@@ -70,13 +77,13 @@ export interface MeSubscription {
 }
 
 /**
- * GET /me/subscription — current tier + queue stats. The backend endpoint
- * is not wired yet; on 401/404/network failure we degrade to the free-tier
- * view without breaking the UI.
+ * GET /me/subscription — current tier + queue stats. If the endpoint
+ * fails (401/404/network) we return a shape that drives the dashboard to
+ * show the "complete payment / choose a plan" nudge instead of breaking.
  */
 export async function fetchMeSubscription(): Promise<MeSubscription> {
   const fallback: MeSubscription = {
-    plan: "free",
+    plan: null,
     status: "none",
     queued_matches: 0,
     delivered_this_week: 0,

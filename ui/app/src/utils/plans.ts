@@ -1,24 +1,25 @@
-// Single source of truth for subscription tiers. The Hugo pricing table,
+// Single source of truth for subscription tiers. The Hugo pricing cards,
 // the onboarding plan picker, and the dashboard tier-specific surfaces all
-// read from this file. Change a tier here and every consumer follows.
+// read from this file. There is no "Free" plan — anonymous visitors can
+// still search and browse jobs without an account, but if they want
+// matching delivered to them, they must pick one of the three paid tiers.
 
-export type PlanId = "free" | "starter" | "pro" | "managed";
+export type PlanId = "starter" | "pro" | "managed";
 
 export interface Plan {
   id: PlanId;
   name: string;
-  /** Monthly price in USD. `null` for the free tier. */
-  price: number | null;
+  /** Monthly price in USD. */
+  price: number;
   tagline: string;
-  /** Matches queued per week. `null` = not a match-based plan. */
+  /** Matches queued per week. `null` = agent-managed, no numeric cap. */
   matchesPerWeek: number | null;
-  /** Feature bullets shown in the pricing card. First item can be "Everything in X". */
+  /** Feature bullets shown in the pricing card. */
   features: string[];
   /** Labelled meta for the comparison table. */
   meta: {
-    queuePriority: "none" | "standard" | "priority" | "agent";
-    support: "self-serve" | "email" | "email+slack" | "dedicated-agent";
-    atsReport: boolean;
+    queuePriority: "standard" | "priority" | "agent";
+    support: "email" | "dedicated-agent";
     coverLetters: boolean;
     agent: boolean;
   };
@@ -30,34 +31,12 @@ export interface Plan {
 
 export const PLANS: Plan[] = [
   {
-    id: "free",
-    name: "Free",
-    price: null,
-    tagline: "Search jobs yourself — forever free.",
-    matchesPerWeek: null,
-    features: [
-      "Browse every job in the database",
-      "Filter by category, region, salary, and seniority",
-      "Save jobs to your dashboard",
-      "Apply directly on the employer's site",
-    ],
-    meta: {
-      queuePriority: "none",
-      support: "self-serve",
-      atsReport: false,
-      coverLetters: false,
-      agent: false,
-    },
-    ctaLabel: "Start browsing",
-  },
-  {
     id: "starter",
     name: "Starter",
     price: 10,
     tagline: "Five AI-matched jobs a week, delivered.",
     matchesPerWeek: 5,
     features: [
-      "Everything in Free",
       "Upload your CV once — we parse and learn what fits",
       "Up to 5 matches per week, queued as jobs come in",
       "Weekly email digest of your top matches",
@@ -66,7 +45,6 @@ export const PLANS: Plan[] = [
     meta: {
       queuePriority: "standard",
       support: "email",
-      atsReport: true,
       coverLetters: false,
       agent: false,
     },
@@ -82,14 +60,13 @@ export const PLANS: Plan[] = [
       "Everything in Starter",
       "Up to 25 matches per week",
       "Priority placement in the matching queue",
-      "Cover-letter drafts written for each match",
+      "Cover-letter drafts for each match",
       "Unlimited ATS reports",
       "Résumé refinement suggestions",
     ],
     meta: {
       queuePriority: "priority",
       support: "email",
-      atsReport: true,
       coverLetters: true,
       agent: false,
     },
@@ -104,7 +81,7 @@ export const PLANS: Plan[] = [
     matchesPerWeek: null,
     features: [
       "Everything in Pro",
-      "A dedicated agent for the length of your search",
+      "A dedicated agent for the duration of your search",
       "Your agent handles applications on your behalf",
       "Weekly 1:1 strategy calls",
       "Direct line for same-day support",
@@ -113,7 +90,6 @@ export const PLANS: Plan[] = [
     meta: {
       queuePriority: "agent",
       support: "dedicated-agent",
-      atsReport: true,
       coverLetters: true,
       agent: true,
     },
@@ -127,4 +103,10 @@ export function planById(id: PlanId): Plan {
   return p;
 }
 
-export const PAID_PLANS = PLANS.filter((p) => p.price !== null);
+/** Normalise a server-provided plan string into our enum; anything that
+ * doesn't map (including legacy "free") becomes `null`, meaning "the user
+ * has not completed payment for a subscription yet". */
+export function normalizePlan(raw: string | null | undefined): PlanId | null {
+  if (raw === "starter" || raw === "pro" || raw === "managed") return raw;
+  return null;
+}

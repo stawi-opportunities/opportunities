@@ -691,28 +691,24 @@ func meSubscriptionHandler(candidateRepo *repository.CandidateRepository, matchR
 			return
 		}
 
-		plan := "free"
+		plan := ""
 		status := "none"
 		queued := int64(0)
 		if candidate != nil {
-			if candidate.PlanID != "" {
-				plan = candidate.PlanID
-			}
+			plan = candidate.PlanID
 			switch candidate.Subscription {
 			case domain.SubscriptionPaid, domain.SubscriptionTrial:
 				status = "active"
 			case domain.SubscriptionCancelled:
 				status = "cancelled"
 			default:
-				if plan == "free" {
-					status = "active"
-				} else {
-					status = "none"
-				}
+				// Profile exists but billing webhook hasn't flipped us
+				// to "paid" yet — treat as pending payment.
+				status = "none"
 			}
-			// Queue depth: rough cut — total matches we haven't delivered yet.
-			// When we wire the scoring cron, this will be replaced by a
-			// proper status='new' filter.
+			// Queue depth: rough cut — total matches we haven't delivered
+			// yet. Will be replaced by a status='new' filter once the
+			// scoring cron writes proper match lifecycle states.
 			if n, err := matchRepo.CountForCandidate(ctx, candidate.ID); err == nil {
 				queued = n
 			}
@@ -778,8 +774,12 @@ func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *ex
 			PreferredRegions:   r.FormValue("preferred_regions"),
 			PreferredTimezones: r.FormValue("preferred_timezones"),
 			PreferredCountries: r.FormValue("country"),
-			WantsATSReport:     r.FormValue("wants_ats_report") == "true",
-			Currency:           r.FormValue("currency"),
+			// UI sends these as JSON-stringified arrays. Stored verbatim
+			// for now; the matching engine parses on read.
+			Languages:      r.FormValue("preferred_languages"),
+			PreferredRoles: r.FormValue("job_types"),
+			WantsATSReport: r.FormValue("wants_ats_report") == "true",
+			Currency:       r.FormValue("currency"),
 		}
 
 		if v := r.FormValue("salary_min"); v != "" {
