@@ -49,7 +49,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(runtime.getState());
 
   useEffect(() => {
-    return runtime.onAuthStateChange(setState);
+    const unsub = runtime.onAuthStateChange(setState);
+
+    // Kick the runtime out of "initializing" on first mount. Try to restore
+    // a live token silently; if there's nothing valid, force a logout so
+    // the state machine settles on "unauthenticated" and the widget renders
+    // its sign-in button. Without this, the auth badge sits on
+    // "Loading authentication" forever because nothing else prompts a
+    // state change.
+    if (runtime.getState() === "initializing") {
+      runtime.getAccessToken().catch(() => runtime.logout().catch(() => {}));
+    }
+
+    return unsub;
   }, [runtime]);
 
   const value = useMemo<AuthCtx>(

@@ -471,12 +471,13 @@ func main() {
 
 	// POST /admin/republish?status=active&limit=1000
 	// Re-emits publish for canonical rows via the publish handler (not the queue).
+	// Runs in a detached goroutine so large re-publish jobs survive CF's 15s
+	// gateway timeout; response is 202 Accepted.
 	mux.HandleFunc("POST /admin/republish", func(w http.ResponseWriter, req *http.Request) {
 		if r2Publisher == nil {
 			http.Error(w, `{"error":"R2 not configured"}`, http.StatusServiceUnavailable)
 			return
 		}
-		ctx := req.Context()
 		status := req.URL.Query().Get("status")
 		if status == "" {
 			status = "active"
@@ -490,35 +491,50 @@ func main() {
 		)
 		handler := handlers.NewPublishHandler(jobRepo, r2Publisher, purger, cfg.PublishMinQuality)
 
-		var lastID int64
-		total := 0
-		for total < limit {
-			var rows []*domain.CanonicalJob
-			if err := db.
-				Where("status = ? AND id > ?", status, lastID).
-				Order("id ASC").
-				Limit(500).
-				Find(&rows).Error; err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if len(rows) == 0 {
-				break
-			}
-			for _, j := range rows {
-				_ = handler.Execute(ctx, &handlers.JobReadyPayload{CanonicalJobID: j.ID})
-				lastID = j.ID
-				total++
-				if total >= limit {
+		go func() {
+			// Detached from request context so the long-running loop survives
+			// client disconnects (CF gateway timeout).
+			ctx := context.Background()
+			var lastID int64
+			total := 0
+			log.Printf("republish: starting status=%s limit=%d", status, limit)
+			for total < limit {
+				var rows []*domain.CanonicalJob
+				if err := db.
+					Where("status = ? AND id > ?", status, lastID).
+					Order("id ASC").
+					Limit(500).
+					Find(&rows).Error; err != nil {
+					log.Printf("republish: query: %v", err)
+					return
+				}
+				if len(rows) == 0 {
 					break
 				}
+				for _, j := range rows {
+					if err := handler.Execute(ctx, &handlers.JobReadyPayload{CanonicalJobID: j.ID}); err != nil {
+						log.Printf("republish: job=%d: %v", j.ID, err)
+					}
+					lastID = j.ID
+					total++
+					if total >= limit {
+						break
+					}
+				}
+				if total%500 == 0 {
+					log.Printf("republish: progress total=%d last_id=%d", total, lastID)
+				}
 			}
-		}
+			log.Printf("republish: done total=%d last_id=%d", total, lastID)
+		}()
+
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":      status,
-			"republished": total,
-			"last_id":     lastID,
+			"status":     status,
+			"accepted":   true,
+			"limit":      limit,
+			"message":    "republish started; tail the pod logs for progress",
 		})
 	})
 
