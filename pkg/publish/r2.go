@@ -59,6 +59,37 @@ func (p *R2Publisher) UploadJSON(ctx context.Context, key string, content []byte
 	return err
 }
 
+// UploadPublicSnapshot writes a public JSON snapshot with Cache-Control headers
+// suited to CDN edge caching. Browser keeps 1 min, edge keeps 5 min; updates
+// propagate naturally within that window without requiring purges.
+func (p *R2Publisher) UploadPublicSnapshot(ctx context.Context, key string, content []byte) error {
+	_, err := p.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:       aws.String(p.bucket),
+		Key:          aws.String(key),
+		Body:         bytes.NewReader(content),
+		ContentType:  aws.String("application/json; charset=utf-8"),
+		CacheControl: aws.String("public, max-age=60, s-maxage=300"),
+	})
+	return err
+}
+
+// ContentOrigin is the public CDN origin for R2-served content. Overridden at
+// deploy time via CONTENT_ORIGIN env var (use SetContentOrigin).
+var ContentOrigin = "https://content.stawi.jobs"
+
+// SetContentOrigin overrides the default ContentOrigin. Empty inputs are
+// ignored so callers can unconditionally pass env vars.
+func SetContentOrigin(origin string) {
+	if origin != "" {
+		ContentOrigin = origin
+	}
+}
+
+// PublicURL returns the fully qualified URL of an R2 key on the public origin.
+func PublicURL(key string) string {
+	return ContentOrigin + "/" + key
+}
+
 // Delete removes a key from the R2 bucket.
 func (p *R2Publisher) Delete(ctx context.Context, key string) error {
 	_, err := p.client.DeleteObject(ctx, &s3.DeleteObjectInput{
