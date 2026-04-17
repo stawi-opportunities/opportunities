@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -88,11 +89,28 @@ func (r *JobRepository) AddClusterMember(ctx context.Context, m *domain.JobClust
 		Create(m).Error
 }
 
-// UpsertCanonical inserts or updates a canonical job on conflict of cluster_id,
-// then updates the tsvector search_vector column via raw SQL.
+// UpsertCanonical inserts or updates a canonical job on conflict of cluster_id.
+// search_vector is a GENERATED column in Postgres and populated automatically;
+// status/expires_at/category are defaulted here if the caller didn't set them.
 func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.CanonicalJob) error {
-	db := r.db(ctx, false)
-	if err := db.
+	if cj.Status == "" {
+		cj.Status = "active"
+	}
+	if cj.ExpiresAt == nil {
+		base := cj.FirstSeenAt
+		if cj.PostedAt != nil {
+			base = *cj.PostedAt
+		}
+		if base.IsZero() {
+			base = time.Now()
+		}
+		exp := base.Add(120 * 24 * time.Hour)
+		cj.ExpiresAt = &exp
+	}
+	if cj.Category == "" {
+		cj.Category = string(domain.DeriveCategory(cj.Roles, cj.Industry))
+	}
+	return r.db(ctx, false).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "cluster_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
@@ -106,20 +124,11 @@ func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.Canonica
 				"nice_to_have_skills", "tools_frameworks", "geo_restrictions",
 				"timezone_req", "application_type", "ats_platform",
 				"role_scope", "quality_score",
-				"posted_at", "last_seen_at", "is_active", "updated_at",
+				"posted_at", "last_seen_at", "status", "expires_at", "category",
+				"updated_at",
 			}),
 		}).
-		Create(cj).Error; err != nil {
-		return err
-	}
-
-	// Update the tsvector search_vector for full-text search.
-	return db.Exec(`UPDATE canonical_jobs SET search_vector =
-		setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
-		setweight(to_tsvector('english', coalesce(company, '')), 'A') ||
-		setweight(to_tsvector('english', coalesce(location_text, '')), 'B') ||
-		setweight(to_tsvector('english', coalesce(description, '')), 'C')
-		WHERE id = ?`, cj.ID).Error
+		Create(cj).Error
 }
 
 // SearchCanonical performs a full-text search using tsvector/tsquery on active
@@ -129,10 +138,10 @@ func (r *JobRepository) SearchCanonical(ctx context.Context, query string, limit
 	var jobs []*domain.CanonicalJob
 	if query != "" {
 		err := r.db(ctx, true).
-			Where("is_active = true AND search_vector @@ plainto_tsquery('english', ?)", query).
+			Where("status = 'active' AND search_vector @@ plainto_tsquery('simple', ?)", query).
 			Clauses(clause.OrderBy{
 				Expression: clause.Expr{
-					SQL:                "ts_rank(search_vector, plainto_tsquery('english', ?)) DESC",
+					SQL:                "ts_rank(search_vector, plainto_tsquery('simple', ?)) DESC",
 					Vars:               []interface{}{query},
 					WithoutParentheses: true,
 				},
@@ -143,7 +152,7 @@ func (r *JobRepository) SearchCanonical(ctx context.Context, query string, limit
 		return jobs, err
 	}
 	err := r.db(ctx, true).
-		Where("is_active = true").
+		Where("status = 'active'").
 		Order("last_seen_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -164,7 +173,7 @@ func (r *JobRepository) UpdateEmbedding(ctx context.Context, canonicalID int64, 
 func (r *JobRepository) ListMissingEmbeddings(ctx context.Context, limit int) ([]*domain.CanonicalJob, error) {
 	var jobs []*domain.CanonicalJob
 	err := r.db(ctx, true).
-		Where("is_active = true AND (embedding IS NULL OR embedding = '')").
+		Where("status = 'active' AND (embedding IS NULL OR embedding = '')").
 		Order("id ASC").
 		Limit(limit).
 		Find(&jobs).Error
@@ -195,7 +204,7 @@ func (r *JobRepository) UpdateQualityScore(ctx context.Context, id int64, score 
 func (r *JobRepository) TopByQualityScore(ctx context.Context, minScore float64, limit int) ([]*domain.CanonicalJob, error) {
 	var jobs []*domain.CanonicalJob
 	err := r.db(ctx, true).
-		Where("is_active = true AND quality_score >= ?", minScore).
+		Where("status = 'active' AND quality_score >= ?", minScore).
 		Order("quality_score DESC").
 		Limit(limit).
 		Find(&jobs).Error
@@ -289,7 +298,7 @@ func (r *JobRepository) ListAllVariants(ctx context.Context, batchSize, offset i
 // filters (remote preference, salary floor, preferred countries), ordered by
 // quality_score DESC.
 func (r *JobRepository) FilterForCandidate(ctx context.Context, c *domain.CandidateProfile, limit int) ([]*domain.CanonicalJob, error) {
-	q := r.db(ctx, true).Where("is_active = true")
+	q := r.db(ctx, true).Where("status = 'active'")
 
 	if c.RemotePreference == "remote_only" {
 		q = q.Where("remote_type = ?", "remote")
@@ -352,7 +361,7 @@ func (r *JobRepository) RecomputeQualityScore(ctx context.Context, id int64) err
 func (r *JobRepository) ListUnenriched(ctx context.Context, limit int) ([]*domain.CanonicalJob, error) {
 	var jobs []*domain.CanonicalJob
 	err := r.db(ctx, true).
-		Where("is_active = true AND (seniority IS NULL OR seniority = '') AND description != ''").
+		Where("status = 'active' AND (seniority IS NULL OR seniority = '') AND description != ''").
 		Order("id ASC").
 		Limit(limit).
 		Find(&jobs).Error
@@ -404,7 +413,7 @@ func (r *JobRepository) ListByStage(ctx context.Context, stage string, limit int
 // Returns nil, nil when no record is found.
 func (r *JobRepository) GetCanonicalByID(ctx context.Context, id int64) (*domain.CanonicalJob, error) {
 	var j domain.CanonicalJob
-	err := r.db(ctx, true).Where("id = ? AND is_active = true", id).First(&j).Error
+	err := r.db(ctx, true).Where("id = ? AND status = 'active'", id).First(&j).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -419,7 +428,7 @@ func (r *JobRepository) GetCanonicalByID(ctx context.Context, id int64) (*domain
 func (r *JobRepository) ListActiveCanonical(ctx context.Context, minQuality float64, limit, offset int) ([]*domain.CanonicalJob, error) {
 	var jobs []*domain.CanonicalJob
 	err := r.db(ctx, true).
-		Where("is_active = true AND quality_score >= ?", minQuality).
+		Where("status = 'active' AND quality_score >= ?", minQuality).
 		Order("posted_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -432,7 +441,7 @@ func (r *JobRepository) CountByCategory(ctx context.Context) (map[string]int64, 
 	var jobs []*domain.CanonicalJob
 	err := r.db(ctx, true).
 		Select("roles, industry").
-		Where("is_active = true").
+		Where("status = 'active'").
 		Find(&jobs).Error
 	if err != nil {
 		return nil, err

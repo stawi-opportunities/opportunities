@@ -337,8 +337,12 @@ type CanonicalJob struct {
 	PostedAt         *time.Time `json:"posted_at"`
 	FirstSeenAt      time.Time  `gorm:"not null" json:"first_seen_at"`
 	LastSeenAt       time.Time  `gorm:"not null" json:"last_seen_at"`
-	IsActive       bool       `gorm:"not null;default:true;index" json:"is_active"`
-	SearchVector   string     `gorm:"type:tsvector;index:idx_canonical_search,type:gin" json:"-"`
+	Status         string     `gorm:"type:text;not null;default:'active';index" json:"status"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	PublishedAt    *time.Time `json:"published_at"`
+	R2Version      int        `gorm:"not null;default:0" json:"r2_version"`
+	Category       string     `gorm:"type:text;index" json:"category"`
+	SearchVector   string     `gorm:"->;type:tsvector" json:"-"`
 	Embedding      string     `gorm:"type:text" json:"-"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`

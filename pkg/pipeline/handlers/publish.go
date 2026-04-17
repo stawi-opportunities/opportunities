@@ -98,8 +98,8 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 			job.ID, job.QualityScore, h.minQuality)
 		return nil
 	}
-	if !job.IsActive {
-		log.Printf("publish: canonical job %d is inactive, skipping", job.ID)
+	if job.Status != "active" {
+		log.Printf("publish: canonical job %d status=%s, skipping", job.ID, job.Status)
 		return nil
 	}
 

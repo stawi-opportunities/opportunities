@@ -162,6 +162,6 @@ func buildCanonicalFromVariant(variant *domain.JobVariant, clusterID int64, now 
 		PostedAt:         variant.PostedAt,
 		FirstSeenAt:      now,
 		LastSeenAt:       now,
-		IsActive:         true,
+		Status:           "active",
 	}
 }
