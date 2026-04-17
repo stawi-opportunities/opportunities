@@ -27,4 +27,4 @@ employer's own application flow so you control what goes in and when.
 ## Contact
 
 For questions, partnerships, or employer enquiries, reach us at
-[hello@stawi.org](mailto:hello@stawi.org).
+[jobs@stawi.org](mailto:jobs@stawi.org).

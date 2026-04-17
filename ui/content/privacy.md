@@ -57,7 +57,7 @@ You can, at any time:
 
 - View and edit your profile from your dashboard.
 - Delete your account and all associated data from your dashboard, or by
-  emailing [hello@stawi.org](mailto:hello@stawi.org).
+  emailing [jobs@stawi.org](mailto:jobs@stawi.org).
 - Request an export of your data.
 - Object to processing or withdraw consent (where processing is based on
   consent).
@@ -73,7 +73,7 @@ may be processed in any country where Cloudflare operates.
 ## Contact
 
 Questions about this policy or your data:
-[hello@stawi.org](mailto:hello@stawi.org).
+[jobs@stawi.org](mailto:jobs@stawi.org).
 
 ## Changes
 

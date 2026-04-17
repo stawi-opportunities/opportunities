@@ -160,7 +160,7 @@ export default function Onboarding() {
       setSubmitError(
         e instanceof Error && e.message
           ? `We couldn't save your profile: ${e.message}`
-          : "We couldn't save your profile. Please try again or contact hello@stawi.org.",
+          : "We couldn't save your profile. Please try again or contact jobs@stawi.org.",
       );
     } finally {
       setSubmitting(false);

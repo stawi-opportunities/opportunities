@@ -5,6 +5,11 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    /* Root size bumped from the browser default 16px → 17px so every
+       rem-based Tailwind utility renders a touch larger. Improves
+       readability across the whole site without hand-tuning every
+       element. */
+    font-size: 17px;
   }
 
   @media (prefers-reduced-motion: reduce) {

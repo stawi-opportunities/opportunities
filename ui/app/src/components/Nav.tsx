@@ -45,15 +45,15 @@ export default function Nav() {
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white" role="banner">
       <nav
-        className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-6 sm:px-8 lg:px-12"
+        className="mx-auto flex h-24 max-w-7xl items-center justify-between gap-6 px-6 sm:px-8 lg:px-12"
         aria-label="Main navigation"
       >
         <a
           href="/"
           className="flex items-center"
-          aria-label="Stawi Jobs — home"
+          aria-label="Stawi — Growing together"
         >
-          <img src="/images/logo.svg" alt="Stawi Jobs" height="40" className="h-10 w-auto" />
+          <img src="/images/logo.svg" alt="Stawi — Growing together" height="56" className="h-14 w-auto" />
         </a>
 
         <div className="hidden items-center gap-6 md:flex">
@@ -64,7 +64,7 @@ export default function Nav() {
               aria-expanded={findJobsOpen}
               aria-haspopup="true"
               aria-controls="find-jobs-menu"
-              className="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-navy-900"
+              className="flex items-center gap-1 text-base font-medium text-gray-700 hover:text-navy-900"
             >
               Find Jobs
               <ChevronIcon open={findJobsOpen} />
@@ -76,13 +76,13 @@ export default function Nav() {
               >
                 <a
                   href="/jobs/"
-                  className="block px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+                  className="block px-4 py-3 text-base font-medium text-gray-900 hover:bg-gray-50"
                 >
                   All Jobs
                 </a>
                 <a
                   href="/search/"
-                  className="block px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+                  className="block px-4 py-3 text-base font-medium text-gray-900 hover:bg-gray-50"
                 >
                   Advanced search
                 </a>
@@ -91,7 +91,7 @@ export default function Nav() {
                   <a
                     key={c.key}
                     href={`/categories/${encodeURIComponent(c.key)}/`}
-                    className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="flex items-center justify-between px-4 py-3 text-base text-gray-700 hover:bg-gray-50"
                   >
                     <span>{categoryLabel(c.key)}</span>
                     <span className="ml-2 text-xs text-gray-400">
@@ -100,7 +100,7 @@ export default function Nav() {
                   </a>
                 ))}
                 {categories.length === 0 && categoriesQuery.isSuccess && (
-                  <p className="px-4 py-2 text-sm text-gray-400">
+                  <p className="px-4 py-3 text-sm text-gray-400">
                     Categories load once jobs are indexed.
                   </p>
                 )}
@@ -108,7 +108,7 @@ export default function Nav() {
             )}
           </div>
 
-          <a href="/about/" className="text-sm font-medium text-gray-700 hover:text-navy-900">
+          <a href="/about/" className="text-base font-medium text-gray-700 hover:text-navy-900">
             About
           </a>
         </div>
@@ -139,14 +139,14 @@ export default function Nav() {
             <a
               href="/jobs/"
               onClick={closeMobile}
-              className="block rounded-lg px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+              className="block rounded-lg px-3 py-2.5 text-base font-medium text-gray-900 hover:bg-gray-50"
             >
               All Jobs
             </a>
             <a
               href="/search/"
               onClick={closeMobile}
-              className="block rounded-lg px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+              className="block rounded-lg px-3 py-2.5 text-base font-medium text-gray-900 hover:bg-gray-50"
             >
               Advanced search
             </a>
@@ -155,7 +155,7 @@ export default function Nav() {
                 key={c.key}
                 href={`/categories/${encodeURIComponent(c.key)}/`}
                 onClick={closeMobile}
-                className="block rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                className="block rounded-lg px-3 py-2.5 text-base text-gray-600 hover:bg-gray-50"
               >
                 {categoryLabel(c.key)}
               </a>
@@ -164,7 +164,7 @@ export default function Nav() {
             <a
               href="/about/"
               onClick={closeMobile}
-              className="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="block rounded-lg px-3 py-2.5 text-base font-medium text-gray-700 hover:bg-gray-50"
             >
               About
             </a>

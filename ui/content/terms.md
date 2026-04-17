@@ -21,7 +21,7 @@ ranges, or the accuracy of listings sourced from employers.
 ## Your account
 
 You're responsible for keeping your account credentials secure. Notify
-us immediately at [hello@stawi.org](mailto:hello@stawi.org) if you
+us immediately at [jobs@stawi.org](mailto:jobs@stawi.org) if you
 suspect your account has been compromised.
 
 You must be at least 16 years old to create an account, or the minimum
@@ -79,4 +79,4 @@ acceptance.
 
 ## Contact
 
-[hello@stawi.org](mailto:hello@stawi.org).
+[jobs@stawi.org](mailto:jobs@stawi.org).
