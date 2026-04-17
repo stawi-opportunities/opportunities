@@ -16,17 +16,14 @@ title = "Stawi Jobs — Find Your Next Role"
   # JWKS:       https://oauth2.stawi.org/.well-known/jwks.json
   # Discovery:  https://oauth2.stawi.org/.well-known/openid-configuration
   #
-  # Staging values default here (stawi.jobs Development partition in Thesa).
-  # oidcInstallationID is the PARTITION XID, not the tenant XID — the login UI
-  # routes on partition context.
-  # Production overrides via HUGO_PARAMS_oidc* on the CF Pages project:
-  #   HUGO_PARAMS_oidcClientID=stawi-jobs-web
-  #   HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqreg
-  #   HUGO_PARAMS_oidcRedirectURI=https://jobs.stawi.org/auth/callback/
+  # Production defaults live here so CF Pages works with zero env-var config.
+  # oidcInstallationID is the PARTITION XID (not the tenant XID) — the login
+  # UI routes on partition context. scripts/dev.sh passes HUGO_PARAMS_oidc*
+  # overrides to swap in the Development partition client for local work.
   oidcIssuer         = "https://oauth2.stawi.org"
-  oidcClientID       = "stawi-jobs-web-dev"
-  oidcInstallationID = "d7gi6lkpf2t67dlsqrhg"
-  oidcRedirectURI    = "http://localhost:5170/auth/callback/"
+  oidcClientID       = "stawi-jobs-web"
+  oidcInstallationID = "d7gi6lkpf2t67dlsqreg"
+  oidcRedirectURI    = "https://jobs.stawi.org/auth/callback/"
 
 [params.nav]
   logo = "/images/logo.svg"

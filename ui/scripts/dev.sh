@@ -20,6 +20,11 @@ echo "[dev] starting Vite on :5173 ..."
 PIDS+=($!)
 
 echo "[dev] starting Hugo on :5170 ..."
+# Development partition OIDC client + localhost callback, so local sign-in
+# hits the dev realm (prod defaults live in hugo.toml for CF Pages).
+export HUGO_PARAMS_oidcClientID="${HUGO_PARAMS_oidcClientID:-stawi-jobs-web-dev}"
+export HUGO_PARAMS_oidcInstallationID="${HUGO_PARAMS_oidcInstallationID:-d7gi6lkpf2t67dlsqrhg}"
+export HUGO_PARAMS_oidcRedirectURI="${HUGO_PARAMS_oidcRedirectURI:-http://localhost:5170/auth/callback/}"
 (cd "$UI_DIR" && hugo server --bind 0.0.0.0 --port 5170 --disableFastRender) &
 PIDS+=($!)
 
