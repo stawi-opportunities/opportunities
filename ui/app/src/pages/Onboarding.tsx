@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
+import { submitOnboarding } from "@/api/candidates";
 
 // Zod schema mirrors the Alpine wizard's validation. Each step owns a
 // contiguous field set; we validate one step at a time before advancing.
@@ -66,9 +67,35 @@ export default function Onboarding() {
 
   if (state === "unauthenticated") return <SignInPrompt />;
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
-    console.log("onboarding submit", data);
-    window.location.href = "/dashboard/";
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await submitOnboarding({
+        target_job_title:   data.targetJobTitle,
+        experience_level:   data.experienceLevel,
+        job_search_status:  data.jobSearchStatus,
+        salary_range:       data.salaryRange ?? "",
+        wants_ats_report:   data.wantsATSReport,
+        preferred_regions:  data.preferredRegions,
+        preferred_timezones:data.preferredTimezones,
+        country:            data.country,
+        payment_method:     data.paymentMethod ?? "",
+        agree_terms:        data.agreeTerms,
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`${res.status}: ${body.slice(0, 200) || res.statusText}`);
+      }
+      window.location.href = "/dashboard/";
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   async function next() {
@@ -93,17 +120,26 @@ export default function Onboarding() {
         {step === 1 && <Step1Form form={form} />}
         {step === 2 && <Step2Form form={form} />}
         {step === 3 && <Step3Form form={form} />}
+        {submitError && (
+          <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            {submitError}
+          </p>
+        )}
         <div className="mt-8 flex justify-between">
           <button
             type="button"
-            disabled={step === 1}
+            disabled={step === 1 || submitting}
             onClick={() => setStep((s) => Math.max(1, s - 1) as 1 | 2 | 3)}
             className="rounded border border-gray-300 px-4 py-2 text-sm disabled:opacity-50"
           >
             Back
           </button>
-          <button type="submit" className="rounded bg-navy-900 px-5 py-2 text-sm text-white hover:bg-navy-800">
-            {step === 3 ? "Finish" : "Continue"}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded bg-navy-900 px-5 py-2 text-sm text-white hover:bg-navy-800 disabled:opacity-60"
+          >
+            {submitting ? "Submitting…" : step === 3 ? "Finish" : "Continue"}
           </button>
         </div>
       </form>

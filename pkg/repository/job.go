@@ -272,10 +272,16 @@ func (r *JobRepository) CountVariants(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-// CountCanonical returns the total number of canonical job records.
+// CountCanonical returns the number of active canonical job records.
+// Rows with status 'duplicate', 'deleted', 'expired', or 'inactive' are
+// excluded so the home-page stats tile only counts what's actually
+// visible to users.
 func (r *JobRepository) CountCanonical(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db(ctx, true).Model(&domain.CanonicalJob{}).Count(&count).Error
+	err := r.db(ctx, true).
+		Model(&domain.CanonicalJob{}).
+		Where("status = 'active'").
+		Count(&count).Error
 	return count, err
 }
 

@@ -4,9 +4,16 @@ import { fmtMoney, timeAgo } from "@/utils/format";
 /** Shared row renderer used by search results, category lists, home feed. */
 export function JobRow({ result }: { result: SearchResult }) {
   const money = fmtMoney(result.salary_min, result.salary_max, result.currency);
+  const hasSlug = !!result.slug;
+  const href = hasSlug ? `/jobs/${encodeURIComponent(result.slug)}/` : undefined;
   return (
     <li className="px-4 py-3">
-      <a href={`/jobs/${encodeURIComponent(result.slug)}/`} className="block hover:bg-slate-50">
+      <a
+        href={href}
+        aria-disabled={!hasSlug}
+        onClick={hasSlug ? undefined : (e) => e.preventDefault()}
+        className={hasSlug ? "block hover:bg-slate-50" : "block cursor-default opacity-80"}
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
