@@ -73,13 +73,26 @@ func main() {
 	// Matcher
 	matcher := matching.NewMatcher(jobRepo, matchRepo, candidateRepo)
 
-	// Extractor
+	// Extractor — OpenAI-compatible back-end with Ollama fallback.
 	var extractor *extraction.Extractor
-	if cfg.OllamaURL != "" {
-		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
-		log.WithField("url", cfg.OllamaURL).
-			WithField("model", cfg.OllamaModel).
-			Info("AI extraction enabled")
+	infBase, infModel, infKey := extraction.ResolveInference(
+		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
+		cfg.OllamaURL, cfg.OllamaModel,
+	)
+	if infBase != "" {
+		embBase, embModel, embKey := extraction.ResolveEmbedding(
+			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
+			cfg.OllamaURL, cfg.OllamaModel,
+		)
+		extractor = extraction.New(extraction.Config{
+			BaseURL:          infBase,
+			APIKey:           infKey,
+			Model:            infModel,
+			EmbeddingBaseURL: embBase,
+			EmbeddingAPIKey:  embKey,
+			EmbeddingModel:   embModel,
+		})
+		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
 
 	// Antinvestor service clients (each is optional).

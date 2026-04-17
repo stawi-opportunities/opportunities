@@ -16,8 +16,23 @@ type CrawlerConfig struct {
 	SeedsDir          string `env:"SEEDS_DIR" envDefault:"/seeds"`
 	UserAgent         string `env:"USER_AGENT" envDefault:"stawi.jobs-bot/2.0 (+https://stawi.jobs)"`
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
-	OllamaURL         string `env:"OLLAMA_URL" envDefault:""`
-	OllamaModel       string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
+
+	// Inference back-end (OpenAI-compatible). INFERENCE_BASE_URL /
+	// INFERENCE_MODEL are the current knobs; OLLAMA_URL / OLLAMA_MODEL
+	// are accepted as fallbacks so existing deploys keep working during
+	// the cutover to Cloudflare AI Gateway.
+	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
+	InferenceAPIKey  string `env:"INFERENCE_API_KEY" envDefault:""`
+	InferenceModel   string `env:"INFERENCE_MODEL" envDefault:""`
+	OllamaURL        string `env:"OLLAMA_URL" envDefault:""`
+	OllamaModel      string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
+
+	// Embeddings. When EMBEDDING_BASE_URL is empty, Extract.Embed() returns
+	// an empty slice and the pipeline skips storing the vector — matching
+	// degrades to skills+keyword scoring without the embedding term.
+	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL" envDefault:""`
+	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY" envDefault:""`
+	EmbeddingModel   string `env:"EMBEDDING_MODEL" envDefault:""`
 	ValkeyAddr        string  `env:"VALKEY_ADDR" envDefault:""`
 	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`

@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"strings"
 
@@ -144,48 +142,15 @@ Preferences (only if explicitly stated): preferred_locations (array), remote_pre
 
 const maxCVChars = 6000
 
-// ExtractCV sends CV plain text to Ollama and returns structured profile fields.
+// ExtractCV sends CV plain text to the LLM and returns structured profile fields.
 func (e *Extractor) ExtractCV(ctx context.Context, cvText string) (*CVFields, error) {
 	text := truncateText(cvText, maxCVChars)
 	prompt := fmt.Sprintf("%s\n\nCV text:\n%s", cvSystemPrompt, text)
-
-	reqBody := map[string]interface{}{
-		"model":  e.model,
-		"prompt": prompt,
-		"stream": false,
-		"format": "json",
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	content, err := e.chat(ctx, prompt, true)
 	if err != nil {
-		return nil, fmt.Errorf("cv: marshal request: %w", err)
+		return nil, fmt.Errorf("cv: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("cv: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("cv: ollama request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("cv: ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("cv: decode ollama response: %w", err)
-	}
-
-	return parseCVResponse(ollamaResp.Response)
+	return parseCVResponse(content)
 }
 
 // parseCVResponse unmarshals the JSON string produced by the model into CVFields.

@@ -108,13 +108,28 @@ func main() {
 		cfg.UserAgent,
 	)
 
-	// AI extractor (optional -- only enabled when OLLAMA_URL is set).
+	// AI extractor — OpenAI-compatible back-end. Reads INFERENCE_* first,
+	// falls back to the legacy OLLAMA_* vars during the Cloudflare AI
+	// Gateway rollout so in-flight deploys keep working.
 	var extractor *extraction.Extractor
-	if cfg.OllamaURL != "" {
-		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
-		log.WithField("url", cfg.OllamaURL).
-			WithField("model", cfg.OllamaModel).
-			Info("AI extraction enabled")
+	infBase, infModel, infKey := extraction.ResolveInference(
+		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
+		cfg.OllamaURL, cfg.OllamaModel,
+	)
+	if infBase != "" {
+		embBase, embModel, embKey := extraction.ResolveEmbedding(
+			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
+			cfg.OllamaURL, cfg.OllamaModel,
+		)
+		extractor = extraction.New(extraction.Config{
+			BaseURL:          infBase,
+			APIKey:           infKey,
+			Model:            infModel,
+			EmbeddingBaseURL: embBase,
+			EmbeddingAPIKey:  embKey,
+			EmbeddingModel:   embModel,
+		})
+		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
 
 	// Connector registry.

@@ -72,8 +72,14 @@ func decodeCursor(s string) (time.Time, int64, bool) {
 type apiConfig struct {
 	ServerPort        string  `env:"SERVER_PORT" envDefault:":8082"`
 	DatabaseURL       string  `env:"DATABASE_URL" envDefault:""`
+	InferenceBaseURL  string  `env:"INFERENCE_BASE_URL" envDefault:""`
+	InferenceAPIKey   string  `env:"INFERENCE_API_KEY" envDefault:""`
+	InferenceModel    string  `env:"INFERENCE_MODEL" envDefault:""`
 	OllamaURL         string  `env:"OLLAMA_URL" envDefault:""`
 	OllamaModel       string  `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
+	EmbeddingBaseURL  string  `env:"EMBEDDING_BASE_URL" envDefault:""`
+	EmbeddingAPIKey   string  `env:"EMBEDDING_API_KEY" envDefault:""`
+	EmbeddingModel    string  `env:"EMBEDDING_MODEL" envDefault:""`
 	DoDatabaseMigrate bool    `env:"DO_DATABASE_MIGRATE" envDefault:"false"`
 	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`
@@ -121,11 +127,27 @@ func main() {
 	sourceRepo := repository.NewSourceRepository(dbFn)
 	jobRepo := repository.NewJobRepository(dbFn)
 
-	// Optional AI extractor for semantic search query embeddings.
+	// Optional AI extractor for semantic search query embeddings. Accepts
+	// INFERENCE_* (CF AI Gateway, Groq, OpenAI) or legacy OLLAMA_*.
 	var extractor *extraction.Extractor
-	if cfg.OllamaURL != "" {
-		extractor = extraction.NewExtractor(cfg.OllamaURL, cfg.OllamaModel)
-		log.Printf("Semantic search enabled: url=%s model=%s", cfg.OllamaURL, cfg.OllamaModel)
+	infBase, infModel, infKey := extraction.ResolveInference(
+		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
+		cfg.OllamaURL, cfg.OllamaModel,
+	)
+	if infBase != "" {
+		embBase, embModel, embKey := extraction.ResolveEmbedding(
+			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
+			cfg.OllamaURL, cfg.OllamaModel,
+		)
+		extractor = extraction.New(extraction.Config{
+			BaseURL:          infBase,
+			APIKey:           infKey,
+			Model:            infModel,
+			EmbeddingBaseURL: embBase,
+			EmbeddingAPIKey:  embKey,
+			EmbeddingModel:   embModel,
+		})
+		log.Printf("Semantic search enabled: url=%s model=%s", infBase, infModel)
 	}
 
 	// Optional R2 publisher for backfill endpoint.

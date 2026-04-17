@@ -1,12 +1,12 @@
-// Package extraction provides AI-based job field extraction via Ollama.
+// Package extraction provides AI-based job field extraction over any
+// OpenAI-compatible chat completions endpoint (Cloudflare AI Gateway,
+// Groq, OpenAI, Ollama 0.3+, etc.).
 package extraction
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -70,51 +70,88 @@ type JobFields struct {
 	ReportsTo string `json:"reports_to"`
 }
 
-const systemPrompt = `You are a job posting data extractor. Output ONLY valid JSON. If a field is not found, use "" for strings, [] for arrays, 0 for numbers, false for booleans.
+const systemPrompt = `You are a job posting data extractor.
 
-Extract these fields:
+Output ONLY a single JSON object. Do not nest fields under group headings. Every key below must appear at the top level of the object. Missing values use "" for strings, [] for arrays, 0 for numbers, false for booleans.
 
-title, company, location, description (max 500 words), apply_url
-
-Compensation: salary_min (number string), salary_max (number string), currency (e.g. "USD")
-
-Classification: employment_type ("full-time"/"part-time"/"contract"/"internship"/"freelance"), remote_type ("remote"/"hybrid"/"onsite"/""), seniority ("intern"/"junior"/"mid"/"senior"/"lead"/"manager"/"director"/"executive"), department, industry
-
-Skills: skills (array of all skills), roles (array of role categories), education, experience
-
-required_skills (must-have skills array), nice_to_have_skills (preferred skills array), tools_frameworks (specific tech stack array)
-
-Benefits: benefits (array), contact_name, contact_email, deadline
-
-Urgency: urgency_level ("urgent" if words like "immediately","ASAP","urgent"; "normal" otherwise; "low" if no rush), urgency_signals (array of urgency phrases found), hiring_timeline ("immediate"/"2-4 weeks"/"1-3 months"/"")
-
-Hiring funnel: interview_stages (estimated number, 0 if unknown), has_take_home (true if take-home/assignment mentioned), funnel_complexity ("low" if 1-2 stages, "medium" if 3-4, "high" if 5+)
-
-Company: company_size ("startup"/"small"/"medium"/"large"/"enterprise" from context), funding_stage ("bootstrapped"/"seed"/"series_a"/"series_b"/"public"/"")
-
-Work model: geo_restrictions ("global"/"us_only"/"emea"/"africa"/"" from location requirements), timezone_req (e.g. "UTC+/-3","US hours","any","")
-
-Application: application_type ("ats" if ATS link,"email" if email apply,"portal","direct"), ats_platform ("greenhouse"/"lever"/"workday"/"" from URL patterns)
-
-Role: role_scope ("ic"/"manager"/"hybrid"/"executive"), team_size ("solo"/"small_team"/"large_team"/""), reports_to (e.g. "CTO","VP Engineering","")`
+Keys (all top-level):
+title (string)
+company (string)
+location (string)
+description (string, max 500 words)
+apply_url (string)
+salary_min (string of digits)
+salary_max (string of digits)
+currency (string, e.g. "USD")
+employment_type ("full-time"|"part-time"|"contract"|"internship"|"freelance"|"")
+remote_type ("remote"|"hybrid"|"onsite"|"")
+seniority ("intern"|"junior"|"mid"|"senior"|"lead"|"manager"|"director"|"executive"|"")
+department (string)
+industry (string)
+skills (array of strings)
+roles (array of strings)
+education (string)
+experience (string)
+required_skills (array of strings)
+nice_to_have_skills (array of strings)
+tools_frameworks (array of strings)
+benefits (array of strings)
+contact_name (string)
+contact_email (string)
+deadline (string)
+urgency_level ("urgent"|"normal"|"low")
+urgency_signals (array of strings)
+hiring_timeline ("immediate"|"2-4 weeks"|"1-3 months"|"")
+interview_stages (number)
+has_take_home (boolean)
+funnel_complexity ("low"|"medium"|"high"|"")
+company_size ("startup"|"small"|"medium"|"large"|"enterprise"|"")
+funding_stage ("bootstrapped"|"seed"|"series_a"|"series_b"|"public"|"")
+geo_restrictions ("global"|"us_only"|"emea"|"africa"|"")
+timezone_req (string)
+application_type ("ats"|"email"|"portal"|"direct"|"")
+ats_platform ("greenhouse"|"lever"|"workday"|"")
+role_scope ("ic"|"manager"|"hybrid"|"executive"|"")
+team_size ("solo"|"small_team"|"large_team"|"")
+reports_to (string)`
 
 const maxContentChars = 4000
 const extractionTimeout = 10 * time.Minute // was 120s — let AI finish on CPU
 
-// Extractor calls an Ollama instance to extract structured job fields from HTML.
+// Extractor calls an OpenAI-compatible chat completions endpoint to extract
+// structured job fields from HTML. Works against Cloudflare AI Gateway,
+// Groq, OpenAI, and Ollama 0.3+ unchanged.
 type Extractor struct {
 	baseURL string
+	apiKey  string
 	model   string
-	client  *http.Client
+
+	embeddingBaseURL string
+	embeddingAPIKey  string
+	embeddingModel   string
+
+	client *http.Client
 }
 
-// NewExtractor creates a new Extractor targeting the given Ollama base URL and model.
-func NewExtractor(baseURL, model string) *Extractor {
+// New builds an Extractor from a Config. BaseURL and Model are required.
+// Embedding* fields are optional; when EmbeddingBaseURL is empty, Embed()
+// returns (nil, nil) and callers fall back to a non-vector path.
+func New(cfg Config) *Extractor {
 	return &Extractor{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		model:   model,
-		client:  &http.Client{Timeout: extractionTimeout},
+		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:           cfg.APIKey,
+		model:            cfg.Model,
+		embeddingBaseURL: strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
+		embeddingAPIKey:  cfg.EmbeddingAPIKey,
+		embeddingModel:   cfg.EmbeddingModel,
+		client:           &http.Client{Timeout: extractionTimeout},
 	}
+}
+
+// NewExtractor is the legacy two-arg constructor. Keeps existing callers
+// compiling while we migrate everyone to New(Config).
+func NewExtractor(baseURL, model string) *Extractor {
+	return New(Config{BaseURL: baseURL, Model: model})
 }
 
 // scriptContentRe matches <script type="application/ld+json">...</script>.
@@ -177,47 +214,14 @@ func (e *Extractor) Extract(ctx context.Context, rawHTML string, pageURL string)
 
 	prompt := fmt.Sprintf("%s\n\nPage URL: %s\n\nPage content:\n%s", systemPrompt, pageURL, text)
 
-	reqBody := map[string]interface{}{
-		"model":  e.model,
-		"prompt": prompt,
-		"stream": false,
-		"format": "json",
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	content, err := e.chat(ctx, prompt, true)
 	if err != nil {
-		return nil, fmt.Errorf("extraction: marshal request: %w", err)
+		return nil, fmt.Errorf("extraction: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("extraction: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("extraction: ollama request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("extraction: ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("extraction: decode ollama response: %w", err)
-	}
-
-	fields, err := parseResponse(ollamaResp.Response)
+	fields, err := parseResponse(content)
 	if err != nil {
 		return nil, fmt.Errorf("extraction: parse model output: %w", err)
 	}
-
 	return fields, nil
 }
 
@@ -254,47 +258,14 @@ func (e *Extractor) DiscoverLinks(ctx context.Context, rawHTML string, pageURL s
 
 	prompt := fmt.Sprintf(discoverLinksPrompt, pageURL, text)
 
-	reqBody := map[string]interface{}{
-		"model":  e.model,
-		"prompt": prompt,
-		"stream": false,
-		"format": "json",
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	content, err := e.chat(ctx, prompt, true)
 	if err != nil {
-		return nil, fmt.Errorf("discover: marshal request: %w", err)
+		return nil, fmt.Errorf("discover: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("discover: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("discover: ollama request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("discover: ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("discover: decode ollama response: %w", err)
-	}
-
-	links, err := parseLinksResponse(ollamaResp.Response, pageURL)
+	links, err := parseLinksResponse(content, pageURL)
 	if err != nil {
 		return nil, fmt.Errorf("discover: parse model output: %w", err)
 	}
-
 	return links, nil
 }
 
@@ -371,49 +342,16 @@ func (e *Extractor) DiscoverSites(ctx context.Context, rawHTML string, pageURL s
 
 	prompt := fmt.Sprintf(discoverSitesPrompt, pageURL, text)
 
-	reqBody := map[string]interface{}{
-		"model":  e.model,
-		"prompt": prompt,
-		"stream": false,
-		"format": "json",
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	content, err := e.chat(ctx, prompt, true)
 	if err != nil {
-		return nil, fmt.Errorf("discover-sites: marshal: %w", err)
+		return nil, fmt.Errorf("discover-sites: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("discover-sites: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("discover-sites: ollama request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("discover-sites: status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("discover-sites: decode: %w", err)
-	}
-
 	var result struct {
 		Sites []DiscoveredSite `json:"sites"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(ollamaResp.Response)), &result); err != nil {
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		return nil, fmt.Errorf("discover-sites: parse: %w", err)
 	}
-
 	return result.Sites, nil
 }
 
@@ -504,100 +442,23 @@ func stripAllTags(s string) string {
 
 const maxEmbedChars = 2000
 
-// Embed generates an embedding vector for the given text by calling Ollama's
-// /api/embeddings endpoint. Input text is truncated to 2000 characters.
-// Returns nil and an error if Ollama is unreachable.
+// Embed generates an embedding vector for the given text via the OpenAI-
+// compatible /v1/embeddings endpoint. Input text is truncated to 2000
+// characters. Returns (nil, nil) — silently — when embeddings aren't
+// configured so callers can skip storing the vector without treating the
+// pipeline step as failed.
 func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
-	// Use a shorter timeout for embeddings (5 minutes vs 10 for extraction)
 	embedCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-
 	text = truncateText(text, maxEmbedChars)
-
-	reqBody := map[string]interface{}{
-		"model":  e.model,
-		"prompt": text,
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("embed: marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(embedCtx, http.MethodPost, e.baseURL+"/api/embeddings", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("embed: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("embed: ollama request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("embed: ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var embResp struct {
-		Embedding []float32 `json:"embedding"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
-		return nil, fmt.Errorf("embed: decode response: %w", err)
-	}
-
-	if len(embResp.Embedding) == 0 {
-		return nil, fmt.Errorf("embed: empty embedding returned")
-	}
-
-	return embResp.Embedding, nil
+	return e.embed(embedCtx, text)
 }
 
-// Prompt sends an arbitrary system prompt and user content to Ollama and returns
-// the raw JSON response string. This is a generic escape hatch for handlers that
-// need to call the LLM with a custom prompt (e.g. validation, scoring).
+// Prompt sends an arbitrary system + user content pair to the LLM and
+// returns the raw content string. Generic escape hatch for handlers that
+// need a custom prompt (e.g. validation, scoring).
 func (e *Extractor) Prompt(ctx context.Context, systemPrompt, userContent string) (string, error) {
-	combined := systemPrompt + "\n\n" + userContent
-
-	reqBody := map[string]interface{}{
-		"model":  e.model,
-		"prompt": combined,
-		"stream": false,
-		"format": "json",
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("prompt: marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/api/generate", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", fmt.Errorf("prompt: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("prompt: ollama request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("prompt: ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return "", fmt.Errorf("prompt: decode ollama response: %w", err)
-	}
-
-	return strings.TrimSpace(ollamaResp.Response), nil
+	return e.chat(ctx, systemPrompt+"\n\n"+userContent, true)
 }
 
 // stripHTML removes HTML tags and decodes common entities, returning plain text.
