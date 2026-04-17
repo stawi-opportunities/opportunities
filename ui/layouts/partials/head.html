@@ -51,6 +51,15 @@
      data/app_manifest.json by the Vite build. -->
 {{ if hugo.IsServer }}
   <script type="module" src="http://localhost:5173/@vite/client"></script>
+  <!-- @vitejs/plugin-react preamble. When Vite itself serves the HTML it
+       injects this automatically; under Hugo we have to do it ourselves. -->
+  <script type="module">
+    import RefreshRuntime from "http://localhost:5173/@react-refresh";
+    RefreshRuntime.injectIntoGlobalHook(window);
+    window.$RefreshReg$ = () => {};
+    window.$RefreshSig$ = () => (type) => type;
+    window.__vite_plugin_react_preamble_installed__ = true;
+  </script>
   <script type="module" src="http://localhost:5173/src/main.tsx"></script>
 {{ else }}
   {{ with (index hugo.Data "app_manifest") }}
