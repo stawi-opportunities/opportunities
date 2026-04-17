@@ -4,13 +4,16 @@ import { getConfig } from "@/utils/config";
 import { useAuth } from "@/providers/AuthProvider";
 
 /**
- * Mounts the @stawi/profile widget: "Sign in" button when logged out, avatar
- * badge when logged in. The widget owns its own shadow DOM so every Stawi
- * frontend gets a visually identical auth control.
+ * Mounts the @stawi/profile widget — "Sign in" when logged out, avatar
+ * badge when logged in. The widget owns its own shadow DOM so every
+ * Stawi frontend gets a visually identical auth control.
  *
- * Fallback: if the widget script fails to load (ad-blocker, offline) we
- * render a plain sign-in button after 2.5s so the user is never stranded
- * without an auth affordance.
+ * Fallback: if the widget package fails to load (ad-blocker, offline,
+ * 404 on the bundle) we render a plain sign-in button after 3 s so the
+ * user is never stranded without an auth affordance. We detect a
+ * successful mount by looking for `host.shadowRoot` — the widget
+ * calls `host.attachShadow(...)` internally, so `childElementCount`
+ * stays 0 even when it's painted.
  */
 export function StawiAuth() {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -22,8 +25,11 @@ export function StawiAuth() {
     const host = hostRef.current;
     if (!host) return;
 
+    // React StrictMode mounts effects twice in dev; if the widget is
+    // already attached (shadow root present), skip the redundant mount.
+    if (host.shadowRoot && handleRef.current) return;
+
     const cfg = getConfig();
-    let mounted = false;
     try {
       handleRef.current = mount({
         target: host,
@@ -36,23 +42,21 @@ export function StawiAuth() {
           window.location.href = "/";
         },
       });
-      mounted = true;
     } catch {
       setWidgetFailed(true);
+      return;
     }
 
-    // If the widget hasn't painted anything interactive after 2.5s, assume
-    // it's broken and reveal the fallback button.
+    // Treat a missing shadow root after 3 s as a hard failure — the
+    // widget's bundle never loaded or its mount threw asynchronously.
     const timer = window.setTimeout(() => {
-      if (host.childElementCount === 0) setWidgetFailed(true);
-    }, 2500);
+      if (!host.shadowRoot) setWidgetFailed(true);
+    }, 3000);
 
     return () => {
       window.clearTimeout(timer);
-      if (mounted) {
-        handleRef.current?.unmount();
-        handleRef.current = null;
-      }
+      handleRef.current?.unmount();
+      handleRef.current = null;
     };
   }, []);
 
@@ -63,7 +67,7 @@ export function StawiAuth() {
         <button
           type="button"
           onClick={() => void login()}
-          className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
+          className="rounded-md bg-navy-900 px-4 py-2 text-base font-medium text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
         >
           Sign in
         </button>
