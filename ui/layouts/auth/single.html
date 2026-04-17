@@ -1,15 +1,12 @@
 {{ define "main" }}
-{{/* The callback page exists only so the OAuth popup has something same-origin
-     to land on. The parent window polls popup.location, reads the code from
-     the query string, closes the popup, and completes the token exchange.
-     This view only needs to be reachable — the spinner is courtesy while the
-     parent closes the popup. Sign-in entry point is the navbar button; we no
-     longer ship a /auth/login/ page. */}}
-<div class="flex min-h-[60vh] items-center justify-center px-4 py-16">
-  <div class="w-full max-w-md text-center">
-    <div class="space-y-4">
-      <div class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent" aria-label="Loading"></div>
-      <p class="text-gray-600">Completing sign in…</p>
+<!-- Rendered by ui/app/src/components/AuthCallback.tsx. This route only
+     exists so the OAuth popup has something same-origin to land on; the
+     parent polls popup.location, reads ?code=, closes it. -->
+<div id="mount-auth-callback">
+  <div class="flex min-h-[60vh] items-center justify-center px-4 py-16">
+    <div class="w-full max-w-md text-center">
+      <div class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent" aria-label="Completing sign in"></div>
+      <p class="mt-4 text-gray-600">Completing sign in…</p>
     </div>
   </div>
 </div>

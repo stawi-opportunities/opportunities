@@ -1,13 +1,14 @@
 {{ define "main" }}
-<div class="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-  <div id="job-detail-root" class="prose max-w-none" data-loading="true">
+<!-- Rendered by ui/app/src/components/JobDetail.tsx. Every /jobs/<slug>/
+     URL is rewritten to /jobs/ by CF Pages _redirects; this shell is what
+     the parent window polls against during the OAuth popup flow. -->
+<div id="mount-job-detail">
+  <div class="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
     <div class="animate-pulse space-y-3">
       <div class="h-7 w-2/3 rounded bg-slate-200"></div>
       <div class="h-4 w-full rounded bg-slate-200"></div>
       <div class="h-4 w-5/6 rounded bg-slate-200"></div>
-      <div class="h-4 w-4/6 rounded bg-slate-200"></div>
     </div>
   </div>
 </div>
-<script type="module" src="{{ "/assets/js/job-detail.js" | relURL }}"></script>
 {{ end }}

@@ -1,16 +1,9 @@
 {{ define "main" }}
-{{ partial "breadcrumbs.html" . }}
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-  <h1 class="text-3xl font-bold text-gray-900">Job Categories</h1>
-  <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    {{ range .Pages }}
-    <a href="{{ .Permalink }}" class="card flex items-center justify-between p-6 hover:border-accent-300">
-      <h2 class="text-lg font-semibold text-gray-900">{{ .Title }}</h2>
-      <span class="rounded-full bg-navy-50 px-3 py-1 text-sm font-medium text-navy-700">
-        {{ with .Params.job_count }}{{ . | lang.FormatNumber 0 }}{{ end }}
-      </span>
-    </a>
-    {{ end }}
+<!-- Rendered by ui/app/src/components/CategoryIndex.tsx. -->
+<div id="mount-category-index">
+  <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+    <h1 class="text-3xl font-bold text-gray-900">Browse by category</h1>
+    <div class="mt-8 h-40 animate-pulse rounded-lg bg-gray-100"></div>
   </div>
 </div>
 {{ end }}
