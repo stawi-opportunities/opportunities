@@ -22,7 +22,7 @@
              @click.outside="open = false"
              class="absolute left-0 top-full mt-2 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg"
              role="menu">
-          {{ range .Site.Data.categories }}
+          {{ range hugo.Data.categories }}
           <a href="/categories/{{ .slug }}/"
              class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
              role="menuitem">
@@ -73,7 +73,7 @@
        aria-label="Mobile navigation">
     <div class="space-y-1 px-4 py-3">
       <a href="/jobs/" class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">All Jobs</a>
-      {{ range .Site.Data.categories }}
+      {{ range hugo.Data.categories }}
       <a href="/categories/{{ .slug }}/" class="block rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">{{ .name }}</a>
       {{ end }}
       <a href="/about/" class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">About</a>
