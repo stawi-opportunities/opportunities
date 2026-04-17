@@ -12,13 +12,14 @@ title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
   apiURL = "https://api.stawi.org/jobs"
   candidatesAPIURL = "https://api.stawi.org"
   contentOrigin = "https://jobs-repo.stawi.org"
-  # OIDC — Thesa-registered clients (see
-  # docs/superpowers/specs/2026-04-16-deployment-jobs-stawi-org.md §3).
-  # Both staging and production use the same realm issuer at stawi.org; only
-  # the client ID and redirect URI differ. Deploy-time overrides via
+  # OIDC — Thesa's Ory Hydra at oauth2.stawi.org.
+  # JWKS:       https://oauth2.stawi.org/.well-known/jwks.json
+  # Discovery:  https://oauth2.stawi.org/.well-known/openid-configuration
+  # Both staging and production use the same issuer; only the client ID and
+  # redirect URI differ. Deploy-time overrides via
   # HUGO_PARAMS_oidcClientID / HUGO_PARAMS_oidcRedirectURI
   # (production: client_id=stawi-jobs-web, redirect=https://jobs.stawi.org/auth/callback/).
-  oidcIssuer = "https://stawi.org"
+  oidcIssuer = "https://oauth2.stawi.org"
   oidcClientID = "stawi-jobs-web-dev"
   oidcRedirectURI = "http://localhost:5170/auth/callback/"
 

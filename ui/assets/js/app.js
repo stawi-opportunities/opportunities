@@ -11,7 +11,7 @@ document.addEventListener("alpine:init", () => {
   // values are provided by hugo.toml params / HUGO_PARAMS_* at build time.
   const auth = getAuthRuntime({
     clientId: config.oidcClientID || "stawi-jobs-web-dev",
-    idpBaseUrl: config.oidcIssuer || "https://stawi.org",
+    idpBaseUrl: config.oidcIssuer || "https://oauth2.stawi.org",
     apiBaseUrl: config.candidatesAPIURL || "https://api.stawi.org",
   });
 
