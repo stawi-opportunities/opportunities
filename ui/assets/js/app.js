@@ -6,10 +6,13 @@ document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
   const config = params ? JSON.parse(params.content) : {};
 
-  // Initialize auth runtime singleton
+  // Initialize auth runtime singleton. Fallbacks match the Thesa-registered
+  // stawi-jobs realm (see ui/hugo.toml and the deployment spec). Concrete
+  // values are provided by hugo.toml params / HUGO_PARAMS_* at build time.
   const auth = getAuthRuntime({
-    clientId: config.oidcClientID || "",
-    idpBaseUrl: config.oidcIssuer || "https://oauth2.stawi.org",
+    clientId: config.oidcClientID || "stawi-jobs-web-dev",
+    idpBaseUrl:
+      config.oidcIssuer || "https://auth.antinvestor.com/realms/stawi-jobs",
     apiBaseUrl: config.candidatesAPIURL || "https://api.stawi.org",
   });
 

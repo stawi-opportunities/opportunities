@@ -7,10 +7,13 @@ title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
   apiURL = "http://localhost:8082"
   candidatesAPIURL = "http://localhost:8080"
   contentOrigin = "https://content.stawi.jobs"
-  # OIDC — dev defaults. Staging/prod values are injected at deploy time via
-  # HUGO_PARAMS_OIDCISSUER / HUGO_PARAMS_OIDCCLIENTID / HUGO_PARAMS_OIDCREDIRECTURI
-  # env vars (Hugo auto-reads HUGO_PARAMS_* into [params]).
-  oidcIssuer = "https://auth-dev.antinvestor.com"
+  # OIDC — Thesa-registered clients (see
+  # docs/superpowers/specs/2026-04-16-deployment-jobs-stawi-org.md §3).
+  # Both staging and production use the same realm issuer; only the client ID
+  # and redirect URI differ. Deploy-time overrides via
+  # HUGO_PARAMS_oidcClientID / HUGO_PARAMS_oidcRedirectURI
+  # (production: client_id=stawi-jobs-web, redirect=https://jobs.stawi.org/auth/callback/).
+  oidcIssuer = "https://auth.antinvestor.com/realms/stawi-jobs"
   oidcClientID = "stawi-jobs-web-dev"
   oidcRedirectURI = "http://localhost:5170/auth/callback/"
 
