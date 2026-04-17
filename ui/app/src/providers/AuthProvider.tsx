@@ -1,0 +1,72 @@
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { getAuthRuntime, type AuthState } from "@stawi/auth-runtime";
+import { getConfig } from "@/utils/config";
+
+// Thin wrapper around the @stawi/auth-runtime singleton. A single
+// AuthProvider at the root of every island means all islands share the
+// same runtime instance (the widget uses a global symbol for this) and
+// therefore the same token store and auth state subscription.
+
+interface AuthCtx {
+  state: AuthState;
+  runtime: ReturnType<typeof getAuthRuntime>;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const Ctx = createContext<AuthCtx | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const cfg = getConfig();
+
+  const runtime = useMemo(
+    () =>
+      getAuthRuntime({
+        clientId: cfg.oidcClientID,
+        installationId: cfg.oidcInstallationID,
+        idpBaseUrl: cfg.oidcIssuer,
+        apiBaseUrl: cfg.candidatesAPIURL,
+        redirectUri: cfg.oidcRedirectURI,
+        scopes: ["openid", "profile", "offline_access"],
+        skipFedCM: true,
+      }),
+    [
+      cfg.oidcClientID,
+      cfg.oidcInstallationID,
+      cfg.oidcIssuer,
+      cfg.candidatesAPIURL,
+      cfg.oidcRedirectURI,
+    ],
+  );
+
+  const [state, setState] = useState<AuthState>(runtime.getState());
+
+  useEffect(() => {
+    return runtime.onAuthStateChange(setState);
+  }, [runtime]);
+
+  const value = useMemo<AuthCtx>(
+    () => ({
+      state,
+      runtime,
+      login: () => runtime.ensureAuthenticated(),
+      logout: () => runtime.logout(),
+    }),
+    [state, runtime],
+  );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useAuth(): AuthCtx {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  return ctx;
+}
