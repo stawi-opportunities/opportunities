@@ -36,8 +36,19 @@ UI_PORT ?= 5170
 hugo-build:
 	cd ui && hugo --minify
 
+# Runs Hugo with the hugo.toml defaults — which point at the exposed
+# Stawi cluster (jobs-api.stawi.org, api.stawi.org, jobs-repo.stawi.org).
+# This is the right target for frontend-only work.
 ui-dev:
 	cd ui && hugo server --bind 0.0.0.0 --port $(UI_PORT)
+
+# For backend-in-the-loop development: overrides the API origins to localhost
+# so the UI talks to a locally-running api (:8082) and candidates (:8080).
+ui-dev-local:
+	cd ui && \
+		HUGO_PARAMS_apiURL=http://localhost:8082 \
+		HUGO_PARAMS_candidatesAPIURL=http://localhost:8080 \
+		hugo server --bind 0.0.0.0 --port $(UI_PORT)
 
 ui-build: hugo-build
 	@echo "Static site built at ui/public/"

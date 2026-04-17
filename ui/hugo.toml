@@ -4,8 +4,11 @@ title = "Stawi Jobs — Remote Jobs in Africa and Beyond"
 
 [params]
   description = "Find remote jobs from top companies hiring worldwide. Browse positions in programming, design, marketing, and more."
-  apiURL = "http://localhost:8082"
-  candidatesAPIURL = "http://localhost:8080"
+  # Defaults point at the exposed Stawi cluster so `make ui-dev` works out of
+  # the box against real data. For developers running the backend locally,
+  # use `make ui-dev-local` (overrides apiURL/candidatesAPIURL to localhost).
+  apiURL = "https://jobs-api.stawi.org"
+  candidatesAPIURL = "https://api.stawi.org"
   contentOrigin = "https://jobs-repo.stawi.org"
   # OIDC — Thesa-registered clients (see
   # docs/superpowers/specs/2026-04-16-deployment-jobs-stawi-org.md §3).
