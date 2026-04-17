@@ -110,6 +110,11 @@ type CandidateProfile struct {
 func (CandidateProfile) TableName() string { return "candidate_profiles" }
 
 // CandidateMatch records a scored pairing between a candidate and a canonical job.
+//
+// MatchScore is the final score used for ordering; it's the reranker score
+// when available, otherwise the bi-encoder EmbeddingSimilarity. Keeping the
+// upstream signals on the row makes it trivial to diff "before/after
+// reranker" in observability without re-running the cron.
 type CandidateMatch struct {
 	ID                  int64       `gorm:"primaryKey;autoIncrement" json:"id"`
 	CandidateID         int64       `gorm:"not null;index;uniqueIndex:idx_candidate_job" json:"candidate_id"`
@@ -117,14 +122,37 @@ type CandidateMatch struct {
 	MatchScore          float32     `gorm:"type:real;not null" json:"match_score"`
 	SkillsOverlap       float32     `gorm:"type:real" json:"skills_overlap"`
 	EmbeddingSimilarity float32     `gorm:"type:real" json:"embedding_similarity"`
-	Status              MatchStatus `gorm:"type:varchar(20);not null;default:'new'" json:"status"`
-	SentAt              *time.Time  `json:"sent_at"`
-	ViewedAt            *time.Time  `json:"viewed_at"`
-	AppliedAt           *time.Time  `json:"applied_at"`
-	CreatedAt           time.Time   `json:"created_at"`
+
+	// Reranker metadata (nullable — v1 ships with flag off).
+	RerankScore      *float32   `gorm:"type:real;index:,where:rerank_score IS NOT NULL,sort:desc" json:"rerank_score,omitempty"`
+	RetrievalScore   *float32   `gorm:"type:real" json:"retrieval_score,omitempty"`
+	RetrievalRank    *int       `gorm:"type:int" json:"retrieval_rank,omitempty"`
+	RerankerVersion  string     `gorm:"type:varchar(64)" json:"reranker_version,omitempty"`
+	RerankedAt       *time.Time `json:"reranked_at,omitempty"`
+
+	Status    MatchStatus `gorm:"type:varchar(20);not null;default:'new'" json:"status"`
+	SentAt    *time.Time  `json:"sent_at"`
+	ViewedAt  *time.Time  `json:"viewed_at"`
+	AppliedAt *time.Time  `json:"applied_at"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 func (CandidateMatch) TableName() string { return "candidate_matches" }
+
+// RerankCache stores reranker scores keyed by a content hash so we don't pay
+// for re-scoring the same (CV, job) pair across weekly cron sweeps.
+//
+// CacheKey is sha256(cv_text | canonical_job_id | reranker_version) hex-
+// encoded — stable as long as the CV and job haven't changed.
+type RerankCache struct {
+	CacheKey        string    `gorm:"type:varchar(64);primaryKey" json:"cache_key"`
+	Score           float32   `gorm:"type:real;not null" json:"score"`
+	RerankerVersion string    `gorm:"type:varchar(64);not null" json:"reranker_version"`
+	CreatedAt       time.Time `gorm:"index:,where:created_at < NOW() - INTERVAL '30 days'" json:"created_at"`
+	Hits            int       `gorm:"type:int;not null;default:0" json:"hits"`
+}
+
+func (RerankCache) TableName() string { return "rerank_cache" }
 
 // CandidateApplication records a job application submitted by or on behalf of a candidate.
 type CandidateApplication struct {

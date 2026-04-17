@@ -80,6 +80,9 @@ type apiConfig struct {
 	EmbeddingBaseURL  string  `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey   string  `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel    string  `env:"EMBEDDING_MODEL" envDefault:""`
+	RerankBaseURL     string  `env:"RERANK_BASE_URL" envDefault:""`
+	RerankAPIKey      string  `env:"RERANK_API_KEY" envDefault:""`
+	RerankModel       string  `env:"RERANK_MODEL" envDefault:""`
 	DoDatabaseMigrate bool    `env:"DO_DATABASE_MIGRATE" envDefault:"false"`
 	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`
@@ -146,6 +149,9 @@ func main() {
 			EmbeddingBaseURL: embBase,
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
+            RerankBaseURL:    cfg.RerankBaseURL,
+            RerankAPIKey:     cfg.RerankAPIKey,
+            RerankModel:      cfg.RerankModel,
 		})
 		log.Printf("Semantic search enabled: url=%s model=%s", infBase, infModel)
 	}

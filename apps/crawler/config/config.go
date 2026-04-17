@@ -33,6 +33,13 @@ type CrawlerConfig struct {
 	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel   string `env:"EMBEDDING_MODEL" envDefault:""`
+
+	// Reranker — carried for consistency with the other apps. Crawler
+	// doesn't currently rerank, but having the knobs in one config struct
+	// keeps copy-paste safe.
+	RerankBaseURL string `env:"RERANK_BASE_URL" envDefault:""`
+	RerankAPIKey  string `env:"RERANK_API_KEY" envDefault:""`
+	RerankModel   string `env:"RERANK_MODEL" envDefault:""`
 	ValkeyAddr        string  `env:"VALKEY_ADDR" envDefault:""`
 	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`

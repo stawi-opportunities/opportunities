@@ -19,6 +19,18 @@ type CandidatesConfig struct {
 	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel   string `env:"EMBEDDING_MODEL" envDefault:""`
 
+	// Reranker (cross-encoder, e.g. BAAI/bge-reranker-v2-m3 via TEI).
+	// Matcher falls back to retrieval-order when unset.
+	RerankBaseURL string `env:"RERANK_BASE_URL" envDefault:""`
+	RerankAPIKey  string `env:"RERANK_API_KEY" envDefault:""`
+	RerankModel   string `env:"RERANK_MODEL" envDefault:""`
+
+	// Matching-stage feature flags. Default off — matcher stays on the
+	// bi-encoder path until ops flip this on after a TEI smoke-test.
+	RerankEnabled     bool    `env:"RERANK_ENABLED" envDefault:"false"`
+	RerankSampleRatio float64 `env:"RERANK_SAMPLE_RATIO" envDefault:"1.0"`
+	RerankTopK        int     `env:"RERANK_TOP_K" envDefault:"100"`
+
 	MaxFreeMatches    int    `env:"MAX_FREE_MATCHES" envDefault:"5"`
 	PaymentServiceURL string `env:"PAYMENT_SERVICE_URL" envDefault:""`
 	ProfileServiceURL string `env:"PROFILE_SERVICE_URL" envDefault:""`

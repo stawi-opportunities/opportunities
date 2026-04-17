@@ -57,6 +57,7 @@ func main() {
 			&domain.CandidateMatch{},
 			&domain.CandidateApplication{},
 			&domain.SavedJob{},
+			&domain.RerankCache{},
 		); migErr != nil {
 			log.WithError(migErr).Fatal("auto-migrate failed")
 		}
@@ -69,8 +70,9 @@ func main() {
 	matchRepo := repository.NewMatchRepository(dbFn)
 	jobRepo := repository.NewJobRepository(dbFn)
 	savedJobRepo := repository.NewSavedJobRepository(dbFn)
+	rerankCache := repository.NewRerankCacheRepository(dbFn)
 
-	// Matcher
+	// Matcher — reranker is opt-in via RERANK_ENABLED.
 	matcher := matching.NewMatcher(jobRepo, matchRepo, candidateRepo)
 
 	// Extractor — OpenAI-compatible back-end with Ollama fallback.
@@ -91,8 +93,20 @@ func main() {
 			EmbeddingBaseURL: embBase,
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
+            RerankBaseURL:    cfg.RerankBaseURL,
+            RerankAPIKey:     cfg.RerankAPIKey,
+            RerankModel:      cfg.RerankModel,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
+
+		if cfg.RerankEnabled && extractor.RerankerVersion() != "" {
+			matcher = matcher.WithReranker(extractor, rerankCache, cfg.RerankTopK)
+			log.WithField("model", extractor.RerankerVersion()).
+				WithField("top_k", cfg.RerankTopK).
+				Info("Cross-encoder reranking enabled")
+		}
+	} else {
+		_ = rerankCache
 	}
 
 	// Antinvestor service clients (each is optional).

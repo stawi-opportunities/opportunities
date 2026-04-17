@@ -130,6 +130,10 @@ type Extractor struct {
 	embeddingAPIKey  string
 	embeddingModel   string
 
+	rerankBaseURL string
+	rerankAPIKey  string
+	rerankModel   string
+
 	client *http.Client
 }
 
@@ -144,6 +148,9 @@ func New(cfg Config) *Extractor {
 		embeddingBaseURL: strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
 		embeddingAPIKey:  cfg.EmbeddingAPIKey,
 		embeddingModel:   cfg.EmbeddingModel,
+		rerankBaseURL:    strings.TrimRight(cfg.RerankBaseURL, "/"),
+		rerankAPIKey:     cfg.RerankAPIKey,
+		rerankModel:      cfg.RerankModel,
 		client:           &http.Client{Timeout: extractionTimeout},
 	}
 }
@@ -459,6 +466,36 @@ func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
 // need a custom prompt (e.g. validation, scoring).
 func (e *Extractor) Prompt(ctx context.Context, systemPrompt, userContent string) (string, error) {
 	return e.chat(ctx, systemPrompt+"\n\n"+userContent, true)
+}
+
+// Rerank scores each text against the query with a cross-encoder and
+// returns scores in the same order as texts. Returns (nil, nil) when no
+// reranker is configured — matchers treat that as "skip stage 3" and fall
+// back to the bi-encoder order.
+//
+// The wire format matches HuggingFace TEI's /rerank endpoint:
+//
+//	POST /rerank
+//	{"query": "...", "texts": ["...", "..."]}
+//	→ {"results": [{"index": 0, "score": 0.83}, ...]}
+//
+// TEI returns results sorted by score descending; we reorder by index so
+// the slice lines up with the input texts.
+func (e *Extractor) Rerank(ctx context.Context, query string, texts []string) ([]float32, error) {
+	if e.rerankBaseURL == "" || len(texts) == 0 {
+		return nil, nil
+	}
+	return e.rerank(ctx, query, texts)
+}
+
+// RerankerVersion returns a stable identifier for cache invalidation. The
+// model string is sufficient — changing the model naturally invalidates
+// every cached score without any other coordination.
+func (e *Extractor) RerankerVersion() string {
+	if e.rerankBaseURL == "" {
+		return ""
+	}
+	return e.rerankModel
 }
 
 // stripHTML removes HTML tags and decodes common entities, returning plain text.

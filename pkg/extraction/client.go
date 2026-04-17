@@ -54,6 +54,29 @@ func ResolveEmbedding(embedURL, embedModel, embedKey, ollamaURL, ollamaModel str
 	return "", "", ""
 }
 
+// ResolveRerank picks the active reranker back-end. Preference:
+//
+//  1. RERANK_BASE_URL / RERANK_MODEL / RERANK_API_KEY (new)
+//  2. EMBEDDING_BASE_URL as a shared fallback — both services often live
+//     behind the same TEI sidecar deployment in the cluster, so reusing
+//     the embedding URL is the sane default when the operator didn't set
+//     a dedicated one.
+//
+// Returns (baseURL, model, apiKey). baseURL empty means reranking is
+// disabled and the matcher will fall back to the bi-encoder score.
+func ResolveRerank(rerankURL, rerankModel, rerankKey, embedURL, embedKey string) (string, string, string) {
+	if rerankURL != "" {
+		return rerankURL, rerankModel, rerankKey
+	}
+	if embedURL != "" {
+		// Caller opted into "same host, different model". The default model
+		// is deliberately empty so callers notice and set RERANK_MODEL
+		// explicitly — picking the embed model would be a silent bug.
+		return embedURL, rerankModel, embedKey
+	}
+	return "", "", ""
+}
+
 // Config selects the inference back-end. BaseURL is the OpenAI-compatible
 // root (e.g. https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/workers-ai
 // or http://ollama.ollama.svc:11434). APIKey is appended as Bearer when set;
@@ -70,6 +93,12 @@ type Config struct {
 	EmbeddingBaseURL string
 	EmbeddingAPIKey  string
 	EmbeddingModel   string
+
+	// Reranker (cross-encoder). Hosted alongside the embedder in v1 —
+	// TEI serves one model per process so we run two deployments.
+	RerankBaseURL string
+	RerankAPIKey  string
+	RerankModel   string
 }
 
 // chat posts an OpenAI-compatible chat completion request and returns the
@@ -167,6 +196,74 @@ func extractJSONPayload(s string) string {
 		s = s[i:]
 	}
 	return s
+}
+
+// rerank calls TEI's POST /rerank endpoint and returns a score per input
+// text in the same order as texts. Batches larger than the service can
+// absorb in one call should be chunked by the caller (TEI handles up to
+// a few hundred in practice with --max-batch-tokens=16384).
+func (e *Extractor) rerank(ctx context.Context, query string, texts []string) ([]float32, error) {
+	if e.rerankBaseURL == "" {
+		return nil, fmt.Errorf("rerank: base URL not configured")
+	}
+	payload := map[string]any{
+		"query": query,
+		"texts": texts,
+	}
+	// When TEI is fronted by a shared gateway that needs a model hint in
+	// the body — e.g. a self-hosted router — include it. TEI itself is
+	// single-model-per-process so the field is ignored there.
+	if e.rerankModel != "" {
+		payload["model"] = e.rerankModel
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("rerank: marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.rerankBaseURL+"/rerank", bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("rerank: new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if e.rerankAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+e.rerankAPIKey)
+	}
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("rerank: request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("rerank: status %d: %s", resp.StatusCode, string(b))
+	}
+	// TEI v1.x — results are a top-level array of {index, score}.
+	// Some deployments wrap under {"results": [...]}; handle both.
+	type scored struct {
+		Index int     `json:"index"`
+		Score float32 `json:"score"`
+	}
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("rerank: read body: %w", err)
+	}
+	var items []scored
+	if err := json.Unmarshal(rawBody, &items); err != nil {
+		var wrap struct {
+			Results []scored `json:"results"`
+		}
+		if werr := json.Unmarshal(rawBody, &wrap); werr != nil {
+			return nil, fmt.Errorf("rerank: decode: %w", err)
+		}
+		items = wrap.Results
+	}
+	out := make([]float32, len(texts))
+	for _, s := range items {
+		if s.Index >= 0 && s.Index < len(out) {
+			out[s.Index] = s.Score
+		}
+	}
+	return out, nil
 }
 
 // embed calls /v1/embeddings. Returns (nil, nil) when embeddings aren't

@@ -128,6 +128,9 @@ func main() {
 			EmbeddingBaseURL: embBase,
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
+            RerankBaseURL:    cfg.RerankBaseURL,
+            RerankAPIKey:     cfg.RerankAPIKey,
+            RerankModel:      cfg.RerankModel,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
