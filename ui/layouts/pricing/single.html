@@ -1,69 +1,69 @@
 {{ define "main" }}
 <section class="bg-white">
   <div class="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
-    <div class="text-center">
-      <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">Pricing</p>
-      <h1 class="mt-2 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-        Pay for the service you need
+    <header class="max-w-3xl">
+      <p class="text-xs font-semibold uppercase tracking-wide text-gray-600">Pricing</p>
+      <h1 class="mt-2 text-3xl font-bold tracking-tight text-navy-900 sm:text-4xl">
+        Pay for the service you need.
       </h1>
-      <p class="mx-auto mt-4 max-w-2xl text-lg text-gray-600">
-        Free for browsing, $10 for matches in your inbox, $50 for 5× the
-        matches and better tools, $200 for a real person running your job
-        search.
+      <p class="mt-4 text-lg text-gray-600">
+        Three tiers. Cancel any time. Search stays available to
+        everyone, with or without an account.
       </p>
+    </header>
+
+    <div class="mt-10">
+      {{ partial "pricing-cards.html" . }}
     </div>
 
-    <div class="mt-12">
-      {{ partial "pricing-cards.html" (dict "mode" "full") }}
-    </div>
-
-    <!-- FAQ -->
-    <section class="mt-20" aria-labelledby="faq-heading">
-      <h2 id="faq-heading" class="text-2xl font-bold text-gray-900">Questions</h2>
-      <dl class="mt-6 grid gap-6 sm:grid-cols-2">
+    <section class="mt-16 border-t border-gray-200 pt-10">
+      <h2 class="text-xl font-semibold text-navy-900">Questions</h2>
+      <dl class="mt-6 grid gap-8 sm:grid-cols-2">
         <div>
-          <dt class="text-sm font-semibold text-gray-900">Can I cancel any time?</dt>
+          <dt class="text-sm font-semibold text-navy-900">Can I cancel any time?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Yes. Starter and Pro are month-to-month. Managed is a rolling
-            engagement you pause or cancel when your search wraps up.
+            Yes. Starter and Pro are month-to-month. Managed is a
+            rolling engagement you pause or cancel when your search
+            wraps up.
           </dd>
         </div>
         <div>
-          <dt class="text-sm font-semibold text-gray-900">What counts as a "match"?</dt>
+          <dt class="text-sm font-semibold text-navy-900">What counts as a "match"?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            A role our matching engine (or your agent, on Managed) believes
-            fits your CV, target title, seniority, region, and salary. You
-            see them on your dashboard and in your weekly email digest.
+            A role our matching engine (or your recruiter, on Managed)
+            believes fits your CV, target title, seniority, region, and
+            salary. You see them on your dashboard and in your weekly
+            digest.
           </dd>
         </div>
         <div>
-          <dt class="text-sm font-semibold text-gray-900">How fast are matches delivered?</dt>
+          <dt class="text-sm font-semibold text-navy-900">How fast are matches delivered?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Starter matches are queued and delivered in a weekly digest. Pro
-            subscribers jump the queue and get near-real-time notifications
-            as roles come in. Managed subscribers get whatever cadence their
-            agent agrees.
+            Starter is a weekly digest. Pro subscribers jump the queue
+            and receive near-real-time notifications. Managed runs at
+            whatever cadence your recruiter agrees with you.
           </dd>
         </div>
         <div>
-          <dt class="text-sm font-semibold text-gray-900">Does Pro get priority support?</dt>
+          <dt class="text-sm font-semibold text-navy-900">Does Pro get priority support?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            No — Starter and Pro both receive email support. Only the
-            Managed tier comes with a direct line and same-day responses.
+            Starter and Pro both receive email support. Only Managed
+            includes a direct line and same-day responses.
           </dd>
         </div>
         <div>
-          <dt class="text-sm font-semibold text-gray-900">What payment methods?</dt>
+          <dt class="text-sm font-semibold text-navy-900">What payment methods work?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Credit and debit cards, plus mobile money in selected markets
-            (KES, NGN, ZAR). Prices shown in USD.
+            Credit and debit cards, plus mobile money in selected
+            markets (KES, NGN, ZAR). Prices shown in USD.
           </dd>
         </div>
         <div>
-          <dt class="text-sm font-semibold text-gray-900">Is the Free tier really free?</dt>
+          <dt class="text-sm font-semibold text-navy-900">Do you apply to jobs for me?</dt>
           <dd class="mt-1 text-sm text-gray-600">
-            Yes — no credit card, no trial clock. Browse, search, and save
-            jobs without paying a cent.
+            Only on Managed. Starter and Pro surface matches; every
+            listing links to the employer's own application page so
+            you control what gets sent.
           </dd>
         </div>
       </dl>

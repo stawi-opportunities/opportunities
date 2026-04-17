@@ -98,7 +98,7 @@ export default function JobDetail() {
             <span className="font-medium">{snap.company.name}</span>
             {snap.company.verified && (
               <span
-                className="ml-2 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+                className="ml-2 inline-flex items-center text-xs font-medium text-accent-700"
                 title="Verified employer"
               >
                 ✓ Verified
@@ -135,7 +135,7 @@ export default function JobDetail() {
                 href={snap.apply_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center rounded-md bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
+                className="inline-flex items-center rounded-md bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
               >
                 Apply now
                 <span className="sr-only"> (opens in a new tab)</span>
@@ -158,7 +158,7 @@ export default function JobDetail() {
               <h3 className="text-sm font-semibold text-gray-700">Required skills</h3>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {snap.skills.required.map((s) => (
-                  <li key={s} className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-800">
+                  <li key={s} className="rounded border border-navy-200 bg-navy-50 px-3 py-1 text-sm text-navy-900">
                     {s}
                   </li>
                 ))}
@@ -192,7 +192,7 @@ export default function JobDetail() {
             href={snap.apply_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center rounded-md bg-accent-500 px-8 py-3 text-base font-semibold text-white shadow-md hover:bg-accent-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
+            className="inline-flex items-center rounded-md bg-navy-900 px-8 py-3 text-base font-semibold text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
           >
             Apply for this role
             <span className="sr-only"> (opens in a new tab)</span>
@@ -217,7 +217,7 @@ function CompanyAvatar({ snap }: { snap: JobSnapshot }) {
   const initial = (snap.company.name || "?").trim().slice(0, 1).toUpperCase();
   return (
     <div
-      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-navy-900 to-navy-700 text-xl font-semibold text-white"
+      className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-navy-100 text-xl font-semibold text-navy-900"
       aria-hidden="true"
     >
       {initial}

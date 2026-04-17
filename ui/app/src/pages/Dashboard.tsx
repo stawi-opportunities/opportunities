@@ -153,7 +153,7 @@ function CompletePaymentPanel({
       <div className="mt-4 flex flex-wrap gap-3">
         <a
           href="/pricing/"
-          className="inline-flex items-center rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-accent-600"
+          className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
         >
           {plan && status !== "cancelled" ? `Pay $${planById(plan).price}/mo` : "Choose a plan"}
         </a>
@@ -182,7 +182,7 @@ function AgentCard({ agent }: { agent: { name: string; email: string } }) {
       <div className="mt-4 flex flex-wrap gap-3">
         <a
           href={`mailto:${agent.email}`}
-          className="inline-flex items-center rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-accent-600"
+          className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
         >
           Email {agent.name.split(" ")[0]}
         </a>

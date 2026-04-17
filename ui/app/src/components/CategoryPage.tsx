@@ -62,7 +62,7 @@ export default function CategoryPage() {
                 </p>
                 <a
                   href="/jobs/"
-                  className="mt-3 inline-block text-sm font-medium text-accent-600 hover:text-accent-700"
+                  className="mt-3 inline-block text-sm font-medium text-navy-700 hover:text-navy-900"
                 >
                   Browse all jobs →
                 </a>

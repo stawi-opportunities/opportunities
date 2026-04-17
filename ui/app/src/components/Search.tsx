@@ -64,7 +64,7 @@ export default function Search() {
           </svg>
           Filters
           {hasActiveFilters && (
-            <span className="rounded-full bg-accent-500 px-2 py-0.5 text-xs text-white">
+            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">
               •
             </span>
           )}
@@ -132,7 +132,7 @@ export default function Search() {
                       <button
                         type="button"
                         onClick={clearAll}
-                        className="mt-3 inline-block text-sm font-medium text-accent-600 hover:text-accent-700"
+                        className="mt-3 inline-block text-sm font-medium text-navy-700 hover:text-navy-900"
                       >
                         Clear filters →
                       </button>
@@ -347,7 +347,7 @@ function SearchForm({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search by title, skill, or company…"
-          className="w-full rounded-md border border-gray-300 bg-white py-2.5 pl-10 pr-10 text-base shadow-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+          className="w-full rounded-md border border-gray-300 bg-white py-2.5 pl-10 pr-10 text-base shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
           aria-label="Search jobs"
         />
         {q && (
@@ -432,13 +432,13 @@ function FacetBlock({
                 aria-pressed={isSel}
                 className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                   isSel
-                    ? "bg-accent-50 font-medium text-accent-700"
+                    ? "bg-navy-50 font-medium text-navy-900"
                     : "text-gray-700 hover:bg-gray-50"
                 }`}
                 onClick={() => onSelect(isSel ? undefined : e.key)}
               >
                 <span>{fmt(e.key)}</span>
-                <span className={`text-xs ${isSel ? "text-accent-600" : "text-gray-400"}`}>
+                <span className={`text-xs ${isSel ? "text-navy-700" : "text-gray-400"}`}>
                   {e.count.toLocaleString()}
                 </span>
               </button>

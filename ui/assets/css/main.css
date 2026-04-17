@@ -21,7 +21,7 @@
   }
 
   :focus-visible {
-    outline: 3px solid #e74c3c;
+    outline: 2px solid #0c1226;
     outline-offset: 2px;
   }
 
@@ -32,38 +32,14 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-accent-500 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-600 focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2;
+    @apply inline-flex items-center justify-center rounded-md bg-navy-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-navy-800 focus-visible:ring-2 focus-visible:ring-navy-900 focus-visible:ring-offset-2;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-2;
-  }
-
-  .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
-  }
-
-  .badge-featured {
-    @apply badge bg-accent-100 text-accent-700;
-  }
-
-  .badge-new {
-    @apply badge bg-green-100 text-green-700;
-  }
-
-  .badge-type {
-    @apply badge bg-navy-100 text-navy-700;
-  }
-
-  .card {
-    @apply rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md;
+    @apply inline-flex items-center justify-center rounded-md border border-navy-900 bg-white px-6 py-3 text-sm font-semibold text-navy-900 transition-colors hover:bg-navy-50 focus-visible:ring-2 focus-visible:ring-navy-900 focus-visible:ring-offset-2;
   }
 
   .input-field {
-    @apply block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-accent-500 focus:ring-1 focus:ring-accent-500;
-  }
-
-  .select-field {
-    @apply input-field appearance-none bg-white;
+    @apply block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-navy-900 focus:ring-1 focus:ring-navy-900;
   }
 }

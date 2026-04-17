@@ -220,7 +220,7 @@ export default function Onboarding() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded bg-navy-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500 disabled:opacity-60"
+            className="rounded bg-navy-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900 disabled:opacity-60"
           >
             {submitting ? "Submitting…" : finishLabel}
           </button>
@@ -296,7 +296,7 @@ function Step1Form({ form }: FormProps) {
             autoComplete="organization-title"
             placeholder="e.g. Senior Software Engineer"
             {...register("targetJobTitle")}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
           />
         )}
       </Field>
@@ -305,7 +305,7 @@ function Step1Form({ form }: FormProps) {
           <select
             id={id}
             {...register("experienceLevel")}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
           >
             <option value="entry">Entry (0–2 years)</option>
             <option value="junior">Junior (2–4 years)</option>
@@ -321,7 +321,7 @@ function Step1Form({ form }: FormProps) {
           <select
             id={id}
             {...register("jobSearchStatus")}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
           >
             <option value="actively_looking">Actively looking</option>
             <option value="open_to_offers">Open to offers</option>
@@ -334,7 +334,7 @@ function Step1Form({ form }: FormProps) {
           <select
             id={id}
             {...register("salaryRange")}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
           >
             <option value="">Prefer not to say</option>
             <option value="30k-50k">$30,000 – $50,000</option>
@@ -406,7 +406,7 @@ function Step1Form({ form }: FormProps) {
         <input
           type="checkbox"
           {...register("wantsATSReport")}
-          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500"
+          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-navy-900 focus:ring-navy-900"
         />
         <span className="text-sm text-gray-700">
           Email me a free resume score (ATS-compatibility check). We scan for
@@ -591,7 +591,7 @@ function Step2Form({ form }: FormProps) {
             autoComplete="country-name"
             placeholder="e.g. Kenya"
             {...register("country")}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
           />
         )}
       </Field>
@@ -669,7 +669,7 @@ function Step3Form({ form }: FormProps) {
             <input
               type="checkbox"
               {...register("agreeTerms")}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500"
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-navy-900 focus:ring-navy-900"
             />
             <span className="text-sm text-gray-700">
               I agree to the{" "}
@@ -734,7 +734,7 @@ function SignInPrompt({ onSignIn }: { onSignIn: () => Promise<void> }) {
       <button
         type="button"
         onClick={() => void onSignIn()}
-        className="mt-6 rounded-md bg-navy-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
+        className="mt-6 rounded-md bg-navy-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
       >
         Sign in
       </button>

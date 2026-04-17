@@ -18,58 +18,49 @@ export function JobRow({ result }: { result: SearchResult }) {
     <div className="flex items-start gap-4">
       <CompanyAvatar company={result.company} />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="truncate text-base font-semibold text-gray-900 group-hover:text-accent-600">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="truncate text-base font-semibold text-navy-900">
             {result.title}
           </span>
           {result.is_featured && (
-            <span className="rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-800">
-              ★ Featured
+            <span className="text-xs font-medium uppercase tracking-wide text-accent-700">
+              Featured
             </span>
           )}
         </div>
         <div className="mt-0.5 truncate text-sm text-gray-700">
           {result.company}
           {result.location_text && (
-            <>
-              <span className="mx-1.5 text-gray-300">·</span>
-              <span className="text-gray-500">{result.location_text}</span>
-            </>
+            <span className="text-gray-500"> · {result.location_text}</span>
           )}
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
           {result.category && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
-              {categoryLabel(result.category)}
-            </span>
+            <span>{categoryLabel(result.category)}</span>
           )}
           {result.remote_type && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
-              {REMOTE_LABELS[result.remote_type] ?? result.remote_type}
-            </span>
+            <span>· {REMOTE_LABELS[result.remote_type] ?? result.remote_type}</span>
           )}
-          {money && (
-            <span className="font-medium text-emerald-700">{money}</span>
-          )}
+          {money && <span className="text-gray-800">· {money}</span>}
         </div>
       </div>
-      <time className="shrink-0 whitespace-nowrap text-xs text-gray-400">
+      <time className="shrink-0 whitespace-nowrap text-xs text-gray-500">
         {timeAgo(result.posted_at)}
       </time>
     </div>
   );
 
   return (
-    <li className="group border-b border-gray-100 last:border-b-0">
+    <li className="border-b border-gray-200 last:border-b-0">
       {hasSlug ? (
         <a
           href={href}
-          className="block px-4 py-4 transition-colors hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none"
+          className="block px-4 py-4 transition-colors hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none sm:px-6"
         >
           {Inner}
         </a>
       ) : (
-        <div className="px-4 py-4 opacity-75" aria-label="Job listing (no link available)">
+        <div className="block px-4 py-4 opacity-75 sm:px-6" aria-label="Job listing (no link)">
           {Inner}
         </div>
       )}
@@ -81,7 +72,7 @@ function CompanyAvatar({ company }: { company: string }) {
   const initial = (company || "?").trim().slice(0, 1).toUpperCase();
   return (
     <div
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-navy-900 to-navy-700 text-sm font-semibold text-white"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-navy-100 text-sm font-semibold text-navy-900"
       aria-hidden="true"
     >
       {initial}

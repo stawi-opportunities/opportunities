@@ -26,7 +26,7 @@ export default function CategoryIndex() {
             <a
               key={c.key}
               href={`/categories/${encodeURIComponent(c.key)}/`}
-              className="rounded-lg border border-gray-200 p-4 hover:border-accent-300"
+              className="rounded-lg border border-gray-200 p-4 hover:border-navy-300"
             >
               <div className="font-semibold capitalize text-gray-900">
                 {c.key || "Uncategorised"}
