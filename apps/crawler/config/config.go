@@ -27,10 +27,10 @@ type CrawlerConfig struct {
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 
 	// ContentOrigin is the public CDN origin used when building cache-purge URLs.
-	ContentOrigin string `env:"CONTENT_ORIGIN" envDefault:"https://content.stawi.jobs"`
+	ContentOrigin string `env:"CONTENT_ORIGIN" envDefault:"https://jobs-repo.stawi.org"`
 
 	// CloudflareZoneID / CloudflareAPIToken: when both set, the publish handler
-	// best-effort purges content.stawi.jobs edge cache after each upload. When
+	// best-effort purges jobs-repo.stawi.org edge cache after each upload. When
 	// either is empty, the purger is a silent no-op (useful for local dev).
 	CloudflareZoneID   string `env:"CLOUDFLARE_ZONE_ID" envDefault:""`
 	CloudflareAPIToken string `env:"CLOUDFLARE_API_TOKEN" envDefault:""`

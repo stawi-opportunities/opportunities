@@ -75,7 +75,7 @@ func (p *R2Publisher) UploadPublicSnapshot(ctx context.Context, key string, cont
 
 // ContentOrigin is the public CDN origin for R2-served content. Overridden at
 // deploy time via CONTENT_ORIGIN env var (use SetContentOrigin).
-var ContentOrigin = "https://content.stawi.jobs"
+var ContentOrigin = "https://jobs-repo.stawi.org"
 
 // SetContentOrigin overrides the default ContentOrigin. Empty inputs are
 // ignored so callers can unconditionally pass env vars.

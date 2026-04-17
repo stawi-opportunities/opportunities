@@ -7,7 +7,7 @@ const meta = (name) =>
   document.querySelector(`meta[name="${name}"]`)?.getAttribute("content") || "";
 
 export const CONTENT_ORIGIN =
-  meta("content-origin") || "https://content.stawi.jobs";
+  meta("content-origin") || "https://jobs-repo.stawi.org";
 export const API_ORIGIN = meta("api-origin") || "";
 
 /** GET a JobSnapshot directly from R2. Returns null on 404. */

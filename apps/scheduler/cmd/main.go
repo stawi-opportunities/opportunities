@@ -28,7 +28,7 @@ type schedulerConfig struct {
 	R2AccessKeyID      string `env:"R2_ACCESS_KEY_ID" envDefault:""`
 	R2SecretAccessKey  string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
 	R2Bucket           string `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
-	ContentOrigin      string `env:"CONTENT_ORIGIN" envDefault:"https://content.stawi.jobs"`
+	ContentOrigin      string `env:"CONTENT_ORIGIN" envDefault:"https://jobs-repo.stawi.org"`
 	CloudflareZoneID   string `env:"CLOUDFLARE_ZONE_ID" envDefault:""`
 	CloudflareAPIToken string `env:"CLOUDFLARE_API_TOKEN" envDefault:""`
 
