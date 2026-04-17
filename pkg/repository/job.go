@@ -199,6 +199,25 @@ func (r *JobRepository) UpdateQualityScore(ctx context.Context, id int64, score 
 	return r.db(ctx, false).Model(&domain.CanonicalJob{}).Where("id = ?", id).Update("quality_score", score).Error
 }
 
+// MarkPublished stamps published_at=now() and sets r2_version for a canonical job.
+func (r *JobRepository) MarkPublished(ctx context.Context, canonicalJobID int64, nextVersion int) error {
+	return r.db(ctx, false).
+		Table("canonical_jobs").
+		Where("id = ?", canonicalJobID).
+		Updates(map[string]any{
+			"published_at": gorm.Expr("now()"),
+			"r2_version":   nextVersion,
+		}).Error
+}
+
+// ClearPublished sets published_at to NULL. Used by the unpublish path.
+func (r *JobRepository) ClearPublished(ctx context.Context, canonicalJobID int64) error {
+	return r.db(ctx, false).
+		Table("canonical_jobs").
+		Where("id = ?", canonicalJobID).
+		Update("published_at", nil).Error
+}
+
 // TopByQualityScore returns active canonical jobs sorted by quality_score DESC,
 // optionally filtered by a minimum score threshold.
 func (r *JobRepository) TopByQualityScore(ctx context.Context, minScore float64, limit int) ([]*domain.CanonicalJob, error) {

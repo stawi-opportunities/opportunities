@@ -134,8 +134,13 @@ func main() {
 			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
 			cfg.R2Bucket, cfg.R2DeployHookURL,
 		)
-		log.WithField("bucket", cfg.R2Bucket).Info("R2 publisher enabled")
+		publish.SetContentOrigin(cfg.ContentOrigin)
+		log.WithField("bucket", cfg.R2Bucket).WithField("content_origin", publish.ContentOrigin).
+			Info("R2 publisher enabled")
 	}
+
+	// Cloudflare cache purger (no-op if zone/token not configured).
+	cachePurger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
 
 	// Register pipeline stage handlers.
 	pipelineHandlers := []frame.Option{}
@@ -149,7 +154,7 @@ func main() {
 			handlers.NewSourceQualityHandler(sourceRepo, jobRepo, extractor),
 		}
 		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cfg.PublishMinQuality))
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, cfg.PublishMinQuality))
 		}
 		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
 	} else {
@@ -159,7 +164,7 @@ func main() {
 			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, svc),
 		}
 		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cfg.PublishMinQuality))
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, cfg.PublishMinQuality))
 		}
 		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
 	}

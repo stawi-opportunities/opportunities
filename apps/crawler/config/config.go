@@ -25,4 +25,13 @@ type CrawlerConfig struct {
 	R2Bucket          string  `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
+
+	// ContentOrigin is the public CDN origin used when building cache-purge URLs.
+	ContentOrigin string `env:"CONTENT_ORIGIN" envDefault:"https://content.stawi.jobs"`
+
+	// CloudflareZoneID / CloudflareAPIToken: when both set, the publish handler
+	// best-effort purges content.stawi.jobs edge cache after each upload. When
+	// either is empty, the purger is a silent no-op (useful for local dev).
+	CloudflareZoneID   string `env:"CLOUDFLARE_ZONE_ID" envDefault:""`
+	CloudflareAPIToken string `env:"CLOUDFLARE_API_TOKEN" envDefault:""`
 }

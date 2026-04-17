@@ -2,10 +2,9 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -20,36 +19,31 @@ import (
 
 var publishTracer = otel.Tracer("stawi.jobs.publish")
 
-// PublishHandler subscribes to job.ready events and uploads job markdown to R2.
+// PublishHandler subscribes to job.ready events and writes JobSnapshot JSON to R2.
 type PublishHandler struct {
-	jobRepo      *repository.JobRepository
-	publisher    *publish.R2Publisher
-	minQuality   float64
-	publishCount atomic.Int64
-	batchSize    int64
+	jobRepo    *repository.JobRepository
+	publisher  *publish.R2Publisher
+	purger     *publish.CachePurger
+	minQuality float64
 }
 
-// NewPublishHandler creates a PublishHandler.
+// NewPublishHandler creates a PublishHandler. `purger` may be nil for local dev.
 func NewPublishHandler(
 	jobRepo *repository.JobRepository,
 	publisher *publish.R2Publisher,
+	purger *publish.CachePurger,
 	minQuality float64,
 ) *PublishHandler {
 	return &PublishHandler{
 		jobRepo:    jobRepo,
 		publisher:  publisher,
+		purger:     purger,
 		minQuality: minQuality,
-		batchSize:  50,
 	}
 }
 
-func (h *PublishHandler) Name() string {
-	return EventJobReady
-}
-
-func (h *PublishHandler) PayloadType() any {
-	return &JobReadyPayload{}
-}
+func (h *PublishHandler) Name() string     { return EventJobReady }
+func (h *PublishHandler) PayloadType() any { return &JobReadyPayload{} }
 
 func (h *PublishHandler) Validate(_ context.Context, payload any) error {
 	p, ok := payload.(*JobReadyPayload)
@@ -70,7 +64,6 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 
 	ctx, span := publishTracer.Start(ctx, "pipeline.publish")
 	defer span.End()
-
 	span.SetAttributes(attribute.Int64("canonical_job_id", p.CanonicalJobID))
 
 	start := time.Now()
@@ -82,53 +75,65 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 		}
 	}()
 
-	// 1. Load the canonical job.
 	job, err := h.jobRepo.GetCanonicalByID(ctx, p.CanonicalJobID)
 	if err != nil {
 		return err
 	}
 	if job == nil {
-		log.Printf("publish: canonical job %d not found, skipping", p.CanonicalJobID)
 		return nil
 	}
 
-	// 2. Skip if below quality threshold or inactive.
-	if job.QualityScore < h.minQuality {
-		log.Printf("publish: canonical job %d quality %.1f below threshold %.1f, skipping",
-			job.ID, job.QualityScore, h.minQuality)
-		return nil
+	// Deletion path.
+	if job.Status == "deleted" {
+		return h.unpublish(ctx, job)
 	}
+	// Skip inactive / expired / low-quality.
 	if job.Status != "active" {
-		log.Printf("publish: canonical job %d status=%s, skipping", job.ID, job.Status)
+		return nil
+	}
+	if job.QualityScore < h.minQuality {
 		return nil
 	}
 
-	// 3. Ensure slug exists.
+	// Ensure slug exists (inherited from crawler spec).
 	if job.Slug == "" {
 		job.Slug = domain.BuildSlug(job.Title, job.Company, job.ID)
-		if slugErr := h.jobRepo.UpdateCanonicalFields(ctx, job.ID, map[string]any{"slug": job.Slug}); slugErr != nil {
-			log.Printf("publish: set slug for job %d (non-fatal): %v", job.ID, slugErr)
-		}
+		_ = h.jobRepo.UpdateCanonicalFields(ctx, job.ID, map[string]any{"slug": job.Slug})
 	}
 
-	// 4. Render markdown.
-	md := publish.RenderJobMarkdown(job)
-
-	// 5. Upload to R2.
-	key := "jobs/" + job.Slug + ".md"
-	if err := h.publisher.Upload(ctx, key, md); err != nil {
-		return fmt.Errorf("publish: upload %s to R2: %w", key, err)
+	// Build and upload snapshot.
+	descHTML := publish.RenderDescriptionHTML(job.Description)
+	snap := domain.BuildSnapshotWithHTML(job, descHTML)
+	body, err := json.Marshal(snap)
+	if err != nil {
+		return fmt.Errorf("snapshot marshal: %w", err)
+	}
+	key := "jobs/" + job.Slug + ".json"
+	if err := h.publisher.UploadPublicSnapshot(ctx, key, body); err != nil {
+		return fmt.Errorf("r2 upload %s: %w", key, err)
 	}
 
-	log.Printf("publish: uploaded %s (%d bytes)", key, len(md))
-
-	// 6. Trigger deploy hook every batchSize publishes.
-	count := h.publishCount.Add(1)
-	if count%h.batchSize == 0 {
-		if hookErr := h.publisher.TriggerDeploy(); hookErr != nil {
-			log.Printf("publish: deploy hook failed (non-fatal): %v", hookErr)
-		}
+	// Mark published + bump r2_version.
+	nextVer := job.R2Version + 1
+	if err := h.jobRepo.MarkPublished(ctx, job.ID, nextVer); err != nil {
+		return fmt.Errorf("mark published: %w", err)
 	}
+	span.SetAttributes(attribute.Int("r2_version", nextVer))
 
+	// Best-effort edge purge.
+	if perr := h.purger.PurgeURL(ctx, publish.PublicURL(key)); perr != nil {
+		span.RecordError(perr)
+	}
+	return nil
+}
+
+func (h *PublishHandler) unpublish(ctx context.Context, job *domain.CanonicalJob) error {
+	if job.Slug == "" {
+		return nil
+	}
+	key := "jobs/" + job.Slug + ".json"
+	_ = h.publisher.Delete(ctx, key)
+	_ = h.jobRepo.ClearPublished(ctx, job.ID)
+	_ = h.purger.PurgeURL(ctx, publish.PublicURL(key))
 	return nil
 }

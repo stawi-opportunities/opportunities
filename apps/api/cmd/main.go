@@ -422,9 +422,16 @@ func main() {
 					_ = jobRepo.UpdateCanonicalFields(ctx, job.ID, map[string]any{"slug": job.Slug})
 				}
 
-				md := publish.RenderJobMarkdown(job)
-				key := "jobs/" + job.Slug + ".md"
-				if err := r2Publisher.Upload(ctx, key, md); err != nil {
+				descHTML := publish.RenderDescriptionHTML(job.Description)
+				snap := domain.BuildSnapshotWithHTML(job, descHTML)
+				body, merr := json.Marshal(snap)
+				if merr != nil {
+					log.Printf("backfill: marshal %d: %v", job.ID, merr)
+					skipped++
+					continue
+				}
+				key := "jobs/" + job.Slug + ".json"
+				if err := r2Publisher.UploadPublicSnapshot(ctx, key, body); err != nil {
 					log.Printf("backfill: failed to upload %s: %v", key, err)
 					skipped++
 					continue
