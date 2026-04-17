@@ -102,6 +102,12 @@ func main() {
 		); err != nil {
 			log.Fatalf("auto-migrate: %v", err)
 		}
+		// GORM AutoMigrate handles column additions from struct tags; this
+		// covers the Postgres-specific bits it can't (column drops, generated
+		// columns, partial indexes, pg_trgm, materialized views, data backfill).
+		if err := repository.FinalizeSchema(db); err != nil {
+			log.Fatalf("finalize schema: %v", err)
+		}
 		log.Println("migration complete")
 		return
 	}
