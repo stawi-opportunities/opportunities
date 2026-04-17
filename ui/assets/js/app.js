@@ -16,7 +16,7 @@ document.addEventListener("alpine:init", () => {
   // config, so FedCM probes add ~1s per sign-in click for no benefit.
   const auth = getAuthRuntime({
     clientId: config.oidcClientID || "stawi-jobs-web-dev",
-    installationId: config.oidcInstallationID || "d7gi6lkpf2t67dlsqrh0",
+    installationId: config.oidcInstallationID || "d7gi6lkpf2t67dlsqrhg",
     idpBaseUrl: config.oidcIssuer || "https://oauth2.stawi.org",
     apiBaseUrl: config.candidatesAPIURL || "https://api.stawi.org",
     redirectUri: config.oidcRedirectURI,
