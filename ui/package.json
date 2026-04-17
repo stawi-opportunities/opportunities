@@ -2,8 +2,6 @@
   "name": "stawi-jobs-ui",
   "private": true,
   "scripts": {
-    "dev": "./scripts/dev.sh",
-    "build": "./scripts/build.sh",
     "build:hugo": "hugo --minify",
     "build:app": "cd app && npm run build"
   },

@@ -2,7 +2,13 @@ SHELL := /bin/bash
 
 APP_DIRS := apps/crawler apps/scheduler apps/api
 
-.PHONY: deps build test run-crawler run-scheduler run-api infra-up infra-down
+# Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
+HUGO_VERSION := 0.160.1
+HUGO_BIN     := $(CURDIR)/bin/hugo
+
+.PHONY: deps build test run-crawler run-scheduler run-api \
+        infra-up infra-down \
+        ui-deps ui-build ui-dev
 
 deps:
 	go mod tidy
@@ -30,20 +36,41 @@ infra-up:
 infra-down:
 	docker compose -f deploy/docker-compose.yml down -v
 
-# UI targets — delegate to ui/scripts/{dev,build}.sh which orchestrate Vite
-# (React island bundle → static/app/) and Hugo (templates + final /public).
+# ---- UI -------------------------------------------------------------------
+# The UI is two builds glued together: Vite compiles the React app into
+# ui/static/app/ and writes ui/data/app_manifest.json; Hugo then renders the
+# shell pages and picks up that manifest via site.Data.app_manifest.
 
 ui-deps:
-	cd ui && npm install
-	cd ui/app && npm install
+	cd ui && npm install --no-audit --no-fund
+	cd ui/app && npm install --no-audit --no-fund
 
-# Starts Vite on :5173 and Hugo on :5170 concurrently; ^C stops both.
+# Downloads pinned Hugo extended to bin/hugo (Linux x86_64). Both the CF
+# Pages build env and the maintainer's workstation are linux-amd64 today, so
+# a single archive covers both. Cached after first fetch.
+$(HUGO_BIN):
+	@mkdir -p bin
+	@echo "[hugo] fetching Hugo extended $(HUGO_VERSION)..."
+	@curl -fsSL \
+		https://github.com/gohugoio/hugo/releases/download/v$(HUGO_VERSION)/hugo_extended_$(HUGO_VERSION)_linux-amd64.tar.gz \
+		| tar -xz -C bin hugo
+	@chmod +x $(HUGO_BIN)
+
+# Produces ui/public/ — the artifact Cloudflare Pages serves.
+# CF Pages build command: `make ui-build` (from repo root).
+ui-build: $(HUGO_BIN)
+	cd ui/app && npm ci --prefer-offline --no-audit --no-fund
+	cd ui/app && npm run build
+	cd ui && $(HUGO_BIN) --minify
+
+# Vite on :5173 + Hugo on :5170 concurrently. ^C stops both. OIDC env vars
+# swap in the Development partition client so local sign-in doesn't hit the
+# production realm.
 ui-dev:
-	cd ui && npm run dev
-
-# Produces ui/public/ — the artifact CF Pages serves.
-ui-build:
-	cd ui && npm run build
-
-# Alias kept for muscle memory.
-ui-dev-local: ui-dev
+	@trap 'kill 0' EXIT INT TERM; \
+		(cd ui/app && npm run dev) & \
+		HUGO_PARAMS_oidcClientID=stawi-jobs-web-dev \
+		HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqrhg \
+		HUGO_PARAMS_oidcRedirectURI=http://localhost:5170/auth/callback/ \
+		(cd ui && hugo server --bind 0.0.0.0 --port 5170 --disableFastRender) & \
+		wait
