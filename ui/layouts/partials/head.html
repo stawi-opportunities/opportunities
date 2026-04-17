@@ -20,8 +20,8 @@
 
 <!-- Favicon / icons -->
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="mask-icon" href="/favicon.svg" color="#e74c3c">
-<meta name="theme-color" content="#0f172a">
+<link rel="mask-icon" href="/favicon.svg" color="#45b739">
+<meta name="theme-color" content="#0c1226">
 
 <!-- Runtime config consumed by the React app (see ui/app/src/utils/config.ts).
      All per-environment values flow through here via HUGO_PARAMS_* at build time. -->
@@ -45,6 +45,8 @@
 <link rel="preconnect" href="{{ .Site.Params.oidcIssuer | default "https://oauth2.stawi.org" }}" crossorigin>
 <link rel="preconnect" href="{{ .Site.Params.contentOrigin | default "https://jobs-repo.stawi.org" }}" crossorigin>
 {{ with .Site.Params.apiURL }}<link rel="preconnect" href="{{ (urls.Parse .).Scheme }}://{{ (urls.Parse .).Host }}" crossorigin>{{ end }}
+<!-- Unsplash CDN hosts the profession photos on the home page. -->
+<link rel="preconnect" href="https://images.unsplash.com" crossorigin>
 
 <!-- Preload fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">

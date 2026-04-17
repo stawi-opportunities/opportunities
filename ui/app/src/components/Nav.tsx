@@ -45,15 +45,15 @@ export default function Nav() {
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white" role="banner">
       <nav
-        className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
+        className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-6 sm:px-8 lg:px-12"
         aria-label="Main navigation"
       >
         <a
           href="/"
-          className="flex items-center gap-2 text-xl font-bold text-navy-900"
+          className="flex items-center"
           aria-label="Stawi Jobs — home"
         >
-          <img src="/images/logo.svg" alt="" height="28" className="h-7 w-auto" />
+          <img src="/images/logo.svg" alt="Stawi Jobs" height="40" className="h-10 w-auto" />
         </a>
 
         <div className="hidden items-center gap-6 md:flex">
@@ -135,7 +135,7 @@ export default function Nav() {
           className="border-t border-gray-200 bg-white md:hidden"
           aria-label="Mobile navigation"
         >
-          <div className="space-y-1 px-4 py-3">
+          <div className="space-y-1 px-6 py-4 sm:px-8">
             <a
               href="/jobs/"
               onClick={closeMobile}

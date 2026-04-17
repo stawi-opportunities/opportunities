@@ -23,19 +23,21 @@ module.exports = {
           900: "#0c1226",
           950: "#050912",
         },
-        // Mustard/amber — used sparingly for highlights, small accents,
-        // and the occasional "priority" affordance. Not a button colour.
+        // Stawi brand green — the leaf accent on the wordmark logo.
+        // Palette hand-built around the brand values #45B739 / #219C3F.
+        // Used for highlights, eyebrows, and "success" affordances; not
+        // the primary button colour (that's navy).
         accent: {
-          50: "#fffbeb",
-          100: "#fef3c7",
-          200: "#fde68a",
-          300: "#fcd34d",
-          400: "#fbbf24",
-          500: "#f59e0b",
-          600: "#d97706",
-          700: "#b45309",
-          800: "#92400e",
-          900: "#78350f",
+          50: "#f0fdf4",
+          100: "#dcfce7",
+          200: "#bbf7d0",
+          300: "#86efac",
+          400: "#45b739",
+          500: "#219c3f",
+          600: "#198535",
+          700: "#136b2a",
+          800: "#0e5420",
+          900: "#083c17",
         },
       },
       fontFamily: {
