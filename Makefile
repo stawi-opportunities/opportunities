@@ -31,16 +31,15 @@ infra-down:
 	docker compose -f deploy/docker-compose.yml down -v
 
 # UI targets
-hugo-build:
-	cd ui && chmod +x scripts/sync-r2.sh && ./scripts/sync-r2.sh; hugo --minify
+UI_PORT ?= 5170
 
-pagefind: hugo-build
-	cd ui && npx pagefind --site public --glob "jobs/**/*.html"
+hugo-build:
+	cd ui && hugo --minify
 
 ui-dev:
-	cd ui && hugo server --bind 0.0.0.0 --port 1313
+	cd ui && hugo server --bind 0.0.0.0 --port $(UI_PORT)
 
-ui-build: pagefind
+ui-build: hugo-build
 	@echo "Static site built at ui/public/"
 
 ui-deps:
