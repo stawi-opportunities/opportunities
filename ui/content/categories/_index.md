@@ -1,4 +1,4 @@
 ---
 title: "Job Categories"
-description: "Browse remote jobs by category"
+description: "Browse jobs by category"
 ---

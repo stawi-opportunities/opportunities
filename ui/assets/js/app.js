@@ -1,6 +1,6 @@
 // Alpine.js global initialization for Stawi Jobs
 // Uses @stawi/auth-runtime for OIDC authentication
-import { getAuthRuntime } from "@stawi/auth-runtime";
+import { getAuthRuntime, decodeJwtPayload } from "@stawi/auth-runtime";
 
 document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
@@ -20,6 +20,10 @@ document.addEventListener("alpine:init", () => {
     idpBaseUrl: config.oidcIssuer || "https://oauth2.stawi.org",
     apiBaseUrl: config.candidatesAPIURL || "https://api.stawi.org",
     redirectUri: config.oidcRedirectURI,
+    // Match the scopes this client is registered for in Thesa
+    // (see service-authentication .../20260416_create_stawi_jobs_test_tenant.sql).
+    // The widget's default ["openid","profile","email"] is rejected by Hydra.
+    scopes: ["openid", "profile", "offline_access"],
     skipFedCM: true,
   });
 
@@ -33,32 +37,32 @@ document.addEventListener("alpine:init", () => {
     _runtime: auth,
 
     init() {
-      // Subscribe to auth state changes
+      // Subscribe to auth state changes. We don't call auth.getUser() —
+      // that widget helper hits /me on apiBaseUrl, which isn't a unified-API
+      // route on api.stawi.org and would retry-spam 404s. Everything we need
+      // for the nav badge is in the ID token payload.
       auth.onAuthStateChange(async (state) => {
         if (state === "authenticated") {
           this.isAuthenticated = true;
           try {
-            const user = await auth.getUser();
-            this.name = user?.name || "User";
-            this.initials = this.name
-              .split(" ")
+            const token = await auth.getAccessToken();
+            const claims = token ? decodeJwtPayload(token) : {};
+            const displayName =
+              claims.name || claims.preferred_username || claims.email ||
+              (claims.sub ? "User " + String(claims.sub).slice(0, 6) : "User");
+            this.name = displayName;
+            this.initials = displayName
+              .split(/[\s@.]+/)
+              .filter(Boolean)
               .map((w) => w[0])
               .join("")
               .toUpperCase()
-              .slice(0, 2);
+              .slice(0, 2) || "U";
             this.roles = (await auth.getRoles()) || [];
           } catch (e) {
-            console.error("Failed to load user:", e);
-          }
-
-          // Load candidate domain data from our API
-          try {
-            const resp = await apiFetch("/me");
-            if (resp.ok) {
-              this.profile = await resp.json();
-            }
-          } catch (e) {
-            // Non-fatal — profile may not exist yet (new user)
+            console.debug("auth: could not read claims", e);
+            this.name = "User";
+            this.initials = "U";
           }
         } else if (state === "unauthenticated") {
           this.isAuthenticated = false;
@@ -71,11 +75,10 @@ document.addEventListener("alpine:init", () => {
     },
 
     async login() {
-      try {
-        await auth.ensureAuthenticated();
-      } catch (e) {
-        console.error("Login failed:", e);
-      }
+      // Surface errors — callers want to know whether login actually worked
+      // (e.g. the navbar button shouldn't navigate to the dashboard if the
+      // popup was blocked or the user dismissed the flow).
+      await auth.ensureAuthenticated();
     },
 
     async logout() {

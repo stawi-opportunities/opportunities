@@ -1,5 +1,5 @@
 ---
 title: "Search Jobs"
-description: "Search remote job listings"
+description: "Search all job listings"
 type: "search"
 ---

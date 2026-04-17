@@ -4,4 +4,4 @@ params:
   slug: "marketing"
   job_count: 2200
 ---
-Browse remote Marketing jobs.
+Browse Marketing jobs.

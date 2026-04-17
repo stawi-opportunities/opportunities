@@ -4,4 +4,4 @@ params:
   slug: "management"
   job_count: 1200
 ---
-Browse remote Management & Executive jobs.
+Browse Management & Executive jobs.

@@ -1,38 +1,16 @@
 {{ define "main" }}
+{{/* The callback page exists only so the OAuth popup has something same-origin
+     to land on. The parent window polls popup.location, reads the code from
+     the query string, closes the popup, and completes the token exchange.
+     This view only needs to be reachable — the spinner is courtesy while the
+     parent closes the popup. Sign-in entry point is the navbar button; we no
+     longer ship a /auth/login/ page. */}}
 <div class="flex min-h-[60vh] items-center justify-center px-4 py-16">
-  {{ if eq .File.BaseFileName "login" }}
-  <div x-data="oidcLogin()" class="w-full max-w-md text-center">
-    <h1 class="text-3xl font-bold text-gray-900">Sign In</h1>
-    <p class="mt-2 text-gray-600">Sign in to access your personalized job matches and dashboard.</p>
-
-    <div x-show="error" x-cloak class="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700" role="alert" x-text="error"></div>
-
-    <button @click="startLogin()"
-            :disabled="loading"
-            class="btn-primary mt-8 w-full"
-            :class="loading && 'opacity-50 cursor-wait'">
-      <span x-show="!loading">Sign In</span>
-      <span x-show="loading" x-cloak>Signing in...</span>
-    </button>
-
-    <p class="mt-6 text-sm text-gray-500">
-      Don't have an account? Signing in will create one automatically.
-    </p>
-  </div>
-
-  {{ else if eq .File.BaseFileName "callback" }}
-  <div x-data="oidcCallback()" class="w-full max-w-md text-center">
-    <div x-show="loading" class="space-y-4">
+  <div class="w-full max-w-md text-center">
+    <div class="space-y-4">
       <div class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent" aria-label="Loading"></div>
-      <p class="text-gray-600">Completing sign in...</p>
-    </div>
-
-    <div x-show="error" x-cloak class="space-y-4">
-      <p class="text-lg font-semibold text-gray-900">Sign in failed</p>
-      <p class="text-sm text-red-600" x-text="error"></p>
-      <a href="/auth/login/" class="btn-primary mt-4 inline-block">Try Again</a>
+      <p class="text-gray-600">Completing sign in…</p>
     </div>
   </div>
-  {{ end }}
 </div>
 {{ end }}

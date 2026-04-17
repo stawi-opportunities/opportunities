@@ -40,18 +40,39 @@
     <div class="flex items-center gap-4">
       <div class="hidden sm:block" id="navbar-search"></div>
 
-      <div x-show="$store.auth.isAuthenticated" x-cloak class="flex items-center gap-3">
-        <a href="/dashboard/" class="text-sm font-medium text-gray-700 hover:text-navy-900">Dashboard</a>
-        <button @click="$store.auth.logout()"
-                class="text-sm text-gray-500 hover:text-gray-700">
-          Sign Out
+      <!-- Signed in: profile badge with dropdown (Dashboard / Sign Out). -->
+      <div x-show="$store.auth.isAuthenticated" x-cloak x-data="{ open: false }" class="relative">
+        <button @click="open = !open"
+                @keydown.escape="open = false"
+                :aria-expanded="open"
+                aria-haspopup="true"
+                aria-label="Account menu"
+                class="flex h-9 w-9 items-center justify-center rounded-full bg-navy-100 text-sm font-semibold text-navy-700 hover:bg-navy-200 focus:outline-none focus:ring-2 focus:ring-navy-300">
+          <span x-text="$store.auth.initials || 'U'"></span>
         </button>
-        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-navy-100 text-sm font-medium text-navy-700">
-          <span x-text="$store.auth.initials"></span>
+        <div x-show="open"
+             x-transition
+             @click.outside="open = false"
+             class="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg"
+             role="menu">
+          <div class="border-b border-gray-100 px-4 py-2">
+            <div class="text-sm font-medium text-gray-900" x-text="$store.auth.name || 'Signed in'"></div>
+          </div>
+          <a href="/dashboard/" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" role="menuitem">Dashboard</a>
+          <button @click="$store.auth.logout()" class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50" role="menuitem">Sign Out</button>
         </div>
       </div>
-      <div x-show="!$store.auth.isAuthenticated" x-cloak>
-        <button @click="$store.auth.login()" class="btn-primary text-sm">Sign In</button>
+
+      <!-- Signed out: single button kicks off the OIDC popup directly. -->
+      <div x-show="!$store.auth.isAuthenticated" x-cloak x-data="{ busy: false, err: '' }" class="relative">
+        <button @click="busy = true; err = ''; $store.auth.login().catch(e => { err = e.message || 'Sign in failed'; }).finally(() => { busy = false; })"
+                :disabled="busy"
+                :class="busy ? 'opacity-60 cursor-wait' : ''"
+                class="btn-primary text-sm">
+          <span x-show="!busy">Sign In</span>
+          <span x-show="busy" x-cloak>Signing in…</span>
+        </button>
+        <p x-show="err" x-cloak x-text="err" class="absolute right-0 top-full mt-2 w-64 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 shadow"></p>
       </div>
 
       <button @click="mobileMenuOpen = !mobileMenuOpen"
