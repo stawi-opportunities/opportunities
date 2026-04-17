@@ -45,7 +45,7 @@ export default function Nav() {
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white" role="banner">
       <nav
-        className="mx-auto flex h-24 max-w-7xl items-center justify-between gap-6 px-6 sm:px-8 lg:px-12"
+        className="mx-auto flex h-28 max-w-7xl items-center justify-between gap-6 px-6 sm:px-8 lg:px-12"
         aria-label="Main navigation"
       >
         <a
