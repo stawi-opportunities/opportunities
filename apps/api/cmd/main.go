@@ -2,14 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"os"
 	"os/signal"
-	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,9 +21,53 @@ import (
 
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
+	"stawi.jobs/pkg/pipeline/handlers"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
 )
+
+// --- helpers shared by the new /api/* handlers -------------------------------
+
+func parseLimit(s string, def, max int) int {
+	if v, err := strconv.Atoi(s); err == nil && v > 0 {
+		if v > max {
+			return max
+		}
+		return v
+	}
+	return def
+}
+
+func effectiveSort(s, q string) string {
+	if s != "" {
+		return s
+	}
+	if q == "" {
+		return "recent"
+	}
+	return "relevance"
+}
+
+func encodeCursor(t time.Time, id int64) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d|%d", t.UnixNano(), id)))
+}
+
+func decodeCursor(s string) (time.Time, int64, bool) {
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return time.Time{}, 0, false
+	}
+	parts := strings.SplitN(string(b), "|", 2)
+	if len(parts) != 2 {
+		return time.Time{}, 0, false
+	}
+	ns, err1 := strconv.ParseInt(parts[0], 10, 64)
+	id, err2 := strconv.ParseInt(parts[1], 10, 64)
+	if err1 != nil || err2 != nil {
+		return time.Time{}, 0, false
+	}
+	return time.Unix(0, ns).UTC(), id, true
+}
 
 type apiConfig struct {
 	ServerPort        string  `env:"SERVER_PORT" envDefault:":8082"`
@@ -108,29 +154,28 @@ func main() {
 		})
 	})
 
-	// GET /search?q=&limit=20
+	// GET /search — legacy path, proxies to the new repository contract.
 	mux.HandleFunc("GET /search", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		q := req.URL.Query().Get("q")
-		limitStr := req.URL.Query().Get("limit")
-		limit := 20
-		if limitStr != "" {
-			if v, err := strconv.Atoi(limitStr); err == nil && v > 0 && v <= 200 {
-				limit = v
-			}
-		}
+		limit := parseLimit(req.URL.Query().Get("limit"), 20, 200)
 
-		jobs, err := jobRepo.SearchCanonical(ctx, q, limit, 0)
+		rows, err := jobRepo.SearchCanonical(ctx, repository.SearchRequest{
+			Query: q,
+			Limit: limit,
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
+		if len(rows) > limit {
+			rows = rows[:limit]
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"query":   q,
-			"count":   len(jobs),
-			"results": jobs,
+			"count":   len(rows),
+			"results": rows,
 		})
 	})
 
@@ -242,7 +287,7 @@ func main() {
 
 		var totalCompanies int64
 		db.Model(&domain.CanonicalJob{}).
-			Where("is_active = true").
+			Where("status = 'active'").
 			Select("COUNT(DISTINCT company)").
 			Scan(&totalCompanies)
 
@@ -254,96 +299,227 @@ func main() {
 		})
 	})
 
-	// GET /search/semantic?q=<text>&limit=20
-	// Hybrid search: tsvector candidates re-ranked by embedding cosine similarity.
-	mux.HandleFunc("GET /search/semantic", func(w http.ResponseWriter, req *http.Request) {
+	// ---- new /api/* endpoints for the Hugo shell -------------------------
+	facetRepo := repository.NewFacetRepository(dbFn)
+
+	// GET /api/search?q=&category=&remote_type=&sort=&limit=&offset=&cursor=
+	mux.HandleFunc("GET /api/search", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
-		q := req.URL.Query().Get("q")
-		if q == "" {
-			http.Error(w, `{"error":"query parameter q is required"}`, http.StatusBadRequest)
-			return
+		q := strings.TrimSpace(req.URL.Query().Get("q"))
+		category := req.URL.Query().Get("category")
+		remote := req.URL.Query().Get("remote_type")
+		sort := req.URL.Query().Get("sort")
+		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
+		offset := 0
+		if v, err := strconv.Atoi(req.URL.Query().Get("offset")); err == nil && v > 0 {
+			offset = v
+		}
+		if offset > 1000 {
+			offset = 1000
 		}
 
-		limitStr := req.URL.Query().Get("limit")
-		limit := 20
-		if limitStr != "" {
-			if v, err := strconv.Atoi(limitStr); err == nil && v > 0 && v <= 200 {
-				limit = v
+		var cursorTS *time.Time
+		var cursorID int64
+		if c := req.URL.Query().Get("cursor"); c != "" {
+			if ts, id, ok := decodeCursor(c); ok {
+				cursorTS, cursorID = &ts, id
 			}
 		}
 
-		if extractor == nil {
-			http.Error(w, `{"error":"semantic search not available (OLLAMA_URL not configured)"}`, http.StatusServiceUnavailable)
-			return
-		}
-
-		// Step 1: Get tsvector candidates (fetch more than limit for re-ranking).
-		candidateLimit := limit * 5
-		if candidateLimit < 100 {
-			candidateLimit = 100
-		}
-		candidates, err := jobRepo.SearchCanonical(ctx, q, candidateLimit, 0)
+		rows, err := jobRepo.SearchCanonical(ctx, repository.SearchRequest{
+			Query:          q,
+			Category:       category,
+			RemoteType:     remote,
+			Sort:           sort,
+			Limit:          limit,
+			Offset:         offset,
+			CursorPostedAt: cursorTS,
+			CursorID:       cursorID,
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		hasMore := len(rows) > limit
+		if hasMore {
+			rows = rows[:limit]
+		}
 
-		// Step 2: Embed the query.
-		queryEmbedding, err := extractor.Embed(ctx, q)
-		if err != nil {
-			// Fall back to tsvector results if embedding fails.
-			if len(candidates) > limit {
-				candidates = candidates[:limit]
+		var nextCursor string
+		if hasMore && q == "" && len(rows) > 0 {
+			last := rows[len(rows)-1]
+			if last.PostedAt != nil {
+				nextCursor = encodeCursor(*last.PostedAt, last.ID)
 			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"query":    q,
-				"count":    len(candidates),
-				"results":  candidates,
-				"semantic": false,
-			})
-			return
 		}
 
-		// Step 3: Re-rank candidates by cosine similarity.
-		type scored struct {
-			job   *domain.CanonicalJob
-			score float64
-		}
-		var scored_jobs []scored
-		for _, job := range candidates {
-			if job.Embedding == "" {
-				continue
-			}
-			var jobEmb []float32
-			if err := json.Unmarshal([]byte(job.Embedding), &jobEmb); err != nil {
-				continue
-			}
-			sim := cosineSimilarity(queryEmbedding, jobEmb)
-			scored_jobs = append(scored_jobs, scored{job: job, score: sim})
-		}
-
-		sort.Slice(scored_jobs, func(i, j int) bool {
-			return scored_jobs[i].score > scored_jobs[j].score
-		})
-
-		if len(scored_jobs) > limit {
-			scored_jobs = scored_jobs[:limit]
-		}
-
-		results := make([]*domain.CanonicalJob, len(scored_jobs))
-		for i, s := range scored_jobs {
-			results[i] = s.job
-		}
-
+		facets, _ := facetRepo.Read(ctx)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"query":    q,
-			"count":    len(results),
-			"results":  results,
-			"semantic": true,
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"query":       q,
+			"results":     rows,
+			"has_more":    hasMore,
+			"cursor_next": nextCursor,
+			"facets":      facets,
+			"sort":        effectiveSort(sort, q),
 		})
 	})
+
+	// GET /api/categories
+	mux.HandleFunc("GET /api/categories", func(w http.ResponseWriter, req *http.Request) {
+		f, err := facetRepo.Read(req.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"categories": f.Category})
+	})
+
+	// GET /api/categories/{slug}/jobs
+	mux.HandleFunc("GET /api/categories/{slug}/jobs", func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		category := req.PathValue("slug")
+		if category == "" {
+			http.Error(w, `{"error":"slug required"}`, http.StatusBadRequest)
+			return
+		}
+		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
+		var cursorTS *time.Time
+		var cursorID int64
+		if c := req.URL.Query().Get("cursor"); c != "" {
+			if ts, id, ok := decodeCursor(c); ok {
+				cursorTS, cursorID = &ts, id
+			}
+		}
+		rows, err := jobRepo.SearchCanonical(ctx, repository.SearchRequest{
+			Category:       category,
+			Sort:           "recent",
+			Limit:          limit,
+			CursorPostedAt: cursorTS,
+			CursorID:       cursorID,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		hasMore := len(rows) > limit
+		if hasMore {
+			rows = rows[:limit]
+		}
+		var nextCursor string
+		if hasMore && len(rows) > 0 {
+			last := rows[len(rows)-1]
+			if last.PostedAt != nil {
+				nextCursor = encodeCursor(*last.PostedAt, last.ID)
+			}
+		}
+		w.Header().Set("Cache-Control", "public, max-age=30")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"category":    category,
+			"results":     rows,
+			"has_more":    hasMore,
+			"cursor_next": nextCursor,
+		})
+	})
+
+	// GET /api/jobs/latest
+	mux.HandleFunc("GET /api/jobs/latest", func(w http.ResponseWriter, req *http.Request) {
+		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
+		rows, err := jobRepo.SearchCanonical(req.Context(), repository.SearchRequest{
+			Sort:  "recent",
+			Limit: limit,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if len(rows) > limit {
+			rows = rows[:limit]
+		}
+		w.Header().Set("Cache-Control", "public, max-age=30")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": rows})
+	})
+
+	// GET /api/stats/summary
+	mux.HandleFunc("GET /api/stats/summary", func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		totalJobs, _ := jobRepo.CountCanonical(ctx)
+		totalSources, _ := sourceRepo.Count(ctx)
+		var totalCompanies int64
+		db.Model(&domain.CanonicalJob{}).
+			Where("status = 'active'").
+			Select("COUNT(DISTINCT company)").
+			Scan(&totalCompanies)
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total_jobs":      totalJobs,
+			"total_companies": totalCompanies,
+			"active_sources":  totalSources,
+		})
+	})
+
+	// POST /admin/republish?status=active&limit=1000
+	// Re-emits publish for canonical rows via the publish handler (not the queue).
+	mux.HandleFunc("POST /admin/republish", func(w http.ResponseWriter, req *http.Request) {
+		if r2Publisher == nil {
+			http.Error(w, `{"error":"R2 not configured"}`, http.StatusServiceUnavailable)
+			return
+		}
+		ctx := req.Context()
+		status := req.URL.Query().Get("status")
+		if status == "" {
+			status = "active"
+		}
+		limit := parseLimit(req.URL.Query().Get("limit"), 1000, 1000000)
+
+		purger := publish.NewCachePurger(
+			os.Getenv("CLOUDFLARE_ZONE_ID"),
+			os.Getenv("CLOUDFLARE_API_TOKEN"),
+			"",
+		)
+		handler := handlers.NewPublishHandler(jobRepo, r2Publisher, purger, cfg.PublishMinQuality)
+
+		var lastID int64
+		total := 0
+		for total < limit {
+			var rows []*domain.CanonicalJob
+			if err := db.
+				Where("status = ? AND id > ?", status, lastID).
+				Order("id ASC").
+				Limit(500).
+				Find(&rows).Error; err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if len(rows) == 0 {
+				break
+			}
+			for _, j := range rows {
+				_ = handler.Execute(ctx, &handlers.JobReadyPayload{CanonicalJobID: j.ID})
+				lastID = j.ID
+				total++
+				if total >= limit {
+					break
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":      status,
+			"republished": total,
+			"last_id":     lastID,
+		})
+	})
+
+	// /search/semantic is removed in the Hugo-millions rebuild. The plain
+	// /api/search endpoint (added below) is the supported search path.
+	// Semantic ranking can be re-introduced later via pgvector on canonical_jobs.
+	_ = extractor // still used in the backfill warm path if present
 
 	// POST /admin/backfill — publish jobs to R2 for Hugo site generation.
 	// Query params: from_id, to_id, since (RFC3339 date), batch_size, min_quality, trigger_deploy
@@ -374,7 +550,7 @@ func main() {
 
 		// Build query conditions.
 		query := db.Model(&domain.CanonicalJob{}).
-			Where("is_active = true AND quality_score >= ?", minQuality).
+			Where("status = 'active' AND quality_score >= ?", minQuality).
 			Order("id ASC")
 
 		if v := q.Get("from_id"); v != "" {

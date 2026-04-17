@@ -131,33 +131,118 @@ func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.Canonica
 		Create(cj).Error
 }
 
-// SearchCanonical performs a full-text search using tsvector/tsquery on active
-// canonical jobs, ranked by ts_rank. Falls back to last_seen_at ordering when
-// no query is provided.
-func (r *JobRepository) SearchCanonical(ctx context.Context, query string, limit, offset int) ([]*domain.CanonicalJob, error) {
-	var jobs []*domain.CanonicalJob
-	if query != "" {
-		err := r.db(ctx, true).
-			Where("status = 'active' AND search_vector @@ plainto_tsquery('simple', ?)", query).
-			Clauses(clause.OrderBy{
+// SearchRequest describes an FTS query with filters, pagination, and sort.
+// Cursor fields are used only for empty-query keyset pagination; text-search
+// (Query != "") uses Offset instead.
+type SearchRequest struct {
+	Query          string
+	Category       string
+	RemoteType     string
+	EmploymentType string
+	Seniority      string
+	Country        string
+	Sort           string // "relevance"|"recent"|"quality"|"salary_high"; defaults derived from Query
+	Limit          int
+	Offset         int
+	CursorPostedAt *time.Time
+	CursorID       int64
+}
+
+// SearchResult is the denormalized row returned to UI consumers. Snippet is a
+// pre-truncated excerpt of the description so list pages don't ship full text.
+type SearchResult struct {
+	ID           int64      `json:"id"`
+	Slug         string     `json:"slug"`
+	Title        string     `json:"title"`
+	Company      string     `json:"company"`
+	LocationText string     `json:"location_text"`
+	Country      string     `json:"country"`
+	RemoteType   string     `json:"remote_type"`
+	Category     string     `json:"category"`
+	SalaryMin    float64    `json:"salary_min"`
+	SalaryMax    float64    `json:"salary_max"`
+	Currency     string     `json:"currency"`
+	PostedAt     *time.Time `json:"posted_at"`
+	QualityScore float64    `json:"quality_score"`
+	Snippet      string     `json:"snippet"`
+	IsFeatured   bool       `json:"is_featured"`
+}
+
+// SearchCanonical runs an FTS query with filters. See SearchRequest for the
+// contract. Caller should request Limit+1 and infer has_more from overflow.
+func (r *JobRepository) SearchCanonical(ctx context.Context, req SearchRequest) ([]*SearchResult, error) {
+	if req.Limit <= 0 || req.Limit > 100 {
+		req.Limit = 20
+	}
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Offset > 1000 {
+		req.Offset = 1000
+	}
+
+	db := r.db(ctx, true).Table("canonical_jobs").
+		Select(`id, slug, title, company, location_text, country, remote_type,
+				category, salary_min, salary_max, currency, posted_at, quality_score,
+				left(coalesce(description, ''), 200) AS snippet,
+				(quality_score >= 80) AS is_featured`).
+		Where("status = 'active'")
+
+	if req.Category != "" {
+		db = db.Where("category = ?", req.Category)
+	}
+	if req.RemoteType != "" {
+		db = db.Where("remote_type = ?", req.RemoteType)
+	}
+	if req.EmploymentType != "" {
+		db = db.Where("employment_type = ?", req.EmploymentType)
+	}
+	if req.Seniority != "" {
+		db = db.Where("seniority = ?", req.Seniority)
+	}
+	if req.Country != "" {
+		db = db.Where("country = ?", req.Country)
+	}
+
+	q := strings.TrimSpace(req.Query)
+	if q != "" {
+		db = db.Where("search_vector @@ plainto_tsquery('simple', ?)", q)
+		switch req.Sort {
+		case "recent":
+			db = db.Order("posted_at DESC NULLS LAST").Order("id DESC")
+		case "quality":
+			db = db.Order("quality_score DESC").Order("posted_at DESC NULLS LAST").Order("id DESC")
+		case "salary_high":
+			db = db.Order("salary_max DESC NULLS LAST").Order("id DESC")
+		default: // relevance
+			db = db.Clauses(clause.OrderBy{
 				Expression: clause.Expr{
-					SQL:                "ts_rank(search_vector, plainto_tsquery('simple', ?)) DESC",
-					Vars:               []interface{}{query},
+					SQL:                "ts_rank_cd(search_vector, plainto_tsquery('simple', ?)) DESC",
+					Vars:               []any{q},
 					WithoutParentheses: true,
 				},
-			}).
-			Limit(limit).
-			Offset(offset).
-			Find(&jobs).Error
-		return jobs, err
+			}).Order("posted_at DESC NULLS LAST").Order("id DESC")
+		}
+		db = db.Offset(req.Offset)
+	} else {
+		if req.CursorPostedAt != nil && req.CursorID > 0 {
+			db = db.Where("(posted_at, id) < (?, ?)", *req.CursorPostedAt, req.CursorID)
+		}
+		switch req.Sort {
+		case "quality":
+			db = db.Order("quality_score DESC").Order("id DESC")
+		case "salary_high":
+			db = db.Order("salary_max DESC NULLS LAST").Order("id DESC")
+		default: // recent
+			db = db.Order("posted_at DESC NULLS LAST").Order("id DESC")
+		}
 	}
-	err := r.db(ctx, true).
-		Where("status = 'active'").
-		Order("last_seen_at DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&jobs).Error
-	return jobs, err
+
+	var out []*SearchResult
+	if err := db.Limit(req.Limit + 1).Scan(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // UpdateEmbedding stores a JSON-encoded embedding vector for a canonical job.
