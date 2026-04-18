@@ -26,6 +26,7 @@ import (
 
 	"stawi.jobs/apps/candidates/config"
 	"stawi.jobs/apps/candidates/service/events"
+	"stawi.jobs/pkg/cv"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/matching"
@@ -189,6 +190,11 @@ func main() {
 	mux.Handle("POST /jobs/{id}/save", authWrap(saveJobHandler(savedJobRepo)))
 	mux.Handle("DELETE /jobs/{id}/save", authWrap(unsaveJobHandler(savedJobRepo)))
 	mux.Handle("GET /saved-jobs", authWrap(listSavedJobsHandler(savedJobRepo)))
+	// CV Strength Report — returns the cached report for the caller
+	// (fast path) or generates a fresh one if the stored CV version
+	// differs from what was last scored (re-score loop).
+	mux.Handle("GET /candidates/cv/score", authWrap(getCVScoreHandler(candidateRepo, extractor)))
+	mux.Handle("POST /candidates/cv/score", authWrap(rescoreCVHandler(candidateRepo, extractor)))
 
 	// Authenticated admin routes
 	mux.Handle("GET /admin/candidates", authWrap(listCandidatesHandler(candidateRepo)))
@@ -376,6 +382,12 @@ func registerHandler(candidateRepo *repository.CandidateRepository, extractor *e
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
 		}
+
+		// Kick off CV Strength Report generation in the background.
+		// Takes one LLM call for the fields re-extract + one for the
+		// bullet rewrites — we don't block the register response on
+		// them; the dashboard fetches the report on first load.
+		kickoffCVScore(candidateRepo, extractor, candidate)
 
 		// Emit events.
 		evtMgr := svc.EventsManager()
@@ -649,6 +661,9 @@ func inboundEmailHandler(candidateRepo *repository.CandidateRepository, extracto
 			return
 		}
 
+		// Re-score the updated CV in the background.
+		kickoffCVScore(candidateRepo, extractor, candidate)
+
 		// Emit events.
 		evtMgr := svc.EventsManager()
 		if evtMgr != nil {
@@ -866,6 +881,10 @@ func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *ex
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
 		}
+
+		// Inbound-email path: score the CV in the background so the
+		// report is ready when the user next signs in to the web UI.
+		kickoffCVScore(candidateRepo, extractor, candidate)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -1332,4 +1351,186 @@ func notifyExpiredJobSubscribers(
 				Warn("notify-expired: stream failed")
 		}
 	}
+}
+
+// ── CV Strength Report handlers ─────────────────────────────────────
+
+// getCVScoreHandler returns the stored CV Strength Report for the
+// caller. Fast path — no LLM, no scoring — so the dashboard renders
+// instantly. If the stored report is stale (CV text changed since
+// last scoring), the handler also kicks off a background rescore so
+// the next request reflects the new CV.
+func getCVScoreHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims := security.ClaimsFromContext(ctx)
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		profileID := claims.GetProfileID()
+		if profileID == "" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
+		if err != nil || candidate == nil {
+			http.Error(w, `{"error":"candidate not found"}`, http.StatusNotFound)
+			return
+		}
+
+		// Serve the cached report when it matches the current CV.
+		if candidate.CVReportJSON != "" && candidate.CVReportJSON != "{}" {
+			staleVersion := candidate.CVScoredVersion != cv.VersionHashText(candidate.CVRawText)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-CV-Report-Stale", boolStr(staleVersion))
+			_, _ = w.Write([]byte(candidate.CVReportJSON))
+			// Fire-and-forget rescore when stale so the next hit
+			// serves a fresh report.
+			if staleVersion {
+				go func() {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+					defer cancel()
+					_, _ = scoreAndPersistCV(bgCtx, candidateRepo, extractor, candidate)
+				}()
+			}
+			return
+		}
+
+		// No cached report → generate inline (blocks until done).
+		report, scoreErr := scoreAndPersistCV(ctx, candidateRepo, extractor, candidate)
+		if scoreErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, scoreErr.Error()), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(report)
+	}
+}
+
+// rescoreCVHandler forces a fresh scoring round. Used by the frontend
+// after the user applies a fix — the loop is "apply → rescore →
+// show improvement". Returns the freshly-generated report.
+func rescoreCVHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims := security.ClaimsFromContext(ctx)
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		profileID := claims.GetProfileID()
+		if profileID == "" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
+		if err != nil || candidate == nil {
+			http.Error(w, `{"error":"candidate not found"}`, http.StatusNotFound)
+			return
+		}
+
+		report, scoreErr := scoreAndPersistCV(ctx, candidateRepo, extractor, candidate)
+		if scoreErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, scoreErr.Error()), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(report)
+	}
+}
+
+// scoreAndPersistCV runs the full pipeline (score → rewrite → persist)
+// and returns the generated report. Used by the two HTTP handlers
+// above and also by the post-upload auto-trigger that lives inline in
+// the register / onboard / inbound-email handlers.
+//
+// Returns (nil, nil) when the candidate has no CV text yet — that's
+// not an error condition, just a signal that there's nothing to
+// score. Callers should check for nil and skip.
+func scoreAndPersistCV(
+	ctx context.Context,
+	candidateRepo *repository.CandidateRepository,
+	extractor *extraction.Extractor,
+	candidate *domain.CandidateProfile,
+) (*cv.CVStrengthReport, error) {
+	if strings.TrimSpace(candidate.CVRawText) == "" {
+		return nil, nil
+	}
+
+	// Re-extract fields from the stored text. This costs one LLM
+	// call but keeps the scorer honest even after the user has
+	// hand-edited their CandidateProfile — structured extractor
+	// output is the input contract for the scorer.
+	var fields *extraction.CVFields
+	if extractor != nil {
+		f, err := extractor.ExtractCV(ctx, candidate.CVRawText)
+		if err == nil {
+			fields = f
+		}
+	}
+
+	// Role target — prefer the explicit onboarding field, fall back
+	// to the current title. Either way the scorer copes with empty
+	// by returning the "general" family.
+	target := candidate.TargetJobTitle
+	if target == "" {
+		target = candidate.CurrentTitle
+	}
+
+	scorer := cv.NewScorer(extractor) // Extractor's Embed satisfies the Embedder interface
+	report := scorer.Score(ctx, candidate.CVRawText, fields, target)
+
+	// Append LLM-driven rewrites as a best-effort second pass.
+	cv.AttachRewrites(ctx, extractor, report, fields)
+
+	// Persist the cached report + components on the candidate row.
+	blob, marshalErr := json.Marshal(report)
+	if marshalErr == nil {
+		now := time.Now().UTC()
+		candidate.CVScore = report.OverallScore
+		candidate.CVReportJSON = string(blob)
+		candidate.CVScoredAt = &now
+		candidate.CVScoredVersion = report.CVVersion
+		if err := candidateRepo.Update(ctx, candidate); err != nil {
+			// Non-fatal — we still return the report so the caller
+			// can render it; persistence will retry next time.
+			util.Log(ctx).WithError(err).
+				WithField("profile_id", candidate.ProfileID).
+				Warn("cv-score: persist failed")
+		}
+	}
+
+	return report, nil
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+// kickoffCVScore fires the CV Strength Report pipeline in the
+// background so upload/register/onboard responses stay fast. The
+// scoring pass re-extracts CV fields (one LLM call), computes all
+// five dimensions (including an embedding call for role fit), and
+// generates before/after rewrites for the 5 weakest bullets (one
+// more LLM call). On the cluster that's ~3-5 seconds end-to-end —
+// no reason to block the user on it when the result is consumed by
+// the dashboard on the next page load.
+func kickoffCVScore(
+	candidateRepo *repository.CandidateRepository,
+	extractor *extraction.Extractor,
+	candidate *domain.CandidateProfile,
+) {
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		if _, err := scoreAndPersistCV(bgCtx, candidateRepo, extractor, candidate); err != nil {
+			util.Log(bgCtx).WithError(err).
+				WithField("profile_id", candidate.ProfileID).
+				Warn("cv-score: background kickoff failed")
+		}
+	}()
 }

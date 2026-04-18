@@ -102,6 +102,16 @@ type CandidateProfile struct {
 	LastMatchedAt   *time.Time `json:"last_matched_at"`
 	LastContactedAt *time.Time `json:"last_contacted_at"`
 
+	// CV Strength Report cache. Populated on every CV upload/update
+	// and re-scoring round, so the dashboard's "Your CV Strength"
+	// panel has an authoritative number without a fresh LLM round
+	// trip on each page load. Empty CVReportJSON means the candidate
+	// has never been scored (or the CV couldn't be parsed).
+	CVScore           int        `gorm:"not null;default:0" json:"cv_score"`
+	CVReportJSON      string     `gorm:"type:jsonb;default:'{}'" json:"-"`
+	CVScoredAt        *time.Time `json:"cv_scored_at"`
+	CVScoredVersion   string     `gorm:"type:varchar(32)" json:"cv_scored_version"`
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at"`
