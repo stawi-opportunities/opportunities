@@ -84,6 +84,15 @@ func main() {
 		// Set existing variants without a stage to 'ready'
 		migrationDB.Exec("UPDATE job_variants SET stage = 'ready' WHERE stage IS NULL OR stage = ''")
 		log.Info("set existing variants to stage=ready")
+
+		// Postgres-specific schema bits GORM AutoMigrate can't express:
+		// partial indexes on status='active', pg_trgm, mv_job_facets.
+		// The API also calls this but only when its own migration flag is
+		// set — crawler runs the migration job on every Helm install, so
+		// putting it here keeps the finalize step in one place.
+		if err := repository.FinalizeSchema(migrationDB); err != nil {
+			log.WithError(err).Fatal("finalize schema failed")
+		}
 		log.Info("migration complete")
 		return
 	}
