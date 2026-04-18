@@ -148,7 +148,10 @@ type RerankCache struct {
 	CacheKey        string    `gorm:"type:varchar(64);primaryKey" json:"cache_key"`
 	Score           float32   `gorm:"type:real;not null" json:"score"`
 	RerankerVersion string    `gorm:"type:varchar(64);not null" json:"reranker_version"`
-	CreatedAt       time.Time `gorm:"index:,where:created_at < NOW() - INTERVAL '30 days'" json:"created_at"`
+	// Plain btree on created_at so the 30-day purge query stays index-
+	// hit. Postgres rejects partial-index predicates that reference NOW()
+	// (must be IMMUTABLE), so we don't narrow the index here.
+	CreatedAt       time.Time `gorm:"index" json:"created_at"`
 	Hits            int       `gorm:"type:int;not null;default:0" json:"hits"`
 }
 
