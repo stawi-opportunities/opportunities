@@ -549,6 +549,38 @@ func (r *JobRepository) ListByStage(ctx context.Context, stage string, limit int
 	return variants, err
 }
 
+// MarkExpiredIfActive flips status to 'expired' only when the row is
+// currently 'active'. The guard makes the call idempotent — the
+// redirect service's link-expired signal can retry freely, and we
+// won't re-trigger downstream subscriber notifications on the second
+// run. Returns the number of rows changed (0 or 1).
+func (r *JobRepository) MarkExpiredIfActive(ctx context.Context, id int64) (int64, error) {
+	res := r.db(ctx, false).
+		Table("canonical_jobs").
+		Where("id = ? AND status = 'active'", id).
+		Update("status", "expired")
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+// GetCanonicalByIDAnyStatus retrieves a canonical job by primary key
+// regardless of its status. Used by consumers that need to read a row
+// after it's been expired (e.g. the link-expired notifier still needs
+// the job's title to template the email).
+func (r *JobRepository) GetCanonicalByIDAnyStatus(ctx context.Context, id int64) (*domain.CanonicalJob, error) {
+	var j domain.CanonicalJob
+	err := r.db(ctx, true).Where("id = ?", id).First(&j).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &j, nil
+}
+
 // GetCanonicalByID retrieves an active canonical job by primary key.
 // Returns nil, nil when no record is found.
 func (r *JobRepository) GetCanonicalByID(ctx context.Context, id int64) (*domain.CanonicalJob, error) {

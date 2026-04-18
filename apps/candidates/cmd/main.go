@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	notificationpb "buf.build/gen/go/antinvestor/notification/protocolbuffers/go/notification/v1"
 	commonpb "buf.build/gen/go/antinvestor/common/protocolbuffers/go/common/v1"
 	filespb "buf.build/gen/go/antinvestor/files/protocolbuffers/go/files/v1"
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
@@ -166,6 +168,15 @@ func main() {
 	mux.HandleFunc("POST /candidates/register", registerHandler(candidateRepo, extractor, svc, svcClients))
 	mux.HandleFunc("POST /webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
 	mux.HandleFunc("POST /webhooks/billing", billingWebhookHandler(candidateRepo))
+
+	// Internal: the redirect service (service-files) calls this when
+	// it flips a link to EXPIRED after the destination URL has been
+	// unreachable long enough. Body: {link_id, affiliate_id}. We
+	// identify the canonical job by parsing "canonical_job_<id>" out
+	// of affiliate_id, mark it expired, and notify every profile that
+	// saved it. Cluster-internal only — the gateway HTTPRoute doesn't
+	// expose /internal/* so no auth middleware is attached.
+	mux.HandleFunc("POST /internal/link-expired", linkExpiredHandler(jobRepo, savedJobRepo, svcClients))
 
 	// Authenticated candidate routes
 	mux.Handle("GET /me", authWrap(meHandler(candidateRepo, cfg.ProfileServiceURL)))
@@ -1143,5 +1154,182 @@ func billingWebhookHandler(candidateRepo *repository.CandidateRepository) http.H
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "subscription": candidate.Subscription})
+	}
+}
+
+// linkExpiredHandler reacts to a redirect-service link.expired signal.
+// The redirect service calls this synchronously over the cluster
+// network when its inline probe has decided a destination URL is
+// permanently gone. We do three things here:
+//
+//  1. Parse the canonical_job_id out of affiliate_id — stawi-jobs
+//     encodes "canonical_job_<id>" at publish time (see
+//     pkg/pipeline/handlers/publish.go), so anything else is some
+//     other domain's link and we ignore it silently with a 204.
+//  2. Flip canonical_jobs.status = 'expired' (idempotent — WHERE
+//     status = 'active' gates the update, so repeated calls from a
+//     retrying redirect service don't double-process).
+//  3. Fan out a "job_expired" notification to every profile that
+//     bookmarked the job, using the existing NotificationService
+//     pipeline. Each notification carries an idempotency key tied to
+//     the canonical job so duplicate deliveries collapse upstream.
+//
+// Best-effort throughout — a failure in notification delivery
+// shouldn't bubble back to the redirect service and revert its
+// EXPIRED state change. We log and continue.
+func linkExpiredHandler(
+	jobRepo *repository.JobRepository,
+	savedJobRepo *repository.SavedJobRepository,
+	clients *services.Clients,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		log := util.Log(ctx)
+
+		var body struct {
+			LinkID      string `json:"link_id"`
+			AffiliateID string `json:"affiliate_id"`
+			Slug        string `json:"slug"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+			return
+		}
+
+		canonicalJobID, ok := parseCanonicalJobAffiliate(body.AffiliateID)
+		if !ok {
+			// Not ours — could be a candidate affiliate link, a
+			// partner integration, anything. Ack 204 so the redirect
+			// service doesn't retry.
+			log.WithField("affiliate_id", body.AffiliateID).
+				Debug("link-expired: affiliate not a canonical job, ignoring")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		log = log.WithField("canonical_job_id", canonicalJobID).
+			WithField("link_id", body.LinkID)
+
+		// Step 1: flip canonical status, guarded on status='active'
+		// so retries don't re-trigger the notification fan-out.
+		rows, err := jobRepo.MarkExpiredIfActive(ctx, canonicalJobID)
+		if err != nil {
+			log.WithError(err).Error("link-expired: mark expired failed")
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		if rows == 0 {
+			// Already expired or missing — no-op for idempotency.
+			log.Debug("link-expired: canonical already expired or missing, skipping notifications")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		// Step 2: fan out notifications to saved-job subscribers.
+		// Non-fatal — we always ack the redirect service.
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			notifyExpiredJobSubscribers(bgCtx, jobRepo, savedJobRepo, clients, canonicalJobID)
+		}()
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// parseCanonicalJobAffiliate extracts the canonical job id from an
+// affiliate_id of the form "canonical_job_<int64>". Returns (id, true)
+// on match, (0, false) otherwise.
+func parseCanonicalJobAffiliate(affiliateID string) (int64, bool) {
+	const prefix = "canonical_job_"
+	if !strings.HasPrefix(affiliateID, prefix) {
+		return 0, false
+	}
+	idStr := affiliateID[len(prefix):]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+// notifyExpiredJobSubscribers loads the job (for template variables)
+// and the profile ids that saved it, then fires one notification per
+// profile. Per-profile failures are logged but don't abort the batch —
+// one muted inbox shouldn't block the other subscribers.
+func notifyExpiredJobSubscribers(
+	ctx context.Context,
+	jobRepo *repository.JobRepository,
+	savedJobRepo *repository.SavedJobRepository,
+	clients *services.Clients,
+	canonicalJobID int64,
+) {
+	log := util.Log(ctx).WithField("canonical_job_id", canonicalJobID)
+	if clients == nil || clients.Notification == nil {
+		log.Debug("notify-expired: notification client not configured, skipping")
+		return
+	}
+
+	job, err := jobRepo.GetCanonicalByIDAnyStatus(ctx, canonicalJobID)
+	if err != nil {
+		log.WithError(err).Warn("notify-expired: load canonical failed")
+		return
+	}
+	if job == nil {
+		return
+	}
+
+	profileIDs, err := savedJobRepo.ListProfileIDsByCanonicalJob(ctx, canonicalJobID)
+	if err != nil {
+		log.WithError(err).Warn("notify-expired: list saved subscribers failed")
+		return
+	}
+	if len(profileIDs) == 0 {
+		return
+	}
+
+	log.WithField("subscribers", len(profileIDs)).Info("notify-expired: fanning out")
+	for _, pid := range profileIDs {
+		payload, payloadErr := structpb.NewStruct(map[string]any{
+			"job_title":    job.Title,
+			"company_name": job.Company,
+			"job_slug":     job.Slug,
+			"category":     job.Category,
+			"search_url":   "https://jobs.stawi.org/search/",
+		})
+		if payloadErr != nil {
+			log.WithError(payloadErr).WithField("profile_id", pid).
+				Warn("notify-expired: build payload struct failed")
+			continue
+		}
+
+		stream, sendErr := clients.Notification.Send(ctx, connect.NewRequest(&notificationpb.SendRequest{
+			Data: []*notificationpb.Notification{
+				{
+					// Deterministic Id collapses duplicate deliveries on the
+					// notification service side — if the redirect service
+					// somehow retries this endpoint after we've already
+					// kicked off a fan-out, the second call upserts the
+					// same row instead of double-sending.
+					Id:        fmt.Sprintf("job_expired:%d:%s", canonicalJobID, pid),
+					Recipient: &commonpb.ContactLink{ProfileId: pid},
+					Type:      "email",
+					Template:  "job_expired",
+					OutBound:  true,
+					Payload:   payload,
+				},
+			},
+		}))
+		if sendErr != nil {
+			log.WithError(sendErr).WithField("profile_id", pid).
+				Warn("notify-expired: send failed")
+			continue
+		}
+		for stream.Receive() {
+		}
+		if streamErr := stream.Err(); streamErr != nil {
+			log.WithError(streamErr).WithField("profile_id", pid).
+				Warn("notify-expired: stream failed")
+		}
 	}
 }

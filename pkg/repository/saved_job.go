@@ -52,3 +52,16 @@ func (r *SavedJobRepository) Exists(ctx context.Context, profileID string, jobID
 		Count(&count).Error
 	return count > 0, err
 }
+
+// ListProfileIDsByCanonicalJob returns the distinct profile_ids that
+// have saved a given canonical job. Used by the expired-job
+// notification fan-out: when the redirect service marks a link
+// dead, every profile here gets a "posting removed" email.
+func (r *SavedJobRepository) ListProfileIDsByCanonicalJob(ctx context.Context, canonicalJobID int64) ([]string, error) {
+	var ids []string
+	err := r.db(ctx, true).Model(&domain.SavedJob{}).
+		Where("canonical_job_id = ?", canonicalJobID).
+		Distinct("profile_id").
+		Pluck("profile_id", &ids).Error
+	return ids, err
+}

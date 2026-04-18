@@ -11,9 +11,10 @@ import { useAuth } from "@/providers/AuthProvider";
  * Fallback: if the widget package fails to load (ad-blocker, offline,
  * 404 on the bundle) we render a plain sign-in button after 3 s so the
  * user is never stranded without an auth affordance. We detect a
- * successful mount by looking for `host.shadowRoot` — the widget
- * calls `host.attachShadow(...)` internally, so `childElementCount`
- * stays 0 even when it's painted.
+ * successful mount by looking for either `host.shadowRoot` or any
+ * attached child — the widget may paint into light DOM in some builds,
+ * so relying on shadow root alone produced a duplicate "Sign in"
+ * button next to the widget's own "Login" affordance.
  */
 export function StawiAuth() {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -26,8 +27,9 @@ export function StawiAuth() {
     if (!host) return;
 
     // React StrictMode mounts effects twice in dev; if the widget is
-    // already attached (shadow root present), skip the redundant mount.
-    if (host.shadowRoot && handleRef.current) return;
+    // already attached (shadow root OR light-DOM children), skip the
+    // redundant mount.
+    if ((host.shadowRoot || host.childElementCount > 0) && handleRef.current) return;
 
     const cfg = getConfig();
     try {
@@ -47,10 +49,14 @@ export function StawiAuth() {
       return;
     }
 
-    // Treat a missing shadow root after 3 s as a hard failure — the
-    // widget's bundle never loaded or its mount threw asynchronously.
+    // Treat a missing mount signature after 3 s as a hard failure —
+    // the widget's bundle never loaded or its mount threw
+    // asynchronously. Either a shadow root or any rendered child
+    // counts as success.
     const timer = window.setTimeout(() => {
-      if (!host.shadowRoot) setWidgetFailed(true);
+      if (!host.shadowRoot && host.childElementCount === 0) {
+        setWidgetFailed(true);
+      }
     }, 3000);
 
     return () => {
