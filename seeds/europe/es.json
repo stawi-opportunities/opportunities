@@ -1,0 +1,5 @@
+[
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/glovoapp", "country": "ES", "language": "es", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/typeform", "country": "ES", "language": "es", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "lever", "base_url": "https://jobs.lever.co/factorialhr", "country": "ES", "language": "es", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"}
+]

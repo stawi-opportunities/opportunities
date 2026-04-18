@@ -34,7 +34,7 @@ func (r *JobRepository) UpsertVariant(ctx context.Context, v *domain.JobVariant)
 			},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"hard_key", "source_url", "apply_url", "title", "company",
-				"location_text", "country", "remote_type", "employment_type",
+				"location_text", "country", "language", "remote_type", "employment_type",
 				"salary_min", "salary_max", "currency", "description",
 				"posted_at", "scraped_at", "content_hash", "updated_at",
 			}),
@@ -55,7 +55,7 @@ func (r *JobRepository) UpsertVariants(ctx context.Context, variants []*domain.J
 			},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"hard_key", "source_url", "apply_url", "title", "company",
-				"location_text", "country", "remote_type", "employment_type",
+				"location_text", "country", "language", "remote_type", "employment_type",
 				"salary_min", "salary_max", "currency", "description",
 				"posted_at", "scraped_at", "content_hash", "updated_at",
 			}),
@@ -114,7 +114,7 @@ func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.Canonica
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "cluster_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
-				"title", "company", "description", "location_text", "country",
+				"title", "company", "description", "location_text", "country", "language",
 				"remote_type", "employment_type", "salary_min", "salary_max",
 				"currency", "apply_url", "seniority", "skills", "roles",
 				"benefits", "contact_name", "contact_email", "department",

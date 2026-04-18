@@ -129,6 +129,7 @@ func buildCanonicalFromVariant(variant *domain.JobVariant, clusterID int64, now 
 		Description:      variant.Description,
 		LocationText:     variant.LocationText,
 		Country:          variant.Country,
+		Language:         variant.Language,
 		RemoteType:       variant.RemoteType,
 		EmploymentType:   variant.EmploymentType,
 		SalaryMin:        variant.SalaryMin,

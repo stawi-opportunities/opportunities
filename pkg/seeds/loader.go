@@ -38,6 +38,10 @@ type SeedEntry struct {
 	SourceType       domain.SourceType `json:"source_type"`
 	BaseURL          string            `json:"base_url"`
 	Country          string            `json:"country"`
+	// Language is the ISO 639-1 code of postings served by this source
+	// (e.g. "en", "fr", "ja"). Blank entries default to "en" — almost
+	// every legacy seed predates this field.
+	Language         string            `json:"language"`
 	Region           string            `json:"region"`
 	CrawlIntervalSec int               `json:"crawl_interval_sec"`
 	Priority         priorityLabel     `json:"priority"`
@@ -74,10 +78,15 @@ func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.Source
 			}
 
 			now := time.Now().UTC()
+			lang := strings.ToLower(strings.TrimSpace(e.Language))
+			if lang == "" {
+				lang = "en"
+			}
 			src := &domain.Source{
 				Type:             e.SourceType,
 				BaseURL:          e.BaseURL,
 				Country:          e.Country,
+				Language:         lang,
 				Status:           domain.SourceActive,
 				Priority:         prio,
 				CrawlIntervalSec: e.CrawlIntervalSec,

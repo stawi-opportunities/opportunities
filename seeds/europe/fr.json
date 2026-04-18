@@ -1,0 +1,6 @@
+[
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/backmarket", "country": "FR", "language": "fr", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/alan", "country": "FR", "language": "fr", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/qonto", "country": "FR", "language": "fr", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "lever", "base_url": "https://jobs.lever.co/payfit", "country": "FR", "language": "fr", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"}
+]

@@ -7,8 +7,36 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RadhiFadlillah/whatlanggo"
 	"stawi.jobs/pkg/domain"
 )
+
+// Minimum description length, in runes, before we trust whatlanggo to
+// override the source-declared language. Below this, the detection is noisy
+// (especially on titles like "Senior Engineer"), so we stick with the
+// source default.
+const minLangDetectRunes = 200
+
+// detectLanguage returns an ISO 639-1 code. It prefers whatlanggo's detection
+// on long-enough text; otherwise it falls back to `fallback`, or "en" if the
+// fallback is blank.
+func detectLanguage(text, fallback string) string {
+	fb := strings.ToLower(strings.TrimSpace(fallback))
+	if fb == "" {
+		fb = "en"
+	}
+	if len([]rune(text)) < minLangDetectRunes {
+		return fb
+	}
+	info := whatlanggo.Detect(text)
+	if !info.IsReliable() {
+		return fb
+	}
+	if iso := whatlanggo.LangToStringShort(info.Lang); iso != "" {
+		return iso
+	}
+	return fb
+}
 
 // companySuffixes is the ordered list of suffixes to strip from company names.
 // Longer / more-specific entries must come before shorter ones so that
@@ -99,7 +127,12 @@ func contentHash(externalID, title, company, location, description string) strin
 
 // ExternalToVariant converts a raw ExternalJob into a normalised JobVariant
 // ready for deduplication and storage.
-func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBoard string, scrapedAt time.Time) domain.JobVariant {
+//
+// language is the ISO 639-1 code declared on the source (e.g. "en", "fr",
+// "ja"). Callers that don't yet track language per source should pass "en".
+// The normalizer will opportunistically override this with a whatlanggo
+// detection when the description is long enough to give a reliable signal.
+func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBoard, language string, scrapedAt time.Time) domain.JobVariant {
 	// 1. Trim all text fields.
 	title := strings.TrimSpace(ext.Title)
 	company := strings.TrimSpace(ext.Company)
@@ -137,6 +170,10 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBo
 	region := DetectRegion(country)
 	_ = region // region will be used once JobVariant has a Region field
 
+	// 8b. Resolve language. Prefer a reliable whatlanggo detection when
+	// description is long enough; otherwise inherit from source.
+	lang := detectLanguage(description, language)
+
 	// Serialize array fields to comma-separated strings for storage.
 	skills := strings.Join(ext.Skills, ", ")
 	roles := strings.Join(ext.Roles, ", ")
@@ -156,6 +193,7 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBo
 		Company:          company,
 		LocationText:     location,
 		Country:          country,
+		Language:         lang,
 		RemoteType:       remoteType,
 		EmploymentType:   employmentType,
 		SalaryMin:        ext.SalaryMin,

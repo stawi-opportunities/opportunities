@@ -1,0 +1,5 @@
+[
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/kueski", "country": "MX", "language": "es", "region": "latam", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "lever", "base_url": "https://jobs.lever.co/kavak", "country": "MX", "language": "es", "region": "latam", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "lever", "base_url": "https://jobs.lever.co/clip", "country": "MX", "language": "es", "region": "latam", "crawl_interval_sec": 14400, "priority": "normal"}
+]

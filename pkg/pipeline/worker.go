@@ -166,7 +166,7 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 			}
 
 			// Normalize.
-			variant := normalize.ExternalToVariant(extJob, req.SourceID, source.Country, string(source.Type), scrapedAt)
+			variant := normalize.ExternalToVariant(extJob, req.SourceID, source.Country, string(source.Type), source.Language, scrapedAt)
 
 			// Buffer for batch write.
 			if bErr := w.batch.Add(ctx, variant); bErr != nil {

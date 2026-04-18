@@ -29,7 +29,7 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 				{Name: "base_url"},
 			},
 			DoUpdates: clause.AssignmentColumns([]string{
-				"name", "country", "status", "priority",
+				"name", "country", "language", "status", "priority",
 				"crawl_interval_sec", "health_score", "config",
 				"last_seen_at", "next_crawl_at", "updated_at",
 			}),
@@ -205,6 +205,18 @@ func (r *SourceRepository) DisableSource(ctx context.Context, id int64) error {
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).
 		Update("status", domain.SourceDisabled).Error
+}
+
+// RecordVerifyResult stores the outcome of a pre-crawl reachability probe.
+// On failure, callers should also push NextCrawlAt out via UpdateNextCrawl
+// (kept separate so the caller can choose the backoff curve).
+func (r *SourceRepository) RecordVerifyResult(ctx context.Context, id int64, status int, at time.Time) error {
+	return r.db(ctx, false).Model(&domain.Source{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"last_verified_at":   at,
+			"last_verify_status": status,
+		}).Error
 }
 
 // ResetQualityWindow resets counters and doubles the window (cap 14 days).

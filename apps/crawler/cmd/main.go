@@ -450,6 +450,37 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 		return
 	}
 
+	// Reachability probe. A dead host will waste an entire crawl slot
+	// talking to a connection timeout; skip dispatch and push the next
+	// attempt out with exponential backoff so the queue stays healthy.
+	verifyStatus, verifyErr := d.httpClient.Verify(ctx, src.BaseURL)
+	verifiedAt := time.Now().UTC()
+	_ = d.sourceRepo.RecordVerifyResult(ctx, src.ID, verifyStatus, verifiedAt)
+
+	if verifyErr != nil || verifyStatus >= 500 || verifyStatus == 0 {
+		failures := src.ConsecutiveFailures + 1
+		// Backoff: interval × 2^failures, capped at 7 days of multiples.
+		mult := 1 << failures
+		if mult > 168 {
+			mult = 168
+		}
+		next := verifiedAt.Add(time.Duration(src.CrawlIntervalSec*mult) * time.Second)
+
+		newHealth := src.HealthScore - 0.2
+		if newHealth < 0 {
+			newHealth = 0
+		}
+		_ = d.sourceRepo.RecordFailure(ctx, src.ID, newHealth, failures)
+		_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, next, verifiedAt, newHealth)
+
+		log.WithField("source_id", src.ID).
+			WithField("base_url", src.BaseURL).
+			WithField("status", verifyStatus).
+			WithError(verifyErr).
+			Warn("pre-crawl verify failed, skipping dispatch")
+		return
+	}
+
 	now := time.Now().UTC()
 
 	// Create crawl job record.
@@ -479,7 +510,7 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 			jobsFound++
 
 			// Convert to variant (computes HardKey internally).
-			variant := normalize.ExternalToVariant(extJob, src.ID, src.Country, string(src.Type), time.Now().UTC())
+			variant := normalize.ExternalToVariant(extJob, src.ID, src.Country, string(src.Type), src.Language, time.Now().UTC())
 
 			// Bloom filter check -- skip if already seen.
 			if bloom.IsSeen(ctx, d.bloomFilter, src.ID, variant.HardKey) {

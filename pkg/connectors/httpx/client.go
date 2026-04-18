@@ -99,6 +99,58 @@ func (c *Client) doGet(ctx context.Context, url string, headers map[string]strin
 	return body, resp.StatusCode, nil
 }
 
+// Verify checks whether url is reachable without downloading the body. It
+// tries HEAD first and falls back to a GET with a Range: bytes=0-0 header for
+// hosts that reject HEAD (Cloudflare's bot gateway is a common culprit). The
+// returned status is the best observed status across both attempts; a zero
+// status with a non-nil error means the request never reached a server.
+//
+// This is deliberately single-shot (no retries) and uses a short timeout —
+// the scheduler calls it before every crawl dispatch, and we don't want a
+// slow probe to hold up the queue.
+func (c *Client) Verify(ctx context.Context, url string) (int, error) {
+	vctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	for _, method := range []string{http.MethodHead, http.MethodGet} {
+		req, err := http.NewRequestWithContext(vctx, method, url, nil)
+		if err != nil {
+			return 0, fmt.Errorf("build %s request: %w", method, err)
+		}
+		req.Header.Set("User-Agent", c.userAgent)
+		if method == http.MethodGet {
+			req.Header.Set("Range", "bytes=0-0")
+		}
+
+		resp, err := c.http.Do(req)
+		if err != nil {
+			// Network-level failure on HEAD — try GET before giving up.
+			if method == http.MethodHead {
+				continue
+			}
+			return 0, err
+		}
+		_ = resp.Body.Close()
+
+		// 4xx/5xx on HEAD is common (method not allowed, anti-bot), so
+		// only treat the HEAD response as definitive when it's a 2xx/3xx
+		// or 401/403 (which mean the host is up). Otherwise, try GET.
+		if method == http.MethodHead {
+			switch {
+			case resp.StatusCode >= 200 && resp.StatusCode < 400:
+				return resp.StatusCode, nil
+			case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+				return resp.StatusCode, nil
+			default:
+				continue
+			}
+		}
+		return resp.StatusCode, nil
+	}
+
+	return 0, fmt.Errorf("verify %s: no successful probe", url)
+}
+
 // shouldRetry reports whether the HTTP status code warrants a retry.
 func shouldRetry(status int) bool {
 	return status == http.StatusTooManyRequests || (status >= 500 && status < 600)

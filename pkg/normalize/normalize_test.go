@@ -29,7 +29,7 @@ func TestExternalToVariant(t *testing.T) {
 		SalaryMax:      80000,
 	}
 
-	v := ExternalToVariant(ext, 42, "ke", "brightermonday", scrapedAt)
+	v := ExternalToVariant(ext, 42, "ke", "brightermonday", "en", scrapedAt)
 
 	// Trimming
 	if v.Title != "Software Engineer" {
@@ -120,7 +120,7 @@ func TestGeneratedIDWhenMissing(t *testing.T) {
 		Description: "Analyse data.",
 	}
 
-	v := ExternalToVariant(ext, 1, "NG", "jobberman", time.Now())
+	v := ExternalToVariant(ext, 1, "NG", "jobberman", "en", time.Now())
 
 	if v.ExternalJobID == "" {
 		t.Fatal("ExternalJobID should not be empty when input ExternalID is blank")
@@ -131,6 +131,62 @@ func TestGeneratedIDWhenMissing(t *testing.T) {
 	// The generated ID should be a prefix of the content hash.
 	if !strings.HasPrefix(v.ContentHash, v.ExternalJobID) {
 		t.Errorf("generated ID %q is not a prefix of content hash %q", v.ExternalJobID, v.ContentHash)
+	}
+}
+
+// TestLanguageDetection covers the language-resolution rule: short text
+// inherits the source language, long text overrides from whatlanggo, blank
+// fallback becomes "en".
+func TestLanguageDetection(t *testing.T) {
+	shortEN := "Hiring engineer."
+	longFR := "Nous recrutons un ingénieur logiciel senior pour rejoindre notre équipe à Paris. " +
+		"Le poste est basé dans le 9e arrondissement avec télétravail partiel possible. " +
+		"Vous serez responsable de la conception et du développement de services financiers. " +
+		"Nous cherchons quelqu'un avec une solide expérience en systèmes distribués et infrastructure. " +
+		"Des connaissances en français sont indispensables pour communiquer avec nos équipes locales."
+
+	cases := []struct {
+		name     string
+		text     string
+		fallback string
+		want     string
+	}{
+		{"short text inherits fallback", shortEN, "fr", "fr"},
+		{"blank fallback becomes en", shortEN, "", "en"},
+		{"long text overrides fallback", longFR, "en", "fr"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := detectLanguage(tc.text, tc.fallback)
+			if got != tc.want {
+				t.Errorf("detectLanguage(%q, %q) = %q, want %q", tc.text[:min(40, len(tc.text))], tc.fallback, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestExternalToVariantLanguage verifies Language is populated on the
+// resulting JobVariant, preferring detected over declared on long text.
+func TestExternalToVariantLanguage(t *testing.T) {
+	longFR := "Nous recrutons un ingénieur logiciel senior pour rejoindre notre équipe à Paris. " +
+		"Le poste est basé dans le 9e arrondissement avec télétravail partiel possible. " +
+		"Vous serez responsable de la conception et du développement de services financiers. " +
+		"Nous cherchons quelqu'un avec une solide expérience en systèmes distribués."
+	ext := domain.ExternalJob{
+		ExternalID:  "fr-1",
+		Title:       "Ingénieur",
+		Company:     "ACME",
+		Description: longFR,
+	}
+	v := ExternalToVariant(ext, 1, "FR", "greenhouse", "en", time.Now())
+	if v.Language != "fr" {
+		t.Errorf("Language = %q, want %q (whatlanggo should override)", v.Language, "fr")
+	}
+
+	vShort := ExternalToVariant(domain.ExternalJob{ExternalID: "j", Title: "Dev", Company: "ACME", Description: "Short"},
+		1, "FR", "greenhouse", "fr", time.Now())
+	if vShort.Language != "fr" {
+		t.Errorf("Language = %q, want %q (short text should inherit source)", vShort.Language, "fr")
 	}
 }
 

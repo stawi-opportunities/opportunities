@@ -1,0 +1,6 @@
+[
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/razorpaysoftwareprivatelimited", "country": "IN", "language": "en", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/swiggy", "country": "IN", "language": "en", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/zomato", "country": "IN", "language": "en", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
+  {"source_type": "lever", "base_url": "https://jobs.lever.co/meesho", "country": "IN", "language": "en", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"}
+]

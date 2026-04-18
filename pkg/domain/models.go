@@ -80,6 +80,7 @@ type Source struct {
 	Name             string         `gorm:"type:varchar(255)" json:"name"`
 	BaseURL          string         `gorm:"type:text;not null;uniqueIndex:idx_source_type_url" json:"base_url"`
 	Country          string         `gorm:"type:varchar(10)" json:"country"`
+	Language         string         `gorm:"type:varchar(10);not null;default:'en';index" json:"language"`
 	Status           SourceStatus   `gorm:"type:varchar(20);not null;default:'active'" json:"status"`
 	Priority         Priority       `gorm:"type:smallint;not null;default:1" json:"priority"`
 	CrawlIntervalSec int            `gorm:"not null;default:3600" json:"crawl_interval_sec"`
@@ -89,6 +90,12 @@ type Source struct {
 	Config              string         `gorm:"type:jsonb;default:'{}'" json:"config"`
 	LastSeenAt       *time.Time     `json:"last_seen_at"`
 	NextCrawlAt      time.Time      `gorm:"index" json:"next_crawl_at"`
+
+	// Reachability probe run before every enqueue. Sources that fail
+	// repeatedly get their NextCrawlAt pushed out with backoff rather
+	// than being dispatched into a pipeline that will just 404.
+	LastVerifiedAt    *time.Time `json:"last_verified_at"`
+	LastVerifyStatus  int        `gorm:"not null;default:0" json:"last_verify_status"`
 
 	// Source quality sliding window
 	QualityWindowStart  *time.Time `json:"quality_window_start"`
@@ -211,6 +218,7 @@ type JobVariant struct {
 	Company        string    `gorm:"type:varchar(255);not null" json:"company"`
 	LocationText   string    `gorm:"type:text" json:"location_text"`
 	Country        string    `gorm:"type:varchar(10)" json:"country"`
+	Language       string    `gorm:"type:varchar(10);not null;default:'en';index" json:"language"`
 	RemoteType     string    `gorm:"type:varchar(20)" json:"remote_type"`
 	EmploymentType string    `gorm:"type:varchar(30)" json:"employment_type"`
 	SalaryMin      float64   `gorm:"type:real" json:"salary_min"`
@@ -303,6 +311,7 @@ type CanonicalJob struct {
 	Description    string     `gorm:"type:text" json:"description"`
 	LocationText   string     `gorm:"type:text" json:"location_text"`
 	Country        string     `gorm:"type:varchar(10)" json:"country"`
+	Language       string     `gorm:"type:varchar(10);not null;default:'en';index" json:"language"`
 	RemoteType     string     `gorm:"type:varchar(20)" json:"remote_type"`
 	EmploymentType string     `gorm:"type:varchar(30)" json:"employment_type"`
 	SalaryMin      float64    `gorm:"type:real" json:"salary_min"`
