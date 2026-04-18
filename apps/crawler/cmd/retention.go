@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"time"
 
 	"github.com/pitabwire/util"
 
@@ -10,21 +9,11 @@ import (
 	"stawi.jobs/pkg/repository"
 )
 
-// runEvery invokes fn immediately, then every d until ctx is cancelled.
-// Non-fatal panics/errors inside fn are the caller's responsibility.
-func runEvery(ctx context.Context, d time.Duration, fn func(context.Context)) {
-	fn(ctx)
-	t := time.NewTicker(d)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			fn(ctx)
-		}
-	}
-}
+// Retention helpers are invoked from the crawler's admin HTTP handlers
+// on cadences controlled by Trustage workflow schedules
+// (definitions/trustage/retention-*.json), not from an in-process
+// ticker. Each function is idempotent so a retry policy at the
+// workflow level can't corrupt state.
 
 // runExpire flips any 'active' row past its expires_at to status='expired'.
 // Called every 15 minutes.

@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	env "github.com/caarlos0/env/v11"
+	"github.com/pitabwire/util"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
@@ -152,14 +152,22 @@ type apiConfig struct {
 }
 
 func main() {
+	// At the very top of main(), ctx isn't established yet — but
+	// util.Log(context.Background()) is still a structured logger
+	// with the same output format as the rest of the service. Use it
+	// so bootstrap failures show up in the same log stream (and same
+	// OpenObserve view) as every other log line.
+	ctx := context.Background()
+	log := util.Log(ctx)
+
 	var cfg apiConfig
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("parse config: %v", err)
+		log.WithError(err).Fatal("api: parse config failed")
 	}
 
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		log.WithError(err).Fatal("api: open database failed")
 	}
 
 	if cfg.DoDatabaseMigrate {
@@ -168,15 +176,15 @@ func main() {
 			&domain.CanonicalJob{},
 			&domain.JobVariant{},
 		); err != nil {
-			log.Fatalf("auto-migrate: %v", err)
+			log.WithError(err).Fatal("api: auto-migrate failed")
 		}
 		// GORM AutoMigrate handles column additions from struct tags; this
 		// covers the Postgres-specific bits it can't (column drops, generated
 		// columns, partial indexes, pg_trgm, materialized views, data backfill).
 		if err := repository.FinalizeSchema(db); err != nil {
-			log.Fatalf("finalize schema: %v", err)
+			log.WithError(err).Fatal("api: finalize schema failed")
 		}
-		log.Println("migration complete")
+		log.Info("api: migration complete")
 		return
 	}
 
@@ -212,7 +220,7 @@ func main() {
             RerankAPIKey:     cfg.RerankAPIKey,
             RerankModel:      cfg.RerankModel,
 		})
-		log.Printf("Semantic search enabled: url=%s model=%s", infBase, infModel)
+		log.WithField("url", infBase).WithField("model", infModel).Info("semantic search enabled")
 	}
 
 	// Optional R2 publisher for backfill endpoint.
@@ -222,7 +230,7 @@ func main() {
 			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
 			cfg.R2Bucket, cfg.R2DeployHookURL,
 		)
-		log.Printf("R2 publisher enabled: bucket=%s", cfg.R2Bucket)
+		log.WithField("bucket", cfg.R2Bucket).Info("R2 publisher enabled")
 	}
 
 	// Analytics ingest. /jobs/{slug}/view emits a server-attributed
@@ -656,7 +664,7 @@ func main() {
 			ctx := context.Background()
 			var lastID int64
 			total := 0
-			log.Printf("republish: starting status=%s limit=%d", status, limit)
+			util.Log(ctx).WithField("status", status).WithField("limit", limit).Info("republish: starting")
 			for total < limit {
 				var rows []*domain.CanonicalJob
 				if err := db.
@@ -664,7 +672,7 @@ func main() {
 					Order("id ASC").
 					Limit(500).
 					Find(&rows).Error; err != nil {
-					log.Printf("republish: query: %v", err)
+					util.Log(ctx).WithError(err).Warn("republish: query failed")
 					return
 				}
 				if len(rows) == 0 {
@@ -672,7 +680,7 @@ func main() {
 				}
 				for _, j := range rows {
 					if err := handler.Execute(ctx, &handlers.JobReadyPayload{CanonicalJobID: j.ID}); err != nil {
-						log.Printf("republish: job=%d: %v", j.ID, err)
+						util.Log(ctx).WithError(err).WithField("canonical_job_id", j.ID).Warn("republish: job failed")
 					}
 					lastID = j.ID
 					total++
@@ -681,10 +689,10 @@ func main() {
 					}
 				}
 				if total%500 == 0 {
-					log.Printf("republish: progress total=%d last_id=%d", total, lastID)
+					util.Log(ctx).WithField("total", total).WithField("last_id", lastID).Info("republish: progress")
 				}
 			}
-			log.Printf("republish: done total=%d last_id=%d", total, lastID)
+			util.Log(ctx).WithField("total", total).WithField("last_id", lastID).Info("republish: done")
 		}()
 
 		w.Header().Set("Content-Type", "application/json")
@@ -783,13 +791,13 @@ func main() {
 				snap := domain.BuildSnapshotWithHTML(job, descHTML)
 				body, merr := json.Marshal(snap)
 				if merr != nil {
-					log.Printf("backfill: marshal %d: %v", job.ID, merr)
+					util.Log(ctx).WithError(merr).WithField("canonical_job_id", job.ID).Warn("backfill: marshal failed")
 					skipped++
 					continue
 				}
 				key := "jobs/" + job.Slug + ".json"
 				if err := r2Publisher.UploadPublicSnapshot(ctx, key, body); err != nil {
-					log.Printf("backfill: failed to upload %s: %v", key, err)
+					util.Log(ctx).WithError(err).WithField("r2_key", key).Warn("backfill: upload failed")
 					skipped++
 					continue
 				}
@@ -814,7 +822,7 @@ func main() {
 		// Trigger deploy hook if requested.
 		if triggerDeploy && uploaded > 0 {
 			if err := r2Publisher.TriggerDeploy(); err != nil {
-				log.Printf("backfill: deploy hook failed: %v", err)
+				util.Log(ctx).WithError(err).Warn("backfill: deploy hook failed")
 			}
 		}
 
@@ -833,24 +841,24 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("API server listening on %s", cfg.ServerPort)
+		util.Log(ctx).WithField("port", cfg.ServerPort).Info("API server listening")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("http server: %v", err)
+			util.Log(ctx).WithError(err).Fatal("http server: exited with error")
 		}
 	}()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
-	log.Println("shutting down API...")
+	util.Log(ctx).Info("shutting down API")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("http shutdown: %v", err)
+		util.Log(shutdownCtx).WithError(err).Warn("http shutdown failed")
 	}
 
-	log.Println("API stopped")
+	util.Log(ctx).Info("API stopped")
 }
 

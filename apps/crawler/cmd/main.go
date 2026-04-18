@@ -38,10 +38,14 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Load configuration (embeds Frame's ConfigurationDefault).
+	// Load configuration (embeds Frame's ConfigurationDefault). Use
+	// util.Log here rather than panic(): it writes structured output
+	// to the same log stream as the rest of the service, then exits
+	// with Fatal semantics. A panic on startup works but produces a
+	// goroutine trace in an otherwise-clean log view.
 	cfg, err := fconfig.FromEnv[crawlerconfig.CrawlerConfig]()
 	if err != nil {
-		panic(fmt.Sprintf("config: %v", err))
+		util.Log(ctx).WithError(err).Fatal("crawler: config parse failed")
 	}
 
 	// Build Frame options.

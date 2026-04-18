@@ -39,7 +39,7 @@ func main() {
 
 	cfg, err := fconfig.FromEnv[config.CandidatesConfig]()
 	if err != nil {
-		panic(fmt.Sprintf("config: %v", err))
+		util.Log(ctx).WithError(err).Fatal("candidates: config parse failed")
 	}
 
 	ctx, svc := frame.NewServiceWithContext(ctx,
