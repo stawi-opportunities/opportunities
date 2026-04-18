@@ -22,7 +22,10 @@ import (
 var sourceExpandTracer = otel.Tracer("stawi.jobs.pipeline")
 
 // blockedDomains lists domains that are not job boards and should be skipped
-// during source expansion.
+// during source expansion. The stawi.org entries are the critical ones —
+// without them, URL discovery can pick up links from our own published job
+// pages / redirect hops / API JSON and round-trip our content back through
+// the pipeline, creating a cycle. Anything on *.stawi.org is ours.
 var blockedDomains = map[string]bool{
 	"google.com":       true,
 	"facebook.com":     true,
@@ -35,6 +38,11 @@ var blockedDomains = map[string]bool{
 	"apple.com":        true,
 	"play.google.com":  true,
 	"apps.apple.com":   true,
+
+	// Our own infrastructure — anti-loop protection.
+	"stawi.org":        true, // root + *.stawi.org via the suffix check
+	"stawi.jobs":       true, // legacy domain, just in case
+	"pages.dev":        true, // CF Pages branch previews
 }
 
 // SourceExpansionHandler processes source.urls.discovered events and upserts

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -139,19 +139,28 @@ func (h *TranslateHandler) Execute(ctx context.Context, payload any) error {
 		if terr != nil {
 			// Best-effort fan-out — log and move on. A failed language
 			// isn't fatal; the UI will fall back to the source snapshot.
-			log.Printf("translate: %s→%s for canonical %d: %v", sourceLang, tgt, job.ID, terr)
+			util.Log(ctx).WithError(terr).
+				WithField("source_lang", sourceLang).
+				WithField("target_lang", tgt).
+				WithField("canonical_job_id", job.ID).
+				Warn("translate: LLM call failed")
 			continue
 		}
 
 		body, merr := json.Marshal(translated)
 		if merr != nil {
-			log.Printf("translate: marshal %s for canonical %d: %v", tgt, job.ID, merr)
+			util.Log(ctx).WithError(merr).
+				WithField("target_lang", tgt).
+				WithField("canonical_job_id", job.ID).
+				Warn("translate: marshal failed")
 			continue
 		}
 
 		key := fmt.Sprintf("jobs/%s.%s.json", job.Slug, tgt)
 		if uerr := h.publisher.UploadPublicSnapshot(ctx, key, body); uerr != nil {
-			log.Printf("translate: upload %s: %v", key, uerr)
+			util.Log(ctx).WithError(uerr).
+				WithField("r2_key", key).
+				Warn("translate: R2 upload failed")
 			continue
 		}
 

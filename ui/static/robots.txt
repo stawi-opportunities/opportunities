@@ -7,4 +7,21 @@ Disallow: /auth/
 Disallow: /dashboard/
 Disallow: /onboarding/
 
+# Short-link hops are tracking infra, not content. No value in indexing.
+# The redirect service also emits X-Robots-Tag: noindex, nofollow on the
+# /r/{slug} response itself as a belt-and-braces measure.
+Disallow: /r/
+
+# R2 snapshot JSON is API-shaped and not a user destination. Indexing it
+# produces confusing search results pointing at raw JobSnapshot blobs.
+Disallow: /jobs/*.json$
+
+# Block our own crawler explicitly. The anti-loop blocklist in
+# pkg/pipeline/handlers/source_expand.go already rejects stawi.org hosts
+# during URL discovery, but this makes the intent visible at the robots
+# layer too so third-party crawlers (or a misconfigured self-crawl)
+# can't feed our content back into our ingestion.
+User-agent: stawi.jobs-bot
+Disallow: /
+
 Sitemap: https://jobs.stawi.org/sitemap.xml

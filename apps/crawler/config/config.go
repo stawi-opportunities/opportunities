@@ -48,6 +48,12 @@ type CrawlerConfig struct {
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 
+	// RetentionGraceDays bounds how long a canonical job stays in the
+	// "expired" status before stage-2 retention physically deletes its
+	// R2 snapshot. 7 days is long enough that a user who bookmarked the
+	// page between crawls still sees the dead-link UX before it 404s.
+	RetentionGraceDays int `env:"RETENTION_GRACE_DAYS" envDefault:"7"`
+
 	// Translation fan-out. TranslateEnabled is the master switch. When
 	// true, every successful publish triggers LLM translation to each
 	// TranslateLanguages entry (source language is skipped automatically)

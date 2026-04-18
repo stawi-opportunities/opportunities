@@ -21,13 +21,11 @@ import (
 	"gorm.io/gorm"
 
 	"stawi.jobs/pkg/analytics"
-	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/pipeline/handlers"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
-	"stawi.jobs/pkg/services"
 )
 
 // hashIP returns an opaque, one-way hash of the client IP from the
@@ -145,20 +143,12 @@ type apiConfig struct {
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 
-	// Redirect service client — wraps apply URLs in /r/{slug} links.
-	RedirectServiceURI string `env:"REDIRECT_SERVICE_URI" envDefault:""`
-
 	// Analytics (OpenObserve). Blank BaseURL disables the ingest path
 	// cleanly; API keeps serving without emitting.
 	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`
 	AnalyticsOrg      string `env:"ANALYTICS_ORG" envDefault:"default"`
 	AnalyticsUsername string `env:"ANALYTICS_USERNAME" envDefault:""`
 	AnalyticsPassword string `env:"ANALYTICS_PASSWORD" envDefault:""`
-
-	// User-Agent the liveness probe sends. Declaring ourselves clearly
-	// gives employer sites a way to block / throttle our probes if
-	// they choose, which they're entitled to.
-	UserAgent string `env:"USER_AGENT" envDefault:"stawi.jobs-liveness/1.0 (+https://stawi.jobs)"`
 }
 
 func main() {
@@ -235,23 +225,19 @@ func main() {
 		log.Printf("R2 publisher enabled: bucket=%s", cfg.R2Bucket)
 	}
 
-	// Liveness probe dependencies. The API hosts /jobs/{slug}/view,
-	// which synchronously records the view and kicks off a throttled
-	// apply-URL reachability check in a goroutine. All three
-	// collaborators (redirect client, analytics, http client) degrade
-	// gracefully when their envs aren't set.
-	var redirectClient *services.RedirectClient
-	if cfg.RedirectServiceURI != "" {
-		redirectClient = services.NewRedirectClient(cfg.RedirectServiceURI)
-	}
+	// Analytics ingest. /jobs/{slug}/view emits a server-attributed
+	// row carrying profile_id from the JWT, for correlation with the
+	// browser RUM stream. The destination-URL reachability check lives
+	// in the redirect service (service-files) — it runs inline on
+	// /r/{slug} and flips LinkState=EXPIRED on failure, which this
+	// service then reflects into canonical_jobs.status via the
+	// redirect service's link_expired signal (handled separately).
 	analyticsClient := analytics.New(analytics.Config{
 		BaseURL:  cfg.AnalyticsBaseURL,
 		Org:      cfg.AnalyticsOrg,
 		Username: cfg.AnalyticsUsername,
 		Password: cfg.AnalyticsPassword,
 	})
-	livenessHTTP := httpx.NewClient(20*time.Second, cfg.UserAgent)
-	livenessProbe := handlers.NewLivenessProbe(jobRepo, livenessHTTP, redirectClient, analyticsClient)
 
 	mux := http.NewServeMux()
 
@@ -412,15 +398,6 @@ func main() {
 		// CORS: permit any origin; the body carries no secrets and
 		// the route is safe to be hit from any Stawi-owned domain.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-
-		// Liveness runs in a detached goroutine so the HTTP response
-		// is immediate (browsers use sendBeacon for this; blocking on
-		// a third-party HEAD would miss the unload window).
-		go func() {
-			bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			livenessProbe.ProbeOnView(bgCtx, slug)
-		}()
 
 		// Opportunistic analytics ledger entry on the server side.
 		// The browser RUM stream carries the client-rich event; this

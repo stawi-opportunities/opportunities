@@ -105,6 +105,8 @@ func main() {
 	crawlRepo := repository.NewCrawlRepository(dbFn)
 	jobRepo := repository.NewJobRepository(dbFn)
 	rejectedRepo := repository.NewRejectedJobRepository(dbFn)
+	facetRepo := repository.NewFacetRepository(dbFn)
+	retentionRepo := repository.NewRetentionRepository(dbFn)
 
 	// Load seed sources.
 	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo)
@@ -265,6 +267,30 @@ func main() {
 		svc:          svc,
 	}
 	svc.Init(ctx, frame.WithBackgroundConsumer(crawlDeps.crawlLoop))
+
+	// Retention + materialized-view maintenance. These used to live in a
+	// standalone scheduler service but are plain interval jobs with no
+	// separate state from the crawler's own DB — folding them in drops
+	// one pod + one HelmRelease and keeps the cron cadence colocated
+	// with the data.
+	svc.Init(ctx, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
+		runEvery(bgCtx, 15*time.Minute, func(innerCtx context.Context) {
+			runExpire(innerCtx, retentionRepo)
+		})
+		return nil
+	}))
+	svc.Init(ctx, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
+		runEvery(bgCtx, 5*time.Minute, func(innerCtx context.Context) {
+			runMVRefresh(innerCtx, facetRepo)
+		})
+		return nil
+	}))
+	svc.Init(ctx, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
+		runEvery(bgCtx, 24*time.Hour, func(innerCtx context.Context) {
+			runRetention(innerCtx, retentionRepo, r2Publisher, cachePurger, cfg.RetentionGraceDays)
+		})
+		return nil
+	}))
 
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()

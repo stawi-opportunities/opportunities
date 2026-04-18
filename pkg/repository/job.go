@@ -114,11 +114,10 @@ func (r *JobRepository) UpsertCanonical(ctx context.Context, cj *domain.Canonica
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "cluster_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
-				// Note: redirect_link_id / redirect_slug / last_checked_at /
-				// last_check_status / consecutive_apply_failures are NOT in
-				// this list — they're mutated by the publish + liveness
-				// handlers, not by the dedupe pipeline. Including them here
-				// would clobber their values on every variant re-run.
+				// Note: redirect_link_id / redirect_slug are NOT in this
+				// list — they're mutated by the publish handler, not by
+				// the dedupe pipeline. Including them here would clobber
+				// their values on every variant re-run.
 				"title", "company", "description", "location_text", "country", "language",
 				"remote_type", "employment_type", "salary_min", "salary_max",
 				"currency", "apply_url", "seniority", "skills", "roles",
@@ -316,21 +315,6 @@ func (r *JobRepository) SetRedirectLink(ctx context.Context, canonicalJobID int6
 		Updates(map[string]any{
 			"redirect_link_id": linkID,
 			"redirect_slug":    slug,
-		}).Error
-}
-
-// RecordAccessibilityCheck stamps the liveness probe outcome. status=0
-// means "network error / never reached server"; 4xx/5xx are HTTP codes;
-// 2xx/3xx imply success. ConsecutiveApplyFailures is a caller-managed
-// counter so this one helper handles both the happy and sad paths.
-func (r *JobRepository) RecordAccessibilityCheck(ctx context.Context, canonicalJobID int64, status int, consecutiveFailures int) error {
-	return r.db(ctx, false).
-		Table("canonical_jobs").
-		Where("id = ?", canonicalJobID).
-		Updates(map[string]any{
-			"last_checked_at":             gorm.Expr("now()"),
-			"last_check_status":           status,
-			"consecutive_apply_failures":  consecutiveFailures,
 		}).Error
 }
 

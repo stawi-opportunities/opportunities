@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -134,12 +134,14 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 		if lerr != nil {
 			// Non-fatal — we'll just ship the raw apply_url on this
 			// publish and try again on the next re-publish.
-			log.Printf("publish: create redirect link for canonical %d (non-fatal): %v", job.ID, lerr)
+			util.Log(ctx).WithError(lerr).WithField("canonical_job_id", job.ID).
+				Warn("publish: create redirect link failed")
 		} else if link != nil && link.Slug != "" {
 			job.RedirectLinkID = link.ID
 			job.RedirectSlug = link.Slug
 			if err := h.jobRepo.SetRedirectLink(ctx, job.ID, link.ID, link.Slug); err != nil {
-				log.Printf("publish: persist redirect link for canonical %d (non-fatal): %v", job.ID, err)
+				util.Log(ctx).WithError(err).WithField("canonical_job_id", job.ID).
+					Warn("publish: persist redirect link failed")
 			}
 		}
 	}
@@ -187,7 +189,10 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 				SourceLang:     job.Language,
 				R2Version:      nextVer,
 			}); emitErr != nil {
-				log.Printf("publish: emit %s for canonical %d (non-fatal): %v", EventJobPublished, job.ID, emitErr)
+				util.Log(ctx).WithError(emitErr).
+					WithField("event", EventJobPublished).
+					WithField("canonical_job_id", job.ID).
+					Warn("publish: emit downstream event failed")
 			}
 		}
 	}
@@ -208,7 +213,9 @@ func (h *PublishHandler) unpublish(ctx context.Context, job *domain.CanonicalJob
 	// redirect service so historical click data remains queryable.
 	if h.redirectClient != nil && job.RedirectLinkID != "" {
 		if err := h.redirectClient.ExpireLink(ctx, job.RedirectLinkID); err != nil {
-			log.Printf("publish: expire redirect link %s (non-fatal): %v", job.RedirectLinkID, err)
+			util.Log(ctx).WithError(err).
+				WithField("redirect_link_id", job.RedirectLinkID).
+				Warn("publish: expire redirect link failed")
 		}
 	}
 	return nil
