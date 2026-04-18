@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -16,6 +17,7 @@ import (
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/services"
 	"stawi.jobs/pkg/telemetry"
 )
 
@@ -23,29 +25,37 @@ var publishTracer = otel.Tracer("stawi.jobs.publish")
 
 // PublishHandler subscribes to job.ready events and writes JobSnapshot JSON to R2.
 type PublishHandler struct {
-	jobRepo    *repository.JobRepository
-	publisher  *publish.R2Publisher
-	purger     *publish.CachePurger
-	svc        *frame.Service
-	minQuality float64
+	jobRepo         *repository.JobRepository
+	publisher       *publish.R2Publisher
+	purger          *publish.CachePurger
+	svc             *frame.Service
+	redirectClient  *services.RedirectClient
+	redirectBaseURL string // e.g. "https://r.stawi.org" — what /r/{slug} resolves to publicly
+	minQuality      float64
 }
 
 // NewPublishHandler creates a PublishHandler. `purger` may be nil for local dev.
 // `svc` may be nil, in which case the handler won't emit job.published
 // downstream events (translator fan-out will just never fire).
+// `redirectClient` may also be nil — the handler will fall back to emitting
+// the raw apply_url on the snapshot instead of a /r/{slug} tracked URL.
 func NewPublishHandler(
 	jobRepo *repository.JobRepository,
 	publisher *publish.R2Publisher,
 	purger *publish.CachePurger,
 	svc *frame.Service,
+	redirectClient *services.RedirectClient,
+	redirectBaseURL string,
 	minQuality float64,
 ) *PublishHandler {
 	return &PublishHandler{
-		jobRepo:    jobRepo,
-		publisher:  publisher,
-		purger:     purger,
-		svc:        svc,
-		minQuality: minQuality,
+		jobRepo:         jobRepo,
+		publisher:       publisher,
+		purger:          purger,
+		svc:             svc,
+		redirectClient:  redirectClient,
+		redirectBaseURL: strings.TrimRight(redirectBaseURL, "/"),
+		minQuality:      minQuality,
 	}
 }
 
@@ -108,9 +118,44 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 		_ = h.jobRepo.UpdateCanonicalFields(ctx, job.ID, map[string]any{"slug": job.Slug})
 	}
 
-	// Build and upload snapshot.
+	// Create (or reuse) the redirect-service link for this job's
+	// apply_url. First publish creates; subsequent re-publishes reuse
+	// the stored RedirectSlug so external bookmarks to /r/{slug} stay
+	// valid across re-crawls.
+	applyURL := job.ApplyURL
+	if h.redirectClient != nil && job.ApplyURL != "" && job.RedirectSlug == "" {
+		link, lerr := h.redirectClient.CreateLink(ctx, &services.RedirectLink{
+			DestinationURL: job.ApplyURL,
+			AffiliateID:    fmt.Sprintf("canonical_job_%d", job.ID),
+			Campaign:       "jobs",
+			Source:         "stawi-jobs",
+			Medium:         "organic",
+		})
+		if lerr != nil {
+			// Non-fatal — we'll just ship the raw apply_url on this
+			// publish and try again on the next re-publish.
+			log.Printf("publish: create redirect link for canonical %d (non-fatal): %v", job.ID, lerr)
+		} else if link != nil && link.Slug != "" {
+			job.RedirectLinkID = link.ID
+			job.RedirectSlug = link.Slug
+			if err := h.jobRepo.SetRedirectLink(ctx, job.ID, link.ID, link.Slug); err != nil {
+				log.Printf("publish: persist redirect link for canonical %d (non-fatal): %v", job.ID, err)
+			}
+		}
+	}
+	// Swap apply_url to the tracked /r/{slug} so every click flows
+	// through the redirect service. redirectBaseURL is the public
+	// origin the redirect service is exposed at; absent that we fall
+	// back to the raw URL.
+	if job.RedirectSlug != "" && h.redirectBaseURL != "" {
+		applyURL = h.redirectBaseURL + "/r/" + job.RedirectSlug
+	}
+
+	// Build and upload snapshot. Keep the original apply_url on the
+	// DB row but emit the tracked URL on the public JSON.
 	descHTML := publish.RenderDescriptionHTML(job.Description)
 	snap := domain.BuildSnapshotWithHTML(job, descHTML)
+	snap.ApplyURL = applyURL
 	body, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("snapshot marshal: %w", err)
@@ -157,5 +202,14 @@ func (h *PublishHandler) unpublish(ctx context.Context, job *domain.CanonicalJob
 	_ = h.publisher.Delete(ctx, key)
 	_ = h.jobRepo.ClearPublished(ctx, job.ID)
 	_ = h.purger.PurgeURL(ctx, publish.PublicURL(key))
+
+	// Expire the redirect link so /r/{slug} stops forwarding to a
+	// posting we've taken down. The link record itself stays in the
+	// redirect service so historical click data remains queryable.
+	if h.redirectClient != nil && job.RedirectLinkID != "" {
+		if err := h.redirectClient.ExpireLink(ctx, job.RedirectLinkID); err != nil {
+			log.Printf("publish: expire redirect link %s (non-fatal): %v", job.RedirectLinkID, err)
+		}
+	}
 	return nil
 }

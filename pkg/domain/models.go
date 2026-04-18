@@ -357,6 +357,19 @@ type CanonicalJob struct {
 	// completed at least once, and updated on re-runs.
 	TranslatedAt   *time.Time `json:"translated_at"`
 	TranslatedLangs string    `gorm:"type:text" json:"translated_langs"`
+
+	// Redirect-service metadata. RedirectLinkID / RedirectSlug are
+	// populated by PublishHandler on first publish; the public
+	// JobSnapshot then ships /r/{slug} as its apply_url so every click
+	// flows through the redirect service and gets recorded.
+	RedirectLinkID string `gorm:"type:varchar(64);index" json:"redirect_link_id"`
+	RedirectSlug   string `gorm:"type:varchar(64);index" json:"redirect_slug"`
+
+	// Liveness probe state. The handler updates these before each
+	// probe and uses last_checked_at as a throttle gate.
+	LastCheckedAt           *time.Time `json:"last_checked_at"`
+	LastCheckStatus         int        `gorm:"not null;default:0" json:"last_check_status"`
+	ConsecutiveApplyFailures int       `gorm:"not null;default:0" json:"consecutive_apply_failures"`
 	SearchVector   string     `gorm:"->;type:tsvector" json:"-"`
 	Embedding      string     `gorm:"type:text" json:"-"`
 	CreatedAt      time.Time  `json:"created_at"`

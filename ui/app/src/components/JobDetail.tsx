@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSnapshot } from "@/api/snapshot";
+import { pingJobView } from "@/api/views";
 import { categoryLabel, fmtMoney, isoInPast, timeAgo } from "@/utils/format";
 import { mountSanitisedHTML } from "@/utils/html";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -71,6 +72,14 @@ export default function JobDetail() {
       translated_notice_shown: showNotice,
       referrer: typeof document !== "undefined" ? document.referrer : "",
     });
+
+    // Server-side beacon: attaches the JWT to the view record and
+    // triggers a throttled apply-URL liveness probe in the API. Uses
+    // sendBeacon so the request is queued even if the user navigates
+    // away before it completes. Falls back to fetch keepalive when
+    // sendBeacon is unavailable (Safari with some Content-Type
+    // restrictions, and tests).
+    void pingJobView(snap.slug);
 
     const engagedAt = setTimeout(() => {
       const dwell = Math.round(

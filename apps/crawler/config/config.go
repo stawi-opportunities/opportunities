@@ -58,6 +58,20 @@ type CrawlerConfig struct {
 	TranslateLanguages   []string `env:"TRANSLATE_LANGUAGES" envSeparator:"," envDefault:"en,es,fr,de,pt,ja,ar,zh"`
 	TranslateMinQuality  float64  `env:"TRANSLATE_MIN_QUALITY" envDefault:"70"`
 
+	// Redirect service (for tracked /r/{slug} apply links).
+	// RedirectServiceURI is the cluster-internal Connect RPC endpoint,
+	// RedirectPublicBaseURL is the public origin /r/{slug} resolves at.
+	// Leaving either blank keeps PublishHandler falling back to the raw
+	// apply_url on every job.
+	RedirectServiceURI    string `env:"REDIRECT_SERVICE_URI" envDefault:""`
+	RedirectPublicBaseURL string `env:"REDIRECT_PUBLIC_BASE_URL" envDefault:""`
+
+	// Analytics (OpenObserve) — shared across every stawi-jobs service.
+	AnalyticsBaseURL string `env:"ANALYTICS_BASE_URL" envDefault:""`
+	AnalyticsOrg     string `env:"ANALYTICS_ORG" envDefault:"default"`
+	AnalyticsUsername string `env:"ANALYTICS_USERNAME" envDefault:""`
+	AnalyticsPassword string `env:"ANALYTICS_PASSWORD" envDefault:""`
+
 	// ContentOrigin is the public CDN origin used when building cache-purge URLs.
 	ContentOrigin string `env:"CONTENT_ORIGIN" envDefault:"https://jobs-repo.stawi.org"`
 

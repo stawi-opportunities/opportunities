@@ -26,10 +26,12 @@ import (
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/normalize"
 	"stawi.jobs/pkg/pipeline/handlers"
+	"stawi.jobs/pkg/analytics"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
+	"stawi.jobs/pkg/services"
 	"stawi.jobs/pkg/telemetry"
 	"stawi.jobs/pkg/translate"
 )
@@ -170,6 +172,27 @@ func main() {
 	// Cloudflare cache purger (no-op if zone/token not configured).
 	cachePurger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
 
+	// Redirect service client — used by the publish handler to wrap
+	// every apply_url in a tracked /r/{slug} link, and by the liveness
+	// handler to expire links that point at dead postings. Nil when
+	// REDIRECT_SERVICE_URI is unset (local dev).
+	var redirectClient *services.RedirectClient
+	if cfg.RedirectServiceURI != "" {
+		redirectClient = services.NewRedirectClient(cfg.RedirectServiceURI)
+	}
+
+	// Analytics client — batches events to OpenObserve. Nil when
+	// ANALYTICS_BASE_URL is unset; all call sites handle the no-op.
+	analyticsClient := analytics.New(analytics.Config{
+		BaseURL:  cfg.AnalyticsBaseURL,
+		Org:      cfg.AnalyticsOrg,
+		Username: cfg.AnalyticsUsername,
+		Password: cfg.AnalyticsPassword,
+	})
+	if analyticsClient != nil {
+		svc.AddCleanupMethod(func(ctx context.Context) { _ = analyticsClient.Close(ctx) })
+	}
+
 	// Translator fan-out. Off by default; flip TRANSLATE_ENABLED=true
 	// once Groq quota headroom is confirmed for the fan-out volume.
 	var translator *translate.Translator
@@ -191,7 +214,7 @@ func main() {
 			handlers.NewSourceQualityHandler(sourceRepo, jobRepo, extractor),
 		}
 		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, cfg.PublishMinQuality))
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, redirectClient, cfg.RedirectPublicBaseURL, cfg.PublishMinQuality))
 			eventHandlers = append(eventHandlers, handlers.NewTranslateHandler(jobRepo, r2Publisher, cachePurger, translator, svc, translateLangs, cfg.TranslateMinQuality))
 		}
 		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
@@ -202,7 +225,7 @@ func main() {
 			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, svc),
 		}
 		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, cfg.PublishMinQuality))
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, redirectClient, cfg.RedirectPublicBaseURL, cfg.PublishMinQuality))
 		}
 		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
 	}

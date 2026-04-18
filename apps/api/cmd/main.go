@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,12 +20,65 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	"stawi.jobs/pkg/analytics"
+	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/pipeline/handlers"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/services"
 )
+
+// hashIP returns an opaque, one-way hash of the client IP from the
+// X-Forwarded-For chain (or RemoteAddr fallback). Used for best-effort
+// anon dedup in analytics without storing raw addresses. A daily-
+// rotating salt would be stricter, but for MVP a stable hash is enough
+// to distinguish sessions within a single query window.
+func hashIP(req *http.Request) string {
+	ip := req.Header.Get("CF-Connecting-IP")
+	if ip == "" {
+		ip = req.Header.Get("X-Forwarded-For")
+		if i := strings.IndexByte(ip, ','); i >= 0 {
+			ip = ip[:i]
+		}
+		ip = strings.TrimSpace(ip)
+	}
+	if ip == "" {
+		ip = req.RemoteAddr
+	}
+	if ip == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(ip))
+	return hex.EncodeToString(sum[:12]) // 12 bytes = 24 hex chars — enough entropy, compact
+}
+
+// profileIDFromJWT extracts the `sub` claim from a Bearer token without
+// verifying the signature. Verification happens at the gateway layer;
+// here we only need the id for attribution. Returns "" for anon requests.
+func profileIDFromJWT(req *http.Request) string {
+	auth := req.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return ""
+	}
+	token := auth[len("Bearer "):]
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Sub string `json:"sub"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return claims.Sub
+}
 
 // --- helpers shared by the new /api/* handlers -------------------------------
 
@@ -89,6 +144,21 @@ type apiConfig struct {
 	R2Bucket          string  `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
+
+	// Redirect service client — wraps apply URLs in /r/{slug} links.
+	RedirectServiceURI string `env:"REDIRECT_SERVICE_URI" envDefault:""`
+
+	// Analytics (OpenObserve). Blank BaseURL disables the ingest path
+	// cleanly; API keeps serving without emitting.
+	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`
+	AnalyticsOrg      string `env:"ANALYTICS_ORG" envDefault:"default"`
+	AnalyticsUsername string `env:"ANALYTICS_USERNAME" envDefault:""`
+	AnalyticsPassword string `env:"ANALYTICS_PASSWORD" envDefault:""`
+
+	// User-Agent the liveness probe sends. Declaring ourselves clearly
+	// gives employer sites a way to block / throttle our probes if
+	// they choose, which they're entitled to.
+	UserAgent string `env:"USER_AGENT" envDefault:"stawi.jobs-liveness/1.0 (+https://stawi.jobs)"`
 }
 
 func main() {
@@ -164,6 +234,24 @@ func main() {
 		)
 		log.Printf("R2 publisher enabled: bucket=%s", cfg.R2Bucket)
 	}
+
+	// Liveness probe dependencies. The API hosts /jobs/{slug}/view,
+	// which synchronously records the view and kicks off a throttled
+	// apply-URL reachability check in a goroutine. All three
+	// collaborators (redirect client, analytics, http client) degrade
+	// gracefully when their envs aren't set.
+	var redirectClient *services.RedirectClient
+	if cfg.RedirectServiceURI != "" {
+		redirectClient = services.NewRedirectClient(cfg.RedirectServiceURI)
+	}
+	analyticsClient := analytics.New(analytics.Config{
+		BaseURL:  cfg.AnalyticsBaseURL,
+		Org:      cfg.AnalyticsOrg,
+		Username: cfg.AnalyticsUsername,
+		Password: cfg.AnalyticsPassword,
+	})
+	livenessHTTP := httpx.NewClient(20*time.Second, cfg.UserAgent)
+	livenessProbe := handlers.NewLivenessProbe(jobRepo, livenessHTTP, redirectClient, analyticsClient)
 
 	mux := http.NewServeMux()
 
@@ -295,6 +383,66 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(job)
+	})
+
+	// OPTIONS preflight for the view beacon. The gateway normally
+	// handles CORS for /api/*, but the /jobs/{slug}/view path is called
+	// from the browser straight at this service via the public host
+	// without the /api prefix, so we answer the preflight ourselves.
+	mux.HandleFunc("OPTIONS /jobs/{slug}/view", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// POST /jobs/{slug}/view — view-event ingest + liveness trigger.
+	// The browser's OpenObserve RUM SDK already ships the rich view
+	// payload direct to observe.stawi.org; this endpoint exists only
+	// to (a) provide a server-side attribution point for the profile
+	// JWT and (b) kick off a throttled apply-URL liveness probe.
+	// Accepts an empty body; CORS-safe and idempotent.
+	mux.HandleFunc("POST /jobs/{slug}/view", func(w http.ResponseWriter, req *http.Request) {
+		slug := req.PathValue("slug")
+		if slug == "" {
+			http.Error(w, `{"error":"slug required"}`, http.StatusBadRequest)
+			return
+		}
+		// CORS: permit any origin; the body carries no secrets and
+		// the route is safe to be hit from any Stawi-owned domain.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		// Liveness runs in a detached goroutine so the HTTP response
+		// is immediate (browsers use sendBeacon for this; blocking on
+		// a third-party HEAD would miss the unload window).
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			livenessProbe.ProbeOnView(bgCtx, slug)
+		}()
+
+		// Opportunistic analytics ledger entry on the server side.
+		// The browser RUM stream carries the client-rich event; this
+		// one is the canonical server-attributed record with the
+		// profile ID from the JWT when one is present.
+		if analyticsClient != nil {
+			evt := map[string]any{
+				"event":      "server_view",
+				"slug":       slug,
+				"ip_hash":    hashIP(req),
+				"user_agent": req.Header.Get("User-Agent"),
+				"referer":    req.Header.Get("Referer"),
+				"cf_country": req.Header.Get("CF-IPCountry"),
+				"cf_ray":     req.Header.Get("CF-Ray"),
+			}
+			if profileID := profileIDFromJWT(req); profileID != "" {
+				evt["profile_id"] = profileID
+			}
+			analyticsClient.Send(req.Context(), "stawi_jobs_views", evt)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	// GET /categories — category list with job counts.
@@ -519,7 +667,11 @@ func main() {
 		// svc=nil: the backfill endpoint doesn't emit downstream events
 		// (no translator fan-out from here). The handler handles that
 		// gracefully.
-		handler := handlers.NewPublishHandler(jobRepo, r2Publisher, purger, nil, cfg.PublishMinQuality)
+		// redirectClient=nil, redirectBase="": the backfill path runs
+		// ad-hoc from ops; we don't mint fresh redirect links on a
+		// rebuild — existing canonicals already carry their RedirectSlug
+		// from their original publish, and the handler reuses it.
+		handler := handlers.NewPublishHandler(jobRepo, r2Publisher, purger, nil, nil, "", cfg.PublishMinQuality)
 
 		go func() {
 			// Detached from request context so the long-running loop survives

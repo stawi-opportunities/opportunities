@@ -35,3 +35,4 @@ type JobPublishedPayload struct {
 	SourceLang     string `json:"source_lang"`
 	R2Version      int    `json:"r2_version"`
 }
+
