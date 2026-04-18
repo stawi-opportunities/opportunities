@@ -516,7 +516,10 @@ func main() {
 			os.Getenv("CLOUDFLARE_API_TOKEN"),
 			"",
 		)
-		handler := handlers.NewPublishHandler(jobRepo, r2Publisher, purger, cfg.PublishMinQuality)
+		// svc=nil: the backfill endpoint doesn't emit downstream events
+		// (no translator fan-out from here). The handler handles that
+		// gracefully.
+		handler := handlers.NewPublishHandler(jobRepo, r2Publisher, purger, nil, cfg.PublishMinQuality)
 
 		go func() {
 			// Detached from request context so the long-running loop survives

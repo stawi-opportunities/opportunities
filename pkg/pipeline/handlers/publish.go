@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
+	"github.com/pitabwire/frame"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -24,20 +26,25 @@ type PublishHandler struct {
 	jobRepo    *repository.JobRepository
 	publisher  *publish.R2Publisher
 	purger     *publish.CachePurger
+	svc        *frame.Service
 	minQuality float64
 }
 
 // NewPublishHandler creates a PublishHandler. `purger` may be nil for local dev.
+// `svc` may be nil, in which case the handler won't emit job.published
+// downstream events (translator fan-out will just never fire).
 func NewPublishHandler(
 	jobRepo *repository.JobRepository,
 	publisher *publish.R2Publisher,
 	purger *publish.CachePurger,
+	svc *frame.Service,
 	minQuality float64,
 ) *PublishHandler {
 	return &PublishHandler{
 		jobRepo:    jobRepo,
 		publisher:  publisher,
 		purger:     purger,
+		svc:        svc,
 		minQuality: minQuality,
 	}
 }
@@ -123,6 +130,21 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 	// Best-effort edge purge.
 	if perr := h.purger.PurgeURL(ctx, publish.PublicURL(key)); perr != nil {
 		span.RecordError(perr)
+	}
+
+	// Emit job.published so downstream handlers (translator fan-out) can
+	// react without having to re-read the DB from a job.ready subscription.
+	if h.svc != nil {
+		if em := h.svc.EventsManager(); em != nil {
+			if emitErr := em.Emit(ctx, EventJobPublished, &JobPublishedPayload{
+				CanonicalJobID: job.ID,
+				Slug:           job.Slug,
+				SourceLang:     job.Language,
+				R2Version:      nextVer,
+			}); emitErr != nil {
+				log.Printf("publish: emit %s for canonical %d (non-fatal): %v", EventJobPublished, job.ID, emitErr)
+			}
+		}
 	}
 	return nil
 }

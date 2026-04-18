@@ -351,6 +351,12 @@ type CanonicalJob struct {
 	PublishedAt    *time.Time `json:"published_at"`
 	R2Version      int        `gorm:"not null;default:0" json:"r2_version"`
 	Category       string     `gorm:"type:text;index" json:"category"`
+	// Translation fan-out tracking. TranslatedLangs is a CSV of ISO 639-1
+	// codes (e.g. "es,fr,pt") that have been uploaded to R2 as
+	// jobs/{slug}.{lang}.json. TranslatedAt is set when the fan-out has
+	// completed at least once, and updated on re-runs.
+	TranslatedAt   *time.Time `json:"translated_at"`
+	TranslatedLangs string    `gorm:"type:text" json:"translated_langs"`
 	SearchVector   string     `gorm:"->;type:tsvector" json:"-"`
 	Embedding      string     `gorm:"type:text" json:"-"`
 	CreatedAt      time.Time  `json:"created_at"`

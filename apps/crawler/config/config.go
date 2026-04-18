@@ -48,6 +48,16 @@ type CrawlerConfig struct {
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 
+	// Translation fan-out. TranslateEnabled is the master switch. When
+	// true, every successful publish triggers LLM translation to each
+	// TranslateLanguages entry (source language is skipped automatically)
+	// and the translated JobSnapshot is uploaded to R2 at
+	// jobs/{slug}.{lang}.json. TranslateMinQuality sets a floor so we
+	// don't burn LLM quota on low-scoring jobs.
+	TranslateEnabled     bool     `env:"TRANSLATE_ENABLED" envDefault:"false"`
+	TranslateLanguages   []string `env:"TRANSLATE_LANGUAGES" envSeparator:"," envDefault:"en,es,fr,de,pt,ja,ar,zh"`
+	TranslateMinQuality  float64  `env:"TRANSLATE_MIN_QUALITY" envDefault:"70"`
+
 	// ContentOrigin is the public CDN origin used when building cache-purge URLs.
 	ContentOrigin string `env:"CONTENT_ORIGIN" envDefault:"https://jobs-repo.stawi.org"`
 

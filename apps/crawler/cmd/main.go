@@ -31,6 +31,7 @@ import (
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
 	"stawi.jobs/pkg/telemetry"
+	"stawi.jobs/pkg/translate"
 )
 
 func main() {
@@ -169,6 +170,15 @@ func main() {
 	// Cloudflare cache purger (no-op if zone/token not configured).
 	cachePurger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
 
+	// Translator fan-out. Off by default; flip TRANSLATE_ENABLED=true
+	// once Groq quota headroom is confirmed for the fan-out volume.
+	var translator *translate.Translator
+	translateLangs := []string{}
+	if cfg.TranslateEnabled && extractor != nil {
+		translator = translate.New(extractor)
+		translateLangs = cfg.TranslateLanguages
+	}
+
 	// Register pipeline stage handlers.
 	pipelineHandlers := []frame.Option{}
 	if extractor != nil {
@@ -181,7 +191,8 @@ func main() {
 			handlers.NewSourceQualityHandler(sourceRepo, jobRepo, extractor),
 		}
 		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, cfg.PublishMinQuality))
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, cfg.PublishMinQuality))
+			eventHandlers = append(eventHandlers, handlers.NewTranslateHandler(jobRepo, r2Publisher, cachePurger, translator, svc, translateLangs, cfg.TranslateMinQuality))
 		}
 		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
 	} else {
@@ -191,7 +202,7 @@ func main() {
 			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, svc),
 		}
 		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, cfg.PublishMinQuality))
+			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, cfg.PublishMinQuality))
 		}
 		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
 	}

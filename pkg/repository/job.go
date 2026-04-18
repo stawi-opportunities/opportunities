@@ -301,6 +301,19 @@ func (r *JobRepository) MarkPublished(ctx context.Context, canonicalJobID int64,
 		}).Error
 }
 
+// MarkTranslated records the set of languages (CSV) that have been written
+// to R2 and stamps translated_at=now(). Idempotent — calling it twice with
+// the same list simply refreshes the timestamp.
+func (r *JobRepository) MarkTranslated(ctx context.Context, canonicalJobID int64, langsCSV string) error {
+	return r.db(ctx, false).
+		Table("canonical_jobs").
+		Where("id = ?", canonicalJobID).
+		Updates(map[string]any{
+			"translated_at":    gorm.Expr("now()"),
+			"translated_langs": langsCSV,
+		}).Error
+}
+
 // ClearPublished sets published_at to NULL. Used by the unpublish path.
 func (r *JobRepository) ClearPublished(ctx context.Context, canonicalJobID int64) error {
 	return r.db(ctx, false).

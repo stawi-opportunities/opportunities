@@ -28,3 +28,10 @@ type SourceQualityPayload struct {
 type JobReadyPayload struct {
 	CanonicalJobID int64 `json:"canonical_job_id"`
 }
+
+type JobPublishedPayload struct {
+	CanonicalJobID int64  `json:"canonical_job_id"`
+	Slug           string `json:"slug"`
+	SourceLang     string `json:"source_lang"`
+	R2Version      int    `json:"r2_version"`
+}
