@@ -69,12 +69,12 @@ func FinalizeSchema(db *gorm.DB) error {
 		{"convert search_vector to generated", `
 			DO $$
 			DECLARE
-				is_generated text;
+				sv_is_generated text;
 			BEGIN
-				SELECT is_generated INTO is_generated
+				SELECT is_generated INTO sv_is_generated
 				  FROM information_schema.columns
 				 WHERE table_name='canonical_jobs' AND column_name='search_vector';
-				IF is_generated IS DISTINCT FROM 'ALWAYS' THEN
+				IF sv_is_generated IS DISTINCT FROM 'ALWAYS' THEN
 					EXECUTE 'DROP INDEX IF EXISTS idx_canonical_search';
 					EXECUTE 'ALTER TABLE canonical_jobs DROP COLUMN IF EXISTS search_vector';
 					EXECUTE $gen$
