@@ -54,6 +54,17 @@ type CrawlerConfig struct {
 	// page between crawls still sees the dead-link UX before it 404s.
 	RetentionGraceDays int `env:"RETENTION_GRACE_DAYS" envDefault:"7"`
 
+	// Back-pressure: pause new crawl dispatch when the NATS consumer's
+	// pending depth crosses HighWater; resume when it drops below
+	// LowWater. Read from NATS's http monitor (port 8222). Leave
+	// BackpressureMonitorURL blank to disable entirely — the gate
+	// becomes a no-op that always reports open.
+	BackpressureMonitorURL  string `env:"BACKPRESSURE_MONITOR_URL" envDefault:"http://core-queue-headless.queue-system.svc.cluster.local:8222"`
+	BackpressureStreamName  string `env:"BACKPRESSURE_STREAM_NAME" envDefault:"svc_stawi_jobs_events"`
+	BackpressureConsumerName string `env:"BACKPRESSURE_CONSUMER_NAME" envDefault:"crawler-events"`
+	BackpressureHighWater   int    `env:"BACKPRESSURE_HIGH_WATER" envDefault:"100000"`
+	BackpressureLowWater    int    `env:"BACKPRESSURE_LOW_WATER" envDefault:"50000"`
+
 	// Translation fan-out. TranslateEnabled is the master switch. When
 	// true, every successful publish triggers LLM translation to each
 	// TranslateLanguages entry (source language is skipped automatically)

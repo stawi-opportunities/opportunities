@@ -26,6 +26,7 @@ import (
 	"stawi.jobs/pkg/normalize"
 	"stawi.jobs/pkg/pipeline/handlers"
 	"stawi.jobs/pkg/analytics"
+	"stawi.jobs/pkg/backpressure"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
@@ -197,6 +198,19 @@ func main() {
 	if analyticsClient != nil {
 		svc.AddCleanupMethod(func(ctx context.Context) { _ = analyticsClient.Close(ctx) })
 	}
+
+	// Backpressure gate for crawl dispatch. Bounds the pending queue
+	// at cfg.BackpressureHighWater (defaults to 100k). Trustage's
+	// cron keeps firing but the admin endpoints no-op while the
+	// gate is closed. Hysteresis at cfg.BackpressureLowWater (50k)
+	// prevents flapping once we're near the threshold.
+	bpGate := backpressure.New(backpressure.Config{
+		MonitorURL:   cfg.BackpressureMonitorURL,
+		StreamName:   cfg.BackpressureStreamName,
+		ConsumerName: cfg.BackpressureConsumerName,
+		HighWater:    cfg.BackpressureHighWater,
+		LowWater:     cfg.BackpressureLowWater,
+	}, nil)
 
 	// Translator fan-out. Off by default; flip TRANSLATE_ENABLED=true
 	// once Groq quota headroom is confirmed for the fan-out volume.
@@ -407,6 +421,21 @@ func main() {
 			http.Error(w, `{"error":"source_id is required"}`, http.StatusBadRequest)
 			return
 		}
+		// Backpressure gate: refuse new work when the pipeline queue
+		// is saturated. Trustage sees {"paused": true} and retries on
+		// its next tick; no work is lost.
+		if state, bpErr := bpGate.Check(r.Context()); bpErr == nil && state.Paused {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":         true,
+				"paused":     true,
+				"source_id":  body.SourceID,
+				"pending":    state.Pending,
+				"high_water": state.HighWater,
+				"low_water":  state.LowWater,
+			})
+			return
+		}
 		evtMgr := svc.EventsManager()
 		if evtMgr == nil {
 			http.Error(w, `{"error":"events manager unavailable"}`, http.StatusServiceUnavailable)
@@ -427,6 +456,25 @@ func main() {
 	// needs one HTTP call per minute. Returns the count dispatched so
 	// Trustage can record it as workflow output.
 	adminMux.HandleFunc("POST /admin/crawl/dispatch-due", func(w http.ResponseWriter, r *http.Request) {
+		// Backpressure gate — evaluated first so we skip the DB hit
+		// entirely when the pipeline is saturated. Trustage polls this
+		// endpoint on a 1m cron; a paused response just means nothing
+		// enters the queue this tick. Existing in-flight work drains
+		// normally; resume happens automatically when pending drops
+		// below the low-water mark.
+		if state, bpErr := bpGate.Check(r.Context()); bpErr == nil && state.Paused {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":         true,
+				"paused":     true,
+				"considered": 0,
+				"dispatched": 0,
+				"pending":    state.Pending,
+				"high_water": state.HighWater,
+				"low_water":  state.LowWater,
+			})
+			return
+		}
 		limit := 500
 		if v := r.URL.Query().Get("limit"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 2000 {
@@ -461,6 +509,25 @@ func main() {
 			"considered": len(sources),
 			"dispatched": dispatched,
 		})
+	})
+
+	// Admin: backpressure state — operator-facing visibility into the
+	// gate. Useful for dashboards and for confirming the Trustage
+	// workflow is correctly no-op'ing during saturation.
+	adminMux.HandleFunc("GET /admin/crawl/status", func(w http.ResponseWriter, r *http.Request) {
+		state, err := bpGate.Check(r.Context())
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]any{
+			"paused":     state.Paused,
+			"pending":    state.Pending,
+			"high_water": state.HighWater,
+			"low_water":  state.LowWater,
+		}
+		if err != nil {
+			resp["error"] = err.Error()
+			w.WriteHeader(http.StatusOK) // fail-open status
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// Admin: retention sweep — flip expired canonicals.
