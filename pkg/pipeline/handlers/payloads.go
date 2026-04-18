@@ -9,6 +9,12 @@ const (
 	EventSourceQualityReview  = "source.quality.review"
 	EventJobReady             = "job.ready"
 	EventJobPublished         = "job.published"
+	// EventCrawlRequest is emitted by the api's /admin/crawl/dispatch
+	// endpoint (itself driven by a Trustage workflow on a cron) and
+	// consumed by the crawler. Replaces the crawler's old in-process
+	// ListDue loop — each message goes to exactly one worker, so
+	// replicas can scale horizontally without contention.
+	EventCrawlRequest = "crawl.request"
 )
 
 type VariantPayload struct {
@@ -34,5 +40,17 @@ type JobPublishedPayload struct {
 	Slug           string `json:"slug"`
 	SourceLang     string `json:"source_lang"`
 	R2Version      int    `json:"r2_version"`
+}
+
+// CrawlRequestPayload carries a single "please crawl source N" instruction
+// from Trustage (via the api's admin/crawl/dispatch endpoint) to one of
+// the crawler's replicas. JetStream workqueue retention guarantees
+// exactly-once delivery across the pod fleet.
+type CrawlRequestPayload struct {
+	SourceID int64 `json:"source_id"`
+	// Attempt is 1 on first dispatch; Trustage's retry policy bumps it
+	// when a prior run reported failure. Crawler logs it but doesn't
+	// act on it — retry decisions live in Trustage.
+	Attempt int `json:"attempt,omitempty"`
 }
 

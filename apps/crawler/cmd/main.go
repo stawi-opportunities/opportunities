@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -252,7 +251,21 @@ func main() {
 		}
 	})
 
-	// Register the crawl loop as Frame's background consumer.
+	// crawlDependencies itself implements events.EventI for
+	// EventCrawlRequest. Trustage's source.crawl workflow fires every
+	// minute, enumerates due sources via the api's /admin/sources/due,
+	// and dispatches one CrawlRequest message per source. JetStream
+	// workqueue retention guarantees each message reaches exactly one
+	// crawler replica — no contention, no ticker, no ListDue.
+	//
+	// Retention (expire / mv_refresh / stage2) also runs as Trustage
+	// workflows now; each workflow does an HTTP POST to the crawler's
+	// admin endpoints below. All the cadence, observability, and retry
+	// discipline that used to live in in-process tickers now lives in
+	// Trustage where it's visible alongside every other scheduled job
+	// in the cluster.
+	_ = retentionRepo // referenced by the admin endpoints registered below
+	_ = facetRepo
 	crawlDeps := &crawlDependencies{
 		cfg:          &cfg,
 		sourceRepo:   sourceRepo,
@@ -266,31 +279,7 @@ func main() {
 		extractor:    extractor,
 		svc:          svc,
 	}
-	svc.Init(ctx, frame.WithBackgroundConsumer(crawlDeps.crawlLoop))
-
-	// Retention + materialized-view maintenance. These used to live in a
-	// standalone scheduler service but are plain interval jobs with no
-	// separate state from the crawler's own DB — folding them in drops
-	// one pod + one HelmRelease and keeps the cron cadence colocated
-	// with the data.
-	svc.Init(ctx, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
-		runEvery(bgCtx, 15*time.Minute, func(innerCtx context.Context) {
-			runExpire(innerCtx, retentionRepo)
-		})
-		return nil
-	}))
-	svc.Init(ctx, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
-		runEvery(bgCtx, 5*time.Minute, func(innerCtx context.Context) {
-			runMVRefresh(innerCtx, facetRepo)
-		})
-		return nil
-	}))
-	svc.Init(ctx, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
-		runEvery(bgCtx, 24*time.Hour, func(innerCtx context.Context) {
-			runRetention(innerCtx, retentionRepo, r2Publisher, cachePurger, cfg.RetentionGraceDays)
-		})
-		return nil
-	}))
+	svc.Init(ctx, frame.WithRegisterEvents(crawlDeps))
 
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()
@@ -370,6 +359,128 @@ func main() {
 	// Admin: rebuild canonical jobs from all variants
 	adminMux.HandleFunc("/admin/rebuild-canonicals", rebuildCanonicalsHandler(jobRepo, dedupeEngine))
 
+	// ── Trustage-driven endpoints ──────────────────────────────────
+	//
+	// These are called by Trustage workflow instances (on a schedule)
+	// as simple fan-in targets. Every one of them is idempotent and
+	// short-lived; the heavy lifting happens either in-process
+	// (retention sweeps, which touch only our own tables) or in a
+	// goroutine that emits a NATS event (crawl dispatch).
+
+	// Admin: list source IDs that are due for a crawl right now. Called
+	// by the source.crawl.dispatcher workflow every minute to drive
+	// the per-source fan-out through /admin/crawl/dispatch below.
+	adminMux.HandleFunc("GET /admin/sources/due", func(w http.ResponseWriter, r *http.Request) {
+		limit := 500
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 2000 {
+				limit = n
+			}
+		}
+		sources, err := sourceRepo.ListDue(r.Context(), time.Now().UTC(), limit)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		ids := make([]int64, 0, len(sources))
+		for _, s := range sources {
+			ids = append(ids, s.ID)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"count": len(ids), "ids": ids})
+	})
+
+	// Admin: dispatch a crawl request for one source. Emits an
+	// EventCrawlRequest onto the pipeline events stream; the crawler's
+	// own subscription picks it up. Called by the source.crawl workflow
+	// once per enumerated source.
+	adminMux.HandleFunc("POST /admin/crawl/dispatch", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			SourceID int64 `json:"source_id"`
+			Attempt  int   `json:"attempt,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SourceID == 0 {
+			http.Error(w, `{"error":"source_id is required"}`, http.StatusBadRequest)
+			return
+		}
+		evtMgr := svc.EventsManager()
+		if evtMgr == nil {
+			http.Error(w, `{"error":"events manager unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if err := evtMgr.Emit(r.Context(), handlers.EventCrawlRequest, &handlers.CrawlRequestPayload{
+			SourceID: body.SourceID, Attempt: body.Attempt,
+		}); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "source_id": body.SourceID})
+	})
+
+	// Admin: enumerate + dispatch all currently-due sources in one
+	// call. Used by the simple source.crawl.sweep workflow which just
+	// needs one HTTP call per minute. Returns the count dispatched so
+	// Trustage can record it as workflow output.
+	adminMux.HandleFunc("POST /admin/crawl/dispatch-due", func(w http.ResponseWriter, r *http.Request) {
+		limit := 500
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 2000 {
+				limit = n
+			}
+		}
+		sources, err := sourceRepo.ListDue(r.Context(), time.Now().UTC(), limit)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		evtMgr := svc.EventsManager()
+		if evtMgr == nil {
+			http.Error(w, `{"error":"events manager unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		dispatched := 0
+		for _, s := range sources {
+			if emitErr := evtMgr.Emit(r.Context(), handlers.EventCrawlRequest, &handlers.CrawlRequestPayload{
+				SourceID: s.ID, Attempt: 1,
+			}); emitErr != nil {
+				util.Log(r.Context()).WithError(emitErr).
+					WithField("source_id", s.ID).
+					Warn("dispatch-due: emit failed, continuing")
+				continue
+			}
+			dispatched++
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":         true,
+			"considered": len(sources),
+			"dispatched": dispatched,
+		})
+	})
+
+	// Admin: retention sweep — flip expired canonicals.
+	adminMux.HandleFunc("POST /admin/retention/expire", func(w http.ResponseWriter, r *http.Request) {
+		runExpire(r.Context(), retentionRepo)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+
+	// Admin: materialized-view refresh.
+	adminMux.HandleFunc("POST /admin/retention/mv-refresh", func(w http.ResponseWriter, r *http.Request) {
+		runMVRefresh(r.Context(), facetRepo)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+
+	// Admin: stage-2 physical deletion of R2 snapshots past their
+	// grace window. Runs synchronously; fine for the nightly cadence.
+	adminMux.HandleFunc("POST /admin/retention/stage2", func(w http.ResponseWriter, r *http.Request) {
+		runRetention(r.Context(), retentionRepo, r2Publisher, cachePurger, cfg.RetentionGraceDays)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 
 	// Register a named health checker that reports source state counts.
@@ -445,58 +556,53 @@ type crawlDependencies struct {
 	svc          *frame.Service
 }
 
-// crawlLoop runs a ticker that finds due sources and processes them with
-// bounded concurrency. It blocks until the context is cancelled.
-func (d *crawlDependencies) crawlLoop(ctx context.Context) error {
-	log := util.Log(ctx)
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+// Name / PayloadType / Validate / Execute implement the Frame events.EventI
+// contract so crawlDependencies can subscribe to EventCrawlRequest directly.
+// Trustage's source.crawl workflow fires every minute, enumerates due
+// sources via the api's /admin/sources/due, and posts one CrawlRequest per
+// source through /admin/crawl/dispatch (which publishes to this subject).
+// JetStream workqueue retention means each message reaches exactly one
+// crawler replica — no contention, no ticker, no ListDue scan.
+func (d *crawlDependencies) Name() string     { return handlers.EventCrawlRequest }
+func (d *crawlDependencies) PayloadType() any { return &handlers.CrawlRequestPayload{} }
 
-	// Process once immediately, then on every tick.
-	d.processDueSources(ctx)
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info("crawl loop stopping")
-			return nil
-		case <-ticker.C:
-			d.processDueSources(ctx)
-		}
+func (d *crawlDependencies) Validate(_ context.Context, payload any) error {
+	p, ok := payload.(*handlers.CrawlRequestPayload)
+	if !ok {
+		return fmt.Errorf("crawl.request: invalid payload type %T", payload)
 	}
+	if p.SourceID == 0 {
+		return fmt.Errorf("crawl.request: source_id is required")
+	}
+	return nil
 }
 
-func (d *crawlDependencies) processDueSources(ctx context.Context) {
-	log := util.Log(ctx)
-	now := time.Now().UTC()
+func (d *crawlDependencies) Execute(ctx context.Context, payload any) error {
+	p, ok := payload.(*handlers.CrawlRequestPayload)
+	if !ok {
+		return fmt.Errorf("crawl.request: invalid payload type %T", payload)
+	}
 
-	sources, err := d.sourceRepo.ListDue(ctx, now, 100)
+	log := util.Log(ctx).
+		WithField("source_id", p.SourceID).
+		WithField("attempt", p.Attempt)
+
+	src, err := d.sourceRepo.GetByID(ctx, p.SourceID)
 	if err != nil {
-		log.WithError(err).Error("list due sources failed")
-		return
+		log.WithError(err).Error("crawl.request: load source failed")
+		return err
 	}
-	if len(sources) == 0 {
-		return
+	if src == nil {
+		log.Warn("crawl.request: source not found, dropping")
+		return nil
 	}
-
-	log.WithField("count", len(sources)).Info("processing due sources")
-
-	sem := make(chan struct{}, d.cfg.WorkerConcurrency)
-	var wg sync.WaitGroup
-
-	for _, src := range sources {
-		wg.Add(1)
-		sem <- struct{}{}
-
-		go func(s *domain.Source) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			d.processSource(ctx, s)
-		}(src)
+	if src.Status != domain.SourceActive && src.Status != domain.SourceDegraded {
+		log.WithField("status", src.Status).Info("crawl.request: source not eligible, skipping")
+		return nil
 	}
 
-	wg.Wait()
+	d.processSource(ctx, src)
+	return nil
 }
 
 func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Source) {

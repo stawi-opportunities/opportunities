@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "name": "stawi-jobs.retention.expire",
+  "description": "Every 15 minutes: flip canonical_jobs.status from 'active' to 'expired' for rows past expires_at. Idempotent — the SQL is a conditional UPDATE, so running twice in the same minute is safe.",
+  "schedule": {
+    "cron": "15m",
+    "active": true
+  },
+  "input": {},
+  "timeout": "2m",
+  "steps": [
+    {
+      "id": "expire",
+      "type": "call",
+      "name": "Run expire sweep",
+      "retry": {
+        "max_attempts": 3,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "30s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/retention/expire",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": {}
+        }
+      }
+    }
+  ]
+}
