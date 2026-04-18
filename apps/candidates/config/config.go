@@ -41,4 +41,21 @@ type CandidatesConfig struct {
 	RedirectServiceURI     string `env:"REDIRECT_SERVICE_URI" envDefault:""`
 	BillingServiceURI      string `env:"BILLING_SERVICE_URI" envDefault:""`
 	ProfileServiceURI      string `env:"PROFILE_SERVICE_URI" envDefault:""`
+
+	// Public site URL — used to build provider redirect/cancel URLs.
+	PublicSiteURL string `env:"PUBLIC_SITE_URL" envDefault:"https://jobs.stawi.org"`
+
+	// DusuPay (African mobile-money / card via East-Africa rails).
+	// Empty creds disable the adapter; the billing router then 503s
+	// African checkouts rather than silently routing them to Plar.
+	DusuPayBaseURL       string `env:"DUSUPAY_BASE_URL" envDefault:"https://api.dusupay.com"`
+	DusuPayAPIKey        string `env:"DUSUPAY_API_KEY" envDefault:""`
+	DusuPayWebhookSecret string `env:"DUSUPAY_WEBHOOK_SECRET" envDefault:""`
+	DusuPayMerchantCode  string `env:"DUSUPAY_MERCHANT_CODE" envDefault:""`
+
+	// Plar.sh (card / PayPal / ACH for non-African users).
+	PlarBaseURL       string `env:"PLAR_BASE_URL" envDefault:"https://api.plar.sh"`
+	PlarAPIKey        string `env:"PLAR_API_KEY" envDefault:""`
+	PlarWebhookSecret string `env:"PLAR_WEBHOOK_SECRET" envDefault:""`
+	PlarMerchantID    string `env:"PLAR_MERCHANT_ID" envDefault:""`
 }

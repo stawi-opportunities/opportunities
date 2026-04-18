@@ -164,11 +164,25 @@ func main() {
 		return h
 	}
 
+	// Billing — geo-routed provider adapters.
+	//
+	// DusuPay serves African users (mobile money / card); Plar.sh
+	// serves everyone else. Both ultimately flip the candidate row
+	// through applyBillingEvent so the legacy /webhooks/billing
+	// contract continues to hold for upstream services that still
+	// call it directly.
+	billingRouter := buildBillingRouter(&cfg)
+
 	// Public routes (no auth required)
 	mux.HandleFunc("GET /healthz", healthHandler(candidateRepo))
 	mux.HandleFunc("POST /candidates/register", registerHandler(candidateRepo, extractor, svc, svcClients))
 	mux.HandleFunc("POST /webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
 	mux.HandleFunc("POST /webhooks/billing", billingWebhookHandler(candidateRepo))
+	mux.HandleFunc("POST /webhooks/billing/dusupay", providerWebhookHandler(candidateRepo, billingRouter.Africa()))
+	mux.HandleFunc("POST /webhooks/billing/plar", providerWebhookHandler(candidateRepo, billingRouter.Elsewhere()))
+	// Plan catalog is public so the pricing page can render the right
+	// per-country price before the user starts checkout.
+	mux.HandleFunc("GET /billing/plans", plansHandler())
 
 	// Internal: the redirect service (service-files) calls this when
 	// it flips a link to EXPIRED after the destination URL has been
@@ -182,6 +196,7 @@ func main() {
 	// Authenticated candidate routes
 	mux.Handle("GET /me", authWrap(meHandler(candidateRepo, cfg.ProfileServiceURL)))
 	mux.Handle("GET /me/subscription", authWrap(meSubscriptionHandler(candidateRepo, matchRepo)))
+	mux.Handle("POST /billing/checkout", authWrap(checkoutHandler(candidateRepo, billingRouter, &cfg)))
 	mux.Handle("POST /candidates/onboard", authWrap(onboardHandler(candidateRepo, extractor, svc)))
 	mux.Handle("GET /candidates/profile", authWrap(getProfileHandler(candidateRepo)))
 	mux.Handle("PUT /candidates/profile", authWrap(updateProfileHandler(candidateRepo)))

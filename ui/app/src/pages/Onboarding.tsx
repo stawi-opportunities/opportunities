@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
-import { submitOnboarding } from "@/api/candidates";
+import { submitOnboarding, createCheckout } from "@/api/candidates";
 import { PLANS, planById, type PlanId } from "@/utils/plans";
 
 // Each step owns a contiguous slice of fields; we validate one step at a
@@ -152,10 +152,29 @@ export default function Onboarding() {
         const body = await res.text().catch(() => "");
         throw new Error(body.slice(0, 200) || res.statusText);
       }
-      // Free → dashboard. Paid → payment flow (stubbed): land on dashboard
-      // which prompts to complete payment. Backend issues the checkout URL
-      // in the response body; when that's wired we'll redirect there.
-      window.location.href = "/dashboard/";
+      // Kick off payment — all tiers are paid, so every onboarded
+      // user gets redirected to the provider's hosted checkout. The
+      // backend picks DusuPay for African users (CF-IPCountry) and
+      // Plar.sh for everyone else; the redirect_url it returns is
+      // the provider's hosted page.
+      try {
+        const checkout = await createCheckout(data.plan);
+        window.location.href = checkout.redirect_url;
+        return;
+      } catch (checkoutErr) {
+        // Checkout failed (provider outage, missing creds). Park
+        // the user on the dashboard with an inline banner so they
+        // can retry from there — we do NOT leave them mid-form with
+        // no CV-stored feedback, because the profile was already
+        // persisted above.
+        setSubmitError(
+          checkoutErr instanceof Error && checkoutErr.message
+            ? `Profile saved, but payment couldn't start: ${checkoutErr.message}. You can retry from the dashboard.`
+            : "Profile saved, but payment couldn't start. You can retry from the dashboard.",
+        );
+        window.location.href = "/dashboard/?billing=failed";
+        return;
+      }
     } catch (e) {
       setSubmitError(
         e instanceof Error && e.message

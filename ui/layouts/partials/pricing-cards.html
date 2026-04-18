@@ -2,19 +2,22 @@
   Pricing cards — server-rendered, zero database calls. Three paid tiers
   only. Mirrors the PLANS array in ui/app/src/utils/plans.ts.
 
-  Kept deliberately uniform: three identical cards, one subtle accent
-  rule above the "recommended" tier, navy text, square corners. Not
-  rendered on the home page.
+  Prices shown are USD defaults. A small inline script fetches
+  /billing/plans from the candidates API and swaps the label in for
+  users that CF-IPCountry places in Africa (KES, UGX, NGN, ZAR, GHS,
+  TZS, RWF via DusuPay's mobile-money rails). The original USD line is
+  kept as a secondary comparison below the local-currency headline.
 */}}
 <div class="grid gap-px overflow-hidden rounded-md border border-gray-200 bg-gray-200 lg:grid-cols-3">
 
-  <article class="flex flex-col bg-white p-8">
+  <article class="flex flex-col bg-white p-8" data-plan="starter">
     <header class="pb-4">
       <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-600">Starter</h3>
-      <p class="mt-4 flex items-baseline gap-x-1">
-        <span class="text-4xl font-bold text-navy-900">$10</span>
+      <p class="mt-4 flex items-baseline gap-x-1" data-role="price">
+        <span class="text-4xl font-bold text-navy-900" data-role="amount">$10</span>
         <span class="text-sm text-gray-500">/month</span>
       </p>
+      <p class="mt-1 hidden text-xs text-gray-500" data-role="usd-note"></p>
       <p class="mt-3 text-base text-gray-700">
         Five AI-matched jobs a week, delivered.
       </p>
@@ -32,16 +35,17 @@
     </a>
   </article>
 
-  <article class="flex flex-col bg-white p-8">
+  <article class="flex flex-col bg-white p-8" data-plan="pro">
     <div class="-mx-8 -mt-8 mb-4 border-b-2 border-accent-400 bg-accent-50 px-8 py-2 text-sm font-semibold uppercase tracking-wide text-accent-700">
       Recommended
     </div>
     <header class="pb-4">
       <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-600">Pro</h3>
-      <p class="mt-4 flex items-baseline gap-x-1">
-        <span class="text-4xl font-bold text-navy-900">$50</span>
+      <p class="mt-4 flex items-baseline gap-x-1" data-role="price">
+        <span class="text-4xl font-bold text-navy-900" data-role="amount">$50</span>
         <span class="text-sm text-gray-500">/month</span>
       </p>
+      <p class="mt-1 hidden text-xs text-gray-500" data-role="usd-note"></p>
       <p class="mt-3 text-base text-gray-700">
         5× the matches, priority queue, cover-letter drafts.
       </p>
@@ -59,13 +63,14 @@
     </a>
   </article>
 
-  <article class="flex flex-col bg-white p-8">
+  <article class="flex flex-col bg-white p-8" data-plan="managed">
     <header class="pb-4">
       <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-600">Managed</h3>
-      <p class="mt-4 flex items-baseline gap-x-1">
-        <span class="text-4xl font-bold text-navy-900">$200</span>
+      <p class="mt-4 flex items-baseline gap-x-1" data-role="price">
+        <span class="text-4xl font-bold text-navy-900" data-role="amount">$200</span>
         <span class="text-sm text-gray-500">/month</span>
       </p>
+      <p class="mt-1 hidden text-xs text-gray-500" data-role="usd-note"></p>
       <p class="mt-3 text-base text-gray-700">
         A dedicated recruiter runs your search end-to-end.
       </p>
@@ -83,3 +88,63 @@
     </a>
   </article>
 </div>
+
+<p id="pricing-provider-hint" class="mt-4 hidden text-sm text-gray-600"></p>
+
+<script>
+// Fetch the geo-resolved plan catalog and swap the price labels.
+// The page stays functional with JS disabled — visitors see USD
+// defaults and the server still picks the right provider at POST.
+(function () {
+  var base = (function () {
+    var meta = document.querySelector('meta[name="site-params"]');
+    if (!meta) return "";
+    try { return (JSON.parse(meta.getAttribute("content")) || {}).candidatesAPIURL || ""; }
+    catch (e) { return ""; }
+  })();
+  if (!base) return;
+  var url = base.replace(/\/$/, "") + "/billing/plans";
+
+  fetch(url, { credentials: "omit" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (body) {
+      if (!body || !Array.isArray(body.plans)) return;
+      body.plans.forEach(function (p) {
+        var card = document.querySelector('article[data-plan="' + p.id + '"]');
+        if (!card) return;
+        var amount = card.querySelector('[data-role="amount"]');
+        var note   = card.querySelector('[data-role="usd-note"]');
+        if (!amount) return;
+        var minor = p.amount;
+        var currency = p.currency || "USD";
+        var formatted;
+        try {
+          formatted = new Intl.NumberFormat(undefined, {
+            style: "currency",
+            currency: currency,
+            maximumFractionDigits: 0,
+          }).format(minor / 100);
+        } catch (e) {
+          formatted = currency + " " + (minor / 100).toFixed(0);
+        }
+        amount.textContent = formatted;
+        if (currency !== "USD" && note) {
+          note.textContent = "\u2248 US$" + (p.usd_cents / 100).toFixed(0) + " / month";
+          note.classList.remove("hidden");
+        }
+      });
+      var hint = document.getElementById("pricing-provider-hint");
+      if (hint) {
+        if (body.provider === "dusupay") {
+          hint.textContent = "Pay with M-Pesa, MTN Money, Airtel Money, or card via DusuPay.";
+        } else {
+          hint.textContent = "Pay with card, bank transfer, or PayPal via Plar.sh.";
+        }
+        hint.classList.remove("hidden");
+      }
+    })
+    .catch(function () {
+      /* keep USD defaults — never block the page on pricing lookup */
+    });
+})();
+</script>

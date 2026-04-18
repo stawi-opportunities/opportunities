@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { mount as mountProfile, type MountHandle } from "@stawi/profile";
 import { useAuth } from "@/providers/AuthProvider";
 import { getConfig } from "@/utils/config";
-import { fetchMeSubscription } from "@/api/candidates";
+import { fetchMeSubscription, createCheckout } from "@/api/candidates";
 import { normalizePlan, planById, type PlanId } from "@/utils/plans";
 
 /**
@@ -151,12 +151,16 @@ function CompletePaymentPanel({
       <h2 className="mt-2 text-xl font-bold text-gray-900">{headline}</h2>
       <p className="mt-1 text-sm text-gray-700">{body}</p>
       <div className="mt-4 flex flex-wrap gap-3">
-        <a
-          href="/pricing/"
-          className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
-        >
-          {plan && status !== "cancelled" ? `Pay $${planById(plan).price}/mo` : "Choose a plan"}
-        </a>
+        {plan && status !== "cancelled" ? (
+          <RetryCheckoutButton plan={plan} />
+        ) : (
+          <a
+            href="/pricing/"
+            className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
+          >
+            Choose a plan
+          </a>
+        )}
         <a
           href="/onboarding/"
           className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -164,6 +168,38 @@ function CompletePaymentPanel({
           Edit preferences
         </a>
       </div>
+    </div>
+  );
+}
+
+function RetryCheckoutButton({ plan }: { plan: PlanId }) {
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const info = planById(plan);
+
+  const go = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await createCheckout(plan);
+      window.location.href = res.redirect_url;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Checkout failed. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => void go()}
+        disabled={busy}
+        className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800 disabled:opacity-60"
+      >
+        {busy ? "Opening payment…" : `Pay $${info.price}/mo`}
+      </button>
+      {err && <p className="mt-2 text-xs text-red-700">{err}</p>}
     </div>
   );
 }

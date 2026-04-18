@@ -76,6 +76,71 @@ export interface MeSubscription {
   delivered_this_week: number;
 }
 
+export interface BillingPlan {
+  id: PlanId;
+  name: string;
+  description: string;
+  interval: string;
+  /** Amount in minor units of `currency` (cents/shillings). */
+  amount: number;
+  currency: string;
+  /** Always USD cents — useful for showing a "≈ $X" comparison line. */
+  usd_cents: number;
+}
+
+export interface BillingPlansResponse {
+  /** CF-IPCountry (ISO-3166 alpha-2). Empty string if unknown. */
+  country: string;
+  /** "dusupay" for African users, "plar" elsewhere. */
+  provider: "dusupay" | "plar";
+  plans: BillingPlan[];
+}
+
+/**
+ * GET /billing/plans — returns the geo-resolved plan catalog. No auth
+ * required; the frontend calls this before rendering pricing so each
+ * user sees the price they'll actually be charged (KES, UGX, NGN, USD).
+ */
+export async function fetchBillingPlans(): Promise<BillingPlansResponse> {
+  const url = join(getConfig().candidatesAPIURL, "/billing/plans");
+  const res = await fetch(url, { credentials: "omit" });
+  if (!res.ok) {
+    throw new Error(`fetchBillingPlans: HTTP ${res.status}`);
+  }
+  return (await res.json()) as BillingPlansResponse;
+}
+
+export interface CheckoutResponse {
+  redirect_url: string;
+  provider: "dusupay" | "plar";
+  provider_ref: string;
+  amount: number;
+  currency: string;
+  country: string;
+  plan_id: PlanId;
+}
+
+/**
+ * POST /billing/checkout — opens a provider-hosted checkout session and
+ * returns the URL to redirect the browser to. The server reads
+ * CF-IPCountry to pick the right provider (DusuPay for Africa, Plar.sh
+ * elsewhere).
+ */
+export async function createCheckout(planId: PlanId, email?: string): Promise<CheckoutResponse> {
+  const url = join(getConfig().candidatesAPIURL, "/billing/checkout");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await bearer()) },
+    credentials: "include",
+    body: JSON.stringify({ plan_id: planId, email: email ?? "" }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`createCheckout: HTTP ${res.status} ${body}`);
+  }
+  return (await res.json()) as CheckoutResponse;
+}
+
 /**
  * GET /me/subscription — current tier + queue stats. If the endpoint
  * fails (401/404/network) we return a shape that drives the dashboard to
