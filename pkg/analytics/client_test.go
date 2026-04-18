@@ -77,6 +77,134 @@ func TestNew_emptyURLReturnsNil(t *testing.T) {
 	}
 }
 
+// After Close, any buffered events must still reach the server.
+func TestClient_Close_drainsPending(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		received []map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var batch []map[string]any
+		_ = json.Unmarshal(body, &batch)
+		mu.Lock()
+		received = append(received, batch...)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// MaxBatchSize=100 + long FlushInterval → nothing auto-flushes before Close.
+	c := New(Config{BaseURL: srv.URL, MaxBatchSize: 100, FlushInterval: 1 * time.Hour})
+	for i := 0; i < 3; i++ {
+		c.Send(context.Background(), "drain_test", map[string]any{"i": i})
+	}
+	if err := c.Close(context.Background()); err != nil {
+		t.Fatalf("Close returned err: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(received) != 3 {
+		t.Errorf("drain landed %d events, want 3", len(received))
+	}
+}
+
+// flush is private but we observe its error path: a 500 from the server
+// should surface via the returned Close error.
+func TestClient_flush_propagatesHTTPFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, MaxBatchSize: 100, FlushInterval: 1 * time.Hour})
+	c.Send(context.Background(), "fail_stream", map[string]any{"x": 1})
+
+	err := c.Close(context.Background())
+	if err == nil {
+		t.Fatal("expected error from failing flush on Close, got nil")
+	}
+}
+
+// Every received event should carry a numeric _timestamp stamped by the
+// client when the caller didn't supply one.
+func TestSend_autoStampsTimestamp(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		received []map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var batch []map[string]any
+		_ = json.Unmarshal(body, &batch)
+		mu.Lock()
+		received = append(received, batch...)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, MaxBatchSize: 100, FlushInterval: 1 * time.Hour})
+	c.Send(context.Background(), "stamp_test", map[string]any{"k": "v"})
+	if err := c.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(received) != 1 {
+		t.Fatalf("received %d events, want 1", len(received))
+	}
+	ts, ok := received[0]["_timestamp"]
+	if !ok {
+		t.Fatalf("event missing _timestamp: %+v", received[0])
+	}
+	// JSON decodes numeric into float64.
+	f, isNum := ts.(float64)
+	if !isNum {
+		t.Fatalf("_timestamp %T not numeric (%v)", ts, ts)
+	}
+	if f <= 0 {
+		t.Errorf("_timestamp = %v, want > 0", f)
+	}
+}
+
+// A caller-provided _timestamp must be preserved verbatim.
+func TestSend_preservesCallerTimestamp(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		received []map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var batch []map[string]any
+		_ = json.Unmarshal(body, &batch)
+		mu.Lock()
+		received = append(received, batch...)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	const fixedTS int64 = 1700000000000000
+	c := New(Config{BaseURL: srv.URL, MaxBatchSize: 100, FlushInterval: 1 * time.Hour})
+	c.Send(context.Background(), "preserve_test", map[string]any{"_timestamp": fixedTS, "k": "v"})
+	if err := c.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(received) != 1 {
+		t.Fatalf("received %d events, want 1", len(received))
+	}
+	ts, _ := received[0]["_timestamp"].(float64)
+	if int64(ts) != fixedTS {
+		t.Errorf("caller-supplied _timestamp overwritten: got %v, want %d", ts, fixedTS)
+	}
+}
+
 func TestClient_Send_streamsIsolated(t *testing.T) {
 	var (
 		mu       sync.Mutex

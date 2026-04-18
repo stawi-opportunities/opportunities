@@ -135,3 +135,93 @@ func TestScore_nilEmbedder(t *testing.T) {
 		t.Errorf("nil embedder → role fit = 60, got %d", report.Components.RoleFit)
 	}
 }
+
+// scoreImpact on a mix of strong + weak bullets should land between the
+// two extremes (not at either end).
+func TestScoreImpact_mixBullets(t *testing.T) {
+	fields := &extraction.CVFields{
+		WorkHistory: []extraction.WorkHistoryEntry{
+			{Summary: "Built Go services handling 2M requests/min resulting in 99% uptime\nWorked on APIs"},
+		},
+	}
+	got := scoreImpact(fields)
+	// "Built Go services ..." is strong (≥75), "Worked on APIs" is weak (≤45).
+	if got <= 45 || got >= 90 {
+		t.Errorf("mixed-bullet impact = %d, expected somewhere between the two extremes", got)
+	}
+}
+
+// Each buzzword costs 5 points; three buzzwords → at most 85.
+func TestScoreClarity_buzzwords(t *testing.T) {
+	cv := "Strong synergy, a real rockstar ninja on our team."
+	got := scoreClarity(cv)
+	if got > 85 {
+		t.Errorf("scoreClarity with 3 buzzwords = %d, want <= 85", got)
+	}
+}
+
+// Passive-voice penalty: >3 hits → at least -10; >8 → additional -10.
+func TestScoreClarity_passiveVoiceHits(t *testing.T) {
+	// Four passive constructions (was/were + ed/en).
+	cvFour := "The system was deployed. The code was reviewed. The bugs were fixed. The docs were updated."
+	scoreFour := scoreClarity(cvFour)
+	if scoreFour > 90 {
+		t.Errorf(">3 passive hits should shave at least 10 points, got %d", scoreFour)
+	}
+
+	// Nine passive constructions.
+	cvNine := strings.Repeat("The system was deployed. ", 9)
+	scoreNine := scoreClarity(cvNine)
+	if scoreNine > 80 {
+		t.Errorf(">8 passive hits should shave at least 20 points, got %d", scoreNine)
+	}
+	if scoreNine >= scoreFour {
+		t.Errorf("nine-hit score (%d) should be strictly lower than four-hit (%d)", scoreNine, scoreFour)
+	}
+}
+
+// Multi-line summary with "- " prefixes should split on newlines and
+// drop the bullet marker.
+func TestSplitBullets_newlineFirst(t *testing.T) {
+	in := "- Built APIs\n- Shipped services\n* Led migration"
+	got := splitBullets(in)
+	want := []string{"Built APIs", "Shipped services", "Led migration"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d bullets, want %d (%v)", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("splitBullets[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+// Single-line summary should fall back to sentence split.
+func TestSplitBullets_sentenceFallback(t *testing.T) {
+	in := "Built APIs. Shipped services. Led migration"
+	got := splitBullets(in)
+	if len(got) < 3 {
+		t.Errorf("sentence fallback produced %d bullets, want 3 (%v)", len(got), got)
+	}
+}
+
+// Same text → same hash, different text → different hash.
+func TestVersionHashText_stable(t *testing.T) {
+	a := versionHash("hello world")
+	b := versionHash("hello world")
+	if a != b {
+		t.Errorf("same-text hashes differ: %q vs %q", a, b)
+	}
+	c := versionHash("hello world ")
+	if a == c {
+		t.Errorf("different-text hashes collided: %q == %q", a, c)
+	}
+}
+
+// Exported wrapper matches the internal.
+func TestVersionHashText_expose(t *testing.T) {
+	want := versionHash("abc")
+	if got := VersionHashText("abc"); got != want {
+		t.Errorf("VersionHashText mismatch: got %q, want %q", got, want)
+	}
+}
