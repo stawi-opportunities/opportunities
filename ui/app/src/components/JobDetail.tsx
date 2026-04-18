@@ -4,6 +4,12 @@ import { fetchSnapshot } from "@/api/snapshot";
 import { categoryLabel, fmtMoney, isoInPast, timeAgo } from "@/utils/format";
 import { mountSanitisedHTML } from "@/utils/html";
 import { useI18n } from "@/i18n/I18nProvider";
+import {
+  setAnalyticsContext,
+  trackApplyClick,
+  trackJobView,
+  trackJobViewEngaged,
+} from "@/analytics/openobserve";
 import type { JobSnapshot } from "@/types/snapshot";
 
 /**
@@ -29,12 +35,67 @@ export default function JobDetail() {
 
   const descRef = useRef<HTMLDivElement | null>(null);
   const ldRef = useRef<HTMLScriptElement | null>(null);
+  // Mount timestamp used to derive dwell on both the engagement
+  // timer and the apply-click event. Ref so the value is stable
+  // across re-renders.
+  const mountedAtRef = useRef<number>(typeof performance !== "undefined" ? performance.now() : Date.now());
   useEffect(() => {
     const el = descRef.current;
     if (!el) return;
     el.replaceChildren();
     if (q.data?.description_html) mountSanitisedHTML(el, q.data.description_html);
   }, [q.data?.description_html]);
+
+  // Analytics: fire job_view once per snapshot load, stamp the job
+  // onto the session context so every subsequent error/resource event
+  // is attributable, then schedule the 10s engagement signal.
+  useEffect(() => {
+    if (!q.data) return;
+    const snap = q.data;
+    const sLang = snap.language ?? "";
+    const showNotice = !!sLang && sLang !== lang;
+
+    setAnalyticsContext("canonical_job_id", snap.id);
+    setAnalyticsContext("slug", snap.slug);
+    setAnalyticsContext("ui_language", lang);
+    setAnalyticsContext("snapshot_language", sLang);
+
+    trackJobView({
+      canonical_job_id: snap.id,
+      slug: snap.slug,
+      category: snap.category,
+      company: snap.company?.name,
+      country: snap.location?.country,
+      ui_language: lang,
+      snapshot_language: sLang,
+      translated_notice_shown: showNotice,
+      referrer: typeof document !== "undefined" ? document.referrer : "",
+    });
+
+    const engagedAt = setTimeout(() => {
+      const dwell = Math.round(
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+          mountedAtRef.current,
+      );
+      const doc = typeof document !== "undefined" ? document.documentElement : null;
+      const scrollPct = doc
+        ? Math.min(
+            100,
+            Math.round(
+              ((window.scrollY + window.innerHeight) / (doc.scrollHeight || 1)) * 100,
+            ),
+          )
+        : 0;
+      trackJobViewEngaged({
+        canonical_job_id: snap.id,
+        slug: snap.slug,
+        dwell_ms: dwell,
+        scroll_depth_pct: scrollPct,
+      });
+    }, 10_000);
+
+    return () => clearTimeout(engagedAt);
+  }, [q.data, lang]);
 
   // JSON-LD for Google for Jobs. Rendered via direct DOM textContent (not
   // dangerouslySetInnerHTML) so the </script> sequence can't break out of
@@ -154,6 +215,18 @@ export default function JobDetail() {
                 href={snap.apply_url}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => {
+                  trackApplyClick({
+                    canonical_job_id: snap.id,
+                    slug: snap.slug,
+                    company: snap.company?.name,
+                    apply_url: snap.apply_url ?? "",
+                    dwell_ms: Math.round(
+                      (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+                        mountedAtRef.current,
+                    ),
+                  });
+                }}
                 className="inline-flex items-center rounded-md bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
               >
                 {t("cta.applyNow")}
@@ -211,9 +284,21 @@ export default function JobDetail() {
             href={snap.apply_url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => {
+              trackApplyClick({
+                canonical_job_id: snap.id,
+                slug: snap.slug,
+                company: snap.company?.name,
+                apply_url: snap.apply_url ?? "",
+                dwell_ms: Math.round(
+                  (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+                    mountedAtRef.current,
+                ),
+              });
+            }}
             className="inline-flex items-center rounded-md bg-navy-900 px-8 py-3 text-base font-semibold text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
           >
-            Apply for this role
+            {t("cta.applyNow")}
             <span className="sr-only"> (opens in a new tab)</span>
           </a>
         </div>

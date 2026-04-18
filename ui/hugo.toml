@@ -25,6 +25,19 @@ title = "Stawi Jobs"
   oidcInstallationID = "d7gi6lkpf2t67dlsqreg"
   oidcRedirectURI    = "https://jobs.stawi.org/auth/callback/"
 
+  # OpenObserve RUM. rumClientToken must be provisioned from the
+  # OpenObserve UI (Data Sources → RUM → New application) and injected
+  # at build time via HUGO_PARAMS_rumClientToken. Leaving it blank keeps
+  # the SDK silent, which is the right behaviour for branch previews
+  # that shouldn't bleed into production's session data.
+  rumClientToken     = ""
+  rumApplicationId   = "stawi-jobs-web"
+  rumSite            = "observe.stawi.org"
+  rumOrganization    = "default"
+  rumEnv             = "production"
+  rumService         = "stawi-jobs-web"
+  rumVersion         = "0.0.0"
+
 [params.nav]
   logo = "/images/logo.svg"
 

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { getAuthRuntime, type AuthState } from "@stawi/auth-runtime";
 import { getConfig } from "@/utils/config";
+import { setAnalyticsUser } from "@/analytics/openobserve";
 
 // Thin wrapper around the @stawi/auth-runtime singleton. A single
 // AuthProvider at the root of every island means all islands share the
@@ -49,7 +50,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(runtime.getState());
 
   useEffect(() => {
-    const unsub = runtime.onAuthStateChange(setState);
+    const unsub = runtime.onAuthStateChange((next) => {
+      setState(next);
+      // Thread the authenticated identity into OpenObserve so every
+      // RUM session and log line is joinable back to profile_id.
+      // `getUser()` is async and only resolves when a live token
+      // exists, so guard on the state we just transitioned to.
+      if (next === "authenticated") {
+        runtime.getUser().then(
+          (u) => setAnalyticsUser({ id: u.id, name: u.name, email: u.email }),
+          () => setAnalyticsUser(null),
+        );
+      } else if (next === "unauthenticated") {
+        setAnalyticsUser(null);
+      }
+    });
 
     // Kick the runtime out of "initializing" on first mount by asking for
     // a token silently. A rejection here means "no live session" — the
