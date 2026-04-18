@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -146,10 +145,30 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		"Description (first 500 chars): " + desc,
 	}, "\n")
 
-	// 4. Call the LLM with the validation prompt.
+	// 4. Call the LLM with the validation prompt. On failure (rate
+	//    limit, provider outage), accept the variant with a neutral
+	//    confidence rather than pile it on the retry queue — the
+	//    deterministic quality gate already filtered obvious junk
+	//    upstream, and blocking the pipeline on a transient LLM
+	//    outage is worse than letting through a slightly-less-scrubbed
+	//    job. Auto-validated variants can be re-scored later.
 	raw, err := h.extractor.Prompt(ctx, validationPrompt, reviewInput)
 	if err != nil {
-		return fmt.Errorf("validate: prompt failed for variant %d: %w", p.VariantID, err)
+		util.Log(ctx).WithError(err).
+			WithField("variant_id", p.VariantID).
+			Warn("validate: LLM failed, accepting with neutral confidence")
+		if updateErr := h.jobRepo.UpdateValidation(ctx, variant.ID, string(domain.StageValidated), 0.5, "LLM unavailable: "+err.Error()); updateErr != nil {
+			return updateErr
+		}
+		if emitErr := h.svc.EventsManager().Emit(ctx, EventVariantValidated, &VariantPayload{
+			VariantID: variant.ID,
+			SourceID:  variant.SourceID,
+		}); emitErr != nil {
+			util.Log(ctx).WithError(emitErr).
+				WithField("variant_id", variant.ID).
+				Warn("validate: emit degraded-validate event failed")
+		}
+		return nil
 	}
 
 	// 5. Parse response. If the AI returned non-JSON, flag the variant

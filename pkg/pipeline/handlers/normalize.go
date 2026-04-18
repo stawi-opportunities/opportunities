@@ -151,7 +151,38 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		if telemetry.AIFailures != nil {
 			telemetry.AIFailures.Add(ctx, 1)
 		}
-		return fmt.Errorf("normalize: extraction failed for variant %d: %w", variant.ID, err)
+		// Graceful degradation: when the LLM is unavailable (rate limit,
+		// timeout, provider outage), don't pile the variant back on the
+		// retry queue forever. Advance the stage with the basic fields
+		// already populated by ExternalToVariant + whatever the content
+		// extractor pulled from HTML. Canonical dedupe still happens; the
+		// job surfaces without AI enrichment and can be re-processed later.
+		util.Log(ctx).WithError(err).
+			WithField("variant_id", variant.ID).
+			WithField("source_id", variant.SourceID).
+			Warn("normalize: extraction failed, advancing with basic fields")
+
+		if advanceErr := h.jobRepo.UpdateStage(ctx, variant.ID, string(domain.StageNormalized)); advanceErr != nil {
+			return fmt.Errorf("normalize: advance stage after LLM failure for variant %d: %w", variant.ID, advanceErr)
+		}
+		if telemetry.StageTransitions != nil {
+			telemetry.StageTransitions.Add(ctx, 1,
+				metric.WithAttributes(
+					attribute.String("from", "deduped"),
+					attribute.String("to", "normalized"),
+					attribute.String("mode", "degraded"),
+				),
+			)
+		}
+		if emitErr := h.svc.EventsManager().Emit(ctx, EventVariantNormalized, &VariantPayload{
+			VariantID: variant.ID,
+			SourceID:  variant.SourceID,
+		}); emitErr != nil {
+			util.Log(ctx).WithError(emitErr).
+				WithField("variant_id", variant.ID).
+				Warn("normalize: emit degraded-normalize event failed")
+		}
+		return nil
 	}
 
 	// 6. Build update map from extracted fields (only overwrite if non-empty).
