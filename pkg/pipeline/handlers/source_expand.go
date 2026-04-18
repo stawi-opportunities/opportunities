@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -127,7 +127,7 @@ func (h *SourceExpansionHandler) Execute(ctx context.Context, payload any) error
 	for _, rawURL := range p.URLs {
 		resolvedBase, err := h.resolveBaseURL(ctx, rawURL)
 		if err != nil {
-			log.Printf("source_expand: resolve %q: %v", rawURL, err)
+			util.Log(ctx).WithError(err).WithField("url", rawURL).Warn("source_expand: resolve failed")
 			continue
 		}
 
@@ -158,13 +158,16 @@ func (h *SourceExpansionHandler) Execute(ctx context.Context, payload any) error
 			Config:           "{}",
 		}
 		if err := h.sourceRepo.Upsert(ctx, newSrc); err != nil {
-			log.Printf("source_expand: upsert %q: %v", resolvedBase, err)
+			util.Log(ctx).WithError(err).WithField("url", resolvedBase).Warn("source_expand: upsert failed")
 			continue
 		}
 		newCount++
 	}
 
-	log.Printf("source_expand: discovered %d new sources from source %d", newCount, p.SourceID)
+	util.Log(ctx).
+		WithField("source_id", p.SourceID).
+		WithField("new_count", newCount).
+		Info("source_expand: discovered new sources")
 	return nil
 }
 

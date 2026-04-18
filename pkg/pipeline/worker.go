@@ -3,8 +3,9 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
+
+	"github.com/pitabwire/util"
 
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
@@ -130,7 +131,7 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 					// If page has very little visible content, it's likely JS-rendered.
 					// Fall back to headless browser if available.
 					if w.browserClient != nil && !extraction.HasVisibleContent(string(detailHTML)) {
-						log.Printf("pipeline: thin content for %s, using headless browser", extJob.ApplyURL)
+						util.Log(ctx).WithField("url", extJob.ApplyURL).Info("pipeline: thin content, using headless browser")
 						if browserHTML, _, browserErr := w.browserClient.Get(ctx, extJob.ApplyURL); browserErr == nil {
 							detailHTML = browserHTML
 						}
@@ -139,10 +140,10 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 						mergeExtractedFields(&extJob, fields)
 						result.JobsAIExtracted++
 					} else {
-						log.Printf("pipeline: AI extraction failed for %s: %v", extJob.ApplyURL, aiErr)
+						util.Log(ctx).WithError(aiErr).WithField("url", extJob.ApplyURL).Warn("pipeline: AI extraction failed")
 					}
 				} else {
-					log.Printf("pipeline: fetch detail page failed for %s: %v", extJob.ApplyURL, fetchErr)
+					util.Log(ctx).WithError(fetchErr).WithField("url", extJob.ApplyURL).Warn("pipeline: fetch detail page failed")
 				}
 			}
 
@@ -201,7 +202,10 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 					Config:           "{}",
 				}
 				if err := w.sourceRepo.Upsert(context.Background(), newSource); err == nil {
-					log.Printf("auto-discovered new job site: %s (%s)", site.URL, site.Name)
+					util.Log(discoverCtx).
+						WithField("url", site.URL).
+						WithField("name", site.Name).
+						Info("pipeline: auto-discovered new job site")
 				}
 			}
 		}()

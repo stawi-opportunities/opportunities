@@ -11,9 +11,10 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"log"
 	"strings"
 	"time"
+
+	"github.com/pitabwire/util"
 
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
@@ -117,7 +118,10 @@ func (it *iterator) Next(ctx context.Context) bool {
 			it.err = err
 			return false
 		}
-		log.Printf("sitemapcrawler: discovered %d job URLs from %s", len(it.jobURLs), it.baseURL)
+		util.Log(ctx).
+			WithField("url", it.baseURL).
+			WithField("count", len(it.jobURLs)).
+			Info("sitemapcrawler: discovered job URLs")
 		if len(it.jobURLs) == 0 {
 			it.done = true
 			return false
@@ -176,7 +180,7 @@ func (it *iterator) discover(ctx context.Context) error {
 	for _, sURL := range sitemapURLs {
 		urls, err := it.parseSitemap(ctx, sURL, 0)
 		if err != nil {
-			log.Printf("sitemapcrawler: error parsing sitemap %s: %v", sURL, err)
+			util.Log(ctx).WithError(err).WithField("url", sURL).Warn("sitemapcrawler: parse sitemap failed")
 			continue
 		}
 		for _, u := range urls {
@@ -249,7 +253,7 @@ func (it *iterator) parseSitemap(ctx context.Context, sitemapURL string, depth i
 		for _, sm := range idx.Sitemaps {
 			sub, err := it.parseSitemap(ctx, sm.Loc, depth+1)
 			if err != nil {
-				log.Printf("sitemapcrawler: sub-sitemap %s: %v", sm.Loc, err)
+				util.Log(ctx).WithError(err).WithField("url", sm.Loc).Warn("sitemapcrawler: sub-sitemap failed")
 				continue
 			}
 			allURLs = append(allURLs, sub...)

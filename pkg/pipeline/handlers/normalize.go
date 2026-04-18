@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -102,7 +102,7 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	if variant == nil {
-		log.Printf("normalize: variant %d not found, skipping", p.VariantID)
+		util.Log(ctx).WithField("variant_id", p.VariantID).Info("normalize: variant not found, skipping")
 		return nil
 	}
 
@@ -118,7 +118,10 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		contentText = variant.Description
 	}
 	if contentText == "" && variant.ApplyURL != "" && h.httpClient != nil {
-		log.Printf("normalize: fetching detail page for variant %d: %s", variant.ID, variant.ApplyURL)
+		util.Log(ctx).
+			WithField("variant_id", variant.ID).
+			WithField("url", variant.ApplyURL).
+			Info("normalize: fetching detail page")
 		if raw, _, fetchErr := h.httpClient.Get(ctx, variant.ApplyURL, nil); fetchErr == nil {
 			extracted, _ := content.ExtractFromHTML(string(raw))
 			if extracted != nil {
@@ -131,7 +134,7 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	if contentText == "" {
-		log.Printf("normalize: variant %d has no content to extract, skipping", variant.ID)
+		util.Log(ctx).WithField("variant_id", variant.ID).Info("normalize: variant has no content to extract, skipping")
 		return nil
 	}
 
@@ -315,8 +318,10 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 			SourceID: variant.SourceID,
 			URLs:     discoveredURLs,
 		}); emitErr != nil {
-			log.Printf("normalize: failed to emit %s for variant %d: %v",
-				EventSourceURLsDiscovered, variant.ID, emitErr)
+			util.Log(ctx).WithError(emitErr).
+				WithField("event", EventSourceURLsDiscovered).
+				WithField("variant_id", variant.ID).
+				Warn("normalize: emit downstream event failed")
 		}
 	}
 

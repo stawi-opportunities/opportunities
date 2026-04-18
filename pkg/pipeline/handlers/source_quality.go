@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -198,19 +198,28 @@ func (h *SourceQualityHandler) Execute(ctx context.Context, payload any) error {
 				return fmt.Errorf("source_quality: disable source: %w", err)
 			}
 		} else {
-			log.Printf("source_quality: source %d not paused (status=%s), pausing first instead of disabling", p.SourceID, src.Status)
+			util.Log(ctx).
+				WithField("source_id", p.SourceID).
+				WithField("status", src.Status).
+				Warn("source_quality: source not paused, pausing first instead of disabling")
 			if err := h.sourceRepo.PauseSource(ctx, p.SourceID); err != nil {
 				return fmt.Errorf("source_quality: pause source (before disable): %w", err)
 			}
 		}
 
 	default:
-		log.Printf("source_quality: unknown recommendation %q for source %d, ignoring",
-			review.Recommendation, p.SourceID)
+		util.Log(ctx).
+			WithField("source_id", p.SourceID).
+			WithField("recommendation", review.Recommendation).
+			Warn("source_quality: unknown recommendation, ignoring")
 	}
 
-	log.Printf("source_quality: source %d recommendation=%q score=%.2f reason=%q",
-		p.SourceID, review.Recommendation, review.QualityScore, review.Reason)
+	util.Log(ctx).
+		WithField("source_id", p.SourceID).
+		WithField("recommendation", review.Recommendation).
+		WithField("quality_score", review.QualityScore).
+		WithField("reason", review.Reason).
+		Info("source_quality: review complete")
 
 	return nil
 }

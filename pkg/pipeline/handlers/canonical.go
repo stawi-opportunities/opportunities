@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -97,7 +97,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	if variant == nil {
-		log.Printf("canonical: variant %d not found, skipping", p.VariantID)
+		util.Log(ctx).WithField("variant_id", p.VariantID).Info("canonical: variant not found, skipping")
 		return nil
 	}
 
@@ -116,7 +116,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	if canonical != nil && canonical.Slug == "" {
 		canonical.Slug = domain.BuildSlug(canonical.Title, canonical.Company, canonical.ID)
 		if slugErr := h.jobRepo.UpdateCanonicalFields(ctx, canonical.ID, map[string]any{"slug": canonical.Slug}); slugErr != nil {
-			log.Printf("canonical: set slug for canonical %d (non-fatal): %v", canonical.ID, slugErr)
+			util.Log(ctx).WithError(slugErr).WithField("canonical_job_id", canonical.ID).Warn("canonical: set slug failed (non-fatal)")
 		}
 	}
 
@@ -125,21 +125,21 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		embText := canonical.Title + " " + canonical.Skills + " " + canonical.Description
 		embedding, embErr := h.extractor.Embed(ctx, embText)
 		if embErr != nil {
-			log.Printf("canonical: embedding failed for canonical %d (non-fatal): %v", canonical.ID, embErr)
+			util.Log(ctx).WithError(embErr).WithField("canonical_job_id", canonical.ID).Warn("canonical: embedding failed (non-fatal)")
 		} else {
 			embJSON, marshalErr := json.Marshal(embedding)
 			if marshalErr != nil {
-				log.Printf("canonical: marshal embedding for canonical %d (non-fatal): %v", canonical.ID, marshalErr)
+				util.Log(ctx).WithError(marshalErr).WithField("canonical_job_id", canonical.ID).Warn("canonical: marshal embedding failed (non-fatal)")
 			} else {
 				if storeErr := h.jobRepo.UpdateEmbedding(ctx, canonical.ID, string(embJSON)); storeErr != nil {
-					log.Printf("canonical: store embedding for canonical %d (non-fatal): %v", canonical.ID, storeErr)
+					util.Log(ctx).WithError(storeErr).WithField("canonical_job_id", canonical.ID).Warn("canonical: store embedding failed (non-fatal)")
 				}
 			}
 		}
 
 		// Recompute quality score with latest data.
 		if scoreErr := h.jobRepo.RecomputeQualityScore(ctx, canonical.ID); scoreErr != nil {
-			log.Printf("canonical: recompute quality score for canonical %d (non-fatal): %v", canonical.ID, scoreErr)
+			util.Log(ctx).WithError(scoreErr).WithField("canonical_job_id", canonical.ID).Warn("canonical: recompute quality score failed (non-fatal)")
 		}
 	}
 

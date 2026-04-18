@@ -7,10 +7,11 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/pitabwire/util"
 
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
@@ -47,7 +48,10 @@ func (c *Connector) Crawl(ctx context.Context, source domain.Source) connectors.
 	// Try sitemap discovery first — most reliable
 	sitemapURLs := discoverSitemapJobURLs(ctx, c.client, source.BaseURL, source.LastSeenAt)
 	if len(sitemapURLs) > 0 {
-		log.Printf("universal: found %d job URLs via sitemap for %s", len(sitemapURLs), source.BaseURL)
+		util.Log(ctx).
+			WithField("url", source.BaseURL).
+			WithField("count", len(sitemapURLs)).
+			Info("universal: found job URLs via sitemap")
 		return &sitemapIterator{
 			jobURLs:   sitemapURLs,
 			batchSize: 50,
@@ -86,12 +90,19 @@ func (it *iterator) Next(ctx context.Context) bool {
 	it.raw = raw
 	it.status = status
 	if err != nil {
-		log.Printf("universal: fetch page %d (%s): %v", it.page+1, it.nextURL, err)
+		util.Log(ctx).WithError(err).
+			WithField("page", it.page+1).
+			WithField("url", it.nextURL).
+			Warn("universal: fetch page failed")
 		it.err = err
 		return false
 	}
 	if status != 200 {
-		log.Printf("universal: page %d status %d (%s)", it.page+1, status, it.nextURL)
+		util.Log(ctx).
+			WithField("page", it.page+1).
+			WithField("status", status).
+			WithField("url", it.nextURL).
+			Warn("universal: page returned non-200 status")
 		it.err = fmt.Errorf("universal: status %d on page %d", status, it.page+1)
 		return false
 	}
@@ -108,7 +119,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 
 	links, err := it.extractor.DiscoverLinks(ctx, discoverInput, it.nextURL)
 	if err != nil {
-		log.Printf("universal: AI discover links failed for %s: %v", it.nextURL, err)
+		util.Log(ctx).WithError(err).WithField("url", it.nextURL).Warn("universal: AI discover links failed")
 		it.err = err
 		return false
 	}

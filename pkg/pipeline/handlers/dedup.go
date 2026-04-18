@@ -3,10 +3,10 @@ package handlers
 import (
 	"context"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -85,7 +85,7 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	if variant == nil {
-		log.Printf("dedup: variant %d not found, skipping", p.VariantID)
+		util.Log(ctx).WithField("variant_id", p.VariantID).Info("dedup: variant not found, skipping")
 		return nil
 	}
 
@@ -101,8 +101,11 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	}
 	if existing != nil && existing.ID != variant.ID {
 		// Duplicate — mark as flagged so stuck-variant recovery doesn't re-emit it.
-		log.Printf("dedup: variant %d is a duplicate of %d (hard_key=%s), flagging",
-			variant.ID, existing.ID, variant.HardKey)
+		util.Log(ctx).
+			WithField("variant_id", variant.ID).
+			WithField("existing_id", existing.ID).
+			WithField("hard_key", variant.HardKey).
+			Info("dedup: variant is a duplicate, flagging")
 		_ = h.jobRepo.UpdateStage(ctx, variant.ID, string(domain.StageFlagged))
 		return nil
 	}

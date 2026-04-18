@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -123,7 +123,7 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	if variant == nil {
-		log.Printf("validate: variant %d not found, skipping", p.VariantID)
+		util.Log(ctx).WithField("variant_id", p.VariantID).Info("validate: variant not found, skipping")
 		return nil
 	}
 
@@ -156,7 +156,7 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 	//    instead of returning an error that would cause infinite retries.
 	var result validationResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		log.Printf("validate: AI response not parseable for variant %d, flagging: %v", p.VariantID, err)
+		util.Log(ctx).WithError(err).WithField("variant_id", p.VariantID).Warn("validate: AI response not parseable, flagging")
 		if updateErr := h.jobRepo.UpdateValidation(ctx, variant.ID, string(domain.StageFlagged), 0, "AI response not parseable: "+err.Error()); updateErr != nil {
 			return updateErr
 		}
@@ -170,7 +170,7 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 			return err
 		}
 		if err := h.sourceRepo.IncrementQualityValidated(ctx, variant.SourceID); err != nil {
-			log.Printf("validate: increment quality validated for source %d: %v", variant.SourceID, err)
+			util.Log(ctx).WithError(err).WithField("source_id", variant.SourceID).Warn("validate: increment quality validated failed")
 		}
 		if telemetry.StageTransitions != nil {
 			telemetry.StageTransitions.Add(ctx, 1,
@@ -192,13 +192,13 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	if err := h.sourceRepo.IncrementQualityFlagged(ctx, variant.SourceID); err != nil {
-		log.Printf("validate: increment quality flagged for source %d: %v", variant.SourceID, err)
+		util.Log(ctx).WithError(err).WithField("source_id", variant.SourceID).Warn("validate: increment quality flagged failed")
 	}
 
 	// Check if the source quality rate warrants a review alert.
 	rate, total, err := h.sourceRepo.GetQualityRate(ctx, variant.SourceID)
 	if err != nil {
-		log.Printf("validate: get quality rate for source %d: %v", variant.SourceID, err)
+		util.Log(ctx).WithError(err).WithField("source_id", variant.SourceID).Warn("validate: get quality rate failed")
 		return nil
 	}
 	if rate > 0.5 && total >= 10 {
