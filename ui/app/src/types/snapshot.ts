@@ -20,6 +20,8 @@ export interface JobSnapshot {
   expires_at?: string;
   quality_score: number;
   is_featured: boolean;
+  /** ISO 639-1 source language. Missing on pre-translation snapshots. */
+  language?: string;
 }
 
 export interface CompanyRef {

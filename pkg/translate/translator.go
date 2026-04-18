@@ -99,6 +99,7 @@ func (t *Translator) Translate(ctx context.Context, snap domain.JobSnapshot, sou
 	}
 
 	result := snap
+	result.Language = tgt
 	if out.Title != "" {
 		result.Title = out.Title
 	}

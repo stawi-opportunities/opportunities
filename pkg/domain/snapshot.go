@@ -24,6 +24,11 @@ type JobSnapshot struct {
 	ExpiresAt       string          `json:"expires_at,omitempty"`
 	QualityScore    float64         `json:"quality_score"`
 	IsFeatured      bool            `json:"is_featured"`
+	// Language is the ISO 639-1 code of the snapshot content itself. On
+	// the primary jobs/{slug}.json it mirrors the source language; on
+	// jobs/{slug}.{lang}.json the TranslateHandler overwrites it with
+	// the target language so the UI can show a "translated from X" notice.
+	Language string `json:"language,omitempty"`
 }
 
 type CompanyRef struct {
@@ -105,6 +110,7 @@ func buildSnapshot(j *CanonicalJob, descHTML string) JobSnapshot {
 		ApplyURL:        j.ApplyURL,
 		QualityScore:    j.QualityScore,
 		IsFeatured:      j.QualityScore >= 80,
+		Language:        j.Language,
 	}
 	if snap.Category == "" {
 		snap.Category = string(DeriveCategory(j.Roles, j.Industry))

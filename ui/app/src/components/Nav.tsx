@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listCategories } from "@/api/search";
 import { StawiAuth } from "./StawiAuth";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { useI18n } from "@/i18n/I18nProvider";
 import { categoryLabel } from "@/utils/format";
 import type { FacetEntry } from "@/types/search";
 
@@ -12,6 +14,7 @@ import type { FacetEntry } from "@/types/search";
  *   - Mount slot for @stawi/profile's auth UI
  */
 export default function Nav() {
+  const { t } = useI18n();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [findJobsOpen, setFindJobsOpen] = useState(false);
   const findJobsRef = useRef<HTMLDivElement | null>(null);
@@ -66,25 +69,25 @@ export default function Nav() {
               aria-controls="find-jobs-menu"
               className="flex items-center gap-1 text-base font-medium text-gray-700 hover:text-navy-900"
             >
-              Find Jobs
+              {t("nav.findJobs")}
               <ChevronIcon open={findJobsOpen} />
             </button>
             {findJobsOpen && (
               <div
                 id="find-jobs-menu"
-                className="absolute left-0 top-full mt-2 w-72 rounded-lg border border-gray-200 bg-white py-2 shadow-lg"
+                className="absolute start-0 top-full mt-2 w-72 rounded-lg border border-gray-200 bg-white py-2 shadow-lg"
               >
                 <a
                   href="/jobs/"
                   className="block px-4 py-3 text-base font-medium text-gray-900 hover:bg-gray-50"
                 >
-                  All Jobs
+                  {t("nav.allJobs")}
                 </a>
                 <a
                   href="/search/"
                   className="block px-4 py-3 text-base font-medium text-gray-900 hover:bg-gray-50"
                 >
-                  Advanced search
+                  {t("nav.search")}
                 </a>
                 <div className="my-1 border-t border-gray-100" />
                 {categories.slice(0, 10).map((c) => (
@@ -101,7 +104,7 @@ export default function Nav() {
                 ))}
                 {categories.length === 0 && categoriesQuery.isSuccess && (
                   <p className="px-4 py-3 text-sm text-gray-400">
-                    Categories load once jobs are indexed.
+                    {t("nav.categoriesHint")}
                   </p>
                 )}
               </div>
@@ -109,11 +112,12 @@ export default function Nav() {
           </div>
 
           <a href="/about/" className="text-base font-medium text-gray-700 hover:text-navy-900">
-            About
+            {t("nav.about")}
           </a>
         </div>
 
         <div className="flex items-center gap-3">
+          <LanguageSwitcher />
           <StawiAuth />
 
           <button
@@ -141,14 +145,14 @@ export default function Nav() {
               onClick={closeMobile}
               className="block rounded-lg px-3 py-2.5 text-base font-medium text-gray-900 hover:bg-gray-50"
             >
-              All Jobs
+              {t("nav.allJobs")}
             </a>
             <a
               href="/search/"
               onClick={closeMobile}
               className="block rounded-lg px-3 py-2.5 text-base font-medium text-gray-900 hover:bg-gray-50"
             >
-              Advanced search
+              {t("nav.search")}
             </a>
             {categories.slice(0, 10).map((c) => (
               <a
@@ -166,7 +170,7 @@ export default function Nav() {
               onClick={closeMobile}
               className="block rounded-lg px-3 py-2.5 text-base font-medium text-gray-700 hover:bg-gray-50"
             >
-              About
+              {t("nav.about")}
             </a>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchSnapshot } from "@/api/snapshot";
 import { categoryLabel, fmtMoney, isoInPast, timeAgo } from "@/utils/format";
 import { mountSanitisedHTML } from "@/utils/html";
+import { useI18n } from "@/i18n/I18nProvider";
 import type { JobSnapshot } from "@/types/snapshot";
 
 /**
@@ -11,14 +12,17 @@ import type { JobSnapshot } from "@/types/snapshot";
  * slug from window.location.pathname, fetch the R2 JobSnapshot, and render.
  */
 export default function JobDetail() {
+  const { lang, t } = useI18n();
   const slug = (() => {
     const m = window.location.pathname.match(/^\/jobs\/([^/]+)\/?$/);
     return m ? decodeURIComponent(m[1]!) : null;
   })();
 
+  // Language is part of the cache key so a switch triggers a fresh fetch
+  // without us having to manually invalidate.
   const q = useQuery({
-    queryKey: ["snapshot", slug],
-    queryFn: () => fetchSnapshot(slug!),
+    queryKey: ["snapshot", slug, lang],
+    queryFn: () => fetchSnapshot(slug!, lang),
     enabled: !!slug,
     staleTime: 5 * 60_000,
   });
@@ -60,6 +64,12 @@ export default function JobDetail() {
   );
   const canApply = !!snap.apply_url && !expired;
 
+  // Notice shown when the current UI language differs from the snapshot's
+  // source locale — i.e. the user is reading an automated translation.
+  // snap.language is undefined on pre-translation snapshots; fall back to
+  // an English assumption so we don't show the notice spuriously.
+  const showTranslatedNotice = !!snap.language && snap.language !== lang;
+
   return (
     <article className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <script ref={ldRef} type="application/ld+json" />
@@ -87,6 +97,15 @@ export default function JobDetail() {
           role="status"
         >
           This job is no longer accepting applications.
+        </div>
+      )}
+
+      {showTranslatedNotice && (
+        <div
+          className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900"
+          role="status"
+        >
+          {t("job.translatedNotice")}
         </div>
       )}
 
@@ -137,7 +156,7 @@ export default function JobDetail() {
                 rel="noopener noreferrer"
                 className="inline-flex items-center rounded-md bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
               >
-                Apply now
+                {t("cta.applyNow")}
                 <span className="sr-only"> (opens in a new tab)</span>
                 <svg className="ml-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
@@ -155,7 +174,7 @@ export default function JobDetail() {
           <h2 id="skills-heading" className="sr-only">Skills</h2>
           {snap.skills.required.length > 0 && (
             <>
-              <h3 className="text-sm font-semibold text-gray-700">Required skills</h3>
+              <h3 className="text-sm font-semibold text-gray-700">{t("job.skillsRequired")}</h3>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {snap.skills.required.map((s) => (
                   <li key={s} className="rounded border border-navy-200 bg-navy-50 px-3 py-1 text-sm text-navy-900">
@@ -167,7 +186,7 @@ export default function JobDetail() {
           )}
           {snap.skills.nice_to_have.length > 0 && (
             <>
-              <h3 className="mt-4 text-sm font-semibold text-gray-700">Nice to have</h3>
+              <h3 className="mt-4 text-sm font-semibold text-gray-700">{t("job.skillsNiceToHave")}</h3>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {snap.skills.nice_to_have.map((s) => (
                   <li key={s} className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700">
