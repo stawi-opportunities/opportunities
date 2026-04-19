@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"stawi.jobs/pkg/domain"
+	"stawi.jobs/pkg/locale"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/scoring"
 )
@@ -109,6 +110,16 @@ func (e *Engine) UpsertAndCluster(ctx context.Context, variant *domain.JobVarian
 	now := time.Now().UTC()
 	canonical := buildCanonicalFromVariant(variant, clusterID, now)
 	canonical.QualityScore = scoring.Score(canonical)
+
+	// 6a. Infer country from location_text when the extractor didn't
+	//     produce one.  The tiered feed uses country as a hard filter
+	//     for local/regional sections, so a stale "" blocks every job
+	//     from ever appearing in its home-country tier.  The Go helper
+	//     is bounded and predictable; the extractor can still override
+	//     this value on future runs when its output is trustworthy.
+	if canonical.Country == "" && canonical.LocationText != "" {
+		canonical.Country = locale.InferCountry(canonical.LocationText)
+	}
 
 	// 6b. Pre-compute the slug so the INSERT carries a unique value.
 	//     canonical_jobs.slug has a UNIQUE index, and UpsertCanonical's

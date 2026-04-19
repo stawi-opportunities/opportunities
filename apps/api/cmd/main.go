@@ -537,6 +537,12 @@ func main() {
 	// per-user personalisation round-trip.
 	mux.HandleFunc("GET /api/feed", feedHandler(jobRepo, facetRepo))
 
+	// POST /admin/backfill/country — infer ISO-3166 from location_text
+	// for canonical_jobs rows with empty country. Tiered feed uses
+	// country as a hard filter, so empty columns block every job from
+	// its home-country tier. Safe to re-run; ?dry_run=1 previews.
+	mux.HandleFunc("POST /admin/backfill/country", countryBackfillHandler(db))
+
 	// POST /admin/feeds/rebuild — regenerates the per-country feed
 	// manifests in R2 (/feeds/<cc>.json + /feeds/default.json +
 	// /feeds/index.json). Anon/unfiltered users hit R2 directly for
