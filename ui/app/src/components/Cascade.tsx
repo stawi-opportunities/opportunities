@@ -147,22 +147,11 @@ export default function Cascade(props: CascadeProps) {
   }, [q.data?.facets, props.onFacets]);
 
   if (q.isLoading && !q.data) return <CascadeSkeleton />;
-  if (q.isError) {
-    return (
-      <p className="mt-6 text-red-700">
-        Unable to load jobs right now. Please try again in a moment.
-      </p>
-    );
-  }
-  if (!q.data) return null;
-
-  if (q.data.tiers.length === 0) {
-    return (
-      <p className="mt-8 text-center text-sm text-gray-600">
-        No jobs match those filters yet. Try widening your search.
-      </p>
-    );
-  }
+  // On error or empty state, render nothing. The user asked us not to
+  // surface transient load failures as banners — a quiet empty frame
+  // is preferred. The skeleton already covered the "hope" UX during
+  // the in-flight request; beyond that, keep the page clean.
+  if (q.isError || !q.data || q.data.tiers.length === 0) return null;
 
   return (
     <div className="mt-2 space-y-10">
