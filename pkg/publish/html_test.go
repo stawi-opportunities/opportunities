@@ -57,3 +57,36 @@ func TestRenderDescriptionHTML_StripsJavaScriptScheme(t *testing.T) {
 		t.Fatalf("javascript scheme not stripped: %q", out)
 	}
 }
+
+// Regression: upstream connectors occasionally hand us entity-encoded
+// HTML. Before the entity-decode pass, the whole string got treated as
+// plain text and wrapped in a <p>, then rendered literally on the
+// frontend ("<h2><strong>Who we are</strong></h2>" showed up as visible
+// angle-bracketed text on the job detail page).
+func TestRenderDescriptionHTML_EntityEncodedHTML(t *testing.T) {
+	in := `&lt;div class=&#34;content-intro&#34;&gt;&lt;p&gt;Stripe is a financial platform.&lt;/p&gt;&lt;/div&gt;`
+	out := publish.RenderDescriptionHTML(in)
+	if strings.Contains(out, "&lt;div") || strings.Contains(out, "&#34;") {
+		t.Errorf("entities not decoded: %q", out)
+	}
+	if !strings.Contains(out, "<div") || !strings.Contains(out, "<p>") {
+		t.Errorf("decoded HTML not rendered: %q", out)
+	}
+	if strings.Contains(out, "<script") {
+		t.Errorf("sanitizer bypassed: %q", out)
+	}
+}
+
+func TestRenderDescriptionHTML_EntityEncodedScriptStillStripped(t *testing.T) {
+	// Entity-decoded path must still pass through the sanitizer —
+	// "&lt;script&gt;" decoded should land as <script> and then be
+	// stripped, not smuggled through.
+	in := `&lt;p&gt;hello&lt;/p&gt;&lt;script&gt;bad()&lt;/script&gt;`
+	out := publish.RenderDescriptionHTML(in)
+	if strings.Contains(out, "<script") {
+		t.Errorf("script survived entity-decode+sanitize: %q", out)
+	}
+	if !strings.Contains(out, "hello") {
+		t.Errorf("content lost: %q", out)
+	}
+}
