@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { mount as mountProfile, type MountHandle } from "@stawi/profile";
+import { authRuntime } from "@/auth/runtime";
 import { useAuth } from "@/providers/AuthProvider";
 import { getConfig } from "@/utils/config";
 import { fetchMeSubscription, createCheckout } from "@/api/candidates";
@@ -379,6 +380,7 @@ function ProfileMount() {
       const cfg = getConfig();
       handle = mountProfile({
         target: host,
+        runtime: authRuntime(),
         clientId: cfg.oidcClientID,
         installationId: cfg.oidcInstallationID,
         idpBaseUrl: cfg.oidcIssuer,

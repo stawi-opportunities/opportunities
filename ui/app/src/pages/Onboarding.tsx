@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
-import { submitOnboarding, createCheckout } from "@/api/candidates";
+import { submitOnboarding, uploadCV, createCheckout } from "@/api/candidates";
 import { PLANS, planById, type PlanId } from "@/utils/plans";
 
 // Each step owns a contiguous slice of fields; we validate one step at a
@@ -133,7 +133,8 @@ export default function Onboarding() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await submitOnboarding({
+      // Step 1: create the profile (JSON, no file).
+      await submitOnboarding({
         target_job_title:    data.targetJobTitle,
         experience_level:    data.experienceLevel,
         job_search_status:   data.jobSearchStatus,
@@ -146,11 +147,17 @@ export default function Onboarding() {
         country:             data.country,
         plan:                data.plan,
         agree_terms:         data.agreeTerms,
-        cv:                  data.cv instanceof File ? data.cv : null,
       });
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        throw new Error(body.slice(0, 200) || res.statusText);
+
+      // Step 2: if the user attached a CV, upload it separately.
+      // Failure here is non-fatal — the profile is already saved and
+      // the user can retry CV upload from the dashboard.
+      if (data.cv instanceof File) {
+        try {
+          await uploadCV(data.cv);
+        } catch (cvErr) {
+          console.warn("[onboarding] CV upload failed (profile saved):", cvErr);
+        }
       }
       // Kick off payment — all tiers are paid, so every onboarded
       // user gets redirected to the provider's hosted checkout. The

@@ -6,18 +6,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getAuthRuntime, type AuthState } from "@stawi/auth-runtime";
-import { getConfig } from "@/utils/config";
+import type { AuthRuntime, AuthState } from "@stawi/auth-runtime";
+import { authRuntime } from "@/auth/runtime";
 import { setAnalyticsUser } from "@/analytics/openobserve";
 
-// Thin wrapper around the @stawi/auth-runtime singleton. A single
-// AuthProvider at the root of every island means all islands share the
-// same runtime instance (the widget uses a global symbol for this) and
-// therefore the same token store and auth state subscription.
+// Thin context around the module-level runtime singleton. Every React
+// island that's wrapped in <AuthProvider> gets the same instance, and
+// non-React modules (api clients) can read it via authRuntime().
 
 interface AuthCtx {
   state: AuthState;
-  runtime: ReturnType<typeof getAuthRuntime>;
+  runtime: AuthRuntime;
   login: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -25,40 +24,27 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const cfg = getConfig();
-
-  const runtime = useMemo(
-    () =>
-      getAuthRuntime({
-        clientId: cfg.oidcClientID,
-        installationId: cfg.oidcInstallationID,
-        idpBaseUrl: cfg.oidcIssuer,
-        apiBaseUrl: cfg.candidatesAPIURL,
-        redirectUri: cfg.oidcRedirectURI,
-        scopes: ["openid", "profile", "offline_access"],
-        skipFedCM: true,
-      }),
-    [
-      cfg.oidcClientID,
-      cfg.oidcInstallationID,
-      cfg.oidcIssuer,
-      cfg.candidatesAPIURL,
-      cfg.oidcRedirectURI,
-    ],
-  );
-
+  const runtime = useMemo(() => authRuntime(), []);
   const [state, setState] = useState<AuthState>(runtime.getState());
 
   useEffect(() => {
     const unsub = runtime.onAuthStateChange((next) => {
       setState(next);
-      // Thread the authenticated identity into OpenObserve so every
-      // RUM session and log line is joinable back to profile_id.
-      // `getUser()` is async and only resolves when a live token
-      // exists, so guard on the state we just transitioned to.
+      // Thread identity into OpenObserve so RUM + logs are joinable
+      // back to the profile_id. The 1.0 runtime doesn't expose a
+      // synchronous getUser() — use getClaims() once authenticated.
       if (next === "authenticated") {
-        runtime.getUser().then(
-          (u) => setAnalyticsUser({ id: u.id, name: u.name, email: u.email }),
+        runtime.getClaims().then(
+          (claims) => {
+            const id = String(claims.sub ?? "");
+            if (id) {
+              setAnalyticsUser({
+                id,
+                name: String(claims.name ?? claims.preferred_username ?? ""),
+                email: String(claims.email ?? ""),
+              });
+            }
+          },
           () => setAnalyticsUser(null),
         );
       } else if (next === "unauthenticated") {
@@ -66,13 +52,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Kick the runtime out of "initializing" on first mount by asking for
-    // a token silently. A rejection here means "no live session" — the
-    // runtime emits an `unauthenticated` state as a side effect of the
-    // failure, so we don't need to force it with logout() (which would
-    // bounce fresh visitors to Hydra's end-session endpoint).
+    // Warm the OIDC discovery cache and let the runtime move out of
+    // "initializing" on mount. prefetchDiscovery is cheap (single GET
+    // to /.well-known/openid-configuration) and fires a state
+    // transition so the listener above updates React.
     if (runtime.getState() === "initializing") {
-      runtime.getAccessToken().catch(() => {});
+      runtime.prefetchDiscovery().catch(() => {
+        // Discovery fetch failure surfaces via the normal auth-state
+        // path — don't double-log.
+      });
     }
 
     return unsub;

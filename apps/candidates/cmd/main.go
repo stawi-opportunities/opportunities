@@ -204,6 +204,7 @@ func main() {
 	mux.Handle("GET /me/subscription", authWrap(meSubscriptionHandler(candidateRepo, matchRepo)))
 	mux.Handle("POST /billing/checkout", authWrap(checkoutHandler(candidateRepo, billingClient, &cfg)))
 	mux.Handle("POST /candidates/onboard", authWrap(onboardHandler(candidateRepo, extractor, svc)))
+	mux.Handle("PUT /me/cv", authWrap(uploadCVHandler(candidateRepo, extractor)))
 	mux.Handle("GET /candidates/profile", authWrap(getProfileHandler(candidateRepo)))
 	mux.Handle("PUT /candidates/profile", authWrap(updateProfileHandler(candidateRepo)))
 	mux.Handle("GET /candidates/matches", authWrap(listMatchesHandler(matchRepo)))
@@ -801,7 +802,32 @@ func meSubscriptionHandler(candidateRepo *repository.CandidateRepository, matchR
 	}
 }
 
+// onboardBody is the JSON shape accepted by POST /candidates/onboard.
+// CV upload lives on a separate endpoint (PUT /me/cv) so the widget
+// runtime's JSON fetch + single-file upload primitives cover the full
+// onboarding flow — no multipart-with-text-fields request needed.
+type onboardBody struct {
+	Plan               string  `json:"plan"`
+	TargetJobTitle     string  `json:"target_job_title"`
+	ExperienceLevel    string  `json:"experience_level"`
+	JobSearchStatus    string  `json:"job_search_status"`
+	PreferredRegions   []string `json:"preferred_regions"`
+	PreferredTimezones []string `json:"preferred_timezones"`
+	PreferredLanguages []string `json:"preferred_languages"`
+	JobTypes           []string `json:"job_types"`
+	Country            string  `json:"country"`
+	Currency           string  `json:"currency"`
+	WantsATSReport     bool    `json:"wants_ats_report"`
+	SalaryMin          float32 `json:"salary_min"`
+	SalaryMax          float32 `json:"salary_max"`
+	USWorkAuth         *bool   `json:"us_work_auth"`
+	NeedsSponsorship   *bool   `json:"needs_sponsorship"`
+	AgreeTerms         bool    `json:"agree_terms"`
+}
+
 // onboardHandler creates a CandidateProfile for the authenticated user.
+// Accepts JSON only — the @stawi/profile runtime's fetch() can't
+// emit multipart, so the CV upload moved to PUT /me/cv.
 func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor, svc *frame.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -822,17 +848,16 @@ func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *ex
 			return
 		}
 
-		if err := r.ParseMultipartForm(10 << 20); err != nil {
-			http.Error(w, `{"error":"invalid multipart form"}`, http.StatusBadRequest)
+		var body onboardBody
+		if decodeErr := json.NewDecoder(r.Body).Decode(&body); decodeErr != nil {
+			http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
 			return
 		}
 
-		// Subscription plan chosen during onboarding. Free lands the
-		// candidate on the Free tier immediately; any paid plan writes the
-		// PlanID but leaves Subscription at "free" until the billing
-		// webhook confirms payment and flips it to "paid".
-		plan := r.FormValue("plan")
-		subscription := domain.SubscriptionFree
+		// Plan: free is the default; any paid tier sets PlanID but
+		// leaves Subscription="free" until the billing webhook flips
+		// to "paid". Mirrors the pre-split behaviour exactly.
+		plan := strings.TrimSpace(body.Plan)
 		if plan == "" {
 			plan = "free"
 		}
@@ -840,77 +865,146 @@ func onboardHandler(candidateRepo *repository.CandidateRepository, extractor *ex
 		candidate := &domain.CandidateProfile{
 			ProfileID:          profileID,
 			Status:             domain.CandidateActive,
-			Subscription:       subscription,
+			Subscription:       domain.SubscriptionFree,
 			PlanID:             plan,
-			TargetJobTitle:     r.FormValue("target_job_title"),
-			ExperienceLevel:    r.FormValue("experience_level"),
-			JobSearchStatus:    r.FormValue("job_search_status"),
-			PreferredRegions:   r.FormValue("preferred_regions"),
-			PreferredTimezones: r.FormValue("preferred_timezones"),
-			PreferredCountries: r.FormValue("country"),
-			// UI sends these as JSON-stringified arrays. Stored verbatim
-			// for now; the matching engine parses on read.
-			Languages:      r.FormValue("preferred_languages"),
-			PreferredRoles: r.FormValue("job_types"),
-			WantsATSReport: r.FormValue("wants_ats_report") == "true",
-			Currency:       r.FormValue("currency"),
+			TargetJobTitle:     body.TargetJobTitle,
+			ExperienceLevel:    body.ExperienceLevel,
+			JobSearchStatus:    body.JobSearchStatus,
+			PreferredRegions:   joinCSV(body.PreferredRegions),
+			PreferredTimezones: joinCSV(body.PreferredTimezones),
+			PreferredCountries: body.Country,
+			Languages:          joinCSV(body.PreferredLanguages),
+			PreferredRoles:     joinCSV(body.JobTypes),
+			WantsATSReport:     body.WantsATSReport,
+			Currency:           body.Currency,
+			SalaryMin:          body.SalaryMin,
+			SalaryMax:          body.SalaryMax,
+			USWorkAuth:         body.USWorkAuth,
+			NeedsSponsorship:   body.NeedsSponsorship,
 		}
 
-		if v := r.FormValue("salary_min"); v != "" {
-			if f, err := strconv.ParseFloat(v, 32); err == nil {
-				candidate.SalaryMin = float32(f)
-			}
-		}
-		if v := r.FormValue("salary_max"); v != "" {
-			if f, err := strconv.ParseFloat(v, 32); err == nil {
-				candidate.SalaryMax = float32(f)
-			}
-		}
-		if v := r.FormValue("us_work_auth"); v != "" {
-			b := v == "true"
-			candidate.USWorkAuth = &b
-		}
-		if v := r.FormValue("needs_sponsorship"); v != "" {
-			b := v == "true"
-			candidate.NeedsSponsorship = &b
-		}
-
-		file, header, fileErr := r.FormFile("cv")
-		if fileErr == nil {
-			defer func() { _ = file.Close() }()
-			data, readErr := io.ReadAll(file)
-			if readErr != nil {
-				http.Error(w, `{"error":"failed to read CV file"}`, http.StatusBadRequest)
-				return
-			}
-			cvText, extractErr := extraction.ExtractTextFromFile(data, header.Filename)
-			if extractErr != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"CV extraction failed: %s"}`, extractErr.Error()), http.StatusBadRequest)
-				return
-			}
-			candidate.CVRawText = cvText
-
-			if extractor != nil && cvText != "" {
-				fields, aiErr := extractor.ExtractCV(ctx, cvText)
-				if aiErr == nil {
-					applyCVFields(candidate, fields)
-				}
-			}
-		}
-
-		if err := candidateRepo.Create(ctx, candidate); err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		if createErr := candidateRepo.Create(ctx, candidate); createErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, createErr.Error()), http.StatusInternalServerError)
 			return
 		}
-
-		// Inbound-email path: score the CV in the background so the
-		// report is ready when the user next signs in to the web UI.
-		kickoffCVScore(candidateRepo, extractor, candidate)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(candidate)
 	}
+}
+
+// uploadCVHandler handles PUT /me/cv — single-file multipart or raw
+// body. The @stawi/profile runtime's upload() posts a File as raw
+// bytes with a Content-Type header, so we read from r.Body directly;
+// we also accept multipart for curl / legacy callers.
+func uploadCVHandler(candidateRepo *repository.CandidateRepository, extractor *extraction.Extractor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims := security.ClaimsFromContext(ctx)
+		if claims == nil {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		profileID := claims.GetProfileID()
+
+		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		if candidate == nil {
+			http.Error(w, `{"error":"candidate not found — finish onboarding first"}`, http.StatusConflict)
+			return
+		}
+
+		// Accept either multipart (legacy curl) or raw body (runtime.upload).
+		var (
+			data     []byte
+			filename string
+		)
+		ct := r.Header.Get("Content-Type")
+		switch {
+		case strings.HasPrefix(ct, "multipart/"):
+			if parseErr := r.ParseMultipartForm(10 << 20); parseErr != nil {
+				http.Error(w, `{"error":"invalid multipart form"}`, http.StatusBadRequest)
+				return
+			}
+			file, header, fileErr := r.FormFile("cv")
+			if fileErr != nil {
+				http.Error(w, `{"error":"cv field is required"}`, http.StatusBadRequest)
+				return
+			}
+			defer func() { _ = file.Close() }()
+			filename = header.Filename
+			data, err = io.ReadAll(io.LimitReader(file, 10<<20))
+			if err != nil {
+				http.Error(w, `{"error":"failed to read CV"}`, http.StatusBadRequest)
+				return
+			}
+		default:
+			// Raw-body upload. runtime.upload() sends the file as the
+			// request body and X-Filename in a header (per the widget
+			// contract); fall back to Content-Disposition when absent.
+			filename = r.Header.Get("X-Filename")
+			if filename == "" {
+				filename = "cv.bin"
+			}
+			data, err = io.ReadAll(io.LimitReader(r.Body, 10<<20))
+			if err != nil {
+				http.Error(w, `{"error":"failed to read body"}`, http.StatusBadRequest)
+				return
+			}
+		}
+
+		cvText, extractErr := extraction.ExtractTextFromFile(data, filename)
+		if extractErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"CV extraction failed: %s"}`, extractErr.Error()), http.StatusBadRequest)
+			return
+		}
+		candidate.CVRawText = cvText
+
+		if extractor != nil && cvText != "" {
+			if fields, aiErr := extractor.ExtractCV(ctx, cvText); aiErr == nil {
+				applyCVFields(candidate, fields)
+			}
+		}
+
+		if updateErr := candidateRepo.Update(ctx, candidate); updateErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, updateErr.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		// Score the CV in the background so the dashboard has the
+		// report ready on next load. Same behaviour as the pre-split
+		// onboarding handler.
+		kickoffCVScore(candidateRepo, extractor, candidate)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":          true,
+			"cv_length":   len(cvText),
+			"candidate":   candidate,
+		})
+	}
+}
+
+// joinCSV serialises a string slice into the comma-separated format
+// the CandidateProfile text columns use. The matching engine parses
+// on read; this mirrors the prior behaviour of accepting JSON-encoded
+// array strings from the multipart form.
+func joinCSV(xs []string) string {
+	if len(xs) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(xs))
+	for _, x := range xs {
+		x = strings.TrimSpace(x)
+		if x != "" {
+			out = append(out, x)
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 // saveJobHandler handles POST /jobs/{id}/save — bookmarks a job for the authenticated user.

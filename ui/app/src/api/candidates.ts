@@ -1,22 +1,15 @@
-import { getConfig } from "@/utils/config";
-import { getAuthRuntime } from "@stawi/auth-runtime";
 import type { PlanId } from "@/utils/plans";
+import { authRuntime } from "@/auth/runtime";
 
-function join(base: string, path: string): string {
-  const b = base.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : "/" + path;
-  return b + p;
-}
+// All auth'd candidate-service API calls go through the shared runtime.
+// @stawi/auth-runtime 1.0+ owns the token (no getAccessToken export),
+// so we can't forge Bearer headers ourselves — every call uses
+// `runtime.fetch()` (JSON / string / ArrayBuffer bodies only) or
+// `runtime.upload()` (single-file body). Multipart with file + text
+// fields isn't supported, which is why onboarding sends profile text
+// via fetch() and the CV via a separate upload() call.
 
-async function bearer(): Promise<Record<string, string>> {
-  try {
-    const token = await getAuthRuntime().getAccessToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  } catch {
-    return {};
-  }
-}
-
+/** Matches the Go onboardBody shape (JSON, no file). */
 export interface OnboardingPayload {
   target_job_title: string;
   experience_level: string;
@@ -30,99 +23,93 @@ export interface OnboardingPayload {
   country: string;
   plan: PlanId;
   agree_terms: boolean;
-  /** CV file (PDF or DOCX). Required — the backend extracts text + AI
-   * fields before creating the profile, and matching depends on it. */
-  cv: File | null;
+  salary_min?: number;
+  salary_max?: number;
+  us_work_auth?: boolean | null;
+  needs_sponsorship?: boolean | null;
+  currency?: string;
 }
 
 /**
- * POST /candidates/onboard — creates the candidate profile. The backend
- * expects multipart/form-data so it can optionally receive a CV file and
- * run PDF/DOCX extraction before returning.
+ * POST /candidates/onboard — creates the CandidateProfile row from
+ * the text fields. CV upload is a separate PUT /me/cv call (required
+ * because the v1 runtime can't send multipart-with-text-fields).
  */
-export async function submitOnboarding(payload: OnboardingPayload): Promise<Response> {
-  const url = join(getConfig().candidatesAPIURL, "/candidates/onboard");
-  const form = new FormData();
-  form.set("target_job_title",   payload.target_job_title);
-  form.set("experience_level",   payload.experience_level);
-  form.set("job_search_status",  payload.job_search_status);
-  form.set("salary_range",       payload.salary_range ?? "");
-  form.set("wants_ats_report",   String(payload.wants_ats_report));
-  form.set("preferred_regions",   JSON.stringify(payload.preferred_regions));
-  form.set("preferred_timezones", JSON.stringify(payload.preferred_timezones));
-  form.set("preferred_languages", JSON.stringify(payload.preferred_languages));
-  form.set("job_types",           JSON.stringify(payload.job_types));
-  form.set("country",             payload.country);
-  form.set("plan",               payload.plan);
-  form.set("agree_terms",        String(payload.agree_terms));
-  if (payload.cv) form.set("cv", payload.cv);
-  return fetch(url, {
+export async function submitOnboarding(
+  payload: OnboardingPayload,
+): Promise<{ id: number; profile_id: string }> {
+  return authRuntime().fetch("/candidates/onboard", {
     method: "POST",
-    headers: { ...(await bearer()) }, // don't set Content-Type — browser adds the boundary
-    body: form,
-    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 }
 
-export interface MeSubscription {
-  /** The server may return legacy "free" or an unknown string; the
-   * Dashboard normalises this via `normalizePlan(raw)` — anything not in
-   * {starter, pro, managed} means "no active subscription". */
-  plan: string | null;
-  status: "none" | "active" | "past_due" | "cancelled";
-  renews_at?: string;
-  agent?: { name: string; email: string } | null;
-  queued_matches: number;
-  delivered_this_week: number;
+/**
+ * PUT /me/cv — uploads the CV file as the raw request body.  The
+ * server re-extracts text + scores the CV in the background; the
+ * response carries the updated candidate row.
+ */
+export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: number }> {
+  return authRuntime().upload("/me/cv", file);
 }
+
+/** Subset of CandidateProfile the UI consumes. */
+export interface CandidateSummary {
+  profile_id: string;
+  status: string;
+  current_title: string;
+  preferred_countries: string;
+  preferred_regions: string;
+  remote_preference: string;
+  languages: string;
+  plan_id: string;
+  subscription: string;
+}
+
+/** GET /me — authed user identity + CandidateProfile row.  Returns
+ *  null on any failure so callers can render anon fallback. */
+export async function fetchCandidate(): Promise<CandidateSummary | null> {
+  try {
+    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>("/me");
+    return body.candidate ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Billing ──────────────────────────────────────────────────────
 
 export interface BillingPlan {
   id: PlanId;
   name: string;
   description: string;
   interval: string;
-  /** Amount in minor units of `currency` (cents/shillings). */
   amount: number;
   currency: string;
-  /** Always USD cents — useful for showing a "≈ $X" comparison line. */
   usd_cents: number;
 }
 
 export type BillingRoute = "POLAR" | "M-PESA" | "AIRTEL" | "MTN";
 
 export interface BillingPlansResponse {
-  /** CF-IPCountry (ISO-3166 alpha-2). Empty string if unknown. */
   country: string;
-  /** service_payment route — "POLAR" (card/hosted) or one of the
-   *  mobile-money rails (STK push to user's phone). */
   route: BillingRoute;
   plans: BillingPlan[];
 }
 
-/**
- * GET /billing/plans — returns the geo-resolved plan catalog. No auth
- * required; the frontend calls this before rendering pricing so each
- * user sees the price they'll actually be charged (KES, UGX, NGN, USD).
- */
+/** GET /billing/plans — public; no auth.  Use native fetch() for
+ *  consistency with the R2-origin calls that don't need a token. */
 export async function fetchBillingPlans(): Promise<BillingPlansResponse> {
-  const url = join(getConfig().candidatesAPIURL, "/billing/plans");
-  const res = await fetch(url, { credentials: "omit" });
-  if (!res.ok) {
-    throw new Error(`fetchBillingPlans: HTTP ${res.status}`);
-  }
+  const base = getCandidatesOrigin();
+  const res = await fetch(`${base}/billing/plans`, { credentials: "omit" });
+  if (!res.ok) throw new Error(`fetchBillingPlans: HTTP ${res.status}`);
   return (await res.json()) as BillingPlansResponse;
 }
 
 export type CheckoutStatus = "redirect" | "pending" | "paid" | "failed";
 
 export interface CheckoutResponse {
-  /** "redirect" = Polar hosted-checkout URL ready — browser should
-   *  303 to redirect_url.
-   *  "pending"  = STK push fired / session still queuing — caller
-   *  should poll /billing/checkout/status?prompt_id=…
-   *  "paid"     = completed synchronously (rare; STK may resolve
-   *  inside our short polling window).
-   *  "failed"   = see the error field. */
   status: CheckoutStatus;
   route: BillingRoute;
   redirect_url: string;
@@ -138,26 +125,15 @@ export interface CheckoutResponse {
 export interface CheckoutCreateInput {
   plan_id: PlanId;
   email?: string;
-  /** E.164 phone number. Required for mobile-money routes
-   *  (M-PESA / AIRTEL / MTN); ignored for POLAR. */
   phone?: string;
-  /** Optional override: "card", "mpesa", "airtel_money", "mtn_momo". */
   route_hint?: string;
 }
 
-/**
- * POST /billing/checkout — asks the candidates service to create a
- * subscription (service_billing) and dispatch a payment prompt
- * (service_payment). The server picks the rail based on CF-IPCountry
- * unless the caller supplies route_hint. See the CheckoutResponse
- * status field for what the caller should do next.
- */
+/** POST /billing/checkout — auth'd. */
 export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
-  const url = join(getConfig().candidatesAPIURL, "/billing/checkout");
-  const res = await fetch(url, {
+  return authRuntime().fetch("/billing/checkout", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await bearer()) },
-    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       plan_id:    input.plan_id,
       email:      input.email ?? "",
@@ -165,11 +141,6 @@ export async function createCheckout(input: CheckoutCreateInput): Promise<Checko
       route_hint: input.route_hint ?? "",
     }),
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`createCheckout: HTTP ${res.status} ${body}`);
-  }
-  return (await res.json()) as CheckoutResponse;
 }
 
 export interface CheckoutStatusResponse {
@@ -179,61 +150,25 @@ export interface CheckoutStatusResponse {
   error: string;
 }
 
-/**
- * GET /billing/checkout/status?prompt_id=… — long-poll target for
- * flows that don't produce an immediate redirect URL (M-Pesa STK
- * push). Poll every ~2s until status flips to "paid" or "failed".
- */
+/** GET /billing/checkout/status?prompt_id=… — auth'd long-poll. */
 export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
-  const url = new URL(join(getConfig().candidatesAPIURL, "/billing/checkout/status"));
-  url.searchParams.set("prompt_id", promptId);
-  const res = await fetch(url.toString(), {
-    headers: { ...(await bearer()) },
-    credentials: "include",
-  });
-  if (!res.ok) {
-    throw new Error(`pollCheckoutStatus: HTTP ${res.status}`);
-  }
-  return (await res.json()) as CheckoutStatusResponse;
+  return authRuntime().fetch(`/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`);
 }
 
-/** Subset of CandidateProfile the Cascade + dashboards rely on.
- *  The server returns the full row under `candidate`; this shape is
- *  everything the UI currently reads. */
-export interface CandidateSummary {
-  profile_id: string;
-  status: string;
-  current_title: string;
-  preferred_countries: string;
-  preferred_regions: string;
-  remote_preference: string;
-  languages: string;
-  plan_id: string;
-  subscription: string;
+// ── /me/subscription ─────────────────────────────────────────────
+
+export interface MeSubscription {
+  plan: string | null;
+  status: "none" | "active" | "past_due" | "cancelled";
+  renews_at?: string;
+  agent?: { name: string; email: string } | null;
+  queued_matches: number;
+  delivered_this_week: number;
 }
 
-/** GET /me — auth'd visitor identity + CandidateProfile row.
- *  Returns null on any failure so callers can render anon fallback. */
-export async function fetchCandidate(): Promise<CandidateSummary | null> {
-  try {
-    const url = join(getConfig().candidatesAPIURL, "/me");
-    const res = await fetch(url, {
-      headers: await bearer(),
-      credentials: "include",
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { candidate?: CandidateSummary | null };
-    return body.candidate ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * GET /me/subscription — current tier + queue stats. If the endpoint
- * fails (401/404/network) we return a shape that drives the dashboard to
- * show the "complete payment / choose a plan" nudge instead of breaking.
- */
+/** GET /me/subscription — auth'd.  Fallback shape on any failure so
+ *  the dashboard renders the "choose a plan" nudge instead of
+ *  breaking. */
 export async function fetchMeSubscription(): Promise<MeSubscription> {
   const fallback: MeSubscription = {
     plan: null,
@@ -243,15 +178,27 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
     agent: null,
   };
   try {
-    const url = join(getConfig().candidatesAPIURL, "/me/subscription");
-    const res = await fetch(url, {
-      headers: await bearer(),
-      credentials: "include",
-    });
-    if (!res.ok) return fallback;
-    const body = (await res.json()) as MeSubscription;
+    const body = await authRuntime().fetch<MeSubscription>("/me/subscription");
     return { ...fallback, ...body };
   } catch {
     return fallback;
   }
+}
+
+// ── helpers ──────────────────────────────────────────────────────
+
+function getCandidatesOrigin(): string {
+  // runtime.fetch uses apiBaseUrl; for public endpoints we bypass
+  // the runtime entirely and hit the same origin directly.
+  // Avoids a circular import to @/utils/config by reading directly.
+  const el = typeof document !== "undefined"
+    ? document.querySelector<HTMLMetaElement>('meta[name="site-params"]')
+    : null;
+  if (el) {
+    try {
+      const d = JSON.parse(el.content) as { candidatesAPIURL?: string };
+      if (d.candidatesAPIURL) return d.candidatesAPIURL.replace(/\/$/, "");
+    } catch { /* fall through */ }
+  }
+  return "https://api.stawi.org";
 }
