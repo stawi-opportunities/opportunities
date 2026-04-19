@@ -55,27 +55,45 @@ export interface CascadeProps {
    *  lets the Search page keep filter checkbox counts without a
    *  duplicate /api/search call. */
   onFacets?: (facets: Facets) => void;
+  /** Explicit override for the country used in the feed request.
+   *  Set by per-country landing pages (/l/KE/) so the cascade
+   *  ignores the visitor's detected locale on pages that are
+   *  dedicated to a specific country. */
+  overrideCountry?: string;
+  /** Explicit override for the language list used in the feed
+   *  request. Same rationale as overrideCountry. */
+  overrideLanguages?: string[];
 }
 
 export default function Cascade(props: CascadeProps) {
-  const { filters = {}, preferredCountries = [], preferredLanguages = [], tierLimit = 25 } = props;
+  const {
+    filters = {},
+    preferredCountries = [],
+    preferredLanguages = [],
+    tierLimit = 25,
+    overrideCountry,
+    overrideLanguages,
+  } = props;
 
   // Resolve visitor locale once per render; the heavy lifting is
-  // memoised inside getVisitorLocale().
-  const locale = useMemo(getVisitorLocale, []);
+  // memoised inside getVisitorLocale(). Per-page overrides win so
+  // /l/KE/ doesn't cascade "near the visitor" — it cascades near KE.
+  const detected = useMemo(getVisitorLocale, []);
+  const effectiveCountry = overrideCountry ?? detected.country;
+  const effectiveLanguages = overrideLanguages ?? detected.languages;
 
   const feedParams = useMemo<FeedParams>(() => {
     const p: FeedParams = {
       ...filters,
       tier_limit: tierLimit,
     };
-    if (locale.country) p.country = locale.country;
-    if (locale.languages.length) p.lang = locale.languages.join(",");
+    if (effectiveCountry) p.country = effectiveCountry;
+    if (effectiveLanguages.length) p.lang = effectiveLanguages.join(",");
     const boost = buildBoost(preferredCountries.join(","), preferredLanguages.join(","));
     if (boost.countries.length) p.boost_countries = boost.countries.join(",");
     if (boost.languages.length) p.boost_languages = boost.languages.join(",");
     return p;
-  }, [filters, tierLimit, locale.country, locale.languages, preferredCountries, preferredLanguages]);
+  }, [filters, tierLimit, effectiveCountry, effectiveLanguages, preferredCountries, preferredLanguages]);
 
   const q = useQuery<FeedResponse>({
     queryKey: ["feed", feedParams],
@@ -123,7 +141,7 @@ export default function Cascade(props: CascadeProps) {
           key={tier.id}
           tier={tier}
           filters={filters}
-          locale={locale}
+          effectiveCountry={effectiveCountry}
         />
       ))}
     </div>
@@ -133,11 +151,11 @@ export default function Cascade(props: CascadeProps) {
 function TierSection({
   tier,
   filters,
-  locale,
+  effectiveCountry,
 }: {
   tier: FeedTier;
   filters: NonNullable<CascadeProps["filters"]>;
-  locale: ReturnType<typeof getVisitorLocale>;
+  effectiveCountry: string;
 }) {
   const pageParams = useMemo<TierPageParams>(() => {
     return {
@@ -203,7 +221,7 @@ function TierSection({
         >
           {tier.label}
         </h2>
-        <TierScopeNote tier={tier} locale={locale} />
+        <TierScopeNote tier={tier} effectiveCountry={effectiveCountry} />
       </header>
 
       <ul className="mt-3 divide-y divide-gray-200 rounded-lg border border-gray-200">
@@ -224,10 +242,10 @@ function TierSection({
 
 function TierScopeNote({
   tier,
-  locale,
+  effectiveCountry,
 }: {
   tier: FeedTier;
-  locale: ReturnType<typeof getVisitorLocale>;
+  effectiveCountry: string;
 }) {
   // A short secondary label so the user knows exactly what filter
   // this section represents — avoids "why is 'Local' showing Nigeria
@@ -237,7 +255,7 @@ function TierScopeNote({
   if (tier.country) parts.push(countryLabel(tier.country));
   if (tier.language) parts.push(tier.language.toUpperCase());
   if (!parts.length && tier.id === "global") {
-    parts.push(locale.country ? `Outside ${countryLabel(locale.country)}` : "Worldwide");
+    parts.push(effectiveCountry ? `Outside ${countryLabel(effectiveCountry)}` : "Worldwide");
   }
   if (!parts.length) return null;
   return (

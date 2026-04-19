@@ -23,6 +23,17 @@
 <link rel="mask-icon" href="/favicon.svg" color="#45b739">
 <meta name="theme-color" content="#0c1226">
 
+{{/* Visitor locale — set on per-country shards (/l/<CC>/) so the
+      Cascade picks up country/languages before navigator.languages is
+      consulted. Pages not dedicated to a locale omit the tag; the
+      Cascade falls back to inference. */}}
+{{ if .Params.country }}
+{{ $cc := upper .Params.country }}
+{{ $shard := index (where .Site.Data.locale_shards.shards "country" $cc) 0 }}
+{{ $langs := cond (ne $shard nil) $shard.languages (slice "en") }}
+<meta name="visitor-locale" content='{{ dict "country" $cc "languages" $langs | jsonify }}'>
+{{ end }}
+
 <!-- Runtime config consumed by the React app (see ui/app/src/utils/config.ts).
      All per-environment values flow through here via HUGO_PARAMS_* at build time. -->
 <meta name="site-params" content='{{ dict

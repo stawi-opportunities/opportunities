@@ -1,0 +1,84 @@
+# Top source countries get SEO-friendly landing pages at /l/<CC>/.
+#
+# Each shard is:
+#   - a real URL bookmarkable + shareable ("jobs.stawi.org/l/ke/")
+#   - a location-specific <title> and <meta description> so Google
+#     ranks it for "jobs in <Country>"
+#   - baked with <meta name="visitor-locale"> so the Cascade starts
+#     with the correct country on first render, without waiting on
+#     navigator.languages
+#
+# The shard set is deliberately focused — 15 countries covering ~80%
+# of our crawler output. Adding a country here also needs a matching
+# entry under `shards:` plus a layout include: Hugo regenerates all
+# shards from this file on every build.
+#
+# Languages are the top spoken languages on our source feeds for that
+# market (base BCP-47 tags). Ordering matters — first entry drives
+# the "preferred language" hint on the feed endpoint.
+
+shards:
+  - country: KE
+    name: Kenya
+    languages: [en, sw]
+    region: east_africa
+  - country: UG
+    name: Uganda
+    languages: [en, sw]
+    region: east_africa
+  - country: TZ
+    name: Tanzania
+    languages: [en, sw]
+    region: east_africa
+  - country: RW
+    name: Rwanda
+    languages: [en, fr, rw]
+    region: east_africa
+  - country: ET
+    name: Ethiopia
+    languages: [en, am]
+    region: east_africa
+  - country: NG
+    name: Nigeria
+    languages: [en]
+    region: west_africa
+  - country: GH
+    name: Ghana
+    languages: [en]
+    region: west_africa
+  - country: ZA
+    name: South Africa
+    languages: [en]
+    region: southern_africa
+  - country: EG
+    name: Egypt
+    languages: [ar, en]
+    region: north_africa
+  - country: MA
+    name: Morocco
+    languages: [ar, fr, en]
+    region: north_africa
+  - country: US
+    name: the United States
+    languages: [en, es]
+    region: north_america
+  - country: GB
+    name: the United Kingdom
+    languages: [en]
+    region: western_europe
+  - country: DE
+    name: Germany
+    languages: [de, en]
+    region: western_europe
+  - country: IN
+    name: India
+    languages: [en, hi]
+    region: south_asia
+  - country: PH
+    name: the Philippines
+    languages: [en, tl]
+    region: southeast_asia
+  - country: BR
+    name: Brazil
+    languages: [pt, en]
+    region: latin_america

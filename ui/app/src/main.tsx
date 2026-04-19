@@ -16,6 +16,7 @@ const islands: Island[] = [
   { id: "mount-job-detail",     component: () => import("@/components/JobDetail") },
   { id: "mount-search",         component: () => import("@/components/Search") },
   { id: "mount-job-list",       component: () => import("@/components/JobList") },
+  { id: "mount-locale-shard",   component: () => import("@/components/LocaleShard") },
   { id: "mount-category-index", component: () => import("@/components/CategoryIndex") },
   { id: "mount-category-page",  component: () => import("@/components/CategoryPage") },
   { id: "mount-dashboard",      component: () => import("@/pages/Dashboard") },
