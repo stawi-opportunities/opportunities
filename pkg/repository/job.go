@@ -145,11 +145,26 @@ type SearchRequest struct {
 	EmploymentType string
 	Seniority      string
 	Country        string
-	Sort           string // "relevance"|"recent"|"quality"|"salary_high"; defaults derived from Query
-	Limit          int
-	Offset         int
-	CursorPostedAt *time.Time
-	CursorID       int64
+	// Countries, when non-empty, restricts the search to any of the
+	// listed ISO-3166 alpha-2 codes. Used by the tiered cascade to
+	// fetch a region's jobs in one shot. Overrides Country when set.
+	Countries []string
+	// ExcludeCountries lets higher tiers ask "give me anything except
+	// what I already fetched in the local tier". Keeps global results
+	// from duplicating jobs the user already saw above.
+	ExcludeCountries []string
+	// Language, when non-empty, restricts results to jobs tagged with
+	// this base language subtag (en / sw / fr / ...).
+	Language string
+	// ExcludeLanguages filters out jobs tagged with any of these
+	// base subtags — used when a language-filtered tier has already
+	// pulled "en" jobs, and a subsequent tier wants non-English only.
+	ExcludeLanguages []string
+	Sort             string // "relevance"|"recent"|"quality"|"salary_high"; defaults derived from Query
+	Limit            int
+	Offset           int
+	CursorPostedAt   *time.Time
+	CursorID         int64
 }
 
 // SearchResult is the denormalized row returned to UI consumers. Snippet is a
@@ -204,8 +219,33 @@ func (r *JobRepository) SearchCanonical(ctx context.Context, req SearchRequest) 
 	if req.Seniority != "" {
 		db = db.Where("seniority = ?", req.Seniority)
 	}
-	if req.Country != "" {
-		db = db.Where("country = ?", req.Country)
+	// Country / Countries / ExcludeCountries: multi-country takes
+	// precedence over single-country so the tiered cascade can target
+	// a whole region in one query. Exclude fires after the include so
+	// a region that partially overlaps an excluded set still works.
+	switch {
+	case len(req.Countries) > 0:
+		db = db.Where("country IN ?", normaliseCountries(req.Countries))
+	case req.Country != "":
+		db = db.Where("country = ?", strings.ToUpper(req.Country))
+	}
+	if len(req.ExcludeCountries) > 0 {
+		db = db.Where("country NOT IN ?", normaliseCountries(req.ExcludeCountries))
+	}
+	if req.Language != "" {
+		db = db.Where("language = ?", strings.ToLower(req.Language))
+	}
+	if len(req.ExcludeLanguages) > 0 {
+		lang := make([]string, 0, len(req.ExcludeLanguages))
+		for _, l := range req.ExcludeLanguages {
+			l = strings.ToLower(strings.TrimSpace(l))
+			if l != "" {
+				lang = append(lang, l)
+			}
+		}
+		if len(lang) > 0 {
+			db = db.Where("language NOT IN ?", lang)
+		}
 	}
 
 	q := strings.TrimSpace(req.Query)
@@ -247,6 +287,26 @@ func (r *JobRepository) SearchCanonical(ctx context.Context, req SearchRequest) 
 		return nil, err
 	}
 	return out, nil
+}
+
+// normaliseCountries uppercases and de-duplicates an ISO-3166 alpha-2
+// list before passing it to an IN clause. Returns a non-nil slice so
+// GORM doesn't interpret nil as "no filter".
+func normaliseCountries(cc []string) []string {
+	seen := make(map[string]struct{}, len(cc))
+	out := make([]string, 0, len(cc))
+	for _, c := range cc {
+		up := strings.ToUpper(strings.TrimSpace(c))
+		if up == "" {
+			continue
+		}
+		if _, dup := seen[up]; dup {
+			continue
+		}
+		seen[up] = struct{}{}
+		out = append(out, up)
+	}
+	return out
 }
 
 // UpdateEmbedding stores a JSON-encoded embedding vector for a canonical job.

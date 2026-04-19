@@ -531,6 +531,17 @@ func main() {
 		})
 	})
 
+	// GET /api/feed — tiered, location-aware discovery feed. Returns
+	// a cascade of {preferred, local, regional, global} sections so
+	// the UI renders locally-relevant jobs at the top without a
+	// per-user personalisation round-trip.
+	mux.HandleFunc("GET /api/feed", feedHandler(jobRepo, facetRepo))
+
+	// GET /api/feed/tier — cursor-paginated fetch for a single tier
+	// after the initial cascade. Caller echoes back the filter scope
+	// (country / countries / language) so we don't re-derive it.
+	mux.HandleFunc("GET /api/feed/tier", tierPageHandler(jobRepo))
+
 	// GET /api/categories
 	mux.HandleFunc("GET /api/categories", func(w http.ResponseWriter, req *http.Request) {
 		f, err := facetRepo.Read(req.Context())
