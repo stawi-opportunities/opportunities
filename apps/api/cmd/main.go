@@ -865,6 +865,22 @@ func main() {
 		}
 	}()
 
+	// Warm the feed manifests on boot. A fresh environment shouldn't
+	// have to wait up to 3h for Trustage to hit /admin/feeds/rebuild
+	// before the Cascade falls back from R2-404 to the live API. Runs
+	// in its own goroutine — failure is logged, never blocks serving.
+	if r2Publisher != nil {
+		go func() {
+			warmCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			s := rebuildAllManifests(warmCtx, jobRepo, r2Publisher)
+			util.Log(warmCtx).
+				WithField("shards_ok", s.ShardsOK).
+				WithField("shards_failed", s.ShardsFailed).
+				Info("feeds: boot warm complete")
+		}()
+	}
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig

@@ -10,6 +10,7 @@ These JSON files describe every scheduled job for stawi-jobs that needs to run o
 | `retention-expire.json` | `15m` | `POST /admin/retention/expire` | Flips `canonical_jobs.status` to `expired` for rows past `expires_at`. |
 | `retention-mv-refresh.json` | `5m` | `POST /admin/retention/mv-refresh` | `REFRESH MATERIALIZED VIEW CONCURRENTLY mv_job_facets`. |
 | `retention-stage2.json` | `24h` | `POST /admin/retention/stage2` | Physically deletes R2 snapshots past `RETENTION_GRACE_DAYS`. |
+| `feeds-rebuild.json` | `3h` | `POST /admin/feeds/rebuild` | Regenerates `feeds/<cc>.json` + `feeds/default.json` + `feeds/index.json` on R2. The Cascade reads these for unfiltered first-paint so user sessions don't hit `/api/feed` for the default browse case. |
 
 ## Provisioning
 

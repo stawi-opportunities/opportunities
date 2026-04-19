@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "name": "stawi-jobs.feeds.rebuild",
+  "description": "Every 3 hours: regenerate the per-country feed manifests on R2 (/feeds/<cc>.json + /feeds/default.json + /feeds/index.json). The frontend Cascade reads these manifests for first-paint on unfiltered / anonymous requests, so the site stays snappy without every user session hitting /api/feed. Partial success (some shards failed) returns 207 Multi-Status — Trustage should NOT retry on 207 since the next scheduled run will pick up the failed shards naturally. Retries fire only on 5xx network / timeout errors.",
+  "schedule": {
+    "cron": "3h",
+    "active": true
+  },
+  "input": {},
+  "timeout": "2m",
+  "steps": [
+    {
+      "id": "rebuild",
+      "type": "call",
+      "name": "Rebuild feed manifests",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "30s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://stawi-jobs-api.stawi-jobs.svc/admin/feeds/rebuild",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": {}
+        }
+      }
+    }
+  ]
+}

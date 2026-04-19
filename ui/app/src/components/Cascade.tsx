@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { feed, loadTierPage } from "@/api/search";
+import { fetchManifest } from "@/api/manifest";
 import type {
   Facets,
   FeedParams,
@@ -95,10 +96,39 @@ export default function Cascade(props: CascadeProps) {
     return p;
   }, [filters, tierLimit, effectiveCountry, effectiveLanguages, preferredCountries, preferredLanguages]);
 
+  // canUseManifest: true when the request is vanilla enough to be
+  // served from a pre-baked R2 manifest. Any filter, any boost, or
+  // a text query means the manifest can't match — the live API
+  // takes over in those cases.
+  const canUseManifest = useMemo(() => {
+    return (
+      !feedParams.q &&
+      !feedParams.category &&
+      !feedParams.remote_type &&
+      !feedParams.employment_type &&
+      !feedParams.seniority &&
+      !feedParams.boost_countries &&
+      !feedParams.boost_languages &&
+      (!feedParams.sort || feedParams.sort === "recent")
+    );
+  }, [feedParams]);
+
   const q = useQuery<FeedResponse>({
-    queryKey: ["feed", feedParams],
-    queryFn: () => feed(feedParams),
-    staleTime: 30_000,
+    // The key includes canUseManifest so changing source (manifest ↔
+    // live API) is a fresh fetch rather than stale-data reuse.
+    queryKey: ["feed", feedParams, canUseManifest ? "r2" : "api"],
+    queryFn: async () => {
+      if (canUseManifest) {
+        // Try R2 first. A null fallback kicks the API path.
+        const m = await fetchManifest(effectiveCountry);
+        if (m) return m;
+      }
+      return feed(feedParams);
+    },
+    // Match the R2 cache-control (s-maxage=300). Live-API hits get
+    // to use the same staleness budget — if the user toggles a
+    // filter we still serve from cache first, re-fetch in background.
+    staleTime: 5 * 60_000,
     // Keep previous data while a new fetch is in-flight so filter
     // toggles don't flash a skeleton.
     placeholderData: (prev) => prev,
