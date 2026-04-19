@@ -336,9 +336,22 @@ func runTiersParallel(
 		}
 		var cursor string
 		if hasMore && spec.req.Query == "" && len(rows) > 0 {
-			last := rows[len(rows)-1]
-			if last.PostedAt != nil {
-				cursor = encodeCursor(*last.PostedAt, last.ID)
+			// Scan backwards to find a row with a non-nil PostedAt.
+			// Keyset pagination needs (posted_at, id) to advance; a
+			// tail row with NULL posted_at would emit an empty
+			// cursor and the client would refetch the same page in
+			// an infinite loop.
+			for j := len(rows) - 1; j >= 0; j-- {
+				if rows[j].PostedAt != nil {
+					cursor = encodeCursor(*rows[j].PostedAt, rows[j].ID)
+					break
+				}
+			}
+			// If EVERY row in the tail has NULL posted_at, we can't
+			// honestly paginate past this batch — flip has_more off
+			// so the client stops asking.
+			if cursor == "" {
+				hasMore = false
 			}
 		}
 		out[i] = tieredResponseTier{
@@ -408,9 +421,17 @@ func tierPageHandler(jobRepo *repository.JobRepository) http.HandlerFunc {
 		}
 		var nextCursor string
 		if hasMore && searchReq.Query == "" && len(rows) > 0 {
-			last := rows[len(rows)-1]
-			if last.PostedAt != nil {
-				nextCursor = encodeCursor(*last.PostedAt, last.ID)
+			// Same NULL-posted_at fallback as the initial feed: scan
+			// backwards, and if no row has a non-nil timestamp we
+			// can't paginate past this batch.
+			for j := len(rows) - 1; j >= 0; j-- {
+				if rows[j].PostedAt != nil {
+					nextCursor = encodeCursor(*rows[j].PostedAt, rows[j].ID)
+					break
+				}
+			}
+			if nextCursor == "" {
+				hasMore = false
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

@@ -202,8 +202,12 @@ function TierSection({
     // `getNextPageParam` returns the cursor to fetch *next*, or
     // undefined to mean "no more". Pagination model: cursor points at
     // the posted_at/id pair of the last item in the previous page.
+    // Guard against the backend emitting has_more=true with an empty
+    // cursor (historic bug when the tail row had NULL posted_at) —
+    // an empty cursor refetches page 1 and loops forever. Treat it
+    // the same as has_more=false on the client side too.
     getNextPageParam: (last: { cursor_next: string; has_more: boolean }) =>
-      last.has_more ? last.cursor_next : undefined,
+      last.has_more && last.cursor_next ? last.cursor_next : undefined,
     queryFn: ({ pageParam }) =>
       loadTierPage({ ...pageParams, cursor: pageParam || undefined }),
     initialData: {
@@ -233,7 +237,11 @@ function TierSection({
   }, [infinite.data]);
 
   const lastPage = infinite.data?.pages?.[infinite.data.pages.length - 1];
-  const hasMore = lastPage?.has_more ?? false;
+  // Both conditions required: server says has_more AND we have a cursor
+  // to advance with. Without the cursor the sentinel would render a
+  // forever-spinning "Loading more…" row because getNextPageParam
+  // returns undefined and fetchNextPage is a no-op.
+  const hasMore = !!(lastPage?.has_more && lastPage.cursor_next);
 
   return (
     <section aria-labelledby={`tier-${tier.id}`}>
