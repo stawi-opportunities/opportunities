@@ -386,6 +386,17 @@ function ProfileMount() {
         idpBaseUrl: cfg.oidcIssuer,
         apiBaseUrl: cfg.candidatesAPIURL,
         theme: "light",
+        // Same visual-language tokens as StawiAuth.tsx so the
+        // dashboard's profile popover matches the nav button.
+        tokens: {
+          colorPrimary: "#0c1226",
+          colorPrimaryHover: "#141a33",
+          colorFocusRing: "#0c1226",
+          radius: "6px",
+          fontHeading: `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`,
+          fontBody: `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`,
+          fontWeightHeading: 600,
+        },
         onLogout: () => {
           window.location.href = "/";
         },
