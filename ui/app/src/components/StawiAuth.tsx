@@ -4,31 +4,38 @@ import { getConfig } from "@/utils/config";
 import { useAuth } from "@/providers/AuthProvider";
 
 /**
- * Mounts the @stawi/profile widget — "Sign in" when logged out, avatar
- * badge when logged in. The widget owns its own shadow DOM so every
- * Stawi frontend gets a visually identical auth control.
+ * Auth control in the top nav.
  *
- * Fallback: if the widget package fails to load (ad-blocker, offline,
- * 404 on the bundle) we render a plain sign-in button after 3 s so the
- * user is never stranded without an auth affordance. We detect a
- * successful mount by looking for either `host.shadowRoot` or any
- * attached child — the widget may paint into light DOM in some builds,
- * so relying on shadow root alone produced a duplicate "Sign in"
- * button next to the widget's own "Login" affordance.
+ * Unauthenticated → renders our own "Sign in" button. The widget's
+ * built-in button catches ALL errors silently
+ * (`ensureAuthenticated().catch(() => {})` inside @stawi/profile),
+ * which meant pop-up-blocker, OAuth-state, and token-exchange failures
+ * looked identical to "button does nothing" in the browser. Our button
+ * calls `login()` from the AuthProvider which surfaces failures as a
+ * console.error plus an inline banner, so the user at least sees a
+ * signal when something went wrong.
+ *
+ * Authenticated → mounts @stawi/profile which renders the avatar +
+ * profile popover (the piece of the widget that isn't broken).
  */
 export function StawiAuth() {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<MountHandle | null>(null);
-  const [widgetFailed, setWidgetFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { login, state } = useAuth();
 
   useEffect(() => {
+    // Only mount the widget when authenticated — it's useful for the
+    // avatar menu + profile popover, not for the sign-in button we
+    // bypass above.
+    if (state !== "authenticated") {
+      handleRef.current?.unmount();
+      handleRef.current = null;
+      return;
+    }
     const host = hostRef.current;
     if (!host) return;
-
-    // React StrictMode mounts effects twice in dev; if the widget is
-    // already attached (shadow root OR light-DOM children), skip the
-    // redundant mount.
     if ((host.shadowRoot || host.childElementCount > 0) && handleRef.current) return;
 
     const cfg = getConfig();
@@ -40,43 +47,70 @@ export function StawiAuth() {
         idpBaseUrl: cfg.oidcIssuer,
         apiBaseUrl: cfg.candidatesAPIURL,
         theme: "light",
-        onLogout: () => {
-          window.location.href = "/";
-        },
+        onLogout: () => { window.location.href = "/"; },
       });
-    } catch {
-      setWidgetFailed(true);
-      return;
+    } catch (err) {
+      console.error("[auth] profile widget mount failed:", err);
     }
-
-    // Treat a missing mount signature after 3 s as a hard failure —
-    // the widget's bundle never loaded or its mount threw
-    // asynchronously. Either a shadow root or any rendered child
-    // counts as success.
-    const timer = window.setTimeout(() => {
-      if (!host.shadowRoot && host.childElementCount === 0) {
-        setWidgetFailed(true);
-      }
-    }, 3000);
-
     return () => {
-      window.clearTimeout(timer);
       handleRef.current?.unmount();
       handleRef.current = null;
     };
-  }, []);
+  }, [state]);
 
+  const handleSignIn = async () => {
+    setBusy(true);
+    setErrorMsg(null);
+    try {
+      await login();
+    } catch (err) {
+      console.error("[auth] sign-in failed:", err);
+      // Surface the specific failure mode. The auth-runtime throws
+      // AuthError with a `code` field — see
+      // @stawi/auth-runtime/dist/index.d.ts.
+      const code = (err as { code?: string })?.code;
+      if (code === "OAUTH_POPUP_BLOCKED") {
+        setErrorMsg("Pop-ups are blocked. Allow pop-ups for jobs.stawi.org and try again.");
+      } else if (code === "OAUTH_POPUP_CLOSED") {
+        // User aborted — don't shout about it.
+      } else if (err instanceof Error) {
+        setErrorMsg(`Sign-in failed: ${err.message}`);
+      } else {
+        setErrorMsg("Sign-in failed. Please try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Authenticated → let the widget render its avatar/popover.
+  if (state === "authenticated") {
+    return (
+      <div className="relative" aria-label="Account" role="region">
+        <div ref={hostRef} />
+      </div>
+    );
+  }
+
+  // Everything else (initializing / unauthenticated / refreshing / error):
+  // own button with real click handler and visible failure surfacing.
   return (
     <div className="relative" aria-label="Account" role="region">
-      <div ref={hostRef} />
-      {widgetFailed && state !== "authenticated" && (
-        <button
-          type="button"
-          onClick={() => void login()}
-          className="rounded-md bg-navy-900 px-4 py-2 text-base font-medium text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
+      <button
+        type="button"
+        onClick={() => void handleSignIn()}
+        disabled={busy || state === "initializing"}
+        className="rounded-md bg-navy-900 px-4 py-2 text-base font-medium text-white hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900 disabled:opacity-60"
+      >
+        {busy ? "Signing in…" : "Sign in"}
+      </button>
+      {errorMsg && (
+        <p
+          role="alert"
+          className="absolute right-0 top-full mt-2 w-72 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 shadow-sm"
         >
-          Sign in
-        </button>
+          {errorMsg}
+        </p>
       )}
     </div>
   );
