@@ -537,6 +537,13 @@ func main() {
 	// per-user personalisation round-trip.
 	mux.HandleFunc("GET /api/feed", feedHandler(jobRepo, facetRepo))
 
+	// POST /admin/feeds/rebuild — regenerates the per-country feed
+	// manifests in R2 (/feeds/<cc>.json + /feeds/default.json +
+	// /feeds/index.json). Anon/unfiltered users hit R2 directly for
+	// first paint; logged-in / filtered / paginated browsing still
+	// goes through /api/feed live. Trustage posts to this every 3h.
+	mux.HandleFunc("POST /admin/feeds/rebuild", feedRebuildHandler(jobRepo, r2Publisher))
+
 	// GET /api/feed/tier — cursor-paginated fetch for a single tier
 	// after the initial cascade. Caller echoes back the filter scope
 	// (country / countries / language) so we don't re-derive it.
