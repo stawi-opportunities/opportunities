@@ -259,13 +259,17 @@ func (r *JobRepository) SearchCanonical(ctx context.Context, req SearchRequest) 
 		case "salary_high":
 			db = db.Order("salary_max DESC NULLS LAST").Order("id DESC")
 		default: // relevance
-			db = db.Clauses(clause.OrderBy{
-				Expression: clause.Expr{
-					SQL:                "ts_rank_cd(search_vector, plainto_tsquery('simple', ?)) DESC",
-					Vars:               []any{q},
-					WithoutParentheses: true,
-				},
-			}).Order("posted_at DESC NULLS LAST").Order("id DESC")
+			// gorm.Expr instead of clause.OrderBy{Expression:…} because
+			// the latter swallows the trailing `DESC` keyword when
+			// WithoutParentheses is set, which silently flipped the
+			// sort to ASC — a search for "airbnb" returned a 0.1-score
+			// Promenade listing ahead of 2.8-score airbnb rows.
+			// .Order(gorm.Expr) appends as a normal OrderBy column so
+			// the DESC is preserved and chains cleanly with the
+			// posted_at + id tiebreakers below.
+			db = db.Order(gorm.Expr(
+				"ts_rank_cd(search_vector, plainto_tsquery('simple', ?)) DESC", q,
+			)).Order("posted_at DESC NULLS LAST").Order("id DESC")
 		}
 		db = db.Offset(req.Offset)
 	} else {
