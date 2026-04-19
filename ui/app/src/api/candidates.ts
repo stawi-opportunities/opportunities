@@ -197,6 +197,38 @@ export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStat
   return (await res.json()) as CheckoutStatusResponse;
 }
 
+/** Subset of CandidateProfile the Cascade + dashboards rely on.
+ *  The server returns the full row under `candidate`; this shape is
+ *  everything the UI currently reads. */
+export interface CandidateSummary {
+  profile_id: string;
+  status: string;
+  current_title: string;
+  preferred_countries: string;
+  preferred_regions: string;
+  remote_preference: string;
+  languages: string;
+  plan_id: string;
+  subscription: string;
+}
+
+/** GET /me — auth'd visitor identity + CandidateProfile row.
+ *  Returns null on any failure so callers can render anon fallback. */
+export async function fetchCandidate(): Promise<CandidateSummary | null> {
+  try {
+    const url = join(getConfig().candidatesAPIURL, "/me");
+    const res = await fetch(url, {
+      headers: await bearer(),
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { candidate?: CandidateSummary | null };
+    return body.candidate ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * GET /me/subscription — current tier + queue stats. If the endpoint
  * fails (401/404/network) we return a shape that drives the dashboard to

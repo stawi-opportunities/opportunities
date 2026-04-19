@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { searchJobs } from "@/api/search";
-import { JobRow } from "./JobRow";
 import { categoryLabel } from "@/utils/format";
+import { fetchCandidate } from "@/api/candidates";
 import type { FacetEntry, Facets, SearchParams } from "@/types/search";
+import { useAuth } from "@/providers/AuthProvider";
+import Cascade from "./Cascade";
 
 const REMOTE_FACET_LABELS: Record<string, string> = {
   remote: "Remote",
@@ -21,15 +22,25 @@ const REMOTE_FACET_LABELS: Record<string, string> = {
 export default function Search() {
   const [params, setParams] = useState<SearchParams>(() => readParamsFromURL());
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [facets, setFacets] = useState<Facets | undefined>();
   useEffect(() => writeParamsToURL(params), [params]);
 
-  const q = useQuery({
-    queryKey: ["search", params],
-    queryFn: () => searchJobs({ ...params, limit: 25 }),
-    staleTime: 15_000,
+  const auth = useAuth();
+  const profile = useQuery({
+    queryKey: ["candidate-profile"],
+    queryFn: fetchCandidate,
+    enabled: auth.state === "authenticated",
+    staleTime: 5 * 60_000,
   });
+  const preferredCountries = useMemo(
+    () => splitCSV(profile.data?.preferred_countries),
+    [profile.data?.preferred_countries],
+  );
+  const preferredLanguages = useMemo(
+    () => splitCSV(profile.data?.languages),
+    [profile.data?.languages],
+  );
 
-  const facets = q.data?.facets;
   const hasActiveFilters = Boolean(
     params.category ||
       params.remote_type ||
@@ -92,73 +103,20 @@ export default function Search() {
         </aside>
 
         <section>
-          {q.isLoading && <Skeleton />}
-          {q.isError && (
-            <div
-              className="rounded-md bg-red-50 p-4 text-sm text-red-700"
-              role="alert"
-            >
-              We couldn't run your search.{" "}
-              <button
-                type="button"
-                onClick={() => q.refetch()}
-                className="font-medium underline hover:text-red-800"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-          {q.data && (
-            <>
-              <p className="mb-4 text-sm text-gray-600">
-                {q.data.results.length > 0
-                  ? q.data.has_more
-                    ? `Showing ${q.data.results.length.toLocaleString()} jobs · more available`
-                    : `${q.data.results.length.toLocaleString()} ${
-                        q.data.results.length === 1 ? "job" : "jobs"
-                      }`
-                  : ""}
-              </p>
-              <ul className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-                {q.data.results.map((r) => (
-                  <JobRow key={r.id} result={r} />
-                ))}
-                {q.data.results.length === 0 && (
-                  <li className="px-4 py-10 text-center">
-                    <p className="text-sm text-gray-700">
-                      No jobs match these filters.
-                    </p>
-                    {hasActiveFilters && (
-                      <button
-                        type="button"
-                        onClick={clearAll}
-                        className="mt-3 inline-block text-sm font-medium text-navy-700 hover:text-navy-900"
-                      >
-                        Clear filters →
-                      </button>
-                    )}
-                  </li>
-                )}
-              </ul>
-              {q.data.has_more && (
-                <div className="mt-6 text-center">
-                  <button
-                    type="button"
-                    disabled={q.isFetching}
-                    className="rounded-md border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60"
-                    onClick={() =>
-                      setParams({
-                        ...params,
-                        offset: (params.offset ?? 0) + 25,
-                      })
-                    }
-                  >
-                    {q.isFetching ? "Loading…" : "Load more"}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
+          <Cascade
+            filters={{
+              q: params.q,
+              category: params.category,
+              remote_type: params.remote_type,
+              employment_type: params.employment_type,
+              seniority: params.seniority,
+              sort: params.sort,
+            }}
+            preferredCountries={preferredCountries}
+            preferredLanguages={preferredLanguages}
+            tierLimit={25}
+            onFacets={setFacets}
+          />
         </section>
       </div>
 
@@ -450,14 +408,12 @@ function FacetBlock({
   );
 }
 
-function Skeleton() {
-  return (
-    <ul className="space-y-2">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <li key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />
-      ))}
-    </ul>
-  );
+function splitCSV(csv: string | undefined | null): string[] {
+  if (!csv) return [];
+  return csv
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function readParamsFromURL(): SearchParams {

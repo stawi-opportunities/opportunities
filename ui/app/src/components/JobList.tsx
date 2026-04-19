@@ -1,58 +1,54 @@
-import { useState } from "react";
+import { useMemo } from "react";
+import Cascade from "./Cascade";
+import { useAuth } from "@/providers/AuthProvider";
 import { useQuery } from "@tanstack/react-query";
-import { searchJobs } from "@/api/search";
-import { JobRow } from "./JobRow";
+import { fetchCandidate } from "@/api/candidates";
 
-/** /jobs/ — generic "all jobs" list. Just recency, no filters. Use /search/ for filtered browsing. */
+/** /jobs/ — tiered discovery feed. Default sort is recency; filters
+ *  and text search live on /search/. */
 export default function JobList() {
-  const [cursor, setCursor] = useState<string | undefined>();
+  const auth = useAuth();
+  const authed = auth.state === "authenticated";
 
-  const q = useQuery({
-    queryKey: ["all-jobs", cursor],
-    queryFn: () => searchJobs({ sort: "recent", limit: 25, cursor }),
-    staleTime: 30_000,
+  // Pull the candidate profile only if authenticated — its country /
+  // language preferences drive the "preferred" tier. One lightweight
+  // request that queries the candidates service's /me/profile.
+  const profile = useQuery({
+    queryKey: ["candidate-profile"],
+    queryFn: fetchCandidate,
+    enabled: authed,
+    staleTime: 5 * 60_000,
   });
+
+  const preferredCountries = useMemo(
+    () => splitCSV(profile.data?.preferred_countries),
+    [profile.data?.preferred_countries],
+  );
+  const preferredLanguages = useMemo(
+    () => splitCSV(profile.data?.languages),
+    [profile.data?.languages],
+  );
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
       <h1 className="text-3xl font-bold">All jobs</h1>
-      <p className="mt-2 text-gray-600">Everything posted, most recent first.</p>
-
-      {q.isLoading && <SkeletonList />}
-      {q.isError && <p className="mt-6 text-red-700">Unable to load jobs right now.</p>}
-      {q.data && (
-        <>
-          <ul className="mt-6 divide-y divide-gray-200 rounded-lg border border-gray-200">
-            {q.data.results.map((r) => (
-              <JobRow key={r.id} result={r} />
-            ))}
-            {q.data.results.length === 0 && (
-              <li className="px-4 py-6 text-center text-sm text-gray-500">No jobs yet.</li>
-            )}
-          </ul>
-          {q.data.has_more && (
-            <div className="mt-6 text-center">
-              <button
-                type="button"
-                className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-                onClick={() => setCursor(q.data.cursor_next)}
-              >
-                Load more
-              </button>
-            </div>
-          )}
-        </>
-      )}
+      <p className="mt-2 text-gray-600">
+        Most relevant first, based on your location and language.
+      </p>
+      <Cascade
+        filters={{ sort: "recent" }}
+        preferredCountries={preferredCountries}
+        preferredLanguages={preferredLanguages}
+        tierLimit={25}
+      />
     </div>
   );
 }
 
-function SkeletonList() {
-  return (
-    <ul className="mt-6 space-y-2">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <li key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />
-      ))}
-    </ul>
-  );
+function splitCSV(csv: string | undefined | null): string[] {
+  if (!csv) return [];
+  return csv
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
