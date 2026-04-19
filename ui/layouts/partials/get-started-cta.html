@@ -1,0 +1,30 @@
+{{/*
+  Signed-out call-to-action. Rendered on every page above the footer
+  via baseof.html so a first-time visitor always has a clear next
+  step. Hidden client-side for authenticated users by the React
+  island at #mount-signup-cta (see ui/app/src/components/SignupCta.tsx).
+
+  The "Get started" button itself isn't a plain <a href> — React
+  intercepts the click to trigger the widget's login flow; on
+  successful auth we redirect to /onboarding/. With JS disabled the
+  <noscript> fallback still works (direct link to /onboarding/).
+*/}}
+<section id="mount-signup-cta" class="bg-gray-50 py-20" data-cta-auth="anonymous-only">
+  <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 px-6 sm:flex-row sm:items-center sm:px-8 lg:px-12">
+    <div>
+      <h2 class="text-3xl font-bold text-navy-900 sm:text-4xl">
+        Two minutes to set up.
+      </h2>
+      <p class="mt-2 text-lg leading-relaxed text-gray-700">
+        Upload your CV, tell us what you want, we take it from there.
+      </p>
+    </div>
+    <a
+      href="/onboarding/"
+      data-signup-cta
+      class="inline-flex shrink-0 items-center justify-center rounded-md bg-accent-400 px-8 py-4 text-lg font-semibold text-navy-900 transition-colors hover:bg-accent-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
+    >
+      Get started
+    </a>
+  </div>
+</section>

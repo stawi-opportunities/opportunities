@@ -250,8 +250,8 @@ function TierSection({
       </ul>
 
       {hasMore && (
-        <PrefetchButton
-          onNear={() => infinite.fetchNextPage()}
+        <InfiniteSentinel
+          onVisible={() => infinite.fetchNextPage()}
           busy={infinite.isFetchingNextPage}
         />
       )}
@@ -284,50 +284,59 @@ function TierScopeNote({
   );
 }
 
-function PrefetchButton({ onNear, busy }: { onNear: () => void; busy: boolean }) {
-  const ref = useRef<HTMLButtonElement | null>(null);
-  const fired = useRef(false);
+// Invisible sentinel + small loading row. IntersectionObserver fires
+// onVisible as soon as the sentinel enters a 600px pre-roll window,
+// and the ref-guard keeps the callback from firing again until the
+// in-flight fetch settles. No visible button — the user just keeps
+// scrolling and more results appear.
+function InfiniteSentinel({
+  onVisible,
+  busy,
+}: {
+  onVisible: () => void;
+  busy: boolean;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const firedRef = useRef(false);
+  // Re-arm the guard whenever a fetch settles so the next scroll
+  // down can trigger again.
+  useEffect(() => {
+    if (!busy) firedRef.current = false;
+  }, [busy]);
 
-  // Prefetch ~400px before the button enters the viewport so the
-  // user experiences "infinite scroll" rather than "press, wait,
-  // read". The ref-guard prevents the observer from double-firing
-  // during the network round-trip.
   const handleIntersect = useCallback<IntersectionObserverCallback>(
     (entries) => {
       for (const e of entries) {
-        if (e.isIntersecting && !fired.current) {
-          fired.current = true;
-          onNear();
-          // Reset the guard after the fetch settles so subsequent
-          // scroll-down triggers fire again.
-          setTimeout(() => { fired.current = false; }, 2000);
+        if (e.isIntersecting && !firedRef.current) {
+          firedRef.current = true;
+          onVisible();
         }
       }
     },
-    [onNear],
+    [onVisible],
   );
 
   useEffect(() => {
     if (!ref.current) return;
-    const el = ref.current;
     const obs = new IntersectionObserver(handleIntersect, {
-      rootMargin: "400px 0px",
+      rootMargin: "600px 0px",
     });
-    obs.observe(el);
+    obs.observe(ref.current);
     return () => obs.disconnect();
   }, [handleIntersect]);
 
   return (
-    <div className="mt-4 text-center">
-      <button
-        ref={ref}
-        type="button"
-        onClick={() => onNear()}
-        disabled={busy}
-        className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-      >
-        {busy ? "Loading…" : "Load more"}
-      </button>
+    <div ref={ref} className="mt-4 flex items-center justify-center py-4" aria-hidden={!busy}>
+      {busy ? (
+        <div className="flex items-center gap-2 text-sm text-gray-500" role="status" aria-live="polite">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-navy-700" />
+          <span>Loading more…</span>
+        </div>
+      ) : (
+        // Sentinel retains height so the observer fires reliably even
+        // when the results fit exactly inside the viewport.
+        <span className="h-4 w-4" />
+      )}
     </div>
   );
 }

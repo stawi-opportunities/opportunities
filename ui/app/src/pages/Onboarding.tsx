@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
@@ -127,7 +127,25 @@ export default function Onboarding() {
     mode: "onBlur",
   });
 
-  if (state === "unauthenticated") return <SignInPrompt onSignIn={login} />;
+  // Unauthenticated visitors land here by navigating directly (e.g.
+  // a bookmark) or via the Get Started CTA before login completed.
+  // Either way, skip the dedicated sign-in page — just trigger the
+  // widget's OAuth flow. On success the popup closes, the state
+  // transitions to "authenticated", and this component re-renders
+  // with the multi-step form below.
+  useEffect(() => {
+    if (state === "unauthenticated") {
+      void login();
+    }
+  }, [state, login]);
+
+  if (state === "unauthenticated" || state === "initializing") {
+    return (
+      <div className="mx-auto flex min-h-[40vh] max-w-md items-center justify-center px-4 py-16 text-center">
+        <p className="text-sm text-gray-600">Opening sign-in…</p>
+      </div>
+    );
+  }
 
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
     setSubmitting(true);
@@ -763,23 +781,8 @@ function Field({
   );
 }
 
-function SignInPrompt({ onSignIn }: { onSignIn: () => Promise<void> }) {
-  return (
-    <div className="mx-auto max-w-md py-16 text-center">
-      <h1 className="text-2xl font-semibold text-gray-900">
-        Sign in to get started
-      </h1>
-      <p className="mt-2 text-gray-600">
-        We'll save your preferences and surface matching roles on your
-        dashboard.
-      </p>
-      <button
-        type="button"
-        onClick={() => void onSignIn()}
-        className="mt-6 rounded-md bg-navy-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900"
-      >
-        Sign in
-      </button>
-    </div>
-  );
-}
+// SignInPrompt removed — onboarding auto-triggers the widget login
+// flow via useEffect above. The dedicated sign-in page was
+// redundant: visitors arrive here either from an authenticated
+// session or from a CTA that already fired login, and in the rare
+// direct-navigation case the popup just opens immediately.

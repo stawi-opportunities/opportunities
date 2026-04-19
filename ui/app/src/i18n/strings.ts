@@ -43,6 +43,10 @@ export const LANG_LABEL: Record<LangCode, string> = {
 export const RTL_LANGS = new Set<LangCode>(["ar"]);
 
 export interface Strings {
+  // nav.jobs is the single top-bar link post-redesign; the others
+  // stay typed because other components (old or future) still use
+  // them via useI18n.
+  "nav.jobs": string;
   "nav.findJobs": string;
   "nav.allJobs": string;
   "nav.search": string;
@@ -78,6 +82,7 @@ export interface Strings {
 }
 
 const en: Strings = {
+  "nav.jobs": "Jobs",
   "nav.findJobs": "Find Jobs",
   "nav.allJobs": "All Jobs",
   "nav.search": "Advanced search",
@@ -113,6 +118,7 @@ const en: Strings = {
 };
 
 const es: Strings = {
+  "nav.jobs": "Empleos",
   "nav.findJobs": "Ofertas",
   "nav.allJobs": "Todas las ofertas",
   "nav.search": "Búsqueda avanzada",
@@ -148,6 +154,7 @@ const es: Strings = {
 };
 
 const fr: Strings = {
+  "nav.jobs": "Emplois",
   "nav.findJobs": "Offres",
   "nav.allJobs": "Toutes les offres",
   "nav.search": "Recherche avancée",
@@ -183,6 +190,7 @@ const fr: Strings = {
 };
 
 const de: Strings = {
+  "nav.jobs": "Stellen",
   "nav.findJobs": "Stellen",
   "nav.allJobs": "Alle Stellen",
   "nav.search": "Erweiterte Suche",
@@ -218,6 +226,7 @@ const de: Strings = {
 };
 
 const pt: Strings = {
+  "nav.jobs": "Vagas",
   "nav.findJobs": "Vagas",
   "nav.allJobs": "Todas as vagas",
   "nav.search": "Busca avançada",
@@ -253,6 +262,7 @@ const pt: Strings = {
 };
 
 const ja: Strings = {
+  "nav.jobs": "求人",
   "nav.findJobs": "求人",
   "nav.allJobs": "すべての求人",
   "nav.search": "詳細検索",
@@ -288,6 +298,7 @@ const ja: Strings = {
 };
 
 const ar: Strings = {
+  "nav.jobs": "وظائف",
   "nav.findJobs": "الوظائف",
   "nav.allJobs": "كل الوظائف",
   "nav.search": "بحث متقدم",
@@ -323,6 +334,7 @@ const ar: Strings = {
 };
 
 const zh: Strings = {
+  "nav.jobs": "职位",
   "nav.findJobs": "招聘",
   "nav.allJobs": "全部职位",
   "nav.search": "高级搜索",

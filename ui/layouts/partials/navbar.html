@@ -1,14 +1,22 @@
-<!-- The navbar is rendered by React on mount (see ui/app/src/components/Nav.tsx).
-     Until the JS loads we render a skeleton with matching dimensions so the
-     viewport doesn't jump when React takes over, and so users always have
-     a visible home link + sign-in fallback even if the widget fails. -->
+<!-- Skeleton rendered server-side so the viewport has stable
+     dimensions + a working Jobs link before React hydrates
+     ui/app/src/components/Nav.tsx into the mount-nav container.
+     Post-redesign the top bar is three items: logo, single Jobs
+     link, sign-in widget. Auth fallback renders a link to /search/
+     so even with JS disabled the visitor can browse. -->
 <div id="mount-nav">
   <header class="sticky top-0 z-40 border-b border-gray-200 bg-white">
     <div class="mx-auto flex h-28 max-w-7xl items-center justify-between px-6 sm:px-8 lg:px-12">
-      <a href="/" class="flex items-center" aria-label="Stawi Jobs — home">
+      <a href="/" class="flex items-center" aria-label="Stawi — Growing together">
         <img src="/images/logo.svg" alt="Stawi — Growing together" height="56" class="h-14 w-auto"/>
       </a>
-      <a href="/onboarding/" class="text-base font-medium text-navy-900 hover:text-accent-600">
+      <a href="/search/" class="text-lg font-semibold text-navy-900 hover:text-accent-600">
+        Jobs
+      </a>
+      <a
+        href="/onboarding/"
+        class="inline-flex items-center rounded-md bg-accent-400 px-5 py-2.5 text-sm font-semibold text-navy-900 hover:bg-accent-300"
+      >
         Sign in
       </a>
     </div>
