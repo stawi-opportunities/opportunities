@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"buf.build/gen/go/antinvestor/billing/connectrpc/go/billing/v1/billingv1connect"
 	"buf.build/gen/go/antinvestor/files/connectrpc/go/files/v1/filesv1connect"
 	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
 	"buf.build/gen/go/antinvestor/payment/connectrpc/go/v1/paymentv1connect"
@@ -19,8 +20,15 @@ type Clients struct {
 	Notification notificationv1connect.NotificationServiceClient
 	Files        filesv1connect.FilesServiceClient
 	Redirect     *RedirectClient
-	Payment      paymentv1connect.PaymentServiceClient
-	Profile      profilev1connect.ProfileServiceClient
+	// Payment is the service_payment Connect client (same
+	// co-deployed pod as Billing, but dialled with a separate
+	// OAuth2 audience because the two services have different
+	// permission namespaces).
+	Payment paymentv1connect.PaymentServiceClient
+	// Billing is the service_billing Connect client. Used for
+	// subscription / catalog / invoice RPCs.
+	Billing billingv1connect.BillingServiceClient
+	Profile profilev1connect.ProfileServiceClient
 }
 
 // ClientConfig holds the URIs for each service.
@@ -74,15 +82,29 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 		clients.Redirect = NewRedirectClient(cc.RedirectURI)
 	}
 
+	// service_payment + service_billing are co-deployed under the
+	// one endpoint (BillingURI points at that pod). We dial it twice
+	// with separate audiences so each Connect client carries the
+	// right JWT for its service's permission namespace.
 	if cc.BillingURI != "" {
-		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
+		payCli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.BillingURI,
 			Audiences: []string{"service_payment"},
 		}, paymentv1connect.NewPaymentServiceClient)
 		if err != nil {
-			record("billing", err)
+			record("payment", err)
 		} else {
-			clients.Payment = cli
+			clients.Payment = payCli
+		}
+
+		billCli, billErr := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
+			Endpoint:  cc.BillingURI,
+			Audiences: []string{"service_billing"},
+		}, billingv1connect.NewBillingServiceClient)
+		if billErr != nil {
+			record("billing", billErr)
+		} else {
+			clients.Billing = billCli
 		}
 	}
 

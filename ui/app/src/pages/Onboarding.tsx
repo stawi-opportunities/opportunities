@@ -158,9 +158,25 @@ export default function Onboarding() {
       // Plar.sh for everyone else; the redirect_url it returns is
       // the provider's hosted page.
       try {
-        const checkout = await createCheckout(data.plan);
-        window.location.href = checkout.redirect_url;
-        return;
+        const checkout = await createCheckout({ plan_id: data.plan });
+        if (checkout.status === "redirect" && checkout.redirect_url) {
+          window.location.href = checkout.redirect_url;
+          return;
+        }
+        if (checkout.status === "pending" && checkout.prompt_id) {
+          // STK-push flow or Polar session still queuing.  Bounce the
+          // user into the dashboard with the prompt id; the dashboard
+          // polls /billing/checkout/status and prompts the user to
+          // check their phone until the push completes.
+          window.location.href = `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(checkout.prompt_id)}`;
+          return;
+        }
+        // "failed" or "paid" without a redirect_url.
+        if (checkout.status === "paid") {
+          window.location.href = "/dashboard/?billing=success";
+          return;
+        }
+        throw new Error(checkout.error || "Checkout did not complete.");
       } catch (checkoutErr) {
         // Checkout failed (provider outage, missing creds). Park
         // the user on the dashboard with an inline banner so they

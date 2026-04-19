@@ -88,11 +88,14 @@ export interface BillingPlan {
   usd_cents: number;
 }
 
+export type BillingRoute = "POLAR" | "M-PESA" | "AIRTEL" | "MTN";
+
 export interface BillingPlansResponse {
   /** CF-IPCountry (ISO-3166 alpha-2). Empty string if unknown. */
   country: string;
-  /** "dusupay" for African users, "plar" elsewhere. */
-  provider: "dusupay" | "plar";
+  /** service_payment route — "POLAR" (card/hosted) or one of the
+   *  mobile-money rails (STK push to user's phone). */
+  route: BillingRoute;
   plans: BillingPlan[];
 }
 
@@ -110,35 +113,88 @@ export async function fetchBillingPlans(): Promise<BillingPlansResponse> {
   return (await res.json()) as BillingPlansResponse;
 }
 
+export type CheckoutStatus = "redirect" | "pending" | "paid" | "failed";
+
 export interface CheckoutResponse {
+  /** "redirect" = Polar hosted-checkout URL ready — browser should
+   *  303 to redirect_url.
+   *  "pending"  = STK push fired / session still queuing — caller
+   *  should poll /billing/checkout/status?prompt_id=…
+   *  "paid"     = completed synchronously (rare; STK may resolve
+   *  inside our short polling window).
+   *  "failed"   = see the error field. */
+  status: CheckoutStatus;
+  route: BillingRoute;
   redirect_url: string;
-  provider: "dusupay" | "plar";
-  provider_ref: string;
+  prompt_id: string;
+  subscription_id: string;
   amount: number;
   currency: string;
   country: string;
   plan_id: PlanId;
+  error: string;
+}
+
+export interface CheckoutCreateInput {
+  plan_id: PlanId;
+  email?: string;
+  /** E.164 phone number. Required for mobile-money routes
+   *  (M-PESA / AIRTEL / MTN); ignored for POLAR. */
+  phone?: string;
+  /** Optional override: "card", "mpesa", "airtel_money", "mtn_momo". */
+  route_hint?: string;
 }
 
 /**
- * POST /billing/checkout — opens a provider-hosted checkout session and
- * returns the URL to redirect the browser to. The server reads
- * CF-IPCountry to pick the right provider (DusuPay for Africa, Plar.sh
- * elsewhere).
+ * POST /billing/checkout — asks the candidates service to create a
+ * subscription (service_billing) and dispatch a payment prompt
+ * (service_payment). The server picks the rail based on CF-IPCountry
+ * unless the caller supplies route_hint. See the CheckoutResponse
+ * status field for what the caller should do next.
  */
-export async function createCheckout(planId: PlanId, email?: string): Promise<CheckoutResponse> {
+export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
   const url = join(getConfig().candidatesAPIURL, "/billing/checkout");
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await bearer()) },
     credentials: "include",
-    body: JSON.stringify({ plan_id: planId, email: email ?? "" }),
+    body: JSON.stringify({
+      plan_id:    input.plan_id,
+      email:      input.email ?? "",
+      phone:      input.phone ?? "",
+      route_hint: input.route_hint ?? "",
+    }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`createCheckout: HTTP ${res.status} ${body}`);
   }
   return (await res.json()) as CheckoutResponse;
+}
+
+export interface CheckoutStatusResponse {
+  status: CheckoutStatus;
+  redirect_url: string;
+  subscription_id: string;
+  error: string;
+}
+
+/**
+ * GET /billing/checkout/status?prompt_id=… — long-poll target for
+ * flows that don't produce an immediate redirect URL (M-Pesa STK
+ * push). Poll every ~2s until status flips to "paid" or "failed".
+ */
+export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
+  const url = new URL(join(getConfig().candidatesAPIURL, "/billing/checkout/status"));
+  url.searchParams.set("prompt_id", promptId);
+  const res = await fetch(url.toString(), {
+    headers: { ...(await bearer()) },
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error(`pollCheckoutStatus: HTTP ${res.status}`);
+  }
+  return (await res.json()) as CheckoutStatusResponse;
 }
 
 /**

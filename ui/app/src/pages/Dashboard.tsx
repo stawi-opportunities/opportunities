@@ -181,8 +181,20 @@ function RetryCheckoutButton({ plan }: { plan: PlanId }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await createCheckout(plan);
-      window.location.href = res.redirect_url;
+      const res = await createCheckout({ plan_id: plan });
+      if (res.status === "redirect" && res.redirect_url) {
+        window.location.href = res.redirect_url;
+        return;
+      }
+      if (res.status === "pending" && res.prompt_id) {
+        window.location.href = `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(res.prompt_id)}`;
+        return;
+      }
+      if (res.status === "paid") {
+        window.location.href = "/dashboard/?billing=success";
+        return;
+      }
+      throw new Error(res.error || "Checkout did not complete.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Checkout failed. Please try again.");
       setBusy(false);

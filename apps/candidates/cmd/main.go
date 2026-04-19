@@ -164,25 +164,31 @@ func main() {
 		return h
 	}
 
-	// Billing — geo-routed provider adapters.
-	//
-	// DusuPay serves African users (mobile money / card); Plar.sh
-	// serves everyone else. Both ultimately flip the candidate row
-	// through applyBillingEvent so the legacy /webhooks/billing
-	// contract continues to hold for upstream services that still
-	// call it directly.
-	billingRouter := buildBillingRouter(&cfg)
+	// Billing — orchestrates checkouts through service_billing and
+	// service_payment. stawi never talks to Polar.sh / DusuPay /
+	// M-Pesa directly; those integrations live inside
+	// service_payment's per-provider apps.
+	billingClient := buildBillingClient(&cfg, svcClients)
+	if billingClient == nil {
+		log.Warn("billing client unwired — /billing/checkout will return 503 until BILLING_SERVICE_URI and service_billing deps are configured")
+	}
+	go runBillingReconciler(ctx, candidateRepo, billingClient, cfg.BillingReconcileInterval)
 
 	// Public routes (no auth required)
 	mux.HandleFunc("GET /healthz", healthHandler(candidateRepo))
 	mux.HandleFunc("POST /candidates/register", registerHandler(candidateRepo, extractor, svc, svcClients))
 	mux.HandleFunc("POST /webhooks/inbound-email", inboundEmailHandler(candidateRepo, extractor, svc))
+	// Legacy webhook — retained for back-compat with upstream callers
+	// that still POST {profile_id, status, ...} directly. New flows
+	// should rely on the reconciler instead.
 	mux.HandleFunc("POST /webhooks/billing", billingWebhookHandler(candidateRepo))
-	mux.HandleFunc("POST /webhooks/billing/dusupay", providerWebhookHandler(candidateRepo, billingRouter.Africa()))
-	mux.HandleFunc("POST /webhooks/billing/plar", providerWebhookHandler(candidateRepo, billingRouter.Elsewhere()))
 	// Plan catalog is public so the pricing page can render the right
 	// per-country price before the user starts checkout.
 	mux.HandleFunc("GET /billing/plans", plansHandler())
+	// Checkout status — public because callers hit it mid-redirect
+	// with a prompt_id. The prompt_id is an opaque service_payment
+	// identifier; leaking status to a guesser has no material impact.
+	mux.HandleFunc("GET /billing/checkout/status", checkoutStatusHandler(candidateRepo, billingClient))
 
 	// Internal: the redirect service (service-files) calls this when
 	// it flips a link to EXPIRED after the destination URL has been
@@ -196,7 +202,7 @@ func main() {
 	// Authenticated candidate routes
 	mux.Handle("GET /me", authWrap(meHandler(candidateRepo, cfg.ProfileServiceURL)))
 	mux.Handle("GET /me/subscription", authWrap(meSubscriptionHandler(candidateRepo, matchRepo)))
-	mux.Handle("POST /billing/checkout", authWrap(checkoutHandler(candidateRepo, billingRouter, &cfg)))
+	mux.Handle("POST /billing/checkout", authWrap(checkoutHandler(candidateRepo, billingClient, &cfg)))
 	mux.Handle("POST /candidates/onboard", authWrap(onboardHandler(candidateRepo, extractor, svc)))
 	mux.Handle("GET /candidates/profile", authWrap(getProfileHandler(candidateRepo)))
 	mux.Handle("PUT /candidates/profile", authWrap(updateProfileHandler(candidateRepo)))

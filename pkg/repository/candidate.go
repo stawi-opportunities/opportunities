@@ -113,3 +113,17 @@ func (r *CandidateRepository) Count(ctx context.Context) (int64, error) {
 	err := r.db(ctx, true).Model(&domain.CandidateProfile{}).Count(&count).Error
 	return count, err
 }
+
+// ListPendingSubscriptions returns candidates with a SubscriptionID
+// that are not yet marked as paid. The billing reconciler uses this
+// to poll service_billing for state transitions so the candidate row
+// reflects the authoritative lifecycle state even when webhooks drop.
+func (r *CandidateRepository) ListPendingSubscriptions(ctx context.Context, limit int) ([]*domain.CandidateProfile, error) {
+	var candidates []*domain.CandidateProfile
+	err := r.db(ctx, true).
+		Where("subscription_id <> '' AND subscription <> ?", domain.SubscriptionPaid).
+		Order("id ASC").
+		Limit(limit).
+		Find(&candidates).Error
+	return candidates, err
+}

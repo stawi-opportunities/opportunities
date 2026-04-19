@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
+	"time"
 
+	billingv1 "buf.build/gen/go/antinvestor/billing/protocolbuffers/go/billing/v1"
 	"github.com/pitabwire/frame/security"
 	"github.com/pitabwire/util"
 
@@ -16,17 +17,38 @@ import (
 	"stawi.jobs/pkg/billing"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/services"
 )
+
+// buildBillingClient wires a billing.Client from the candidates
+// config + the shared antinvestor Connect clients. Returns nil when
+// mandatory settings are missing — callers treat nil as "billing not
+// configured" and the checkout endpoint 503s with a clean error.
+func buildBillingClient(cfg *config.CandidatesConfig, svcClients *services.Clients) *billing.Client {
+	if svcClients == nil || svcClients.Billing == nil || svcClients.Payment == nil {
+		return nil
+	}
+	return billing.NewClient(billing.ClientConfig{
+		CatalogVersionID:   cfg.BillingCatalogVersionID,
+		RecipientProfileID: cfg.BillingRecipientProfileID,
+		SuccessURL:         strings.TrimRight(cfg.PublicSiteURL, "/") + "/dashboard/?billing=success",
+		CancelURL:          strings.TrimRight(cfg.PublicSiteURL, "/") + "/pricing/?billing=cancelled",
+		PolarProducts: map[billing.PlanID]string{
+			billing.PlanStarter: cfg.PolarProductStarter,
+			billing.PlanPro:     cfg.PolarProductPro,
+			billing.PlanManaged: cfg.PolarProductManaged,
+		},
+	}, svcClients.Billing, svcClients.Payment)
+}
 
 // plansHandler returns the public plan catalog enriched with the
 // per-country resolved price. The frontend hits this before rendering
 // the pricing page so each user sees the amount they'll actually be
-// charged (KES / NGN / ZAR for mobile-money users, USD otherwise).
+// charged.
 func plansHandler() http.HandlerFunc {
-	// Stable plan order — keep in sync with pricing-cards.html.
 	order := []billing.PlanID{billing.PlanStarter, billing.PlanPro, billing.PlanManaged}
 	return func(w http.ResponseWriter, r *http.Request) {
-		country := billing.CountryFromRequest(r)
+		country := countryFromRequest(r)
 		out := make([]map[string]any, 0, len(order))
 		for _, id := range order {
 			plan := billing.Catalog[id]
@@ -41,70 +63,42 @@ func plansHandler() http.HandlerFunc {
 				"usd_cents":   plan.USDCents,
 			})
 		}
-		provider := "plar"
-		if billing.IsAfrica(country) {
-			provider = "dusupay"
-		}
+		route := billing.RouteForCountry(country, "")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"country":  country,
-			"provider": provider,
-			"plans":    out,
+			"country": country,
+			"route":   string(route),
+			"plans":   out,
 		})
 	}
 }
 
-// buildBillingRouter wires the DusuPay + Plar.sh adapters from config.
-// An adapter with missing credentials is wired as nil — the router
-// returns ErrNoProvider on picks to that geography rather than
-// silently falling back, so ops can tell "we're mis-routing" from
-// "we never shipped the creds".
-func buildBillingRouter(cfg *config.CandidatesConfig) *billing.Router {
-	var dusu billing.Provider
-	if cfg.DusuPayAPIKey != "" && cfg.DusuPayWebhookSecret != "" {
-		dusu = billing.NewDusuPay(billing.DusuPayConfig{
-			BaseURL:       cfg.DusuPayBaseURL,
-			APIKey:        cfg.DusuPayAPIKey,
-			WebhookSecret: cfg.DusuPayWebhookSecret,
-			CallbackURL:   strings.TrimRight(cfg.PublicSiteURL, "/") + "/webhooks/billing/dusupay",
-			MerchantCode:  cfg.DusuPayMerchantCode,
-		}, nil)
-	}
-	var plar billing.Provider
-	if cfg.PlarAPIKey != "" && cfg.PlarWebhookSecret != "" {
-		plar = billing.NewPlar(billing.PlarConfig{
-			BaseURL:       cfg.PlarBaseURL,
-			APIKey:        cfg.PlarAPIKey,
-			WebhookSecret: cfg.PlarWebhookSecret,
-			CallbackURL:   strings.TrimRight(cfg.PublicSiteURL, "/") + "/webhooks/billing/plar",
-			MerchantID:    cfg.PlarMerchantID,
-		}, nil)
-	}
-	return billing.NewRouter(dusu, plar)
-}
-
 // checkoutHandler handles POST /billing/checkout.
 //
-// Body: { "plan_id": "starter|pro|managed" }
-// Returns: {
-//   "redirect_url": "…provider URL…",
-//   "provider":     "dusupay|plar",
-//   "amount":       1000,           // minor units
-//   "currency":     "KES",
-//   "country":      "KE"
-// }
+// Body: { "plan_id": "starter|pro|managed", "email": "...", "phone": "+254...", "route_hint": "mpesa"|"card"|"" }
+// Returns one of:
 //
-// Auth is required — profile_id comes from JWT claims. The candidate
-// row is upserted with PlanID and (pending) status so a webhook arriving
-// before the user finishes the redirect still has somewhere to land.
+//	{ "status": "redirect", "redirect_url": "https://polar.sh/...", ... }
+//	{ "status": "pending",  "prompt_id": "...", ... }   // caller polls /billing/checkout/status
+//	{ "status": "failed",   "error": "..." }
+//
+// Auth required — profile_id comes from JWT. The candidate row is
+// upserted with PlanID so the reconciler can flip state once the
+// billing service confirms the charge.
 func checkoutHandler(
 	candidateRepo *repository.CandidateRepository,
-	router *billing.Router,
+	cli *billing.Client,
 	cfg *config.CandidatesConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := util.Log(ctx)
+
+		if cli == nil {
+			log.Warn("checkout: billing client not wired")
+			http.Error(w, `{"error":"billing not configured"}`, http.StatusServiceUnavailable)
+			return
+		}
 
 		claims := security.ClaimsFromContext(ctx)
 		if claims == nil {
@@ -118,8 +112,10 @@ func checkoutHandler(
 		}
 
 		var body struct {
-			PlanID string `json:"plan_id"`
-			Email  string `json:"email"`
+			PlanID    string `json:"plan_id"`
+			Email     string `json:"email"`
+			Phone     string `json:"phone"`
+			RouteHint string `json:"route_hint"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
@@ -131,20 +127,11 @@ func checkoutHandler(
 			return
 		}
 
-		country := billing.CountryFromRequest(r)
-		provider, err := router.Pick(country)
-		if err != nil {
-			log.WithError(err).WithField("country", country).
-				Warn("checkout: no provider for region")
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusServiceUnavailable)
-			return
-		}
+		country := countryFromRequest(r)
 
-		// Ensure the candidate row exists before we send the user to the
-		// provider — the webhook is what flips subscription status, and
-		// it needs a row to update. If the user onboarded through the
-		// free path they already have one; otherwise, create a skeleton
-		// with the plan id set and status=unverified.
+		// Ensure the candidate row exists and records the intended
+		// plan. The reconciler needs this hook to flip state once
+		// the webhook says the payment succeeded.
 		candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
@@ -161,178 +148,163 @@ func checkoutHandler(
 				http.Error(w, fmt.Sprintf(`{"error":%q}`, createErr.Error()), http.StatusInternalServerError)
 				return
 			}
-		} else {
-			// Record the intended plan so the webhook round-trips it even
-			// if the provider drops metadata (happens on bank-transfer
-			// receipts we've seen elsewhere).
-			if candidate.PlanID != string(plan.ID) {
-				candidate.PlanID = string(plan.ID)
-				if updateErr := candidateRepo.Update(ctx, candidate); updateErr != nil {
-					log.WithError(updateErr).Warn("checkout: could not persist pending plan id")
-				}
+		} else if candidate.PlanID != string(plan.ID) {
+			candidate.PlanID = string(plan.ID)
+			if updateErr := candidateRepo.Update(ctx, candidate); updateErr != nil {
+				log.WithError(updateErr).Warn("checkout: could not persist pending plan id")
 			}
 		}
 
-		// Compose absolute success / cancel URLs on the public site.
-		// Provider will round-trip the user here after payment.
-		siteBase := strings.TrimRight(cfg.PublicSiteURL, "/")
-		successURL := siteBase + "/dashboard/?billing=success"
-		cancelURL := siteBase + "/pricing/?billing=cancelled"
-
-		resp, err := provider.CreateCheckout(ctx, billing.CheckoutRequest{
-			ProfileID:  profileID,
-			Plan:       plan,
-			Country:    country,
-			Email:      body.Email,
-			SuccessURL: successURL,
-			CancelURL:  cancelURL,
+		result, err := cli.OpenCheckout(ctx, billing.CheckoutRequest{
+			ProfileID: profileID,
+			PlanID:    billing.PlanID(plan.ID),
+			Country:   country,
+			Phone:     body.Phone,
+			Email:     body.Email,
+			RouteHint: body.RouteHint,
 		})
+
+		// Stamp the subscription id onto the candidate row as soon
+		// as CreateSubscription succeeds — even if InitiatePrompt
+		// later fails, we want the row pointing at the right
+		// service_billing record so CancelSubscription works and
+		// the reconciler can GC dangling pending subs.
+		if result.SubscriptionID != "" && candidate.SubscriptionID != result.SubscriptionID {
+			candidate.SubscriptionID = result.SubscriptionID
+			if updateErr := candidateRepo.Update(ctx, candidate); updateErr != nil {
+				log.WithError(updateErr).Warn("checkout: could not persist subscription id")
+			}
+		}
+
 		if err != nil {
-			log.WithError(err).WithField("provider", provider.Name()).
-				Error("checkout: provider CreateCheckout failed")
+			log.WithError(err).WithField("profile_id", profileID).
+				Error("checkout: OpenCheckout failed")
+			status := http.StatusBadGateway
+			if errors.Is(err, billing.ErrNotConfigured) {
+				status = http.StatusServiceUnavailable
+			}
+			if errors.Is(err, billing.ErrUnknownPlan) {
+				status = http.StatusBadRequest
+			}
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), status)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":          result.Status,
+			"route":           string(result.Route),
+			"redirect_url":    result.RedirectURL,
+			"prompt_id":       result.PromptID,
+			"subscription_id": result.SubscriptionID,
+			"amount":          result.AmountCents,
+			"currency":        result.Currency,
+			"country":         country,
+			"plan_id":         string(plan.ID),
+			"error":           result.Error,
+		})
+	}
+}
+
+// checkoutStatusHandler handles GET /billing/checkout/status?prompt_id=…
+// for long-poll scenarios — STK push routes don't produce a redirect
+// URL, so the frontend polls this endpoint while the user completes
+// the prompt on their phone. Also handles Polar's "session still
+// being created" window.
+func checkoutStatusHandler(
+	candidateRepo *repository.CandidateRepository,
+	cli *billing.Client,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		if cli == nil {
+			http.Error(w, `{"error":"billing not configured"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		promptID := strings.TrimSpace(r.URL.Query().Get("prompt_id"))
+		if promptID == "" {
+			http.Error(w, `{"error":"prompt_id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		result, err := cli.PollPromptStatus(ctx, promptID)
+		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadGateway)
 			return
 		}
 
+		// When status is "paid" we synchronously reconcile the
+		// candidate row so the UI sees updated state on the next
+		// render, without waiting for the periodic reconciler.
+		if result.Status == "paid" && result.SubscriptionID != "" {
+			claims := security.ClaimsFromContext(ctx)
+			if claims != nil {
+				_ = reconcileSubscriptionForProfile(ctx, candidateRepo, cli, claims.GetProfileID(), result.SubscriptionID)
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"redirect_url": resp.RedirectURL,
-			"provider":     resp.Provider,
-			"provider_ref": resp.ProviderRef,
-			"amount":       resp.AmountCents,
-			"currency":     resp.Currency,
-			"country":      country,
-			"plan_id":      string(plan.ID),
+			"status":          result.Status,
+			"redirect_url":    result.RedirectURL,
+			"subscription_id": result.SubscriptionID,
+			"error":           result.Error,
 		})
 	}
 }
 
-// providerWebhookHandler builds one HTTP handler per provider. Each
-// handler verifies the signature (HMAC-SHA256), parses the payload,
-// and applies the normalised event to the candidate row via
-// applyBillingEvent — which preserves the existing contract used by
-// the legacy /webhooks/billing endpoint.
-//
-// Idempotency: applyBillingEvent is the only write path, and it
-// guards on both status transitions and (when available) provider
-// event ids. A replay with the same SubscriptionID + Status is a no-op.
-func providerWebhookHandler(
-	candidateRepo *repository.CandidateRepository,
-	provider billing.Provider,
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		log := util.Log(ctx)
-
-		if provider == nil {
-			// The provider is optional — ops may have deliberately not
-			// configured it in staging. 404 so the caller doesn't retry.
-			http.NotFound(w, r)
-			return
-		}
-
-		raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		if err != nil {
-			http.Error(w, `{"error":"read body"}`, http.StatusBadRequest)
-			return
-		}
-
-		if verifyErr := provider.VerifyWebhook(r, raw); verifyErr != nil {
-			log.WithError(verifyErr).
-				WithField("provider", provider.Name()).
-				Warn("webhook: signature verification failed")
-			if errors.Is(verifyErr, billing.ErrSignatureInvalid) {
-				http.Error(w, `{"error":"invalid signature"}`, http.StatusUnauthorized)
-				return
-			}
-			http.Error(w, `{"error":"signature check failed"}`, http.StatusUnauthorized)
-			return
-		}
-
-		ev, parseErr := provider.ParseWebhook(raw)
-		if parseErr != nil {
-			// Intentionally-ignored event types → 204, so the provider
-			// stops retrying. Other decode errors bubble as 400.
-			if errors.Is(parseErr, billing.ErrUnhandledEvent) {
-				log.WithError(parseErr).
-					WithField("provider", provider.Name()).
-					Debug("webhook: event intentionally ignored")
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			log.WithError(parseErr).
-				WithField("provider", provider.Name()).
-				Warn("webhook: parse failed")
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, parseErr.Error()), http.StatusBadRequest)
-			return
-		}
-
-		if ev.ProfileID == "" {
-			log.WithField("provider", provider.Name()).
-				WithField("raw", string(raw)).
-				Warn("webhook: event with no profile_id, dropping")
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		if applyErr := applyBillingEvent(ctx, candidateRepo, ev); applyErr != nil {
-			log.WithError(applyErr).
-				WithField("provider", provider.Name()).
-				WithField("profile_id", ev.ProfileID).
-				Error("webhook: apply failed")
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, applyErr.Error()), http.StatusInternalServerError)
-			return
-		}
-
-		log.WithField("provider", provider.Name()).
-			WithField("profile_id", ev.ProfileID).
-			WithField("status", string(ev.Status)).
-			WithField("plan_id", string(ev.PlanID)).
-			Info("webhook: applied")
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":       true,
-			"status":   string(ev.Status),
-			"plan_id":  string(ev.PlanID),
-			"event_id": ev.EventID,
-		})
-	}
-}
-
-// applyBillingEvent translates a normalised billing event onto the
-// candidate row. Mirrors billingWebhookHandler's switch in main.go
-// exactly — lifted out so the provider endpoints and the legacy
-// generic endpoint share one implementation.
-//
-// Idempotency: if the event is "paid" and the candidate is already
-// paid with the same subscription id, we no-op — repeated deliveries
-// from a flaky provider don't churn the row.
-func applyBillingEvent(
+// reconcileSubscriptionForProfile fetches a single subscription from
+// service_billing and updates the candidate row accordingly. Used
+// inline after a "paid" status and by the periodic reconciler.
+func reconcileSubscriptionForProfile(
 	ctx context.Context,
 	candidateRepo *repository.CandidateRepository,
-	ev billing.WebhookEvent,
+	cli *billing.Client,
+	profileID, subscriptionID string,
 ) error {
-	candidate, err := candidateRepo.GetByProfileID(ctx, ev.ProfileID)
+	if profileID == "" || subscriptionID == "" {
+		return nil
+	}
+	sub, err := cli.FetchSubscription(ctx, subscriptionID)
 	if err != nil {
 		return err
 	}
-	if candidate == nil {
-		// Very first payment from a user who never touched onboarding —
-		// create the skeleton row so the webhook succeeds. CV data
-		// arrives later via /candidates/onboard.
-		candidate = &domain.CandidateProfile{
-			ProfileID: ev.ProfileID,
-			Status:    domain.CandidateActive,
-		}
-		if createErr := candidateRepo.Create(ctx, candidate); createErr != nil {
-			return createErr
-		}
+	candidate, err := candidateRepo.GetByProfileID(ctx, profileID)
+	if err != nil || candidate == nil {
+		return err
+	}
+	return applySubscriptionState(ctx, candidateRepo, candidate, sub)
+}
+
+// applySubscriptionState maps a service_billing Subscription onto
+// the candidate row. Kept here so the reconciler, the sync path on
+// checkout status, and any future webhook bridge all share one
+// transition table.
+func applySubscriptionState(
+	ctx context.Context,
+	candidateRepo *repository.CandidateRepository,
+	candidate *domain.CandidateProfile,
+	sub *billingv1.Subscription,
+) error {
+	if candidate == nil || sub == nil {
+		return nil
+	}
+	changed := false
+
+	// Keep the catalog plan id reflected on the candidate row.
+	if sub.GetPlanId() != "" && candidate.PlanID != sub.GetPlanId() {
+		candidate.PlanID = sub.GetPlanId()
+		changed = true
+	}
+	if sub.GetId() != "" && candidate.SubscriptionID != sub.GetId() {
+		candidate.SubscriptionID = sub.GetId()
+		changed = true
 	}
 
-	changed := false
-	switch ev.Status {
-	case billing.StatusPaid, billing.StatusActive:
+	switch sub.GetState() {
+	case billingv1.SubscriptionState_SUBSCRIPTION_ACTIVE:
 		if candidate.Subscription != domain.SubscriptionPaid {
 			candidate.Subscription = domain.SubscriptionPaid
 			changed = true
@@ -341,15 +313,8 @@ func applyBillingEvent(
 			candidate.AutoApply = true
 			changed = true
 		}
-		if ev.SubscriptionID != "" && candidate.SubscriptionID != ev.SubscriptionID {
-			candidate.SubscriptionID = ev.SubscriptionID
-			changed = true
-		}
-		if ev.PlanID != "" && candidate.PlanID != string(ev.PlanID) {
-			candidate.PlanID = string(ev.PlanID)
-			changed = true
-		}
-	case billing.StatusCancelled, billing.StatusExpired:
+	case billingv1.SubscriptionState_SUBSCRIPTION_CANCELLED,
+		billingv1.SubscriptionState_SUBSCRIPTION_EXPIRED:
 		if candidate.Subscription != domain.SubscriptionCancelled {
 			candidate.Subscription = domain.SubscriptionCancelled
 			changed = true
@@ -358,25 +323,100 @@ func applyBillingEvent(
 			candidate.AutoApply = false
 			changed = true
 		}
-	case billing.StatusTrial:
-		if candidate.Subscription != domain.SubscriptionTrial {
-			candidate.Subscription = domain.SubscriptionTrial
-			changed = true
-		}
-	case billing.StatusFailed, billing.StatusPending:
-		// No subscription state change — the row already reflects
-		// the last successful state. Log for visibility.
-		util.Log(ctx).
-			WithField("profile_id", ev.ProfileID).
-			WithField("status", string(ev.Status)).
-			Info("billing: non-terminal status, no state change")
-		return nil
-	default:
-		return fmt.Errorf("unknown status %q", ev.Status)
+	case billingv1.SubscriptionState_SUBSCRIPTION_PENDING:
+		// Keep the row as-is (Free or whatever it was before the
+		// pending signal arrived). The reconciler will revisit
+		// once service_billing flips it to ACTIVE / CANCELLED.
 	}
 
 	if !changed {
 		return nil
 	}
 	return candidateRepo.Update(ctx, candidate)
+}
+
+// runBillingReconciler runs in the background and periodically syncs
+// candidates with SubscriptionID != "" against service_billing. This
+// gives us durable state reconciliation even if a webhook from
+// service_payment → stawi is missed (network hiccup, pod restart
+// during delivery window, etc.).
+func runBillingReconciler(
+	ctx context.Context,
+	candidateRepo *repository.CandidateRepository,
+	cli *billing.Client,
+	interval time.Duration,
+) {
+	if cli == nil || interval <= 0 {
+		return
+	}
+	log := util.Log(ctx).WithField("worker", "billing-reconciler")
+	log.WithField("interval", interval).Info("starting")
+
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("reconciler stopping")
+			return
+		case <-tick.C:
+			reconcileOneBatch(ctx, candidateRepo, cli)
+		}
+	}
+}
+
+// reconcileOneBatch fetches candidates that have a SubscriptionID but
+// haven't yet transitioned to "paid" and asks service_billing for the
+// authoritative state of each.  Non-fatal: per-candidate errors are
+// logged and we move on.
+func reconcileOneBatch(
+	ctx context.Context,
+	candidateRepo *repository.CandidateRepository,
+	cli *billing.Client,
+) {
+	log := util.Log(ctx).WithField("worker", "billing-reconciler")
+	// Bounded batch — we don't want a 10k-candidate sweep on every
+	// tick. 200/tick at 30s = 24k/hour which comfortably handles
+	// the forecast for MVP.
+	candidates, err := candidateRepo.ListPendingSubscriptions(ctx, 200)
+	if err != nil {
+		log.WithError(err).Warn("list pending subs failed")
+		return
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	for _, c := range candidates {
+		if c.SubscriptionID == "" {
+			continue
+		}
+		sub, err := cli.FetchSubscription(ctx, c.SubscriptionID)
+		if err != nil {
+			log.WithError(err).WithField("subscription_id", c.SubscriptionID).
+				Debug("fetch subscription failed, will retry next tick")
+			continue
+		}
+		if applyErr := applySubscriptionState(ctx, candidateRepo, c, sub); applyErr != nil {
+			log.WithError(applyErr).WithField("candidate_id", c.ID).
+				Warn("apply subscription state failed")
+		}
+	}
+}
+
+// countryFromRequest extracts Cloudflare's CF-IPCountry header plus
+// a query-string override (?country=KE) for local-dev testing.
+func countryFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if v := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country"))); v != "" {
+		return v
+	}
+	if v := r.Header.Get("CF-IPCountry"); v != "" {
+		return strings.ToUpper(strings.TrimSpace(v))
+	}
+	if v := r.Header.Get("X-Country-Code"); v != "" {
+		return strings.ToUpper(strings.TrimSpace(v))
+	}
+	return ""
 }

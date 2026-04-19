@@ -135,10 +135,19 @@
       });
       var hint = document.getElementById("pricing-provider-hint");
       if (hint) {
-        if (body.provider === "dusupay") {
-          hint.textContent = "Pay with M-Pesa, MTN Money, Airtel Money, or card via DusuPay.";
-        } else {
-          hint.textContent = "Pay with card, bank transfer, or PayPal via Plar.sh.";
+        switch (body.route) {
+          case "M-PESA":
+            hint.textContent = "You'll complete payment via an M-Pesa prompt on your phone.";
+            break;
+          case "AIRTEL":
+            hint.textContent = "You'll complete payment via an Airtel Money prompt on your phone.";
+            break;
+          case "MTN":
+            hint.textContent = "You'll complete payment via an MTN MoMo prompt on your phone.";
+            break;
+          case "POLAR":
+          default:
+            hint.textContent = "You'll complete payment via Polar (card, Apple Pay, or PayPal).";
         }
         hint.classList.remove("hidden");
       }

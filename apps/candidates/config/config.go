@@ -1,6 +1,10 @@
 package config
 
-import fconfig "github.com/pitabwire/frame/config"
+import (
+	"time"
+
+	fconfig "github.com/pitabwire/frame/config"
+)
 
 // CandidatesConfig embeds Frame's ConfigurationDefault and adds
 // candidate-service-specific settings.
@@ -45,17 +49,24 @@ type CandidatesConfig struct {
 	// Public site URL — used to build provider redirect/cancel URLs.
 	PublicSiteURL string `env:"PUBLIC_SITE_URL" envDefault:"https://jobs.stawi.org"`
 
-	// DusuPay (African mobile-money / card via East-Africa rails).
-	// Empty creds disable the adapter; the billing router then 503s
-	// African checkouts rather than silently routing them to Plar.
-	DusuPayBaseURL       string `env:"DUSUPAY_BASE_URL" envDefault:"https://api.dusupay.com"`
-	DusuPayAPIKey        string `env:"DUSUPAY_API_KEY" envDefault:""`
-	DusuPayWebhookSecret string `env:"DUSUPAY_WEBHOOK_SECRET" envDefault:""`
-	DusuPayMerchantCode  string `env:"DUSUPAY_MERCHANT_CODE" envDefault:""`
+	// Billing orchestration.  service_payment + service_billing are
+	// co-deployed and reached via BillingServiceURI above; stawi
+	// never talks to Polar / M-Pesa / Airtel / MTN directly —
+	// those providers are the payment service's concern. We only
+	// need a catalog id + merchant recipient + per-tier Polar
+	// product ids so InitiatePrompt's extras round-trip correctly.
+	BillingCatalogVersionID   string `env:"BILLING_CATALOG_VERSION_ID" envDefault:"stawi-jobs-v1"`
+	BillingRecipientProfileID string `env:"BILLING_RECIPIENT_PROFILE_ID" envDefault:""`
 
-	// Plar.sh (card / PayPal / ACH for non-African users).
-	PlarBaseURL       string `env:"PLAR_BASE_URL" envDefault:"https://api.plar.sh"`
-	PlarAPIKey        string `env:"PLAR_API_KEY" envDefault:""`
-	PlarWebhookSecret string `env:"PLAR_WEBHOOK_SECRET" envDefault:""`
-	PlarMerchantID    string `env:"PLAR_MERCHANT_ID" envDefault:""`
+	// Polar.sh product ids per tier (env-specific — staging and
+	// production have different dashboards). Empty product ids
+	// cause OpenCheckout to fail for RoutePolar users on that tier.
+	PolarProductStarter string `env:"POLAR_PRODUCT_STARTER" envDefault:""`
+	PolarProductPro     string `env:"POLAR_PRODUCT_PRO" envDefault:""`
+	PolarProductManaged string `env:"POLAR_PRODUCT_MANAGED" envDefault:""`
+
+	// BillingReconcileInterval controls how often the candidates
+	// service polls service_billing for PENDING subscriptions to
+	// promote them to "paid". Zero disables the reconciler.
+	BillingReconcileInterval time.Duration `env:"BILLING_RECONCILE_INTERVAL" envDefault:"30s"`
 }
