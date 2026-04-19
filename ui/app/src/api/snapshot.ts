@@ -2,7 +2,7 @@ import { getConfig } from "@/utils/config";
 import type { JobSnapshot } from "@/types/snapshot";
 
 /**
- * GET jobs-repo.stawi.org/jobs/<slug>.json. Returns null on 404.
+ * GET job-repo.stawi.org/jobs/<slug>.json. Returns null on 404.
  *
  * When `lang` is provided (and not "en" or empty), tries the translated
  * variant at `<slug>.<lang>.json` first and falls back to the base

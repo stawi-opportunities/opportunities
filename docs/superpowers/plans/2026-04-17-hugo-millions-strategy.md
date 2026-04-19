@@ -17,7 +17,7 @@
 9. API endpoints: `/api/search`, `/api/categories`, `/api/categories/{slug}/jobs`, `/api/jobs/latest`, `/api/stats/summary`, `/admin/republish`.
 10. Scheduler crons: expire (15m), MV refresh (5m), retention Stage 2 (daily).
 11. Hugo shell: delete per-job content, remove `sync-r2.sh`, drop taxonomies, add `_redirects`, add client JS (safe DOM construction), update layouts to hydration skeletons.
-12. Infra (off-repo): CF Pages build command, R2 CORS, `jobs-repo.stawi.org` domain — document in README.
+12. Infra (off-repo): CF Pages build command, R2 CORS, `job-repo.stawi.org` domain — document in README.
 
 ## Safety notes for the JS layer
 

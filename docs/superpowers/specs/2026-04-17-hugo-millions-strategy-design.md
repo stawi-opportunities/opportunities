@@ -7,7 +7,7 @@ Scale the public jobs surface at `jobs.stawi.org` to handle ~20M lifetime jobs w
 The strategy is a strict separation between:
 
 - **The Hugo app shell** — a tiny static site built only on code changes. Home, `/search`, `/jobs/[slug]`, `/categories/[slug]`, `/auth`, `/dashboard`, `/onboarding`. No per-job content, no content adapters, no sharded builds.
-- **The content tier in R2** — one `jobs/<slug>.json` snapshot per job, fronted by Cloudflare's CDN at a public subdomain `jobs-repo.stawi.org`. Written directly by the publish handler. Reach millions of objects without ever involving Hugo.
+- **The content tier in R2** — one `jobs/<slug>.json` snapshot per job, fronted by Cloudflare's CDN at a public subdomain `job-repo.stawi.org`. Written directly by the publish handler. Reach millions of objects without ever involving Hugo.
 - **The search tier in Postgres** — `tsvector` GIN indexes for full-text, partial indexes for the hot path, a 5-minute materialized view for facet counts. No second search system.
 
 The design deliberately avoids: sharded Hugo builds, content adapters against remote data, Workers on the read path, OpenSearch, Typesense, or any service not already running in the cluster.
@@ -32,7 +32,7 @@ The design deliberately avoids: sharded Hugo builds, content adapters against re
 ┌────────────────────────────────────────────────────────────────┐
 │  PUBLISH HANDLER (single writer — transactional)               │
 │    1. UPDATE jobs.search_tsv + status/r2_version (Postgres)    │
-│    2. PUT   jobs-repo.stawi.org/jobs/<slug>.json (R2 public)    │
+│    2. PUT   job-repo.stawi.org/jobs/<slug>.json (R2 public)    │
 │    3. (best-effort) CF cache purge for that URL                │
 │    4. emit publish.completed metric                            │
 └────────────────────────────────────────────────────────────────┘
@@ -49,7 +49,7 @@ The design deliberately avoids: sharded Hugo builds, content adapters against re
    /jobs/<slug>/ → shell HTML                   │
             │                                   │
             ▼                                   │
-   JS fetches jobs-repo.stawi.org/               │
+   JS fetches job-repo.stawi.org/               │
         jobs/<slug>.json  ── R2 + CF CDN        │
             │                                   │
             ▼                                   │
@@ -69,10 +69,10 @@ The design deliberately avoids: sharded Hugo builds, content adapters against re
 
 ## R2 layout and snapshot schema
 
-Single public R2 bucket `stawi-jobs-content`, custom domain `jobs-repo.stawi.org`, CORS allowing `https://jobs.stawi.org` and local dev origins.
+Single public R2 bucket `stawi-jobs-content`, custom domain `job-repo.stawi.org`, CORS allowing `https://jobs.stawi.org` and local dev origins.
 
 ```
-jobs-repo.stawi.org/
+job-repo.stawi.org/
 ├── jobs/
 │   └── <slug>.json                 # one per job (the snapshot)
 ├── categories/
@@ -112,7 +112,7 @@ Cache-Control: public, max-age=60, s-maxage=300
   "company": {
     "name": "Acme Corp",
     "slug": "acme-corp",
-    "logo_url": "https://jobs-repo.stawi.org/companies/acme-corp/logo.png",
+    "logo_url": "https://job-repo.stawi.org/companies/acme-corp/logo.png",
     "verified": true
   },
   "category": "engineering",
@@ -285,7 +285,7 @@ Vanilla JS + Tailwind. Route-specific code loaded via dynamic `import()`. ~20 KB
 
 1. Hugo shell HTML served (CDN-cached).
 2. `job-detail.js` extracts slug from `location.pathname`.
-3. `fetch('https://jobs-repo.stawi.org/jobs/' + slug + '.json')`.
+3. `fetch('https://job-repo.stawi.org/jobs/' + slug + '.json')`.
 4. On 200: hydrate DOM; update `<title>` and canonical link.
 5. On 404: render "expired or removed" state.
 6. If signed in: parallel `fetch('/api/candidates/jobs/' + slug + '/state')` for the user-state widget.
@@ -300,7 +300,7 @@ Vanilla JS + Tailwind. Route-specific code loaded via dynamic `import()`. ~20 KB
 **`/categories/<slug>/` render flow:**
 
 1. `category.js` extracts slug.
-2. Parallel: `GET jobs-repo.stawi.org/categories/<slug>.json` (hero metadata) + `GET /api/categories/<slug>/jobs` (live list).
+2. Parallel: `GET job-repo.stawi.org/categories/<slug>.json` (hero metadata) + `GET /api/categories/<slug>/jobs` (live list).
 3. Render as each arrives.
 
 **Build lifecycle:**
@@ -312,7 +312,7 @@ Vanilla JS + Tailwind. Route-specific code loaded via dynamic `import()`. ~20 KB
 - Every PR gets a preview URL from Pages.
 - Shell HTML cached 5 min at the edge. Content-hashed JS/CSS cached `immutable, max-age=31536000`.
 
-**CORS on `jobs-repo.stawi.org`:**
+**CORS on `job-repo.stawi.org`:**
 
 ```json
 [{
@@ -461,9 +461,9 @@ For rare operations that update all snapshots (schema bump, CSS change affecting
 
 1. Run bulk re-publish (~8h for 6M objects).
 2. Wait `s-maxage` for natural edge expiry.
-3. Optionally call CF "Purge Everything" once on the `jobs-repo.stawi.org` zone.
+3. Optionally call CF "Purge Everything" once on the `job-repo.stawi.org` zone.
 
-`jobs-repo.stawi.org` should be its own CF zone so a purge-everything doesn't wipe the app shell cache on `jobs.stawi.org`.
+`job-repo.stawi.org` should be its own CF zone so a purge-everything doesn't wipe the app shell cache on `jobs.stawi.org`.
 
 ### Retention — 4-month TTL
 
@@ -574,7 +574,7 @@ Greenfield build. No dual-write, no backfill, no gradual cutover. Delete the old
 ### What to build
 
 **Infra:**
-- `jobs-repo.stawi.org` as its own CF zone bound to the R2 bucket (separate from `jobs.stawi.org` so cache operations don't cross-affect).
+- `job-repo.stawi.org` as its own CF zone bound to the R2 bucket (separate from `jobs.stawi.org` so cache operations don't cross-affect).
 - Public R2 bucket `stawi-jobs-content` with CORS for `jobs.stawi.org` + local dev.
 
 **Postgres:**

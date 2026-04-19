@@ -3,7 +3,7 @@ package domain
 import "strings"
 
 // JobSnapshot is the public JSON payload served from R2 at
-// jobs-repo.stawi.org/jobs/<slug>.json. It is the wire contract consumed by the
+// job-repo.stawi.org/jobs/<slug>.json. It is the wire contract consumed by the
 // Hugo shell's client-side renderer. Kept intentionally flat and stable; bump
 // SchemaVersion when breaking changes are introduced.
 type JobSnapshot struct {
