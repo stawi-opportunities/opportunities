@@ -4,12 +4,20 @@
   step. Hidden client-side for authenticated users by the React
   island at #mount-signup-cta (see ui/app/src/components/SignupCta.tsx).
 
-  The "Get started" button itself isn't a plain <a href> — React
-  intercepts the click to trigger the widget's login flow; on
-  successful auth we redirect to /onboarding/. With JS disabled the
-  <noscript> fallback still works (direct link to /onboarding/).
+  The React island mounts into the empty <div#mount-signup-cta>
+  sentinel below; its component returns null but runs a useEffect
+  that flips the section above to display:none once auth state is
+  "authenticated". Keeping the mount element separate is essential —
+  React's createRoot() REPLACES the children of the host element
+  during hydration, so mounting directly into the content block
+  would wipe it.
+
+  The "Get started" anchor isn't a plain <a href> either — the
+  island attaches a click handler that triggers the widget's login
+  flow; on success the browser navigates to /onboarding/. With JS
+  disabled the <a href="/onboarding/"> fallback still works.
 */}}
-<section id="mount-signup-cta" class="bg-gray-50 py-20" data-cta-auth="anonymous-only">
+<section id="signup-cta-section" class="bg-gray-50 py-20">
   <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 px-6 sm:flex-row sm:items-center sm:px-8 lg:px-12">
     <div>
       <h2 class="text-3xl font-bold text-navy-900 sm:text-4xl">
@@ -28,3 +36,6 @@
     </a>
   </div>
 </section>
+{{/* Empty sentinel the React island mounts into. No visible content;
+     side-effects target #signup-cta-section above. */}}
+<div id="mount-signup-cta" hidden></div>

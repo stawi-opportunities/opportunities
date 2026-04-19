@@ -20,18 +20,21 @@ export default function SignupCta() {
   const { state, login } = useAuth();
 
   useEffect(() => {
-    const host = document.getElementById("mount-signup-cta");
-    if (!host) return;
+    // #signup-cta-section is the visible block Hugo rendered; this
+    // island's host is a separate empty <div#mount-signup-cta>, so
+    // toggling display on the section doesn't fight React.
+    const section = document.getElementById("signup-cta-section");
+    if (!section) return;
 
     // Authenticated visitors see nothing — one fewer "please sign up"
     // reminder on every page they visit while logged in.
     if (state === "authenticated") {
-      host.style.display = "none";
+      section.style.display = "none";
       return;
     }
-    host.style.display = "";
+    section.style.display = "";
 
-    const btn = host.querySelector<HTMLAnchorElement>("[data-signup-cta]");
+    const btn = section.querySelector<HTMLAnchorElement>("[data-signup-cta]");
     if (!btn) return;
 
     const onClick = async (e: MouseEvent) => {

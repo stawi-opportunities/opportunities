@@ -129,9 +129,13 @@ export default function Cascade(props: CascadeProps) {
     // to use the same staleness budget — if the user toggles a
     // filter we still serve from cache first, re-fetch in background.
     staleTime: 5 * 60_000,
-    // Keep previous data while a new fetch is in-flight so filter
-    // toggles don't flash a skeleton.
-    placeholderData: (prev) => prev,
+    // Do NOT use placeholderData: previously we kept old tiers on
+    // screen during a refetch, which produced a data-mixup effect
+    // when a search query fired: e.g. "airbnb" jobs stayed rendered
+    // while the "stripe" results loaded, making it look like both
+    // were returned together. React Query's default behaviour (data
+    // goes undefined on key change → skeleton → new data) is what
+    // the user expects — a clear result plate before the new set.
   });
 
   useEffect(() => {
@@ -284,11 +288,19 @@ function TierScopeNote({
   );
 }
 
-// Invisible sentinel + small loading row. IntersectionObserver fires
-// onVisible as soon as the sentinel enters a 600px pre-roll window,
-// and the ref-guard keeps the callback from firing again until the
-// in-flight fetch settles. No visible button — the user just keeps
-// scrolling and more results appear.
+// Invisible sentinel + small loading row. Stable IntersectionObserver
+// created once at mount; it reads the latest `onVisible` and `busy`
+// via refs so parent re-renders don't tear it down.
+//
+// Previous implementation re-created the observer on every parent
+// render (handleIntersect was a new callback each time because
+// onVisible was an inline arrow function from the caller). Each
+// re-observation fires an immediate callback for the current
+// intersection state, and when that landed right after a fetch
+// completed it would re-fire fetchNextPage — an infinite-loop
+// scroll. The stable-ref pattern below fires exactly once per
+// intersect transition, and React Query's fetchNextPage is itself a
+// no-op while already in-flight, so concurrent firings are safe.
 function InfiniteSentinel({
   onVisible,
   busy,
@@ -297,33 +309,28 @@ function InfiniteSentinel({
   busy: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const firedRef = useRef(false);
-  // Re-arm the guard whenever a fetch settles so the next scroll
-  // down can trigger again.
-  useEffect(() => {
-    if (!busy) firedRef.current = false;
-  }, [busy]);
+  // Keep latest callback + busy-flag in a ref so the observer
+  // callback always sees fresh values without re-observation.
+  const latest = useRef({ onVisible, busy });
+  latest.current.onVisible = onVisible;
+  latest.current.busy = busy;
 
-  const handleIntersect = useCallback<IntersectionObserverCallback>(
-    (entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting && !firedRef.current) {
-          firedRef.current = true;
-          onVisible();
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting && !latest.current.busy) {
+            latest.current.onVisible();
+          }
         }
-      }
-    },
-    [onVisible],
-  );
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const obs = new IntersectionObserver(handleIntersect, {
-      rootMargin: "600px 0px",
-    });
-    obs.observe(ref.current);
+      },
+      { rootMargin: "600px 0px" },
+    );
+    obs.observe(el);
     return () => obs.disconnect();
-  }, [handleIntersect]);
+  }, []); // mount-only; observer survives every parent re-render
 
   return (
     <div ref={ref} className="mt-4 flex items-center justify-center py-4" aria-hidden={!busy}>
