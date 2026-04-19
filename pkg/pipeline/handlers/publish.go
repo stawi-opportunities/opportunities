@@ -112,9 +112,13 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
-	// Ensure slug exists (inherited from crawler spec).
+	// Ensure slug exists. Dedupe pre-generates on Upsert using
+	// ClusterID; this is the defensive path for legacy rows where
+	// slug was never set. Use ClusterID as the hash input so
+	// retroactively slugging matches what the dedupe engine would
+	// produce today.
 	if job.Slug == "" {
-		job.Slug = domain.BuildSlug(job.Title, job.Company, job.ID)
+		job.Slug = domain.BuildSlug(job.Title, job.Company, job.ClusterID)
 		_ = h.jobRepo.UpdateCanonicalFields(ctx, job.ID, map[string]any{"slug": job.Slug})
 	}
 

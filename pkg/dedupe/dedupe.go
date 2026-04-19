@@ -110,6 +110,18 @@ func (e *Engine) UpsertAndCluster(ctx context.Context, variant *domain.JobVarian
 	canonical := buildCanonicalFromVariant(variant, clusterID, now)
 	canonical.QualityScore = scoring.Score(canonical)
 
+	// 6b. Pre-compute the slug so the INSERT carries a unique value.
+	//     canonical_jobs.slug has a UNIQUE index, and UpsertCanonical's
+	//     OnConflict only handles collisions on cluster_id — so a
+	//     second new row with slug='' from a concurrent canonical
+	//     handler would collide on the slug index and fail the INSERT.
+	//     Using ClusterID (stable, already known) as the hash input
+	//     makes the slug deterministic per cluster, which matches the
+	//     "permanent, shareable URL" contract documented on BuildSlug.
+	if canonical.Slug == "" {
+		canonical.Slug = domain.BuildSlug(canonical.Title, canonical.Company, canonical.ClusterID)
+	}
+
 	// 7. Persist the canonical record.
 	if err := e.jobRepo.UpsertCanonical(ctx, canonical); err != nil {
 		return nil, err

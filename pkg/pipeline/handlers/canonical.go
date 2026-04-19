@@ -112,9 +112,12 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 
-	// 3b. Generate permanent slug if not yet set.
+	// 3b. Slug is pre-generated inside dedupeEngine.UpsertAndCluster
+	//     using ClusterID (see pkg/dedupe/dedupe.go). This fallback
+	//     remains for the rare case where a legacy row exists without
+	//     a slug — defensive only; new rows always arrive slugged.
 	if canonical != nil && canonical.Slug == "" {
-		canonical.Slug = domain.BuildSlug(canonical.Title, canonical.Company, canonical.ID)
+		canonical.Slug = domain.BuildSlug(canonical.Title, canonical.Company, canonical.ClusterID)
 		if slugErr := h.jobRepo.UpdateCanonicalFields(ctx, canonical.ID, map[string]any{"slug": canonical.Slug}); slugErr != nil {
 			util.Log(ctx).WithError(slugErr).WithField("canonical_job_id", canonical.ID).Warn("canonical: set slug failed (non-fatal)")
 		}
