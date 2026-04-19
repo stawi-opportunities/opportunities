@@ -259,17 +259,21 @@ func (r *JobRepository) SearchCanonical(ctx context.Context, req SearchRequest) 
 		case "salary_high":
 			db = db.Order("salary_max DESC NULLS LAST").Order("id DESC")
 		default: // relevance
-			// gorm.Expr instead of clause.OrderBy{Expression:…} because
-			// the latter swallows the trailing `DESC` keyword when
-			// WithoutParentheses is set, which silently flipped the
-			// sort to ASC — a search for "airbnb" returned a 0.1-score
-			// Promenade listing ahead of 2.8-score airbnb rows.
-			// .Order(gorm.Expr) appends as a normal OrderBy column so
-			// the DESC is preserved and chains cleanly with the
-			// posted_at + id tiebreakers below.
-			db = db.Order(gorm.Expr(
-				"ts_rank_cd(search_vector, plainto_tsquery('simple', ?)) DESC", q,
-			)).Order("posted_at DESC NULLS LAST").Order("id DESC")
+			// Both clause.OrderBy{Expression: …} and gorm.Expr in Order()
+			// dropped the trailing `DESC` keyword silently, flipping the
+			// sort to ASC — a search for "airbnb" surfaced a 0.1-score
+			// "Technical Support Manager at Promenade" ahead of 2.8-score
+			// airbnb-company rows.  Select the rank as a named alias and
+			// order by the alias so the direction keyword is parsed by
+			// GORM's normal column-ordering path and never lost.
+			db = db.Select(`id, slug, title, company, location_text, country, remote_type,
+					category, salary_min, salary_max, currency, posted_at, quality_score,
+					left(coalesce(description, ''), 200) AS snippet,
+					(quality_score >= 80) AS is_featured,
+					ts_rank_cd(search_vector, plainto_tsquery('simple', ?)) AS rel_score`, q).
+				Order("rel_score DESC").
+				Order("posted_at DESC NULLS LAST").
+				Order("id DESC")
 		}
 		db = db.Offset(req.Offset)
 	} else {
