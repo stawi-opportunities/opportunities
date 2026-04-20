@@ -55,45 +55,58 @@ Record:
 
 ## 3. Store credentials in Vault
 
-Path: `antinvestor/stawi-jobs/common/archive-r2/`
+Path: `secret/antinvestor/stawi-jobs/common/archive-r2-credentials`
+(mirrors the existing `secret/antinvestor/stawi-jobs/common/r2-credentials`
+layout used for the public bucket).
 
-Keys:
+Keys (match the public bucket's property names so the ExternalSecret
+shape stays consistent):
 
 ```
-account_id         = <from step 2>
-access_key_id      = <from step 2>
-secret_access_key  = <from step 2>
-bucket             = stawi-jobs-archive
+r2_account_id         = <from step 2>
+r2_access_key_id      = <from step 2>
+r2_secret_access_key  = <from step 2>
+r2_bucket             = stawi-jobs-archive
 ```
 
-Least-privilege: only the crawler service's `VaultRole` should read
-this path. The API and candidates services don't talk to the archive
-bucket directly.
+Use the `vault-secret` skill at
+`/home/j/code/antinvestor/deployments/.claude/skills/vault-secret/`
+(kubectl exec into `vault-openbao-0` with a freshly-minted
+`external-secrets` SA token; `bao` CLI, not `vault`). The external-
+secrets policy has CRUD on all of `secret/data/*` so no policy change
+is needed for the new path.
+
+Optional: if the Cloudflare dashboard API token is also handed over at
+provisioning, store it alongside at
+`secret/antinvestor/stawi-jobs/common/cloudflare-api` with key
+`api_token`. The crawler does not consume it directly — it's for
+future automation (bucket CRUD, Pages deploys).
 
 ## 4. Wire the ExternalSecret
 
-In the GitOps repo (antinvestor/colony or equivalent), update the
-crawler deployment's `ExternalSecret` to mount these four keys as env
-vars:
+In the GitOps repo (`antinvestor/deployments`), add a new
+`ExternalSecret` named `archive-r2-credentials-stawi-jobs` mirroring
+the existing `r2-credentials-stawi-jobs` that sources the public
+bucket's creds:
 
 ```yaml
-# Example — adapt to your existing ExternalSecret shape.
+# New ExternalSecret for the archive bucket.
 - secretKey: ARCHIVE_R2_ACCOUNT_ID
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2
-    property: account_id
+    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    property: r2_account_id
 - secretKey: ARCHIVE_R2_ACCESS_KEY_ID
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2
-    property: access_key_id
+    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    property: r2_access_key_id
 - secretKey: ARCHIVE_R2_SECRET_ACCESS_KEY
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2
-    property: secret_access_key
+    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    property: r2_secret_access_key
 - secretKey: ARCHIVE_R2_BUCKET
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2
-    property: bucket
+    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    property: r2_bucket
 ```
 
 The Go config layer (`apps/crawler/config/config.go`) consumes
