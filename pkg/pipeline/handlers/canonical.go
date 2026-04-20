@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
@@ -27,6 +28,8 @@ type CanonicalHandler struct {
 	jobRepo      *repository.JobRepository
 	dedupeEngine *dedupe.Engine
 	extractor    *extraction.Extractor
+	archive      archive.Archive
+	rawRefRepo   *repository.RawRefRepository
 	svc          *frame.Service
 }
 
@@ -35,12 +38,16 @@ func NewCanonicalHandler(
 	jobRepo *repository.JobRepository,
 	dedupeEngine *dedupe.Engine,
 	extractor *extraction.Extractor,
+	arch archive.Archive,
+	rawRefRepo *repository.RawRefRepository,
 	svc *frame.Service,
 ) *CanonicalHandler {
 	return &CanonicalHandler{
 		jobRepo:      jobRepo,
 		dedupeEngine: dedupeEngine,
 		extractor:    extractor,
+		archive:      arch,
+		rawRefRepo:   rawRefRepo,
 		svc:          svc,
 	}
 }
@@ -163,6 +170,61 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		telemetry.JobsReady.Add(ctx, 1)
 	}
 
+	// Record cluster membership on the variant so the normalize
+	// handler's archive write can find the right cluster on later
+	// re-runs (e.g. reprocessing).
+	if variant.ClusterID == "" && canonical != nil {
+		_ = h.jobRepo.UpdateVariantFields(ctx, variant.ID, map[string]any{
+			"cluster_id": canonical.ClusterID,
+		})
+		variant.ClusterID = canonical.ClusterID
+	}
+
+	// Persist canonical snapshot + manifest to archive.
+	if canonical != nil && h.archive != nil {
+		snap := archive.CanonicalSnapshot{
+			ID:             canonical.ID,
+			ClusterID:      canonical.ClusterID,
+			Slug:           canonical.Slug,
+			Title:          canonical.Title,
+			Company:        canonical.Company,
+			Description:    canonical.Description,
+			LocationText:   canonical.LocationText,
+			Country:        canonical.Country,
+			Language:       canonical.Language,
+			RemoteType:     canonical.RemoteType,
+			EmploymentType: canonical.EmploymentType,
+			SalaryMin:      canonical.SalaryMin,
+			SalaryMax:      canonical.SalaryMax,
+			Currency:       canonical.Currency,
+			ApplyURL:       canonical.ApplyURL,
+			QualityScore:   canonical.QualityScore,
+			PostedAt:       canonical.PostedAt,
+			FirstSeenAt:    canonical.FirstSeenAt,
+			LastSeenAt:     canonical.LastSeenAt,
+			Status:         canonical.Status,
+			Category:       canonical.Category,
+			R2Version:      canonical.R2Version,
+			WrittenAt:      time.Now().UTC(),
+		}
+		if err := h.archive.PutCanonical(ctx, canonical.ClusterID, snap); err != nil {
+			util.Log(ctx).WithError(err).WithField("canonical_job_id", canonical.ID).
+				Warn("canonical: archive PutCanonical failed (non-fatal)")
+		}
+
+		// Rebuild the manifest from current DB state.
+		if err := h.rebuildManifest(ctx, canonical); err != nil {
+			util.Log(ctx).WithError(err).WithField("canonical_job_id", canonical.ID).
+				Warn("canonical: rebuild manifest failed (non-fatal)")
+		}
+
+		// Register the raw→cluster ref so the purge sweeper can GC
+		// this hash when the cluster is eventually torn down.
+		if variant.RawContentHash != "" && h.rawRefRepo != nil {
+			_ = h.rawRefRepo.Upsert(ctx, variant.RawContentHash, canonical.ClusterID, variant.ID)
+		}
+	}
+
 	// 6. Emit job.ready.
 	return h.svc.EventsManager().Emit(ctx, EventJobReady, &JobReadyPayload{
 		CanonicalJobID: func() string {
@@ -172,4 +234,40 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 			return ""
 		}(),
 	})
+}
+
+// rebuildManifest rewrites clusters/{cluster_id}/manifest.json from
+// current DB state. Called after every canonical upsert; cheap because
+// each cluster typically has 1–5 variants.
+func (h *CanonicalHandler) rebuildManifest(ctx context.Context, canonical *domain.CanonicalJob) error {
+	type variantRow struct {
+		ID             string
+		SourceID       string
+		RawContentHash string
+		ScrapedAt      time.Time
+	}
+	var variants []variantRow
+	if err := h.jobRepo.DB(ctx, true).
+		Table("job_variants").
+		Select("id, source_id, raw_content_hash, scraped_at").
+		Where("cluster_id = ?", canonical.ClusterID).
+		Scan(&variants).Error; err != nil {
+		return err
+	}
+
+	m := archive.Manifest{
+		ClusterID:   canonical.ClusterID,
+		CanonicalID: canonical.ID,
+		Slug:        canonical.Slug,
+		UpdatedAt:   time.Now().UTC(),
+	}
+	for _, v := range variants {
+		m.Variants = append(m.Variants, archive.ManifestVariant{
+			VariantID:      v.ID,
+			SourceID:       v.SourceID,
+			RawContentHash: v.RawContentHash,
+			ScrapedAt:      v.ScrapedAt,
+		})
+	}
+	return h.archive.PutManifest(ctx, canonical.ClusterID, m)
 }

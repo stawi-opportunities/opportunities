@@ -23,6 +23,13 @@ func NewJobRepository(db func(ctx context.Context, readOnly bool) *gorm.DB) *Job
 	return &JobRepository{db: db}
 }
 
+// DB returns the underlying GORM session. Exposed so callers that
+// need to run ad-hoc queries (e.g. manifest rebuilds) don't have
+// to duplicate the pool accessor.
+func (r *JobRepository) DB(ctx context.Context, readOnly bool) *gorm.DB {
+	return r.db(ctx, readOnly)
+}
+
 // UpsertVariant inserts or updates a single job variant on conflict of
 // (source_id, external_job_id).
 func (r *JobRepository) UpsertVariant(ctx context.Context, v *domain.JobVariant) error {

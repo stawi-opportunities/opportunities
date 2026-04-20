@@ -191,7 +191,6 @@ func main() {
 		Bucket:          cfg.ArchiveR2Bucket,
 	})
 	rawRefRepo := repository.NewRawRefRepository(dbFn)
-	_ = rawRefRepo // used by T10/T11 handlers
 
 	// Cloudflare cache purger (no-op if zone/token not configured).
 	cachePurger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
@@ -246,7 +245,7 @@ func main() {
 			handlers.NewDedupHandler(jobRepo, svc),
 			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, httpClient, arch, svc),
 			handlers.NewValidateHandler(jobRepo, sourceRepo, extractor, svc),
-			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, extractor, svc),
+			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, extractor, arch, rawRefRepo, svc),
 			handlers.NewSourceExpansionHandler(sourceRepo),
 			handlers.NewSourceQualityHandler(sourceRepo, jobRepo, extractor),
 		}
@@ -259,7 +258,7 @@ func main() {
 		// Without extractor, only register dedup + canonical (no AI stages)
 		eventHandlers := []events.EventI{
 			handlers.NewDedupHandler(jobRepo, svc),
-			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, svc),
+			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, arch, rawRefRepo, svc),
 		}
 		if r2Publisher != nil {
 			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, redirectClient, cfg.RedirectPublicBaseURL, cfg.PublishMinQuality))
