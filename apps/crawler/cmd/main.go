@@ -568,6 +568,27 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
+	// Admin: R2 archive purge — drop cluster bundles + orphan raw/
+	// blobs for canonicals past the grace window. Fired by Trustage
+	// on the same cadence as stage2 retention.
+	adminMux.HandleFunc("POST /admin/r2/purge", func(w http.ResponseWriter, r *http.Request) {
+		grace := 7
+		if v := r.URL.Query().Get("grace_days"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 90 {
+				grace = n
+			}
+		}
+		limit := 100
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 1000 {
+				limit = n
+			}
+		}
+		purgeR2Archive(r.Context(), dbFn, arch, rawRefRepo, grace, limit)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "grace_days": grace, "limit": limit})
+	})
+
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 
 	// Register a named health checker that reports source state counts.
