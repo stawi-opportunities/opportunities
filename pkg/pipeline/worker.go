@@ -2,6 +2,8 @@ package pipeline
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -33,16 +35,16 @@ type CrawlResult struct {
 // Worker processes a single CrawlRequest through the full pipeline:
 // fetch -> quality gate -> normalize -> batch write.
 type Worker struct {
-	registry   *connectors.Registry
-	sourceRepo *repository.SourceRepository
-	crawlRepo  *repository.CrawlRepository
-	jobRepo    *repository.JobRepository
-	rejectRepo *repository.RejectedJobRepository
-	dedupeEng  *dedupe.Engine
-	batch      *BatchBuffer
-	extractor     *extraction.Extractor  // optional; nil disables AI extraction
-	httpClient    *httpx.Client          // for fetching detail pages
-	browserClient *httpx.BrowserClient   // optional; nil disables headless rendering
+	registry      *connectors.Registry
+	sourceRepo    *repository.SourceRepository
+	crawlRepo     *repository.CrawlRepository
+	jobRepo       *repository.JobRepository
+	rejectRepo    *repository.RejectedJobRepository
+	dedupeEng     *dedupe.Engine
+	batch         *BatchBuffer
+	extractor     *extraction.Extractor // optional; nil disables AI extraction
+	httpClient    *httpx.Client         // for fetching detail pages
+	browserClient *httpx.BrowserClient  // optional; nil disables headless rendering
 }
 
 // NewWorker creates a Worker wired to the given repositories, registry, dedupe
@@ -111,10 +113,18 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 		// Save raw payload for this page.
 		raw := iter.RawPayload()
 		if len(raw) > 0 {
+			sum := sha256.Sum256(raw)
 			payload := &domain.RawPayload{
-				HTTPStatus: iter.HTTPStatus(),
-				Body:       raw,
-				FetchedAt:  scrapedAt,
+				HTTPStatus:  iter.HTTPStatus(),
+				ContentHash: hex.EncodeToString(sum[:]),
+				SizeBytes:   int64(len(raw)),
+				FetchedAt:   scrapedAt,
+				// TODO(legacy): pipeline.Worker is not wired; the live
+				// crawl path in apps/crawler/cmd/main.go writes raw
+				// bodies to R2 via archive.PutRaw. If this worker is
+				// ever revived, inject an archive.Archive and call PutRaw
+				// before SaveRawPayload — otherwise the DB row will
+				// point at a non-existent R2 object.
 			}
 			// Best-effort -- ignore save errors to keep the pipeline moving.
 			_ = w.crawlRepo.SaveRawPayload(ctx, payload)

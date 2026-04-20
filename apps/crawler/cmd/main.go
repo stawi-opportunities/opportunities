@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -770,12 +772,30 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 				continue
 			}
 
-			// Get content from connector (already extracted in Plan A).
-			if pageContent := iter.Content(); pageContent != nil {
-				variant.RawHTML = pageContent.RawHTML
-				variant.CleanHTML = pageContent.CleanHTML
-				variant.Markdown = pageContent.Markdown
+			// Raw HTTP body → R2 (content-addressed). Repeat crawls of an
+			// unchanged page hit HasRaw and skip the PUT — that's the
+			// dedup payoff. The variant row just records the hash; the
+			// body never enters Postgres. Size is captured into the
+			// RawPayload row by T9/T10 handlers; not needed here.
+			var rawHash string
+			if pageContent := iter.Content(); pageContent != nil && len(pageContent.RawHTML) > 0 {
+				body := []byte(pageContent.RawHTML)
+				hash := sha256Hex(body)
+				if has, _ := d.archive.HasRaw(ctx, hash); !has {
+					putHash, _, putErr := d.archive.PutRaw(ctx, body)
+					if putErr != nil {
+						log.WithError(putErr).WithField("source_id", src.ID).
+							Warn("archive PutRaw failed, skipping variant")
+						continue
+					}
+					rawHash = putHash
+				} else {
+					// Dedup hit: the hash is known, the body is in R2 already.
+					// Re-derive without another PUT round-trip.
+					rawHash = hash
+				}
 			}
+			variant.RawContentHash = rawHash
 
 			// Ensure apply_url has a fallback before quality gate.
 			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
@@ -880,6 +900,14 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 		WithField("rejected", jobsRejected).
 		WithField("crawl_err", crawlErr).
 		Info("source processing complete")
+}
+
+// sha256Hex returns the hex-encoded sha256 of body. Kept as a
+// helper so the crawler's dedup HEAD check (HasRaw) and a
+// subsequent PutRaw agree on the hash.
+func sha256Hex(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
 }
 
 // rebuildCanonicalsHandler returns an HTTP handler that truncates all canonical
