@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"sync"
 )
 
@@ -18,6 +19,10 @@ type FakeArchive struct {
 	raw   map[string][]byte
 	blobs map[string][]byte
 }
+
+// Compile-time check that FakeArchive satisfies the Archive interface.
+// Catches signature drift the moment either side changes.
+var _ Archive = (*FakeArchive)(nil)
 
 func NewFakeArchive() *FakeArchive {
 	return &FakeArchive{
@@ -87,7 +92,7 @@ func (f *FakeArchive) DeleteCluster(_ context.Context, clusterID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for k := range f.blobs {
-		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+		if strings.HasPrefix(k, prefix) {
 			delete(f.blobs, k)
 		}
 	}
