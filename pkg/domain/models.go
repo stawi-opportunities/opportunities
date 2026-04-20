@@ -122,15 +122,17 @@ type CrawlJob struct {
 
 func (CrawlJob) TableName() string { return "crawl_jobs" }
 
-// RawPayload stores the raw HTTP response from a crawl.
+// RawPayload is the metadata row for every HTTP fetch the crawler
+// makes. The actual response body lives in R2 at raw/{content_hash}.html.gz
+// — this row just records the fetch event and points to it.
 type RawPayload struct {
 	BaseModel
 	CrawlJobID  string    `gorm:"type:varchar(20);not null;index" json:"crawl_job_id"`
 	StorageURI  string    `gorm:"type:text" json:"storage_uri"`
 	ContentHash string    `gorm:"type:varchar(64);index" json:"content_hash"`
+	SizeBytes   int64     `gorm:"not null;default:0" json:"size_bytes"`
 	FetchedAt   time.Time `gorm:"not null" json:"fetched_at"`
 	HTTPStatus  int       `gorm:"not null" json:"http_status"`
-	Body        []byte    `gorm:"type:bytea" json:"-"`
 }
 
 func (RawPayload) TableName() string { return "raw_payloads" }
@@ -253,10 +255,10 @@ type JobVariant struct {
 	// Pipeline stage tracking
 	Stage           VariantStage `gorm:"type:varchar(20);not null;default:'raw';index" json:"stage"`
 
-	// Stored content forms (for reprocessing without recrawling)
-	RawHTML         string  `gorm:"type:text" json:"-"`
-	CleanHTML       string  `gorm:"type:text" json:"-"`
-	Markdown        string  `gorm:"type:text" json:"-"`
+	// Stored content pointer. Actual HTML/markdown lives in R2 under
+	// clusters/{cluster_id}/variants/{id}.json; RawContentHash points
+	// at raw/{hash}.html.gz for the original HTTP body.
+	RawContentHash  string   `gorm:"type:varchar(64);index" json:"raw_content_hash"`
 
 	// Validation (populated in Stage 3)
 	ValidationScore *float64 `gorm:"type:real" json:"validation_score"`
@@ -336,6 +338,11 @@ type CanonicalJob struct {
 	Status         string     `gorm:"type:text;not null;default:'active';index" json:"status"`
 	ExpiresAt      *time.Time `json:"expires_at"`
 	PublishedAt    *time.Time `json:"published_at"`
+	// Set when status flips to 'deleted'. Distinct from BaseModel.DeletedAt
+	// (soft-delete, which we don't use here). R2PurgedAt is stamped by the
+	// purge sweeper once R2 teardown finishes.
+	DeletedStatusAt *time.Time `gorm:"column:deleted_status_at;index" json:"deleted_status_at,omitempty"`
+	R2PurgedAt      *time.Time `gorm:"index" json:"r2_purged_at,omitempty"`
 	R2Version      int        `gorm:"not null;default:0" json:"r2_version"`
 	Category       string     `gorm:"type:text;index" json:"category"`
 	// Translation fan-out tracking. TranslatedLangs is a CSV of ISO 639-1
@@ -385,6 +392,21 @@ type RejectedJob struct {
 }
 
 func (RejectedJob) TableName() string { return "rejected_jobs" }
+
+// RawRef is the reference-count row linking a raw content-hash
+// (R2 raw/{hash}.html.gz) to the variants that use it. Written
+// by the canonical handler when it promotes a variant into a
+// cluster; deleted by the purge sweeper once the owning cluster
+// is torn down. When a hash's ref count drops to zero, the raw
+// blob is GC'd from R2.
+type RawRef struct {
+	BaseModel
+	ContentHash string `gorm:"type:varchar(64);not null;uniqueIndex:idx_raw_refs_hash_variant" json:"content_hash"`
+	ClusterID   string `gorm:"type:varchar(20);not null;index" json:"cluster_id"`
+	VariantID   string `gorm:"type:varchar(20);not null;uniqueIndex:idx_raw_refs_hash_variant" json:"variant_id"`
+}
+
+func (RawRef) TableName() string { return "raw_refs" }
 
 // CrawlRequest is published to the queue to trigger a crawl.
 type CrawlRequest struct {
