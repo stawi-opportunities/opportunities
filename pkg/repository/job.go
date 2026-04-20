@@ -583,18 +583,6 @@ func (r *JobRepository) UpdateStage(ctx context.Context, variantID string, stage
 		Update("stage", stage).Error
 }
 
-// UpdateStageWithContent sets stage and content fields together.
-func (r *JobRepository) UpdateStageWithContent(ctx context.Context, variantID string, stage string, rawHTML, cleanHTML, markdown string) error {
-	return r.db(ctx, false).Model(&domain.JobVariant{}).
-		Where("id = ?", variantID).
-		Updates(map[string]any{
-			"stage":      stage,
-			"raw_html":   rawHTML,
-			"clean_html": cleanHTML,
-			"markdown":   markdown,
-		}).Error
-}
-
 // UpdateValidation sets validation results on a variant.
 func (r *JobRepository) UpdateValidation(ctx context.Context, variantID string, stage string, score float64, notes string) error {
 	return r.db(ctx, false).Model(&domain.JobVariant{}).

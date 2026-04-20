@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/repository"
@@ -30,6 +30,7 @@ type NormalizeHandler struct {
 	sourceRepo *repository.SourceRepository
 	extractor  *extraction.Extractor
 	httpClient *httpx.Client
+	archive    archive.Archive
 	svc        *frame.Service
 }
 
@@ -39,6 +40,7 @@ func NewNormalizeHandler(
 	sourceRepo *repository.SourceRepository,
 	extractor *extraction.Extractor,
 	httpClient *httpx.Client,
+	arch archive.Archive,
 	svc *frame.Service,
 ) *NormalizeHandler {
 	return &NormalizeHandler{
@@ -46,6 +48,7 @@ func NewNormalizeHandler(
 		sourceRepo: sourceRepo,
 		extractor:  extractor,
 		httpClient: httpClient,
+		archive:    arch,
 		svc:        svc,
 	}
 }
@@ -111,9 +114,19 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
-	// 3. Choose content source: prefer Markdown, fall back to Description.
-	// If both are empty (sitemap stubs), fetch the detail page.
-	contentText := variant.Markdown
+	// 3. Load raw HTML from archive (content-addressed). Markdown /
+	//    clean HTML no longer live in Postgres; the raw body is the
+	//    source of truth and gets re-extracted here.
+	var contentText string
+	if variant.RawContentHash != "" && h.archive != nil {
+		raw, err := h.archive.GetRaw(ctx, variant.RawContentHash)
+		if err != nil && !errors.Is(err, archive.ErrNotFound) {
+			return fmt.Errorf("normalize: get raw: %w", err)
+		}
+		if err == nil {
+			contentText = string(raw)
+		}
+	}
 	if contentText == "" {
 		contentText = variant.Description
 	}
@@ -123,13 +136,16 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 			WithField("url", variant.ApplyURL).
 			Info("normalize: fetching detail page")
 		if raw, _, fetchErr := h.httpClient.Get(ctx, variant.ApplyURL, nil); fetchErr == nil {
-			extracted, _ := content.ExtractFromHTML(string(raw))
-			if extracted != nil {
-				contentText = extracted.Markdown
-				// Store the fetched content for future reprocessing
-				_ = h.jobRepo.UpdateStageWithContent(ctx, variant.ID, string(domain.StageDeduped),
-					string(raw), extracted.CleanHTML, extracted.Markdown)
+			// Late-bound raw: archive it now, update the variant row.
+			if h.archive != nil {
+				if hash, _, pErr := h.archive.PutRaw(ctx, raw); pErr == nil {
+					variant.RawContentHash = hash
+					_ = h.jobRepo.UpdateVariantFields(ctx, variant.ID, map[string]any{
+						"raw_content_hash": hash,
+					})
+				}
 			}
+			contentText = string(raw)
 		}
 	}
 
@@ -319,6 +335,32 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		return fmt.Errorf("normalize: persist fields for variant %s: %w", variant.ID, err)
 	}
 
+	// 7b. Persist the processed artefacts to archive — clean HTML,
+	//     markdown, extracted fields — so reprocessing and quality
+	//     checks can read them without re-running the LLM. Guarded on
+	//     ClusterID being populated (only set once the canonical
+	//     handler promotes the variant into a cluster).
+	if variant.ClusterID != "" && h.archive != nil {
+		blob := archive.VariantBlob{
+			ID:              variant.ID,
+			ClusterID:       variant.ClusterID,
+			SourceID:        variant.SourceID,
+			SourceURL:       variant.SourceURL,
+			ApplyURL:        variant.ApplyURL,
+			RawContentHash:  variant.RawContentHash,
+			CleanHTML:       "", // not available here — content extractor ran upstream
+			Markdown:        contentText,
+			ExtractedFields: extractedFieldsMap(fields),
+			ScrapedAt:       variant.ScrapedAt,
+			Stage:           string(domain.StageNormalized),
+			WrittenAt:       time.Now().UTC(),
+		}
+		if err := h.archive.PutVariant(ctx, variant.ClusterID, variant.ID, blob); err != nil {
+			util.Log(ctx).WithError(err).WithField("variant_id", variant.ID).
+				Warn("normalize: archive PutVariant failed (non-fatal)")
+		}
+	}
+
 	if telemetry.StageTransitions != nil {
 		telemetry.StageTransitions.Add(ctx, 1,
 			metric.WithAttributes(
@@ -357,4 +399,43 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	return nil
+}
+
+// extractedFieldsMap converts the extractor's JobFields into the
+// generic map[string]any shape the archive.VariantBlob accepts.
+// Only non-empty / non-zero fields are carried across so the JSON
+// blob stays compact.
+func extractedFieldsMap(f *extraction.JobFields) map[string]any {
+	if f == nil {
+		return nil
+	}
+	m := map[string]any{}
+	if f.Title != "" {
+		m["title"] = f.Title
+	}
+	if f.Company != "" {
+		m["company"] = f.Company
+	}
+	if f.Location != "" {
+		m["location"] = f.Location
+	}
+	if f.Seniority != "" {
+		m["seniority"] = f.Seniority
+	}
+	if len(f.Skills) > 0 {
+		m["skills"] = f.Skills
+	}
+	if len(f.Roles) > 0 {
+		m["roles"] = f.Roles
+	}
+	if len(f.RequiredSkills) > 0 {
+		m["required_skills"] = f.RequiredSkills
+	}
+	if len(f.NiceToHaveSkills) > 0 {
+		m["nice_to_have_skills"] = f.NiceToHaveSkills
+	}
+	if len(f.ToolsFrameworks) > 0 {
+		m["tools_frameworks"] = f.ToolsFrameworks
+	}
+	return m
 }

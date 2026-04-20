@@ -244,7 +244,7 @@ func main() {
 	if extractor != nil {
 		eventHandlers := []events.EventI{
 			handlers.NewDedupHandler(jobRepo, svc),
-			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, httpClient, svc),
+			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, httpClient, arch, svc),
 			handlers.NewValidateHandler(jobRepo, sourceRepo, extractor, svc),
 			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, extractor, svc),
 			handlers.NewSourceExpansionHandler(sourceRepo),

@@ -205,6 +205,10 @@ type JobVariant struct {
 	BaseModel
 	ExternalJobID  string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_variant_source_ext" json:"external_job_id"`
 	SourceID       string    `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_variant_source_ext" json:"source_id"`
+	// ClusterID is written by the canonical handler when the variant is
+	// promoted into a cluster. Empty at scrape time; set exactly once
+	// per variant lifecycle.
+	ClusterID      string    `gorm:"type:varchar(20);index" json:"cluster_id,omitempty"`
 	HardKey        string    `gorm:"type:varchar(64);index" json:"hard_key"`
 	SourceURL      string    `gorm:"type:text" json:"source_url"`
 	ApplyURL       string    `gorm:"type:text" json:"apply_url"`
