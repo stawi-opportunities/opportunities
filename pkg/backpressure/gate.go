@@ -23,6 +23,12 @@ import (
 	"time"
 )
 
+// The gate measures pipeline backpressure via NATS JetStream pending-
+// message depth, NOT via Postgres state. With raw HTTP bodies in R2
+// (pkg/archive) the DB never holds the blobs that could pressure it;
+// queue depth is the only correct signal for "processing is behind".
+// See docs/superpowers/specs/2026-04-20-r2-blob-archive-design.md.
+
 // Gate tracks the saturated/open state with hysteresis. Instance is
 // safe for concurrent use from any number of HTTP handlers.
 type Gate struct {
