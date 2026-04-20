@@ -15,6 +15,7 @@ import (
 
 	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/connectors/httpx"
+	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/repository"
@@ -341,6 +342,15 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	//     ClusterID being populated (only set once the canonical
 	//     handler promotes the variant into a cluster).
 	if variant.ClusterID != "" && h.archive != nil {
+		// Re-derive clean HTML + markdown from the raw body so the
+		// archived variant blob labels its fields correctly. The content
+		// extractor is deterministic; it's cheap to run here rather than
+		// threading upstream-derived values through the pipeline.
+		var cleanHTML, markdown string
+		if extracted, extErr := content.ExtractFromHTML(contentText); extErr == nil && extracted != nil {
+			cleanHTML = extracted.CleanHTML
+			markdown = extracted.Markdown
+		}
 		blob := archive.VariantBlob{
 			ID:              variant.ID,
 			ClusterID:       variant.ClusterID,
@@ -348,8 +358,8 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 			SourceURL:       variant.SourceURL,
 			ApplyURL:        variant.ApplyURL,
 			RawContentHash:  variant.RawContentHash,
-			CleanHTML:       "", // not available here — content extractor ran upstream
-			Markdown:        contentText,
+			CleanHTML:       cleanHTML,
+			Markdown:        markdown,
 			ExtractedFields: extractedFieldsMap(fields),
 			ScrapedAt:       variant.ScrapedAt,
 			Stage:           string(domain.StageNormalized),
