@@ -61,7 +61,7 @@ func (h *CanonicalHandler) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type, expected *VariantPayload")
 	}
-	if p.VariantID == 0 {
+	if p.VariantID == "" {
 		return errors.New("variant_id is required")
 	}
 	return nil
@@ -78,8 +78,8 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	ctx, span := canonicalTracer.Start(ctx, "pipeline.canonical")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int64("variant_id", p.VariantID),
-		attribute.Int64("source_id", p.SourceID),
+		attribute.String("variant_id", p.VariantID),
+		attribute.String("source_id", p.SourceID),
 	)
 
 	start := time.Now()
@@ -165,11 +165,11 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 
 	// 6. Emit job.ready.
 	return h.svc.EventsManager().Emit(ctx, EventJobReady, &JobReadyPayload{
-		CanonicalJobID: func() int64 {
+		CanonicalJobID: func() string {
 			if canonical != nil {
 				return canonical.ID
 			}
-			return 0
+			return ""
 		}(),
 	})
 }

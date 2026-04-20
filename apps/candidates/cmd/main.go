@@ -530,9 +530,8 @@ func updateProfileHandler(candidateRepo *repository.CandidateRepository) http.Ha
 // listMatchesHandler handles GET /candidates/matches?candidate_id=...
 func listMatchesHandler(matchRepo *repository.MatchRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idStr := r.URL.Query().Get("candidate_id")
-		candidateID, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || candidateID <= 0 {
+		candidateID := r.URL.Query().Get("candidate_id")
+		if candidateID == "" {
 			http.Error(w, `{"error":"valid candidate_id parameter is required"}`, http.StatusBadRequest)
 			return
 		}
@@ -562,9 +561,8 @@ func listMatchesHandler(matchRepo *repository.MatchRepository) http.HandlerFunc 
 // viewMatchHandler handles POST /candidates/matches/{id}/view
 func viewMatchHandler(matchRepo *repository.MatchRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idStr := r.PathValue("id")
-		matchID, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || matchID <= 0 {
+		matchID := r.PathValue("id")
+		if matchID == "" {
 			http.Error(w, `{"error":"valid match id is required"}`, http.StatusBadRequest)
 			return
 		}
@@ -1015,9 +1013,8 @@ func saveJobHandler(savedJobRepo *repository.SavedJobRepository) http.HandlerFun
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		idStr := r.PathValue("id")
-		jobID, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || jobID <= 0 {
+		jobID := r.PathValue("id")
+		if jobID == "" {
 			http.Error(w, `{"error":"valid job id required"}`, http.StatusBadRequest)
 			return
 		}
@@ -1040,9 +1037,8 @@ func unsaveJobHandler(savedJobRepo *repository.SavedJobRepository) http.HandlerF
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		idStr := r.PathValue("id")
-		jobID, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || jobID <= 0 {
+		jobID := r.PathValue("id")
+		if jobID == "" {
 			http.Error(w, `{"error":"valid job id required"}`, http.StatusBadRequest)
 			return
 		}
@@ -1372,19 +1368,18 @@ func linkExpiredHandler(
 }
 
 // parseCanonicalJobAffiliate extracts the canonical job id from an
-// affiliate_id of the form "canonical_job_<int64>". Returns (id, true)
-// on match, (0, false) otherwise.
-func parseCanonicalJobAffiliate(affiliateID string) (int64, bool) {
+// affiliate_id of the form "canonical_job_<xid>". Returns (id, true)
+// on match, ("", false) otherwise.
+func parseCanonicalJobAffiliate(affiliateID string) (string, bool) {
 	const prefix = "canonical_job_"
 	if !strings.HasPrefix(affiliateID, prefix) {
-		return 0, false
+		return "", false
 	}
 	idStr := affiliateID[len(prefix):]
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, false
+	if idStr == "" {
+		return "", false
 	}
-	return id, true
+	return idStr, true
 }
 
 // notifyExpiredJobSubscribers loads the job (for template variables)
@@ -1396,7 +1391,7 @@ func notifyExpiredJobSubscribers(
 	jobRepo *repository.JobRepository,
 	savedJobRepo *repository.SavedJobRepository,
 	clients *services.Clients,
-	canonicalJobID int64,
+	canonicalJobID string,
 ) {
 	log := util.Log(ctx).WithField("canonical_job_id", canonicalJobID)
 	if clients == nil || clients.Notification == nil {
@@ -1445,7 +1440,7 @@ func notifyExpiredJobSubscribers(
 					// somehow retries this endpoint after we've already
 					// kicked off a fan-out, the second call upserts the
 					// same row instead of double-sending.
-					Id:        fmt.Sprintf("job_expired:%d:%s", canonicalJobID, pid),
+					Id:        fmt.Sprintf("job_expired:%s:%s", canonicalJobID, pid),
 					Recipient: &commonpb.ContactLink{ProfileId: pid},
 					Type:      "email",
 					Template:  "job_expired",

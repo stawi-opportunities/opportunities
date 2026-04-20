@@ -21,7 +21,7 @@ title = "Stawi Jobs"
   # UI routes on partition context. scripts/dev.sh passes HUGO_PARAMS_oidc*
   # overrides to swap in the Development partition client for local work.
   oidcIssuer         = "https://oauth2.stawi.org"
-  oidcClientID       = "stawi-jobs-web"
+  oidcClientID       = "d7is2kspf2t7cl19qlpg"
   oidcInstallationID = "d7gi6lkpf2t67dlsqreg"
   oidcRedirectURI    = "https://jobs.stawi.org/auth/callback/"
 

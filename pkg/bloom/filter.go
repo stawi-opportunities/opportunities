@@ -2,7 +2,6 @@ package bloom
 
 import (
 	"context"
-	"fmt"
 	"hash/crc32"
 	"hash/fnv"
 
@@ -60,9 +59,9 @@ func bloomOffsets(key string) []int64 {
 // IsSeen reports whether hardKey has been seen for the given sourceID.
 //  1. If Valkey is available: check the bit; a set bit means seen.
 //  2. Otherwise (or when the bit is clear): query job_variants for a matching hard_key.
-func IsSeen(ctx context.Context, f *Filter, sourceID int64, hardKey string) bool {
+func IsSeen(ctx context.Context, f *Filter, sourceID string, hardKey string) bool {
 	if f.valkey != nil {
-		key := fmt.Sprintf("bloom:seen:%d", sourceID)
+		key := "bloom:seen:" + sourceID
 		offsets := bloomOffsets(hardKey)
 		allSet := true
 		for _, offset := range offsets {
@@ -100,11 +99,11 @@ func IsSeen(ctx context.Context, f *Filter, sourceID int64, hardKey string) bool
 
 // MarkSeen records hardKey as seen for sourceID in the Valkey bitmap.
 // If Valkey is unavailable this is a no-op — the DB insert is the source of truth.
-func MarkSeen(ctx context.Context, f *Filter, sourceID int64, hardKey string) {
+func MarkSeen(ctx context.Context, f *Filter, sourceID string, hardKey string) {
 	if f.valkey == nil {
 		return
 	}
-	key := fmt.Sprintf("bloom:seen:%d", sourceID)
+	key := "bloom:seen:" + sourceID
 	offsets := bloomOffsets(hardKey)
 	for _, offset := range offsets {
 		f.valkey.SetBit(ctx, key, offset, 1)

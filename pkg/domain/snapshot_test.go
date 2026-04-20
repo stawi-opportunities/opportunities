@@ -13,7 +13,7 @@ func fixedJob() *domain.CanonicalJob {
 	posted := time.Date(2026, 4, 15, 10, 0, 0, 0, time.UTC)
 	expires := posted.AddDate(0, 4, 0)
 	return &domain.CanonicalJob{
-		ID:               12345,
+		BaseModel:        domain.BaseModel{ID: "cr7qs3q8j1hci9fn3sag"},
 		Slug:             "senior-go-developer-at-acme-corp-a3f7b2",
 		Title:            "Senior Go Developer",
 		Company:          "Acme Corp",

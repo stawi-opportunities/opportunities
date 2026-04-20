@@ -26,7 +26,7 @@ func (r *CandidateRepository) Create(ctx context.Context, c *domain.CandidatePro
 
 // GetByID retrieves a candidate profile by primary key.
 // Returns nil, nil if no record is found.
-func (r *CandidateRepository) GetByID(ctx context.Context, id int64) (*domain.CandidateProfile, error) {
+func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.CandidateProfile, error) {
 	var c domain.CandidateProfile
 	err := r.db(ctx, true).Where("id = ?", id).First(&c).Error
 	if err != nil {
@@ -58,7 +58,7 @@ func (r *CandidateRepository) Update(ctx context.Context, c *domain.CandidatePro
 }
 
 // UpdateStatus changes only the status field for the given candidate ID.
-func (r *CandidateRepository) UpdateStatus(ctx context.Context, id int64, status domain.CandidateStatus) error {
+func (r *CandidateRepository) UpdateStatus(ctx context.Context, id string, status domain.CandidateStatus) error {
 	return r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).
 		Where("id = ?", id).
@@ -66,7 +66,7 @@ func (r *CandidateRepository) UpdateStatus(ctx context.Context, id int64, status
 }
 
 // UpdateEmbedding stores a JSON-encoded embedding vector for the given candidate.
-func (r *CandidateRepository) UpdateEmbedding(ctx context.Context, id int64, embedding string) error {
+func (r *CandidateRepository) UpdateEmbedding(ctx context.Context, id string, embedding string) error {
 	return r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).
 		Where("id = ?", id).
@@ -74,7 +74,7 @@ func (r *CandidateRepository) UpdateEmbedding(ctx context.Context, id int64, emb
 }
 
 // IncrementMatchesSent increments the matches_sent counter and updates last_contacted_at.
-func (r *CandidateRepository) IncrementMatchesSent(ctx context.Context, id int64) error {
+func (r *CandidateRepository) IncrementMatchesSent(ctx context.Context, id string) error {
 	now := time.Now()
 	return r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).

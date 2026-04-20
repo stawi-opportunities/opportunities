@@ -10,12 +10,12 @@ import (
 // JSON round-trip: marshal → unmarshal → compare. If any `json:"..."` tag
 // changes, this test catches it.
 func TestCrawlRequestPayload_roundTrip(t *testing.T) {
-	in := CrawlRequestPayload{SourceID: 42, Attempt: 3}
+	in := CrawlRequestPayload{SourceID: "src_test_42", Attempt: 3}
 	raw, err := json.Marshal(in)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if !strings.Contains(string(raw), `"source_id":42`) {
+	if !strings.Contains(string(raw), `"source_id":"src_test_42"`) {
 		t.Errorf("expected source_id tag in %s", raw)
 	}
 	if !strings.Contains(string(raw), `"attempt":3`) {
@@ -33,7 +33,7 @@ func TestCrawlRequestPayload_roundTrip(t *testing.T) {
 
 // Attempt is omitempty — at zero it should not appear in the JSON output.
 func TestCrawlRequestPayload_attemptOmitEmpty(t *testing.T) {
-	raw, err := json.Marshal(CrawlRequestPayload{SourceID: 1})
+	raw, err := json.Marshal(CrawlRequestPayload{SourceID: "src_test_1"})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestCrawlRequestPayload_attemptOmitEmpty(t *testing.T) {
 
 func TestJobPublishedPayload_roundTrip(t *testing.T) {
 	in := JobPublishedPayload{
-		CanonicalJobID: 101,
+		CanonicalJobID: "job_test_101",
 		Slug:           "backend-eng",
 		SourceLang:     "en",
 		R2Version:      2,
@@ -54,7 +54,7 @@ func TestJobPublishedPayload_roundTrip(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	for _, want := range []string{
-		`"canonical_job_id":101`,
+		`"canonical_job_id":"job_test_101"`,
 		`"slug":"backend-eng"`,
 		`"source_lang":"en"`,
 		`"r2_version":2`,
@@ -74,12 +74,12 @@ func TestJobPublishedPayload_roundTrip(t *testing.T) {
 }
 
 func TestJobReadyPayload_roundTrip(t *testing.T) {
-	in := JobReadyPayload{CanonicalJobID: 7}
+	in := JobReadyPayload{CanonicalJobID: "job_test_7"}
 	raw, err := json.Marshal(in)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if !strings.Contains(string(raw), `"canonical_job_id":7`) {
+	if !strings.Contains(string(raw), `"canonical_job_id":"job_test_7"`) {
 		t.Errorf("expected canonical_job_id tag: %s", raw)
 	}
 

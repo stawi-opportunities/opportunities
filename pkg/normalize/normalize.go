@@ -132,7 +132,7 @@ func contentHash(externalID, title, company, location, description string) strin
 // "ja"). Callers that don't yet track language per source should pass "en".
 // The normalizer will opportunistically override this with a whatlanggo
 // detection when the description is long enough to give a reliable signal.
-func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBoard, language string, scrapedAt time.Time) domain.JobVariant {
+func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceBoard, language string, scrapedAt time.Time) domain.JobVariant {
 	// 1. Trim all text fields.
 	title := strings.TrimSpace(ext.Title)
 	company := strings.TrimSpace(ext.Company)

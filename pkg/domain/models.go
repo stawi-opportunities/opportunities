@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // SourceType identifies the connector used to crawl a source.
@@ -75,7 +73,7 @@ const (
 
 // Source represents a configured job board or careers page to crawl.
 type Source struct {
-	ID               int64          `gorm:"primaryKey;autoIncrement" json:"id"`
+	BaseModel
 	Type             SourceType     `gorm:"type:varchar(50);not null;uniqueIndex:idx_source_type_url" json:"type"`
 	Name             string         `gorm:"type:varchar(255)" json:"name"`
 	BaseURL          string         `gorm:"type:text;not null;uniqueIndex:idx_source_type_url" json:"base_url"`
@@ -102,18 +100,14 @@ type Source struct {
 	QualityWindowDays   int        `gorm:"not null;default:1" json:"quality_window_days"`
 	QualityValidated    int        `gorm:"not null;default:0" json:"quality_validated"`
 	QualityFlagged      int        `gorm:"not null;default:0" json:"quality_flagged"`
-
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	DeletedAt        gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
 
 func (Source) TableName() string { return "sources" }
 
 // CrawlJob records a single crawl execution against a source.
 type CrawlJob struct {
-	ID             int64          `gorm:"primaryKey;autoIncrement" json:"id"`
-	SourceID       int64          `gorm:"not null;index" json:"source_id"`
+	BaseModel
+	SourceID       string         `gorm:"type:varchar(20);not null;index" json:"source_id"`
 	ScheduledAt    time.Time      `gorm:"not null" json:"scheduled_at"`
 	StartedAt      *time.Time     `json:"started_at"`
 	FinishedAt     *time.Time     `json:"finished_at"`
@@ -124,16 +118,14 @@ type CrawlJob struct {
 	ErrorMessage   string         `gorm:"type:text" json:"error_message"`
 	JobsFound      int            `gorm:"not null;default:0" json:"jobs_found"`
 	JobsStored     int            `gorm:"not null;default:0" json:"jobs_stored"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 func (CrawlJob) TableName() string { return "crawl_jobs" }
 
 // RawPayload stores the raw HTTP response from a crawl.
 type RawPayload struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	CrawlJobID  int64     `gorm:"not null;index" json:"crawl_job_id"`
+	BaseModel
+	CrawlJobID  string    `gorm:"type:varchar(20);not null;index" json:"crawl_job_id"`
 	StorageURI  string    `gorm:"type:text" json:"storage_uri"`
 	ContentHash string    `gorm:"type:varchar(64);index" json:"content_hash"`
 	FetchedAt   time.Time `gorm:"not null" json:"fetched_at"`
@@ -208,9 +200,9 @@ const (
 
 // JobVariant represents one observed posting of a job from a specific source.
 type JobVariant struct {
-	ID             int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	BaseModel
 	ExternalJobID  string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_variant_source_ext" json:"external_job_id"`
-	SourceID       int64     `gorm:"not null;index;uniqueIndex:idx_variant_source_ext" json:"source_id"`
+	SourceID       string    `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_variant_source_ext" json:"source_id"`
 	HardKey        string    `gorm:"type:varchar(64);index" json:"hard_key"`
 	SourceURL      string    `gorm:"type:text" json:"source_url"`
 	ApplyURL       string    `gorm:"type:text" json:"apply_url"`
@@ -272,29 +264,24 @@ type JobVariant struct {
 
 	// Source discovery (populated in Stage 2)
 	DiscoveredURLs  string  `gorm:"type:text" json:"discovered_urls"`
-
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 func (JobVariant) TableName() string { return "job_variants" }
 
 // JobCluster groups duplicate job variants together.
 type JobCluster struct {
-	ID                 int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	CanonicalVariantID int64     `gorm:"not null" json:"canonical_variant_id"`
+	BaseModel
+	CanonicalVariantID string    `gorm:"type:varchar(20);not null" json:"canonical_variant_id"`
 	Confidence         float64   `gorm:"type:real;not null" json:"confidence"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 func (JobCluster) TableName() string { return "job_clusters" }
 
 // JobClusterMember links a variant to a cluster with match metadata.
 type JobClusterMember struct {
-	ID        int64   `gorm:"primaryKey;autoIncrement" json:"id"`
-	ClusterID int64   `gorm:"not null;index" json:"cluster_id"`
-	VariantID int64   `gorm:"not null;index" json:"variant_id"`
+	BaseModel
+	ClusterID string  `gorm:"type:varchar(20);not null;index" json:"cluster_id"`
+	VariantID string  `gorm:"type:varchar(20);not null;index" json:"variant_id"`
 	MatchType string  `gorm:"type:varchar(20);not null" json:"match_type"`
 	Score     float64 `gorm:"type:real;not null" json:"score"`
 }
@@ -303,8 +290,8 @@ func (JobClusterMember) TableName() string { return "job_cluster_members" }
 
 // CanonicalJob is the deduplicated, canonical representation of a job posting.
 type CanonicalJob struct {
-	ID             int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	ClusterID      int64      `gorm:"not null;uniqueIndex" json:"cluster_id"`
+	BaseModel
+	ClusterID      string     `gorm:"type:varchar(20);not null;uniqueIndex" json:"cluster_id"`
 	Slug           string     `gorm:"type:varchar(255);uniqueIndex" json:"slug"`
 	Title          string     `gorm:"type:text;not null" json:"title"`
 	Company        string     `gorm:"type:varchar(255);not null" json:"company"`
@@ -369,16 +356,14 @@ type CanonicalJob struct {
 	RedirectSlug   string `gorm:"type:varchar(64);index" json:"redirect_slug"`
 	SearchVector   string     `gorm:"->;type:tsvector" json:"-"`
 	Embedding      string     `gorm:"type:text" json:"-"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 func (CanonicalJob) TableName() string { return "canonical_jobs" }
 
 // CrawlPageState tracks pagination state for multi-page crawls.
 type CrawlPageState struct {
-	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	CrawlJobID int64     `gorm:"not null;index" json:"crawl_job_id"`
+	BaseModel
+	CrawlJobID string    `gorm:"type:varchar(20);not null;index" json:"crawl_job_id"`
 	PageURL    string    `gorm:"type:text;not null" json:"page_url"`
 	PageNum    int       `gorm:"not null" json:"page_num"`
 	CursorNext string    `gorm:"type:text" json:"cursor_next"`
@@ -390,9 +375,9 @@ func (CrawlPageState) TableName() string { return "crawl_page_states" }
 
 // RejectedJob records jobs that were discarded during normalization or dedup.
 type RejectedJob struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	CrawlJobID  int64     `gorm:"not null;index" json:"crawl_job_id"`
-	SourceID    int64     `gorm:"not null;index" json:"source_id"`
+	BaseModel
+	CrawlJobID  string    `gorm:"type:varchar(20);not null;index" json:"crawl_job_id"`
+	SourceID    string    `gorm:"type:varchar(20);not null;index" json:"source_id"`
 	ExternalID  string    `gorm:"type:varchar(255)" json:"external_id"`
 	Reason      string    `gorm:"type:varchar(100);not null" json:"reason"`
 	RawSnippet  string    `gorm:"type:text" json:"raw_snippet"`
@@ -403,7 +388,7 @@ func (RejectedJob) TableName() string { return "rejected_jobs" }
 
 // CrawlRequest is published to the queue to trigger a crawl.
 type CrawlRequest struct {
-	SourceID     int64      `json:"source_id"`
+	SourceID     string     `json:"source_id"`
 	SourceType   SourceType `json:"source_type"`
 	ScheduledFor time.Time  `json:"scheduled_for"`
 	Attempt      int        `json:"attempt"`
@@ -412,9 +397,9 @@ type CrawlRequest struct {
 
 // SavedJob records a job that a candidate has bookmarked.
 type SavedJob struct {
-	ID             int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	BaseModel
 	ProfileID      string    `gorm:"type:varchar(255);not null;index;uniqueIndex:idx_saved_profile_job" json:"profile_id"`
-	CanonicalJobID int64     `gorm:"not null;index;uniqueIndex:idx_saved_profile_job" json:"canonical_job_id"`
+	CanonicalJobID string    `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_saved_profile_job" json:"canonical_job_id"`
 	SavedAt        time.Time `gorm:"not null" json:"saved_at"`
 }
 
@@ -490,8 +475,8 @@ func Slugify(s string) string {
 // BuildSlug creates a permanent, unique, human-readable slug for a canonical job.
 // Format: {title}-at-{company}-{6-char-hash}
 // The hash is deterministic: SHA256(company|title|id), first 6 hex chars.
-func BuildSlug(title, company string, id int64) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", company, title, id)))
+func BuildSlug(title, company string, id string) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s", company, title, id)))
 	shortHash := hex.EncodeToString(h[:3])
 	slug := fmt.Sprintf("%s-at-%s-%s", Slugify(title), Slugify(company), shortHash)
 	if len(slug) > 250 {

@@ -15,7 +15,7 @@ const CandidateEmbeddingEventName = "candidate.embedding.needed"
 
 // CandidateEmbeddingPayload carries the candidate ID and text to embed.
 type CandidateEmbeddingPayload struct {
-	CandidateID int64  `json:"candidate_id"`
+	CandidateID string `json:"candidate_id"`
 	Text        string `json:"text"`
 }
 
@@ -52,7 +52,7 @@ func (h *CandidateEmbeddingHandler) Validate(_ context.Context, payload any) err
 	if !ok {
 		return errors.New("invalid payload type, expected *CandidateEmbeddingPayload")
 	}
-	if p.CandidateID == 0 {
+	if p.CandidateID == "" {
 		return errors.New("candidate_id is required")
 	}
 	if p.Text == "" {
@@ -70,7 +70,7 @@ func (h *CandidateEmbeddingHandler) Execute(ctx context.Context, payload any) er
 
 	embedding, err := h.extractor.Embed(ctx, p.Text)
 	if err != nil {
-		log.Printf("candidate embedding event: failed for candidate %d: %v", p.CandidateID, err)
+		log.Printf("candidate embedding event: failed for candidate %s: %v", p.CandidateID, err)
 		return err
 	}
 

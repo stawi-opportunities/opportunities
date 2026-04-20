@@ -86,7 +86,7 @@ func (h *ValidateHandler) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type, expected *VariantPayload")
 	}
-	if p.VariantID == 0 {
+	if p.VariantID == "" {
 		return errors.New("variant_id is required")
 	}
 	return nil
@@ -103,8 +103,8 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 	ctx, span := validateTracer.Start(ctx, "pipeline.validate")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int64("variant_id", p.VariantID),
-		attribute.Int64("source_id", p.SourceID),
+		attribute.String("variant_id", p.VariantID),
+		attribute.String("source_id", p.SourceID),
 	)
 
 	start := time.Now()

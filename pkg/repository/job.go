@@ -164,13 +164,13 @@ type SearchRequest struct {
 	Limit            int
 	Offset           int
 	CursorPostedAt   *time.Time
-	CursorID         int64
+	CursorID         string
 }
 
 // SearchResult is the denormalized row returned to UI consumers. Snippet is a
 // pre-truncated excerpt of the description so list pages don't ship full text.
 type SearchResult struct {
-	ID           int64      `json:"id"`
+	ID           string     `json:"id"`
 	Slug         string     `json:"slug"`
 	Title        string     `json:"title"`
 	Company      string     `json:"company"`
@@ -277,7 +277,7 @@ func (r *JobRepository) SearchCanonical(ctx context.Context, req SearchRequest) 
 		}
 		db = db.Offset(req.Offset)
 	} else {
-		if req.CursorPostedAt != nil && req.CursorID > 0 {
+		if req.CursorPostedAt != nil && req.CursorID != "" {
 			db = db.Where("(posted_at, id) < (?, ?)", *req.CursorPostedAt, req.CursorID)
 		}
 		switch req.Sort {
@@ -318,7 +318,7 @@ func normaliseCountries(cc []string) []string {
 }
 
 // UpdateEmbedding stores a JSON-encoded embedding vector for a canonical job.
-func (r *JobRepository) UpdateEmbedding(ctx context.Context, canonicalID int64, embedding string) error {
+func (r *JobRepository) UpdateEmbedding(ctx context.Context, canonicalID string, embedding string) error {
 	return r.db(ctx, false).
 		Model(&domain.CanonicalJob{}).
 		Where("id = ?", canonicalID).
@@ -358,12 +358,12 @@ func (r *JobRepository) CountCanonical(ctx context.Context) (int64, error) {
 }
 
 // UpdateQualityScore updates just the quality_score field of a canonical job.
-func (r *JobRepository) UpdateQualityScore(ctx context.Context, id int64, score float64) error {
+func (r *JobRepository) UpdateQualityScore(ctx context.Context, id string, score float64) error {
 	return r.db(ctx, false).Model(&domain.CanonicalJob{}).Where("id = ?", id).Update("quality_score", score).Error
 }
 
 // MarkPublished stamps published_at=now() and sets r2_version for a canonical job.
-func (r *JobRepository) MarkPublished(ctx context.Context, canonicalJobID int64, nextVersion int) error {
+func (r *JobRepository) MarkPublished(ctx context.Context, canonicalJobID string, nextVersion int) error {
 	return r.db(ctx, false).
 		Table("canonical_jobs").
 		Where("id = ?", canonicalJobID).
@@ -376,7 +376,7 @@ func (r *JobRepository) MarkPublished(ctx context.Context, canonicalJobID int64,
 // SetRedirectLink persists the redirect-service identifiers on a canonical
 // job. Called once at publish time per job; re-publishes preserve the
 // original slug so external links remain stable.
-func (r *JobRepository) SetRedirectLink(ctx context.Context, canonicalJobID int64, linkID, slug string) error {
+func (r *JobRepository) SetRedirectLink(ctx context.Context, canonicalJobID string, linkID, slug string) error {
 	return r.db(ctx, false).
 		Table("canonical_jobs").
 		Where("id = ?", canonicalJobID).
@@ -389,7 +389,7 @@ func (r *JobRepository) SetRedirectLink(ctx context.Context, canonicalJobID int6
 // MarkTranslated records the set of languages (CSV) that have been written
 // to R2 and stamps translated_at=now(). Idempotent — calling it twice with
 // the same list simply refreshes the timestamp.
-func (r *JobRepository) MarkTranslated(ctx context.Context, canonicalJobID int64, langsCSV string) error {
+func (r *JobRepository) MarkTranslated(ctx context.Context, canonicalJobID string, langsCSV string) error {
 	return r.db(ctx, false).
 		Table("canonical_jobs").
 		Where("id = ?", canonicalJobID).
@@ -400,7 +400,7 @@ func (r *JobRepository) MarkTranslated(ctx context.Context, canonicalJobID int64
 }
 
 // ClearPublished sets published_at to NULL. Used by the unpublish path.
-func (r *JobRepository) ClearPublished(ctx context.Context, canonicalJobID int64) error {
+func (r *JobRepository) ClearPublished(ctx context.Context, canonicalJobID string) error {
 	return r.db(ctx, false).
 		Table("canonical_jobs").
 		Where("id = ?", canonicalJobID).
@@ -443,7 +443,7 @@ func (r *JobRepository) CountVariantsByCountry(ctx context.Context) (map[string]
 
 // GetPageState retrieves pagination state for a given source and page key.
 // Returns nil, nil when no record is found.
-func (r *JobRepository) GetPageState(ctx context.Context, sourceID int64, pageKey string) (*domain.CrawlPageState, error) {
+func (r *JobRepository) GetPageState(ctx context.Context, sourceID string, pageKey string) (*domain.CrawlPageState, error) {
 	var ps domain.CrawlPageState
 	err := r.db(ctx, true).
 		Where("crawl_job_id = ? AND page_url = ?", sourceID, pageKey).
@@ -458,7 +458,7 @@ func (r *JobRepository) GetPageState(ctx context.Context, sourceID int64, pageKe
 }
 
 // FindClusterByVariantID finds the cluster that a variant belongs to.
-func (r *JobRepository) FindClusterByVariantID(ctx context.Context, variantID int64) (*domain.JobCluster, error) {
+func (r *JobRepository) FindClusterByVariantID(ctx context.Context, variantID string) (*domain.JobCluster, error) {
 	var member domain.JobClusterMember
 	err := r.db(ctx, true).Where("variant_id = ?", variantID).First(&member).Error
 	if err != nil {
@@ -551,12 +551,12 @@ func (r *JobRepository) UpsertPageState(ctx context.Context, ps *domain.CrawlPag
 }
 
 // UpdateCanonicalFields updates specific fields on a canonical job by ID.
-func (r *JobRepository) UpdateCanonicalFields(ctx context.Context, id int64, updates map[string]any) error {
+func (r *JobRepository) UpdateCanonicalFields(ctx context.Context, id string, updates map[string]any) error {
 	return r.db(ctx, false).Model(&domain.CanonicalJob{}).Where("id = ?", id).Updates(updates).Error
 }
 
 // RecomputeQualityScore loads a canonical job, recomputes its score, and saves it.
-func (r *JobRepository) RecomputeQualityScore(ctx context.Context, id int64) error {
+func (r *JobRepository) RecomputeQualityScore(ctx context.Context, id string) error {
 	var job domain.CanonicalJob
 	if err := r.db(ctx, true).Where("id = ?", id).First(&job).Error; err != nil {
 		return err
@@ -577,14 +577,14 @@ func (r *JobRepository) ListUnenriched(ctx context.Context, limit int) ([]*domai
 }
 
 // UpdateStage sets the pipeline stage for a variant.
-func (r *JobRepository) UpdateStage(ctx context.Context, variantID int64, stage string) error {
+func (r *JobRepository) UpdateStage(ctx context.Context, variantID string, stage string) error {
 	return r.db(ctx, false).Model(&domain.JobVariant{}).
 		Where("id = ?", variantID).
 		Update("stage", stage).Error
 }
 
 // UpdateStageWithContent sets stage and content fields together.
-func (r *JobRepository) UpdateStageWithContent(ctx context.Context, variantID int64, stage string, rawHTML, cleanHTML, markdown string) error {
+func (r *JobRepository) UpdateStageWithContent(ctx context.Context, variantID string, stage string, rawHTML, cleanHTML, markdown string) error {
 	return r.db(ctx, false).Model(&domain.JobVariant{}).
 		Where("id = ?", variantID).
 		Updates(map[string]any{
@@ -596,7 +596,7 @@ func (r *JobRepository) UpdateStageWithContent(ctx context.Context, variantID in
 }
 
 // UpdateValidation sets validation results on a variant.
-func (r *JobRepository) UpdateValidation(ctx context.Context, variantID int64, stage string, score float64, notes string) error {
+func (r *JobRepository) UpdateValidation(ctx context.Context, variantID string, stage string, score float64, notes string) error {
 	return r.db(ctx, false).Model(&domain.JobVariant{}).
 		Where("id = ?", variantID).
 		Updates(map[string]any{
@@ -622,7 +622,7 @@ func (r *JobRepository) ListByStage(ctx context.Context, stage string, limit int
 // redirect service's link-expired signal can retry freely, and we
 // won't re-trigger downstream subscriber notifications on the second
 // run. Returns the number of rows changed (0 or 1).
-func (r *JobRepository) MarkExpiredIfActive(ctx context.Context, id int64) (int64, error) {
+func (r *JobRepository) MarkExpiredIfActive(ctx context.Context, id string) (int64, error) {
 	res := r.db(ctx, false).
 		Table("canonical_jobs").
 		Where("id = ? AND status = 'active'", id).
@@ -637,7 +637,7 @@ func (r *JobRepository) MarkExpiredIfActive(ctx context.Context, id int64) (int6
 // regardless of its status. Used by consumers that need to read a row
 // after it's been expired (e.g. the link-expired notifier still needs
 // the job's title to template the email).
-func (r *JobRepository) GetCanonicalByIDAnyStatus(ctx context.Context, id int64) (*domain.CanonicalJob, error) {
+func (r *JobRepository) GetCanonicalByIDAnyStatus(ctx context.Context, id string) (*domain.CanonicalJob, error) {
 	var j domain.CanonicalJob
 	err := r.db(ctx, true).Where("id = ?", id).First(&j).Error
 	if err != nil {
@@ -651,7 +651,7 @@ func (r *JobRepository) GetCanonicalByIDAnyStatus(ctx context.Context, id int64)
 
 // GetCanonicalByID retrieves an active canonical job by primary key.
 // Returns nil, nil when no record is found.
-func (r *JobRepository) GetCanonicalByID(ctx context.Context, id int64) (*domain.CanonicalJob, error) {
+func (r *JobRepository) GetCanonicalByID(ctx context.Context, id string) (*domain.CanonicalJob, error) {
 	var j domain.CanonicalJob
 	err := r.db(ctx, true).Where("id = ? AND status = 'active'", id).First(&j).Error
 	if err != nil {
@@ -712,7 +712,7 @@ func (r *JobRepository) CountByCategory(ctx context.Context) (map[string]int64, 
 
 // ListByStageAndSource returns variants at a given pipeline stage for a specific
 // source, ordered by most-recent first and capped at limit rows.
-func (r *JobRepository) ListByStageAndSource(ctx context.Context, sourceID int64, stage string, limit int) ([]*domain.JobVariant, error) {
+func (r *JobRepository) ListByStageAndSource(ctx context.Context, sourceID string, stage string, limit int) ([]*domain.JobVariant, error) {
 	var variants []*domain.JobVariant
 	err := r.db(ctx, true).
 		Where("source_id = ? AND stage = ?", sourceID, stage).
@@ -724,7 +724,7 @@ func (r *JobRepository) ListByStageAndSource(ctx context.Context, sourceID int64
 
 // GetVariantByID returns a single JobVariant by primary key.
 // Returns nil, nil when no record is found.
-func (r *JobRepository) GetVariantByID(ctx context.Context, id int64) (*domain.JobVariant, error) {
+func (r *JobRepository) GetVariantByID(ctx context.Context, id string) (*domain.JobVariant, error) {
 	var v domain.JobVariant
 	err := r.db(ctx, true).Where("id = ?", id).First(&v).Error
 	if err != nil {
@@ -737,7 +737,7 @@ func (r *JobRepository) GetVariantByID(ctx context.Context, id int64) (*domain.J
 }
 
 // UpdateVariantFields updates arbitrary fields on a job variant by ID.
-func (r *JobRepository) UpdateVariantFields(ctx context.Context, id int64, updates map[string]any) error {
+func (r *JobRepository) UpdateVariantFields(ctx context.Context, id string, updates map[string]any) error {
 	return r.db(ctx, false).Model(&domain.JobVariant{}).Where("id = ?", id).Updates(updates).Error
 }
 

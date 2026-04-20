@@ -29,7 +29,7 @@ func TestExternalToVariant(t *testing.T) {
 		SalaryMax:      80000,
 	}
 
-	v := ExternalToVariant(ext, 42, "ke", "brightermonday", "en", scrapedAt)
+	v := ExternalToVariant(ext, "src_test_42", "ke", "brightermonday", "en", scrapedAt)
 
 	// Trimming
 	if v.Title != "Software Engineer" {
@@ -94,8 +94,8 @@ func TestExternalToVariant(t *testing.T) {
 	}
 
 	// SourceID passed through
-	if v.SourceID != 42 {
-		t.Errorf("source_id wrong: got %d", v.SourceID)
+	if v.SourceID != "src_test_42" {
+		t.Errorf("source_id wrong: got %q", v.SourceID)
 	}
 
 	// ScrapedAt passed through
@@ -120,7 +120,7 @@ func TestGeneratedIDWhenMissing(t *testing.T) {
 		Description: "Analyse data.",
 	}
 
-	v := ExternalToVariant(ext, 1, "NG", "jobberman", "en", time.Now())
+	v := ExternalToVariant(ext, "src_test_1", "NG", "jobberman", "en", time.Now())
 
 	if v.ExternalJobID == "" {
 		t.Fatal("ExternalJobID should not be empty when input ExternalID is blank")
@@ -178,13 +178,13 @@ func TestExternalToVariantLanguage(t *testing.T) {
 		Company:     "ACME",
 		Description: longFR,
 	}
-	v := ExternalToVariant(ext, 1, "FR", "greenhouse", "en", time.Now())
+	v := ExternalToVariant(ext, "src_test_1", "FR", "greenhouse", "en", time.Now())
 	if v.Language != "fr" {
 		t.Errorf("Language = %q, want %q (whatlanggo should override)", v.Language, "fr")
 	}
 
 	vShort := ExternalToVariant(domain.ExternalJob{ExternalID: "j", Title: "Dev", Company: "ACME", Description: "Short"},
-		1, "FR", "greenhouse", "fr", time.Now())
+		"src_test_1", "FR", "greenhouse", "fr", time.Now())
 	if vShort.Language != "fr" {
 		t.Errorf("Language = %q, want %q (short text should inherit source)", vShort.Language, "fr")
 	}

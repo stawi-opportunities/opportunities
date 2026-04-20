@@ -132,7 +132,7 @@ export function setAnalyticsContext(key: string, value: unknown): void {
 // which makes funnel queries much simpler.
 
 export interface JobViewAttrs {
-  canonical_job_id?: number;
+  canonical_job_id?: string;
   slug: string;
   category?: string;
   company?: string;
@@ -149,7 +149,7 @@ export function trackJobView(attrs: JobViewAttrs): void {
 }
 
 export interface JobViewEngagedAttrs {
-  canonical_job_id?: number;
+  canonical_job_id?: string;
   slug: string;
   dwell_ms: number;
   scroll_depth_pct: number;
@@ -161,7 +161,7 @@ export function trackJobViewEngaged(attrs: JobViewEngagedAttrs): void {
 }
 
 export interface ApplyClickAttrs {
-  canonical_job_id?: number;
+  canonical_job_id?: string;
   slug: string;
   company?: string;
   // The URL the user will land on — /r/{slug} in production so the

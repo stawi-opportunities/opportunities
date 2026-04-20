@@ -85,7 +85,7 @@ func (h *SourceExpansionHandler) Validate(_ context.Context, payload any) error 
 	if !ok {
 		return errors.New("invalid payload type, expected *SourceURLsPayload")
 	}
-	if p.SourceID == 0 {
+	if p.SourceID == "" {
 		return errors.New("source_id is required")
 	}
 	return nil
@@ -102,7 +102,7 @@ func (h *SourceExpansionHandler) Execute(ctx context.Context, payload any) error
 	ctx, span := sourceExpandTracer.Start(ctx, "pipeline.source_expand")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int64("source_id", p.SourceID),
+		attribute.String("source_id", p.SourceID),
 		attribute.Int("url_count", len(p.URLs)),
 	)
 
@@ -118,7 +118,7 @@ func (h *SourceExpansionHandler) Execute(ctx context.Context, payload any) error
 	// Load the source to know its own domain so we can skip self-references.
 	src, err := h.sourceRepo.GetByID(ctx, p.SourceID)
 	if err != nil {
-		return fmt.Errorf("source_expand: load source %d: %w", p.SourceID, err)
+		return fmt.Errorf("source_expand: load source %s: %w", p.SourceID, err)
 	}
 
 	sourceDomain := extractHostname(src.BaseURL)

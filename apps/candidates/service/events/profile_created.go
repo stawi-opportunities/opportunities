@@ -13,7 +13,7 @@ const ProfileCreatedEventName = "candidate.profile.created"
 
 // ProfileCreatedPayload carries the candidate ID for the newly created profile.
 type ProfileCreatedPayload struct {
-	CandidateID int64 `json:"candidate_id"`
+	CandidateID string `json:"candidate_id"`
 }
 
 // ProfileCreatedHandler processes candidate.profile.created events.
@@ -42,7 +42,7 @@ func (h *ProfileCreatedHandler) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type, expected *ProfileCreatedPayload")
 	}
-	if p.CandidateID == 0 {
+	if p.CandidateID == "" {
 		return errors.New("candidate_id is required")
 	}
 	return nil
@@ -58,15 +58,15 @@ func (h *ProfileCreatedHandler) Execute(ctx context.Context, payload any) error 
 
 	candidate, err := h.candidateRepo.GetByID(ctx, p.CandidateID)
 	if err != nil {
-		log.Printf("profile_created event: failed to load candidate %d: %v", p.CandidateID, err)
+		log.Printf("profile_created event: failed to load candidate %s: %v", p.CandidateID, err)
 		return err
 	}
 	if candidate == nil {
-		log.Printf("profile_created event: candidate %d not found", p.CandidateID)
+		log.Printf("profile_created event: candidate %s not found", p.CandidateID)
 		return nil
 	}
 
-	log.Printf("profile_created event: received for candidate %d (status=%s, has_embedding=%v)",
+	log.Printf("profile_created event: received for candidate %s (status=%s, has_embedding=%v)",
 		p.CandidateID, candidate.Status, candidate.Embedding != "")
 
 	// TODO: when pkg/matching is available, run matching here for active

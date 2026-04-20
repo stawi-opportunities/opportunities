@@ -25,7 +25,7 @@ func (r *CrawlRepository) Create(ctx context.Context, job *domain.CrawlJob) erro
 }
 
 // Start marks a crawl job as running and records its start time.
-func (r *CrawlRepository) Start(ctx context.Context, id int64) error {
+func (r *CrawlRepository) Start(ctx context.Context, id string) error {
 	now := time.Now().UTC()
 	return r.db(ctx, false).
 		Model(&domain.CrawlJob{}).
@@ -37,7 +37,7 @@ func (r *CrawlRepository) Start(ctx context.Context, id int64) error {
 }
 
 // Finish updates the terminal state of a crawl job.
-func (r *CrawlRepository) Finish(ctx context.Context, id int64, status domain.CrawlJobStatus, errorCode string) error {
+func (r *CrawlRepository) Finish(ctx context.Context, id string, status domain.CrawlJobStatus, errorCode string) error {
 	now := time.Now().UTC()
 	return r.db(ctx, false).
 		Model(&domain.CrawlJob{}).

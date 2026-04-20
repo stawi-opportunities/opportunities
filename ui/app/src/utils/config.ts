@@ -42,7 +42,7 @@ const DEFAULTS: SiteConfig = {
   candidatesAPIURL: "https://api.stawi.org",
   contentOrigin: "https://job-repo.stawi.org",
   oidcIssuer: "https://oauth2.stawi.org",
-  oidcClientID: "stawi-jobs-web-dev",
+  oidcClientID: "d7is2kspf2t7cl19qlpg",
   oidcInstallationID: "d7gi6lkpf2t67dlsqrhg",
   oidcRedirectURI:
     typeof window !== "undefined"

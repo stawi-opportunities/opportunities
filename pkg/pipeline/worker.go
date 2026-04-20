@@ -19,7 +19,7 @@ import (
 
 // CrawlResult summarises the outcome of processing a single CrawlRequest.
 type CrawlResult struct {
-	SourceID        int64
+	SourceID        string
 	SourceType      domain.SourceType
 	JobsFetched     int
 	JobsAccepted    int

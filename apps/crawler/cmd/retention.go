@@ -59,7 +59,7 @@ func runRetention(
 		if len(rows) == 0 {
 			break
 		}
-		ids := make([]int64, 0, len(rows))
+		ids := make([]string, 0, len(rows))
 		for _, r := range rows {
 			if r.Slug == "" {
 				ids = append(ids, r.ID)

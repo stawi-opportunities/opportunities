@@ -39,7 +39,7 @@ func countryBackfillHandler(db *gorm.DB) http.HandlerFunc {
 		dryRun := r.URL.Query().Get("dry_run") == "1"
 
 		type row struct {
-			ID           int64
+			ID           string
 			LocationText string
 		}
 
@@ -50,7 +50,7 @@ func countryBackfillHandler(db *gorm.DB) http.HandlerFunc {
 		var scanned, updated, empty int
 
 		// Paginate via id > lastID so we never skip or re-read rows.
-		var lastID int64
+		var lastID string
 		for {
 			var rows []row
 			q := db.WithContext(ctx).
@@ -68,7 +68,7 @@ func countryBackfillHandler(db *gorm.DB) http.HandlerFunc {
 				break
 			}
 
-			updates := make(map[string][]int64, len(rows))
+			updates := make(map[string][]string, len(rows))
 			for _, rr := range rows {
 				scanned++
 				cc := locale.InferCountry(rr.LocationText)

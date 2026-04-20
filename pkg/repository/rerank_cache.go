@@ -26,11 +26,11 @@ func NewRerankCacheRepository(db func(ctx context.Context, readOnly bool) *gorm.
 // RerankCacheKey builds a stable content-hash cache key. Including the
 // reranker version means model swaps invalidate the cache automatically
 // instead of returning stale scores from an old model.
-func RerankCacheKey(cvText string, canonicalJobID int64, rerankerVersion string) string {
+func RerankCacheKey(cvText string, canonicalJobID string, rerankerVersion string) string {
 	h := sha256.New()
 	h.Write([]byte(cvText))
 	h.Write([]byte{0x1f}) // unit-separator so concatenation is unambiguous
-	h.Write([]byte(itoa(canonicalJobID)))
+	h.Write([]byte(canonicalJobID))
 	h.Write([]byte{0x1f})
 	h.Write([]byte(rerankerVersion))
 	return hex.EncodeToString(h.Sum(nil))
@@ -88,26 +88,3 @@ func (r *RerankCacheRepository) PurgeOlderThan(ctx context.Context, age time.Dur
 	return res.RowsAffected, res.Error
 }
 
-// itoa is a local base-10 formatter to avoid pulling strconv for a single
-// call in the hot cache-key path.
-func itoa(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	negative := n < 0
-	if negative {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if negative {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
-}

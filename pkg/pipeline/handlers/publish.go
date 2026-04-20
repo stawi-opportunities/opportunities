@@ -67,7 +67,7 @@ func (h *PublishHandler) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type, expected *JobReadyPayload")
 	}
-	if p.CanonicalJobID == 0 {
+	if p.CanonicalJobID == "" {
 		return errors.New("canonical_job_id is required")
 	}
 	return nil
@@ -81,7 +81,7 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 
 	ctx, span := publishTracer.Start(ctx, "pipeline.publish")
 	defer span.End()
-	span.SetAttributes(attribute.Int64("canonical_job_id", p.CanonicalJobID))
+	span.SetAttributes(attribute.String("canonical_job_id", p.CanonicalJobID))
 
 	start := time.Now()
 	defer func() {
@@ -130,7 +130,7 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 	if h.redirectClient != nil && job.ApplyURL != "" && job.RedirectSlug == "" {
 		link, lerr := h.redirectClient.CreateLink(ctx, &services.RedirectLink{
 			DestinationURL: job.ApplyURL,
-			AffiliateID:    fmt.Sprintf("canonical_job_%d", job.ID),
+			AffiliateID:    "canonical_job_" + job.ID,
 			Campaign:       "jobs",
 			Source:         "stawi-jobs",
 			Medium:         "organic",

@@ -21,7 +21,7 @@ func NewRetentionRepository(db func(ctx context.Context, readOnly bool) *gorm.DB
 
 // DeletableRow is the minimal shape required by the stage-2 worker.
 type DeletableRow struct {
-	ID   int64
+	ID   string
 	Slug string
 }
 
@@ -48,7 +48,7 @@ func (r *RetentionRepository) SelectDeletable(ctx context.Context, graceDays, ba
 }
 
 // MarkDeleted transitions the given ids to status='deleted'.
-func (r *RetentionRepository) MarkDeleted(ctx context.Context, ids []int64) error {
+func (r *RetentionRepository) MarkDeleted(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}

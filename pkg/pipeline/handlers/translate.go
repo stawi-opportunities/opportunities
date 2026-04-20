@@ -69,7 +69,7 @@ func (h *TranslateHandler) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type, expected *JobPublishedPayload")
 	}
-	if p.CanonicalJobID == 0 {
+	if p.CanonicalJobID == "" {
 		return errors.New("canonical_job_id is required")
 	}
 	return nil
@@ -90,7 +90,7 @@ func (h *TranslateHandler) Execute(ctx context.Context, payload any) error {
 	ctx, span := translateTracer.Start(ctx, "pipeline.translate")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int64("canonical_job_id", p.CanonicalJobID),
+		attribute.String("canonical_job_id", p.CanonicalJobID),
 		attribute.String("source_lang", p.SourceLang),
 	)
 

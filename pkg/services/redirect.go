@@ -12,7 +12,7 @@ func CreateTrackedLink(
 	ctx context.Context,
 	client *RedirectClient,
 	destinationURL string,
-	candidateID int64,
+	candidateID string,
 	campaign string,
 ) (string, error) {
 	if client == nil {
@@ -21,7 +21,7 @@ func CreateTrackedLink(
 
 	result, err := client.CreateLink(ctx, &RedirectLink{
 		DestinationURL: destinationURL,
-		AffiliateID:    fmt.Sprintf("candidate_%d", candidateID),
+		AffiliateID:    "candidate_" + candidateID,
 		Campaign:       campaign,
 		Source:         "stawi-jobs",
 		Medium:         "platform",

@@ -322,9 +322,8 @@ func main() {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
 		}
-		idStr := r.URL.Query().Get("id")
-		id, convErr := strconv.ParseInt(idStr, 10, 64)
-		if convErr != nil || id <= 0 {
+		id := r.URL.Query().Get("id")
+		if id == "" {
 			http.Error(w, `{"error":"invalid or missing id parameter"}`, http.StatusBadRequest)
 			return
 		}
@@ -342,9 +341,8 @@ func main() {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
 		}
-		idStr := r.URL.Query().Get("id")
-		id, convErr := strconv.ParseInt(idStr, 10, 64)
-		if convErr != nil || id <= 0 {
+		id := r.URL.Query().Get("id")
+		if id == "" {
 			http.Error(w, `{"error":"invalid or missing id parameter"}`, http.StatusBadRequest)
 			return
 		}
@@ -400,7 +398,7 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
 		}
-		ids := make([]int64, 0, len(sources))
+		ids := make([]string, 0, len(sources))
 		for _, s := range sources {
 			ids = append(ids, s.ID)
 		}
@@ -414,10 +412,10 @@ func main() {
 	// once per enumerated source.
 	adminMux.HandleFunc("POST /admin/crawl/dispatch", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			SourceID int64 `json:"source_id"`
-			Attempt  int   `json:"attempt,omitempty"`
+			SourceID string `json:"source_id"`
+			Attempt  int    `json:"attempt,omitempty"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SourceID == 0 {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SourceID == "" {
 			http.Error(w, `{"error":"source_id is required"}`, http.StatusBadRequest)
 			return
 		}
@@ -642,7 +640,7 @@ func (d *crawlDependencies) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return fmt.Errorf("crawl.request: invalid payload type %T", payload)
 	}
-	if p.SourceID == 0 {
+	if p.SourceID == "" {
 		return fmt.Errorf("crawl.request: source_id is required")
 	}
 	return nil
@@ -726,7 +724,7 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 		ScheduledAt:    now,
 		Status:         domain.CrawlScheduled,
 		Attempt:        1,
-		IdempotencyKey: fmt.Sprintf("%d-%d", src.ID, now.UnixNano()),
+		IdempotencyKey: fmt.Sprintf("%s-%d", src.ID, now.UnixNano()),
 	}
 	if err := d.crawlRepo.Create(ctx, crawlJob); err != nil {
 		log.WithError(err).WithField("source_id", src.ID).Error("create crawl job failed")
@@ -792,7 +790,7 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 				continue
 			}
 			// GORM may not populate ID on conflict-update — load it.
-			if variant.ID == 0 {
+			if variant.ID == "" {
 				existing, _ := d.jobRepo.FindByHardKey(ctx, variant.HardKey)
 				if existing != nil {
 					variant.ID = existing.ID

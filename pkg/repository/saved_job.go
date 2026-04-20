@@ -17,7 +17,7 @@ func NewSavedJobRepository(db func(ctx context.Context, readOnly bool) *gorm.DB)
 	return &SavedJobRepository{db: db}
 }
 
-func (r *SavedJobRepository) Save(ctx context.Context, profileID string, jobID int64) error {
+func (r *SavedJobRepository) Save(ctx context.Context, profileID string, jobID string) error {
 	sj := domain.SavedJob{
 		ProfileID:      profileID,
 		CanonicalJobID: jobID,
@@ -29,7 +29,7 @@ func (r *SavedJobRepository) Save(ctx context.Context, profileID string, jobID i
 	return result.Error
 }
 
-func (r *SavedJobRepository) Delete(ctx context.Context, profileID string, jobID int64) error {
+func (r *SavedJobRepository) Delete(ctx context.Context, profileID string, jobID string) error {
 	return r.db(ctx, false).
 		Where("profile_id = ? AND canonical_job_id = ?", profileID, jobID).
 		Delete(&domain.SavedJob{}).Error
@@ -45,7 +45,7 @@ func (r *SavedJobRepository) ListForProfile(ctx context.Context, profileID strin
 	return jobs, err
 }
 
-func (r *SavedJobRepository) Exists(ctx context.Context, profileID string, jobID int64) (bool, error) {
+func (r *SavedJobRepository) Exists(ctx context.Context, profileID string, jobID string) (bool, error) {
 	var count int64
 	err := r.db(ctx, true).Model(&domain.SavedJob{}).
 		Where("profile_id = ? AND canonical_job_id = ?", profileID, jobID).
@@ -57,7 +57,7 @@ func (r *SavedJobRepository) Exists(ctx context.Context, profileID string, jobID
 // have saved a given canonical job. Used by the expired-job
 // notification fan-out: when the redirect service marks a link
 // dead, every profile here gets a "posting removed" email.
-func (r *SavedJobRepository) ListProfileIDsByCanonicalJob(ctx context.Context, canonicalJobID int64) ([]string, error) {
+func (r *SavedJobRepository) ListProfileIDsByCanonicalJob(ctx context.Context, canonicalJobID string) ([]string, error) {
 	var ids []string
 	err := r.db(ctx, true).Model(&domain.SavedJob{}).
 		Where("canonical_job_id = ?", canonicalJobID).

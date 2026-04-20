@@ -55,7 +55,7 @@ func (r *MatchRepository) UpsertBatch(ctx context.Context, matches []*domain.Can
 }
 
 // ListForCandidate returns all matches for a candidate ordered by match_score descending.
-func (r *MatchRepository) ListForCandidate(ctx context.Context, candidateID int64, limit int) ([]*domain.CandidateMatch, error) {
+func (r *MatchRepository) ListForCandidate(ctx context.Context, candidateID string, limit int) ([]*domain.CandidateMatch, error) {
 	var matches []*domain.CandidateMatch
 	err := r.db(ctx, true).
 		Where("candidate_id = ?", candidateID).
@@ -66,7 +66,7 @@ func (r *MatchRepository) ListForCandidate(ctx context.Context, candidateID int6
 }
 
 // ListUnsent returns unsent (status='new') matches for a candidate.
-func (r *MatchRepository) ListUnsent(ctx context.Context, candidateID int64, limit int) ([]*domain.CandidateMatch, error) {
+func (r *MatchRepository) ListUnsent(ctx context.Context, candidateID string, limit int) ([]*domain.CandidateMatch, error) {
 	var matches []*domain.CandidateMatch
 	err := r.db(ctx, true).
 		Where("candidate_id = ? AND status = ?", candidateID, domain.MatchNew).
@@ -77,7 +77,7 @@ func (r *MatchRepository) ListUnsent(ctx context.Context, candidateID int64, lim
 }
 
 // MarkSent sets the match status to 'sent' and records the sent_at timestamp.
-func (r *MatchRepository) MarkSent(ctx context.Context, id int64) error {
+func (r *MatchRepository) MarkSent(ctx context.Context, id string) error {
 	now := time.Now()
 	return r.db(ctx, false).
 		Model(&domain.CandidateMatch{}).
@@ -89,7 +89,7 @@ func (r *MatchRepository) MarkSent(ctx context.Context, id int64) error {
 }
 
 // MarkViewed sets the match status to 'viewed' and records the viewed_at timestamp.
-func (r *MatchRepository) MarkViewed(ctx context.Context, id int64) error {
+func (r *MatchRepository) MarkViewed(ctx context.Context, id string) error {
 	now := time.Now()
 	return r.db(ctx, false).
 		Model(&domain.CandidateMatch{}).
@@ -101,7 +101,7 @@ func (r *MatchRepository) MarkViewed(ctx context.Context, id int64) error {
 }
 
 // CountForCandidate returns the total number of matches for a candidate.
-func (r *MatchRepository) CountForCandidate(ctx context.Context, candidateID int64) (int64, error) {
+func (r *MatchRepository) CountForCandidate(ctx context.Context, candidateID string) (int64, error) {
 	var count int64
 	err := r.db(ctx, true).
 		Model(&domain.CandidateMatch{}).

@@ -2,8 +2,6 @@ package domain
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // CandidateStatus tracks the lifecycle state of a candidate profile.
@@ -40,7 +38,7 @@ const (
 
 // CandidateProfile stores all data for a registered job seeker.
 type CandidateProfile struct {
-	ID           int64            `gorm:"primaryKey;autoIncrement" json:"id"`
+	BaseModel
 	ProfileID    string           `gorm:"type:varchar(255);index" json:"profile_id"`
 	Status       CandidateStatus  `gorm:"type:varchar(20);not null;default:'unverified'" json:"status"`
 	Subscription SubscriptionTier `gorm:"type:varchar(20);not null;default:'free'" json:"subscription"`
@@ -111,10 +109,6 @@ type CandidateProfile struct {
 	CVReportJSON      string     `gorm:"type:jsonb;default:'{}'" json:"-"`
 	CVScoredAt        *time.Time `json:"cv_scored_at"`
 	CVScoredVersion   string     `gorm:"type:varchar(32)" json:"cv_scored_version"`
-
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
 
 func (CandidateProfile) TableName() string { return "candidate_profiles" }
@@ -126,9 +120,9 @@ func (CandidateProfile) TableName() string { return "candidate_profiles" }
 // upstream signals on the row makes it trivial to diff "before/after
 // reranker" in observability without re-running the cron.
 type CandidateMatch struct {
-	ID                  int64       `gorm:"primaryKey;autoIncrement" json:"id"`
-	CandidateID         int64       `gorm:"not null;index;uniqueIndex:idx_candidate_job" json:"candidate_id"`
-	CanonicalJobID      int64       `gorm:"not null;index;uniqueIndex:idx_candidate_job" json:"canonical_job_id"`
+	BaseModel
+	CandidateID         string      `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_candidate_job" json:"candidate_id"`
+	CanonicalJobID      string      `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_candidate_job" json:"canonical_job_id"`
 	MatchScore          float32     `gorm:"type:real;not null" json:"match_score"`
 	SkillsOverlap       float32     `gorm:"type:real" json:"skills_overlap"`
 	EmbeddingSimilarity float32     `gorm:"type:real" json:"embedding_similarity"`
@@ -144,7 +138,6 @@ type CandidateMatch struct {
 	SentAt    *time.Time  `json:"sent_at"`
 	ViewedAt  *time.Time  `json:"viewed_at"`
 	AppliedAt *time.Time  `json:"applied_at"`
-	CreatedAt time.Time   `json:"created_at"`
 }
 
 func (CandidateMatch) TableName() string { return "candidate_matches" }
@@ -169,10 +162,10 @@ func (RerankCache) TableName() string { return "rerank_cache" }
 
 // CandidateApplication records a job application submitted by or on behalf of a candidate.
 type CandidateApplication struct {
-	ID             int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	CandidateID    int64      `gorm:"not null;index" json:"candidate_id"`
-	MatchID        *int64     `gorm:"index" json:"match_id"`
-	CanonicalJobID int64      `gorm:"not null;index" json:"canonical_job_id"`
+	BaseModel
+	CandidateID    string     `gorm:"type:varchar(20);not null;index" json:"candidate_id"`
+	MatchID        *string    `gorm:"type:varchar(20);index" json:"match_id"`
+	CanonicalJobID string     `gorm:"type:varchar(20);not null;index" json:"canonical_job_id"`
 	Method         string     `gorm:"type:varchar(20)" json:"method"`
 	Status         string     `gorm:"type:varchar(20);not null;default:'pending'" json:"status"`
 	ApplyURL       string     `gorm:"type:text" json:"apply_url"`
@@ -180,8 +173,6 @@ type CandidateApplication struct {
 	SubmittedAt    *time.Time `json:"submitted_at"`
 	ResponseAt     *time.Time `json:"response_at"`
 	ResponseType   string     `gorm:"type:varchar(20)" json:"response_type"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 func (CandidateApplication) TableName() string { return "candidate_applications" }

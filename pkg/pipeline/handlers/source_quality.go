@@ -80,7 +80,7 @@ func (h *SourceQualityHandler) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type, expected *SourceQualityPayload")
 	}
-	if p.SourceID == 0 {
+	if p.SourceID == "" {
 		return errors.New("source_id is required")
 	}
 	return nil
@@ -97,7 +97,7 @@ func (h *SourceQualityHandler) Execute(ctx context.Context, payload any) error {
 	ctx, span := sourceQualityTracer.Start(ctx, "pipeline.source_quality")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int64("source_id", p.SourceID),
+		attribute.String("source_id", p.SourceID),
 	)
 
 	start := time.Now()
@@ -112,7 +112,7 @@ func (h *SourceQualityHandler) Execute(ctx context.Context, payload any) error {
 	// 1. Load the source.
 	src, err := h.sourceRepo.GetByID(ctx, p.SourceID)
 	if err != nil {
-		return fmt.Errorf("source_quality: load source %d: %w", p.SourceID, err)
+		return fmt.Errorf("source_quality: load source %s: %w", p.SourceID, err)
 	}
 
 	// 2. Load up to 10 validated variants from this source.
@@ -135,7 +135,7 @@ func (h *SourceQualityHandler) Execute(ctx context.Context, payload any) error {
 
 	// 4. Build sample text from all variants.
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "Source: %s (ID: %d)\n\n", src.BaseURL, src.ID)
+	fmt.Fprintf(&sb, "Source: %s (ID: %s)\n\n", src.BaseURL, src.ID)
 
 	goodSamples := append(validated, ready...)
 	if len(goodSamples) > 10 {

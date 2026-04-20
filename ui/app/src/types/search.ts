@@ -1,7 +1,7 @@
 // Mirrors pkg/repository/job.go SearchResult and pkg/repository/facets.go.
 
 export interface SearchResult {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   company: string;

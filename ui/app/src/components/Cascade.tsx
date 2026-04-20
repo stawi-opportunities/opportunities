@@ -219,7 +219,7 @@ function TierSection({
   // All jobs fetched for this tier, flattened from the pages.
   const allJobs: SearchResult[] = useMemo(() => {
     const pages = infinite.data?.pages ?? [];
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     const out: SearchResult[] = [];
     for (const page of pages) {
       for (const j of page.jobs) {

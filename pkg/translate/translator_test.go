@@ -88,7 +88,7 @@ func newStubLLMServer(t *testing.T, status int, content string, callCount *int) 
 func sampleSnapshot() domain.JobSnapshot {
 	return domain.JobSnapshot{
 		SchemaVersion:   1,
-		ID:              42,
+		ID:              "job_test_42",
 		Slug:            "backend-eng",
 		Title:           "Backend Engineer",
 		DescriptionHTML: "<p>Build APIs.</p>",

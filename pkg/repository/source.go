@@ -38,7 +38,7 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 }
 
 // GetByID returns a source by its primary key.
-func (r *SourceRepository) GetByID(ctx context.Context, id int64) (*domain.Source, error) {
+func (r *SourceRepository) GetByID(ctx context.Context, id string) (*domain.Source, error) {
 	var s domain.Source
 	err := r.db(ctx, true).First(&s, id).Error
 	if err != nil {
@@ -68,7 +68,7 @@ func (r *SourceRepository) ListAll(ctx context.Context) ([]*domain.Source, error
 }
 
 // UpdateNextCrawl updates scheduling fields after a crawl run.
-func (r *SourceRepository) UpdateNextCrawl(ctx context.Context, id int64, nextCrawlAt time.Time, lastSeenAt time.Time, healthScore float64) error {
+func (r *SourceRepository) UpdateNextCrawl(ctx context.Context, id string, nextCrawlAt time.Time, lastSeenAt time.Time, healthScore float64) error {
 	return r.db(ctx, false).
 		Model(&domain.Source{}).
 		Where("id = ?", id).
@@ -80,7 +80,7 @@ func (r *SourceRepository) UpdateNextCrawl(ctx context.Context, id int64, nextCr
 }
 
 // UpdateCrawlCursor stores an opaque cursor string used by paginated crawlers.
-func (r *SourceRepository) UpdateCrawlCursor(ctx context.Context, id int64, cursor string) error {
+func (r *SourceRepository) UpdateCrawlCursor(ctx context.Context, id string, cursor string) error {
 	return r.db(ctx, false).
 		Model(&domain.Source{}).
 		Where("id = ?", id).
@@ -88,7 +88,7 @@ func (r *SourceRepository) UpdateCrawlCursor(ctx context.Context, id int64, curs
 }
 
 // MarkBlocked sets a source status to blocked and resets its health score to 0.
-func (r *SourceRepository) MarkBlocked(ctx context.Context, id int64) error {
+func (r *SourceRepository) MarkBlocked(ctx context.Context, id string) error {
 	return r.db(ctx, false).
 		Model(&domain.Source{}).
 		Where("id = ?", id).
@@ -109,7 +109,7 @@ func (r *SourceRepository) Count(ctx context.Context) (int64, error) {
 }
 
 // RecordSuccess resets failure count, bumps health score, returns source to active.
-func (r *SourceRepository) RecordSuccess(ctx context.Context, id int64, healthScore float64) error {
+func (r *SourceRepository) RecordSuccess(ctx context.Context, id string, healthScore float64) error {
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
 		Updates(map[string]any{
 			"health_score":         healthScore,
@@ -121,7 +121,7 @@ func (r *SourceRepository) RecordSuccess(ctx context.Context, id int64, healthSc
 
 // RecordFailure increments failures, drops health, transitions status:
 // active (3 failures) → degraded (5 failures) → paused
-func (r *SourceRepository) RecordFailure(ctx context.Context, id int64, healthScore float64, consecutiveFailures int) error {
+func (r *SourceRepository) RecordFailure(ctx context.Context, id string, healthScore float64, consecutiveFailures int) error {
 	updates := map[string]any{
 		"health_score":         healthScore,
 		"consecutive_failures": consecutiveFailures,
@@ -135,17 +135,17 @@ func (r *SourceRepository) RecordFailure(ctx context.Context, id int64, healthSc
 }
 
 // FlagNeedsTuning marks a source as having connector quality issues.
-func (r *SourceRepository) FlagNeedsTuning(ctx context.Context, id int64, needsTuning bool) error {
+func (r *SourceRepository) FlagNeedsTuning(ctx context.Context, id string, needsTuning bool) error {
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Update("needs_tuning", needsTuning).Error
 }
 
 // PauseSource manually pauses a source.
-func (r *SourceRepository) PauseSource(ctx context.Context, id int64) error {
+func (r *SourceRepository) PauseSource(ctx context.Context, id string) error {
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Update("status", domain.SourcePaused).Error
 }
 
 // EnableSource re-enables a paused or disabled source.
-func (r *SourceRepository) EnableSource(ctx context.Context, id int64) error {
+func (r *SourceRepository) EnableSource(ctx context.Context, id string) error {
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
 		Updates(map[string]any{"status": domain.SourceActive, "consecutive_failures": 0}).Error
 }
@@ -165,21 +165,21 @@ func (r *SourceRepository) CountByStatus(ctx context.Context, status domain.Sour
 }
 
 // IncrementQualityValidated increments the validated count in the quality window.
-func (r *SourceRepository) IncrementQualityValidated(ctx context.Context, id int64) error {
+func (r *SourceRepository) IncrementQualityValidated(ctx context.Context, id string) error {
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).
 		UpdateColumn("quality_validated", gorm.Expr("quality_validated + 1")).Error
 }
 
 // IncrementQualityFlagged increments the flagged count in the quality window.
-func (r *SourceRepository) IncrementQualityFlagged(ctx context.Context, id int64) error {
+func (r *SourceRepository) IncrementQualityFlagged(ctx context.Context, id string) error {
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).
 		UpdateColumn("quality_flagged", gorm.Expr("quality_flagged + 1")).Error
 }
 
 // GetQualityRate returns the failure rate for a source's quality window.
-func (r *SourceRepository) GetQualityRate(ctx context.Context, id int64) (float64, int, error) {
+func (r *SourceRepository) GetQualityRate(ctx context.Context, id string) (float64, int, error) {
 	var src domain.Source
 	err := r.db(ctx, true).Select("quality_validated, quality_flagged").Where("id = ?", id).First(&src).Error
 	if err != nil {
@@ -194,14 +194,14 @@ func (r *SourceRepository) GetQualityRate(ctx context.Context, id int64) (float6
 
 // ReduceCrawlFrequency multiplies crawl_interval_sec by 3 (reduces crawl rate),
 // capped at 604800 seconds (7 days) to prevent unbounded growth.
-func (r *SourceRepository) ReduceCrawlFrequency(ctx context.Context, id int64) error {
+func (r *SourceRepository) ReduceCrawlFrequency(ctx context.Context, id string) error {
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).
 		UpdateColumn("crawl_interval_sec", gorm.Expr("LEAST(crawl_interval_sec * 3, 604800)")).Error
 }
 
 // DisableSource sets a source's status to disabled.
-func (r *SourceRepository) DisableSource(ctx context.Context, id int64) error {
+func (r *SourceRepository) DisableSource(ctx context.Context, id string) error {
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).
 		Update("status", domain.SourceDisabled).Error
@@ -210,7 +210,7 @@ func (r *SourceRepository) DisableSource(ctx context.Context, id int64) error {
 // RecordVerifyResult stores the outcome of a pre-crawl reachability probe.
 // On failure, callers should also push NextCrawlAt out via UpdateNextCrawl
 // (kept separate so the caller can choose the backoff curve).
-func (r *SourceRepository) RecordVerifyResult(ctx context.Context, id int64, status int, at time.Time) error {
+func (r *SourceRepository) RecordVerifyResult(ctx context.Context, id string, status int, at time.Time) error {
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
@@ -220,7 +220,7 @@ func (r *SourceRepository) RecordVerifyResult(ctx context.Context, id int64, sta
 }
 
 // ResetQualityWindow resets counters and doubles the window (cap 14 days).
-func (r *SourceRepository) ResetQualityWindow(ctx context.Context, id int64) error {
+func (r *SourceRepository) ResetQualityWindow(ctx context.Context, id string) error {
 	now := time.Now()
 	return r.db(ctx, false).Model(&domain.Source{}).
 		Where("id = ?", id).

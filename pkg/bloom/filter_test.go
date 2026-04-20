@@ -38,7 +38,7 @@ func TestBloomOffsets_InRange(t *testing.T) {
 
 func TestMarkSeen_NilValkey_NoPanic(t *testing.T) {
 	f := &Filter{valkey: nil, db: nil}
-	MarkSeen(context.Background(), f, 42, "some-hard-key")
+	MarkSeen(context.Background(), f, "src_test_42", "some-hard-key")
 }
 
 func TestNewFilter_EmptyAddr_DBOnly(t *testing.T) {

@@ -379,7 +379,7 @@ func tierPageHandler(jobRepo *repository.JobRepository) http.HandlerFunc {
 
 		limit := parseLimit(qs.Get("limit"), 25, 100)
 		var cursorTS *time.Time
-		var cursorID int64
+		var cursorID string
 		if c := qs.Get("cursor"); c != "" {
 			if ts, id, ok := decodeCursor(c); ok {
 				cursorTS, cursorID = &ts, id

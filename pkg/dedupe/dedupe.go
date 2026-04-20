@@ -50,7 +50,7 @@ func (e *Engine) UpsertAndCluster(ctx context.Context, variant *domain.JobVarian
 		return nil, err
 	}
 
-	var clusterID int64
+	var clusterID string
 
 	if existing != nil && existing.ID != variant.ID {
 		// 2a. Hard-key match on a different record — reuse or create its cluster.
@@ -144,7 +144,7 @@ func (e *Engine) UpsertAndCluster(ctx context.Context, variant *domain.JobVarian
 
 // buildCanonicalFromVariant copies all fields from a variant into a new
 // CanonicalJob bound to the given clusterID, with timestamps set to now.
-func buildCanonicalFromVariant(variant *domain.JobVariant, clusterID int64, now time.Time) *domain.CanonicalJob {
+func buildCanonicalFromVariant(variant *domain.JobVariant, clusterID string, now time.Time) *domain.CanonicalJob {
 	return &domain.CanonicalJob{
 		ClusterID:        clusterID,
 		Title:            variant.Title,

@@ -8,7 +8,7 @@ import "strings"
 // SchemaVersion when breaking changes are introduced.
 type JobSnapshot struct {
 	SchemaVersion   int             `json:"schema_version"`
-	ID              int64           `json:"id"`
+	ID              string          `json:"id"`
 	Slug            string          `json:"slug"`
 	Title           string          `json:"title"`
 	Company         CompanyRef      `json:"company"`

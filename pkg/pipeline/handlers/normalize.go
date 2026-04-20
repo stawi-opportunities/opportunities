@@ -66,7 +66,7 @@ func (h *NormalizeHandler) Validate(_ context.Context, payload any) error {
 	if !ok {
 		return errors.New("invalid payload type, expected *VariantPayload")
 	}
-	if p.VariantID == 0 {
+	if p.VariantID == "" {
 		return errors.New("variant_id is required")
 	}
 	return nil
@@ -83,8 +83,8 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	ctx, span := normalizeTracer.Start(ctx, "pipeline.normalize")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int64("variant_id", p.VariantID),
-		attribute.Int64("source_id", p.SourceID),
+		attribute.String("variant_id", p.VariantID),
+		attribute.String("source_id", p.SourceID),
 	)
 
 	start := time.Now()
@@ -163,7 +163,7 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 			Warn("normalize: extraction failed, advancing with basic fields")
 
 		if advanceErr := h.jobRepo.UpdateStage(ctx, variant.ID, string(domain.StageNormalized)); advanceErr != nil {
-			return fmt.Errorf("normalize: advance stage after LLM failure for variant %d: %w", variant.ID, advanceErr)
+			return fmt.Errorf("normalize: advance stage after LLM failure for variant %s: %w", variant.ID, advanceErr)
 		}
 		if telemetry.StageTransitions != nil {
 			telemetry.StageTransitions.Add(ctx, 1,
@@ -316,7 +316,7 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 
 	// 7. Persist all normalized fields + stage change in a single update.
 	if err := h.jobRepo.UpdateVariantFields(ctx, variant.ID, updates); err != nil {
-		return fmt.Errorf("normalize: persist fields for variant %d: %w", variant.ID, err)
+		return fmt.Errorf("normalize: persist fields for variant %s: %w", variant.ID, err)
 	}
 
 	if telemetry.StageTransitions != nil {

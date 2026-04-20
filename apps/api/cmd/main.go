@@ -100,23 +100,26 @@ func effectiveSort(s, q string) string {
 	return "relevance"
 }
 
-func encodeCursor(t time.Time, id int64) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d|%d", t.UnixNano(), id)))
+func encodeCursor(t time.Time, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d|%s", t.UnixNano(), id)))
 }
 
-func decodeCursor(s string) (time.Time, int64, bool) {
+func decodeCursor(s string) (time.Time, string, bool) {
 	b, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
-		return time.Time{}, 0, false
+		return time.Time{}, "", false
 	}
 	parts := strings.SplitN(string(b), "|", 2)
 	if len(parts) != 2 {
-		return time.Time{}, 0, false
+		return time.Time{}, "", false
 	}
 	ns, err1 := strconv.ParseInt(parts[0], 10, 64)
-	id, err2 := strconv.ParseInt(parts[1], 10, 64)
-	if err1 != nil || err2 != nil {
-		return time.Time{}, 0, false
+	if err1 != nil {
+		return time.Time{}, "", false
+	}
+	id := parts[1]
+	if id == "" {
+		return time.Time{}, "", false
 	}
 	return time.Unix(0, ns).UTC(), id, true
 }
@@ -358,9 +361,8 @@ func main() {
 	// GET /jobs/{id} — single job detail.
 	mux.HandleFunc("GET /jobs/{id}", func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
-		idStr := req.PathValue("id")
-		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || id <= 0 {
+		id := req.PathValue("id")
+		if id == "" {
 			http.Error(w, `{"error":"valid job id required"}`, http.StatusBadRequest)
 			return
 		}
@@ -485,7 +487,7 @@ func main() {
 		}
 
 		var cursorTS *time.Time
-		var cursorID int64
+		var cursorID string
 		if c := req.URL.Query().Get("cursor"); c != "" {
 			if ts, id, ok := decodeCursor(c); ok {
 				cursorTS, cursorID = &ts, id
@@ -577,7 +579,7 @@ func main() {
 		}
 		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
 		var cursorTS *time.Time
-		var cursorID int64
+		var cursorID string
 		if c := req.URL.Query().Get("cursor"); c != "" {
 			if ts, id, ok := decodeCursor(c); ok {
 				cursorTS, cursorID = &ts, id
@@ -686,7 +688,7 @@ func main() {
 			// Detached from request context so the long-running loop survives
 			// client disconnects (CF gateway timeout).
 			ctx := context.Background()
-			var lastID int64
+			var lastID string
 			total := 0
 			util.Log(ctx).WithField("status", status).WithField("limit", limit).Info("republish: starting")
 			for total < limit {

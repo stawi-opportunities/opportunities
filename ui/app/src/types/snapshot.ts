@@ -4,7 +4,7 @@
 
 export interface JobSnapshot {
   schema_version: 1;
-  id: number;
+  id: string;
   slug: string;
   title: string;
   company: CompanyRef;

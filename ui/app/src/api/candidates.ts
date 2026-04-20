@@ -37,7 +37,7 @@ export interface OnboardingPayload {
  */
 export async function submitOnboarding(
   payload: OnboardingPayload,
-): Promise<{ id: number; profile_id: string }> {
+): Promise<{ id: string; profile_id: string }> {
   return authRuntime().fetch("/candidates/onboard", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

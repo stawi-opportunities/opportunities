@@ -18,25 +18,25 @@ const (
 )
 
 type VariantPayload struct {
-	VariantID int64 `json:"variant_id"`
-	SourceID  int64 `json:"source_id"`
+	VariantID string `json:"variant_id"`
+	SourceID  string `json:"source_id"`
 }
 
 type SourceURLsPayload struct {
-	SourceID int64    `json:"source_id"`
+	SourceID string   `json:"source_id"`
 	URLs     []string `json:"urls"`
 }
 
 type SourceQualityPayload struct {
-	SourceID int64 `json:"source_id"`
+	SourceID string `json:"source_id"`
 }
 
 type JobReadyPayload struct {
-	CanonicalJobID int64 `json:"canonical_job_id"`
+	CanonicalJobID string `json:"canonical_job_id"`
 }
 
 type JobPublishedPayload struct {
-	CanonicalJobID int64  `json:"canonical_job_id"`
+	CanonicalJobID string `json:"canonical_job_id"`
 	Slug           string `json:"slug"`
 	SourceLang     string `json:"source_lang"`
 	R2Version      int    `json:"r2_version"`
@@ -47,10 +47,9 @@ type JobPublishedPayload struct {
 // the crawler's replicas. JetStream workqueue retention guarantees
 // exactly-once delivery across the pod fleet.
 type CrawlRequestPayload struct {
-	SourceID int64 `json:"source_id"`
+	SourceID string `json:"source_id"`
 	// Attempt is 1 on first dispatch; Trustage's retry policy bumps it
 	// when a prior run reported failure. Crawler logs it but doesn't
 	// act on it — retry decisions live in Trustage.
 	Attempt int `json:"attempt,omitempty"`
 }
-
