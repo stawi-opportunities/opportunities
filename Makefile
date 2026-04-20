@@ -8,7 +8,8 @@ HUGO_BIN     := $(CURDIR)/bin/hugo
 
 .PHONY: deps build test run-crawler run-scheduler run-api \
         infra-up infra-down \
-        ui-deps ui-build ui-dev
+        ui-deps ui-build ui-dev \
+        archive-verify
 
 deps:
 	go mod tidy
@@ -77,3 +78,11 @@ ui-dev:
 		HUGO_PARAMS_oidcRedirectURI=http://localhost:5170/auth/callback/ \
 		(cd ui && hugo server --bind 0.0.0.0 --port 5170 --disableFastRender) & \
 		wait
+
+# ---- QA -------------------------------------------------------------------
+# Post-deploy + nightly sentinel: samples active canonicals and checks that
+# each has canonical.json, manifest.json, per-variant JSON, and raw blobs in
+# the R2 archive bucket. Non-zero exit on any drift. See scripts/archive-verify.sh
+# for required env (ARCHIVE_R2_BUCKET, ARCHIVE_R2_ENDPOINT, PG*, AWS_*).
+archive-verify:
+	@scripts/archive-verify.sh
