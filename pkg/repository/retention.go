@@ -48,11 +48,13 @@ func (r *RetentionRepository) SelectDeletable(ctx context.Context, graceDays, ba
 }
 
 // MarkDeleted transitions the given ids to status='deleted'.
+// Stamps deleted_status_at so the R2 purge sweeper can locate rows
+// whose grace window has elapsed.
 func (r *RetentionRepository) MarkDeleted(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	return r.db(ctx, false).
-		Exec("UPDATE canonical_jobs SET status='deleted', published_at=NULL WHERE id = ANY(?)", ids).
+		Exec("UPDATE canonical_jobs SET status='deleted', deleted_status_at=now(), published_at=NULL WHERE id = ANY(?)", ids).
 		Error
 }
