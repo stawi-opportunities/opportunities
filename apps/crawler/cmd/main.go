@@ -775,27 +775,44 @@ func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Sourc
 			// Raw HTTP body → R2 (content-addressed). Repeat crawls of an
 			// unchanged page hit HasRaw and skip the PUT — that's the
 			// dedup payoff. The variant row just records the hash; the
-			// body never enters Postgres. Size is captured into the
-			// RawPayload row by T9/T10 handlers; not needed here.
+			// body never enters Postgres.
 			var rawHash string
+			var rawSize int64
 			if pageContent := iter.Content(); pageContent != nil && len(pageContent.RawHTML) > 0 {
 				body := []byte(pageContent.RawHTML)
 				hash := sha256Hex(body)
 				if has, _ := d.archive.HasRaw(ctx, hash); !has {
-					putHash, _, putErr := d.archive.PutRaw(ctx, body)
+					putHash, putSize, putErr := d.archive.PutRaw(ctx, body)
 					if putErr != nil {
 						log.WithError(putErr).WithField("source_id", src.ID).
 							Warn("archive PutRaw failed, skipping variant")
 						continue
 					}
 					rawHash = putHash
+					rawSize = putSize
 				} else {
 					// Dedup hit: the hash is known, the body is in R2 already.
 					// Re-derive without another PUT round-trip.
 					rawHash = hash
+					rawSize = int64(len(body))
 				}
 			}
 			variant.RawContentHash = rawHash
+
+			// Audit row: one per successful fetch. Best-effort — the body
+			// is already safe in R2; losing the metadata row is recoverable
+			// by the orphan reconciler (T16). StorageURI mirrors the R2 key
+			// so downstream tooling doesn't need to know the layout.
+			if rawHash != "" {
+				_ = d.crawlRepo.SaveRawPayload(ctx, &domain.RawPayload{
+					CrawlJobID:  crawlJob.ID,
+					ContentHash: rawHash,
+					StorageURI:  archive.RawKey(rawHash),
+					SizeBytes:   rawSize,
+					FetchedAt:   time.Now().UTC(),
+					HTTPStatus:  http.StatusOK,
+				})
+			}
 
 			// Ensure apply_url has a fallback before quality gate.
 			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
