@@ -244,6 +244,14 @@ func (a *R2Archive) getJSON(ctx context.Context, key string, dst any) error {
 	return nil
 }
 
+// Client returns the underlying S3 client. Exposed for ops tasks
+// (e.g. reconciliation) that need prefix listing beyond the narrow
+// Archive interface. Not for use in request paths.
+func (a *R2Archive) Client() *s3.Client { return a.client }
+
+// Bucket returns the configured bucket name. Same scope as Client().
+func (a *R2Archive) Bucket() string { return a.bucket }
+
 // newR2ArchiveWithEndpoint is the test-only constructor that points
 // the client at an arbitrary S3-compatible endpoint (minio in CI).
 // Production paths use NewR2Archive.

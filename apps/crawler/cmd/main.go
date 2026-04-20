@@ -589,6 +589,16 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "grace_days": grace, "limit": limit})
 	})
 
+	// Admin: nightly orphan reconciliation. Walks clusters/* in the
+	// archive bucket and deletes any cluster directory whose ID is
+	// missing from canonical_jobs. Catches orphan bundles from failed
+	// DB commits and objects missed by the purge sweeper.
+	adminMux.HandleFunc("POST /admin/r2/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		reconcileOrphans(r.Context(), arch.Client(), arch.Bucket(), dbFn, arch)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 
 	// Register a named health checker that reports source state counts.
