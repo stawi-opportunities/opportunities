@@ -17,6 +17,9 @@ import (
 
 	crawlerconfig "stawi.jobs/apps/crawler/config"
 	"stawi.jobs/apps/crawler/service"
+	"stawi.jobs/pkg/analytics"
+	"stawi.jobs/pkg/archive"
+	"stawi.jobs/pkg/backpressure"
 	"stawi.jobs/pkg/bloom"
 	"stawi.jobs/pkg/connectors"
 	"stawi.jobs/pkg/connectors/httpx"
@@ -25,8 +28,6 @@ import (
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/normalize"
 	"stawi.jobs/pkg/pipeline/handlers"
-	"stawi.jobs/pkg/analytics"
-	"stawi.jobs/pkg/backpressure"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
@@ -85,6 +86,7 @@ func main() {
 			&domain.CanonicalJob{},
 			&domain.CrawlPageState{},
 			&domain.RejectedJob{},
+			&domain.RawRef{},
 		); err != nil {
 			log.WithError(err).Fatal("auto-migrate failed")
 		}
@@ -146,9 +148,9 @@ func main() {
 			EmbeddingBaseURL: embBase,
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
-            RerankBaseURL:    cfg.RerankBaseURL,
-            RerankAPIKey:     cfg.RerankAPIKey,
-            RerankModel:      cfg.RerankModel,
+			RerankBaseURL:    cfg.RerankBaseURL,
+			RerankAPIKey:     cfg.RerankAPIKey,
+			RerankModel:      cfg.RerankModel,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
@@ -174,6 +176,20 @@ func main() {
 		log.WithField("bucket", cfg.R2Bucket).WithField("content_origin", publish.ContentOrigin).
 			Info("R2 publisher enabled")
 	}
+
+	// Archive R2 client + raw_ref repository. Separate bucket/creds
+	// from the public job-repo above; carries raw HTML + variant
+	// blobs + canonical snapshots. rawRefRepo tracks which variants
+	// reference which raw/{hash} blobs so the purge sweeper can GC
+	// orphans safely.
+	arch := archive.NewR2Archive(archive.R2Config{
+		AccountID:       cfg.ArchiveR2AccountID,
+		AccessKeyID:     cfg.ArchiveR2AccessKeyID,
+		SecretAccessKey: cfg.ArchiveR2SecretAccessKey,
+		Bucket:          cfg.ArchiveR2Bucket,
+	})
+	rawRefRepo := repository.NewRawRefRepository(dbFn)
+	_ = rawRefRepo // used by T10/T11 handlers
 
 	// Cloudflare cache purger (no-op if zone/token not configured).
 	cachePurger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
@@ -295,6 +311,7 @@ func main() {
 		bloomFilter:  bloomFilter,
 		httpClient:   httpClient,
 		extractor:    extractor,
+		archive:      arch,
 		svc:          svc,
 	}
 	svc.Init(ctx, frame.WithRegisterEvents(crawlDeps))
@@ -581,7 +598,7 @@ func stageToEventName(stage string) string {
 // sourceStateChecker is a Frame Checker that embeds source state counts into
 // the /healthz response as a named check entry.
 type sourceStateChecker struct {
-	repo   *repository.SourceRepository
+	repo    *repository.SourceRepository
 	jobRepo *repository.JobRepository
 }
 
@@ -622,6 +639,7 @@ type crawlDependencies struct {
 	bloomFilter  *bloom.Filter
 	httpClient   *httpx.Client
 	extractor    *extraction.Extractor
+	archive      archive.Archive
 	svc          *frame.Service
 }
 

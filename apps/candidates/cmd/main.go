@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	notificationpb "buf.build/gen/go/antinvestor/notification/protocolbuffers/go/notification/v1"
 	commonpb "buf.build/gen/go/antinvestor/common/protocolbuffers/go/common/v1"
 	filespb "buf.build/gen/go/antinvestor/files/protocolbuffers/go/files/v1"
+	notificationpb "buf.build/gen/go/antinvestor/notification/protocolbuffers/go/notification/v1"
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -61,6 +61,7 @@ func main() {
 			&domain.CandidateApplication{},
 			&domain.SavedJob{},
 			&domain.RerankCache{},
+			&domain.RawRef{},
 		); migErr != nil {
 			log.WithError(migErr).Fatal("auto-migrate failed")
 		}
@@ -96,9 +97,9 @@ func main() {
 			EmbeddingBaseURL: embBase,
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
-            RerankBaseURL:    cfg.RerankBaseURL,
-            RerankAPIKey:     cfg.RerankAPIKey,
-            RerankModel:      cfg.RerankModel,
+			RerankBaseURL:    cfg.RerankBaseURL,
+			RerankAPIKey:     cfg.RerankAPIKey,
+			RerankModel:      cfg.RerankModel,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 
@@ -788,11 +789,11 @@ func meSubscriptionHandler(candidateRepo *repository.CandidateRepository, matchR
 		}
 
 		response := map[string]any{
-			"plan":                 plan,
-			"status":               status,
-			"queued_matches":       queued,
-			"delivered_this_week":  0,
-			"agent":                nil,
+			"plan":                plan,
+			"status":              status,
+			"queued_matches":      queued,
+			"delivered_this_week": 0,
+			"agent":               nil,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -805,22 +806,22 @@ func meSubscriptionHandler(candidateRepo *repository.CandidateRepository, matchR
 // runtime's JSON fetch + single-file upload primitives cover the full
 // onboarding flow — no multipart-with-text-fields request needed.
 type onboardBody struct {
-	Plan               string  `json:"plan"`
-	TargetJobTitle     string  `json:"target_job_title"`
-	ExperienceLevel    string  `json:"experience_level"`
-	JobSearchStatus    string  `json:"job_search_status"`
+	Plan               string   `json:"plan"`
+	TargetJobTitle     string   `json:"target_job_title"`
+	ExperienceLevel    string   `json:"experience_level"`
+	JobSearchStatus    string   `json:"job_search_status"`
 	PreferredRegions   []string `json:"preferred_regions"`
 	PreferredTimezones []string `json:"preferred_timezones"`
 	PreferredLanguages []string `json:"preferred_languages"`
 	JobTypes           []string `json:"job_types"`
-	Country            string  `json:"country"`
-	Currency           string  `json:"currency"`
-	WantsATSReport     bool    `json:"wants_ats_report"`
-	SalaryMin          float32 `json:"salary_min"`
-	SalaryMax          float32 `json:"salary_max"`
-	USWorkAuth         *bool   `json:"us_work_auth"`
-	NeedsSponsorship   *bool   `json:"needs_sponsorship"`
-	AgreeTerms         bool    `json:"agree_terms"`
+	Country            string   `json:"country"`
+	Currency           string   `json:"currency"`
+	WantsATSReport     bool     `json:"wants_ats_report"`
+	SalaryMin          float32  `json:"salary_min"`
+	SalaryMax          float32  `json:"salary_max"`
+	USWorkAuth         *bool    `json:"us_work_auth"`
+	NeedsSponsorship   *bool    `json:"needs_sponsorship"`
+	AgreeTerms         bool     `json:"agree_terms"`
 }
 
 // onboardHandler creates a CandidateProfile for the authenticated user.
@@ -980,9 +981,9 @@ func uploadCVHandler(candidateRepo *repository.CandidateRepository, extractor *e
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":          true,
-			"cv_length":   len(cvText),
-			"candidate":   candidate,
+			"ok":        true,
+			"cv_length": len(cvText),
+			"candidate": candidate,
 		})
 	}
 }
@@ -1232,9 +1233,9 @@ func billingWebhookHandler(candidateRepo *repository.CandidateRepository) http.H
 		ctx := r.Context()
 
 		var payload struct {
-			ProfileID    string `json:"profile_id"`
-			Status       string `json:"status"`
-			PlanID       string `json:"plan_id"`
+			ProfileID      string `json:"profile_id"`
+			Status         string `json:"status"`
+			PlanID         string `json:"plan_id"`
 			SubscriptionID string `json:"subscription_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {

@@ -37,15 +37,25 @@ type CrawlerConfig struct {
 	// Reranker — carried for consistency with the other apps. Crawler
 	// doesn't currently rerank, but having the knobs in one config struct
 	// keeps copy-paste safe.
-	RerankBaseURL string `env:"RERANK_BASE_URL" envDefault:""`
-	RerankAPIKey  string `env:"RERANK_API_KEY" envDefault:""`
-	RerankModel   string `env:"RERANK_MODEL" envDefault:""`
-	ValkeyAddr        string  `env:"VALKEY_ADDR" envDefault:""`
-	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
-	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`
-	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string  `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
-	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
+	RerankBaseURL     string `env:"RERANK_BASE_URL" envDefault:""`
+	RerankAPIKey      string `env:"RERANK_API_KEY" envDefault:""`
+	RerankModel       string `env:"RERANK_MODEL" envDefault:""`
+	ValkeyAddr        string `env:"VALKEY_ADDR" envDefault:""`
+	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
+	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
+	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2Bucket          string `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
+	R2DeployHookURL   string `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
+
+	// Archive R2 — separate bucket (and separate credentials) for
+	// raw HTML + variant blobs + canonical snapshots. Distinct from
+	// the public job-repo bucket above so least-privilege leaks
+	// stay contained.
+	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID" envDefault:""`
+	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID" envDefault:""`
+	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY" envDefault:""`
+	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"stawi-jobs-archive"`
+
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 
 	// RetentionGraceDays bounds how long a canonical job stays in the
@@ -59,11 +69,11 @@ type CrawlerConfig struct {
 	// LowWater. Read from NATS's http monitor (port 8222). Leave
 	// BackpressureMonitorURL blank to disable entirely — the gate
 	// becomes a no-op that always reports open.
-	BackpressureMonitorURL  string `env:"BACKPRESSURE_MONITOR_URL" envDefault:"http://core-queue-headless.queue-system.svc.cluster.local:8222"`
-	BackpressureStreamName  string `env:"BACKPRESSURE_STREAM_NAME" envDefault:"svc_stawi_jobs_events"`
+	BackpressureMonitorURL   string `env:"BACKPRESSURE_MONITOR_URL" envDefault:"http://core-queue-headless.queue-system.svc.cluster.local:8222"`
+	BackpressureStreamName   string `env:"BACKPRESSURE_STREAM_NAME" envDefault:"svc_stawi_jobs_events"`
 	BackpressureConsumerName string `env:"BACKPRESSURE_CONSUMER_NAME" envDefault:"crawler-events"`
-	BackpressureHighWater   int    `env:"BACKPRESSURE_HIGH_WATER" envDefault:"100000"`
-	BackpressureLowWater    int    `env:"BACKPRESSURE_LOW_WATER" envDefault:"50000"`
+	BackpressureHighWater    int    `env:"BACKPRESSURE_HIGH_WATER" envDefault:"100000"`
+	BackpressureLowWater     int    `env:"BACKPRESSURE_LOW_WATER" envDefault:"50000"`
 
 	// Translation fan-out. TranslateEnabled is the master switch. When
 	// true, every successful publish triggers LLM translation to each
@@ -71,9 +81,9 @@ type CrawlerConfig struct {
 	// and the translated JobSnapshot is uploaded to R2 at
 	// jobs/{slug}.{lang}.json. TranslateMinQuality sets a floor so we
 	// don't burn LLM quota on low-scoring jobs.
-	TranslateEnabled     bool     `env:"TRANSLATE_ENABLED" envDefault:"false"`
-	TranslateLanguages   []string `env:"TRANSLATE_LANGUAGES" envSeparator:"," envDefault:"en,es,fr,de,pt,ja,ar,zh"`
-	TranslateMinQuality  float64  `env:"TRANSLATE_MIN_QUALITY" envDefault:"70"`
+	TranslateEnabled    bool     `env:"TRANSLATE_ENABLED" envDefault:"false"`
+	TranslateLanguages  []string `env:"TRANSLATE_LANGUAGES" envSeparator:"," envDefault:"en,es,fr,de,pt,ja,ar,zh"`
+	TranslateMinQuality float64  `env:"TRANSLATE_MIN_QUALITY" envDefault:"70"`
 
 	// Redirect service (for tracked /r/{slug} apply links).
 	// RedirectServiceURI is the cluster-internal Connect RPC endpoint,
@@ -84,8 +94,8 @@ type CrawlerConfig struct {
 	RedirectPublicBaseURL string `env:"REDIRECT_PUBLIC_BASE_URL" envDefault:""`
 
 	// Analytics (OpenObserve) — shared across every stawi-jobs service.
-	AnalyticsBaseURL string `env:"ANALYTICS_BASE_URL" envDefault:""`
-	AnalyticsOrg     string `env:"ANALYTICS_ORG" envDefault:"default"`
+	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`
+	AnalyticsOrg      string `env:"ANALYTICS_ORG" envDefault:"default"`
 	AnalyticsUsername string `env:"ANALYTICS_USERNAME" envDefault:""`
 	AnalyticsPassword string `env:"ANALYTICS_PASSWORD" envDefault:""`
 

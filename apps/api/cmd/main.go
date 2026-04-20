@@ -178,6 +178,7 @@ func main() {
 			&domain.Source{},
 			&domain.CanonicalJob{},
 			&domain.JobVariant{},
+			&domain.RawRef{},
 		); err != nil {
 			log.WithError(err).Fatal("api: auto-migrate failed")
 		}
@@ -219,9 +220,9 @@ func main() {
 			EmbeddingBaseURL: embBase,
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
-            RerankBaseURL:    cfg.RerankBaseURL,
-            RerankAPIKey:     cfg.RerankAPIKey,
-            RerankModel:      cfg.RerankModel,
+			RerankBaseURL:    cfg.RerankBaseURL,
+			RerankAPIKey:     cfg.RerankAPIKey,
+			RerankModel:      cfg.RerankModel,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("semantic search enabled")
 	}
@@ -724,10 +725,10 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":     status,
-			"accepted":   true,
-			"limit":      limit,
-			"message":    "republish started; tail the pod logs for progress",
+			"status":   status,
+			"accepted": true,
+			"limit":    limit,
+			"message":  "republish started; tail the pod logs for progress",
 		})
 	})
 
@@ -903,4 +904,3 @@ func main() {
 
 	util.Log(ctx).Info("API stopped")
 }
-
