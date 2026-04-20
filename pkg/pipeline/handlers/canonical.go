@@ -174,9 +174,14 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	// handler's archive write can find the right cluster on later
 	// re-runs (e.g. reprocessing).
 	if variant.ClusterID == "" && canonical != nil {
-		_ = h.jobRepo.UpdateVariantFields(ctx, variant.ID, map[string]any{
+		if err := h.jobRepo.UpdateVariantFields(ctx, variant.ID, map[string]any{
 			"cluster_id": canonical.ClusterID,
-		})
+		}); err != nil {
+			util.Log(ctx).WithError(err).
+				WithField("variant_id", variant.ID).
+				WithField("canonical_job_id", canonical.ID).
+				Warn("canonical: backfill cluster_id failed (non-fatal)")
+		}
 		variant.ClusterID = canonical.ClusterID
 	}
 
@@ -221,7 +226,12 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		// Register the raw→cluster ref so the purge sweeper can GC
 		// this hash when the cluster is eventually torn down.
 		if variant.RawContentHash != "" && h.rawRefRepo != nil {
-			_ = h.rawRefRepo.Upsert(ctx, variant.RawContentHash, canonical.ClusterID, variant.ID)
+			if err := h.rawRefRepo.Upsert(ctx, variant.RawContentHash, canonical.ClusterID, variant.ID); err != nil {
+				util.Log(ctx).WithError(err).
+					WithField("canonical_job_id", canonical.ID).
+					WithField("content_hash", variant.RawContentHash).
+					Warn("canonical: raw_ref upsert failed (non-fatal)")
+			}
 		}
 	}
 
