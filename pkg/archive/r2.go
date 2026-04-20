@@ -97,7 +97,11 @@ func (a *R2Archive) GetRaw(ctx context.Context, hash string) ([]byte, error) {
 	}
 	defer func() { _ = gz.Close() }()
 
-	return io.ReadAll(gz)
+	body, err := io.ReadAll(gz)
+	if err != nil {
+		return nil, fmt.Errorf("read raw %s: %w", hash, err)
+	}
+	return body, nil
 }
 
 func (a *R2Archive) HasRaw(ctx context.Context, hash string) (bool, error) {
@@ -163,12 +167,25 @@ func (a *R2Archive) DeleteCluster(ctx context.Context, clusterID string) error {
 		for _, obj := range list.Contents {
 			ids = append(ids, s3types.ObjectIdentifier{Key: obj.Key})
 		}
-		_, err = a.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		out, err := a.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 			Bucket: aws.String(a.bucket),
 			Delete: &s3types.Delete{Objects: ids},
 		})
 		if err != nil {
 			return fmt.Errorf("delete cluster objects: %w", err)
+		}
+		if len(out.Errors) > 0 {
+			// S3 returns 200 OK even when a subset of keys fails — the
+			// failures are reported in the Errors slice. Surface the first
+			// one; the purge sweeper will retry on the next pass and we'd
+			// rather leave a cluster marked "not purged" than silently
+			// leak orphans in the archive bucket.
+			first := out.Errors[0]
+			return fmt.Errorf("delete cluster objects: %d failures, first: key=%s code=%s message=%s",
+				len(out.Errors),
+				aws.ToString(first.Key),
+				aws.ToString(first.Code),
+				aws.ToString(first.Message))
 		}
 		if list.IsTruncated == nil || !*list.IsTruncated {
 			return nil
@@ -221,7 +238,10 @@ func (a *R2Archive) getJSON(ctx context.Context, key string, dst any) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", key, err)
 	}
-	return json.Unmarshal(body, dst)
+	if err := json.Unmarshal(body, dst); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", key, err)
+	}
+	return nil
 }
 
 // isNotFound normalises the S3 not-found error. R2 returns a mix
