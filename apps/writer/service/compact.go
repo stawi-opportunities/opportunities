@@ -104,6 +104,222 @@ func (c *Compactor) CompactHourly(ctx context.Context, in CompactHourlyInput) (C
 // compactHourlyGeneric is the generic implementation shared by all collection cases.
 // It lists all objects under prefix, groups by one level of sub-directory, then
 // merges and dedups each group.
+// CompactDailyInput parameterises a single CompactDaily call.
+type CompactDailyInput struct {
+	// Collection is the raw top-level Parquet partition (e.g. "canonicals").
+	Collection string
+}
+
+// CompactDailyResult summarises what CompactDaily did.
+type CompactDailyResult struct {
+	RowsBefore int
+	RowsAfter  int
+	Buckets    int
+}
+
+// CompactDaily reads every raw Parquet file across all dt= sub-prefixes
+// for the given collection, reduces to one row per business key
+// (latest OccurredAt wins), and writes one file per key-prefix bucket
+// into the corresponding *_current/ partition.
+func (c *Compactor) CompactDaily(ctx context.Context, in CompactDailyInput) (CompactDailyResult, error) {
+	switch in.Collection {
+	case "canonicals":
+		return compactDailyGeneric[eventsv1.CanonicalUpsertedV1](ctx, c,
+			"canonicals", "canonicals_current",
+			func(r eventsv1.CanonicalUpsertedV1) (string, string, time.Time) {
+				return r.ClusterID, "cc=" + first2(r.ClusterID), r.OccurredAt.UTC()
+			})
+	case "embeddings":
+		return compactDailyGeneric[eventsv1.EmbeddingV1](ctx, c,
+			"embeddings", "embeddings_current",
+			func(r eventsv1.EmbeddingV1) (string, string, time.Time) {
+				return r.CanonicalID, "cc=" + first2(r.CanonicalID), r.OccurredAt.UTC()
+			})
+	case "translations":
+		return compactDailyGeneric[eventsv1.TranslationV1](ctx, c,
+			"translations", "translations_current",
+			func(r eventsv1.TranslationV1) (string, string, time.Time) {
+				return r.CanonicalID + "|" + r.Lang,
+					"cc=" + first2(r.CanonicalID) + "/lang=" + r.Lang,
+					r.OccurredAt.UTC()
+			})
+	case "candidates_cv":
+		return compactDailyGeneric[eventsv1.CVExtractedV1](ctx, c,
+			"candidates_cv", "candidates_cv_current",
+			func(r eventsv1.CVExtractedV1) (string, string, time.Time) {
+				return r.CandidateID, "cnd=" + first2(r.CandidateID), r.OccurredAt.UTC()
+			})
+	case "candidates_embeddings":
+		return compactDailyGeneric[eventsv1.CandidateEmbeddingV1](ctx, c,
+			"candidates_embeddings", "candidates_embeddings_current",
+			func(r eventsv1.CandidateEmbeddingV1) (string, string, time.Time) {
+				return r.CandidateID, "cnd=" + first2(r.CandidateID), r.OccurredAt.UTC()
+			})
+	case "candidates_preferences":
+		return compactDailyGeneric[eventsv1.PreferencesUpdatedV1](ctx, c,
+			"candidates_preferences", "candidates_preferences_current",
+			func(r eventsv1.PreferencesUpdatedV1) (string, string, time.Time) {
+				return r.CandidateID, "cnd=" + first2(r.CandidateID), r.OccurredAt.UTC()
+			})
+	default:
+		return CompactDailyResult{}, fmt.Errorf("compact daily: %q has no _current partition", in.Collection)
+	}
+}
+
+// compactDailyGeneric is the generic implementation shared by all daily-compaction cases.
+// It lists all objects under rawCollection/, reduces to one row per business key
+// (latest OccurredAt wins), deletes the old _current/ partition, and writes one
+// file per bucket.
+func compactDailyGeneric[T any](
+	ctx context.Context,
+	c *Compactor,
+	rawCollection, currentCollection string,
+	bf func(T) (bkey string, bucket string, occ time.Time),
+) (CompactDailyResult, error) {
+	rawPrefix := rawCollection + "/"
+
+	var keys []string
+	cursor := ""
+	for {
+		page, err := c.reader.ListNewObjects(ctx, rawPrefix, cursor, 1000)
+		if err != nil {
+			return CompactDailyResult{}, fmt.Errorf("compact daily: list %q: %w", rawPrefix, err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, o := range page {
+			if o.Key != nil {
+				keys = append(keys, *o.Key)
+			}
+		}
+		lastKey := ""
+		for i := len(page) - 1; i >= 0; i-- {
+			if page[i].Key != nil {
+				lastKey = *page[i].Key
+				break
+			}
+		}
+		if lastKey == "" {
+			break
+		}
+		cursor = lastKey
+	}
+	if len(keys) == 0 {
+		return CompactDailyResult{}, nil
+	}
+
+	latest := map[string]T{}
+	latestAt := map[string]time.Time{}
+	buckets := map[string][]string{}
+
+	var rowsBefore int
+	for _, k := range keys {
+		body, err := c.reader.Get(ctx, k)
+		if err != nil {
+			return CompactDailyResult{}, fmt.Errorf("compact daily: get %q: %w", k, err)
+		}
+		rows, err := eventlog.ReadParquet[T](body)
+		if err != nil {
+			return CompactDailyResult{}, fmt.Errorf("compact daily: read %q: %w", k, err)
+		}
+		rowsBefore += len(rows)
+		for _, r := range rows {
+			bkey, bucket, occ := bf(r)
+			if bkey == "" {
+				continue
+			}
+			if prev, ok := latestAt[bkey]; !ok || occ.After(prev) {
+				latest[bkey] = r
+				latestAt[bkey] = occ
+				buckets[bucket] = appendUnique(buckets[bucket], bkey)
+			}
+		}
+	}
+
+	if err := c.deletePrefix(ctx, currentCollection+"/"); err != nil {
+		return CompactDailyResult{}, err
+	}
+
+	for bucket, bkeys := range buckets {
+		sort.Strings(bkeys)
+		out := make([]T, 0, len(bkeys))
+		for _, k := range bkeys {
+			out = append(out, latest[k])
+		}
+		body, err := eventlog.WriteParquet(out)
+		if err != nil {
+			return CompactDailyResult{}, fmt.Errorf("compact daily: write parquet: %w", err)
+		}
+		key := path.Join(currentCollection, bucket, "current-"+xid.New().String()+".parquet")
+		if _, err := c.uploader.Put(ctx, key, body); err != nil {
+			return CompactDailyResult{}, fmt.Errorf("compact daily: upload %q: %w", key, err)
+		}
+	}
+
+	return CompactDailyResult{
+		RowsBefore: rowsBefore,
+		RowsAfter:  len(latest),
+		Buckets:    len(buckets),
+	}, nil
+}
+
+// deletePrefix removes all objects whose key starts with prefix.
+func (c *Compactor) deletePrefix(ctx context.Context, prefix string) error {
+	cursor := ""
+	for {
+		page, err := c.reader.ListNewObjects(ctx, prefix, cursor, 1000)
+		if err != nil {
+			return fmt.Errorf("compact daily: list for delete %q: %w", prefix, err)
+		}
+		if len(page) == 0 {
+			return nil
+		}
+		for _, o := range page {
+			if o.Key == nil {
+				continue
+			}
+			_, err := c.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
+				Bucket: aws.String(c.bucket),
+				Key:    o.Key,
+			})
+			if err != nil {
+				return fmt.Errorf("compact daily: delete %q: %w", *o.Key, err)
+			}
+		}
+		lastKey := ""
+		for i := len(page) - 1; i >= 0; i-- {
+			if page[i].Key != nil {
+				lastKey = *page[i].Key
+				break
+			}
+		}
+		if lastKey == "" {
+			return nil
+		}
+		cursor = lastKey
+	}
+}
+
+// first2 returns the lower-cased first two characters of s, or "xx" if s is
+// shorter than two characters.
+func first2(s string) string {
+	if len(s) >= 2 {
+		return strings.ToLower(s[:2])
+	}
+	return "xx"
+}
+
+// appendUnique appends v to s only if v is not already present.
+func appendUnique(s []string, v string) []string {
+	for _, x := range s {
+		if x == v {
+			return s
+		}
+	}
+	return append(s, v)
+}
+
 func compactHourlyGeneric[T any](
 	ctx context.Context,
 	c *Compactor,

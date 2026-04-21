@@ -113,6 +113,70 @@ func TestCompactHourly_DedupAndMerge(t *testing.T) {
 	require.Equal(t, hour.Add(1*time.Minute).UTC(), v2.OccurredAt.UTC())
 }
 
+func TestCompactDaily_RebuildsCurrent(t *testing.T) {
+	ctx := context.Background()
+	mch := startMinIO(t)
+	defer mch.Close()
+
+	uploader := eventlog.NewUploader(mch.Client, mch.Bucket)
+	reader := eventlog.NewReader(mch.Client, mch.Bucket)
+
+	day1 := time.Date(2026, 4, 21, 10, 0, 0, 0, time.UTC)
+	day2 := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	older := eventsv1.CanonicalUpsertedV1{
+		EventID: "e1", ClusterID: "c1abcdef", CanonicalID: "can-1",
+		Title: "Older", OccurredAt: day1,
+	}
+	newer := eventsv1.CanonicalUpsertedV1{
+		EventID: "e2", ClusterID: "c1abcdef", CanonicalID: "can-1",
+		Title: "Newer", OccurredAt: day2,
+	}
+	other := eventsv1.CanonicalUpsertedV1{
+		EventID: "e3", ClusterID: "c2xyz", CanonicalID: "can-2",
+		Title: "Other", OccurredAt: day1,
+	}
+	for _, seed := range []struct {
+		dt   string
+		rows []eventsv1.CanonicalUpsertedV1
+	}{
+		{dt: "2026-04-21", rows: []eventsv1.CanonicalUpsertedV1{older, other}},
+		{dt: "2026-04-22", rows: []eventsv1.CanonicalUpsertedV1{newer}},
+	} {
+		body, err := eventlog.WriteParquet(seed.rows)
+		require.NoError(t, err)
+		_, err = uploader.Put(ctx, "canonicals/dt="+seed.dt+"/part.parquet", body)
+		require.NoError(t, err)
+	}
+
+	c := NewCompactor(mch.Client, reader, uploader, mch.Bucket)
+	res, err := c.CompactDaily(ctx, CompactDailyInput{Collection: "canonicals"})
+	require.NoError(t, err)
+	require.Equal(t, 3, res.RowsBefore)
+	require.Equal(t, 2, res.RowsAfter, "c1 has one latest; c2 has one")
+
+	list, err := mch.Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(mch.Bucket),
+		Prefix: aws.String("canonicals_current/"),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, list.Contents)
+
+	var found *eventsv1.CanonicalUpsertedV1
+	for _, o := range list.Contents {
+		body := getObjHelper(t, mch.Client, mch.Bucket, *o.Key)
+		rows, err := eventlog.ReadParquet[eventsv1.CanonicalUpsertedV1](body)
+		require.NoError(t, err)
+		for _, r := range rows {
+			if r.ClusterID == "c1abcdef" {
+				cp := r
+				found = &cp
+			}
+		}
+	}
+	require.NotNil(t, found)
+	require.Equal(t, "Newer", found.Title)
+}
+
 func getObjHelper(t *testing.T, cli *s3.Client, bucket, key string) []byte {
 	t.Helper()
 	out, err := cli.GetObject(context.Background(), &s3.GetObjectInput{
