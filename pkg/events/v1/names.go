@@ -1,0 +1,50 @@
+package eventsv1
+
+// Topic names for Phase 1. Additional event types added in later
+// phases extend this list. Names follow `{domain}.{noun}.{verb}.v{N}`.
+// Breaking schema changes bump the suffix; additive changes bump
+// SchemaVersion on the envelope.
+const (
+	// Job pipeline — variants.
+	TopicVariantsIngested   = "jobs.variants.ingested.v1"
+	TopicVariantsNormalized = "jobs.variants.normalized.v1"
+	TopicVariantsValidated  = "jobs.variants.validated.v1"
+	TopicVariantsFlagged    = "jobs.variants.flagged.v1"
+	TopicVariantsClustered  = "jobs.variants.clustered.v1"
+
+	// Job pipeline — canonicals.
+	TopicCanonicalsUpserted = "jobs.canonicals.upserted.v1"
+	TopicCanonicalsExpired  = "jobs.canonicals.expired.v1"
+
+	// Derived.
+	TopicEmbeddings   = "jobs.embeddings.v1"
+	TopicTranslations = "jobs.translations.v1"
+	TopicPublished    = "jobs.published.v1"
+
+	// Crawl control plane.
+	TopicCrawlRequests      = "crawl.requests.v1"
+	TopicCrawlPageCompleted = "crawl.page.completed.v1"
+
+	// Source discovery.
+	TopicSourcesDiscovered = "sources.discovered.v1"
+)
+
+// AllTopics returns every topic the writer is expected to subscribe
+// to for Phase 1. Kept as a single source of truth so `apps/writer`
+// doesn't drift from the declared topics.
+func AllTopics() []string {
+	return []string{
+		TopicVariantsIngested,
+		TopicVariantsNormalized,
+		TopicVariantsValidated,
+		TopicVariantsFlagged,
+		TopicVariantsClustered,
+		TopicCanonicalsUpserted,
+		TopicCanonicalsExpired,
+		TopicEmbeddings,
+		TopicTranslations,
+		TopicPublished,
+		TopicCrawlPageCompleted,
+		TopicSourcesDiscovered,
+	}
+}
