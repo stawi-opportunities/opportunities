@@ -252,22 +252,6 @@ func (a *R2Archive) Client() *s3.Client { return a.client }
 // Bucket returns the configured bucket name. Same scope as Client().
 func (a *R2Archive) Bucket() string { return a.bucket }
 
-// newR2ArchiveWithEndpoint is the test-only constructor that points
-// the client at an arbitrary S3-compatible endpoint (minio in CI).
-// Production paths use NewR2Archive.
-//
-// Unlike NewR2Archive it uses path-style addressing — minio rejects
-// virtual-host-style addressing for bucket operations by default.
-func newR2ArchiveWithEndpoint(endpoint, accessKey, secretKey, bucket string) *R2Archive {
-	client := s3.New(s3.Options{
-		Region:       "auto",
-		Credentials:  awscreds.NewStaticCredentialsProvider(accessKey, secretKey, ""),
-		BaseEndpoint: aws.String(endpoint),
-		UsePathStyle: true,
-	})
-	return &R2Archive{client: client, bucket: bucket}
-}
-
 // isNotFound normalises the S3 not-found error. R2 returns a mix
 // of NoSuchKey and 404 depending on operation.
 func isNotFound(err error) bool {

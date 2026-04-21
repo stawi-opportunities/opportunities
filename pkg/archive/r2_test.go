@@ -9,10 +9,25 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awscreds "github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/minio"
 )
+
+// newR2ArchiveWithEndpoint points the client at an arbitrary
+// S3-compatible endpoint (minio in CI). Uses path-style addressing
+// because minio rejects virtual-host-style for bucket operations by
+// default.
+func newR2ArchiveWithEndpoint(endpoint, accessKey, secretKey, bucket string) *R2Archive {
+	client := s3.New(s3.Options{
+		Region:       "auto",
+		Credentials:  awscreds.NewStaticCredentialsProvider(accessKey, secretKey, ""),
+		BaseEndpoint: aws.String(endpoint),
+		UsePathStyle: true,
+	})
+	return &R2Archive{client: client, bucket: bucket}
+}
 
 // startMinio spins up a minio container via testcontainers and
 // returns its S3-compatible endpoint. Cleanup runs on test exit.
