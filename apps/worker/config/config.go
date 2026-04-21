@@ -8,13 +8,14 @@ import (
 )
 
 // Config for apps/worker. Frame base handles Postgres + pub/sub +
-// OTEL; this struct adds Redis, R2 publish, LLM backends, and
-// translation configuration.
+// OTEL; this struct adds Valkey (via Frame's cache framework),
+// R2 publish, LLM backends, and translation configuration.
 type Config struct {
 	fconfig.ConfigurationDefault
 
-	// Redis / Valkey for dedup + cluster.
-	RedisURL string `env:"REDIS_URL,required"`
+	// Valkey URL for Frame's cache framework (backs dedup + cluster
+	// snapshot storage). Handed to frame/cache/valkey.New(cache.WithDSN).
+	ValkeyURL string `env:"VALKEY_URL,required"`
 
 	// R2 publish bucket (the live job-detail JSONs, distinct from the
 	// event log). pkg/publish creates snapshots here.
