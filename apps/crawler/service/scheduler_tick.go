@@ -106,10 +106,14 @@ func SchedulerTickHandler(svc *frame.Service, lister SourceLister, admit Admitte
 			}
 
 			// Stamp next_crawl_at forward so a concurrent pod's tick
-			// doesn't re-admit this source. Keep health + verified
-			// values unchanged.
+			// doesn't re-admit this source. Preserve LastVerifiedAt
+			// (only the reachability probe mutates it) and HealthScore.
 			next := now.Add(time.Duration(src.CrawlIntervalSec) * time.Second)
-			if stampErr := lister.UpdateNextCrawl(ctx, src.ID, next, now, src.HealthScore); stampErr != nil {
+			var lastVerified time.Time
+			if src.LastVerifiedAt != nil {
+				lastVerified = *src.LastVerifiedAt
+			}
+			if stampErr := lister.UpdateNextCrawl(ctx, src.ID, next, lastVerified, src.HealthScore); stampErr != nil {
 				log.WithError(stampErr).WithField("source_id", src.ID).Warn("scheduler/tick: stamp next_crawl_at failed")
 			}
 			resp.Dispatched++

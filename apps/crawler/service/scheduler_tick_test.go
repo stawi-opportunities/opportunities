@@ -26,6 +26,7 @@ func (f admitterFunc) Admit(ctx context.Context, topic string, want int) (int, t
 
 // tickCollector subscribes to a topic and records every envelope it sees.
 type tickCollector struct {
+	mu    sync.Mutex
 	topic string
 	got   []eventsv1.Envelope[eventsv1.CrawlRequestV1]
 }
@@ -39,8 +40,20 @@ func (c *tickCollector) Execute(_ context.Context, payload any) error {
 	if err := json.Unmarshal(*raw, &env); err != nil {
 		return err
 	}
+	c.mu.Lock()
 	c.got = append(c.got, env)
+	c.mu.Unlock()
 	return nil
+}
+
+// Snapshot returns a copy of the envelopes seen so far. Safe to call
+// concurrently with Execute.
+func (c *tickCollector) Snapshot() []eventsv1.Envelope[eventsv1.CrawlRequestV1] {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]eventsv1.Envelope[eventsv1.CrawlRequestV1], len(c.got))
+	copy(out, c.got)
+	return out
 }
 
 func TestSchedulerTickEmitsOneRequestPerAdmittedSource(t *testing.T) {
@@ -100,15 +113,16 @@ func TestSchedulerTickEmitsOneRequestPerAdmittedSource(t *testing.T) {
 	// Give the in-memory pub/sub a moment to deliver.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(col.got) >= 2 {
+		if len(col.Snapshot()) >= 2 {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(col.got) != 2 {
-		t.Fatalf("emitted envelopes=%d, want 2", len(col.got))
+	snap := col.Snapshot()
+	if len(snap) != 2 {
+		t.Fatalf("emitted envelopes=%d, want 2", len(snap))
 	}
-	for _, env := range col.got {
+	for _, env := range snap {
 		if env.Payload.SourceID == "" || env.Payload.RequestID == "" {
 			t.Fatalf("bad envelope: %+v", env)
 		}
