@@ -81,3 +81,47 @@ func TestPartitionObjectPathCanonicalsLabel(t *testing.T) {
 		t.Fatalf("path=%q, want %q", got, want)
 	}
 }
+
+func TestCanonicalUpsertedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCanonicalsUpserted, CanonicalUpsertedV1{
+		CanonicalID: "can_1",
+		ClusterID:   "clu_1",
+		Slug:        "senior-backend-engineer-acme-ke",
+		Title:       "Senior Backend Engineer",
+		Company:     "Acme",
+		Country:     "KE",
+		RemoteType:  "remote",
+		Status:      "active",
+		PostedAt:    time.Date(2026, 4, 21, 9, 0, 0, 0, time.UTC),
+	})
+	raw, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back Envelope[CanonicalUpsertedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.CanonicalID != "can_1" || back.Payload.Title != "Senior Backend Engineer" {
+		t.Fatalf("round-trip lost fields: %+v", back.Payload)
+	}
+}
+
+func TestEmbeddingRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicEmbeddings, EmbeddingV1{
+		CanonicalID:  "can_1",
+		Vector:       []float32{0.1, 0.2, 0.3},
+		ModelVersion: "text-embed-3-small",
+	})
+	raw, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back Envelope[EmbeddingV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.CanonicalID != "can_1" || len(back.Payload.Vector) != 3 {
+		t.Fatalf("round-trip lost fields: %+v", back.Payload)
+	}
+}
