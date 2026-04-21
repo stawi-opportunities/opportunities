@@ -127,3 +127,16 @@ func (r *CandidateRepository) ListPendingSubscriptions(ctx context.Context, limi
 		Find(&candidates).Error
 	return candidates, err
 }
+
+// ListInactiveSince returns active candidates whose `updated_at` is
+// older than cutoff, up to limit rows. Used by the daily stale-nudge
+// cron as a proxy for "no recent activity".
+func (r *CandidateRepository) ListInactiveSince(ctx context.Context, cutoff time.Time, limit int) ([]*domain.CandidateProfile, error) {
+	var out []*domain.CandidateProfile
+	err := r.db(ctx, true).
+		Where("status = ? AND updated_at < ?", domain.CandidateActive, cutoff).
+		Order("updated_at ASC").
+		Limit(limit).
+		Find(&out).Error
+	return out, err
+}
