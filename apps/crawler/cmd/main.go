@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,7 +11,6 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
-	"github.com/pitabwire/frame/events"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
@@ -22,21 +19,14 @@ import (
 	"stawi.jobs/pkg/analytics"
 	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/backpressure"
-	"stawi.jobs/pkg/bloom"
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
 	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/normalize"
-	"stawi.jobs/pkg/pipeline/handlers"
 	"stawi.jobs/pkg/publish"
-	"stawi.jobs/pkg/quality"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
-	"stawi.jobs/pkg/services"
 	"stawi.jobs/pkg/telemetry"
-	"stawi.jobs/pkg/translate"
+	"stawi.jobs/pkg/connectors/httpx"
 )
 
 func main() {
@@ -110,9 +100,7 @@ func main() {
 
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
-	crawlRepo := repository.NewCrawlRepository(dbFn)
 	jobRepo := repository.NewJobRepository(dbFn)
-	rejectedRepo := repository.NewRejectedJobRepository(dbFn)
 	facetRepo := repository.NewFacetRepository(dbFn)
 	retentionRepo := repository.NewRetentionRepository(dbFn)
 
@@ -163,10 +151,6 @@ func main() {
 	// Dedupe engine.
 	dedupeEngine := dedupe.NewEngine(jobRepo)
 
-	// Bloom filter for fast duplicate detection.
-	bloomFilter := bloom.NewFilter(cfg.ValkeyAddr, dbFn)
-	svc.AddCleanupMethod(func(_ context.Context) { _ = bloomFilter.Close() })
-
 	// R2 publisher for job content.
 	var r2Publisher *publish.R2Publisher
 	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
@@ -195,15 +179,6 @@ func main() {
 	// Cloudflare cache purger (no-op if zone/token not configured).
 	cachePurger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
 
-	// Redirect service client — used by the publish handler to wrap
-	// every apply_url in a tracked /r/{slug} link, and by the liveness
-	// handler to expire links that point at dead postings. Nil when
-	// REDIRECT_SERVICE_URI is unset (local dev).
-	var redirectClient *services.RedirectClient
-	if cfg.RedirectServiceURI != "" {
-		redirectClient = services.NewRedirectClient(cfg.RedirectServiceURI)
-	}
-
 	// Analytics client — batches events to OpenObserve. Nil when
 	// ANALYTICS_BASE_URL is unset; all call sites handle the no-op.
 	analyticsClient := analytics.New(analytics.Config{
@@ -229,93 +204,29 @@ func main() {
 		LowWater:     cfg.BackpressureLowWater,
 	}, nil)
 
-	// Translator fan-out. Off by default; flip TRANSLATE_ENABLED=true
-	// once Groq quota headroom is confirmed for the fan-out volume.
-	var translator *translate.Translator
-	translateLangs := []string{}
-	if cfg.TranslateEnabled && extractor != nil {
-		translator = translate.New(extractor)
-		translateLangs = cfg.TranslateLanguages
-	}
-
-	// Register pipeline stage handlers.
-	pipelineHandlers := []frame.Option{}
-	if extractor != nil {
-		eventHandlers := []events.EventI{
-			handlers.NewDedupHandler(jobRepo, svc),
-			handlers.NewNormalizeHandler(jobRepo, sourceRepo, extractor, httpClient, arch, svc),
-			handlers.NewValidateHandler(jobRepo, sourceRepo, extractor, svc),
-			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, extractor, arch, rawRefRepo, svc),
-			handlers.NewSourceExpansionHandler(sourceRepo),
-			handlers.NewSourceQualityHandler(sourceRepo, jobRepo, extractor),
-		}
-		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, redirectClient, cfg.RedirectPublicBaseURL, cfg.PublishMinQuality))
-			eventHandlers = append(eventHandlers, handlers.NewTranslateHandler(jobRepo, r2Publisher, cachePurger, translator, svc, translateLangs, cfg.TranslateMinQuality))
-		}
-		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
-	} else {
-		// Without extractor, only register dedup + canonical (no AI stages)
-		eventHandlers := []events.EventI{
-			handlers.NewDedupHandler(jobRepo, svc),
-			handlers.NewCanonicalHandler(jobRepo, dedupeEngine, nil, arch, rawRefRepo, svc),
-		}
-		if r2Publisher != nil {
-			eventHandlers = append(eventHandlers, handlers.NewPublishHandler(jobRepo, r2Publisher, cachePurger, svc, redirectClient, cfg.RedirectPublicBaseURL, cfg.PublishMinQuality))
-		}
-		pipelineHandlers = append(pipelineHandlers, frame.WithRegisterEvents(eventHandlers...))
-	}
-	svc.Init(ctx, pipelineHandlers...)
-
-	// Stuck-variant recovery: re-emit events for variants stuck at intermediate stages.
-	svc.AddPreStartMethod(func(preCtx context.Context, _ *frame.Service) {
-		recoveryLog := util.Log(preCtx)
-		evts := svc.EventsManager()
-
-		for _, stage := range []string{"raw", "deduped", "normalized", "validated"} {
-			stuck, _ := jobRepo.ListByStage(preCtx, stage, 100)
-			if len(stuck) == 0 {
-				continue
-			}
-			recoveryLog.WithField("stage", stage).WithField("count", len(stuck)).Info("re-emitting stuck variants")
-
-			eventName := stageToEventName(stage)
-			for _, v := range stuck {
-				_ = evts.Emit(preCtx, eventName, &handlers.VariantPayload{VariantID: v.ID, SourceID: v.SourceID})
-			}
-		}
-	})
-
-	// crawlDependencies itself implements events.EventI for
-	// EventCrawlRequest. Trustage's source.crawl workflow fires every
-	// minute, enumerates due sources via the api's /admin/sources/due,
-	// and dispatches one CrawlRequest message per source. JetStream
-	// workqueue retention guarantees each message reaches exactly one
-	// crawler replica — no contention, no ticker, no ListDue.
+	// ── Phase 4 event handlers ──────────────────────────────────────
 	//
-	// Retention (expire / mv_refresh / stage2) also runs as Trustage
-	// workflows now; each workflow does an HTTP POST to the crawler's
-	// admin endpoints below. All the cadence, observability, and retry
-	// discipline that used to live in in-process tickers now lives in
-	// Trustage where it's visible alongside every other scheduled job
-	// in the cluster.
+	// Three internal subscriptions. Frame gives each its own consumer
+	// group so a slow reconciliation never back-pressures the fetch path.
+	//
+	//   crawl.requests.v1       → CrawlRequestHandler (fetch + archive + extract + emit)
+	//   crawl.page.completed.v1 → PageCompletedHandler (self-consumed; cursor + health)
+	//   sources.discovered.v1   → SourceDiscoveredHandler (self-consumed; upsert)
+	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
+		Svc:            svc,
+		Sources:        sourceRepo,
+		Registry:       registry,
+		Archive:        arch,
+		Extractor:      extractor,
+		DiscoverSample: 0.05, // roughly 1-in-20 pages get DiscoverSites
+	})
+	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
+	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo)
+
+	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
+
 	_ = retentionRepo // referenced by the admin endpoints registered below
 	_ = facetRepo
-	crawlDeps := &crawlDependencies{
-		cfg:          &cfg,
-		sourceRepo:   sourceRepo,
-		crawlRepo:    crawlRepo,
-		jobRepo:      jobRepo,
-		rejectedRepo: rejectedRepo,
-		registry:     registry,
-		dedupeEngine: dedupeEngine,
-		bloomFilter:  bloomFilter,
-		httpClient:   httpClient,
-		extractor:    extractor,
-		archive:      arch,
-		svc:          svc,
-	}
-	svc.Init(ctx, frame.WithRegisterEvents(crawlDeps))
 
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()
@@ -401,9 +312,8 @@ func main() {
 	// (retention sweeps, which touch only our own tables) or in a
 	// goroutine that emits a NATS event (crawl dispatch).
 
-	// Admin: list source IDs that are due for a crawl right now. Called
-	// by the source.crawl.dispatcher workflow every minute to drive
-	// the per-source fan-out through /admin/crawl/dispatch below.
+	// Admin: list source IDs that are due for a crawl right now.
+	// Kept for operator tooling and dashboards.
 	adminMux.HandleFunc("GET /admin/sources/due", func(w http.ResponseWriter, r *http.Request) {
 		limit := 500
 		if v := r.URL.Query().Get("limit"); v != "" {
@@ -424,108 +334,9 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"count": len(ids), "ids": ids})
 	})
 
-	// Admin: dispatch a crawl request for one source. Emits an
-	// EventCrawlRequest onto the pipeline events stream; the crawler's
-	// own subscription picks it up. Called by the source.crawl workflow
-	// once per enumerated source.
-	adminMux.HandleFunc("POST /admin/crawl/dispatch", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			SourceID string `json:"source_id"`
-			Attempt  int    `json:"attempt,omitempty"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SourceID == "" {
-			http.Error(w, `{"error":"source_id is required"}`, http.StatusBadRequest)
-			return
-		}
-		// Backpressure gate: refuse new work when the pipeline queue
-		// is saturated. Trustage sees {"paused": true} and retries on
-		// its next tick; no work is lost.
-		if state, bpErr := bpGate.Check(r.Context()); bpErr == nil && state.Paused {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"ok":         true,
-				"paused":     true,
-				"source_id":  body.SourceID,
-				"pending":    state.Pending,
-				"high_water": state.HighWater,
-				"low_water":  state.LowWater,
-			})
-			return
-		}
-		evtMgr := svc.EventsManager()
-		if evtMgr == nil {
-			http.Error(w, `{"error":"events manager unavailable"}`, http.StatusServiceUnavailable)
-			return
-		}
-		if err := evtMgr.Emit(r.Context(), handlers.EventCrawlRequest, &handlers.CrawlRequestPayload{
-			SourceID: body.SourceID, Attempt: body.Attempt,
-		}); err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "source_id": body.SourceID})
-	})
-
-	// Admin: enumerate + dispatch all currently-due sources in one
-	// call. Used by the simple source.crawl.sweep workflow which just
-	// needs one HTTP call per minute. Returns the count dispatched so
-	// Trustage can record it as workflow output.
-	adminMux.HandleFunc("POST /admin/crawl/dispatch-due", func(w http.ResponseWriter, r *http.Request) {
-		// Backpressure gate — evaluated first so we skip the DB hit
-		// entirely when the pipeline is saturated. Trustage polls this
-		// endpoint on a 1m cron; a paused response just means nothing
-		// enters the queue this tick. Existing in-flight work drains
-		// normally; resume happens automatically when pending drops
-		// below the low-water mark.
-		if state, bpErr := bpGate.Check(r.Context()); bpErr == nil && state.Paused {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"ok":         true,
-				"paused":     true,
-				"considered": 0,
-				"dispatched": 0,
-				"pending":    state.Pending,
-				"high_water": state.HighWater,
-				"low_water":  state.LowWater,
-			})
-			return
-		}
-		limit := 500
-		if v := r.URL.Query().Get("limit"); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 2000 {
-				limit = n
-			}
-		}
-		sources, err := sourceRepo.ListDue(r.Context(), time.Now().UTC(), limit)
-		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
-			return
-		}
-		evtMgr := svc.EventsManager()
-		if evtMgr == nil {
-			http.Error(w, `{"error":"events manager unavailable"}`, http.StatusServiceUnavailable)
-			return
-		}
-		dispatched := 0
-		for _, s := range sources {
-			if emitErr := evtMgr.Emit(r.Context(), handlers.EventCrawlRequest, &handlers.CrawlRequestPayload{
-				SourceID: s.ID, Attempt: 1,
-			}); emitErr != nil {
-				util.Log(r.Context()).WithError(emitErr).
-					WithField("source_id", s.ID).
-					Warn("dispatch-due: emit failed, continuing")
-				continue
-			}
-			dispatched++
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":         true,
-			"considered": len(sources),
-			"dispatched": dispatched,
-		})
-	})
+	// Trustage fires this every 30 s; see definitions/trustage/scheduler-tick.json.
+	adminMux.HandleFunc("POST /admin/scheduler/tick",
+		service.SchedulerTickHandler(svc, sourceRepo, bpGate))
 
 	// Admin: backpressure state — operator-facing visibility into the
 	// gate. Useful for dashboards and for confirming the Trustage
@@ -611,22 +422,6 @@ func main() {
 	}
 }
 
-// stageToEventName maps a pipeline stage name to the corresponding event name.
-func stageToEventName(stage string) string {
-	switch stage {
-	case "raw":
-		return handlers.EventVariantRawStored
-	case "deduped":
-		return handlers.EventVariantDeduped
-	case "normalized":
-		return handlers.EventVariantNormalized
-	case "validated":
-		return handlers.EventVariantValidated
-	default:
-		return ""
-	}
-}
-
 // sourceStateChecker is a Frame Checker that embeds source state counts into
 // the /healthz response as a named check entry.
 type sourceStateChecker struct {
@@ -656,305 +451,6 @@ func (c *sourceStateChecker) CheckHealth() error {
 	// Return nil to mark healthy; counts appear as the checker name context.
 	_ = fmt.Sprintf("active=%d degraded=%d paused=%d", active, degraded, paused)
 	return nil
-}
-
-// crawlDependencies bundles all dependencies needed by the crawl loop so they
-// can be passed cleanly into WithBackgroundConsumer.
-type crawlDependencies struct {
-	cfg          *crawlerconfig.CrawlerConfig
-	sourceRepo   *repository.SourceRepository
-	crawlRepo    *repository.CrawlRepository
-	jobRepo      *repository.JobRepository
-	rejectedRepo *repository.RejectedJobRepository
-	registry     *connectors.Registry
-	dedupeEngine *dedupe.Engine
-	bloomFilter  *bloom.Filter
-	httpClient   *httpx.Client
-	extractor    *extraction.Extractor
-	archive      archive.Archive
-	svc          *frame.Service
-}
-
-// Name / PayloadType / Validate / Execute implement the Frame events.EventI
-// contract so crawlDependencies can subscribe to EventCrawlRequest directly.
-// Trustage's source.crawl workflow fires every minute, enumerates due
-// sources via the api's /admin/sources/due, and posts one CrawlRequest per
-// source through /admin/crawl/dispatch (which publishes to this subject).
-// JetStream workqueue retention means each message reaches exactly one
-// crawler replica — no contention, no ticker, no ListDue scan.
-func (d *crawlDependencies) Name() string     { return handlers.EventCrawlRequest }
-func (d *crawlDependencies) PayloadType() any { return &handlers.CrawlRequestPayload{} }
-
-func (d *crawlDependencies) Validate(_ context.Context, payload any) error {
-	p, ok := payload.(*handlers.CrawlRequestPayload)
-	if !ok {
-		return fmt.Errorf("crawl.request: invalid payload type %T", payload)
-	}
-	if p.SourceID == "" {
-		return fmt.Errorf("crawl.request: source_id is required")
-	}
-	return nil
-}
-
-func (d *crawlDependencies) Execute(ctx context.Context, payload any) error {
-	p, ok := payload.(*handlers.CrawlRequestPayload)
-	if !ok {
-		return fmt.Errorf("crawl.request: invalid payload type %T", payload)
-	}
-
-	log := util.Log(ctx).
-		WithField("source_id", p.SourceID).
-		WithField("attempt", p.Attempt)
-
-	src, err := d.sourceRepo.GetByID(ctx, p.SourceID)
-	if err != nil {
-		log.WithError(err).Error("crawl.request: load source failed")
-		return err
-	}
-	if src == nil {
-		log.Warn("crawl.request: source not found, dropping")
-		return nil
-	}
-	if src.Status != domain.SourceActive && src.Status != domain.SourceDegraded {
-		log.WithField("status", src.Status).Info("crawl.request: source not eligible, skipping")
-		return nil
-	}
-
-	d.processSource(ctx, src)
-	return nil
-}
-
-func (d *crawlDependencies) processSource(ctx context.Context, src *domain.Source) {
-	log := util.Log(ctx)
-
-	conn, ok := d.registry.Get(src.Type)
-	if !ok {
-		log.WithField("source_type", src.Type).
-			WithField("source_id", src.ID).
-			Warn("no connector for source type")
-		return
-	}
-
-	// Reachability probe. A dead host will waste an entire crawl slot
-	// talking to a connection timeout; skip dispatch and push the next
-	// attempt out with exponential backoff so the queue stays healthy.
-	verifyStatus, verifyErr := d.httpClient.Verify(ctx, src.BaseURL)
-	verifiedAt := time.Now().UTC()
-	_ = d.sourceRepo.RecordVerifyResult(ctx, src.ID, verifyStatus, verifiedAt)
-
-	if verifyErr != nil || verifyStatus >= 500 || verifyStatus == 0 {
-		failures := src.ConsecutiveFailures + 1
-		// Backoff: interval × 2^failures, capped at 7 days of multiples.
-		mult := 1 << failures
-		if mult > 168 {
-			mult = 168
-		}
-		next := verifiedAt.Add(time.Duration(src.CrawlIntervalSec*mult) * time.Second)
-
-		newHealth := src.HealthScore - 0.2
-		if newHealth < 0 {
-			newHealth = 0
-		}
-		_ = d.sourceRepo.RecordFailure(ctx, src.ID, newHealth, failures)
-		_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, next, verifiedAt, newHealth)
-
-		log.WithField("source_id", src.ID).
-			WithField("base_url", src.BaseURL).
-			WithField("status", verifyStatus).
-			WithError(verifyErr).
-			Warn("pre-crawl verify failed, skipping dispatch")
-		return
-	}
-
-	now := time.Now().UTC()
-
-	// Create crawl job record.
-	crawlJob := &domain.CrawlJob{
-		SourceID:       src.ID,
-		ScheduledAt:    now,
-		Status:         domain.CrawlScheduled,
-		Attempt:        1,
-		IdempotencyKey: fmt.Sprintf("%s-%d", src.ID, now.UnixNano()),
-	}
-	if err := d.crawlRepo.Create(ctx, crawlJob); err != nil {
-		log.WithError(err).WithField("source_id", src.ID).Error("create crawl job failed")
-		return
-	}
-	if err := d.crawlRepo.Start(ctx, crawlJob.ID); err != nil {
-		log.WithError(err).WithField("crawl_job_id", crawlJob.ID).Error("start crawl job failed")
-		return
-	}
-
-	// Run the connector.
-	iter := conn.Crawl(ctx, *src)
-	var jobsFound, jobsStored, jobsRejected int
-	var crawlErr error
-
-	for iter.Next(ctx) {
-		for _, extJob := range iter.Jobs() {
-			jobsFound++
-
-			// Convert to variant (computes HardKey internally).
-			variant := normalize.ExternalToVariant(extJob, src.ID, src.Country, string(src.Type), src.Language, time.Now().UTC())
-
-			// Bloom filter check -- skip if already seen.
-			if bloom.IsSeen(ctx, d.bloomFilter, src.ID, variant.HardKey) {
-				continue
-			}
-
-			// Raw HTTP body → R2 (content-addressed). Repeat crawls of an
-			// unchanged page hit HasRaw and skip the PUT — that's the
-			// dedup payoff. The variant row just records the hash; the
-			// body never enters Postgres.
-			var rawHash string
-			var rawSize int64
-			if pageContent := iter.Content(); pageContent != nil && len(pageContent.RawHTML) > 0 {
-				body := []byte(pageContent.RawHTML)
-				hash := sha256Hex(body)
-				if has, _ := d.archive.HasRaw(ctx, hash); !has {
-					putHash, putSize, putErr := d.archive.PutRaw(ctx, body)
-					if putErr != nil {
-						log.WithError(putErr).WithField("source_id", src.ID).
-							Warn("archive PutRaw failed, skipping variant")
-						continue
-					}
-					rawHash = putHash
-					rawSize = putSize
-				} else {
-					// Dedup hit: the hash is known, the body is in R2 already.
-					// Re-derive without another PUT round-trip.
-					rawHash = hash
-					rawSize = int64(len(body))
-				}
-			}
-			variant.RawContentHash = rawHash
-
-			// Audit row: one per successful fetch. Best-effort — the body
-			// is already safe in R2; losing the metadata row is recoverable
-			// by the orphan reconciler (T16). StorageURI mirrors the R2 key
-			// so downstream tooling doesn't need to know the layout.
-			if rawHash != "" {
-				_ = d.crawlRepo.SaveRawPayload(ctx, &domain.RawPayload{
-					CrawlJobID:  crawlJob.ID,
-					ContentHash: rawHash,
-					StorageURI:  archive.RawKey(rawHash),
-					SizeBytes:   rawSize,
-					FetchedAt:   time.Now().UTC(),
-					HTTPStatus:  http.StatusOK,
-				})
-			}
-
-			// Ensure apply_url has a fallback before quality gate.
-			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
-			if extJob.ApplyURL == "" {
-				quality.EnsureApplyURL(&extJob, src.BaseURL)
-			}
-			if extJob.ApplyURL != "" {
-				variant.ApplyURL = extJob.ApplyURL
-			}
-
-			// Basic quality check -- only title + description required.
-			if qErr := quality.Check(extJob); qErr != nil {
-				_ = d.rejectedRepo.Create(ctx, &domain.RejectedJob{
-					CrawlJobID: crawlJob.ID,
-					SourceID:   src.ID,
-					ExternalID: extJob.ExternalID,
-					Reason:     qErr.Error(),
-					RejectedAt: time.Now().UTC(),
-				})
-				jobsRejected++
-				continue
-			}
-
-			// Set stage to raw for pipeline processing.
-			variant.Stage = domain.StageRaw
-
-			// Store variant.
-			if err := d.jobRepo.UpsertVariant(ctx, &variant); err != nil {
-				log.WithError(err).WithField("source_id", src.ID).Error("store variant failed")
-				continue
-			}
-			// GORM may not populate ID on conflict-update — load it.
-			if variant.ID == "" {
-				existing, _ := d.jobRepo.FindByHardKey(ctx, variant.HardKey)
-				if existing != nil {
-					variant.ID = existing.ID
-				}
-			}
-
-			// Mark as seen in bloom filter.
-			bloom.MarkSeen(ctx, d.bloomFilter, src.ID, variant.HardKey)
-
-			// Emit pipeline event -- everything else happens via handlers.
-			evtMgr := d.svc.EventsManager()
-			if evtMgr != nil {
-				_ = evtMgr.Emit(ctx, handlers.EventVariantRawStored, &handlers.VariantPayload{
-					VariantID: variant.ID,
-					SourceID:  src.ID,
-				})
-			}
-
-			jobsStored++
-		}
-	}
-
-	if err := iter.Err(); err != nil {
-		crawlErr = err
-		log.WithError(err).WithField("source_id", src.ID).Error("crawl iteration failed")
-		_ = d.crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlFailed, err.Error())
-	} else {
-		_ = d.crawlRepo.Finish(ctx, crawlJob.ID, domain.CrawlSucceeded, "")
-	}
-
-	// Health management: circuit breaker + reject-rate detection.
-	rejectRate := 0.0
-	if jobsFound > 0 {
-		rejectRate = float64(jobsRejected) / float64(jobsFound)
-	}
-
-	if crawlErr != nil {
-		// Connection failure -- circuit breaker
-		newFailures := src.ConsecutiveFailures + 1
-		newHealth := src.HealthScore - 0.2
-		if newHealth < 0 {
-			newHealth = 0
-		}
-		_ = d.sourceRepo.RecordFailure(ctx, src.ID, newHealth, newFailures)
-	} else if rejectRate > 0.8 && jobsFound > 0 {
-		// High reject rate -- flag needs tuning, don't break circuit
-		_ = d.sourceRepo.FlagNeedsTuning(ctx, src.ID, true)
-		// Still record the next_crawl_at update
-		next := time.Now().UTC().Add(time.Duration(src.CrawlIntervalSec) * time.Second)
-		_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, next, time.Now().UTC(), src.HealthScore)
-	} else {
-		// Success
-		newHealth := src.HealthScore + 0.1
-		if newHealth > 1.0 {
-			newHealth = 1.0
-		}
-		_ = d.sourceRepo.RecordSuccess(ctx, src.ID, newHealth)
-		if src.NeedsTuning && rejectRate < 0.5 {
-			_ = d.sourceRepo.FlagNeedsTuning(ctx, src.ID, false)
-		}
-		next := time.Now().UTC().Add(time.Duration(src.CrawlIntervalSec) * time.Second)
-		_ = d.sourceRepo.UpdateNextCrawl(ctx, src.ID, next, time.Now().UTC(), newHealth)
-	}
-
-	log.WithField("source_id", src.ID).
-		WithField("source_type", src.Type).
-		WithField("found", jobsFound).
-		WithField("stored", jobsStored).
-		WithField("rejected", jobsRejected).
-		WithField("crawl_err", crawlErr).
-		Info("source processing complete")
-}
-
-// sha256Hex returns the hex-encoded sha256 of body. Kept as a
-// helper so the crawler's dedup HEAD check (HasRaw) and a
-// subsequent PutRaw agree on the hash.
-func sha256Hex(body []byte) string {
-	sum := sha256.Sum256(body)
-	return hex.EncodeToString(sum[:])
 }
 
 // rebuildCanonicalsHandler returns an HTTP handler that truncates all canonical
