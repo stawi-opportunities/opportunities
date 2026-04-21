@@ -8,11 +8,10 @@
 
 **Tech stack:**
 - Go 1.26, Frame (`github.com/pitabwire/frame`), `pitabwire/util` logging
-- Manticore Search 6.x (Docker image `manticoresearch/manticore:6.3.2` or later)
-- `github.com/go-sql-driver/mysql` for MySQL-protocol access to Manticore (NEW dep)
+- Manticore Search 6.x (Docker image `manticoresearch/manticore:6.3.2` or later) via its **HTTP JSON API** on port 9308 — no MySQL driver, stdlib `net/http` only
 - `github.com/parquet-go/parquet-go` (existing, from Phase 1)
 - `github.com/aws/aws-sdk-go-v2/service/s3` (existing)
-- `testcontainers-go/modules/minio` (existing) + a new Manticore testcontainer (docker-run wrapper)
+- `testcontainers-go/modules/minio` (existing) + a direct `testcontainers-go` wrapper for Manticore exposing port 9308
 - Postgres via GORM for watermark table (existing)
 
 **What's in this plan:**
@@ -48,7 +47,7 @@
 | `pkg/searchindex/schema_test.go` | Idempotent DDL apply test |
 | `db/migrations/0002_materializer_watermark.sql` | `materializer_watermarks` table |
 | `pkg/repository/materializer_watermark.go` | `WatermarkRepository` with `Get/Set` |
-| `apps/materializer/config/config.go` | Env-backed config (R2, Manticore DSN, Postgres DSN, poll interval) |
+| `apps/materializer/config/config.go` | Env-backed config (R2, Manticore URL, Postgres DSN, poll interval) |
 | `apps/materializer/service/indexer.go` | Per-collection upsert — translates Parquet rows → Manticore `REPLACE` statements |
 | `apps/materializer/service/service.go` | Poll loop: list new files → download → decode → indexer.Apply → advance watermark |
 | `apps/materializer/service/service_test.go` | End-to-end: seed R2 with a canonical Parquet → wait for poll → assert Manticore has it |
@@ -66,7 +65,7 @@
 | `apps/api/cmd/main.go` | Register `/api/v2/search` route + wire Manticore client |
 | `Makefile` | Add `apps/materializer` to `APP_DIRS`, add `run-materializer` target |
 | `deploy/docker-compose.yml` | Add Manticore service |
-| `go.mod` / `go.sum` | Add `github.com/go-sql-driver/mysql` |
+| `go.mod` / `go.sum` | No new deps — Manticore client uses stdlib `net/http` |
 
 ---
 
@@ -260,120 +259,184 @@ git commit -m "feat(writer): encode canonicals + embeddings Parquet partitions"
 
 ---
 
-## Task 3: Add go-sql-driver/mysql dependency
+## Task 3: No new dependency — use Manticore HTTP JSON API
 
-**Files:**
-- Modify: `go.mod`, `go.sum`
+**Files:** none (design choice only).
 
-- [ ] **Step 1: Add the dep**
+Manticore exposes a JSON HTTP API on port 9308 that covers everything this plan needs: `/sql` for DDL, `/replace` + `/update` for upserts, `/search` for queries. Using stdlib `net/http` avoids pulling the MySQL driver (and avoids the MVS issues that come with it dragging in gocloud.dev transitive bumps).
 
-Manticore speaks the MySQL wire protocol for its SQL interface. Use the standard Go MySQL driver.
-
-```bash
-go get github.com/go-sql-driver/mysql@v1.8.1
-go mod tidy
-```
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add go.mod go.sum
-git commit -m "chore(deps): add go-sql-driver/mysql for Manticore client"
-```
+No commit for this task — it's a decision. Task 4 implements the HTTP client directly.
 
 ---
 
-## Task 4: Manticore client wrapper
+## Task 4: Manticore HTTP client wrapper
 
 **Files:**
 - Create: `pkg/searchindex/manticore.go`
 
-- [ ] **Step 1: Implement the client**
+- [ ] **Step 1: Implement the HTTP client**
 
 Create `pkg/searchindex/manticore.go`:
 
 ```go
-// Package searchindex wraps the Manticore SQL interface behind a
-// narrow Go API. Manticore speaks the MySQL wire protocol, so under
-// the hood this is a database/sql connection; callers never need to
-// know that — they see Open, Apply, ReplaceJob, DeleteJob, and the
-// search query helpers.
+// Package searchindex is a narrow HTTP client for Manticore Search.
+// Manticore exposes a JSON API on port 9308 — we use /sql for DDL
+// and introspection, /replace + /update for row upserts, and /search
+// for queries. Using the HTTP API (rather than the MySQL wire
+// protocol) keeps the dependency footprint to stdlib net/http.
 package searchindex
 
 import (
+	"bytes"
 	"context"
-	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 // Config describes how to reach Manticore.
 type Config struct {
-	// DSN is the database/sql DSN. For Manticore SQL: "tcp(host:9306)/".
-	// The database name is not required — Manticore has no schema
-	// namespace, so the path after `/` is ignored.
-	DSN string
+	// URL is the root of Manticore's HTTP endpoint,
+	// e.g. "http://manticore:9308". Trailing slashes are trimmed.
+	URL string
 
-	// MaxOpenConns caps the connection pool. Manticore handles
-	// concurrent readers well; 8 is plenty for the materializer +
-	// api combined.
-	MaxOpenConns int
-
-	// ConnMaxLifetime recycles idle connections so a Manticore
-	// restart doesn't strand us with dead sockets.
-	ConnMaxLifetime time.Duration
+	// Timeout bounds every request. Default 10s.
+	Timeout time.Duration
 }
 
-// Client is the high-level Manticore handle. Safe for concurrent use.
+// Client is the high-level Manticore handle. Safe for concurrent use
+// (delegates to http.Client which is goroutine-safe).
 type Client struct {
-	db *sql.DB
+	http *http.Client
+	base string
 }
 
-// Open creates a new Client. The caller is responsible for Close.
+// Open constructs a Client. No network I/O — call Ping to verify
+// reachability.
 func Open(cfg Config) (*Client, error) {
-	if cfg.MaxOpenConns <= 0 {
-		cfg.MaxOpenConns = 8
+	if cfg.URL == "" {
+		return nil, fmt.Errorf("searchindex: empty URL")
 	}
-	if cfg.ConnMaxLifetime <= 0 {
-		cfg.ConnMaxLifetime = 30 * time.Minute
+	t := cfg.Timeout
+	if t == 0 {
+		t = 10 * time.Second
 	}
-	db, err := sql.Open("mysql", cfg.DSN)
-	if err != nil {
-		return nil, fmt.Errorf("searchindex: open: %w", err)
-	}
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	return &Client{db: db}, nil
+	return &Client{
+		http: &http.Client{Timeout: t},
+		base: strings.TrimRight(cfg.URL, "/"),
+	}, nil
 }
 
-// Close releases the connection pool.
-func (c *Client) Close() error { return c.db.Close() }
+// Close is a no-op for the HTTP client but kept for symmetry with
+// other resource-owning packages.
+func (c *Client) Close() error { return nil }
 
-// Ping verifies the connection is live. Used by health checks and
-// at-startup readiness.
+// Ping checks that Manticore is reachable. Uses the /sql endpoint
+// with a cheap SHOW STATUS query because there's no universally-
+// available dedicated ping endpoint across Manticore versions.
 func (c *Client) Ping(ctx context.Context) error {
-	return c.db.PingContext(ctx)
+	_, err := c.SQL(ctx, "SHOW STATUS")
+	return err
 }
 
-// Exec runs a statement with no returned rows. Used for DDL and
-// REPLACE/INSERT/DELETE. The named context drives cancellation.
-func (c *Client) Exec(ctx context.Context, query string, args ...any) error {
-	_, err := c.db.ExecContext(ctx, query, args...)
+// SQL runs an arbitrary SQL statement via /sql?mode=raw. Used for
+// DDL (CREATE TABLE, DROP TABLE) and introspection (SHOW TABLES).
+// Returns the raw response body — callers parse as needed.
+func (c *Client) SQL(ctx context.Context, stmt string) ([]byte, error) {
+	body := strings.NewReader("query=" + url.QueryEscape(stmt))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/sql?mode=raw", body)
 	if err != nil {
-		return fmt.Errorf("searchindex: exec: %w", err)
+		return nil, fmt.Errorf("searchindex: sql req: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("searchindex: sql send: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("searchindex: sql status %d: %s", resp.StatusCode, string(out))
+	}
+	// Manticore sometimes returns 200 with a JSON error payload like
+	// [{"error":"table idx_jobs_rt already exists"}] — treat that
+	// as an error so callers can detect it.
+	if bytes.Contains(out, []byte(`"error"`)) {
+		return out, fmt.Errorf("searchindex: sql error: %s", strings.TrimSpace(string(out)))
+	}
+	return out, nil
+}
+
+// Replace inserts or replaces a document by id. Uses /replace JSON.
+// Manticore treats replace as upsert; providing a stable id makes
+// the operation idempotent.
+func (c *Client) Replace(ctx context.Context, index string, id uint64, doc map[string]any) error {
+	return c.postJSON(ctx, "/replace", map[string]any{
+		"index": index,
+		"id":    id,
+		"doc":   doc,
+	})
+}
+
+// Update patches named fields on an existing document. Uses /update.
+// A missing id is a no-op (Manticore returns {updated: 0}).
+func (c *Client) Update(ctx context.Context, index string, id uint64, doc map[string]any) error {
+	return c.postJSON(ctx, "/update", map[string]any{
+		"index": index,
+		"id":    id,
+		"doc":   doc,
+	})
+}
+
+// Search issues a JSON query against /search. Returns the raw
+// response body — callers parse hits as needed (shape documented
+// at https://manual.manticoresearch.com/Searching/Intro).
+func (c *Client) Search(ctx context.Context, query map[string]any) ([]byte, error) {
+	raw, err := json.Marshal(query)
+	if err != nil {
+		return nil, fmt.Errorf("searchindex: search marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/search", bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("searchindex: search req: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("searchindex: search send: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("searchindex: search status %d: %s", resp.StatusCode, string(out))
+	}
+	return out, nil
+}
+
+func (c *Client) postJSON(ctx context.Context, path string, body any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("searchindex: marshal %s: %w", path, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("searchindex: req %s: %w", path, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("searchindex: send %s: %w", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("searchindex: %s status %d: %s", path, resp.StatusCode, string(msg))
 	}
 	return nil
-}
-
-// Query runs a SELECT and returns *sql.Rows. Caller MUST Close.
-func (c *Client) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	rows, err := c.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("searchindex: query: %w", err)
-	}
-	return rows, nil
 }
 ```
 
@@ -387,7 +450,7 @@ go build ./pkg/searchindex/...
 
 ```bash
 git add pkg/searchindex/manticore.go
-git commit -m "feat(searchindex): Manticore client wrapper over database/sql"
+git commit -m "feat(searchindex): Manticore HTTP client (no MySQL driver)"
 ```
 
 ---
@@ -407,8 +470,8 @@ package searchindex_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -418,12 +481,14 @@ import (
 	"stawi.jobs/pkg/searchindex"
 )
 
+// startManticore boots a Manticore container and returns the HTTP
+// URL (e.g. "http://127.0.0.1:42719") + a stop function.
 func startManticore(t *testing.T, ctx context.Context) (string, func()) {
 	t.Helper()
 	req := testcontainers.ContainerRequest{
 		Image:        "manticoresearch/manticore:6.3.2",
-		ExposedPorts: []string{"9306/tcp"},
-		WaitingFor:   wait.ForListeningPort("9306/tcp").WithStartupTimeout(60 * time.Second),
+		ExposedPorts: []string{"9308/tcp"},
+		WaitingFor:   wait.ForListeningPort("9308/tcp").WithStartupTimeout(60 * time.Second),
 	}
 	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -433,19 +498,19 @@ func startManticore(t *testing.T, ctx context.Context) (string, func()) {
 		t.Fatalf("start manticore: %v", err)
 	}
 	host, _ := c.Host(ctx)
-	port, _ := c.MappedPort(ctx, "9306/tcp")
-	dsn := fmt.Sprintf("tcp(%s:%s)/", host, port.Port())
-	return dsn, func() { _ = c.Terminate(context.Background()) }
+	port, _ := c.MappedPort(ctx, "9308/tcp")
+	url := fmt.Sprintf("http://%s:%s", host, port.Port())
+	return url, func() { _ = c.Terminate(context.Background()) }
 }
 
 func TestApplySchemaIsIdempotent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	dsn, stop := startManticore(t, ctx)
+	url, stop := startManticore(t, ctx)
 	defer stop()
 
-	client, err := searchindex.Open(searchindex.Config{DSN: dsn})
+	client, err := searchindex.Open(searchindex.Config{URL: url})
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -462,24 +527,13 @@ func TestApplySchemaIsIdempotent(t *testing.T) {
 		t.Fatalf("apply #2 (must be idempotent): %v", err)
 	}
 
-	// Confirm the table exists.
-	rows, err := client.Query(ctx, "SHOW TABLES")
+	// Confirm the table exists by asking SHOW TABLES via /sql.
+	raw, err := client.SQL(ctx, "SHOW TABLES")
 	if err != nil {
 		t.Fatalf("show tables: %v", err)
 	}
-	defer func() { _ = rows.Close() }()
-	found := false
-	for rows.Next() {
-		var name, ttype sql.NullString
-		if err := rows.Scan(&name, &ttype); err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		if name.String == "idx_jobs_rt" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("idx_jobs_rt not present after Apply")
+	if !strings.Contains(string(raw), "idx_jobs_rt") {
+		t.Fatalf("idx_jobs_rt not present after Apply — SHOW TABLES returned:\n%s", string(raw))
 	}
 }
 ```
@@ -508,45 +562,19 @@ import (
 // Embedding dimension is pinned to 1536 (OpenAI text-embedding-3-small)
 // for Phase 2; changing it is a rebuild, not a migration. Phase 6 will
 // pin this via config and rebuild protocol.
-const idxJobsRTDDL = `
-CREATE TABLE idx_jobs_rt (
-    canonical_id string attribute,
-    slug         string attribute,
-    title        text indexed,
-    company      text indexed,
-    description  text indexed stored,
-    location_text text indexed,
-
-    category         string attribute,
-    country          string attribute,
-    language         string attribute,
-    remote_type      string attribute,
-    employment_type  string attribute,
-    seniority        string attribute,
-    salary_min       uint,
-    salary_max       uint,
-    currency         string attribute,
-    quality_score    float,
-    is_featured      bool,
-    posted_at        timestamp,
-    last_seen_at     timestamp,
-    expires_at       timestamp,
-    status           string attribute,
-
-    embedding        float_vector knn_type='hnsw' knn_dims='1536' hnsw_similarity='COSINE',
-    embedding_model  string attribute
-)
-`
+//
+// Single-line form — Manticore's /sql endpoint accepts newlines, but
+// keeping it one line makes query-string escaping trivial.
+const idxJobsRTDDL = `CREATE TABLE idx_jobs_rt (canonical_id string attribute, slug string attribute, title text indexed, company text indexed, description text indexed stored, location_text text indexed, category string attribute, country string attribute, language string attribute, remote_type string attribute, employment_type string attribute, seniority string attribute, salary_min uint, salary_max uint, currency string attribute, quality_score float, is_featured bool, posted_at timestamp, last_seen_at timestamp, expires_at timestamp, status string attribute, embedding float_vector knn_type='hnsw' knn_dims='1536' hnsw_similarity='COSINE', embedding_model string attribute)`
 
 // Apply creates idx_jobs_rt if it does not exist. Idempotent — on
-// re-run it swallows Manticore's "table already exists" error.
+// re-run it swallows Manticore's "table already exists" error which
+// the HTTP /sql endpoint returns as an error JSON payload.
 func Apply(ctx context.Context, c *Client) error {
-	err := c.Exec(ctx, idxJobsRTDDL)
+	_, err := c.SQL(ctx, idxJobsRTDDL)
 	if err == nil {
 		return nil
 	}
-	// Manticore's CREATE TABLE error for a pre-existing table carries
-	// "already exists" (case-insensitive) — tolerate it.
 	if strings.Contains(strings.ToLower(err.Error()), "already exists") {
 		return nil
 	}
@@ -849,7 +877,7 @@ import (
 	fconfig "github.com/pitabwire/frame/config"
 )
 
-// Config wires Frame defaults (DB + NATS + OTEL) plus Manticore DSN
+// Config wires Frame defaults (DB + NATS + OTEL) plus Manticore URL
 // and materializer-specific knobs.
 type Config struct {
 	fconfig.ConfigurationDefault
@@ -862,8 +890,9 @@ type Config struct {
 	R2Endpoint        string `env:"R2_LOG_ENDPOINT" envDefault:""`
 	R2UsePathStyle    bool   `env:"R2_LOG_PATH_STYLE" envDefault:"false"`
 
-	// Manticore SQL endpoint.
-	ManticoreDSN string `env:"MANTICORE_DSN,required"` // e.g. "tcp(manticore:9306)/"
+	// Manticore HTTP JSON endpoint, e.g. "http://manticore:9308".
+	ManticoreURL     string        `env:"MANTICORE_URL,required"`
+	ManticoreTimeout time.Duration `env:"MANTICORE_TIMEOUT" envDefault:"10s"`
 
 	// Polling cadence + batch cap.
 	PollInterval  time.Duration `env:"MATERIALIZER_POLL_INTERVAL" envDefault:"15s"`
@@ -899,7 +928,7 @@ git commit -m "feat(materializer): env-backed Config with poll + prefix settings
 
 ---
 
-## Task 11: Indexer — translate Parquet rows to Manticore REPLACE
+## Task 11: Indexer — translate Parquet rows to Manticore upserts
 
 **Files:**
 - Create: `apps/materializer/service/indexer.go`
@@ -913,7 +942,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"hash/fnv"
 
@@ -922,10 +950,11 @@ import (
 	"stawi.jobs/pkg/searchindex"
 )
 
-// Indexer converts Parquet-decoded event rows into Manticore writes.
-// Each public method corresponds to one collection (canonicals,
-// embeddings). Methods are idempotent: using the same canonical_id
-// with REPLACE makes re-processing a file safe.
+// Indexer converts Parquet-decoded event rows into Manticore writes
+// via the HTTP JSON API. Each public method corresponds to one
+// collection (canonicals, embeddings). Methods are idempotent:
+// using the same canonical_id → hashID as the Manticore row id
+// makes /replace act as upsert.
 type Indexer struct {
 	client *searchindex.Client
 }
@@ -934,34 +963,12 @@ type Indexer struct {
 func NewIndexer(c *searchindex.Client) *Indexer { return &Indexer{client: c} }
 
 // ApplyCanonicalsParquet decodes a Parquet body of CanonicalUpsertedV1
-// envelopes and issues REPLACE INTO idx_jobs_rt per row.
+// rows and issues one /replace per row.
 func (i *Indexer) ApplyCanonicalsParquet(ctx context.Context, body []byte) (int, error) {
-	envs, err := eventlog.ReadParquet[canonicalRowWithEnvelope](body)
+	rows, err := eventlog.ReadParquet[eventsv1.CanonicalUpsertedV1](body)
 	if err != nil {
-		// Parquet file's rows are the payload struct (not full envelope)
-		// because the writer's encodeBatch unpacks payload before writing.
-		// Retry decoding as the plain payload.
-		rows, err2 := eventlog.ReadParquet[eventsv1.CanonicalUpsertedV1](body)
-		if err2 != nil {
-			return 0, fmt.Errorf("indexer: decode canonicals parquet: %w", err)
-		}
-		return i.replaceCanonicals(ctx, rows)
+		return 0, fmt.Errorf("indexer: decode canonicals parquet: %w", err)
 	}
-	rows := make([]eventsv1.CanonicalUpsertedV1, 0, len(envs))
-	for _, e := range envs {
-		rows = append(rows, e.Payload)
-	}
-	return i.replaceCanonicals(ctx, rows)
-}
-
-// canonicalRowWithEnvelope is a defensive alias used only by the
-// decoder retry above in case future writer changes preserve the
-// envelope in-row.
-type canonicalRowWithEnvelope struct {
-	Payload eventsv1.CanonicalUpsertedV1 `json:"payload" parquet:"payload"`
-}
-
-func (i *Indexer) replaceCanonicals(ctx context.Context, rows []eventsv1.CanonicalUpsertedV1) (int, error) {
 	n := 0
 	for _, r := range rows {
 		if err := i.replaceOne(ctx, r); err != nil {
@@ -972,34 +979,42 @@ func (i *Indexer) replaceCanonicals(ctx context.Context, rows []eventsv1.Canonic
 	return n, nil
 }
 
-// replaceOne issues a single REPLACE against idx_jobs_rt. The row id
-// is a stable hash of canonical_id — Manticore requires a bigint pk
-// and keying on hash(canonical_id) gives us idempotent upsert without
-// an auto-increment counter.
+// replaceOne issues a single /replace against idx_jobs_rt. The row
+// id is a stable hash of canonical_id — Manticore requires a bigint
+// pk and keying on hash(canonical_id) gives us idempotent upsert.
 func (i *Indexer) replaceOne(ctx context.Context, r eventsv1.CanonicalUpsertedV1) error {
-	const q = `
-REPLACE INTO idx_jobs_rt
-    (id, canonical_id, slug, title, company, description, location_text,
-     category, country, language, remote_type, employment_type, seniority,
-     salary_min, salary_max, currency, quality_score, is_featured,
-     posted_at, last_seen_at, expires_at, status)
-VALUES
-    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	id := hashID(r.CanonicalID)
-	return i.client.Exec(ctx, q,
-		id, r.CanonicalID, r.Slug, r.Title, r.Company, r.Description, r.LocationText,
-		r.Category, r.Country, r.Language, r.RemoteType, r.EmploymentType, r.Seniority,
-		uint64(r.SalaryMin), uint64(r.SalaryMax), r.Currency, float32(r.QualityScore),
-		r.QualityScore >= 80,
-		r.PostedAt.Unix(), r.LastSeenAt.Unix(), r.ExpiresAt.Unix(), r.Status,
-	)
+	doc := map[string]any{
+		"canonical_id":    r.CanonicalID,
+		"slug":            r.Slug,
+		"title":           r.Title,
+		"company":         r.Company,
+		"description":     r.Description,
+		"location_text":   r.LocationText,
+		"category":        r.Category,
+		"country":         r.Country,
+		"language":        r.Language,
+		"remote_type":     r.RemoteType,
+		"employment_type": r.EmploymentType,
+		"seniority":       r.Seniority,
+		"salary_min":      uint64(r.SalaryMin),
+		"salary_max":      uint64(r.SalaryMax),
+		"currency":        r.Currency,
+		"quality_score":   float32(r.QualityScore),
+		"is_featured":     r.QualityScore >= 80,
+		"posted_at":       r.PostedAt.Unix(),
+		"last_seen_at":    r.LastSeenAt.Unix(),
+		"expires_at":      r.ExpiresAt.Unix(),
+		"status":          r.Status,
+	}
+	return i.client.Replace(ctx, "idx_jobs_rt", hashID(r.CanonicalID), doc)
 }
 
 // ApplyEmbeddingsParquet updates the `embedding` attribute on
 // idx_jobs_rt rows by canonical_id. If the row doesn't exist yet
 // (embeddings can arrive slightly ahead of canonical for a fresh
-// job), the UPDATE is a no-op — next canonical event will land with
-// a null embedding, and the next embedding event will re-apply.
+// job), Manticore's /update returns updated=0 and the call is
+// a no-op — the next canonical event will land the base row, and
+// the next embedding event for that canonical will re-apply.
 func (i *Indexer) ApplyEmbeddingsParquet(ctx context.Context, body []byte) (int, error) {
 	rows, err := eventlog.ReadParquet[eventsv1.EmbeddingV1](body)
 	if err != nil {
@@ -1008,13 +1023,11 @@ func (i *Indexer) ApplyEmbeddingsParquet(ctx context.Context, body []byte) (int,
 	n := 0
 	for _, r := range rows {
 		id := hashID(r.CanonicalID)
-		// Manticore accepts JSON-encoded float array for KNN attribute
-		// updates via SQL. Vector is small enough per-row that this is fine.
-		vec, _ := json.Marshal(r.Vector)
-		if err := i.client.Exec(ctx,
-			"UPDATE idx_jobs_rt SET embedding = ?, embedding_model = ? WHERE id = ?",
-			string(vec), r.ModelVersion, id,
-		); err != nil {
+		doc := map[string]any{
+			"embedding":       r.Vector,
+			"embedding_model": r.ModelVersion,
+		}
+		if err := i.client.Update(ctx, "idx_jobs_rt", id, doc); err != nil {
 			return n, fmt.Errorf("indexer: update embedding: %w", err)
 		}
 		n++
@@ -1246,8 +1259,11 @@ func main() {
 	})
 	reader := eventlog.NewReader(r2Client, cfg.R2Bucket)
 
-	// Manticore client.
-	mc, err := searchindex.Open(searchindex.Config{DSN: cfg.ManticoreDSN})
+	// Manticore client (HTTP JSON API).
+	mc, err := searchindex.Open(searchindex.Config{
+		URL:     cfg.ManticoreURL,
+		Timeout: cfg.ManticoreTimeout,
+	})
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("materializer: open manticore failed")
 	}
@@ -1355,10 +1371,10 @@ func TestMaterializerE2E(t *testing.T) {
 		t.Fatalf("create bucket: %v", err)
 	}
 
-	// --- Manticore ---
-	dsn, stopManticore := startManticoreForMat(t, ctx)
+	// --- Manticore (HTTP JSON API) ---
+	url, stopManticore := startManticoreForMat(t, ctx)
 	defer stopManticore()
-	mtc, err := searchindex.Open(searchindex.Config{DSN: dsn})
+	mtc, err := searchindex.Open(searchindex.Config{URL: url})
 	if err != nil {
 		t.Fatalf("manticore open: %v", err)
 	}
@@ -1415,24 +1431,22 @@ func TestMaterializerE2E(t *testing.T) {
 	done := make(chan struct{})
 	go func() { _ = service.Run(pollCtx); close(done) }()
 
-	// Wait until Manticore has the row.
+	// Wait until Manticore has the row. Query via the HTTP /search
+	// endpoint rather than /sql so we exercise the same path the API
+	// will use.
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
-		rows, qerr := mtc.Query(ctx, "SELECT canonical_id FROM idx_jobs_rt WHERE country = 'KE'")
-		if qerr == nil {
-			hit := false
-			for rows.Next() {
-				var cid string
-				if err := rows.Scan(&cid); err == nil && cid == "can_e2e_1" {
-					hit = true
-				}
-			}
-			_ = rows.Close()
-			if hit {
-				cancelPoll()
-				<-done
-				return // success
-			}
+		raw, qerr := mtc.Search(ctx, map[string]any{
+			"index": "idx_jobs_rt",
+			"query": map[string]any{
+				"equals": map[string]any{"country": "KE"},
+			},
+			"limit": 10,
+		})
+		if qerr == nil && strings.Contains(string(raw), `"can_e2e_1"`) {
+			cancelPoll()
+			<-done
+			return // success
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -1442,15 +1456,15 @@ func TestMaterializerE2E(t *testing.T) {
 }
 
 // startManticoreForMat starts a Manticore testcontainer and returns
-// (dsn, stopFn). Mirrors pkg/searchindex/schema_test.go's helper;
+// (httpURL, stopFn). Mirrors pkg/searchindex/schema_test.go's helper;
 // duplicated here because _test files can't be imported across
 // packages and the helper is cheap to repeat.
 func startManticoreForMat(t *testing.T, ctx context.Context) (string, func()) {
 	t.Helper()
 	req := testcontainers.ContainerRequest{
 		Image:        "manticoresearch/manticore:6.3.2",
-		ExposedPorts: []string{"9306/tcp"},
-		WaitingFor:   wait.ForListeningPort("9306/tcp").WithStartupTimeout(60 * time.Second),
+		ExposedPorts: []string{"9308/tcp"},
+		WaitingFor:   wait.ForListeningPort("9308/tcp").WithStartupTimeout(60 * time.Second),
 	}
 	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -1460,9 +1474,9 @@ func startManticoreForMat(t *testing.T, ctx context.Context) (string, func()) {
 		t.Fatalf("start manticore: %v", err)
 	}
 	host, _ := c.Host(ctx)
-	port, _ := c.MappedPort(ctx, "9306/tcp")
-	dsn := fmt.Sprintf("tcp(%s:%s)/", host, port.Port())
-	return dsn, func() { _ = c.Terminate(context.Background()) }
+	port, _ := c.MappedPort(ctx, "9308/tcp")
+	url := fmt.Sprintf("http://%s:%s", host, port.Port())
+	return url, func() { _ = c.Terminate(context.Background()) }
 }
 ```
 
@@ -1525,7 +1539,7 @@ type searchV2Hit struct {
 	Country     string `json:"country"`
 	RemoteType  string `json:"remote_type"`
 	Category    string `json:"category"`
-	Snippet     string `json:"snippet"`
+	Description string `json:"description,omitempty"`
 }
 
 type searchV2Response struct {
@@ -1533,10 +1547,23 @@ type searchV2Response struct {
 	Total int           `json:"total"`
 }
 
+// manticoreSearchResponse mirrors the /search JSON response shape.
+// Full docs: https://manual.manticoresearch.com/Searching/Intro
+type manticoreSearchResponse struct {
+	Hits struct {
+		Total int `json:"total"`
+		Hits  []struct {
+			ID     int64           `json:"_id"`
+			Score  float64         `json:"_score"`
+			Source json.RawMessage `json:"_source"`
+		} `json:"hits"`
+	} `json:"hits"`
+}
+
 // searchV2Handler returns an HTTP handler that queries Manticore's
-// idx_jobs_rt. Params: q (text, optional), country (alpha-2),
-// remote_type, category, limit (default 20, max 50). Always filters
-// status='active'. BM25 ranking + posted_at desc as the secondary.
+// idx_jobs_rt via the /search JSON endpoint. Params: q (text,
+// optional), country (alpha-2), remote_type, category, limit
+// (default 20, max 50). Always filters status='active'.
 //
 // Phase 2 scope — no vectors, no rerank, no tiered cascade. Those
 // arrive in Phase 3+.
@@ -1558,55 +1585,52 @@ func searchV2Handler(client *searchindex.Client) http.HandlerFunc {
 			limit = 50
 		}
 
-		var (
-			conds []string
-			args  []any
-		)
-		if q != "" {
-			conds = append(conds, "MATCH(?)")
-			args = append(args, q)
-		}
-		conds = append(conds, "status = 'active'")
+		// Build Manticore JSON query. "bool" with "must" (full-text)
+		// and "filter" (exact-match attributes). Empty q → match-all.
+		filter := []map[string]any{{"equals": map[string]any{"status": "active"}}}
 		if country != "" {
-			conds = append(conds, "country = ?")
-			args = append(args, country)
+			filter = append(filter, map[string]any{"equals": map[string]any{"country": country}})
 		}
 		if remote != "" {
-			conds = append(conds, "remote_type = ?")
-			args = append(args, remote)
+			filter = append(filter, map[string]any{"equals": map[string]any{"remote_type": remote}})
 		}
 		if category != "" {
-			conds = append(conds, "category = ?")
-			args = append(args, category)
+			filter = append(filter, map[string]any{"equals": map[string]any{"category": category}})
 		}
-		where := strings.Join(conds, " AND ")
 
-		query := `SELECT canonical_id, slug, title, company, country, remote_type, category,
-                        SNIPPET(description, ?, 'limit=200') AS snippet
-                  FROM idx_jobs_rt WHERE ` + where + `
-                  ORDER BY WEIGHT() DESC, posted_at DESC LIMIT ?`
-		// Snippet needs a search query; use q or empty.
-		queryArgs := append([]any{q}, args...)
-		queryArgs = append(queryArgs, limit)
+		boolQ := map[string]any{"filter": filter}
+		if q != "" {
+			boolQ["must"] = []map[string]any{{"match": map[string]any{"*": q}}}
+		} else {
+			boolQ["must"] = []map[string]any{{"match_all": map[string]any{}}}
+		}
 
-		rows, err := client.Query(ctx, query, queryArgs...)
+		query := map[string]any{
+			"index": "idx_jobs_rt",
+			"query": map[string]any{"bool": boolQ},
+			"sort":  []any{map[string]any{"posted_at": "desc"}},
+			"limit": limit,
+		}
+
+		raw, err := client.Search(ctx, query)
 		if err != nil {
 			http.Error(w, "search failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		defer func() { _ = rows.Close() }()
-
-		var resp searchV2Response
-		for rows.Next() {
-			var h searchV2Hit
-			if err := rows.Scan(&h.CanonicalID, &h.Slug, &h.Title, &h.Company,
-				&h.Country, &h.RemoteType, &h.Category, &h.Snippet); err != nil {
-				http.Error(w, "scan failed: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			resp.Hits = append(resp.Hits, h)
+		var parsed manticoreSearchResponse
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			http.Error(w, "search decode failed: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
-		resp.Total = len(resp.Hits)
+
+		resp := searchV2Response{Total: parsed.Hits.Total}
+		for _, h := range parsed.Hits.Hits {
+			var src searchV2Hit
+			if err := json.Unmarshal(h.Source, &src); err != nil {
+				continue
+			}
+			resp.Hits = append(resp.Hits, src)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -1621,10 +1645,10 @@ Open `apps/api/cmd/main.go`. Find where the HTTP mux is wired and where existing
 1. Near the top of the main function (after other clients are created), add:
 
 ```go
-manticoreDSN := os.Getenv("MANTICORE_DSN")
+manticoreURL := os.Getenv("MANTICORE_URL")
 var manticoreClient *searchindex.Client
-if manticoreDSN != "" {
-    mc, err := searchindex.Open(searchindex.Config{DSN: manticoreDSN})
+if manticoreURL != "" {
+    mc, err := searchindex.Open(searchindex.Config{URL: manticoreURL})
     if err != nil {
         util.Log(ctx).WithError(err).Fatal("api: manticore open failed")
     }
@@ -1643,7 +1667,7 @@ if manticoreClient != nil {
 
 3. Add the import for `stawi.jobs/pkg/searchindex` at the top.
 
-The conditional registration means the new endpoint only exists when `MANTICORE_DSN` is set, so existing deploys that haven't provisioned Manticore yet continue to work unchanged.
+The conditional registration means the new endpoint only exists when `MANTICORE_URL` is set, so existing deploys that haven't provisioned Manticore yet continue to work unchanged.
 
 - [ ] **Step 3: Confirm compiles**
 
@@ -1691,8 +1715,8 @@ func startManticoreForAPITest(t *testing.T, ctx context.Context) (string, func()
 	t.Helper()
 	req := testcontainers.ContainerRequest{
 		Image:        "manticoresearch/manticore:6.3.2",
-		ExposedPorts: []string{"9306/tcp"},
-		WaitingFor:   wait.ForListeningPort("9306/tcp").WithStartupTimeout(60 * time.Second),
+		ExposedPorts: []string{"9308/tcp"},
+		WaitingFor:   wait.ForListeningPort("9308/tcp").WithStartupTimeout(60 * time.Second),
 	}
 	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -1702,19 +1726,19 @@ func startManticoreForAPITest(t *testing.T, ctx context.Context) (string, func()
 		t.Fatalf("start manticore: %v", err)
 	}
 	host, _ := c.Host(ctx)
-	port, _ := c.MappedPort(ctx, "9306/tcp")
-	dsn := fmt.Sprintf("tcp(%s:%s)/", host, port.Port())
-	return dsn, func() { _ = c.Terminate(context.Background()) }
+	port, _ := c.MappedPort(ctx, "9308/tcp")
+	url := fmt.Sprintf("http://%s:%s", host, port.Port())
+	return url, func() { _ = c.Terminate(context.Background()) }
 }
 
 func TestSearchV2HandlerReturnsManticoreRows(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	dsn, stop := startManticoreForAPITest(t, ctx)
+	url, stop := startManticoreForAPITest(t, ctx)
 	defer stop()
 
-	client, err := searchindex.Open(searchindex.Config{DSN: dsn})
+	client, err := searchindex.Open(searchindex.Config{URL: url})
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -1724,18 +1748,31 @@ func TestSearchV2HandlerReturnsManticoreRows(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	// Seed one row directly.
-	if err := client.Exec(ctx, `
-        REPLACE INTO idx_jobs_rt
-            (id, canonical_id, slug, title, company, description, location_text,
-             category, country, language, remote_type, employment_type, seniority,
-             salary_min, salary_max, currency, quality_score, is_featured,
-             posted_at, last_seen_at, expires_at, status)
-        VALUES (1, 'can_api_1', 'senior-backend-acme', 'Senior Backend Engineer',
-                'Acme', 'We are hiring', '', 'programming', 'KE', 'en', 'remote',
-                'full-time', 'senior', 100000, 180000, 'USD', 85, true,
-                UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), UNIX_TIMESTAMP()+86400, 'active')
-    `); err != nil {
+	// Seed one row via /replace.
+	now := time.Now().Unix()
+	doc := map[string]any{
+		"canonical_id":    "can_api_1",
+		"slug":            "senior-backend-acme",
+		"title":           "Senior Backend Engineer",
+		"company":         "Acme",
+		"description":     "We are hiring",
+		"category":        "programming",
+		"country":         "KE",
+		"language":        "en",
+		"remote_type":     "remote",
+		"employment_type": "full-time",
+		"seniority":       "senior",
+		"salary_min":      100000,
+		"salary_max":      180000,
+		"currency":        "USD",
+		"quality_score":   float32(85),
+		"is_featured":     true,
+		"posted_at":       now,
+		"last_seen_at":    now,
+		"expires_at":      now + 86400,
+		"status":          "active",
+	}
+	if err := client.Replace(ctx, "idx_jobs_rt", 1, doc); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
