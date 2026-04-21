@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -59,6 +60,16 @@ func main() {
 			util.Log(ctx).WithError(err).Error("writer: flusher exited")
 		}
 	}()
+
+	// Admin HTTP endpoints for manual compaction triggers.
+	reader := eventlog.NewReader(client, cfg.R2Bucket)
+	compactor := writersvc.NewCompactor(client, reader, uploader, cfg.R2Bucket)
+
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("POST /_admin/compact/hourly", writersvc.CompactHourlyHandler(compactor))
+	adminMux.HandleFunc("POST /_admin/compact/daily", writersvc.CompactDailyHandler(compactor))
+
+	svc.Init(ctx, frame.WithHTTPHandler(adminMux))
 
 	if err := svc.Run(ctx, ""); err != nil {
 		util.Log(ctx).WithError(err).Fatal("writer: frame.Run failed")
