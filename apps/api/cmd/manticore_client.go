@@ -153,6 +153,17 @@ func (j *jobsManticore) Facets(ctx context.Context) (map[string]map[string]int, 
 	return out, nil
 }
 
+func (j *jobsManticore) searchFiltered(ctx context.Context, filter []map[string]any, limit int, sortField string) ([]job, error) {
+	q := map[string]any{
+		"index": "idx_jobs_rt",
+		"query": map[string]any{"bool": map[string]any{"filter": filter}},
+		"sort":  []any{map[string]any{sortField: "desc"}},
+		"limit": limit,
+	}
+	hits, _, err := j.search(ctx, q)
+	return hits, err
+}
+
 func (j *jobsManticore) search(ctx context.Context, q map[string]any) ([]job, int, error) {
 	raw, err := j.c.Search(ctx, q)
 	if err != nil {

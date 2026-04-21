@@ -83,3 +83,31 @@ func TestV2Categories(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.True(t, strings.Contains(rr.Body.String(), `"engineering"`))
 }
+
+func TestV2Feed_LocalThenGlobal(t *testing.T) {
+	calls := 0
+	ts := stubManticore(func(_ map[string]any) string {
+		calls++
+		if calls == 1 {
+			return `{"hits":{"total":1,"hits":[{"_id":1,"_source":{"canonical_id":"c1","slug":"ke-eng","title":"Eng KE","country":"KE"}}]}}`
+		}
+		return `{"hits":{"total":2,"hits":[
+            {"_id":2,"_source":{"canonical_id":"c2","slug":"global-a","title":"A","country":"US"}},
+            {"_id":3,"_source":{"canonical_id":"c3","slug":"global-b","title":"B","country":"DE"}}
+        ]}}`
+	})
+	defer ts.Close()
+	client, _ := searchindex.Open(searchindex.Config{URL: ts.URL})
+	jm := newJobsManticore(client)
+	h := v2FeedHandler(jm)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/feed", nil)
+	req.Header.Set("CF-IPCountry", "KE")
+	rr := httptest.NewRecorder()
+	h(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Contains(t, rr.Body.String(), `"local"`)
+	require.Contains(t, rr.Body.String(), `"global"`)
+	require.Contains(t, rr.Body.String(), `"country":"KE"`)
+}

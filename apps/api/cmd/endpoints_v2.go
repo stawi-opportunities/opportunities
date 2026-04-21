@@ -228,3 +228,81 @@ func v2StatsHandler(jm *jobsManticore) http.HandlerFunc {
 		})
 	}
 }
+
+func v2FeedHandler(jm *jobsManticore) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		qs := req.URL.Query()
+
+		country := strings.ToUpper(qs.Get("country"))
+		if country == "" {
+			country = strings.ToUpper(req.Header.Get("CF-IPCountry"))
+		}
+		perTier := parseLimit(qs.Get("per_tier"), 10, 30)
+
+		type tier struct {
+			Name    string `json:"name"`
+			Country string `json:"country,omitempty"`
+			Results []job  `json:"results"`
+		}
+
+		resp := struct {
+			Country string `json:"country"`
+			Tiers   []tier `json:"tiers"`
+		}{Country: country}
+
+		if country != "" {
+			localFilter := []map[string]any{
+				{"equals": map[string]any{"status": "active"}},
+				{"equals": map[string]any{"country": country}},
+			}
+			local, err := jm.searchFiltered(ctx, localFilter, perTier, "posted_at")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			resp.Tiers = append(resp.Tiers, tier{Name: "local", Country: country, Results: local})
+		}
+
+		global, err := jm.Latest(ctx, perTier)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		resp.Tiers = append(resp.Tiers, tier{Name: "global", Results: global})
+
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}
+}
+
+func v2FeedTierHandler(jm *jobsManticore) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		qs := req.URL.Query()
+		tierName := qs.Get("tier")
+		limit := parseLimit(qs.Get("limit"), 20, 50)
+
+		filter := []map[string]any{{"equals": map[string]any{"status": "active"}}}
+		if tierName == "local" {
+			country := strings.ToUpper(qs.Get("country"))
+			if country == "" {
+				http.Error(w, `{"error":"country required for local tier"}`, http.StatusBadRequest)
+				return
+			}
+			filter = append(filter, map[string]any{"equals": map[string]any{"country": country}})
+		}
+
+		rows, err := jm.searchFiltered(ctx, filter, limit, "posted_at")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tier":    tierName,
+			"results": rows,
+		})
+	}
+}
