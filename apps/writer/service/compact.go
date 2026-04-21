@@ -128,7 +128,20 @@ func compactHourlyGeneric[T any](
 				keys = append(keys, *o.Key)
 			}
 		}
-		cursor = *page[len(page)-1].Key
+		// Safely advance cursor to the last non-nil key in this page.
+		// A nil Key in the tail position would cause a panic; tracking
+		// the last collected key keeps the loop robust against that.
+		lastKey := ""
+		for i := len(page) - 1; i >= 0; i-- {
+			if page[i].Key != nil {
+				lastKey = *page[i].Key
+				break
+			}
+		}
+		if lastKey == "" {
+			break // entire page had nil keys — abort rather than infinite loop
+		}
+		cursor = lastKey
 	}
 	if len(keys) == 0 {
 		return CompactHourlyResult{}, nil
