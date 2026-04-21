@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -30,50 +29,6 @@ func (f *fakeConnector) Type() domain.SourceType { return domain.SourceGenericHT
 func (f *fakeConnector) Crawl(_ context.Context, _ domain.Source) connectors.CrawlIterator {
 	return connectors.NewSinglePageIterator(f.jobs, f.raw, 200, nil)
 }
-
-type fakeArchive struct {
-	mu     sync.Mutex
-	bodies map[string][]byte
-}
-
-func newFakeArchive() *fakeArchive { return &fakeArchive{bodies: map[string][]byte{}} }
-
-func (a *fakeArchive) PutRaw(_ context.Context, body []byte) (string, int64, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	hash := "h" + time.Now().UTC().Format("150405.000000000")
-	a.bodies[hash] = body
-	return hash, int64(len(body)), nil
-}
-func (a *fakeArchive) GetRaw(_ context.Context, hash string) ([]byte, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	b, ok := a.bodies[hash]
-	if !ok {
-		return nil, archive.ErrNotFound
-	}
-	return b, nil
-}
-func (a *fakeArchive) HasRaw(_ context.Context, hash string) (bool, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	_, ok := a.bodies[hash]
-	return ok, nil
-}
-func (a *fakeArchive) PutCanonical(context.Context, string, archive.CanonicalSnapshot) error { return nil }
-func (a *fakeArchive) GetCanonical(context.Context, string) (archive.CanonicalSnapshot, error) {
-	return archive.CanonicalSnapshot{}, archive.ErrNotFound
-}
-func (a *fakeArchive) PutVariant(context.Context, string, string, archive.VariantBlob) error { return nil }
-func (a *fakeArchive) GetVariant(context.Context, string, string) (archive.VariantBlob, error) {
-	return archive.VariantBlob{}, archive.ErrNotFound
-}
-func (a *fakeArchive) PutManifest(context.Context, string, archive.Manifest) error { return nil }
-func (a *fakeArchive) GetManifest(context.Context, string) (archive.Manifest, error) {
-	return archive.Manifest{}, archive.ErrNotFound
-}
-func (a *fakeArchive) DeleteCluster(context.Context, string) error { return nil }
-func (a *fakeArchive) DeleteRaw(context.Context, string) error     { return nil }
 
 // fakeSourceGetter satisfies the handler's GetByID dependency.
 type fakeSourceGetter struct {
@@ -173,7 +128,7 @@ func TestCrawlRequestHandlerEmitsVariantAndPageCompleted(t *testing.T) {
 		Svc:            svc,
 		Sources:        srcs,
 		Registry:       reg,
-		Archive:        newFakeArchive(),
+		Archive:        archive.NewFakeArchive(),
 		Extractor:      nil, // nil extractor → no AI enrichment, deterministic path
 		DiscoverSample: 0,   // disable sampling in this test
 	})
@@ -243,7 +198,7 @@ func TestCrawlRequestHandlerUnknownSourceEmitsErrorCompleted(t *testing.T) {
 		Svc:      svc,
 		Sources:  &fakeSourceGetter{rows: map[string]*domain.Source{}},
 		Registry: connectors.NewRegistry(),
-		Archive:  newFakeArchive(),
+		Archive:  archive.NewFakeArchive(),
 	})
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
@@ -253,7 +208,7 @@ func TestCrawlRequestHandlerUnknownSourceEmitsErrorCompleted(t *testing.T) {
 	})
 	raw, _ := json.Marshal(env)
 	rm := json.RawMessage(raw)
-	if err := h.Execute(ctx, &rm); err != nil && !errors.Is(err, errNoSource) {
+	if err := h.Execute(ctx, &rm); err != nil {
 		t.Fatalf("unexpected Execute err: %v", err)
 	}
 

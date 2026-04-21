@@ -17,6 +17,7 @@ import (
 
 	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/connectors"
+	"stawi.jobs/pkg/content"
 	"stawi.jobs/pkg/domain"
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/extraction"
@@ -38,10 +39,11 @@ type CrawlRequestDeps struct {
 	Registry  *connectors.Registry
 	Archive   archive.Archive
 	Extractor *extraction.Extractor // nil → skip AI enrichment
-	// DiscoverSample is the probability [0..1] that a successful
-	// listing page is additionally run through DiscoverSites. 0.0 =
-	// disabled (unit-test default). In production, set ~0.05 so roughly
-	// one in twenty crawls attempts site discovery.
+	// DiscoverSample is the probability [0..1] that a given iterator
+	// page triggers an additional DiscoverSites call. 0.0 = disabled
+	// (unit-test default). In production, set ~0.05 so roughly one in
+	// twenty crawled pages attempts site discovery. Multi-page connectors
+	// get correspondingly more rolls per source crawl.
 	DiscoverSample float64
 	// Rand is optional; nil uses a package-local deterministic source
 	// seeded in init(). Tests can inject a fixed seed to make sampling
@@ -68,11 +70,6 @@ func NewCrawlRequestHandler(deps CrawlRequestDeps) *CrawlRequestHandler {
 	}
 	return &CrawlRequestHandler{deps: deps}
 }
-
-// errNoSource is returned when the referenced source is missing.
-// Non-retryable — Execute still emits a page-completed summary with
-// error_code="source_not_found" so the event log has an audit row.
-var errNoSource = errors.New("crawl.request: source not found")
 
 // Name implements frame.EventI.
 func (h *CrawlRequestHandler) Name() string { return eventsv1.TopicCrawlRequests }
@@ -168,58 +165,34 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 
 	for iter.Next(ctx) {
 		status = iter.HTTPStatus()
+		pageArchiveRef := resolveArchiveRef(ctx, h.deps.Archive, iter.Content())
 		for _, extJob := range iter.Jobs() {
 			jobsFound++
 
-			// Convert to a VariantIngested payload via the existing
-			// normalize helper. This keeps hard-key derivation, stage
-			// defaulting, and ExtendedFields-to-JobFields mapping in
-			// one place.
-			variant := normalize.ExternalToVariant(
-				extJob, src.ID, src.Country, string(src.Type), src.Language,
-				time.Now().UTC(),
-			)
-
-			// Fallback apply-URL chain (same rules as the legacy path).
+			// Apply-URL fallback chain first — normalize and quality both see the
+			// resolved URL.
 			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
 			if extJob.ApplyURL == "" {
 				quality.EnsureApplyURL(&extJob, src.BaseURL)
 			}
-			if extJob.ApplyURL != "" {
-				variant.ApplyURL = extJob.ApplyURL
-			}
 
-			// Deterministic quality gate — same check the legacy
-			// crawler ran. Rejected jobs are counted and dropped; no
-			// dead-letter topic at this layer (downstream validate
-			// stage is the place for AI-driven flags).
+			// Deterministic quality gate — same check the legacy crawler ran.
 			if qErr := quality.Check(extJob); qErr != nil {
 				jobsRejected++
 				continue
 			}
 
-			// Archive raw bytes. PutRaw is content-addressed — a
-			// repeat crawl of an unchanged page re-uses the stored
-			// blob. rawArchiveRef is the R2 key, carried through to
-			// the event log for downstream replay.
-			var rawArchiveRef string
-			if pageContent := iter.Content(); pageContent != nil && len(pageContent.RawHTML) > 0 {
-				body := []byte(pageContent.RawHTML)
-				hash := sha256Hex(body)
-				if has, hasErr := h.deps.Archive.HasRaw(ctx, hash); hasErr == nil && !has {
-					if putHash, _, putErr := h.deps.Archive.PutRaw(ctx, body); putErr == nil {
-						rawArchiveRef = archive.RawKey(putHash)
-					}
-				} else {
-					rawArchiveRef = archive.RawKey(hash)
-				}
-			}
+			// Convert to a VariantIngested payload via the existing normalize
+			// helper. Hard-key, stage, and mapping live there.
+			now := time.Now().UTC()
+			variant := normalize.ExternalToVariant(
+				extJob, src.ID, src.Country, string(src.Type), src.Language, now,
+			)
 
 			// Build the event payload from the domain variant. Fields
 			// the pipeline does not need at ingest (extended JobFields,
 			// intelligence signals) land in later events — spec §5.2
 			// keeps variant-ingested narrow.
-			now := time.Now().UTC()
 			eventPayload := eventsv1.VariantIngestedV1{
 				VariantID:      xid.New().String(),
 				SourceID:       src.ID,
@@ -240,7 +213,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				ApplyURL:       variant.ApplyURL,
 				ScrapedAt:      now,
 				ContentHash:    variant.ContentHash,
-				RawArchiveRef:  rawArchiveRef,
+				RawArchiveRef:  pageArchiveRef,
 			}
 			if variant.PostedAt != nil {
 				eventPayload.PostedAt = *variant.PostedAt
@@ -333,6 +306,26 @@ func (h *CrawlRequestHandler) emitCompleted(ctx context.Context, payload eventsv
 		util.Log(ctx).WithError(err).WithField("source_id", payload.SourceID).
 			Warn("crawl.request: emit page-completed failed")
 	}
+}
+
+// resolveArchiveRef archives the page's raw HTML (if any) and returns
+// the R2 object key. Called once per iterator page; idempotent via
+// HasRaw + content-addressed PutRaw. Returns "" on missing content or
+// archive error (best-effort — missing ref is recoverable, dropping
+// the variant is not).
+func resolveArchiveRef(ctx context.Context, arch archive.Archive, page *content.Extracted) string {
+	if page == nil || len(page.RawHTML) == 0 {
+		return ""
+	}
+	body := []byte(page.RawHTML)
+	hash := sha256Hex(body)
+	if has, hasErr := arch.HasRaw(ctx, hash); hasErr == nil && !has {
+		if putHash, _, putErr := arch.PutRaw(ctx, body); putErr == nil {
+			return archive.RawKey(putHash)
+		}
+		return ""
+	}
+	return archive.RawKey(hash)
 }
 
 func sha256Hex(body []byte) string {
