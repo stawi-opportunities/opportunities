@@ -211,7 +211,9 @@ func (r *fakeSourceRepo) UpdateNextCrawl(_ context.Context, id string, next, ver
 	defer r.mu.Unlock()
 	if s, ok := r.rows[id]; ok {
 		s.NextCrawlAt = next
-		s.LastVerifiedAt = &verified
+		if !verified.IsZero() {
+			s.LastVerifiedAt = &verified
+		}
 		s.HealthScore = health
 	}
 	return nil

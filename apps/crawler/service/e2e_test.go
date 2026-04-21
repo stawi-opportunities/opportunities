@@ -105,7 +105,15 @@ func (r *fakeCrawlerRepo) FlagNeedsTuning(_ context.Context, id string, flag boo
 func (r *fakeCrawlerRepo) Upsert(_ context.Context, src *domain.Source) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := string(src.Type) + "|" + src.BaseURL
+	// Upserted sources may not have an ID yet (the real GORM repo
+	// assigns one on insert). Fall back to a Type|BaseURL key so
+	// lookups by ID via other methods still work when the ID is
+	// populated and any later test that exercises the discover
+	// path can find the row.
+	key := src.ID
+	if key == "" {
+		key = string(src.Type) + "|" + src.BaseURL
+	}
 	r.rows[key] = src
 	return nil
 }
@@ -121,7 +129,7 @@ type pageCompletedFanout struct {
 }
 
 func (f *pageCompletedFanout) Name() string     { return eventsv1.TopicCrawlPageCompleted }
-func (f *pageCompletedFanout) PayloadType() any { var raw json.RawMessage; return &raw }
+func (f *pageCompletedFanout) PayloadType() any { return f.handler.PayloadType() }
 func (f *pageCompletedFanout) Validate(ctx context.Context, p any) error {
 	return f.handler.Validate(ctx, p)
 }
@@ -233,6 +241,32 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	}
 	if pageCol.Len() != 1 {
 		t.Fatalf("page-completed events=%d, want 1", pageCol.Len())
+	}
+
+	// Verify both emitted variants carry the fake connector's data end-to-end.
+	gotTitles := map[string]bool{}
+	for _, env := range variantCol.Snapshot() {
+		if env.Payload.SourceID != "src_e2e" {
+			t.Fatalf("variant SourceID=%q, want src_e2e", env.Payload.SourceID)
+		}
+		if env.Payload.VariantID == "" || env.Payload.HardKey == "" {
+			t.Fatalf("variant missing ids: %+v", env.Payload)
+		}
+		gotTitles[env.Payload.Title] = true
+	}
+	for _, want := range []string{"Backend Engineer", "Data Scientist"} {
+		if !gotTitles[want] {
+			t.Fatalf("missing variant title %q; got %v", want, gotTitles)
+		}
+	}
+
+	// Page-completed should summarise the same two jobs.
+	pc := pageCol.Snapshot()[0].Payload
+	if pc.SourceID != "src_e2e" {
+		t.Fatalf("page-completed SourceID=%q, want src_e2e", pc.SourceID)
+	}
+	if pc.JobsFound != 2 || pc.JobsEmitted != 2 || pc.JobsRejected != 0 {
+		t.Fatalf("page-completed counts wrong: %+v", pc)
 	}
 
 	// After PageCompletedHandler processes the page-completed event, the
