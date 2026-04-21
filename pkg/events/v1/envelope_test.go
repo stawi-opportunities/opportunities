@@ -44,3 +44,40 @@ func TestEnvelopeJSONRoundTrip(t *testing.T) {
 		t.Fatalf("payload lost: %+v", back.Payload)
 	}
 }
+
+func TestPartitionKeyRespectsSourceHint(t *testing.T) {
+	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
+	pk := PartitionKey(TopicVariantsIngested, now, "greenhouse")
+	if pk.DT != "2026-04-21" {
+		t.Fatalf("DT=%q, want 2026-04-21", pk.DT)
+	}
+	if pk.Secondary != "greenhouse" {
+		t.Fatalf("Secondary=%q, want greenhouse", pk.Secondary)
+	}
+}
+
+func TestPartitionKeyCanonicalUsesClusterPrefix(t *testing.T) {
+	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
+	pk := PartitionKey(TopicCanonicalsUpserted, now, "abcdef123456")
+	if pk.Secondary != "ab" {
+		t.Fatalf("Secondary=%q, want ab", pk.Secondary)
+	}
+}
+
+func TestPartitionObjectPathVariantsLabel(t *testing.T) {
+	pk := PartKey{DT: "2026-04-21", Secondary: "greenhouse"}
+	got := pk.ObjectPath("variants", "abc123")
+	want := "variants/dt=2026-04-21/src=greenhouse/abc123.parquet"
+	if got != want {
+		t.Fatalf("path=%q, want %q", got, want)
+	}
+}
+
+func TestPartitionObjectPathCanonicalsLabel(t *testing.T) {
+	pk := PartKey{DT: "2026-04-21", Secondary: "ab"}
+	got := pk.ObjectPath("canonicals", "xyz789")
+	want := "canonicals/dt=2026-04-21/cc=ab/xyz789.parquet"
+	if got != want {
+		t.Fatalf("path=%q, want %q", got, want)
+	}
+}
