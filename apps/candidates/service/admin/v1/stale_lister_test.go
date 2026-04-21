@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
+	"stawi.jobs/pkg/candidatestore"
 	"stawi.jobs/pkg/domain"
 )
 
@@ -16,6 +19,24 @@ type fakeInactiveRepo struct {
 func (r *fakeInactiveRepo) ListInactiveSince(_ context.Context, cutoff time.Time, _ int) ([]*domain.CandidateProfile, error) {
 	r.cutoff = cutoff
 	return r.rows, nil
+}
+
+type fakeR2Reader struct{ fixed []candidatestore.StaleCandidate }
+
+func (f fakeR2Reader) ListStale(_ context.Context, _ time.Time, _ int) ([]candidatestore.StaleCandidate, error) {
+	return f.fixed, nil
+}
+
+func TestR2StaleLister_AppliesCutoffOffset(t *testing.T) {
+	now := time.Now().UTC()
+	fake := fakeR2Reader{fixed: []candidatestore.StaleCandidate{
+		{CandidateID: "c1", LastUploadAt: now.Add(-90 * 24 * time.Hour)},
+	}}
+	l := NewR2StaleLister(fake, 60*24*time.Hour, 100)
+	got, err := l.ListStale(context.Background(), now)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "c1", got[0].CandidateID)
 }
 
 func TestRepoStaleListerMapsRowsToStaleCandidates(t *testing.T) {

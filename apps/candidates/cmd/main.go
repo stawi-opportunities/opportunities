@@ -95,7 +95,8 @@ func main() {
 	matchSvc := httpv1.NewMatchService(candStore, search, 20)
 	candidateLister := adminv1.NewRepoCandidateLister(candidateRepo, 1000)
 	matchRunner := adminv1.NewServiceMatchRunner(svc, matchSvc)
-	staleLister := adminv1.NewRepoStaleLister(candidateRepo, 1000)
+	staleReader := candidatestore.NewStaleReader(eventLogClient, cfg.R2EventLogBucket)
+	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
 
 	// --- Subscription handlers ---
 	// These all require AI. Skip when extractor is unconfigured so the
