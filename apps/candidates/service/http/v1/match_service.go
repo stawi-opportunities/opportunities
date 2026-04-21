@@ -3,9 +3,11 @@ package v1
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/rs/xid"
 
+	"stawi.jobs/pkg/candidatestore"
 	eventsv1 "stawi.jobs/pkg/events/v1"
 )
 
@@ -14,9 +16,6 @@ import (
 // uploaded a CV). HTTP callers translate this to 404; cron callers
 // count it as "skipped" rather than "failed".
 var ErrNoEmbedding = errors.New("match: no embedding for candidate")
-
-// errNoEmbedding is the package-local alias used by tests.
-var errNoEmbedding = ErrNoEmbedding
 
 // MatchResult is the structured output of RunMatch. Same shape the
 // HTTP handler marshals into JSON.
@@ -49,8 +48,11 @@ func NewMatchService(store CandidateStore, search SearchIndex, topK int) *MatchS
 // response; cron emits in the weekly-digest loop).
 func (s *MatchService) RunMatch(ctx context.Context, candidateID string) (MatchResult, error) {
 	emb, err := s.store.LatestEmbedding(ctx, candidateID)
-	if err != nil {
+	if errors.Is(err, candidatestore.ErrNotFound) {
 		return MatchResult{}, ErrNoEmbedding
+	}
+	if err != nil {
+		return MatchResult{}, fmt.Errorf("match: load embedding: %w", err)
 	}
 	prefs, _ := s.store.LatestPreferences(ctx, candidateID)
 

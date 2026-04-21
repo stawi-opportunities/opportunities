@@ -3,7 +3,6 @@ package v1
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.jobs/pkg/candidatestore"
 )
 
 // fakeCandidateStore implements the reader interface used by the match handler.
@@ -128,7 +128,7 @@ func TestMatchHandlerMissingEmbeddingReturns404(t *testing.T) {
 
 	handler := MatchHandler(MatchDeps{
 		Svc:   svc,
-		Store: &fakeCandidateStore{err: errors.New("not found")},
+		Store: &fakeCandidateStore{err: candidatestore.ErrNotFound},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/candidates/match?candidate_id=cnd_missing", nil)

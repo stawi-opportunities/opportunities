@@ -2,9 +2,11 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.jobs/pkg/candidatestore"
 )
 
 func TestMatchServiceRunMatchReturnsHits(t *testing.T) {
@@ -31,11 +33,24 @@ func TestMatchServiceRunMatchReturnsHits(t *testing.T) {
 }
 
 func TestMatchServiceRunMatchMissingEmbeddingReturnsErrNoEmbedding(t *testing.T) {
-	store := &fakeCandidateStore{err: errNoEmbedding}
+	store := &fakeCandidateStore{err: candidatestore.ErrNotFound}
 	svc := NewMatchService(store, &fakeSearchIndex{}, 5)
 
 	_, err := svc.RunMatch(context.Background(), "cnd_missing")
+	if !errors.Is(err, ErrNoEmbedding) {
+		t.Fatalf("expected ErrNoEmbedding, got %v", err)
+	}
+}
+
+func TestMatchServiceRunMatchPropagatesInfraErrors(t *testing.T) {
+	store := &fakeCandidateStore{err: errors.New("r2 timeout")}
+	svc := NewMatchService(store, &fakeSearchIndex{}, 5)
+
+	_, err := svc.RunMatch(context.Background(), "cnd_x")
 	if err == nil {
 		t.Fatalf("expected error")
+	}
+	if errors.Is(err, ErrNoEmbedding) {
+		t.Fatalf("infra error should not be wrapped as ErrNoEmbedding, got: %v", err)
 	}
 }

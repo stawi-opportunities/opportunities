@@ -98,36 +98,39 @@ func main() {
 	staleLister := adminv1.NewRepoStaleLister(candidateRepo, 1000)
 
 	// --- Subscription handlers ---
-	// extractor satisfies cv.Embedder (implements Embed()); nil extractor
-	// is fine — cv.NewScorer accepts a nil Embedder and degrades gracefully.
-	scorer := cv.NewScorer(extractor)
-	extractH := eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
-		Svc:                   svc,
-		Extractor:             cvExtractorAdapter{extractor},
-		Scorer:                cvScorerAdapter{scorer},
-		ExtractorModelVersion: cfg.InferenceModel,
-		ScorerModelVersion:    "cv-scorer-v1",
-	})
-	improveH := eventv1.NewCVImproveHandler(eventv1.CVImproveDeps{
-		Svc:          svc,
-		Fixes:        cvFixAdapter{scorer: scorer},
-		ModelVersion: cfg.InferenceModel,
-	})
-	embedH := eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
-		Svc:          svc,
-		Embedder:     embedderAdapter{extractor},
-		ModelVersion: cfg.EmbeddingModel,
-	})
-
-	// Parallel fanout: both improveH and embedH subscribe to
-	// TopicCVExtracted. Frame v1.94.1's event registry is one handler
-	// per topic, so we compose them into a single EventI.
-	extractedFanout := parallelFanout{
-		name: improveH.Name(),
-		hs:   []events.EventI{improveH, embedH},
+	// These all require AI. Skip when extractor is unconfigured so the
+	// binary still serves the upload + preferences + match endpoints
+	// in a degraded mode (uploads archive but don't enrich).
+	if extractor != nil {
+		scorer := cv.NewScorer(extractor)
+		extractH := eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
+			Svc:                   svc,
+			Extractor:             cvExtractorAdapter{extractor},
+			Scorer:                cvScorerAdapter{scorer},
+			ExtractorModelVersion: cfg.InferenceModel,
+			ScorerModelVersion:    "cv-scorer-v1",
+		})
+		improveH := eventv1.NewCVImproveHandler(eventv1.CVImproveDeps{
+			Svc:          svc,
+			Fixes:        cvFixAdapter{scorer: scorer},
+			ModelVersion: cfg.InferenceModel,
+		})
+		embedH := eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
+			Svc:          svc,
+			Embedder:     embedderAdapter{extractor},
+			ModelVersion: cfg.EmbeddingModel,
+		})
+		// Parallel fanout: both improveH and embedH subscribe to
+		// TopicCVExtracted. Frame v1.94.1's event registry is one handler
+		// per topic, so we compose them into a single EventI.
+		extractedFanout := parallelFanout{
+			name: improveH.Name(),
+			hs:   []events.EventI{improveH, embedH},
+		}
+		svc.Init(ctx, frame.WithRegisterEvents(extractH, extractedFanout))
+	} else {
+		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscriptions disabled; uploads will archive but not enrich")
 	}
-
-	svc.Init(ctx, frame.WithRegisterEvents(extractH, extractedFanout))
 
 	// --- HTTP mux ---
 	mux := http.NewServeMux()

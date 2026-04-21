@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -111,17 +112,24 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 			})
 			eventRows = append(eventRows, eventsv1.MatchRow{CanonicalID: h.CanonicalID, Score: h.Score})
 		}
-		env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
-			CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: eventRows,
-		})
-		if err := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, env); err != nil {
-			log.WithError(err).Warn("match: emit MatchesReadyV1 failed")
-		}
-
 		resp := matchResponse{
 			OK: true, CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: rows,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
+
+		// Emit MatchesReadyV1 out-of-band so a slow event bus doesn't
+		// add latency to the HTTP response, and a client disconnect
+		// doesn't cancel the emit.
+		env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
+			CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: eventRows,
+		})
+		go func() {
+			emitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := deps.Svc.EventsManager().Emit(emitCtx, eventsv1.TopicCandidateMatchesReady, env); err != nil {
+				util.Log(emitCtx).WithError(err).Warn("match: emit MatchesReadyV1 failed")
+			}
+		}()
 	}
 }
