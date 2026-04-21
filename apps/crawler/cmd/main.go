@@ -338,6 +338,16 @@ func main() {
 	adminMux.HandleFunc("POST /admin/scheduler/tick",
 		service.SchedulerTickHandler(svc, sourceRepo, bpGate))
 
+	// Admin: bulk reset quality-window counters on all active sources.
+	// Trustage fires this weekly; see definitions/trustage/sources-quality-window-reset.json.
+	adminMux.HandleFunc("POST /admin/sources/quality-reset",
+		service.QualityResetHandler(sourceRepo))
+
+	// Admin: nudge health_score toward 1.0 for all active sources.
+	// Trustage fires this hourly; see definitions/trustage/sources-health-decay.json.
+	adminMux.HandleFunc("POST /admin/sources/health-decay",
+		service.HealthDecayHandler(sourceRepo))
+
 	// Admin: backpressure state — operator-facing visibility into the
 	// gate. Useful for dashboards and for confirming the Trustage
 	// workflow is correctly no-op'ing during saturation.

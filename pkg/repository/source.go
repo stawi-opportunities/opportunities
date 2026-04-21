@@ -238,3 +238,30 @@ func (r *SourceRepository) ResetQualityWindow(ctx context.Context, id string) er
 			"quality_flagged":      0,
 		}).Error
 }
+
+// ResetQualityWindowAll zeros the rolling quality counters on every active source.
+// Called by the weekly Trustage trigger to start a fresh measurement window.
+func (r *SourceRepository) ResetQualityWindowAll(ctx context.Context) (int64, error) {
+	now := time.Now().UTC()
+	res := r.db(ctx, false).
+		Model(&domain.Source{}).
+		Where("status = ?", domain.SourceActive).
+		Updates(map[string]any{
+			"quality_window_start": now,
+			"quality_window_days":  1,
+			"quality_validated":    0,
+			"quality_flagged":      0,
+		})
+	return res.RowsAffected, res.Error
+}
+
+// DecayHealth nudges health_score toward 1.0 by step, clamped at 1.0.
+// Called hourly by Trustage so sources that were degraded by transient
+// failures can self-recover without manual intervention.
+func (r *SourceRepository) DecayHealth(ctx context.Context, step float64) (int64, error) {
+	res := r.db(ctx, false).
+		Model(&domain.Source{}).
+		Where("status = ? AND health_score < 1.0", domain.SourceActive).
+		Update("health_score", gorm.Expr("LEAST(1.0, health_score + ?)", step))
+	return res.RowsAffected, res.Error
+}

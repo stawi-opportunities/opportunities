@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "name": "stawi-jobs.sources.quality-window-reset",
+  "description": "Weekly on Monday at 03:00 UTC — zeros the rolling quality-window counters (quality_validated, quality_flagged) on every active source so the next window starts fresh.",
+  "schedule": {
+    "cron": "0 3 * * 1",
+    "active": true
+  },
+  "input": {},
+  "config": {},
+  "timeout": "5m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "quality_window_reset",
+      "type": "call",
+      "name": "Reset quality window counters",
+      "timeout": "3m",
+      "retry": {
+        "max_attempts": 3,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/sources/quality-reset",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": {}
+        }
+      }
+    }
+  ]
+}
