@@ -79,10 +79,10 @@ type CrawlPageCompletedV1 struct {
 // SourceID is the *origin* source — the crawl that discovered the new
 // link. Kept so the source_expand audit trail shows provenance.
 type SourceDiscoveredV1 struct {
+	SourceID      string `json:"source_id"      parquet:"source_id"`
 	DiscoveredURL string `json:"discovered_url" parquet:"discovered_url"`
-	Name          string `json:"name,omitempty"    parquet:"name,optional"`
-	Country       string `json:"country,omitempty" parquet:"country,optional"`
-	Type          string `json:"type,omitempty"    parquet:"type,optional"`
 
-	SourceID string `json:"source_id" parquet:"source_id"`
+	Name    string `json:"name,omitempty"    parquet:"name,optional"`
+	Country string `json:"country,omitempty" parquet:"country,optional"`
+	Type    string `json:"type,omitempty"    parquet:"type,optional"`
 }
