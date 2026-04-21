@@ -245,3 +245,65 @@ func TestGate_nilReceiver(t *testing.T) {
 		t.Error("nil gate must report open, got paused")
 	}
 }
+
+func TestAdmitOpenGrantsFullWant(t *testing.T) {
+	// Construct a gate with a stub monitor that reports a small pending
+	// count (well below LowWater). Admit should grant the full amount
+	// requested.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"account_details":[{"name":"test","stream_detail":[{"name":"svc","consumer_detail":[{"name":"c","num_pending":10}]}]}]}`))
+	}))
+	defer srv.Close()
+
+	g := New(Config{
+		MonitorURL:   srv.URL,
+		StreamName:   "svc",
+		ConsumerName: "c",
+		HighWater:    100,
+		LowWater:     50,
+		CacheTTL:     0,
+	}, srv.Client())
+
+	granted, wait := g.Admit(context.Background(), "crawl.requests.v1", 20)
+	if granted != 20 {
+		t.Fatalf("granted=%d, want 20", granted)
+	}
+	if wait != 0 {
+		t.Fatalf("wait=%v, want 0", wait)
+	}
+}
+
+func TestAdmitPausedGrantsZero(t *testing.T) {
+	// Stub monitor reports pending above HighWater; gate flips saturated.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"account_details":[{"name":"test","stream_detail":[{"name":"svc","consumer_detail":[{"name":"c","num_pending":200}]}]}]}`))
+	}))
+	defer srv.Close()
+
+	g := New(Config{
+		MonitorURL:   srv.URL,
+		StreamName:   "svc",
+		ConsumerName: "c",
+		HighWater:    100,
+		LowWater:     50,
+		CacheTTL:     0,
+	}, srv.Client())
+
+	granted, wait := g.Admit(context.Background(), "crawl.requests.v1", 20)
+	if granted != 0 {
+		t.Fatalf("granted=%d, want 0", granted)
+	}
+	if wait <= 0 {
+		t.Fatalf("wait=%v, want positive hint", wait)
+	}
+}
+
+func TestAdmitNoMonitorAlwaysOpen(t *testing.T) {
+	// A gate with no monitor URL should always return the full amount
+	// (fail-open matches the existing Check() behaviour).
+	g := New(Config{HighWater: 100, LowWater: 50}, nil)
+	granted, _ := g.Admit(context.Background(), "anything.v1", 5)
+	if granted != 5 {
+		t.Fatalf("granted=%d, want 5", granted)
+	}
+}

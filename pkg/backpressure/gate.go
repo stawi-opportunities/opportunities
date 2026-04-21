@@ -254,3 +254,38 @@ func (g *Gate) lowWaterSafe() int {
 	}
 	return g.lowWater
 }
+
+// Admit asks to emit `want` events on `topic`. For Phase 4 this is a
+// minimal wrapper over the existing hysteresis gate:
+//
+//   - open (pending below HighWater / under hysteresis) → grant full want
+//   - paused (pending above HighWater)                  → grant 0
+//   - transport error reading the monitor               → grant full want (fail-open)
+//
+// The returned wait hint is a coarse "try again in ~30 s" when paused,
+// and zero otherwise. Phase 6 replaces this with the full drain-time
+// policy described in §8.3 of the design (per-topic thresholds, HPA-
+// ceiling awareness). The method signature is chosen to match that
+// future policy so the scheduler-tick endpoint doesn't need to change.
+//
+// `topic` is currently unused but accepted so callers don't have to
+// change when per-topic policies land. Passing the real topic today
+// keeps log lines correct.
+func (g *Gate) Admit(ctx context.Context, topic string, want int) (int, time.Duration) {
+	if want <= 0 {
+		return 0, 0
+	}
+	if g == nil || g.monitorURL == "" {
+		return want, 0
+	}
+	state, err := g.Check(ctx)
+	if err != nil {
+		// Fail-open matches Check()'s own contract (the existing code
+		// already treats a monitor error as "assume open").
+		return want, 0
+	}
+	if state.Paused {
+		return 0, 30 * time.Second
+	}
+	return want, 0
+}
