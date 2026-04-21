@@ -296,3 +296,139 @@ func TestPartitionObjectPathSourcesDiscoveredLabel(t *testing.T) {
 		t.Fatalf("path=%q, want %q", got, want)
 	}
 }
+
+func TestCVUploadedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCVUploaded, CVUploadedV1{
+		CandidateID:   "cnd_1",
+		CVVersion:     1,
+		RawArchiveRef: "raw/abc123",
+		Filename:      "resume.pdf",
+		ContentType:   "application/pdf",
+		SizeBytes:     12345,
+	})
+	raw, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back Envelope[CVUploadedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.CandidateID != "cnd_1" || back.Payload.CVVersion != 1 {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestCVExtractedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCVExtracted, CVExtractedV1{
+		CandidateID:         "cnd_1",
+		CVVersion:           1,
+		Name:                "Jane Doe",
+		Email:               "jane@example.com",
+		Seniority:           "senior",
+		YearsExperience:     8,
+		PrimaryIndustry:     "technology",
+		StrongSkills:        []string{"Go", "Kubernetes"},
+		WorkingSkills:       []string{"Python"},
+		ScoreOverall:        82,
+		ScoreATS:            85,
+		ScoreKeywords:       78,
+		ScoreImpact:         80,
+		ScoreRoleFit:        84,
+		ScoreClarity:        83,
+		ModelVersionExtract: "ext-v1",
+		ModelVersionScore:   "score-v1",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[CVExtractedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.CandidateID != "cnd_1" || back.Payload.ScoreOverall != 82 {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestCVImprovedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCVImproved, CVImprovedV1{
+		CandidateID: "cnd_1",
+		CVVersion:   1,
+		Fixes: []CVFix{{
+			FixID:          "fix-1",
+			Title:          "Add quantified impact",
+			ImpactLevel:    "high",
+			Category:       "impact",
+			Why:            "Bullets lack numbers",
+			AutoApplicable: true,
+			Rewrite:        "Reduced latency 40%",
+		}},
+		ModelVersion: "improve-v1",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[CVImprovedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(back.Payload.Fixes) != 1 || back.Payload.Fixes[0].FixID != "fix-1" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestCandidateEmbeddingRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCandidateEmbedding, CandidateEmbeddingV1{
+		CandidateID:  "cnd_1",
+		CVVersion:    1,
+		Vector:       []float32{0.1, 0.2, 0.3},
+		ModelVersion: "embed-v1",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[CandidateEmbeddingV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.CandidateID != "cnd_1" || len(back.Payload.Vector) != 3 {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestCandidatePreferencesUpdatedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCandidatePreferencesUpdated, PreferencesUpdatedV1{
+		CandidateID:        "cnd_1",
+		RemotePreference:   "remote",
+		SalaryMin:          80000,
+		SalaryMax:          140000,
+		Currency:           "USD",
+		PreferredLocations: []string{"KE", "US"},
+		ExcludedCompanies:  []string{"BadCo"},
+		TargetRoles:        []string{"backend-engineer"},
+		Languages:          []string{"en"},
+		Availability:       "2-weeks",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[PreferencesUpdatedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.SalaryMin != 80000 || len(back.Payload.PreferredLocations) != 2 {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestMatchesReadyRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCandidateMatchesReady, MatchesReadyV1{
+		CandidateID:  "cnd_1",
+		MatchBatchID: "batch_1",
+		Matches: []MatchRow{
+			{CanonicalID: "can_a", Score: 0.91, RerankScore: 0.94},
+			{CanonicalID: "can_b", Score: 0.83},
+		},
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[MatchesReadyV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(back.Payload.Matches) != 2 || back.Payload.Matches[0].CanonicalID != "can_a" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}

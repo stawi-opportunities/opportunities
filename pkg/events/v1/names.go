@@ -27,6 +27,15 @@ const (
 
 	// Source discovery.
 	TopicSourcesDiscovered = "sources.discovered.v1"
+
+	// Candidate lifecycle (Phase 5).
+	TopicCVUploaded                  = "candidates.cv.uploaded.v1"
+	TopicCVExtracted                 = "candidates.cv.extracted.v1"
+	TopicCVImproved                  = "candidates.cv.improved.v1"
+	TopicCandidateEmbedding          = "candidates.embeddings.v1"
+	TopicCandidatePreferencesUpdated = "candidates.preferences.updated.v1"
+	TopicCandidateMatchesReady       = "candidates.matches.ready.v1"
+	TopicCandidateCVStaleNudge       = "candidates.cv.stale_nudge.v1"
 )
 
 // AllTopics returns every topic the writer is expected to subscribe
@@ -46,5 +55,11 @@ func AllTopics() []string {
 		TopicPublished,
 		TopicCrawlPageCompleted,
 		TopicSourcesDiscovered,
+		TopicCVUploaded,
+		TopicCVExtracted,
+		TopicCVImproved,
+		TopicCandidateEmbedding,
+		TopicCandidatePreferencesUpdated,
+		TopicCandidateMatchesReady,
 	}
 }
