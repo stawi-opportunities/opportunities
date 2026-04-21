@@ -1,5 +1,7 @@
 package eventsv1
 
+import "time"
+
 // CrawlRequestV1 is the control-plane event that tells a single
 // crawler replica "please fetch this source (or URL within it) now."
 // Emitted by the scheduler-tick admin endpoint (one per admitted
@@ -69,6 +71,9 @@ type CrawlPageCompletedV1 struct {
 	// detail for audit.
 	ErrorCode    string `json:"error_code,omitempty"    parquet:"error_code,optional"`
 	ErrorMessage string `json:"error_message,omitempty" parquet:"error_message,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // SourceDiscoveredV1 is emitted by the crawl-request handler when a
@@ -85,4 +90,7 @@ type SourceDiscoveredV1 struct {
 	Name    string `json:"name,omitempty"    parquet:"name,optional"`
 	Country string `json:"country,omitempty" parquet:"country,optional"`
 	Type    string `json:"type,omitempty"    parquet:"type,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }

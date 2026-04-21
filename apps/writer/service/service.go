@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -93,48 +92,48 @@ func (s *Service) drain(ctx context.Context) error {
 }
 
 // uploadBatch serializes the batch's events as Parquet and uploads
-// to R2. For Phase 1 we dispatch only on VariantIngestedV1 since
-// that's the only event type implemented. Phase 2 adds the other
-// collections.
+// to R2. Each case calls the matching per-type encode function which
+// copies EventID / OccurredAt from the envelope into the payload row
+// before writing to Parquet.
 func (s *Service) uploadBatch(ctx context.Context, b *Batch) error {
 	var body []byte
 	var err error
 
 	switch b.EventType {
 	case eventsv1.TopicVariantsIngested:
-		body, err = encodeBatch[eventsv1.VariantIngestedV1](b.Events)
+		body, err = EncodeBatchVariantIngested(b.Events)
 	case eventsv1.TopicVariantsNormalized:
-		body, err = encodeBatch[eventsv1.VariantNormalizedV1](b.Events)
+		body, err = encodeBatchVariantNormalized(b.Events)
 	case eventsv1.TopicVariantsValidated:
-		body, err = encodeBatch[eventsv1.VariantValidatedV1](b.Events)
+		body, err = encodeBatchVariantValidated(b.Events)
 	case eventsv1.TopicVariantsFlagged:
-		body, err = encodeBatch[eventsv1.VariantFlaggedV1](b.Events)
+		body, err = encodeBatchVariantFlagged(b.Events)
 	case eventsv1.TopicVariantsClustered:
-		body, err = encodeBatch[eventsv1.VariantClusteredV1](b.Events)
+		body, err = encodeBatchVariantClustered(b.Events)
 	case eventsv1.TopicCanonicalsUpserted:
-		body, err = encodeBatch[eventsv1.CanonicalUpsertedV1](b.Events)
+		body, err = encodeBatchCanonicalUpserted(b.Events)
 	case eventsv1.TopicEmbeddings:
-		body, err = encodeBatch[eventsv1.EmbeddingV1](b.Events)
+		body, err = encodeBatchEmbedding(b.Events)
 	case eventsv1.TopicTranslations:
-		body, err = encodeBatch[eventsv1.TranslationV1](b.Events)
+		body, err = encodeBatchTranslation(b.Events)
 	case eventsv1.TopicPublished:
-		body, err = encodeBatch[eventsv1.PublishedV1](b.Events)
+		body, err = encodeBatchPublished(b.Events)
 	case eventsv1.TopicCrawlPageCompleted:
-		body, err = encodeBatch[eventsv1.CrawlPageCompletedV1](b.Events)
+		body, err = encodeBatchCrawlPageCompleted(b.Events)
 	case eventsv1.TopicSourcesDiscovered:
-		body, err = encodeBatch[eventsv1.SourceDiscoveredV1](b.Events)
+		body, err = encodeBatchSourceDiscovered(b.Events)
 	case eventsv1.TopicCVUploaded:
-		body, err = encodeBatch[eventsv1.CVUploadedV1](b.Events)
+		body, err = encodeBatchCVUploaded(b.Events)
 	case eventsv1.TopicCVExtracted:
-		body, err = encodeBatch[eventsv1.CVExtractedV1](b.Events)
+		body, err = encodeBatchCVExtracted(b.Events)
 	case eventsv1.TopicCVImproved:
-		body, err = encodeBatch[eventsv1.CVImprovedV1](b.Events)
+		body, err = encodeBatchCVImproved(b.Events)
 	case eventsv1.TopicCandidateEmbedding:
-		body, err = encodeBatch[eventsv1.CandidateEmbeddingV1](b.Events)
+		body, err = encodeBatchCandidateEmbedding(b.Events)
 	case eventsv1.TopicCandidatePreferencesUpdated:
-		body, err = encodeBatch[eventsv1.PreferencesUpdatedV1](b.Events)
+		body, err = encodeBatchPreferencesUpdated(b.Events)
 	case eventsv1.TopicCandidateMatchesReady:
-		body, err = encodeBatch[eventsv1.MatchesReadyV1](b.Events)
+		body, err = encodeBatchMatchesReady(b.Events)
 	default:
 		return fmt.Errorf("writer: no encoder registered for %q", b.EventType)
 	}
@@ -156,19 +155,4 @@ func (s *Service) uploadBatch(ctx context.Context, b *Batch) error {
 		WithField("events", len(b.Events)).
 		Info("writer: parquet flushed")
 	return nil
-}
-
-// encodeBatch decodes each raw envelope into the typed payload and
-// writes the resulting slice as Parquet. Parquet columns are
-// generated from the P struct's `parquet` tags.
-func encodeBatch[P any](raws []json.RawMessage) ([]byte, error) {
-	rows := make([]P, 0, len(raws))
-	for _, r := range raws {
-		var env eventsv1.Envelope[P]
-		if err := json.Unmarshal(r, &env); err != nil {
-			return nil, fmt.Errorf("writer: decode envelope: %w", err)
-		}
-		rows = append(rows, env.Payload)
-	}
-	return eventlog.WriteParquet(rows)
 }

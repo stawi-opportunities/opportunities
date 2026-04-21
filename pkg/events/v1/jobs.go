@@ -39,4 +39,9 @@ type VariantIngestedV1 struct {
 
 	RawArchiveRef       string `json:"raw_archive_ref"       parquet:"raw_archive_ref,optional"`
 	ModelVersionExtract string `json:"model_version_extract" parquet:"model_version_extract,optional"`
+
+	// Envelope metadata — populated by the writer from the outer Envelope
+	// before Parquet serialisation. json:"-" keeps the wire format clean.
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }

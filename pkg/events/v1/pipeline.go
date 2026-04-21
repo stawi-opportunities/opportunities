@@ -28,6 +28,9 @@ type VariantNormalizedV1 struct {
 	ScrapedAt      time.Time `json:"scraped_at"       parquet:"scraped_at"`
 	ContentHash    string    `json:"content_hash"     parquet:"content_hash,optional"`
 	RawArchiveRef  string    `json:"raw_archive_ref"  parquet:"raw_archive_ref,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // VariantValidatedV1 — emitted when a variant passes the AI
@@ -42,6 +45,9 @@ type VariantValidatedV1 struct {
 	// Normalized is the full previous-stage payload, so downstream
 	// consumers (dedup, canonical) don't need to re-fetch.
 	Normalized VariantNormalizedV1 `json:"normalized"       parquet:"normalized"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // VariantFlaggedV1 — emitted when a variant fails validation. Terminal
@@ -52,6 +58,9 @@ type VariantFlaggedV1 struct {
 	Reason       string  `json:"reason"        parquet:"reason"`
 	Confidence   float64 `json:"confidence"    parquet:"confidence,optional"`
 	ModelVersion string  `json:"model_version" parquet:"model_version,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // VariantClusteredV1 — emitted post-dedup. Identifies which cluster
@@ -62,6 +71,9 @@ type VariantClusteredV1 struct {
 	ClusterID string             `json:"cluster_id" parquet:"cluster_id"`
 	IsNew     bool               `json:"is_new"     parquet:"is_new"`
 	Validated VariantValidatedV1 `json:"validated"  parquet:"validated"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // TranslationV1 — emitted by the translate handler once a canonical
@@ -73,6 +85,9 @@ type TranslationV1 struct {
 	TitleTr       string `json:"title_tr"       parquet:"title_tr,optional"`
 	DescriptionTr string `json:"description_tr" parquet:"description_tr,optional"`
 	ModelVersion  string `json:"model_version"  parquet:"model_version,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // PublishedV1 — emitted by the publish handler after a canonical's
@@ -83,4 +98,7 @@ type PublishedV1 struct {
 	Slug        string    `json:"slug"         parquet:"slug"`
 	R2Version   int       `json:"r2_version"   parquet:"r2_version"`
 	PublishedAt time.Time `json:"published_at" parquet:"published_at"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }

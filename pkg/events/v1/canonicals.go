@@ -38,6 +38,9 @@ type CanonicalUpsertedV1 struct {
 	LastSeenAt     time.Time `json:"last_seen_at"    parquet:"last_seen_at,optional"`
 	ExpiresAt      time.Time `json:"expires_at"      parquet:"expires_at,optional"`
 	ApplyURL       string    `json:"apply_url"       parquet:"apply_url,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // EmbeddingV1 is the event emitted by the embedder stage once a
@@ -48,4 +51,7 @@ type EmbeddingV1 struct {
 	CanonicalID  string    `json:"canonical_id"  parquet:"canonical_id"`
 	Vector       []float32 `json:"vector"        parquet:"vector"`
 	ModelVersion string    `json:"model_version" parquet:"model_version"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }

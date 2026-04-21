@@ -1,5 +1,7 @@
 package eventsv1
 
+import "time"
+
 // CVUploadedV1 is emitted by the candidates HTTP upload handler after
 // the raw bytes have been archived to R2 and the plain-text has been
 // extracted. It is the entry point of the candidate lifecycle.
@@ -21,6 +23,9 @@ type CVUploadedV1 struct {
 
 	// ExtractedText is the plain-text conversion of the uploaded PDF/DOCX.
 	ExtractedText string `json:"extracted_text" parquet:"extracted_text"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // CVExtractedV1 carries the parsed CV fields plus the deterministic
@@ -72,6 +77,9 @@ type CVExtractedV1 struct {
 
 	ModelVersionExtract string `json:"model_version_extract,omitempty" parquet:"model_version_extract,optional"`
 	ModelVersionScore   string `json:"model_version_score,omitempty"   parquet:"model_version_score,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // CVFix mirrors cv.PriorityFix, carried inside CVImprovedV1.
@@ -95,6 +103,9 @@ type CVImprovedV1 struct {
 	CVVersion    int     `json:"cv_version"   parquet:"cv_version"`
 	Fixes        []CVFix `json:"fixes"        parquet:"fixes,list"`
 	ModelVersion string  `json:"model_version,omitempty" parquet:"model_version,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // CandidateEmbeddingV1 is emitted by the cv-embed handler after a
@@ -104,6 +115,9 @@ type CandidateEmbeddingV1 struct {
 	CVVersion    int       `json:"cv_version"   parquet:"cv_version"`
 	Vector       []float32 `json:"vector"       parquet:"vector,list"`
 	ModelVersion string    `json:"model_version,omitempty" parquet:"model_version,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // PreferencesUpdatedV1 is emitted by the preferences HTTP endpoint.
@@ -120,6 +134,9 @@ type PreferencesUpdatedV1 struct {
 	TargetRoles        []string `json:"target_roles,omitempty"        parquet:"target_roles,list,optional"`
 	Languages          []string `json:"languages,omitempty"           parquet:"languages,list,optional"`
 	Availability       string   `json:"availability,omitempty"        parquet:"availability,optional"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
 // MatchRow is one candidate-to-job match, carried inside MatchesReadyV1.
@@ -135,4 +152,7 @@ type MatchesReadyV1 struct {
 	CandidateID  string     `json:"candidate_id"   parquet:"candidate_id"`
 	MatchBatchID string     `json:"match_batch_id" parquet:"match_batch_id"`
 	Matches      []MatchRow `json:"matches"        parquet:"matches,list"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
