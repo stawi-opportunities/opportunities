@@ -25,7 +25,7 @@ func PartitionKey(eventType string, occurredAt time.Time, hint string) PartKey {
 
 func partitionSecondary(eventType, hint string) string {
 	switch eventType {
-	case TopicVariantsIngested, TopicCrawlPageCompleted:
+	case TopicVariantsIngested, TopicCrawlPageCompleted, TopicSourcesDiscovered:
 		// per-source files — lots of small sources, keep them grouped
 		return strings.ToLower(hint)
 	case TopicCanonicalsUpserted, TopicCanonicalsExpired,
@@ -67,7 +67,7 @@ func (k PartKey) ObjectPath(collection, fileID string) string {
 // listings readable — "src=greenhouse" is self-documenting.
 func partitionSecondaryLabel(collection string) string {
 	switch collection {
-	case "variants", "crawl_page_completed":
+	case "variants", "crawl_page_completed", "sources_discovered":
 		return "src"
 	case "canonicals", "canonicals_expired", "embeddings", "published":
 		return "cc"

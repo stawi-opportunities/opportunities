@@ -279,3 +279,20 @@ func TestSourceDiscoveredRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip lost: %+v", back.Payload)
 	}
 }
+
+func TestPartitionKeySourcesDiscoveredUsesSourceHint(t *testing.T) {
+	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
+	pk := PartitionKey(TopicSourcesDiscovered, now, "src_origin_1")
+	if pk.Secondary != "src_origin_1" {
+		t.Fatalf("Secondary=%q, want src_origin_1", pk.Secondary)
+	}
+}
+
+func TestPartitionObjectPathSourcesDiscoveredLabel(t *testing.T) {
+	pk := PartKey{DT: "2026-04-21", Secondary: "src_origin_1"}
+	got := pk.ObjectPath("sources_discovered", "xyz789")
+	want := "sources_discovered/dt=2026-04-21/src=src_origin_1/xyz789.parquet"
+	if got != want {
+		t.Fatalf("path=%q, want %q", got, want)
+	}
+}
