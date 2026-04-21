@@ -23,10 +23,15 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 - Six new event payload types (`pkg/events/v1/candidates.go`) + six topic constants (`pkg/events/v1/names.go`) + partition routing for eight candidate Parquet collections.
 - Writer encoder + hint extraction extensions for all six candidate topics.
 - `pkg/candidatestore` — reads latest candidate embedding + preferences from R2 `*_current/` partitions, with a small Valkey cache; writes nothing.
-- `apps/candidates/service/http/v1/` — three HTTP handlers (upload, preferences, match).
+- `apps/candidates/service/http/v1/` — three HTTP handlers (upload, preferences, match) **with production adapters wired end-to-end**.
 - `apps/candidates/service/events/v1/` — three Frame subscription handlers (cv-extract, cv-improve, cv-embed) and their unit tests.
-- `apps/candidates/service/admin/v1/` — two Trustage admin handlers (matches weekly digest, CV stale nudge).
-- `apps/candidates/cmd/main.go` rewritten — drops ~1,200 lines of legacy wiring; wires the new handlers + Trustage admins + healthz.
+- `apps/candidates/service/admin/v1/` — two Trustage admin handlers (matches weekly digest, CV stale nudge) **with production adapters wired end-to-end**.
+- Four production adapter files wiring the narrow interfaces declared by the handlers:
+  - `SearchIndex` adapter on `pkg/searchindex.Client` (Task 16)
+  - `CandidateLister` adapter on `pkg/repository.CandidateRepository` (Task 17)
+  - `MatchService` — the match handler's scoring pipeline extracted for reuse by `MatchRunner` (Task 18)
+  - `StaleLister` adapter on `pkg/repository.CandidateRepository` using `updated_at` as the activity proxy (Task 19)
+- `apps/candidates/cmd/main.go` rewritten — drops ~1,200 lines of legacy wiring; wires the new handlers + Trustage admins + healthz; no `nil` placeholders.
 - Two Trustage triggers: `candidates-matches-weekly-digest.json`, `candidates-cv-stale-nudge.json`.
 - End-to-end test: POST `/candidates/cv/upload` → subscriptions fire → assert six-stage event trail → POST `/candidates/preferences` → GET `/candidates/match` returns top-N matches.
 
@@ -38,6 +43,7 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 - Moving billing webhooks/plans/checkout to a separate billing binary. Same pattern: endpoints removed here; new home is Phase 6's problem.
 - Recruiter-side candidate search (`idx_candidates_rt` in Manticore) — deferred to v1.1 per spec.
 - Link-expired notification flow — if it's wanted, it becomes a consumer of `jobs.canonicals.expired.v1` in a future plan; removed from `apps/candidates` here.
+- Daily compaction of `candidates_cv_current/` / `candidates_embeddings_current/` / `candidates_preferences_current/` from the raw daily partitions. Plan 5 writes only the daily partitions (via the existing writer); the match endpoint's `candidatestore.Reader` reads `*_current/` which won't exist until compaction ships in Phase 6. In the meantime, operators can run a one-off backfill job, or Task 19's StaleLister (Postgres-backed for now) gives us a working stale-nudge without depending on compaction.
 
 **What's intentionally deleted (aggressive option chosen by human):**
 
@@ -3378,7 +3384,991 @@ git commit -m "test(candidates): end-to-end upload → extract → improve → e
 
 ---
 
-## Task 13: Rewrite `apps/candidates/cmd/main.go`
+## Task 13: SearchIndex adapter over `pkg/searchindex.Client`
+
+**Files:**
+- Create: `apps/candidates/service/http/v1/search_adapter.go`
+- Create: `apps/candidates/service/http/v1/search_adapter_test.go`
+
+The match handler depends on a `SearchIndex` interface (declared in `apps/candidates/service/http/v1/match.go`) whose shape is:
+
+```go
+type SearchIndex interface {
+    KNNWithFilters(ctx context.Context, req SearchRequest) ([]SearchHit, error)
+}
+```
+
+This task builds the production impl that wraps `*pkg/searchindex.Client`, constructs the Manticore JSON query body, and decodes hits.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/candidates/service/http/v1/search_adapter_test.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// fakeManticoreServer returns a canned Manticore /search response.
+func fakeManticoreServer(t *testing.T, respBody string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/search") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(respBody))
+	}))
+}
+
+func TestManticoreSearchAdapterDecodesHits(t *testing.T) {
+	body := `{"took":1,"timed_out":false,"hits":{"total":2,"hits":[
+		{"_id":"1","_score":0.92,"_source":{"canonical_id":"can_a","slug":"job-a","title":"Senior Backend","company":"Acme"}},
+		{"_id":"2","_score":0.81,"_source":{"canonical_id":"can_b","slug":"job-b","title":"Staff Backend","company":"Beta"}}
+	]}}`
+	srv := fakeManticoreServer(t, body)
+	defer srv.Close()
+
+	adapter, err := NewManticoreSearch(srv.URL, "idx_jobs_rt")
+	if err != nil {
+		t.Fatalf("NewManticoreSearch: %v", err)
+	}
+
+	hits, err := adapter.KNNWithFilters(context.Background(), SearchRequest{
+		Vector:           []float32{0.1, 0.2, 0.3},
+		Limit:            10,
+		RemotePreference: "remote",
+		SalaryMinFloor:   70000,
+	})
+	if err != nil {
+		t.Fatalf("KNNWithFilters: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("hits=%d, want 2", len(hits))
+	}
+	if hits[0].CanonicalID != "can_a" || hits[0].Score != 0.92 {
+		t.Fatalf("hit[0] wrong: %+v", hits[0])
+	}
+}
+
+func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
+	// Capture the request body to assert the query shape.
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"hits":{"hits":[]}}`))
+	}))
+	defer srv.Close()
+
+	adapter, _ := NewManticoreSearch(srv.URL, "idx_jobs_rt")
+	_, _ = adapter.KNNWithFilters(context.Background(), SearchRequest{
+		Vector:             []float32{0.5},
+		Limit:              20,
+		RemotePreference:   "remote",
+		SalaryMinFloor:     80000,
+		PreferredLocations: []string{"KE", "US"},
+	})
+	if captured == nil {
+		t.Fatal("server saw no request body")
+	}
+	if captured["index"] != "idx_jobs_rt" {
+		t.Fatalf("index=%v, want idx_jobs_rt", captured["index"])
+	}
+	if _, ok := captured["knn"]; !ok {
+		t.Fatalf("expected knn clause, got %+v", captured)
+	}
+}
+```
+
+- [ ] **Step 2: Run — expect build failure**
+
+```bash
+cd /home/j/code/stawi.jobs
+go test ./apps/candidates/service/http/v1/... -run TestManticoreSearchAdapter
+```
+
+Expected: `undefined: NewManticoreSearch`.
+
+- [ ] **Step 3: Implement the adapter**
+
+Create `apps/candidates/service/http/v1/search_adapter.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"stawi.jobs/pkg/searchindex"
+)
+
+// ManticoreSearch adapts *searchindex.Client to the SearchIndex
+// interface required by MatchHandler.
+type ManticoreSearch struct {
+	client *searchindex.Client
+	index  string
+}
+
+// NewManticoreSearch opens a Manticore client at the given URL and
+// returns an adapter bound to `index` (typically "idx_jobs_rt").
+func NewManticoreSearch(url, index string) (*ManticoreSearch, error) {
+	c, err := searchindex.Open(searchindex.Config{URL: url})
+	if err != nil {
+		return nil, fmt.Errorf("search: open: %w", err)
+	}
+	return &ManticoreSearch{client: c, index: index}, nil
+}
+
+// KNNWithFilters builds a Manticore JSON query combining a KNN clause
+// on the `embedding` attribute with hard filters on remote_type /
+// salary_min / country. Returns the decoded hits.
+//
+// Manticore's KNN query shape (documented at
+// https://manual.manticoresearch.com/Searching/KNN ):
+//
+//	{
+//	  "index": "idx_jobs_rt",
+//	  "knn": { "field": "embedding", "query_vector": [...], "k": 200 },
+//	  "query": { "bool": { "must": [ ...filters... ] } },
+//	  "_source": ["canonical_id","slug","title","company"]
+//	}
+func (m *ManticoreSearch) KNNWithFilters(ctx context.Context, req SearchRequest) ([]SearchHit, error) {
+	if len(req.Vector) == 0 {
+		return nil, fmt.Errorf("search: empty vector")
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+
+	filters := []map[string]any{
+		{"equals": map[string]any{"status": "active"}},
+	}
+	if req.RemotePreference != "" {
+		filters = append(filters, map[string]any{"equals": map[string]any{"remote_type": req.RemotePreference}})
+	}
+	if req.SalaryMinFloor > 0 {
+		filters = append(filters, map[string]any{"range": map[string]any{
+			"salary_min": map[string]any{"gte": req.SalaryMinFloor},
+		}})
+	}
+	if len(req.PreferredLocations) > 0 {
+		filters = append(filters, map[string]any{"in": map[string]any{"country": req.PreferredLocations}})
+	}
+
+	query := map[string]any{
+		"index": m.index,
+		"knn": map[string]any{
+			"field":        "embedding",
+			"query_vector": req.Vector,
+			"k":            limit,
+		},
+		"query":   map[string]any{"bool": map[string]any{"must": filters}},
+		"_source": []string{"canonical_id", "slug", "title", "company"},
+		"limit":   limit,
+	}
+
+	raw, err := m.client.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	var out struct {
+		Hits struct {
+			Hits []struct {
+				ID     string  `json:"_id"`
+				Score  float64 `json:"_score"`
+				Source struct {
+					CanonicalID string `json:"canonical_id"`
+					Slug        string `json:"slug"`
+					Title       string `json:"title"`
+					Company     string `json:"company"`
+				} `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("search: decode: %w", err)
+	}
+
+	hits := make([]SearchHit, 0, len(out.Hits.Hits))
+	for _, h := range out.Hits.Hits {
+		hits = append(hits, SearchHit{
+			CanonicalID: h.Source.CanonicalID,
+			Slug:        h.Source.Slug,
+			Title:       h.Source.Title,
+			Company:     h.Source.Company,
+			Score:       h.Score,
+		})
+	}
+	return hits, nil
+}
+```
+
+- [ ] **Step 4: Run — expect PASS**
+
+```bash
+go test ./apps/candidates/service/http/v1/... -run TestManticoreSearchAdapter -count=1
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/candidates/service/http/v1/search_adapter.go apps/candidates/service/http/v1/search_adapter_test.go
+git commit -m "feat(candidates): Manticore KNN+filter adapter for match endpoint"
+```
+
+---
+
+## Task 14: CandidateLister adapter over `repository.CandidateRepository`
+
+**Files:**
+- Create: `apps/candidates/service/admin/v1/candidate_lister.go`
+- Create: `apps/candidates/service/admin/v1/candidate_lister_test.go`
+
+`repository.CandidateRepository.ListActive(ctx, limit int) ([]*domain.CandidateProfile, error)` already exists. The `MatchesWeeklyHandler` wants a `CandidateLister` returning `[]string` of IDs. Thin adapter.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/candidates/service/admin/v1/candidate_lister_test.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"testing"
+
+	"stawi.jobs/pkg/domain"
+)
+
+// fakeCandidateRepo implements just ListActive.
+type fakeCandidateRepo struct {
+	rows []*domain.CandidateProfile
+}
+
+func (r *fakeCandidateRepo) ListActive(_ context.Context, _ int) ([]*domain.CandidateProfile, error) {
+	return r.rows, nil
+}
+
+func TestRepoCandidateListerReturnsIDs(t *testing.T) {
+	rows := []*domain.CandidateProfile{
+		{BaseModel: domain.BaseModel{ID: "cnd_1"}},
+		{BaseModel: domain.BaseModel{ID: "cnd_2"}},
+	}
+	lister := NewRepoCandidateLister(&fakeCandidateRepo{rows: rows}, 500)
+	ids, err := lister.ListActive(context.Background())
+	if err != nil {
+		t.Fatalf("ListActive: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "cnd_1" || ids[1] != "cnd_2" {
+		t.Fatalf("ids=%v", ids)
+	}
+}
+```
+
+- [ ] **Step 2: Run — expect build failure**
+
+```bash
+go test ./apps/candidates/service/admin/v1/... -run TestRepoCandidateLister
+```
+
+Expected: `undefined: NewRepoCandidateLister`.
+
+- [ ] **Step 3: Implement the adapter**
+
+Create `apps/candidates/service/admin/v1/candidate_lister.go`:
+
+```go
+package v1
+
+import (
+	"context"
+
+	"stawi.jobs/pkg/domain"
+)
+
+// CandidateActiveRepo is the subset of repository.CandidateRepository
+// the lister adapter needs. Kept narrow so tests can fake it without
+// pulling the whole repo type.
+type CandidateActiveRepo interface {
+	ListActive(ctx context.Context, limit int) ([]*domain.CandidateProfile, error)
+}
+
+// RepoCandidateLister adapts a CandidateActiveRepo into the CandidateLister
+// interface required by MatchesWeeklyHandler.
+type RepoCandidateLister struct {
+	repo  CandidateActiveRepo
+	limit int
+}
+
+// NewRepoCandidateLister wires the adapter.
+func NewRepoCandidateLister(repo CandidateActiveRepo, limit int) *RepoCandidateLister {
+	if limit <= 0 {
+		limit = 1000
+	}
+	return &RepoCandidateLister{repo: repo, limit: limit}
+}
+
+// ListActive returns the IDs of active candidates.
+func (l *RepoCandidateLister) ListActive(ctx context.Context) ([]string, error) {
+	rows, err := l.repo.ListActive(ctx, l.limit)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	return ids, nil
+}
+```
+
+- [ ] **Step 4: Run — expect PASS**
+
+```bash
+go test ./apps/candidates/service/admin/v1/... -run TestRepoCandidateLister -count=1
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/candidates/service/admin/v1/candidate_lister.go apps/candidates/service/admin/v1/candidate_lister_test.go
+git commit -m "feat(candidates): CandidateLister adapter on repository.ListActive"
+```
+
+---
+
+## Task 15: `MatchService` — extract match pipeline from the HTTP handler
+
+**Files:**
+- Modify: `apps/candidates/service/http/v1/match.go`
+- Create: `apps/candidates/service/http/v1/match_service.go`
+- Create: `apps/candidates/service/http/v1/match_service_test.go`
+
+The weekly-digest `MatchRunner` needs the same "run the match pipeline for one candidate" logic the HTTP handler already has. Rather than duplicate it or have the cron fire an internal HTTP call, extract the pipeline into a struct that both the HTTP handler and `MatchRunner` can drive.
+
+This refactor preserves Task 10's external behaviour exactly: `MatchHandler` still returns the same JSON shape and emits the same `MatchesReadyV1` event.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/candidates/service/http/v1/match_service_test.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"testing"
+
+	eventsv1 "stawi.jobs/pkg/events/v1"
+)
+
+func TestMatchServiceRunMatchReturnsHits(t *testing.T) {
+	store := &fakeCandidateStore{
+		emb:   eventsv1.CandidateEmbeddingV1{CandidateID: "cnd_1", Vector: []float32{0.1}},
+		prefs: eventsv1.PreferencesUpdatedV1{CandidateID: "cnd_1"},
+	}
+	search := &fakeSearchIndex{rows: []SearchHit{
+		{CanonicalID: "can_a", Score: 0.9},
+		{CanonicalID: "can_b", Score: 0.8},
+	}}
+	svc := NewMatchService(store, search, 5)
+
+	res, err := svc.RunMatch(context.Background(), "cnd_1")
+	if err != nil {
+		t.Fatalf("RunMatch: %v", err)
+	}
+	if len(res.Matches) != 2 || res.Matches[0].CanonicalID != "can_a" {
+		t.Fatalf("bad result: %+v", res)
+	}
+	if res.CandidateID != "cnd_1" || res.MatchBatchID == "" {
+		t.Fatalf("ids wrong: %+v", res)
+	}
+}
+
+func TestMatchServiceRunMatchMissingEmbeddingReturnsErrNoEmbedding(t *testing.T) {
+	store := &fakeCandidateStore{err: errNoEmbedding}
+	svc := NewMatchService(store, &fakeSearchIndex{}, 5)
+
+	_, err := svc.RunMatch(context.Background(), "cnd_missing")
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+```
+
+(The test references `errNoEmbedding` — a sentinel the match_service.go file will export so the HTTP wrapper can recognise not-found vs. transient errors.)
+
+- [ ] **Step 2: Run — expect build failure**
+
+```bash
+go test ./apps/candidates/service/http/v1/... -run TestMatchService
+```
+
+Expected: `undefined: NewMatchService, errNoEmbedding`.
+
+- [ ] **Step 3: Implement the service**
+
+Create `apps/candidates/service/http/v1/match_service.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"errors"
+
+	"github.com/rs/xid"
+
+	eventsv1 "stawi.jobs/pkg/events/v1"
+)
+
+// ErrNoEmbedding is returned by MatchService.RunMatch when the
+// candidate has no embedding yet (typically because they haven't
+// uploaded a CV). HTTP callers translate this to 404; cron callers
+// count it as "skipped" rather than "failed".
+var ErrNoEmbedding = errors.New("match: no embedding for candidate")
+
+// errNoEmbedding is the package-local alias used by tests.
+var errNoEmbedding = ErrNoEmbedding
+
+// MatchResult is the structured output of RunMatch. Same shape the
+// HTTP handler marshals into JSON.
+type MatchResult struct {
+	CandidateID  string
+	MatchBatchID string
+	Matches      []SearchHit
+}
+
+// MatchService runs the "embedding + preferences + Manticore KNN +
+// top-K truncation" pipeline for one candidate. Used by both the
+// HTTP match handler and the weekly-digest cron.
+type MatchService struct {
+	store  CandidateStore
+	search SearchIndex
+	topK   int
+}
+
+// NewMatchService wires the service.
+func NewMatchService(store CandidateStore, search SearchIndex, topK int) *MatchService {
+	if topK <= 0 {
+		topK = 20
+	}
+	return &MatchService{store: store, search: search, topK: topK}
+}
+
+// RunMatch loads the candidate's embedding + preferences, queries
+// Manticore, and returns the top-K hits. Does NOT emit events —
+// that's the caller's job (HTTP handler emits after writing the
+// response; cron emits in the weekly-digest loop).
+func (s *MatchService) RunMatch(ctx context.Context, candidateID string) (MatchResult, error) {
+	emb, err := s.store.LatestEmbedding(ctx, candidateID)
+	if err != nil {
+		return MatchResult{}, ErrNoEmbedding
+	}
+	prefs, _ := s.store.LatestPreferences(ctx, candidateID)
+
+	hits, err := s.search.KNNWithFilters(ctx, SearchRequest{
+		Vector:             emb.Vector,
+		Limit:              200,
+		RemotePreference:   prefs.RemotePreference,
+		SalaryMinFloor:     prefs.SalaryMin,
+		PreferredLocations: prefs.PreferredLocations,
+	})
+	if err != nil {
+		return MatchResult{}, err
+	}
+	if len(hits) > s.topK {
+		hits = hits[:s.topK]
+	}
+
+	return MatchResult{
+		CandidateID:  candidateID,
+		MatchBatchID: xid.New().String(),
+		Matches:      hits,
+	}, nil
+}
+
+// Ensure the package uses the eventsv1 import beyond the type aliases
+// already in match.go (keeps goimports happy in tests that reference
+// shared fakes).
+var _ = eventsv1.MatchesReadyV1{}
+```
+
+- [ ] **Step 4: Refactor `match.go` to delegate to `MatchService`**
+
+Edit `apps/candidates/service/http/v1/match.go`. Replace the body of `MatchHandler` so it constructs a `MatchService` from `deps.Store` + `deps.Search`, calls `RunMatch`, maps `ErrNoEmbedding` → 404, emits the event, returns the response. The response and event shapes are unchanged.
+
+Replace:
+
+```go
+func MatchHandler(deps MatchDeps) http.HandlerFunc {
+	topK := deps.TopK
+	if topK <= 0 {
+		topK = 20
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		// ... existing big body ...
+	}
+}
+```
+
+With:
+
+```go
+func MatchHandler(deps MatchDeps) http.HandlerFunc {
+	svcPipeline := NewMatchService(deps.Store, deps.Search, deps.TopK)
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		log := util.Log(ctx)
+
+		if r.Method != http.MethodGet {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		candidateID := strings.TrimSpace(r.URL.Query().Get("candidate_id"))
+		if candidateID == "" {
+			http.Error(w, `{"error":"candidate_id is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		res, err := svcPipeline.RunMatch(ctx, candidateID)
+		if errors.Is(err, ErrNoEmbedding) {
+			http.Error(w, `{"error":"embedding not available — upload CV first"}`, http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.WithError(err).Error("match: RunMatch failed")
+			http.Error(w, `{"error":"search failed"}`, http.StatusBadGateway)
+			return
+		}
+
+		rows := make([]matchResponseRow, 0, len(res.Matches))
+		eventRows := make([]eventsv1.MatchRow, 0, len(res.Matches))
+		for _, h := range res.Matches {
+			rows = append(rows, matchResponseRow{
+				CanonicalID: h.CanonicalID, Slug: h.Slug, Title: h.Title, Company: h.Company, Score: h.Score,
+			})
+			eventRows = append(eventRows, eventsv1.MatchRow{CanonicalID: h.CanonicalID, Score: h.Score})
+		}
+		env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
+			CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: eventRows,
+		})
+		if err := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, env); err != nil {
+			log.WithError(err).Warn("match: emit MatchesReadyV1 failed")
+		}
+
+		resp := matchResponse{
+			OK: true, CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: rows,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}
+}
+```
+
+The trailing `var _ = errors.New` line in match.go (added as a keep-alive in Task 10) can be deleted now — `errors.Is(err, ErrNoEmbedding)` uses the import directly.
+
+- [ ] **Step 5: Run all match tests — both Task 10's and the new service tests must pass**
+
+```bash
+go test ./apps/candidates/service/http/v1/... -run 'TestMatchHandler|TestMatchService' -count=1 -v
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/candidates/service/http/v1/match.go apps/candidates/service/http/v1/match_service.go apps/candidates/service/http/v1/match_service_test.go
+git commit -m "refactor(candidates): extract MatchService so cron and HTTP share one pipeline"
+```
+
+---
+
+## Task 16: Wire `MatchRunner` on the new `MatchService`
+
+**Files:**
+- Create: `apps/candidates/service/admin/v1/match_runner.go`
+- Create: `apps/candidates/service/admin/v1/match_runner_test.go`
+
+`MatchesWeeklyHandler` depends on a `MatchRunner` interface (`RunMatch(ctx, candidateID) error`). The new `MatchService` provides exactly the pipeline — but the runner also needs to emit the `MatchesReadyV1` event (the HTTP handler does this inline; the cron has to do it itself).
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/candidates/service/admin/v1/match_runner_test.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/frametests"
+
+	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
+	eventsv1 "stawi.jobs/pkg/events/v1"
+)
+
+type matchesReadyCollector struct {
+	mu  sync.Mutex
+	got []eventsv1.Envelope[eventsv1.MatchesReadyV1]
+}
+
+func (c *matchesReadyCollector) Name() string     { return eventsv1.TopicCandidateMatchesReady }
+func (c *matchesReadyCollector) PayloadType() any { var raw json.RawMessage; return &raw }
+func (c *matchesReadyCollector) Validate(context.Context, any) error { return nil }
+func (c *matchesReadyCollector) Execute(_ context.Context, payload any) error {
+	raw := payload.(*json.RawMessage)
+	var env eventsv1.Envelope[eventsv1.MatchesReadyV1]
+	if err := json.Unmarshal(*raw, &env); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.got = append(c.got, env)
+	c.mu.Unlock()
+	return nil
+}
+func (c *matchesReadyCollector) Len() int { c.mu.Lock(); defer c.mu.Unlock(); return len(c.got) }
+
+type fakeStore struct{ emb eventsv1.CandidateEmbeddingV1 }
+
+func (f *fakeStore) LatestEmbedding(_ context.Context, _ string) (eventsv1.CandidateEmbeddingV1, error) {
+	return f.emb, nil
+}
+func (f *fakeStore) LatestPreferences(_ context.Context, _ string) (eventsv1.PreferencesUpdatedV1, error) {
+	return eventsv1.PreferencesUpdatedV1{}, nil
+}
+
+type fakeSearch struct{ rows []httpv1.SearchHit }
+
+func (f *fakeSearch) KNNWithFilters(_ context.Context, _ httpv1.SearchRequest) ([]httpv1.SearchHit, error) {
+	return f.rows, nil
+}
+
+func TestServiceMatchRunnerEmitsMatchesReady(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx, svc := frame.NewServiceWithContext(ctx,
+		frame.WithName("runner-test"),
+		frametests.WithNoopDriver(),
+	)
+	defer svc.Stop(ctx)
+
+	col := &matchesReadyCollector{}
+	svc.EventsManager().Add(col)
+	go func() { _ = svc.Run(ctx, "") }()
+	time.Sleep(200 * time.Millisecond)
+
+	store := &fakeStore{emb: eventsv1.CandidateEmbeddingV1{CandidateID: "cnd_1", Vector: []float32{0.1}}}
+	search := &fakeSearch{rows: []httpv1.SearchHit{{CanonicalID: "can_a", Score: 0.9}}}
+	matchSvc := httpv1.NewMatchService(store, search, 5)
+
+	runner := NewServiceMatchRunner(svc, matchSvc)
+	if err := runner.RunMatch(ctx, "cnd_1"); err != nil {
+		t.Fatalf("RunMatch: %v", err)
+	}
+
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if col.Len() == 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if col.Len() != 1 {
+		t.Fatalf("emitted=%d, want 1", col.Len())
+	}
+	if col.got[0].Payload.CandidateID != "cnd_1" {
+		t.Fatalf("bad payload: %+v", col.got[0].Payload)
+	}
+}
+
+func TestServiceMatchRunnerSwallowsMissingEmbedding(t *testing.T) {
+	ctx, svc := frame.NewServiceWithContext(context.Background(),
+		frame.WithName("runner-missing"),
+		frametests.WithNoopDriver(),
+	)
+	defer svc.Stop(ctx)
+
+	// store returns ErrNoEmbedding
+	store := &fakeStoreErrNoEmbedding{}
+	search := &fakeSearch{}
+	matchSvc := httpv1.NewMatchService(store, search, 5)
+
+	runner := NewServiceMatchRunner(svc, matchSvc)
+	if err := runner.RunMatch(ctx, "cnd_x"); err != nil {
+		t.Fatalf("RunMatch should swallow ErrNoEmbedding, got: %v", err)
+	}
+}
+
+type fakeStoreErrNoEmbedding struct{}
+
+func (f *fakeStoreErrNoEmbedding) LatestEmbedding(_ context.Context, _ string) (eventsv1.CandidateEmbeddingV1, error) {
+	return eventsv1.CandidateEmbeddingV1{}, httpv1.ErrNoEmbedding
+}
+func (f *fakeStoreErrNoEmbedding) LatestPreferences(_ context.Context, _ string) (eventsv1.PreferencesUpdatedV1, error) {
+	return eventsv1.PreferencesUpdatedV1{}, nil
+}
+```
+
+- [ ] **Step 2: Run — expect build failure**
+
+```bash
+go test ./apps/candidates/service/admin/v1/... -run TestServiceMatchRunner
+```
+
+Expected: `undefined: NewServiceMatchRunner`.
+
+- [ ] **Step 3: Implement the runner**
+
+Create `apps/candidates/service/admin/v1/match_runner.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"errors"
+
+	"github.com/pitabwire/frame"
+	"github.com/pitabwire/util"
+
+	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
+	eventsv1 "stawi.jobs/pkg/events/v1"
+)
+
+// ServiceMatchRunner wraps an *httpv1.MatchService so the cron calls
+// the same pipeline the HTTP handler uses. Emits MatchesReadyV1 after
+// a successful run; swallows ErrNoEmbedding (candidate without a CV is
+// not a cron failure — we just skip them).
+type ServiceMatchRunner struct {
+	svc   *frame.Service
+	match *httpv1.MatchService
+}
+
+// NewServiceMatchRunner wires the runner.
+func NewServiceMatchRunner(svc *frame.Service, match *httpv1.MatchService) *ServiceMatchRunner {
+	return &ServiceMatchRunner{svc: svc, match: match}
+}
+
+// RunMatch runs the match pipeline for one candidate and emits
+// MatchesReadyV1. Returns nil for ErrNoEmbedding so the cron counts
+// such candidates as "processed" rather than "failed".
+func (r *ServiceMatchRunner) RunMatch(ctx context.Context, candidateID string) error {
+	res, err := r.match.RunMatch(ctx, candidateID)
+	if errors.Is(err, httpv1.ErrNoEmbedding) {
+		util.Log(ctx).WithField("candidate_id", candidateID).Debug("match-runner: no embedding; skipping")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	rows := make([]eventsv1.MatchRow, 0, len(res.Matches))
+	for _, m := range res.Matches {
+		rows = append(rows, eventsv1.MatchRow{CanonicalID: m.CanonicalID, Score: m.Score})
+	}
+	env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
+		CandidateID:  res.CandidateID,
+		MatchBatchID: res.MatchBatchID,
+		Matches:      rows,
+	})
+	if err := r.svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, env); err != nil {
+		return err
+	}
+	return nil
+}
+```
+
+- [ ] **Step 4: Run — expect PASS**
+
+```bash
+go test ./apps/candidates/service/admin/v1/... -run TestServiceMatchRunner -count=1
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/candidates/service/admin/v1/match_runner.go apps/candidates/service/admin/v1/match_runner_test.go
+git commit -m "feat(candidates): ServiceMatchRunner — cron wraps MatchService + emits MatchesReady"
+```
+
+---
+
+## Task 17: StaleLister over `repository.CandidateRepository`
+
+**Files:**
+- Create: `apps/candidates/service/admin/v1/stale_lister.go`
+- Create: `apps/candidates/service/admin/v1/stale_lister_test.go`
+- Modify: `pkg/repository/candidate.go` — add `ListInactiveSince(ctx, cutoff, limit) ([]*domain.CandidateProfile, error)`
+
+In the event-sourced world, "time of last CV upload" lives in R2 Parquet. Scanning R2 every day is wasteful; building a compaction pipeline for this one use case is Phase 6 work. For Plan 5 we use `candidates.updated_at` as the activity proxy — it ticks on any status/subscription change. This is lossy (a candidate who did nothing but view jobs will still appear "fresh") but good enough for a nudge email cadence.
+
+Adding one repository method is cleaner than reading the whole table and filtering client-side.
+
+- [ ] **Step 1: Add `ListInactiveSince` on the repository**
+
+Edit `pkg/repository/candidate.go`. Append:
+
+```go
+// ListInactiveSince returns active candidates whose `updated_at` is
+// older than cutoff, up to limit rows. Used by the daily stale-nudge
+// cron as a proxy for "no recent activity".
+func (r *CandidateRepository) ListInactiveSince(ctx context.Context, cutoff time.Time, limit int) ([]*domain.CandidateProfile, error) {
+	var out []*domain.CandidateProfile
+	err := r.db(ctx, true).
+		Where("status = ? AND updated_at < ?", domain.CandidateStatusActive, cutoff).
+		Order("updated_at ASC").
+		Limit(limit).
+		Find(&out).Error
+	return out, err
+}
+```
+
+The file already imports `time` and `domain`. Confirm.
+
+- [ ] **Step 2: Write the adapter's failing test**
+
+Create `apps/candidates/service/admin/v1/stale_lister_test.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"stawi.jobs/pkg/domain"
+)
+
+type fakeInactiveRepo struct {
+	cutoff time.Time
+	rows   []*domain.CandidateProfile
+}
+
+func (r *fakeInactiveRepo) ListInactiveSince(_ context.Context, cutoff time.Time, _ int) ([]*domain.CandidateProfile, error) {
+	r.cutoff = cutoff
+	return r.rows, nil
+}
+
+func TestRepoStaleListerMapsRowsToStaleCandidates(t *testing.T) {
+	updated := time.Now().UTC().Add(-75 * 24 * time.Hour)
+	repo := &fakeInactiveRepo{rows: []*domain.CandidateProfile{
+		{BaseModel: domain.BaseModel{ID: "cnd_a", UpdatedAt: updated}},
+		{BaseModel: domain.BaseModel{ID: "cnd_b", UpdatedAt: updated}},
+	}}
+	lister := NewRepoStaleLister(repo, 500)
+	stale, err := lister.ListStale(context.Background(), time.Now().UTC().Add(-60*24*time.Hour))
+	if err != nil {
+		t.Fatalf("ListStale: %v", err)
+	}
+	if len(stale) != 2 || stale[0].CandidateID != "cnd_a" {
+		t.Fatalf("bad result: %+v", stale)
+	}
+	if repo.cutoff.IsZero() {
+		t.Fatalf("cutoff not forwarded to repo")
+	}
+}
+```
+
+- [ ] **Step 3: Run — expect build failure**
+
+```bash
+go test ./apps/candidates/service/admin/v1/... -run TestRepoStaleLister
+```
+
+Expected: `undefined: NewRepoStaleLister`.
+
+- [ ] **Step 4: Implement the adapter**
+
+Create `apps/candidates/service/admin/v1/stale_lister.go`:
+
+```go
+package v1
+
+import (
+	"context"
+	"time"
+
+	"stawi.jobs/pkg/domain"
+)
+
+// InactiveRepo is the narrow interface the stale lister depends on.
+// Satisfied by *repository.CandidateRepository after Task 17 adds the
+// ListInactiveSince method.
+type InactiveRepo interface {
+	ListInactiveSince(ctx context.Context, cutoff time.Time, limit int) ([]*domain.CandidateProfile, error)
+}
+
+// RepoStaleLister adapts an InactiveRepo to the StaleLister interface
+// expected by CVStaleNudgeHandler.
+type RepoStaleLister struct {
+	repo  InactiveRepo
+	limit int
+}
+
+// NewRepoStaleLister wires the adapter.
+func NewRepoStaleLister(repo InactiveRepo, limit int) *RepoStaleLister {
+	if limit <= 0 {
+		limit = 1000
+	}
+	return &RepoStaleLister{repo: repo, limit: limit}
+}
+
+// ListStale maps repository rows to the StaleCandidate shape used by
+// CVStaleNudgeHandler. `LastUploadAt` is filled from `updated_at` as a
+// v1 proxy for upload time; Phase 6 replaces this with a real last-
+// upload timestamp read from R2 Parquet.
+func (l *RepoStaleLister) ListStale(ctx context.Context, asOf time.Time) ([]StaleCandidate, error) {
+	rows, err := l.repo.ListInactiveSince(ctx, asOf, l.limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]StaleCandidate, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, StaleCandidate{
+			CandidateID:  r.ID,
+			LastUploadAt: r.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+```
+
+- [ ] **Step 5: Run — expect PASS**
+
+```bash
+go test ./apps/candidates/service/admin/v1/... -run TestRepoStaleLister -count=1
+go test ./pkg/repository/... -count=1
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/candidates/service/admin/v1/stale_lister.go apps/candidates/service/admin/v1/stale_lister_test.go pkg/repository/candidate.go
+git commit -m "feat(candidates): StaleLister via repository.ListInactiveSince"
+```
+
+---
+
+## Task 18: Rewrite `apps/candidates/cmd/main.go`
 
 **Files:**
 - Modify: `apps/candidates/cmd/main.go` (complete rewrite)
@@ -3393,18 +4383,20 @@ The new `main.go` wires:
 - `GET /healthz` — minimal health check.
 - `POST /candidates/cv/upload` — `UploadHandler`.
 - `POST /candidates/preferences` — `PreferencesHandler`.
-- `GET /candidates/match` — `MatchHandler`.
+- `GET /candidates/match` — `MatchHandler` (backed by `MatchService` + `ManticoreSearch`).
 
 **Trustage admin endpoints:**
-- `POST /_admin/matches/weekly_digest` — `MatchesWeeklyHandler`.
-- `POST /_admin/cv/stale_nudge` — `CVStaleNudgeHandler`.
+- `POST /_admin/matches/weekly_digest` — `MatchesWeeklyHandler` (backed by `RepoCandidateLister` + `ServiceMatchRunner`).
+- `POST /_admin/cv/stale_nudge` — `CVStaleNudgeHandler` (backed by `RepoStaleLister`).
 
 **Internal event subscriptions (Frame):**
 - `CVExtractHandler` on `candidates.cv.uploaded.v1`.
 - `CVImproveHandler` on `candidates.cv.extracted.v1`.
 - `CVEmbedHandler` on `candidates.cv.extracted.v1`.
 
-(Production is affected by the one-handler-per-topic constraint — in production, only *one* subscriber on `candidates.cv.extracted.v1` can survive in the Frame registry. This means either `CVImproveHandler` or `CVEmbedHandler` must yield. Per spec §6.2, they are supposed to run in parallel. The real fix is to give them distinct subscription names via a wrapping concept — Frame's current API doesn't support this cleanly, which is why the e2e test uses a fanout wrapper. Task 13 introduces a tiny in-file `parallelFanout` type that wraps both production handlers and registers once under the topic, dispatching to both on each event. This is an explicit v1 workaround documented in a comment.)
+(Production is affected by the one-handler-per-topic constraint — in production, only *one* subscriber on `candidates.cv.extracted.v1` can survive in the Frame registry. This means either `CVImproveHandler` or `CVEmbedHandler` must yield. Per spec §6.2, they are supposed to run in parallel. The real fix is to give them distinct subscription names via a wrapping concept — Frame's current API doesn't support this cleanly, which is why the e2e test uses a fanout wrapper. Task 18 introduces a tiny in-file `parallelFanout` type that wraps both production handlers and registers once under the topic, dispatching to both on each event. This is an explicit v1 workaround documented in a comment.)
+
+**All production adapters (Tasks 13–17) are wired — no `nil` placeholders in the mux.**
 
 - [ ] **Step 1: Read the current main.go** (to see what's there)
 
@@ -3428,9 +4420,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
+	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/util"
 
@@ -3442,7 +4436,9 @@ import (
 	"stawi.jobs/pkg/candidatestore"
 	"stawi.jobs/pkg/cv"
 	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/extraction"
+	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/telemetry"
 )
 
@@ -3456,9 +4452,13 @@ func main() {
 
 	opts := []frame.Option{
 		frame.WithConfig(&cfg),
+		frame.WithDatastore(),
 	}
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 	log := util.Log(ctx)
+
+	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
+	dbFn := pool.DB
 
 	if err := telemetry.Init(); err != nil {
 		log.WithError(err).Warn("candidates: telemetry init failed")
@@ -3530,6 +4530,17 @@ func main() {
 
 	svc.Init(ctx, frame.WithRegisterEvents(extractH, extractedFanout))
 
+	// --- Production adapters (Tasks 13-17) ---
+	candidateRepo := repository.NewCandidateRepository(dbFn)
+	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_jobs_rt")
+	if err != nil {
+		log.WithError(err).Fatal("candidates: Manticore adapter init failed")
+	}
+	matchSvc := httpv1.NewMatchService(candStore, search, 20)
+	candidateLister := adminv1.NewRepoCandidateLister(candidateRepo, 1000)
+	matchRunner := adminv1.NewServiceMatchRunner(svc, matchSvc)
+	staleLister := adminv1.NewRepoStaleLister(candidateRepo, 1000)
+
 	// --- HTTP mux ---
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -3545,20 +4556,20 @@ func main() {
 	mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
 		Svc:    svc,
 		Store:  candStore,
-		Search: nil, // TODO wire pkg/searchindex.Client via a small adapter
+		Search: search,
 	}))
 
 	// --- Trustage admin endpoints ---
 	mux.HandleFunc("POST /_admin/matches/weekly_digest",
 		adminv1.MatchesWeeklyHandler(adminv1.MatchesWeeklyDeps{
-			Lister: nil, // TODO wire candidate lister (postgres or event ledger)
-			Runner: nil, // TODO wire in-process match runner
+			Lister: candidateLister,
+			Runner: matchRunner,
 		}))
 	mux.HandleFunc("POST /_admin/cv/stale_nudge",
 		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
 			Svc:        svc,
-			Lister:     nil, // TODO wire stale lister
-			StaleAfter: 60 * 24 * 60 * 60 * 1_000_000_000, // 60d in ns; prefer time.Duration literal in wire-up
+			Lister:     staleLister,
+			StaleAfter: 60 * 24 * time.Hour,
 		}))
 
 	svc.Init(ctx, frame.WithHTTPHandler(mux))
@@ -3743,7 +4754,7 @@ git commit -m "refactor(candidates): rewrite main.go — drop legacy handlers, w
 
 ---
 
-## Task 14: Trustage trigger definitions
+## Task 19: Trustage trigger definitions
 
 **Files:**
 - Create: `definitions/trustage/candidates-matches-weekly-digest.json`
@@ -3855,7 +4866,7 @@ git commit -m "feat(trustage): candidate weekly-digest + CV stale-nudge triggers
 
 ---
 
-## Task 15: Full build + sanity sweep
+## Task 20: Full build + sanity sweep
 
 **Files:**
 - None (verification only)
@@ -3907,13 +4918,15 @@ git log --oneline d60ce4c..HEAD
 
 Expected:
 - All tests pass.
-- ~14 commits on this branch (one per task except Task 15).
-- Six new v1 event payload types, four new HTTP endpoints, three new event subscriptions, two Trustage admin endpoints, one end-to-end test.
+- ~19 commits on this branch (one per task except Task 20).
+- Six new v1 event payload types, three HTTP endpoints (upload, preferences, match), two Trustage admin endpoints (matches weekly digest, CV stale nudge), three internal event subscriptions (cv-extract, cv-improve, cv-embed), four production adapters (Manticore search, candidate lister, match runner, stale lister), one end-to-end test.
 
 At this point, an operator can:
 1. Deploy `apps/candidates`.
 2. Configure the two Trustage triggers in the cluster.
 3. POST a PDF resume to `/candidates/cv/upload`, observe the full event trail (uploaded → extracted → improved + embedding) in the writer's Parquet output on R2.
-4. POST preferences, GET matches (once the match-side adapter is wired in Phase 6).
+4. POST preferences.
+5. GET `/candidates/match` — returns Manticore-backed matches once the job index has enough rows.
+6. Trustage fires `/_admin/matches/weekly_digest` + `/_admin/cv/stale_nudge` on schedule; both emit the expected downstream events.
 
-Phase 6 cutover then removes the legacy Postgres candidate columns, deletes the legacy handler files, and wires the three TODO adapters in main.go (MatchRunner, CandidateLister, StaleLister, SearchIndex).
+Phase 6 cutover then removes the legacy Postgres candidate columns (CV fields, preferences, embedding), deletes the legacy handler files (`apps/candidates/service/events/{embedding.go,profile_created.go}`), builds the daily compactor that populates `candidates_*_current/` partitions (so `candidatestore.Reader` has data to read), and replaces the `updated_at`-proxy in `RepoStaleLister` with a real R2-backed last-upload timestamp scan.
