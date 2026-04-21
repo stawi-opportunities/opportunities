@@ -81,10 +81,11 @@ func (c *Client) SQL(ctx context.Context, stmt string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return out, fmt.Errorf("searchindex: sql status %d: %s", resp.StatusCode, string(out))
 	}
-	// Manticore sometimes returns 200 with a JSON error payload like
-	// [{"error":"table idx_jobs_rt already exists"}] — treat that
-	// as an error so callers can detect it.
-	if bytes.Contains(out, []byte(`"error"`)) {
+	// Manticore sometimes returns 200 with a non-empty JSON error field like
+	// [{"error":"table idx_jobs_rt already exists"}] — treat that as an
+	// error so callers can detect it. The status-query response includes
+	// "error":"" (empty string), so we must skip blank error values.
+	if isManticoreError(out) {
 		return out, fmt.Errorf("searchindex: sql error: %s", strings.TrimSpace(string(out)))
 	}
 	return out, nil
@@ -156,4 +157,40 @@ func (c *Client) postJSON(ctx context.Context, path string, body any) error {
 		return fmt.Errorf("searchindex: %s status %d: %s", path, resp.StatusCode, string(msg))
 	}
 	return nil
+}
+
+// isManticoreError returns true when the response body contains a
+// Manticore JSON error with a non-empty error field. Manticore always
+// includes an "error" key in /sql?mode=raw responses, but it is an
+// empty string on success; only a non-empty value signals failure.
+func isManticoreError(body []byte) bool {
+	// Fast path: no "error" key at all.
+	if !bytes.Contains(body, []byte(`"error"`)) {
+		return false
+	}
+	// Parse as array-of-objects (mode=raw wraps results in an array).
+	var rows []map[string]json.RawMessage
+	if err := json.Unmarshal(body, &rows); err != nil {
+		// Not the expected shape — fall back to object.
+		var obj map[string]json.RawMessage
+		if err2 := json.Unmarshal(body, &obj); err2 != nil {
+			// Unparseable — be conservative and treat as error.
+			return true
+		}
+		rows = []map[string]json.RawMessage{obj}
+	}
+	for _, row := range rows {
+		raw, ok := row["error"]
+		if !ok {
+			continue
+		}
+		var msg string
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			return true // non-string error value
+		}
+		if msg != "" {
+			return true
+		}
+	}
+	return false
 }
