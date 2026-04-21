@@ -125,3 +125,89 @@ func TestEmbeddingRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip lost fields: %+v", back.Payload)
 	}
 }
+
+func TestVariantNormalizedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicVariantsNormalized, VariantNormalizedV1{
+		VariantID: "var_1", SourceID: "src_x", HardKey: "src_x|e1",
+		Title: "Engineer", Country: "KE", RemoteType: "remote",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[VariantNormalizedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.VariantID != "var_1" || back.Payload.Country != "KE" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestVariantValidatedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicVariantsValidated, VariantValidatedV1{
+		VariantID: "var_1", SourceID: "src_x", ValidationScore: 0.9, ModelVersion: "v1",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[VariantValidatedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.VariantID != "var_1" || back.Payload.ValidationScore != 0.9 {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestVariantFlaggedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicVariantsFlagged, VariantFlaggedV1{
+		VariantID: "var_1", Reason: "bad title",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[VariantFlaggedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.Reason != "bad title" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestVariantClusteredRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicVariantsClustered, VariantClusteredV1{
+		VariantID: "var_1", ClusterID: "clu_1",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[VariantClusteredV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.ClusterID != "clu_1" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestTranslationRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicTranslations, TranslationV1{
+		CanonicalID: "can_1", Lang: "sw", TitleTr: "Mhandisi",
+		DescriptionTr: "Tunaajiri...", ModelVersion: "v1",
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[TranslationV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.Lang != "sw" || back.Payload.TitleTr != "Mhandisi" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestPublishedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicPublished, PublishedV1{
+		CanonicalID: "can_1", Slug: "job-slug", R2Version: 3,
+	})
+	raw, _ := json.Marshal(orig)
+	var back Envelope[PublishedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.Slug != "job-slug" || back.Payload.R2Version != 3 {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
