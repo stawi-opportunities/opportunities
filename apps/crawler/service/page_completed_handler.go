@@ -98,6 +98,9 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 		if err := h.repo.RecordFailure(ctx, src.ID, newHealth, src.ConsecutiveFailures+1); err != nil {
 			log.WithError(err).Warn("page-completed: RecordFailure failed")
 		}
+		// Phase 4 deliberately does not apply exponential backoff on
+		// failure. Health-score decay (−0.2 above) is the gating signal;
+		// the full per-topic drain-time policy lands in Phase 6 (design §8.3).
 		if err := h.repo.UpdateNextCrawl(ctx, src.ID, next, now, newHealth); err != nil {
 			log.WithError(err).Warn("page-completed: UpdateNextCrawl failed (err path)")
 		}
@@ -120,7 +123,9 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 			log.WithError(err).Warn("page-completed: RecordSuccess failed")
 		}
 		if src.NeedsTuning && rejectRate < 0.5 {
-			_ = h.repo.FlagNeedsTuning(ctx, src.ID, false)
+			if err := h.repo.FlagNeedsTuning(ctx, src.ID, false); err != nil {
+				log.WithError(err).Warn("page-completed: FlagNeedsTuning(clear) failed")
+			}
 		}
 		if err := h.repo.UpdateNextCrawl(ctx, src.ID, next, now, newHealth); err != nil {
 			log.WithError(err).Warn("page-completed: UpdateNextCrawl failed (success path)")

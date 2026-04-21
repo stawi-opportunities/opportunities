@@ -87,6 +87,9 @@ func TestPageCompletedIteratorErrorRecordsFailure(t *testing.T) {
 	if len(repo.failure) != 1 {
 		t.Fatalf("failure not recorded: %+v", repo.failure)
 	}
+	if _, ok := repo.nextSeen["s2"]; !ok {
+		t.Fatalf("next_crawl_at not stamped on error path")
+	}
 }
 
 func TestPageCompletedHighRejectRateFlagsTuning(t *testing.T) {
