@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "name": "stawi-jobs.scheduler.tick",
+  "description": "Every 30 s: ask the stawi-jobs crawler to admit due sources through the backpressure gate and emit one crawl.requests.v1 per admitted source. Replaces source-crawl-sweep.json now that the crawler consumes v1 topics.",
+  "schedule": {
+    "cron": "30s",
+    "active": true
+  },
+  "input": {},
+  "config": {},
+  "timeout": "2m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "scheduler_tick",
+      "type": "call",
+      "name": "Invoke scheduler tick",
+      "timeout": "90s",
+      "retry": {
+        "max_attempts": 3,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "10s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/scheduler/tick",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": {}
+        },
+        "output_var": "tick_result"
+      }
+    }
+  ]
+}
