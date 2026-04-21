@@ -1,12 +1,12 @@
 SHELL := /bin/bash
 
-APP_DIRS := apps/crawler apps/scheduler apps/api
+APP_DIRS := apps/crawler apps/scheduler apps/api apps/writer
 
 # Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
 HUGO_VERSION := 0.160.1
 HUGO_BIN     := $(CURDIR)/bin/hugo
 
-.PHONY: deps build test run-crawler run-scheduler run-api \
+.PHONY: deps build test run-crawler run-scheduler run-api run-writer \
         infra-up infra-down \
         ui-deps ui-build ui-dev \
         archive-verify
@@ -30,6 +30,9 @@ run-scheduler:
 
 run-api:
 	go run ./apps/api/cmd
+
+run-writer:
+	go run ./apps/writer/cmd
 
 infra-up:
 	docker compose -f deploy/docker-compose.yml up -d
