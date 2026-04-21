@@ -261,7 +261,7 @@ func TestAdmitOpenGrantsFullWant(t *testing.T) {
 		ConsumerName: "c",
 		HighWater:    100,
 		LowWater:     50,
-		CacheTTL:     0,
+		CacheTTL:     time.Nanosecond,
 	}, srv.Client())
 
 	granted, wait := g.Admit(context.Background(), "crawl.requests.v1", 20)
@@ -286,15 +286,15 @@ func TestAdmitPausedGrantsZero(t *testing.T) {
 		ConsumerName: "c",
 		HighWater:    100,
 		LowWater:     50,
-		CacheTTL:     0,
+		CacheTTL:     time.Nanosecond,
 	}, srv.Client())
 
 	granted, wait := g.Admit(context.Background(), "crawl.requests.v1", 20)
 	if granted != 0 {
 		t.Fatalf("granted=%d, want 0", granted)
 	}
-	if wait <= 0 {
-		t.Fatalf("wait=%v, want positive hint", wait)
+	if wait != 30*time.Second {
+		t.Fatalf("wait=%v, want 30s", wait)
 	}
 }
 
@@ -302,8 +302,11 @@ func TestAdmitNoMonitorAlwaysOpen(t *testing.T) {
 	// A gate with no monitor URL should always return the full amount
 	// (fail-open matches the existing Check() behaviour).
 	g := New(Config{HighWater: 100, LowWater: 50}, nil)
-	granted, _ := g.Admit(context.Background(), "anything.v1", 5)
+	granted, wait := g.Admit(context.Background(), "anything.v1", 5)
 	if granted != 5 {
 		t.Fatalf("granted=%d, want 5", granted)
+	}
+	if wait != 0 {
+		t.Fatalf("wait=%v, want 0", wait)
 	}
 }
