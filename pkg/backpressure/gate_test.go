@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // fixtureBody builds a minimal /jsz JSON with one consumer at pending.
@@ -309,4 +311,48 @@ func TestAdmitNoMonitorAlwaysOpen(t *testing.T) {
 	if wait != 0 {
 		t.Fatalf("wait=%v, want 0", wait)
 	}
+}
+
+func TestAdmit_FullPolicy(t *testing.T) {
+	g := New(Config{MonitorURL: ""}, nil)
+
+	g.ConfigTopic("jobs.variants.validated.v1", Policy{
+		MaxDrainTime:     15 * time.Minute,
+		HardCeilingDrain: 30 * time.Minute,
+		HPACeilingKnown:  true,
+	})
+
+	// Fast drain: full grant (10s drain << 15m MaxDrainTime).
+	g.UpdateLag("jobs.variants.validated.v1", 1000, 100.0, false)
+	got, wait := g.Admit(context.Background(), "jobs.variants.validated.v1", 50)
+	require.Equal(t, 50, got)
+	require.Zero(t, wait)
+
+	// Mid-throttle: ~50% grant at 22.5-minute drain.
+	// depth=1350, rate=1.0 → drain=1350s ≈ 22.5m
+	// fraction = 1 - (22.5-15)/(30-15) = 1 - 7.5/15 = 0.5 → ~50 of 100.
+	g.UpdateLag("jobs.variants.validated.v1", 1350, 1.0, false)
+	got, wait = g.Admit(context.Background(), "jobs.variants.validated.v1", 100)
+	require.InDelta(t, 50, got, 5)
+	require.Greater(t, wait, time.Duration(0))
+
+	// Above hard ceiling: admit=0.
+	// depth=10_000, rate=1.0 → drain=10000s ≈ 166m >> 30m HardCeiling.
+	g.UpdateLag("jobs.variants.validated.v1", 10_000, 1.0, false)
+	got, wait = g.Admit(context.Background(), "jobs.variants.validated.v1", 100)
+	require.Equal(t, 0, got)
+	require.Greater(t, wait, time.Duration(0))
+
+	// HPA at ceiling collapses window: drain=1200s=20m > MaxDrainTime=15m → 0.
+	g.UpdateLag("jobs.variants.validated.v1", 1200, 1.0, true)
+	got, wait = g.Admit(context.Background(), "jobs.variants.validated.v1", 100)
+	require.Equal(t, 0, got)
+	require.Greater(t, wait, time.Duration(0))
+}
+
+func TestAdmit_UnconfiguredTopic_FailOpen(t *testing.T) {
+	g := New(Config{MonitorURL: ""}, nil)
+	got, wait := g.Admit(context.Background(), "jobs.variants.ingested.v1", 42)
+	require.Equal(t, 42, got)
+	require.Zero(t, wait)
 }

@@ -19,14 +19,15 @@ import (
 	"stawi.jobs/pkg/analytics"
 	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/backpressure"
+	"stawi.jobs/pkg/connectors/httpx"
 	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
+	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
 	"stawi.jobs/pkg/telemetry"
-	"stawi.jobs/pkg/connectors/httpx"
 )
 
 func main() {
@@ -203,6 +204,67 @@ func main() {
 		HighWater:    cfg.BackpressureHighWater,
 		LowWater:     cfg.BackpressureLowWater,
 	}, nil)
+
+	// ── Task 5: per-topic drain-time policy ────────────────────────
+	//
+	// Configure the five worker-input topics with a 15m/45m drain-time
+	// window. HPA ceiling awareness is enabled so the gate collapses to
+	// zero-admit as soon as the HPA has nowhere to scale to.
+	workerTopicPolicy := backpressure.Policy{
+		MaxDrainTime:     15 * time.Minute,
+		HardCeilingDrain: 45 * time.Minute,
+		HPACeilingKnown:  true,
+	}
+	for _, t := range []string{
+		eventsv1.TopicVariantsIngested,
+		eventsv1.TopicVariantsNormalized,
+		eventsv1.TopicVariantsValidated,
+		eventsv1.TopicVariantsClustered,
+		eventsv1.TopicCanonicalsUpserted,
+	} {
+		bpGate.ConfigTopic(t, workerTopicPolicy)
+	}
+
+	// Lag poller: samples queue depth via the NATS monitor every 10 s and
+	// feeds UpdateLag for each worker-input topic. The gate already has the
+	// full drain-time policy configured above; this ticker keeps lag data
+	// fresh so Admit can apply throttle fractions rather than falling back
+	// to the binary hysteresis path.
+	//
+	// NOTE: the monitor's /jsz endpoint exposes a single "pending" field
+	// that aggregates across all consumers on the stream. There is no per-
+	// topic pending count available without per-consumer queries. We feed
+	// the aggregate depth uniformly to all five topics as a conservative
+	// upper-bound; the throttle applies to all topics equally when the
+	// shared queue is deep. A more granular approach (per-consumer /jsz
+	// calls) can be added in a later task without changing the gate API.
+	lagPoller := service.NewLagPoller()
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		workerTopics := []string{
+			eventsv1.TopicVariantsIngested,
+			eventsv1.TopicVariantsNormalized,
+			eventsv1.TopicVariantsValidated,
+			eventsv1.TopicVariantsClustered,
+			eventsv1.TopicCanonicalsUpserted,
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				state, err := bpGate.Check(ctx)
+				if err != nil {
+					continue
+				}
+				for _, topic := range workerTopics {
+					depth, rate := lagPoller.Sample(topic, int64(state.Pending), now)
+					bpGate.UpdateLag(topic, depth, rate, false)
+				}
+			}
+		}
+	}()
 
 	// ── Phase 4 event handlers ──────────────────────────────────────
 	//

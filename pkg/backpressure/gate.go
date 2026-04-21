@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -29,22 +30,52 @@ import (
 // queue depth is the only correct signal for "processing is behind".
 // See docs/superpowers/specs/2026-04-20-r2-blob-archive-design.md.
 
+// Policy holds per-topic admission knobs for the drain-time gate.
+type Policy struct {
+	// MaxDrainTime is the drain-time threshold below which the full
+	// request is granted. Defaults to 15 minutes when zero.
+	MaxDrainTime time.Duration
+
+	// HardCeilingDrain is the drain-time at or above which admit=0.
+	// Must be > MaxDrainTime; defaults to MaxDrainTime+15m when zero
+	// or not strictly greater.
+	HardCeilingDrain time.Duration
+
+	// HPACeilingKnown, when true, collapses the throttle window to
+	// zero as soon as the HPA reports it is at its replica ceiling.
+	// This turns any drain above MaxDrainTime into an immediate zero-
+	// admit so the queue drains before more pods are added.
+	HPACeilingKnown bool
+}
+
+type topicLag struct {
+	depth        int64
+	consumeRate  float64
+	hpaAtCeiling bool
+	updatedAt    time.Time
+}
+
 // Gate tracks the saturated/open state with hysteresis. Instance is
 // safe for concurrent use from any number of HTTP handlers.
 type Gate struct {
-	monitorURL  string
-	streamName  string
+	monitorURL   string
+	streamName   string
 	consumerName string
-	highWater   int
-	lowWater    int
-	httpClient  *http.Client
-	cache       atomic.Pointer[cachedDepth]
-	cacheTTL    time.Duration
+	highWater    int
+	lowWater     int
+	httpClient   *http.Client
+	cache        atomic.Pointer[cachedDepth]
+	cacheTTL     time.Duration
 
 	// saturated reflects the current open/closed state. Loads + stores
 	// are atomic so the Trustage-facing `paused` flag in JSON responses
 	// is consistent without a mutex.
 	saturated atomic.Bool
+
+	// Per-topic policy and lag data (Task 5: drain-time + HPA-ceiling).
+	policyMu sync.RWMutex
+	policies map[string]Policy
+	lags     map[string]topicLag
 }
 
 type cachedDepth struct {
@@ -255,37 +286,117 @@ func (g *Gate) lowWaterSafe() int {
 	return g.lowWater
 }
 
-// Admit asks to emit `want` events on `topic`. For Phase 4 this is a
-// minimal wrapper over the existing hysteresis gate:
+// ConfigTopic registers a drain-time Policy for the given topic. The
+// gate applies the policy in Admit once UpdateLag has been called at
+// least once for that topic. Topics with no policy fall back to the
+// hysteresis gate (back-compat).
+func (g *Gate) ConfigTopic(topic string, p Policy) {
+	g.policyMu.Lock()
+	defer g.policyMu.Unlock()
+	if g.policies == nil {
+		g.policies = make(map[string]Policy)
+	}
+	if p.MaxDrainTime <= 0 {
+		p.MaxDrainTime = 15 * time.Minute
+	}
+	if p.HardCeilingDrain <= p.MaxDrainTime {
+		p.HardCeilingDrain = p.MaxDrainTime + 15*time.Minute
+	}
+	g.policies[topic] = p
+}
+
+// UpdateLag records a fresh depth+rate sample for topic. depth is the
+// number of unconsumed messages, consumeRate is messages/second, and
+// hpaAtCeiling signals that the HPA is already at its replica ceiling.
+// Calling UpdateLag is optional; topics with no lag data fall back to
+// the hysteresis gate (back-compat / fail-open).
+func (g *Gate) UpdateLag(topic string, depth int64, consumeRate float64, hpaAtCeiling bool) {
+	g.policyMu.Lock()
+	defer g.policyMu.Unlock()
+	if g.lags == nil {
+		g.lags = make(map[string]topicLag)
+	}
+	g.lags[topic] = topicLag{
+		depth:        depth,
+		consumeRate:  consumeRate,
+		hpaAtCeiling: hpaAtCeiling,
+		updatedAt:    time.Now(),
+	}
+}
+
+// Admit asks to emit `want` events on `topic`. When both a Policy and
+// a lag sample exist for the topic, the drain-time algorithm is used:
 //
-//   - open (pending below HighWater / under hysteresis) → grant full want
-//   - paused (pending above HighWater)                  → grant 0
-//   - transport error reading the monitor               → grant full want (fail-open)
+//   - drain < MaxDrainTime              → full grant, wait=0
+//   - drain >= HardCeilingDrain         → grant 0, wait=clamp(drain-max, 5m)
+//   - between the two thresholds        → linear throttle, wait hint
+//   - HPACeilingKnown && hpaAtCeiling   → collapse window (max==hard)
 //
-// The returned wait hint is a coarse "try again in ~30 s" when paused,
-// and zero otherwise. Phase 6 replaces this with the full drain-time
-// policy described in §8.3 of the design (per-topic thresholds, HPA-
-// ceiling awareness). The method signature is chosen to match that
-// future policy so the scheduler-tick endpoint doesn't need to change.
-//
-// `topic` is currently unused but accepted so callers don't have to
-// change when per-topic policies land. Passing the real topic today
-// keeps log lines correct.
+// When no policy or lag exists for the topic, Admit falls back to the
+// hysteresis gate (Phase 4 back-compat behaviour).
 func (g *Gate) Admit(ctx context.Context, topic string, want int) (int, time.Duration) {
 	if want <= 0 {
 		return 0, 0
 	}
-	if g == nil || g.monitorURL == "" {
-		return want, 0
-	}
-	state, err := g.Check(ctx)
-	if err != nil {
-		// Fail-open matches Check()'s own contract (the existing code
-		// already treats a monitor error as "assume open").
-		return want, 0
-	}
-	if state.Paused {
+
+	g.policyMu.RLock()
+	pol, hasPol := g.policies[topic]
+	lag, hasLag := g.lags[topic]
+	g.policyMu.RUnlock()
+
+	// Back-compat: no policy/lag → fall back to hysteresis OR fail-open.
+	if !hasPol || !hasLag {
+		if g == nil || g.monitorURL == "" {
+			return want, 0
+		}
+		state, err := g.Check(ctx)
+		if err != nil || !state.Paused {
+			return want, 0
+		}
 		return 0, 30 * time.Second
 	}
-	return want, 0
+
+	if lag.consumeRate <= 0 {
+		return want, 0
+	}
+
+	drain := time.Duration(float64(lag.depth) / lag.consumeRate * float64(time.Second))
+
+	maxDrain := pol.MaxDrainTime
+	hardDrain := pol.HardCeilingDrain
+	if pol.HPACeilingKnown && lag.hpaAtCeiling {
+		hardDrain = maxDrain
+	}
+
+	switch {
+	case drain < maxDrain:
+		return want, 0
+	case drain >= hardDrain:
+		return 0, clampWait(drain - maxDrain)
+	default:
+		span := float64(hardDrain - maxDrain)
+		over := float64(drain - maxDrain)
+		fraction := 1.0 - (over / span)
+		granted := int(float64(want) * fraction)
+		if granted < 0 {
+			granted = 0
+		}
+		if granted > want {
+			granted = want
+		}
+		return granted, clampWait(drain - maxDrain)
+	}
+}
+
+// clampWait bounds a wait hint to [0, 5m].
+func clampWait(d time.Duration) time.Duration {
+	const max = 5 * time.Minute
+	switch {
+	case d <= 0:
+		return 0
+	case d > max:
+		return max
+	default:
+		return d
+	}
 }
