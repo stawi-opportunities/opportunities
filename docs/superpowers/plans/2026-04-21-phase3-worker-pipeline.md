@@ -4,15 +4,15 @@
 
 **Goal:** Ship `apps/worker` — a single disposable service that turns `VariantIngestedV1` events into fully canonicalized, embedded, translated, published jobs on the event log. It runs all pipeline stages inside one binary as independent Frame subscriptions: normalize → validate → dedup → canonical-merge, then the three parallel downstream consumers on canonicals (embed, translate, publish).
 
-**Architecture:** One `apps/worker` binary with 7 internal Frame event subscriptions. Dedup uses a new `pkg/kv` Valkey/Redis wrapper (via `github.com/redis/go-redis/v9`, already in `go.mod`). AI goes through the existing `extraction.Extractor`. Publishing reuses `pkg/publish`. All output is pub/sub events — no Postgres reads or writes for the jobs domain.
+**Architecture:** One `apps/worker` binary with 7 internal Frame event subscriptions. Dedup and cluster snapshots use **Frame's built-in cache framework** (`github.com/pitabwire/frame/cache`) — no custom Redis wrapper. Frame exposes typed `cache.Cache[K, V]` generics backed by pluggable `RawCache` implementations (Valkey, Redis, in-memory, JetStream KV); we use Valkey in production (`frame/cache/valkey`) and in-memory for tests (`frame.WithInMemoryCache`). AI goes through the existing `extraction.Extractor`. Publishing reuses `pkg/publish`. All output is pub/sub events — no Postgres reads or writes for the jobs domain.
 
 **Tech stack:**
 - Go 1.26, Frame (`github.com/pitabwire/frame`), `pitabwire/util` logging
-- `github.com/redis/go-redis/v9` (existing) for KV
+- **Frame's cache framework** (`github.com/pitabwire/frame/cache` + `cache/valkey` backend) for dedup + cluster snapshot storage
 - `pkg/extraction.Extractor` (existing) for LLM chat + embed
 - `pkg/publish.R2Publisher` (existing) for R2 snapshot writes
-- `pkg/bloom` (existing) for dedup false-positive gate
-- Testcontainers for Redis + pub/sub in-memory + MinIO
+- `pkg/bloom` (existing) for dedup false-positive gate (deferred — not in Phase 3 MVP)
+- Testcontainers for in-memory Frame pub/sub + MinIO
 
 **What's in this plan:**
 - Six new event payload types: `VariantNormalizedV1`, `VariantValidatedV1`, `VariantFlaggedV1`, `VariantClusteredV1`, `TranslationV1`, `PublishedV1`
@@ -36,10 +36,7 @@
 | File | Responsibility |
 |---|---|
 | `pkg/events/v1/pipeline.go` | Six new payload structs with json + parquet tags |
-| `pkg/kv/redis.go` | Redis client construction, connect, Ping, Close |
-| `pkg/kv/dedup.go` | `DedupStore` — hard_key → cluster_id map + bloom front |
-| `pkg/kv/cluster.go` | `ClusterStore` — cluster_id → msgpack canonical snapshot |
-| `pkg/kv/redis_test.go` | Integration test with Redis testcontainer |
+| `pkg/kv/snapshot.go` | `ClusterSnapshot` struct — the typed value stored in Frame's cluster cache. No custom client; Frame cache handles transport. |
 | `apps/worker/config/config.go` | env-backed config (Redis URL, R2 publish bucket, LLM backends, translation langs) |
 | `apps/worker/service/normalize.go` | Normalize subscription handler |
 | `apps/worker/service/validate.go` | Validate subscription handler (LLM, fail-open) |
@@ -326,251 +323,34 @@ git commit -m "feat(writer): encode all Phase 3 pipeline event types"
 
 ---
 
-## Task 3: `pkg/kv` — Redis client + helpers (TDD)
+## Task 3: `pkg/kv` — `ClusterSnapshot` type (Frame cache handles transport)
 
 **Files:**
-- Create: `pkg/kv/redis.go`
-- Create: `pkg/kv/dedup.go`
-- Create: `pkg/kv/cluster.go`
-- Create: `pkg/kv/redis_test.go`
+- Create: `pkg/kv/snapshot.go`
 
-- [ ] **Step 1: Write failing tests**
+Frame already provides a production-grade cache framework (`github.com/pitabwire/frame/cache`) with `Cache[K, V]` generics, `RawCache` backends (Valkey, Redis, in-memory, JetStream KV), and lifecycle management wired into `frame.Service`. Rather than build a custom Redis wrapper, we register a Valkey-backed raw cache with the Frame service via `frame.WithCache("worker", valkey.New(...))` and call `cache.GetCache[K, V](svc.CacheManager(), "worker", keyFunc)` to get typed accessors in handlers.
 
-Create `pkg/kv/redis_test.go`:
+This task therefore only defines the one typed value the pipeline stores — the `ClusterSnapshot` — which Frame's generic cache serializes via its internal marshaller.
 
-```go
-package kv_test
+- [ ] **Step 1: Implement the snapshot type**
 
-import (
-	"context"
-	"fmt"
-	"testing"
-	"time"
-
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
-
-	"stawi.jobs/pkg/kv"
-)
-
-func startRedis(t *testing.T, ctx context.Context) (string, func()) {
-	t.Helper()
-	req := testcontainers.ContainerRequest{
-		Image:        "redis:7-alpine",
-		ExposedPorts: []string{"6379/tcp"},
-		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(30 * time.Second),
-	}
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("start redis: %v", err)
-	}
-	host, _ := c.Host(ctx)
-	port, _ := c.MappedPort(ctx, "6379/tcp")
-	url := fmt.Sprintf("redis://%s:%s/0", host, port.Port())
-	return url, func() { _ = c.Terminate(context.Background()) }
-}
-
-func TestDedupGetSet(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
-	url, stop := startRedis(t, ctx)
-	defer stop()
-
-	client, err := kv.Open(kv.Config{URL: url})
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer func() { _ = client.Close() }()
-
-	dd := kv.NewDedupStore(client)
-
-	// Miss
-	got, ok, err := dd.Get(ctx, "src|extA")
-	if err != nil {
-		t.Fatalf("get miss: %v", err)
-	}
-	if ok {
-		t.Fatalf("expected miss, got %q", got)
-	}
-
-	// Set + hit
-	if err := dd.Set(ctx, "src|extA", "clu_1"); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-	got, ok, err = dd.Get(ctx, "src|extA")
-	if err != nil || !ok || got != "clu_1" {
-		t.Fatalf("expected hit clu_1, got ok=%v val=%q err=%v", ok, got, err)
-	}
-}
-
-func TestClusterGetSet(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
-	url, stop := startRedis(t, ctx)
-	defer stop()
-
-	client, err := kv.Open(kv.Config{URL: url})
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer func() { _ = client.Close() }()
-
-	cs := kv.NewClusterStore(client)
-
-	snap := kv.ClusterSnapshot{
-		ClusterID: "clu_1",
-		Title:     "Backend Engineer",
-		Company:   "Acme",
-	}
-	if err := cs.Set(ctx, snap); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-
-	got, ok, err := cs.Get(ctx, "clu_1")
-	if err != nil || !ok {
-		t.Fatalf("expected hit, got ok=%v err=%v", ok, err)
-	}
-	if got.Title != "Backend Engineer" {
-		t.Fatalf("round-trip lost: %+v", got)
-	}
-}
-```
-
-- [ ] **Step 2: Run — expect build failure**
-
-```bash
-go test ./pkg/kv/...
-```
-
-Expected: `undefined: kv.Open, kv.Config, kv.NewDedupStore, kv.NewClusterStore, kv.ClusterSnapshot`.
-
-- [ ] **Step 3: Implement the client**
-
-Create `pkg/kv/redis.go`:
+Create `pkg/kv/snapshot.go`:
 
 ```go
-// Package kv is a thin wrapper around go-redis for the worker
-// pipeline's two stateful lookups: dedup (hard_key → cluster_id)
-// and cluster snapshots (cluster_id → compact canonical view used
-// by the canonical-merge stage).
+// Package kv exposes the typed values stored in Frame's cache
+// framework by the pipeline workers. Transport and marshalling
+// are handled by `frame/cache` + its backend (Valkey in prod,
+// in-memory in tests). This package intentionally holds NO client
+// code — just the shape of the cached values.
 package kv
 
-import (
-	"context"
-	"fmt"
+import "time"
 
-	"github.com/redis/go-redis/v9"
-)
-
-// Config describes how to reach Redis/Valkey.
-type Config struct {
-	// URL is a go-redis connection URL, e.g. "redis://host:6379/0".
-	URL string
-}
-
-// Client wraps a *redis.Client so downstream stores can share it.
-type Client struct {
-	rdb *redis.Client
-}
-
-// Open parses the URL and connects. The caller is responsible for Close.
-func Open(cfg Config) (*Client, error) {
-	if cfg.URL == "" {
-		return nil, fmt.Errorf("kv: empty URL")
-	}
-	opt, err := redis.ParseURL(cfg.URL)
-	if err != nil {
-		return nil, fmt.Errorf("kv: parse url: %w", err)
-	}
-	return &Client{rdb: redis.NewClient(opt)}, nil
-}
-
-// Ping checks connectivity.
-func (c *Client) Ping(ctx context.Context) error {
-	return c.rdb.Ping(ctx).Err()
-}
-
-// Close releases the connection pool.
-func (c *Client) Close() error { return c.rdb.Close() }
-
-// Redis exposes the underlying client for stores that need
-// pipelined / scripted operations beyond simple GET/SET.
-func (c *Client) Redis() *redis.Client { return c.rdb }
-```
-
-Create `pkg/kv/dedup.go`:
-
-```go
-package kv
-
-import (
-	"context"
-	"errors"
-	"fmt"
-
-	"github.com/redis/go-redis/v9"
-)
-
-// DedupStore maps hard_key → cluster_id. No TTL — a hard_key's
-// cluster assignment is permanent until explicit reset during
-// operational cluster-rebuild.
-type DedupStore struct {
-	c *Client
-}
-
-// NewDedupStore wraps a Client.
-func NewDedupStore(c *Client) *DedupStore { return &DedupStore{c: c} }
-
-const dedupPrefix = "dedup:"
-
-// Get returns (cluster_id, true, nil) on hit, ("", false, nil) on miss.
-// Errors are wrapped with a kv: prefix.
-func (s *DedupStore) Get(ctx context.Context, hardKey string) (string, bool, error) {
-	val, err := s.c.rdb.Get(ctx, dedupPrefix+hardKey).Result()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return "", false, nil
-		}
-		return "", false, fmt.Errorf("kv: dedup get: %w", err)
-	}
-	return val, true, nil
-}
-
-// Set records an assignment. Idempotent — same key, same value
-// is a no-op; same key, different value overwrites (operational
-// re-cluster path).
-func (s *DedupStore) Set(ctx context.Context, hardKey, clusterID string) error {
-	if err := s.c.rdb.Set(ctx, dedupPrefix+hardKey, clusterID, 0).Err(); err != nil {
-		return fmt.Errorf("kv: dedup set: %w", err)
-	}
-	return nil
-}
-```
-
-Create `pkg/kv/cluster.go`:
-
-```go
-package kv
-
-import (
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"time"
-
-	"github.com/redis/go-redis/v9"
-)
-
-// ClusterSnapshot is the compact canonical view held in Redis so
-// the canonical-merge stage can merge new variant fields into the
-// existing cluster without re-reading the full canonicals partition.
-// Small — ~1 KB per cluster.
+// ClusterSnapshot is the compact canonical view held in the
+// `cluster:{cluster_id}` cache so the canonical-merge handler can
+// merge new variant fields without re-reading the full canonicals
+// partition. Frame's GenericCache serializes this struct via its
+// internal marshaller.
 type ClusterSnapshot struct {
 	ClusterID      string    `json:"cluster_id"`
 	CanonicalID    string    `json:"canonical_id,omitempty"`
@@ -594,60 +374,64 @@ type ClusterSnapshot struct {
 	PostedAt       time.Time `json:"posted_at,omitempty"`
 	ApplyURL       string    `json:"apply_url,omitempty"`
 }
-
-// ClusterStore wraps a Client with Get/Set of ClusterSnapshot.
-type ClusterStore struct {
-	c *Client
-}
-
-// NewClusterStore wraps a Client.
-func NewClusterStore(c *Client) *ClusterStore { return &ClusterStore{c: c} }
-
-const clusterPrefix = "cluster:"
-
-// Get returns the snapshot if one exists.
-func (s *ClusterStore) Get(ctx context.Context, clusterID string) (ClusterSnapshot, bool, error) {
-	raw, err := s.c.rdb.Get(ctx, clusterPrefix+clusterID).Bytes()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return ClusterSnapshot{}, false, nil
-		}
-		return ClusterSnapshot{}, false, fmt.Errorf("kv: cluster get: %w", err)
-	}
-	var s0 ClusterSnapshot
-	if err := json.Unmarshal(raw, &s0); err != nil {
-		return ClusterSnapshot{}, false, fmt.Errorf("kv: cluster decode: %w", err)
-	}
-	return s0, true, nil
-}
-
-// Set writes the snapshot.
-func (s *ClusterStore) Set(ctx context.Context, snap ClusterSnapshot) error {
-	raw, err := json.Marshal(snap)
-	if err != nil {
-		return fmt.Errorf("kv: cluster encode: %w", err)
-	}
-	if err := s.c.rdb.Set(ctx, clusterPrefix+snap.ClusterID, raw, 0).Err(); err != nil {
-		return fmt.Errorf("kv: cluster set: %w", err)
-	}
-	return nil
-}
 ```
 
-- [ ] **Step 4: Run the tests**
+- [ ] **Step 2: Confirm compiles**
 
 ```bash
-go test ./pkg/kv/... -count=1 -timeout 3m
+go build ./pkg/kv/...
 ```
 
-Expected: PASS (first run pulls the redis:7-alpine image, ~10–20 s).
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add pkg/kv/
-git commit -m "feat(kv): Redis wrapper with DedupStore + ClusterStore"
+git add pkg/kv/snapshot.go
+git commit -m "feat(kv): ClusterSnapshot type for Frame-cache-backed cluster storage"
 ```
+
+### Usage note for downstream tasks
+
+In handlers (Tasks 7 and 8 below) we do NOT import `pkg/redis` or wrap `go-redis`. Instead the handler accepts a typed Frame cache:
+
+```go
+// Dedup cache: hard_key → cluster_id
+dedupCache cache.Cache[string, string]
+
+// Cluster cache: cluster_id → ClusterSnapshot
+clusterCache cache.Cache[string, kv.ClusterSnapshot]
+```
+
+These are built in `main.go` (Task 12) via:
+
+```go
+import (
+    "github.com/pitabwire/frame"
+    "github.com/pitabwire/frame/cache"
+    framevalkey "github.com/pitabwire/frame/cache/valkey"
+    "stawi.jobs/pkg/kv"
+)
+
+// Register a single raw cache (Valkey-backed) with the Frame service.
+raw, err := framevalkey.New(cache.WithDSN(cfg.ValkeyURL))
+if err != nil { ... }
+
+ctx, svc := frame.NewServiceWithContext(ctx,
+    frame.WithConfig(&cfg),
+    frame.WithCacheManager(),
+    frame.WithCache("worker", raw),
+)
+
+dedupCache, _ := cache.GetCache[string, string](
+    svc.CacheManager(), "worker",
+    func(k string) string { return "dedup:" + k },
+)
+clusterCache, _ := cache.GetCache[string, kv.ClusterSnapshot](
+    svc.CacheManager(), "worker",
+    func(k string) string { return "cluster:" + k },
+)
+```
+
+For tests (Task 13) use `frame.WithInMemoryCache("worker")` instead — no container needed.
 
 ---
 
@@ -683,8 +467,8 @@ import (
 type Config struct {
 	fconfig.ConfigurationDefault
 
-	// Redis / Valkey for dedup + cluster.
-	RedisURL string `env:"REDIS_URL,required"`
+	// Valkey URL for Frame's cache framework (backs dedup + cluster).
+	ValkeyURL string `env:"VALKEY_URL,required"` // e.g. valkey://valkey:6379
 
 	// R2 publish bucket (the live job-detail JSONs, distinct from the
 	// event log). pkg/publish creates snapshots here.
@@ -1065,26 +849,27 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/cache"
 	"github.com/rs/xid"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/kv"
 )
 
 // DedupHandler consumes VariantValidatedV1, looks up the hard_key
-// in Redis; if missing, allocates a new cluster_id. Emits
-// VariantClusteredV1 in either case so canonical-merge downstream
-// always runs.
+// in the Frame-managed dedup cache; if missing, allocates a new
+// cluster_id. Emits VariantClusteredV1 either way so canonical
+// merge downstream always runs.
 type DedupHandler struct {
 	svc   *frame.Service
-	store *kv.DedupStore
+	cache cache.Cache[string, string]
 }
 
 // NewDedupHandler binds the handler.
-func NewDedupHandler(svc *frame.Service, store *kv.DedupStore) *DedupHandler {
-	return &DedupHandler{svc: svc, store: store}
+func NewDedupHandler(svc *frame.Service, c cache.Cache[string, string]) *DedupHandler {
+	return &DedupHandler{svc: svc, cache: c}
 }
 
 // Name ...
@@ -1114,7 +899,7 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	}
 	val := env.Payload
 
-	clusterID, hit, err := h.store.Get(ctx, val.Normalized.HardKey)
+	clusterID, hit, err := h.cache.Get(ctx, val.Normalized.HardKey)
 	if err != nil {
 		return err
 	}
@@ -1122,7 +907,10 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	if !hit {
 		clusterID = xid.New().String()
 		isNew = true
-		if err := h.store.Set(ctx, val.Normalized.HardKey, clusterID); err != nil {
+		// TTL 0 means "no expiry" for Frame caches that honour it;
+		// backends that don't get the framework default. Dedup
+		// assignments are permanent.
+		if err := h.cache.Set(ctx, val.Normalized.HardKey, clusterID, 0*time.Second); err != nil {
 			return err
 		}
 	}
@@ -1172,6 +960,7 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/cache"
 	"github.com/rs/xid"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
@@ -1183,12 +972,12 @@ import (
 // CanonicalUpsertedV1.
 type CanonicalHandler struct {
 	svc   *frame.Service
-	store *kv.ClusterStore
+	cache cache.Cache[string, kv.ClusterSnapshot]
 }
 
 // NewCanonicalHandler binds the handler.
-func NewCanonicalHandler(svc *frame.Service, store *kv.ClusterStore) *CanonicalHandler {
-	return &CanonicalHandler{svc: svc, store: store}
+func NewCanonicalHandler(svc *frame.Service, c cache.Cache[string, kv.ClusterSnapshot]) *CanonicalHandler {
+	return &CanonicalHandler{svc: svc, cache: c}
 }
 
 // Name ...
@@ -1220,7 +1009,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	n := in.Validated.Normalized
 
 	// Load existing snapshot, if any.
-	prev, _, err := h.store.Get(ctx, in.ClusterID)
+	prev, _, err := h.cache.Get(ctx, in.ClusterID)
 	if err != nil {
 		return err
 	}
@@ -1260,7 +1049,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		merged.Slug = merged.CanonicalID // placeholder — Phase 5 replaces with human-readable slug generator
 	}
 
-	if err := h.store.Set(ctx, merged); err != nil {
+	if err := h.cache.Set(ctx, merged.ClusterID, merged, 0*time.Second); err != nil {
 		return err
 	}
 
@@ -1692,6 +1481,7 @@ import (
 	"fmt"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/cache"
 
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/kv"
@@ -1705,8 +1495,8 @@ type Service struct {
 	extractor *extraction.Extractor
 	publisher *publish.R2Publisher
 
-	dedupStore   *kv.DedupStore
-	clusterStore *kv.ClusterStore
+	dedupCache   cache.Cache[string, string]
+	clusterCache cache.Cache[string, kv.ClusterSnapshot]
 
 	translationLangs []string
 }
@@ -1716,16 +1506,16 @@ func NewService(
 	svc *frame.Service,
 	ex *extraction.Extractor,
 	publisher *publish.R2Publisher,
-	dedupStore *kv.DedupStore,
-	clusterStore *kv.ClusterStore,
+	dedupCache cache.Cache[string, string],
+	clusterCache cache.Cache[string, kv.ClusterSnapshot],
 	translationLangs []string,
 ) *Service {
 	return &Service{
 		svc:              svc,
 		extractor:        ex,
 		publisher:        publisher,
-		dedupStore:       dedupStore,
-		clusterStore:     clusterStore,
+		dedupCache:       dedupCache,
+		clusterCache:     clusterCache,
 		translationLangs: translationLangs,
 	}
 }
@@ -1735,8 +1525,8 @@ func (s *Service) RegisterAll() error {
 	handlers := []frame.EventI{
 		NewNormalizeHandler(s.svc),
 		NewValidateHandler(s.svc, s.extractor),
-		NewDedupHandler(s.svc, s.dedupStore),
-		NewCanonicalHandler(s.svc, s.clusterStore),
+		NewDedupHandler(s.svc, s.dedupCache),
+		NewCanonicalHandler(s.svc, s.clusterCache),
 		NewEmbedHandler(s.svc, s.extractor),
 		NewTranslateHandler(s.svc, s.extractor, s.translationLangs),
 		NewPublishHandler(s.svc, s.publisher),
@@ -1765,9 +1555,10 @@ import (
 	"log"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/cache"
+	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/kv"
 	"stawi.jobs/pkg/publish"
@@ -1784,7 +1575,20 @@ func main() {
 		log.Fatalf("worker: load config: %v", err)
 	}
 
-	ctx, svc := frame.NewServiceWithContext(ctx, frame.WithConfig(&cfg))
+	// Build a Valkey-backed raw cache and register it with Frame
+	// under a single name. Two typed views on it — one for dedup
+	// (hard_key → cluster_id) and one for cluster snapshots — are
+	// taken below via GetCache with different keyFuncs.
+	raw, err := framevalkey.New(cache.WithDSN(cfg.ValkeyURL))
+	if err != nil {
+		log.Fatalf("worker: valkey cache open: %v", err)
+	}
+
+	ctx, svc := frame.NewServiceWithContext(ctx,
+		frame.WithConfig(&cfg),
+		frame.WithCacheManager(),
+		frame.WithCache("worker", raw),
+	)
 	defer svc.Stop(ctx)
 
 	// Extractor (AI). nil if no inference URL configured — handlers
@@ -1801,14 +1605,19 @@ func main() {
 		})
 	}
 
-	// KV.
-	kvClient, err := kv.Open(kv.Config{URL: cfg.RedisURL})
-	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("worker: kv open failed")
+	// Typed cache views — both back onto the same "worker" raw cache,
+	// separated by key-prefix functions.
+	dedupCache, _ := cache.GetCache[string, string](
+		svc.CacheManager(), "worker",
+		func(k string) string { return "dedup:" + k },
+	)
+	clusterCache, _ := cache.GetCache[string, kv.ClusterSnapshot](
+		svc.CacheManager(), "worker",
+		func(k string) string { return "cluster:" + k },
+	)
+	if dedupCache == nil || clusterCache == nil {
+		util.Log(ctx).Fatal("worker: cache wiring failed (GetCache returned nil)")
 	}
-	defer func() { _ = kvClient.Close() }()
-	dedup := kv.NewDedupStore(kvClient)
-	cluster := kv.NewClusterStore(kvClient)
 
 	// R2 publisher (existing package).
 	// The exact constructor signature of R2Publisher depends on the
@@ -1828,7 +1637,7 @@ func main() {
 		})
 	}
 
-	service := workersvc.NewService(svc, ex, publisher, dedup, cluster, cfg.TranslationLangs)
+	service := workersvc.NewService(svc, ex, publisher, dedupCache, clusterCache, cfg.TranslationLangs)
 	if err := service.RegisterAll(); err != nil {
 		util.Log(ctx).WithError(err).Fatal("worker: register handlers failed")
 	}
@@ -1873,17 +1682,12 @@ package service_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pitabwire/frame"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/minio"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/pitabwire/frame/cache"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/kv"
@@ -1920,61 +1724,39 @@ func (c *collector) Len() int {
 	return len(c.got)
 }
 
-func startRedis(t *testing.T, ctx context.Context) (string, func()) {
-	t.Helper()
-	req := testcontainers.ContainerRequest{
-		Image:        "redis:7-alpine",
-		ExposedPorts: []string{"6379/tcp"},
-		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(30 * time.Second),
-	}
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("start redis: %v", err)
-	}
-	host, _ := c.Host(ctx)
-	port, _ := c.MappedPort(ctx, "6379/tcp")
-	return fmt.Sprintf("redis://%s:%s/0", host, port.Port()),
-		func() { _ = c.Terminate(context.Background()) }
-}
-
 func TestWorkerPipelineE2E(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// --- Redis ---
-	redisURL, stopRedis := startRedis(t, ctx)
-	defer stopRedis()
-	kvc, err := kv.Open(kv.Config{URL: redisURL})
-	if err != nil {
-		t.Fatalf("kv open: %v", err)
-	}
-	defer func() { _ = kvc.Close() }()
-
-	// --- MinIO for publish bucket ---
-	mc, err := minio.Run(ctx, "minio/minio:RELEASE.2024-08-03T04-33-23Z")
-	if err != nil {
-		t.Fatalf("minio run: %v", err)
-	}
-	t.Cleanup(func() { _ = mc.Terminate(context.Background()) })
-	endpoint, _ := mc.ConnectionString(ctx)
-
-	// Create bucket via S3 client (minio doesn't auto-create).
-	// Construction mirrors apps/materializer/service/service_test.go.
-	// Re-use pkg/eventlog.NewClient since publish likely takes the
-	// same style — or build the publish client manually.
-	_ = endpoint // publisher construction is publish-package-specific;
-	// for this test we set the publisher to nil so PublishHandler
-	// is a no-op and we can assert the rest of the pipeline end-to-end
-	// without depending on publish internals. When Phase 6 wires the
-	// real publisher, extend this test.
+	// Publisher is nil for this test — PublishHandler no-ops when
+	// publisher is nil, so we focus on the normalize → validate →
+	// dedup → canonical emissions. Phase 6 integrates the real
+	// publisher into an expanded test.
 	var publisher *publish.R2Publisher
 
-	// --- Frame in-memory service ---
-	ctx, svc := frame.NewServiceWithContext(ctx)
+	// Frame service with an in-memory cache registered under "worker"
+	// — same name the production wiring uses. Handlers read typed
+	// views from this same manager just like in main.go.
+	ctx, svc := frame.NewServiceWithContext(ctx,
+		frame.WithCacheManager(),
+		frame.WithInMemoryCache("worker"),
+	)
 	defer svc.Stop(ctx)
+
+	dedupCache, ok := cache.GetCache[string, string](
+		svc.CacheManager(), "worker",
+		func(k string) string { return "dedup:" + k },
+	)
+	if !ok {
+		t.Fatal("dedup cache not wired")
+	}
+	clusterCache, ok := cache.GetCache[string, kv.ClusterSnapshot](
+		svc.CacheManager(), "worker",
+		func(k string) string { return "cluster:" + k },
+	)
+	if !ok {
+		t.Fatal("cluster cache not wired")
+	}
 
 	// --- Collectors on each downstream topic ---
 	colNormalized := &collector{topic: eventsv1.TopicVariantsNormalized}
@@ -1988,9 +1770,7 @@ func TestWorkerPipelineE2E(t *testing.T) {
 	}
 
 	// --- Wire the worker service (nil extractor for deterministic test) ---
-	dedup := kv.NewDedupStore(kvc)
-	cluster := kv.NewClusterStore(kvc)
-	wsvc := workersvc.NewService(svc, nil, publisher, dedup, cluster, nil)
+	wsvc := workersvc.NewService(svc, nil, publisher, dedupCache, clusterCache, nil)
 	if err := wsvc.RegisterAll(); err != nil {
 		t.Fatalf("register all: %v", err)
 	}
@@ -2041,8 +1821,6 @@ func TestWorkerPipelineE2E(t *testing.T) {
 			}
 			return // success
 		}
-		aws.String("") // keep aws import used; or remove if unused
-		_ = s3.ListObjectsV2Input{}
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("pipeline did not produce all downstream events in time — normalized=%d validated=%d clustered=%d canonical=%d",
@@ -2050,7 +1828,7 @@ func TestWorkerPipelineE2E(t *testing.T) {
 }
 ```
 
-If the final `aws` / `s3` import is unused after the test body compiles, remove both the import and the dummy references.
+The test has no external dependencies — no MinIO, no Valkey, no Redis. Frame's in-memory cache and in-memory pub/sub provide everything needed.
 
 - [ ] **Step 2: Run**
 
