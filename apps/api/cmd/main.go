@@ -26,6 +26,7 @@ import (
 	"stawi.jobs/pkg/pipeline/handlers"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
+	"stawi.jobs/pkg/searchindex"
 )
 
 // hashIP returns an opaque, one-way hash of the client IP from the
@@ -235,6 +236,17 @@ func main() {
 			cfg.R2Bucket, cfg.R2DeployHookURL,
 		)
 		log.WithField("bucket", cfg.R2Bucket).Info("R2 publisher enabled")
+	}
+
+	manticoreURL := os.Getenv("MANTICORE_URL")
+	var manticoreClient *searchindex.Client
+	if manticoreURL != "" {
+		mc, err := searchindex.Open(searchindex.Config{URL: manticoreURL})
+		if err != nil {
+			util.Log(ctx).WithError(err).Fatal("api: manticore open failed")
+		}
+		defer func() { _ = mc.Close() }()
+		manticoreClient = mc
 	}
 
 	// Analytics ingest. /jobs/{slug}/view emits a server-attributed
@@ -533,6 +545,10 @@ func main() {
 			"sort":        effectiveSort(sort, q),
 		})
 	})
+
+	if manticoreClient != nil {
+		mux.HandleFunc("GET /api/v2/search", searchV2Handler(manticoreClient))
+	}
 
 	// GET /api/feed — tiered, location-aware discovery feed. Returns
 	// a cascade of {preferred, local, regional, global} sections so
