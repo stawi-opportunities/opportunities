@@ -4,13 +4,16 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
 	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/util"
+	"github.com/redis/go-redis/v9"
 
+	"stawi.jobs/pkg/eventlog"
 	"stawi.jobs/pkg/extraction"
 	"stawi.jobs/pkg/kv"
 	"stawi.jobs/pkg/publish"
@@ -35,6 +38,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("worker: valkey cache open: %v", err)
 	}
+
+	// Direct go-redis client on the same Valkey instance, used by the
+	// KV rebuild admin endpoint which writes raw JSON rather than going
+	// through Frame's typed cache layer.
+	kvOpts, err := redis.ParseURL(cfg.ValkeyURL)
+	if err != nil {
+		log.Fatalf("worker: parse valkey URL: %v", err)
+	}
+	kvClient := redis.NewClient(kvOpts)
 
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithConfig(&cfg),
@@ -88,7 +100,25 @@ func main() {
 
 	service := workersvc.NewService(svc, ex, publisher, dedupCache, clusterCache, cfg.TranslationLangs)
 
-	svc.Init(ctx, frame.WithRegisterEvents(service.Handlers()...))
+	// R2 event-log reader for the KV rebuild admin endpoint.
+	logClient := eventlog.NewClient(eventlog.R2Config{
+		AccountID:       cfg.R2LogAccountID,
+		AccessKeyID:     cfg.R2LogAccessKeyID,
+		SecretAccessKey: cfg.R2LogSecretAccessKey,
+		Bucket:          cfg.R2LogBucket,
+		Endpoint:        cfg.R2LogEndpoint,
+		UsePathStyle:    cfg.R2LogUsePathStyle,
+	})
+	logReader := eventlog.NewReader(logClient, cfg.R2LogBucket)
+	kvRebuilder := workersvc.NewKVRebuilder(logReader, kvClient)
+
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("POST /_admin/kv/rebuild", workersvc.KVRebuildHandler(kvRebuilder))
+
+	svc.Init(ctx,
+		frame.WithRegisterEvents(service.Handlers()...),
+		frame.WithHTTPHandler(adminMux),
+	)
 
 	if err := svc.Run(ctx, ""); err != nil {
 		util.Log(ctx).WithError(err).Fatal("worker: frame.Run failed")
