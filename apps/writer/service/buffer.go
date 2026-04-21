@@ -171,6 +171,16 @@ func collectionForTopic(topic string) string {
 		return "crawl_page_completed"
 	case eventsv1.TopicSourcesDiscovered:
 		return "sources_discovered"
+	case eventsv1.TopicCVUploaded, eventsv1.TopicCVExtracted:
+		return "candidates_cv"
+	case eventsv1.TopicCVImproved:
+		return "candidates_improvements"
+	case eventsv1.TopicCandidateEmbedding:
+		return "candidates_embeddings"
+	case eventsv1.TopicCandidatePreferencesUpdated:
+		return "candidates_preferences"
+	case eventsv1.TopicCandidateMatchesReady:
+		return "candidates_matches_ready"
 	default:
 		return "_unknown"
 	}

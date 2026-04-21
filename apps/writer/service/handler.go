@@ -79,6 +79,13 @@ func extractHint(raw json.RawMessage, topic string) string {
 		return decodeField(raw, "payload.canonical_id")
 	case eventsv1.TopicTranslations:
 		return decodeField(raw, "payload.lang")
+	case eventsv1.TopicCVUploaded,
+		eventsv1.TopicCVExtracted,
+		eventsv1.TopicCVImproved,
+		eventsv1.TopicCandidateEmbedding,
+		eventsv1.TopicCandidatePreferencesUpdated,
+		eventsv1.TopicCandidateMatchesReady:
+		return decodeField(raw, "payload.candidate_id")
 	default:
 		return ""
 	}
