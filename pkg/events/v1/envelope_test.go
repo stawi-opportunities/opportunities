@@ -432,3 +432,35 @@ func TestMatchesReadyRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip lost: %+v", back.Payload)
 	}
 }
+
+func TestPartitionKeyCVEventsUseCandidatePrefix(t *testing.T) {
+	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
+	for _, topic := range []string{
+		TopicCVUploaded, TopicCVExtracted, TopicCVImproved,
+		TopicCandidateEmbedding, TopicCandidatePreferencesUpdated,
+		TopicCandidateMatchesReady,
+	} {
+		pk := PartitionKey(topic, now, "abcdef123456")
+		if pk.Secondary != "ab" {
+			t.Fatalf("topic=%s Secondary=%q, want ab", topic, pk.Secondary)
+		}
+	}
+}
+
+func TestPartitionObjectPathCandidateCVLabel(t *testing.T) {
+	pk := PartKey{DT: "2026-04-21", Secondary: "ab"}
+	got := pk.ObjectPath("candidates_cv", "xyz789")
+	want := "candidates_cv/dt=2026-04-21/cnd=ab/xyz789.parquet"
+	if got != want {
+		t.Fatalf("path=%q, want %q", got, want)
+	}
+}
+
+func TestPartitionObjectPathCandidatesPreferencesLabel(t *testing.T) {
+	pk := PartKey{DT: "2026-04-21", Secondary: "cd"}
+	got := pk.ObjectPath("candidates_preferences", "xyz789")
+	want := "candidates_preferences/dt=2026-04-21/cnd=cd/xyz789.parquet"
+	if got != want {
+		t.Fatalf("path=%q, want %q", got, want)
+	}
+}

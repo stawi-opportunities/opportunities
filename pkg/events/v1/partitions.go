@@ -29,7 +29,10 @@ func partitionSecondary(eventType, hint string) string {
 		// per-source files — lots of small sources, keep them grouped
 		return strings.ToLower(hint)
 	case TopicCanonicalsUpserted, TopicCanonicalsExpired,
-		TopicEmbeddings, TopicPublished:
+		TopicEmbeddings, TopicPublished,
+		TopicCVUploaded, TopicCVExtracted, TopicCVImproved,
+		TopicCandidateEmbedding, TopicCandidatePreferencesUpdated,
+		TopicCandidateMatchesReady:
 		// cluster_id prefix (2 hex chars = 256 buckets per day)
 		return firstN(strings.ToLower(hint), 2)
 	case TopicTranslations:
@@ -71,6 +74,12 @@ func partitionSecondaryLabel(collection string) string {
 		return "src"
 	case "canonicals", "canonicals_expired", "embeddings", "published":
 		return "cc"
+	case "candidates_cv", "candidates_cv_current",
+		"candidates_improvements",
+		"candidates_preferences", "candidates_preferences_current",
+		"candidates_embeddings", "candidates_embeddings_current",
+		"candidates_matches_ready":
+		return "cnd"
 	case "translations":
 		return "lang"
 	default:
