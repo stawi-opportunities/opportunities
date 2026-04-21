@@ -3,6 +3,7 @@ package eventlog
 import (
 	"bytes"
 	"fmt"
+	"io"
 
 	"github.com/parquet-go/parquet-go"
 )
@@ -41,7 +42,7 @@ func ReadParquet[T any](body []byte) ([]T, error) {
 	if len(out) == 0 {
 		return nil, nil
 	}
-	if _, err := r.Read(out); err != nil {
+	if _, err := r.Read(out); err != nil && err != io.EOF {
 		return nil, fmt.Errorf("eventlog: parquet read: %w", err)
 	}
 	return out, nil
