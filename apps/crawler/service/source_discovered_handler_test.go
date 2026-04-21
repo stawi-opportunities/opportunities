@@ -96,3 +96,23 @@ func TestSourceDiscoveredSkipsBlocklistedDomain(t *testing.T) {
 		t.Fatalf("blocked domain must be skipped, got upserts=%v", repo.upserts)
 	}
 }
+
+func TestSourceDiscoveredDropsEventIfOriginMissing(t *testing.T) {
+	// No rows seeded in the repo, so GetByID returns (nil, nil) for any id.
+	repo := newFakeUpserter()
+	h := NewSourceDiscoveredHandler(repo)
+
+	env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
+		DiscoveredURL: "https://newboard.example/careers",
+		SourceID:      "origin-that-does-not-exist",
+	})
+	raw, _ := json.Marshal(env)
+	rm := json.RawMessage(raw)
+
+	if err := h.Execute(context.Background(), &rm); err != nil {
+		t.Fatalf("Execute should return nil when origin is missing, got: %v", err)
+	}
+	if len(repo.upserts) != 0 {
+		t.Fatalf("missing origin must not upsert, got upserts=%v", repo.upserts)
+	}
+}

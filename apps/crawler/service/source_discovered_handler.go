@@ -129,8 +129,7 @@ func (h *SourceDiscoveredHandler) Execute(ctx context.Context, payload any) erro
 		Config:           "{}",
 	}
 	if err := h.repo.Upsert(ctx, newSrc); err != nil {
-		log.WithError(err).Warn("source-discovered: upsert failed")
-		return nil
+		return fmt.Errorf("source-discovered: upsert %s: %w", baseURL, err)
 	}
 	log.Info("source-discovered: upserted new source")
 	return nil
