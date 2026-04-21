@@ -38,10 +38,10 @@ func TestReaderReturnsLatestEmbedding(t *testing.T) {
 	}
 	uploader := eventlog.NewUploader(client, cfg.Bucket)
 
-	// Seed two embedding events for cnd_abc (prefix "ab"), one older,
+	// Seed two embedding events for abc_xyz (prefix "ab"), one older,
 	// one newer. The reader must return the newer one.
-	older := eventsv1.CandidateEmbeddingV1{CandidateID: "cnd_abc", CVVersion: 1, Vector: []float32{0.1, 0.2}, ModelVersion: "v1"}
-	newer := eventsv1.CandidateEmbeddingV1{CandidateID: "cnd_abc", CVVersion: 2, Vector: []float32{0.9, 0.8}, ModelVersion: "v1"}
+	older := eventsv1.CandidateEmbeddingV1{CandidateID: "abc_xyz", CVVersion: 1, Vector: []float32{0.1, 0.2}, ModelVersion: "v1"}
+	newer := eventsv1.CandidateEmbeddingV1{CandidateID: "abc_xyz", CVVersion: 2, Vector: []float32{0.9, 0.8}, ModelVersion: "v1"}
 
 	for i, pl := range []eventsv1.CandidateEmbeddingV1{older, newer} {
 		body, werr := eventlog.WriteParquet([]eventsv1.CandidateEmbeddingV1{pl})
@@ -55,7 +55,7 @@ func TestReaderReturnsLatestEmbedding(t *testing.T) {
 	}
 
 	r := NewReader(client, cfg.Bucket)
-	vec, err := r.LatestEmbedding(ctx, "cnd_abc")
+	vec, err := r.LatestEmbedding(ctx, "abc_xyz")
 	if err != nil {
 		t.Fatalf("LatestEmbedding: %v", err)
 	}

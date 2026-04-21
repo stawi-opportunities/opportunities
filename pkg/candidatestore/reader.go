@@ -74,22 +74,16 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 	return matching[len(matching)-1], nil
 }
 
-// prefix2 returns the two-char hex partition prefix for a candidateID.
-// CandidateIDs are prefixed with a type tag (e.g. "cnd_") followed by
-// the opaque xid. We strip the leading "cnd_" prefix (if present) and
-// return the first two lowercased chars of the remainder. This aligns
-// with the `candidates_*_current/cnd=<prefix>/` partition layout where
-// <prefix> is the first two chars of the raw candidate xid.
+// prefix2 returns the first two chars of the candidate_id, lowercased.
+// MUST match the writer's partition convention in
+// pkg/events/v1/partitions.go::partitionSecondary (which calls
+// firstN(strings.ToLower(hint), 2) with hint=payload.candidate_id).
 func prefix2(candidateID string) string {
-	const typePrefix = "cnd_"
-	id := candidateID
-	if len(id) > len(typePrefix) && id[:len(typePrefix)] == typePrefix {
-		id = id[len(typePrefix):]
+	lower := lowerASCII(candidateID)
+	if len(lower) >= 2 {
+		return lower[:2]
 	}
-	if len(id) >= 2 {
-		return lowerASCII(id[:2])
-	}
-	return lowerASCII(id)
+	return lower
 }
 
 func lowerASCII(s string) string {
