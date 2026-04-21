@@ -103,10 +103,22 @@ func (s *Service) uploadBatch(ctx context.Context, b *Batch) error {
 	switch b.EventType {
 	case eventsv1.TopicVariantsIngested:
 		body, err = encodeBatch[eventsv1.VariantIngestedV1](b.Events)
+	case eventsv1.TopicVariantsNormalized:
+		body, err = encodeBatch[eventsv1.VariantNormalizedV1](b.Events)
+	case eventsv1.TopicVariantsValidated:
+		body, err = encodeBatch[eventsv1.VariantValidatedV1](b.Events)
+	case eventsv1.TopicVariantsFlagged:
+		body, err = encodeBatch[eventsv1.VariantFlaggedV1](b.Events)
+	case eventsv1.TopicVariantsClustered:
+		body, err = encodeBatch[eventsv1.VariantClusteredV1](b.Events)
 	case eventsv1.TopicCanonicalsUpserted:
 		body, err = encodeBatch[eventsv1.CanonicalUpsertedV1](b.Events)
 	case eventsv1.TopicEmbeddings:
 		body, err = encodeBatch[eventsv1.EmbeddingV1](b.Events)
+	case eventsv1.TopicTranslations:
+		body, err = encodeBatch[eventsv1.TranslationV1](b.Events)
+	case eventsv1.TopicPublished:
+		body, err = encodeBatch[eventsv1.PublishedV1](b.Events)
 	default:
 		return fmt.Errorf("writer: no encoder registered for %q", b.EventType)
 	}
