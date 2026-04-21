@@ -34,8 +34,12 @@ const (
 	TopicCVImproved                  = "candidates.cv.improved.v1"
 	TopicCandidateEmbedding          = "candidates.embeddings.v1"
 	TopicCandidatePreferencesUpdated = "candidates.preferences.updated.v1"
-	TopicCandidateMatchesReady       = "candidates.matches.ready.v1"
-	TopicCandidateCVStaleNudge       = "candidates.cv.stale_nudge.v1"
+	TopicCandidateMatchesReady = "candidates.matches.ready.v1"
+	// TopicCandidateCVStaleNudge is a notification-only event. The
+	// external notification service consumes it to send nudge emails;
+	// the writer does NOT persist it to Parquet, so it is intentionally
+	// absent from AllTopics() below.
+	TopicCandidateCVStaleNudge = "candidates.cv.stale_nudge.v1"
 )
 
 // AllTopics returns every topic the writer is expected to subscribe

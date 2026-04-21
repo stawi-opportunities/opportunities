@@ -1,7 +1,5 @@
 package eventsv1
 
-import "time"
-
 // CVUploadedV1 is emitted by the candidates HTTP upload handler after
 // the raw bytes have been archived to R2 and the plain-text has been
 // extracted. It is the entry point of the candidate lifecycle.
@@ -28,6 +26,10 @@ type CVUploadedV1 struct {
 // CVExtractedV1 carries the parsed CV fields plus the deterministic
 // scoring output. Emitted by the cv-extract handler after ExtractCV
 // + Scorer.Score run.
+//
+// Field shapes mostly mirror extraction.CVFields, except SalaryMin /
+// SalaryMax are integers here (normalised from the LLM's free-form
+// string output — see field comment below).
 type CVExtractedV1 struct {
 	CandidateID string `json:"candidate_id" parquet:"candidate_id"`
 	CVVersion   int    `json:"cv_version"   parquet:"cv_version"`
@@ -51,9 +53,14 @@ type CVExtractedV1 struct {
 	Education          string   `json:"education,omitempty"           parquet:"education,optional"`
 	PreferredLocations []string `json:"preferred_locations,omitempty" parquet:"preferred_locations,list,optional"`
 	RemotePreference   string   `json:"remote_preference,omitempty"   parquet:"remote_preference,optional"`
-	SalaryMin          int      `json:"salary_min,omitempty"          parquet:"salary_min,optional"`
-	SalaryMax          int      `json:"salary_max,omitempty"          parquet:"salary_max,optional"`
-	Currency           string   `json:"currency,omitempty"            parquet:"currency,optional"`
+	// SalaryMin / SalaryMax are the normalised integer form. The LLM
+	// extraction (extraction.CVFields) emits these as strings like
+	// "80000" or "85k"; the cv-extract handler (Task 7) is responsible
+	// for parsing them into integers, clamping non-parseable outputs
+	// to 0, and converting units. Downstream consumers read integers.
+	SalaryMin int `json:"salary_min,omitempty" parquet:"salary_min,optional"`
+	SalaryMax int `json:"salary_max,omitempty" parquet:"salary_max,optional"`
+	Currency  string   `json:"currency,omitempty"            parquet:"currency,optional"`
 
 	// Score components (matches cv.ScoreComponents).
 	ScoreATS      int `json:"score_ats"      parquet:"score_ats"`
@@ -69,10 +76,13 @@ type CVExtractedV1 struct {
 
 // CVFix mirrors cv.PriorityFix, carried inside CVImprovedV1.
 type CVFix struct {
-	FixID          string `json:"fix_id"             parquet:"fix_id"`
-	Title          string `json:"title,omitempty"    parquet:"title,optional"`
-	ImpactLevel    string `json:"impact,omitempty"   parquet:"impact,optional"`
-	Category       string `json:"category,omitempty" parquet:"category,optional"`
+	FixID       string `json:"fix_id"             parquet:"fix_id"`
+	Title       string `json:"title,omitempty"    parquet:"title,optional"`
+	// ImpactLevel is serialised as "impact" on the wire to keep the
+	// JSON terse and to mirror cv.PriorityFix.Impact (the struct
+	// field this is produced from).
+	ImpactLevel string `json:"impact,omitempty" parquet:"impact,optional"`
+	Category    string `json:"category,omitempty" parquet:"category,optional"`
 	Why            string `json:"why,omitempty"      parquet:"why,optional"`
 	AutoApplicable bool   `json:"auto_applicable"    parquet:"auto_applicable"`
 	Rewrite        string `json:"rewrite,omitempty"  parquet:"rewrite,optional"`
@@ -122,8 +132,7 @@ type MatchRow struct {
 // MatchesReadyV1 is emitted by the match endpoint (or the Trustage
 // weekly-digest admin) after a candidate's top matches are ranked.
 type MatchesReadyV1 struct {
-	CandidateID  string     `json:"candidate_id"          parquet:"candidate_id"`
-	MatchBatchID string     `json:"match_batch_id"        parquet:"match_batch_id"`
-	Matches      []MatchRow `json:"matches"               parquet:"matches,list"`
-	OccurredAt   time.Time  `json:"occurred_at,omitempty" parquet:"occurred_at,optional"`
+	CandidateID  string     `json:"candidate_id"   parquet:"candidate_id"`
+	MatchBatchID string     `json:"match_batch_id" parquet:"match_batch_id"`
+	Matches      []MatchRow `json:"matches"        parquet:"matches,list"`
 }
