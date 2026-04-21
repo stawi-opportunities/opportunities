@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -37,10 +38,16 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 		Create(s).Error
 }
 
-// GetByID returns a source by its primary key.
+// GetByID returns a source by its primary key. Returns (nil, nil) when
+// the row does not exist — callers should check src == nil for the
+// deleted/paused case and not treat it as an error. This matches
+// JobRepository.FindByHardKey and the wider repository convention.
 func (r *SourceRepository) GetByID(ctx context.Context, id string) (*domain.Source, error) {
 	var s domain.Source
 	err := r.db(ctx, true).First(&s, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
