@@ -211,3 +211,71 @@ func TestPublishedRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip lost: %+v", back.Payload)
 	}
 }
+
+func TestCrawlRequestRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCrawlRequests, CrawlRequestV1{
+		RequestID: "req_1",
+		SourceID:  "src_greenhouse_acme",
+		URL:       "",
+		Cursor:    "",
+		Mode:      "auto",
+		Attempt:   1,
+	})
+	raw, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back Envelope[CrawlRequestV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.SourceID != "src_greenhouse_acme" || back.Payload.Mode != "auto" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestCrawlPageCompletedRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicCrawlPageCompleted, CrawlPageCompletedV1{
+		RequestID:    "req_1",
+		SourceID:     "src_1",
+		URL:          "https://example.com/jobs",
+		HTTPStatus:   200,
+		JobsFound:    12,
+		JobsEmitted:  11,
+		JobsRejected: 1,
+		Cursor:       "page=2",
+		ErrorCode:    "",
+	})
+	raw, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back Envelope[CrawlPageCompletedV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.SourceID != "src_1" || back.Payload.JobsFound != 12 {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
+
+func TestSourceDiscoveredRoundTrip(t *testing.T) {
+	orig := NewEnvelope(TopicSourcesDiscovered, SourceDiscoveredV1{
+		DiscoveredURL: "https://another-board.example/careers",
+		Name:          "Another Board",
+		Country:       "KE",
+		Type:          "generic-html",
+		SourceID:      "src_1",
+	})
+	raw, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back Envelope[SourceDiscoveredV1]
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Payload.DiscoveredURL != "https://another-board.example/careers" {
+		t.Fatalf("round-trip lost: %+v", back.Payload)
+	}
+}
