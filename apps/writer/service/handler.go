@@ -85,8 +85,10 @@ func extractHint(raw json.RawMessage, topic string) string {
 // decodeField walks a dotted path through the JSON tree and returns
 // the string value (or "" on any miss).
 func decodeField(raw json.RawMessage, dotted string) string {
-	// For Phase 1 every payload field is a top-level string, so a
-	// minimal two-step path ("payload.x") is enough.
+	// Two-step descent: first unmarshal the envelope, then descend into
+	// the payload sub-object. Both levels are decoded as
+	// map[string]json.RawMessage so that non-string fields in the
+	// payload (e.g. salary_min, salary_max) don't break the decode.
 	var step1 map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &step1); err != nil {
 		return ""
@@ -100,11 +102,19 @@ func decodeField(raw json.RawMessage, dotted string) string {
 			if !ok {
 				return ""
 			}
-			var m map[string]string
+			var m map[string]json.RawMessage
 			if err := json.Unmarshal(sub, &m); err != nil {
 				return ""
 			}
-			return m[tail]
+			valRaw, ok := m[tail]
+			if !ok {
+				return ""
+			}
+			var s string
+			if err := json.Unmarshal(valRaw, &s); err != nil {
+				return ""
+			}
+			return s
 		}
 	}
 	return ""
