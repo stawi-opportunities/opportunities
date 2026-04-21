@@ -69,7 +69,9 @@ func (h *WriterHandler) Execute(ctx context.Context, payload any) error {
 // source_id). Additional types join this switch as they come online.
 func extractHint(raw json.RawMessage, topic string) string {
 	switch topic {
-	case eventsv1.TopicVariantsIngested:
+	case eventsv1.TopicVariantsIngested,
+		eventsv1.TopicCrawlPageCompleted,
+		eventsv1.TopicSourcesDiscovered:
 		return decodeField(raw, "payload.source_id")
 	case eventsv1.TopicCanonicalsUpserted, eventsv1.TopicCanonicalsExpired:
 		return decodeField(raw, "payload.cluster_id")

@@ -119,6 +119,10 @@ func (s *Service) uploadBatch(ctx context.Context, b *Batch) error {
 		body, err = encodeBatch[eventsv1.TranslationV1](b.Events)
 	case eventsv1.TopicPublished:
 		body, err = encodeBatch[eventsv1.PublishedV1](b.Events)
+	case eventsv1.TopicCrawlPageCompleted:
+		body, err = encodeBatch[eventsv1.CrawlPageCompletedV1](b.Events)
+	case eventsv1.TopicSourcesDiscovered:
+		body, err = encodeBatch[eventsv1.SourceDiscoveredV1](b.Events)
 	default:
 		return fmt.Errorf("writer: no encoder registered for %q", b.EventType)
 	}
