@@ -273,3 +273,18 @@ func encodeBatchMatchesReady(raws []json.RawMessage) ([]byte, error) {
 	}
 	return eventlog.WriteParquet(rows)
 }
+
+func encodeBatchCanonicalsExpired(raws []json.RawMessage) ([]byte, error) {
+	rows := make([]eventsv1.CanonicalExpiredV1, 0, len(raws))
+	for _, r := range raws {
+		var env eventsv1.Envelope[eventsv1.CanonicalExpiredV1]
+		if err := json.Unmarshal(r, &env); err != nil {
+			return nil, fmt.Errorf("writer: decode envelope: %w", err)
+		}
+		p := env.Payload
+		p.EventID = env.EventID
+		p.OccurredAt = env.OccurredAt
+		rows = append(rows, p)
+	}
+	return eventlog.WriteParquet(rows)
+}

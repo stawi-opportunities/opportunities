@@ -112,6 +112,8 @@ func (s *Service) uploadBatch(ctx context.Context, b *Batch) error {
 		body, err = encodeBatchVariantClustered(b.Events)
 	case eventsv1.TopicCanonicalsUpserted:
 		body, err = encodeBatchCanonicalUpserted(b.Events)
+	case eventsv1.TopicCanonicalsExpired:
+		body, err = encodeBatchCanonicalsExpired(b.Events)
 	case eventsv1.TopicEmbeddings:
 		body, err = encodeBatchEmbedding(b.Events)
 	case eventsv1.TopicTranslations:

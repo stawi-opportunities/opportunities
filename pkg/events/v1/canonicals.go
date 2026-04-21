@@ -43,6 +43,19 @@ type CanonicalUpsertedV1 struct {
 	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
+// CanonicalExpiredV1 is emitted by the retention sweep when a
+// canonical's apply link is determined dead or its expires_at has
+// passed. The materializer flips status to 'expired' on idx_jobs_rt.
+type CanonicalExpiredV1 struct {
+	CanonicalID string    `json:"canonical_id" parquet:"canonical_id"`
+	ClusterID   string    `json:"cluster_id"   parquet:"cluster_id,optional"`
+	Reason      string    `json:"reason"       parquet:"reason,optional"`
+	ExpiredAt   time.Time `json:"expired_at"   parquet:"expired_at"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+}
+
 // EmbeddingV1 is the event emitted by the embedder stage once a
 // canonical job's semantic vector has been computed. Materializer
 // updates the `embedding` HNSW attribute on idx_jobs_rt; Phase 3+
