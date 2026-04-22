@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from .catalog import load_catalog
 from .merge_current import run_all_current_merges
-from .tables import ALL_TABLES
+from .tables import APPEND_ONLY_TABLES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("iceberg-ops.nightly")
@@ -49,7 +49,7 @@ def main() -> int:
     cat = load_catalog()
     results = []
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(maintain_one, cat, t) for t in ALL_TABLES]
+        futures = [pool.submit(maintain_one, cat, t) for t in APPEND_ONLY_TABLES]
         for f in as_completed(futures):
             results.append(f.result())
 

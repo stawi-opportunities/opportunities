@@ -55,7 +55,6 @@ func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int
 	if err != nil {
 		return nil, fmt.Errorf("candidatestore: scan cv_extracted_current: %w", err)
 	}
-	defer arrowTbl.Retain()
 	defer arrowTbl.Release()
 
 	rows, err := staleRowsFromTable(arrowTbl)

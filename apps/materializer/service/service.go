@@ -22,13 +22,14 @@ import (
 
 // Service is the materializer composition root.
 type Service struct {
-	catalog   catalog.Catalog
-	reader    *eventlog.Reader // reads Parquet bytes from R2
-	r2Bucket  string           // e.g. "stawi-jobs-log"
-	manticore *searchindex.Client
-	wm        *Watermark
-	pollEvery time.Duration
-	tables    []tableSink
+	catalog        catalog.Catalog
+	reader         *eventlog.Reader // reads Parquet bytes from R2
+	r2Bucket       string           // e.g. "stawi-jobs-log"
+	manticore      *searchindex.Client
+	wm             *Watermark
+	pollEvery      time.Duration
+	bulkBatchSize  int
+	tables         []tableSink
 }
 
 // tableSink pairs an Iceberg table identifier with the function that
@@ -45,7 +46,9 @@ type tableSink struct {
 
 // NewService wires the materializer. r2Bucket is used to strip the
 // s3://<bucket>/ prefix from Iceberg file paths before fetching via
-// eventlog.Reader.
+// eventlog.Reader. bulkBatchSize controls how many documents are
+// accumulated before a single Manticore bulk request is issued; pass 0
+// to use the default (1000).
 func NewService(
 	cat catalog.Catalog,
 	reader *eventlog.Reader,
@@ -53,14 +56,19 @@ func NewService(
 	mc *searchindex.Client,
 	wm *Watermark,
 	poll time.Duration,
+	bulkBatchSize int,
 ) *Service {
+	if bulkBatchSize <= 0 {
+		bulkBatchSize = 1000
+	}
 	s := &Service{
-		catalog:   cat,
-		reader:    reader,
-		r2Bucket:  r2Bucket,
-		manticore: mc,
-		wm:        wm,
-		pollEvery: poll,
+		catalog:       cat,
+		reader:        reader,
+		r2Bucket:      r2Bucket,
+		manticore:     mc,
+		wm:            wm,
+		pollEvery:     poll,
+		bulkBatchSize: bulkBatchSize,
 	}
 	s.tables = []tableSink{
 		{Ident: []string{"jobs", "canonicals"}, apply: s.applyCanonicals},
@@ -123,7 +131,7 @@ func (s *Service) processTable(ctx context.Context, sink tableSink) error {
 		return nil
 	}
 
-	upserter := NewBulkUpserter(s.manticore, "idx_jobs_rt", 500)
+	upserter := NewBulkUpserter(s.manticore, "idx_jobs_rt", s.bulkBatchSize)
 
 	for _, task := range diff.Files {
 		key := icebergFileKey(task.File.FilePath(), s.r2Bucket)

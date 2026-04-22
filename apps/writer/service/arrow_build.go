@@ -291,7 +291,7 @@ func appendVariantFields(
 	appendOptStr(b.Field(15).(*array.StringBuilder), description)
 	appendOptStr(b.Field(16).(*array.StringBuilder), applyURL)
 	appendOptTS(b.Field(17).(*array.TimestampBuilder), postedAt)
-	appendTS(b.Field(18).(*array.TimestampBuilder), scrapedAt)
+	appendOptTS(b.Field(18).(*array.TimestampBuilder), scrapedAt)
 	appendOptStr(b.Field(19).(*array.StringBuilder), contentHash)
 	appendOptStr(b.Field(20).(*array.StringBuilder), rawArchiveRef)
 	appendOptStr(b.Field(21).(*array.StringBuilder), modelVersionExtract)

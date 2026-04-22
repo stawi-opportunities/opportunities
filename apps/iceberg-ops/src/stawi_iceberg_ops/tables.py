@@ -8,27 +8,35 @@ HOT_TABLES = [
     "jobs.embeddings",
 ]
 
-ALL_TABLES = [
+# Tables that participate in compaction + manifest rewrite + snapshot expiry.
+# _current tables are NOT in this list — they are wholly rebuilt by
+# CURRENT_TABLE_MERGES, so compacting them is wasted I/O.
+APPEND_ONLY_TABLES = [
     "jobs.variants",
     "jobs.canonicals",
-    "jobs.canonicals_current",
     "jobs.canonicals_expired",
     "jobs.embeddings",
-    "jobs.embeddings_current",
     "jobs.translations",
-    "jobs.translations_current",
     "jobs.published",
     "jobs.crawl_page_completed",
     "jobs.sources_discovered",
     "candidates.cv_uploaded",
     "candidates.cv_extracted",
-    "candidates.cv_extracted_current",
     "candidates.cv_improved",
     "candidates.preferences",
-    "candidates.preferences_current",
     "candidates.embeddings",
-    "candidates.embeddings_current",
     "candidates.matches_ready",
+]
+
+# Every table in the catalog. Used for introspection / diagnostics,
+# NOT for maintenance loops.
+ALL_TABLES = APPEND_ONLY_TABLES + [
+    "jobs.canonicals_current",
+    "jobs.embeddings_current",
+    "jobs.translations_current",
+    "candidates.cv_extracted_current",
+    "candidates.preferences_current",
+    "candidates.embeddings_current",
 ]
 
 # Tables rebuilt from their append-only source via MERGE INTO semantics.

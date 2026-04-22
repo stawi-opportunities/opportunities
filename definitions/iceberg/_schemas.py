@@ -78,7 +78,13 @@ VARIANTS = Schema(
     _opt(16, "description",           StringType()),
     _opt(17, "apply_url",             StringType()),
     _opt(18, "posted_at",             TimestamptzType()),
-    _req(19, "scraped_at",            TimestamptzType()),
+    # scraped_at is optional: flagged/expired variants carry no scrape
+    # timestamp. Ingested/normalized/validated/clustered still populate
+    # it. Nullability only means the column ALLOWS null, not requires it.
+    # Note: create_tables.py is idempotent; this change takes effect on
+    # first table creation (pre-deployment). Existing tables need an
+    # ALTER COLUMN scraped_at DROP NOT NULL via SQL catalog migration.
+    _opt(19, "scraped_at",            TimestamptzType()),
     _opt(20, "content_hash",          StringType()),
     _opt(21, "raw_archive_ref",       StringType()),
     _opt(22, "model_version_extract", StringType()),

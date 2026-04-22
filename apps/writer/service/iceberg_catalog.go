@@ -50,51 +50,34 @@ func LoadIcebergCatalog(ctx context.Context, cfg CatalogConfig) (catalog.Catalog
 	})
 }
 
-// CommitBatchWithRetry appends a batch to an Iceberg table via
-// Transaction.Append + Commit, retrying transient failures with
-// exponential backoff. buildRecord is called once per attempt so each
-// attempt gets a fresh RecordReader (callers must not re-use the
-// reader after it has been released).
-//
-// The returned *table.Table is the refreshed table state after a
-// successful commit. On failure after maxAttempts the last error is
-// returned; Frame will redeliver the batch.
+// CommitBatchWithRetry applies a batch to a table with exponential backoff.
+// Reloads the table metadata on each attempt so OCC conflicts resolve
+// cleanly: attempt N+1 sees the commit from attempt N on the other replica
+// and its own Append is applied against the fresh metadata.
 func CommitBatchWithRetry(
 	ctx context.Context,
-	tbl *table.Table,
+	cat catalog.Catalog,
+	ident []string,
 	buildRecord func() (array.RecordReader, error),
 	maxAttempts int,
 ) (*table.Table, error) {
 	var lastErr error
 	wait := 100 * time.Millisecond
-
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		rdr, err := buildRecord()
-		if err != nil {
-			// Build errors (bad JSON, schema mismatch) are not transient —
-			// return immediately so Frame dead-letters the message.
-			return nil, fmt.Errorf("build record batch: %w", err)
-		}
-
-		txn := tbl.NewTransaction()
-		if err := txn.Append(ctx, rdr, nil); err != nil {
-			rdr.Release()
-			lastErr = err
-			goto retry
-		}
-		rdr.Release()
-
-		if t, err := txn.Commit(ctx); err != nil {
-			lastErr = err
-			goto retry
-		} else {
+		t, err := commitOnce(ctx, cat, ident, buildRecord)
+		if err == nil {
 			return t, nil
 		}
-
-	retry:
+		// Record-build failures are not transient (schema mismatch,
+		// decode error). Fail fast; don't burn retries.
+		if buildErr, ok := err.(buildRecordError); ok {
+			return nil, buildErr.err
+		}
+		lastErr = err
 		util.Log(ctx).WithError(lastErr).
 			WithField("attempt", attempt).
-			Warn("iceberg commit failed; retrying")
+			WithField("ident", ident).
+			Warn("iceberg commit failed; retrying with fresh table load")
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -105,6 +88,39 @@ func CommitBatchWithRetry(
 			wait = 10 * time.Second
 		}
 	}
+	return nil, fmt.Errorf("iceberg commit exceeded retries: %w", lastErr)
+}
 
-	return nil, fmt.Errorf("iceberg commit exceeded %d retries: %w", maxAttempts, lastErr)
+// buildRecordError wraps a record-build failure so CommitBatchWithRetry
+// can distinguish it from a transient catalog/network error and fail fast.
+type buildRecordError struct{ err error }
+
+func (e buildRecordError) Error() string { return e.err.Error() }
+
+// commitOnce loads the table and attempts a single Append+Commit transaction.
+func commitOnce(
+	ctx context.Context,
+	cat catalog.Catalog,
+	ident []string,
+	buildRecord func() (array.RecordReader, error),
+) (*table.Table, error) {
+	tbl, err := cat.LoadTable(ctx, ident)
+	if err != nil {
+		return nil, fmt.Errorf("load table: %w", err)
+	}
+	rdr, err := buildRecord()
+	if err != nil {
+		return nil, buildRecordError{err: fmt.Errorf("build record batch: %w", err)}
+	}
+	txn := tbl.NewTransaction()
+	if err := txn.Append(ctx, rdr, nil); err != nil {
+		rdr.Release()
+		return nil, err
+	}
+	rdr.Release()
+	t, err := txn.Commit(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
 }

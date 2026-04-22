@@ -60,7 +60,6 @@ func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (event
 	if err != nil {
 		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: scan embeddings_current: %w", err)
 	}
-	defer arrowTbl.Retain()
 	defer arrowTbl.Release()
 
 	if arrowTbl.NumRows() == 0 {
@@ -110,7 +109,6 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 	if err != nil {
 		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: scan preferences_current: %w", err)
 	}
-	defer arrowTbl.Retain()
 	defer arrowTbl.Release()
 
 	if arrowTbl.NumRows() == 0 {

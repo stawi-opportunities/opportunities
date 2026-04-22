@@ -85,7 +85,7 @@ func main() {
 	kvClient := redis.NewClient(kvOpts)
 	wm := matsvc.NewWatermark(kvClient)
 
-	service := matsvc.NewService(cat, reader, cfg.R2Bucket, mc, wm, cfg.PollInterval)
+	service := matsvc.NewService(cat, reader, cfg.R2Bucket, mc, wm, cfg.PollInterval, cfg.ManticoreBulkBatchSize)
 
 	go func() {
 		if err := service.Run(ctx); err != nil {

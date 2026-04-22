@@ -60,7 +60,7 @@ var ArrowSchemaVariants = arrow.NewSchema([]arrow.Field{
 	_opt("description", arrow.BinaryTypes.String),
 	_opt("apply_url", arrow.BinaryTypes.String),
 	_opt("posted_at", _tsType),
-	_req("scraped_at", _tsType),
+	_opt("scraped_at", _tsType),
 	_opt("content_hash", arrow.BinaryTypes.String),
 	_opt("raw_archive_ref", arrow.BinaryTypes.String),
 	_opt("model_version_extract", arrow.BinaryTypes.String),

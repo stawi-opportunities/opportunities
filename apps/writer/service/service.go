@@ -100,36 +100,26 @@ func (s *Service) drain(ctx context.Context) error {
 	return nil
 }
 
-// commitBatch loads the Iceberg table for the batch's topic, builds
-// an Arrow RecordReader from the raw events, and commits via
-// Transaction.Append. Transient catalog failures are retried by
-// CommitBatchWithRetry; the caller re-enqueues on persistent failure.
+// commitBatch builds an Arrow RecordReader from the raw events and
+// commits via Transaction.Append. Transient catalog failures (including
+// OCC conflicts from the second writer replica) are retried by
+// CommitBatchWithRetry, which reloads the table on each attempt so
+// stale metadata never loops forever.
 func (s *Service) commitBatch(ctx context.Context, b *Batch) error {
 	tableIdent, builder := batchDispatch(b.EventType)
 	if builder == nil {
-		// No Iceberg table for this topic yet — silently drop.
-		util.Log(ctx).
-			WithField("event_type", b.EventType).
-			Debug("writer: no iceberg table registered for topic; skipping batch")
-		return nil
+		return fmt.Errorf("writer: no encoder registered for %q", b.EventType)
 	}
-
-	tbl, err := s.catalog.LoadTable(ctx, tableIdent)
-	if err != nil {
-		return fmt.Errorf("writer: load table %v: %w", tableIdent, err)
-	}
-
-	_, err = CommitBatchWithRetry(ctx, tbl, func() (array.RecordReader, error) {
+	_, err := CommitBatchWithRetry(ctx, s.catalog, tableIdent, func() (array.RecordReader, error) {
 		return builder(s.pool, b.Events)
 	}, 5)
 	if err != nil {
 		return fmt.Errorf("writer: commit %v: %w", tableIdent, err)
 	}
-
 	util.Log(ctx).
 		WithField("table", tableIdent).
 		WithField("events", len(b.Events)).
-		Info("writer: iceberg commit ok")
+		Info("iceberg commit ok")
 	return nil
 }
 

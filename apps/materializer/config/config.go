@@ -35,8 +35,9 @@ type Config struct {
 	ValkeyURL string `env:"VALKEY_URL,required"`
 
 	// Manticore HTTP JSON endpoint, e.g. "http://manticore:9308".
-	ManticoreURL     string        `env:"MANTICORE_URL,required"`
-	ManticoreTimeout time.Duration `env:"MANTICORE_TIMEOUT" envDefault:"10s"`
+	ManticoreURL          string        `env:"MANTICORE_URL,required"`
+	ManticoreTimeout      time.Duration `env:"MANTICORE_TIMEOUT" envDefault:"10s"`
+	ManticoreBulkBatchSize int          `env:"MANTICORE_BULK_BATCH_SIZE" envDefault:"1000"`
 
 	// Polling cadence.
 	PollInterval time.Duration `env:"MATERIALIZER_POLL_INTERVAL" envDefault:"15s"`
