@@ -1,3 +1,5 @@
+//go:build integration
+
 package searchindex_test
 
 import (
