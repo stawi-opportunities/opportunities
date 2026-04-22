@@ -20,11 +20,9 @@ import (
 	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/backpressure"
 	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/dedupe"
 	"stawi.jobs/pkg/domain"
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/seeds"
 	"stawi.jobs/pkg/telemetry"
@@ -77,14 +75,8 @@ func main() {
 		); err != nil {
 			log.WithError(err).Fatal("auto-migrate failed")
 		}
-		// Set existing variants without a stage to 'ready'
-		migrationDB.Exec("UPDATE job_variants SET stage = 'ready' WHERE stage IS NULL OR stage = ''")
-		log.Info("set existing variants to stage=ready")
-
-		// Postgres-specific schema bits GORM AutoMigrate can't express:
-		// partial indexes on status='active', pg_trgm, mv_job_facets.
-		// The API also calls this but only when its own migration flag is
-		// set — crawler runs the migration job on every Helm install, so
+		// Postgres-specific schema bits GORM AutoMigrate can't express.
+		// Crawler runs the migration job on every Helm install, so
 		// putting it here keeps the finalize step in one place.
 		if err := repository.FinalizeSchema(migrationDB); err != nil {
 			log.WithError(err).Fatal("finalize schema failed")
@@ -95,10 +87,6 @@ func main() {
 
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
-	jobRepo := repository.NewJobRepository(dbFn)
-	facetRepo := repository.NewFacetRepository(dbFn)
-	retentionRepo := repository.NewRetentionRepository(dbFn)
-
 	// Load seed sources.
 	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo)
 	if seedErr != nil {
@@ -143,21 +131,6 @@ func main() {
 	// Connector registry.
 	registry := service.BuildRegistry(httpClient, extractor)
 
-	// Dedupe engine.
-	dedupeEngine := dedupe.NewEngine(jobRepo)
-
-	// R2 publisher for job content.
-	var r2Publisher *publish.R2Publisher
-	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
-		r2Publisher = publish.NewR2Publisher(
-			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
-			cfg.R2Bucket, cfg.R2DeployHookURL,
-		)
-		publish.SetContentOrigin(cfg.ContentOrigin)
-		log.WithField("bucket", cfg.R2Bucket).WithField("content_origin", publish.ContentOrigin).
-			Info("R2 publisher enabled")
-	}
-
 	// Archive R2 client + raw_ref repository. Separate bucket/creds
 	// from the public job-repo above; carries raw HTML + variant
 	// blobs + canonical snapshots. rawRefRepo tracks which variants
@@ -170,9 +143,6 @@ func main() {
 		Bucket:          cfg.ArchiveR2Bucket,
 	})
 	rawRefRepo := repository.NewRawRefRepository(dbFn)
-
-	// Cloudflare cache purger (no-op if zone/token not configured).
-	cachePurger := publish.NewCachePurger(cfg.CloudflareZoneID, cfg.CloudflareAPIToken, "")
 
 	// Analytics client — batches events to OpenObserve. Nil when
 	// ANALYTICS_BASE_URL is unset; all call sites handle the no-op.
@@ -281,9 +251,6 @@ func main() {
 
 	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
 
-	_ = retentionRepo // referenced by the admin endpoints registered below
-	_ = facetRepo
-
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()
 
@@ -357,9 +324,6 @@ func main() {
 		})
 	})
 
-	// Admin: rebuild canonical jobs from all variants
-	adminMux.HandleFunc("/admin/rebuild-canonicals", rebuildCanonicalsHandler(jobRepo, dedupeEngine))
-
 	// ── Trustage-driven endpoints ──────────────────────────────────
 	//
 	// These are called by Trustage workflow instances (on a schedule)
@@ -423,28 +387,6 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	// Admin: retention sweep — flip expired canonicals.
-	adminMux.HandleFunc("POST /admin/retention/expire", func(w http.ResponseWriter, r *http.Request) {
-		runExpire(r.Context(), retentionRepo)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	})
-
-	// Admin: materialized-view refresh.
-	adminMux.HandleFunc("POST /admin/retention/mv-refresh", func(w http.ResponseWriter, r *http.Request) {
-		runMVRefresh(r.Context(), facetRepo)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	})
-
-	// Admin: stage-2 physical deletion of R2 snapshots past their
-	// grace window. Runs synchronously; fine for the nightly cadence.
-	adminMux.HandleFunc("POST /admin/retention/stage2", func(w http.ResponseWriter, r *http.Request) {
-		runRetention(r.Context(), retentionRepo, r2Publisher, cachePurger, cfg.RetentionGraceDays)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	})
-
 	// Admin: R2 archive purge — drop cluster bundles + orphan raw/
 	// blobs for canonicals past the grace window. Fired by Trustage
 	// on the same cadence as stage2 retention.
@@ -479,7 +421,7 @@ func main() {
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 
 	// Register a named health checker that reports source state counts.
-	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo, jobRepo: jobRepo})
+	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo})
 
 	// Run the service. Frame handles signal-based shutdown, HTTP serving
 	// (with /healthz), and the background consumer lifecycle.
@@ -491,8 +433,7 @@ func main() {
 // sourceStateChecker is a Frame Checker that embeds source state counts into
 // the /healthz response as a named check entry.
 type sourceStateChecker struct {
-	repo    *repository.SourceRepository
-	jobRepo *repository.JobRepository
+	repo *repository.SourceRepository
 }
 
 func (c *sourceStateChecker) Name() string { return "source_states" }
@@ -505,62 +446,10 @@ func (c *sourceStateChecker) CheckHealth() error {
 	degraded, _ := c.repo.CountByStatus(ctx, domain.SourceDegraded)
 	paused, _ := c.repo.CountByStatus(ctx, domain.SourcePaused)
 
-	// Include pipeline stage counts for observability.
-	stages, _ := c.jobRepo.CountByStage(ctx)
-	_ = stages // surfaced via /healthz JSON
-
-	// Return a non-error informational string; this surfaces in the checks array.
 	// Only signal unhealthy if there are no active sources at all.
 	if active == 0 && degraded == 0 {
 		return fmt.Errorf("no active sources (active=%d degraded=%d paused=%d)", active, degraded, paused)
 	}
-	// Return nil to mark healthy; counts appear as the checker name context.
 	_ = fmt.Sprintf("active=%d degraded=%d paused=%d", active, degraded, paused)
 	return nil
-}
-
-// rebuildCanonicalsHandler returns an HTTP handler that truncates all canonical
-// tables and rebuilds canonical jobs by re-running every variant through the
-// dedupe engine. Useful for recovering from dedupe bugs that produced inflated
-// canonical counts.
-func rebuildCanonicalsHandler(jobRepo *repository.JobRepository, dedupeEngine *dedupe.Engine) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-			return
-		}
-		ctx := r.Context()
-
-		// 1. Truncate canonical tables.
-		if err := jobRepo.TruncateCanonicals(ctx); err != nil {
-			http.Error(w, "truncate failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// 2. Rebuild in batches.
-		offset := 0
-		batchSize := 500
-		total := 0
-		errors := 0
-		for {
-			variants, err := jobRepo.ListAllVariants(ctx, batchSize, offset)
-			if err != nil || len(variants) == 0 {
-				break
-			}
-			for _, v := range variants {
-				if _, err := dedupeEngine.UpsertAndCluster(ctx, v); err != nil {
-					errors++
-				}
-				total++
-			}
-			offset += batchSize
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":             "complete",
-			"variants_processed": total,
-			"errors":             errors,
-		})
-	}
 }

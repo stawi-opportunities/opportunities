@@ -142,23 +142,6 @@ type CandidateMatch struct {
 
 func (CandidateMatch) TableName() string { return "candidate_matches" }
 
-// RerankCache stores reranker scores keyed by a content hash so we don't pay
-// for re-scoring the same (CV, job) pair across weekly cron sweeps.
-//
-// CacheKey is sha256(cv_text | canonical_job_id | reranker_version) hex-
-// encoded — stable as long as the CV and job haven't changed.
-type RerankCache struct {
-	CacheKey        string    `gorm:"type:varchar(64);primaryKey" json:"cache_key"`
-	Score           float32   `gorm:"type:real;not null" json:"score"`
-	RerankerVersion string    `gorm:"type:varchar(64);not null" json:"reranker_version"`
-	// Plain btree on created_at so the 30-day purge query stays index-
-	// hit. Postgres rejects partial-index predicates that reference NOW()
-	// (must be IMMUTABLE), so we don't narrow the index here.
-	CreatedAt       time.Time `gorm:"index" json:"created_at"`
-	Hits            int       `gorm:"type:int;not null;default:0" json:"hits"`
-}
-
-func (RerankCache) TableName() string { return "rerank_cache" }
 
 // CandidateApplication records a job application submitted by or on behalf of a candidate.
 type CandidateApplication struct {

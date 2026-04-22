@@ -371,31 +371,6 @@ type CanonicalJob struct {
 
 func (CanonicalJob) TableName() string { return "canonical_jobs" }
 
-// CrawlPageState tracks pagination state for multi-page crawls.
-type CrawlPageState struct {
-	BaseModel
-	CrawlJobID string    `gorm:"type:varchar(20);not null;index" json:"crawl_job_id"`
-	PageURL    string    `gorm:"type:text;not null" json:"page_url"`
-	PageNum    int       `gorm:"not null" json:"page_num"`
-	CursorNext string    `gorm:"type:text" json:"cursor_next"`
-	FetchedAt  time.Time `gorm:"not null" json:"fetched_at"`
-	JobCount   int       `gorm:"not null;default:0" json:"job_count"`
-}
-
-func (CrawlPageState) TableName() string { return "crawl_page_states" }
-
-// RejectedJob records jobs that were discarded during normalization or dedup.
-type RejectedJob struct {
-	BaseModel
-	CrawlJobID  string    `gorm:"type:varchar(20);not null;index" json:"crawl_job_id"`
-	SourceID    string    `gorm:"type:varchar(20);not null;index" json:"source_id"`
-	ExternalID  string    `gorm:"type:varchar(255)" json:"external_id"`
-	Reason      string    `gorm:"type:varchar(100);not null" json:"reason"`
-	RawSnippet  string    `gorm:"type:text" json:"raw_snippet"`
-	RejectedAt  time.Time `gorm:"not null" json:"rejected_at"`
-}
-
-func (RejectedJob) TableName() string { return "rejected_jobs" }
 
 // RawRef is the reference-count row linking a raw content-hash
 // (R2 raw/{hash}.html.gz) to the variants that use it. Written
