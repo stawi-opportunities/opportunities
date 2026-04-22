@@ -22,7 +22,7 @@ DROP TABLE IF EXISTS canonical_jobs CASCADE;
 DROP TABLE IF EXISTS crawl_page_states  CASCADE;
 DROP TABLE IF EXISTS rerank_cache       CASCADE;
 DROP TABLE IF EXISTS rejected_jobs      CASCADE;
-DROP TABLE IF EXISTS saved_jobs         CASCADE;
+-- saved_jobs is kept in Postgres per spec §5.5 (small FK table, fine on Postgres).
 
 -- Candidate schema trim.
 --

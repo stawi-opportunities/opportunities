@@ -11,6 +11,61 @@ import (
 	"stawi.jobs/pkg/domain"
 )
 
+// JobVariant is the normalised, pipeline-ready representation of one observed
+// job posting. It is an in-memory-only struct — it is never persisted to
+// Postgres directly. Downstream callers map its fields into event payloads
+// (e.g. eventsv1.VariantIngestedV1) for the R2/event-log pipeline.
+type JobVariant struct {
+	ExternalJobID    string
+	SourceID         string
+	HardKey          string
+	SourceURL        string
+	ApplyURL         string
+	Title            string
+	Company          string
+	LocationText     string
+	Country          string
+	Language         string
+	RemoteType       string
+	EmploymentType   string
+	SalaryMin        float64
+	SalaryMax        float64
+	Currency         string
+	Description      string
+	Seniority        string
+	Skills           string
+	Roles            string
+	Benefits         string
+	ContactName      string
+	ContactEmail     string
+	Department       string
+	Industry         string
+	Education        string
+	Experience       string
+	Deadline         string
+	UrgencyLevel     string
+	UrgencySignals   string
+	HiringTimeline   string
+	InterviewStages  int
+	HasTakeHome      bool
+	FunnelComplexity string
+	CompanySize      string
+	FundingStage     string
+	RequiredSkills   string
+	NiceToHaveSkills string
+	ToolsFrameworks  string
+	GeoRestrictions  string
+	TimezoneReq      string
+	ApplicationType  string
+	ATSPlatform      string
+	RoleScope        string
+	TeamSize         string
+	ReportsTo        string
+	PostedAt         *time.Time
+	ScrapedAt        time.Time
+	ContentHash      string
+}
+
 // Minimum description length, in runes, before we trust whatlanggo to
 // override the source-declared language. Below this, the detection is noisy
 // (especially on titles like "Senior Engineer"), so we stick with the
@@ -132,7 +187,7 @@ func contentHash(externalID, title, company, location, description string) strin
 // "ja"). Callers that don't yet track language per source should pass "en".
 // The normalizer will opportunistically override this with a whatlanggo
 // detection when the description is long enough to give a reliable signal.
-func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceBoard, language string, scrapedAt time.Time) domain.JobVariant {
+func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceBoard, language string, scrapedAt time.Time) JobVariant {
 	// 1. Trim all text fields.
 	title := strings.TrimSpace(ext.Title)
 	company := strings.TrimSpace(ext.Company)
@@ -183,7 +238,7 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceB
 	niceToHaveSkills := strings.Join(ext.NiceToHaveSkills, ", ")
 	toolsFrameworks := strings.Join(ext.ToolsFrameworks, ", ")
 
-	return domain.JobVariant{
+	return JobVariant{
 		ExternalJobID:    externalID,
 		SourceID:         sourceID,
 		HardKey:          hardKey,

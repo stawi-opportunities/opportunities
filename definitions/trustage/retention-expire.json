@@ -1,10 +1,10 @@
 {
   "version": "1.0",
   "name": "stawi-jobs.retention.expire",
-  "description": "Every 15 minutes: flip canonical_jobs.status from 'active' to 'expired' for rows past expires_at. Idempotent — the SQL is a conditional UPDATE, so running twice in the same minute is safe.",
+  "description": "Every 15 minutes: flip canonical_jobs.status from 'active' to 'expired' for rows past expires_at. Idempotent — the SQL is a conditional UPDATE, so running twice in the same minute is safe. DISABLED — target handler /admin/retention/expire is not yet implemented; scheduled for Phase 6.5+.",
   "schedule": {
     "cron": "15m",
-    "active": true
+    "active": false
   },
   "input": {},
   "timeout": "2m",
