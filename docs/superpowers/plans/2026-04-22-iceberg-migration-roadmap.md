@@ -1,83 +1,43 @@
-# Iceberg Migration Roadmap
+# Iceberg Migration Roadmap — Greenfield Cutover
 
 Date: 2026-04-22
 Status: Proposal — awaits reading + redirect
 Owner: Peter Bwire
-Target start: after Phase 6 stabilises (≥2 weeks green in prod)
-Estimated end: +4 phases, ~6 months part-time
+Replaces: the 5-phase dual-write variant of this document (git history preserves it)
 
 ---
 
-## 1. Executive summary
+## 1. Why this is short
 
-Phase 6 shipped a direct-to-R2 Parquet event log with custom Go compactor, custom materializer watermarks, and custom `*_current/` snapshot rebuilding. All of this is table-stakes work for a data lake — none of it is differentiation. Apache Iceberg replaces the lot with a catalog, `MERGE INTO` SQL, and scheduled `rewrite_data_files()` maintenance.
+The cluster hasn't cut over to Phase 6 yet — the Vault secret for the log bucket is unseeded and Manticore's `idx_jobs_rt` schema is unapplied. The Phase 6 code is on `main` and `v5.0.2` images are published, but nothing is running against real traffic.
 
-This roadmap cuts over both the jobs pipeline (crawler + worker + materializer) and the candidate CV lifecycle to Iceberg over four phases. Each phase leaves the system in a green, deployable state. Phase 6 code is deleted incrementally, not all at once.
+That means the event log is EMPTY in prod. No historical Parquet to migrate. No existing consumers to dual-read for. This is a straight substitution: the Phase 6 writer's "write Parquet to R2 at `<collection>/dt=…/<secondary>/<xid>.parquet`" becomes "write Parquet to R2 + commit to Iceberg catalog" in one release. The compactor never runs. `*_current/` directories never exist.
 
-**North star after migration:**
-- Writers land Parquet files to R2 and commit snapshots to a JDBC catalog hosted on the existing Postgres. One additional commit per flush. No compactor pod, no watermark table, no bucket-prefix logic.
-- Maintenance is one `pyiceberg` CronJob per table, run nightly. Replaces `apps/writer/service/compact*.go` entirely.
-- Materializer reads snapshot diffs (`scan.useRef(prevSnapshot).planFiles()`) — no R2 polling, no dedup logic, no partition-prefix tracking.
-- External consumers (firehose, agent-economy products) read the same tables via pyiceberg/DuckDB/Trino. Zero custom SDK.
-- `candidates_cv_current/`, `canonicals_current/`, etc. stop existing — those are queries against the latest snapshot.
-
-**What does NOT change:**
-- R2 is still the storage. Iceberg is a metadata+catalog layer on top of the same Parquet files you already write.
-- Manticore is still the search index. Materializer still upserts into it.
-- Valkey still holds dedup + rerank cache.
-- Postgres still holds sources, candidate identity, and now the Iceberg catalog tables.
-- Frame pub/sub still transports events.
+One phase. One cutover. `v6.0.0` ships with Iceberg native.
 
 ---
 
-## 2. Current state (Phase 6 outcome)
+## 2. What changes in v6.0.0
 
-Writer path (apps/writer/service):
-- Receives every `*.v1` event from Frame pub/sub.
-- Buffers per `(topic, partition-secondary)` in-memory.
-- Flushes to R2 at `{10k events | 64 MB | 30 s}` → `<collection>/dt=YYYY-MM-DD/<secondary>/<xid>.parquet`.
-- Ack after S3 ETag.
+| Subsystem | Phase 6 shipped | v6.0.0 ships |
+|---|---|---|
+| Writer | Parquet → R2, per-topic encode, custom partition path | Parquet → R2, per-topic encode, **+ Iceberg `AppendFiles` commit** |
+| Compactor | hourly + daily Go compactor code | **deleted — never deployed** |
+| `*_current/` R2 prefixes | rebuilt nightly by Go compactor | **don't exist — replaced by Iceberg `_current` tables via MERGE** |
+| Materializer | R2-list + watermark in KV | Iceberg snapshot-diff scan |
+| `pkg/candidatestore` | R2-list + fold by business key | Iceberg table scan |
+| Apps/api Hugo backfill | R2-list `canonicals_current/` + parse | Iceberg scan `jobs.canonicals_current` |
+| Maintenance | Trustage hourly + daily compact triggers | Single nightly CronJob running pyiceberg |
+| Catalog | — | 4 tables in existing Postgres via JDBC catalog |
+| Watermark tracking | `materializer_watermarks` table in Postgres | Iceberg snapshot IDs |
 
-Compactor path (apps/writer/service/compact*.go):
-- Hourly: merge small files, dedup by `event_id`, earliest `occurred_at` wins.
-- Daily: rebuild `<collection>_current/` from the last snapshot per business key.
+**Code net change:** delete ~2000 LOC (Phase 6 compactor + watermark adapter + `*_current` bucket logic + partition-prefix walking), add ~800 LOC (Iceberg commit helpers + snapshot-scan wrappers + one Python maintenance script).
 
-Materializer path (apps/materializer):
-- Polls R2 every 15 s.
-- Tracks watermark per partition in Valkey/Postgres.
-- Reads new Parquet files, upserts to Manticore via `/replace` + `/update`.
-
-Reader path (pkg/candidatestore, apps/api/cmd/backfill_parquet.go):
-- Lists `candidates_cv_current/cnd=<prefix>/` → filters → returns latest per candidate.
-- Walks `canonicals_current/cc=<prefix>/` → emits Hugo snapshots.
-
-Current Postgres residue: `sources`, `candidate_profiles` (trimmed), `crawl_jobs`, `raw_payloads`, `subscriptions`, `entitlements`.
+**Operational surface:** drops from 3 Trustage compact/maintenance triggers to 1 CronJob.
 
 ---
 
-## 3. Why Iceberg — problems it solves
-
-| Phase 6 pain | Iceberg replacement |
-|---|---|
-| 500 LOC custom compactor with per-collection dispatch + xid file naming | `CALL system.rewrite_data_files('<table>', options => map('target-file-size-bytes', '134217728'))` |
-| `*_current/` rebuild is a whole file-listing pass + hashmap fold + bucket layout | `MERGE INTO target USING source ON key WHEN MATCHED UPDATE … WHEN NOT MATCHED INSERT …` |
-| Envelope widening (Phase 0 / Task 0) required touching 17 structs + encoder switch | `ALTER TABLE jobs.variants ADD COLUMN event_id string` — writers that don't know about the column just write NULL |
-| Materializer watermark table is a per-partition KV, concurrency-managed manually | Snapshot IDs are monotonic commit timestamps; `scan.useRef(snapshotId).planFiles()` is a client-library one-liner |
-| R2 small-file problem solved by custom hourly compactor | Maintenance is a ~5-min nightly pyiceberg CronJob |
-| External consumers need custom "read R2 bucket prefix, dedup by event_id, parse Parquet" code | `pyiceberg.catalog.load_catalog().load_table('jobs.variants').scan().to_duckdb('vr')` |
-| Time-travel debugging requires grepping R2 paths | `SELECT … FROM jobs.canonicals FOR VERSION AS OF <snapshot_id>` |
-| Schema drift between writer and reader goes undetected until a Parquet read panic | Iceberg catalog validates schema on every commit |
-
-**What Iceberg does NOT solve:**
-- Throughput bottleneck — throughput is Manticore-bound for search, not storage-bound.
-- Realtime freshness — still limited by writer flush interval + materializer cadence.
-- Cost — same Parquet bytes on R2.
-
----
-
-## 4. Target architecture
-
-### 4.1 Topology
+## 3. Target architecture
 
 ```
         Frame pub/sub topics
@@ -85,421 +45,303 @@ Current Postgres residue: `sources`, `candidate_profiles` (trimmed), `crawl_jobs
                 ▼
    ┌───────────────────────────┐
    │ apps/writer               │
-   │  - Parquet file → R2      │
-   │  - AppendFiles → catalog  │  (one commit per flush, ~every 30 s)
+   │  Parquet → R2             │
+   │  AppendFiles → catalog    │  (one catalog commit per flush)
    └─────┬──────────────┬──────┘
          │              │
          │              ▼
          │   ┌──────────────────────────┐
          │   │ JDBC catalog (Postgres)  │
-         │   │  iceberg_namespace       │
-         │   │  iceberg_tables          │
-         │   │  iceberg_history         │
-         │   │  iceberg_manifests       │
+         │   │   iceberg_namespaces     │
+         │   │   iceberg_tables         │
+         │   │   iceberg_history        │
+         │   │   iceberg_manifests      │
          │   └───────┬──────────┬───────┘
          ▼           │          │
-   ┌───────────────┐ │          │
-   │ R2: Parquet   │ │          │
-   │  same layout  │ │          │
-   │  as today     │ │          │
-   └───────────────┘ │          │
+   ┌──────────────┐  │          │
+   │ R2 Parquet   │  │          │
+   │ (same files  │  │          │
+   │  as Phase 6) │  │          │
+   └──────────────┘  │          │
                      ▼          ▼
-              ┌──────────────┐  ┌──────────────────────┐
-              │ maintenance  │  │ readers:             │
-              │  CronJob     │  │  - apps/materializer │
-              │  pyiceberg   │  │  - pkg/candidatestore│
-              │  rewrite +   │  │  - apps/api backfill │
-              │  expire      │  │  - external firehose │
-              └──────────────┘  └──────────────────────┘
+              ┌─────────────────────┐   ┌──────────────────────┐
+              │ nightly CronJob     │   │ readers:             │
+              │  pyiceberg ≥0.8     │   │  apps/materializer   │
+              │  rewrite + expire   │   │  pkg/candidatestore  │
+              │  MERGE INTO _current│   │  apps/api backfill   │
+              └─────────────────────┘   └──────────────────────┘
 ```
 
-### 4.2 Catalog — JDBC on existing Postgres
+**Catalog** = JDBC-on-Postgres, schema added via `db/migrations/0004_iceberg_catalog.sql`. No new service, no new HA story.
 
-The JDBC catalog is literally four tables in the existing `stawi_jobs` database. No new pod, no new HA story.
+**Writer** = adds one `iceberg-go` call after each successful R2 Put. If the commit fails, the writer nacks the Frame message and retries (same semantics as an R2 upload failure today).
 
-```
-iceberg_namespaces
-iceberg_tables
-iceberg_table_history
-iceberg_manifest_lists
-```
-
-Creation: one-time `pyiceberg catalog --create jdbc://…` on deploy. Migrations tracked via the existing `db/migrations/` directory.
-
-Why JDBC over REST catalogs:
-- No additional service to run, scale, or back up.
-- Commits are Postgres transactions. ACID for free.
-- The existing `stawi_jobs` DB is already HA'd via the cluster's Postgres operator.
-- Go client + pyiceberg both speak JDBC catalog natively.
-- REST catalog (Polaris, Nessie) is valuable when many independent teams need their own catalog slice; not needed here.
-
-If a future scale-out requires a shared catalog across multiple products (agent economy), swap JDBC → REST in one config change. The table format on R2 doesn't move.
-
-### 4.3 Writer
-
-The writer continues to:
-1. Buffer events in memory by `(topic, partition-secondary)`.
-2. Flush Parquet file to R2 at thresholds.
-3. Ack the Frame pub/sub message only after success.
-
-One thing changes:
-4. After the S3 ETag returns, issue an `AppendFiles` commit to the catalog. This records the new Parquet file in the table's current snapshot.
-
-`AppendFiles` is lightweight — one Postgres `INSERT INTO iceberg_manifest_lists` per commit. Latency overhead: single-digit ms.
-
-If the commit fails (catalog unreachable, retryable error), the writer treats it the same as an R2 upload failure: nack, keep buffered events, redeliver.
-
-### 4.4 Compaction = scheduled maintenance
-
-No compactor pod. Replaced by one CronJob per table (or per-namespace sweep):
-
-```yaml
-# manifests/namespaces/stawi-jobs/iceberg-maintenance/cronjob.yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: iceberg-nightly-maintenance
-spec:
-  schedule: "0 2 * * *"  # 02:00 UTC
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: pyiceberg
-              image: ghcr.io/antinvestor/stawi-jobs-iceberg-ops:v1.0.0
-              command: ["python", "-m", "stawi_iceberg_ops.nightly"]
-              resources:
-                requests: {cpu: "200m", memory: "512Mi"}
-                limits:   {cpu: "1000m", memory: "2Gi"}
-```
-
-Inside the Python script:
+**Maintenance** = a single Python pod, fires once nightly, runs ~5 min:
 
 ```python
-from pyiceberg.catalog import load_catalog
-cat = load_catalog("stawi", type="sql", uri="postgresql://…")
-for table in cat.list_tables("jobs") + cat.list_tables("candidates"):
-    t = cat.load_table(table)
-    t.rewrite_data_files(target_file_size_bytes=128 * 1024 * 1024,
-                         sort_order=DEFAULT_SORT_FOR[table.name])
+# apps/iceberg-ops/main.py
+for tbl in [
+    "jobs.variants", "jobs.canonicals", "jobs.canonicals_expired",
+    "jobs.embeddings", "jobs.translations", "jobs.published",
+    "jobs.crawl_page_completed", "jobs.sources_discovered",
+    "candidates.cv_uploaded", "candidates.cv_extracted",
+    "candidates.cv_improved", "candidates.preferences",
+    "candidates.embeddings", "candidates.matches_ready",
+]:
+    t = cat.load_table(tbl)
+    t.rewrite_data_files(target_file_size_bytes=128 << 20)
     t.rewrite_manifests()
     t.expire_snapshots(older_than_days=14)
+
+for current in CURRENT_TABLES:
+    cat.execute(f"""
+        MERGE INTO {current} AS target
+        USING (SELECT … FROM {current.source} ORDER BY occurred_at DESC) AS src
+        ON target.{key} = src.{key}
+        WHEN MATCHED THEN UPDATE SET …
+        WHEN NOT MATCHED THEN INSERT …
+    """)
 ```
 
-Runs in ~5 min. Replaces ~700 LOC of Phase 6 Go compactor code.
-
-### 4.5 Materializer
-
-Becomes thinner — Iceberg's snapshot model does the bookkeeping:
-
-```go
-cat := iceberg.LoadCatalog(ctx, jdbcURL)
-tbl, _ := cat.LoadTable(ctx, []string{"jobs", "canonicals"})
-
-prev := readWatermarkSnapshotID(ctx)  // from Valkey or Postgres
-current := tbl.CurrentSnapshot().SnapshotID()
-
-newFiles, _ := tbl.NewScan().
-    UseRef(current).
-    FromSnapshotExclusive(prev).
-    PlanFiles(ctx)
-
-for _, f := range newFiles {
-    rows, _ := f.Read(ctx)
-    for _, r := range rows {
-        manticoreClient.Replace(ctx, "idx_jobs_rt", r.ID, r.Doc)
-    }
-}
-
-writeWatermarkSnapshotID(ctx, current)
-```
-
-No partition-prefix tracking. No small-file proliferation handling. No dedup — the writer's Iceberg commits are idempotent at the snapshot level.
-
-### 4.6 Readers — the big simplification
-
-Phase 6's `pkg/candidatestore/reader.go` and `stale_reader.go` each walk R2 prefix listings, read Parquet, fold by business key. After migration:
-
-```go
-// pkg/candidatestore/reader.go — post-migration
-func (r *Reader) LatestByCandidate(ctx context.Context, candidateID string) (*CVState, error) {
-    scan := r.tbl.NewScan().
-        Filter(iceberg.Equal("candidate_id", candidateID)).
-        Select("cv_extract_state")
-    rows, _ := scan.ToArrow(ctx)
-    return rows.Latest("occurred_at"), nil
-}
-```
-
-`MERGE INTO` handles the "latest wins" semantics; the reader is just a filter + limit.
+**Materializer** = `scan.UseRef(current).FromSnapshotExclusive(prev).PlanFiles()` replaces the R2 list + KV watermark pattern.
 
 ---
 
-## 5. Table design
+## 4. Table design (unchanged from the longer roadmap)
 
-### 5.1 Jobs namespace
+### 4.1 Jobs namespace
 
-| Iceberg table | Replaces | Partition spec | Sort key (z-order after compaction) |
-|---|---|---|---|
-| `jobs.variants` | `variants/` | `days(occurred_at), bucket(16, source_id)` | `posted_at` |
-| `jobs.canonicals` | `canonicals/` + `canonicals_current/` via MERGE | `days(occurred_at), bucket(16, cluster_id)` | `(quality_score DESC, posted_at DESC)` |
-| `jobs.canonicals_expired` | `canonicals_expired/` | `days(occurred_at)` | `expired_at` |
-| `jobs.embeddings` | `embeddings/` + `embeddings_current/` via MERGE | `bucket(16, canonical_id)` | — (vectors don't sort) |
-| `jobs.translations` | `translations/` + `translations_current/` via MERGE | `days(occurred_at), bucket(8, lang)` | `canonical_id` |
-| `jobs.published` | `published/` | `days(occurred_at)` | `published_at` |
-| `jobs.crawl_page_completed` | `crawl_page_completed/` | `days(occurred_at), bucket(16, source_id)` | `source_id` |
-| `jobs.sources_discovered` | `sources_discovered/` | `days(occurred_at)` | — |
-
-### 5.2 Candidates namespace
-
-| Iceberg table | Replaces | Partition spec | Sort key |
-|---|---|---|---|
-| `candidates.cv_uploaded` | `candidates_cv/` (upload events) | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
-| `candidates.cv_extracted` | `candidates_cv/` (extract events) + `candidates_cv_current/` via MERGE | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
-| `candidates.cv_improved` | `candidates_improvements/` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
-| `candidates.preferences` | `candidates_preferences/` + `candidates_preferences_current/` | `bucket(16, candidate_id)` | `candidate_id` |
-| `candidates.embeddings` | `candidates_embeddings/` + `candidates_embeddings_current/` | `bucket(16, candidate_id)` | `candidate_id` |
-| `candidates.matches_ready` | `candidates_matches_ready/` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, match_batch_id)` |
-
-### 5.3 Why partition + bucket vs just partition
-
-- `days(occurred_at)` prunes 99% of files for "latest N days" queries (most consumer queries).
-- `bucket(16, key)` gives evenly-sized files within a day without requiring hash prefixes in directory names.
-- Together they replace the Phase 6 `cc=<prefix>/cnd=<prefix>` directory scheme with a deterministic transformation.
-
-Z-ordering applies during nightly compaction — the sort key column is re-sorted across file boundaries so range-scans on `posted_at` or `quality_score` only read the files in that range. For the match endpoint's "give me all canonicals with `quality_score >= 60` sorted by `posted_at`" — this is an order-of-magnitude fewer file reads.
-
-### 5.4 `*_current/` is now a query, not a table
-
-Example: "latest CV per candidate."
-
-Before (Phase 6):
-```
-List R2 under candidates_cv_current/cnd=<prefix>/
-Read every Parquet file
-Filter to candidate_id
-Return
-```
-
-After:
-```sql
--- Stored in pyiceberg nightly MERGE, run as part of maintenance:
-MERGE INTO candidates.cv_current AS t
-USING (
-    SELECT candidate_id, max_by(cv_version, occurred_at) AS cv_version, …
-    FROM candidates.cv_extracted
-    GROUP BY candidate_id
-) AS s
-ON t.candidate_id = s.candidate_id
-WHEN MATCHED THEN UPDATE SET …
-WHEN NOT MATCHED THEN INSERT …;
-```
-
-`candidates.cv_current` is still an Iceberg table — but it's REGENERATED atomically nightly by the maintenance job. Writers never touch it; only the maintenance job does. Readers query it normally.
-
-For "fresher than nightly" reads, the reader runs the SAME query on the append-only `candidates.cv_extracted` table with `ORDER BY occurred_at DESC LIMIT 1`. Iceberg manifest pruning + sort-order metadata makes this fast.
-
----
-
-## 6. Tooling stack
-
-| Piece | Pick | Rationale |
+| Table | Partition | Sort order after compaction |
 |---|---|---|
-| Catalog library | `github.com/apache/iceberg-go` for Go services; `pyiceberg` for maintenance | Go for hot path, Python for scheduled batch |
-| Catalog backend | JDBC on existing Postgres | No new pods |
-| Writer client | `iceberg-go` v0.6+ (writes stable by end of 2026) | Keep writer in Go |
-| Maintenance client | `pyiceberg >= 0.8` with `sqlalchemy` driver | Mature rewrite/expire APIs |
-| Ad-hoc query | DuckDB with `iceberg` extension | Zero-infra analytics |
-| External firehose query | Trino-on-demand or pyiceberg | When agent economy products need it |
-| Schema migrations | `db/migrations/*.sql` for catalog tables; iceberg table creation via pyiceberg scripts in `definitions/iceberg/` | Same pattern as existing |
+| `jobs.variants` | `days(occurred_at), bucket(16, source_id)` | `posted_at` |
+| `jobs.canonicals` | `days(occurred_at), bucket(16, cluster_id)` | `(quality_score DESC, posted_at DESC)` |
+| `jobs.canonicals_current` | `bucket(16, cluster_id)` | `(quality_score DESC, posted_at DESC)` |
+| `jobs.canonicals_expired` | `days(occurred_at)` | `expired_at` |
+| `jobs.embeddings` | `bucket(16, canonical_id)` | — |
+| `jobs.embeddings_current` | `bucket(16, canonical_id)` | — |
+| `jobs.translations` | `days(occurred_at), bucket(8, lang)` | `canonical_id` |
+| `jobs.translations_current` | `bucket(8, lang)` | `canonical_id` |
+| `jobs.published` | `days(occurred_at)` | `published_at` |
+| `jobs.crawl_page_completed` | `days(occurred_at), bucket(16, source_id)` | `source_id` |
+| `jobs.sources_discovered` | `days(occurred_at)` | — |
 
-**If `iceberg-go` write support isn't production-ready at migration time:** dual-write via a tiny Python sidecar that subscribes to the same Frame pub/sub topic and commits to Iceberg while the Go writer also writes direct Parquet. This is the safety-valve pattern — never block the primary write path on the experimental dependency.
+### 4.2 Candidates namespace
+
+| Table | Partition | Sort order |
+|---|---|---|
+| `candidates.cv_uploaded` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
+| `candidates.cv_extracted` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
+| `candidates.cv_extracted_current` | `bucket(16, candidate_id)` | `candidate_id` |
+| `candidates.cv_improved` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
+| `candidates.preferences` | `bucket(16, candidate_id)` | `candidate_id` |
+| `candidates.preferences_current` | `bucket(16, candidate_id)` | `candidate_id` |
+| `candidates.embeddings` | `bucket(16, candidate_id)` | `candidate_id` |
+| `candidates.embeddings_current` | `bucket(16, candidate_id)` | `candidate_id` |
+| `candidates.matches_ready` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, match_batch_id)` |
+
+`*_current` tables are rebuilt atomically by the nightly maintenance job. Writers never touch them. Readers that need "fresher than nightly" run the equivalent query against the append-only table with a `ORDER BY occurred_at DESC LIMIT 1` filter — Iceberg's sort metadata makes this fast.
+
+### 4.3 Z-ordering
+
+Applied during nightly compaction to the sort-key columns above. Pays off most on `jobs.canonicals` (quality + recency) and `candidates.cv_extracted_current` (candidate lookup). Skip for `embeddings*` — vector columns don't sort meaningfully.
 
 ---
 
-## 7. Migration roadmap
+## 5. Tooling stack
 
-Each phase ships independently and leaves green CI, runnable code, and deployable manifests.
+| Piece | Pick | Notes |
+|---|---|---|
+| Go writer library | `github.com/apache/iceberg-go` | Pin to a version with write support. If current version's writes are shaky at spike time, fall back to Python sidecar |
+| Python maintenance | `pyiceberg >= 0.8` | Runs as a single `CronJob`, 512Mi memory |
+| Catalog backend | JDBC on existing `stawi_jobs` Postgres | Four catalog tables via migration `0004_iceberg_catalog.sql` |
+| Ad-hoc query | DuckDB with `iceberg` extension | Zero-infra analytics |
+| Reader library (materializer, candidatestore, backfill) | `iceberg-go` | Same version as writer |
 
-### Phase 7 — Foundation + first table (weeks 1–3)
+---
 
-**Scope:**
-- Install pyiceberg + iceberg-go in the repo; pick exact versions.
-- Add JDBC catalog tables via `db/migrations/0004_iceberg_catalog.sql`.
-- Create namespace `jobs` + table `jobs.canonicals` via a one-off pyiceberg script.
-- Writer learns to commit: for the `TopicCanonicalsUpserted` topic only, after the Parquet upload, `cat.LoadTable("jobs.canonicals").AppendFiles(...)` the just-uploaded file.
-- Dual-write proof: Parquet goes to the existing R2 path AND is registered in Iceberg. Run both paths in parallel for 1 week.
-- Verify: `pyiceberg table scan jobs.canonicals --limit 10` returns data. `select * from jobs.canonicals` via DuckDB returns data. The existing compactor still works against the direct-Parquet path.
+## 6. The single-phase plan
 
-**Exit criteria:**
-- Writer emits Iceberg commits for `canonicals` with 100% parity vs direct-Parquet over 1000+ events.
-- Iceberg nightly CronJob runs `rewrite_data_files` on `jobs.canonicals` successfully against MinIO in CI.
-- No regression in Phase 6 materializer / reader paths.
+### 6.0 Prerequisites (day 0)
 
-**Deferred to later phases:**
-- Other jobs tables (variants, embeddings, translations, etc.).
-- Candidates tables.
-- Materializer reading from Iceberg.
-- Decommissioning the compactor.
+Applies before any code lands:
+- Phase 6's Postgres cutover migration (`0003_cutover_drop_legacy.sql`) can either merge cleanly with the new iceberg migration or ship first. Pick one order; doesn't matter which.
+- R2 bucket `stawi-jobs-log` exists (same bucket Phase 6 targets).
+- Vault path for `r2-log-credentials-stawi-jobs` seeded.
 
-### Phase 8 — Jobs path cutover (weeks 4–9)
+### 6.1 One-week spike (week 0)
 
-**Scope:**
-- Create the remaining seven jobs tables (variants, canonicals_expired, embeddings, translations, published, crawl_page_completed, sources_discovered).
-- Extend the writer to commit to each on flush — one `AppendFiles` per Parquet file.
-- Refactor `apps/materializer` to read from Iceberg: `LoadTable → NewScan → planFiles`. Keep the Manticore upsert unchanged. Dual-read for 2 weeks (materializer reads from BOTH direct-Parquet and Iceberg, verifies Manticore row parity).
-- Move apps/api's `/admin/backfill` (Hugo publish) to read from `jobs.canonicals` via iceberg-go. Delete `apps/api/cmd/backfill_parquet.go`; replace with `backfill_iceberg.go`.
-- Nightly maintenance now runs against all eight jobs tables.
+1. Stand up JDBC catalog against the dev Postgres.
+2. Create the `jobs` + `candidates` namespaces and ONE table (`jobs.canonicals`) via a pyiceberg one-off.
+3. Write a handful of rows via `iceberg-go` from a throwaway Go script; verify the catalog registers the files.
+4. Run `rewrite_data_files` via pyiceberg; verify the compaction does what it claims.
+5. Read from Go: `NewScan().PlanFiles()`.
 
-**Exit criteria:**
-- Materializer reading exclusively from Iceberg for ≥2 weeks with zero parity deltas.
-- Nightly maintenance green for ≥2 weeks.
-- Manticore row count + checksum matches the previous direct-Parquet run.
-- The Phase 6 compactor pod is IDLE (receives zero work) for ≥1 week.
+Outcome = go/no-go one-pager. If `iceberg-go` writes are stable enough: proceed as Go-native. If not: the writer publishes a shadow event to a Python sidecar that commits on its behalf (extra pod but keeps the critical path boring).
 
-**Decommissioning in this phase:**
-- Stop writing direct-Parquet for jobs collections. Writer writes ONLY to Iceberg.
-- Delete `apps/writer/service/compact*.go`.
-- Delete the Trustage triggers `compact-hourly.json` and `compact-daily.json` (replaced by the single nightly CronJob).
-- Delete `canonicals_current/`, `embeddings_current/`, `translations_current/` from R2 — they're gone-for-good; the Iceberg `_current` tables replace them.
+### 6.2 Catalog + tables (week 1)
 
-### Phase 9 — Candidates path cutover (weeks 10–14)
+**Create:**
+- `db/migrations/0004_iceberg_catalog.sql` — the 4 Iceberg catalog tables
+- `definitions/iceberg/create_namespaces.py` — creates `jobs` and `candidates` namespaces
+- `definitions/iceberg/create_tables.py` — creates all 19 tables listed in §4 with their partition specs, sort orders, and schemas derived from `pkg/events/v1/*.go`
 
-**Scope:**
-- Create the six candidates tables.
-- Writer commits candidates events to Iceberg (was already writing Parquet; now ALSO commits).
-- Refactor `pkg/candidatestore/reader.go` and `stale_reader.go` to use iceberg-go.
-- Refactor the match endpoint's "latest embedding + preferences per candidate" to `candidates.embeddings` + `candidates.preferences` Iceberg tables.
-- Rewrite `apps/candidates/service/admin/v1/stale_lister.go` against `candidates.cv_extracted` Iceberg table.
+**Deploy:**
+- Apply `0004_iceberg_catalog.sql` via the existing migration runner
+- Run `create_namespaces.py` + `create_tables.py` once (one-shot Job)
 
-**Exit criteria:**
-- Match endpoint returns identical top-K for 100+ candidates run against both paths.
-- Stale-nudge admin returns the same candidate set.
-- All candidates tests still pass (these mostly use fakes; small impact).
+**Exit:** every table in the catalog, empty, ready to accept commits.
+
+### 6.3 Writer with catalog commits (week 2)
+
+**Modify `apps/writer/service/`:**
+- Remove `compact.go`, `compact_admin.go`, and their tests. Trust git — they're preserved in `main` history.
+- Add `iceberg_commit.go` with one helper:
+
+```go
+func (s *Service) commitToCatalog(ctx context.Context, table string, parquetKey string, etag string, rowCount int) error {
+    t, err := s.catalog.LoadTable(ctx, catalog.Namespaces(table))
+    if err != nil { return err }
+    return t.NewAppend().
+        AppendFile(iceberg.DataFile{
+            Path: "s3://" + s.bucket + "/" + parquetKey,
+            FileFormat: iceberg.FileFormatParquet,
+            RecordCount: int64(rowCount),
+        }).
+        Commit(ctx)
+}
+```
+
+- Extend `uploadBatch` in `service.go` to call `commitToCatalog` after the S3 Put succeeds. Remove any reference to `<collection>/dt=<dt>/` hand-built paths — Iceberg controls paths now.
+- Delete the two Trustage triggers `compact-hourly.json` and `compact-daily.json`. They are never enabled.
+
+**Modify `apps/writer/cmd/main.go`:**
+- Wire a catalog client at startup. JDBC URL from env.
+- Drop the compactor construction + mux routes for `/_admin/compact/*`.
+
+**Build + test:**
+- Unit tests for `commitToCatalog` with a catalog stub.
+- Integration test (behind `//go:build integration`): real JDBC catalog + MinIO, write a batch, scan it back.
+
+### 6.4 Maintenance CronJob (week 3)
+
+**Create:**
+- `apps/iceberg-ops/` — new tiny Python app with one main script
+- `apps/iceberg-ops/Dockerfile` — `python:3.12-slim` + `pyiceberg[sql]` + `psycopg2`
+- `apps/iceberg-ops/main.py` — the nightly rewrite + expire + MERGE INTO for `_current` tables
+- `manifests/namespaces/stawi-jobs/iceberg-ops/cronjob.yaml` — one CronJob at `0 2 * * *`
+- `manifests/namespaces/stawi-jobs/iceberg-ops/kustomization.yaml`
+- Add `iceberg-ops/` to the top-level `stawi-jobs/kustomization.yaml`
+
+**Deploy:**
+- Build the image in the existing release workflow (add `apps/iceberg-ops` to the matrix)
+- Apply the manifest; first run happens at 02:00 UTC next day
+
+### 6.5 Materializer refactor (week 3)
+
+**Modify `apps/materializer/service/`:**
+- Replace the R2 polling loop with an Iceberg snapshot-diff scanner.
+- Delete the watermark Postgres table read/write (`pkg/repository/materializer_watermark.go` can go entirely).
+- Read the last-processed snapshot ID from Valkey; write the new snapshot ID after successful Manticore upserts.
+
+Rough shape:
+
+```go
+for _, table := range []string{"jobs.canonicals", "jobs.embeddings", "jobs.translations"} {
+    prev := kv.Get("mat:snap:" + table)
+    t, _ := cat.LoadTable(ctx, table)
+    current := t.CurrentSnapshot().SnapshotID()
+    if current == prev { continue }
+
+    files, _ := t.NewScan().UseRef(current).FromSnapshotExclusive(prev).PlanFiles(ctx)
+    for _, f := range files {
+        rows, _ := eventlog.ReadParquetAt(ctx, f.Path)
+        for _, r := range rows { manticore.Replace(ctx, "idx_jobs_rt", r.ID, r.Doc) }
+    }
+    kv.Set("mat:snap:" + table, current)
+}
+```
+
+### 6.6 Reader refactor (week 4)
+
+**Modify:**
+- `pkg/candidatestore/reader.go` — scan `candidates.embeddings_current` + `candidates.preferences_current` via iceberg-go filters
+- `pkg/candidatestore/stale_reader.go` — scan `candidates.cv_extracted_current` filtered by `occurred_at < cutoff`
+- `apps/api/cmd/backfill_parquet.go` → rename `backfill_iceberg.go` — scan `jobs.canonicals_current` via iceberg-go
+
+Method signatures stay the same. Callers don't change.
+
+### 6.7 Cut v6.0.0 (week 4)
+
+- Tag `v6.0.0` on the commit that removes the last compactor reference.
+- Release workflow builds seven images (the existing six + `iceberg-ops`).
+- Apply the deployments-repo manifest bumps.
+- Cutover runbook (`docs/ops/cutover-runbook.md`) updated: "step 2.3 — nightly compact cron, not hourly compact cron." No other procedural changes; the data path is greenfield so the "drop tables + lift banner" sequence is identical.
 
 **Decommissioning:**
-- Delete `candidates_cv_current/`, `candidates_embeddings_current/`, `candidates_preferences_current/` from R2.
-- Delete Phase 6 `pkg/candidatestore/reader.go` + `stale_reader.go`; replace with Iceberg-backed versions (same interface).
-
-### Phase 10 — Deprecate Phase 6 infrastructure (weeks 15–16)
-
-**Scope:**
-- Delete the `compact-hourly.json` + `compact-daily.json` + `retention-reconcile.json` + related Trustage triggers (already inactive).
-- Delete `apps/writer/service/compact.go`, `compact_admin.go`, `compact_test.go`, `compact_admin_test.go`.
-- Delete the materializer watermark table (`materializer_watermarks`) and the `pkg/repository/materializer_watermark.go` adapter — Iceberg snapshots are the watermark.
-- Remove unused env vars and config flags.
-- Update docs/ops runbooks to reflect Iceberg.
-
-**Exit criteria:**
-- Phase 6 compactor no longer builds into any image.
-- All removed code has zero remaining callers.
-- Docs + runbooks describe the Iceberg path.
-
-### Phase 11 — External reader surface (optional, when needed)
-
-**Scope:**
-- Expose a pyiceberg-backed firehose: Trustage-triggered Python Job that exports new commits to external consumers. Implements the design spec §Agent-economy firehose product.
-- Publish a public-facing DuckDB view for analytics consumers.
-- Document the external-consumer contract (table names, schemas, SLA).
-
-**Only build when there's a real external consumer ready to onboard.**
+- `apps/writer/service/compact.go` already deleted in §6.3.
+- `pkg/repository/materializer_watermark.go` deleted in §6.5.
+- Trustage triggers `compact-hourly.json` + `compact-daily.json` deleted.
+- `db/migrations/0002_materializer_watermark.sql` marked superseded (left in place for historical apply order; new clusters skip it via a conditional check).
 
 ---
 
-## 8. Risk + rollback per phase
+## 7. Risks + mitigations
 
-| Phase | Biggest risk | Mitigation | Rollback path |
-|---|---|---|---|
-| 7 | iceberg-go write support immaturity | Dual-write direct-Parquet + Iceberg for full phase; never block on the new dep | Disable Iceberg commits via env flag |
-| 8 | Materializer parity gap (missing rows in Manticore) | Dual-read for 2 weeks + checksum verification | Revert materializer to direct-Parquet scan; keep writer dual-writing |
-| 9 | Candidate match endpoint regression | Shadow-read: both paths execute, compare top-K, serve from old until parity ≥99.5% | Disable Iceberg reader via env flag per candidate service |
-| 10 | Deleting compactor breaks something invisible | Keep the code in git for 30 days; Phase 10 is the last point of true decommissioning | `git revert` the deletion commit |
-| 11 | External consumer discovers schema drift | Publish a fixed v1 schema contract; version future changes | Iceberg schema evolution supports additive changes without reader disruption |
+| Risk | Impact | Mitigation |
+|---|---|---|
+| `iceberg-go` write support flaky at release time | Writer crashloops in prod | Spike (§6.1) is the go/no-go gate. Python sidecar fallback if needed |
+| Catalog is now a single point of failure for writes | Writer blocks on Postgres outage | Same HA posture as the existing Postgres instance. Add retry-with-backoff on the commit path; fail-open is NOT correct here — dropping the commit loses the file from the catalog |
+| First nightly CronJob fails silently | Small-file accumulation, eventually degraded read perf | CronJob posts a success marker to Prometheus; alert if no success in 36 hours |
+| Schema evolution surprise: Phase 6 payload struct added a field; Iceberg table didn't know | Writer commit fails with schema mismatch | Include the Iceberg table DDL in the same review as any payload struct change. Add a CI check: `pyiceberg table schema` matches the Go struct's parquet tags |
+| pyiceberg MERGE support immature | `_current` tables don't get rebuilt | If MERGE isn't available at the pyiceberg version in use, fall back to "delete all, insert latest" inside a single transaction — atomic via Iceberg's snapshot isolation |
+| R2 object lifecycle mismatch | Orphaned files after `expire_snapshots` | `expire_snapshots` retains files referenced by retained snapshots. Set retention to 14 days initially; tune down once stable |
 
 ---
 
-## 9. Cost model
+## 8. Cost model
 
-### Steady-state Phase 10 vs Phase 6
-
-| Resource | Phase 6 | Post-Iceberg | Delta |
+| Resource | Phase 6 | v6.0.0 | Delta |
 |---|---|---|---|
 | Writer pod | 1× 500m/1.5Gi | 1× 500m/1.5Gi | 0 |
-| Compactor pod (as part of writer) | hourly tick within writer | deleted | **−** |
-| Maintenance CronJob | — | nightly 200m/512Mi for ~5min | +negligible (≤0.3 CPU-hr/day) |
-| Materializer pod | 1× 200m/512Mi polling | 1× 200m/512Mi snapshot-diff | 0 |
-| R2 storage | same Parquet files | same Parquet + ~0.1% metadata | +negligible |
-| Postgres | sources + candidates | sources + candidates + iceberg_* | +few MB for the catalog tables |
-| Custom Go code | ~2000 LOC in compactor/reader/watermark | ~300 LOC in iceberg-backed wrappers | **−** |
-| Operational surface | 3 Trustage triggers (compact-hourly/daily + retention) | 1 CronJob | **−** |
+| Compactor code (in writer) | hourly ticks | deleted | **−** |
+| Maintenance CronJob | — | nightly 200m/512Mi for ~5 min | +negligible |
+| Materializer pod | 1× 200m/512Mi | 1× 200m/512Mi | 0 |
+| Trustage triggers (compact) | 2 | 0 | **−2** |
+| R2 storage | Parquet | Parquet + ~0.1% Iceberg metadata | +negligible |
+| Postgres size | 4 tables (sources, candidate_profiles, crawl_jobs, raw_payloads) | + 4 catalog tables | +few MB |
+| Custom Go LOC | ~2000 LOC compactor/watermark/bucket-prefix | ~800 LOC Iceberg wrappers | **−~1200 LOC** |
+| Python LOC | 0 | ~200 LOC in apps/iceberg-ops | +200 |
 
-**Net: resource usage roughly flat to slightly lower; code surface drops ~1500 LOC; operational surface drops from 3 cron-style jobs to 1.**
-
-### What the cost model doesn't capture
-
-- Engineering time for the migration itself: ~6 months part-time, one engineer.
-- Risk of the dual-write/dual-read periods — production stability > migration speed.
-- If you bring in Spark (don't, unless external analytics products demand it), the cost story changes dramatically.
+Net: infrastructure flat, operational surface down, code complexity down.
 
 ---
 
-## 10. Open questions
+## 9. What the spike must prove
 
-**10.1 iceberg-go write stability timeline.** Writes in `apache/iceberg-go` went stable in v0.6 (late 2026 per upstream). Verify against current version before committing to Go-only writes. Fallback: Python sidecar.
+The week-0 spike (§6.1) is not optional. It answers:
 
-**10.2 Catalog HA.** JDBC-on-Postgres inherits the Postgres operator's HA story. Test a Postgres failover scenario end-to-end — confirm writer retries the commit cleanly. Document the recovery path.
+1. **Writes:** Does `iceberg-go` commit files to a JDBC catalog reliably under concurrent writers? Target: 100 concurrent AppendFiles commits, zero metadata corruption.
+2. **Maintenance:** Does `pyiceberg` rewrite_data_files produce the expected sorted layout against real R2 (with S3-compatible endpoint config)?
+3. **Read:** Can iceberg-go `NewScan().FromSnapshotExclusive(prev).PlanFiles()` deliver new files for the materializer pattern?
+4. **MERGE INTO:** Does pyiceberg implement MERGE INTO, or do we need the fallback "delete + insert in one snapshot" pattern?
 
-**10.3 Vector embedding storage.** Iceberg + Parquet handle float32 list columns fine, but `bge-m3` is 1024-dim × 10M canonicals = ~40 GB of embeddings. Acceptable on R2; verify Iceberg manifest planning doesn't slow on wide vector columns.
-
-**10.4 Firehose schema contract.** When Phase 11 lands, what's the external schema? Iceberg lets you `ALTER TABLE` freely, but external consumers want a stable contract. Pin a `v1` schema; breaking changes go to `v2` tables.
-
-**10.5 Multi-region R2.** If/when multi-region lands (design §12.7), does Iceberg change anything? Iceberg supports S3-compatible multi-region via the catalog referencing full paths. No architectural change needed; operational care around R2 cross-region replication still applies.
-
-**10.6 Migration test harness.** Phase 7-9 all have "dual-write then cut over" patterns. Build a shared Go+pyiceberg test harness in `tests/iceberg_parity/` that diffs the two data paths. Reusable across phases.
+If all four are green, proceed with §6.2 onward. If any are red, the mitigation path is known: Python sidecar for writes, simpler maintenance query shape, defer z-order to a follow-up.
 
 ---
 
-## 11. Decommission checklist (end of Phase 10)
+## 10. References
 
-- [ ] `apps/writer/service/compact.go` deleted
-- [ ] `apps/writer/service/compact_admin.go` deleted
-- [ ] `apps/writer/service/compact_test.go` deleted
-- [ ] `apps/writer/service/compact_admin_test.go` deleted
-- [ ] `definitions/trustage/compact-hourly.json` deleted
-- [ ] `definitions/trustage/compact-daily.json` deleted
-- [ ] `pkg/repository/materializer_watermark.go` deleted
-- [ ] `db/migrations/0002_materializer_watermark.sql` marked superseded (kept for historical apply; new deploys use iceberg_watermark)
-- [ ] `apps/materializer/service/service.go` snapshot-based
-- [ ] `pkg/candidatestore/reader.go` iceberg-backed
-- [ ] `pkg/candidatestore/stale_reader.go` iceberg-backed
-- [ ] `apps/candidates/service/admin/v1/stale_lister.go` iceberg-backed
-- [ ] `apps/api/cmd/backfill_parquet.go` deleted; replaced by `backfill_iceberg.go`
-- [ ] All `*_current/` R2 prefixes removed
-- [ ] Runbook updated: `docs/ops/runbook-iceberg-maintenance.md`
-- [ ] Runbook updated: `docs/ops/cutover-runbook.md` notes Iceberg as the data plane
-- [ ] Nightly maintenance CronJob green for ≥4 weeks
-
----
-
-## 12. Next step
-
-Before executing Phase 7, a one-week spike:
-
-1. Stand up a JDBC catalog against the dev Postgres.
-2. Load one day of Phase 6 Parquet files as an existing-data registration (not a copy — Iceberg registers files in-place).
-3. Run a pyiceberg `rewrite_data_files` pass and verify file counts drop + sort order applies.
-4. Run a materializer-style scan from Go: `iceberg-go` `NewScan().PlanFiles()`.
-5. Confirm `iceberg-go` is stable enough for writes against the v0.x available at spike time. If yes: Phase 7 proceeds as-is. If no: Phase 7 uses Python sidecar for writes.
-
-At the end of the spike, write a one-page go/no-go memo. If go: write Phase 7's task-by-task plan at `docs/superpowers/plans/<date>-phase7-iceberg-foundation.md`. If no-go: document blockers and revisit in a quarter.
-
----
-
-## References
-
-- Phase 6 plan: `docs/superpowers/plans/2026-04-22-phase6-cutover-ops.md`
+- Phase 6 plan (the one this replaces): `docs/superpowers/plans/2026-04-22-phase6-cutover-ops.md`
 - Design spec: `docs/superpowers/specs/2026-04-21-parquet-manticore-greenfield-design.md`
-- Iceberg spec v2: https://iceberg.apache.org/spec/
+- Iceberg v2 spec: https://iceberg.apache.org/spec/
 - apache/iceberg-go: https://github.com/apache/iceberg-go
 - pyiceberg: https://py.iceberg.apache.org/
+
+---
+
+## 11. Call to action
+
+1. Schedule the week-0 spike. One engineer, one week.
+2. At spike end, produce a go/no-go memo.
+3. If go: write the executable task-by-task plan as `docs/superpowers/plans/<date>-v6-iceberg-cutover.md` (like the Phase 6 plan shape). Four weeks of work across the 19 existing task slots is approximately 1-to-1 replacement.
+4. If no-go: document blockers. Phase 6's direct-Parquet path is stable and can carry prod for a quarter while upstream matures.
