@@ -107,9 +107,7 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 		rows := make([]matchResponseRow, 0, len(res.Matches))
 		eventRows := make([]eventsv1.MatchRow, 0, len(res.Matches))
 		for _, h := range res.Matches {
-			rows = append(rows, matchResponseRow{
-				CanonicalID: h.CanonicalID, Slug: h.Slug, Title: h.Title, Company: h.Company, Score: h.Score,
-			})
+			rows = append(rows, matchResponseRow(h))
 			eventRows = append(eventRows, eventsv1.MatchRow{CanonicalID: h.CanonicalID, Score: h.Score})
 		}
 		resp := matchResponse{

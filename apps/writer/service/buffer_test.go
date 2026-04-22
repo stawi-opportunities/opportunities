@@ -36,6 +36,7 @@ func TestBufferFlushOnMaxEvents(t *testing.T) {
 	flushed, _ := b.Add(env, "src_x")
 	if flushed == nil {
 		t.Fatal("expected flush at MaxEvents=3")
+		return
 	}
 	if flushed.Collection != "variants" {
 		t.Fatalf("collection=%q, want variants", flushed.Collection)

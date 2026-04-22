@@ -284,6 +284,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	}
 	if finalSrc == nil {
 		t.Fatalf("src_e2e disappeared from the fake repo")
+		return
 	}
 	if finalSrc.HealthScore < 1.0 {
 		t.Fatalf("HealthScore=%v, want >= 1.0 after successful crawl", finalSrc.HealthScore)
