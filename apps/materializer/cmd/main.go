@@ -1,7 +1,8 @@
-// apps/materializer/cmd — entrypoint for the event-log → Manticore
-// materializer. The pod polls R2 every 15 s for new Parquet files
-// under tracked prefixes and upserts their rows into Manticore's
-// idx_jobs_rt RT index.
+// apps/materializer/cmd — entrypoint for the Iceberg → Manticore
+// materializer. The pod polls each Iceberg table (jobs.canonicals,
+// jobs.embeddings, jobs.translations) every 15 s, decodes only the
+// data files added since the last Valkey watermark, and bulk-upserts
+// them into Manticore's idx_jobs_rt RT index.
 package main
 
 import (
@@ -9,15 +10,17 @@ import (
 	"log"
 
 	"github.com/pitabwire/frame"
-	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
+	"github.com/redis/go-redis/v9"
 
 	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/searchindex"
 
 	matcfg "stawi.jobs/apps/materializer/config"
 	matsvc "stawi.jobs/apps/materializer/service"
+
+	// Import writer's iceberg_catalog helpers to reuse LoadIcebergCatalog.
+	writersvc "stawi.jobs/apps/writer/service"
 )
 
 func main() {
@@ -28,13 +31,28 @@ func main() {
 		log.Fatalf("materializer: load config: %v", err)
 	}
 
+	// Frame service — no WithDatastore() since the materializer no
+	// longer uses Postgres for watermarks (moved to Valkey).
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithConfig(&cfg),
-		frame.WithDatastore(),
 	)
 	defer svc.Stop(ctx)
 
-	// Reader side — R2 list + get.
+	// Iceberg SQL catalog backed by Postgres + R2.
+	cat, err := writersvc.LoadIcebergCatalog(ctx, writersvc.CatalogConfig{
+		CatalogURI:        cfg.IcebergCatalogURI,
+		WarehouseURI:      "s3://" + cfg.R2Bucket + "/iceberg",
+		R2Endpoint:        cfg.R2Endpoint,
+		R2AccessKeyID:     cfg.R2AccessKeyID,
+		R2SecretAccessKey: cfg.R2SecretAccessKey,
+		R2Region:          cfg.R2Region,
+		Name:              "stawi",
+	})
+	if err != nil {
+		util.Log(ctx).WithError(err).Fatal("materializer: catalog load failed")
+	}
+
+	// R2 reader — fetches raw Parquet bytes by object key.
 	r2Client := eventlog.NewClient(eventlog.R2Config{
 		AccountID:       cfg.R2AccountID,
 		AccessKeyID:     cfg.R2AccessKeyID,
@@ -45,7 +63,7 @@ func main() {
 	})
 	reader := eventlog.NewReader(r2Client, cfg.R2Bucket)
 
-	// Manticore client (HTTP JSON API).
+	// Manticore client.
 	mc, err := searchindex.Open(searchindex.Config{
 		URL:     cfg.ManticoreURL,
 		Timeout: cfg.ManticoreTimeout,
@@ -59,17 +77,15 @@ func main() {
 		util.Log(ctx).WithError(err).Fatal("materializer: apply schema failed")
 	}
 
-	// Watermarks from Postgres via the Frame service's DB handle.
-	// Pattern mirrors apps/crawler/cmd/main.go: WithDatastore() wires
-	// the pool; DatastoreManager().GetPool() exposes pool.DB as the
-	// func(ctx, readOnly) *gorm.DB closure the repositories expect.
-	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
-	dbFn := pool.DB
+	// Valkey watermark client.
+	kvOpts, err := redis.ParseURL(cfg.ValkeyURL)
+	if err != nil {
+		util.Log(ctx).WithError(err).Fatal("materializer: parse valkey URL failed")
+	}
+	kvClient := redis.NewClient(kvOpts)
+	wm := matsvc.NewWatermark(kvClient)
 
-	watermarks := repository.NewWatermarkRepository(dbFn)
-
-	indexer := matsvc.NewIndexer(mc)
-	service := matsvc.NewService(reader, indexer, watermarks, cfg.Prefixes, cfg.PollInterval, cfg.ListBatchSize)
+	service := matsvc.NewService(cat, reader, cfg.R2Bucket, mc, wm, cfg.PollInterval)
 
 	go func() {
 		if err := service.Run(ctx); err != nil {

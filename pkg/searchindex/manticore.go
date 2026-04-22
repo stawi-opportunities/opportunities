@@ -112,6 +112,13 @@ func (c *Client) Update(ctx context.Context, index string, id uint64, doc map[st
 	})
 }
 
+// Bulk issues a multi-operation request against /bulk. Body must be
+// NDJSON: one {"replace":{...}} (or other action) object per line.
+// Used by BulkUpserter to batch many /replace ops into a single RTT.
+func (c *Client) Bulk(ctx context.Context, body []byte) error {
+	return c.postRaw(ctx, "/bulk", body, "application/x-ndjson")
+}
+
 // Search issues a JSON query against /search. Returns the raw
 // response body — callers parse hits as needed (shape documented
 // at https://manual.manticoresearch.com/Searching/Intro).
@@ -142,11 +149,17 @@ func (c *Client) postJSON(ctx context.Context, path string, body any) error {
 	if err != nil {
 		return fmt.Errorf("searchindex: marshal %s: %w", path, err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(raw))
+	return c.postRaw(ctx, path, raw, "application/json")
+}
+
+// postRaw posts raw bytes to path with the given contentType. Used by
+// postJSON and Bulk (NDJSON) so both share identical error handling.
+func (c *Client) postRaw(ctx context.Context, path string, body []byte, contentType string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("searchindex: req %s: %w", path, err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("searchindex: send %s: %w", path, err)

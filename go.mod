@@ -57,6 +57,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/alicebob/miniredis/v2 v2.37.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -208,6 +209,7 @@ require (
 	github.com/ysmood/got v0.40.0 // indirect
 	github.com/ysmood/gson v0.7.3 // indirect
 	github.com/ysmood/leakless v0.9.0 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
