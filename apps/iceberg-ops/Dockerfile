@@ -1,10 +1,12 @@
 FROM python:3.12-slim AS build
 WORKDIR /app
-COPY pyproject.toml requirements.txt /app/
+
+# Build context is the repo root (matches the shared docker-release workflow)
+COPY apps/iceberg-ops/pyproject.toml apps/iceberg-ops/requirements.txt /app/
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir -r requirements.txt
 
-COPY src/ /app/src/
+COPY apps/iceberg-ops/src/ /app/src/
 RUN pip install --no-cache-dir -e /app
 
 FROM python:3.12-slim
