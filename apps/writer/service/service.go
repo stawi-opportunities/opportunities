@@ -2,35 +2,44 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/iceberg-go/catalog"
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
-	"github.com/rs/xid"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
 )
 
 // Service is apps/writer's composition root.
 type Service struct {
 	svc      *frame.Service
 	buffer   *Buffer
-	uploader *eventlog.Uploader
+	catalog  catalog.Catalog
+	pool     memory.Allocator
 	flushInt time.Duration
 }
 
-// NewService wires the Frame service + buffer + uploader. The caller
-// is responsible for starting the Frame run-loop (usually via
-// svc.Run in main.go).
+// NewService wires the Frame service + buffer + Iceberg catalog.
+// The caller is responsible for starting the Frame run-loop
+// (usually via svc.Run in main.go).
 func NewService(
 	svc *frame.Service,
 	buffer *Buffer,
-	uploader *eventlog.Uploader,
+	cat catalog.Catalog,
 	flushInterval time.Duration,
 ) *Service {
-	return &Service{svc: svc, buffer: buffer, uploader: uploader, flushInt: flushInterval}
+	return &Service{
+		svc:      svc,
+		buffer:   buffer,
+		catalog:  cat,
+		pool:     memory.NewGoAllocator(),
+		flushInt: flushInterval,
+	}
 }
 
 // RegisterSubscriptions wires one WriterHandler per topic into the
@@ -66,11 +75,11 @@ func (s *Service) RunFlusher(ctx context.Context) error {
 			return s.drain(context.Background())
 		case <-t.C:
 			for _, b := range s.buffer.Due() {
-				if err := s.uploadBatch(ctx, b); err != nil {
+				if err := s.commitBatch(ctx, b); err != nil {
 					util.Log(ctx).WithError(err).
 						WithField("collection", b.Collection).
 						WithField("part", b.PartKey.Secondary).
-						Error("writer: upload batch failed; keeping events for redelivery")
+						Error("writer: commit batch failed; keeping events for redelivery")
 				}
 			}
 		}
@@ -84,77 +93,91 @@ func (s *Service) drain(ctx context.Context) error {
 	}
 	util.Log(ctx).WithField("batches", len(remaining)).Info("writer: draining on shutdown")
 	for _, b := range remaining {
-		if err := s.uploadBatch(ctx, b); err != nil {
+		if err := s.commitBatch(ctx, b); err != nil {
 			return fmt.Errorf("writer: drain: %w", err)
 		}
 	}
 	return nil
 }
 
-// uploadBatch serializes the batch's events as Parquet and uploads
-// to R2. Each case calls the matching per-type encode function which
-// copies EventID / OccurredAt from the envelope into the payload row
-// before writing to Parquet.
-func (s *Service) uploadBatch(ctx context.Context, b *Batch) error {
-	var body []byte
-	var err error
-
-	switch b.EventType {
-	case eventsv1.TopicVariantsIngested:
-		body, err = EncodeBatchVariantIngested(b.Events)
-	case eventsv1.TopicVariantsNormalized:
-		body, err = encodeBatchVariantNormalized(b.Events)
-	case eventsv1.TopicVariantsValidated:
-		body, err = encodeBatchVariantValidated(b.Events)
-	case eventsv1.TopicVariantsFlagged:
-		body, err = encodeBatchVariantFlagged(b.Events)
-	case eventsv1.TopicVariantsClustered:
-		body, err = encodeBatchVariantClustered(b.Events)
-	case eventsv1.TopicCanonicalsUpserted:
-		body, err = encodeBatchCanonicalUpserted(b.Events)
-	case eventsv1.TopicCanonicalsExpired:
-		body, err = encodeBatchCanonicalsExpired(b.Events)
-	case eventsv1.TopicEmbeddings:
-		body, err = encodeBatchEmbedding(b.Events)
-	case eventsv1.TopicTranslations:
-		body, err = encodeBatchTranslation(b.Events)
-	case eventsv1.TopicPublished:
-		body, err = encodeBatchPublished(b.Events)
-	case eventsv1.TopicCrawlPageCompleted:
-		body, err = encodeBatchCrawlPageCompleted(b.Events)
-	case eventsv1.TopicSourcesDiscovered:
-		body, err = encodeBatchSourceDiscovered(b.Events)
-	case eventsv1.TopicCVUploaded:
-		body, err = encodeBatchCVUploaded(b.Events)
-	case eventsv1.TopicCVExtracted:
-		body, err = encodeBatchCVExtracted(b.Events)
-	case eventsv1.TopicCVImproved:
-		body, err = encodeBatchCVImproved(b.Events)
-	case eventsv1.TopicCandidateEmbedding:
-		body, err = encodeBatchCandidateEmbedding(b.Events)
-	case eventsv1.TopicCandidatePreferencesUpdated:
-		body, err = encodeBatchPreferencesUpdated(b.Events)
-	case eventsv1.TopicCandidateMatchesReady:
-		body, err = encodeBatchMatchesReady(b.Events)
-	default:
-		return fmt.Errorf("writer: no encoder registered for %q", b.EventType)
-	}
-	if err != nil {
-		return err
-	}
-	if len(body) == 0 {
+// commitBatch loads the Iceberg table for the batch's topic, builds
+// an Arrow RecordReader from the raw events, and commits via
+// Transaction.Append. Transient catalog failures are retried by
+// CommitBatchWithRetry; the caller re-enqueues on persistent failure.
+func (s *Service) commitBatch(ctx context.Context, b *Batch) error {
+	tableIdent, builder := batchDispatch(b.EventType)
+	if builder == nil {
+		// No Iceberg table for this topic yet — silently drop.
+		util.Log(ctx).
+			WithField("event_type", b.EventType).
+			Debug("writer: no iceberg table registered for topic; skipping batch")
 		return nil
 	}
 
-	objKey := b.PartKey.ObjectPath(b.Collection, xid.New().String())
-	etag, err := s.uploader.Put(ctx, objKey, body)
+	tbl, err := s.catalog.LoadTable(ctx, tableIdent)
 	if err != nil {
-		return fmt.Errorf("writer: put %q: %w", objKey, err)
+		return fmt.Errorf("writer: load table %v: %w", tableIdent, err)
 	}
+
+	_, err = CommitBatchWithRetry(ctx, tbl, func() (array.RecordReader, error) {
+		return builder(s.pool, b.Events)
+	}, 5)
+	if err != nil {
+		return fmt.Errorf("writer: commit %v: %w", tableIdent, err)
+	}
+
 	util.Log(ctx).
-		WithField("object", objKey).
-		WithField("etag", etag).
+		WithField("table", tableIdent).
 		WithField("events", len(b.Events)).
-		Info("writer: parquet flushed")
+		Info("writer: iceberg commit ok")
 	return nil
+}
+
+// batchDispatch maps a Frame topic to the corresponding Iceberg table
+// identifier and Arrow record builder function.
+//
+// VariantNormalized / VariantValidated / VariantFlagged / VariantClustered
+// all route to jobs.variants — _schemas.py defines a single VARIANTS
+// schema for all pipeline stages, distinguished by the "stage" field.
+func batchDispatch(topic string) ([]string, func(memory.Allocator, []json.RawMessage) (array.RecordReader, error)) {
+	switch topic {
+	case eventsv1.TopicVariantsIngested:
+		return []string{"jobs", "variants"}, BuildVariantIngestedRecord
+	case eventsv1.TopicVariantsNormalized:
+		return []string{"jobs", "variants"}, BuildVariantNormalizedRecord
+	case eventsv1.TopicVariantsValidated:
+		return []string{"jobs", "variants"}, BuildVariantValidatedRecord
+	case eventsv1.TopicVariantsFlagged:
+		return []string{"jobs", "variants"}, BuildVariantFlaggedRecord
+	case eventsv1.TopicVariantsClustered:
+		return []string{"jobs", "variants"}, BuildVariantClusteredRecord
+	case eventsv1.TopicCanonicalsUpserted:
+		return []string{"jobs", "canonicals"}, BuildCanonicalUpsertedRecord
+	case eventsv1.TopicCanonicalsExpired:
+		return []string{"jobs", "canonicals_expired"}, BuildCanonicalExpiredRecord
+	case eventsv1.TopicEmbeddings:
+		return []string{"jobs", "embeddings"}, BuildEmbeddingRecord
+	case eventsv1.TopicTranslations:
+		return []string{"jobs", "translations"}, BuildTranslationRecord
+	case eventsv1.TopicPublished:
+		return []string{"jobs", "published"}, BuildPublishedRecord
+	case eventsv1.TopicCrawlPageCompleted:
+		return []string{"jobs", "crawl_page_completed"}, BuildCrawlPageCompletedRecord
+	case eventsv1.TopicSourcesDiscovered:
+		return []string{"jobs", "sources_discovered"}, BuildSourceDiscoveredRecord
+	case eventsv1.TopicCVUploaded:
+		return []string{"candidates", "cv_uploaded"}, BuildCVUploadedRecord
+	case eventsv1.TopicCVExtracted:
+		return []string{"candidates", "cv_extracted"}, BuildCVExtractedRecord
+	case eventsv1.TopicCVImproved:
+		return []string{"candidates", "cv_improved"}, BuildCVImprovedRecord
+	case eventsv1.TopicCandidateEmbedding:
+		return []string{"candidates", "embeddings"}, BuildCandidateEmbeddingRecord
+	case eventsv1.TopicCandidatePreferencesUpdated:
+		return []string{"candidates", "preferences"}, BuildPreferencesRecord
+	case eventsv1.TopicCandidateMatchesReady:
+		return []string{"candidates", "matches_ready"}, BuildMatchesReadyRecord
+	default:
+		return nil, nil
+	}
 }

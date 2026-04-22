@@ -39,6 +39,9 @@ require (
 )
 
 require (
+	atomicgo.dev/cursor v0.2.0 // indirect
+	atomicgo.dev/keyboard v0.2.9 // indirect
+	atomicgo.dev/schedule v0.1.0 // indirect
 	buf.build/gen/go/antinvestor/billing/protocolbuffers/go v1.36.11-20260324161332-d0a9b7014ead.1 // indirect
 	buf.build/gen/go/antinvestor/common/protocolbuffers/go v1.36.11-20260325040325-9771112f2289.1 // indirect
 	buf.build/gen/go/antinvestor/files/protocolbuffers/go v1.36.11-20260402081919-eb61e2edf446.1 // indirect
@@ -47,6 +50,7 @@ require (
 	buf.build/gen/go/antinvestor/profile/protocolbuffers/go v1.36.11-20260415203305-aa11e5e50dc9.1 // indirect
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1 // indirect
 	buf.build/gen/go/gnostic/gnostic/protocolbuffers/go v1.36.11-20230414000709-087bc8072ce4.1 // indirect
+	cloud.google.com/go v0.123.0 // indirect
 	connectrpc.com/connect v1.19.1 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
@@ -55,6 +59,10 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
+	github.com/apache/arrow-go/v18 v18.5.2-0.20260220015023-a886a5722b87 // indirect
+	github.com/apache/iceberg-go v0.5.0 // indirect
+	github.com/apache/thrift v0.22.0 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
@@ -70,11 +78,14 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
+	github.com/containerd/console v1.0.5 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v1.0.0-rc.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
+	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
@@ -84,6 +95,7 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/elliotchance/pie/v2 v2.9.0 // indirect
 	github.com/exaring/otelpgx v0.10.0 // indirect
+	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/forPelevin/gomoji v1.2.0 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
@@ -92,14 +104,21 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-shiori/go-readability v0.0.0-20241012063810-92284fa8a71f // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/goccy/go-yaml v1.17.1 // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
+	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
+	github.com/gookit/color v1.5.4 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hablullah/go-hijri v1.0.2 // indirect
 	github.com/hablullah/go-juliandays v1.0.0 // indirect
+	github.com/hamba/avro/v2 v2.31.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.9.1 // indirect
@@ -107,8 +126,11 @@ require (
 	github.com/jalaali/go-jalaali v0.0.0-20210801064154-80525e88d958 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/asmfmt v1.3.2 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/lmittmann/tint v1.1.3 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260216142805-b3301c5f2a88 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
@@ -117,6 +139,9 @@ require (
 	github.com/markusmobius/go-htmldate v1.9.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/minio/asm2plan9s v0.0.0-20200509001527-cdd76441f9d8 // indirect
+	github.com/minio/c2goasm v0.0.0-20190812172519-36a3d3bbc4f3 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.2.0 // indirect
 	github.com/moby/moby/api v1.54.1 // indirect
@@ -126,6 +151,8 @@ require (
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nats.go v1.50.0 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
@@ -145,18 +172,36 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
+	github.com/pterm/pterm v0.12.82 // indirect
+	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/rs/zerolog v1.33.0 // indirect
+	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
+	github.com/stretchr/objx v0.5.3 // indirect
+	github.com/substrait-io/substrait v0.81.0 // indirect
+	github.com/substrait-io/substrait-go/v7 v7.4.0 // indirect
+	github.com/substrait-io/substrait-protobuf/go v0.81.0 // indirect
 	github.com/tetratelabs/wazero v1.8.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
+	github.com/twmb/murmur3 v1.1.8 // indirect
+	github.com/uptrace/bun v1.2.17 // indirect
+	github.com/uptrace/bun/dialect/mssqldialect v1.2.17 // indirect
+	github.com/uptrace/bun/dialect/mysqldialect v1.2.17 // indirect
+	github.com/uptrace/bun/dialect/oracledialect v1.2.17 // indirect
+	github.com/uptrace/bun/dialect/pgdialect v1.2.17 // indirect
+	github.com/uptrace/bun/dialect/sqlitedialect v1.2.17 // indirect
+	github.com/uptrace/bun/extra/bundebug v1.2.17 // indirect
 	github.com/valkey-io/valkey-go v1.0.74 // indirect
+	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wasilibs/go-re2 v1.7.0 // indirect
 	github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yosssi/gohtml v0.0.0-20201013000340-ee4748c638f4 // indirect
 	github.com/ysmood/fetchup v0.2.3 // indirect
 	github.com/ysmood/goob v0.4.0 // indirect
@@ -199,11 +244,15 @@ require (
 	gocloud.dev v0.45.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
+	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260311193753-579e4da9a98c // indirect
+	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/tools v0.43.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/api v0.275.0 // indirect
 	google.golang.org/genproto v0.0.0-20260414002931-afd174a4e478 // indirect

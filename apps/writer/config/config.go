@@ -22,6 +22,12 @@ type Config struct {
 	R2Endpoint        string `env:"R2_LOG_ENDPOINT" envDefault:""`
 	R2UsePathStyle    bool   `env:"R2_LOG_PATH_STYLE" envDefault:"false"`
 
+	// Iceberg catalog. Points to the Postgres-backed SQL catalog.
+	IcebergCatalogURI string `env:"ICEBERG_CATALOG_URI" envDefault:""`
+
+	// R2 region used when signing requests to the object store.
+	R2Region string `env:"R2_LOG_REGION" envDefault:"auto"`
+
 	// Flush thresholds. Whichever trips first forces a flush of the
 	// affected partition's buffer. Defaults match the design doc F2
 	// freshness target (30 s end-to-end materializer poll → ~60 s
