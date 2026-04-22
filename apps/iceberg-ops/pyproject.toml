@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "stawi-iceberg-ops"
+version = "0.1.0"
+description = "Hourly + nightly Iceberg maintenance for stawi.jobs tables"
+requires-python = ">=3.12"
+dependencies = [
+    "pyiceberg[sql-postgres,s3fs]>=0.8,<0.9",
+    "psycopg2-binary>=2.9",
+]
+
+[project.scripts]
+iceberg-hourly = "stawi_iceberg_ops.hourly:main"
+iceberg-nightly = "stawi_iceberg_ops.nightly:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
