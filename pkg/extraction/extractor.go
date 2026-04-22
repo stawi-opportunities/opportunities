@@ -488,6 +488,15 @@ func (e *Extractor) Rerank(ctx context.Context, query string, texts []string) ([
 	return e.rerank(ctx, query, texts)
 }
 
+// EmbedModelVersion returns the configured embedding model identifier.
+// Empty when no embedding backend is configured.
+func (e *Extractor) EmbedModelVersion() string {
+	if e == nil || e.embeddingBaseURL == "" {
+		return ""
+	}
+	return e.embeddingModel
+}
+
 // RerankerVersion returns a stable identifier for cache invalidation. The
 // model string is sufficient — changing the model naturally invalidates
 // every cached score without any other coordination.

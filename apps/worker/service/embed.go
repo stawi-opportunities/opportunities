@@ -70,7 +70,7 @@ func (h *EmbedHandler) Execute(ctx context.Context, payload any) error {
 	out := eventsv1.EmbeddingV1{
 		CanonicalID:  c.CanonicalID,
 		Vector:       vec,
-		ModelVersion: "", // TODO in Phase 6: surface model version from Extractor
+		ModelVersion: h.extractor.EmbedModelVersion(),
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicEmbeddings, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicEmbeddings, outEnv)

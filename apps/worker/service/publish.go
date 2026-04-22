@@ -69,7 +69,7 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 	out := eventsv1.PublishedV1{
 		CanonicalID: c.CanonicalID,
 		Slug:        c.Slug,
-		R2Version:   1, // Phase 3 always writes v1; Phase 6 adds version tracking
+		R2Version:   int(time.Now().Unix()),
 		PublishedAt: time.Now().UTC(),
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicPublished, out)
