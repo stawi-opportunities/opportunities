@@ -130,6 +130,7 @@ func TestScore_nilEmbedder(t *testing.T) {
 	report := s.Score(context.Background(), "Some CV text with Experience, Skills, Education sections.", nil, "Software Engineer")
 	if report == nil {
 		t.Fatal("report must not be nil with a nil embedder")
+		return
 	}
 	if report.Components.RoleFit != 60 {
 		t.Errorf("nil embedder → role fit = 60, got %d", report.Components.RoleFit)

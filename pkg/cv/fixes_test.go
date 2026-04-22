@@ -53,6 +53,7 @@ func TestDetectPriorityFixes_addWorkHistoryWhenEmpty(t *testing.T) {
 	fx := findFix(fixes, "add-work-history")
 	if fx == nil {
 		t.Fatalf("expected add-work-history fix; got IDs: %v", fixIDs(fixes))
+		return
 	}
 	if fx.Impact != "high" {
 		t.Errorf("add-work-history impact = %q, want high", fx.Impact)
@@ -70,6 +71,7 @@ func TestDetectPriorityFixes_addKeywordsWhenLow(t *testing.T) {
 	fx := findFix(fixes, "add-keywords")
 	if fx == nil {
 		t.Fatalf("expected add-keywords fix; got IDs: %v", fixIDs(fixes))
+		return
 	}
 	if len(fx.Suggestions) == 0 {
 		t.Error("add-keywords fix should have non-empty Suggestions")
