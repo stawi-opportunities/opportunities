@@ -65,14 +65,6 @@ func (r *CandidateRepository) UpdateStatus(ctx context.Context, id string, statu
 		Update("status", status).Error
 }
 
-// UpdateEmbedding stores a JSON-encoded embedding vector for the given candidate.
-func (r *CandidateRepository) UpdateEmbedding(ctx context.Context, id string, embedding string) error {
-	return r.db(ctx, false).
-		Model(&domain.CandidateProfile{}).
-		Where("id = ?", id).
-		Update("embedding", embedding).Error
-}
-
 // IncrementMatchesSent increments the matches_sent counter and updates last_contacted_at.
 func (r *CandidateRepository) IncrementMatchesSent(ctx context.Context, id string) error {
 	now := time.Now()

@@ -73,12 +73,6 @@ func main() {
 			&domain.Source{},
 			&domain.CrawlJob{},
 			&domain.RawPayload{},
-			&domain.JobVariant{},
-			&domain.JobCluster{},
-			&domain.JobClusterMember{},
-			&domain.CanonicalJob{},
-			&domain.CrawlPageState{},
-			&domain.RejectedJob{},
 			&domain.RawRef{},
 		); err != nil {
 			log.WithError(err).Fatal("auto-migrate failed")

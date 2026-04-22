@@ -421,16 +421,6 @@ type CrawlRequest struct {
 	Priority     Priority   `json:"priority"`
 }
 
-// SavedJob records a job that a candidate has bookmarked.
-type SavedJob struct {
-	BaseModel
-	ProfileID      string    `gorm:"type:varchar(255);not null;index;uniqueIndex:idx_saved_profile_job" json:"profile_id"`
-	CanonicalJobID string    `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_saved_profile_job" json:"canonical_job_id"`
-	SavedAt        time.Time `gorm:"not null" json:"saved_at"`
-}
-
-func (SavedJob) TableName() string { return "saved_jobs" }
-
 // JobCategory classifies a job into a broad functional area.
 type JobCategory string
 
