@@ -33,6 +33,7 @@ func TestExtractFromHTML_BasicPage(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+		return
 	}
 
 	// RawHTML must be preserved exactly.
@@ -57,6 +58,7 @@ func TestExtractFromHTML_Empty(t *testing.T) {
 		}
 		if result == nil {
 			t.Fatalf("expected non-nil result for input %q", input)
+			return
 		}
 		// RawHTML may round-trip verbatim or be normalised — both are
 		// acceptable for this smoke test.
@@ -85,6 +87,7 @@ func TestExtractFromJSON_Basic(t *testing.T) {
 	result := ExtractFromJSON(jsonPayload, description)
 	if result == nil {
 		t.Fatal("expected non-nil result")
+		return
 	}
 
 	// RawHTML should be the JSON.
@@ -107,6 +110,7 @@ func TestExtractFromJSON_EmptyDescription(t *testing.T) {
 	result := ExtractFromJSON(`{"id":1}`, "")
 	if result == nil {
 		t.Fatal("expected non-nil result")
+		return
 	}
 	if result.Markdown != "" {
 		t.Errorf("Markdown should be empty when description is empty, got: %q", result.Markdown)
