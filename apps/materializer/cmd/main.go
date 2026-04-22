@@ -14,13 +14,11 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"stawi.jobs/pkg/eventlog"
+	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/searchindex"
 
 	matcfg "stawi.jobs/apps/materializer/config"
 	matsvc "stawi.jobs/apps/materializer/service"
-
-	// Import writer's iceberg_catalog helpers to reuse LoadIcebergCatalog.
-	writersvc "stawi.jobs/apps/writer/service"
 )
 
 func main() {
@@ -39,14 +37,14 @@ func main() {
 	defer svc.Stop(ctx)
 
 	// Iceberg SQL catalog backed by Postgres + R2.
-	cat, err := writersvc.LoadIcebergCatalog(ctx, writersvc.CatalogConfig{
-		CatalogURI:        cfg.IcebergCatalogURI,
-		WarehouseURI:      "s3://" + cfg.R2Bucket + "/iceberg",
+	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+		Name:              "stawi",
+		URI:               cfg.IcebergCatalogURI,
+		Warehouse:         "s3://" + cfg.R2Bucket + "/iceberg",
 		R2Endpoint:        cfg.R2Endpoint,
 		R2AccessKeyID:     cfg.R2AccessKeyID,
 		R2SecretAccessKey: cfg.R2SecretAccessKey,
 		R2Region:          cfg.R2Region,
-		Name:              "stawi",
 	})
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("materializer: catalog load failed")
