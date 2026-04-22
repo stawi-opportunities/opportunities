@@ -6,10 +6,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	iceberg "github.com/apache/iceberg-go"
+	"github.com/apache/iceberg-go/catalog"
+	"github.com/apache/iceberg-go/table"
 )
 
 // StaleCandidate is the output shape for stale-nudge consumers.
@@ -18,80 +19,124 @@ type StaleCandidate struct {
 	LastUploadAt time.Time
 }
 
-// StaleReader scans candidates_cv_current/ for candidates whose latest
-// CV upload occurred_at is older than cutoff.
+// StaleReader scans the candidates.cv_extracted_current Iceberg table
+// for candidates whose latest CV upload occurred_at is older than the
+// requested cutoff.
 type StaleReader struct {
-	reader *eventlog.Reader
+	cat catalog.Catalog
 }
 
-// NewStaleReader constructs a reader bound to the shared R2 client.
-func NewStaleReader(cli *s3.Client, bucket string) *StaleReader {
-	return &StaleReader{reader: eventlog.NewReader(cli, bucket)}
+// NewStaleReader constructs a StaleReader backed by an Iceberg catalog.
+func NewStaleReader(cat catalog.Catalog) *StaleReader {
+	return &StaleReader{cat: cat}
 }
 
-// ListStale enumerates candidates whose most-recent CV upload is older
-// than cutoff. Returns up to `limit` rows sorted ascending by
+// ListStale returns candidates whose most-recent CV upload is older
+// than cutoff. Returns up to limit rows sorted ascending by
 // LastUploadAt so the oldest get nudged first.
 func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int) ([]StaleCandidate, error) {
 	if limit <= 0 {
 		limit = 1000
 	}
 
-	seen := map[string]time.Time{}
-
-	cursor := ""
-	for {
-		page, err := r.reader.ListNewObjects(ctx, "candidates_cv_current/", cursor, 1000)
-		if err != nil {
-			return nil, fmt.Errorf("stale reader: list: %w", err)
-		}
-		if len(page) == 0 {
-			break
-		}
-		for _, o := range page {
-			if o.Key == nil {
-				continue
-			}
-			body, err := r.reader.Get(ctx, *o.Key)
-			if err != nil {
-				return nil, fmt.Errorf("stale reader: get %q: %w", *o.Key, err)
-			}
-			rows, err := eventlog.ReadParquet[eventsv1.CVExtractedV1](body)
-			if err != nil {
-				return nil, fmt.Errorf("stale reader: parquet %q: %w", *o.Key, err)
-			}
-			for _, row := range rows {
-				if row.CandidateID == "" {
-					continue
-				}
-				occ := row.OccurredAt.UTC()
-				if prev, ok := seen[row.CandidateID]; !ok || occ.After(prev) {
-					seen[row.CandidateID] = occ
-				}
-			}
-		}
-		lastKey := ""
-		for i := len(page) - 1; i >= 0; i-- {
-			if page[i].Key != nil {
-				lastKey = *page[i].Key
-				break
-			}
-		}
-		if lastKey == "" {
-			break
-		}
-		cursor = lastKey
+	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "cv_extracted_current"})
+	if err != nil {
+		return nil, fmt.Errorf("candidatestore: load cv_extracted_current: %w", err)
 	}
+
+	scan := tbl.Scan(
+		table.WithRowFilter(
+			iceberg.LessThan(iceberg.Reference("occurred_at"), cutoff.UnixMicro()),
+		),
+		table.WithSelectedFields("candidate_id", "occurred_at"),
+	)
+
+	arrowTbl, err := scan.ToArrowTable(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("candidatestore: scan cv_extracted_current: %w", err)
+	}
+	defer arrowTbl.Retain()
+	defer arrowTbl.Release()
+
+	rows, err := staleRowsFromTable(arrowTbl)
+	if err != nil {
+		return nil, fmt.Errorf("candidatestore: decode cv_extracted_current: %w", err)
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].LastUploadAt.Before(rows[j].LastUploadAt)
+	})
+	if len(rows) > limit {
+		rows = rows[:limit]
+	}
+	return rows, nil
+}
+
+// staleRowsFromTable decodes an Arrow table with schema
+// (candidate_id string, occurred_at timestamp) into []StaleCandidate.
+func staleRowsFromTable(tbl arrow.Table) ([]StaleCandidate, error) {
+	sc := tbl.Schema()
+	cidxCandidateID := sc.FieldIndices("candidate_id")
+	cidxOccurredAt := sc.FieldIndices("occurred_at")
+
+	if len(cidxCandidateID) == 0 || len(cidxOccurredAt) == 0 {
+		return nil, fmt.Errorf("cv_extracted_current: missing required columns; schema: %s", sc)
+	}
+
+	tr := array.NewTableReader(tbl, -1)
+	defer tr.Release()
 
 	var out []StaleCandidate
-	for id, at := range seen {
-		if at.Before(cutoff) {
-			out = append(out, StaleCandidate{CandidateID: id, LastUploadAt: at})
+	for tr.Next() {
+		rec := tr.Record()
+		nRows := int(rec.NumRows())
+
+		colCandidateID := stringColOrNil(rec, cidxCandidateID[0])
+		colOccurredAt := timestampColOrNil(rec, cidxOccurredAt[0])
+
+		for i := 0; i < nRows; i++ {
+			if colCandidateID == nil || colCandidateID.IsNull(i) {
+				continue
+			}
+			candidateID := colCandidateID.Value(i)
+			if candidateID == "" {
+				continue
+			}
+			var occurredAt time.Time
+			if colOccurredAt != nil && !colOccurredAt.IsNull(i) {
+				occurredAt = timestampToTime(rec, cidxOccurredAt[0], colOccurredAt, i)
+			}
+			out = append(out, StaleCandidate{
+				CandidateID:  candidateID,
+				LastUploadAt: occurredAt,
+			})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].LastUploadAt.Before(out[j].LastUploadAt) })
-	if len(out) > limit {
-		out = out[:limit]
-	}
 	return out, nil
+}
+
+// timestampColOrNil returns the Timestamp column at colIdx, or nil if
+// the column is absent or has an unexpected type.
+func timestampColOrNil(rec arrow.Record, colIdx int) *array.Timestamp {
+	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
+		return nil
+	}
+	c, _ := rec.Column(colIdx).(*array.Timestamp)
+	return c
+}
+
+// timestampToTime converts row i of a Timestamp column to time.Time,
+// respecting the column's TimeUnit from the schema.
+func timestampToTime(rec arrow.Record, colIdx int, col *array.Timestamp, i int) time.Time {
+	ts := col.Value(i)
+	field := rec.Schema().Field(colIdx)
+	if tsType, ok := field.Type.(*arrow.TimestampType); ok {
+		toTime, err := tsType.GetToTimeFunc()
+		if err == nil {
+			return toTime(ts)
+		}
+		return ts.ToTime(tsType.Unit)
+	}
+	// Fallback: assume microseconds (Iceberg default).
+	return ts.ToTime(arrow.Microsecond)
 }

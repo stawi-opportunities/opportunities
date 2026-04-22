@@ -4,6 +4,10 @@ package service
 // retry helper that wraps Transaction.Append + Commit with
 // exponential backoff. Frame redelivers on error, so returning an
 // error on transient catalog failures is safe.
+//
+// Deprecated: CatalogConfig and LoadIcebergCatalog are re-exported
+// from pkg/icebergclient for use by other packages. New callers should
+// import stawi.jobs/pkg/icebergclient directly.
 
 import (
 	"context"
@@ -11,14 +15,16 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/array"
-	iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
-	_ "github.com/apache/iceberg-go/catalog/sql" // register sql catalog type
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
+
+	"stawi.jobs/pkg/icebergclient"
 )
 
 // CatalogConfig carries all parameters needed to open the Iceberg SQL catalog.
+//
+// Deprecated: use icebergclient.CatalogConfig instead.
 type CatalogConfig struct {
 	CatalogURI        string // postgres://...
 	WarehouseURI      string // s3://stawi-jobs-log/iceberg
@@ -30,19 +36,18 @@ type CatalogConfig struct {
 }
 
 // LoadIcebergCatalog opens a named SQL catalog backed by Postgres + R2.
+//
+// Deprecated: use icebergclient.LoadCatalog instead.
 func LoadIcebergCatalog(ctx context.Context, cfg CatalogConfig) (catalog.Catalog, error) {
-	props := iceberg.Properties{
-		"type":                  "sql",
-		"uri":                   cfg.CatalogURI,
-		"sql.dialect":           "postgres",
-		"warehouse":             cfg.WarehouseURI,
-		"s3.endpoint":           cfg.R2Endpoint,
-		"s3.access-key-id":      cfg.R2AccessKeyID,
-		"s3.secret-access-key":  cfg.R2SecretAccessKey,
-		"s3.region":             cfg.R2Region,
-		"s3.path-style-access":  "true",
-	}
-	return catalog.Load(ctx, cfg.Name, props)
+	return icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+		Name:              cfg.Name,
+		URI:               cfg.CatalogURI,
+		Warehouse:         cfg.WarehouseURI,
+		R2Endpoint:        cfg.R2Endpoint,
+		R2AccessKeyID:     cfg.R2AccessKeyID,
+		R2SecretAccessKey: cfg.R2SecretAccessKey,
+		R2Region:          cfg.R2Region,
+	})
 }
 
 // CommitBatchWithRetry appends a batch to an Iceberg table via

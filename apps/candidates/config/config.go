@@ -9,11 +9,20 @@ import (
 type CandidatesConfig struct {
 	fconfig.ConfigurationDefault
 
-	// R2 event log (Parquet partitions — read by candidatestore.Reader).
+	// Iceberg catalog — SQL catalog backed by Postgres + R2.
+	// Used by candidatestore.Reader and candidatestore.StaleReader to read
+	// candidates.{embeddings,preferences,cv_extracted}_current tables.
+	IcebergCatalogURI string `env:"ICEBERG_CATALOG_URI"          envDefault:""`
+	IcebergWarehouse  string `env:"ICEBERG_WAREHOUSE"            envDefault:""`
+	IcebergCatalogName string `env:"ICEBERG_CATALOG_NAME"        envDefault:"stawi"`
+
+	// R2 event log credentials (shared with Iceberg warehouse and archive).
 	R2AccountID       string `env:"R2_ACCOUNT_ID"        envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"     envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
 	R2EventLogBucket  string `env:"R2_EVENTLOG_BUCKET"   envDefault:"stawi-jobs-log"`
+	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
+	R2Region          string `env:"R2_REGION"            envDefault:"auto"`
 
 	// Archive R2 (raw CV bytes uploaded by candidates).
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID"         envDefault:""`

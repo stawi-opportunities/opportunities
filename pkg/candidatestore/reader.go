@@ -1,186 +1,336 @@
 // Package candidatestore provides read-only access to the latest
-// per-candidate derived state (embedding, preferences) persisted as
-// Parquet in R2. The match endpoint uses it to avoid reading Postgres
-// on the hot path.
+// per-candidate derived state (embedding, preferences) from Iceberg
+// tables. The match endpoint uses it to avoid reading Postgres on the
+// hot path.
 //
-// Writes are never performed here — the writer service is the only
-// producer of candidates_*_current/ Parquet files, via compaction of
-// the daily partitions.
+// The *_current tables are rebuilt nightly by the iceberg-ops maintenance
+// job (Wave 7). Acceptable staleness for the match endpoint and stale-
+// nudge admin is the nightly compaction window — see design spec §4.
 package candidatestore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"sort"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	iceberg "github.com/apache/iceberg-go"
+	"github.com/apache/iceberg-go/catalog"
+	"github.com/apache/iceberg-go/table"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
 )
 
 // ErrNotFound is returned when no embedding/preferences row exists
-// for the requested candidate.
+// for the requested candidate in the Iceberg table.
 var ErrNotFound = errors.New("candidatestore: candidate state not found")
 
-// Reader wraps an R2 client + bucket and fetches the latest typed row
-// per candidate from the *_current/ partitions.
+// Reader reads candidate embedding + preference state from Iceberg
+// *_current tables.
 type Reader struct {
-	client *s3.Client
-	bucket string
+	cat catalog.Catalog
 }
 
-// NewReader builds a Reader.
-func NewReader(client *s3.Client, bucket string) *Reader {
-	return &Reader{client: client, bucket: bucket}
+// NewReader builds a Reader backed by an Iceberg catalog.
+func NewReader(cat catalog.Catalog) *Reader {
+	return &Reader{cat: cat}
 }
 
-// LatestEmbedding returns the highest-CVVersion embedding row for the
-// candidate, or ErrNotFound if none exist.
+// LatestEmbedding returns the embedding row for candidateID from the
+// candidates.embeddings_current Iceberg table. Because *_current holds
+// exactly one row per candidate after the nightly MERGE, the scan
+// returns at most one row.
+//
+// Returns (zero, ErrNotFound) when no row exists for the candidate.
+// Returns (zero, nil) only when the table scan returns zero rows but no
+// error — callers treat that identically to ErrNotFound.
 func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (eventsv1.CandidateEmbeddingV1, error) {
-	rows, err := loadAll[eventsv1.CandidateEmbeddingV1](ctx, r.client, r.bucket,
-		"candidates_embeddings_current/cnd="+prefix2(candidateID)+"/")
+	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "embeddings_current"})
 	if err != nil {
-		return eventsv1.CandidateEmbeddingV1{}, err
+		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: load embeddings_current: %w", err)
 	}
-	best, ok := pick(rows,
-		func(row eventsv1.CandidateEmbeddingV1) bool { return row.CandidateID == candidateID },
-		func(a, b eventsv1.CandidateEmbeddingV1) bool { return a.CVVersion > b.CVVersion },
+
+	scan := tbl.Scan(
+		table.WithRowFilter(iceberg.EqualTo(iceberg.Reference("candidate_id"), candidateID)),
+		table.WithSelectedFields("candidate_id", "cv_version", "vector", "model_version"),
 	)
-	if !ok {
+
+	arrowTbl, err := scan.ToArrowTable(ctx)
+	if err != nil {
+		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: scan embeddings_current: %w", err)
+	}
+	defer arrowTbl.Retain()
+	defer arrowTbl.Release()
+
+	if arrowTbl.NumRows() == 0 {
 		return eventsv1.CandidateEmbeddingV1{}, ErrNotFound
+	}
+
+	rows, err := embeddingRowsFromTable(arrowTbl)
+	if err != nil {
+		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: decode embeddings: %w", err)
+	}
+	if len(rows) == 0 {
+		return eventsv1.CandidateEmbeddingV1{}, ErrNotFound
+	}
+
+	// _current has at most one row per candidate. If somehow there are
+	// multiple (compaction lag), pick the one with the highest CVVersion.
+	best := rows[0]
+	for _, row := range rows[1:] {
+		if row.CVVersion > best.CVVersion {
+			best = row
+		}
 	}
 	return best, nil
 }
 
-// LatestPreferences returns the most recent preferences row for the
-// candidate, or ErrNotFound if none exist. Preferences don't carry a
-// CVVersion (they are independent of the CV cycle); ordering is by
-// discovered object-key order which matches write order at this scale.
+// LatestPreferences returns the preferences row for candidateID from
+// the candidates.preferences_current Iceberg table.
+//
+// Returns (zero, ErrNotFound) when no row exists.
 func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eventsv1.PreferencesUpdatedV1, error) {
-	rows, err := loadAll[eventsv1.PreferencesUpdatedV1](ctx, r.client, r.bucket,
-		"candidates_preferences_current/cnd="+prefix2(candidateID)+"/")
+	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "preferences_current"})
 	if err != nil {
-		return eventsv1.PreferencesUpdatedV1{}, err
+		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: load preferences_current: %w", err)
 	}
-	matching := filter(rows, func(row eventsv1.PreferencesUpdatedV1) bool { return row.CandidateID == candidateID })
-	if len(matching) == 0 {
+
+	scan := tbl.Scan(
+		table.WithRowFilter(iceberg.EqualTo(iceberg.Reference("candidate_id"), candidateID)),
+		table.WithSelectedFields(
+			"candidate_id", "remote_preference",
+			"salary_min", "salary_max", "currency",
+			"preferred_locations", "excluded_companies",
+			"target_roles", "languages", "availability",
+		),
+	)
+
+	arrowTbl, err := scan.ToArrowTable(ctx)
+	if err != nil {
+		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: scan preferences_current: %w", err)
+	}
+	defer arrowTbl.Retain()
+	defer arrowTbl.Release()
+
+	if arrowTbl.NumRows() == 0 {
 		return eventsv1.PreferencesUpdatedV1{}, ErrNotFound
 	}
-	return matching[len(matching)-1], nil
-}
 
-// prefix2 returns the first two chars of the candidate_id, lowercased.
-// MUST match the writer's partition convention in
-// pkg/events/v1/partitions.go::partitionSecondary (which calls
-// firstN(strings.ToLower(hint), 2) with hint=payload.candidate_id).
-func prefix2(candidateID string) string {
-	lower := lowerASCII(candidateID)
-	if len(lower) >= 2 {
-		return lower[:2]
-	}
-	return lower
-}
-
-func lowerASCII(s string) string {
-	b := []byte(s)
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + 32
-		}
-	}
-	return string(b)
-}
-
-// loadAll lists Parquet objects under prefix and decodes them as []T.
-// Uses eventlog.ReadParquet which wraps parquet.NewGenericReader[T].
-func loadAll[T any](ctx context.Context, client *s3.Client, bucket, prefix string) ([]T, error) {
-	keys, err := listKeys(ctx, client, bucket, prefix)
+	rows, err := preferencesRowsFromTable(arrowTbl)
 	if err != nil {
-		return nil, err
+		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: decode preferences: %w", err)
 	}
-	sort.Strings(keys)
-
-	var rows []T
-	for _, k := range keys {
-		obj, err := client.GetObject(ctx, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(k),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("candidatestore: get %q: %w", k, err)
-		}
-		var buf bytes.Buffer
-		if _, err := io.Copy(&buf, obj.Body); err != nil {
-			_ = obj.Body.Close()
-			return nil, fmt.Errorf("candidatestore: read %q: %w", k, err)
-		}
-		_ = obj.Body.Close()
-		body := buf.Bytes()
-		page, err := eventlog.ReadParquet[T](body)
-		if err != nil {
-			return nil, fmt.Errorf("candidatestore: decode %q: %w", k, err)
-		}
-		rows = append(rows, page...)
+	if len(rows) == 0 {
+		return eventsv1.PreferencesUpdatedV1{}, ErrNotFound
 	}
-	return rows, nil
+	return rows[0], nil
 }
 
-// listKeys pages through ListObjectsV2 and returns every key under prefix.
-func listKeys(ctx context.Context, client *s3.Client, bucket, prefix string) ([]string, error) {
-	var keys []string
-	var token *string
-	for {
-		out, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-			Bucket:            aws.String(bucket),
-			Prefix:            aws.String(prefix),
-			ContinuationToken: token,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("candidatestore: list %q: %w", prefix, err)
-		}
-		for _, obj := range out.Contents {
-			if obj.Key != nil {
-				keys = append(keys, *obj.Key)
+// --- Arrow table decoders ---
+
+// embeddingRowsFromTable reads all rows from an Arrow table that has
+// the embeddings_current schema (candidate_id, cv_version, vector,
+// model_version).
+func embeddingRowsFromTable(tbl arrow.Table) ([]eventsv1.CandidateEmbeddingV1, error) {
+	sc := tbl.Schema()
+	cidxCandidateID := sc.FieldIndices("candidate_id")
+	cidxCVVersion := sc.FieldIndices("cv_version")
+	cidxVector := sc.FieldIndices("vector")
+	cidxModelVersion := sc.FieldIndices("model_version")
+
+	if len(cidxCandidateID) == 0 || len(cidxVector) == 0 {
+		return nil, fmt.Errorf("embeddings_current: missing required columns (candidate_id, vector); schema: %s", sc)
+	}
+
+	tr := array.NewTableReader(tbl, -1)
+	defer tr.Release()
+
+	var out []eventsv1.CandidateEmbeddingV1
+	for tr.Next() {
+		rec := tr.Record()
+		nRows := int(rec.NumRows())
+
+		colCandidateID := stringColOrNil(rec, cidxCandidateID[0])
+		colVector := listColOrNil(rec, cidxVector[0])
+
+		var colCVVersion *array.Int32
+		if len(cidxCVVersion) > 0 {
+			if c, ok := rec.Column(cidxCVVersion[0]).(*array.Int32); ok {
+				colCVVersion = c
 			}
 		}
-		if out.IsTruncated == nil || !*out.IsTruncated {
-			break
+		var colModelVersion *array.String
+		if len(cidxModelVersion) > 0 {
+			if c, ok := rec.Column(cidxModelVersion[0]).(*array.String); ok {
+				colModelVersion = c
+			}
 		}
-		token = out.NextContinuationToken
+
+		for i := 0; i < nRows; i++ {
+			var row eventsv1.CandidateEmbeddingV1
+			if colCandidateID != nil && !colCandidateID.IsNull(i) {
+				row.CandidateID = colCandidateID.Value(i)
+			}
+			if colCVVersion != nil && !colCVVersion.IsNull(i) {
+				row.CVVersion = int(colCVVersion.Value(i))
+			}
+			if colVector != nil && !colVector.IsNull(i) {
+				row.Vector = listFloat32Values(colVector, i)
+			}
+			if colModelVersion != nil && !colModelVersion.IsNull(i) {
+				row.ModelVersion = colModelVersion.Value(i)
+			}
+			out = append(out, row)
+		}
 	}
-	return keys, nil
+	return out, nil
 }
 
-func filter[T any](xs []T, keep func(T) bool) []T {
-	var out []T
-	for _, x := range xs {
-		if keep(x) {
-			out = append(out, x)
+// preferencesRowsFromTable reads all rows from an Arrow table that has
+// the preferences_current schema.
+func preferencesRowsFromTable(tbl arrow.Table) ([]eventsv1.PreferencesUpdatedV1, error) {
+	sc := tbl.Schema()
+	cidxCandidateID := sc.FieldIndices("candidate_id")
+	if len(cidxCandidateID) == 0 {
+		return nil, fmt.Errorf("preferences_current: missing required column candidate_id; schema: %s", sc)
+	}
+
+	tr := array.NewTableReader(tbl, -1)
+	defer tr.Release()
+
+	var out []eventsv1.PreferencesUpdatedV1
+	for tr.Next() {
+		rec := tr.Record()
+		nRows := int(rec.NumRows())
+
+		colCandidateID := stringColOrNil(rec, cidxCandidateID[0])
+
+		// Optional columns: extract by name so missing columns are gracefully skipped.
+		colRemote := stringColByName(rec, sc, "remote_preference")
+		colCurrency := stringColByName(rec, sc, "currency")
+		colAvailability := stringColByName(rec, sc, "availability")
+		colSalaryMin := int32ColByName(rec, sc, "salary_min")
+		colSalaryMax := int32ColByName(rec, sc, "salary_max")
+		colPrefLoc := listColByName(rec, sc, "preferred_locations")
+		colExcluded := listColByName(rec, sc, "excluded_companies")
+		colTargetRoles := listColByName(rec, sc, "target_roles")
+		colLanguages := listColByName(rec, sc, "languages")
+
+		for i := 0; i < nRows; i++ {
+			var row eventsv1.PreferencesUpdatedV1
+			if colCandidateID != nil && !colCandidateID.IsNull(i) {
+				row.CandidateID = colCandidateID.Value(i)
+			}
+			if colRemote != nil && !colRemote.IsNull(i) {
+				row.RemotePreference = colRemote.Value(i)
+			}
+			if colCurrency != nil && !colCurrency.IsNull(i) {
+				row.Currency = colCurrency.Value(i)
+			}
+			if colAvailability != nil && !colAvailability.IsNull(i) {
+				row.Availability = colAvailability.Value(i)
+			}
+			if colSalaryMin != nil && !colSalaryMin.IsNull(i) {
+				row.SalaryMin = int(colSalaryMin.Value(i))
+			}
+			if colSalaryMax != nil && !colSalaryMax.IsNull(i) {
+				row.SalaryMax = int(colSalaryMax.Value(i))
+			}
+			if colPrefLoc != nil && !colPrefLoc.IsNull(i) {
+				row.PreferredLocations = listStringValues(colPrefLoc, i)
+			}
+			if colExcluded != nil && !colExcluded.IsNull(i) {
+				row.ExcludedCompanies = listStringValues(colExcluded, i)
+			}
+			if colTargetRoles != nil && !colTargetRoles.IsNull(i) {
+				row.TargetRoles = listStringValues(colTargetRoles, i)
+			}
+			if colLanguages != nil && !colLanguages.IsNull(i) {
+				row.Languages = listStringValues(colLanguages, i)
+			}
+			out = append(out, row)
 		}
 	}
+	return out, nil
+}
+
+// --- low-level Arrow column helpers ---
+
+func stringColOrNil(rec arrow.Record, colIdx int) *array.String {
+	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
+		return nil
+	}
+	c, _ := rec.Column(colIdx).(*array.String)
+	return c
+}
+
+func listColOrNil(rec arrow.Record, colIdx int) *array.List {
+	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
+		return nil
+	}
+	c, _ := rec.Column(colIdx).(*array.List)
+	return c
+}
+
+func stringColByName(rec arrow.Record, sc *arrow.Schema, name string) *array.String {
+	idxs := sc.FieldIndices(name)
+	if len(idxs) == 0 {
+		return nil
+	}
+	return stringColOrNil(rec, idxs[0])
+}
+
+func int32ColByName(rec arrow.Record, sc *arrow.Schema, name string) *array.Int32 {
+	idxs := sc.FieldIndices(name)
+	if len(idxs) == 0 {
+		return nil
+	}
+	if idxs[0] < 0 || idxs[0] >= int(rec.NumCols()) {
+		return nil
+	}
+	c, _ := rec.Column(idxs[0]).(*array.Int32)
+	return c
+}
+
+func listColByName(rec arrow.Record, sc *arrow.Schema, name string) *array.List {
+	idxs := sc.FieldIndices(name)
+	if len(idxs) == 0 {
+		return nil
+	}
+	return listColOrNil(rec, idxs[0])
+}
+
+// listFloat32Values extracts []float32 from row i of a List<float32> column.
+func listFloat32Values(col *array.List, i int) []float32 {
+	start, end := col.ValueOffsets(i)
+	vals, ok := col.ListValues().(*array.Float32)
+	if !ok || start >= end {
+		return nil
+	}
+	raw := vals.Float32Values()
+	if int(end) > len(raw) {
+		return nil
+	}
+	out := make([]float32, end-start)
+	copy(out, raw[start:end])
 	return out
 }
 
-func pick[T any](xs []T, keep func(T) bool, better func(a, b T) bool) (T, bool) {
-	var zero T
-	first := true
-	var best T
-	for _, x := range xs {
-		if !keep(x) {
-			continue
-		}
-		if first || better(x, best) {
-			best = x
-			first = false
+// listStringValues extracts []string from row i of a List<string> column.
+func listStringValues(col *array.List, i int) []string {
+	start, end := col.ValueOffsets(i)
+	vals, ok := col.ListValues().(*array.String)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, end-start)
+	for j := int(start); j < int(end); j++ {
+		if vals.IsNull(j) {
+			out = append(out, "")
+		} else {
+			out = append(out, vals.Value(j))
 		}
 	}
-	if first {
-		return zero, false
-	}
-	return best, true
+	return out
 }

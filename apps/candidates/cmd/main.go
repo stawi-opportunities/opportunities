@@ -20,9 +20,9 @@ import (
 	"stawi.jobs/pkg/archive"
 	"stawi.jobs/pkg/candidatestore"
 	"stawi.jobs/pkg/cv"
-	"stawi.jobs/pkg/eventlog"
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/extraction"
+	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/repository"
 	"stawi.jobs/pkg/telemetry"
 )
@@ -57,14 +57,24 @@ func main() {
 		Bucket:          cfg.ArchiveR2Bucket,
 	})
 
-	// --- Event-log R2 reader (for match endpoint) ---
-	eventLogClient := eventlog.NewClient(eventlog.R2Config{
-		AccountID:       cfg.R2AccountID,
-		AccessKeyID:     cfg.R2AccessKeyID,
-		SecretAccessKey: cfg.R2SecretAccessKey,
-		Bucket:          cfg.R2EventLogBucket,
+	// --- Iceberg catalog (for candidatestore Reader + StaleReader) ---
+	icebergWarehouse := cfg.IcebergWarehouse
+	if icebergWarehouse == "" {
+		icebergWarehouse = "s3://" + cfg.R2EventLogBucket + "/iceberg"
+	}
+	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+		Name:              cfg.IcebergCatalogName,
+		URI:               cfg.IcebergCatalogURI,
+		Warehouse:         icebergWarehouse,
+		R2Endpoint:        cfg.R2Endpoint,
+		R2AccessKeyID:     cfg.R2AccessKeyID,
+		R2SecretAccessKey: cfg.R2SecretAccessKey,
+		R2Region:          cfg.R2Region,
 	})
-	candStore := candidatestore.NewReader(eventLogClient, cfg.R2EventLogBucket)
+	if err != nil {
+		log.WithError(err).Fatal("candidates: iceberg catalog load failed")
+	}
+	candStore := candidatestore.NewReader(cat)
 
 	// --- AI extractor ---
 	var extractor *extraction.Extractor
@@ -95,7 +105,7 @@ func main() {
 	matchSvc := httpv1.NewMatchService(candStore, search, 20)
 	candidateLister := adminv1.NewRepoCandidateLister(candidateRepo, 1000)
 	matchRunner := adminv1.NewServiceMatchRunner(svc, matchSvc)
-	staleReader := candidatestore.NewStaleReader(eventLogClient, cfg.R2EventLogBucket)
+	staleReader := candidatestore.NewStaleReader(cat)
 	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
 
 	// --- Subscription handlers ---
