@@ -13,8 +13,8 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/redis/go-redis/v9"
 
-	"stawi.jobs/pkg/eventlog"
 	"stawi.jobs/pkg/extraction"
+	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/kv"
 	"stawi.jobs/pkg/publish"
 
@@ -100,17 +100,20 @@ func main() {
 
 	service := workersvc.NewService(svc, ex, publisher, dedupCache, clusterCache, cfg.TranslationLangs)
 
-	// R2 event-log reader for the KV rebuild admin endpoint.
-	logClient := eventlog.NewClient(eventlog.R2Config{
-		AccountID:       cfg.R2LogAccountID,
-		AccessKeyID:     cfg.R2LogAccessKeyID,
-		SecretAccessKey: cfg.R2LogSecretAccessKey,
-		Bucket:          cfg.R2LogBucket,
-		Endpoint:        cfg.R2LogEndpoint,
-		UsePathStyle:    cfg.R2LogUsePathStyle,
+	// Iceberg catalog for the KV rebuild admin endpoint.
+	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+		Name:              cfg.IcebergCatalogName,
+		URI:               cfg.IcebergCatalogURI,
+		Warehouse:         cfg.IcebergWarehouse,
+		R2Endpoint:        cfg.R2Endpoint,
+		R2AccessKeyID:     cfg.R2PublishAccessKeyID,
+		R2SecretAccessKey: cfg.R2PublishSecretAccessKey,
+		R2Region:          cfg.R2Region,
 	})
-	logReader := eventlog.NewReader(logClient, cfg.R2LogBucket)
-	kvRebuilder := workersvc.NewKVRebuilder(logReader, kvClient)
+	if err != nil {
+		log.Fatalf("worker: iceberg catalog open: %v", err)
+	}
+	kvRebuilder := workersvc.NewKVRebuilder(cat, kvClient)
 
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("POST /_admin/kv/rebuild", workersvc.KVRebuildHandler(kvRebuilder))

@@ -18,7 +18,7 @@ import (
 	"github.com/pitabwire/util"
 
 	"stawi.jobs/pkg/analytics"
-	"stawi.jobs/pkg/eventlog"
+	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/searchindex"
 )
@@ -30,7 +30,6 @@ type apiConfig struct {
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID"     envDefault:""`
 	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
 	R2Bucket          string  `env:"R2_BUCKET"            envDefault:"stawi-jobs-content"`
-	R2LogBucket       string  `env:"R2_LOG_BUCKET"        envDefault:"stawi-jobs-log"`
 	R2Endpoint        string  `env:"R2_ENDPOINT"          envDefault:""`
 	R2Region          string  `env:"R2_REGION"            envDefault:"auto"`
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL"   envDefault:""`
@@ -39,6 +38,11 @@ type apiConfig struct {
 	AnalyticsOrg      string  `env:"ANALYTICS_ORG"        envDefault:"default"`
 	AnalyticsUsername string  `env:"ANALYTICS_USERNAME"   envDefault:""`
 	AnalyticsPassword string  `env:"ANALYTICS_PASSWORD"   envDefault:""`
+
+	// Iceberg catalog — used by the /admin/backfill handler.
+	IcebergCatalogURI  string `env:"ICEBERG_CATALOG_URI"  envDefault:""`
+	IcebergWarehouse   string `env:"ICEBERG_WAREHOUSE"    envDefault:""`
+	IcebergCatalogName string `env:"ICEBERG_CATALOG_NAME" envDefault:"stawi"`
 }
 
 func main() {
@@ -61,23 +65,12 @@ func main() {
 	jm := newJobsManticore(manticore)
 
 	var r2Publisher *publish.R2Publisher
-	var r2LogReader *eventlog.Reader
 	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
 		r2Publisher = publish.NewR2Publisher(
 			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
 			cfg.R2Bucket, cfg.R2DeployHookURL,
 		)
 		log.WithField("bucket", cfg.R2Bucket).Info("R2 publisher enabled")
-
-		logClient := eventlog.NewClient(eventlog.R2Config{
-			AccountID:       cfg.R2AccountID,
-			AccessKeyID:     cfg.R2AccessKeyID,
-			SecretAccessKey: cfg.R2SecretAccessKey,
-			Bucket:          cfg.R2LogBucket,
-			Endpoint:        cfg.R2Endpoint,
-			UsePathStyle:    cfg.R2Endpoint != "",
-		})
-		r2LogReader = eventlog.NewReader(logClient, cfg.R2LogBucket)
 	}
 
 	analyticsClient := analytics.New(analytics.Config{
@@ -126,10 +119,22 @@ func main() {
 	mux.HandleFunc("GET /stats", v2StatsHandler(jm))
 	mux.HandleFunc("GET /search", v2SearchHandler(jm))
 
-	// Hugo snapshot publishing — sources from R2 Parquet.
-	if r2Publisher != nil && r2LogReader != nil {
+	// Hugo snapshot publishing — sources from Iceberg jobs.canonicals_current.
+	if r2Publisher != nil && cfg.IcebergCatalogURI != "" {
+		cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+			Name:              cfg.IcebergCatalogName,
+			URI:               cfg.IcebergCatalogURI,
+			Warehouse:         cfg.IcebergWarehouse,
+			R2Endpoint:        cfg.R2Endpoint,
+			R2AccessKeyID:     cfg.R2AccessKeyID,
+			R2SecretAccessKey: cfg.R2SecretAccessKey,
+			R2Region:          cfg.R2Region,
+		})
+		if err != nil {
+			log.WithError(err).Fatal("api: iceberg catalog open failed")
+		}
 		mux.HandleFunc("POST /admin/backfill",
-			backfillParquetHandler(r2LogReader, r2Publisher, cfg.PublishMinQuality))
+			backfillIcebergHandler(cat, r2Publisher, cfg.PublishMinQuality))
 	}
 
 	// Analytics beacon — no DB.

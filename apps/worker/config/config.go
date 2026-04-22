@@ -17,14 +17,15 @@ type Config struct {
 	// snapshot storage). Handed to frame/cache/valkey.New(cache.WithDSN).
 	ValkeyURL string `env:"VALKEY_URL,required"`
 
-	// R2 event-log bucket (read-only; used by /_admin/kv/rebuild to scan
-	// canonicals_current/ Parquet and repopulate Valkey cluster:* keys).
-	R2LogAccountID       string `env:"R2_LOG_ACCOUNT_ID,required"`
-	R2LogAccessKeyID     string `env:"R2_LOG_ACCESS_KEY_ID,required"`
-	R2LogSecretAccessKey string `env:"R2_LOG_SECRET_ACCESS_KEY,required"`
-	R2LogBucket          string `env:"R2_LOG_BUCKET,required"`
-	R2LogEndpoint        string `env:"R2_LOG_ENDPOINT" envDefault:""`
-	R2LogUsePathStyle    bool   `env:"R2_LOG_PATH_STYLE" envDefault:"false"`
+	// Iceberg catalog — used by /_admin/kv/rebuild to scan
+	// jobs.canonicals_current and repopulate Valkey cluster:* keys.
+	IcebergCatalogURI  string `env:"ICEBERG_CATALOG_URI,required"`
+	IcebergWarehouse   string `env:"ICEBERG_WAREHOUSE,required"`
+	IcebergCatalogName string `env:"ICEBERG_CATALOG_NAME" envDefault:"stawi"`
+
+	// R2 credentials for Iceberg data-file access (shared with publish bucket config).
+	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
+	R2Region          string `env:"R2_REGION"            envDefault:"auto"`
 
 	// R2 publish bucket (the live job-detail JSONs, distinct from the
 	// event log). pkg/publish creates snapshots here.
