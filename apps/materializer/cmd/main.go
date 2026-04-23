@@ -17,7 +17,6 @@ import (
 	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/searchindex"
 	"stawi.jobs/pkg/telemetry"
-	writersvc "stawi.jobs/apps/writer/service"
 
 	matcfg "stawi.jobs/apps/materializer/config"
 	matsvc "stawi.jobs/apps/materializer/service"
@@ -91,7 +90,7 @@ func main() {
 	// Iceberg snapshot timestamp.
 	telemetry.RegisterIcebergObservables(telemetry.IcebergObservablesConfig{
 		Catalog:     cat,
-		TableIdents: writersvc.AppendOnlyTables,
+		TableIdents: icebergclient.AppendOnlyTables,
 		Valkey:      kvClient,
 	})
 

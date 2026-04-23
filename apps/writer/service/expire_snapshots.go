@@ -10,28 +10,15 @@ import (
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
 
+	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/telemetry"
 )
 
-// AppendOnlyTables is the authoritative list of writer-persisted tables
-// subject to snapshot retention. Kept here (not in a pkg/ registry) so
-// reading this file shows the entire maintenance scope at a glance.
-var AppendOnlyTables = [][]string{
-	{"jobs", "variants"},
-	{"jobs", "canonicals"},
-	{"jobs", "canonicals_expired"},
-	{"jobs", "embeddings"},
-	{"jobs", "translations"},
-	{"jobs", "published"},
-	{"jobs", "crawl_page_completed"},
-	{"jobs", "sources_discovered"},
-	{"candidates", "cv_uploaded"},
-	{"candidates", "cv_extracted"},
-	{"candidates", "cv_improved"},
-	{"candidates", "preferences"},
-	{"candidates", "embeddings"},
-	{"candidates", "matches_ready"},
-}
+// AppendOnlyTables is a back-compat alias for pkg/icebergclient.AppendOnlyTables.
+// The canonical list lives in pkg/icebergclient so every service can import
+// it without the cross-app Dockerfile problem. Kept here so in-package
+// references ("AppendOnlyTables") keep working without touching callers.
+var AppendOnlyTables = icebergclient.AppendOnlyTables
 
 // ExpireSnapshotsConfig tunes retention.
 type ExpireSnapshotsConfig struct {
