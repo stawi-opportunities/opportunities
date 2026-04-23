@@ -94,7 +94,7 @@ func main() {
 		Valkey:      kvClient,
 	})
 
-	service := matsvc.NewService(cat, reader, cfg.R2Bucket, mc, wm, cfg.PollInterval, cfg.ManticoreBulkBatchSize)
+	service := matsvc.NewService(cat, reader, cfg.R2Bucket, mc, wm, kvClient, cfg.PollInterval, cfg.ManticoreBulkBatchSize)
 
 	go func() {
 		if err := service.Run(ctx); err != nil {

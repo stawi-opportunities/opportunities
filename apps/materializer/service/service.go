@@ -3,6 +3,12 @@
 // since the last watermark, reads them via R2, decodes the Parquet rows,
 // and bulk-upserts them into Manticore. The Valkey watermark is advanced
 // only after a successful Manticore flush (atomic-ish commit).
+//
+// Horizontal-scaling (stateless HA): when replicaCount > 1, each replica
+// races to acquire a per-table Valkey lease ("mat:leader:<table>") using
+// SET NX EX before processing. Only the lease-holder processes the table;
+// others skip it silently. Lease TTL = 3× pollEvery so a crashed pod
+// releases its leases within ~45 s and another replica takes over.
 package service
 
 import (
@@ -13,12 +19,24 @@ import (
 	"time"
 
 	"github.com/apache/iceberg-go/catalog"
+	"github.com/google/uuid"
 	"github.com/pitabwire/util"
+	"github.com/redis/go-redis/v9"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/eventlog"
 	"stawi.jobs/pkg/searchindex"
 )
+
+// releaseScript is a Lua compare-and-delete script. It atomically deletes the
+// key only if its value matches the caller's instanceID, preventing a pod from
+// releasing a lease it no longer owns after a crash-and-restart race.
+const releaseScript = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end`
 
 // Service is the materializer composition root.
 type Service struct {
@@ -27,6 +45,8 @@ type Service struct {
 	r2Bucket       string           // e.g. "stawi-jobs-log"
 	manticore      *searchindex.Client
 	wm             *Watermark
+	kv             *redis.Client
+	instanceID     string        // per-pod UUID; uniquifies lease ownership
 	pollEvery      time.Duration
 	bulkBatchSize  int
 	tables         []tableSink
@@ -48,13 +68,15 @@ type tableSink struct {
 // s3://<bucket>/ prefix from Iceberg file paths before fetching via
 // eventlog.Reader. bulkBatchSize controls how many documents are
 // accumulated before a single Manticore bulk request is issued; pass 0
-// to use the default (1000).
+// to use the default (1000). kv is the Valkey client used for both
+// watermarks and per-table leader-election leases.
 func NewService(
 	cat catalog.Catalog,
 	reader *eventlog.Reader,
 	r2Bucket string,
 	mc *searchindex.Client,
 	wm *Watermark,
+	kv *redis.Client,
 	poll time.Duration,
 	bulkBatchSize int,
 ) *Service {
@@ -67,6 +89,8 @@ func NewService(
 		r2Bucket:      r2Bucket,
 		manticore:     mc,
 		wm:            wm,
+		kv:            kv,
+		instanceID:    uuid.New().String(),
 		pollEvery:     poll,
 		bulkBatchSize: bulkBatchSize,
 	}
@@ -113,11 +137,46 @@ func (s *Service) tick(ctx context.Context) {
 	wg.Wait()
 }
 
-// processTable is the per-table pipeline: read watermark → scan diff →
-// decode + bulk-upsert → advance watermark.
+// processTable is the per-table pipeline: acquire leader lease → read
+// watermark → scan diff → decode + bulk-upsert → advance watermark →
+// release lease.
+//
+// Leader-election: before any work, this replica attempts to acquire
+// "mat:leader:<table>" via SET NX EX (TTL = 3× pollEvery). If another
+// replica already holds the lease the function returns nil immediately.
+// On success, the lease is released via a Lua compare-and-delete after
+// the table is processed (or on error).
 func (s *Service) processTable(ctx context.Context, sink tableSink) error {
 	identKey := sink.Ident[0] + "." + sink.Ident[1]
 
+	// --- Leader-election lease ---
+	if s.kv != nil {
+		leaseKey := "mat:leader:" + identKey
+		leaseTTL := 3 * s.pollEvery
+
+		ok, err := s.kv.SetNX(ctx, leaseKey, s.instanceID, leaseTTL).Result()
+		if err != nil {
+			// Valkey unavailable — degrade gracefully: skip this tick to avoid
+			// double-processing, but do not fail permanently.
+			util.Log(ctx).WithError(err).
+				WithField("table", identKey).
+				Warn("materializer: leader-election unavailable; skipping tick")
+			return nil
+		}
+		if !ok {
+			// Another replica holds the lease; skip this tick.
+			return nil
+		}
+
+		// We hold the lease. Release it after processing, using compare-and-
+		// delete so a crashed-and-restarted pod cannot release a lease it no
+		// longer owns.
+		defer func() {
+			s.kv.Eval(ctx, releaseScript, []string{leaseKey}, s.instanceID)
+		}()
+	}
+
+	// --- Main pipeline ---
 	prev, err := s.wm.Get(ctx, identKey)
 	if err != nil {
 		return fmt.Errorf("read watermark %s: %w", identKey, err)

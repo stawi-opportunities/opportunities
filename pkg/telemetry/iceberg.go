@@ -390,10 +390,16 @@ func InitIceberg() error {
 			if snaps[tableKey] == 0 {
 				continue // nothing committed yet
 			}
-			tbl, err := cat.LoadTable(ctx, ident)
+
+			// Per-table 1 s timeout so a catalog outage cannot hang a
+			// Prometheus scrape for more than 14× 1 s = 14 s total.
+			tblCtx, cancel := context.WithTimeout(ctx, time.Second)
+			tbl, err := cat.LoadTable(tblCtx, ident)
+			cancel()
 			if err != nil {
 				continue
 			}
+
 			currentSnap := tbl.Metadata().CurrentSnapshot()
 			if currentSnap == nil {
 				continue

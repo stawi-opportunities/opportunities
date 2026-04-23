@@ -57,6 +57,10 @@ func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (event
 		table.WithSelectedFields("candidate_id", "cv_version", "vector", "model_version", "occurred_at"),
 	)
 
+	// ToArrowTable is safe here: the EqualTo(candidate_id) pushdown combined
+	// with the bucket(32,candidate_id) partition spec limits this scan to 1/32
+	// of files (+ bloom filter), and a single candidate has O(10) rows max.
+	// Memory is bounded by design; no streaming needed.
 	arrowTbl, err := scan.ToArrowTable(ctx)
 	if err != nil {
 		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: scan embeddings: %w", err)
@@ -103,6 +107,8 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 		),
 	)
 
+	// ToArrowTable is safe here: same reasoning as LatestEmbedding — single-
+	// candidate EqualTo filter is bloom-pruned to 1/32 of files. Bounded.
 	arrowTbl, err := scan.ToArrowTable(ctx)
 	if err != nil {
 		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: scan preferences: %w", err)

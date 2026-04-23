@@ -51,6 +51,12 @@ type Config struct {
 	// per-partition Overwrite transaction; keeps individual commits bounded.
 	// CompactPerTableTimeout limits each table's compaction goroutine.
 	// CompactParallelism fans out across tables (same as Parallelism for expire).
+	//
+	// Memory note (500M-scale): each concurrent compaction goroutine holds at
+	// most one Arrow RecordBatch in memory at a time (~1–2 GiB peak per table
+	// depending on row-group size). At the default of 4, peak usage is ~4–6 GiB,
+	// which fits within the 12 GiB writer pod limit. Reduce to 2 (COMPACT_PARALLELISM=2)
+	// if the pod runs on a 4 GiB node or during a memory-constrained period.
 	CompactTargetFileSize    int64         `env:"COMPACT_TARGET_FILE_SIZE"     envDefault:"134217728"` // 128 MiB
 	CompactMinFileSize       int64         `env:"COMPACT_MIN_FILE_SIZE"        envDefault:"67108864"`  // 64 MiB
 	CompactMaxInputPerCommit int           `env:"COMPACT_MAX_INPUT_PER_COMMIT" envDefault:"20"`

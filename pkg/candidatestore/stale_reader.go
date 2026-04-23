@@ -1,6 +1,7 @@
 package candidatestore
 
 import (
+	"container/heap"
 	"context"
 	"fmt"
 	"sort"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/table"
 )
@@ -28,8 +30,10 @@ type StaleCandidate struct {
 // candidates whose most recent upload is stale, even though older uploads
 // might also be < cutoff.
 //
-// Scanning the full table is acceptable because ListStale runs weekly and
-// the candidate set grows slowly relative to a weekly cadence.
+// Memory-safety at 500M scale: the table is iterated partition-by-partition
+// (bucket(32, candidate_id)). Per partition ~15.6M rows × ~32 bytes ≈ ~500 MB
+// peak, well within the 3 GB candidates pod limit. A bounded top-N heap
+// ensures the output slice never exceeds limit entries regardless of input size.
 type StaleReader struct {
 	cat catalog.Catalog
 }
@@ -52,98 +56,195 @@ func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int
 		return nil, fmt.Errorf("candidatestore: load cv_extracted: %w", err)
 	}
 
-	// Scan all rows: we need the latest occurred_at per candidate to correctly
-	// determine staleness. A pushdown filter on occurred_at < cutoff would
-	// miss candidates whose most-recent upload is recent but who also have
-	// older rows — those older rows would pass the pushdown and make the
-	// candidate appear stale even when it isn't. Scanning all rows and folding
-	// in Go avoids this false-positive.
-	scan := tbl.Scan(
-		table.WithSelectedFields("candidate_id", "occurred_at"),
-	)
-
-	arrowTbl, err := scan.ToArrowTable(ctx)
+	numBuckets, bucketFieldName, err := staleBucketPartitionInfo(tbl, "candidate_id")
 	if err != nil {
-		return nil, fmt.Errorf("candidatestore: scan cv_extracted: %w", err)
-	}
-	defer arrowTbl.Release()
-
-	rows, err := staleRowsFromTable(arrowTbl)
-	if err != nil {
-		return nil, fmt.Errorf("candidatestore: decode cv_extracted: %w", err)
+		return nil, fmt.Errorf("candidatestore: partition info: %w", err)
 	}
 
-	// Fold: keep latest occurred_at per candidate_id.
-	latest := make(map[string]time.Time, len(rows))
-	for _, row := range rows {
-		if t, ok := latest[row.CandidateID]; !ok || row.LastUploadAt.After(t) {
-			latest[row.CandidateID] = row.LastUploadAt
+	// top-N max-heap on LastUploadAt: keeps the oldest `limit` candidates.
+	// (max-heap so the newest entry is cheaply evictable when limit is exceeded)
+	topN := newStaleHeap(limit)
+
+	for bucketIdx := 0; bucketIdx < numBuckets; bucketIdx++ {
+		var scanOpts []table.ScanOption
+		if bucketFieldName != "" {
+			partFilter := iceberg.EqualTo(iceberg.Reference(bucketFieldName), int32(bucketIdx))
+			scanOpts = append(scanOpts, table.WithRowFilter(partFilter))
 		}
-	}
+		scanOpts = append(scanOpts, table.WithSelectedFields("candidate_id", "occurred_at"))
 
-	// Filter by cutoff, collect, sort oldest-first, apply limit.
-	out := make([]StaleCandidate, 0, len(latest))
-	for id, ts := range latest {
-		if ts.Before(cutoff) {
-			out = append(out, StaleCandidate{CandidateID: id, LastUploadAt: ts})
+		scan := tbl.Scan(scanOpts...)
+
+		// Per-partition fold map. Cleared after each partition so ~500 MB of
+		// map memory is reclaimed between buckets.
+		latest := make(map[string]time.Time)
+
+		_, itr, err := scan.ToArrowRecords(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("candidatestore: to arrow records (bucket %d): %w", bucketIdx, err)
 		}
+
+		for batch, batchErr := range itr {
+			if batchErr != nil {
+				return nil, fmt.Errorf("candidatestore: iterate batch (bucket %d): %w", bucketIdx, batchErr)
+			}
+			foldStaleBatch(batch, latest)
+			batch.Release()
+		}
+
+		// Push stale candidates from this partition into the bounded top-N heap.
+		for id, ts := range latest {
+			if ts.Before(cutoff) {
+				topN.offer(StaleCandidate{CandidateID: id, LastUploadAt: ts})
+			}
+		}
+		// latest goes out of scope; GC reclaims ~500 MB before next partition.
 	}
 
+	out := topN.sorted()
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].LastUploadAt.Before(out[j].LastUploadAt)
 	})
-	if len(out) > limit {
-		out = out[:limit]
-	}
 	return out, nil
 }
 
-// staleRowsFromTable decodes an Arrow table with schema
-// (candidate_id string, occurred_at timestamp) into []StaleCandidate.
-func staleRowsFromTable(tbl arrow.Table) ([]StaleCandidate, error) {
-	sc := tbl.Schema()
+// foldStaleBatch updates latest with the max occurred_at per candidate_id from
+// one Arrow RecordBatch.
+func foldStaleBatch(rec arrow.Record, latest map[string]time.Time) {
+	sc := rec.Schema()
 	cidxCandidateID := sc.FieldIndices("candidate_id")
 	cidxOccurredAt := sc.FieldIndices("occurred_at")
-
 	if len(cidxCandidateID) == 0 || len(cidxOccurredAt) == 0 {
-		return nil, fmt.Errorf("cv_extracted: missing required columns; schema: %s", sc)
+		return
 	}
 
-	tr := array.NewTableReader(tbl, -1)
-	defer tr.Release()
+	colCandidateID := staleStringCol(rec, cidxCandidateID[0])
+	colOccurredAt := staleTimestampCol(rec, cidxOccurredAt[0])
 
-	var out []StaleCandidate
-	for tr.Next() {
-		rec := tr.Record()
-		nRows := int(rec.NumRows())
-
-		colCandidateID := stringColOrNil(rec, cidxCandidateID[0])
-		colOccurredAt := timestampColOrNil(rec, cidxOccurredAt[0])
-
-		for i := 0; i < nRows; i++ {
-			if colCandidateID == nil || colCandidateID.IsNull(i) {
-				continue
-			}
-			candidateID := colCandidateID.Value(i)
-			if candidateID == "" {
-				continue
-			}
-			var occurredAt time.Time
-			if colOccurredAt != nil && !colOccurredAt.IsNull(i) {
-				occurredAt = timestampToTime(rec, cidxOccurredAt[0], colOccurredAt, i)
-			}
-			out = append(out, StaleCandidate{
-				CandidateID:  candidateID,
-				LastUploadAt: occurredAt,
-			})
+	for i := 0; i < int(rec.NumRows()); i++ {
+		if colCandidateID == nil || colCandidateID.IsNull(i) {
+			continue
+		}
+		id := colCandidateID.Value(i)
+		if id == "" {
+			continue
+		}
+		var ts time.Time
+		if colOccurredAt != nil && !colOccurredAt.IsNull(i) {
+			ts = staleTimestampToTime(rec, cidxOccurredAt[0], colOccurredAt, i)
+		}
+		if prev, ok := latest[id]; !ok || ts.After(prev) {
+			latest[id] = ts
 		}
 	}
-	return out, nil
 }
 
-// timestampColOrNil returns the Timestamp column at colIdx, or nil if
-// the column is absent or has an unexpected type.
-func timestampColOrNil(rec arrow.Record, colIdx int) *array.Timestamp {
+// ---------------------------------------------------------------------------
+// Partition helper
+// ---------------------------------------------------------------------------
+
+// staleBucketPartitionInfo inspects tbl's partition spec for a bucket transform
+// on sourceField. Returns (N, fieldName, nil) if found, or (1, "", nil) if the
+// table is unpartitioned on that field (safe fallback: single full-table pass).
+func staleBucketPartitionInfo(tbl *table.Table, sourceField string) (int, string, error) {
+	spec := tbl.Metadata().PartitionSpec()
+	schema := tbl.Metadata().CurrentSchema()
+	partType := spec.PartitionType(schema)
+
+	for _, pf := range partType.FieldList {
+		name := pf.Name
+		suffix := "_bucket"
+		if len(name) >= len(sourceField)+len(suffix) &&
+			name[:len(sourceField)] == sourceField &&
+			staleContainsStr(name[len(sourceField):], "bucket") {
+			for sf := range spec.Fields() {
+				if sf.Name == name {
+					if bt, ok := sf.Transform.(iceberg.BucketTransform); ok {
+						return bt.NumBuckets, name, nil
+					}
+				}
+			}
+			// Bucket field found but transform type assertion failed; default N=32.
+			return 32, name, nil
+		}
+	}
+	// Not bucket-partitioned on sourceField; scan as a single pass.
+	return 1, "", nil
+}
+
+func staleContainsStr(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// Top-N max-heap (retains the `limit` most-stale / oldest candidates)
+//
+// We use a max-heap keyed on LastUploadAt so the *newest* (least-stale) entry
+// sits at the top and is cheaply evicted when len > limit. After draining all
+// partitions the remaining entries are the oldest ones.
+// ---------------------------------------------------------------------------
+
+type staleHeap struct {
+	data  []StaleCandidate
+	limit int
+}
+
+func newStaleHeap(limit int) *staleHeap {
+	h := &staleHeap{limit: limit, data: make([]StaleCandidate, 0, limit+1)}
+	heap.Init(h)
+	return h
+}
+
+func (h *staleHeap) Len() int { return len(h.data) }
+
+// Less: max-heap on LastUploadAt — newest entry at root so it can be evicted.
+func (h *staleHeap) Less(i, j int) bool {
+	return h.data[i].LastUploadAt.After(h.data[j].LastUploadAt)
+}
+func (h *staleHeap) Swap(i, j int)  { h.data[i], h.data[j] = h.data[j], h.data[i] }
+func (h *staleHeap) Push(x any)     { h.data = append(h.data, x.(StaleCandidate)) }
+func (h *staleHeap) Pop() any {
+	n := len(h.data)
+	x := h.data[n-1]
+	h.data = h.data[:n-1]
+	return x
+}
+
+// offer adds c to the heap; if limit is exceeded, evicts the newest entry.
+func (h *staleHeap) offer(c StaleCandidate) {
+	heap.Push(h, c)
+	if h.Len() > h.limit {
+		heap.Pop(h) // removes the root = newest (least-stale) entry
+	}
+}
+
+// sorted returns a copy of the heap contents as a plain slice.
+func (h *staleHeap) sorted() []StaleCandidate {
+	out := make([]StaleCandidate, len(h.data))
+	copy(out, h.data)
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Arrow column helpers (local; the package-level helpers in reader.go cover
+// different column types. These are minimal versions for (candidate_id,
+// occurred_at) only.)
+// ---------------------------------------------------------------------------
+
+func staleStringCol(rec arrow.Record, colIdx int) *array.String {
+	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
+		return nil
+	}
+	c, _ := rec.Column(colIdx).(*array.String)
+	return c
+}
+
+func staleTimestampCol(rec arrow.Record, colIdx int) *array.Timestamp {
 	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
 		return nil
 	}
@@ -151,18 +252,29 @@ func timestampColOrNil(rec arrow.Record, colIdx int) *array.Timestamp {
 	return c
 }
 
-// timestampToTime converts row i of a Timestamp column to time.Time,
+// staleTimestampToTime converts one Timestamp cell to time.Time,
 // respecting the column's TimeUnit from the schema.
-func timestampToTime(rec arrow.Record, colIdx int, col *array.Timestamp, i int) time.Time {
+func staleTimestampToTime(rec arrow.Record, colIdx int, col *array.Timestamp, i int) time.Time {
 	ts := col.Value(i)
 	field := rec.Schema().Field(colIdx)
 	if tsType, ok := field.Type.(*arrow.TimestampType); ok {
-		toTime, err := tsType.GetToTimeFunc()
-		if err == nil {
-			return toTime(ts)
+		if fn, err := tsType.GetToTimeFunc(); err == nil {
+			return fn(ts)
 		}
 		return ts.ToTime(tsType.Unit)
 	}
-	// Fallback: assume microseconds (Iceberg default).
+	// Fallback: Iceberg default is microseconds.
 	return ts.ToTime(arrow.Microsecond)
+}
+
+// timestampColOrNil returns the Timestamp column at colIdx, or nil if the
+// column is absent or has an unexpected type. Used by reader.go.
+func timestampColOrNil(rec arrow.Record, colIdx int) *array.Timestamp {
+	return staleTimestampCol(rec, colIdx)
+}
+
+// timestampToTime converts row i of a Timestamp column to time.Time,
+// respecting the column's TimeUnit from the schema. Used by reader.go.
+func timestampToTime(rec arrow.Record, colIdx int, col *array.Timestamp, i int) time.Time {
+	return staleTimestampToTime(rec, colIdx, col, i)
 }
