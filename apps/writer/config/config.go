@@ -32,6 +32,19 @@ type Config struct {
 	// affected partition's buffer. Defaults match the design doc F2
 	// freshness target (30 s end-to-end materializer poll → ~60 s
 	// serving freshness).
+	//
+	// Dynamic adaptation: the writer Buffer also enforces a global memory cap
+	// (30% of pod memory via memconfig) across all open partition buffers.
+	// That cap is applied at runtime and does not require config changes.
+	// These thresholds are per-partition limits; the global cap triggers
+	// force-flush of the oldest partition when total buffered bytes exceed the
+	// budget — regardless of per-partition thresholds.
+	//
+	// Startup validation (informational): if FlushMaxBytes × EstimatedConcurrentPartitions
+	// exceeds the 30% budget, a warning is logged by the Buffer constructor.
+	// Default of 64 MiB × ~5 concurrent partitions = 320 MiB fits within the
+	// 30% budget of a 1 GiB pod (307 MiB). On larger pods the global cap scales
+	// up automatically — no config change needed.
 	FlushMaxEvents   int           `env:"WRITER_FLUSH_MAX_EVENTS" envDefault:"10000"`
 	FlushMaxBytes    int           `env:"WRITER_FLUSH_MAX_BYTES"  envDefault:"67108864"` // 64 MiB
 	FlushMaxInterval time.Duration `env:"WRITER_FLUSH_MAX_INTERVAL" envDefault:"30s"`
@@ -52,16 +65,17 @@ type Config struct {
 	// CompactPerTableTimeout limits each table's compaction goroutine.
 	// CompactParallelism fans out across tables (same as Parallelism for expire).
 	//
-	// Memory note (500M-scale): each concurrent compaction goroutine holds at
-	// most one Arrow RecordBatch in memory at a time (~1–2 GiB peak per table
-	// depending on row-group size). At the default of 4, peak usage is ~4–6 GiB,
-	// which fits within the 12 GiB writer pod limit. Reduce to 2 (COMPACT_PARALLELISM=2)
-	// if the pod runs on a 4 GiB node or during a memory-constrained period.
+	// Memory note: each concurrent compaction goroutine peaks at ~1.5 GiB.
+	// When CompactParallelism is 0 (the default), the parallelism is computed
+	// adaptively at runtime: (50% of pod memory) / 1.5 GiB, minimum 1.
+	// This means a 1 GiB pod runs 1 partition at a time (slower, but never OOM),
+	// while a 12 GiB pod runs up to 4 in parallel. Set COMPACT_PARALLELISM to a
+	// positive integer to override with a ceiling.
 	CompactTargetFileSize    int64         `env:"COMPACT_TARGET_FILE_SIZE"     envDefault:"134217728"` // 128 MiB
 	CompactMinFileSize       int64         `env:"COMPACT_MIN_FILE_SIZE"        envDefault:"67108864"`  // 64 MiB
 	CompactMaxInputPerCommit int           `env:"COMPACT_MAX_INPUT_PER_COMMIT" envDefault:"20"`
 	CompactPerTableTimeout   time.Duration `env:"COMPACT_PER_TABLE_TIMEOUT"    envDefault:"30m"`
-	CompactParallelism       int           `env:"COMPACT_PARALLELISM"          envDefault:"4"`
+	CompactParallelism       int           `env:"COMPACT_PARALLELISM"          envDefault:"0"`
 }
 
 // Load reads the Config from environment variables.

@@ -59,6 +59,7 @@ import (
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
 
+	"stawi.jobs/pkg/memconfig"
 	"stawi.jobs/pkg/telemetry"
 )
 
@@ -96,6 +97,7 @@ type CompactResult struct {
 // NOT abort the run — they are collected and reported.
 func Compact(ctx context.Context, cat catalog.Catalog, cfg CompactConfig) (CompactResult, error) {
 	cfg = applyCompactDefaults(cfg)
+	util.Log(ctx).WithField("parallelism", cfg.Parallelism).Info("compact: starting with parallelism")
 
 	type tableResult struct {
 		ident   []string
@@ -520,6 +522,10 @@ func buildStreamingReader(
 }
 
 // applyCompactDefaults fills zero-valued CompactConfig fields with safe defaults.
+// Parallelism is computed from the pod's actual memory budget when not set
+// explicitly, so that a 1 GiB pod runs 1 partition at a time (slower, safe)
+// while a 12 GiB pod runs 4 in parallel (faster). The operator can always
+// cap parallelism via CompactConfig.Parallelism.
 func applyCompactDefaults(cfg CompactConfig) CompactConfig {
 	if cfg.TargetFileSize <= 0 {
 		cfg.TargetFileSize = 134217728 // 128 MiB
@@ -534,7 +540,15 @@ func applyCompactDefaults(cfg CompactConfig) CompactConfig {
 		cfg.PerTableTimeout = 30 * time.Minute
 	}
 	if cfg.Parallelism <= 0 {
-		cfg.Parallelism = 4
+		// Adaptive: each concurrent compaction goroutine peaks at ~1.5 GiB.
+		// Use 50% of pod memory so other subsystems have headroom.
+		budget := memconfig.NewBudget("compact", 50)
+		const peakPerPartition = 1500 * 1024 * 1024 // 1.5 GiB
+		maxConcurrent := int(budget.Bytes() / peakPerPartition)
+		if maxConcurrent < 1 {
+			maxConcurrent = 1
+		}
+		cfg.Parallelism = maxConcurrent
 	}
 	return cfg
 }

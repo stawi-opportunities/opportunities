@@ -49,6 +49,95 @@ func TestBufferFlushOnMaxEvents(t *testing.T) {
 	}
 }
 
+// TestBufferGlobalMemoryCap verifies that when totalBytes exceeds maxTotalBytes
+// the Buffer force-flushes the oldest partition to stay within budget.
+func TestBufferGlobalMemoryCap(t *testing.T) {
+	b := NewBuffer(Thresholds{
+		MaxEvents:   10000, // high threshold so per-partition flush never fires
+		MaxBytes:    10 * 1024 * 1024,
+		MaxInterval: 1 * time.Minute,
+	})
+	// Set a tiny explicit cap to test eviction logic without cgroup dependency.
+	b.maxTotalBytes = 100
+
+	now := time.Now().UTC()
+
+	// First event: adds some bytes, total should be < 100 after just one small event.
+	env1 := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested,
+		eventsv1.VariantIngestedV1{SourceID: "src_cap_a", ScrapedAt: now})
+	flushed1, err := b.Add(env1, "src_cap_a")
+	if err != nil {
+		t.Fatalf("Add err: %v", err)
+	}
+
+	// Check stats after first add.
+	stats := b.Stats()
+	if stats.TotalBytes <= 0 {
+		t.Fatalf("totalBytes should be > 0 after first add")
+	}
+	firstBytes := stats.TotalBytes
+
+	if flushed1 != nil {
+		// Already flushed (event was larger than 100 bytes) — cap was triggered.
+		// That's valid behaviour; just verify total is now within cap.
+		stats2 := b.Stats()
+		if stats2.TotalBytes > b.maxTotalBytes {
+			t.Fatalf("after cap flush, totalBytes %d > cap %d", stats2.TotalBytes, b.maxTotalBytes)
+		}
+		return
+	}
+
+	// Add more events to different partitions until cap fires.
+	var gotFlush bool
+	for i := 0; i < 20; i++ {
+		hint := eventsv1.TopicCanonicalsUpserted + "_" + string(rune('a'+i))
+		env := eventsv1.NewEnvelope(eventsv1.TopicCanonicalsUpserted,
+			eventsv1.VariantIngestedV1{SourceID: hint, ScrapedAt: now})
+		flushed, ferr := b.Add(env, hint)
+		if ferr != nil {
+			t.Fatalf("Add err: %v", ferr)
+		}
+		if flushed != nil {
+			gotFlush = true
+			break
+		}
+	}
+
+	if !gotFlush {
+		// All events fit under cap — recheck stats.
+		stats3 := b.Stats()
+		if firstBytes > 0 && stats3.TotalBytes > b.maxTotalBytes {
+			t.Fatalf("totalBytes %d exceeds cap %d without a flush", stats3.TotalBytes, b.maxTotalBytes)
+		}
+	}
+}
+
+func TestBufferStats(t *testing.T) {
+	b := NewBuffer(Thresholds{
+		MaxEvents:   1000,
+		MaxBytes:    10 * 1024 * 1024,
+		MaxInterval: 1 * time.Minute,
+	})
+	now := time.Now().UTC()
+	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested,
+		eventsv1.VariantIngestedV1{SourceID: "src_stat", ScrapedAt: now})
+	_, _ = b.Add(env, "src_stat")
+
+	stats := b.Stats()
+	if stats.TotalBytes <= 0 {
+		t.Fatalf("Stats.TotalBytes should be > 0, got %d", stats.TotalBytes)
+	}
+	if stats.MaxTotalBytes <= 0 {
+		t.Fatalf("Stats.MaxTotalBytes should be > 0, got %d", stats.MaxTotalBytes)
+	}
+	if stats.PartitionCount != 1 {
+		t.Fatalf("Stats.PartitionCount want 1, got %d", stats.PartitionCount)
+	}
+	if _, ok := stats.PerTopicBytes[eventsv1.TopicVariantsIngested]; !ok {
+		t.Fatal("Stats.PerTopicBytes should have variants topic")
+	}
+}
+
 func TestBufferDueReturnsIntervalExpired(t *testing.T) {
 	b := NewBuffer(Thresholds{
 		MaxEvents:   1000,

@@ -15,25 +15,32 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"stawi.jobs/pkg/kv"
+	"stawi.jobs/pkg/memconfig"
 )
 
 // KVRebuilder repopulates Valkey cluster:* keys from the append-only Iceberg
 // jobs.canonicals table. Called after a Valkey replica loss.
 //
-// Because jobs.canonicals is append-only (each canonical update appends a new
-// row), the rebuilder folds all rows for a given cluster_id in Go, keeping
-// the row with the latest occurred_at as the authoritative snapshot.
+// Memory model (O(batch), not O(partition)):
 //
-// Scope: cluster:{cluster_id} := JSON snapshot only. dedup:{hard_key}
-// rebuild requires variant-level data and is out of scope; the first variant
-// through the pipeline after a rebuild creates a fresh cluster, and
-// hourly/daily compaction re-merges any duplicates detected by hard_key overlap.
+//   - A memconfig.Budget("kv-rebuild", 30) governs maximum in-flight keys.
+//   - When the bounded map reaches maxKeysInMemory, ALL current entries are
+//     flushed to Valkey via the Lua CAS script (so the newer write wins).
+//   - After a flush the map is reset; rows with the same cluster_id that
+//     arrive later are compared against Valkey state by the CAS script.
 //
-// Memory-safety at 500M scale: the table is iterated partition-by-partition
-// (bucket(32, cluster_id)). Per partition ~15.6M rows × 200 bytes ≈ 3 GB peak,
-// well within the 4 GB worker pod limit. After each partition the in-memory map
-// is flushed to Valkey and then cleared, so memory is reclaimed between
-// partitions.
+// Peak memory = maxKeysInMemory × 256 bytes, regardless of partition size.
+//
+// Valkey key format changed from:
+//
+//	SET cluster:<id> <json>
+//
+// to:
+//
+//	HSET cluster:<id> ts <unix-ms> json <json>
+//
+// so the Lua CAS script can compare timestamps atomically. Readers must
+// extract the "json" field (see pkg/kv for the read path).
 type KVRebuilder struct {
 	cat catalog.Catalog
 	kv  *redis.Client
@@ -50,16 +57,36 @@ type KVRebuildResult struct {
 	ClusterKeysSet int `json:"cluster_keys_set"`
 }
 
-// Run scans the append-only jobs.canonicals table via Iceberg partition-by-
-// partition, folds all rows per cluster_id keeping the latest by occurred_at,
-// then writes a cluster:{cluster_id} key for every unique cluster_id.
+// kvCASScript sets cluster:<id> only when the new row's occurred_at (ms) is
+// newer than the value already stored. This makes repeated flushes of the
+// bounded map safe: an older row that arrives after a newer one was already
+// flushed will not overwrite it.
 //
-// Each bucket partition is processed sequentially: rows are streamed via
-// ToArrowRecords (lazy RecordBatch iterator), folded into a per-partition map,
-// flushed to Valkey in batches of 500, then the map is cleared so memory is
-// reclaimed before the next partition starts.
+// Key layout: HSET cluster:<id> ts <unix-ms> json <json>
+const kvCASScript = `
+local existing = redis.call('HGET', KEYS[1], 'ts')
+if existing == false or tonumber(ARGV[2]) > tonumber(existing) then
+    redis.call('HSET', KEYS[1], 'ts', ARGV[2], 'json', ARGV[1])
+    return 1
+end
+return 0`
+
+
+// Run scans the append-only jobs.canonicals table via Iceberg partition-by-
+// partition, folds all rows per cluster_id keeping the latest by occurred_at
+// using a bounded in-memory map. When the map is full it is flushed to Valkey
+// via the Lua CAS script (newer timestamp wins), then reset.
+//
+// Peak memory: O(maxKeysInMemory × 256) — adapts to pod size via memconfig.
 func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	var res KVRebuildResult
+
+	budget := memconfig.NewBudget("kv-rebuild", 30)
+	maxKeysInMemory := budget.BatchSizeFor(256)
+	util.Log(ctx).
+		WithField("budget_bytes", budget.Bytes()).
+		WithField("max_keys_in_memory", maxKeysInMemory).
+		Info("kv rebuild: budget computed")
 
 	tbl, err := r.cat.LoadTable(ctx, []string{"jobs", "canonicals"})
 	if err != nil {
@@ -85,13 +112,13 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 			),
 		)
 
-		// Fold: per-partition latest-per-cluster_id map.
-		latest := make(map[string]canonicalMinimal)
-
 		_, itr, err := scan.ToArrowRecords(ctx)
 		if err != nil {
 			return res, fmt.Errorf("kv rebuild: to arrow records (bucket %d): %w", bucketIdx, err)
 		}
+
+		// bounded map: never exceeds maxKeysInMemory entries at once
+		bounded := make(map[string]canonicalMinimal, maxKeysInMemory)
 
 		for batch, batchErr := range itr {
 			if batchErr != nil {
@@ -102,21 +129,30 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 				batch.Release()
 				return res, fmt.Errorf("kv rebuild: decode rows (bucket %d): %w", bucketIdx, err)
 			}
+			batch.Release()
+
 			res.Rows += len(rows)
 			for _, row := range rows {
 				if row.ClusterID == "" {
 					continue
 				}
-				existing, ok := latest[row.ClusterID]
+				existing, ok := bounded[row.ClusterID]
 				if !ok || row.OccurredAt.After(existing.OccurredAt) {
-					latest[row.ClusterID] = row
+					bounded[row.ClusterID] = row
+				}
+				if len(bounded) >= maxKeysInMemory {
+					flushed, err := r.flushToValkey(ctx, bounded)
+					if err != nil {
+						return res, fmt.Errorf("kv rebuild: mid-batch flush (bucket %d): %w", bucketIdx, err)
+					}
+					res.ClusterKeysSet += flushed
+					bounded = make(map[string]canonicalMinimal, maxKeysInMemory)
 				}
 			}
-			batch.Release()
 		}
 
-		// Flush this partition's map to Valkey.
-		flushed, err := r.flushToValkey(ctx, latest)
+		// Flush remaining entries for this partition.
+		flushed, err := r.flushToValkey(ctx, bounded)
 		if err != nil {
 			return res, fmt.Errorf("kv rebuild: flush (bucket %d): %w", bucketIdx, err)
 		}
@@ -124,7 +160,6 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 
 		util.Log(ctx).
 			WithField("bucket", bucketIdx).
-			WithField("cluster_keys", flushed).
 			Debug("kv rebuild: bucket done")
 	}
 
@@ -135,30 +170,42 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	return res, nil
 }
 
-// flushToValkey pipelines SET commands for all entries in latest to Valkey,
-// batching in groups of 500. Returns the number of keys written.
-func (r *KVRebuilder) flushToValkey(ctx context.Context, latest map[string]canonicalMinimal) (int, error) {
-	if len(latest) == 0 {
+// flushToValkey pipelines Lua CAS commands for all entries in m to Valkey,
+// batching in groups of 500. Returns the number of successful writes.
+//
+// Each call uses kvCASScript inline via Eval (not EvalSha) so the script is
+// always sent with the command — no pre-loading required, and the pipeline
+// works with both real Valkey and in-memory test backends.
+//
+// The CAS script ensures that if the same cluster_id is flushed twice (once
+// from an early bounded-map flush and again at partition-end), the newer
+// entry always wins regardless of processing order.
+func (r *KVRebuilder) flushToValkey(ctx context.Context, m map[string]canonicalMinimal) (int, error) {
+	if len(m) == 0 {
 		return 0, nil
 	}
 
 	pipe := r.kv.Pipeline()
 	batchSize := 0
-	keysSet := 0
+	keysWritten := 0
 
-	for clusterID, row := range latest {
+	for clusterID, row := range m {
 		snap, merr := json.Marshal(clusterSnapshotFromMinimal(row))
 		if merr != nil {
 			continue
 		}
-		// TTL 0 = no expiry — cluster snapshots are permanent.
-		pipe.Set(ctx, "cluster:"+clusterID, snap, 0)
-		keysSet++
+		tsMs := row.OccurredAt.UnixMilli()
+		key := "cluster:" + clusterID
+
+		// Use Eval (not EvalSha) so the script works inside a pipeline without
+		// requiring a separate SCRIPT LOAD step.
+		pipe.Eval(ctx, kvCASScript, []string{key}, string(snap), tsMs)
+		keysWritten++
 		batchSize++
 
 		if batchSize >= 500 {
 			if _, err := pipe.Exec(ctx); err != nil {
-				return keysSet - batchSize, fmt.Errorf("pipe exec: %w", err)
+				return keysWritten - batchSize, fmt.Errorf("pipe exec: %w", err)
 			}
 			pipe = r.kv.Pipeline()
 			batchSize = 0
@@ -166,11 +213,11 @@ func (r *KVRebuilder) flushToValkey(ctx context.Context, latest map[string]canon
 	}
 	if batchSize > 0 {
 		if _, err := pipe.Exec(ctx); err != nil {
-			return keysSet - batchSize, fmt.Errorf("pipe final: %w", err)
+			return keysWritten - batchSize, fmt.Errorf("pipe final: %w", err)
 		}
 	}
 
-	return keysSet, nil
+	return keysWritten, nil
 }
 
 // kvBucketPartitionInfo inspects the table's partition spec to find the bucket
@@ -228,7 +275,7 @@ func containsSubstring(s, sub string) bool {
 
 // canonicalMinimal carries the subset of canonicals fields needed for KV
 // rebuild. OccurredAt is used for the in-Go fold (latest-per-cluster_id);
-// it is not written to Valkey.
+// it is also stored as the ts field in Valkey for CAS comparisons.
 type canonicalMinimal struct {
 	ClusterID      string
 	CanonicalID    string

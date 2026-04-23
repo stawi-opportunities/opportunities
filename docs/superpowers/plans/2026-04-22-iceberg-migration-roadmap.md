@@ -107,6 +107,36 @@ for current in CURRENT_TABLES:
 
 ---
 
+## 3.1 Memory-adaptive operation (added 2026-04-22)
+
+All hot paths are O(batch) in memory, regardless of data scale, via
+`pkg/memconfig`:
+
+- **KV rebuild** (`apps/worker/service/kv_rebuild.go`): bounded map with
+  Lua CAS flush. Budget = 30% of pod memory. Peak = budget / 2. At 10B
+  canonicals / 32 buckets, a 4 GiB worker pod processes ~5 M cluster IDs
+  per bounded-map cycle before flushing to Valkey.
+
+- **StaleReader** (`pkg/candidatestore/stale_reader.go`): bounded map +
+  heap retract. Budget = 20% of pod memory. Non-stale candidates discovered
+  after an earlier stale flush are retracted from the result heap.
+
+- **Writer buffer** (`apps/writer/service/buffer.go`): global cap across
+  all open partition buffers (30% of pod memory). Oldest partition is
+  force-flushed when total exceeds cap.
+
+- **Compaction parallelism** (`apps/writer/service/compact.go`): adaptive.
+  `maxConcurrent = (50% of pod memory) / 1.5 GiB`, minimum 1. A 1 GiB
+  pod runs single-threaded; a 12 GiB pod runs up to 4 threads.
+
+- **Materializer batch** (`apps/materializer/service/service.go`): adaptive.
+  `batchSize = (10% of pod memory / 2) / 2 KiB`, capped [100, 5000].
+
+The 30-second refresh cycle means pods can be vertically scaled in-place
+and the system adapts without a restart.
+
+---
+
 ## 4. Table design (unchanged from the longer roadmap)
 
 ### 4.1 Jobs namespace

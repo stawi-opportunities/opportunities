@@ -12,6 +12,8 @@ import (
 	iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/table"
+
+	"stawi.jobs/pkg/memconfig"
 )
 
 // StaleCandidate is the output shape for stale-nudge consumers.
@@ -24,16 +26,22 @@ type StaleCandidate struct {
 // for candidates whose latest CV upload occurred_at is older than the
 // requested cutoff.
 //
-// Because cv_extracted is append-only (each upload appends a new row), the
-// reader folds all rows per candidate_id in Go — keeping only the row with
-// the latest occurred_at — then filters by cutoff. This correctly identifies
-// candidates whose most recent upload is stale, even though older uploads
-// might also be < cutoff.
+// Memory model (O(batch), not O(partition)):
 //
-// Memory-safety at 500M scale: the table is iterated partition-by-partition
-// (bucket(32, candidate_id)). Per partition ~15.6M rows × ~32 bytes ≈ ~500 MB
-// peak, well within the 3 GB candidates pod limit. A bounded top-N heap
-// ensures the output slice never exceeds limit entries regardless of input size.
+//   - A memconfig.Budget("stale-reader", 20) governs the maximum number of
+//     candidate entries held in memory at once.
+//   - When the bounded map reaches maxKeysInMemory, it is flushed: entries
+//     whose ts < cutoff are offered to the bounded top-N heap; then the map
+//     is reset.
+//   - The heap stays bounded to the caller's limit parameter.
+//
+// Trade-off: a candidate whose older upload is flushed as "stale" before
+// their newer upload is processed will appear in the top-N heap. The flush
+// logic removes them from the heap if a newer, non-stale upload is seen
+// later (retract). For candidates near the boundary this may produce a small
+// rate of over-report: they receive a nudge email even though they just
+// uploaded. This is acceptable — the nudge is graceful and they will simply
+// ignore it.
 type StaleReader struct {
 	cat catalog.Catalog
 }
@@ -50,6 +58,9 @@ func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int
 	if limit <= 0 {
 		limit = 1000
 	}
+
+	budget := memconfig.NewBudget("stale-reader", 20)
+	maxKeysInMemory := budget.BatchSizeFor(32)
 
 	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "cv_extracted"})
 	if err != nil {
@@ -75,30 +86,29 @@ func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int
 
 		scan := tbl.Scan(scanOpts...)
 
-		// Per-partition fold map. Cleared after each partition so ~500 MB of
-		// map memory is reclaimed between buckets.
-		latest := make(map[string]time.Time)
-
 		_, itr, err := scan.ToArrowRecords(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("candidatestore: to arrow records (bucket %d): %w", bucketIdx, err)
 		}
 
+		// bounded map: never exceeds maxKeysInMemory entries at once.
+		bounded := make(map[string]time.Time, maxKeysInMemory)
+
 		for batch, batchErr := range itr {
 			if batchErr != nil {
 				return nil, fmt.Errorf("candidatestore: iterate batch (bucket %d): %w", bucketIdx, batchErr)
 			}
-			foldStaleBatch(batch, latest)
+			foldStaleBatch(batch, bounded)
 			batch.Release()
-		}
 
-		// Push stale candidates from this partition into the bounded top-N heap.
-		for id, ts := range latest {
-			if ts.Before(cutoff) {
-				topN.offer(StaleCandidate{CandidateID: id, LastUploadAt: ts})
+			if len(bounded) >= maxKeysInMemory {
+				flushStaleMap(bounded, cutoff, topN)
+				bounded = make(map[string]time.Time, maxKeysInMemory)
 			}
 		}
-		// latest goes out of scope; GC reclaims ~500 MB before next partition.
+
+		// Flush remaining entries for this partition.
+		flushStaleMap(bounded, cutoff, topN)
 	}
 
 	out := topN.sorted()
@@ -106,6 +116,19 @@ func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int
 		return out[i].LastUploadAt.Before(out[j].LastUploadAt)
 	})
 	return out, nil
+}
+
+// flushStaleMap offers each entry in m to topN if its ts < cutoff,
+// and retracts any heap entry that has been superseded by a non-stale ts.
+func flushStaleMap(m map[string]time.Time, cutoff time.Time, topN *staleHeap) {
+	for id, ts := range m {
+		if ts.Before(cutoff) {
+			topN.offerOrRetract(StaleCandidate{CandidateID: id, LastUploadAt: ts})
+		} else {
+			// This candidate has a non-stale upload — retract from heap if present.
+			topN.retract(id)
+		}
+	}
 }
 
 // foldStaleBatch updates latest with the max occurred_at per candidate_id from
@@ -187,15 +210,24 @@ func staleContainsStr(s, sub string) bool {
 // We use a max-heap keyed on LastUploadAt so the *newest* (least-stale) entry
 // sits at the top and is cheaply evicted when len > limit. After draining all
 // partitions the remaining entries are the oldest ones.
+//
+// index maps candidateID → position in data so that offerOrRetract and retract
+// can update or remove entries when a newer (or non-stale) upload is seen after
+// an earlier bounded-map flush.
 // ---------------------------------------------------------------------------
 
 type staleHeap struct {
 	data  []StaleCandidate
+	index map[string]int // candidateID → current position in data
 	limit int
 }
 
 func newStaleHeap(limit int) *staleHeap {
-	h := &staleHeap{limit: limit, data: make([]StaleCandidate, 0, limit+1)}
+	h := &staleHeap{
+		limit: limit,
+		data:  make([]StaleCandidate, 0, limit+1),
+		index: make(map[string]int, limit+1),
+	}
 	heap.Init(h)
 	return h
 }
@@ -206,12 +238,21 @@ func (h *staleHeap) Len() int { return len(h.data) }
 func (h *staleHeap) Less(i, j int) bool {
 	return h.data[i].LastUploadAt.After(h.data[j].LastUploadAt)
 }
-func (h *staleHeap) Swap(i, j int)  { h.data[i], h.data[j] = h.data[j], h.data[i] }
-func (h *staleHeap) Push(x any)     { h.data = append(h.data, x.(StaleCandidate)) }
+func (h *staleHeap) Swap(i, j int) {
+	h.data[i], h.data[j] = h.data[j], h.data[i]
+	h.index[h.data[i].CandidateID] = i
+	h.index[h.data[j].CandidateID] = j
+}
+func (h *staleHeap) Push(x any) {
+	c := x.(StaleCandidate)
+	h.index[c.CandidateID] = len(h.data)
+	h.data = append(h.data, c)
+}
 func (h *staleHeap) Pop() any {
 	n := len(h.data)
 	x := h.data[n-1]
 	h.data = h.data[:n-1]
+	delete(h.index, x.CandidateID)
 	return x
 }
 
@@ -221,6 +262,31 @@ func (h *staleHeap) offer(c StaleCandidate) {
 	if h.Len() > h.limit {
 		heap.Pop(h) // removes the root = newest (least-stale) entry
 	}
+}
+
+// offerOrRetract inserts or updates c in the heap. If the candidate already
+// exists and the new entry has a newer LastUploadAt, the entry is updated
+// (heap re-ordered). If it doesn't exist it is inserted as a fresh offer.
+func (h *staleHeap) offerOrRetract(c StaleCandidate) {
+	if pos, exists := h.index[c.CandidateID]; exists {
+		if c.LastUploadAt.After(h.data[pos].LastUploadAt) {
+			h.data[pos] = c
+			heap.Fix(h, pos)
+		}
+		return
+	}
+	h.offer(c)
+}
+
+// retract removes the entry for candidateID from the heap if present.
+// Used when a non-stale upload is seen for a candidate previously flushed
+// as stale.
+func (h *staleHeap) retract(candidateID string) {
+	pos, exists := h.index[candidateID]
+	if !exists {
+		return
+	}
+	heap.Remove(h, pos)
 }
 
 // sorted returns a copy of the heap contents as a plain slice.

@@ -14,6 +14,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +27,7 @@ import (
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/eventlog"
+	"stawi.jobs/pkg/memconfig"
 	"stawi.jobs/pkg/searchindex"
 )
 
@@ -64,12 +67,40 @@ type tableSink struct {
 	apply func(ctx context.Context, body []byte, up *BulkUpserter) error
 }
 
+// adaptiveBulkBatchSize computes the Manticore bulk batch size. Priority:
+//  1. MANTICORE_BULK_BATCH_SIZE env var (operator explicit override)
+//  2. bulkBatchSize argument (caller-provided, e.g. from config)
+//  3. memconfig budget: 10% of pod memory / 2 KiB per row, capped [100, 5000]
+func adaptiveBulkBatchSize(argSize int) int {
+	// 1. Explicit env override.
+	if s := os.Getenv("MANTICORE_BULK_BATCH_SIZE"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			return v
+		}
+	}
+	// 2. Caller-provided argument.
+	if argSize > 0 {
+		return argSize
+	}
+	// 3. Adaptive from memconfig.
+	budget := memconfig.NewBudget("materializer-bulk", 10)
+	const perRowBytes = 2048 // ~2 KiB per NDJSON row
+	n := budget.BatchSizeFor(perRowBytes)
+	if n > 5000 {
+		n = 5000
+	}
+	if n < 100 {
+		n = 100
+	}
+	return n
+}
+
 // NewService wires the materializer. r2Bucket is used to strip the
 // s3://<bucket>/ prefix from Iceberg file paths before fetching via
 // eventlog.Reader. bulkBatchSize controls how many documents are
 // accumulated before a single Manticore bulk request is issued; pass 0
-// to use the default (1000). kv is the Valkey client used for both
-// watermarks and per-table leader-election leases.
+// to use the adaptive default (memconfig-driven). kv is the Valkey client
+// used for both watermarks and per-table leader-election leases.
 func NewService(
 	cat catalog.Catalog,
 	reader *eventlog.Reader,
@@ -80,9 +111,7 @@ func NewService(
 	poll time.Duration,
 	bulkBatchSize int,
 ) *Service {
-	if bulkBatchSize <= 0 {
-		bulkBatchSize = 1000
-	}
+	bulkBatchSize = adaptiveBulkBatchSize(bulkBatchSize)
 	s := &Service{
 		catalog:       cat,
 		reader:        reader,

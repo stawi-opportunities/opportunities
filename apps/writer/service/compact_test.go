@@ -28,8 +28,11 @@ func TestCompactConfig_Defaults(t *testing.T) {
 	if want := 30 * time.Minute; got.PerTableTimeout != want {
 		t.Errorf("PerTableTimeout default: got %v, want %v", got.PerTableTimeout, want)
 	}
-	if want := 4; got.Parallelism != want {
-		t.Errorf("Parallelism default: got %d, want %d", got.Parallelism, want)
+	// Parallelism is now adaptive (based on pod memory via memconfig).
+	// On a dev machine this may be 1 (small cgroup or fallback), on a large
+	// pod it will be higher. Just verify it is always at least 1.
+	if got.Parallelism < 1 {
+		t.Errorf("Parallelism default: got %d, want >= 1", got.Parallelism)
 	}
 }
 

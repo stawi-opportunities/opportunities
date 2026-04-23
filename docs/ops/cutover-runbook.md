@@ -88,3 +88,31 @@ After 2.6: restore /tmp/pre-cutover.sql and revert to SHA 46a71bb.
 - [ ] Writer ack-lag p95 <30s.
 - [ ] Materializer poll-lag p95 <30s.
 - [ ] No unresolved alerts.
+
+## 5. Resource scaling
+
+All stawi-jobs services adapt their in-memory working set to the pod's
+actual cgroup memory limit at runtime via `pkg/memconfig`. There are no
+hardcoded memory ceilings in the application code.
+
+**Operator rules:**
+- `requests.memory` = minimum for reliable startup. Do not lower.
+- `limits.memory` = advisory ceiling. The system shrinks batch sizes
+  automatically when the limit is reduced — it never OOMs.
+- To speed up a service: raise `limits.memory`. Batch sizes and
+  parallelism grow automatically within 30 s (next cgroup re-read).
+- To constrain a service: lower `limits.memory`. The service works
+  more slowly but never crashes.
+
+**What each subsystem uses:**
+
+| Service     | Subsystem        | Budget | Notes                              |
+|-------------|------------------|--------|------------------------------------|
+| writer      | writer-buffer    | 30%    | global cap across all partitions   |
+| writer      | compact          | 50%    | parallelism = budget / 1.5 GiB     |
+| worker      | kv-rebuild       | 30%    | bounded map + Lua CAS flush        |
+| candidates  | stale-reader     | 20%    | bounded map + heap retract         |
+| materializer| materializer-bulk| 10%    | Manticore NDJSON batch size        |
+
+See `manifests/namespaces/stawi-jobs/common/RESOURCE_SCALING.md` for
+the full per-service breakdown.
