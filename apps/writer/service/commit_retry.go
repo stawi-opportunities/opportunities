@@ -1,14 +1,5 @@
 package service
 
-// iceberg_catalog.go — thin wrapper around catalog.Load, plus a
-// retry helper that wraps Transaction.Append + Commit with
-// exponential backoff. Frame redelivers on error, so returning an
-// error on transient catalog failures is safe.
-//
-// Deprecated: CatalogConfig and LoadIcebergCatalog are re-exported
-// from pkg/icebergclient for use by other packages. New callers should
-// import stawi.jobs/pkg/icebergclient directly.
-
 import (
 	"context"
 	"fmt"
@@ -18,37 +9,7 @@ import (
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
-
-	"stawi.jobs/pkg/icebergclient"
 )
-
-// CatalogConfig carries all parameters needed to open the Iceberg SQL catalog.
-//
-// Deprecated: use icebergclient.CatalogConfig instead.
-type CatalogConfig struct {
-	CatalogURI        string // postgres://...
-	WarehouseURI      string // s3://stawi-jobs-log/iceberg
-	R2Endpoint        string
-	R2AccessKeyID     string
-	R2SecretAccessKey string
-	R2Region          string
-	Name              string // "stawi"
-}
-
-// LoadIcebergCatalog opens a named SQL catalog backed by Postgres + R2.
-//
-// Deprecated: use icebergclient.LoadCatalog instead.
-func LoadIcebergCatalog(ctx context.Context, cfg CatalogConfig) (catalog.Catalog, error) {
-	return icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:              cfg.Name,
-		URI:               cfg.CatalogURI,
-		Warehouse:         cfg.WarehouseURI,
-		R2Endpoint:        cfg.R2Endpoint,
-		R2AccessKeyID:     cfg.R2AccessKeyID,
-		R2SecretAccessKey: cfg.R2SecretAccessKey,
-		R2Region:          cfg.R2Region,
-	})
-}
 
 // CommitBatchWithRetry applies a batch to a table with exponential backoff.
 // Reloads the table metadata on each attempt so OCC conflicts resolve

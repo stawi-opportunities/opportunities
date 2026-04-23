@@ -14,6 +14,7 @@ import (
 	"github.com/pitabwire/util"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.jobs/pkg/icebergclient"
 
 	writercfg "stawi.jobs/apps/writer/config"
 	writersvc "stawi.jobs/apps/writer/service"
@@ -35,14 +36,14 @@ func main() {
 	defer svc.Stop(ctx)
 
 	// Open the Iceberg SQL catalog backed by Postgres + R2.
-	cat, err := writersvc.LoadIcebergCatalog(ctx, writersvc.CatalogConfig{
-		CatalogURI:        cfg.IcebergCatalogURI,
-		WarehouseURI:      "s3://" + cfg.R2Bucket + "/iceberg",
+	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+		Name:              "stawi",
+		URI:               cfg.IcebergCatalogURI,
+		Warehouse:         "s3://" + cfg.R2Bucket + "/iceberg",
 		R2Endpoint:        cfg.R2Endpoint,
 		R2AccessKeyID:     cfg.R2AccessKeyID,
 		R2SecretAccessKey: cfg.R2SecretAccessKey,
 		R2Region:          cfg.R2Region,
-		Name:              "stawi",
 	})
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("writer: catalog load failed")

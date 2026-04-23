@@ -11,6 +11,12 @@ import (
 	"github.com/pitabwire/util"
 )
 
+// r2Snapshotter is the minimal publish interface the backfill needs.
+type r2Snapshotter interface {
+	UploadPublicSnapshot(ctx context.Context, key string, body []byte) error
+	TriggerDeploy() error
+}
+
 // backfillManticoreHandler scans idx_jobs_rt in Manticore for active jobs
 // above minQuality (and optionally posted after a since time) and publishes
 // Hugo snapshots under jobs/<slug>.json.

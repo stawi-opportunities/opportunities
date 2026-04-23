@@ -74,10 +74,8 @@ func partitionSecondaryLabel(collection string) string {
 		return "src"
 	case "canonicals", "canonicals_expired", "embeddings", "published":
 		return "cc"
-	case "candidates_cv", "candidates_cv_current",
-		"candidates_improvements",
-		"candidates_preferences", "candidates_preferences_current",
-		"candidates_embeddings", "candidates_embeddings_current",
+	case "candidates_cv", "candidates_improvements",
+		"candidates_preferences", "candidates_embeddings",
 		"candidates_matches_ready":
 		return "cnd"
 	case "translations":

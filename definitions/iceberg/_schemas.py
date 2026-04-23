@@ -92,7 +92,6 @@ VARIANTS = Schema(
 )
 
 # jobs.canonicals  (CanonicalUpsertedV1)
-# Also used for jobs.canonicals_current (same schema, different partition)
 CANONICALS = Schema(
     _req(1,  "canonical_id",    StringType()),
     _req(2,  "cluster_id",      StringType()),
@@ -129,7 +128,7 @@ CANONICALS_EXPIRED = Schema(
     *_envelope(5),
 )
 
-# jobs.embeddings / jobs.embeddings_current  (EmbeddingV1)
+# jobs.embeddings  (EmbeddingV1)
 # vector is []float32 — ListType of FloatType
 EMBEDDINGS = Schema(
     _req(1, "canonical_id",   StringType()),
@@ -138,7 +137,7 @@ EMBEDDINGS = Schema(
     *_envelope(4),
 )
 
-# jobs.translations / jobs.translations_current  (TranslationV1)
+# jobs.translations  (TranslationV1)
 TRANSLATIONS = Schema(
     _req(1, "canonical_id",    StringType()),
     _req(2, "lang",            StringType()),
@@ -198,7 +197,7 @@ CV_UPLOADED = Schema(
     *_envelope(8),
 )
 
-# candidates.cv_extracted / candidates.cv_extracted_current  (CVExtractedV1)
+# candidates.cv_extracted  (CVExtractedV1)
 # StrongSkills, WorkingSkills, etc. are []string
 CV_EXTRACTED = Schema(
     _req(1,  "candidate_id",            StringType()),
@@ -255,7 +254,7 @@ CV_IMPROVED = Schema(
     *_envelope(5),
 )
 
-# candidates.preferences / candidates.preferences_current  (PreferencesUpdatedV1)
+# candidates.preferences  (PreferencesUpdatedV1)
 PREFERENCES = Schema(
     _req(1,  "candidate_id",        StringType()),
     _opt(2,  "remote_preference",   StringType()),
@@ -270,7 +269,7 @@ PREFERENCES = Schema(
     *_envelope(11),
 )
 
-# candidates.embeddings / candidates.embeddings_current  (CandidateEmbeddingV1)
+# candidates.embeddings  (CandidateEmbeddingV1)
 CANDIDATE_EMBEDDINGS = Schema(
     _req(1, "candidate_id",  StringType()),
     _req(2, "cv_version",    IntegerType()),

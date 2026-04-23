@@ -163,19 +163,6 @@ def create_canonicals(cat: Catalog) -> None:
     _create(cat, "jobs.canonicals", schema, spec, sort, bloom_cols=("canonical_id", "cluster_id", "slug"))
 
 
-def create_canonicals_current(cat: Catalog) -> None:
-    """jobs.canonicals_current — latest snapshot per canonical"""
-    schema = CANONICALS
-    spec = PartitionSpec(
-        _partition_bucket(schema, "cluster_id", 32),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "quality_score", SortDirection.DESC),
-        _sort_field(schema, "posted_at", SortDirection.DESC),
-        _sort_field(schema, "canonical_id"),
-    )
-    _create(cat, "jobs.canonicals_current", schema, spec, sort, bloom_cols=("canonical_id", "cluster_id", "slug"))
-
 
 def create_canonicals_expired(cat: Catalog) -> None:
     """jobs.canonicals_expired — CanonicalExpiredV1"""
@@ -202,17 +189,6 @@ def create_embeddings(cat: Catalog) -> None:
     _create(cat, "jobs.embeddings", schema, spec, sort, bloom_cols=("canonical_id",))
 
 
-def create_embeddings_current(cat: Catalog) -> None:
-    """jobs.embeddings_current — latest embedding per canonical"""
-    schema = EMBEDDINGS
-    spec = PartitionSpec(
-        _partition_bucket(schema, "canonical_id", 32),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "canonical_id"),
-    )
-    _create(cat, "jobs.embeddings_current", schema, spec, sort, bloom_cols=("canonical_id",))
-
 
 def create_translations(cat: Catalog) -> None:
     """jobs.translations — TranslationV1 (all translation events)"""
@@ -227,18 +203,6 @@ def create_translations(cat: Catalog) -> None:
     )
     _create(cat, "jobs.translations", schema, spec, sort, bloom_cols=("canonical_id",))
 
-
-def create_translations_current(cat: Catalog) -> None:
-    """jobs.translations_current — latest translation per (canonical, lang)"""
-    schema = TRANSLATIONS
-    spec = PartitionSpec(
-        _partition_bucket(schema, "lang", 8),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "canonical_id"),
-        _sort_field(schema, "lang"),
-    )
-    _create(cat, "jobs.translations_current", schema, spec, sort, bloom_cols=("canonical_id",))
 
 
 def create_published(cat: Catalog) -> None:
@@ -314,17 +278,6 @@ def create_cv_extracted(cat: Catalog) -> None:
     _create(cat, "candidates.cv_extracted", schema, spec, sort, bloom_cols=("candidate_id",))
 
 
-def create_cv_extracted_current(cat: Catalog) -> None:
-    """candidates.cv_extracted_current — latest extract per candidate"""
-    schema = CV_EXTRACTED
-    spec = PartitionSpec(
-        _partition_bucket(schema, "candidate_id", 32),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "candidate_id"),
-    )
-    _create(cat, "candidates.cv_extracted_current", schema, spec, sort, bloom_cols=("candidate_id",))
-
 
 def create_cv_improved(cat: Catalog) -> None:
     """candidates.cv_improved — CVImprovedV1"""
@@ -352,17 +305,6 @@ def create_preferences(cat: Catalog) -> None:
     _create(cat, "candidates.preferences", schema, spec, sort, bloom_cols=("candidate_id",))
 
 
-def create_preferences_current(cat: Catalog) -> None:
-    """candidates.preferences_current — latest preferences per candidate"""
-    schema = PREFERENCES
-    spec = PartitionSpec(
-        _partition_bucket(schema, "candidate_id", 32),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "candidate_id"),
-    )
-    _create(cat, "candidates.preferences_current", schema, spec, sort, bloom_cols=("candidate_id",))
-
 
 def create_candidate_embeddings(cat: Catalog) -> None:
     """candidates.embeddings — CandidateEmbeddingV1 (all events)"""
@@ -375,17 +317,6 @@ def create_candidate_embeddings(cat: Catalog) -> None:
     )
     _create(cat, "candidates.embeddings", schema, spec, sort, bloom_cols=("candidate_id",))
 
-
-def create_candidate_embeddings_current(cat: Catalog) -> None:
-    """candidates.embeddings_current — latest embedding per candidate"""
-    schema = CANDIDATE_EMBEDDINGS
-    spec = PartitionSpec(
-        _partition_bucket(schema, "candidate_id", 32),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "candidate_id"),
-    )
-    _create(cat, "candidates.embeddings_current", schema, spec, sort, bloom_cols=("candidate_id",))
 
 
 def create_matches_ready(cat: Catalog) -> None:
@@ -410,24 +341,18 @@ _ALL_CREATORS = [
     # jobs
     create_variants,
     create_canonicals,
-    create_canonicals_current,
     create_canonicals_expired,
     create_embeddings,
-    create_embeddings_current,
     create_translations,
-    create_translations_current,
     create_published,
     create_crawl_page_completed,
     create_sources_discovered,
     # candidates
     create_cv_uploaded,
     create_cv_extracted,
-    create_cv_extracted_current,
     create_cv_improved,
     create_preferences,
-    create_preferences_current,
     create_candidate_embeddings,
-    create_candidate_embeddings_current,
     create_matches_ready,
 ]
 
