@@ -43,12 +43,12 @@ func TestFlushToValkey_Basic(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
 
-	// Verify the keys exist and json field is readable.
+	// Verify the keys exist and are readable as plain JSON strings.
 	for id := range m {
-		jsonVal, err := c.HGet(context.Background(), "cluster:"+id, "json").Result()
-		require.NoError(t, err, "cluster:%s should have json field", id)
+		val, err := c.Get(context.Background(), "cluster:"+id).Result()
+		require.NoError(t, err, "cluster:%s should exist", id)
 		var snap kv.ClusterSnapshot
-		require.NoError(t, json.Unmarshal([]byte(jsonVal), &snap))
+		require.NoError(t, json.Unmarshal([]byte(val), &snap))
 		assert.Equal(t, id, snap.ClusterID)
 	}
 }
@@ -63,23 +63,22 @@ func TestFlushToValkey_CAS_NewerWins(t *testing.T) {
 	old := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	newer := old.Add(24 * time.Hour)
 
-	// First flush: older entry.
-	require.NoError(t, r.kv.HSet(ctx, "cluster:c1",
-		"ts", old.UnixMilli(),
-		"json", `{"cluster_id":"c1","title":"Old Title"}`).Err())
+	// First flush: older entry written as plain JSON (matching Frame's format).
+	oldJSON, _ := json.Marshal(kv.ClusterSnapshot{ClusterID: "c1", Title: "Old Title", LastSeenAt: old})
+	require.NoError(t, c.Set(ctx, "cluster:c1", string(oldJSON), 0).Err())
 
 	// Second flush: newer entry should overwrite.
 	m := map[string]canonicalMinimal{
-		"c1": {ClusterID: "c1", Title: "New Title", OccurredAt: newer},
+		"c1": {ClusterID: "c1", Title: "New Title", LastSeenAt: newer, OccurredAt: newer},
 	}
 	n, err := r.flushToValkey(ctx, m)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 
-	jsonVal, err := c.HGet(ctx, "cluster:c1", "json").Result()
+	val, err := c.Get(ctx, "cluster:c1").Result()
 	require.NoError(t, err)
 	var snap kv.ClusterSnapshot
-	require.NoError(t, json.Unmarshal([]byte(jsonVal), &snap))
+	require.NoError(t, json.Unmarshal([]byte(val), &snap))
 	assert.Equal(t, "New Title", snap.Title)
 }
 
@@ -93,23 +92,22 @@ func TestFlushToValkey_CAS_OlderLoses(t *testing.T) {
 	newer := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 	older := newer.Add(-24 * time.Hour)
 
-	// Pre-set a newer entry.
-	require.NoError(t, r.kv.HSet(ctx, "cluster:c1",
-		"ts", newer.UnixMilli(),
-		"json", `{"cluster_id":"c1","title":"Newer Title"}`).Err())
+	// Pre-set a newer entry as plain JSON (matching Frame's format).
+	newerJSON, _ := json.Marshal(kv.ClusterSnapshot{ClusterID: "c1", Title: "Newer Title", LastSeenAt: newer})
+	require.NoError(t, c.Set(ctx, "cluster:c1", string(newerJSON), 0).Err())
 
 	// Attempt to flush an older entry.
 	m := map[string]canonicalMinimal{
-		"c1": {ClusterID: "c1", Title: "Older Title", OccurredAt: older},
+		"c1": {ClusterID: "c1", Title: "Older Title", LastSeenAt: older, OccurredAt: older},
 	}
 	_, err := r.flushToValkey(ctx, m)
 	require.NoError(t, err)
 
 	// The existing (newer) entry must not be replaced.
-	jsonVal, err := c.HGet(ctx, "cluster:c1", "json").Result()
+	val, err := c.Get(ctx, "cluster:c1").Result()
 	require.NoError(t, err)
 	var snap kv.ClusterSnapshot
-	require.NoError(t, json.Unmarshal([]byte(jsonVal), &snap))
+	require.NoError(t, json.Unmarshal([]byte(val), &snap))
 	assert.Equal(t, "Newer Title", snap.Title, "older flush must not overwrite newer Valkey entry")
 }
 
@@ -165,4 +163,47 @@ func TestBoundedMapFlushCycle(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), exists, "key %s should exist", key)
 	}
+}
+
+// TestFlushToValkey_RoundTrip verifies that flushToValkey writes in the plain
+// GET/SET format that Frame's cache.Cache[string, kv.ClusterSnapshot] reader
+// expects: a plain string key whose value is JSON-encoded kv.ClusterSnapshot.
+//
+// This proves writer/reader compatibility end-to-end without requiring a full
+// Frame wiring: write via flushToValkey, read via plain GET + json.Unmarshal.
+func TestFlushToValkey_RoundTrip(t *testing.T) {
+	c, _ := newMiniredisClient(t)
+	r := &KVRebuilder{kv: c}
+	ctx := context.Background()
+
+	ts := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
+	m := map[string]canonicalMinimal{
+		"rt1": {
+			ClusterID:   "rt1",
+			CanonicalID: "canon-42",
+			Title:       "Senior Engineer",
+			Company:     "Acme",
+			Country:     "KE",
+			LastSeenAt:  ts,
+			OccurredAt:  ts,
+		},
+	}
+
+	n, err := r.flushToValkey(ctx, m)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	// Read exactly as Frame's cache.GetCache path would: plain GET, then JSON decode.
+	raw, err := c.Get(ctx, "cluster:rt1").Result()
+	require.NoError(t, err, "key must be stored as a plain string")
+
+	var snap kv.ClusterSnapshot
+	require.NoError(t, json.Unmarshal([]byte(raw), &snap), "value must be valid JSON kv.ClusterSnapshot")
+
+	assert.Equal(t, "rt1", snap.ClusterID)
+	assert.Equal(t, "canon-42", snap.CanonicalID)
+	assert.Equal(t, "Senior Engineer", snap.Title)
+	assert.Equal(t, "Acme", snap.Company)
+	assert.Equal(t, "KE", snap.Country)
+	assert.True(t, snap.LastSeenAt.Equal(ts), "LastSeenAt must survive JSON round-trip")
 }

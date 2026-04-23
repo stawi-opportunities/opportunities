@@ -31,16 +31,15 @@ import (
 //
 // Peak memory = maxKeysInMemory × 256 bytes, regardless of partition size.
 //
-// Valkey key format changed from:
+// Valkey key format:
 //
 //	SET cluster:<id> <json>
 //
-// to:
-//
-//	HSET cluster:<id> ts <unix-ms> json <json>
-//
-// so the Lua CAS script can compare timestamps atomically. Readers must
-// extract the "json" field (see pkg/kv for the read path).
+// Where <json> is the JSON-encoded kv.ClusterSnapshot, matching the
+// format Frame's cache.Cache[string, kv.ClusterSnapshot] writes during
+// normal pipeline operation. Compare-and-set against the embedded
+// last_seen_at field keeps rebuild idempotent even when the bounded
+// map flushes mid-partition.
 type KVRebuilder struct {
 	cat catalog.Catalog
 	kv  *redis.Client
@@ -57,19 +56,29 @@ type KVRebuildResult struct {
 	ClusterKeysSet int `json:"cluster_keys_set"`
 }
 
-// kvCASScript sets cluster:<id> only when the new row's occurred_at (ms) is
-// newer than the value already stored. This makes repeated flushes of the
-// bounded map safe: an older row that arrives after a newer one was already
-// flushed will not overwrite it.
+// kvCASScript sets cluster:<id> to ARGV[1] ONLY if the new row's
+// last_seen_at (ARGV[2], RFC3339 string) is strictly greater than the
+// existing value's last_seen_at field. If the key is missing, sets
+// unconditionally. Works against Frame's plain-string cluster cache
+// format (GET returns the JSON-encoded kv.ClusterSnapshot body).
 //
-// Key layout: HSET cluster:<id> ts <unix-ms> json <json>
+// ISO-8601 strings sort lexicographically = chronologically, so the
+// comparison is a plain Lua string `>`. Robust as long as Go's
+// encoding/json emits `last_seen_at` as a standard RFC3339 string,
+// which it does for time.Time fields with the default marshaller.
 const kvCASScript = `
-local existing = redis.call('HGET', KEYS[1], 'ts')
-if existing == false or tonumber(ARGV[2]) > tonumber(existing) then
-    redis.call('HSET', KEYS[1], 'ts', ARGV[2], 'json', ARGV[1])
+local existing = redis.call('GET', KEYS[1])
+if existing == false or existing == nil then
+    redis.call('SET', KEYS[1], ARGV[1])
     return 1
 end
-return 0`
+local existingTs = string.match(existing, '"last_seen_at":"([^"]+)"')
+if existingTs == nil or ARGV[2] > existingTs then
+    redis.call('SET', KEYS[1], ARGV[1])
+    return 1
+end
+return 0
+`
 
 
 // Run scans the append-only jobs.canonicals table via Iceberg partition-by-
@@ -170,8 +179,9 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	return res, nil
 }
 
-// flushToValkey pipelines Lua CAS commands for all entries in m to Valkey,
-// batching in groups of 500. Returns the number of successful writes.
+// flushToValkey writes each (clusterID → canonicalMinimal) entry to
+// Valkey via pipelined Lua CAS. Key format is plain GET/SET to match
+// Frame's clusterCache reader path in apps/worker/service/canonical.go.
 //
 // Each call uses kvCASScript inline via Eval (not EvalSha) so the script is
 // always sent with the command — no pre-loading required, and the pipeline
@@ -190,16 +200,17 @@ func (r *KVRebuilder) flushToValkey(ctx context.Context, m map[string]canonicalM
 	keysWritten := 0
 
 	for clusterID, row := range m {
-		snap, merr := json.Marshal(clusterSnapshotFromMinimal(row))
-		if merr != nil {
-			continue
+		snap := clusterSnapshotFromMinimal(row)
+		body, err := json.Marshal(snap)
+		if err != nil {
+			continue // skip corrupt row
 		}
-		tsMs := row.OccurredAt.UnixMilli()
+		tsISO := snap.LastSeenAt.UTC().Format(time.RFC3339Nano)
 		key := "cluster:" + clusterID
 
 		// Use Eval (not EvalSha) so the script works inside a pipeline without
 		// requiring a separate SCRIPT LOAD step.
-		pipe.Eval(ctx, kvCASScript, []string{key}, string(snap), tsMs)
+		pipe.Eval(ctx, kvCASScript, []string{key}, string(body), tsISO)
 		keysWritten++
 		batchSize++
 
