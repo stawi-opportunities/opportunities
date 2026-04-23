@@ -35,6 +35,12 @@ type Config struct {
 	FlushMaxEvents   int           `env:"WRITER_FLUSH_MAX_EVENTS" envDefault:"10000"`
 	FlushMaxBytes    int           `env:"WRITER_FLUSH_MAX_BYTES"  envDefault:"67108864"` // 64 MiB
 	FlushMaxInterval time.Duration `env:"WRITER_FLUSH_MAX_INTERVAL" envDefault:"30s"`
+
+	// Snapshot retention knobs used by the /_admin/expire-snapshots endpoint.
+	// Snapshots older than SnapshotRetentionDays are eligible for expiry, but
+	// at least MinSnapshotsToKeep are always retained per table regardless of age.
+	SnapshotRetentionDays int `env:"SNAPSHOT_RETENTION_DAYS" envDefault:"14"`
+	MinSnapshotsToKeep    int `env:"MIN_SNAPSHOTS_TO_KEEP"   envDefault:"100"`
 }
 
 // Load reads the Config from environment variables.

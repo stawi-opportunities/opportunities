@@ -7,6 +7,8 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -63,8 +65,20 @@ func main() {
 		}
 	}()
 
-	// Frame provides its own /healthz endpoint; no admin HTTP mux needed.
-	svc.Init(ctx)
+	// Admin HTTP mux — lightweight, not exposed to the public internet.
+	// Trustage fires POST /_admin/expire-snapshots nightly via the
+	// in-cluster service DNS (stawi-jobs-writer.stawi-jobs.svc).
+	expireCfg := writersvc.ExpireSnapshotsConfig{
+		OlderThan:          time.Duration(cfg.SnapshotRetentionDays) * 24 * time.Hour,
+		MinSnapshotsToKeep: cfg.MinSnapshotsToKeep,
+		PerTableTimeout:    5 * time.Minute,
+		Parallelism:        4,
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /_admin/expire-snapshots",
+		writersvc.ExpireSnapshotsHandler(cat, expireCfg))
+
+	svc.Init(ctx, frame.WithHTTPHandler(mux))
 
 	if err := svc.Run(ctx, ""); err != nil {
 		util.Log(ctx).WithError(err).Fatal("writer: frame.Run failed")
