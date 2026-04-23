@@ -1,5 +1,10 @@
 """
-Shared Iceberg schema definitions for all 19 stawi.jobs tables.
+Shared Iceberg schema definitions for all 11 stawi.jobs tables.
+
+Removed from Iceberg (body lives in R2 slug-direct JSON):
+  - CANONICALS          → s3://stawi-jobs-content/jobs/<slug>.json
+  - CANONICALS_EXPIRED  → Frame event only; materializer subscribes directly
+  - TRANSLATIONS        → s3://stawi-jobs-content/jobs/<slug>/<lang>.json
 
 Field IDs start at 1 per table and are assigned in declaration order.
 Field names match the `parquet:"..."` struct tags in pkg/events/v1/*.go.
@@ -91,42 +96,9 @@ VARIANTS = Schema(
     *_envelope(23),
 )
 
-# jobs.canonicals  (CanonicalUpsertedV1)
-CANONICALS = Schema(
-    _req(1,  "canonical_id",    StringType()),
-    _req(2,  "cluster_id",      StringType()),
-    _req(3,  "slug",            StringType()),
-    _opt(4,  "title",           StringType()),
-    _opt(5,  "company",         StringType()),
-    _opt(6,  "description",     StringType()),
-    _opt(7,  "location_text",   StringType()),
-    _opt(8,  "country",         StringType()),
-    _opt(9,  "language",        StringType()),
-    _opt(10, "remote_type",     StringType()),
-    _opt(11, "employment_type", StringType()),
-    _opt(12, "seniority",       StringType()),
-    _opt(13, "salary_min",      DoubleType()),
-    _opt(14, "salary_max",      DoubleType()),
-    _opt(15, "currency",        StringType()),
-    _opt(16, "category",        StringType()),
-    _opt(17, "quality_score",   DoubleType()),
-    _req(18, "status",          StringType()),
-    _opt(19, "posted_at",       TimestamptzType()),
-    _opt(20, "first_seen_at",   TimestamptzType()),
-    _opt(21, "last_seen_at",    TimestamptzType()),
-    _opt(22, "expires_at",      TimestamptzType()),
-    _opt(23, "apply_url",       StringType()),
-    *_envelope(24),
-)
-
-# jobs.canonicals_expired  (CanonicalExpiredV1)
-CANONICALS_EXPIRED = Schema(
-    _req(1, "canonical_id", StringType()),
-    _opt(2, "cluster_id",   StringType()),
-    _opt(3, "reason",       StringType()),
-    _req(4, "expired_at",   TimestamptzType()),
-    *_envelope(5),
-)
+# jobs.canonicals and jobs.canonicals_expired schemas removed from Iceberg.
+# Canonical body → s3://stawi-jobs-content/jobs/<slug>.json (R2-slug-direct).
+# canonicals_expired → Frame event only; materializer subscribes directly.
 
 # jobs.embeddings  (EmbeddingV1)
 # vector is []float32 — ListType of FloatType
@@ -137,15 +109,8 @@ EMBEDDINGS = Schema(
     *_envelope(4),
 )
 
-# jobs.translations  (TranslationV1)
-TRANSLATIONS = Schema(
-    _req(1, "canonical_id",    StringType()),
-    _req(2, "lang",            StringType()),
-    _opt(3, "title_tr",        StringType()),
-    _opt(4, "description_tr",  StringType()),
-    _opt(5, "model_version",   StringType()),
-    *_envelope(6),
-)
+# jobs.translations schema removed from Iceberg.
+# Translated body → s3://stawi-jobs-content/jobs/<slug>/<lang>.json (R2-slug-direct).
 
 # jobs.published  (PublishedV1)
 PUBLISHED = Schema(

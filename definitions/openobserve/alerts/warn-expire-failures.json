@@ -1,0 +1,33 @@
+{
+  "name": "warn-expire-failures",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": null,
+    "promql": "increase(iceberg_commits_total{outcome=\"fail\"}[30m]) > 3",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 10,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 30,
+    "frequency": 10,
+    "cron": ""
+  },
+  "destinations": ["slack-platform-alerts"],
+  "context_attributes": {
+    "severity": "warning",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/expire-failures"
+  },
+  "description": "More than 3 Iceberg commit failures in 30 minutes. Repeated failures may leave orphaned snapshot files and stale catalog entries. Investigate nightly CronJob logs.",
+  "enabled": true
+}

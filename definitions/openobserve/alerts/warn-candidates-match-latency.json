@@ -1,0 +1,33 @@
+{
+  "name": "warn-candidates-match-latency",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": null,
+    "promql": "histogram_quantile(0.95, rate(candidates_match_duration_seconds_bucket[10m])) > 30",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 10,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 20,
+    "frequency": 10,
+    "cron": ""
+  },
+  "destinations": ["slack-platform-alerts"],
+  "context_attributes": {
+    "severity": "warning",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/candidates-match-latency"
+  },
+  "description": "Candidate match p95 latency exceeds 30 seconds. Weekly digest emails and real-time match events will be delayed. Check candidate embedding retrieval and Manticore vector search performance.",
+  "enabled": true
+}

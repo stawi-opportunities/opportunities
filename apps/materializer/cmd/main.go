@@ -1,8 +1,13 @@
-// apps/materializer/cmd — entrypoint for the Iceberg → Manticore
-// materializer. The pod polls each Iceberg table (jobs.canonicals,
-// jobs.embeddings, jobs.translations) every 15 s, decodes only the
-// data files added since the last Valkey watermark, and bulk-upserts
-// them into Manticore's idx_jobs_rt RT index.
+// apps/materializer/cmd — entrypoint for the Manticore materializer.
+//
+// The materializer is now a pure Frame subscriber: it registers one handler
+// per topic (canonicals, canonicals_expired, translations, embeddings) and
+// upserts documents into Manticore's idx_jobs_rt RT index as events arrive.
+//
+// There is no longer an Iceberg catalog scan, no watermark polling, and no
+// leader-election lease — Frame's NATS JetStream consumer group handles all
+// of that natively. Consumer lag is observable via the NATS Prometheus
+// exporter's `nats_jetstream_consumer_num_pending` metric.
 package main
 
 import (
@@ -11,10 +16,7 @@ import (
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
-	"github.com/redis/go-redis/v9"
 
-	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/searchindex"
 	"stawi.jobs/pkg/telemetry"
 
@@ -30,37 +32,11 @@ func main() {
 		log.Fatalf("materializer: load config: %v", err)
 	}
 
-	// Frame service — no WithDatastore() since the materializer no
-	// longer uses Postgres for watermarks (moved to Valkey).
+	// Frame service — NATS-backed pub/sub + OTEL.
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithConfig(&cfg),
 	)
 	defer svc.Stop(ctx)
-
-	// Iceberg SQL catalog backed by Postgres + R2.
-	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:              "stawi",
-		URI:               cfg.IcebergCatalogURI,
-		Warehouse:         "s3://" + cfg.R2Bucket + "/iceberg",
-		R2Endpoint:        cfg.R2Endpoint,
-		R2AccessKeyID:     cfg.R2AccessKeyID,
-		R2SecretAccessKey: cfg.R2SecretAccessKey,
-		R2Region:          cfg.R2Region,
-	})
-	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("materializer: catalog load failed")
-	}
-
-	// R2 reader — fetches raw Parquet bytes by object key.
-	r2Client := eventlog.NewClient(eventlog.R2Config{
-		AccountID:       cfg.R2AccountID,
-		AccessKeyID:     cfg.R2AccessKeyID,
-		SecretAccessKey: cfg.R2SecretAccessKey,
-		Bucket:          cfg.R2Bucket,
-		Endpoint:        cfg.R2Endpoint,
-		UsePathStyle:    cfg.R2UsePathStyle,
-	})
-	reader := eventlog.NewReader(r2Client, cfg.R2Bucket)
 
 	// Manticore client.
 	mc, err := searchindex.Open(searchindex.Config{
@@ -76,31 +52,18 @@ func main() {
 		util.Log(ctx).WithError(err).Fatal("materializer: apply schema failed")
 	}
 
-	// Valkey watermark client.
-	kvOpts, err := redis.ParseURL(cfg.ValkeyURL)
-	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("materializer: parse valkey URL failed")
-	}
-	kvClient := redis.NewClient(kvOpts)
-	wm := matsvc.NewWatermark(kvClient)
-
-	// Register Iceberg observables for materializer-lag and table-state gauges.
-	// The Valkey client enables the materializer-lag callback which reads
-	// mat:snap:<table> watermarks and compares them against the current
-	// Iceberg snapshot timestamp.
+	// Register Iceberg-table-level observables (compaction lag, snapshot age).
+	// The materializer no longer holds watermarks, so the Valkey arg is nil.
+	// Consumer lag is observable via NATS JetStream native metrics.
 	telemetry.RegisterIcebergObservables(telemetry.IcebergObservablesConfig{
-		Catalog:     cat,
-		TableIdents: icebergclient.AppendOnlyTables,
-		Valkey:      kvClient,
+		TableIdents: nil, // materializer no longer scans Iceberg tables
 	})
 
-	service := matsvc.NewService(cat, reader, cfg.R2Bucket, mc, wm, kvClient, cfg.PollInterval, cfg.ManticoreBulkBatchSize)
-
-	go func() {
-		if err := service.Run(ctx); err != nil {
-			util.Log(ctx).WithError(err).Error("materializer: run exited")
-		}
-	}()
+	// Wire Frame topic subscribers.
+	service := matsvc.NewService(svc, mc, cfg.ManticoreBulkBatchSize)
+	if err := service.RegisterSubscriptions(); err != nil {
+		util.Log(ctx).WithError(err).Fatal("materializer: register subscriptions failed")
+	}
 
 	if err := svc.Run(ctx, ""); err != nil {
 		util.Log(ctx).WithError(err).Fatal("materializer: frame.Run failed")

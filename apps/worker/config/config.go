@@ -17,22 +17,18 @@ type Config struct {
 	// snapshot storage). Handed to frame/cache/valkey.New(cache.WithDSN).
 	ValkeyURL string `env:"VALKEY_URL,required"`
 
-	// Iceberg catalog — used by /_admin/kv/rebuild to scan
-	// jobs.canonicals_current and repopulate Valkey cluster:* keys.
-	IcebergCatalogURI  string `env:"ICEBERG_CATALOG_URI,required"`
-	IcebergWarehouse   string `env:"ICEBERG_WAREHOUSE,required"`
-	IcebergCatalogName string `env:"ICEBERG_CATALOG_NAME" envDefault:"stawi"`
-
-	// R2 credentials for Iceberg data-file access (shared with publish bucket config).
-	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
-	R2Region          string `env:"R2_REGION"            envDefault:"auto"`
-
-	// R2 publish bucket (the live job-detail JSONs, distinct from the
-	// event log). pkg/publish creates snapshots here.
+	// R2 publish / content bucket (the live job-detail JSONs).
+	// pkg/publish creates snapshots here; /_admin/kv/rebuild scans
+	// jobs/*.json from this bucket instead of Iceberg.
 	R2PublishAccountID       string `env:"R2_PUBLISH_ACCOUNT_ID,required"`
 	R2PublishAccessKeyID     string `env:"R2_PUBLISH_ACCESS_KEY_ID,required"`
 	R2PublishSecretAccessKey string `env:"R2_PUBLISH_SECRET_ACCESS_KEY,required"`
 	R2PublishBucket          string `env:"R2_PUBLISH_BUCKET,required"`
+
+	// R2ContentBucket is the consumer-facing bucket scanned by kv/rebuild.
+	// Defaults to the publish bucket; override if a separate content bucket
+	// is used.
+	R2ContentBucket string `env:"R2_CONTENT_BUCKET" envDefault:"stawi-jobs-content"`
 
 	// AI backends. All optional — empty disables the given stage
 	// gracefully (fall-through without that AI call).

@@ -64,6 +64,11 @@ var (
 	// Writer buffer
 	writerBufferBytesGauge  metric.Int64ObservableGauge
 	writerBufferEventsGauge metric.Int64ObservableGauge
+
+	// WriterBufferForceFlushesTotal counts forced flushes of the oldest
+	// partition buffer when total buffered bytes exceeds the memory budget.
+	// High sustained values indicate the writer pod is memory-constrained.
+	WriterBufferForceFlushesTotal metric.Int64Counter
 )
 
 // ---------------------------------------------------------------------------
@@ -477,6 +482,14 @@ func InitIceberg() error {
 		}
 		return nil
 	}, writerBufferBytesGauge, writerBufferEventsGauge)
+	if err != nil {
+		return err
+	}
+
+	WriterBufferForceFlushesTotal, err = icebergMeter.Int64Counter(
+		"writer_buffer_force_flushes_total",
+		metric.WithDescription("Times the writer force-flushed the oldest partition buffer due to global memory cap; sustained high rate → pod is memory-constrained"),
+	)
 	if err != nil {
 		return err
 	}

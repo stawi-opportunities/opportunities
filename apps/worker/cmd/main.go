@@ -13,8 +13,12 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"fmt"
+
 	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/kv"
 	"stawi.jobs/pkg/publish"
 
@@ -100,20 +104,22 @@ func main() {
 
 	service := workersvc.NewService(svc, ex, publisher, dedupCache, clusterCache, cfg.TranslationLangs)
 
-	// Iceberg catalog for the KV rebuild admin endpoint.
-	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:              cfg.IcebergCatalogName,
-		URI:               cfg.IcebergCatalogURI,
-		Warehouse:         cfg.IcebergWarehouse,
-		R2Endpoint:        cfg.R2Endpoint,
-		R2AccessKeyID:     cfg.R2PublishAccessKeyID,
-		R2SecretAccessKey: cfg.R2PublishSecretAccessKey,
-		R2Region:          cfg.R2Region,
+	// S3-compatible client for the R2 content bucket (used by kv/rebuild
+	// to list jobs/*.json slug files). Reuses the publish bucket credentials.
+	contentBucketEndpoint := fmt.Sprintf(
+		"https://%s.r2.cloudflarestorage.com",
+		cfg.R2PublishAccountID,
+	)
+	r2S3Client := s3.New(s3.Options{
+		Region: "auto",
+		Credentials: credentials.NewStaticCredentialsProvider(
+			cfg.R2PublishAccessKeyID,
+			cfg.R2PublishSecretAccessKey,
+			"",
+		),
+		BaseEndpoint: aws.String(contentBucketEndpoint),
 	})
-	if err != nil {
-		log.Fatalf("worker: iceberg catalog open: %v", err)
-	}
-	kvRebuilder := workersvc.NewKVRebuilder(cat, kvClient)
+	kvRebuilder := workersvc.NewKVRebuilder(r2S3Client, cfg.R2ContentBucket, kvClient)
 
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("POST /_admin/kv/rebuild", workersvc.KVRebuildHandler(kvRebuilder))

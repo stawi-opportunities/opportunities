@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/memconfig"
+	"stawi.jobs/pkg/telemetry"
 )
 
 // Thresholds controls when a partition buffer flushes.
@@ -115,6 +117,9 @@ func (b *Buffer) Add(env any, hint string) (*Batch, error) {
 	if b.totalBytes > b.maxTotalBytes {
 		if oldest := b.oldestPartitionKey(); oldest != (bufferKey{}) {
 			if opb, ok := b.parts[oldest]; ok {
+				if telemetry.WriterBufferForceFlushesTotal != nil {
+					telemetry.WriterBufferForceFlushesTotal.Add(context.Background(), 1)
+				}
 				return b.flushLocked(oldest, opb), nil
 			}
 		}

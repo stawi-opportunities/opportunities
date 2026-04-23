@@ -31,7 +31,7 @@ func newMiniredisClient(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 // returns the correct count.
 func TestFlushToValkey_Basic(t *testing.T) {
 	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c}
+	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
 
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	m := map[string]canonicalMinimal{
@@ -57,7 +57,7 @@ func TestFlushToValkey_Basic(t *testing.T) {
 // already exists with an older ts, the newer entry replaces it.
 func TestFlushToValkey_CAS_NewerWins(t *testing.T) {
 	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c}
+	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	old := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -86,7 +86,7 @@ func TestFlushToValkey_CAS_NewerWins(t *testing.T) {
 // already exists with a newer ts, an older entry is rejected.
 func TestFlushToValkey_CAS_OlderLoses(t *testing.T) {
 	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c}
+	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	newer := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -117,7 +117,7 @@ func TestFlushToValkey_CAS_OlderLoses(t *testing.T) {
 // This is a unit test of the algorithm, not the full Run() path.
 func TestBoundedMapFlushCycle(t *testing.T) {
 	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c}
+	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	maxKeys := 3
@@ -173,7 +173,7 @@ func TestBoundedMapFlushCycle(t *testing.T) {
 // Frame wiring: write via flushToValkey, read via plain GET + json.Unmarshal.
 func TestFlushToValkey_RoundTrip(t *testing.T) {
 	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c}
+	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	ts := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)

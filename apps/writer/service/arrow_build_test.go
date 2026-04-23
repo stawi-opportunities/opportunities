@@ -154,41 +154,9 @@ func TestBuildVariantClusteredRecord(t *testing.T) {
 	assert.Equal(t, "clustered", rec.Column(4).(*array.String).Value(0))
 }
 
-// -----------------------------------------------------------------------
-// jobs.canonicals
-// -----------------------------------------------------------------------
-
-func TestBuildCanonicalUpsertedRecord(t *testing.T) {
-	raw := marshalEnv(t, eventsv1.TopicCanonicalsUpserted, eventsv1.CanonicalUpsertedV1{
-		CanonicalID: "can-1",
-		ClusterID:   "clust-1",
-		Slug:        "go-engineer-acme",
-		Status:      "active",
-		Title:       "Go Engineer",
-	})
-	rdr, err := writersvc.BuildCanonicalUpsertedRecord(testPool, []json.RawMessage{raw})
-	require.NoError(t, err)
-	defer rdr.Release()
-	rec, cleanup := readOneRow(t, rdr)
-	defer cleanup()
-	assert.Equal(t, "can-1", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "active", rec.Column(17).(*array.String).Value(0))
-}
-
-func TestBuildCanonicalExpiredRecord(t *testing.T) {
-	raw := marshalEnv(t, eventsv1.TopicCanonicalsExpired, eventsv1.CanonicalExpiredV1{
-		CanonicalID: "can-2",
-		Reason:      "expired",
-		ExpiredAt:   time.Now().UTC(),
-	})
-	rdr, err := writersvc.BuildCanonicalExpiredRecord(testPool, []json.RawMessage{raw})
-	require.NoError(t, err)
-	defer rdr.Release()
-	rec, cleanup := readOneRow(t, rdr)
-	defer cleanup()
-	assert.Equal(t, "can-2", rec.Column(0).(*array.String).Value(0))
-	assert.False(t, rec.Column(3).IsNull(0), "expired_at should be set")
-}
+// jobs.canonicals and jobs.canonicals_expired Arrow builders removed —
+// these topics are no longer persisted to Iceberg (R2-slug-direct and
+// Frame-subscriber paths respectively).
 
 // -----------------------------------------------------------------------
 // jobs.embeddings
@@ -212,26 +180,8 @@ func TestBuildEmbeddingRecord(t *testing.T) {
 	assert.EqualValues(t, 3, end-start)
 }
 
-// -----------------------------------------------------------------------
-// jobs.translations
-// -----------------------------------------------------------------------
-
-func TestBuildTranslationRecord(t *testing.T) {
-	raw := marshalEnv(t, eventsv1.TopicTranslations, eventsv1.TranslationV1{
-		CanonicalID:   "can-4",
-		Lang:          "sw",
-		TitleTr:       "Mhandisi wa Go",
-		DescriptionTr: "...",
-	})
-	rdr, err := writersvc.BuildTranslationRecord(testPool, []json.RawMessage{raw})
-	require.NoError(t, err)
-	defer rdr.Release()
-	rec, cleanup := readOneRow(t, rdr)
-	defer cleanup()
-	assert.Equal(t, "can-4", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "sw", rec.Column(1).(*array.String).Value(0))
-	assert.Equal(t, "Mhandisi wa Go", rec.Column(2).(*array.String).Value(0))
-}
+// jobs.translations Arrow builder removed — translations are no longer
+// persisted to Iceberg (R2-slug-direct: jobs/<slug>/<lang>.json).
 
 // -----------------------------------------------------------------------
 // jobs.published

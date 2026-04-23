@@ -1,0 +1,33 @@
+{
+  "name": "info-frame-redelivery-rate",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": null,
+    "promql": "rate(nats_jetstream_consumer_num_redelivered[10m]) > 0.1",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 10,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 30,
+    "frequency": 10,
+    "cron": ""
+  },
+  "destinations": ["slack-platform-info"],
+  "context_attributes": {
+    "severity": "info",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/frame-redelivery"
+  },
+  "description": "NATS JetStream consumer redelivery rate exceeds 0.1/s. Occasional redeliveries are normal (at-least-once delivery); sustained high rates indicate handler errors or slow processing causing ack timeouts.",
+  "enabled": true
+}

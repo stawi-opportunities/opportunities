@@ -1,0 +1,33 @@
+{
+  "name": "warn-manticore-bulk-errors",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": null,
+    "promql": "increase(manticore_bulk_errors_total[10m]) > 5",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 10,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 20,
+    "frequency": 10,
+    "cron": ""
+  },
+  "destinations": ["slack-platform-alerts"],
+  "context_attributes": {
+    "severity": "warning",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/manticore-bulk-errors"
+  },
+  "description": "Manticore Search bulk upsert errors exceed 5 in 10 minutes. The materializer may be losing indexed documents. Check searchindex client logs and Manticore pod health.",
+  "enabled": true
+}

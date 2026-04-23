@@ -1,0 +1,33 @@
+{
+  "name": "warn-catalog-commit-retry-storm",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": null,
+    "promql": "rate(iceberg_commit_retries_total[5m]) > 0.5",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 5,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 20,
+    "frequency": 5,
+    "cron": ""
+  },
+  "destinations": ["slack-platform-alerts"],
+  "context_attributes": {
+    "severity": "warning",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/catalog-commit-retries"
+  },
+  "description": "Iceberg catalog commit retries are sustained above 0.5/s for 5 minutes. This indicates write contention or catalog (Postgres) instability. Commits will eventually fail if not resolved.",
+  "enabled": true
+}

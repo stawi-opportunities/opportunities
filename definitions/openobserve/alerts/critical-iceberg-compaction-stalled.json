@@ -1,0 +1,33 @@
+{
+  "name": "critical-iceberg-compaction-stalled",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": "SELECT table, MAX(value) AS last_success_ts FROM \"iceberg_compact_last_success\" WHERE _timestamp >= NOW() - INTERVAL '2 hours' GROUP BY table",
+    "promql": "time() - iceberg_compact_last_success > 7200",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 5,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 30,
+    "frequency": 5,
+    "cron": ""
+  },
+  "destinations": ["pagerduty-critical"],
+  "context_attributes": {
+    "severity": "critical",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/iceberg-compaction-stalled"
+  },
+  "description": "An Iceberg table's last successful compaction is more than 2 hours ago. Small-file accumulation will degrade read performance. Investigate the nightly CronJob or the writer commit path.",
+  "enabled": true
+}

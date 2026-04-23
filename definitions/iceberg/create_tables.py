@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-Idempotent: create all 19 stawi.jobs Iceberg tables.
+Idempotent: create all 11 stawi.jobs Iceberg tables.
 
 Run after create_namespaces.py.  Each create_* function is self-contained —
 modify or add individual tables without touching the rest of the script.
 
 Partition specs, sort orders, and bloom-filter properties are sized for
 scale: target ~1 M rows per bucket at 10 M canonical jobs.
+
+Table count history:
+  14 → 11 (2026-04-22): dropped jobs.canonicals, jobs.canonicals_expired,
+           jobs.translations — body now lives in R2 slug-direct JSON;
+           materializer subscribes to Frame topics directly.
 """
 
 import os
@@ -23,10 +28,7 @@ from pyiceberg.table.sorting import (
 
 from _schemas import (
     VARIANTS,
-    CANONICALS,
-    CANONICALS_EXPIRED,
     EMBEDDINGS,
-    TRANSLATIONS,
     PUBLISHED,
     CRAWL_PAGE_COMPLETED,
     SOURCES_DISCOVERED,
@@ -148,35 +150,6 @@ def create_variants(cat: Catalog) -> None:
     _create(cat, "jobs.variants", schema, spec, sort, bloom_cols=("variant_id", "hard_key"))
 
 
-def create_canonicals(cat: Catalog) -> None:
-    """jobs.canonicals — CanonicalUpsertedV1 (all upsert events)"""
-    schema = CANONICALS
-    spec = PartitionSpec(
-        _partition_days(schema, "occurred_at"),
-        _partition_bucket(schema, "cluster_id", 32),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "quality_score", SortDirection.DESC),
-        _sort_field(schema, "posted_at", SortDirection.DESC),
-        _sort_field(schema, "canonical_id"),
-    )
-    _create(cat, "jobs.canonicals", schema, spec, sort, bloom_cols=("canonical_id", "cluster_id", "slug"))
-
-
-
-def create_canonicals_expired(cat: Catalog) -> None:
-    """jobs.canonicals_expired — CanonicalExpiredV1"""
-    schema = CANONICALS_EXPIRED
-    spec = PartitionSpec(
-        _partition_days(schema, "occurred_at"),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "expired_at"),
-        _sort_field(schema, "canonical_id"),
-    )
-    _create(cat, "jobs.canonicals_expired", schema, spec, sort, bloom_cols=("canonical_id",))
-
-
 def create_embeddings(cat: Catalog) -> None:
     """jobs.embeddings — EmbeddingV1 (all embedding events)"""
     schema = EMBEDDINGS
@@ -187,21 +160,6 @@ def create_embeddings(cat: Catalog) -> None:
         _sort_field(schema, "canonical_id"),
     )
     _create(cat, "jobs.embeddings", schema, spec, sort, bloom_cols=("canonical_id",))
-
-
-
-def create_translations(cat: Catalog) -> None:
-    """jobs.translations — TranslationV1 (all translation events)"""
-    schema = TRANSLATIONS
-    spec = PartitionSpec(
-        _partition_days(schema, "occurred_at"),
-        _partition_bucket(schema, "lang", 8),
-    )
-    sort = SortOrder(
-        _sort_field(schema, "canonical_id"),
-        _sort_field(schema, "lang"),
-    )
-    _create(cat, "jobs.translations", schema, spec, sort, bloom_cols=("canonical_id",))
 
 
 
@@ -338,16 +296,13 @@ def create_matches_ready(cat: Catalog) -> None:
 # ---------------------------------------------------------------------------
 
 _ALL_CREATORS = [
-    # jobs
+    # jobs (5 tables)
     create_variants,
-    create_canonicals,
-    create_canonicals_expired,
     create_embeddings,
-    create_translations,
     create_published,
     create_crawl_page_completed,
     create_sources_discovered,
-    # candidates
+    # candidates (6 tables)
     create_cv_uploaded,
     create_cv_extracted,
     create_cv_improved,
@@ -355,6 +310,7 @@ _ALL_CREATORS = [
     create_candidate_embeddings,
     create_matches_ready,
 ]
+assert len(_ALL_CREATORS) == 11, f"Expected 11 Iceberg tables, got {len(_ALL_CREATORS)}"
 
 
 def main() -> None:
@@ -381,7 +337,7 @@ def main() -> None:
         print(f"\n{len(errors)} table(s) failed — see errors above.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\nDone — {len(_ALL_CREATORS)} tables processed.")
+    print(f"\nDone — {len(_ALL_CREATORS)} tables processed (target: 11).")
 
 
 if __name__ == "__main__":

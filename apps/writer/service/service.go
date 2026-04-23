@@ -105,10 +105,19 @@ func (s *Service) drain(ctx context.Context) error {
 // OCC conflicts from the second writer replica) are retried by
 // CommitBatchWithRetry, which reloads the table on each attempt so
 // stale metadata never loops forever.
+//
+// Topics that are no longer persisted to Iceberg (canonicals, translations,
+// canonicals_expired) return a nil builder; those batches are acked without
+// writing to Iceberg — Frame fan-out still delivers them to the materializer's
+// Frame subscriber.
 func (s *Service) commitBatch(ctx context.Context, b *Batch) error {
 	tableIdent, builder := batchDispatch(b.EventType)
 	if builder == nil {
-		return fmt.Errorf("writer: no encoder registered for %q", b.EventType)
+		// Recognised topic but not persisted to Iceberg — ack and move on.
+		util.Log(ctx).
+			WithField("topic", b.EventType).
+			Debug("writer: topic acked without Iceberg commit (R2-only or Frame-subscriber path)")
+		return nil
 	}
 	_, err := CommitBatchWithRetry(ctx, s.catalog, tableIdent, func() (array.RecordReader, error) {
 		return builder(s.pool, b.Events)
@@ -129,6 +138,14 @@ func (s *Service) commitBatch(ctx context.Context, b *Batch) error {
 // VariantNormalized / VariantValidated / VariantFlagged / VariantClustered
 // all route to jobs.variants — _schemas.py defines a single VARIANTS
 // schema for all pipeline stages, distinguished by the "stage" field.
+//
+// Topics that are NO LONGER persisted to Iceberg return (nil, nil):
+//   - TopicCanonicalsUpserted  — body lives at s3://stawi-jobs-content/jobs/<slug>.json
+//   - TopicCanonicalsExpired   — Frame event only; materializer subscribes directly
+//   - TopicTranslations        — body lives at s3://stawi-jobs-content/jobs/<slug>/<lang>.json
+//
+// The writer still subscribes to these topics (they remain in AllTopics()); the
+// buffer receives them, commitBatch sees a nil builder, and acks without writing.
 func batchDispatch(topic string) ([]string, func(memory.Allocator, []json.RawMessage) (array.RecordReader, error)) {
 	switch topic {
 	case eventsv1.TopicVariantsIngested:
@@ -141,14 +158,11 @@ func batchDispatch(topic string) ([]string, func(memory.Allocator, []json.RawMes
 		return []string{"jobs", "variants"}, BuildVariantFlaggedRecord
 	case eventsv1.TopicVariantsClustered:
 		return []string{"jobs", "variants"}, BuildVariantClusteredRecord
-	case eventsv1.TopicCanonicalsUpserted:
-		return []string{"jobs", "canonicals"}, BuildCanonicalUpsertedRecord
-	case eventsv1.TopicCanonicalsExpired:
-		return []string{"jobs", "canonicals_expired"}, BuildCanonicalExpiredRecord
+	// TopicCanonicalsUpserted, TopicCanonicalsExpired, TopicTranslations
+	// intentionally omitted — body is R2-slug-direct; materializer is a
+	// Frame subscriber, not an Iceberg scanner for these topics.
 	case eventsv1.TopicEmbeddings:
 		return []string{"jobs", "embeddings"}, BuildEmbeddingRecord
-	case eventsv1.TopicTranslations:
-		return []string{"jobs", "translations"}, BuildTranslationRecord
 	case eventsv1.TopicPublished:
 		return []string{"jobs", "published"}, BuildPublishedRecord
 	case eventsv1.TopicCrawlPageCompleted:

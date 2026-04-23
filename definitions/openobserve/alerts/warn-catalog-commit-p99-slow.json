@@ -1,0 +1,33 @@
+{
+  "name": "warn-catalog-commit-p99-slow",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": null,
+    "promql": "histogram_quantile(0.99, rate(iceberg_commit_duration_seconds_bucket[10m])) > 5",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 10,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 20,
+    "frequency": 10,
+    "cron": ""
+  },
+  "destinations": ["slack-platform-alerts"],
+  "context_attributes": {
+    "severity": "warning",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/catalog-commit-latency"
+  },
+  "description": "Iceberg catalog commit p99 latency exceeds 5 seconds. Slow commits block writer flushes and reduce throughput. Check Postgres connection pool saturation and catalog table vacuum status.",
+  "enabled": true
+}

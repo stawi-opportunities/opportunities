@@ -1,0 +1,33 @@
+{
+  "name": "warn-writer-buffer-backed-up",
+  "org_id": "stawi-jobs",
+  "stream_type": "metrics",
+  "stream_name": "default",
+  "is_real_time": false,
+  "query_condition": {
+    "conditions": null,
+    "sql": null,
+    "promql": "writer_buffer_bytes / writer_buffer_bytes_limit > 0.8",
+    "promql_condition": {
+      "operator": ">",
+      "value": 0
+    },
+    "type": "promql"
+  },
+  "trigger_condition": {
+    "period": 5,
+    "operator": ">=",
+    "threshold": 1,
+    "silence": 15,
+    "frequency": 5,
+    "cron": ""
+  },
+  "destinations": ["slack-platform-alerts"],
+  "context_attributes": {
+    "severity": "warning",
+    "team": "platform",
+    "runbook": "https://docs.stawi.jobs/ops/runbooks/writer-buffer-backed-up"
+  },
+  "description": "The writer's in-memory event buffer is above 80% of its memory budget. Force-flushes will begin evicting the oldest partitions. Consider increasing the writer pod memory limit or reducing flush thresholds.",
+  "enabled": true
+}

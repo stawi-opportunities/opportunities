@@ -1,53 +1,48 @@
-# Iceberg Migration Roadmap — Greenfield Cutover
+# Iceberg + R2-direct Architecture Reference
 
 Date: 2026-04-22
-Status: Proposal — awaits reading + redirect
+Status: Current — reflects production design
 Owner: Peter Bwire
-Replaces: the 5-phase dual-write variant of this document (git history preserves it)
 
 ---
 
-## 1. Why this is short
+## 1. System overview
 
-The cluster hasn't cut over to Phase 6 yet — the Vault secret for the log bucket is unseeded and Manticore's `idx_jobs_rt` schema is unapplied. The Phase 6 code is on `main` and `v5.0.2` images are published, but nothing is running against real traffic.
+Stawi Jobs uses a hybrid storage model:
 
-That means the event log is EMPTY in prod. No historical Parquet to migrate. No existing consumers to dual-read for. This is a straight substitution: the Phase 6 writer's "write Parquet to R2 at `<collection>/dt=…/<secondary>/<xid>.parquet`" becomes "write Parquet to R2 + commit to Iceberg catalog" in one release. The compactor never runs. `*_current/` directories never exist.
+- **Append-only event log (Iceberg on R2 + JDBC catalog):** 11 tables across `jobs` and `candidates` namespaces. Writers commit Parquet files to R2 and register each file via an Iceberg `AppendFiles` transaction. The JDBC catalog lives on the existing Postgres instance.
 
-One phase. One cutover. `v6.0.0` ships with Iceberg native.
+- **Canonical job body (R2-direct, no Iceberg):** Each canonical job is stored as a plain JSON file at `s3://stawi-jobs-content/jobs/<slug>.json`. Translations are at `jobs/<slug>/<lang>.json`. These paths are the authoritative source for job detail pages and for KV rebuild — there is no Iceberg `jobs.canonicals` table.
 
----
+- **Materializer (Frame subscriber):** The materializer subscribes to four NATS JetStream topics via Frame's handler registration. It does not scan Iceberg snapshots, does not hold a watermark, and does not participate in leader election. Consumer lag is observable via the NATS JetStream native metric `nats_jetstream_consumer_num_pending`.
 
-## 2. What changes in v6.0.0
+- **Valkey KV cache:** `cluster:<id>` keys hold `kv.ClusterSnapshot` JSON for the hot-path dedup and serve the search API. These keys are rebuilt from the R2 canonical files by the worker's `/_admin/kv/rebuild` endpoint.
 
-| Subsystem | Phase 6 shipped | v6.0.0 ships |
-|---|---|---|
-| Writer | Parquet → R2, per-topic encode, custom partition path | Parquet → R2, per-topic encode, **+ Iceberg `AppendFiles` commit** |
-| Compactor | hourly + daily Go compactor code | **deleted — never deployed** |
-| `*_current/` R2 prefixes | rebuilt nightly by Go compactor | **don't exist — replaced by Iceberg `_current` tables via MERGE** |
-| Materializer | R2-list + watermark in KV | Iceberg snapshot-diff scan |
-| `pkg/candidatestore` | R2-list + fold by business key | Iceberg table scan |
-| Apps/api Hugo backfill | R2-list `canonicals_current/` + parse | Iceberg scan `jobs.canonicals_current` |
-| Maintenance | Trustage hourly + daily compact triggers | Single nightly CronJob running pyiceberg |
-| Catalog | — | 4 tables in existing Postgres via JDBC catalog |
-| Watermark tracking | `materializer_watermarks` table in Postgres | Iceberg snapshot IDs |
+- **Search index (Manticore):** The materializer writes to `idx_jobs_rt` (replace + update). The materializer's Frame subscriber handlers are the only write path to Manticore.
 
-**Code net change:** delete ~2000 LOC (Phase 6 compactor + watermark adapter + `*_current` bucket logic + partition-prefix walking), add ~800 LOC (Iceberg commit helpers + snapshot-scan wrappers + one Python maintenance script).
+**Tables NOT in Iceberg:**
 
-**Operational surface:** drops from 3 Trustage compact/maintenance triggers to 1 CronJob.
+| Data | Storage |
+|---|---|
+| Canonical job body | `s3://stawi-jobs-content/jobs/<slug>.json` |
+| Job translations | `s3://stawi-jobs-content/jobs/<slug>/<lang>.json` |
+| Canonical expiry events | Frame event only — no persistent table |
 
 ---
 
-## 3. Target architecture
+## 2. Architecture diagram
 
 ```
-        Frame pub/sub topics
+        Frame pub/sub topics (NATS JetStream)
                 │
-                ▼
-   ┌───────────────────────────┐
-   │ apps/writer               │
-   │  Parquet → R2             │
-   │  AppendFiles → catalog    │  (one catalog commit per flush)
-   └─────┬──────────────┬──────┘
+          ┌─────┴──────────────────────────┐
+          │                                │
+          ▼                                ▼
+   ┌───────────────────────────┐   ┌──────────────────────────────┐
+   │ apps/writer               │   │ apps/materializer            │
+   │  Parquet → R2             │   │  Frame subscriber (4 topics) │
+   │  AppendFiles → catalog    │   │  → Manticore idx_jobs_rt     │
+   └─────┬──────────────┬──────┘   └──────────────────────────────┘
          │              │
          │              ▼
          │   ┌──────────────────────────┐
@@ -56,33 +51,45 @@ One phase. One cutover. `v6.0.0` ships with Iceberg native.
          │   │   iceberg_tables         │
          │   │   iceberg_history        │
          │   │   iceberg_manifests      │
-         │   └───────┬──────────┬───────┘
-         ▼           │          │
-   ┌──────────────┐  │          │
-   │ R2 Parquet   │  │          │
-   │ (same files  │  │          │
-   │  as Phase 6) │  │          │
-   └──────────────┘  │          │
-                     ▼          ▼
-              ┌─────────────────────┐   ┌──────────────────────┐
-              │ nightly CronJob     │   │ readers:             │
-              │  pyiceberg ≥0.8     │   │  apps/materializer   │
-              │  rewrite + expire   │   │  pkg/candidatestore  │
-              │  MERGE INTO _current│   │  apps/api backfill   │
-              └─────────────────────┘   └──────────────────────┘
+         │   └──────────────────────────┘
+         ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │ R2 (Cloudflare)                                              │
+   │                                                              │
+   │  stawi-jobs-content/                                         │
+   │    jobs/<slug>.json          ← canonical body (authoritative)│
+   │    jobs/<slug>/<lang>.json   ← translation body              │
+   │                                                              │
+   │  stawi-jobs-log/                                             │
+   │    <collection>/dt=…/        ← Parquet (Iceberg files)       │
+   └───────────────────────┬──────────────────────────────────────┘
+                           │
+                    ┌──────┴──────┐
+                    │             │
+                    ▼             ▼
+             ┌───────────┐  ┌────────────────────────┐
+             │ nightly   │  │ apps/worker             │
+             │ CronJob   │  │  /_admin/kv/rebuild     │
+             │ pyiceberg │  │  lists jobs/*.json      │
+             │ rewrite + │  │  → Valkey cluster:*     │
+             │ expire    │  └────────────────────────┘
+             └───────────┘
 ```
 
 **Catalog** = JDBC-on-Postgres, schema added via `db/migrations/0004_iceberg_catalog.sql`. No new service, no new HA story.
 
-**Writer** = adds one `iceberg-go` call after each successful R2 Put. If the commit fails, the writer nacks the Frame message and retries (same semantics as an R2 upload failure today).
+**Writer** = adds one `iceberg-go` call after each successful R2 Put. If the commit fails, the writer nacks the Frame message and retries (same semantics as an R2 upload failure today). Topics `canonicals.upserted`, `canonicals.expired`, and `translations` are ACKed without Iceberg persistence — their data lives in R2 JSON files.
+
+**Materializer** = four Frame handler registrations (`CanonicalUpserted`, `CanonicalExpired`, `Translation`, `Embedding`). No snapshot scan. No watermark. Consumer lag is `nats_jetstream_consumer_num_pending{consumer=~"materializer.*"}`.
+
+**KV rebuild** = `/_admin/kv/rebuild` pages through `stawi-jobs-content/jobs/*.json` (single-slash `.json` files only, skipping per-language translations), decodes `CanonicalUpsertedV1`, and writes `cluster:<id>` keys via Lua CAS. Concurrent 16-goroutine worker pool.
 
 **Maintenance** = a single Python pod, fires once nightly, runs ~5 min:
 
 ```python
-# apps/iceberg-ops/main.py
+# apps/iceberg-ops/main.py — 11 tables (canonicals/translations/expired are R2-direct)
 for tbl in [
-    "jobs.variants", "jobs.canonicals", "jobs.canonicals_expired",
-    "jobs.embeddings", "jobs.translations", "jobs.published",
+    "jobs.variants", "jobs.embeddings", "jobs.published",
     "jobs.crawl_page_completed", "jobs.sources_discovered",
     "candidates.cv_uploaded", "candidates.cv_extracted",
     "candidates.cv_improved", "candidates.preferences",
@@ -92,22 +99,11 @@ for tbl in [
     t.rewrite_data_files(target_file_size_bytes=128 << 20)
     t.rewrite_manifests()
     t.expire_snapshots(older_than_days=14)
-
-for current in CURRENT_TABLES:
-    cat.execute(f"""
-        MERGE INTO {current} AS target
-        USING (SELECT … FROM {current.source} ORDER BY occurred_at DESC) AS src
-        ON target.{key} = src.{key}
-        WHEN MATCHED THEN UPDATE SET …
-        WHEN NOT MATCHED THEN INSERT …
-    """)
 ```
-
-**Materializer** = `scan.UseRef(current).FromSnapshotExclusive(prev).PlanFiles()` replaces the R2 list + KV watermark pattern.
 
 ---
 
-## 3.1 Memory-adaptive operation (added 2026-04-22)
+## 2.1 Memory-adaptive operation
 
 All hot paths are O(batch) in memory, regardless of data scale, via
 `pkg/memconfig`:
@@ -137,43 +133,34 @@ and the system adapts without a restart.
 
 ---
 
-## 4. Table design (unchanged from the longer roadmap)
+## 4. Table design (11 Iceberg tables)
 
-### 4.1 Jobs namespace
+Canonical job body, translations, and expiry events are NOT in Iceberg — see §1.
+
+### 4.1 Jobs namespace (5 tables)
 
 | Table | Partition | Sort order after compaction |
 |---|---|---|
 | `jobs.variants` | `days(occurred_at), bucket(16, source_id)` | `posted_at` |
-| `jobs.canonicals` | `days(occurred_at), bucket(16, cluster_id)` | `(quality_score DESC, posted_at DESC)` |
-| `jobs.canonicals_current` | `bucket(16, cluster_id)` | `(quality_score DESC, posted_at DESC)` |
-| `jobs.canonicals_expired` | `days(occurred_at)` | `expired_at` |
 | `jobs.embeddings` | `bucket(16, canonical_id)` | — |
-| `jobs.embeddings_current` | `bucket(16, canonical_id)` | — |
-| `jobs.translations` | `days(occurred_at), bucket(8, lang)` | `canonical_id` |
-| `jobs.translations_current` | `bucket(8, lang)` | `canonical_id` |
 | `jobs.published` | `days(occurred_at)` | `published_at` |
 | `jobs.crawl_page_completed` | `days(occurred_at), bucket(16, source_id)` | `source_id` |
 | `jobs.sources_discovered` | `days(occurred_at)` | — |
 
-### 4.2 Candidates namespace
+### 4.2 Candidates namespace (6 tables)
 
 | Table | Partition | Sort order |
 |---|---|---|
 | `candidates.cv_uploaded` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
 | `candidates.cv_extracted` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
-| `candidates.cv_extracted_current` | `bucket(16, candidate_id)` | `candidate_id` |
 | `candidates.cv_improved` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
 | `candidates.preferences` | `bucket(16, candidate_id)` | `candidate_id` |
-| `candidates.preferences_current` | `bucket(16, candidate_id)` | `candidate_id` |
 | `candidates.embeddings` | `bucket(16, candidate_id)` | `candidate_id` |
-| `candidates.embeddings_current` | `bucket(16, candidate_id)` | `candidate_id` |
 | `candidates.matches_ready` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, match_batch_id)` |
-
-`*_current` tables are rebuilt atomically by the nightly maintenance job. Writers never touch them. Readers that need "fresher than nightly" run the equivalent query against the append-only table with a `ORDER BY occurred_at DESC LIMIT 1` filter — Iceberg's sort metadata makes this fast.
 
 ### 4.3 Z-ordering
 
-Applied during nightly compaction to the sort-key columns above. Pays off most on `jobs.canonicals` (quality + recency) and `candidates.cv_extracted_current` (candidate lookup). Skip for `embeddings*` — vector columns don't sort meaningfully.
+Applied during nightly compaction to the sort-key columns above. Pays off most on `candidates.cv_extracted` (candidate lookup). Skip for `embeddings` — vector columns don't sort meaningfully.
 
 ---
 
@@ -201,7 +188,7 @@ Applies before any code lands:
 ### 6.1 One-week spike (week 0)
 
 1. Stand up JDBC catalog against the dev Postgres.
-2. Create the `jobs` + `candidates` namespaces and ONE table (`jobs.canonicals`) via a pyiceberg one-off.
+2. Create the `jobs` + `candidates` namespaces and ONE table (`jobs.variants`) via a pyiceberg one-off.
 3. Write a handful of rows via `iceberg-go` from a throwaway Go script; verify the catalog registers the files.
 4. Run `rewrite_data_files` via pyiceberg; verify the compaction does what it claims.
 5. Read from Go: `NewScan().PlanFiles()`.
@@ -213,7 +200,7 @@ Outcome = go/no-go one-pager. If `iceberg-go` writes are stable enough: proceed 
 **Create:**
 - `db/migrations/0004_iceberg_catalog.sql` — the 4 Iceberg catalog tables
 - `definitions/iceberg/create_namespaces.py` — creates `jobs` and `candidates` namespaces
-- `definitions/iceberg/create_tables.py` — creates all 19 tables listed in §4 with their partition specs, sort orders, and schemas derived from `pkg/events/v1/*.go`
+- `definitions/iceberg/create_tables.py` — creates all 11 tables listed in §4 with their partition specs, sort orders, and schemas derived from `pkg/events/v1/*.go`
 
 **Deploy:**
 - Apply `0004_iceberg_catalog.sql` via the existing migration runner
@@ -257,7 +244,7 @@ func (s *Service) commitToCatalog(ctx context.Context, table string, parquetKey 
 **Create:**
 - `apps/iceberg-ops/` — new tiny Python app with one main script
 - `apps/iceberg-ops/Dockerfile` — `python:3.12-slim` + `pyiceberg[sql]` + `psycopg2`
-- `apps/iceberg-ops/main.py` — the nightly rewrite + expire + MERGE INTO for `_current` tables
+- `apps/iceberg-ops/main.py` — the nightly rewrite + expire for the 11 append-only Iceberg tables
 - `manifests/namespaces/stawi-jobs/iceberg-ops/cronjob.yaml` — one CronJob at `0 2 * * *`
 - `manifests/namespaces/stawi-jobs/iceberg-ops/kustomization.yaml`
 - Add `iceberg-ops/` to the top-level `stawi-jobs/kustomization.yaml`
@@ -266,37 +253,18 @@ func (s *Service) commitToCatalog(ctx context.Context, table string, parquetKey 
 - Build the image in the existing release workflow (add `apps/iceberg-ops` to the matrix)
 - Apply the manifest; first run happens at 02:00 UTC next day
 
-### 6.5 Materializer refactor (week 3)
+### 6.5 Materializer (already done — Frame subscriber)
 
-**Modify `apps/materializer/service/`:**
-- Replace the R2 polling loop with an Iceberg snapshot-diff scanner.
-- Delete the watermark Postgres table read/write (`pkg/repository/materializer_watermark.go` can go entirely).
-- Read the last-processed snapshot ID from Valkey; write the new snapshot ID after successful Manticore upserts.
+The materializer is already a Frame subscriber. No Iceberg scan, no watermark, no leader election. See §1 and `apps/materializer/service/service.go`.
 
-Rough shape:
-
-```go
-for _, table := range []string{"jobs.canonicals", "jobs.embeddings", "jobs.translations"} {
-    prev := kv.Get("mat:snap:" + table)
-    t, _ := cat.LoadTable(ctx, table)
-    current := t.CurrentSnapshot().SnapshotID()
-    if current == prev { continue }
-
-    files, _ := t.NewScan().UseRef(current).FromSnapshotExclusive(prev).PlanFiles(ctx)
-    for _, f := range files {
-        rows, _ := eventlog.ReadParquetAt(ctx, f.Path)
-        for _, r := range rows { manticore.Replace(ctx, "idx_jobs_rt", r.ID, r.Doc) }
-    }
-    kv.Set("mat:snap:" + table, current)
-}
-```
+Consumer lag monitoring: `nats_jetstream_consumer_num_pending{consumer=~"materializer.*"}` — see `definitions/openobserve/alerts/critical-materializer-lag-high.json`.
 
 ### 6.6 Reader refactor (week 4)
 
 **Modify:**
-- `pkg/candidatestore/reader.go` — scan `candidates.embeddings_current` + `candidates.preferences_current` via iceberg-go filters
-- `pkg/candidatestore/stale_reader.go` — scan `candidates.cv_extracted_current` filtered by `occurred_at < cutoff`
-- `apps/api/cmd/backfill_parquet.go` → rename `backfill_iceberg.go` — scan `jobs.canonicals_current` via iceberg-go
+- `pkg/candidatestore/reader.go` — scan `candidates.embeddings` + `candidates.preferences` via iceberg-go filters (latest-per-candidate using `ORDER BY occurred_at DESC LIMIT 1`)
+- `pkg/candidatestore/stale_reader.go` — scan `candidates.cv_extracted` filtered by `occurred_at < cutoff`
+- `apps/api/cmd/backfill_parquet.go` — scan `jobs.variants` or `jobs.published` for Hugo backfill; canonical detail comes from R2 JSON files directly
 
 Method signatures stay the same. Callers don't change.
 
@@ -352,8 +320,7 @@ The week-0 spike (§6.1) is not optional. It answers:
 
 1. **Writes:** Does `iceberg-go` commit files to a JDBC catalog reliably under concurrent writers? Target: 100 concurrent AppendFiles commits, zero metadata corruption.
 2. **Maintenance:** Does `pyiceberg` rewrite_data_files produce the expected sorted layout against real R2 (with S3-compatible endpoint config)?
-3. **Read:** Can iceberg-go `NewScan().FromSnapshotExclusive(prev).PlanFiles()` deliver new files for the materializer pattern?
-4. **MERGE INTO:** Does pyiceberg implement MERGE INTO, or do we need the fallback "delete + insert in one snapshot" pattern?
+3. **Read:** Can iceberg-go `NewScan().PlanFiles()` efficiently return rows for the candidatestore / backfill readers?
 
 If all four are green, proceed with §6.2 onward. If any are red, the mitigation path is known: Python sidecar for writes, simpler maintenance query shape, defer z-order to a follow-up.
 

@@ -299,84 +299,9 @@ func appendVariantFields(
 	appendTS(b.Field(23).(*array.TimestampBuilder), occurredAt)
 }
 
-// --------------------------------------------------------------------
-// jobs.canonicals  (CanonicalUpsertedV1)
-// --------------------------------------------------------------------
-
-func BuildCanonicalUpsertedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
-	b := array.NewRecordBuilder(pool, ArrowSchemaCanonicalsUpserted)
-	defer b.Release()
-
-	for _, raw := range raws {
-		var env eventsv1.Envelope[eventsv1.CanonicalUpsertedV1]
-		if err := json.Unmarshal(raw, &env); err != nil {
-			return nil, fmt.Errorf("decode CanonicalUpsertedV1: %w", err)
-		}
-		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
-
-		b.Field(0).(*array.StringBuilder).Append(p.CanonicalID)
-		b.Field(1).(*array.StringBuilder).Append(p.ClusterID)
-		b.Field(2).(*array.StringBuilder).Append(p.Slug)
-		appendOptStr(b.Field(3).(*array.StringBuilder), p.Title)
-		appendOptStr(b.Field(4).(*array.StringBuilder), p.Company)
-		appendOptStr(b.Field(5).(*array.StringBuilder), p.Description)
-		appendOptStr(b.Field(6).(*array.StringBuilder), p.LocationText)
-		appendOptStr(b.Field(7).(*array.StringBuilder), p.Country)
-		appendOptStr(b.Field(8).(*array.StringBuilder), p.Language)
-		appendOptStr(b.Field(9).(*array.StringBuilder), p.RemoteType)
-		appendOptStr(b.Field(10).(*array.StringBuilder), p.EmploymentType)
-		appendOptStr(b.Field(11).(*array.StringBuilder), p.Seniority)
-		appendOptF64(b.Field(12).(*array.Float64Builder), p.SalaryMin)
-		appendOptF64(b.Field(13).(*array.Float64Builder), p.SalaryMax)
-		appendOptStr(b.Field(14).(*array.StringBuilder), p.Currency)
-		appendOptStr(b.Field(15).(*array.StringBuilder), p.Category)
-		appendOptF64(b.Field(16).(*array.Float64Builder), p.QualityScore)
-		b.Field(17).(*array.StringBuilder).Append(p.Status)
-		appendOptTS(b.Field(18).(*array.TimestampBuilder), p.PostedAt)
-		appendOptTS(b.Field(19).(*array.TimestampBuilder), p.FirstSeenAt)
-		appendOptTS(b.Field(20).(*array.TimestampBuilder), p.LastSeenAt)
-		appendOptTS(b.Field(21).(*array.TimestampBuilder), p.ExpiresAt)
-		appendOptStr(b.Field(22).(*array.StringBuilder), p.ApplyURL)
-		b.Field(23).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(24).(*array.TimestampBuilder), p.OccurredAt)
-	}
-
-	rec := b.NewRecord()
-	defer rec.Release()
-	return makeRecordReader(ArrowSchemaCanonicalsUpserted, rec)
-}
-
-// --------------------------------------------------------------------
-// jobs.canonicals_expired  (CanonicalExpiredV1)
-// --------------------------------------------------------------------
-
-func BuildCanonicalExpiredRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
-	b := array.NewRecordBuilder(pool, ArrowSchemaCanonicalsExpired)
-	defer b.Release()
-
-	for _, raw := range raws {
-		var env eventsv1.Envelope[eventsv1.CanonicalExpiredV1]
-		if err := json.Unmarshal(raw, &env); err != nil {
-			return nil, fmt.Errorf("decode CanonicalExpiredV1: %w", err)
-		}
-		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
-
-		b.Field(0).(*array.StringBuilder).Append(p.CanonicalID)
-		appendOptStr(b.Field(1).(*array.StringBuilder), p.ClusterID)
-		appendOptStr(b.Field(2).(*array.StringBuilder), p.Reason)
-		appendTS(b.Field(3).(*array.TimestampBuilder), p.ExpiredAt)
-		b.Field(4).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(5).(*array.TimestampBuilder), p.OccurredAt)
-	}
-
-	rec := b.NewRecord()
-	defer rec.Release()
-	return makeRecordReader(ArrowSchemaCanonicalsExpired, rec)
-}
+// BuildCanonicalUpsertedRecord and BuildCanonicalExpiredRecord are removed.
+// jobs.canonicals and jobs.canonicals_expired are no longer written to Iceberg.
+// Canonical body is published as R2-slug-direct JSON; expired is a Frame event only.
 
 // --------------------------------------------------------------------
 // jobs.embeddings  (EmbeddingV1)
@@ -407,36 +332,9 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 	return makeRecordReader(ArrowSchemaEmbeddings, rec)
 }
 
-// --------------------------------------------------------------------
-// jobs.translations  (TranslationV1)
-// --------------------------------------------------------------------
-
-func BuildTranslationRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
-	b := array.NewRecordBuilder(pool, ArrowSchemaTranslations)
-	defer b.Release()
-
-	for _, raw := range raws {
-		var env eventsv1.Envelope[eventsv1.TranslationV1]
-		if err := json.Unmarshal(raw, &env); err != nil {
-			return nil, fmt.Errorf("decode TranslationV1: %w", err)
-		}
-		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
-
-		b.Field(0).(*array.StringBuilder).Append(p.CanonicalID)
-		b.Field(1).(*array.StringBuilder).Append(p.Lang)
-		appendOptStr(b.Field(2).(*array.StringBuilder), p.TitleTr)
-		appendOptStr(b.Field(3).(*array.StringBuilder), p.DescriptionTr)
-		appendOptStr(b.Field(4).(*array.StringBuilder), p.ModelVersion)
-		b.Field(5).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(6).(*array.TimestampBuilder), p.OccurredAt)
-	}
-
-	rec := b.NewRecord()
-	defer rec.Release()
-	return makeRecordReader(ArrowSchemaTranslations, rec)
-}
+// BuildTranslationRecord is removed.
+// jobs.translations is no longer written to Iceberg.
+// Translated body lives at s3://stawi-jobs-content/jobs/<slug>/<lang>.json (R2-direct).
 
 // --------------------------------------------------------------------
 // jobs.published  (PublishedV1)

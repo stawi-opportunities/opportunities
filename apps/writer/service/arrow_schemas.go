@@ -69,52 +69,9 @@ var ArrowSchemaVariants = arrow.NewSchema([]arrow.Field{
 	_req("occurred_at", _tsType),
 }, nil)
 
-// --------------------------------------------------------------------
-// jobs.canonicals  (CanonicalUpsertedV1)
-// --------------------------------------------------------------------
-
-var ArrowSchemaCanonicalsUpserted = arrow.NewSchema([]arrow.Field{
-	_req("canonical_id", arrow.BinaryTypes.String),
-	_req("cluster_id", arrow.BinaryTypes.String),
-	_req("slug", arrow.BinaryTypes.String),
-	_opt("title", arrow.BinaryTypes.String),
-	_opt("company", arrow.BinaryTypes.String),
-	_opt("description", arrow.BinaryTypes.String),
-	_opt("location_text", arrow.BinaryTypes.String),
-	_opt("country", arrow.BinaryTypes.String),
-	_opt("language", arrow.BinaryTypes.String),
-	_opt("remote_type", arrow.BinaryTypes.String),
-	_opt("employment_type", arrow.BinaryTypes.String),
-	_opt("seniority", arrow.BinaryTypes.String),
-	_opt("salary_min", arrow.PrimitiveTypes.Float64),
-	_opt("salary_max", arrow.PrimitiveTypes.Float64),
-	_opt("currency", arrow.BinaryTypes.String),
-	_opt("category", arrow.BinaryTypes.String),
-	_opt("quality_score", arrow.PrimitiveTypes.Float64),
-	_req("status", arrow.BinaryTypes.String),
-	_opt("posted_at", _tsType),
-	_opt("first_seen_at", _tsType),
-	_opt("last_seen_at", _tsType),
-	_opt("expires_at", _tsType),
-	_opt("apply_url", arrow.BinaryTypes.String),
-	// envelope tail
-	_req("event_id", arrow.BinaryTypes.String),
-	_req("occurred_at", _tsType),
-}, nil)
-
-// --------------------------------------------------------------------
-// jobs.canonicals_expired  (CanonicalExpiredV1)
-// --------------------------------------------------------------------
-
-var ArrowSchemaCanonicalsExpired = arrow.NewSchema([]arrow.Field{
-	_req("canonical_id", arrow.BinaryTypes.String),
-	_opt("cluster_id", arrow.BinaryTypes.String),
-	_opt("reason", arrow.BinaryTypes.String),
-	_req("expired_at", _tsType),
-	// envelope tail
-	_req("event_id", arrow.BinaryTypes.String),
-	_req("occurred_at", _tsType),
-}, nil)
+// jobs.canonicals and jobs.canonicals_expired are NOT persisted to Iceberg.
+// Canonical body lives at s3://stawi-jobs-content/jobs/<slug>.json (R2-direct).
+// canonicals_expired is a Frame event only — the materializer subscribes directly.
 
 // --------------------------------------------------------------------
 // jobs.embeddings  (EmbeddingV1)
@@ -129,20 +86,8 @@ var ArrowSchemaEmbeddings = arrow.NewSchema([]arrow.Field{
 	_req("occurred_at", _tsType),
 }, nil)
 
-// --------------------------------------------------------------------
-// jobs.translations  (TranslationV1)
-// --------------------------------------------------------------------
-
-var ArrowSchemaTranslations = arrow.NewSchema([]arrow.Field{
-	_req("canonical_id", arrow.BinaryTypes.String),
-	_req("lang", arrow.BinaryTypes.String),
-	_opt("title_tr", arrow.BinaryTypes.String),
-	_opt("description_tr", arrow.BinaryTypes.String),
-	_opt("model_version", arrow.BinaryTypes.String),
-	// envelope tail
-	_req("event_id", arrow.BinaryTypes.String),
-	_req("occurred_at", _tsType),
-}, nil)
+// jobs.translations is NOT persisted to Iceberg.
+// Translated body lives at s3://stawi-jobs-content/jobs/<slug>/<lang>.json (R2-direct).
 
 // --------------------------------------------------------------------
 // jobs.published  (PublishedV1)
