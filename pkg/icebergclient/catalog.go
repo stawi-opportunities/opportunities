@@ -12,6 +12,7 @@ import (
 	iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	_ "github.com/apache/iceberg-go/catalog/sql" // register "sql" catalog driver
+	_ "github.com/jackc/pgx/v5/stdlib"            // register "pgx" database/sql driver
 )
 
 // CatalogConfig carries all parameters needed to open an Iceberg SQL catalog.
@@ -38,6 +39,7 @@ func LoadCatalog(ctx context.Context, cfg CatalogConfig) (catalog.Catalog, error
 	props := iceberg.Properties{
 		"type":                  "sql",
 		"uri":                   cfg.URI,
+		"sql.driver":            "pgx",
 		"sql.dialect":           "postgres",
 		"warehouse":             cfg.Warehouse,
 		"s3.endpoint":           cfg.R2Endpoint,

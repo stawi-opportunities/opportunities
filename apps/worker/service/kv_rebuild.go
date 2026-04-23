@@ -205,7 +205,7 @@ func (r *KVRebuilder) flushToValkey(ctx context.Context, m map[string]canonicalM
 		if err != nil {
 			continue // skip corrupt row
 		}
-		tsISO := snap.LastSeenAt.UTC().Format(time.RFC3339Nano)
+		tsISO := snap.LastSeenAt.UTC().Format(time.RFC3339)
 		key := "cluster:" + clusterID
 
 		// Use Eval (not EvalSha) so the script works inside a pipeline without

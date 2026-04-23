@@ -474,7 +474,7 @@ func buildFilePathFilter(tasks []table.FileScanTask) (iceberg.BooleanExpression,
 	}
 	result := exprs[0]
 	for _, e := range exprs[1:] {
-		result = iceberg.NewAnd(result, e)
+		result = iceberg.NewOr(result, e)
 	}
 	return result, nil
 }

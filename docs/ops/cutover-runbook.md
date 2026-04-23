@@ -13,7 +13,12 @@
   - [ ] Valkey at $VALKEY_URL
   - [ ] R2 bucket stawi-jobs-log with writer credentials
   - [ ] TEI chat / embed / rerank endpoints answer /health
-- [ ] Trustage workflows deployed: scheduler-tick, compact-hourly, compact-daily, sources-quality-window-reset, sources-health-decay, candidates-matches-weekly-digest, candidates-cv-stale-nudge.
+- [ ] Iceberg catalog migration applied: `psql "$DATABASE_URL" -f db/migrations/0004_iceberg_catalog.sql`
+- [ ] Iceberg namespaces + tables bootstrapped:
+  - `python3 definitions/iceberg/create_namespaces.py`
+  - `python3 definitions/iceberg/create_tables.py`
+- [ ] Vault secret seeded at `antinvestor/stawi-jobs/common/iceberg-catalog` (ICEBERG_CATALOG_URI, warehouse, R2 credentials).
+- [ ] Trustage workflows deployed: scheduler-tick, writer-compact, writer-expire-snapshots, sources-quality-window-reset, sources-health-decay, candidates-matches-weekly-digest, candidates-cv-stale-nudge.
 - [ ] Backpressure gate env set: BACKPRESSURE_MAX_DRAIN=15m, BACKPRESSURE_HARD_CEILING=45m.
 - [ ] idx_jobs_rt schema provisioned (Phase 2 migration). Verify: curl -s $MANTICORE_URL/sql?mode=raw -d "query=SHOW TABLES"
 - [ ] All six app images built + pushed at the Phase 6 SHA.
@@ -47,8 +52,12 @@
 
 - [ ] curl -XPOST $CRAWLER_URL/admin/scheduler/tick
 - [ ] Wait 5 min. Run manual compact:
-  - curl -XPOST $WRITER_URL/_admin/compact/hourly -d '{"collection":"variants"}'
-  - curl -XPOST $WRITER_URL/_admin/compact/daily -d '{"collection":"canonicals"}'
+  - curl -XPOST $WRITER_URL/_admin/compact
+- [ ] Run expire-snapshots if needed:
+  - curl -XPOST $WRITER_URL/_admin/expire-snapshots
+- [ ] Apply the new Trustage triggers:
+  - trustage deploy definitions/trustage/writer-compact.json
+  - trustage deploy definitions/trustage/writer-expire-snapshots.json
 
 ### 2.4 Fill checkpoint (1–3 hours)
 

@@ -125,6 +125,7 @@ func NewService(
 	}
 	s.tables = []tableSink{
 		{Ident: []string{"jobs", "canonicals"}, apply: s.applyCanonicals},
+		{Ident: []string{"jobs", "canonicals_expired"}, apply: s.applyCanonicalExpired},
 		{Ident: []string{"jobs", "embeddings"}, apply: s.applyEmbeddings},
 		{Ident: []string{"jobs", "translations"}, apply: s.applyTranslations},
 	}
@@ -327,6 +328,27 @@ func (s *Service) applyTranslations(ctx context.Context, body []byte, up *BulkUp
 			"model_version":  r.ModelVersion,
 		}
 		if err := up.Add(ctx, hashID(r.CanonicalID+":"+r.Lang), doc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyCanonicalExpired decodes a Parquet body of CanonicalExpiredV1 rows
+// and patches status='expired' + expires_at on the corresponding Manticore
+// documents. Uses the same hashID(canonical_id) → row id as applyCanonicals
+// so the update lands on the correct document.
+func (s *Service) applyCanonicalExpired(ctx context.Context, body []byte, up *BulkUpserter) error {
+	rows, err := eventlog.ReadParquet[eventsv1.CanonicalExpiredV1](body)
+	if err != nil {
+		return fmt.Errorf("decode canonicals_expired parquet: %w", err)
+	}
+	for _, r := range rows {
+		doc := map[string]any{
+			"status":     "expired",
+			"expires_at": r.ExpiredAt.Unix(),
+		}
+		if err := up.Add(ctx, hashID(r.CanonicalID), doc); err != nil {
 			return err
 		}
 	}
