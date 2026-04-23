@@ -9,6 +9,8 @@ import (
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
+
+	"stawi.jobs/pkg/telemetry"
 )
 
 // AppendOnlyTables is the authoritative list of writer-persisted tables
@@ -121,7 +123,13 @@ func ExpireSnapshots(ctx context.Context, cat catalog.Catalog, cfg ExpireSnapsho
 //
 // Both options are mandatory: ExpireSnapshots returns an error if either
 // minSnapshotsToKeep or maxSnapshotAgeMs is nil on the transaction metadata.
+//
+// Emits IcebergExpireDuration and IcebergExpireSnapshotsRemoved metrics on
+// every call, and updates IcebergExpireLastSuccessUnix on success.
 func expireOne(ctx context.Context, cat catalog.Catalog, ident []string, olderThan time.Duration, minKeep int) (int, error) {
+	tableName := ident[0] + "." + ident[1]
+	start := time.Now()
+
 	tbl, err := cat.LoadTable(ctx, ident)
 	if err != nil {
 		return 0, fmt.Errorf("load: %w", err)
@@ -141,8 +149,14 @@ func expireOne(ctx context.Context, cat catalog.Catalog, ident []string, olderTh
 		return 0, fmt.Errorf("commit: %w", err)
 	}
 	after := len(newTbl.Metadata().Snapshots())
-	if before <= after {
-		return 0, nil
+	removed := 0
+	if before > after {
+		removed = before - after
 	}
-	return before - after, nil
+
+	dur := time.Since(start).Seconds()
+	telemetry.RecordExpire(tableName, dur, removed)
+	telemetry.RecordExpireSuccess(tableName)
+
+	return removed, nil
 }

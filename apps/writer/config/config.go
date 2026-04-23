@@ -41,6 +41,21 @@ type Config struct {
 	// at least MinSnapshotsToKeep are always retained per table regardless of age.
 	SnapshotRetentionDays int `env:"SNAPSHOT_RETENTION_DAYS" envDefault:"14"`
 	MinSnapshotsToKeep    int `env:"MIN_SNAPSHOTS_TO_KEEP"   envDefault:"100"`
+
+	// Compaction knobs used by the /_admin/compact endpoint.
+	//
+	// CompactTargetFileSize is the desired output Parquet file size.
+	// CompactMinFileSize is the threshold below which a file is "small"
+	// and eligible for merging (default TargetFileSize/2 = 64 MiB).
+	// CompactMaxInputPerCommit caps how many small files are merged per
+	// per-partition Overwrite transaction; keeps individual commits bounded.
+	// CompactPerTableTimeout limits each table's compaction goroutine.
+	// CompactParallelism fans out across tables (same as Parallelism for expire).
+	CompactTargetFileSize    int64         `env:"COMPACT_TARGET_FILE_SIZE"     envDefault:"134217728"` // 128 MiB
+	CompactMinFileSize       int64         `env:"COMPACT_MIN_FILE_SIZE"        envDefault:"67108864"`  // 64 MiB
+	CompactMaxInputPerCommit int           `env:"COMPACT_MAX_INPUT_PER_COMMIT" envDefault:"20"`
+	CompactPerTableTimeout   time.Duration `env:"COMPACT_PER_TABLE_TIMEOUT"    envDefault:"30m"`
+	CompactParallelism       int           `env:"COMPACT_PARALLELISM"          envDefault:"4"`
 }
 
 // Load reads the Config from environment variables.

@@ -15,6 +15,7 @@ import (
 
 	eventsv1 "stawi.jobs/pkg/events/v1"
 	"stawi.jobs/pkg/icebergclient"
+	"stawi.jobs/pkg/telemetry"
 
 	writercfg "stawi.jobs/apps/writer/config"
 	writersvc "stawi.jobs/apps/writer/service"
@@ -66,18 +67,40 @@ func main() {
 		}
 	}()
 
+	// Register OTel Iceberg observables (catalog-backed gauges).
+	// Must be called after the catalog is loaded.
+	telemetry.RegisterIcebergObservables(telemetry.IcebergObservablesConfig{
+		Catalog:     cat,
+		TableIdents: writersvc.AppendOnlyTables,
+	})
+
+	// Register writer buffer stats for the buffer gauges.
+	telemetry.RegisterBufferStats(func(topic string) (int, int) {
+		return buffer.StatsForTopic(topic)
+	}, eventsv1.AllTopics())
+
 	// Admin HTTP mux — lightweight, not exposed to the public internet.
-	// Trustage fires POST /_admin/expire-snapshots nightly via the
-	// in-cluster service DNS (stawi-jobs-writer.stawi-jobs.svc).
+	// Trustage fires POST /_admin/expire-snapshots nightly and
+	// POST /_admin/compact every 2 h via the in-cluster service DNS
+	// (stawi-jobs-writer.stawi-jobs.svc).
 	expireCfg := writersvc.ExpireSnapshotsConfig{
 		OlderThan:          time.Duration(cfg.SnapshotRetentionDays) * 24 * time.Hour,
 		MinSnapshotsToKeep: cfg.MinSnapshotsToKeep,
 		PerTableTimeout:    5 * time.Minute,
 		Parallelism:        4,
 	}
+	compactCfg := writersvc.CompactConfig{
+		TargetFileSize:    cfg.CompactTargetFileSize,
+		MinFileSize:       cfg.CompactMinFileSize,
+		MaxInputPerCommit: cfg.CompactMaxInputPerCommit,
+		PerTableTimeout:   cfg.CompactPerTableTimeout,
+		Parallelism:       cfg.CompactParallelism,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /_admin/expire-snapshots",
 		writersvc.ExpireSnapshotsHandler(cat, expireCfg))
+	mux.HandleFunc("POST /_admin/compact",
+		writersvc.CompactHandler(cat, compactCfg))
 
 	svc.Init(ctx, frame.WithHTTPHandler(mux))
 

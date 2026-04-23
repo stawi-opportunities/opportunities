@@ -16,6 +16,8 @@ import (
 	"stawi.jobs/pkg/eventlog"
 	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/searchindex"
+	"stawi.jobs/pkg/telemetry"
+	writersvc "stawi.jobs/apps/writer/service"
 
 	matcfg "stawi.jobs/apps/materializer/config"
 	matsvc "stawi.jobs/apps/materializer/service"
@@ -82,6 +84,16 @@ func main() {
 	}
 	kvClient := redis.NewClient(kvOpts)
 	wm := matsvc.NewWatermark(kvClient)
+
+	// Register Iceberg observables for materializer-lag and table-state gauges.
+	// The Valkey client enables the materializer-lag callback which reads
+	// mat:snap:<table> watermarks and compares them against the current
+	// Iceberg snapshot timestamp.
+	telemetry.RegisterIcebergObservables(telemetry.IcebergObservablesConfig{
+		Catalog:     cat,
+		TableIdents: writersvc.AppendOnlyTables,
+		Valkey:      kvClient,
+	})
 
 	service := matsvc.NewService(cat, reader, cfg.R2Bucket, mc, wm, cfg.PollInterval, cfg.ManticoreBulkBatchSize)
 

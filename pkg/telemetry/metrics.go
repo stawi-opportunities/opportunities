@@ -71,5 +71,5 @@ func Init() error {
 		return err
 	}
 
-	return nil
+	return InitIceberg()
 }

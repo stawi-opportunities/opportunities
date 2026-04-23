@@ -120,6 +120,21 @@ func (b *Buffer) FlushAll() []*Batch {
 	return out
 }
 
+// StatsForTopic returns the total (bytes, events) currently buffered across
+// all partition-secondary slots for the given topic.  Returns (0,0) if no
+// data is buffered for that topic.  Safe for concurrent use.
+func (b *Buffer) StatsForTopic(topic string) (bytes int, events int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for k, pb := range b.parts {
+		if k.topic == topic {
+			bytes += pb.bytes
+			events += len(pb.events)
+		}
+	}
+	return bytes, events
+}
+
 func (b *Buffer) flushLocked(k bufferKey, pb *partitionBuffer) *Batch {
 	batch := &Batch{
 		Collection: collectionForTopic(k.topic),
