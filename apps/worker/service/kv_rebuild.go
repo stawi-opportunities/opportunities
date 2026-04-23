@@ -9,20 +9,24 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/iceberg-go/catalog"
+	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
 	"github.com/redis/go-redis/v9"
 
 	"stawi.jobs/pkg/kv"
 )
 
-// KVRebuilder repopulates Valkey cluster:* keys from the Iceberg
-// jobs.canonicals_current table. Called after a Valkey replica loss.
+// KVRebuilder repopulates Valkey cluster:* keys from the append-only Iceberg
+// jobs.canonicals table. Called after a Valkey replica loss.
+//
+// Because jobs.canonicals is append-only (each canonical update appends a new
+// row), the rebuilder folds all rows for a given cluster_id in Go, keeping
+// the row with the latest occurred_at as the authoritative snapshot.
 //
 // Scope: cluster:{cluster_id} := JSON snapshot only. dedup:{hard_key}
-// rebuild requires variant-level data and is out of scope; the first
-// variant through the pipeline after a rebuild creates a fresh cluster,
-// and hourly/daily compaction re-merges any duplicates detected by
-// hard_key overlap.
+// rebuild requires variant-level data and is out of scope; the first variant
+// through the pipeline after a rebuild creates a fresh cluster, and
+// hourly/daily compaction re-merges any duplicates detected by hard_key overlap.
 type KVRebuilder struct {
 	cat catalog.Catalog
 	kv  *redis.Client
@@ -39,18 +43,27 @@ type KVRebuildResult struct {
 	ClusterKeysSet int `json:"cluster_keys_set"`
 }
 
-// Run scans jobs.canonicals_current via Iceberg and writes a
-// cluster:{cluster_id} key for every row with a non-empty cluster_id.
+// Run scans the append-only jobs.canonicals table via Iceberg, folds all rows
+// per cluster_id keeping the latest by occurred_at, then writes a
+// cluster:{cluster_id} key for every unique cluster_id.
 // Rows are pipelined to Valkey in batches of 500.
 func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	var res KVRebuildResult
 
-	tbl, err := r.cat.LoadTable(ctx, []string{"jobs", "canonicals_current"})
+	tbl, err := r.cat.LoadTable(ctx, []string{"jobs", "canonicals"})
 	if err != nil {
 		return res, fmt.Errorf("kv rebuild: load table: %w", err)
 	}
 
-	scan := tbl.Scan()
+	scan := tbl.Scan(
+		table.WithSelectedFields(
+			"canonical_id", "cluster_id", "slug", "title", "company",
+			"country", "language", "remote_type", "employment_type", "seniority",
+			"salary_min", "salary_max", "currency", "category",
+			"quality_score", "status", "apply_url",
+			"first_seen_at", "last_seen_at", "posted_at", "occurred_at",
+		),
+	)
 
 	atbl, err := scan.ToArrowTable(ctx)
 	if err != nil {
@@ -58,25 +71,33 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	}
 	defer atbl.Release()
 
-	rows, err := canonicalMinimalRowsFromTable(atbl)
+	allRows, err := canonicalMinimalRowsFromTable(atbl)
 	if err != nil {
 		return res, fmt.Errorf("kv rebuild: decode rows: %w", err)
+	}
+	res.Rows = len(allRows)
+
+	// Fold: for each cluster_id keep the row with the latest occurred_at.
+	latest := make(map[string]canonicalMinimal, len(allRows)/2)
+	for _, row := range allRows {
+		if row.ClusterID == "" {
+			continue
+		}
+		existing, ok := latest[row.ClusterID]
+		if !ok || row.OccurredAt.After(existing.OccurredAt) {
+			latest[row.ClusterID] = row
+		}
 	}
 
 	pipe := r.kv.Pipeline()
 	batchSize := 0
-	for _, row := range rows {
-		res.Rows++
-		if row.ClusterID == "" {
-			continue
-		}
-
+	for clusterID, row := range latest {
 		snap, merr := json.Marshal(clusterSnapshotFromMinimal(row))
 		if merr != nil {
 			continue
 		}
 		// TTL 0 = no expiry — cluster snapshots are permanent.
-		pipe.Set(ctx, "cluster:"+row.ClusterID, snap, 0)
+		pipe.Set(ctx, "cluster:"+clusterID, snap, 0)
 		res.ClusterKeysSet++
 		batchSize++
 
@@ -101,10 +122,9 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	return res, nil
 }
 
-// canonicalMinimal carries the subset of canonicals_current fields needed
-// for KV rebuild. Only cluster_id and the fields in kv.ClusterSnapshot are
-// extracted — heavier columns (description, apply_url) are omitted from the
-// scan selection by not being included in WithSelectedFields.
+// canonicalMinimal carries the subset of canonicals fields needed for KV
+// rebuild. OccurredAt is used for the in-Go fold (latest-per-cluster_id);
+// it is not written to Valkey.
 type canonicalMinimal struct {
 	ClusterID      string
 	CanonicalID    string
@@ -125,16 +145,17 @@ type canonicalMinimal struct {
 	FirstSeenAt    time.Time
 	LastSeenAt     time.Time
 	PostedAt       time.Time
+	OccurredAt     time.Time
 	ApplyURL       string
 }
 
 // canonicalMinimalRowsFromTable decodes an Arrow table with (a subset of)
-// the jobs.canonicals_current schema into []canonicalMinimal.
+// the jobs.canonicals schema into []canonicalMinimal.
 // Columns are resolved by name so missing columns degrade gracefully.
 func canonicalMinimalRowsFromTable(tbl arrow.Table) ([]canonicalMinimal, error) {
 	sc := tbl.Schema()
 	if len(sc.FieldIndices("cluster_id")) == 0 && len(sc.FieldIndices("canonical_id")) == 0 {
-		return nil, fmt.Errorf("canonicals_current: missing both cluster_id and canonical_id; schema: %s", sc)
+		return nil, fmt.Errorf("canonicals: missing both cluster_id and canonical_id; schema: %s", sc)
 	}
 
 	tr := array.NewTableReader(tbl, -1)
@@ -165,6 +186,7 @@ func canonicalMinimalRowsFromTable(tbl arrow.Table) ([]canonicalMinimal, error) 
 		colFirstSeenAt := kvTimestampCol(rec, "first_seen_at")
 		colLastSeenAt := kvTimestampCol(rec, "last_seen_at")
 		colPostedAt := kvTimestampCol(rec, "posted_at")
+		colOccurredAt := kvTimestampCol(rec, "occurred_at")
 
 		for i := 0; i < nRows; i++ {
 			row := canonicalMinimal{}
@@ -227,6 +249,9 @@ func canonicalMinimalRowsFromTable(tbl arrow.Table) ([]canonicalMinimal, error) 
 			}
 			if colPostedAt != nil && !colPostedAt.IsNull(i) {
 				row.PostedAt = kvTimestampToTime(rec, "posted_at", colPostedAt, i)
+			}
+			if colOccurredAt != nil && !colOccurredAt.IsNull(i) {
+				row.OccurredAt = kvTimestampToTime(rec, "occurred_at", colOccurredAt, i)
 			}
 			out = append(out, row)
 		}

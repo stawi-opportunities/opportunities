@@ -1,17 +1,19 @@
 // Package candidatestore provides read-only access to the latest
 // per-candidate derived state (embedding, preferences) from Iceberg
-// tables. The match endpoint uses it to avoid reading Postgres on the
-// hot path.
+// append-only tables. The match endpoint uses it to avoid reading
+// Postgres on the hot path.
 //
-// The *_current tables are rebuilt nightly by the iceberg-ops maintenance
-// job (Wave 7). Acceptable staleness for the match endpoint and stale-
-// nudge admin is the nightly compaction window — see design spec §4.
+// Staleness: each call scans the append-only table filtered by
+// candidate_id. Iceberg's bucket(32, candidate_id) partition plus a
+// bloom filter on candidate_id limits the scan to ~1/32 of files.
+// Target latency <100ms p95 for single-candidate lookups.
 package candidatestore
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -27,7 +29,7 @@ import (
 var ErrNotFound = errors.New("candidatestore: candidate state not found")
 
 // Reader reads candidate embedding + preference state from Iceberg
-// *_current tables.
+// append-only tables, folding in Go to find the latest row per candidate.
 type Reader struct {
 	cat catalog.Catalog
 }
@@ -38,27 +40,26 @@ func NewReader(cat catalog.Catalog) *Reader {
 }
 
 // LatestEmbedding returns the embedding row for candidateID from the
-// candidates.embeddings_current Iceberg table. Because *_current holds
-// exactly one row per candidate after the nightly MERGE, the scan
-// returns at most one row.
+// append-only candidates.embeddings Iceberg table. All rows for the
+// candidate are scanned (filter pushdown via bucket partition + bloom
+// filter on candidate_id limits this to ~1/32 of data files) and the
+// row with the latest occurred_at is returned.
 //
 // Returns (zero, ErrNotFound) when no row exists for the candidate.
-// Returns (zero, nil) only when the table scan returns zero rows but no
-// error — callers treat that identically to ErrNotFound.
 func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (eventsv1.CandidateEmbeddingV1, error) {
-	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "embeddings_current"})
+	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "embeddings"})
 	if err != nil {
-		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: load embeddings_current: %w", err)
+		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: load embeddings: %w", err)
 	}
 
 	scan := tbl.Scan(
 		table.WithRowFilter(iceberg.EqualTo(iceberg.Reference("candidate_id"), candidateID)),
-		table.WithSelectedFields("candidate_id", "cv_version", "vector", "model_version"),
+		table.WithSelectedFields("candidate_id", "cv_version", "vector", "model_version", "occurred_at"),
 	)
 
 	arrowTbl, err := scan.ToArrowTable(ctx)
 	if err != nil {
-		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: scan embeddings_current: %w", err)
+		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: scan embeddings: %w", err)
 	}
 	defer arrowTbl.Release()
 
@@ -74,25 +75,22 @@ func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (event
 		return eventsv1.CandidateEmbeddingV1{}, ErrNotFound
 	}
 
-	// _current has at most one row per candidate. If somehow there are
-	// multiple (compaction lag), pick the one with the highest CVVersion.
-	best := rows[0]
-	for _, row := range rows[1:] {
-		if row.CVVersion > best.CVVersion {
-			best = row
-		}
-	}
-	return best, nil
+	// Pick the row with the latest occurred_at (append-only table may have
+	// multiple rows per candidate — each CV reprocessing appends a new row).
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].OccurredAt.After(rows[j].OccurredAt)
+	})
+	return rows[0], nil
 }
 
-// LatestPreferences returns the preferences row for candidateID from
-// the candidates.preferences_current Iceberg table.
+// LatestPreferences returns the preferences row for candidateID from the
+// append-only candidates.preferences Iceberg table.
 //
 // Returns (zero, ErrNotFound) when no row exists.
 func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eventsv1.PreferencesUpdatedV1, error) {
-	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "preferences_current"})
+	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "preferences"})
 	if err != nil {
-		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: load preferences_current: %w", err)
+		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: load preferences: %w", err)
 	}
 
 	scan := tbl.Scan(
@@ -101,13 +99,13 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 			"candidate_id", "remote_preference",
 			"salary_min", "salary_max", "currency",
 			"preferred_locations", "excluded_companies",
-			"target_roles", "languages", "availability",
+			"target_roles", "languages", "availability", "occurred_at",
 		),
 	)
 
 	arrowTbl, err := scan.ToArrowTable(ctx)
 	if err != nil {
-		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: scan preferences_current: %w", err)
+		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: scan preferences: %w", err)
 	}
 	defer arrowTbl.Release()
 
@@ -122,23 +120,29 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 	if len(rows) == 0 {
 		return eventsv1.PreferencesUpdatedV1{}, ErrNotFound
 	}
+
+	// Pick the row with the latest occurred_at.
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].OccurredAt.After(rows[j].OccurredAt)
+	})
 	return rows[0], nil
 }
 
 // --- Arrow table decoders ---
 
 // embeddingRowsFromTable reads all rows from an Arrow table that has
-// the embeddings_current schema (candidate_id, cv_version, vector,
-// model_version).
+// the embeddings schema (candidate_id, cv_version, vector, model_version,
+// occurred_at).
 func embeddingRowsFromTable(tbl arrow.Table) ([]eventsv1.CandidateEmbeddingV1, error) {
 	sc := tbl.Schema()
 	cidxCandidateID := sc.FieldIndices("candidate_id")
 	cidxCVVersion := sc.FieldIndices("cv_version")
 	cidxVector := sc.FieldIndices("vector")
 	cidxModelVersion := sc.FieldIndices("model_version")
+	cidxOccurredAt := sc.FieldIndices("occurred_at")
 
 	if len(cidxCandidateID) == 0 || len(cidxVector) == 0 {
-		return nil, fmt.Errorf("embeddings_current: missing required columns (candidate_id, vector); schema: %s", sc)
+		return nil, fmt.Errorf("embeddings: missing required columns (candidate_id, vector); schema: %s", sc)
 	}
 
 	tr := array.NewTableReader(tbl, -1)
@@ -164,6 +168,10 @@ func embeddingRowsFromTable(tbl arrow.Table) ([]eventsv1.CandidateEmbeddingV1, e
 				colModelVersion = c
 			}
 		}
+		var colOccurredAt *array.Timestamp
+		if len(cidxOccurredAt) > 0 {
+			colOccurredAt, _ = rec.Column(cidxOccurredAt[0]).(*array.Timestamp)
+		}
 
 		for i := 0; i < nRows; i++ {
 			var row eventsv1.CandidateEmbeddingV1
@@ -179,6 +187,9 @@ func embeddingRowsFromTable(tbl arrow.Table) ([]eventsv1.CandidateEmbeddingV1, e
 			if colModelVersion != nil && !colModelVersion.IsNull(i) {
 				row.ModelVersion = colModelVersion.Value(i)
 			}
+			if colOccurredAt != nil && !colOccurredAt.IsNull(i) && len(cidxOccurredAt) > 0 {
+				row.OccurredAt = timestampToTime(rec, cidxOccurredAt[0], colOccurredAt, i)
+			}
 			out = append(out, row)
 		}
 	}
@@ -186,12 +197,13 @@ func embeddingRowsFromTable(tbl arrow.Table) ([]eventsv1.CandidateEmbeddingV1, e
 }
 
 // preferencesRowsFromTable reads all rows from an Arrow table that has
-// the preferences_current schema.
+// the preferences schema.
 func preferencesRowsFromTable(tbl arrow.Table) ([]eventsv1.PreferencesUpdatedV1, error) {
 	sc := tbl.Schema()
 	cidxCandidateID := sc.FieldIndices("candidate_id")
+	cidxOccurredAt := sc.FieldIndices("occurred_at")
 	if len(cidxCandidateID) == 0 {
-		return nil, fmt.Errorf("preferences_current: missing required column candidate_id; schema: %s", sc)
+		return nil, fmt.Errorf("preferences: missing required column candidate_id; schema: %s", sc)
 	}
 
 	tr := array.NewTableReader(tbl, -1)
@@ -214,6 +226,10 @@ func preferencesRowsFromTable(tbl arrow.Table) ([]eventsv1.PreferencesUpdatedV1,
 		colExcluded := listColByName(rec, sc, "excluded_companies")
 		colTargetRoles := listColByName(rec, sc, "target_roles")
 		colLanguages := listColByName(rec, sc, "languages")
+		var colOccurredAt *array.Timestamp
+		if len(cidxOccurredAt) > 0 {
+			colOccurredAt, _ = rec.Column(cidxOccurredAt[0]).(*array.Timestamp)
+		}
 
 		for i := 0; i < nRows; i++ {
 			var row eventsv1.PreferencesUpdatedV1
@@ -246,6 +262,9 @@ func preferencesRowsFromTable(tbl arrow.Table) ([]eventsv1.PreferencesUpdatedV1,
 			}
 			if colLanguages != nil && !colLanguages.IsNull(i) {
 				row.Languages = listStringValues(colLanguages, i)
+			}
+			if colOccurredAt != nil && !colOccurredAt.IsNull(i) && len(cidxOccurredAt) > 0 {
+				row.OccurredAt = timestampToTime(rec, cidxOccurredAt[0], colOccurredAt, i)
 			}
 			out = append(out, row)
 		}

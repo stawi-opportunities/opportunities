@@ -8,7 +8,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/table"
 )
@@ -19,9 +18,18 @@ type StaleCandidate struct {
 	LastUploadAt time.Time
 }
 
-// StaleReader scans the candidates.cv_extracted_current Iceberg table
+// StaleReader scans the append-only candidates.cv_extracted Iceberg table
 // for candidates whose latest CV upload occurred_at is older than the
 // requested cutoff.
+//
+// Because cv_extracted is append-only (each upload appends a new row), the
+// reader folds all rows per candidate_id in Go — keeping only the row with
+// the latest occurred_at — then filters by cutoff. This correctly identifies
+// candidates whose most recent upload is stale, even though older uploads
+// might also be < cutoff.
+//
+// Scanning the full table is acceptable because ListStale runs weekly and
+// the candidate set grows slowly relative to a weekly cadence.
 type StaleReader struct {
 	cat catalog.Catalog
 }
@@ -39,36 +47,55 @@ func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int
 		limit = 1000
 	}
 
-	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "cv_extracted_current"})
+	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "cv_extracted"})
 	if err != nil {
-		return nil, fmt.Errorf("candidatestore: load cv_extracted_current: %w", err)
+		return nil, fmt.Errorf("candidatestore: load cv_extracted: %w", err)
 	}
 
+	// Scan all rows: we need the latest occurred_at per candidate to correctly
+	// determine staleness. A pushdown filter on occurred_at < cutoff would
+	// miss candidates whose most-recent upload is recent but who also have
+	// older rows — those older rows would pass the pushdown and make the
+	// candidate appear stale even when it isn't. Scanning all rows and folding
+	// in Go avoids this false-positive.
 	scan := tbl.Scan(
-		table.WithRowFilter(
-			iceberg.LessThan(iceberg.Reference("occurred_at"), cutoff.UnixMicro()),
-		),
 		table.WithSelectedFields("candidate_id", "occurred_at"),
 	)
 
 	arrowTbl, err := scan.ToArrowTable(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("candidatestore: scan cv_extracted_current: %w", err)
+		return nil, fmt.Errorf("candidatestore: scan cv_extracted: %w", err)
 	}
 	defer arrowTbl.Release()
 
 	rows, err := staleRowsFromTable(arrowTbl)
 	if err != nil {
-		return nil, fmt.Errorf("candidatestore: decode cv_extracted_current: %w", err)
+		return nil, fmt.Errorf("candidatestore: decode cv_extracted: %w", err)
 	}
 
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].LastUploadAt.Before(rows[j].LastUploadAt)
-	})
-	if len(rows) > limit {
-		rows = rows[:limit]
+	// Fold: keep latest occurred_at per candidate_id.
+	latest := make(map[string]time.Time, len(rows))
+	for _, row := range rows {
+		if t, ok := latest[row.CandidateID]; !ok || row.LastUploadAt.After(t) {
+			latest[row.CandidateID] = row.LastUploadAt
+		}
 	}
-	return rows, nil
+
+	// Filter by cutoff, collect, sort oldest-first, apply limit.
+	out := make([]StaleCandidate, 0, len(latest))
+	for id, ts := range latest {
+		if ts.Before(cutoff) {
+			out = append(out, StaleCandidate{CandidateID: id, LastUploadAt: ts})
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].LastUploadAt.Before(out[j].LastUploadAt)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 // staleRowsFromTable decodes an Arrow table with schema
@@ -79,7 +106,7 @@ func staleRowsFromTable(tbl arrow.Table) ([]StaleCandidate, error) {
 	cidxOccurredAt := sc.FieldIndices("occurred_at")
 
 	if len(cidxCandidateID) == 0 || len(cidxOccurredAt) == 0 {
-		return nil, fmt.Errorf("cv_extracted_current: missing required columns; schema: %s", sc)
+		return nil, fmt.Errorf("cv_extracted: missing required columns; schema: %s", sc)
 	}
 
 	tr := array.NewTableReader(tbl, -1)

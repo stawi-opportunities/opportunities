@@ -18,7 +18,6 @@ import (
 	"github.com/pitabwire/util"
 
 	"stawi.jobs/pkg/analytics"
-	"stawi.jobs/pkg/icebergclient"
 	"stawi.jobs/pkg/publish"
 	"stawi.jobs/pkg/searchindex"
 )
@@ -38,11 +37,6 @@ type apiConfig struct {
 	AnalyticsOrg      string  `env:"ANALYTICS_ORG"        envDefault:"default"`
 	AnalyticsUsername string  `env:"ANALYTICS_USERNAME"   envDefault:""`
 	AnalyticsPassword string  `env:"ANALYTICS_PASSWORD"   envDefault:""`
-
-	// Iceberg catalog — used by the /admin/backfill handler.
-	IcebergCatalogURI  string `env:"ICEBERG_CATALOG_URI"  envDefault:""`
-	IcebergWarehouse   string `env:"ICEBERG_WAREHOUSE"    envDefault:""`
-	IcebergCatalogName string `env:"ICEBERG_CATALOG_NAME" envDefault:"stawi"`
 }
 
 func main() {
@@ -119,22 +113,10 @@ func main() {
 	mux.HandleFunc("GET /stats", v2StatsHandler(jm))
 	mux.HandleFunc("GET /search", v2SearchHandler(jm))
 
-	// Hugo snapshot publishing — sources from Iceberg jobs.canonicals_current.
-	if r2Publisher != nil && cfg.IcebergCatalogURI != "" {
-		cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-			Name:              cfg.IcebergCatalogName,
-			URI:               cfg.IcebergCatalogURI,
-			Warehouse:         cfg.IcebergWarehouse,
-			R2Endpoint:        cfg.R2Endpoint,
-			R2AccessKeyID:     cfg.R2AccessKeyID,
-			R2SecretAccessKey: cfg.R2SecretAccessKey,
-			R2Region:          cfg.R2Region,
-		})
-		if err != nil {
-			log.WithError(err).Fatal("api: iceberg catalog open failed")
-		}
+	// Hugo snapshot publishing — sources from Manticore idx_jobs_rt.
+	if r2Publisher != nil {
 		mux.HandleFunc("POST /admin/backfill",
-			backfillIcebergHandler(cat, r2Publisher, cfg.PublishMinQuality))
+			backfillManticoreHandler(jm, r2Publisher, cfg.PublishMinQuality))
 	}
 
 	// Analytics beacon — no DB.
