@@ -41,13 +41,17 @@ func TestStaleHeap_Retract_Nonexistent(t *testing.T) {
 }
 
 // TestStaleHeap_OfferOrRetract_Update verifies that offerOrRetract updates
-// an existing entry when the new ts is more recent.
+// an existing entry when the new ts is more recent, and the updated ts is
+// still before the cutoff (so the entry remains stale).
 func TestStaleHeap_OfferOrRetract_Update(t *testing.T) {
 	h := newStaleHeap(10)
 	h.offer(StaleCandidate{CandidateID: "c1", LastUploadAt: t0})
 
-	// Update with newer ts.
-	h.offerOrRetract(StaleCandidate{CandidateID: "c1", LastUploadAt: t2})
+	// Use a cutoff far in the future so the updated ts (t2) remains stale.
+	farFuture := t3.Add(365 * 24 * time.Hour)
+
+	// Update with newer ts — still before cutoff, entry should remain.
+	h.offerOrRetract(StaleCandidate{CandidateID: "c1", LastUploadAt: t2}, farFuture)
 	assert.Equal(t, 1, h.Len())
 
 	out := h.sorted()
@@ -60,12 +64,29 @@ func TestStaleHeap_OfferOrRetract_OlderIgnored(t *testing.T) {
 	h := newStaleHeap(10)
 	h.offer(StaleCandidate{CandidateID: "c1", LastUploadAt: t2})
 
+	farFuture := t3.Add(365 * 24 * time.Hour)
+
 	// Attempt to update with older ts — should be ignored.
-	h.offerOrRetract(StaleCandidate{CandidateID: "c1", LastUploadAt: t0})
+	h.offerOrRetract(StaleCandidate{CandidateID: "c1", LastUploadAt: t0}, farFuture)
 	assert.Equal(t, 1, h.Len())
 
 	out := h.sorted()
 	assert.Equal(t, t2, out[0].LastUploadAt, "entry should keep newer LastUploadAt")
+}
+
+// TestStaleHeap_OfferOrRetract_BecomesNonStale verifies that when offerOrRetract
+// sees an updated timestamp that is >= cutoff, the entry is removed from the heap.
+func TestStaleHeap_OfferOrRetract_BecomesNonStale(t *testing.T) {
+	cutoff := t2.Add(time.Hour) // t2+1h; t3 is after this cutoff
+
+	h := newStaleHeap(10)
+	// Initially stale: t0 < cutoff.
+	h.offer(StaleCandidate{CandidateID: "c1", LastUploadAt: t0})
+	assert.Equal(t, 1, h.Len())
+
+	// Update with a timestamp that is >= cutoff → should be removed.
+	h.offerOrRetract(StaleCandidate{CandidateID: "c1", LastUploadAt: t3}, cutoff)
+	assert.Equal(t, 0, h.Len(), "entry should have been removed once ts >= cutoff")
 }
 
 // TestFlushStaleMap_RetractsNonStale verifies that flushStaleMap removes

@@ -229,6 +229,17 @@ func (b *Buffer) flushLocked(k bufferKey, pb *partitionBuffer) *Batch {
 		b.totalBytes = 0
 	}
 	delete(b.parts, k)
+
+	// Remove k from insertOrder so the slice does not grow unboundedly.
+	// Linear scan is O(open partition count), typically O(100). At extreme
+	// scale (O(1000s) of partitions) a linked list or ordered set would be
+	// more efficient, but the linear scan is correct and simple for now.
+	for i := range b.insertOrder {
+		if b.insertOrder[i] == k {
+			b.insertOrder = append(b.insertOrder[:i], b.insertOrder[i+1:]...)
+			break
+		}
+	}
 	return batch
 }
 

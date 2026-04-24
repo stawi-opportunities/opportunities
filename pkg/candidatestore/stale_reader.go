@@ -123,7 +123,7 @@ func (r *StaleReader) ListStale(ctx context.Context, cutoff time.Time, limit int
 func flushStaleMap(m map[string]time.Time, cutoff time.Time, topN *staleHeap) {
 	for id, ts := range m {
 		if ts.Before(cutoff) {
-			topN.offerOrRetract(StaleCandidate{CandidateID: id, LastUploadAt: ts})
+			topN.offerOrRetract(StaleCandidate{CandidateID: id, LastUploadAt: ts}, cutoff)
 		} else {
 			// This candidate has a non-stale upload — retract from heap if present.
 			topN.retract(id)
@@ -264,18 +264,41 @@ func (h *staleHeap) offer(c StaleCandidate) {
 	}
 }
 
-// offerOrRetract inserts or updates c in the heap. If the candidate already
-// exists and the new entry has a newer LastUploadAt, the entry is updated
-// (heap re-ordered). If it doesn't exist it is inserted as a fresh offer.
-func (h *staleHeap) offerOrRetract(c StaleCandidate) {
+// offerOrRetract inserts or updates c in the heap.
+//
+// If the candidate already exists and the new entry has a newer LastUploadAt,
+// the heap entry is updated via heap.Fix. If after the update the new
+// timestamp is >= cutoff (the candidate is no longer stale), the entry is
+// removed from the heap entirely — it was invalidated by a later non-stale
+// re-upload that arrived in a subsequent bounded-map flush.
+//
+// If the candidate doesn't yet exist in the heap, it is inserted as a fresh
+// offer (only if ts < cutoff; callers guarantee this).
+func (h *staleHeap) offerOrRetract(c StaleCandidate, cutoff time.Time) {
 	if pos, exists := h.index[c.CandidateID]; exists {
 		if c.LastUploadAt.After(h.data[pos].LastUploadAt) {
 			h.data[pos] = c
 			heap.Fix(h, pos)
+			// If the updated timestamp is now >= cutoff the candidate is no
+			// longer stale — remove it from the heap.
+			if !c.LastUploadAt.Before(cutoff) {
+				h.removeByID(c.CandidateID)
+			}
 		}
 		return
 	}
 	h.offer(c)
+}
+
+// removeByID removes the entry for candidateID from the heap (if present).
+// Identical to retract but exported for internal reuse without repeating
+// the index lookup.
+func (h *staleHeap) removeByID(candidateID string) {
+	pos, exists := h.index[candidateID]
+	if !exists {
+		return
+	}
+	heap.Remove(h, pos)
 }
 
 // retract removes the entry for candidateID from the heap if present.

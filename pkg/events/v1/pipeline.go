@@ -25,7 +25,7 @@ type VariantNormalizedV1 struct {
 	Description    string    `json:"description"      parquet:"description,optional"`
 	ApplyURL       string    `json:"apply_url"        parquet:"apply_url,optional"`
 	PostedAt       time.Time `json:"posted_at"        parquet:"posted_at,optional"`
-	ScrapedAt      time.Time `json:"scraped_at"       parquet:"scraped_at"`
+	ScrapedAt      time.Time `json:"scraped_at"       parquet:"scraped_at,optional"`
 	ContentHash    string    `json:"content_hash"     parquet:"content_hash,optional"`
 	RawArchiveRef  string    `json:"raw_archive_ref"  parquet:"raw_archive_ref,optional"`
 

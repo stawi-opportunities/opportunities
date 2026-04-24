@@ -41,16 +41,26 @@ func appendOptStr(b *array.StringBuilder, s string) {
 	}
 }
 
-// appendOptF64 appends v; null if v == 0 (optional Parquet field).
+// appendOptF64 appends v unconditionally.
+//
+// Zero is a valid value for salary_min, salary_max, quality_score, and
+// rerank_score (e.g. volunteer postings, unranked candidates). Treating zero
+// as null was a data-inconsistency bug: Manticore uint64 encoding lands as 0
+// regardless, but analytical Parquet queries would see nulls instead of zeros.
+// Callers that genuinely mean "unknown / not set" should pass math.NaN() and
+// handle that value explicitly.
 func appendOptF64(b *array.Float64Builder, v float64) {
-	if v == 0 {
-		b.AppendNull()
-	} else {
-		b.Append(v)
-	}
+	b.Append(v)
 }
 
-// appendOptI32 appends v; null if v == 0 (optional int).
+// appendOptI32 appends v; null only when v == 0 and the field is semantically
+// nullable (e.g. http_status where 0 means "request never made").
+//
+// Fields like years_experience, salary_min/max that carry the integer values
+// of CV-extracted data remain here because zero is still a valid boundary
+// value (career-changer with no paid experience). The original zero-as-null
+// behaviour is preserved for these fields; callers that need strict non-null
+// semantics should Append directly on the builder.
 func appendOptI32(b *array.Int32Builder, v int) {
 	if v == 0 {
 		b.AppendNull()

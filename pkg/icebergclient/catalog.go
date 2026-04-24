@@ -8,11 +8,13 @@ package icebergclient
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
-	_ "github.com/apache/iceberg-go/catalog/sql" // register "sql" catalog driver
-	_ "github.com/jackc/pgx/v5/stdlib"            // register "pgx" database/sql driver
+	sqlcat "github.com/apache/iceberg-go/catalog/sql"
+	_ "github.com/jackc/pgx/v5/stdlib" // register "pgx" database/sql driver
 )
 
 // CatalogConfig carries all parameters needed to open an Iceberg SQL catalog.
@@ -30,23 +32,56 @@ type CatalogConfig struct {
 	R2AccessKeyID     string
 	R2SecretAccessKey string
 	R2Region          string
+
+	// Connection pool sizing for the Postgres catalog backend.
+	//
+	// With 6 services × 2+ replicas × concurrent catalog commits, the default
+	// unlimited connection pool can exhaust Postgres max_connections during
+	// compaction bursts. Tune these to stay within the cluster's connection
+	// budget (typically 100–200 total across all services).
+	//
+	// Defaults: MaxOpenConns=10, MaxIdleConns=5.
+	// Expose as ICEBERG_CATALOG_MAX_OPEN_CONNS / ICEBERG_CATALOG_MAX_IDLE_CONNS
+	// environment variables in each service's config loader.
+	MaxOpenConns int // default 10
+	MaxIdleConns int // default 5
 }
 
 // LoadCatalog opens a named SQL catalog backed by Postgres + R2.
 // The returned catalog.Catalog is safe for concurrent use across
 // goroutines; callers should construct it once at startup and share it.
+//
+// Connection pool: MaxOpenConns and MaxIdleConns from cfg are applied to
+// the underlying *sql.DB before handing it to the catalog constructor.
+// This prevents unconstrained connection growth under compaction bursts.
 func LoadCatalog(ctx context.Context, cfg CatalogConfig) (catalog.Catalog, error) {
-	props := iceberg.Properties{
-		"type":                  "sql",
-		"uri":                   cfg.URI,
-		"sql.driver":            "pgx",
-		"sql.dialect":           "postgres",
-		"warehouse":             cfg.Warehouse,
-		"s3.endpoint":           cfg.R2Endpoint,
-		"s3.access-key-id":      cfg.R2AccessKeyID,
-		"s3.secret-access-key":  cfg.R2SecretAccessKey,
-		"s3.region":             cfg.R2Region,
-		"s3.path-style-access":  "true",
+	maxOpen := cfg.MaxOpenConns
+	if maxOpen <= 0 {
+		maxOpen = 10
 	}
-	return catalog.Load(ctx, cfg.Name, props)
+	maxIdle := cfg.MaxIdleConns
+	if maxIdle <= 0 {
+		maxIdle = 5
+	}
+
+	db, err := sql.Open("pgx", cfg.URI)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	props := iceberg.Properties{
+		"warehouse":            cfg.Warehouse,
+		"s3.endpoint":          cfg.R2Endpoint,
+		"s3.access-key-id":     cfg.R2AccessKeyID,
+		"s3.secret-access-key": cfg.R2SecretAccessKey,
+		"s3.region":            cfg.R2Region,
+		"s3.path-style-access": "true",
+	}
+	return sqlcat.NewCatalog(cfg.Name, db, sqlcat.Postgres, props)
 }
+
+// Ensure catalog.Catalog is still satisfied — compile-time guard.
+var _ catalog.Catalog = (catalog.Catalog)(nil)

@@ -165,10 +165,36 @@ func (c *cachedObservation) load(
 		}
 		key := ident[0] + "." + ident[1]
 		snaps[key] = int64(len(tbl.Metadata().Snapshots()))
-		// File count via PlanFiles is expensive at 500M scale.  We report 0
-		// here; a future enhancement can wire in a manifest-file count which
-		// is cheaper than reading the full manifest.
-		fs[key] = 0
+
+		// File count: sum AddedFilesCount + ExistingFilesCount across all
+		// manifests in the current snapshot's manifest list. Reading the
+		// manifest list is an inexpensive O(manifests) object-store round-trip
+		// per table, much cheaper than PlanFiles which fetches every manifest
+		// entry (O(data files)). The 30-second TTL cache keeps this to at
+		// most one round-trip per scrape window.
+		current := tbl.CurrentSnapshot()
+		if current == nil {
+			fs[key] = 0
+		} else {
+			tableFS, fsErr := tbl.FS(ctx)
+			if fsErr != nil {
+				fs[key] = -1 // sentinel: FS unavailable
+			} else {
+				manifests, mErr := current.Manifests(tableFS)
+				if mErr != nil {
+					fs[key] = -1 // sentinel: manifest list unreadable
+				} else {
+					total := int64(0)
+					for _, m := range manifests {
+						// AddedDataFiles + ExistingDataFiles covers live data files per
+						// manifest entry. DeletedDataFiles are excluded — they no longer
+						// contribute to table size after the next snapshot expiry.
+						total += int64(m.AddedDataFiles()) + int64(m.ExistingDataFiles())
+					}
+					fs[key] = total
+				}
+			}
+		}
 	}
 	c.snapshots = snaps
 	c.files = fs

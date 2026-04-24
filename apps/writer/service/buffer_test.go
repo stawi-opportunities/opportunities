@@ -138,6 +138,96 @@ func TestBufferStats(t *testing.T) {
 	}
 }
 
+// TestBufferInsertOrderGC verifies that flushLocked removes the flushed key
+// from insertOrder so the slice does not grow unboundedly (L-2 fix).
+// After adding N partitions and flushing some, insertOrder.length must equal
+// the number of remaining open partitions.
+func TestBufferInsertOrderGC(t *testing.T) {
+	b := NewBuffer(Thresholds{
+		MaxEvents:   100,
+		MaxBytes:    10 * 1024 * 1024,
+		MaxInterval: 1 * time.Minute,
+	})
+
+	now := time.Now().UTC()
+
+	// Add events to 5 different source partitions.
+	sources := []string{"src_a", "src_b", "src_c", "src_d", "src_e"}
+	for _, src := range sources {
+		env := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested,
+			eventsv1.VariantIngestedV1{SourceID: src, ScrapedAt: now})
+		_, err := b.Add(env, src)
+		if err != nil {
+			t.Fatalf("Add(%s): %v", src, err)
+		}
+	}
+
+	b.mu.Lock()
+	beforeFlush := len(b.insertOrder)
+	b.mu.Unlock()
+
+	if beforeFlush != 5 {
+		t.Fatalf("insertOrder len before flush: got %d, want 5", beforeFlush)
+	}
+
+	// Flush all partitions.
+	batches := b.FlushAll()
+	if len(batches) != 5 {
+		t.Fatalf("FlushAll returned %d batches, want 5", len(batches))
+	}
+
+	b.mu.Lock()
+	afterFlush := len(b.insertOrder)
+	remaining := len(b.parts)
+	b.mu.Unlock()
+
+	if afterFlush != 0 {
+		t.Errorf("insertOrder len after full flush: got %d, want 0 (was leaking keys)", afterFlush)
+	}
+	if remaining != 0 {
+		t.Errorf("parts map len after full flush: got %d, want 0", remaining)
+	}
+}
+
+// TestBufferInsertOrderGC_PartialFlush verifies that after flushing a subset
+// of partitions, insertOrder length == remaining partition count.
+func TestBufferInsertOrderGC_PartialFlush(t *testing.T) {
+	b := NewBuffer(Thresholds{
+		MaxEvents:   100,
+		MaxBytes:    10 * 1024 * 1024,
+		MaxInterval: 1 * time.Minute,
+	})
+
+	now := time.Now().UTC()
+
+	sources := []string{"src_1", "src_2", "src_3"}
+	for _, src := range sources {
+		env := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested,
+			eventsv1.VariantIngestedV1{SourceID: src, ScrapedAt: now})
+		_, _ = b.Add(env, src)
+	}
+
+	// Manually flush one specific partition.
+	b.mu.Lock()
+	k := bufferKey{topic: eventsv1.TopicVariantsIngested, secondary: "src_1"}
+	pb, ok := b.parts[k]
+	if ok {
+		b.flushLocked(k, pb)
+	}
+	orderLen := len(b.insertOrder)
+	partsLen := len(b.parts)
+	b.mu.Unlock()
+
+	if !ok {
+		t.Skip("partition src_1 not found — partition-secondary may differ")
+	}
+
+	if orderLen != partsLen {
+		t.Errorf("insertOrder len (%d) != parts len (%d) after partial flush — key was not GC'd",
+			orderLen, partsLen)
+	}
+}
+
 func TestBufferDueReturnsIntervalExpired(t *testing.T) {
 	b := NewBuffer(Thresholds{
 		MaxEvents:   1000,

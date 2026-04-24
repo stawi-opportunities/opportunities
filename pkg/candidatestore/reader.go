@@ -13,7 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -28,6 +28,9 @@ import (
 // for the requested candidate in the Iceberg table.
 var ErrNotFound = errors.New("candidatestore: candidate state not found")
 
+// ErrEmbeddingNotFound is returned specifically when no embedding row exists.
+var ErrEmbeddingNotFound = fmt.Errorf("%w: no embedding row", ErrNotFound)
+
 // Reader reads candidate embedding + preference state from Iceberg
 // append-only tables, folding in Go to find the latest row per candidate.
 type Reader struct {
@@ -40,12 +43,12 @@ func NewReader(cat catalog.Catalog) *Reader {
 }
 
 // LatestEmbedding returns the embedding row for candidateID from the
-// append-only candidates.embeddings Iceberg table. All rows for the
-// candidate are scanned (filter pushdown via bucket partition + bloom
-// filter on candidate_id limits this to ~1/32 of data files) and the
-// row with the latest occurred_at is returned.
+// append-only candidates.embeddings Iceberg table. Rows are streamed
+// batch-by-batch (ToArrowRecords); only the latest row by occurred_at is
+// retained in memory at any time, so memory is O(1) regardless of how many
+// CV versions the candidate has accumulated.
 //
-// Returns (zero, ErrNotFound) when no row exists for the candidate.
+// Returns (zero, ErrEmbeddingNotFound) when no row exists for the candidate.
 func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (eventsv1.CandidateEmbeddingV1, error) {
 	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "embeddings"})
 	if err != nil {
@@ -57,38 +60,48 @@ func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (event
 		table.WithSelectedFields("candidate_id", "cv_version", "vector", "model_version", "occurred_at"),
 	)
 
-	// ToArrowTable is safe here: the EqualTo(candidate_id) pushdown combined
-	// with the bucket(32,candidate_id) partition spec limits this scan to 1/32
-	// of files (+ bloom filter), and a single candidate has O(10) rows max.
-	// Memory is bounded by design; no streaming needed.
-	arrowTbl, err := scan.ToArrowTable(ctx)
+	_, itr, err := scan.ToArrowRecords(ctx)
 	if err != nil {
 		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: scan embeddings: %w", err)
 	}
-	defer arrowTbl.Release()
 
-	if arrowTbl.NumRows() == 0 {
-		return eventsv1.CandidateEmbeddingV1{}, ErrNotFound
+	var latest eventsv1.CandidateEmbeddingV1
+	var latestOccurred time.Time
+	found := false
+
+	for batch, batchErr := range itr {
+		if batchErr != nil {
+			return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: iterate embeddings: %w", batchErr)
+		}
+		sc := batch.Schema()
+		cidxCandidateID := sc.FieldIndices("candidate_id")
+		cidxVector := sc.FieldIndices("vector")
+		if len(cidxCandidateID) == 0 || len(cidxVector) == 0 {
+			batch.Release()
+			continue
+		}
+		nRows := int(batch.NumRows())
+		for i := 0; i < nRows; i++ {
+			row := decodeEmbeddingRow(batch, sc, i)
+			if !found || row.OccurredAt.After(latestOccurred) {
+				latest = row
+				latestOccurred = row.OccurredAt
+				found = true
+			}
+		}
+		batch.Release()
 	}
 
-	rows, err := embeddingRowsFromTable(arrowTbl)
-	if err != nil {
-		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: decode embeddings: %w", err)
+	if !found {
+		return eventsv1.CandidateEmbeddingV1{}, ErrEmbeddingNotFound
 	}
-	if len(rows) == 0 {
-		return eventsv1.CandidateEmbeddingV1{}, ErrNotFound
-	}
-
-	// Pick the row with the latest occurred_at (append-only table may have
-	// multiple rows per candidate — each CV reprocessing appends a new row).
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].OccurredAt.After(rows[j].OccurredAt)
-	})
-	return rows[0], nil
+	return latest, nil
 }
 
 // LatestPreferences returns the preferences row for candidateID from the
-// append-only candidates.preferences Iceberg table.
+// append-only candidates.preferences Iceberg table. Rows are streamed
+// batch-by-batch (ToArrowRecords); only the latest row by occurred_at is
+// retained in memory at any time.
 //
 // Returns (zero, ErrNotFound) when no row exists.
 func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eventsv1.PreferencesUpdatedV1, error) {
@@ -107,175 +120,139 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 		),
 	)
 
-	// ToArrowTable is safe here: same reasoning as LatestEmbedding — single-
-	// candidate EqualTo filter is bloom-pruned to 1/32 of files. Bounded.
-	arrowTbl, err := scan.ToArrowTable(ctx)
+	_, itr, err := scan.ToArrowRecords(ctx)
 	if err != nil {
 		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: scan preferences: %w", err)
 	}
-	defer arrowTbl.Release()
 
-	if arrowTbl.NumRows() == 0 {
+	var latest eventsv1.PreferencesUpdatedV1
+	var latestOccurred time.Time
+	found := false
+
+	for batch, batchErr := range itr {
+		if batchErr != nil {
+			return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: iterate preferences: %w", batchErr)
+		}
+		sc := batch.Schema()
+		cidxCandidateID := sc.FieldIndices("candidate_id")
+		if len(cidxCandidateID) == 0 {
+			batch.Release()
+			continue
+		}
+		nRows := int(batch.NumRows())
+		for i := 0; i < nRows; i++ {
+			row := decodePreferencesRow(batch, sc, i)
+			if !found || row.OccurredAt.After(latestOccurred) {
+				latest = row
+				latestOccurred = row.OccurredAt
+				found = true
+			}
+		}
+		batch.Release()
+	}
+
+	if !found {
 		return eventsv1.PreferencesUpdatedV1{}, ErrNotFound
 	}
-
-	rows, err := preferencesRowsFromTable(arrowTbl)
-	if err != nil {
-		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: decode preferences: %w", err)
-	}
-	if len(rows) == 0 {
-		return eventsv1.PreferencesUpdatedV1{}, ErrNotFound
-	}
-
-	// Pick the row with the latest occurred_at.
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].OccurredAt.After(rows[j].OccurredAt)
-	})
-	return rows[0], nil
+	return latest, nil
 }
 
-// --- Arrow table decoders ---
+// --- per-row decoders (operate on a single Arrow RecordBatch row) ---
 
-// embeddingRowsFromTable reads all rows from an Arrow table that has
-// the embeddings schema (candidate_id, cv_version, vector, model_version,
-// occurred_at).
-func embeddingRowsFromTable(tbl arrow.Table) ([]eventsv1.CandidateEmbeddingV1, error) {
-	sc := tbl.Schema()
-	cidxCandidateID := sc.FieldIndices("candidate_id")
-	cidxCVVersion := sc.FieldIndices("cv_version")
-	cidxVector := sc.FieldIndices("vector")
-	cidxModelVersion := sc.FieldIndices("model_version")
-	cidxOccurredAt := sc.FieldIndices("occurred_at")
+// decodeEmbeddingRow extracts one row from a RecordBatch that has the
+// embeddings schema (candidate_id, cv_version, vector, model_version, occurred_at).
+func decodeEmbeddingRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.CandidateEmbeddingV1 {
+	var row eventsv1.CandidateEmbeddingV1
 
-	if len(cidxCandidateID) == 0 || len(cidxVector) == 0 {
-		return nil, fmt.Errorf("embeddings: missing required columns (candidate_id, vector); schema: %s", sc)
-	}
-
-	tr := array.NewTableReader(tbl, -1)
-	defer tr.Release()
-
-	var out []eventsv1.CandidateEmbeddingV1
-	for tr.Next() {
-		rec := tr.Record()
-		nRows := int(rec.NumRows())
-
-		colCandidateID := stringColOrNil(rec, cidxCandidateID[0])
-		colVector := listColOrNil(rec, cidxVector[0])
-
-		var colCVVersion *array.Int32
-		if len(cidxCVVersion) > 0 {
-			if c, ok := rec.Column(cidxCVVersion[0]).(*array.Int32); ok {
-				colCVVersion = c
-			}
-		}
-		var colModelVersion *array.String
-		if len(cidxModelVersion) > 0 {
-			if c, ok := rec.Column(cidxModelVersion[0]).(*array.String); ok {
-				colModelVersion = c
-			}
-		}
-		var colOccurredAt *array.Timestamp
-		if len(cidxOccurredAt) > 0 {
-			colOccurredAt, _ = rec.Column(cidxOccurredAt[0]).(*array.Timestamp)
-		}
-
-		for i := 0; i < nRows; i++ {
-			var row eventsv1.CandidateEmbeddingV1
-			if colCandidateID != nil && !colCandidateID.IsNull(i) {
-				row.CandidateID = colCandidateID.Value(i)
-			}
-			if colCVVersion != nil && !colCVVersion.IsNull(i) {
-				row.CVVersion = int(colCVVersion.Value(i))
-			}
-			if colVector != nil && !colVector.IsNull(i) {
-				row.Vector = listFloat32Values(colVector, i)
-			}
-			if colModelVersion != nil && !colModelVersion.IsNull(i) {
-				row.ModelVersion = colModelVersion.Value(i)
-			}
-			if colOccurredAt != nil && !colOccurredAt.IsNull(i) && len(cidxOccurredAt) > 0 {
-				row.OccurredAt = timestampToTime(rec, cidxOccurredAt[0], colOccurredAt, i)
-			}
-			out = append(out, row)
+	if idxs := sc.FieldIndices("candidate_id"); len(idxs) > 0 {
+		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.CandidateID = col.Value(i)
 		}
 	}
-	return out, nil
+	if idxs := sc.FieldIndices("cv_version"); len(idxs) > 0 {
+		if col, ok := rec.Column(idxs[0]).(*array.Int32); ok && !col.IsNull(i) {
+			row.CVVersion = int(col.Value(i))
+		}
+	}
+	if idxs := sc.FieldIndices("vector"); len(idxs) > 0 {
+		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.Vector = listFloat32Values(col, i)
+		}
+	}
+	if idxs := sc.FieldIndices("model_version"); len(idxs) > 0 {
+		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.ModelVersion = col.Value(i)
+		}
+	}
+	if idxs := sc.FieldIndices("occurred_at"); len(idxs) > 0 {
+		if col, ok := rec.Column(idxs[0]).(*array.Timestamp); ok && !col.IsNull(i) {
+			row.OccurredAt = timestampToTime(rec, idxs[0], col, i)
+		}
+	}
+	return row
 }
 
-// preferencesRowsFromTable reads all rows from an Arrow table that has
-// the preferences schema.
-func preferencesRowsFromTable(tbl arrow.Table) ([]eventsv1.PreferencesUpdatedV1, error) {
-	sc := tbl.Schema()
-	cidxCandidateID := sc.FieldIndices("candidate_id")
-	cidxOccurredAt := sc.FieldIndices("occurred_at")
-	if len(cidxCandidateID) == 0 {
-		return nil, fmt.Errorf("preferences: missing required column candidate_id; schema: %s", sc)
-	}
+// decodePreferencesRow extracts one row from a RecordBatch that has the
+// preferences schema.
+func decodePreferencesRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.PreferencesUpdatedV1 {
+	var row eventsv1.PreferencesUpdatedV1
 
-	tr := array.NewTableReader(tbl, -1)
-	defer tr.Release()
-
-	var out []eventsv1.PreferencesUpdatedV1
-	for tr.Next() {
-		rec := tr.Record()
-		nRows := int(rec.NumRows())
-
-		colCandidateID := stringColOrNil(rec, cidxCandidateID[0])
-
-		// Optional columns: extract by name so missing columns are gracefully skipped.
-		colRemote := stringColByName(rec, sc, "remote_preference")
-		colCurrency := stringColByName(rec, sc, "currency")
-		colAvailability := stringColByName(rec, sc, "availability")
-		colSalaryMin := int32ColByName(rec, sc, "salary_min")
-		colSalaryMax := int32ColByName(rec, sc, "salary_max")
-		colPrefLoc := listColByName(rec, sc, "preferred_locations")
-		colExcluded := listColByName(rec, sc, "excluded_companies")
-		colTargetRoles := listColByName(rec, sc, "target_roles")
-		colLanguages := listColByName(rec, sc, "languages")
-		var colOccurredAt *array.Timestamp
-		if len(cidxOccurredAt) > 0 {
-			colOccurredAt, _ = rec.Column(cidxOccurredAt[0]).(*array.Timestamp)
-		}
-
-		for i := 0; i < nRows; i++ {
-			var row eventsv1.PreferencesUpdatedV1
-			if colCandidateID != nil && !colCandidateID.IsNull(i) {
-				row.CandidateID = colCandidateID.Value(i)
-			}
-			if colRemote != nil && !colRemote.IsNull(i) {
-				row.RemotePreference = colRemote.Value(i)
-			}
-			if colCurrency != nil && !colCurrency.IsNull(i) {
-				row.Currency = colCurrency.Value(i)
-			}
-			if colAvailability != nil && !colAvailability.IsNull(i) {
-				row.Availability = colAvailability.Value(i)
-			}
-			if colSalaryMin != nil && !colSalaryMin.IsNull(i) {
-				row.SalaryMin = int(colSalaryMin.Value(i))
-			}
-			if colSalaryMax != nil && !colSalaryMax.IsNull(i) {
-				row.SalaryMax = int(colSalaryMax.Value(i))
-			}
-			if colPrefLoc != nil && !colPrefLoc.IsNull(i) {
-				row.PreferredLocations = listStringValues(colPrefLoc, i)
-			}
-			if colExcluded != nil && !colExcluded.IsNull(i) {
-				row.ExcludedCompanies = listStringValues(colExcluded, i)
-			}
-			if colTargetRoles != nil && !colTargetRoles.IsNull(i) {
-				row.TargetRoles = listStringValues(colTargetRoles, i)
-			}
-			if colLanguages != nil && !colLanguages.IsNull(i) {
-				row.Languages = listStringValues(colLanguages, i)
-			}
-			if colOccurredAt != nil && !colOccurredAt.IsNull(i) && len(cidxOccurredAt) > 0 {
-				row.OccurredAt = timestampToTime(rec, cidxOccurredAt[0], colOccurredAt, i)
-			}
-			out = append(out, row)
+	if idxs := sc.FieldIndices("candidate_id"); len(idxs) > 0 {
+		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.CandidateID = col.Value(i)
 		}
 	}
-	return out, nil
+	if idxs := sc.FieldIndices("remote_preference"); len(idxs) > 0 {
+		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.RemotePreference = col.Value(i)
+		}
+	}
+	if idxs := sc.FieldIndices("currency"); len(idxs) > 0 {
+		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.Currency = col.Value(i)
+		}
+	}
+	if idxs := sc.FieldIndices("availability"); len(idxs) > 0 {
+		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.Availability = col.Value(i)
+		}
+	}
+	if idxs := sc.FieldIndices("salary_min"); len(idxs) > 0 {
+		if col, ok := rec.Column(idxs[0]).(*array.Int32); ok && !col.IsNull(i) {
+			row.SalaryMin = int(col.Value(i))
+		}
+	}
+	if idxs := sc.FieldIndices("salary_max"); len(idxs) > 0 {
+		if col, ok := rec.Column(idxs[0]).(*array.Int32); ok && !col.IsNull(i) {
+			row.SalaryMax = int(col.Value(i))
+		}
+	}
+	if idxs := sc.FieldIndices("preferred_locations"); len(idxs) > 0 {
+		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.PreferredLocations = listStringValues(col, i)
+		}
+	}
+	if idxs := sc.FieldIndices("excluded_companies"); len(idxs) > 0 {
+		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.ExcludedCompanies = listStringValues(col, i)
+		}
+	}
+	if idxs := sc.FieldIndices("target_roles"); len(idxs) > 0 {
+		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.TargetRoles = listStringValues(col, i)
+		}
+	}
+	if idxs := sc.FieldIndices("languages"); len(idxs) > 0 {
+		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
+			row.Languages = listStringValues(col, i)
+		}
+	}
+	if idxs := sc.FieldIndices("occurred_at"); len(idxs) > 0 {
+		if col, ok := rec.Column(idxs[0]).(*array.Timestamp); ok && !col.IsNull(i) {
+			row.OccurredAt = timestampToTime(rec, idxs[0], col, i)
+		}
+	}
+	return row
 }
 
 // --- low-level Arrow column helpers ---
@@ -294,34 +271,6 @@ func listColOrNil(rec arrow.Record, colIdx int) *array.List {
 	}
 	c, _ := rec.Column(colIdx).(*array.List)
 	return c
-}
-
-func stringColByName(rec arrow.Record, sc *arrow.Schema, name string) *array.String {
-	idxs := sc.FieldIndices(name)
-	if len(idxs) == 0 {
-		return nil
-	}
-	return stringColOrNil(rec, idxs[0])
-}
-
-func int32ColByName(rec arrow.Record, sc *arrow.Schema, name string) *array.Int32 {
-	idxs := sc.FieldIndices(name)
-	if len(idxs) == 0 {
-		return nil
-	}
-	if idxs[0] < 0 || idxs[0] >= int(rec.NumCols()) {
-		return nil
-	}
-	c, _ := rec.Column(idxs[0]).(*array.Int32)
-	return c
-}
-
-func listColByName(rec arrow.Record, sc *arrow.Schema, name string) *array.List {
-	idxs := sc.FieldIndices(name)
-	if len(idxs) == 0 {
-		return nil
-	}
-	return listColOrNil(rec, idxs[0])
 }
 
 // listFloat32Values extracts []float32 from row i of a List<float32> column.
