@@ -10,3 +10,6 @@ bin/
 # (Go names the binary after the last path segment — here `cmd` — which
 # collides with apps/*/cmd dirs).
 /cmd
+
+# Bootstrap secrets — NEVER commit these
+scripts/bootstrap/vault-seeds.env

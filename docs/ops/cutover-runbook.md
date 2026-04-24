@@ -1,9 +1,12 @@
-# Phase 6 Greenfield Cutover Runbook
+# Phase 5 → 6 Cutover Runbook (historical)
+
+> **HISTORICAL DOCUMENT** — This runbook describes the one-time Phase 5→6 migration
+> that dropped the legacy Postgres read path. That migration is complete.
+> For new deploys or DR recovery, use `docs/ops/first-deploy-runbook.md` instead.
 
 **Owner:** Platform / Peter Bwire
-**Audience:** On-call operator running the cutover
-**Estimated total time:** 2–4 hours
-**Rollback window:** until Step 2.6 (DROP TABLE). Before that, reverting the deployment restores the legacy Postgres read path.
+**Audience:** Historical reference only
+**Completed:** 2026-04-17 (commit fa1562b)
 
 ## 0. Prerequisites
 
