@@ -134,6 +134,13 @@ func makeRecordReader(schema *arrow.Schema, rec arrow.RecordBatch) (array.Record
 
 // BuildVariantIngestedRecord builds an Arrow record for the jobs.variants
 // table from VariantIngestedV1 envelopes.
+//
+// TODO(opportunity-generification): the existing ArrowSchemaVariants is
+// the legacy job-only shape. Phase 3.2 rewrites the Iceberg schema to a
+// kind+attributes table; until then we map the new universal envelope
+// fields onto the closest legacy columns and pull a few well-known
+// string Attributes through. Whatever doesn't have a 1:1 mapping lands
+// as null.
 func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -144,14 +151,11 @@ func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (
 			return nil, fmt.Errorf("decode VariantIngestedV1: %w", err)
 		}
 		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
-		appendVariantFields(b, p.VariantID, p.SourceID, p.ExternalID, p.HardKey, p.Stage,
-			p.Title, p.Company, p.LocationText, p.Country, p.Language,
-			p.RemoteType, p.EmploymentType, p.SalaryMin, p.SalaryMax,
-			p.Currency, p.Description, p.ApplyURL, p.PostedAt, p.ScrapedAt,
-			p.ContentHash, p.RawArchiveRef, p.ModelVersionExtract,
-			p.EventID, p.OccurredAt)
+		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
+			p.VariantID, p.SourceID, p.ExternalID, p.HardKey, p.Stage,
+			p.Title, p.IssuingEntity, p.AnchorCountry,
+			p.Currency, p.AmountMin, p.AmountMax,
+			time.Time{}, p.ScrapedAt, p.Attributes)
 	}
 
 	rec := b.NewRecord()
@@ -160,7 +164,6 @@ func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (
 }
 
 // BuildVariantNormalizedRecord builds for VariantNormalizedV1.
-// Routes to jobs.variants with stage field filled from payload.
 func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -171,14 +174,16 @@ func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage)
 			return nil, fmt.Errorf("decode VariantNormalizedV1: %w", err)
 		}
 		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
-		appendVariantFields(b, p.VariantID, p.SourceID, p.ExternalID, p.HardKey, p.Stage,
-			p.Title, p.Company, p.LocationText, p.Country, p.Language,
-			p.RemoteType, p.EmploymentType, p.SalaryMin, p.SalaryMax,
-			p.Currency, p.Description, p.ApplyURL, p.PostedAt, p.ScrapedAt,
-			p.ContentHash, p.RawArchiveRef, "" /*model_version_extract not on normalized*/,
-			p.EventID, p.OccurredAt)
+		title, _ := p.Attributes["title"].(string)
+		company, _ := p.Attributes["issuing_entity"].(string)
+		country, _ := p.Attributes["country"].(string)
+		currency, _ := p.Attributes["currency"].(string)
+		amountMin, _ := p.Attributes["amount_min"].(float64)
+		amountMax, _ := p.Attributes["amount_max"].(float64)
+		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
+			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "normalized",
+			title, company, country, currency, amountMin, amountMax,
+			time.Time{}, time.Time{}, p.Attributes)
 	}
 
 	rec := b.NewRecord()
@@ -187,8 +192,6 @@ func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage)
 }
 
 // BuildVariantValidatedRecord builds for VariantValidatedV1.
-// Routes to jobs.variants — the embedded Normalized payload supplies
-// the variant columns; stage is overwritten as "validated".
 func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -198,15 +201,11 @@ func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) 
 		if err := json.Unmarshal(raw, &env); err != nil {
 			return nil, fmt.Errorf("decode VariantValidatedV1: %w", err)
 		}
-		v := env.Payload
-		n := v.Normalized
-		appendVariantFields(b, n.VariantID, n.SourceID, n.ExternalID, n.HardKey,
-			"validated",
-			n.Title, n.Company, n.LocationText, n.Country, n.Language,
-			n.RemoteType, n.EmploymentType, n.SalaryMin, n.SalaryMax,
-			n.Currency, n.Description, n.ApplyURL, n.PostedAt, n.ScrapedAt,
-			n.ContentHash, n.RawArchiveRef, "" /*no model_version_extract*/,
-			env.EventID, env.OccurredAt)
+		p := env.Payload
+		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
+			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "validated",
+			"" /*title*/, "" /*company*/, "" /*country*/, "" /*currency*/, 0, 0,
+			time.Time{}, time.Time{}, nil)
 	}
 
 	rec := b.NewRecord()
@@ -215,8 +214,6 @@ func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) 
 }
 
 // BuildVariantFlaggedRecord builds for VariantFlaggedV1.
-// Routes to jobs.variants. Only variant_id, source_id, stage are
-// meaningful; remaining variant columns are null.
 func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -227,14 +224,10 @@ func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (a
 			return nil, fmt.Errorf("decode VariantFlaggedV1: %w", err)
 		}
 		p := env.Payload
-		appendVariantFields(b, p.VariantID, p.SourceID, "" /*external_id*/, "" /*hard_key*/,
-			"flagged",
-			"" /*title*/, "" /*company*/, "" /*location_text*/, "" /*country*/, "" /*language*/,
-			"" /*remote_type*/, "" /*employment_type*/, 0 /*salary_min*/, 0 /*salary_max*/,
-			"" /*currency*/, "" /*description*/, "" /*apply_url*/,
-			time.Time{} /*posted_at*/, time.Time{} /*scraped_at*/,
-			"" /*content_hash*/, "" /*raw_archive_ref*/, "" /*model_version_extract*/,
-			env.EventID, env.OccurredAt)
+		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
+			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "flagged",
+			"" /*title*/, "" /*company*/, "" /*country*/, "" /*currency*/, 0, 0,
+			time.Time{}, time.Time{}, nil)
 	}
 
 	rec := b.NewRecord()
@@ -243,7 +236,6 @@ func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (a
 }
 
 // BuildVariantClusteredRecord builds for VariantClusteredV1.
-// Routes to jobs.variants via the embedded Validated.Normalized chain.
 func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -253,20 +245,46 @@ func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) 
 		if err := json.Unmarshal(raw, &env); err != nil {
 			return nil, fmt.Errorf("decode VariantClusteredV1: %w", err)
 		}
-		c := env.Payload
-		n := c.Validated.Normalized
-		appendVariantFields(b, n.VariantID, n.SourceID, n.ExternalID, n.HardKey,
-			"clustered",
-			n.Title, n.Company, n.LocationText, n.Country, n.Language,
-			n.RemoteType, n.EmploymentType, n.SalaryMin, n.SalaryMax,
-			n.Currency, n.Description, n.ApplyURL, n.PostedAt, n.ScrapedAt,
-			n.ContentHash, n.RawArchiveRef, "" /*no model_version_extract*/,
-			env.EventID, env.OccurredAt)
+		p := env.Payload
+		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
+			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "clustered",
+			"" /*title*/, "" /*company*/, "" /*country*/, "" /*currency*/, 0, 0,
+			time.Time{}, time.Time{}, nil)
 	}
 
 	rec := b.NewRecord()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaVariants, rec)
+}
+
+// appendVariantFromAttrs is a transitional adapter that maps the new
+// VariantIngestedV1 (universal envelope + Attributes) onto the legacy
+// jobs.variants Arrow schema. Phase 3.2 will replace this with a
+// schema rewrite.
+func appendVariantFromAttrs(
+	b *array.RecordBuilder,
+	eventID string, occurredAt time.Time,
+	variantID, sourceID, externalID, hardKey, stage string,
+	title, company, country, currency string,
+	amountMin, amountMax float64,
+	postedAt, scrapedAt time.Time,
+	attrs map[string]any,
+) {
+	location, _ := attrs["location_text"].(string)
+	lang, _ := attrs["language"].(string)
+	remote, _ := attrs["remote_type"].(string)
+	employment, _ := attrs["employment_type"].(string)
+	desc, _ := attrs["description"].(string)
+	applyURL, _ := attrs["apply_url"].(string)
+	contentHash, _ := attrs["content_hash"].(string)
+	rawArchiveRef, _ := attrs["raw_archive_ref"].(string)
+
+	appendVariantFields(b, variantID, sourceID, externalID, hardKey, stage,
+		title, company, location, country, lang,
+		remote, employment, amountMin, amountMax,
+		currency, desc, applyURL, postedAt, scrapedAt,
+		contentHash, rawArchiveRef, "" /*model_version_extract*/,
+		eventID, occurredAt)
 }
 
 // appendVariantFields is the shared column-append logic for all
@@ -327,14 +345,12 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 			return nil, fmt.Errorf("decode EmbeddingV1: %w", err)
 		}
 		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
 
-		b.Field(0).(*array.StringBuilder).Append(p.CanonicalID)
+		b.Field(0).(*array.StringBuilder).Append(p.OpportunityID)
 		appendF32List(b.Field(1).(*array.ListBuilder), p.Vector)
 		b.Field(2).(*array.StringBuilder).Append(p.ModelVersion)
-		b.Field(3).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(4).(*array.TimestampBuilder), p.OccurredAt)
+		b.Field(3).(*array.StringBuilder).Append(env.EventID)
+		appendTS(b.Field(4).(*array.TimestampBuilder), env.OccurredAt)
 	}
 
 	rec := b.NewRecord()
@@ -360,15 +376,13 @@ func BuildPublishedRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 			return nil, fmt.Errorf("decode PublishedV1: %w", err)
 		}
 		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
 
-		b.Field(0).(*array.StringBuilder).Append(p.CanonicalID)
+		b.Field(0).(*array.StringBuilder).Append(p.OpportunityID)
 		b.Field(1).(*array.StringBuilder).Append(p.Slug)
 		b.Field(2).(*array.Int32Builder).Append(int32(p.R2Version))
 		appendTS(b.Field(3).(*array.TimestampBuilder), p.PublishedAt)
-		b.Field(4).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(5).(*array.TimestampBuilder), p.OccurredAt)
+		b.Field(4).(*array.StringBuilder).Append(env.EventID)
+		appendTS(b.Field(5).(*array.TimestampBuilder), env.OccurredAt)
 	}
 
 	rec := b.NewRecord()

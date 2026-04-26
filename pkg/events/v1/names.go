@@ -5,14 +5,14 @@ package eventsv1
 // Breaking schema changes bump the suffix; additive changes bump
 // SchemaVersion on the envelope.
 const (
-	// Job pipeline — variants.
+	// Opportunity pipeline — variants.
 	TopicVariantsIngested   = "opportunities.variants.ingested.v1"
 	TopicVariantsNormalized = "opportunities.variants.normalized.v1"
 	TopicVariantsValidated  = "opportunities.variants.validated.v1"
 	TopicVariantsFlagged    = "opportunities.variants.flagged.v1"
 	TopicVariantsClustered  = "opportunities.variants.clustered.v1"
 
-	// Job pipeline — canonicals.
+	// Opportunity pipeline — canonicals.
 	TopicCanonicalsUpserted = "opportunities.canonicals.upserted.v1"
 	TopicCanonicalsExpired  = "opportunities.canonicals.expired.v1"
 

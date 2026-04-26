@@ -84,10 +84,10 @@ func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
 		return fmt.Errorf("canonical-upsert: decode: %w", err)
 	}
 	doc := buildDocFromCanonical(env.Payload)
-	id := hashID(env.Payload.CanonicalID)
+	id := hashID(env.Payload.OpportunityID)
 	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
-			WithField("canonical_id", env.Payload.CanonicalID).
+			WithField("opportunity_id", env.Payload.OpportunityID).
 			Error("materializer: canonical upsert failed")
 		return fmt.Errorf("canonical-upsert: replace: %w", err)
 	}
@@ -96,29 +96,42 @@ func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
 
 // buildDocFromCanonical converts a CanonicalUpsertedV1 payload to a
 // Manticore document map. Field names must match the idx_opportunities_rt schema.
+//
+// TODO(opportunity-generification): Phase 3.3 will rewrite the
+// idx_opportunities_rt schema to surface kind + Attributes-driven
+// facets. The mapping below extracts a few well-known string keys from
+// Attributes so the materializer compiles against the new event shape.
 func buildDocFromCanonical(p eventsv1.CanonicalUpsertedV1) map[string]any {
+	desc, _ := p.Attributes["description"].(string)
+	location, _ := p.Attributes["location_text"].(string)
+	lang, _ := p.Attributes["language"].(string)
+	remote, _ := p.Attributes["remote_type"].(string)
+	employment, _ := p.Attributes["employment_type"].(string)
+	seniority, _ := p.Attributes["seniority"].(string)
+	category := ""
+	if len(p.Categories) > 0 {
+		category = p.Categories[0]
+	}
 	return map[string]any{
-		"canonical_id":    p.CanonicalID,
+		"canonical_id":    p.OpportunityID,
 		"slug":            p.Slug,
+		"kind":            p.Kind,
 		"title":           p.Title,
-		"company":         p.Company,
-		"description":     p.Description,
-		"location_text":   p.LocationText,
-		"category":        p.Category,
-		"country":         p.Country,
-		"language":        p.Language,
-		"remote_type":     p.RemoteType,
-		"employment_type": p.EmploymentType,
-		"seniority":       p.Seniority,
-		"salary_min":      uint64(p.SalaryMin),
-		"salary_max":      uint64(p.SalaryMax),
+		"company":         p.IssuingEntity,
+		"description":     desc,
+		"location_text":   location,
+		"category":        category,
+		"country":         p.AnchorCountry,
+		"language":        lang,
+		"remote_type":     remote,
+		"employment_type": employment,
+		"seniority":       seniority,
+		"salary_min":      uint64(p.AmountMin),
+		"salary_max":      uint64(p.AmountMax),
 		"currency":        p.Currency,
-		"quality_score":   float32(p.QualityScore),
-		"is_featured":     p.QualityScore >= 80,
 		"posted_at":       p.PostedAt.Unix(),
-		"last_seen_at":    p.LastSeenAt.Unix(),
-		"expires_at":      p.ExpiresAt.Unix(),
-		"status":          p.Status,
+		"last_seen_at":    p.UpsertedAt.Unix(),
+		"status":          "active",
 	}
 }
 
@@ -159,10 +172,10 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 		"status":     "expired",
 		"expires_at": env.Payload.ExpiredAt.Unix(),
 	}
-	id := hashID(env.Payload.CanonicalID)
+	id := hashID(env.Payload.OpportunityID)
 	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
-			WithField("canonical_id", env.Payload.CanonicalID).
+			WithField("opportunity_id", env.Payload.OpportunityID).
 			Error("materializer: canonical expired patch failed")
 		return fmt.Errorf("canonical-expired: update: %w", err)
 	}
@@ -209,16 +222,16 @@ func (h *TranslationHandler) Execute(ctx context.Context, p any) error {
 	// per-(canonical,lang) document. The lang suffix in the key keeps
 	// per-language rows independent so update is idempotent.
 	doc := map[string]any{
-		"canonical_id":  pl.CanonicalID,
+		"canonical_id":  pl.OpportunityID,
 		"lang":          pl.Lang,
 		"title":         pl.TitleTr,
 		"description":   pl.DescriptionTr,
 		"model_version": pl.ModelVersion,
 	}
-	id := hashID(pl.CanonicalID + ":" + pl.Lang)
+	id := hashID(pl.OpportunityID + ":" + pl.Lang)
 	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
-			WithField("canonical_id", pl.CanonicalID).
+			WithField("opportunity_id", pl.OpportunityID).
 			WithField("lang", pl.Lang).
 			Error("materializer: translation replace failed")
 		return fmt.Errorf("translation: replace: %w", err)
@@ -264,10 +277,10 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 		"embedding":       pl.Vector,
 		"embedding_model": pl.ModelVersion,
 	}
-	id := hashID(pl.CanonicalID)
+	id := hashID(pl.OpportunityID)
 	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
-			WithField("canonical_id", pl.CanonicalID).
+			WithField("opportunity_id", pl.OpportunityID).
 			Error("materializer: embedding replace failed")
 		return fmt.Errorf("embedding: replace: %w", err)
 	}

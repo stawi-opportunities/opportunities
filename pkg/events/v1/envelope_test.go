@@ -84,15 +84,18 @@ func TestPartitionObjectPathCanonicalsLabel(t *testing.T) {
 
 func TestCanonicalUpsertedRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicCanonicalsUpserted, CanonicalUpsertedV1{
-		CanonicalID: "can_1",
-		ClusterID:   "clu_1",
-		Slug:        "senior-backend-engineer-acme-ke",
-		Title:       "Senior Backend Engineer",
-		Company:     "Acme",
-		Country:     "KE",
-		RemoteType:  "remote",
-		Status:      "active",
-		PostedAt:    time.Date(2026, 4, 21, 9, 0, 0, 0, time.UTC),
+		OpportunityID: "opp_1",
+		Slug:          "senior-backend-engineer-acme-ke",
+		HardKey:       "src_x|abc",
+		Kind:          "job",
+		Title:         "Senior Backend Engineer",
+		IssuingEntity: "Acme",
+		ApplyURL:      "https://example.com/apply",
+		AnchorCountry: "KE",
+		Remote:        true,
+		PostedAt:      time.Date(2026, 4, 21, 9, 0, 0, 0, time.UTC),
+		Attributes:    map[string]any{"remote_type": "remote"},
+		UpsertedAt:    time.Date(2026, 4, 21, 10, 0, 0, 0, time.UTC),
 	})
 	raw, err := json.Marshal(orig)
 	if err != nil {
@@ -102,16 +105,16 @@ func TestCanonicalUpsertedRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if back.Payload.CanonicalID != "can_1" || back.Payload.Title != "Senior Backend Engineer" {
+	if back.Payload.OpportunityID != "opp_1" || back.Payload.Title != "Senior Backend Engineer" {
 		t.Fatalf("round-trip lost fields: %+v", back.Payload)
 	}
 }
 
 func TestEmbeddingRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicEmbeddings, EmbeddingV1{
-		CanonicalID:  "can_1",
-		Vector:       []float32{0.1, 0.2, 0.3},
-		ModelVersion: "text-embed-3-small",
+		OpportunityID: "opp_1",
+		Vector:        []float32{0.1, 0.2, 0.3},
+		ModelVersion:  "text-embed-3-small",
 	})
 	raw, err := json.Marshal(orig)
 	if err != nil {
@@ -121,43 +124,47 @@ func TestEmbeddingRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if back.Payload.CanonicalID != "can_1" || len(back.Payload.Vector) != 3 {
+	if back.Payload.OpportunityID != "opp_1" || len(back.Payload.Vector) != 3 {
 		t.Fatalf("round-trip lost fields: %+v", back.Payload)
 	}
 }
 
 func TestVariantNormalizedRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicVariantsNormalized, VariantNormalizedV1{
-		VariantID: "var_1", SourceID: "src_x", HardKey: "src_x|e1",
-		Title: "Engineer", Country: "KE", RemoteType: "remote",
+		VariantID: "var_1", HardKey: "src_x|e1", Kind: "job",
+		NormalizedAt: time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
+		Attributes:   map[string]any{"country": "KE", "remote_type": "remote"},
 	})
 	raw, _ := json.Marshal(orig)
 	var back Envelope[VariantNormalizedV1]
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if back.Payload.VariantID != "var_1" || back.Payload.Country != "KE" {
+	if back.Payload.VariantID != "var_1" || back.Payload.Attributes["country"] != "KE" {
 		t.Fatalf("round-trip lost: %+v", back.Payload)
 	}
 }
 
 func TestVariantValidatedRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicVariantsValidated, VariantValidatedV1{
-		VariantID: "var_1", SourceID: "src_x", ValidationScore: 0.9, ModelVersion: "v1",
+		VariantID: "var_1", HardKey: "src_x|e1", Kind: "job",
+		Valid: true, QualityScore: 0.9,
+		ValidatedAt: time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
 	})
 	raw, _ := json.Marshal(orig)
 	var back Envelope[VariantValidatedV1]
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if back.Payload.VariantID != "var_1" || back.Payload.ValidationScore != 0.9 {
+	if back.Payload.VariantID != "var_1" || back.Payload.QualityScore != 0.9 {
 		t.Fatalf("round-trip lost: %+v", back.Payload)
 	}
 }
 
 func TestVariantFlaggedRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicVariantsFlagged, VariantFlaggedV1{
-		VariantID: "var_1", Reason: "bad title",
+		VariantID: "var_1", Kind: "job", Reason: "bad title",
+		FlaggedAt: time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
 	})
 	raw, _ := json.Marshal(orig)
 	var back Envelope[VariantFlaggedV1]
@@ -171,22 +178,24 @@ func TestVariantFlaggedRoundTrip(t *testing.T) {
 
 func TestVariantClusteredRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicVariantsClustered, VariantClusteredV1{
-		VariantID: "var_1", ClusterID: "clu_1",
+		VariantID: "var_1", OpportunityID: "opp_1", Kind: "job",
+		ClusteredAt: time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
 	})
 	raw, _ := json.Marshal(orig)
 	var back Envelope[VariantClusteredV1]
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if back.Payload.ClusterID != "clu_1" {
+	if back.Payload.OpportunityID != "opp_1" {
 		t.Fatalf("round-trip lost: %+v", back.Payload)
 	}
 }
 
 func TestTranslationRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicTranslations, TranslationV1{
-		CanonicalID: "can_1", Lang: "sw", TitleTr: "Mhandisi",
+		OpportunityID: "opp_1", Lang: "sw", TitleTr: "Mhandisi",
 		DescriptionTr: "Tunaajiri...", ModelVersion: "v1",
+		TranslatedAt: time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
 	})
 	raw, _ := json.Marshal(orig)
 	var back Envelope[TranslationV1]
@@ -200,7 +209,8 @@ func TestTranslationRoundTrip(t *testing.T) {
 
 func TestPublishedRoundTrip(t *testing.T) {
 	orig := NewEnvelope(TopicPublished, PublishedV1{
-		CanonicalID: "can_1", Slug: "job-slug", R2Version: 3,
+		OpportunityID: "opp_1", Slug: "job-slug", Kind: "job", R2Version: 3,
+		PublishedAt: time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
 	})
 	raw, _ := json.Marshal(orig)
 	var back Envelope[PublishedV1]

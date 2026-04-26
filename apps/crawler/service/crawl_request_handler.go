@@ -189,34 +189,48 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				extJob, src.ID, src.Country, string(src.Type), src.Language, now,
 			)
 
-			// Build the event payload from the domain variant. Fields
-			// the pipeline does not need at ingest (extended JobFields,
-			// intelligence signals) land in later events — spec §5.2
-			// keeps variant-ingested narrow.
-			eventPayload := eventsv1.VariantIngestedV1{
-				VariantID:      xid.New().String(),
-				SourceID:       src.ID,
-				ExternalID:     variant.ExternalJobID,
-				HardKey:        variant.HardKey,
-				Stage:          string(domain.StageRaw),
-				Title:          variant.Title,
-				Company:        variant.Company,
-				LocationText:   variant.LocationText,
-				Country:        variant.Country,
-				Language:       variant.Language,
-				RemoteType:     variant.RemoteType,
-				EmploymentType: variant.EmploymentType,
-				SalaryMin:      variant.SalaryMin,
-				SalaryMax:      variant.SalaryMax,
-				Currency:       variant.Currency,
-				Description:    variant.Description,
-				ApplyURL:       variant.ApplyURL,
-				ScrapedAt:      now,
-				ContentHash:    variant.ContentHash,
-				RawArchiveRef:  pageArchiveRef,
+			// Resolve kind: prefer the connector-tagged kind on the
+			// ExternalOpportunity, falling back to "job" so legacy
+			// connectors keep working until Phase 4 lands Source.Kinds.
+			kind := extJob.Kind
+			if kind == "" {
+				kind = "job"
+			}
+
+			// Pack the kind-specific fields into Attributes so the new
+			// polymorphic VariantIngestedV1 carries them through. The
+			// universal envelope fields (title, currency, anchor) ride
+			// at the top level for partition pruning.
+			attrs := map[string]any{
+				"description":     variant.Description,
+				"apply_url":       variant.ApplyURL,
+				"language":        variant.Language,
+				"remote_type":     variant.RemoteType,
+				"employment_type": variant.EmploymentType,
+				"location_text":   variant.LocationText,
+				"content_hash":    variant.ContentHash,
+				"raw_archive_ref": pageArchiveRef,
 			}
 			if variant.PostedAt != nil {
-				eventPayload.PostedAt = *variant.PostedAt
+				attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
+			}
+
+			eventPayload := eventsv1.VariantIngestedV1{
+				VariantID:     xid.New().String(),
+				SourceID:      src.ID,
+				ExternalID:    variant.ExternalJobID,
+				HardKey:       variant.HardKey,
+				Kind:          kind,
+				Stage:         string(domain.StageRaw),
+				Title:         variant.Title,
+				IssuingEntity: variant.Company,
+				AnchorCountry: variant.Country,
+				Remote:        variant.RemoteType == "remote",
+				Currency:      variant.Currency,
+				AmountMin:     variant.SalaryMin,
+				AmountMax:     variant.SalaryMax,
+				Attributes:    attrs,
+				ScrapedAt:     now,
 			}
 
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,

@@ -167,8 +167,9 @@ func TestCrawlRequestHandlerEmitsVariantAndPageCompleted(t *testing.T) {
 	if v.SourceID != "s1" || v.Title != "Backend Engineer" {
 		t.Fatalf("variant content lost: %+v", v)
 	}
-	if v.RawArchiveRef == "" {
-		t.Fatalf("variant missing raw_archive_ref")
+	rawRef, _ := v.Attributes["raw_archive_ref"].(string)
+	if rawRef == "" {
+		t.Fatalf("variant missing raw_archive_ref attribute")
 	}
 
 	pc := pageCol.Snapshot()[0].Payload

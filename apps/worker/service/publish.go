@@ -67,10 +67,11 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	out := eventsv1.PublishedV1{
-		CanonicalID: c.CanonicalID,
-		Slug:        c.Slug,
-		R2Version:   int(time.Now().Unix()),
-		PublishedAt: time.Now().UTC(),
+		OpportunityID: c.OpportunityID,
+		Slug:          c.Slug,
+		Kind:          c.Kind,
+		R2Version:     int(time.Now().Unix()),
+		PublishedAt:   time.Now().UTC(),
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicPublished, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicPublished, outEnv)

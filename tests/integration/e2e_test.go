@@ -85,26 +85,28 @@ func TestMaterializerManticoreE2E(t *testing.T) {
 	// --- 3. Build a canonical event and call Replace directly ---
 	// This is the same path taken by CanonicalUpsertHandler.Execute.
 	canonical := eventsv1.CanonicalUpsertedV1{
-		CanonicalID:  "test-canonical-001",
-		Slug:         "software-engineer-at-acme",
-		Title:        "Software Engineer",
-		Company:      "Acme Corp",
-		Description:  "Join our team of engineers building next-gen products.",
-		LocationText: "Nairobi, Kenya",
-		Country:      "KE",
-		Language:     "en",
-		RemoteType:   "hybrid",
-		Category:     "engineering",
-		Status:       "active",
-		PostedAt:     time.Now().UTC().Truncate(time.Second),
-		LastSeenAt:   time.Now().UTC().Truncate(time.Second),
+		OpportunityID: "test-canonical-001",
+		Slug:          "software-engineer-at-acme",
+		Kind:          "job",
+		Title:         "Software Engineer",
+		IssuingEntity: "Acme Corp",
+		AnchorCountry: "KE",
+		Categories:    []string{"engineering"},
+		PostedAt:      time.Now().UTC().Truncate(time.Second),
+		UpsertedAt:    time.Now().UTC().Truncate(time.Second),
+		Attributes: map[string]any{
+			"description":   "Join our team of engineers building next-gen products.",
+			"location_text": "Nairobi, Kenya",
+			"language":      "en",
+			"remote_type":   "hybrid",
+		},
 	}
 
 	doc := canonicalToDoc(canonical)
-	id := manticoreHashID(canonical.CanonicalID)
+	id := manticoreHashID(canonical.OpportunityID)
 	err = mc.Replace(ctx, "idx_opportunities_rt", id, doc)
 	require.NoError(t, err, "Replace into idx_opportunities_rt")
-	t.Logf("Inserted canonical_id=%s as Manticore row id=%d", canonical.CanonicalID, id)
+	t.Logf("Inserted opportunity_id=%s as Manticore row id=%d", canonical.OpportunityID, id)
 
 	// --- 4. Assert the row is present ---
 	// Manticore RT index flushes near-instantly; poll for up to 5 s.
@@ -161,29 +163,44 @@ func TestMaterializerManticoreSchemaIdempotent(t *testing.T) {
 
 // canonicalToDoc mirrors buildDocFromCanonical in apps/materializer/service/service.go.
 // Kept local so changes to the service don't silently break the test.
+//
+// TODO(opportunity-generification): Phase 3.3 will rewrite the
+// idx_opportunities_rt schema. The mapping below mirrors the
+// transitional materializer impl that pulls a few well-known string
+// attributes through.
 func canonicalToDoc(p eventsv1.CanonicalUpsertedV1) map[string]any {
+	desc, _ := p.Attributes["description"].(string)
+	location, _ := p.Attributes["location_text"].(string)
+	lang, _ := p.Attributes["language"].(string)
+	remote, _ := p.Attributes["remote_type"].(string)
+	employment, _ := p.Attributes["employment_type"].(string)
+	seniority, _ := p.Attributes["seniority"].(string)
+	category := ""
+	if len(p.Categories) > 0 {
+		category = p.Categories[0]
+	}
 	return map[string]any{
-		"canonical_id":    p.CanonicalID,
+		"canonical_id":    p.OpportunityID,
 		"slug":            p.Slug,
+		"kind":            p.Kind,
 		"title":           p.Title,
-		"company":         p.Company,
-		"description":     p.Description,
-		"location_text":   p.LocationText,
-		"category":        p.Category,
-		"country":         p.Country,
-		"language":        p.Language,
-		"remote_type":     p.RemoteType,
-		"employment_type": p.EmploymentType,
-		"seniority":       p.Seniority,
-		"salary_min":      uint64(p.SalaryMin),
-		"salary_max":      uint64(p.SalaryMax),
+		"company":         p.IssuingEntity,
+		"description":     desc,
+		"location_text":   location,
+		"category":        category,
+		"country":         p.AnchorCountry,
+		"language":        lang,
+		"remote_type":     remote,
+		"employment_type": employment,
+		"seniority":       seniority,
+		"salary_min":      uint64(p.AmountMin),
+		"salary_max":      uint64(p.AmountMax),
 		"currency":        p.Currency,
-		"quality_score":   p.QualityScore,
+		"quality_score":   0.0,
 		"is_featured":     false,
 		"posted_at":       p.PostedAt.Unix(),
-		"last_seen_at":    p.LastSeenAt.Unix(),
-		"expires_at":      p.ExpiresAt.Unix(),
-		"status":          p.Status,
+		"last_seen_at":    p.UpsertedAt.Unix(),
+		"status":          "active",
 	}
 }
 

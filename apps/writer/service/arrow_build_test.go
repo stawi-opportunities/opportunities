@@ -79,11 +79,10 @@ func TestBuildVariantIngestedRecord(t *testing.T) {
 
 func TestBuildVariantNormalizedRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsNormalized, eventsv1.VariantNormalizedV1{
-		VariantID: "var-2",
-		SourceID:  "beta",
-		HardKey:   "beta|v2",
-		Stage:     "normalized",
-		ScrapedAt: time.Now().UTC(),
+		VariantID:    "var-2",
+		HardKey:      "beta|v2",
+		Kind:         "job",
+		NormalizedAt: time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildVariantNormalizedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -96,15 +95,12 @@ func TestBuildVariantNormalizedRecord(t *testing.T) {
 
 func TestBuildVariantValidatedRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsValidated, eventsv1.VariantValidatedV1{
-		VariantID:       "var-3",
-		ValidationScore: 0.9,
-		Normalized: eventsv1.VariantNormalizedV1{
-			VariantID: "var-3",
-			SourceID:  "gamma",
-			HardKey:   "gamma|v3",
-			Stage:     "normalized",
-			ScrapedAt: time.Now().UTC(),
-		},
+		VariantID:    "var-3",
+		HardKey:      "gamma|v3",
+		Kind:         "job",
+		Valid:        true,
+		QualityScore: 0.9,
+		ValidatedAt:  time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildVariantValidatedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -118,8 +114,10 @@ func TestBuildVariantValidatedRecord(t *testing.T) {
 func TestBuildVariantFlaggedRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsFlagged, eventsv1.VariantFlaggedV1{
 		VariantID: "var-4",
-		SourceID:  "delta",
+		HardKey:   "delta|v4",
+		Kind:      "job",
 		Reason:    "low_quality",
+		FlaggedAt: time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildVariantFlaggedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -132,18 +130,11 @@ func TestBuildVariantFlaggedRecord(t *testing.T) {
 
 func TestBuildVariantClusteredRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsClustered, eventsv1.VariantClusteredV1{
-		VariantID: "var-5",
-		ClusterID: "clust-1",
-		Validated: eventsv1.VariantValidatedV1{
-			VariantID: "var-5",
-			Normalized: eventsv1.VariantNormalizedV1{
-				VariantID: "var-5",
-				SourceID:  "epsilon",
-				HardKey:   "epsilon|v5",
-				Stage:     "normalized",
-				ScrapedAt: time.Now().UTC(),
-			},
-		},
+		VariantID:     "var-5",
+		OpportunityID: "opp-1",
+		HardKey:       "epsilon|v5",
+		Kind:          "job",
+		ClusteredAt:   time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildVariantClusteredRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -164,9 +155,9 @@ func TestBuildVariantClusteredRecord(t *testing.T) {
 
 func TestBuildEmbeddingRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicEmbeddings, eventsv1.EmbeddingV1{
-		CanonicalID:  "can-3",
-		Vector:       []float32{0.1, 0.2, 0.3},
-		ModelVersion: "text-embed-v1",
+		OpportunityID: "can-3",
+		Vector:        []float32{0.1, 0.2, 0.3},
+		ModelVersion:  "text-embed-v1",
 	})
 	rdr, err := writersvc.BuildEmbeddingRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -190,10 +181,11 @@ func TestBuildEmbeddingRecord(t *testing.T) {
 func TestBuildPublishedRecord(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	raw := marshalEnv(t, eventsv1.TopicPublished, eventsv1.PublishedV1{
-		CanonicalID: "can-5",
-		Slug:        "go-engineer-acme",
-		R2Version:   3,
-		PublishedAt: now,
+		OpportunityID: "can-5",
+		Slug:          "go-engineer-acme",
+		Kind:          "job",
+		R2Version:     3,
+		PublishedAt:   now,
 	})
 	rdr, err := writersvc.BuildPublishedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)

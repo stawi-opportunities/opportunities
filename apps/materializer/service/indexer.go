@@ -40,33 +40,47 @@ func (i *Indexer) ApplyCanonicalsParquet(ctx context.Context, body []byte) (int,
 }
 
 // replaceOne issues a single /replace against idx_opportunities_rt. The row
-// id is a stable hash of canonical_id — Manticore requires a bigint
-// pk and keying on hash(canonical_id) gives us idempotent upsert.
+// id is a stable hash of opportunity_id — Manticore requires a bigint
+// pk and keying on hash(opportunity_id) gives us idempotent upsert.
+//
+// TODO(opportunity-generification): Phase 3.3 will rewrite this against
+// the new idx_opportunities_rt schema (kind + Attributes-driven facets).
+// For now we map the universal envelope fields and pull a couple of
+// well-known string Attributes through so the materializer compiles.
 func (i *Indexer) replaceOne(ctx context.Context, r eventsv1.CanonicalUpsertedV1) error {
-	doc := map[string]any{
-		"canonical_id":    r.CanonicalID,
-		"slug":            r.Slug,
-		"title":           r.Title,
-		"company":         r.Company,
-		"description":     r.Description,
-		"location_text":   r.LocationText,
-		"category":        r.Category,
-		"country":         r.Country,
-		"language":        r.Language,
-		"remote_type":     r.RemoteType,
-		"employment_type": r.EmploymentType,
-		"seniority":       r.Seniority,
-		"salary_min":      uint64(r.SalaryMin),
-		"salary_max":      uint64(r.SalaryMax),
-		"currency":        r.Currency,
-		"quality_score":   float32(r.QualityScore),
-		"is_featured":     r.QualityScore >= 80,
-		"posted_at":       r.PostedAt.Unix(),
-		"last_seen_at":    r.LastSeenAt.Unix(),
-		"expires_at":      r.ExpiresAt.Unix(),
-		"status":          r.Status,
+	desc, _ := r.Attributes["description"].(string)
+	location, _ := r.Attributes["location_text"].(string)
+	lang, _ := r.Attributes["language"].(string)
+	remote, _ := r.Attributes["remote_type"].(string)
+	employment, _ := r.Attributes["employment_type"].(string)
+	seniority, _ := r.Attributes["seniority"].(string)
+	category := ""
+	if len(r.Categories) > 0 {
+		category = r.Categories[0]
 	}
-	return i.client.Replace(ctx, "idx_opportunities_rt", hashID(r.CanonicalID), doc)
+
+	doc := map[string]any{
+		"canonical_id":    r.OpportunityID,
+		"slug":            r.Slug,
+		"kind":            r.Kind,
+		"title":           r.Title,
+		"company":         r.IssuingEntity,
+		"description":     desc,
+		"location_text":   location,
+		"category":        category,
+		"country":         r.AnchorCountry,
+		"language":        lang,
+		"remote_type":     remote,
+		"employment_type": employment,
+		"seniority":       seniority,
+		"salary_min":      uint64(r.AmountMin),
+		"salary_max":      uint64(r.AmountMax),
+		"currency":        r.Currency,
+		"posted_at":       r.PostedAt.Unix(),
+		"last_seen_at":    r.UpsertedAt.Unix(),
+		"status":          "active",
+	}
+	return i.client.Replace(ctx, "idx_opportunities_rt", hashID(r.OpportunityID), doc)
 }
 
 // ApplyEmbeddingsParquet updates the `embedding` attribute on
@@ -82,7 +96,7 @@ func (i *Indexer) ApplyEmbeddingsParquet(ctx context.Context, body []byte) (int,
 	}
 	n := 0
 	for _, r := range rows {
-		id := hashID(r.CanonicalID)
+		id := hashID(r.OpportunityID)
 		doc := map[string]any{
 			"embedding":       r.Vector,
 			"embedding_model": r.ModelVersion,

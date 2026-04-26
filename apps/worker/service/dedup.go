@@ -54,7 +54,7 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	}
 	val := env.Payload
 
-	clusterID, hit, err := h.cache.Get(ctx, val.Normalized.HardKey)
+	clusterID, hit, err := h.cache.Get(ctx, val.HardKey)
 	if err != nil {
 		return err
 	}
@@ -65,16 +65,22 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		// TTL 0 means "no expiry" for Frame caches that honour it;
 		// backends that don't get the framework default. Dedup
 		// assignments are permanent.
-		if err := h.cache.Set(ctx, val.Normalized.HardKey, clusterID, 0*time.Second); err != nil {
+		if err := h.cache.Set(ctx, val.HardKey, clusterID, 0*time.Second); err != nil {
 			return err
 		}
 	}
 
+	// TODO(opportunity-generification): VariantClusteredV1 no longer
+	// embeds the validated/normalized payload. Phase 3.3 will rewire
+	// the canonical-merge handler to load normalized state from R2 /
+	// event-log keyed by HardKey + Kind.
 	out := eventsv1.VariantClusteredV1{
-		VariantID: val.VariantID,
-		ClusterID: clusterID,
-		IsNew:     isNew,
-		Validated: val,
+		VariantID:     val.VariantID,
+		OpportunityID: clusterID,
+		HardKey:       val.HardKey,
+		Kind:          val.Kind,
+		IsNew:         isNew,
+		ClusteredAt:   time.Now().UTC(),
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv)

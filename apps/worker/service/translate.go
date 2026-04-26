@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -58,9 +59,10 @@ func (h *TranslateHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	c := env.Payload
+	canonLang, _ := c.Attributes["language"].(string)
 	for _, lang := range h.langs {
 		lang = strings.ToLower(strings.TrimSpace(lang))
-		if lang == "" || lang == strings.ToLower(c.Language) {
+		if lang == "" || lang == strings.ToLower(canonLang) {
 			continue
 		}
 		tr, err := h.translate(ctx, c, lang)
@@ -78,8 +80,9 @@ func (h *TranslateHandler) Execute(ctx context.Context, payload any) error {
 }
 
 func (h *TranslateHandler) translate(ctx context.Context, c eventsv1.CanonicalUpsertedV1, lang string) (eventsv1.TranslationV1, error) {
+	desc, _ := c.Attributes["description"].(string)
 	system := fmt.Sprintf(`You are a translator. Translate the title and description into %s. Output ONLY JSON: {"title":"...","description":"..."}`, lang)
-	user := "Title: " + c.Title + "\n\nDescription:\n" + c.Description
+	user := "Title: " + c.Title + "\n\nDescription:\n" + desc
 	raw, err := h.extractor.Prompt(ctx, system, user)
 	if err != nil {
 		return eventsv1.TranslationV1{}, err
@@ -92,9 +95,10 @@ func (h *TranslateHandler) translate(ctx context.Context, c eventsv1.CanonicalUp
 		return eventsv1.TranslationV1{}, fmt.Errorf("translate: parse: %w", err)
 	}
 	return eventsv1.TranslationV1{
-		CanonicalID:   c.CanonicalID,
+		OpportunityID: c.OpportunityID,
 		Lang:          lang,
 		TitleTr:       out.Title,
 		DescriptionTr: out.Description,
+		TranslatedAt:  time.Now().UTC(),
 	}, nil
 }

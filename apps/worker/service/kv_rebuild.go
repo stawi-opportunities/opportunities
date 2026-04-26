@@ -160,15 +160,15 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 				}
 				_ = out.Body.Close()
 
-				if c.ClusterID == "" {
+				if c.OpportunityID == "" {
 					return
 				}
 
 				row := canonicalMinimalFromCanonical(c)
 				mu.Lock()
-				existing, ok := bounded[c.ClusterID]
+				existing, ok := bounded[c.OpportunityID]
 				if !ok || row.OccurredAt.After(existing.OccurredAt) {
-					bounded[c.ClusterID] = row
+					bounded[c.OpportunityID] = row
 				}
 				mu.Unlock()
 
@@ -298,31 +298,41 @@ func (r *KVRebuilder) flushToValkey(ctx context.Context, m map[string]canonicalM
 
 // canonicalMinimalFromCanonical converts a CanonicalUpsertedV1 (from a slug
 // JSON file) to the canonicalMinimal struct used by the bounded map.
+//
+// TODO(opportunity-generification): the slug JSON now stores
+// kind/attributes; Phase 5.2 will rewrite this projection to flow
+// through Attributes instead of duplicating fields.
 func canonicalMinimalFromCanonical(c eventsv1.CanonicalUpsertedV1) canonicalMinimal {
+	lang, _ := c.Attributes["language"].(string)
+	remote, _ := c.Attributes["remote_type"].(string)
+	employment, _ := c.Attributes["employment_type"].(string)
+	seniority, _ := c.Attributes["seniority"].(string)
+	category := ""
+	if len(c.Categories) > 0 {
+		category = c.Categories[0]
+	}
 	return canonicalMinimal{
-		ClusterID:      c.ClusterID,
-		CanonicalID:    c.CanonicalID,
+		ClusterID:      c.OpportunityID,
+		CanonicalID:    c.OpportunityID,
 		Slug:           c.Slug,
 		Title:          c.Title,
-		Company:        c.Company,
-		Country:        c.Country,
-		Language:       c.Language,
-		RemoteType:     c.RemoteType,
-		EmploymentType: c.EmploymentType,
-		Seniority:      c.Seniority,
-		SalaryMin:      c.SalaryMin,
-		SalaryMax:      c.SalaryMax,
+		Company:        c.IssuingEntity,
+		Country:        c.AnchorCountry,
+		Language:       lang,
+		RemoteType:     remote,
+		EmploymentType: employment,
+		Seniority:      seniority,
+		SalaryMin:      c.AmountMin,
+		SalaryMax:      c.AmountMax,
 		Currency:       c.Currency,
-		Category:       c.Category,
-		QualityScore:   c.QualityScore,
-		Status:         c.Status,
-		FirstSeenAt:    c.FirstSeenAt,
-		LastSeenAt:     c.LastSeenAt,
+		Category:       category,
+		QualityScore:   0,
+		Status:         "active",
+		FirstSeenAt:    c.UpsertedAt,
+		LastSeenAt:     c.UpsertedAt,
 		PostedAt:       c.PostedAt,
 		ApplyURL:       c.ApplyURL,
-		// OccurredAt is not present in slug JSON (it's an envelope field not
-		// marshaled). Use LastSeenAt as the fold key so CAS still works.
-		OccurredAt: c.LastSeenAt,
+		OccurredAt:     c.UpsertedAt,
 	}
 }
 

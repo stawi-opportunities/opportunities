@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -91,12 +92,21 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		return h.emitValidated(ctx, n, 0.5, "no extractor configured", "")
 	}
 
+	// Pull review fields out of the polymorphic Attributes map. The
+	// universal envelope stays terse; description / location_text are
+	// treated as common attribute keys until Phase 3.3 lifts them to
+	// per-kind validators.
+	title, _ := n.Attributes["title"].(string)
+	company, _ := n.Attributes["issuing_entity"].(string)
+	location, _ := n.Attributes["location_text"].(string)
+	desc, _ := n.Attributes["description"].(string)
+
 	review := strings.Join([]string{
-		"Title: " + n.Title,
-		"Company: " + n.Company,
+		"Title: " + title,
+		"Company: " + company,
 		"Seniority: ",
-		"Location: " + n.LocationText,
-		"Description (first 500 chars): " + first500(n.Description),
+		"Location: " + location,
+		"Description (first 500 chars): " + first500(desc),
 	}, "\n")
 
 	out, err := h.extractor.Prompt(ctx, validationPrompt, review)
@@ -125,14 +135,26 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 }
 
 func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantNormalizedV1, score float64, notes, model string) error {
-	out := eventsv1.VariantValidatedV1{
-		VariantID:       n.VariantID,
-		SourceID:        n.SourceID,
-		ValidationScore: score,
-		ValidationNotes: notes,
-		ModelVersion:    model,
-		Normalized:      n,
+	// TODO(opportunity-generification): VariantValidatedV1 dropped the
+	// embedded Normalized payload. Phase 3.3 will rework dedup so it
+	// loads the normalized variant from R2/event-log instead of the
+	// transport. ModelVersion + ValidationNotes are likewise absent —
+	// re-add them under Reasons / a kind-specific attribute when the
+	// validator is rewritten.
+	reasons := []string(nil)
+	if notes != "" {
+		reasons = strings.Split(notes, "; ")
 	}
+	out := eventsv1.VariantValidatedV1{
+		VariantID:    n.VariantID,
+		HardKey:      n.HardKey,
+		Kind:         n.Kind,
+		Valid:        true,
+		Reasons:      reasons,
+		ValidatedAt:  time.Now().UTC(),
+		QualityScore: score,
+	}
+	_ = model
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsValidated, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsValidated, env)
 }
@@ -140,10 +162,12 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 func (h *ValidateHandler) emitFlagged(ctx context.Context, n eventsv1.VariantNormalizedV1, reason string, conf float64, model string) error {
 	out := eventsv1.VariantFlaggedV1{
 		VariantID:    n.VariantID,
-		SourceID:     n.SourceID,
+		HardKey:      n.HardKey,
+		Kind:         n.Kind,
 		Reason:       reason,
 		Confidence:   conf,
 		ModelVersion: model,
+		FlaggedAt:    time.Now().UTC(),
 	}
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsFlagged, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsFlagged, env)

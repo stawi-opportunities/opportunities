@@ -17,6 +17,18 @@ import (
 // CanonicalHandler merges a newly-clustered variant into the
 // current cluster snapshot (or creates one) and emits
 // CanonicalUpsertedV1.
+//
+// TODO(opportunity-generification): this handler is structurally
+// stale after the polymorphic event reshape. The merge logic still
+// references the legacy ClusterSnapshot fields — Phase 3.3 will
+// rewrite the snapshot store to track Attributes per kind, and
+// Phase 4.x will rewire the canonical-merge stage to read Validated +
+// Normalized from the new event shape (currently the validated and
+// normalized payloads no longer embed each other). Until then, the
+// canonical merge keeps the cluster-snapshot model untouched and
+// produces an opportunity-shaped event with placeholder values for
+// kind-specific fields. Tests that exercise the full pipeline will
+// need to wait for Phase 3.3.
 type CanonicalHandler struct {
 	svc   *frame.Service
 	cache cache.Cache[string, kv.ClusterSnapshot]
@@ -53,10 +65,14 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	in := env.Payload
-	n := in.Validated.Normalized
 
-	// Load existing snapshot, if any.
-	prev, _, err := h.cache.Get(ctx, in.ClusterID)
+	// TODO(opportunity-generification): VariantClusteredV1 no longer
+	// embeds the validated/normalized payload. Phase 3.3 will rewrite
+	// dedup to populate Attributes on the merged snapshot. For now we
+	// load the existing snapshot keyed by OpportunityID (the new
+	// cluster identity) and re-emit it; merge-from-new-variant work is
+	// deferred.
+	prev, _, err := h.cache.Get(ctx, in.OpportunityID)
 	if err != nil {
 		return err
 	}
@@ -64,25 +80,20 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	now := time.Now().UTC()
 
 	merged := kv.ClusterSnapshot{
-		ClusterID:      in.ClusterID,
-		CanonicalID:    prev.CanonicalID,
-		Slug:           prev.Slug,
-		Title:          preferNonEmpty(n.Title, prev.Title),
-		Company:        preferNonEmpty(n.Company, prev.Company),
-		Description:    preferLonger(n.Description, prev.Description),
-		Country:        preferNonEmpty(n.Country, prev.Country),
-		Language:       preferNonEmpty(n.Language, prev.Language),
-		RemoteType:     preferNonEmpty(n.RemoteType, prev.RemoteType),
-		EmploymentType: preferNonEmpty(n.EmploymentType, prev.EmploymentType),
-		SalaryMin:      preferNonZero(n.SalaryMin, prev.SalaryMin),
-		SalaryMax:      preferNonZero(n.SalaryMax, prev.SalaryMax),
-		Currency:       preferNonEmpty(n.Currency, prev.Currency),
-		Category:       prev.Category,
-		QualityScore:   prev.QualityScore,
-		Status:         "active",
-		LastSeenAt:     now,
-		PostedAt:       n.PostedAt,
-		ApplyURL:       preferNonEmpty(n.ApplyURL, prev.ApplyURL),
+		ClusterID:    in.OpportunityID,
+		CanonicalID:  prev.CanonicalID,
+		Slug:         prev.Slug,
+		Title:        prev.Title,
+		Company:      prev.Company,
+		Description:  prev.Description,
+		Country:      prev.Country,
+		Language:     prev.Language,
+		RemoteType:   prev.RemoteType,
+		Status:       "active",
+		LastSeenAt:   now,
+		PostedAt:     prev.PostedAt,
+		ApplyURL:     prev.ApplyURL,
+		QualityScore: prev.QualityScore,
 	}
 	if merged.FirstSeenAt.IsZero() {
 		merged.FirstSeenAt = now
@@ -101,29 +112,20 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	out := eventsv1.CanonicalUpsertedV1{
-		CanonicalID:    merged.CanonicalID,
-		ClusterID:      merged.ClusterID,
-		Slug:           merged.Slug,
-		Title:          merged.Title,
-		Company:        merged.Company,
-		Description:    merged.Description,
-		LocationText:   n.LocationText,
-		Country:        merged.Country,
-		Language:       merged.Language,
-		RemoteType:     merged.RemoteType,
-		EmploymentType: merged.EmploymentType,
-		Seniority:      merged.Seniority,
-		SalaryMin:      merged.SalaryMin,
-		SalaryMax:      merged.SalaryMax,
-		Currency:       merged.Currency,
-		Category:       merged.Category,
-		QualityScore:   merged.QualityScore,
-		Status:         merged.Status,
-		PostedAt:       merged.PostedAt,
-		FirstSeenAt:    merged.FirstSeenAt,
-		LastSeenAt:     merged.LastSeenAt,
-		ExpiresAt:      merged.FirstSeenAt.Add(120 * 24 * time.Hour),
-		ApplyURL:       merged.ApplyURL,
+		OpportunityID: merged.CanonicalID,
+		Slug:          merged.Slug,
+		HardKey:       in.HardKey,
+		Kind:          in.Kind,
+		Title:         merged.Title,
+		IssuingEntity: merged.Company,
+		ApplyURL:      merged.ApplyURL,
+		AnchorCountry: merged.Country,
+		Remote:        merged.RemoteType == "remote",
+		PostedAt:      merged.PostedAt,
+		Currency:      merged.Currency,
+		AmountMin:     merged.SalaryMin,
+		AmountMax:     merged.SalaryMax,
+		UpsertedAt:    now,
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicCanonicalsUpserted, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv)
