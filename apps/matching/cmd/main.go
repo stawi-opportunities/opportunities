@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -176,6 +177,12 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+	mux.HandleFunc("GET /candidates/match-kinds", func(w http.ResponseWriter, _ *http.Request) {
+		kinds := matcherReg.EnabledKinds()
+		sort.Strings(kinds)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
+	})
 	mux.HandleFunc("POST /candidates/cv/upload", httpv1.UploadHandler(httpv1.UploadDeps{
 		Svc:     svc,
 		Archive: arch,
@@ -207,8 +214,6 @@ func main() {
 		log.WithError(err).Error("candidates: service run failed")
 		os.Exit(1)
 	}
-
-	_ = json.Marshal
 }
 
 // --- Adapters — wire concrete pkg/* types to the v1 handler interfaces. ---

@@ -13,7 +13,8 @@ type Matcher struct{}
 
 func New() *Matcher { return &Matcher{} }
 
-func (m *Matcher) Kind() string { return "job" }
+func (m *Matcher) Kind() string  { return "job" }
+func (*Matcher) Disabled() bool  { return false }
 
 func (m *Matcher) SearchFilter(prefs json.RawMessage) (any, error) {
 	var p JobPreferences

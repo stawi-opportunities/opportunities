@@ -7,6 +7,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/eventlog"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
@@ -80,18 +81,9 @@ func hashID(s string) uint64 {
 	return h.Sum64()
 }
 
-// hashCategory maps a category slug ("Programming", "STEM") to a
-// deterministic int64 for Manticore's multi64 categories column.
-// The same string always maps to the same id, which makes filtering
-// and faceting consistent across runs.
-func hashCategory(s string) int64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(s))
-	return int64(h.Sum64() & 0x7FFFFFFFFFFFFFFF) // clamp to positive
-}
-
 // categoryIDs converts a slice of category slugs into the int64 ids
-// Manticore stores in the multi64 column.
+// Manticore stores in the multi64 column. Uses opportunity.HashCategory
+// so the API layer can invert via Registry.CategoryLabels.
 func categoryIDs(cats []string) []int64 {
 	if len(cats) == 0 {
 		return nil
@@ -101,7 +93,7 @@ func categoryIDs(cats []string) []int64 {
 		if c == "" {
 			continue
 		}
-		out = append(out, hashCategory(c))
+		out = append(out, opportunity.HashCategory(c))
 	}
 	return out
 }

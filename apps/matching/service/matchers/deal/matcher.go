@@ -10,8 +10,9 @@ import (
 
 type Matcher struct{}
 
-func New() *Matcher           { return &Matcher{} }
-func (*Matcher) Kind() string { return "deal" }
+func New() *Matcher             { return &Matcher{} }
+func (*Matcher) Kind() string   { return "deal" }
+func (*Matcher) Disabled() bool { return true }
 
 func (*Matcher) SearchFilter(prefs json.RawMessage) (any, error) {
 	return searchindex.Filter{Kind: "deal"}, nil

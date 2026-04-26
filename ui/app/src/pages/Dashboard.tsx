@@ -322,8 +322,48 @@ function PreferencesPanel() {
   const [active, setActive] = useState<string>(PREFERENCE_KINDS[0]!.kind);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  // Enabled kinds come from /candidates/match-kinds; the matching service
+  // returns only kinds whose matcher isn't a stub. While loading we render
+  // nothing rather than show tabs that may disappear once the response
+  // lands. On fetch failure we fall back to the production-ready pair so
+  // the dashboard stays usable.
+  const [enabledKinds, setEnabledKinds] = useState<string[] | null>(null);
 
-  const activeEntry = PREFERENCE_KINDS.find((k) => k.kind === active) ?? PREFERENCE_KINDS[0]!;
+  useEffect(() => {
+    let cancelled = false;
+    authRuntime()
+      .fetch<{ enabled_kinds?: string[] }>("/candidates/match-kinds")
+      .then((data) => {
+        if (cancelled) return;
+        setEnabledKinds(data.enabled_kinds ?? ["job", "scholarship"]);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEnabledKinds(["job", "scholarship"]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const visibleKinds =
+    enabledKinds === null
+      ? PREFERENCE_KINDS
+      : PREFERENCE_KINDS.filter((k) => enabledKinds.includes(k.kind));
+
+  // If the active tab got filtered out (e.g. flag flip while mounted),
+  // snap back to the first visible kind.
+  useEffect(() => {
+    if (visibleKinds.length === 0) return;
+    if (!visibleKinds.some((k) => k.kind === active)) {
+      setActive(visibleKinds[0]!.kind);
+    }
+  }, [visibleKinds, active]);
+
+  const activeEntry =
+    visibleKinds.find((k) => k.kind === active) ??
+    visibleKinds[0] ??
+    PREFERENCE_KINDS[0]!;
 
   async function persist(kind: string, prefs: unknown) {
     setStatus("saving");
@@ -355,7 +395,7 @@ function PreferencesPanel() {
         role="tablist"
         aria-label="Opportunity kinds"
       >
-        {PREFERENCE_KINDS.map(({ kind, label }) => {
+        {visibleKinds.map(({ kind, label }) => {
           const on = active === kind;
           return (
             <button

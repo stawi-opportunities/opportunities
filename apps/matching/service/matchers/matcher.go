@@ -10,6 +10,11 @@ import (
 // by Kind().
 type Matcher interface {
 	Kind() string
+	// Disabled reports whether this matcher is a stub not yet ready for
+	// production. Disabled matchers stay registered (so the router can
+	// answer "we know about this kind") but are filtered out of the
+	// EnabledKinds list the UI uses to gate onboarding.
+	Disabled() bool
 	// SearchFilter returns a kind-scoped Manticore filter expression
 	// (or equivalent) built from the candidate's preferences blob.
 	SearchFilter(prefs json.RawMessage) (any, error)
@@ -33,6 +38,20 @@ func (r *Registry) Kinds() []string {
 	out := make([]string, 0, len(r.m))
 	for k := range r.m {
 		out = append(out, k)
+	}
+	return out
+}
+
+// EnabledKinds returns the kinds whose matcher is not disabled. Used by
+// the /v1/match-kinds endpoint to tell the UI which onboarding tabs to
+// render — stubs (Disabled() == true) are excluded so candidates can't
+// opt into a kind whose matcher returns uniform 0.5 scores.
+func (r *Registry) EnabledKinds() []string {
+	out := make([]string, 0, len(r.m))
+	for k, mt := range r.m {
+		if !mt.Disabled() {
+			out = append(out, k)
+		}
 	}
 	return out
 }

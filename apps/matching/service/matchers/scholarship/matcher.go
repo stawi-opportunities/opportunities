@@ -13,7 +13,8 @@ type Matcher struct{}
 
 func New() *Matcher { return &Matcher{} }
 
-func (*Matcher) Kind() string { return "scholarship" }
+func (*Matcher) Kind() string   { return "scholarship" }
+func (*Matcher) Disabled() bool { return false }
 
 func (m *Matcher) SearchFilter(prefs json.RawMessage) (any, error) {
 	var p ScholarshipPreferences
