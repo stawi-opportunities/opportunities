@@ -557,7 +557,7 @@ git commit -m "feat(opportunity): five seed kind YAMLs (job, scholarship, tender
 **Files:**
 - Modify: `apps/crawler/cmd/main.go`
 - Modify: `apps/api/cmd/main.go`
-- Modify: `apps/candidates/cmd/main.go`
+- Modify: `apps/matching/cmd/main.go`
 - Modify: `apps/worker/cmd/main.go`
 - Modify: `apps/writer/cmd/main.go`
 - Modify: `apps/materializer/cmd/main.go`
@@ -2725,18 +2725,18 @@ Expected: green. The extractor now dispatches per kind; geocoder enriches Lat/Lo
 
 ## Phase 7 — Matchers + per-kind onboarding
 
-Outcome: `apps/candidates/` renamed `apps/matching/`, hosting all five kind matchers via a `Matcher` interface. Preferences event becomes polymorphic. UI gains five onboarding flows + dashboard tabs per opted-in kind.
+Outcome: `apps/matching/` renamed `apps/matching/`, hosting all five kind matchers via a `Matcher` interface. Preferences event becomes polymorphic. UI gains five onboarding flows + dashboard tabs per opted-in kind.
 
-### Task 7.1: Rename apps/candidates → apps/matching
+### Task 7.1: Rename apps/matching → apps/matching
 
 **Files:**
-- Move: `apps/candidates/*` → `apps/matching/*`
+- Move: `apps/matching/*` → `apps/matching/*`
 
 - [ ] **Step 1: Move tree**
 
 ```bash
-git mv apps/candidates apps/matching
-grep -rln "apps/candidates" --include='*.go' --include='*.yaml' --include='*.toml' --include='*.md' --include='Dockerfile*' --include='Makefile' | xargs sed -i 's|apps/candidates|apps/matching|g'
+git mv apps/matching apps/matching
+grep -rln "apps/matching" --include='*.go' --include='*.yaml' --include='*.toml' --include='*.md' --include='Dockerfile*' --include='Makefile' | xargs sed -i 's|apps/matching|apps/matching|g'
 grep -rln "candidates-" --include='*.yaml' definitions/ | xargs sed -i 's|opportunities-candidates|opportunities-matching|g'
 ```
 
@@ -2762,7 +2762,7 @@ go test ./...
 ```bash
 # opportunities repo
 git add -A
-git commit -m "refactor: apps/candidates → apps/matching"
+git commit -m "refactor: apps/matching → apps/matching"
 
 # deployments repo
 cd /home/j/code/antinvestor/deployments

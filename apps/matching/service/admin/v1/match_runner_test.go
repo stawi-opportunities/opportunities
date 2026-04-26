@@ -10,7 +10,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	httpv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/http/v1"
+	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 

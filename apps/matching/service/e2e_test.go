@@ -19,9 +19,9 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 
-	adminv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/admin/v1"
-	eventv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/events/v1"
-	httpv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/http/v1"
+	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
+	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
+	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 )
 
 // --- fakes (local to the e2e test) ---

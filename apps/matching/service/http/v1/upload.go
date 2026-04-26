@@ -1,4 +1,4 @@
-// Package v1 contains the Phase 5 HTTP handlers for apps/candidates.
+// Package v1 contains the Phase 5 HTTP handlers for apps/matching.
 // Each handler is a factory returning an http.HandlerFunc bound to its
 // dependencies; no global state.
 package v1

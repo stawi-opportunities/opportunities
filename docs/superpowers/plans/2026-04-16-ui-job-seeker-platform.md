@@ -24,8 +24,8 @@
 | `pkg/repository/saved_job.go` | Create | `SavedJobRepository` with `Save`, `Delete`, `ListForProfile`, `Exists` |
 | `pkg/repository/job.go` | Modify | Add `GetCanonicalByID`, `ListActiveCanonical`, `CountByCategory` |
 | `apps/sitegen/cmd/main.go` | Create | CLI tool: reads Postgres, writes `ui/data/*.json` |
-| `apps/candidates/config/config.go` | Modify | Add service-payment connection config |
-| `apps/candidates/cmd/main.go` | Modify | Add `/me`, `/candidates/onboard`, `/billing/*`, `/jobs/{id}/save`, saved-jobs endpoints |
+| `apps/matching/config/config.go` | Modify | Add service-payment connection config |
+| `apps/matching/cmd/main.go` | Modify | Add `/me`, `/candidates/onboard`, `/billing/*`, `/jobs/{id}/save`, saved-jobs endpoints |
 | `apps/api/cmd/main.go` | Modify | Add `/categories`, `/stats`, `/jobs/{id}` endpoints |
 
 ### Hugo UI
@@ -269,9 +269,9 @@ Expected: compiles with no errors (existing code referencing `Email`/`Name`/`Pho
 
 - [ ] **Step 4: Fix compilation errors in candidates service**
 
-Update all references to `Email`, `Name`, `Phone` on `CandidateProfile` in `apps/candidates/cmd/main.go`. The `registerHandler` and `inboundEmailHandler` reference these — they will be replaced in Task 5. For now, make them compile by temporarily using `ProfileID` where `Email` was the lookup key.
+Update all references to `Email`, `Name`, `Phone` on `CandidateProfile` in `apps/matching/cmd/main.go`. The `registerHandler` and `inboundEmailHandler` reference these — they will be replaced in Task 5. For now, make them compile by temporarily using `ProfileID` where `Email` was the lookup key.
 
-In `apps/candidates/cmd/main.go`, update `applyCVFields` to remove name/phone assignments:
+In `apps/matching/cmd/main.go`, update `applyCVFields` to remove name/phone assignments:
 
 ```go
 func applyCVFields(candidate *domain.CandidateProfile, fields *extraction.CVFields) {
@@ -296,7 +296,7 @@ Expected: clean compilation
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pkg/domain/candidate.go pkg/domain/models.go apps/candidates/cmd/main.go
+git add pkg/domain/candidate.go pkg/domain/models.go apps/matching/cmd/main.go
 git commit -m "refactor: replace identity fields with ProfileID on CandidateProfile
 
 Add SavedJob model, JobCategory derivation, onboarding and billing
@@ -848,12 +848,12 @@ git commit -m "feat: add /jobs/{id}, /categories, /stats API endpoints"
 ## Task 5: Candidates Service — New Endpoints
 
 **Files:**
-- Modify: `apps/candidates/cmd/main.go`
-- Modify: `apps/candidates/config/config.go`
+- Modify: `apps/matching/cmd/main.go`
+- Modify: `apps/matching/config/config.go`
 
 - [ ] **Step 1: Add service-payment config**
 
-In `apps/candidates/config/config.go`:
+In `apps/matching/config/config.go`:
 
 ```go
 package config
@@ -872,7 +872,7 @@ type CandidatesConfig struct {
 
 - [ ] **Step 2: Add /me endpoint**
 
-In `apps/candidates/cmd/main.go`, add the `meHandler`. This reads ProfileID from JWT claims, fetches display info from service-profile, and combines with local candidate data:
+In `apps/matching/cmd/main.go`, add the `meHandler`. This reads ProfileID from JWT claims, fetches display info from service-profile, and combines with local candidate data:
 
 ```go
 // meHandler returns the authenticated user's identity + candidate domain state.
@@ -1144,13 +1144,13 @@ r.Get("/saved-jobs", listSavedJobsHandler(savedJobRepo))
 
 - [ ] **Step 6: Verify build**
 
-Run: `go build ./apps/candidates/cmd`
+Run: `go build ./apps/matching/cmd`
 Expected: clean compilation
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/candidates/
+git add apps/matching/
 git commit -m "feat: add /me, /candidates/onboard, saved-jobs endpoints
 
 Identity resolved from JWT claims + service-profile.

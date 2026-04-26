@@ -1,5 +1,5 @@
 // Package v1 holds the Phase 5 event subscription handlers for
-// apps/candidates — cv-extract, cv-improve, cv-embed. Each implements
+// apps/matching — cv-extract, cv-improve, cv-embed. Each implements
 // Frame's events.EventI contract.
 package v1
 

@@ -48,7 +48,7 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
 | **AI fail-open on errors, retry-forever on overload** | Handler degrades gracefully on provider error; handler holds + retries on rate limit | Preserves validator semantics, prevents silent skipping |
 | **Trustage for all scheduling** | Cadenced work fires Trustage triggers that call idempotent admin endpoints | Reuses platform service; no in-process cron; no `scheduled_*` tables |
 | **Profile via external service** | `candidates` row = `{id, profile_id, status, subscription, …}`; Profile service owns identity | Matches existing `CandidateProfile.ProfileID` pattern |
-| **Six services, not fourteen** | `crawler`, `worker`, `writer`, `materializer`, `candidates`, `api`. Pipeline stages live as internal subscriptions inside `apps/worker`; CV lifecycle inside `apps/candidates`. | Minimize ops overhead; scale inside the pod via goroutine pools, not via separate deployments. Stages remain pub/sub-decoupled so one stage's slowness doesn't block others even though they share a process. |
+| **Six services, not fourteen** | `crawler`, `worker`, `writer`, `materializer`, `candidates`, `api`. Pipeline stages live as internal subscriptions inside `apps/worker`; CV lifecycle inside `apps/matching`. | Minimize ops overhead; scale inside the pod via goroutine pools, not via separate deployments. Stages remain pub/sub-decoupled so one stage's slowness doesn't block others even though they share a process. |
 
 ## 4. Architecture
 
@@ -154,7 +154,7 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
    │                                                   │
    ▼                                                   ▼
 ┌──────────────────────────┐              ┌─────────────────────────────┐
-│ apps/api                 │              │ apps/candidates             │
+│ apps/api                 │              │ apps/matching             │
 │  - job search / browse / │              │  - CV upload HTTP endpoint  │
 │    detail / saved jobs / │              │  - consumes candidates.cv.* │
 │    "jobs for me" matches │◄─────────────│    (extract, score,         │
@@ -190,7 +190,7 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
 | `apps/worker` | **new** | Single binary running all pipeline stages as independent internal subscriptions: normalize (deterministic) → validate (AI, fail-open) → dedup (KV + bloom) → canonical merge → (embed, translate, publish — parallel consumers of `canonicals.upserted`). Per-stage goroutine pools with per-backend rate limiters. | `jobs.variants.ingested.v1`, `jobs.variants.normalized.v1`, `jobs.variants.validated.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1` | `jobs.variants.normalized.v1`, `jobs.variants.validated.v1` or `.flagged.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1`, `jobs.embeddings.v1`, `jobs.translations.v1`, `jobs.published.v1` (+ R2 publish write) | chat (validate, translate), embed (job embeddings) |
 | `apps/writer` | **new** | Subscribes to every event topic. Buffers in-memory keyed by `(partition_dt, partition_sec)`. Flushes to R2 Parquet on `{10k events | 64 MB | 30 s}`. Acks only after R2 ETag confirms. Trustage admin endpoints for compaction. | all `*.v1` topics | R2 Parquet files | no |
 | `apps/materializer` | **new** | Polls R2 every 15 s for new Parquet files in tracked partitions. Upserts to Manticore `idx_opportunities_rt`. Watermark in KV. | R2 Parquet diffs | Manticore upserts | no |
-| `apps/candidates` | yes (extended) | CV upload HTTP endpoint (synchronous extract + archive), consume candidates.cv.* topics internally for improve/embed/score, match endpoint for "jobs for me", Trustage admin endpoints (`matches.weekly_digest`, `cv.stale_nudge`). One binary owning the full candidate lifecycle. | HTTP (upload, match), `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1` | `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1`, `candidates.preferences.updated.v1`, `candidates.embeddings.v1`, `candidates.matches.ready.v1` | chat (ExtractCV, rewrites), embed (CV embeddings), scorer |
+| `apps/matching` | yes (extended) | CV upload HTTP endpoint (synchronous extract + archive), consume candidates.cv.* topics internally for improve/embed/score, match endpoint for "jobs for me", Trustage admin endpoints (`matches.weekly_digest`, `cv.stale_nudge`). One binary owning the full candidate lifecycle. | HTTP (upload, match), `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1` | `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1`, `candidates.preferences.updated.v1`, `candidates.embeddings.v1`, `candidates.matches.ready.v1` | chat (ExtractCV, rewrites), embed (CV embeddings), scorer |
 | `apps/api` | yes (modified) | Job-seeker HTTP: search, browse, detail, facets, saved jobs, read-my-matches. All reads from Manticore + KV. Synchronous rerank on paid-tier requests. | HTTP | Manticore queries, KV reads, rerank calls | rerank (paid tier only, KV-cached) |
 
 **Why consolidate into `apps/worker` instead of 7 separate services:**
@@ -214,8 +214,8 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
 | `retention.reconcile` | nightly | `apps/crawler` (existing) | reconcile R2 archive vs event log |
 | `sources.quality_window_reset` | weekly | `apps/crawler` | reset quality counters |
 | `sources.health_decay` | hourly | `apps/crawler` | gentle decay of `health_score` toward 1.0 |
-| `matches.weekly_digest` | weekly per-candidate (Trustage per-entity schedule) | `apps/candidates` | run matching pipeline, emit `candidates.matches.ready.v1` for delivery service |
-| `cv.stale_nudge` | Trustage follow-up after N days idle | `apps/candidates` | emit nudge event for notification service |
+| `matches.weekly_digest` | weekly per-candidate (Trustage per-entity schedule) | `apps/matching` | run matching pipeline, emit `candidates.matches.ready.v1` for delivery service |
+| `cv.stale_nudge` | Trustage follow-up after N days idle | `apps/matching` | emit nudge event for notification service |
 
 Trigger definitions live in `definitions/trustage/*.json` alongside the existing `retention-*.json`. Every admin endpoint is idempotent.
 
@@ -404,15 +404,15 @@ End-to-end latency from crawl to searchable: dominated by writer flush (≤30 s)
 
 ### 6.2 CV upload → matching
 
-All candidate-side work lives in `apps/candidates` — one binary, multiple internal subscriptions, same pattern as `apps/worker`.
+All candidate-side work lives in `apps/matching` — one binary, multiple internal subscriptions, same pattern as `apps/worker`.
 
-1. User uploads CV via HTTP → `apps/candidates` upload endpoint (synchronous for the user).
+1. User uploads CV via HTTP → `apps/matching` upload endpoint (synchronous for the user).
 2. Upload handler archives the file to R2 → gets `raw_archive_ref`. Extracts text via `ExtractTextFromPDF/DOCX`. Emits `candidates.cv.uploaded.v1`.
-3. Inside `apps/candidates` — the **cv-extract** subscription consumes `candidates.cv.uploaded.v1` → calls `extractor.ExtractCV(ctx, text)` → `CVFields`. Runs `cv.Scorer.Score` (role-fit component uses `extractor.Embed` internally). Emits `candidates.cv.extracted.v1` with `CVFields` + `score_components`.
-4. Inside `apps/candidates` — the **cv-improve** subscription consumes `candidates.cv.extracted.v1` → runs deterministic `fixes.detectPriorityFixes` + LLM `AttachRewrites`. Emits `candidates.cv.improved.v1`.
-5. Inside `apps/candidates` — the **cv-embed** subscription consumes both `candidates.cv.extracted.v1` and `candidates.cv.improved.v1` → calls `extractor.Embed(ctx, cv_text)` → emits `candidates.embeddings.v1`.
+3. Inside `apps/matching` — the **cv-extract** subscription consumes `candidates.cv.uploaded.v1` → calls `extractor.ExtractCV(ctx, text)` → `CVFields`. Runs `cv.Scorer.Score` (role-fit component uses `extractor.Embed` internally). Emits `candidates.cv.extracted.v1` with `CVFields` + `score_components`.
+4. Inside `apps/matching` — the **cv-improve** subscription consumes `candidates.cv.extracted.v1` → runs deterministic `fixes.detectPriorityFixes` + LLM `AttachRewrites`. Emits `candidates.cv.improved.v1`.
+5. Inside `apps/matching` — the **cv-embed** subscription consumes both `candidates.cv.extracted.v1` and `candidates.cv.improved.v1` → calls `extractor.Embed(ctx, cv_text)` → emits `candidates.embeddings.v1`.
 6. `apps/writer` persists all four event types to their respective Parquet partitions. `apps/materializer` at v1 does *not* index candidate data into Manticore (deferred to v1.1).
-7. When the user (or Trustage `matches.weekly_digest`) requests matches, `apps/candidates` match endpoint:
+7. When the user (or Trustage `matches.weekly_digest`) requests matches, `apps/matching` match endpoint:
    1. Reads the candidate's embedding + preferences from R2 `candidates_*_current/` partitions directly (or via a small KV cache).
    2. Queries `idx_opportunities_rt` with hard filters (remote_preference, salary floor, preferred_locations) + KNN on candidate embedding → top 200.
    3. Runs in-Go composite scoring (skills overlap, salary fit, recency, seniority) → top K.
@@ -496,12 +496,12 @@ Each resolved independently via `ResolveInference / ResolveEmbedding / ResolveRe
 | `Prompt(validationPrompt)` | `apps/worker` (validate sub) | Variant → accept/flag | Async | **fail-open @ 0.5 on error**; retry on overload |
 | `Prompt(translatePrompt)` | `apps/worker` (translate sub) | Canonical → target lang | Async, per (job, lang) | skip language |
 | `Embed` (jobs) | `apps/worker` (embed sub) | Canonical → vector | Async | skip vector (search degrades to BM25) |
-| `ExtractCV` | `apps/candidates` | CV text → `CVFields` | Sync (user-facing upload) | error to user |
-| `Scorer.Score` (role-fit uses `Embed`) | `apps/candidates` | CV score component | Sync | degrade role-fit to neutral 60 |
-| `Prompt(rewritePrompt)` | `apps/candidates` (cv-improve sub) | CV bullet rewrites | Async | skip rewrites, keep deterministic fixes |
-| `Embed` (CV) | `apps/candidates` (cv-embed sub) | CV text → vector | Async | skip vector |
+| `ExtractCV` | `apps/matching` | CV text → `CVFields` | Sync (user-facing upload) | error to user |
+| `Scorer.Score` (role-fit uses `Embed`) | `apps/matching` | CV score component | Sync | degrade role-fit to neutral 60 |
+| `Prompt(rewritePrompt)` | `apps/matching` (cv-improve sub) | CV bullet rewrites | Async | skip rewrites, keep deterministic fixes |
+| `Embed` (CV) | `apps/matching` (cv-embed sub) | CV text → vector | Async | skip vector |
 | `Rerank` (API) | `apps/api` | Top-200 job reorder | Sync (paid tier) | un-reranked fallback |
-| `Rerank` (matches) | `apps/candidates` | Stage 3 per-match reorder | Sync (per match run) | retrieval-order fallback |
+| `Rerank` (matches) | `apps/matching` | Stage 3 per-match reorder | Sync (per match run) | retrieval-order fallback |
 
 ### 7.3 Model versioning
 
@@ -533,7 +533,7 @@ max_replicas(worker) = floor(
   )
 )
 
-# apps/candidates — one HPA, cap from its busiest AI consumer
+# apps/matching — one HPA, cap from its busiest AI consumer
 max_replicas(candidates) = floor(
   min(
     backend.chat_rate_qps  / per_pod_cv_chat_qps,        // ExtractCV + improver
@@ -719,7 +719,7 @@ Recovery: Trustage returns → tick resumes. A long outage means compaction back
 1. Put the site into a brief maintenance banner ("search refreshing — back in minutes").
 2. Drop Postgres tables: `canonical_jobs`, `job_variants`, `job_clusters`, `job_cluster_members`, `crawl_page_state`, `rerank_cache`, `mv_job_facets`. Drop the CV/preferences/embedding columns on `candidates`.
 3. Flip `apps/api` to read from Manticore (empty at this moment — returns zero results).
-4. Start the six services: `apps/crawler` (extended), `apps/worker` (new), `apps/writer` (new), `apps/materializer` (new), `apps/candidates` (extended), `apps/api` (modified).
+4. Start the six services: `apps/crawler` (extended), `apps/worker` (new), `apps/writer` (new), `apps/materializer` (new), `apps/matching` (extended), `apps/api` (modified).
 5. Trustage fires `scheduler.tick`; crawl-requests flow; pipeline fills; Manticore populates.
 6. Lift maintenance banner once `idx_opportunities_rt` count > a sanity threshold (e.g., 50k jobs across top 10 countries).
 

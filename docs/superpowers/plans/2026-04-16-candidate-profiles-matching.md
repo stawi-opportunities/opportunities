@@ -4,7 +4,7 @@
 
 **Goal:** Build the candidate profile system with AI-driven CV extraction, three-stage job matching, and free/paid tier logic — fully integrated with the antinvestor platform services (authentication, profile, notification, payment, files, redirect).
 
-**Architecture:** New Frame-based `apps/candidates/` service sharing the existing PostgreSQL and Ollama. Uses antinvestor Connect RPC clients for auth (magic links), notifications (match emails), file storage (CVs), payments (subscriptions), and redirect (tracked apply links). Matching runs asynchronously via Frame events.
+**Architecture:** New Frame-based `apps/matching/` service sharing the existing PostgreSQL and Ollama. Uses antinvestor Connect RPC clients for auth (magic links), notifications (match emails), file storage (CVs), payments (subscriptions), and redirect (tracked apply links). Matching runs asynchronously via Frame events.
 
 **Tech Stack:** Go 1.26, Frame, GORM, Ollama, Connect RPC clients (`antinvestor/common`), chi router, PDF/DOCX parsing
 
@@ -36,13 +36,13 @@ pkg/repository/match.go                            ← match CRUD
 pkg/extraction/cv.go                               ← CV text extraction + AI profile extraction
 pkg/matching/matcher.go                            ← three-stage matching pipeline
 pkg/matching/scorer.go                             ← match score computation
-apps/candidates/config/config.go                   ← config with service endpoints
-apps/candidates/cmd/main.go                        ← Frame service entry point
-apps/candidates/service/clients.go                 ← antinvestor service client setup
-apps/candidates/service/events/profile_created.go  ← triggers matching + verification
-apps/candidates/service/events/embedding.go        ← candidate embedding generation
-apps/candidates/service/handlers.go                ← HTTP route handlers
-apps/candidates/Dockerfile                         ← Docker image
+apps/matching/config/config.go                   ← config with service endpoints
+apps/matching/cmd/main.go                        ← Frame service entry point
+apps/matching/service/clients.go                 ← antinvestor service client setup
+apps/matching/service/events/profile_created.go  ← triggers matching + verification
+apps/matching/service/events/embedding.go        ← candidate embedding generation
+apps/matching/service/handlers.go                ← HTTP route handlers
+apps/matching/Dockerfile                         ← Docker image
 ```
 
 ---
@@ -185,7 +185,7 @@ git commit -m "feat: add three-stage matching algorithm with composite scoring"
 ## Task 5: Antinvestor Service Clients
 
 **Files:**
-- Create: `apps/candidates/service/clients.go`
+- Create: `apps/matching/service/clients.go`
 
 - [ ] **Step 1: Add antinvestor/common dependency**
 
@@ -195,7 +195,7 @@ go get github.com/antinvestor/common@latest
 
 - [ ] **Step 2: Create service client setup**
 
-`apps/candidates/service/clients.go` with:
+`apps/matching/service/clients.go` with:
 
 ```go
 package service
@@ -240,8 +240,8 @@ RedirectServiceURI     string `env:"REDIRECT_SERVICE_URI" envDefault:""`
 - [ ] **Step 3: Verify build, commit**
 
 ```bash
-go build ./apps/candidates/...
-git add apps/candidates/service/clients.go apps/candidates/config/config.go
+go build ./apps/matching/...
+git add apps/matching/service/clients.go apps/matching/config/config.go
 git commit -m "feat: add antinvestor service client setup (notification, files, payment, profile)"
 ```
 
@@ -250,12 +250,12 @@ git commit -m "feat: add antinvestor service client setup (notification, files, 
 ## Task 6: Event Handlers
 
 **Files:**
-- Create: `apps/candidates/service/events/profile_created.go`
-- Create: `apps/candidates/service/events/embedding.go`
+- Create: `apps/matching/service/events/profile_created.go`
+- Create: `apps/matching/service/events/embedding.go`
 
 - [ ] **Step 1: Create profile created handler**
 
-`apps/candidates/service/events/profile_created.go`:
+`apps/matching/service/events/profile_created.go`:
 - Event name: `candidate.profile.created`
 - Payload: `{CandidateID int64}`
 - Execute: loads candidate → runs `matcher.MatchCandidateToJobs` → sends verification email via notification service
@@ -270,7 +270,7 @@ Uses redirect service to create tracked links in the email (e.g., "View profile"
 
 - [ ] **Step 2: Create candidate embedding handler**
 
-`apps/candidates/service/events/embedding.go`:
+`apps/matching/service/events/embedding.go`:
 - Event name: `candidate.embedding.needed`
 - Payload: `{CandidateID int64, Text string}`
 - Execute: calls `extractor.Embed(ctx, text)` → stores via `candidateRepo.UpdateEmbedding`
@@ -280,8 +280,8 @@ Same pattern as the crawler's `EmbeddingGenerationHandler`.
 - [ ] **Step 3: Verify build, commit**
 
 ```bash
-go build ./apps/candidates/...
-git add apps/candidates/service/events/
+go build ./apps/matching/...
+git add apps/matching/service/events/
 git commit -m "feat: add candidate event handlers with notification and redirect integration"
 ```
 
@@ -290,13 +290,13 @@ git commit -m "feat: add candidate event handlers with notification and redirect
 ## Task 7: HTTP Handlers + Main
 
 **Files:**
-- Create: `apps/candidates/service/handlers.go`
-- Create: `apps/candidates/cmd/main.go`
-- Create: `apps/candidates/config/config.go`
+- Create: `apps/matching/service/handlers.go`
+- Create: `apps/matching/cmd/main.go`
+- Create: `apps/matching/config/config.go`
 
 - [ ] **Step 1: Create config**
 
-`apps/candidates/config/config.go`:
+`apps/matching/config/config.go`:
 ```go
 type CandidatesConfig struct {
     fconfig.ConfigurationDefault
@@ -313,7 +313,7 @@ type CandidatesConfig struct {
 
 - [ ] **Step 2: Create HTTP handlers**
 
-`apps/candidates/service/handlers.go` with functions returning `http.HandlerFunc`:
+`apps/matching/service/handlers.go` with functions returning `http.HandlerFunc`:
 
 | Route | Handler | Service Integration |
 |---|---|---|
@@ -362,7 +362,7 @@ paymentClient.CreatePaymentLink(ctx, &paymentv1.CreatePaymentLinkRequest{...})
 
 - [ ] **Step 3: Create main.go**
 
-`apps/candidates/cmd/main.go`:
+`apps/matching/cmd/main.go`:
 - Load config via `fconfig.FromEnv[CandidatesConfig]()`
 - Create Frame service with `frame.WithConfig`, `frame.WithDatastore`
 - Get DB pool, create repositories
@@ -387,7 +387,7 @@ go build ./...
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/
+git add apps/matching/
 git commit -m "feat: add candidates app with Frame service, HTTP API, and antinvestor service integration"
 ```
 
@@ -396,15 +396,15 @@ git commit -m "feat: add candidates app with Frame service, HTTP API, and antinv
 ## Task 8: Dockerfile + K8s Deployment
 
 **Files:**
-- Create: `apps/candidates/Dockerfile`
+- Create: `apps/matching/Dockerfile`
 - Create: k8s manifests in deployments repo
 
 - [ ] **Step 1: Create Dockerfile**
 
 Same pattern as crawler Dockerfile:
 - `golang:1.26` builder, `cgr.dev/chainguard/static` final
-- COPY `./apps/candidates` and `./pkg`
-- Build `./apps/candidates/cmd/main.go`
+- COPY `./apps/matching` and `./pkg`
+- Build `./apps/matching/cmd/main.go`
 - Entrypoint: `/candidates`
 
 - [ ] **Step 2: Create k8s manifests**
@@ -424,7 +424,7 @@ The opportunities-setup kustomization already covers all subdirectories.
 
 ```bash
 # stawi.opportunities repo
-git add apps/candidates/Dockerfile
+git add apps/matching/Dockerfile
 git commit -m "feat: add candidates Dockerfile"
 git push origin main
 git tag v0.9.0

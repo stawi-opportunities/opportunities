@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rewire `apps/candidates` to be what the greenfield spec §4.2 / §6.2 says it is — a single binary owning the CV lifecycle via event-sourced subscriptions plus a Manticore-backed match endpoint. Upload persists text to R2 and emits `candidates.cv.uploaded.v1`; internal subscribers extract/score, improve, and embed; the match endpoint reads the candidate's embedding + preferences from R2 `*_current/` partitions and queries `idx_opportunities_rt`. Trustage fires `matches.weekly_digest` and `cv.stale_nudge` against new admin endpoints. Ancillary HTTP endpoints on the current binary (registration, profile CRUD, billing webhooks, saved jobs, link-expired, inbound-email, forceMatch, getCVScore, rescoreCV, listMatches, viewMatch, listCandidates) are removed from `apps/candidates` — identity lives in the external Profile service, saved jobs move to `apps/api`, billing webhooks move to a dedicated billing app, and the rest become dead code that Phase 6 deletes from Postgres.
+**Goal:** Rewire `apps/matching` to be what the greenfield spec §4.2 / §6.2 says it is — a single binary owning the CV lifecycle via event-sourced subscriptions plus a Manticore-backed match endpoint. Upload persists text to R2 and emits `candidates.cv.uploaded.v1`; internal subscribers extract/score, improve, and embed; the match endpoint reads the candidate's embedding + preferences from R2 `*_current/` partitions and queries `idx_opportunities_rt`. Trustage fires `matches.weekly_digest` and `cv.stale_nudge` against new admin endpoints. Ancillary HTTP endpoints on the current binary (registration, profile CRUD, billing webhooks, saved jobs, link-expired, inbound-email, forceMatch, getCVScore, rescoreCV, listMatches, viewMatch, listCandidates) are removed from `apps/matching` — identity lives in the external Profile service, saved jobs move to `apps/api`, billing webhooks move to a dedicated billing app, and the rest become dead code that Phase 6 deletes from Postgres.
 
-**Architecture:** One `apps/candidates` binary with **three internal Frame subscriptions** (cv-extract, cv-improve, cv-embed) + **three HTTP endpoints** (`POST /candidates/cv/upload`, `POST /candidates/preferences`, `GET /candidates/match`) + **two Trustage admin endpoints** (`POST /_admin/matches/weekly_digest`, `POST /_admin/cv/stale_nudge`) + a minimal `GET /healthz`. The match endpoint uses a new `pkg/candidatestore` reader that lists `candidates_embeddings_current/` and `candidates_preferences_current/` partitions for the requested `candidate_id` and falls back to a short-lived Valkey cache. No CV, preferences, or embedding data lands in Postgres anywhere in this plan — the `candidates` row keeps only `{id, profile_id, status, subscription, created_at, updated_at}` per §5.5. Phase 6 drops the CV/preferences/embedding columns.
+**Architecture:** One `apps/matching` binary with **three internal Frame subscriptions** (cv-extract, cv-improve, cv-embed) + **three HTTP endpoints** (`POST /candidates/cv/upload`, `POST /candidates/preferences`, `GET /candidates/match`) + **two Trustage admin endpoints** (`POST /_admin/matches/weekly_digest`, `POST /_admin/cv/stale_nudge`) + a minimal `GET /healthz`. The match endpoint uses a new `pkg/candidatestore` reader that lists `candidates_embeddings_current/` and `candidates_preferences_current/` partitions for the requested `candidate_id` and falls back to a short-lived Valkey cache. No CV, preferences, or embedding data lands in Postgres anywhere in this plan — the `candidates` row keeps only `{id, profile_id, status, subscription, created_at, updated_at}` per §5.5. Phase 6 drops the CV/preferences/embedding columns.
 
-Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEventName`) and the legacy `apps/candidates/service/events/` handlers stay in the repo untouched — Phase 6 cutover deletes them alongside the Postgres column drops.
+Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEventName`) and the legacy `apps/matching/service/events/` handlers stay in the repo untouched — Phase 6 cutover deletes them alongside the Postgres column drops.
 
 **Tech stack:**
 - Go 1.26, Frame (`github.com/pitabwire/frame` v1.94.1), `pitabwire/util` logging
@@ -23,26 +23,26 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 - Six new event payload types (`pkg/events/v1/candidates.go`) + six topic constants (`pkg/events/v1/names.go`) + partition routing for eight candidate Parquet collections.
 - Writer encoder + hint extraction extensions for all six candidate topics.
 - `pkg/candidatestore` — reads latest candidate embedding + preferences from R2 `*_current/` partitions, with a small Valkey cache; writes nothing.
-- `apps/candidates/service/http/v1/` — three HTTP handlers (upload, preferences, match) **with production adapters wired end-to-end**.
-- `apps/candidates/service/events/v1/` — three Frame subscription handlers (cv-extract, cv-improve, cv-embed) and their unit tests.
-- `apps/candidates/service/admin/v1/` — two Trustage admin handlers (matches weekly digest, CV stale nudge) **with production adapters wired end-to-end**.
+- `apps/matching/service/http/v1/` — three HTTP handlers (upload, preferences, match) **with production adapters wired end-to-end**.
+- `apps/matching/service/events/v1/` — three Frame subscription handlers (cv-extract, cv-improve, cv-embed) and their unit tests.
+- `apps/matching/service/admin/v1/` — two Trustage admin handlers (matches weekly digest, CV stale nudge) **with production adapters wired end-to-end**.
 - Four production adapter files wiring the narrow interfaces declared by the handlers:
   - `SearchIndex` adapter on `pkg/searchindex.Client` (Task 16)
   - `CandidateLister` adapter on `pkg/repository.CandidateRepository` (Task 17)
   - `MatchService` — the match handler's scoring pipeline extracted for reuse by `MatchRunner` (Task 18)
   - `StaleLister` adapter on `pkg/repository.CandidateRepository` using `updated_at` as the activity proxy (Task 19)
-- `apps/candidates/cmd/main.go` rewritten — drops ~1,200 lines of legacy wiring; wires the new handlers + Trustage admins + healthz; no `nil` placeholders.
+- `apps/matching/cmd/main.go` rewritten — drops ~1,200 lines of legacy wiring; wires the new handlers + Trustage admins + healthz; no `nil` placeholders.
 - Two Trustage triggers: `candidates-matches-weekly-digest.json`, `candidates-cv-stale-nudge.json`.
 - End-to-end test: POST `/candidates/cv/upload` → subscriptions fire → assert six-stage event trail → POST `/candidates/preferences` → GET `/candidates/match` returns top-N matches.
 
 **What's NOT in this plan (deferred to Phase 6 cutover):**
-- Deleting legacy `apps/candidates/service/events/{embedding.go,profile_created.go}` files.
+- Deleting legacy `apps/matching/service/events/{embedding.go,profile_created.go}` files.
 - Deleting legacy HTTP handlers from the current `main.go` — they are removed from the new `main.go` but the old file is simply overwritten; any referenced helpers used only by those handlers fall out with the rewrite.
 - Dropping the CV/preferences/embedding columns on Postgres `candidates` table. The new code never reads or writes those columns, but the schema change happens in the Phase 6 cutover SQL.
-- Moving `saved_jobs` endpoints to `apps/api`. The new `apps/candidates/cmd/main.go` does not expose save/unsave/list-saved endpoints — callers must migrate to `apps/api` (Phase 6 scope).
+- Moving `saved_jobs` endpoints to `apps/api`. The new `apps/matching/cmd/main.go` does not expose save/unsave/list-saved endpoints — callers must migrate to `apps/api` (Phase 6 scope).
 - Moving billing webhooks/plans/checkout to a separate billing binary. Same pattern: endpoints removed here; new home is Phase 6's problem.
 - Recruiter-side candidate search (`idx_candidates_rt` in Manticore) — deferred to v1.1 per spec.
-- Link-expired notification flow — if it's wanted, it becomes a consumer of `jobs.canonicals.expired.v1` in a future plan; removed from `apps/candidates` here.
+- Link-expired notification flow — if it's wanted, it becomes a consumer of `jobs.canonicals.expired.v1` in a future plan; removed from `apps/matching` here.
 - Daily compaction of `candidates_cv_current/` / `candidates_embeddings_current/` / `candidates_preferences_current/` from the raw daily partitions. Plan 5 writes only the daily partitions (via the existing writer); the match endpoint's `candidatestore.Reader` reads `*_current/` which won't exist until compaction ships in Phase 6. In the meantime, operators can run a one-off backfill job, or Task 19's StaleLister (Postgres-backed for now) gives us a working stale-nudge without depending on compaction.
 
 **What's intentionally deleted (aggressive option chosen by human):**
@@ -79,23 +79,23 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 | `pkg/events/v1/candidates.go` | Six payload structs (`CVUploadedV1`, `CVExtractedV1`, `CVImprovedV1`, `CandidateEmbeddingV1`, `PreferencesUpdatedV1`, `MatchesReadyV1`) with `json` + `parquet` tags |
 | `pkg/candidatestore/reader.go` | `Reader` — reads latest embedding + preferences from R2 `candidates_embeddings_current/` and `candidates_preferences_current/` via `pkg/eventlog`. Optional Valkey cache. No writes. |
 | `pkg/candidatestore/reader_test.go` | Integration test with MinIO + seeded Parquet files |
-| `apps/candidates/service/http/v1/upload.go` | `POST /candidates/cv/upload` handler — multipart/form upload, archive raw bytes, extract text, emit `CVUploadedV1` |
-| `apps/candidates/service/http/v1/upload_test.go` | httptest-driven unit test |
-| `apps/candidates/service/http/v1/preferences.go` | `POST /candidates/preferences` handler — validates body, emits `PreferencesUpdatedV1` |
-| `apps/candidates/service/http/v1/preferences_test.go` | httptest-driven unit test |
-| `apps/candidates/service/http/v1/match.go` | `GET /candidates/match` handler — loads embedding + prefs, queries Manticore KNN+filter, in-Go composite scoring, optional rerank, emits `MatchesReadyV1` |
-| `apps/candidates/service/http/v1/match_test.go` | Unit test with fakes for `candidatestore.Reader` and `searchindex.Client` |
-| `apps/candidates/service/events/v1/cv_extract.go` | Frame handler — consumes `candidates.cv.uploaded.v1`, loads archived file, runs `ExtractCV`, runs `cv.Scorer`, emits `CVExtractedV1` |
-| `apps/candidates/service/events/v1/cv_extract_test.go` | Unit test with fake extractor + fake scorer |
-| `apps/candidates/service/events/v1/cv_improve.go` | Frame handler — consumes `candidates.cv.extracted.v1`, runs `cv.detectPriorityFixes` + `AttachRewrites`, emits `CVImprovedV1` |
-| `apps/candidates/service/events/v1/cv_improve_test.go` | Unit test |
-| `apps/candidates/service/events/v1/cv_embed.go` | Frame handler — consumes either `candidates.cv.extracted.v1` or `candidates.cv.improved.v1`, runs `extractor.Embed`, emits `CandidateEmbeddingV1` |
-| `apps/candidates/service/events/v1/cv_embed_test.go` | Unit test |
-| `apps/candidates/service/admin/v1/matches_weekly.go` | `POST /_admin/matches/weekly_digest` — iterates active candidates, fires match per-candidate, emits `MatchesReadyV1` |
-| `apps/candidates/service/admin/v1/matches_weekly_test.go` | Unit test |
-| `apps/candidates/service/admin/v1/cv_stale_nudge.go` | `POST /_admin/cv/stale_nudge` — finds candidates idle > 60 days, emits `candidates.cv.stale_nudge.v1` (out-of-band event for the external notification service) |
-| `apps/candidates/service/admin/v1/cv_stale_nudge_test.go` | Unit test |
-| `apps/candidates/service/e2e_test.go` | End-to-end: upload CV → extract → improve → embed → preferences → match → assert trail |
+| `apps/matching/service/http/v1/upload.go` | `POST /candidates/cv/upload` handler — multipart/form upload, archive raw bytes, extract text, emit `CVUploadedV1` |
+| `apps/matching/service/http/v1/upload_test.go` | httptest-driven unit test |
+| `apps/matching/service/http/v1/preferences.go` | `POST /candidates/preferences` handler — validates body, emits `PreferencesUpdatedV1` |
+| `apps/matching/service/http/v1/preferences_test.go` | httptest-driven unit test |
+| `apps/matching/service/http/v1/match.go` | `GET /candidates/match` handler — loads embedding + prefs, queries Manticore KNN+filter, in-Go composite scoring, optional rerank, emits `MatchesReadyV1` |
+| `apps/matching/service/http/v1/match_test.go` | Unit test with fakes for `candidatestore.Reader` and `searchindex.Client` |
+| `apps/matching/service/events/v1/cv_extract.go` | Frame handler — consumes `candidates.cv.uploaded.v1`, loads archived file, runs `ExtractCV`, runs `cv.Scorer`, emits `CVExtractedV1` |
+| `apps/matching/service/events/v1/cv_extract_test.go` | Unit test with fake extractor + fake scorer |
+| `apps/matching/service/events/v1/cv_improve.go` | Frame handler — consumes `candidates.cv.extracted.v1`, runs `cv.detectPriorityFixes` + `AttachRewrites`, emits `CVImprovedV1` |
+| `apps/matching/service/events/v1/cv_improve_test.go` | Unit test |
+| `apps/matching/service/events/v1/cv_embed.go` | Frame handler — consumes either `candidates.cv.extracted.v1` or `candidates.cv.improved.v1`, runs `extractor.Embed`, emits `CandidateEmbeddingV1` |
+| `apps/matching/service/events/v1/cv_embed_test.go` | Unit test |
+| `apps/matching/service/admin/v1/matches_weekly.go` | `POST /_admin/matches/weekly_digest` — iterates active candidates, fires match per-candidate, emits `MatchesReadyV1` |
+| `apps/matching/service/admin/v1/matches_weekly_test.go` | Unit test |
+| `apps/matching/service/admin/v1/cv_stale_nudge.go` | `POST /_admin/cv/stale_nudge` — finds candidates idle > 60 days, emits `candidates.cv.stale_nudge.v1` (out-of-band event for the external notification service) |
+| `apps/matching/service/admin/v1/cv_stale_nudge_test.go` | Unit test |
+| `apps/matching/service/e2e_test.go` | End-to-end: upload CV → extract → improve → embed → preferences → match → assert trail |
 | `definitions/trustage/candidates-matches-weekly-digest.json` | Weekly cron calling `/_admin/matches/weekly_digest` |
 | `definitions/trustage/candidates-cv-stale-nudge.json` | Daily cron calling `/_admin/cv/stale_nudge` |
 
@@ -110,16 +110,16 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 | `apps/writer/service/handler.go` | Extend `extractHint` with six new cases all keyed on `payload.candidate_id` |
 | `apps/writer/service/service.go` | Extend `uploadBatch` with six new encoder cases |
 | `apps/writer/service/buffer.go` | Extend `collectionForTopic` with mappings for the six candidate topics (matches.ready is its own collection even though it shares the cnd axis) |
-| `apps/candidates/cmd/main.go` | Rewritten from scratch — drops ~1,200 lines of legacy wiring, wires the three HTTP handlers, three event subscriptions, two admin endpoints, health |
-| `apps/candidates/config/config.go` | Add `R2ArchiveBucket`, `R2EventLogBucket`, `ManticoreURL`, `ValkeyAddr` env vars; drop `BillingBaseURL`, `NotificationBaseURL`, `ProfileServiceURL` if they were only used by removed handlers (trim as needed) |
+| `apps/matching/cmd/main.go` | Rewritten from scratch — drops ~1,200 lines of legacy wiring, wires the three HTTP handlers, three event subscriptions, two admin endpoints, health |
+| `apps/matching/config/config.go` | Add `R2ArchiveBucket`, `R2EventLogBucket`, `ManticoreURL`, `ValkeyAddr` env vars; drop `BillingBaseURL`, `NotificationBaseURL`, `ProfileServiceURL` if they were only used by removed handlers (trim as needed) |
 
 **Delete (via main.go rewrite):**
 
-The old `apps/candidates/cmd/main.go` has ~25 HTTP handlers (registerHandler, inboundEmailHandler, billingWebhookHandler, plansHandler, checkoutStatusHandler, linkExpiredHandler, getProfileHandler, updateProfileHandler, listMatchesHandler, viewMatchHandler, listCandidatesHandler, meHandler, meSubscriptionHandler, onboardHandler, uploadCVHandler, saveJobHandler, unsaveJobHandler, listSavedJobsHandler, forceMatchHandler, getCVScoreHandler, rescoreCVHandler). The new `main.go` registers none of them — only the three new ones + two admins + healthz. All their helper funcs that live in the same file (`applyCVFields`, `buildEmbeddingText`, `joinCSV`, `boolStr`, `parseCanonicalJobAffiliate`, `notifyExpiredJobSubscribers`, `scoreAndPersistCV`, `kickoffCVScore`, `sendRegistrationNotification`, `uploadCVToFiles`, `isValidCandidateStatus`, `sourceStateChecker`-equivalent) fall out when main.go is rewritten.
+The old `apps/matching/cmd/main.go` has ~25 HTTP handlers (registerHandler, inboundEmailHandler, billingWebhookHandler, plansHandler, checkoutStatusHandler, linkExpiredHandler, getProfileHandler, updateProfileHandler, listMatchesHandler, viewMatchHandler, listCandidatesHandler, meHandler, meSubscriptionHandler, onboardHandler, uploadCVHandler, saveJobHandler, unsaveJobHandler, listSavedJobsHandler, forceMatchHandler, getCVScoreHandler, rescoreCVHandler). The new `main.go` registers none of them — only the three new ones + two admins + healthz. All their helper funcs that live in the same file (`applyCVFields`, `buildEmbeddingText`, `joinCSV`, `boolStr`, `parseCanonicalJobAffiliate`, `notifyExpiredJobSubscribers`, `scoreAndPersistCV`, `kickoffCVScore`, `sendRegistrationNotification`, `uploadCVToFiles`, `isValidCandidateStatus`, `sourceStateChecker`-equivalent) fall out when main.go is rewritten.
 
-`apps/candidates/cmd/billing.go` (422 lines) — DELETE. Billing logic moves to the billing app in Phase 6.
+`apps/matching/cmd/billing.go` (422 lines) — DELETE. Billing logic moves to the billing app in Phase 6.
 
-`apps/candidates/service/events/embedding.go` and `profile_created.go` — left in place (Phase 6 deletes). The new main.go just doesn't register them.
+`apps/matching/service/events/embedding.go` and `profile_created.go` — left in place (Phase 6 deletes). The new main.go just doesn't register them.
 
 ---
 
@@ -1037,12 +1037,12 @@ git commit -m "feat(candidatestore): R2 reader for latest embedding + preference
 ## Task 5: CV upload HTTP handler — archive + extract + emit
 
 **Files:**
-- Create: `apps/candidates/service/http/v1/upload.go`
-- Create: `apps/candidates/service/http/v1/upload_test.go`
+- Create: `apps/matching/service/http/v1/upload.go`
+- Create: `apps/matching/service/http/v1/upload_test.go`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/http/v1/upload_test.go`:
+Create `apps/matching/service/http/v1/upload_test.go`:
 
 ```go
 package v1
@@ -1184,17 +1184,17 @@ func TestUploadHandlerRejectsMissingCandidateID(t *testing.T) {
 
 ```bash
 cd /home/j/code/stawi.opportunities
-go test ./apps/candidates/service/http/v1/... -run TestUploadHandler
+go test ./apps/matching/service/http/v1/... -run TestUploadHandler
 ```
 
 Expected: `undefined: UploadHandler, UploadDeps`.
 
 - [ ] **Step 3: Implement the handler**
 
-Create `apps/candidates/service/http/v1/upload.go`:
+Create `apps/matching/service/http/v1/upload.go`:
 
 ```go
-// Package v1 contains the Phase 5 HTTP handlers for apps/candidates.
+// Package v1 contains the Phase 5 HTTP handlers for apps/matching.
 // Each handler is a factory returning an http.HandlerFunc bound to its
 // dependencies; no global state.
 package v1
@@ -1361,13 +1361,13 @@ func extractText(ex TextExtractor, filename string, body []byte) (string, error)
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run TestUploadHandler -count=1 -v
+go test ./apps/matching/service/http/v1/... -run TestUploadHandler -count=1 -v
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/http/v1/upload.go apps/candidates/service/http/v1/upload_test.go
+git add apps/matching/service/http/v1/upload.go apps/matching/service/http/v1/upload_test.go
 git commit -m "feat(candidates): POST /candidates/cv/upload emits CVUploadedV1"
 ```
 
@@ -1376,12 +1376,12 @@ git commit -m "feat(candidates): POST /candidates/cv/upload emits CVUploadedV1"
 ## Task 6: Preferences HTTP handler
 
 **Files:**
-- Create: `apps/candidates/service/http/v1/preferences.go`
-- Create: `apps/candidates/service/http/v1/preferences_test.go`
+- Create: `apps/matching/service/http/v1/preferences.go`
+- Create: `apps/matching/service/http/v1/preferences_test.go`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/http/v1/preferences_test.go`:
+Create `apps/matching/service/http/v1/preferences_test.go`:
 
 ```go
 package v1
@@ -1498,14 +1498,14 @@ func TestPreferencesHandlerRejectsMissingCandidateID(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run TestPreferencesHandler
+go test ./apps/matching/service/http/v1/... -run TestPreferencesHandler
 ```
 
 Expected: `undefined: PreferencesHandler`.
 
 - [ ] **Step 3: Implement the handler**
 
-Create `apps/candidates/service/http/v1/preferences.go`:
+Create `apps/matching/service/http/v1/preferences.go`:
 
 ```go
 package v1
@@ -1578,13 +1578,13 @@ func PreferencesHandler(svc *frame.Service) http.HandlerFunc {
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run TestPreferencesHandler -count=1
+go test ./apps/matching/service/http/v1/... -run TestPreferencesHandler -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/http/v1/preferences.go apps/candidates/service/http/v1/preferences_test.go
+git add apps/matching/service/http/v1/preferences.go apps/matching/service/http/v1/preferences_test.go
 git commit -m "feat(candidates): POST /candidates/preferences emits PreferencesUpdatedV1"
 ```
 
@@ -1593,12 +1593,12 @@ git commit -m "feat(candidates): POST /candidates/preferences emits PreferencesU
 ## Task 7: `cv-extract` subscription handler
 
 **Files:**
-- Create: `apps/candidates/service/events/v1/cv_extract.go`
-- Create: `apps/candidates/service/events/v1/cv_extract_test.go`
+- Create: `apps/matching/service/events/v1/cv_extract.go`
+- Create: `apps/matching/service/events/v1/cv_extract_test.go`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/events/v1/cv_extract_test.go`:
+Create `apps/matching/service/events/v1/cv_extract_test.go`:
 
 ```go
 package v1
@@ -1719,18 +1719,18 @@ func TestCVExtractHandlerEmitsExtracted(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/events/v1/... -run TestCVExtractHandler
+go test ./apps/matching/service/events/v1/... -run TestCVExtractHandler
 ```
 
 Expected: `undefined: NewCVExtractHandler, CVExtractDeps, ScoreComponents`.
 
 - [ ] **Step 3: Implement the handler**
 
-Create `apps/candidates/service/events/v1/cv_extract.go`:
+Create `apps/matching/service/events/v1/cv_extract.go`:
 
 ```go
 // Package v1 holds the Phase 5 event subscription handlers for
-// apps/candidates — cv-extract, cv-improve, cv-embed. Each implements
+// apps/matching — cv-extract, cv-improve, cv-embed. Each implements
 // Frame's events.EventI contract.
 package v1
 
@@ -1871,13 +1871,13 @@ Production wiring (Task 13) will need a small adapter that wraps `cv.Scorer` to 
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/events/v1/... -run TestCVExtractHandler -count=1
+go test ./apps/matching/service/events/v1/... -run TestCVExtractHandler -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/events/v1/cv_extract.go apps/candidates/service/events/v1/cv_extract_test.go
+git add apps/matching/service/events/v1/cv_extract.go apps/matching/service/events/v1/cv_extract_test.go
 git commit -m "feat(candidates): cv-extract subscription emits CVExtractedV1"
 ```
 
@@ -1886,12 +1886,12 @@ git commit -m "feat(candidates): cv-extract subscription emits CVExtractedV1"
 ## Task 8: `cv-improve` subscription handler
 
 **Files:**
-- Create: `apps/candidates/service/events/v1/cv_improve.go`
-- Create: `apps/candidates/service/events/v1/cv_improve_test.go`
+- Create: `apps/matching/service/events/v1/cv_improve.go`
+- Create: `apps/matching/service/events/v1/cv_improve_test.go`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/events/v1/cv_improve_test.go`:
+Create `apps/matching/service/events/v1/cv_improve_test.go`:
 
 ```go
 package v1
@@ -1989,14 +1989,14 @@ func TestCVImproveHandlerEmitsImproved(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/events/v1/... -run TestCVImproveHandler
+go test ./apps/matching/service/events/v1/... -run TestCVImproveHandler
 ```
 
 Expected: `undefined: NewCVImproveHandler, CVImproveDeps, PriorityFix`.
 
 - [ ] **Step 3: Implement the handler**
 
-Create `apps/candidates/service/events/v1/cv_improve.go`:
+Create `apps/matching/service/events/v1/cv_improve.go`:
 
 ```go
 package v1
@@ -2110,13 +2110,13 @@ func (h *CVImproveHandler) Execute(ctx context.Context, payload any) error {
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/events/v1/... -run TestCVImproveHandler -count=1
+go test ./apps/matching/service/events/v1/... -run TestCVImproveHandler -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/events/v1/cv_improve.go apps/candidates/service/events/v1/cv_improve_test.go
+git add apps/matching/service/events/v1/cv_improve.go apps/matching/service/events/v1/cv_improve_test.go
 git commit -m "feat(candidates): cv-improve subscription emits CVImprovedV1"
 ```
 
@@ -2125,14 +2125,14 @@ git commit -m "feat(candidates): cv-improve subscription emits CVImprovedV1"
 ## Task 9: `cv-embed` subscription handler
 
 **Files:**
-- Create: `apps/candidates/service/events/v1/cv_embed.go`
-- Create: `apps/candidates/service/events/v1/cv_embed_test.go`
+- Create: `apps/matching/service/events/v1/cv_embed.go`
+- Create: `apps/matching/service/events/v1/cv_embed_test.go`
 
 Note: per spec §6.2, cv-embed consumes BOTH `candidates.cv.extracted.v1` and `candidates.cv.improved.v1` — but Frame v1.94.1's event registry is `map[string]EventI` keyed by topic name, so one handler can subscribe to at most one topic. We solve this by registering cv-embed on `candidates.cv.extracted.v1` (the first-class source of embedding-ready text). A re-embed after improvements is a Phase 6 concern and will be addressed with either a dedicated topic or by having the improve handler re-emit extracted-with-rewrites.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/events/v1/cv_embed_test.go`:
+Create `apps/matching/service/events/v1/cv_embed_test.go`:
 
 ```go
 package v1
@@ -2250,14 +2250,14 @@ func TestCVEmbedHandlerReturnsErrorOnEmbedFailure(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/events/v1/... -run TestCVEmbedHandler
+go test ./apps/matching/service/events/v1/... -run TestCVEmbedHandler
 ```
 
 Expected: `undefined: NewCVEmbedHandler, CVEmbedDeps`.
 
 - [ ] **Step 3: Implement the handler**
 
-Create `apps/candidates/service/events/v1/cv_embed.go`:
+Create `apps/matching/service/events/v1/cv_embed.go`:
 
 ```go
 package v1
@@ -2383,13 +2383,13 @@ func composeEmbeddingText(p *eventsv1.CVExtractedV1) string {
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/events/v1/... -run TestCVEmbedHandler -count=1
+go test ./apps/matching/service/events/v1/... -run TestCVEmbedHandler -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/events/v1/cv_embed.go apps/candidates/service/events/v1/cv_embed_test.go
+git add apps/matching/service/events/v1/cv_embed.go apps/matching/service/events/v1/cv_embed_test.go
 git commit -m "feat(candidates): cv-embed subscription emits CandidateEmbeddingV1"
 ```
 
@@ -2398,8 +2398,8 @@ git commit -m "feat(candidates): cv-embed subscription emits CandidateEmbeddingV
 ## Task 10: Match HTTP handler
 
 **Files:**
-- Create: `apps/candidates/service/http/v1/match.go`
-- Create: `apps/candidates/service/http/v1/match_test.go`
+- Create: `apps/matching/service/http/v1/match.go`
+- Create: `apps/matching/service/http/v1/match_test.go`
 
 The match handler is the most logic-heavy endpoint in the phase. It:
 1. Resolves `candidate_id` from query parameter (trusted — auth upstream).
@@ -2411,7 +2411,7 @@ The match handler is the most logic-heavy endpoint in the phase. It:
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/http/v1/match_test.go`:
+Create `apps/matching/service/http/v1/match_test.go`:
 
 ```go
 package v1
@@ -2559,14 +2559,14 @@ func TestMatchHandlerMissingEmbeddingReturns404(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run TestMatchHandler
+go test ./apps/matching/service/http/v1/... -run TestMatchHandler
 ```
 
 Expected: `undefined: MatchHandler, MatchDeps, SearchRequest, SearchHit, matchResponse`.
 
 - [ ] **Step 3: Implement the handler**
 
-Create `apps/candidates/service/http/v1/match.go`:
+Create `apps/matching/service/http/v1/match.go`:
 
 ```go
 package v1
@@ -2742,13 +2742,13 @@ var _ = errors.New
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run TestMatchHandler -count=1
+go test ./apps/matching/service/http/v1/... -run TestMatchHandler -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/http/v1/match.go apps/candidates/service/http/v1/match_test.go
+git add apps/matching/service/http/v1/match.go apps/matching/service/http/v1/match_test.go
 git commit -m "feat(candidates): GET /candidates/match — Manticore KNN + emit MatchesReadyV1"
 ```
 
@@ -2757,10 +2757,10 @@ git commit -m "feat(candidates): GET /candidates/match — Manticore KNN + emit 
 ## Task 11: Trustage admin endpoints
 
 **Files:**
-- Create: `apps/candidates/service/admin/v1/matches_weekly.go`
-- Create: `apps/candidates/service/admin/v1/matches_weekly_test.go`
-- Create: `apps/candidates/service/admin/v1/cv_stale_nudge.go`
-- Create: `apps/candidates/service/admin/v1/cv_stale_nudge_test.go`
+- Create: `apps/matching/service/admin/v1/matches_weekly.go`
+- Create: `apps/matching/service/admin/v1/matches_weekly_test.go`
+- Create: `apps/matching/service/admin/v1/cv_stale_nudge.go`
+- Create: `apps/matching/service/admin/v1/cv_stale_nudge_test.go`
 
 Two admin endpoints, one file each.
 
@@ -2770,7 +2770,7 @@ Two admin endpoints, one file each.
 
 - [ ] **Step 1: Write the failing test for matches_weekly**
 
-Create `apps/candidates/service/admin/v1/matches_weekly_test.go`:
+Create `apps/matching/service/admin/v1/matches_weekly_test.go`:
 
 ```go
 package v1
@@ -2840,7 +2840,7 @@ func TestMatchesWeeklyHandlerRunsMatchPerCandidate(t *testing.T) {
 
 - [ ] **Step 2: Write the failing test for cv_stale_nudge**
 
-Create `apps/candidates/service/admin/v1/cv_stale_nudge_test.go`:
+Create `apps/matching/service/admin/v1/cv_stale_nudge_test.go`:
 
 ```go
 package v1
@@ -2930,18 +2930,18 @@ func TestCVStaleNudgeHandlerEmitsOneEventPerStaleCandidate(t *testing.T) {
 - [ ] **Step 3: Run — expect build failures**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -count=1
+go test ./apps/matching/service/admin/v1/... -count=1
 ```
 
 Expected: `undefined: MatchesWeeklyHandler, MatchesWeeklyDeps, matchesWeeklyResponse, CVStaleNudgeHandler, CVStaleNudgeDeps, StaleCandidate`.
 
 - [ ] **Step 4: Implement `matches_weekly.go`**
 
-Create `apps/candidates/service/admin/v1/matches_weekly.go`:
+Create `apps/matching/service/admin/v1/matches_weekly.go`:
 
 ```go
 // Package v1 contains the Phase 5 Trustage admin HTTP handlers for
-// apps/candidates: matches weekly digest + CV stale nudge.
+// apps/matching: matches weekly digest + CV stale nudge.
 package v1
 
 import (
@@ -3015,7 +3015,7 @@ func MatchesWeeklyHandler(deps MatchesWeeklyDeps) http.HandlerFunc {
 
 - [ ] **Step 5: Implement `cv_stale_nudge.go`**
 
-Create `apps/candidates/service/admin/v1/cv_stale_nudge.go`:
+Create `apps/matching/service/admin/v1/cv_stale_nudge.go`:
 
 ```go
 package v1
@@ -3114,7 +3114,7 @@ func CVStaleNudgeHandler(deps CVStaleNudgeDeps) http.HandlerFunc {
 - [ ] **Step 6: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -count=1
+go test ./apps/matching/service/admin/v1/... -count=1
 ```
 
 Expected: PASS for both handlers' tests.
@@ -3122,7 +3122,7 @@ Expected: PASS for both handlers' tests.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/candidates/service/admin/v1/
+git add apps/matching/service/admin/v1/
 git commit -m "feat(candidates): Trustage admin endpoints — matches weekly digest + CV stale nudge"
 ```
 
@@ -3131,7 +3131,7 @@ git commit -m "feat(candidates): Trustage admin endpoints — matches weekly dig
 ## Task 12: End-to-end candidates test
 
 **Files:**
-- Create: `apps/candidates/service/e2e_test.go`
+- Create: `apps/matching/service/e2e_test.go`
 
 Exercises the full Phase 5 loop in one test:
 
@@ -3146,7 +3146,7 @@ Because Frame's registry is one-handler-per-topic, the test can't simultaneously
 
 - [ ] **Step 1: Write the test**
 
-Create `apps/candidates/service/e2e_test.go`:
+Create `apps/matching/service/e2e_test.go`:
 
 ```go
 package service
@@ -3170,9 +3170,9 @@ import (
 	eventsv1 "stawi.opportunities/pkg/events/v1"
 	"stawi.opportunities/pkg/extraction"
 
-	adminv1 "stawi.opportunities/apps/candidates/service/admin/v1"
-	eventv1 "stawi.opportunities/apps/candidates/service/events/v1"
-	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
+	adminv1 "stawi.opportunities/apps/matching/service/admin/v1"
+	eventv1 "stawi.opportunities/apps/matching/service/events/v1"
+	httpv1 "stawi.opportunities/apps/matching/service/http/v1"
 )
 
 // --- fakes (local to the e2e test) ---
@@ -3372,13 +3372,13 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 
 ```bash
 cd /home/j/code/stawi.opportunities
-go test ./apps/candidates/service/... -run TestCandidatesE2EUploadToEmbedding -count=1 -timeout 3m
+go test ./apps/matching/service/... -run TestCandidatesE2EUploadToEmbedding -count=1 -timeout 3m
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/candidates/service/e2e_test.go
+git add apps/matching/service/e2e_test.go
 git commit -m "test(candidates): end-to-end upload → extract → improve → embed + preferences"
 ```
 
@@ -3387,10 +3387,10 @@ git commit -m "test(candidates): end-to-end upload → extract → improve → e
 ## Task 13: SearchIndex adapter over `pkg/searchindex.Client`
 
 **Files:**
-- Create: `apps/candidates/service/http/v1/search_adapter.go`
-- Create: `apps/candidates/service/http/v1/search_adapter_test.go`
+- Create: `apps/matching/service/http/v1/search_adapter.go`
+- Create: `apps/matching/service/http/v1/search_adapter_test.go`
 
-The match handler depends on a `SearchIndex` interface (declared in `apps/candidates/service/http/v1/match.go`) whose shape is:
+The match handler depends on a `SearchIndex` interface (declared in `apps/matching/service/http/v1/match.go`) whose shape is:
 
 ```go
 type SearchIndex interface {
@@ -3402,7 +3402,7 @@ This task builds the production impl that wraps `*pkg/searchindex.Client`, const
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/http/v1/search_adapter_test.go`:
+Create `apps/matching/service/http/v1/search_adapter_test.go`:
 
 ```go
 package v1
@@ -3493,14 +3493,14 @@ func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
 
 ```bash
 cd /home/j/code/stawi.opportunities
-go test ./apps/candidates/service/http/v1/... -run TestManticoreSearchAdapter
+go test ./apps/matching/service/http/v1/... -run TestManticoreSearchAdapter
 ```
 
 Expected: `undefined: NewManticoreSearch`.
 
 - [ ] **Step 3: Implement the adapter**
 
-Create `apps/candidates/service/http/v1/search_adapter.go`:
+Create `apps/matching/service/http/v1/search_adapter.go`:
 
 ```go
 package v1
@@ -3619,13 +3619,13 @@ func (m *ManticoreSearch) KNNWithFilters(ctx context.Context, req SearchRequest)
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run TestManticoreSearchAdapter -count=1
+go test ./apps/matching/service/http/v1/... -run TestManticoreSearchAdapter -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/http/v1/search_adapter.go apps/candidates/service/http/v1/search_adapter_test.go
+git add apps/matching/service/http/v1/search_adapter.go apps/matching/service/http/v1/search_adapter_test.go
 git commit -m "feat(candidates): Manticore KNN+filter adapter for match endpoint"
 ```
 
@@ -3634,14 +3634,14 @@ git commit -m "feat(candidates): Manticore KNN+filter adapter for match endpoint
 ## Task 14: CandidateLister adapter over `repository.CandidateRepository`
 
 **Files:**
-- Create: `apps/candidates/service/admin/v1/candidate_lister.go`
-- Create: `apps/candidates/service/admin/v1/candidate_lister_test.go`
+- Create: `apps/matching/service/admin/v1/candidate_lister.go`
+- Create: `apps/matching/service/admin/v1/candidate_lister_test.go`
 
 `repository.CandidateRepository.ListActive(ctx, limit int) ([]*domain.CandidateProfile, error)` already exists. The `MatchesWeeklyHandler` wants a `CandidateLister` returning `[]string` of IDs. Thin adapter.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/admin/v1/candidate_lister_test.go`:
+Create `apps/matching/service/admin/v1/candidate_lister_test.go`:
 
 ```go
 package v1
@@ -3681,14 +3681,14 @@ func TestRepoCandidateListerReturnsIDs(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -run TestRepoCandidateLister
+go test ./apps/matching/service/admin/v1/... -run TestRepoCandidateLister
 ```
 
 Expected: `undefined: NewRepoCandidateLister`.
 
 - [ ] **Step 3: Implement the adapter**
 
-Create `apps/candidates/service/admin/v1/candidate_lister.go`:
+Create `apps/matching/service/admin/v1/candidate_lister.go`:
 
 ```go
 package v1
@@ -3738,13 +3738,13 @@ func (l *RepoCandidateLister) ListActive(ctx context.Context) ([]string, error) 
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -run TestRepoCandidateLister -count=1
+go test ./apps/matching/service/admin/v1/... -run TestRepoCandidateLister -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/admin/v1/candidate_lister.go apps/candidates/service/admin/v1/candidate_lister_test.go
+git add apps/matching/service/admin/v1/candidate_lister.go apps/matching/service/admin/v1/candidate_lister_test.go
 git commit -m "feat(candidates): CandidateLister adapter on repository.ListActive"
 ```
 
@@ -3753,9 +3753,9 @@ git commit -m "feat(candidates): CandidateLister adapter on repository.ListActiv
 ## Task 15: `MatchService` — extract match pipeline from the HTTP handler
 
 **Files:**
-- Modify: `apps/candidates/service/http/v1/match.go`
-- Create: `apps/candidates/service/http/v1/match_service.go`
-- Create: `apps/candidates/service/http/v1/match_service_test.go`
+- Modify: `apps/matching/service/http/v1/match.go`
+- Create: `apps/matching/service/http/v1/match_service.go`
+- Create: `apps/matching/service/http/v1/match_service_test.go`
 
 The weekly-digest `MatchRunner` needs the same "run the match pipeline for one candidate" logic the HTTP handler already has. Rather than duplicate it or have the cron fire an internal HTTP call, extract the pipeline into a struct that both the HTTP handler and `MatchRunner` can drive.
 
@@ -3763,7 +3763,7 @@ This refactor preserves Task 10's external behaviour exactly: `MatchHandler` sti
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/http/v1/match_service_test.go`:
+Create `apps/matching/service/http/v1/match_service_test.go`:
 
 ```go
 package v1
@@ -3814,14 +3814,14 @@ func TestMatchServiceRunMatchMissingEmbeddingReturnsErrNoEmbedding(t *testing.T)
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run TestMatchService
+go test ./apps/matching/service/http/v1/... -run TestMatchService
 ```
 
 Expected: `undefined: NewMatchService, errNoEmbedding`.
 
 - [ ] **Step 3: Implement the service**
 
-Create `apps/candidates/service/http/v1/match_service.go`:
+Create `apps/matching/service/http/v1/match_service.go`:
 
 ```go
 package v1
@@ -3909,7 +3909,7 @@ var _ = eventsv1.MatchesReadyV1{}
 
 - [ ] **Step 4: Refactor `match.go` to delegate to `MatchService`**
 
-Edit `apps/candidates/service/http/v1/match.go`. Replace the body of `MatchHandler` so it constructs a `MatchService` from `deps.Store` + `deps.Search`, calls `RunMatch`, maps `ErrNoEmbedding` → 404, emits the event, returns the response. The response and event shapes are unchanged.
+Edit `apps/matching/service/http/v1/match.go`. Replace the body of `MatchHandler` so it constructs a `MatchService` from `deps.Store` + `deps.Search`, calls `RunMatch`, maps `ErrNoEmbedding` → 404, emits the event, returns the response. The response and event shapes are unchanged.
 
 Replace:
 
@@ -3984,13 +3984,13 @@ The trailing `var _ = errors.New` line in match.go (added as a keep-alive in Tas
 - [ ] **Step 5: Run all match tests — both Task 10's and the new service tests must pass**
 
 ```bash
-go test ./apps/candidates/service/http/v1/... -run 'TestMatchHandler|TestMatchService' -count=1 -v
+go test ./apps/matching/service/http/v1/... -run 'TestMatchHandler|TestMatchService' -count=1 -v
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/candidates/service/http/v1/match.go apps/candidates/service/http/v1/match_service.go apps/candidates/service/http/v1/match_service_test.go
+git add apps/matching/service/http/v1/match.go apps/matching/service/http/v1/match_service.go apps/matching/service/http/v1/match_service_test.go
 git commit -m "refactor(candidates): extract MatchService so cron and HTTP share one pipeline"
 ```
 
@@ -3999,14 +3999,14 @@ git commit -m "refactor(candidates): extract MatchService so cron and HTTP share
 ## Task 16: Wire `MatchRunner` on the new `MatchService`
 
 **Files:**
-- Create: `apps/candidates/service/admin/v1/match_runner.go`
-- Create: `apps/candidates/service/admin/v1/match_runner_test.go`
+- Create: `apps/matching/service/admin/v1/match_runner.go`
+- Create: `apps/matching/service/admin/v1/match_runner_test.go`
 
 `MatchesWeeklyHandler` depends on a `MatchRunner` interface (`RunMatch(ctx, candidateID) error`). The new `MatchService` provides exactly the pipeline — but the runner also needs to emit the `MatchesReadyV1` event (the HTTP handler does this inline; the cron has to do it itself).
 
 - [ ] **Step 1: Write the failing test**
 
-Create `apps/candidates/service/admin/v1/match_runner_test.go`:
+Create `apps/matching/service/admin/v1/match_runner_test.go`:
 
 ```go
 package v1
@@ -4021,7 +4021,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
+	httpv1 "stawi.opportunities/apps/matching/service/http/v1"
 	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
@@ -4130,14 +4130,14 @@ func (f *fakeStoreErrNoEmbedding) LatestPreferences(_ context.Context, _ string)
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -run TestServiceMatchRunner
+go test ./apps/matching/service/admin/v1/... -run TestServiceMatchRunner
 ```
 
 Expected: `undefined: NewServiceMatchRunner`.
 
 - [ ] **Step 3: Implement the runner**
 
-Create `apps/candidates/service/admin/v1/match_runner.go`:
+Create `apps/matching/service/admin/v1/match_runner.go`:
 
 ```go
 package v1
@@ -4149,7 +4149,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
+	httpv1 "stawi.opportunities/apps/matching/service/http/v1"
 	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
@@ -4199,13 +4199,13 @@ func (r *ServiceMatchRunner) RunMatch(ctx context.Context, candidateID string) e
 - [ ] **Step 4: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -run TestServiceMatchRunner -count=1
+go test ./apps/matching/service/admin/v1/... -run TestServiceMatchRunner -count=1
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/candidates/service/admin/v1/match_runner.go apps/candidates/service/admin/v1/match_runner_test.go
+git add apps/matching/service/admin/v1/match_runner.go apps/matching/service/admin/v1/match_runner_test.go
 git commit -m "feat(candidates): ServiceMatchRunner — cron wraps MatchService + emits MatchesReady"
 ```
 
@@ -4214,8 +4214,8 @@ git commit -m "feat(candidates): ServiceMatchRunner — cron wraps MatchService 
 ## Task 17: StaleLister over `repository.CandidateRepository`
 
 **Files:**
-- Create: `apps/candidates/service/admin/v1/stale_lister.go`
-- Create: `apps/candidates/service/admin/v1/stale_lister_test.go`
+- Create: `apps/matching/service/admin/v1/stale_lister.go`
+- Create: `apps/matching/service/admin/v1/stale_lister_test.go`
 - Modify: `pkg/repository/candidate.go` — add `ListInactiveSince(ctx, cutoff, limit) ([]*domain.CandidateProfile, error)`
 
 In the event-sourced world, "time of last CV upload" lives in R2 Parquet. Scanning R2 every day is wasteful; building a compaction pipeline for this one use case is Phase 6 work. For Plan 5 we use `candidates.updated_at` as the activity proxy — it ticks on any status/subscription change. This is lossy (a candidate who did nothing but view jobs will still appear "fresh") but good enough for a nudge email cadence.
@@ -4245,7 +4245,7 @@ The file already imports `time` and `domain`. Confirm.
 
 - [ ] **Step 2: Write the adapter's failing test**
 
-Create `apps/candidates/service/admin/v1/stale_lister_test.go`:
+Create `apps/matching/service/admin/v1/stale_lister_test.go`:
 
 ```go
 package v1
@@ -4291,14 +4291,14 @@ func TestRepoStaleListerMapsRowsToStaleCandidates(t *testing.T) {
 - [ ] **Step 3: Run — expect build failure**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -run TestRepoStaleLister
+go test ./apps/matching/service/admin/v1/... -run TestRepoStaleLister
 ```
 
 Expected: `undefined: NewRepoStaleLister`.
 
 - [ ] **Step 4: Implement the adapter**
 
-Create `apps/candidates/service/admin/v1/stale_lister.go`:
+Create `apps/matching/service/admin/v1/stale_lister.go`:
 
 ```go
 package v1
@@ -4355,25 +4355,25 @@ func (l *RepoStaleLister) ListStale(ctx context.Context, asOf time.Time) ([]Stal
 - [ ] **Step 5: Run — expect PASS**
 
 ```bash
-go test ./apps/candidates/service/admin/v1/... -run TestRepoStaleLister -count=1
+go test ./apps/matching/service/admin/v1/... -run TestRepoStaleLister -count=1
 go test ./pkg/repository/... -count=1
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/candidates/service/admin/v1/stale_lister.go apps/candidates/service/admin/v1/stale_lister_test.go pkg/repository/candidate.go
+git add apps/matching/service/admin/v1/stale_lister.go apps/matching/service/admin/v1/stale_lister_test.go pkg/repository/candidate.go
 git commit -m "feat(candidates): StaleLister via repository.ListInactiveSince"
 ```
 
 ---
 
-## Task 18: Rewrite `apps/candidates/cmd/main.go`
+## Task 18: Rewrite `apps/matching/cmd/main.go`
 
 **Files:**
-- Modify: `apps/candidates/cmd/main.go` (complete rewrite)
-- Modify: `apps/candidates/config/config.go` (trim unused env vars)
-- Delete: `apps/candidates/cmd/billing.go`
+- Modify: `apps/matching/cmd/main.go` (complete rewrite)
+- Modify: `apps/matching/config/config.go` (trim unused env vars)
+- Delete: `apps/matching/cmd/billing.go`
 
 This task drops roughly 1,200 lines from `main.go`: every legacy HTTP handler (registerHandler, billingWebhookHandler, plansHandler, checkoutStatusHandler, linkExpiredHandler, getProfileHandler, updateProfileHandler, listMatchesHandler, viewMatchHandler, listCandidatesHandler, meHandler, meSubscriptionHandler, onboardHandler, uploadCVHandler [legacy], saveJobHandler, unsaveJobHandler, listSavedJobsHandler, forceMatchHandler, getCVScoreHandler, rescoreCVHandler, inboundEmailHandler) and every legacy helper function only used by those handlers.
 
@@ -4402,13 +4402,13 @@ The new `main.go` wires:
 
 ```bash
 cd /home/j/code/stawi.opportunities
-wc -l apps/candidates/cmd/main.go apps/candidates/cmd/billing.go
-grep -n "^func" apps/candidates/cmd/main.go | head -50
+wc -l apps/matching/cmd/main.go apps/matching/cmd/billing.go
+grep -n "^func" apps/matching/cmd/main.go | head -50
 ```
 
 Use the output to understand what's being deleted. Every function listed other than `main` itself is being removed. Skim one or two of the HTTP handler bodies to confirm they only touch things we're intentionally removing (Postgres candidate columns, billing, saved_jobs, etc.).
 
-- [ ] **Step 2: Rewrite `apps/candidates/cmd/main.go`**
+- [ ] **Step 2: Rewrite `apps/matching/cmd/main.go`**
 
 Replace the entire file contents with:
 
@@ -4428,10 +4428,10 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/util"
 
-	candidatesconfig "stawi.opportunities/apps/candidates/config"
-	adminv1 "stawi.opportunities/apps/candidates/service/admin/v1"
-	eventv1 "stawi.opportunities/apps/candidates/service/events/v1"
-	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
+	candidatesconfig "stawi.opportunities/apps/matching/config"
+	adminv1 "stawi.opportunities/apps/matching/service/admin/v1"
+	eventv1 "stawi.opportunities/apps/matching/service/events/v1"
+	httpv1 "stawi.opportunities/apps/matching/service/http/v1"
 	"stawi.opportunities/pkg/archive"
 	"stawi.opportunities/pkg/candidatestore"
 	"stawi.opportunities/pkg/cv"
@@ -4689,15 +4689,15 @@ func (f parallelFanout) Execute(ctx context.Context, payload any) error {
 
 If the reader finds this half-wired state unacceptable, the quickest fix is to gate the three not-yet-wired endpoints behind a config flag (`CANDIDATES_V1_FEATURES=upload,preferences`) and return 503 on the others. This is out of scope for Plan 5 and explicitly deferred.
 
-- [ ] **Step 3: Delete `apps/candidates/cmd/billing.go`**
+- [ ] **Step 3: Delete `apps/matching/cmd/billing.go`**
 
 ```bash
-git rm apps/candidates/cmd/billing.go
+git rm apps/matching/cmd/billing.go
 ```
 
-- [ ] **Step 4: Trim `apps/candidates/config/config.go`**
+- [ ] **Step 4: Trim `apps/matching/config/config.go`**
 
-Open `apps/candidates/config/config.go` and remove any fields only used by the deleted handlers (billing endpoints, profile service URL, notification service URL, etc.). Add fields for the new path:
+Open `apps/matching/config/config.go` and remove any fields only used by the deleted handlers (billing endpoints, profile service URL, notification service URL, etc.). Add fields for the new path:
 
 ```go
 	// R2 event log (Parquet partitions).
@@ -4730,8 +4730,8 @@ Leave other existing config fields that other services might pull via Configurat
 
 ```bash
 cd /home/j/code/stawi.opportunities
-go build ./apps/candidates/...
-go test ./apps/candidates/... -count=1 -timeout 5m
+go build ./apps/matching/...
+go test ./apps/matching/... -count=1 -timeout 5m
 ```
 
 Expected: clean build, all Task 5–12 tests pass.
@@ -4743,12 +4743,12 @@ go build ./...
 go test ./... -count=1 -timeout 15m
 ```
 
-Expected: all tests pass. Legacy `apps/candidates/service/events/{embedding.go,profile_created.go}` still compile but are no longer referenced anywhere — dead code that Phase 6 deletes.
+Expected: all tests pass. Legacy `apps/matching/service/events/{embedding.go,profile_created.go}` still compile but are no longer referenced anywhere — dead code that Phase 6 deletes.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/candidates/cmd/main.go apps/candidates/cmd/billing.go apps/candidates/config/config.go
+git add apps/matching/cmd/main.go apps/matching/cmd/billing.go apps/matching/config/config.go
 git commit -m "refactor(candidates): rewrite main.go — drop legacy handlers, wire v1 pipeline"
 ```
 
@@ -4922,11 +4922,11 @@ Expected:
 - Six new v1 event payload types, three HTTP endpoints (upload, preferences, match), two Trustage admin endpoints (matches weekly digest, CV stale nudge), three internal event subscriptions (cv-extract, cv-improve, cv-embed), four production adapters (Manticore search, candidate lister, match runner, stale lister), one end-to-end test.
 
 At this point, an operator can:
-1. Deploy `apps/candidates`.
+1. Deploy `apps/matching`.
 2. Configure the two Trustage triggers in the cluster.
 3. POST a PDF resume to `/candidates/cv/upload`, observe the full event trail (uploaded → extracted → improved + embedding) in the writer's Parquet output on R2.
 4. POST preferences.
 5. GET `/candidates/match` — returns Manticore-backed matches once the job index has enough rows.
 6. Trustage fires `/_admin/matches/weekly_digest` + `/_admin/cv/stale_nudge` on schedule; both emit the expected downstream events.
 
-Phase 6 cutover then removes the legacy Postgres candidate columns (CV fields, preferences, embedding), deletes the legacy handler files (`apps/candidates/service/events/{embedding.go,profile_created.go}`), builds the daily compactor that populates `candidates_*_current/` partitions (so `candidatestore.Reader` has data to read), and replaces the `updated_at`-proxy in `RepoStaleLister` with a real R2-backed last-upload timestamp scan.
+Phase 6 cutover then removes the legacy Postgres candidate columns (CV fields, preferences, embedding), deletes the legacy handler files (`apps/matching/service/events/{embedding.go,profile_created.go}`), builds the daily compactor that populates `candidates_*_current/` partitions (so `candidatestore.Reader` has data to read), and replaces the `updated_at`-proxy in `RepoStaleLister` with a real R2-backed last-upload timestamp scan.

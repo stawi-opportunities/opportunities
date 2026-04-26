@@ -1,5 +1,5 @@
 // Package v1 contains the Phase 5 Trustage admin HTTP handlers for
-// apps/candidates: matches weekly digest + CV stale nudge.
+// apps/matching: matches weekly digest + CV stale nudge.
 package v1
 
 import (

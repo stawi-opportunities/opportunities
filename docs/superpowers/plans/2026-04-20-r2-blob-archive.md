@@ -32,7 +32,7 @@
 - `apps/crawler/cmd/main.go` — hash body, `archive.HasRaw` + `archive.PutRaw`, drop `Body: body` from `RawPayload` create; AutoMigrate `RawRef`; wire `Archive` config.
 - `apps/crawler/config/config.go` — add `ArchiveR2*` env fields for the separate archive bucket.
 - `apps/api/cmd/main.go` — wire archive config for debug endpoints if needed; AutoMigrate `RawRef`.
-- `apps/candidates/cmd/main.go` — AutoMigrate `RawRef`.
+- `apps/matching/cmd/main.go` — AutoMigrate `RawRef`.
 - `pkg/pipeline/handlers/normalize.go` — fetch raw from archive by `RawContentHash`, write `VariantBlob` + rebuild `Manifest`; stop writing `raw_html`/`clean_html`/`markdown` DB columns.
 - `pkg/pipeline/handlers/canonical.go` — after canonical upsert, write `CanonicalSnapshot` + rebuild `Manifest`, insert `raw_refs` row for the variant's hash.
 - `pkg/repository/job.go` — remove `UpdateStageWithContent`'s old columns from Updates map; simplify signature (takes stage only + raw_content_hash optionally).
@@ -1104,7 +1104,7 @@ git commit -m "feat(repo): add RawRefRepository with ref-count GC helpers"
 - Modify: `apps/crawler/config/config.go`
 - Modify: `apps/crawler/cmd/main.go` (AutoMigrate list + archive construction)
 - Modify: `apps/api/cmd/main.go` (AutoMigrate list)
-- Modify: `apps/candidates/cmd/main.go` (AutoMigrate list)
+- Modify: `apps/matching/cmd/main.go` (AutoMigrate list)
 
 - [ ] **Step 1: Add archive config fields**
 
