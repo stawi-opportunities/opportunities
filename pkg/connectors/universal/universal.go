@@ -153,6 +153,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 		}
 		seen[link] = struct{}{}
 		jobs = append(jobs, domain.ExternalOpportunity{
+			Kind:       "job",
 			ExternalID: link,
 			ApplyURL:   link,
 		})
@@ -163,7 +164,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalOpportunity       { return it.jobs }
+func (it *iterator) Items() []domain.ExternalOpportunity      { return it.jobs }
 func (it *iterator) RawPayload() []byte                { return it.raw }
 func (it *iterator) HTTPStatus() int                   { return it.status }
 func (it *iterator) Err() error                        { return it.err }
@@ -366,6 +367,7 @@ func (it *sitemapIterator) Next(_ context.Context) bool {
 	it.jobs = make([]domain.ExternalOpportunity, 0, len(batch))
 	for _, u := range batch {
 		it.jobs = append(it.jobs, domain.ExternalOpportunity{
+			Kind:       "job",
 			ExternalID: u,
 			ApplyURL:   u,
 		})
@@ -373,7 +375,7 @@ func (it *sitemapIterator) Next(_ context.Context) bool {
 	return true
 }
 
-func (it *sitemapIterator) Jobs() []domain.ExternalOpportunity       { return it.jobs }
+func (it *sitemapIterator) Items() []domain.ExternalOpportunity      { return it.jobs }
 func (it *sitemapIterator) RawPayload() []byte                { return it.raw }
 func (it *sitemapIterator) HTTPStatus() int                   { return 200 }
 func (it *sitemapIterator) Err() error                        { return nil }

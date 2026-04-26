@@ -166,7 +166,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	for iter.Next(ctx) {
 		status = iter.HTTPStatus()
 		pageArchiveRef := resolveArchiveRef(ctx, h.deps.Archive, iter.Content())
-		for _, extJob := range iter.Jobs() {
+		for _, extJob := range iter.Items() {
 			jobsFound++
 
 			// Apply-URL fallback chain first — normalize and quality both see the

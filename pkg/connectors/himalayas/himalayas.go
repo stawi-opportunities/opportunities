@@ -140,7 +140,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalOpportunity    { return it.jobs }
+func (it *iterator) Items() []domain.ExternalOpportunity   { return it.jobs }
 func (it *iterator) RawPayload() []byte            { return it.raw }
 func (it *iterator) HTTPStatus() int               { return it.httpStatus }
 func (it *iterator) Err() error                    { return it.err }

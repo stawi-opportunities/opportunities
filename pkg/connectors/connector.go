@@ -13,14 +13,15 @@ import (
 )
 
 // CrawlIterator is the page-level iterator returned by Connector.Crawl.
-// Callers advance the iterator with Next and read results via Jobs.
+// Callers advance the iterator with Next and read results via Items.
 type CrawlIterator interface {
-	// Next fetches the next batch of jobs. Returns false when there are no
+	// Next fetches the next batch of items. Returns false when there are no
 	// more pages or when an error has occurred.
 	Next(ctx context.Context) bool
 
-	// Jobs returns the batch of jobs fetched by the most recent Next call.
-	Jobs() []domain.ExternalOpportunity
+	// Items returns the batch of opportunity items fetched by the most recent
+	// Next call.
+	Items() []domain.ExternalOpportunity
 
 	// RawPayload returns the raw HTTP response body for the current page.
 	RawPayload() []byte
@@ -141,8 +142,8 @@ func (s *SinglePageIterator) Next(_ context.Context) bool {
 	return true
 }
 
-// Jobs returns the single batch of jobs.
-func (s *SinglePageIterator) Jobs() []domain.ExternalOpportunity { return s.jobs }
+// Items returns the single batch of opportunity items.
+func (s *SinglePageIterator) Items() []domain.ExternalOpportunity { return s.jobs }
 
 // RawPayload returns the raw HTTP response body.
 func (s *SinglePageIterator) RawPayload() []byte { return s.raw }
