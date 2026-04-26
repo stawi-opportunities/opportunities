@@ -23,6 +23,8 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/geocode"
+	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
@@ -250,6 +252,13 @@ func main() {
 	//   crawl.requests.v1       → CrawlRequestHandler (fetch + archive + extract + emit)
 	//   crawl.page.completed.v1 → PageCompletedHandler (self-consumed; cursor + health)
 	//   sources.discovered.v1   → SourceDiscoveredHandler (self-consumed; upsert)
+	// Bundled-gazetteer geocoder. Singleton — parses ~300 rows once at
+	// boot and reads concurrently thereafter. The Normalizer wraps it
+	// so AnchorLocation gets Lat/Lon enriched on every variant whose
+	// LLM-extracted city is recognised.
+	geocoder := geocode.New()
+	normalizer := normalize.New(geocoder)
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:            svc,
 		Sources:        sourceRepo,
@@ -257,6 +266,7 @@ func main() {
 		Kinds:          reg,
 		Archive:        arch,
 		Extractor:      extractor,
+		Normalizer:     normalizer,
 		DiscoverSample: 0.05, // roughly 1-in-20 pages get DiscoverSites
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)

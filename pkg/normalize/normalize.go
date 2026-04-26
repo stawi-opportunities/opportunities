@@ -9,7 +9,35 @@ import (
 
 	"github.com/RadhiFadlillah/whatlanggo"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 )
+
+// Normalizer holds optional collaborators (currently a geocoder) that
+// enrich an ExternalOpportunity in-place before the variant is built.
+// It is safe to leave the geocoder nil — Normalize falls back to the
+// raw ExternalToVariant pipeline.
+type Normalizer struct {
+	geocoder *geocode.Geocoder
+}
+
+// New constructs a Normalizer. Pass nil for geocoder to skip
+// gazetteer enrichment (useful in unit tests that don't care about
+// coordinates).
+func New(geocoder *geocode.Geocoder) *Normalizer {
+	return &Normalizer{geocoder: geocoder}
+}
+
+// Normalize converts an ExternalOpportunity into a JobVariant. It
+// mutates ext.AnchorLocation when the bundled gazetteer recognises
+// the city (Lat/Lon and Region get filled in if blank), then
+// delegates to ExternalToVariant for the existing field-level
+// normalisation.
+func (n *Normalizer) Normalize(ext *domain.ExternalOpportunity, sourceID, country, sourceBoard, language string, scrapedAt time.Time) JobVariant {
+	if n != nil && n.geocoder != nil {
+		n.geocoder.Enrich(ext)
+	}
+	return ExternalToVariant(*ext, sourceID, country, sourceBoard, language, scrapedAt)
+}
 
 // JobVariant is the normalised, pipeline-ready representation of one observed
 // job posting. It is an in-memory-only struct — it is never persisted to

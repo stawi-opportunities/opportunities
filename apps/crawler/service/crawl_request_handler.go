@@ -36,12 +36,13 @@ type SourceGetter interface {
 // CrawlRequestDeps bundles the handler's collaborators so construction
 // stays one-shot and tests can inject fakes without ceremony.
 type CrawlRequestDeps struct {
-	Svc       *frame.Service
-	Sources   SourceGetter
-	Registry  *connectors.Registry
-	Kinds     *opportunity.Registry // opportunity-kind registry; required by Verify
-	Archive   archive.Archive
-	Extractor *extraction.Extractor // nil → skip AI enrichment
+	Svc        *frame.Service
+	Sources    SourceGetter
+	Registry   *connectors.Registry
+	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
+	Archive    archive.Archive
+	Extractor  *extraction.Extractor // nil → skip AI enrichment
+	Normalizer *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
 	// DiscoverSample is the probability [0..1] that a given iterator
 	// page triggers an additional DiscoverSites call. 0.0 = disabled
 	// (unit-test default). In production, set ~0.05 so roughly one in
@@ -205,12 +206,22 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				}
 			}
 
-			// Convert to a VariantIngested payload via the existing normalize
-			// helper. Hard-key, stage, and mapping live there.
+			// Convert to a VariantIngested payload via the normalize
+			// helper. Hard-key, stage, and mapping live there. When a
+			// Normalizer is wired (production), it runs the bundled
+			// gazetteer enrich pass first so AnchorLocation gets
+			// Lat/Lon/Region filled in for recognised cities.
 			now := time.Now().UTC()
-			variant := normalize.ExternalToVariant(
-				extJob, src.ID, src.Country, string(src.Type), src.Language, now,
-			)
+			var variant normalize.JobVariant
+			if h.deps.Normalizer != nil {
+				variant = h.deps.Normalizer.Normalize(
+					&extJob, src.ID, src.Country, string(src.Type), src.Language, now,
+				)
+			} else {
+				variant = normalize.ExternalToVariant(
+					extJob, src.ID, src.Country, string(src.Type), src.Language, now,
+				)
+			}
 
 			if kind == "" {
 				// Belt-and-braces — Verify above would have rejected an
