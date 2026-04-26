@@ -266,19 +266,17 @@ var ArrowSchemaCandidateEmbeddings = arrow.NewSchema([]arrow.Field{
 
 // --------------------------------------------------------------------
 // candidates.preferences  (PreferencesUpdatedV1)
+//
+// OptIns is a kind-keyed map of opaque JSON blobs; we persist it as a
+// single JSON-encoded string to keep the Iceberg schema kind-agnostic
+// (kinds may be added without a schema migration). Readers decode
+// opt_ins_json with json.Unmarshal into map[string]json.RawMessage.
 // --------------------------------------------------------------------
 
 var ArrowSchemaPreferences = arrow.NewSchema([]arrow.Field{
 	_req("candidate_id", arrow.BinaryTypes.String),
-	_opt("remote_preference", arrow.BinaryTypes.String),
-	_opt("salary_min", arrow.PrimitiveTypes.Int32),
-	_opt("salary_max", arrow.PrimitiveTypes.Int32),
-	_opt("currency", arrow.BinaryTypes.String),
-	_opt("preferred_locations", _strListType),
-	_opt("excluded_companies", _strListType),
-	_opt("target_roles", _strListType),
-	_opt("languages", _strListType),
-	_opt("availability", arrow.BinaryTypes.String),
+	_opt("opt_ins_json", arrow.BinaryTypes.String),
+	_req("updated_at", _tsType),
 	// envelope tail
 	_req("event_id", arrow.BinaryTypes.String),
 	_req("occurred_at", _tsType),

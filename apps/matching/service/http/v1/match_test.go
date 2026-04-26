@@ -75,11 +75,17 @@ func TestMatchHandlerReturnsScoredTopK(t *testing.T) {
 	go func() { _ = svc.Run(ctx, "") }()
 	time.Sleep(200 * time.Millisecond)
 
+	jobBlob, _ := json.Marshal(map[string]any{
+		"target_roles": []string{"backend-engineer"},
+		"salary_min":   70000,
+		"currency":     "USD",
+		"locations":    map[string]any{"cities": []string{"KE"}, "remote_ok": true},
+	})
 	handler := MatchHandler(MatchDeps{
 		Svc: svc,
 		Store: &fakeCandidateStore{
 			emb:   eventsv1.CandidateEmbeddingV1{CandidateID: "cnd_1", CVVersion: 2, Vector: []float32{0.1, 0.2, 0.3}},
-			prefs: eventsv1.PreferencesUpdatedV1{CandidateID: "cnd_1", RemotePreference: "remote", SalaryMin: 70000, Currency: "USD", PreferredLocations: []string{"KE"}},
+			prefs: eventsv1.PreferencesUpdatedV1{CandidateID: "cnd_1", OptIns: map[string]json.RawMessage{"job": jobBlob}},
 		},
 		Search: &fakeSearchIndex{rows: []SearchHit{
 			{CanonicalID: "can_a", Slug: "job-a", Title: "Senior Backend", Score: 0.92},

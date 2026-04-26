@@ -11,6 +11,7 @@ package candidatestore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -113,10 +114,7 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 	scan := tbl.Scan(
 		table.WithRowFilter(iceberg.EqualTo(iceberg.Reference("candidate_id"), candidateID)),
 		table.WithSelectedFields(
-			"candidate_id", "remote_preference",
-			"salary_min", "salary_max", "currency",
-			"preferred_locations", "excluded_companies",
-			"target_roles", "languages", "availability", "occurred_at",
+			"candidate_id", "opt_ins_json", "updated_at", "occurred_at",
 		),
 	)
 
@@ -193,7 +191,9 @@ func decodeEmbeddingRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.Cand
 }
 
 // decodePreferencesRow extracts one row from a RecordBatch that has the
-// preferences schema.
+// preferences schema. The OptIns map is JSON-decoded from the
+// opt_ins_json column (the writer marshals the kind→blob map into a
+// single JSON string to keep the schema kind-agnostic).
 func decodePreferencesRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.PreferencesUpdatedV1 {
 	var row eventsv1.PreferencesUpdatedV1
 
@@ -202,49 +202,17 @@ func decodePreferencesRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.Pr
 			row.CandidateID = col.Value(i)
 		}
 	}
-	if idxs := sc.FieldIndices("remote_preference"); len(idxs) > 0 {
+	if idxs := sc.FieldIndices("opt_ins_json"); len(idxs) > 0 {
 		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.RemotePreference = col.Value(i)
+			s := col.Value(i)
+			if s != "" {
+				_ = json.Unmarshal([]byte(s), &row.OptIns)
+			}
 		}
 	}
-	if idxs := sc.FieldIndices("currency"); len(idxs) > 0 {
-		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.Currency = col.Value(i)
-		}
-	}
-	if idxs := sc.FieldIndices("availability"); len(idxs) > 0 {
-		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.Availability = col.Value(i)
-		}
-	}
-	if idxs := sc.FieldIndices("salary_min"); len(idxs) > 0 {
-		if col, ok := rec.Column(idxs[0]).(*array.Int32); ok && !col.IsNull(i) {
-			row.SalaryMin = int(col.Value(i))
-		}
-	}
-	if idxs := sc.FieldIndices("salary_max"); len(idxs) > 0 {
-		if col, ok := rec.Column(idxs[0]).(*array.Int32); ok && !col.IsNull(i) {
-			row.SalaryMax = int(col.Value(i))
-		}
-	}
-	if idxs := sc.FieldIndices("preferred_locations"); len(idxs) > 0 {
-		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.PreferredLocations = listStringValues(col, i)
-		}
-	}
-	if idxs := sc.FieldIndices("excluded_companies"); len(idxs) > 0 {
-		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.ExcludedCompanies = listStringValues(col, i)
-		}
-	}
-	if idxs := sc.FieldIndices("target_roles"); len(idxs) > 0 {
-		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.TargetRoles = listStringValues(col, i)
-		}
-	}
-	if idxs := sc.FieldIndices("languages"); len(idxs) > 0 {
-		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.Languages = listStringValues(col, i)
+	if idxs := sc.FieldIndices("updated_at"); len(idxs) > 0 {
+		if col, ok := rec.Column(idxs[0]).(*array.Timestamp); ok && !col.IsNull(i) {
+			row.UpdatedAt = timestampToTime(rec, idxs[0], col, i)
 		}
 	}
 	if idxs := sc.FieldIndices("occurred_at"); len(idxs) > 0 {

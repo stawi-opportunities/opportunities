@@ -835,18 +835,26 @@ func BuildPreferencesRecord(pool memory.Allocator, raws []json.RawMessage) (arra
 		p.EventID = env.EventID
 		p.OccurredAt = env.OccurredAt
 
+		// OptIns map → opaque JSON string. Empty/nil maps still serialise
+		// to "{}" rather than NULL so readers always get a parseable
+		// string back, but we mark the column optional in the schema in
+		// case future writers want to drop the field entirely.
+		var optInsStr string
+		if len(p.OptIns) > 0 {
+			out, err := json.Marshal(p.OptIns)
+			if err != nil {
+				return nil, fmt.Errorf("encode PreferencesUpdatedV1.OptIns: %w", err)
+			}
+			optInsStr = string(out)
+		} else {
+			optInsStr = "{}"
+		}
+
 		b.Field(0).(*array.StringBuilder).Append(p.CandidateID)
-		appendOptStr(b.Field(1).(*array.StringBuilder), p.RemotePreference)
-		appendOptI32(b.Field(2).(*array.Int32Builder), p.SalaryMin)
-		appendOptI32(b.Field(3).(*array.Int32Builder), p.SalaryMax)
-		appendOptStr(b.Field(4).(*array.StringBuilder), p.Currency)
-		appendStrList(b.Field(5).(*array.ListBuilder), p.PreferredLocations)
-		appendStrList(b.Field(6).(*array.ListBuilder), p.ExcludedCompanies)
-		appendStrList(b.Field(7).(*array.ListBuilder), p.TargetRoles)
-		appendStrList(b.Field(8).(*array.ListBuilder), p.Languages)
-		appendOptStr(b.Field(9).(*array.StringBuilder), p.Availability)
-		b.Field(10).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(11).(*array.TimestampBuilder), p.OccurredAt)
+		appendOptStr(b.Field(1).(*array.StringBuilder), optInsStr)
+		appendTS(b.Field(2).(*array.TimestampBuilder), p.UpdatedAt)
+		b.Field(3).(*array.StringBuilder).Append(p.EventID)
+		appendTS(b.Field(4).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
 	rec := b.NewRecord()

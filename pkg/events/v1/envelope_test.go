@@ -402,25 +402,31 @@ func TestCandidateEmbeddingRoundTrip(t *testing.T) {
 }
 
 func TestCandidatePreferencesUpdatedRoundTrip(t *testing.T) {
+	jobBlob, _ := json.Marshal(map[string]any{
+		"target_roles": []string{"backend-engineer"},
+		"salary_min":   80000,
+		"currency":     "USD",
+		"locations":    map[string]any{"countries": []string{"KE", "US"}, "remote_ok": true},
+	})
 	orig := NewEnvelope(TopicCandidatePreferencesUpdated, PreferencesUpdatedV1{
-		CandidateID:        "cnd_1",
-		RemotePreference:   "remote",
-		SalaryMin:          80000,
-		SalaryMax:          140000,
-		Currency:           "USD",
-		PreferredLocations: []string{"KE", "US"},
-		ExcludedCompanies:  []string{"BadCo"},
-		TargetRoles:        []string{"backend-engineer"},
-		Languages:          []string{"en"},
-		Availability:       "2-weeks",
+		CandidateID: "cnd_1",
+		OptIns:      map[string]json.RawMessage{"job": jobBlob},
+		UpdatedAt:   time.Now().UTC(),
 	})
 	raw, _ := json.Marshal(orig)
 	var back Envelope[PreferencesUpdatedV1]
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if back.Payload.SalaryMin != 80000 || len(back.Payload.PreferredLocations) != 2 {
-		t.Fatalf("round-trip lost: %+v", back.Payload)
+	if back.Payload.CandidateID != "cnd_1" {
+		t.Fatalf("round-trip lost candidate_id: %+v", back.Payload)
+	}
+	jobRaw, ok := back.Payload.OptIns["job"]
+	if !ok {
+		t.Fatalf("round-trip lost job opt-in: %+v", back.Payload.OptIns)
+	}
+	if len(jobRaw) == 0 {
+		t.Fatalf("job opt-in blob empty")
 	}
 }
 

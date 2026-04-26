@@ -339,14 +339,16 @@ func TestBuildCandidateEmbeddingRecord(t *testing.T) {
 }
 
 func TestBuildPreferencesRecord(t *testing.T) {
+	jobBlob, _ := json.Marshal(map[string]any{
+		"target_roles": []string{"Backend Engineer"},
+		"salary_min":   80000,
+		"currency":     "USD",
+		"locations":    map[string]any{"cities": []string{"Nairobi", "Lagos"}, "remote_ok": true},
+	})
 	raw := marshalEnv(t, eventsv1.TopicCandidatePreferencesUpdated, eventsv1.PreferencesUpdatedV1{
-		CandidateID:        "cand-5",
-		RemotePreference:   "remote_only",
-		SalaryMin:          80000,
-		SalaryMax:          120000,
-		Currency:           "USD",
-		PreferredLocations: []string{"Nairobi", "Lagos"},
-		TargetRoles:        []string{"Backend Engineer"},
+		CandidateID: "cand-5",
+		OptIns:      map[string]json.RawMessage{"job": jobBlob},
+		UpdatedAt:   time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildPreferencesRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -354,10 +356,12 @@ func TestBuildPreferencesRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "cand-5", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "remote_only", rec.Column(1).(*array.String).Value(0))
-	locList := rec.Column(5).(*array.List)
-	ls, le := locList.ValueOffsets(0)
-	assert.EqualValues(t, 2, le-ls)
+	// Column 1 is opt_ins_json — a JSON string with the kind-keyed blobs.
+	optInsJSON := rec.Column(1).(*array.String).Value(0)
+	var decoded map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(optInsJSON), &decoded))
+	_, ok := decoded["job"]
+	assert.True(t, ok, "expected job opt-in in opt_ins_json: %s", optInsJSON)
 }
 
 func TestBuildMatchesReadyRecord(t *testing.T) {

@@ -2,11 +2,13 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/rs/xid"
 
+	jobm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/job"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
@@ -56,13 +58,23 @@ func (s *MatchService) RunMatch(ctx context.Context, candidateID string) (MatchR
 	}
 	prefs, _ := s.store.LatestPreferences(ctx, candidateID)
 
-	hits, err := s.search.KNNWithFilters(ctx, SearchRequest{
-		Vector:             emb.Vector,
-		Limit:              200,
-		RemotePreference:   prefs.RemotePreference,
-		SalaryMinFloor:     prefs.SalaryMin,
-		PreferredLocations: prefs.PreferredLocations,
-	})
+	// MatchService is the legacy CV-vs-job pipeline; it cares only
+	// about the "job" opt-in. Per-kind matching for other kinds runs
+	// through the matcher registry (Phase 7.2-7.5) which reads the
+	// same OptIns map directly.
+	req := SearchRequest{Vector: emb.Vector, Limit: 200}
+	if raw, ok := prefs.OptIns["job"]; ok && len(raw) > 0 {
+		var jp jobm.JobPreferences
+		if err := json.Unmarshal(raw, &jp); err != nil {
+			return MatchResult{}, fmt.Errorf("match: decode job prefs: %w", err)
+		}
+		req.SalaryMinFloor = int(jp.SalaryMin)
+		req.PreferredLocations = jp.Locations.Cities
+		if jp.Locations.RemoteOK {
+			req.RemotePreference = "remote"
+		}
+	}
+	hits, err := s.search.KNNWithFilters(ctx, req)
 	if err != nil {
 		return MatchResult{}, err
 	}

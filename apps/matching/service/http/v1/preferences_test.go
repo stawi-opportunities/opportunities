@@ -53,14 +53,17 @@ func TestPreferencesHandlerEmitsEvent(t *testing.T) {
 
 	handler := PreferencesHandler(svc)
 
+	jobBlob, _ := json.Marshal(map[string]any{
+		"target_roles": []string{"backend-engineer"},
+		"salary_min":   80000,
+		"currency":     "USD",
+		"locations":    map[string]any{"countries": []string{"KE"}, "remote_ok": true},
+	})
 	body := map[string]any{
-		"candidate_id":        "cnd_1",
-		"remote_preference":   "remote",
-		"salary_min":          80000,
-		"salary_max":          140000,
-		"currency":            "USD",
-		"preferred_locations": []string{"KE"},
-		"target_roles":        []string{"backend-engineer"},
+		"candidate_id": "cnd_1",
+		"opt_ins": map[string]json.RawMessage{
+			"job": jobBlob,
+		},
 	}
 	raw, _ := json.Marshal(body)
 
@@ -84,8 +87,11 @@ func TestPreferencesHandlerEmitsEvent(t *testing.T) {
 		t.Fatalf("emitted=%d, want 1", col.Len())
 	}
 	p := col.got[0].Payload
-	if p.CandidateID != "cnd_1" || p.SalaryMin != 80000 {
+	if p.CandidateID != "cnd_1" {
 		t.Fatalf("bad payload: %+v", p)
+	}
+	if _, ok := p.OptIns["job"]; !ok {
+		t.Fatalf("expected job opt-in, got: %+v", p.OptIns)
 	}
 }
 
@@ -97,7 +103,7 @@ func TestPreferencesHandlerRejectsMissingCandidateID(t *testing.T) {
 	defer svc.Stop(ctx)
 
 	handler := PreferencesHandler(svc)
-	raw := []byte(`{"salary_min":50000}`)
+	raw := []byte(`{"opt_ins":{}}`)
 	req := httptest.NewRequest(http.MethodPost, "/candidates/preferences", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

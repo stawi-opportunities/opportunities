@@ -190,7 +190,15 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 
 	// --- POST /candidates/preferences ---
 	prefsHandler := httpv1.PreferencesHandler(svc)
-	body := map[string]any{"candidate_id": "cnd_e2e", "remote_preference": "remote", "salary_min": 70000}
+	jobBlob, _ := json.Marshal(map[string]any{
+		"target_roles": []string{"backend-engineer"},
+		"salary_min":   70000,
+		"locations":    map[string]any{"remote_ok": true},
+	})
+	body := map[string]any{
+		"candidate_id": "cnd_e2e",
+		"opt_ins":      map[string]json.RawMessage{"job": jobBlob},
+	}
 	raw, _ := json.Marshal(body)
 	req = httptest.NewRequest(http.MethodPost, "/candidates/preferences", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")

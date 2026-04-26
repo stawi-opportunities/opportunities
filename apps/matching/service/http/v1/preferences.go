@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -15,10 +16,13 @@ import (
 //
 //	POST /candidates/preferences
 //	Content-Type: application/json
-//	Body: full preferences snapshot (replace-all semantics)
+//	Body: { "candidate_id": "...", "opt_ins": { "<kind>": {...kind-prefs...}, ... } }
 //
-// The handler validates candidate_id + minimal sanity checks, then
-// emits PreferencesUpdatedV1. Persistence happens via the event log.
+// The body is a replace-all snapshot of the candidate's per-kind
+// preferences. Each opt-in is an arbitrary JSON object; the matcher
+// for the corresponding kind interprets it. The handler validates the
+// candidate_id and the structural shape only — kind-specific validation
+// lives in each matcher.
 func PreferencesHandler(svc *frame.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -39,13 +43,8 @@ func PreferencesHandler(svc *frame.Service) http.HandlerFunc {
 			http.Error(w, `{"error":"candidate_id is required"}`, http.StatusBadRequest)
 			return
 		}
-		if body.SalaryMin < 0 || body.SalaryMax < 0 {
-			http.Error(w, `{"error":"salary_min / salary_max must be non-negative"}`, http.StatusBadRequest)
-			return
-		}
-		if body.SalaryMin > 0 && body.SalaryMax > 0 && body.SalaryMin > body.SalaryMax {
-			http.Error(w, `{"error":"salary_min > salary_max"}`, http.StatusBadRequest)
-			return
+		if body.UpdatedAt.IsZero() {
+			body.UpdatedAt = time.Now().UTC()
 		}
 
 		env := eventsv1.NewEnvelope(eventsv1.TopicCandidatePreferencesUpdated, body)

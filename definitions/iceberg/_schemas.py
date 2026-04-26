@@ -256,18 +256,17 @@ CV_IMPROVED = Schema(
 )
 
 # candidates.preferences  (PreferencesUpdatedV1)
+#
+# OptIns is a kind-keyed map of opaque per-kind preference blobs (see
+# pkg/events/v1/candidates.go). We persist it as a single JSON string
+# (opt_ins_json) so adding a new kind never requires an Iceberg schema
+# migration. Readers json.Unmarshal opt_ins_json into
+# map[string]json.RawMessage and decode the kind they care about.
 PREFERENCES = Schema(
-    _req(1,  "candidate_id",        StringType()),
-    _opt(2,  "remote_preference",   StringType()),
-    _opt(3,  "salary_min",          IntegerType()),
-    _opt(4,  "salary_max",          IntegerType()),
-    _opt(5,  "currency",            StringType()),
-    _opt(6,  "preferred_locations", _str_list(element_id=400)),
-    _opt(7,  "excluded_companies",  _str_list(element_id=401)),
-    _opt(8,  "target_roles",        _str_list(element_id=402)),
-    _opt(9,  "languages",           _str_list(element_id=403)),
-    _opt(10, "availability",        StringType()),
-    *_envelope(11),
+    _req(1, "candidate_id", StringType()),
+    _opt(2, "opt_ins_json", StringType()),
+    _req(3, "updated_at",   TimestamptzType()),
+    *_envelope(4),
 )
 
 # candidates.embeddings  (CandidateEmbeddingV1)
