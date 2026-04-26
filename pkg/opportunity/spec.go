@@ -38,6 +38,7 @@ var universalKeys = map[string]struct{}{
 	"description":    {},
 	"issuing_entity": {},
 	"apply_url":      {},
+	"deadline":       {},
 	"anchor_country": {},
 	"anchor_region":  {},
 	"anchor_city":    {},

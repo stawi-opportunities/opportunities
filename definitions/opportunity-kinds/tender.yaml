@@ -3,8 +3,8 @@ display_name: Tender
 issuing_entity_label: Issuing Agency
 amount_kind: budget
 url_prefix: tenders
-universal_required: [title, description, issuing_entity, anchor_country]
-kind_required: [deadline]
+universal_required: [title, description, issuing_entity, anchor_country, deadline]
+kind_required: []
 kind_optional: [procurement_domain, bidder_eligibility, certifications_required, service_areas]
 categories: [Construction, IT, Consulting, Healthcare, Transport, Energy, Education, Other]
 search_facets: [procurement_domain]

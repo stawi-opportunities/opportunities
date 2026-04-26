@@ -10,6 +10,7 @@ import (
 	"github.com/pitabwire/frame/cache"
 	"github.com/rs/xid"
 
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 )
@@ -104,7 +105,12 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		merged.CanonicalID = xid.New().String()
 	}
 	if merged.Slug == "" {
-		merged.Slug = merged.CanonicalID // placeholder — Phase 5 replaces with human-readable slug generator
+		// Build a human-readable slug from kind + title + issuer + a short ID suffix.
+		hashSuffix := merged.CanonicalID
+		if len(hashSuffix) > 8 {
+			hashSuffix = hashSuffix[:8]
+		}
+		merged.Slug = domain.BuildSlug(in.Kind, merged.Title, merged.Company, hashSuffix)
 	}
 
 	if err := h.cache.Set(ctx, merged.ClusterID, merged, 0*time.Second); err != nil {

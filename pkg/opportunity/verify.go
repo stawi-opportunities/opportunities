@@ -100,6 +100,8 @@ func universalFieldPresent(opp *domain.ExternalOpportunity, key string) bool {
 		return opp.IssuingEntity != ""
 	case "apply_url":
 		return opp.ApplyURL != ""
+	case "deadline":
+		return opp.Deadline != nil
 	case "anchor_country":
 		return opp.AnchorLocation != nil && opp.AnchorLocation.Country != ""
 	case "anchor_region":

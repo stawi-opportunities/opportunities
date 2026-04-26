@@ -2,6 +2,7 @@ package opportunity
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
@@ -49,14 +50,32 @@ func TestVerify_KindRequiredAttributeMissing(t *testing.T) {
 		Title:         "MSc Climate Science",
 		Description:   "Long description that is well above the minimum length required for verify to be happy.",
 		IssuingEntity: "ETH",
-		// Missing deadline + field_of_study
+		// Missing deadline (universal) + field_of_study (kind)
 	}
 	r := Verify(opp, src, reg)
 	if r.OK {
 		t.Fatal("expected fail")
 	}
 	if !contains(r.Missing, "deadline") || !contains(r.Missing, "field_of_study") {
-		t.Fatalf("expected Missing to include deadline+field_of_study, got %+v", r.Missing)
+		t.Fatalf("expected Missing to include deadline (universal) + field_of_study (kind), got %+v", r.Missing)
+	}
+}
+
+func TestVerify_ScholarshipHappyPath(t *testing.T) {
+	reg := newRegistry(t)
+	src := &domain.Source{Kinds: []string{"scholarship"}}
+	deadline := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	opp := &domain.ExternalOpportunity{
+		Kind:          "scholarship",
+		Title:         "MSc Climate Science",
+		Description:   "Long description that is well above the minimum length required for verify to be happy.",
+		IssuingEntity: "ETH Zurich",
+		Deadline:      &deadline,
+		Attributes:    map[string]any{"field_of_study": "Climate"},
+	}
+	r := Verify(opp, src, reg)
+	if !r.OK {
+		t.Fatalf("expected OK, got %+v", r)
 	}
 }
 
