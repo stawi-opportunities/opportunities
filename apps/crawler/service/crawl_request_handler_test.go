@@ -21,7 +21,7 @@ import (
 // --- fakes ---
 
 type fakeConnector struct {
-	jobs []domain.ExternalJob
+	jobs []domain.ExternalOpportunity
 	raw  []byte
 }
 
@@ -101,12 +101,13 @@ func TestCrawlRequestHandlerEmitsVariantAndPageCompleted(t *testing.T) {
 
 	reg := connectors.NewRegistry()
 	reg.Register(&fakeConnector{
-		jobs: []domain.ExternalJob{{
-			ExternalID:  "ext-1",
-			Title:       "Backend Engineer",
-			Company:     "Acme",
-			ApplyURL:    "https://acme.example/jobs/ext-1",
-			Description: "We are looking for a skilled backend engineer to join our team and build scalable services.",
+		jobs: []domain.ExternalOpportunity{{
+			Kind:          "job",
+			ExternalID:    "ext-1",
+			Title:         "Backend Engineer",
+			IssuingEntity: "Acme",
+			ApplyURL:      "https://acme.example/jobs/ext-1",
+			Description:   "We are looking for a skilled backend engineer to join our team and build scalable services.",
 		}},
 		raw: []byte("<html>job body</html>"),
 	})

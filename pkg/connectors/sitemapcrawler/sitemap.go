@@ -1,7 +1,7 @@
 // Package sitemapcrawler provides a connector that discovers job URLs from
 // XML sitemaps. It parses robots.txt for Sitemap directives, handles sitemap
 // index files, and filters URLs to only include job-related paths. Each
-// discovered URL is returned as an ExternalJob stub; the pipeline's
+// discovered URL is returned as an ExternalOpportunity stub; the pipeline's
 // NormalizeHandler is responsible for fetching the detail page content.
 package sitemapcrawler
 
@@ -104,7 +104,7 @@ type iterator struct {
 	status     int
 	err        error
 	done       bool
-	jobs       []domain.ExternalJob
+	jobs       []domain.ExternalOpportunity
 }
 
 func (it *iterator) Next(ctx context.Context) bool {
@@ -142,9 +142,9 @@ func (it *iterator) Next(ctx context.Context) bool {
 	batch := it.jobURLs[it.pos:end]
 	it.pos = end
 
-	jobs := make([]domain.ExternalJob, 0, len(batch))
+	jobs := make([]domain.ExternalOpportunity, 0, len(batch))
 	for _, u := range batch {
-		jobs = append(jobs, domain.ExternalJob{
+		jobs = append(jobs, domain.ExternalOpportunity{
 			ExternalID: u,
 			ApplyURL:   u,
 		})
@@ -153,7 +153,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalJob       { return it.jobs }
+func (it *iterator) Jobs() []domain.ExternalOpportunity       { return it.jobs }
 func (it *iterator) RawPayload() []byte                { return it.raw }
 func (it *iterator) HTTPStatus() int                   { return it.status }
 func (it *iterator) Err() error                        { return it.err }

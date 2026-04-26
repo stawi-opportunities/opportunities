@@ -9,13 +9,14 @@ import (
 )
 
 // validJob returns a fully populated job that passes all quality checks.
-func validJob() domain.ExternalJob {
-	return domain.ExternalJob{
-		Title:        "Senior Software Engineer",
-		Company:      "Acme Corp",
-		LocationText: "Nairobi, Kenya",
-		Description:  strings.Repeat("x", 51),
-		ApplyURL:     "https://example.com/apply",
+func validJob() domain.ExternalOpportunity {
+	return domain.ExternalOpportunity{
+		Kind:          "job",
+		Title:         "Senior Software Engineer",
+		IssuingEntity: "Acme Corp",
+		LocationText:  "Nairobi, Kenya",
+		Description:   strings.Repeat("x", 51),
+		ApplyURL:      "https://example.com/apply",
 	}
 }
 
@@ -84,7 +85,7 @@ func TestCheck_ValidDescription_51Chars(t *testing.T) {
 // TestCheck_MissingCompanyPasses verifies that a job with no company still passes.
 func TestCheck_MissingCompanyPasses(t *testing.T) {
 	j := validJob()
-	j.Company = ""
+	j.IssuingEntity = ""
 	if err := quality.Check(j); err != nil {
 		t.Fatalf("expected nil error for missing company, got: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestCheck_MissingLocationPasses(t *testing.T) {
 // and leaves an existing URL untouched.
 func TestEnsureApplyURL(t *testing.T) {
 	t.Run("sets fallback when empty", func(t *testing.T) {
-		j := domain.ExternalJob{ApplyURL: ""}
+		j := domain.ExternalOpportunity{ApplyURL: ""}
 		quality.EnsureApplyURL(&j, "https://fallback.example.com")
 		if j.ApplyURL != "https://fallback.example.com" {
 			t.Fatalf("expected fallback URL to be set, got: %q", j.ApplyURL)
@@ -111,7 +112,7 @@ func TestEnsureApplyURL(t *testing.T) {
 	})
 
 	t.Run("leaves existing URL alone", func(t *testing.T) {
-		j := domain.ExternalJob{ApplyURL: "https://original.example.com/apply"}
+		j := domain.ExternalOpportunity{ApplyURL: "https://original.example.com/apply"}
 		quality.EnsureApplyURL(&j, "https://fallback.example.com")
 		if j.ApplyURL != "https://original.example.com/apply" {
 			t.Fatalf("expected original URL to be preserved, got: %q", j.ApplyURL)
@@ -119,7 +120,7 @@ func TestEnsureApplyURL(t *testing.T) {
 	})
 
 	t.Run("does not set empty fallback", func(t *testing.T) {
-		j := domain.ExternalJob{ApplyURL: ""}
+		j := domain.ExternalOpportunity{ApplyURL: ""}
 		quality.EnsureApplyURL(&j, "")
 		if j.ApplyURL != "" {
 			t.Fatalf("expected URL to remain empty when fallback is empty, got: %q", j.ApplyURL)
@@ -127,7 +128,7 @@ func TestEnsureApplyURL(t *testing.T) {
 	})
 
 	t.Run("sets fallback when whitespace only", func(t *testing.T) {
-		j := domain.ExternalJob{ApplyURL: "   "}
+		j := domain.ExternalOpportunity{ApplyURL: "   "}
 		quality.EnsureApplyURL(&j, "https://fallback.example.com")
 		if j.ApplyURL != "https://fallback.example.com" {
 			t.Fatalf("expected fallback URL to be set for whitespace-only ApplyURL, got: %q", j.ApplyURL)

@@ -74,7 +74,7 @@ type iterator struct {
 	nextURL   string
 	baseURL   string
 	page      int
-	jobs      []domain.ExternalJob
+	jobs      []domain.ExternalOpportunity
 	raw       []byte
 	status    int
 	err       error
@@ -146,13 +146,13 @@ func (it *iterator) Next(ctx context.Context) bool {
 
 	// De-duplicate within this page.
 	seen := make(map[string]struct{})
-	var jobs []domain.ExternalJob
+	var jobs []domain.ExternalOpportunity
 	for _, link := range jobLinks {
 		if _, ok := seen[link]; ok {
 			continue
 		}
 		seen[link] = struct{}{}
-		jobs = append(jobs, domain.ExternalJob{
+		jobs = append(jobs, domain.ExternalOpportunity{
 			ExternalID: link,
 			ApplyURL:   link,
 		})
@@ -163,7 +163,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalJob       { return it.jobs }
+func (it *iterator) Jobs() []domain.ExternalOpportunity       { return it.jobs }
 func (it *iterator) RawPayload() []byte                { return it.raw }
 func (it *iterator) HTTPStatus() int                   { return it.status }
 func (it *iterator) Err() error                        { return it.err }
@@ -348,7 +348,7 @@ type sitemapIterator struct {
 	jobURLs   []string
 	pos       int
 	batchSize int
-	jobs      []domain.ExternalJob
+	jobs      []domain.ExternalOpportunity
 	raw       []byte
 }
 
@@ -363,9 +363,9 @@ func (it *sitemapIterator) Next(_ context.Context) bool {
 	batch := it.jobURLs[it.pos:end]
 	it.pos = end
 
-	it.jobs = make([]domain.ExternalJob, 0, len(batch))
+	it.jobs = make([]domain.ExternalOpportunity, 0, len(batch))
 	for _, u := range batch {
-		it.jobs = append(it.jobs, domain.ExternalJob{
+		it.jobs = append(it.jobs, domain.ExternalOpportunity{
 			ExternalID: u,
 			ApplyURL:   u,
 		})
@@ -373,7 +373,7 @@ func (it *sitemapIterator) Next(_ context.Context) bool {
 	return true
 }
 
-func (it *sitemapIterator) Jobs() []domain.ExternalJob       { return it.jobs }
+func (it *sitemapIterator) Jobs() []domain.ExternalOpportunity       { return it.jobs }
 func (it *sitemapIterator) RawPayload() []byte                { return it.raw }
 func (it *sitemapIterator) HTTPStatus() int                   { return 200 }
 func (it *sitemapIterator) Err() error                        { return nil }

@@ -64,18 +64,22 @@ func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.Crawl
 			fmt.Errorf("jobicy: unmarshal: %w", err))
 	}
 
-	jobs := make([]domain.ExternalJob, 0, len(resp.Jobs))
+	jobs := make([]domain.ExternalOpportunity, 0, len(resp.Jobs))
 	for _, item := range resp.Jobs {
-		jobs = append(jobs, domain.ExternalJob{
-			ExternalID:     strconv.Itoa(item.ID),
-			ApplyURL:       item.URL,
-			Title:          item.JobTitle,
-			Company:        item.CompanyName,
-			LocationText:   item.JobGeo,
-			EmploymentType: item.JobType.String(),
-			Description:    item.JobExcerpt,
-			Currency:       item.SalaryCurrency,
-			RemoteType:     "remote",
+		jobs = append(jobs, domain.ExternalOpportunity{
+			Kind:          "job",
+			ExternalID:    strconv.Itoa(item.ID),
+			ApplyURL:      item.URL,
+			Title:         item.JobTitle,
+			IssuingEntity: item.CompanyName,
+			LocationText:  item.JobGeo,
+			Description:   item.JobExcerpt,
+			Currency:      item.SalaryCurrency,
+			Remote:        true,
+			Attributes: map[string]any{
+				"employment_type": item.JobType.String(),
+				"remote_type":     "remote",
+			},
 		})
 	}
 

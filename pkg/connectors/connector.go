@@ -20,7 +20,7 @@ type CrawlIterator interface {
 	Next(ctx context.Context) bool
 
 	// Jobs returns the batch of jobs fetched by the most recent Next call.
-	Jobs() []domain.ExternalJob
+	Jobs() []domain.ExternalOpportunity
 
 	// RawPayload returns the raw HTTP response body for the current page.
 	RawPayload() []byte
@@ -100,7 +100,7 @@ func (r *Registry) Types() []domain.SourceType {
 // SinglePageIterator wraps a single batch of jobs for connectors that do not
 // paginate (i.e., the entire result set arrives in one HTTP response).
 type SinglePageIterator struct {
-	jobs       []domain.ExternalJob
+	jobs       []domain.ExternalOpportunity
 	raw        []byte
 	httpStatus int
 	err        error
@@ -111,7 +111,7 @@ type SinglePageIterator struct {
 // NewSinglePageIterator creates a SinglePageIterator for a single-page result.
 // If raw bytes are provided it will attempt content extraction: HTML payloads
 // are run through content.ExtractFromHTML; everything else is treated as JSON.
-func NewSinglePageIterator(jobs []domain.ExternalJob, raw []byte, status int, err error) *SinglePageIterator {
+func NewSinglePageIterator(jobs []domain.ExternalOpportunity, raw []byte, status int, err error) *SinglePageIterator {
 	var ext *content.Extracted
 	if len(raw) > 0 {
 		rawStr := string(raw)
@@ -142,7 +142,7 @@ func (s *SinglePageIterator) Next(_ context.Context) bool {
 }
 
 // Jobs returns the single batch of jobs.
-func (s *SinglePageIterator) Jobs() []domain.ExternalJob { return s.jobs }
+func (s *SinglePageIterator) Jobs() []domain.ExternalOpportunity { return s.jobs }
 
 // RawPayload returns the raw HTTP response body.
 func (s *SinglePageIterator) RawPayload() []byte { return s.raw }

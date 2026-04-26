@@ -13,9 +13,9 @@ var (
 	ErrShortDescription = errors.New("short_description")
 )
 
-// Check validates an ExternalJob against the quality gate rules.
+// Check validates an ExternalOpportunity against the quality gate rules.
 // It returns the first validation error encountered, or nil if the job passes.
-func Check(j domain.ExternalJob) error {
+func Check(j domain.ExternalOpportunity) error {
 	title := strings.TrimSpace(j.Title)
 	if title == "" || len(title) <= 3 {
 		return ErrMissingTitle
@@ -29,7 +29,7 @@ func Check(j domain.ExternalJob) error {
 }
 
 // EnsureApplyURL sets job.ApplyURL to fallbackURL if it's currently empty.
-func EnsureApplyURL(job *domain.ExternalJob, fallbackURL string) {
+func EnsureApplyURL(job *domain.ExternalOpportunity, fallbackURL string) {
 	if strings.TrimSpace(job.ApplyURL) == "" && fallbackURL != "" {
 		job.ApplyURL = fallbackURL
 	}

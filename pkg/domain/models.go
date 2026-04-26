@@ -137,55 +137,104 @@ type RawPayload struct {
 
 func (RawPayload) TableName() string { return "raw_payloads" }
 
-// ExternalJob is the normalized representation extracted from a raw payload
-// before deduplication. It is not persisted directly.
-type ExternalJob struct {
-	ExternalID     string            `json:"external_id"`
-	SourceURL      string            `json:"source_url"`
-	ApplyURL       string            `json:"apply_url"`
-	Title          string            `json:"title"`
-	Company        string            `json:"company"`
-	LocationText   string            `json:"location_text"`
-	RemoteType     string            `json:"remote_type"`
-	EmploymentType string            `json:"employment_type"`
-	SalaryMin      float64           `json:"salary_min"`
-	SalaryMax      float64           `json:"salary_max"`
-	Currency       string            `json:"currency"`
-	Description    string            `json:"description"`
-	PostedAt       *time.Time        `json:"posted_at"`
-	Metadata       map[string]string `json:"metadata"`
-	// Extended fields extracted by AI
-	Seniority    string   `json:"seniority"`
-	Skills       []string `json:"skills"`
-	Roles        []string `json:"roles"`
-	Benefits     []string `json:"benefits"`
-	ContactName  string   `json:"contact_name"`
-	ContactEmail string   `json:"contact_email"`
-	Department   string   `json:"department"`
-	Industry     string   `json:"industry"`
-	Education    string   `json:"education"`
-	Experience   string   `json:"experience"`
-	Deadline     string   `json:"deadline"`
+// ExternalOpportunity is the canonical intermediate representation a
+// connector returns for a single ingested item. Replaces the old
+// ExternalJob; the kind discriminator decides which Spec governs
+// extraction, verification, and downstream rendering.
+type ExternalOpportunity struct {
+	// Discriminator. Empty when the source declares zero kinds — the
+	// extractor classifies before downstream stages run.
+	Kind string `json:"kind,omitempty"`
 
-	// Intelligence fields
-	UrgencyLevel     string   `json:"urgency_level"`
-	UrgencySignals   []string `json:"urgency_signals"`
-	HiringTimeline   string   `json:"hiring_timeline"`
-	InterviewStages  int      `json:"interview_stages"`
-	HasTakeHome      bool     `json:"has_take_home"`
-	FunnelComplexity string   `json:"funnel_complexity"`
-	CompanySize      string   `json:"company_size"`
-	FundingStage     string   `json:"funding_stage"`
-	RequiredSkills   []string `json:"required_skills"`
-	NiceToHaveSkills []string `json:"nice_to_have_skills"`
-	ToolsFrameworks  []string `json:"tools_frameworks"`
-	GeoRestrictions  string   `json:"geo_restrictions"`
-	TimezoneReq      string   `json:"timezone_req"`
-	ApplicationType  string   `json:"application_type"`
-	ATSPlatform      string   `json:"ats_platform"`
-	RoleScope        string   `json:"role_scope"`
-	TeamSize         string   `json:"team_size"`
-	ReportsTo        string   `json:"reports_to"`
+	// Source identity
+	SourceID   string `json:"source_id"`
+	ExternalID string `json:"external_id"`
+	SourceURL  string `json:"source_url,omitempty"`
+
+	// Universal core
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	IssuingEntity string `json:"issuing_entity"`
+	ApplyURL      string `json:"apply_url"`
+
+	// Universal location
+	AnchorLocation *Location `json:"anchor_location,omitempty"`
+	LocationText   string    `json:"location_text,omitempty"`
+	Remote         bool      `json:"remote,omitempty"`
+	GeoScope       string    `json:"geo_scope,omitempty"` // "global" | "regional" | "national" | "local" | ""
+
+	// Universal time
+	PostedAt *time.Time `json:"posted_at,omitempty"`
+	Deadline *time.Time `json:"deadline,omitempty"`
+
+	// Universal monetary (semantics determined by Spec.AmountKind)
+	AmountMin float64 `json:"amount_min,omitempty"`
+	AmountMax float64 `json:"amount_max,omitempty"`
+	Currency  string  `json:"currency,omitempty"`
+
+	// Universal taxonomy (validated against Spec.Categories)
+	Categories []string `json:"categories,omitempty"`
+
+	// Kind-specific extension. Keys must satisfy Spec.KindRequired and
+	// may include Spec.KindOptional. Anything else is flagged by Verify
+	// (warning) but not rejected.
+	Attributes map[string]any `json:"attributes,omitempty"`
+
+	// Pipeline metadata (kind-agnostic)
+	RawHTML         string     `json:"raw_html,omitempty"`
+	RawHash         string     `json:"raw_hash,omitempty"`
+	ContentMarkdown string     `json:"content_markdown,omitempty"`
+	Source          SourceType `json:"source"`
+	QualityScore    float64    `json:"quality_score,omitempty"`
+}
+
+// AttrString returns Attributes[key] as a string, or "" if missing/wrong type.
+func (o ExternalOpportunity) AttrString(key string) string {
+	if o.Attributes == nil {
+		return ""
+	}
+	if v, ok := o.Attributes[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// AttrStringSlice returns Attributes[key] as a []string, or nil.
+func (o ExternalOpportunity) AttrStringSlice(key string) []string {
+	if o.Attributes == nil {
+		return nil
+	}
+	switch v := o.Attributes[key].(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// AttrFloat returns Attributes[key] as a float64, or 0.
+func (o ExternalOpportunity) AttrFloat(key string) float64 {
+	if o.Attributes == nil {
+		return 0
+	}
+	switch v := o.Attributes[key].(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	}
+	return 0
 }
 
 // VariantStage tracks a job variant's position in the processing pipeline.

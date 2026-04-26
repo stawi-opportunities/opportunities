@@ -46,16 +46,17 @@ func (c *Connector) Crawl(ctx context.Context, src domain.Source) connectors.Cra
 		return connectors.NewSinglePageIterator(nil, body, status, fmt.Errorf("decode greenhouse payload: %w", err))
 	}
 
-	out := make([]domain.ExternalJob, 0, len(payload.Jobs))
+	out := make([]domain.ExternalOpportunity, 0, len(payload.Jobs))
 	for _, j := range payload.Jobs {
-		out = append(out, domain.ExternalJob{
-			ExternalID:   fmt.Sprintf("%d", j.ID),
-			SourceURL:    src.BaseURL,
-			ApplyURL:     j.Absolute,
-			Title:        j.Title,
-			Company:      company,
-			LocationText: j.Location.Name,
-			Description:  j.Content,
+		out = append(out, domain.ExternalOpportunity{
+			Kind:          "job",
+			ExternalID:    fmt.Sprintf("%d", j.ID),
+			SourceURL:     src.BaseURL,
+			ApplyURL:      j.Absolute,
+			Title:         j.Title,
+			IssuingEntity: company,
+			LocationText:  j.Location.Name,
+			Description:   j.Content,
 		})
 	}
 	return connectors.NewSinglePageIterator(out, body, status, nil)

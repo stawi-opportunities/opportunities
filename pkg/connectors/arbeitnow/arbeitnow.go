@@ -39,7 +39,7 @@ func (c *Connector) Crawl(_ context.Context, _ domain.Source) connectors.CrawlIt
 type iterator struct {
 	client     *httpx.Client
 	page       int
-	jobs       []domain.ExternalJob
+	jobs       []domain.ExternalOpportunity
 	raw        []byte
 	httpStatus int
 	err        error
@@ -101,28 +101,29 @@ func (it *iterator) Next(ctx context.Context) bool {
 		}
 	}
 
-	jobs := make([]domain.ExternalJob, 0, len(resp.Data))
+	jobs := make([]domain.ExternalOpportunity, 0, len(resp.Data))
 	for _, item := range resp.Data {
-		remoteType := ""
-		if item.Remote {
-			remoteType = "remote"
+		opp := domain.ExternalOpportunity{
+			Kind:          "job",
+			ExternalID:    item.Slug,
+			Title:         item.Title,
+			IssuingEntity: item.CompanyName,
+			LocationText:  item.Location,
+			Description:   item.Description,
+			ApplyURL:      item.URL,
+			Remote:        item.Remote,
 		}
-		jobs = append(jobs, domain.ExternalJob{
-			ExternalID:  item.Slug,
-			Title:       item.Title,
-			Company:     item.CompanyName,
-			LocationText: item.Location,
-			Description: item.Description,
-			ApplyURL:    item.URL,
-			RemoteType:  remoteType,
-		})
+		if item.Remote {
+			opp.Attributes = map[string]any{"remote_type": "remote"}
+		}
+		jobs = append(jobs, opp)
 	}
 	it.jobs = jobs
 	it.page++
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalJob    { return it.jobs }
+func (it *iterator) Jobs() []domain.ExternalOpportunity    { return it.jobs }
 func (it *iterator) RawPayload() []byte            { return it.raw }
 func (it *iterator) HTTPStatus() int               { return it.httpStatus }
 func (it *iterator) Err() error                    { return it.err }
