@@ -37,3 +37,28 @@ func TestSpec_ValidatePass(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestSpec_RequireDisplayName(t *testing.T) {
+	s := Spec{Kind: "job", IssuingEntityLabel: "Company", URLPrefix: "jobs"}
+	if err := s.Validate(); err == nil {
+		t.Fatal("expected error for missing DisplayName")
+	}
+}
+
+func TestSpec_RequireIssuingEntityLabel(t *testing.T) {
+	s := Spec{Kind: "job", DisplayName: "Job", URLPrefix: "jobs"}
+	if err := s.Validate(); err == nil {
+		t.Fatal("expected error for missing IssuingEntityLabel")
+	}
+}
+
+func TestSpec_UniversalRequiredRejectsUnknownKey(t *testing.T) {
+	s := Spec{
+		Kind: "job", DisplayName: "Job", IssuingEntityLabel: "Company",
+		URLPrefix:         "jobs",
+		UniversalRequired: []string{"title", "salary_min"}, // salary_min is not an envelope key
+	}
+	if err := s.Validate(); err == nil {
+		t.Fatal("expected error for unknown envelope key")
+	}
+}
