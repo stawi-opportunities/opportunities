@@ -16,11 +16,13 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 	"github.com/stawi-opportunities/opportunities/pkg/memconfig"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-// KVRebuilder repopulates Valkey cluster:* keys by scanning the R2 content
-// bucket's jobs/*.json slug files and applying the Lua CAS script to ensure
-// the latest value wins even under parallel page fetches.
+// KVRebuilder repopulates Valkey cluster:* keys by scanning every registered
+// kind's URL prefix in the R2 content bucket (e.g. jobs/, scholarships/) and
+// applying the Lua CAS script to ensure the latest value wins even under
+// parallel page fetches.
 //
 // Memory model (O(batch), not O(partition)):
 //
@@ -43,12 +45,14 @@ type KVRebuilder struct {
 	s3Client *s3.Client
 	bucket   string
 	kv       *redis.Client
+	registry *opportunity.Registry
 }
 
-// NewKVRebuilder constructs a KVRebuilder backed by an S3-compatible client
-// and a Valkey client.
-func NewKVRebuilder(s3Client *s3.Client, bucket string, kv *redis.Client) *KVRebuilder {
-	return &KVRebuilder{s3Client: s3Client, bucket: bucket, kv: kv}
+// NewKVRebuilder constructs a KVRebuilder backed by an S3-compatible client,
+// a Valkey client, and the opportunity-kinds registry. The registry drives
+// which R2 prefixes are walked on each rebuild run.
+func NewKVRebuilder(s3Client *s3.Client, bucket string, kv *redis.Client, registry *opportunity.Registry) *KVRebuilder {
+	return &KVRebuilder{s3Client: s3Client, bucket: bucket, kv: kv, registry: registry}
 }
 
 // KVRebuildResult holds counters reported by a single rebuild run.
@@ -76,19 +80,48 @@ end
 return 0
 `
 
-// Run lists all R2 jobs/*.json slug files, fetches them concurrently via a
-// worker pool, folds per cluster_id keeping the latest last_seen_at, and
-// writes Valkey via Lua CAS. Pages through the bucket up to 1000 objects at
-// a time; concurrent GETs are bounded by the pool size.
+// Run is the rebuild entry point. It iterates every registered kind and
+// walks <kind.URLPrefix>/ in R2, processing each slug-direct JSON.
 func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	var res KVRebuildResult
+	if r.registry == nil {
+		return res, fmt.Errorf("kv rebuild: registry is nil")
+	}
 
+	kinds := r.registry.Known()
+	util.Log(ctx).
+		WithField("bucket", r.bucket).
+		WithField("kinds", kinds).
+		Info("kv rebuild: starting registry-driven R2 scan")
+
+	for _, kind := range kinds {
+		spec := r.registry.Resolve(kind)
+		prefix := spec.URLPrefix + "/"
+		if err := r.walkPrefix(ctx, prefix, &res); err != nil {
+			return res, fmt.Errorf("kv rebuild: kind %q: %w", kind, err)
+		}
+	}
+
+	util.Log(ctx).
+		WithField("files", res.Files).
+		WithField("cluster_keys", res.ClusterKeysSet).
+		Info("kv rebuild complete")
+	return res, nil
+}
+
+// walkPrefix lists all R2 <prefix>*.json slug files, fetches them concurrently
+// via a worker pool, folds per cluster_id keeping the latest last_seen_at, and
+// writes Valkey via Lua CAS. Pages through the bucket up to 1000 objects at a
+// time; concurrent GETs are bounded by the pool size. Counters accumulate into
+// the supplied result so a multi-prefix Run reports a combined total.
+func (r *KVRebuilder) walkPrefix(ctx context.Context, prefix string, res *KVRebuildResult) error {
 	budget := memconfig.NewBudget("kv-rebuild", 30)
 	maxKeysInMemory := budget.BatchSizeFor(256)
 	util.Log(ctx).
 		WithField("bucket", r.bucket).
+		WithField("prefix", prefix).
 		WithField("max_keys_in_memory", maxKeysInMemory).
-		Info("kv rebuild: starting R2 slug scan")
+		Info("kv rebuild: walking prefix")
 
 	// Pool size: up to 16 concurrent GETs, bounded by budget.
 	poolSize := 16
@@ -183,12 +216,12 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 		}()
 	}
 
-	// Page through R2 jobs/ prefix and send keys to the pool.
+	// Page through the prefix and send keys to the pool.
 	var continuationToken *string
 	for {
 		input := &s3.ListObjectsV2Input{
 			Bucket:  aws.String(r.bucket),
-			Prefix:  aws.String("jobs/"),
+			Prefix:  aws.String(prefix),
 			MaxKeys: aws.Int32(1000),
 		}
 		if continuationToken != nil {
@@ -199,16 +232,16 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 		if err != nil {
 			close(workCh)
 			wg.Wait()
-			return res, fmt.Errorf("kv rebuild: list R2: %w", err)
+			return fmt.Errorf("list R2: %w", err)
 		}
 
 		for _, obj := range page.Contents {
 			key := aws.ToString(obj.Key)
-			// Only top-level slug files: jobs/<slug>.json (no slashes after jobs/)
+			// Only top-level slug files: <prefix><slug>.json (one slash total).
 			if !strings.HasSuffix(key, ".json") {
 				continue
 			}
-			// Skip translation files: jobs/<slug>/<lang>.json
+			// Skip translation files: <prefix><slug>/<lang>.json
 			// They have two slashes total; slug files have one slash.
 			if strings.Count(key, "/") != 1 {
 				continue
@@ -222,7 +255,7 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 			case err := <-errCh:
 				close(workCh)
 				wg.Wait()
-				return res, err
+				return err
 			case workCh <- key:
 			}
 		}
@@ -239,20 +272,16 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	// Drain errCh in case a worker error fired at the same time we closed.
 	select {
 	case err := <-errCh:
-		return res, err
+		return err
 	default:
 	}
 
 	// Final flush of remaining entries.
 	if err := flushIfNeeded(true); err != nil {
-		return res, err
+		return err
 	}
 
-	util.Log(ctx).
-		WithField("files", res.Files).
-		WithField("cluster_keys", res.ClusterKeysSet).
-		Info("kv rebuild complete")
-	return res, nil
+	return nil
 }
 
 // flushToValkey writes each (clusterID → canonicalMinimal) entry to

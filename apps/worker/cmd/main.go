@@ -128,7 +128,7 @@ func main() {
 		),
 		BaseEndpoint: aws.String(contentBucketEndpoint),
 	})
-	kvRebuilder := workersvc.NewKVRebuilder(r2S3Client, cfg.R2ContentBucket, kvClient)
+	kvRebuilder := workersvc.NewKVRebuilder(r2S3Client, cfg.R2ContentBucket, kvClient, reg)
 
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("POST /_admin/kv/rebuild", workersvc.KVRebuildHandler(kvRebuilder))
