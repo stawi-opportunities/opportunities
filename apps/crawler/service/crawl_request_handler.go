@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -134,6 +135,17 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		log.Warn("crawl.request: source not found")
 		return nil
 	}
+	// Defensive default: in-code Source construction (tests, CLI tools,
+	// edge cases) can leave Kinds empty even though the DB column
+	// defaults to '{job}'. Without this, Verify rejects every record
+	// with the operator-confusing "kind \"job\" not declared by source
+	// (declared: [])" message. Treat empty as the conservative single-
+	// kind default and warn so ops notice the misconfiguration.
+	if len(src.Kinds) == 0 {
+		util.Log(ctx).WithField("source_id", src.ID).
+			Warn("crawl.request: source has empty Kinds; defaulting to [job]")
+		src.Kinds = []string{"job"}
+	}
 	if src.Status != domain.SourceActive && src.Status != domain.SourceDegraded {
 		h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
 			RequestID: req.RequestID,
@@ -234,16 +246,24 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			// polymorphic VariantIngestedV1 carries them through. The
 			// universal envelope fields (title, currency, anchor) ride
 			// at the top level for partition pruning.
-			attrs := map[string]any{
-				"description":     variant.Description,
-				"apply_url":       variant.ApplyURL,
-				"language":        variant.Language,
-				"remote_type":     variant.RemoteType,
-				"employment_type": variant.EmploymentType,
-				"location_text":   variant.LocationText,
-				"content_hash":    variant.ContentHash,
-				"raw_archive_ref": pageArchiveRef,
+			//
+			// Start from the connector-/extractor-supplied Attributes so
+			// kind-specific keys (e.g. field_of_study, degree_level for
+			// scholarships) survive the normalize step. The job-shaped
+			// overlays below are harmless for non-job kinds — they ride
+			// in as empty strings — but stay required for jobs.
+			attrs := maps.Clone(extJob.Attributes)
+			if attrs == nil {
+				attrs = map[string]any{}
 			}
+			attrs["description"] = variant.Description
+			attrs["apply_url"] = variant.ApplyURL
+			attrs["language"] = variant.Language
+			attrs["remote_type"] = variant.RemoteType
+			attrs["employment_type"] = variant.EmploymentType
+			attrs["location_text"] = variant.LocationText
+			attrs["content_hash"] = variant.ContentHash
+			attrs["raw_archive_ref"] = pageArchiveRef
 			if variant.PostedAt != nil {
 				attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
 			}
