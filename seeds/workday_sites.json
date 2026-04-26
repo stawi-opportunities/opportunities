@@ -1,3 +1,13 @@
 [
-  {"source_type": "workday", "base_url": "https://microsoft.wd5.myworkdayjobs.com/en-US/microsoft_careers", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"}
+  {
+    "base_url": "https://microsoft.wd5.myworkdayjobs.com/en-US/microsoft_careers",
+    "country": "",
+    "crawl_interval_sec": 7200,
+    "kinds": [
+      "job"
+    ],
+    "priority": "normal",
+    "region": "",
+    "source_type": "workday"
+  }
 ]

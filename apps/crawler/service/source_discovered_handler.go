@@ -8,10 +8,12 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/lib/pq"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
 // SourceUpserter is the narrow slice of SourceRepository used by the
@@ -49,11 +51,16 @@ var blockedDiscoveredDomains = map[string]bool{
 // changed from SourceURLsPayload (batched) to one event per URL.
 type SourceDiscoveredHandler struct {
 	repo SourceUpserter
+	reg  *opportunity.Registry
 }
 
-// NewSourceDiscoveredHandler wires the handler.
-func NewSourceDiscoveredHandler(repo SourceUpserter) *SourceDiscoveredHandler {
-	return &SourceDiscoveredHandler{repo: repo}
+// NewSourceDiscoveredHandler wires the handler. reg is required so the
+// handler can validate the kinds it declares on every newly registered
+// source (Phase 4.1 — generic-HTML discoveries default to ["job"], but
+// the validator catches a stale registry that no longer recognises that
+// kind).
+func NewSourceDiscoveredHandler(repo SourceUpserter, reg *opportunity.Registry) *SourceDiscoveredHandler {
+	return &SourceDiscoveredHandler{repo: repo, reg: reg}
 }
 
 // Name implements frame.EventI.
@@ -119,15 +126,32 @@ func (h *SourceDiscoveredHandler) Execute(ctx context.Context, payload any) erro
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", target.Scheme, target.Host)
+	// Discovered sources are generic-HTML pages whose true kind mix is
+	// unknown until the classifier runs over their content. We declare
+	// "job" as a conservative default — it covers every connector wired
+	// today; once kind YAML for tender/scholarship/etc lands and the
+	// classifier is wired, ops can widen this on a per-domain basis.
+	kinds := []string{"job"}
+	if h.reg != nil {
+		for _, k := range kinds {
+			if _, ok := h.reg.Lookup(k); !ok {
+				return fmt.Errorf("source-discovered: declared kind %q is not in registry (known: %v)",
+					k, h.reg.Known())
+			}
+		}
+	}
+
 	newSrc := &domain.Source{
-		Type:             domain.SourceGenericHTML,
-		BaseURL:          baseURL,
-		Country:          p.Country,
-		Status:           domain.SourceActive,
-		Priority:         domain.PriorityNormal,
-		CrawlIntervalSec: 7200,
-		HealthScore:      1.0,
-		Config:           "{}",
+		Type:                     domain.SourceGenericHTML,
+		BaseURL:                  baseURL,
+		Country:                  p.Country,
+		Status:                   domain.SourceActive,
+		Priority:                 domain.PriorityNormal,
+		CrawlIntervalSec:         7200,
+		HealthScore:              1.0,
+		Config:                   "{}",
+		Kinds:                    pq.StringArray(kinds),
+		RequiredAttributesByKind: map[string][]string{},
 	}
 	if err := h.repo.Upsert(ctx, newSrc); err != nil {
 		return fmt.Errorf("source-discovered: upsert %s: %w", baseURL, err)

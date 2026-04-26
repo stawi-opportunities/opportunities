@@ -1,5 +1,38 @@
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/mercari", "country": "JP", "language": "ja", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/smartnews", "country": "JP", "language": "ja", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/line-corp", "country": "JP", "language": "ja", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "base_url": "https://boards.greenhouse.io/mercari",
+    "country": "JP",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ja",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/smartnews",
+    "country": "JP",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ja",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://jobs.lever.co/line-corp",
+    "country": "JP",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ja",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "lever"
+  }
 ]

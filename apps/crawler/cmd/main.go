@@ -96,8 +96,10 @@ func main() {
 
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
-	// Load seed sources.
-	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo)
+	// Load seed sources. The registry is consulted to validate every
+	// seed's declared kinds — boot fails fast on a typo or a kind YAML
+	// that was disabled.
+	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo, reg)
 	if seedErr != nil {
 		log.WithError(seedErr).WithField("loaded", n).Warn("seed loading incomplete")
 	} else {
@@ -256,7 +258,7 @@ func main() {
 		DiscoverSample: 0.05, // roughly 1-in-20 pages get DiscoverSites
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
-	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo)
+	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
 
 	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
 

@@ -33,6 +33,7 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 				"name", "country", "language", "status", "priority",
 				"crawl_interval_sec", "health_score", "config",
 				"last_seen_at", "next_crawl_at", "updated_at",
+				"kinds", "required_attributes_by_kind",
 			}),
 		}).
 		Create(s).Error

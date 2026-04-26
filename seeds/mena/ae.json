@@ -1,5 +1,38 @@
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/talabat", "country": "AE", "language": "ar", "region": "mena", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/careem", "country": "AE", "language": "ar", "region": "mena", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/property-finder", "country": "AE", "language": "ar", "region": "mena", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "base_url": "https://boards.greenhouse.io/talabat",
+    "country": "AE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ar",
+    "priority": "normal",
+    "region": "mena",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://jobs.lever.co/careem",
+    "country": "AE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ar",
+    "priority": "normal",
+    "region": "mena",
+    "source_type": "lever"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/property-finder",
+    "country": "AE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ar",
+    "priority": "normal",
+    "region": "mena",
+    "source_type": "greenhouse"
+  }
 ]

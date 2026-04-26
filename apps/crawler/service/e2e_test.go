@@ -202,7 +202,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	reqH := NewCrawlRequestHandler(CrawlRequestDeps{
 		Svc: svc, Sources: repo, Registry: reg, Archive: archive.NewFakeArchive(),
 	})
-	discH := NewSourceDiscoveredHandler(repo)
+	discH := NewSourceDiscoveredHandler(repo, nil)
 	for _, c := range []events.EventI{reqH, fanout, discH} {
 		svc.EventsManager().Add(c)
 	}

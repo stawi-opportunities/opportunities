@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // SourceType identifies the connector used to crawl a source.
@@ -99,6 +101,17 @@ type Source struct {
 	QualityWindowDays   int        `gorm:"not null;default:1" json:"quality_window_days"`
 	QualityValidated    int        `gorm:"not null;default:0" json:"quality_validated"`
 	QualityFlagged      int        `gorm:"not null;default:0" json:"quality_flagged"`
+
+	// Kinds declares which opportunity kinds this source emits. Required at
+	// registration time; validated against the registry. A connector that emits
+	// only one kind always tags every record with that kind; multi-kind
+	// connectors (generic HTML, sitemap) leave Kind empty for the classifier.
+	Kinds pq.StringArray `gorm:"type:text[];not null;default:'{job}'" json:"kinds" db:"kinds"`
+
+	// RequiredAttributesByKind tightens Spec.KindRequired per source. Used
+	// when a specific portal is known to always carry an attribute that the
+	// kind YAML marks optional. Map from kind → list of attribute keys.
+	RequiredAttributesByKind map[string][]string `gorm:"type:jsonb;not null;default:'{}';serializer:json" json:"required_attributes_by_kind" db:"required_attributes_by_kind"`
 }
 
 func (Source) TableName() string { return "sources" }

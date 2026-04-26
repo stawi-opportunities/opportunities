@@ -1,4 +1,26 @@
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/coupang", "country": "KR", "language": "ko", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/sendbird", "country": "KR", "language": "ko", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "base_url": "https://boards.greenhouse.io/coupang",
+    "country": "KR",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ko",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://jobs.lever.co/sendbird",
+    "country": "KR",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "ko",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "lever"
+  }
 ]
