@@ -1,6 +1,9 @@
-// Package extraction provides AI-based job field extraction over any
+// Package extraction provides AI-based opportunity field extraction over any
 // OpenAI-compatible chat completions endpoint (Cloudflare AI Gateway,
-// Groq, OpenAI, Ollama 0.3+, etc.).
+// Groq, OpenAI, Ollama 0.3+, etc.). It is two-stage: a small classifier
+// call picks the kind when a source emits multiple, then a kind-specific
+// prompt assembled from the opportunity registry runs the structured
+// extraction.
 package extraction
 
 import (
@@ -9,118 +12,44 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-// JobFields holds the structured fields extracted from a job posting page.
-type JobFields struct {
-	Title          string   `json:"title"`
-	Company        string   `json:"company"`
-	Location       string   `json:"location"`
-	Description    string   `json:"description"`
-	ApplyURL       string   `json:"apply_url"`
-	EmploymentType string   `json:"employment_type"`
-	RemoteType     string   `json:"remote_type"`
-	SalaryMin      string   `json:"salary_min"`
-	SalaryMax      string   `json:"salary_max"`
-	Currency       string   `json:"currency"`
-	Seniority      string   `json:"seniority"`
-	Skills         []string `json:"skills"`
-	Roles          []string `json:"roles"`
-	Benefits       []string `json:"benefits"`
-	ContactName    string   `json:"contact_name"`
-	ContactEmail   string   `json:"contact_email"`
-	Department     string   `json:"department"`
-	Industry       string   `json:"industry"`
-	Education      string   `json:"education"`
-	Experience     string   `json:"experience"`
-	Deadline       string   `json:"deadline"`
-
-	// Urgency & hiring intent
-	UrgencyLevel   string   `json:"urgency_level"`
-	UrgencySignals []string `json:"urgency_signals"`
-	HiringTimeline string   `json:"hiring_timeline"`
-
-	// Hiring funnel complexity
-	InterviewStages  int    `json:"interview_stages"`
-	HasTakeHome      bool   `json:"has_take_home"`
-	FunnelComplexity string `json:"funnel_complexity"`
-
-	// Company profile
-	CompanySize  string `json:"company_size"`
-	FundingStage string `json:"funding_stage"`
-
-	// Skills classification
-	RequiredSkills   []string `json:"required_skills"`
-	NiceToHaveSkills []string `json:"nice_to_have_skills"`
-	ToolsFrameworks  []string `json:"tools_frameworks"`
-
-	// Work model details
-	GeoRestrictions string `json:"geo_restrictions"`
-	TimezoneReq     string `json:"timezone_req"`
-
-	// Application channel
-	ApplicationType string `json:"application_type"`
-	ATSPlatform     string `json:"ats_platform"`
-
-	// Role clarity
-	RoleScope string `json:"role_scope"`
-	TeamSize  string `json:"team_size"`
-	ReportsTo string `json:"reports_to"`
+// LLM is the minimal text-completion interface the extractor needs.
+// Implementations send the prompt to a backend and return the model's
+// response as raw text. The default implementation, returned by New,
+// posts to an OpenAI-compatible /v1/chat/completions endpoint.
+type LLM interface {
+	Complete(ctx context.Context, prompt string) (string, error)
 }
 
-const systemPrompt = `You are a job posting data extractor.
-
-Output ONLY a single JSON object. Do not nest fields under group headings. Every key below must appear at the top level of the object. Missing values use "" for strings, [] for arrays, 0 for numbers, false for booleans.
-
-Keys (all top-level):
-title (string)
-company (string)
-location (string)
-description (string, max 500 words)
-apply_url (string)
-salary_min (string of digits)
-salary_max (string of digits)
-currency (string, e.g. "USD")
-employment_type ("full-time"|"part-time"|"contract"|"internship"|"freelance"|"")
-remote_type ("remote"|"hybrid"|"onsite"|"")
-seniority ("intern"|"junior"|"mid"|"senior"|"lead"|"manager"|"director"|"executive"|"")
-department (string)
-industry (string)
-skills (array of strings)
-roles (array of strings)
-education (string)
-experience (string)
-required_skills (array of strings)
-nice_to_have_skills (array of strings)
-tools_frameworks (array of strings)
-benefits (array of strings)
-contact_name (string)
-contact_email (string)
-deadline (string)
-urgency_level ("urgent"|"normal"|"low")
-urgency_signals (array of strings)
-hiring_timeline ("immediate"|"2-4 weeks"|"1-3 months"|"")
-interview_stages (number)
-has_take_home (boolean)
-funnel_complexity ("low"|"medium"|"high"|"")
-company_size ("startup"|"small"|"medium"|"large"|"enterprise"|"")
-funding_stage ("bootstrapped"|"seed"|"series_a"|"series_b"|"public"|"")
-geo_restrictions ("global"|"us_only"|"emea"|"africa"|"")
-timezone_req (string)
-application_type ("ats"|"email"|"portal"|"direct"|"")
-ats_platform ("greenhouse"|"lever"|"workday"|"")
-role_scope ("ic"|"manager"|"hybrid"|"executive"|"")
-team_size ("solo"|"small_team"|"large_team"|"")
-reports_to (string)`
+// universalPromptPrefix is prepended to every extraction prompt regardless
+// of kind. It establishes the output contract — single JSON object, no
+// fences, ISO codes, RFC3339 timestamps — so each kind's prompt only has
+// to enumerate its own schema.
+const universalPromptPrefix = `You are an extraction assistant. Read the provided HTML/Markdown
+and produce a single JSON object that strictly matches the schema below.
+Output ONLY the JSON object — no prose, no code fences. Empty/unknown
+fields should be omitted (not "" or null) unless the schema explicitly
+requires them. Use ISO 3166-1 alpha-2 for country codes and ISO 4217 for
+currency codes. Dates are RFC3339 timestamps in UTC.`
 
 const maxContentChars = 4000
 const extractionTimeout = 10 * time.Minute // was 120s — let AI finish on CPU
 
 // Extractor calls an OpenAI-compatible chat completions endpoint to extract
-// structured job fields from HTML. Works against Cloudflare AI Gateway,
-// Groq, OpenAI, and Ollama 0.3+ unchanged.
+// structured opportunity fields from HTML. Works against Cloudflare AI
+// Gateway, Groq, OpenAI, and Ollama 0.3+ unchanged.
+//
+// The two-stage Extract method consults registry to assemble per-kind
+// prompts. When registry is nil (legacy callers / tests not wired through
+// the boot path) Extract falls back to the universal prefix only and
+// classifier behaviour collapses to "kind=job by default".
 type Extractor struct {
 	baseURL string
 	apiKey  string
@@ -135,13 +64,21 @@ type Extractor struct {
 	rerankModel   string
 
 	client *http.Client
+
+	llm      LLM
+	registry *opportunity.Registry
 }
 
 // New builds an Extractor from a Config. BaseURL and Model are required.
 // Embedding* fields are optional; when EmbeddingBaseURL is empty, Embed()
 // returns (nil, nil) and callers fall back to a non-vector path.
+//
+// Config.Registry is optional: when present the Extract method assembles
+// per-kind prompts from registry specs; when absent the universal prefix
+// alone is used and the classifier falls back to "job" as the single
+// implicit kind.
 func New(cfg Config) *Extractor {
-	return &Extractor{
+	e := &Extractor{
 		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),
 		apiKey:           cfg.APIKey,
 		model:            cfg.Model,
@@ -152,13 +89,32 @@ func New(cfg Config) *Extractor {
 		rerankAPIKey:     cfg.RerankAPIKey,
 		rerankModel:      cfg.RerankModel,
 		client:           &http.Client{Timeout: extractionTimeout},
+		registry:         cfg.Registry,
 	}
+	e.llm = chatLLM{e: e}
+	return e
 }
 
 // NewExtractor is the legacy two-arg constructor. Keeps existing callers
 // compiling while we migrate everyone to New(Config).
 func NewExtractor(baseURL, model string) *Extractor {
 	return New(Config{BaseURL: baseURL, Model: model})
+}
+
+// SetRegistry attaches an opportunity registry post-construction. Useful
+// when the registry is loaded after the extractor has been wired into
+// other components, or in tests that want to swap kinds.
+func (e *Extractor) SetRegistry(reg *opportunity.Registry) {
+	e.registry = reg
+}
+
+// chatLLM adapts the existing HTTP chat method to the LLM interface so
+// the public Extract method can be tested with a fake LLM without going
+// through HTTP.
+type chatLLM struct{ e *Extractor }
+
+func (c chatLLM) Complete(ctx context.Context, prompt string) (string, error) {
+	return c.e.chat(ctx, prompt, true)
 }
 
 // scriptContentRe matches <script type="application/ld+json">...</script>.
@@ -203,33 +159,81 @@ func HasVisibleContent(rawHTML string) bool {
 	return len([]rune(stripHTML(rawHTML))) > 200
 }
 
-// Extract strips HTML from rawHTML, truncates it, sends it to Ollama, and returns
-// the parsed job fields. Returns nil and an error if Ollama is unreachable or the
-// model produces unparseable output.
-func (e *Extractor) Extract(ctx context.Context, rawHTML string, pageURL string) (*JobFields, error) {
-	// Try to extract embedded JSON data first (handles JS-rendered pages)
-	embeddedJSON := extractEmbeddedJSON(rawHTML)
-
-	var text string
-	if embeddedJSON != "" {
-		// Use embedded JSON + stripped HTML for maximum context
-		text = embeddedJSON + "\n\n" + stripHTML(rawHTML)
-	} else {
-		text = stripHTML(rawHTML)
+// Extract runs (a) classification when sourceKinds has 0 or >1 entries,
+// then (b) the kind-specific extraction prompt. The result has Kind set
+// and Attributes populated with kind-specific fields; universal fields
+// land on the envelope.
+//
+// sourceKinds is the Source.Kinds list — what the connector declared
+// it can produce. A single entry skips the classifier; an empty slice
+// means "any registered kind"; more than one calls the classifier and
+// validates its output against the allowed set.
+func (e *Extractor) Extract(ctx context.Context, html string, sourceKinds []string) (*domain.ExternalOpportunity, error) {
+	kind, err := e.pickKind(ctx, html, sourceKinds)
+	if err != nil {
+		return nil, err
 	}
-	text = truncateText(text, maxContentChars)
-
-	prompt := fmt.Sprintf("%s\n\nPage URL: %s\n\nPage content:\n%s", systemPrompt, pageURL, text)
-
-	content, err := e.chat(ctx, prompt, true)
+	prompt := e.buildPrompt(kind)
+	raw, err := e.llm.Complete(ctx, prompt+"\n\nDocument:\n"+html)
 	if err != nil {
 		return nil, fmt.Errorf("extraction: %w", err)
 	}
-	fields, err := parseResponse(content)
+	opp, err := parseExtractionJSON(raw, kind)
 	if err != nil {
 		return nil, fmt.Errorf("extraction: parse model output: %w", err)
 	}
-	return fields, nil
+	opp.Kind = kind
+	return opp, nil
+}
+
+// buildPrompt assembles the extraction prompt for the given kind by
+// gluing the kind's schema fragment from the registry onto the universal
+// prefix. Falls back to the prefix alone when the registry is missing or
+// the kind has no schema fragment.
+func (e *Extractor) buildPrompt(kind string) string {
+	if e.registry == nil {
+		return universalPromptPrefix
+	}
+	spec := e.registry.Resolve(kind)
+	if spec.ExtractionPrompt == "" {
+		return universalPromptPrefix
+	}
+	return universalPromptPrefix + "\n\nSchema for kind=" + kind + ":\n" + spec.ExtractionPrompt
+}
+
+// pickKind decides which kind's extraction prompt to use. Single-kind
+// sources skip the classifier entirely; empty sourceKinds means "any
+// registered kind" (and falls back to "job" when no registry is wired).
+// Multi-kind sources run a small classifier call.
+func (e *Extractor) pickKind(ctx context.Context, html string, sourceKinds []string) (string, error) {
+	if len(sourceKinds) == 1 {
+		return sourceKinds[0], nil
+	}
+	if len(sourceKinds) == 0 {
+		if e.registry == nil {
+			return "job", nil
+		}
+		sourceKinds = e.registry.Known()
+		if len(sourceKinds) == 1 {
+			return sourceKinds[0], nil
+		}
+		if len(sourceKinds) == 0 {
+			return "job", nil
+		}
+	}
+	classifierPrompt := fmt.Sprintf(`Classify the document as one of: %s.
+Output ONLY the classification string.`, strings.Join(sourceKinds, ", "))
+	out, err := e.llm.Complete(ctx, classifierPrompt+"\n\n"+html)
+	if err != nil {
+		return "", fmt.Errorf("extraction classify: %w", err)
+	}
+	pick := strings.TrimSpace(strings.ToLower(out))
+	for _, k := range sourceKinds {
+		if pick == k {
+			return k, nil
+		}
+	}
+	return "", fmt.Errorf("classifier returned unknown kind %q (allowed: %v)", pick, sourceKinds)
 }
 
 const discoverLinksPrompt = `You are a web page analyzer. Given the HTML content of a job board listing page, identify ALL URLs that link to individual job posting detail pages.
@@ -543,15 +547,121 @@ func truncateText(s string, n int) string {
 	return string(runes[:n])
 }
 
-// parseResponse unmarshals the JSON string produced by the model into JobFields.
-func parseResponse(raw string) (*JobFields, error) {
+// universalEnvelopeKeys is the closed set of top-level JSON keys that map
+// onto ExternalOpportunity envelope fields. Anything not in this set is
+// stashed under Attributes for the kind-specific schema.
+var universalEnvelopeKeys = map[string]struct{}{
+	"title": {}, "description": {}, "issuing_entity": {}, "apply_url": {},
+	"anchor_country": {}, "anchor_region": {}, "anchor_city": {},
+	"remote": {}, "geo_scope": {}, "currency": {}, "amount_min": {}, "amount_max": {},
+	"deadline": {}, "categories": {}, "lat": {}, "lon": {},
+}
+
+// parseExtractionJSON unmarshals the model's JSON object and splits its
+// keys between the universal envelope and the kind-specific Attributes
+// map. Empty Attributes collapse to nil so verify-stage diagnostics
+// don't lie about what the model returned.
+func parseExtractionJSON(raw, kind string) (*domain.ExternalOpportunity, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, fmt.Errorf("empty response from model")
 	}
-	var fields JobFields
-	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
-		return nil, fmt.Errorf("unmarshal job fields: %w", err)
+	var m map[string]any
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return nil, fmt.Errorf("parse extraction JSON: %w", err)
 	}
-	return &fields, nil
+	opp := &domain.ExternalOpportunity{Kind: kind, Attributes: map[string]any{}}
+	for k, v := range m {
+		if _, ok := universalEnvelopeKeys[k]; !ok {
+			opp.Attributes[k] = v
+			continue
+		}
+		assignUniversal(opp, k, v)
+	}
+	if len(opp.Attributes) == 0 {
+		opp.Attributes = nil
+	}
+	return opp, nil
+}
+
+// assignUniversal copies a single universal-envelope key off the parsed
+// JSON map onto the strongly-typed envelope fields of an
+// ExternalOpportunity. Type-assertion failures are silent — the verify
+// stage downstream will catch any required fields that ended up zero.
+func assignUniversal(opp *domain.ExternalOpportunity, k string, v any) {
+	switch k {
+	case "title":
+		opp.Title, _ = v.(string)
+	case "description":
+		opp.Description, _ = v.(string)
+	case "issuing_entity":
+		opp.IssuingEntity, _ = v.(string)
+	case "apply_url":
+		opp.ApplyURL, _ = v.(string)
+	case "remote":
+		if b, ok := v.(bool); ok {
+			opp.Remote = b
+		}
+	case "geo_scope":
+		opp.GeoScope, _ = v.(string)
+	case "currency":
+		opp.Currency, _ = v.(string)
+	case "amount_min":
+		opp.AmountMin, _ = toFloat(v)
+	case "amount_max":
+		opp.AmountMax, _ = toFloat(v)
+	case "deadline":
+		if s, ok := v.(string); ok {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				opp.Deadline = &t
+			}
+		}
+	case "categories":
+		if a, ok := v.([]any); ok {
+			for _, x := range a {
+				if s, ok := x.(string); ok {
+					opp.Categories = append(opp.Categories, s)
+				}
+			}
+		}
+	case "anchor_country":
+		ensureLoc(opp).Country, _ = v.(string)
+	case "anchor_region":
+		ensureLoc(opp).Region, _ = v.(string)
+	case "anchor_city":
+		ensureLoc(opp).City, _ = v.(string)
+	case "lat":
+		ensureLoc(opp).Lat, _ = toFloat(v)
+	case "lon":
+		ensureLoc(opp).Lon, _ = toFloat(v)
+	}
+}
+
+// ensureLoc lazily allocates AnchorLocation so callers don't have to
+// guard every field assignment.
+func ensureLoc(opp *domain.ExternalOpportunity) *domain.Location {
+	if opp.AnchorLocation == nil {
+		opp.AnchorLocation = &domain.Location{}
+	}
+	return opp.AnchorLocation
+}
+
+// toFloat coerces the typical JSON number/string shapes the LLM returns
+// into a float64. Returns (0, false) for shapes that can't be coerced —
+// callers ignore the failure (verify will catch missing required fields).
+func toFloat(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case float32:
+		return float64(x), true
+	case int:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	case string:
+		f, err := strconv.ParseFloat(x, 64)
+		return f, err == nil
+	}
+	return 0, false
 }

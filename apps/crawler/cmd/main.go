@@ -135,6 +135,7 @@ func main() {
 			RerankBaseURL:    cfg.RerankBaseURL,
 			RerankAPIKey:     cfg.RerankAPIKey,
 			RerankModel:      cfg.RerankModel,
+			Registry:         reg,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
 // ResolveInference picks the active chat-completion back-end. Preference:
@@ -99,6 +101,12 @@ type Config struct {
 	RerankBaseURL string
 	RerankAPIKey  string
 	RerankModel   string
+
+	// Registry drives per-kind extraction prompts and classifier
+	// candidates. Optional — when nil the extractor uses the universal
+	// prefix alone and defaults the kind to "job" so legacy callers
+	// (and tests not wired through boot) keep working.
+	Registry *opportunity.Registry
 }
 
 // chat posts an OpenAI-compatible chat completion request and returns the

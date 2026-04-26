@@ -101,6 +101,7 @@ func main() {
 			EmbeddingBaseURL: embBase,
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
+			Registry:         reg,
 		})
 		log.WithField("url", infBase).Info("AI extraction enabled")
 	}

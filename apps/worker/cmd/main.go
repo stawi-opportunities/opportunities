@@ -79,6 +79,7 @@ func main() {
 			EmbeddingBaseURL: cfg.EmbeddingBaseURL,
 			EmbeddingAPIKey:  cfg.EmbeddingAPIKey,
 			EmbeddingModel:   cfg.EmbeddingModel,
+			Registry:         reg,
 		})
 	}
 
