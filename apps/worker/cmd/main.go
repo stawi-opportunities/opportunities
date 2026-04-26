@@ -20,6 +20,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 
 	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
@@ -58,6 +59,14 @@ func main() {
 		frame.WithCache("worker", raw),
 	)
 	defer svc.Stop(ctx)
+
+	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
+	// later phases consult the registry on the publish/index paths.
+	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	if err != nil {
+		util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
+	}
+	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
 	// Extractor (AI). nil if no inference URL configured — handlers
 	// degrade gracefully.

@@ -23,6 +23,10 @@ type Config struct {
 	ManticoreURL           string        `env:"MANTICORE_URL,required"`
 	ManticoreTimeout       time.Duration `env:"MANTICORE_TIMEOUT" envDefault:"10s"`
 	ManticoreBulkBatchSize int           `env:"MANTICORE_BULK_BATCH_SIZE" envDefault:"1000"`
+
+	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
+	// registry. Mounted as a ConfigMap in production at this path.
+	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 }
 
 // Load parses env → Config.

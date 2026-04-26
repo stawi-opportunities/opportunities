@@ -18,6 +18,7 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
@@ -37,6 +38,10 @@ type apiConfig struct {
 	AnalyticsOrg      string  `env:"ANALYTICS_ORG"        envDefault:"default"`
 	AnalyticsUsername string  `env:"ANALYTICS_USERNAME"   envDefault:""`
 	AnalyticsPassword string  `env:"ANALYTICS_PASSWORD"   envDefault:""`
+
+	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
+	// registry. Mounted as a ConfigMap in production at this path.
+	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 }
 
 func main() {
@@ -47,6 +52,14 @@ func main() {
 	if err := env.Parse(&cfg); err != nil {
 		log.WithError(err).Fatal("api: parse config failed")
 	}
+
+	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
+	// later phases consult the registry on the publish/index paths.
+	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	if err != nil {
+		log.WithError(err).Fatal("opportunity registry: load failed")
+	}
+	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
 	if cfg.ManticoreURL == "" {
 		log.Fatal("api: MANTICORE_URL is required")

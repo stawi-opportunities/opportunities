@@ -76,6 +76,10 @@ type Config struct {
 	CompactMaxInputPerCommit int           `env:"COMPACT_MAX_INPUT_PER_COMMIT" envDefault:"20"`
 	CompactPerTableTimeout   time.Duration `env:"COMPACT_PER_TABLE_TIMEOUT"    envDefault:"30m"`
 	CompactParallelism       int           `env:"COMPACT_PARALLELISM"          envDefault:"0"`
+
+	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
+	// registry. Mounted as a ConfigMap in production at this path.
+	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 }
 
 // Load reads the Config from environment variables.

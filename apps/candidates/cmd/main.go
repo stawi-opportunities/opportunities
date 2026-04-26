@@ -23,6 +23,7 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
@@ -41,6 +42,14 @@ func main() {
 	}
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 	log := util.Log(ctx)
+
+	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
+	// later phases consult the registry on the publish/index paths.
+	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	if err != nil {
+		log.WithError(err).Fatal("opportunity registry: load failed")
+	}
+	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	dbFn := pool.DB

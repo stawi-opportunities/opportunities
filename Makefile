@@ -9,7 +9,8 @@ HUGO_BIN     := $(CURDIR)/bin/hugo
 .PHONY: deps build test run-crawler run-scheduler run-api run-writer run-materializer run-worker \
         infra-up infra-down \
         ui-deps ui-build ui-dev \
-        archive-verify
+        archive-verify \
+        opportunity-kinds-link
 
 deps:
 	go mod tidy
@@ -95,3 +96,12 @@ ui-dev:
 # for required env (ARCHIVE_R2_BUCKET, ARCHIVE_R2_ENDPOINT, PG*, AWS_*).
 archive-verify:
 	@scripts/archive-verify.sh
+
+# ---- Opportunity kinds ----------------------------------------------------
+# Stages the opportunity-kinds YAML registry at /tmp/opportunity-kinds for
+# local dev. In production these YAMLs ship as a ConfigMap mounted at
+# /etc/opportunity-kinds (the OPPORTUNITY_KINDS_DIR default).
+opportunity-kinds-link:
+	@mkdir -p /tmp/opportunity-kinds
+	@cp -f definitions/opportunity-kinds/*.yaml /tmp/opportunity-kinds/
+	@echo "Linked opportunity-kinds to /tmp/opportunity-kinds"

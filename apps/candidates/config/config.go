@@ -53,4 +53,8 @@ type CandidatesConfig struct {
 
 	// Manticore Search URL (vector + full-text index for job matching).
 	ManticoreURL string `env:"MANTICORE_URL" envDefault:""`
+
+	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
+	// registry. Mounted as a ConfigMap in production at this path.
+	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 }
