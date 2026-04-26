@@ -1,0 +1,89 @@
+{{ $kind := .Params.kind | default "job" }}
+<article class="card p-4 sm:p-6">
+  <a href="{{ .Permalink }}" class="block group">
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0 flex-1">
+        {{ with .Params.issuing_entity }}
+        <p class="text-sm font-medium text-gray-500">{{ . }}</p>
+        {{ else }}
+        {{ with .Params.company }}
+        <p class="text-sm font-medium text-gray-500">{{ . }}</p>
+        {{ end }}
+        {{ end }}
+        <h3 class="mt-1 text-lg font-semibold text-gray-900 group-hover:text-accent-600 truncate">
+          {{ .Title }}
+        </h3>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          {{ if eq $kind "job" }}
+            {{ with .Params.employment_type }}
+            <span class="badge-type">{{ . }}</span>
+            {{ end }}
+            {{ with .Params.seniority }}
+            <span class="badge bg-gray-100 text-gray-600 capitalize">{{ . }}</span>
+            {{ end }}
+            {{ if and .Params.amount_min (gt .Params.amount_min 0.0) }}
+            <span class="text-sm font-medium text-green-700">
+              {{ .Params.currency }}
+              {{ lang.FormatNumber 0 .Params.amount_min }}–{{ lang.FormatNumber 0 .Params.amount_max }}
+            </span>
+            {{ else if and .Params.salary_min (gt .Params.salary_min 0.0) }}
+            <span class="text-sm font-medium text-green-700">
+              {{ .Params.currency }}
+              {{ lang.FormatNumber 0 .Params.salary_min }}–{{ lang.FormatNumber 0 .Params.salary_max }}
+            </span>
+            {{ end }}
+          {{ else if eq $kind "scholarship" }}
+            {{ with .Params.degree_level }}
+            <span class="badge-type">{{ . }}</span>
+            {{ end }}
+            {{ with .Params.field_of_study }}
+            <span class="badge-type">{{ . }}</span>
+            {{ end }}
+            {{ with .Params.deadline }}
+            <span class="text-sm text-orange-700">Apply by {{ dateFormat "Jan 2, 2006" . }}</span>
+            {{ end }}
+          {{ else if eq $kind "tender" }}
+            {{ with .Params.procurement_domain }}
+            <span class="badge-type">{{ . }}</span>
+            {{ end }}
+            {{ with .Params.deadline }}
+            <span class="text-sm text-orange-700">Closes {{ dateFormat "Jan 2, 2006" . }}</span>
+            {{ end }}
+          {{ else if eq $kind "deal" }}
+            {{ with .Params.discount_percent }}
+            <span class="badge-type">{{ . }}% off</span>
+            {{ end }}
+            {{ with .Params.expiry }}
+            <span class="text-sm text-orange-700">Expires {{ dateFormat "Jan 2, 2006" . }}</span>
+            {{ end }}
+          {{ else if eq $kind "funding" }}
+            {{ with .Params.focus_area }}
+            <span class="badge-type">{{ . }}</span>
+            {{ end }}
+            {{ with .Params.deadline }}
+            <span class="text-sm text-orange-700">Apply by {{ dateFormat "Jan 2, 2006" . }}</span>
+            {{ end }}
+          {{ end }}
+        </div>
+        <p class="mt-2 text-sm text-gray-500">{{ .Params.location_text }}</p>
+        {{ with .Params.skills }}
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          {{ range first 5 . }}
+          <span class="inline-block rounded bg-navy-50 px-2 py-0.5 text-xs text-navy-700">{{ . }}</span>
+          {{ end }}
+        </div>
+        {{ end }}
+      </div>
+      <div class="flex flex-col items-end gap-2 text-right">
+        {{ if .Params.is_featured }}
+        <span class="badge-featured">Featured</span>
+        {{ end }}
+        {{ if .Date }}
+        <time datetime="{{ .Date.Format "2006-01-02" }}" class="text-xs text-gray-400">
+          {{ .Date | time.Format ":date_medium" }}
+        </time>
+        {{ end }}
+      </div>
+    </div>
+  </a>
+</article>
