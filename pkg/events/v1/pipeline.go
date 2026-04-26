@@ -13,15 +13,19 @@ type VariantNormalizedV1 struct {
 }
 
 // VariantValidatedV1 — emitted when a variant passes the AI
-// validator with confidence >= threshold. Carries validation metadata.
+// validator with confidence >= threshold. Carries validation metadata
+// AND the per-kind Attributes map propagated forward from
+// VariantNormalizedV1, so the dedup stage can seed the cluster
+// snapshot's Attributes without re-reading the normalized payload.
 type VariantValidatedV1 struct {
-	VariantID    string    `json:"variant_id"`
-	HardKey      string    `json:"hard_key"`
-	Kind         string    `json:"kind"`
-	Valid        bool      `json:"valid"`
-	Reasons      []string  `json:"reasons,omitempty"`
-	ValidatedAt  time.Time `json:"validated_at"`
-	QualityScore float64   `json:"quality_score,omitempty"`
+	VariantID    string         `json:"variant_id"`
+	HardKey      string         `json:"hard_key"`
+	Kind         string         `json:"kind"`
+	Valid        bool           `json:"valid"`
+	Reasons      []string       `json:"reasons,omitempty"`
+	ValidatedAt  time.Time      `json:"validated_at"`
+	QualityScore float64        `json:"quality_score,omitempty"`
+	Attributes   map[string]any `json:"attributes,omitempty"`
 }
 
 // VariantFlaggedV1 — emitted when a variant fails validation. Terminal
@@ -37,14 +41,18 @@ type VariantFlaggedV1 struct {
 }
 
 // VariantClusteredV1 — emitted post-dedup. Identifies which cluster
-// (opportunity) this variant belongs to.
+// (opportunity) this variant belongs to. Attributes is the per-kind
+// merge state for the canonical-merge stage; dedup also writes the
+// same map onto the cluster snapshot so on-disk state and the
+// in-flight event agree.
 type VariantClusteredV1 struct {
-	VariantID     string    `json:"variant_id"`
-	OpportunityID string    `json:"opportunity_id"`
-	HardKey       string    `json:"hard_key"`
-	Kind          string    `json:"kind"`
-	IsNew         bool      `json:"is_new"`
-	ClusteredAt   time.Time `json:"clustered_at"`
+	VariantID     string         `json:"variant_id"`
+	OpportunityID string         `json:"opportunity_id"`
+	HardKey       string         `json:"hard_key"`
+	Kind          string         `json:"kind"`
+	IsNew         bool           `json:"is_new"`
+	ClusteredAt   time.Time      `json:"clustered_at"`
+	Attributes    map[string]any `json:"attributes,omitempty"`
 }
 
 // VariantRejectedV1 is emitted when opportunity.Verify rejects a variant

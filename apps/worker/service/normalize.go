@@ -16,11 +16,12 @@ import (
 // normalization (country codes, remote-type inference), and emits
 // VariantNormalizedV1.
 //
-// TODO(opportunity-generification): Phase 3.3 will rewrite the
-// normalize stage to consult the Spec registry and apply per-kind
-// normalization (e.g. tender amount-kind defaults). For now the
-// handler trims and lowercases the universal envelope fields and
-// passes the Attributes map through untouched.
+// The Attributes map flows through verbatim; well-known string keys
+// (location_text, language, employment_type, …) are trimmed and
+// lowercased in place. Universal envelope fields (title,
+// issuing_entity, country, currency, amount_min/max) are mirrored
+// into Attributes so downstream stages can read everything from a
+// single map.
 type NormalizeHandler struct {
 	svc *frame.Service
 }

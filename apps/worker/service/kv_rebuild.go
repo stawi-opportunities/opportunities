@@ -328,92 +328,91 @@ func (r *KVRebuilder) flushToValkey(ctx context.Context, m map[string]canonicalM
 // canonicalMinimalFromCanonical converts a CanonicalUpsertedV1 (from a slug
 // JSON file) to the canonicalMinimal struct used by the bounded map.
 //
-// TODO(opportunity-generification): the slug JSON now stores
-// kind/attributes; Phase 5.2 will rewrite this projection to flow
-// through Attributes instead of duplicating fields.
+// Attributes is carried verbatim — the slug JSON stores per-kind facets
+// (employment_type/seniority for jobs, field_of_study/degree_level for
+// scholarships, etc.) inside Attributes; the merge handler reads them
+// back from ClusterSnapshot.Attributes on the hot path.
 func canonicalMinimalFromCanonical(c eventsv1.CanonicalUpsertedV1) canonicalMinimal {
 	lang, _ := c.Attributes["language"].(string)
 	remote, _ := c.Attributes["remote_type"].(string)
-	employment, _ := c.Attributes["employment_type"].(string)
-	seniority, _ := c.Attributes["seniority"].(string)
 	category := ""
 	if len(c.Categories) > 0 {
 		category = c.Categories[0]
 	}
 	return canonicalMinimal{
-		ClusterID:      c.OpportunityID,
-		CanonicalID:    c.OpportunityID,
-		Slug:           c.Slug,
-		Title:          c.Title,
-		Company:        c.IssuingEntity,
-		Country:        c.AnchorCountry,
-		Language:       lang,
-		RemoteType:     remote,
-		EmploymentType: employment,
-		Seniority:      seniority,
-		SalaryMin:      c.AmountMin,
-		SalaryMax:      c.AmountMax,
-		Currency:       c.Currency,
-		Category:       category,
-		QualityScore:   0,
-		Status:         "active",
-		FirstSeenAt:    c.UpsertedAt,
-		LastSeenAt:     c.UpsertedAt,
-		PostedAt:       c.PostedAt,
-		ApplyURL:       c.ApplyURL,
-		OccurredAt:     c.UpsertedAt,
+		ClusterID:    c.OpportunityID,
+		CanonicalID:  c.OpportunityID,
+		Slug:         c.Slug,
+		Kind:         c.Kind,
+		Title:        c.Title,
+		Company:      c.IssuingEntity,
+		Country:      c.AnchorCountry,
+		Language:     lang,
+		RemoteType:   remote,
+		SalaryMin:    c.AmountMin,
+		SalaryMax:    c.AmountMax,
+		Currency:     c.Currency,
+		Category:     category,
+		QualityScore: 0,
+		Status:       "active",
+		FirstSeenAt:  c.UpsertedAt,
+		LastSeenAt:   c.UpsertedAt,
+		PostedAt:     c.PostedAt,
+		ApplyURL:     c.ApplyURL,
+		OccurredAt:   c.UpsertedAt,
+		Attributes:   c.Attributes,
 	}
 }
 
 // canonicalMinimal carries the subset of canonical fields needed for KV
 // rebuild. OccurredAt is used for the in-Go fold (latest-per-cluster_id).
 type canonicalMinimal struct {
-	ClusterID      string
-	CanonicalID    string
-	Slug           string
-	Title          string
-	Company        string
-	Country        string
-	Language       string
-	RemoteType     string
-	EmploymentType string
-	Seniority      string
-	SalaryMin      float64
-	SalaryMax      float64
-	Currency       string
-	Category       string
-	QualityScore   float64
-	Status         string
-	FirstSeenAt    time.Time
-	LastSeenAt     time.Time
-	PostedAt       time.Time
-	OccurredAt     time.Time
-	ApplyURL       string
+	ClusterID    string
+	CanonicalID  string
+	Slug         string
+	Kind         string
+	Title        string
+	Company      string
+	Country      string
+	Language     string
+	RemoteType   string
+	SalaryMin    float64
+	SalaryMax    float64
+	Currency     string
+	Category     string
+	QualityScore float64
+	Status       string
+	FirstSeenAt  time.Time
+	LastSeenAt   time.Time
+	PostedAt     time.Time
+	OccurredAt   time.Time
+	ApplyURL     string
+	Attributes   map[string]any
 }
 
 // clusterSnapshotFromMinimal maps a canonicalMinimal to the kv.ClusterSnapshot
 // shape that the canonical-merge handler reads on the hot path.
 func clusterSnapshotFromMinimal(row canonicalMinimal) kv.ClusterSnapshot {
 	return kv.ClusterSnapshot{
-		ClusterID:      row.ClusterID,
-		CanonicalID:    row.CanonicalID,
-		Slug:           row.Slug,
-		Title:          row.Title,
-		Company:        row.Company,
-		Country:        row.Country,
-		Language:       row.Language,
-		RemoteType:     row.RemoteType,
-		EmploymentType: row.EmploymentType,
-		Seniority:      row.Seniority,
-		SalaryMin:      row.SalaryMin,
-		SalaryMax:      row.SalaryMax,
-		Currency:       row.Currency,
-		Category:       row.Category,
-		QualityScore:   row.QualityScore,
-		Status:         row.Status,
-		FirstSeenAt:    row.FirstSeenAt,
-		LastSeenAt:     row.LastSeenAt,
-		PostedAt:       row.PostedAt,
-		ApplyURL:       row.ApplyURL,
+		ClusterID:    row.ClusterID,
+		CanonicalID:  row.CanonicalID,
+		Slug:         row.Slug,
+		Kind:         row.Kind,
+		Title:        row.Title,
+		Company:      row.Company,
+		Country:      row.Country,
+		Language:     row.Language,
+		RemoteType:   row.RemoteType,
+		SalaryMin:    row.SalaryMin,
+		SalaryMax:    row.SalaryMax,
+		Currency:     row.Currency,
+		Category:     row.Category,
+		QualityScore: row.QualityScore,
+		Status:       row.Status,
+		FirstSeenAt:  row.FirstSeenAt,
+		LastSeenAt:   row.LastSeenAt,
+		PostedAt:     row.PostedAt,
+		ApplyURL:     row.ApplyURL,
+		Attributes:   row.Attributes,
 	}
 }

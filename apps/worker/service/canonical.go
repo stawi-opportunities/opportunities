@@ -8,7 +8,6 @@ import (
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
-	"github.com/rs/xid"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -19,17 +18,12 @@ import (
 // current cluster snapshot (or creates one) and emits
 // CanonicalUpsertedV1.
 //
-// TODO(opportunity-generification): this handler is structurally
-// stale after the polymorphic event reshape. The merge logic still
-// references the legacy ClusterSnapshot fields — Phase 3.3 will
-// rewrite the snapshot store to track Attributes per kind, and
-// Phase 4.x will rewire the canonical-merge stage to read Validated +
-// Normalized from the new event shape (currently the validated and
-// normalized payloads no longer embed each other). Until then, the
-// canonical merge keeps the cluster-snapshot model untouched and
-// produces an opportunity-shaped event with placeholder values for
-// kind-specific fields. Tests that exercise the full pipeline will
-// need to wait for Phase 3.3.
+// The merge state lives in Valkey via cache.Cache[string,
+// kv.ClusterSnapshot]. Attributes flow forward from
+// VariantValidatedV1 → VariantClusteredV1 → snapshot, then are
+// merged with the snapshot's prior Attributes (newer keys win) and
+// re-emitted on CanonicalUpsertedV1. The materializer's
+// sparseColsForKind reads the per-kind facets out of that map.
 type CanonicalHandler struct {
 	svc   *frame.Service
 	cache cache.Cache[string, kv.ClusterSnapshot]
@@ -67,12 +61,6 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	}
 	in := env.Payload
 
-	// TODO(opportunity-generification): VariantClusteredV1 no longer
-	// embeds the validated/normalized payload. Phase 3.3 will rewrite
-	// dedup to populate Attributes on the merged snapshot. For now we
-	// load the existing snapshot keyed by OpportunityID (the new
-	// cluster identity) and re-emit it; merge-from-new-variant work is
-	// deferred.
 	prev, _, err := h.cache.Get(ctx, in.OpportunityID)
 	if err != nil {
 		return err
@@ -80,29 +68,57 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 
 	now := time.Now().UTC()
 
+	// Merge Attributes — dedup already wrote a refreshed map onto
+	// the snapshot, but the in-flight VariantClusteredV1 also
+	// carries the latest variant's Attributes. Apply both: prev
+	// snapshot first, then this variant's keys win.
+	mergedAttrs := mergeAttributes(prev.Attributes, in.Attributes)
+
+	// Universal-envelope fields are echoed into Attributes by
+	// normalize, so we can read them straight back out for the
+	// merged snapshot. preferNonEmpty falls back to the prior
+	// snapshot when the current variant is missing the field.
+	title := preferNonEmpty(attrStr(mergedAttrs, "title"), prev.Title)
+	issuer := preferNonEmpty(attrStr(mergedAttrs, "issuing_entity"), prev.Company)
+	country := preferNonEmpty(attrStr(mergedAttrs, "country"), prev.Country)
+	currency := preferNonEmpty(attrStr(mergedAttrs, "currency"), prev.Currency)
+	desc := preferLonger(attrStr(mergedAttrs, "description"), prev.Description)
+	lang := preferNonEmpty(attrStr(mergedAttrs, "language"), prev.Language)
+	remoteType := preferNonEmpty(attrStr(mergedAttrs, "remote_type"), prev.RemoteType)
+	applyURL := preferNonEmpty(attrStr(mergedAttrs, "apply_url"), prev.ApplyURL)
+	salaryMin := preferNonZero(attrFloat(mergedAttrs, "amount_min"), prev.SalaryMin)
+	salaryMax := preferNonZero(attrFloat(mergedAttrs, "amount_max"), prev.SalaryMax)
+
+	// CanonicalID == ClusterID == in.OpportunityID. Dedup allocates
+	// the cluster_id; canonical_id is the same xid (one logical
+	// identity per opportunity). The kv_rebuild path reconstructs
+	// this invariant from slug JSON, so they must agree at write
+	// time too.
 	merged := kv.ClusterSnapshot{
 		ClusterID:    in.OpportunityID,
-		CanonicalID:  prev.CanonicalID,
+		CanonicalID:  in.OpportunityID,
 		Slug:         prev.Slug,
-		Title:        prev.Title,
-		Company:      prev.Company,
-		Description:  prev.Description,
-		Country:      prev.Country,
-		Language:     prev.Language,
-		RemoteType:   prev.RemoteType,
+		Kind:         in.Kind,
+		Title:        title,
+		Company:      issuer,
+		Description:  desc,
+		Country:      country,
+		Language:     lang,
+		RemoteType:   remoteType,
+		SalaryMin:    salaryMin,
+		SalaryMax:    salaryMax,
+		Currency:     currency,
 		Status:       "active",
 		LastSeenAt:   now,
 		PostedAt:     prev.PostedAt,
-		ApplyURL:     prev.ApplyURL,
+		ApplyURL:     applyURL,
 		QualityScore: prev.QualityScore,
+		Attributes:   mergedAttrs,
 	}
-	if merged.FirstSeenAt.IsZero() {
+	if prev.FirstSeenAt.IsZero() {
 		merged.FirstSeenAt = now
 	} else {
 		merged.FirstSeenAt = prev.FirstSeenAt
-	}
-	if merged.CanonicalID == "" {
-		merged.CanonicalID = xid.New().String()
 	}
 	if merged.Slug == "" {
 		// Build a human-readable slug from kind + title + issuer + a short ID suffix.
@@ -131,6 +147,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		Currency:      merged.Currency,
 		AmountMin:     merged.SalaryMin,
 		AmountMax:     merged.SalaryMax,
+		Attributes:    merged.Attributes,
 		UpsertedAt:    now,
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicCanonicalsUpserted, out)
@@ -156,4 +173,31 @@ func preferNonZero(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+func attrStr(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func attrFloat(m map[string]any, key string) float64 {
+	if m == nil {
+		return 0
+	}
+	switch v := m[key].(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	}
+	return 0
 }

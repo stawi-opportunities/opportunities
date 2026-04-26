@@ -91,27 +91,30 @@ func TestKVRebuildFold_AllEmptyClusterID(t *testing.T) {
 func TestClusterSnapshotFromMinimal(t *testing.T) {
 	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
 	row := canonicalMinimal{
-		ClusterID:      "cluster-42",
-		CanonicalID:    "can-42",
-		Slug:           "golang-engineer-42",
-		Title:          "Go Engineer",
-		Company:        "Acme",
-		Country:        "KE",
-		Language:       "en",
-		RemoteType:     "remote",
-		EmploymentType: "full_time",
-		Seniority:      "senior",
-		SalaryMin:      50000,
-		SalaryMax:      90000,
-		Currency:       "USD",
-		Category:       "engineering",
-		QualityScore:   88.5,
-		Status:         "active",
-		FirstSeenAt:    ts,
-		LastSeenAt:     ts,
-		PostedAt:       ts,
-		OccurredAt:     ts,
-		ApplyURL:       "https://example.com/apply",
+		ClusterID:    "cluster-42",
+		CanonicalID:  "can-42",
+		Slug:         "golang-engineer-42",
+		Kind:         "job",
+		Title:        "Go Engineer",
+		Company:      "Acme",
+		Country:      "KE",
+		Language:     "en",
+		RemoteType:   "remote",
+		SalaryMin:    50000,
+		SalaryMax:    90000,
+		Currency:     "USD",
+		Category:     "engineering",
+		QualityScore: 88.5,
+		Status:       "active",
+		FirstSeenAt:  ts,
+		LastSeenAt:   ts,
+		PostedAt:     ts,
+		OccurredAt:   ts,
+		ApplyURL:     "https://example.com/apply",
+		Attributes: map[string]any{
+			"employment_type": "full_time",
+			"seniority":       "senior",
+		},
 	}
 
 	snap := clusterSnapshotFromMinimal(row)
@@ -119,6 +122,7 @@ func TestClusterSnapshotFromMinimal(t *testing.T) {
 	assert.Equal(t, "cluster-42", snap.ClusterID)
 	assert.Equal(t, "can-42", snap.CanonicalID)
 	assert.Equal(t, "golang-engineer-42", snap.Slug)
+	assert.Equal(t, "job", snap.Kind)
 	assert.Equal(t, "Go Engineer", snap.Title)
 	assert.Equal(t, "Acme", snap.Company)
 	assert.Equal(t, "KE", snap.Country)
@@ -127,4 +131,6 @@ func TestClusterSnapshotFromMinimal(t *testing.T) {
 	assert.Equal(t, "active", snap.Status)
 	assert.Equal(t, ts, snap.PostedAt)
 	assert.Equal(t, "https://example.com/apply", snap.ApplyURL)
+	assert.Equal(t, "full_time", snap.Attributes["employment_type"])
+	assert.Equal(t, "senior", snap.Attributes["seniority"])
 }

@@ -62,7 +62,7 @@ func (s *Service) Handlers() []events.EventI {
 	return []events.EventI{
 		NewNormalizeHandler(s.svc),
 		NewValidateHandler(s.svc, s.extractor),
-		NewDedupHandler(s.svc, s.dedupCache),
+		NewDedupHandlerWithCluster(s.svc, s.dedupCache, s.clusterCache),
 		NewCanonicalHandler(s.svc, s.clusterCache),
 		newCanonicalFanout(s.svc, s.extractor, s.publisher, s.registry, s.translationLangs),
 	}

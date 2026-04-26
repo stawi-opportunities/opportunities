@@ -135,12 +135,10 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 }
 
 func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantNormalizedV1, score float64, notes, model string) error {
-	// TODO(opportunity-generification): VariantValidatedV1 dropped the
-	// embedded Normalized payload. Phase 3.3 will rework dedup so it
-	// loads the normalized variant from R2/event-log instead of the
-	// transport. ModelVersion + ValidationNotes are likewise absent —
-	// re-add them under Reasons / a kind-specific attribute when the
-	// validator is rewritten.
+	// Attributes propagate verbatim — the validator itself does not
+	// rewrite per-kind fields. ModelVersion and richer validation
+	// metadata can ride inside Attributes once Phase 3.3's per-kind
+	// validator lands; for now we forward the normalized map.
 	reasons := []string(nil)
 	if notes != "" {
 		reasons = strings.Split(notes, "; ")
@@ -153,6 +151,7 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 		Reasons:      reasons,
 		ValidatedAt:  time.Now().UTC(),
 		QualityScore: score,
+		Attributes:   n.Attributes,
 	}
 	_ = model
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsValidated, out)
