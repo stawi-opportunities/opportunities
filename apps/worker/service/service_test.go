@@ -85,7 +85,7 @@ func TestWorkerPipelineE2E(t *testing.T) {
 
 	// Build the service. We pass nil extractor (validate fail-opens with
 	// score=0.5) and nil publisher (publish handler is a no-op).
-	wsvc := workersvc.NewService(svc, nil, nil, dedupCache, clusterCache, nil)
+	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil)
 
 	// Register a collector on TopicCanonicalsUpserted BEFORE the pipeline
 	// handlers so we can observe the canonical-merge output. We only
