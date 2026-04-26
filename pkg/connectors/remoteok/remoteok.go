@@ -33,7 +33,7 @@ func (c *Connector) Type() domain.SourceType { return domain.SourceRemoteOK }
 func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.CrawlIterator {
 	raw, status, err := c.client.Get(ctx, apiURL, map[string]string{
 		"Accept":     "application/json",
-		"User-Agent": "github.com/stawi-opportunities/opportunities/1.0 (job aggregator; +https://stawi.jobs)",
+		"User-Agent": "github.com/stawi-opportunities/opportunities/1.0 (job aggregator; +https://opportunities.stawi.org)",
 	})
 	if err != nil {
 		return connectors.NewSinglePageIterator(nil, raw, status, err)

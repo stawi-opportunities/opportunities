@@ -1,7 +1,7 @@
 # Top source countries get SEO-friendly landing pages at /l/<CC>/.
 #
 # Each shard is:
-#   - a real URL bookmarkable + shareable ("jobs.stawi.org/l/ke/")
+#   - a real URL bookmarkable + shareable ("opportunities.stawi.org/l/ke/")
 #   - a location-specific <title> and <meta description> so Google
 #     ranks it for "jobs in <Country>"
 #   - baked with <meta name="visitor-locale"> so the Cascade starts

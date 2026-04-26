@@ -1,9 +1,9 @@
-baseURL = "https://jobs.stawi.org/"
+baseURL = "https://opportunities.stawi.org/"
 languageCode = "en"
-title = "Stawi Jobs"
+title = "Stawi Opportunities"
 
 [params]
-  description = "Browse jobs from companies hiring worldwide across programming, design, marketing, and more. Apply to anything you're qualified for."
+  description = "Browse opportunities from companies hiring worldwide across programming, design, marketing, and more. Apply to anything you're qualified for."
   # Defaults point at the exposed Stawi cluster so `make ui-dev` works out of
   # the box against real data. For developers running the backend locally,
   # use `make ui-dev-local` (overrides apiURL/candidatesAPIURL to localhost).
@@ -23,7 +23,7 @@ title = "Stawi Jobs"
   oidcIssuer         = "https://oauth2.stawi.org"
   oidcClientID       = "d7is2kspf2t7cl19qlpg"
   oidcInstallationID = "d7gi6lkpf2t67dlsqreg"
-  oidcRedirectURI    = "https://jobs.stawi.org/auth/callback/"
+  oidcRedirectURI    = "https://opportunities.stawi.org/auth/callback/"
 
   # OpenObserve RUM. rumClientToken is the public browser token minted
   # from observe.stawi.org → Data Sources → RUM → "opportunities-web". It

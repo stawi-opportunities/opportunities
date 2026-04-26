@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend } from 'k6/metrics';
 
-const BASE = __ENV.API_URL || 'https://stawi.jobs';
+const BASE = __ENV.API_URL || 'https://opportunities.stawi.org';
 
 const queries = [
     'engineer', 'designer', 'sales', 'remote', 'kenya',

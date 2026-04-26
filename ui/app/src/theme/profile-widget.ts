@@ -1,5 +1,5 @@
 // Single source of truth for how the @stawi/profile widget looks
-// inside stawi.jobs. StawiAuth (nav button) and the Dashboard's
+// inside opportunities.stawi.org. StawiAuth (nav button) and the Dashboard's
 // profile popover both import from here so a tweak to the palette /
 // radius / font-stack ripples everywhere the widget mounts.
 //

@@ -5,7 +5,7 @@ import { authRuntime } from "@/auth/runtime";
 import { profileWidgetTokens, profileWidgetCSS } from "@/theme/profile-widget";
 
 /**
- * Mounts @stawi/profile 1.x with stawi.jobs' visual tokens.
+ * Mounts @stawi/profile 1.x with stawi.opportunities visual tokens.
  * Unauthenticated → renders the pill/navy Sign-in button; authed →
  * avatar + profile popover. We pass our singleton auth runtime so
  * the widget's token store and our API client stay in sync.

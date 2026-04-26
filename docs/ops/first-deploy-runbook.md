@@ -87,7 +87,7 @@ To pin to a specific SHA:
 ## 4. Verify endpoints
 
 ```bash
-API_URL=https://jobs.stawi.org  # or internal URL during staging
+API_URL=https://opportunities.stawi.org  # or internal URL during staging
 
 # Health check
 curl -sf "${API_URL}/healthz" | jq .

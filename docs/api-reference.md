@@ -30,11 +30,11 @@ Comprehensive reference for every HTTP, Connect RPC, NATS, and OpenObserve surfa
 
 | Service | Port | Public host | Image |
 |---|---|---|---|
-| opportunities-api | `:8082` | `api.stawi.org/jobs` | `ghcr.io/antinvestor/opportunities-api` |
-| opportunities-candidates | `:8080` | `api.stawi.org` | `ghcr.io/antinvestor/opportunities-candidates` |
-| opportunities-crawler | `:8080` | cluster-internal | `ghcr.io/antinvestor/opportunities-crawler` |
+| opportunities-api | `:8082` | `api.stawi.org/jobs` | `ghcr.io/stawi-opportunities/opportunities-api` |
+| opportunities-candidates | `:8080` | `api.stawi.org` | `ghcr.io/stawi-opportunities/opportunities-candidates` |
+| opportunities-crawler | `:8080` | cluster-internal | `ghcr.io/stawi-opportunities/opportunities-crawler` |
 | redirect (service-files) | `:8080` | `r.stawi.org` | `ghcr.io/antinvestor/service-files-redirect` |
-| jobs.stawi.org | — | CF Pages | static Hugo + Preact islands |
+| opportunities.stawi.org | — | CF Pages | static Hugo + Preact islands (jobs.stawi.org CNAMEs to this) |
 
 Public traffic enters through the Envoy Gateway on `api.stawi.org` (Connect-auth middleware attaches JWT claims). Internal service-to-service calls go through cluster DNS (`*.opportunities.svc`). Admin endpoints are reachable only from inside the cluster.
 

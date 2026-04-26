@@ -21,7 +21,7 @@ Disallow: /jobs/*.json$
 # during URL discovery, but this makes the intent visible at the robots
 # layer too so third-party crawlers (or a misconfigured self-crawl)
 # can't feed our content back into our ingestion.
-User-agent: stawi.jobs-bot
+User-agent: opportunities-bot
 Disallow: /
 
-Sitemap: https://jobs.stawi.org/sitemap.xml
+Sitemap: https://opportunities.stawi.org/sitemap.xml

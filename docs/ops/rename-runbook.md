@@ -70,8 +70,9 @@ kubectl -n opportunities get pods -w
 # 4. Smoke-test endpoints
 curl -s https://opportunities.stawi.org/api/v1/health
 
-# 5. Repoint DNS / Cloudflare Pages from jobs.stawi.org → opportunities.stawi.org
-# (Cloudflare dashboard or via CLI)
+# 5. Repoint DNS / Cloudflare Pages: opportunities.stawi.org becomes the
+# canonical custom domain on the Pages project; jobs.stawi.org stays as a
+# CNAME alias issuing a 301 to opportunities.stawi.org. (See Step 8.)
 
 # 6. Delete old namespace once traffic migrated
 kubectl delete namespace stawi-jobs
@@ -150,12 +151,33 @@ bao kv patch secret/stawi-opportunities/opportunities/common/iceberg-catalog \
 
 The Pages project was previously `stawi-jobs` (serving `jobs.stawi.org`).
 
+**Domain decision:** `opportunities.stawi.org` is the canonical public domain.
+`jobs.stawi.org` becomes a **CNAME alias** pointing at the same Pages project so
+existing bookmarks, OAuth callbacks, and SEO links keep resolving — but every
+canonical link, sitemap entry, OIDC redirect URI, and User-Agent now points at
+`opportunities.stawi.org`.
+
 1. In the Cloudflare dashboard, rename the project or create a new one named `opportunities`.
-2. Update the custom domain from `jobs.stawi.org` to `opportunities.stawi.org`.
-3. Update the CF Pages deploy hook URL in Vault (see `r2_deploy_hook.md`):
+2. Add **both** custom domains to the Pages project:
+   - `opportunities.stawi.org` (canonical — primary domain in Pages settings)
+   - `jobs.stawi.org` (alias — CNAME at the DNS layer pointing to the same project)
+3. Configure the redirect rule so `jobs.stawi.org/*` issues HTTP 301 →
+   `opportunities.stawi.org/$1` for SEO consolidation. Cloudflare Pages
+   "Bulk redirects" or a `_redirects` file at the site root both work; pick
+   whichever the existing project already uses.
+4. Update the CF Pages deploy hook URL in Vault (see `r2_deploy_hook.md`):
    ```bash
    bao kv patch secret/stawi-opportunities/opportunities/common/cf-pages \
        deploy_hook_url="https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/<new-hook-id>"
+   ```
+5. After the new domain is live, register the second OIDC redirect URI in
+   service-authentication so logins from either origin resolve cleanly:
+   ```sql
+   -- in service-authentication's partitions table, append the alias to the
+   -- redirect_uris JSON array on the Stawi Opportunities partition row.
+   UPDATE partitions
+   SET    redirect_uris = '{"uris": ["https://opportunities.stawi.org/auth/callback/", "https://jobs.stawi.org/auth/callback/"]}'
+   WHERE  partition_id  = 'd7gi6lkpf2t67dlsqreg';
    ```
 
 ---
@@ -172,3 +194,5 @@ The Pages project was previously `stawi-jobs` (serving `jobs.stawi.org`).
 - [ ] Old GHCR packages deleted or archived
 - [ ] Postgres DB renamed to `opportunities`
 - [ ] Cloudflare Pages serving from `opportunities.stawi.org`
+- [ ] `jobs.stawi.org` resolves and 301s to `opportunities.stawi.org`
+- [ ] OIDC partition has both redirect URIs registered

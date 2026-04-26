@@ -75,7 +75,7 @@ POLAR_PRODUCT_PRO:     prod_yyy
 POLAR_PRODUCT_MANAGED: prod_zzz
 
 # Public site used for redirect URLs.
-PUBLIC_SITE_URL: https://jobs.stawi.org
+PUBLIC_SITE_URL: https://opportunities.stawi.org
 
 # Reconciler — how often to sync PENDING candidates from service_billing.
 # 0 disables the reconciler (not recommended for production).

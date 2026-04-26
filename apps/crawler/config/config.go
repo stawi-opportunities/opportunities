@@ -14,7 +14,7 @@ type CrawlerConfig struct {
 	BatchSize         int    `env:"BATCH_SIZE" envDefault:"500"`
 	BatchFlushSec     int    `env:"BATCH_FLUSH_SEC" envDefault:"10"`
 	SeedsDir          string `env:"SEEDS_DIR" envDefault:"/seeds"`
-	UserAgent         string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://stawi.jobs)"`
+	UserAgent         string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
 	// Inference back-end (OpenAI-compatible). INFERENCE_BASE_URL /

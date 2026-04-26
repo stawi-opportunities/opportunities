@@ -1,12 +1,13 @@
 ---
 title: "Privacy Policy"
-description: "How Stawi Jobs collects, uses, and protects your data."
+description: "How Stawi Opportunities collects, uses, and protects your data."
 ---
 
 _Last updated: April 2026._
 
-This policy explains what data Stawi Jobs ("we", "us") collects when you
-use jobs.stawi.org, why we collect it, and what we do with it.
+This policy explains what data Stawi Opportunities ("we", "us") collects when you
+use opportunities.stawi.org (and its alias jobs.stawi.org), why we collect it,
+and what we do with it.
 
 ## Data we collect
 

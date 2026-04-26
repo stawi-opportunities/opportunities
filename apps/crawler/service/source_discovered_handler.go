@@ -37,9 +37,10 @@ var blockedDiscoveredDomains = map[string]bool{
 	"apple.com":       true,
 	"play.google.com": true,
 	"apps.apple.com":  true,
-	"stawi.org":       true,
+	"stawi.org":              true,
 	"opportunities.stawi.org": true,
-	"pages.dev":       true,
+	"jobs.stawi.org":          true, // CNAME alias of opportunities.stawi.org
+	"pages.dev":               true,
 }
 
 // SourceDiscoveredHandler consumes sources.discovered.v1 and upserts
