@@ -17,6 +17,12 @@ import (
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
 	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
+	matchersreg "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
+	dealm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/deal"
+	fundingm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/funding"
+	jobm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/job"
+	scholarshipm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/scholarship"
+	tenderm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/tender"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
@@ -50,6 +56,17 @@ func main() {
 		log.WithError(err).Fatal("opportunity registry: load failed")
 	}
 	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+
+	// Matcher registry: per-kind preference scorers. Phase 7.5 only
+	// constructs + logs; Phase 7.6/7.7 will route the candidates/match
+	// pipeline through it.
+	matcherReg := matchersreg.NewRegistry()
+	matcherReg.Register(jobm.New())
+	matcherReg.Register(scholarshipm.New())
+	matcherReg.Register(tenderm.New())
+	matcherReg.Register(dealm.New())
+	matcherReg.Register(fundingm.New())
+	log.WithField("matchers", matcherReg.Kinds()).Info("matcher registry: loaded")
 
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	dbFn := pool.DB
