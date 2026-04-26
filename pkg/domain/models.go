@@ -3,7 +3,6 @@ package domain
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -331,7 +330,7 @@ func Slugify(s string) string {
 	replacer := strings.NewReplacer(
 		" ", "-", "/", "-", "\\", "-", ".", "-",
 		",", "", "'", "", "\"", "", "(", "", ")", "",
-		"&", "and", "+", "plus",
+		"%", "", "&", "and", "+", "plus",
 	)
 	s = replacer.Replace(s)
 	for strings.Contains(s, "--") {
@@ -340,13 +339,20 @@ func Slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// BuildSlug creates a permanent, unique, human-readable slug for a canonical job.
-// Format: {title}-at-{company}-{6-char-hash}
-// The hash is deterministic: SHA256(company|title|id), first 6 hex chars.
-func BuildSlug(title, company string, id string) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s", company, title, id)))
-	shortHash := hex.EncodeToString(h[:3])
-	slug := fmt.Sprintf("%s-at-%s-%s", Slugify(title), Slugify(company), shortHash)
+// BuildSlug returns the deterministic public slug for an opportunity.
+// The connector word ("at" vs "from") depends on kind:
+//
+//	job, scholarship, deal → "{title}-at-{issuer}-{hash}"
+//	tender, funding        → "{title}-from-{issuer}-{hash}"
+//
+// Unknown kinds fall back to "at".
+func BuildSlug(kind, title, issuer, hash string) string {
+	connector := "at"
+	switch kind {
+	case "tender", "funding":
+		connector = "from"
+	}
+	slug := Slugify(title) + "-" + connector + "-" + Slugify(issuer) + "-" + hash
 	if len(slug) > 250 {
 		slug = slug[:250]
 	}
