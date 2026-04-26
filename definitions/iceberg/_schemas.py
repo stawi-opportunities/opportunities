@@ -1,19 +1,23 @@
 """
-Shared Iceberg schema definitions for all 11 stawi-opportunities/opportunities tables.
+Shared Iceberg schema definitions for all 12 stawi-opportunities Iceberg tables.
 
 Removed from Iceberg (body lives in R2 slug-direct JSON):
   - CANONICALS          → s3://opportunities-content/jobs/<slug>.json
   - CANONICALS_EXPIRED  → Frame event only; materializer subscribes directly
   - TRANSLATIONS        → s3://opportunities-content/jobs/<slug>/<lang>.json
 
-Field IDs start at 1 per table and are assigned in declaration order.
-Field names match the `parquet:"..."` struct tags in pkg/events/v1/*.go.
-Every table ends with event_id (string, required) and occurred_at
-(timestamptz, required) — the Phase 6 Task 0 envelope columns.
+Phase 3.2 (opportunity-generification) reshaped opportunities.variants /
+opportunities.published / opportunities.embeddings to the polymorphic
+Opportunity shape and added opportunities.variants_rejected as a sink
+for Verify-stage rejections. The polymorphic tables drop the legacy
+event_id / occurred_at envelope tail in favour of a dedicated
+scraped_at / rejected_at / embedded_at / published_at column — the
+event timestamp on these tables IS the business timestamp, so we don't
+double-store it.
 
-Envelope columns are NOT optional — the writer always populates them.
-Optional fields from Go structs (parquet:"...,optional") map to
-optional() in Iceberg.
+Field IDs start at 1 per table and are assigned in declaration order.
+Optional fields from Go structs (omitempty) map to optional() in
+Iceberg.
 """
 
 from pyiceberg.schema import Schema
@@ -27,6 +31,7 @@ from pyiceberg.types import (
     NestedField,
     StringType,
     StructType,
+    TimestampType,
     TimestamptzType,
 )
 
@@ -63,37 +68,47 @@ def _envelope(base_id: int):
 # opportunities namespace
 # ---------------------------------------------------------------------------
 
-# opportunities.variants  (VariantIngestedV1)
+# opportunities.variants  (VariantIngestedV1 — all variant pipeline stages
+# write here, distinguished by the "stage" column).
+#
+# Polymorphic shape: universal columns up front, kind discriminator + JSON
+# attributes blob for kind-specific extension. categories is a comma-joined
+# string (cheap analytics filter) rather than a list — full taxonomy lives
+# in attributes JSON when needed.
 VARIANTS = Schema(
-    _req(1,  "variant_id",            StringType()),
-    _req(2,  "source_id",             StringType()),
-    _req(3,  "external_id",           StringType()),
-    _req(4,  "hard_key",              StringType()),
-    _req(5,  "stage",                 StringType()),
-    _opt(6,  "title",                 StringType()),
-    _opt(7,  "company",               StringType()),
-    _opt(8,  "location_text",         StringType()),
-    _opt(9,  "country",               StringType()),
-    _opt(10, "language",              StringType()),
-    _opt(11, "remote_type",           StringType()),
-    _opt(12, "employment_type",       StringType()),
-    _opt(13, "salary_min",            DoubleType()),
-    _opt(14, "salary_max",            DoubleType()),
-    _opt(15, "currency",              StringType()),
-    _opt(16, "description",           StringType()),
-    _opt(17, "apply_url",             StringType()),
-    _opt(18, "posted_at",             TimestamptzType()),
-    # scraped_at is optional: flagged/expired variants carry no scrape
-    # timestamp. Ingested/normalized/validated/clustered still populate
-    # it. Nullability only means the column ALLOWS null, not requires it.
-    # Note: create_tables.py is idempotent; this change takes effect on
-    # first table creation (pre-deployment). Existing tables need an
-    # ALTER COLUMN scraped_at DROP NOT NULL via SQL catalog migration.
-    _opt(19, "scraped_at",            TimestamptzType()),
-    _opt(20, "content_hash",          StringType()),
-    _opt(21, "raw_archive_ref",       StringType()),
-    _opt(22, "model_version_extract", StringType()),
-    *_envelope(23),
+    NestedField(1,  "variant_id",     StringType(),    required=True),
+    NestedField(2,  "source_id",      StringType(),    required=True),
+    NestedField(3,  "external_id",    StringType(),    required=True),
+    NestedField(4,  "hard_key",       StringType(),    required=True),
+    NestedField(5,  "kind",           StringType(),    required=True),
+    NestedField(6,  "stage",          StringType(),    required=True),
+    NestedField(7,  "title",          StringType(),    required=True),
+    NestedField(8,  "issuing_entity", StringType(),    required=False),
+    NestedField(9,  "country",        StringType(),    required=False),
+    NestedField(10, "region",         StringType(),    required=False),
+    NestedField(11, "city",           StringType(),    required=False),
+    NestedField(12, "lat",            DoubleType(),    required=False),
+    NestedField(13, "lon",            DoubleType(),    required=False),
+    NestedField(14, "remote",         BooleanType(),   required=False),
+    NestedField(15, "geo_scope",      StringType(),    required=False),
+    NestedField(16, "currency",       StringType(),    required=False),
+    NestedField(17, "amount_min",     DoubleType(),    required=False),
+    NestedField(18, "amount_max",     DoubleType(),    required=False),
+    NestedField(19, "deadline",       TimestampType(), required=False),
+    NestedField(20, "categories",     StringType(),    required=False),  # comma-joined
+    NestedField(21, "attributes",     StringType(),    required=False),  # JSON
+    NestedField(22, "scraped_at",     TimestampType(), required=True),
+)
+
+# opportunities.variants_rejected — Verify-stage sink for variants that
+# fail Spec-required-attribute checks. Audit trail; never republished.
+VARIANTS_REJECTED = Schema(
+    NestedField(1, "variant_id",  StringType(),    required=True),
+    NestedField(2, "source_id",   StringType(),    required=True),
+    NestedField(3, "kind",        StringType(),    required=True),
+    NestedField(4, "title",       StringType(),    required=True),
+    NestedField(5, "reasons",     StringType(),    required=True),  # JSON array
+    NestedField(6, "rejected_at", TimestampType(), required=True),
 )
 
 # opportunities.canonicals and opportunities.canonicals_expired schemas removed from Iceberg.
@@ -101,24 +116,45 @@ VARIANTS = Schema(
 # canonicals_expired → Frame event only; materializer subscribes directly.
 
 # opportunities.embeddings  (EmbeddingV1)
-# vector is []float32 — ListType of FloatType
+# vector is List<DoubleType()> — analytics-friendly width-agnostic.
 EMBEDDINGS = Schema(
-    _req(1, "canonical_id",   StringType()),
-    _req(2, "vector",         _float_list(element_id=100)),
-    _req(3, "model_version",  StringType()),
-    *_envelope(4),
+    NestedField(1, "variant_id",  StringType(),    required=True),
+    NestedField(2, "kind",        StringType(),    required=True),
+    NestedField(3, "vector",
+                ListType(element_id=100, element_type=DoubleType(), element_required=True),
+                required=True),
+    NestedField(4, "embedded_at", TimestampType(), required=True),
 )
 
 # opportunities.translations schema removed from Iceberg.
 # Translated body → s3://opportunities-content/opportunities/<slug>/<lang>.json (R2-slug-direct).
 
-# opportunities.published  (PublishedV1)
+# opportunities.published — mirrors VARIANTS column-for-column. Only
+# variants that passed Verify land here. Field IDs and types match
+# VARIANTS exactly so consumers can union-read both tables when needed.
 PUBLISHED = Schema(
-    _req(1, "canonical_id", StringType()),
-    _req(2, "slug",         StringType()),
-    _req(3, "r2_version",   IntegerType()),
-    _req(4, "published_at", TimestamptzType()),
-    *_envelope(5),
+    NestedField(1,  "variant_id",     StringType(),    required=True),
+    NestedField(2,  "source_id",      StringType(),    required=True),
+    NestedField(3,  "external_id",    StringType(),    required=True),
+    NestedField(4,  "hard_key",       StringType(),    required=True),
+    NestedField(5,  "kind",           StringType(),    required=True),
+    NestedField(6,  "stage",          StringType(),    required=True),
+    NestedField(7,  "title",          StringType(),    required=True),
+    NestedField(8,  "issuing_entity", StringType(),    required=False),
+    NestedField(9,  "country",        StringType(),    required=False),
+    NestedField(10, "region",         StringType(),    required=False),
+    NestedField(11, "city",           StringType(),    required=False),
+    NestedField(12, "lat",            DoubleType(),    required=False),
+    NestedField(13, "lon",            DoubleType(),    required=False),
+    NestedField(14, "remote",         BooleanType(),   required=False),
+    NestedField(15, "geo_scope",      StringType(),    required=False),
+    NestedField(16, "currency",       StringType(),    required=False),
+    NestedField(17, "amount_min",     DoubleType(),    required=False),
+    NestedField(18, "amount_max",     DoubleType(),    required=False),
+    NestedField(19, "deadline",       TimestampType(), required=False),
+    NestedField(20, "categories",     StringType(),    required=False),  # comma-joined
+    NestedField(21, "attributes",     StringType(),    required=False),  # JSON
+    NestedField(22, "scraped_at",     TimestampType(), required=True),
 )
 
 # opportunities.crawl_page_completed  (CrawlPageCompletedV1)

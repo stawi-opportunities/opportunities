@@ -107,13 +107,78 @@ func appendStrList(lb *array.ListBuilder, vals []string) {
 }
 
 // appendF32List appends a non-nullable list-of-float32 (used for
-// embedding vectors). An empty slice appends an empty list (not null).
+// candidate-embedding vectors). An empty slice appends an empty list
+// (not null).
 func appendF32List(lb *array.ListBuilder, vals []float32) {
 	lb.Append(true)
 	vb := lb.ValueBuilder().(*array.Float32Builder)
 	for _, v := range vals {
 		vb.Append(v)
 	}
+}
+
+// appendF32ListAsF64 widens a wire-format []float32 into a List<Double>
+// — used for opportunities.embeddings, where the Iceberg schema is
+// List<Double> for analytics-friendly width-agnostic encoding while
+// the EmbeddingV1 wire payload still ships []float32.
+func appendF32ListAsF64(lb *array.ListBuilder, vals []float32) {
+	lb.Append(true)
+	vb := lb.ValueBuilder().(*array.Float64Builder)
+	for _, v := range vals {
+		vb.Append(float64(v))
+	}
+}
+
+// appendOptBool appends v unconditionally — bool has no natural "null"
+// sentinel; callers that genuinely don't know append null directly.
+// Phase 3.2 keeps Remote nullable in Iceberg but the Go wire type is a
+// plain bool, so we forward false as a real value.
+func appendOptBool(b *array.BooleanBuilder, v bool) {
+	b.Append(v)
+}
+
+// appendOptDeadline appends a *time.Time deadline; null when nil or zero.
+func appendOptDeadline(b *array.TimestampBuilder, t *time.Time) {
+	if t == nil || t.IsZero() {
+		b.AppendNull()
+		return
+	}
+	b.Append(arrow.Timestamp(t.UTC().UnixMicro()))
+}
+
+// attrString returns the string value for key from attrs, or "" when
+// the key is missing or carries a non-string value.
+func attrString(attrs map[string]any, key string) string {
+	if v, ok := attrs[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// attrFloat64 returns the float64 value for key from attrs, or 0 when
+// missing. Zero is a valid float — caller checks "_, ok" semantics by
+// using attrFloat64Opt when nullability matters.
+func attrFloat64Opt(attrs map[string]any, key string) (float64, bool) {
+	if v, ok := attrs[key].(float64); ok {
+		return v, true
+	}
+	return 0, false
+}
+
+// attrTimestamp returns the time value for key from attrs by parsing
+// an RFC3339 string, or zero time when missing/unparseable. Used for
+// the optional deadline column on variants — absent in the legacy
+// VariantIngestedV1 envelope, often present in Attributes.
+func attrTimestamp(attrs map[string]any, key string) time.Time {
+	s, ok := attrs[key].(string)
+	if !ok || s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // makeRecordReader wraps a single RecordBatch into a RecordReader.
@@ -127,20 +192,18 @@ func makeRecordReader(schema *arrow.Schema, rec arrow.RecordBatch) (array.Record
 }
 
 // --------------------------------------------------------------------
-// jobs.variants  (VariantIngestedV1 — all variant pipeline stages
-// write to the same Iceberg table jobs.variants, distinguished by
-// the "stage" field)
+// opportunities.variants  (polymorphic Opportunity — all variant
+// pipeline stages share this Iceberg table, distinguished by the
+// "stage" column)
 // --------------------------------------------------------------------
 
-// BuildVariantIngestedRecord builds an Arrow record for the jobs.variants
-// table from VariantIngestedV1 envelopes.
+// BuildVariantIngestedRecord builds an Arrow record for
+// opportunities.variants from VariantIngestedV1 envelopes.
 //
-// TODO(opportunity-generification): the existing ArrowSchemaVariants is
-// the legacy job-only shape. Phase 3.2 rewrites the Iceberg schema to a
-// kind+attributes table; until then we map the new universal envelope
-// fields onto the closest legacy columns and pull a few well-known
-// string Attributes through. Whatever doesn't have a 1:1 mapping lands
-// as null.
+// All universal columns read directly from the new event fields. The
+// kind-specific blob lands in `attributes` as JSON; `categories` is
+// comma-joined when present in Attributes (post-Phase-3.1 connectors
+// surface it there until VariantIngestedV1 grows a typed slot).
 func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -150,12 +213,7 @@ func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (
 		if err := json.Unmarshal(raw, &env); err != nil {
 			return nil, fmt.Errorf("decode VariantIngestedV1: %w", err)
 		}
-		p := env.Payload
-		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
-			p.VariantID, p.SourceID, p.ExternalID, p.HardKey, p.Stage,
-			p.Title, p.IssuingEntity, p.AnchorCountry,
-			p.Currency, p.AmountMin, p.AmountMax,
-			time.Time{}, p.ScrapedAt, p.Attributes)
+		appendPolyVariant(b, env.Payload, env.Payload.Stage, env.Payload.ScrapedAt)
 	}
 
 	rec := b.NewRecord()
@@ -164,6 +222,13 @@ func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (
 }
 
 // BuildVariantNormalizedRecord builds for VariantNormalizedV1.
+//
+// VariantNormalizedV1 only carries {VariantID, HardKey, Kind,
+// NormalizedAt, Attributes}. The remaining universal columns are
+// recovered from Attributes where the normalizer surfaced them; the
+// rest land null. scraped_at is required, so we substitute
+// NormalizedAt — the writer's timestamp invariant on this table is
+// "the latest stage-event timestamp", not the original scrape moment.
 func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -174,16 +239,28 @@ func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage)
 			return nil, fmt.Errorf("decode VariantNormalizedV1: %w", err)
 		}
 		p := env.Payload
-		title, _ := p.Attributes["title"].(string)
-		company, _ := p.Attributes["issuing_entity"].(string)
-		country, _ := p.Attributes["country"].(string)
-		currency, _ := p.Attributes["currency"].(string)
-		amountMin, _ := p.Attributes["amount_min"].(float64)
-		amountMax, _ := p.Attributes["amount_max"].(float64)
-		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
-			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "normalized",
-			title, company, country, currency, amountMin, amountMax,
-			time.Time{}, time.Time{}, p.Attributes)
+		// Synthesise an Opportunity-shaped record from the slim
+		// stage payload + Attributes.
+		stage := eventsv1.VariantIngestedV1{
+			VariantID:     p.VariantID,
+			HardKey:       p.HardKey,
+			Kind:          p.Kind,
+			Stage:         "normalized",
+			Title:         attrString(p.Attributes, "title"),
+			IssuingEntity: attrString(p.Attributes, "issuing_entity"),
+			AnchorCountry: attrString(p.Attributes, "country"),
+			AnchorRegion:  attrString(p.Attributes, "region"),
+			AnchorCity:    attrString(p.Attributes, "city"),
+			Currency:      attrString(p.Attributes, "currency"),
+			Attributes:    p.Attributes,
+		}
+		if v, ok := attrFloat64Opt(p.Attributes, "amount_min"); ok {
+			stage.AmountMin = v
+		}
+		if v, ok := attrFloat64Opt(p.Attributes, "amount_max"); ok {
+			stage.AmountMax = v
+		}
+		appendPolyVariant(b, stage, "normalized", p.NormalizedAt)
 	}
 
 	rec := b.NewRecord()
@@ -191,7 +268,9 @@ func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage)
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
 
-// BuildVariantValidatedRecord builds for VariantValidatedV1.
+// BuildVariantValidatedRecord builds for VariantValidatedV1. The slim
+// stage event only carries identity + validation result; universal
+// columns land null.
 func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -202,10 +281,13 @@ func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) 
 			return nil, fmt.Errorf("decode VariantValidatedV1: %w", err)
 		}
 		p := env.Payload
-		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
-			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "validated",
-			"" /*title*/, "" /*company*/, "" /*country*/, "" /*currency*/, 0, 0,
-			time.Time{}, time.Time{}, nil)
+		stage := eventsv1.VariantIngestedV1{
+			VariantID: p.VariantID,
+			HardKey:   p.HardKey,
+			Kind:      p.Kind,
+			Stage:     "validated",
+		}
+		appendPolyVariant(b, stage, "validated", p.ValidatedAt)
 	}
 
 	rec := b.NewRecord()
@@ -224,10 +306,13 @@ func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (a
 			return nil, fmt.Errorf("decode VariantFlaggedV1: %w", err)
 		}
 		p := env.Payload
-		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
-			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "flagged",
-			"" /*title*/, "" /*company*/, "" /*country*/, "" /*currency*/, 0, 0,
-			time.Time{}, time.Time{}, nil)
+		stage := eventsv1.VariantIngestedV1{
+			VariantID: p.VariantID,
+			HardKey:   p.HardKey,
+			Kind:      p.Kind,
+			Stage:     "flagged",
+		}
+		appendPolyVariant(b, stage, "flagged", p.FlaggedAt)
 	}
 
 	rec := b.NewRecord()
@@ -246,10 +331,13 @@ func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) 
 			return nil, fmt.Errorf("decode VariantClusteredV1: %w", err)
 		}
 		p := env.Payload
-		appendVariantFromAttrs(b, env.EventID, env.OccurredAt,
-			p.VariantID, "" /*source_id*/, "" /*external_id*/, p.HardKey, "clustered",
-			"" /*title*/, "" /*company*/, "" /*country*/, "" /*currency*/, 0, 0,
-			time.Time{}, time.Time{}, nil)
+		stage := eventsv1.VariantIngestedV1{
+			VariantID: p.VariantID,
+			HardKey:   p.HardKey,
+			Kind:      p.Kind,
+			Stage:     "clustered",
+		}
+		appendPolyVariant(b, stage, "clustered", p.ClusteredAt)
 	}
 
 	rec := b.NewRecord()
@@ -257,74 +345,123 @@ func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) 
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
 
-// appendVariantFromAttrs is a transitional adapter that maps the new
-// VariantIngestedV1 (universal envelope + Attributes) onto the legacy
-// jobs.variants Arrow schema. Phase 3.2 will replace this with a
-// schema rewrite.
-func appendVariantFromAttrs(
+// appendPolyVariant writes one row to a polymorphic-Opportunity Arrow
+// builder (variants or published — both share _polyVariantFields).
+//
+// Field offsets MUST stay in lock-step with _polyVariantFields in
+// arrow_schemas.go and the VARIANTS schema in
+// definitions/iceberg/_schemas.py.
+func appendPolyVariant(
 	b *array.RecordBuilder,
-	eventID string, occurredAt time.Time,
-	variantID, sourceID, externalID, hardKey, stage string,
-	title, company, country, currency string,
-	amountMin, amountMax float64,
-	postedAt, scrapedAt time.Time,
-	attrs map[string]any,
+	p eventsv1.VariantIngestedV1,
+	stage string,
+	scrapedAt time.Time,
 ) {
-	location, _ := attrs["location_text"].(string)
-	lang, _ := attrs["language"].(string)
-	remote, _ := attrs["remote_type"].(string)
-	employment, _ := attrs["employment_type"].(string)
-	desc, _ := attrs["description"].(string)
-	applyURL, _ := attrs["apply_url"].(string)
-	contentHash, _ := attrs["content_hash"].(string)
-	rawArchiveRef, _ := attrs["raw_archive_ref"].(string)
+	// 0–6: required identity + discriminators + title.
+	b.Field(0).(*array.StringBuilder).Append(p.VariantID)
+	b.Field(1).(*array.StringBuilder).Append(p.SourceID)
+	b.Field(2).(*array.StringBuilder).Append(p.ExternalID)
+	b.Field(3).(*array.StringBuilder).Append(p.HardKey)
+	b.Field(4).(*array.StringBuilder).Append(p.Kind)
+	b.Field(5).(*array.StringBuilder).Append(stage)
+	b.Field(6).(*array.StringBuilder).Append(p.Title)
 
-	appendVariantFields(b, variantID, sourceID, externalID, hardKey, stage,
-		title, company, location, country, lang,
-		remote, employment, amountMin, amountMax,
-		currency, desc, applyURL, postedAt, scrapedAt,
-		contentHash, rawArchiveRef, "" /*model_version_extract*/,
-		eventID, occurredAt)
+	// 7–10: optional descriptors.
+	appendOptStr(b.Field(7).(*array.StringBuilder), p.IssuingEntity)
+	appendOptStr(b.Field(8).(*array.StringBuilder), p.AnchorCountry)
+	appendOptStr(b.Field(9).(*array.StringBuilder), p.AnchorRegion)
+	appendOptStr(b.Field(10).(*array.StringBuilder), p.AnchorCity)
+
+	// 11–12: lat/lon — pulled from Attributes since
+	// VariantIngestedV1 doesn't yet carry typed coordinates.
+	if v, ok := attrFloat64Opt(p.Attributes, "lat"); ok {
+		b.Field(11).(*array.Float64Builder).Append(v)
+	} else {
+		b.Field(11).(*array.Float64Builder).AppendNull()
+	}
+	if v, ok := attrFloat64Opt(p.Attributes, "lon"); ok {
+		b.Field(12).(*array.Float64Builder).Append(v)
+	} else {
+		b.Field(12).(*array.Float64Builder).AppendNull()
+	}
+
+	// 13: remote (bool — append false as a real value).
+	appendOptBool(b.Field(13).(*array.BooleanBuilder), p.Remote)
+
+	// 14: geo_scope — also Attributes-sourced today.
+	appendOptStr(b.Field(14).(*array.StringBuilder), attrString(p.Attributes, "geo_scope"))
+
+	// 15–17: monetary.
+	appendOptStr(b.Field(15).(*array.StringBuilder), p.Currency)
+	appendOptF64(b.Field(16).(*array.Float64Builder), p.AmountMin)
+	appendOptF64(b.Field(17).(*array.Float64Builder), p.AmountMax)
+
+	// 18: deadline — Attributes-sourced (RFC3339 string).
+	deadline := attrTimestamp(p.Attributes, "deadline")
+	appendOptTS(b.Field(18).(*array.TimestampBuilder), deadline)
+
+	// 19: categories — comma-joined string from Attributes (the
+	// Phase 3.1 envelope doesn't carry a typed Categories slot;
+	// connectors stash it in attributes["categories"] until then).
+	appendOptStr(b.Field(19).(*array.StringBuilder), categoriesFromAttrs(p.Attributes))
+
+	// 20: attributes JSON blob.
+	appendOptStr(b.Field(20).(*array.StringBuilder), marshalAttrs(p.Attributes))
+
+	// 21: scraped_at — required.
+	appendTS(b.Field(21).(*array.TimestampBuilder), scrapedAt)
 }
 
-// appendVariantFields is the shared column-append logic for all
-// variant-family builders (same physical Arrow schema = jobs.variants).
-func appendVariantFields(
-	b *array.RecordBuilder,
-	variantID, sourceID, externalID, hardKey, stage string,
-	title, company, locationText, country, language,
-	remoteType, employmentType string,
-	salaryMin, salaryMax float64,
-	currency, description, applyURL string,
-	postedAt, scrapedAt time.Time,
-	contentHash, rawArchiveRef, modelVersionExtract string,
-	eventID string,
-	occurredAt time.Time,
-) {
-	b.Field(0).(*array.StringBuilder).Append(variantID)
-	b.Field(1).(*array.StringBuilder).Append(sourceID)
-	b.Field(2).(*array.StringBuilder).Append(externalID)
-	b.Field(3).(*array.StringBuilder).Append(hardKey)
-	b.Field(4).(*array.StringBuilder).Append(stage)
-	appendOptStr(b.Field(5).(*array.StringBuilder), title)
-	appendOptStr(b.Field(6).(*array.StringBuilder), company)
-	appendOptStr(b.Field(7).(*array.StringBuilder), locationText)
-	appendOptStr(b.Field(8).(*array.StringBuilder), country)
-	appendOptStr(b.Field(9).(*array.StringBuilder), language)
-	appendOptStr(b.Field(10).(*array.StringBuilder), remoteType)
-	appendOptStr(b.Field(11).(*array.StringBuilder), employmentType)
-	appendOptF64(b.Field(12).(*array.Float64Builder), salaryMin)
-	appendOptF64(b.Field(13).(*array.Float64Builder), salaryMax)
-	appendOptStr(b.Field(14).(*array.StringBuilder), currency)
-	appendOptStr(b.Field(15).(*array.StringBuilder), description)
-	appendOptStr(b.Field(16).(*array.StringBuilder), applyURL)
-	appendOptTS(b.Field(17).(*array.TimestampBuilder), postedAt)
-	appendOptTS(b.Field(18).(*array.TimestampBuilder), scrapedAt)
-	appendOptStr(b.Field(19).(*array.StringBuilder), contentHash)
-	appendOptStr(b.Field(20).(*array.StringBuilder), rawArchiveRef)
-	appendOptStr(b.Field(21).(*array.StringBuilder), modelVersionExtract)
-	b.Field(22).(*array.StringBuilder).Append(eventID)
-	appendTS(b.Field(23).(*array.TimestampBuilder), occurredAt)
+// categoriesFromAttrs joins a categories list from Attributes into a
+// comma-separated string. Accepts either []any or []string. Empty/nil
+// → "".
+func categoriesFromAttrs(attrs map[string]any) string {
+	v, ok := attrs["categories"]
+	if !ok || v == nil {
+		return ""
+	}
+	switch xs := v.(type) {
+	case []string:
+		return joinCSV(xs)
+	case []any:
+		out := make([]string, 0, len(xs))
+		for _, x := range xs {
+			if s, ok := x.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return joinCSV(out)
+	case string:
+		return xs
+	}
+	return ""
+}
+
+func joinCSV(xs []string) string {
+	if len(xs) == 0 {
+		return ""
+	}
+	out := xs[0]
+	for _, s := range xs[1:] {
+		out += "," + s
+	}
+	return out
+}
+
+// marshalAttrs JSON-encodes attrs to a string. Empty/nil → "".
+// Marshal failure (unlikely with map[string]any) returns "" and the
+// caller writes null — losing the blob is preferable to dropping the
+// row, since attributes is a search/diagnostic column and Iceberg
+// commits are append-only.
+func marshalAttrs(attrs map[string]any) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // BuildCanonicalUpsertedRecord and BuildCanonicalExpiredRecord are removed.
@@ -332,7 +469,8 @@ func appendVariantFields(
 // Canonical body is published as R2-slug-direct JSON; expired is a Frame event only.
 
 // --------------------------------------------------------------------
-// jobs.embeddings  (EmbeddingV1)
+// opportunities.embeddings  (EmbeddingV1) — variant-keyed semantic
+// vectors. Wire format remains []float32; Iceberg stores List<Double>.
 // --------------------------------------------------------------------
 
 func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
@@ -346,11 +484,18 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 		}
 		p := env.Payload
 
+		// EmbeddingV1 still carries OpportunityID (legacy field name);
+		// Phase 3.x repurposes it as the variant key. ModelVersion is
+		// the closest existing carrier for the kind discriminator;
+		// Phase 4.x will add a typed Kind slot. Until then we leave
+		// kind="" (the Iceberg column is required, so we substitute
+		// "unknown" to keep commits succeeding).
 		b.Field(0).(*array.StringBuilder).Append(p.OpportunityID)
-		appendF32List(b.Field(1).(*array.ListBuilder), p.Vector)
-		b.Field(2).(*array.StringBuilder).Append(p.ModelVersion)
-		b.Field(3).(*array.StringBuilder).Append(env.EventID)
-		appendTS(b.Field(4).(*array.TimestampBuilder), env.OccurredAt)
+		kind := "unknown"
+		b.Field(1).(*array.StringBuilder).Append(kind)
+		appendF32ListAsF64(b.Field(2).(*array.ListBuilder), p.Vector)
+		// embedded_at — EmbeddingV1 has no explicit field; use envelope OccurredAt.
+		appendTS(b.Field(3).(*array.TimestampBuilder), env.OccurredAt)
 	}
 
 	rec := b.NewRecord()
@@ -363,7 +508,16 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 // Translated body lives at s3://opportunities-content/jobs/<slug>/<lang>.json (R2-direct).
 
 // --------------------------------------------------------------------
-// jobs.published  (PublishedV1)
+// opportunities.published  (PublishedV1) — Verify-passing variants.
+//
+// Mirrors opportunities.variants column-for-column. PublishedV1's
+// current wire shape ({OpportunityID, Slug, Kind, R2Version,
+// PublishedAt}) is much narrower than the new published schema; the
+// Phase 3.1 transitional payload doesn't yet carry the full polymorphic
+// envelope, so we emit a minimal record (identity + kind + stage +
+// title=slug as a placeholder) and leave the rest null. Phase 4.x will
+// thicken PublishedV1 to mirror VariantIngestedV1 and we'll route
+// straight through appendPolyVariant.
 // --------------------------------------------------------------------
 
 func BuildPublishedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
@@ -377,18 +531,34 @@ func BuildPublishedRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 		}
 		p := env.Payload
 
-		b.Field(0).(*array.StringBuilder).Append(p.OpportunityID)
-		b.Field(1).(*array.StringBuilder).Append(p.Slug)
-		b.Field(2).(*array.Int32Builder).Append(int32(p.R2Version))
-		appendTS(b.Field(3).(*array.TimestampBuilder), p.PublishedAt)
-		b.Field(4).(*array.StringBuilder).Append(env.EventID)
-		appendTS(b.Field(5).(*array.TimestampBuilder), env.OccurredAt)
+		stage := eventsv1.VariantIngestedV1{
+			VariantID:  p.OpportunityID,
+			SourceID:   "",
+			ExternalID: "",
+			HardKey:    "",
+			Kind:       p.Kind,
+			Stage:      "published",
+			Title:      p.Slug, // placeholder until PublishedV1 carries Title.
+		}
+		appendPolyVariant(b, stage, "published", p.PublishedAt)
 	}
 
 	rec := b.NewRecord()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaPublished, rec)
 }
+
+// --------------------------------------------------------------------
+// opportunities.variants_rejected  (Verify-stage rejection sink)
+//
+// No matching wire event exists yet — Phase 4.x adds VariantRejectedV1
+// with {VariantID, SourceID, Kind, Title, Reasons []string,
+// RejectedAt}. The Arrow schema and table are bootstrapped here so the
+// downstream code can land cleanly without another Iceberg migration.
+//
+// TODO(phase-4.2): wire BuildVariantRejectedRecord into batchDispatch
+// once eventsv1.VariantRejectedV1 lands.
+// --------------------------------------------------------------------
 
 // --------------------------------------------------------------------
 // jobs.crawl_page_completed  (CrawlPageCompletedV1)

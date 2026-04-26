@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Idempotent: create all 11 stawi-opportunities/opportunities Iceberg tables.
+Idempotent: create all 12 stawi-opportunities Iceberg tables.
 
 Run after create_namespaces.py.  Each create_* function is self-contained —
 modify or add individual tables without touching the rest of the script.
@@ -12,6 +12,9 @@ Table count history:
   14 → 11 (2026-04-22): dropped opportunities.canonicals, opportunities.canonicals_expired,
            opportunities.translations — body now lives in R2 slug-direct JSON;
            materializer subscribes to Frame topics directly.
+  11 → 12 (2026-04-26): added opportunities.variants_rejected (Verify sink) and
+           reshaped opportunities.{variants,embeddings,published} to the
+           polymorphic Opportunity schema.
 """
 
 import os
@@ -28,6 +31,7 @@ from pyiceberg.table.sorting import (
 
 from _schemas import (
     VARIANTS,
+    VARIANTS_REJECTED,
     EMBEDDINGS,
     PUBLISHED,
     CRAWL_PAGE_COMPLETED,
@@ -137,43 +141,62 @@ def _partition_bucket(schema, col: str, n: int, pid_offset: int = 2000) -> Parti
 # ---------------------------------------------------------------------------
 
 def create_variants(cat: Catalog) -> None:
-    """opportunities.variants — VariantIngestedV1"""
+    """opportunities.variants — polymorphic Opportunity variant pipeline."""
     schema = VARIANTS
     spec = PartitionSpec(
-        _partition_days(schema, "occurred_at"),
+        _partition_days(schema, "scraped_at"),
         _partition_bucket(schema, "source_id", 32),
     )
     sort = SortOrder(
-        _sort_field(schema, "posted_at", SortDirection.DESC),
+        _sort_field(schema, "scraped_at", SortDirection.DESC),
         _sort_field(schema, "variant_id"),
     )
-    _create(cat, "opportunities.variants", schema, spec, sort, bloom_cols=("variant_id", "hard_key"))
+    _create(cat, "opportunities.variants", schema, spec, sort,
+            bloom_cols=("variant_id", "hard_key", "kind"))
+
+
+def create_variants_rejected(cat: Catalog) -> None:
+    """opportunities.variants_rejected — Verify-stage rejection sink."""
+    schema = VARIANTS_REJECTED
+    spec = PartitionSpec(
+        _partition_days(schema, "rejected_at"),
+        _partition_bucket(schema, "source_id", 16),
+    )
+    sort = SortOrder(
+        _sort_field(schema, "rejected_at", SortDirection.DESC),
+        _sort_field(schema, "variant_id"),
+    )
+    _create(cat, "opportunities.variants_rejected", schema, spec, sort,
+            bloom_cols=("variant_id", "source_id", "kind"))
 
 
 def create_embeddings(cat: Catalog) -> None:
-    """opportunities.embeddings — EmbeddingV1 (all embedding events)"""
+    """opportunities.embeddings — semantic vectors per variant."""
     schema = EMBEDDINGS
     spec = PartitionSpec(
-        _partition_bucket(schema, "canonical_id", 32),
+        _partition_bucket(schema, "variant_id", 32),
     )
     sort = SortOrder(
-        _sort_field(schema, "canonical_id"),
+        _sort_field(schema, "variant_id"),
     )
-    _create(cat, "opportunities.embeddings", schema, spec, sort, bloom_cols=("canonical_id",))
+    _create(cat, "opportunities.embeddings", schema, spec, sort,
+            bloom_cols=("variant_id", "kind"))
 
 
 
 def create_published(cat: Catalog) -> None:
-    """opportunities.published — PublishedV1"""
+    """opportunities.published — Verify-passing variants (mirrors VARIANTS)."""
     schema = PUBLISHED
     spec = PartitionSpec(
-        _partition_days(schema, "occurred_at"),
+        _partition_days(schema, "scraped_at"),
+        _partition_bucket(schema, "source_id", 32),
     )
     sort = SortOrder(
-        _sort_field(schema, "published_at"),
-        _sort_field(schema, "canonical_id"),
+        _sort_field(schema, "scraped_at", SortDirection.DESC),
+        _sort_field(schema, "variant_id"),
     )
-    _create(cat, "opportunities.published", schema, spec, sort, bloom_cols=("canonical_id", "slug"))
+    _create(cat, "opportunities.published", schema, spec, sort,
+            bloom_cols=("variant_id", "hard_key", "kind"))
 
 
 def create_crawl_page_completed(cat: Catalog) -> None:
@@ -296,8 +319,9 @@ def create_matches_ready(cat: Catalog) -> None:
 # ---------------------------------------------------------------------------
 
 _ALL_CREATORS = [
-    # opportunities (5 tables)
+    # opportunities (6 tables)
     create_variants,
+    create_variants_rejected,
     create_embeddings,
     create_published,
     create_crawl_page_completed,
@@ -310,7 +334,7 @@ _ALL_CREATORS = [
     create_candidate_embeddings,
     create_matches_ready,
 ]
-assert len(_ALL_CREATORS) == 11, f"Expected 11 Iceberg tables, got {len(_ALL_CREATORS)}"
+assert len(_ALL_CREATORS) == 12, f"Expected 12 Iceberg tables, got {len(_ALL_CREATORS)}"
 
 
 def main() -> None:
@@ -337,7 +361,7 @@ def main() -> None:
         print(f"\n{len(errors)} table(s) failed — see errors above.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\nDone — {len(_ALL_CREATORS)} tables processed (target: 11).")
+    print(f"\nDone — {len(_ALL_CREATORS)} tables processed (target: 12).")
 
 
 if __name__ == "__main__":

@@ -57,6 +57,7 @@ func TestBuildVariantIngestedRecord(t *testing.T) {
 		SourceID:   "acme",
 		ExternalID: "ext-1",
 		HardKey:    "acme|ext-1",
+		Kind:       "job",
 		Stage:      "ingested",
 		Title:      "Go Engineer",
 		ScrapedAt:  now,
@@ -69,12 +70,17 @@ func TestBuildVariantIngestedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 
+	// Column layout (polymorphic VARIANTS schema):
+	//   0=variant_id 1=source_id 2=external_id 3=hard_key
+	//   4=kind 5=stage 6=title 7=issuing_entity ...
+	//   21=scraped_at
 	assert.Equal(t, "var-1", rec.Column(0).(*array.String).Value(0))
 	assert.Equal(t, "acme", rec.Column(1).(*array.String).Value(0))
-	assert.Equal(t, "ingested", rec.Column(4).(*array.String).Value(0))
-	assert.Equal(t, "Go Engineer", rec.Column(5).(*array.String).Value(0))
-	// scraped_at (field 18) — microsecond timestamp
-	assert.False(t, rec.Column(18).IsNull(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "ingested", rec.Column(5).(*array.String).Value(0))
+	assert.Equal(t, "Go Engineer", rec.Column(6).(*array.String).Value(0))
+	// scraped_at — microsecond timestamp at field 21.
+	assert.False(t, rec.Column(21).IsNull(0))
 }
 
 func TestBuildVariantNormalizedRecord(t *testing.T) {
@@ -83,6 +89,9 @@ func TestBuildVariantNormalizedRecord(t *testing.T) {
 		HardKey:      "beta|v2",
 		Kind:         "job",
 		NormalizedAt: time.Now().UTC(),
+		Attributes: map[string]any{
+			"title": "Software Engineer",
+		},
 	})
 	rdr, err := writersvc.BuildVariantNormalizedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -90,7 +99,8 @@ func TestBuildVariantNormalizedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-2", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "normalized", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "normalized", rec.Column(5).(*array.String).Value(0))
 }
 
 func TestBuildVariantValidatedRecord(t *testing.T) {
@@ -108,7 +118,8 @@ func TestBuildVariantValidatedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-3", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "validated", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "validated", rec.Column(5).(*array.String).Value(0))
 }
 
 func TestBuildVariantFlaggedRecord(t *testing.T) {
@@ -125,7 +136,8 @@ func TestBuildVariantFlaggedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-4", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "flagged", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "flagged", rec.Column(5).(*array.String).Value(0))
 }
 
 func TestBuildVariantClusteredRecord(t *testing.T) {
@@ -142,7 +154,8 @@ func TestBuildVariantClusteredRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-5", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "clustered", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "clustered", rec.Column(5).(*array.String).Value(0))
 }
 
 // jobs.canonicals and jobs.canonicals_expired Arrow builders removed —
@@ -164,9 +177,9 @@ func TestBuildEmbeddingRecord(t *testing.T) {
 	defer rdr.Release()
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
+	// Polymorphic EMBEDDINGS schema: 0=variant_id 1=kind 2=vector 3=embedded_at.
 	assert.Equal(t, "can-3", rec.Column(0).(*array.String).Value(0))
-	// vector field (1) is a list; check length
-	vecList := rec.Column(1).(*array.List)
+	vecList := rec.Column(2).(*array.List)
 	start, end := vecList.ValueOffsets(0)
 	assert.EqualValues(t, 3, end-start)
 }
@@ -192,8 +205,12 @@ func TestBuildPublishedRecord(t *testing.T) {
 	defer rdr.Release()
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
+	// Polymorphic PUBLISHED mirrors VARIANTS — same column layout.
+	// 0=variant_id 4=kind 5=stage 6=title 21=scraped_at(=published_at).
 	assert.Equal(t, "can-5", rec.Column(0).(*array.String).Value(0))
-	assert.EqualValues(t, 3, rec.Column(2).(*array.Int32).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "published", rec.Column(5).(*array.String).Value(0))
+	assert.False(t, rec.Column(21).IsNull(0))
 }
 
 // -----------------------------------------------------------------------

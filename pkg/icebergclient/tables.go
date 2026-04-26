@@ -13,7 +13,7 @@ package icebergclient
 // If you add a new writer-persisted table, update THIS list and
 // expire/compact maintenance picks it up on the next run. The
 // telemetry observable-gauge callbacks also iterate this list.
-// AppendOnlyTables lists the 11 Iceberg tables that the writer persists to
+// AppendOnlyTables lists the 12 Iceberg tables that the writer persists to
 // and that snapshot expiry, compaction, and maintenance jobs operate on.
 //
 // Dropped from Iceberg (body now lives in R2 slug-direct JSON):
@@ -22,6 +22,7 @@ package icebergclient
 //   - jobs.canonicals_expired → Frame event only; materializer subscribes directly
 var AppendOnlyTables = [][]string{
 	{"opportunities", "variants"},
+	{"opportunities", "variants_rejected"},
 	{"opportunities", "embeddings"},
 	{"opportunities", "published"},
 	{"opportunities", "crawl_page_completed"},
