@@ -108,6 +108,14 @@ func (e *Extractor) SetRegistry(reg *opportunity.Registry) {
 	e.registry = reg
 }
 
+// SetLLM swaps the underlying LLM client. Tests use this to inject a
+// fake that returns canned JSON without going through HTTP — the same
+// seam the in-package tests already exploit by writing the field
+// directly. Production code never calls this.
+func (e *Extractor) SetLLM(llm LLM) {
+	e.llm = llm
+}
+
 // chatLLM adapts the existing HTTP chat method to the LLM interface so
 // the public Extract method can be tested with a fake LLM without going
 // through HTTP.
