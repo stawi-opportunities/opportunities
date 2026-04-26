@@ -10,8 +10,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	httpv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/http/v1"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 type matchesReadyCollector struct {

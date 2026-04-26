@@ -69,7 +69,7 @@ The design deliberately avoids: sharded Hugo builds, content adapters against re
 
 ## R2 layout and snapshot schema
 
-Single public R2 bucket `stawi-jobs-content`, custom domain `job-repo.stawi.org`, CORS allowing `https://jobs.stawi.org` and local dev origins.
+Single public R2 bucket `opportunities-content`, custom domain `job-repo.stawi.org`, CORS allowing `https://jobs.stawi.org` and local dev origins.
 
 ```
 job-repo.stawi.org/
@@ -575,7 +575,7 @@ Greenfield build. No dual-write, no backfill, no gradual cutover. Delete the old
 
 **Infra:**
 - `job-repo.stawi.org` as its own CF zone bound to the R2 bucket (separate from `jobs.stawi.org` so cache operations don't cross-affect).
-- Public R2 bucket `stawi-jobs-content` with CORS for `jobs.stawi.org` + local dev.
+- Public R2 bucket `opportunities-content` with CORS for `jobs.stawi.org` + local dev.
 
 **Postgres:**
 - Add columns: `status`, `expires_at`, `r2_version`, `search_tsv` (GENERATED STORED), `published_at` if missing.

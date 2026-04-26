@@ -82,7 +82,7 @@ func (c *Client) SQL(ctx context.Context, stmt string) ([]byte, error) {
 		return out, fmt.Errorf("searchindex: sql status %d: %s", resp.StatusCode, string(out))
 	}
 	// Manticore sometimes returns 200 with a non-empty JSON error field like
-	// [{"error":"table idx_jobs_rt already exists"}] — treat that as an
+	// [{"error":"table idx_opportunities_rt already exists"}] — treat that as an
 	// error so callers can detect it. The status-query response includes
 	// "error":"" (empty string), so we must skip blank error values.
 	if isManticoreError(out) {

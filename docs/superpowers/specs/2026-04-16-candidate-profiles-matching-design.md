@@ -1,13 +1,13 @@
 # Candidate Profiles + Matching — Design Spec
 
 **Date**: 2026-04-16
-**Goal**: AI-driven candidate profile system with CV extraction, embedding-based job matching, and free/paid tier split for the stawi.jobs platform.
+**Goal**: AI-driven candidate profile system with CV extraction, embedding-based job matching, and free/paid tier split for the stawi.opportunities platform.
 
 ---
 
 ## 1. Context
 
-stawi.jobs has a working job crawling framework with 11,863+ canonical jobs, AI extraction via Ollama, embedding-based search, and job quality scoring. This spec adds the candidate side — profiles, matching, and the foundation for auto-apply and communications.
+stawi.opportunities has a working job crawling framework with 11,863+ canonical jobs, AI extraction via Ollama, embedding-based search, and job quality scoring. This spec adds the candidate side — profiles, matching, and the foundation for auto-apply and communications.
 
 ### Revenue Model
 
@@ -169,7 +169,7 @@ updated_at        TIMESTAMPTZ
 
 **Email channel:**
 ```
-Candidate emails CV to jobs@stawi.jobs
+Candidate emails CV to jobs@stawi.opportunities
   → Email provider webhook: POST /webhooks/inbound-email
   → Extract: sender email, attachments (PDF/DOCX), body text
   → If email matches existing profile → update

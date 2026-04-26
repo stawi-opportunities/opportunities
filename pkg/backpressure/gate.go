@@ -91,7 +91,7 @@ type Config struct {
 	MonitorURL string
 
 	// StreamName matches the JetStream stream feeding the crawler
-	// (e.g. svc_stawi_jobs_events). ConsumerName matches the durable
+	// (e.g. svc_opportunities_events). ConsumerName matches the durable
 	// consumer (e.g. crawler-events).
 	StreamName   string
 	ConsumerName string

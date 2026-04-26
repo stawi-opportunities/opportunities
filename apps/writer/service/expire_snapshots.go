@@ -10,8 +10,8 @@ import (
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/icebergclient"
-	"stawi.jobs/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // AppendOnlyTables is a back-compat alias for pkg/icebergclient.AppendOnlyTables.

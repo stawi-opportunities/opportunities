@@ -3,7 +3,7 @@ package v1
 import (
 	"context"
 
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // CandidateActiveRepo is the subset of repository.CandidateRepository

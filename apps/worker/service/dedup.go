@@ -10,7 +10,7 @@ import (
 	"github.com/pitabwire/frame/cache"
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // DedupHandler consumes VariantValidatedV1, looks up the hard_key

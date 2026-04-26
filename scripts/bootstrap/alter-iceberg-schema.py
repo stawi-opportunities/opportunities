@@ -16,7 +16,7 @@ Environment variables (same as create_namespaces.py / create_tables.py):
     ICEBERG_CATALOG_URI     postgres://user:pass@host:5432/stawi_jobs?sslmode=require
     R2_ACCESS_KEY_ID
     R2_SECRET_ACCESS_KEY
-    R2_LOG_BUCKET           stawi-jobs-log
+    R2_LOG_BUCKET           opportunities-log
     R2_ENDPOINT             https://<account_id>.r2.cloudflarestorage.com
     R2_REGION               auto  (default)
 
@@ -58,7 +58,7 @@ def get_catalog():
 # (the worked example from docs/ops/schema-evolution.md)
 ALTER_OPS = [
     {
-        "table": ("jobs", "canonicals_upserted"),
+        "table": ("opportunities", "canonicals_upserted"),
         "op": "add_optional",
         "column": "industry_v2",
         "type": StringType(),
@@ -66,7 +66,7 @@ ALTER_OPS = [
 
     # Example: widen int → long (compatible, no data migration)
     # {
-    #     "table": ("jobs", "variants"),
+    #     "table": ("opportunities", "variants"),
     #     "op": "widen_type",
     #     "column": "salary_min",
     #     "type": LongType(),
@@ -74,7 +74,7 @@ ALTER_OPS = [
 
     # Example: soft-delete — remove column that all consumers have stopped reading
     # {
-    #     "table": ("jobs", "variants"),
+    #     "table": ("opportunities", "variants"),
     #     "op": "delete_column",
     #     "column": "legacy_field",
     # },

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.retention.mv_refresh",
+  "name": "opportunities.retention.mv_refresh",
   "description": "Every 5 minutes: refresh mv_job_facets CONCURRENTLY. Postgres serialises concurrent REFRESH calls, so duplicate fires from overlapping retries can't break anything.",
   "schedule": {
     "cron": "5m",
@@ -21,7 +21,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/retention/mv-refresh",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/retention/mv-refresh",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

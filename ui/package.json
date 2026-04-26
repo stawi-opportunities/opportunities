@@ -1,5 +1,5 @@
 {
-  "name": "stawi-jobs-ui",
+  "name": "opportunities-ui",
   "private": true,
   "scripts": {
     "build:hugo": "hugo --minify",

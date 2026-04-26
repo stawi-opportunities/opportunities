@@ -14,8 +14,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 // CVExtractor abstracts extraction.Extractor.ExtractCV so tests can

@@ -50,7 +50,7 @@ Crawler → Postgres
 ### After
 
 ```
-Crawler → R2 (bucket: stawi-jobs-archive, private) + Postgres (metadata only)
+Crawler → R2 (bucket: opportunities-archive, private) + Postgres (metadata only)
 
 R2 layout:
   raw/{sha256}.html.gz                          ← immutable, shared across clusters
@@ -72,7 +72,7 @@ was built from, every raw HTML blob that fed those variants — lives under
 `clusters/{cluster_id}/`. For quality checks or debugging:
 
 ```
-aws s3 sync s3://stawi-jobs-archive/clusters/{cluster_id}/ ./debug/
+aws s3 sync s3://opportunities-archive/clusters/{cluster_id}/ ./debug/
 ```
 
 pulls everything in one command. Raw HTML is fetched by hash from `raw/` as
@@ -349,11 +349,11 @@ Support engineer hits a confusing canonical job. They grab the cluster_id
 from the admin UI, then:
 
 ```
-aws s3 sync s3://stawi-jobs-archive/clusters/cr7qs3q8j1hci9fn3sag/ ./debug/
+aws s3 sync s3://opportunities-archive/clusters/cr7qs3q8j1hci9fn3sag/ ./debug/
 cat ./debug/canonical.json          # current state
 cat ./debug/manifest.json            # what variants exist
 cat ./debug/variants/{id}.json       # how each variant looked pre-canonical
-aws s3 cp s3://stawi-jobs-archive/raw/{hash}.html.gz -
+aws s3 cp s3://opportunities-archive/raw/{hash}.html.gz -
                                      # pull the raw HTML for any variant
 ```
 
@@ -521,7 +521,7 @@ Because the user plans to wipe the DB and restart, no data migration is
 required. The new schema is the only schema a fresh cluster sees. What needs
 to happen in order:
 
-1. Provision the new R2 bucket `stawi-jobs-archive` with two access keys
+1. Provision the new R2 bucket `opportunities-archive` with two access keys
    (reader + writer), separate credentials from the existing public
    `job-repo` bucket.
 2. Provision Vault paths for the new credentials.
@@ -548,7 +548,7 @@ Explicitly NOT changing in this spec:
 
 None remaining. All choices locked:
 
-- ✅ Separate private bucket `stawi-jobs-archive`
+- ✅ Separate private bucket `opportunities-archive`
 - ✅ Content-addressed raw (`raw/{sha256}.html.gz`)
 - ✅ Co-located cluster bundles (`clusters/{cluster_id}/`)
 - ✅ Mutable manifest (not append-only)

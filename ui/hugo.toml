@@ -26,17 +26,17 @@ title = "Stawi Jobs"
   oidcRedirectURI    = "https://jobs.stawi.org/auth/callback/"
 
   # OpenObserve RUM. rumClientToken is the public browser token minted
-  # from observe.stawi.org → Data Sources → RUM → "stawi-jobs-web". It
+  # from observe.stawi.org → Data Sources → RUM → "opportunities-web". It
   # ships in every browser bundle so it's not a secret, but Vault holds
-  # the canonical rotation copy at antinvestor/stawi-jobs/common/rum-token.
+  # the canonical rotation copy at stawi-opportunities/opportunities/common/rum-token.
   # Branch previews can override to blank via HUGO_PARAMS_rumClientToken=""
   # so pre-merge sessions don't bleed into production data.
   rumClientToken     = "rumJQxpgPXy1z2iRqt6"
-  rumApplicationId   = "stawi-jobs-web"
+  rumApplicationId   = "opportunities-web"
   rumSite            = "observe.stawi.org"
   rumOrganization    = "default"
   rumEnv             = "production"
-  rumService         = "stawi-jobs-web"
+  rumService         = "opportunities-web"
   rumVersion         = "0.0.0"
 
 [params.nav]

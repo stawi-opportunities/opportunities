@@ -12,8 +12,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/candidatestore"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 )
 
 // fakeCandidateStore implements the reader interface used by the match handler.

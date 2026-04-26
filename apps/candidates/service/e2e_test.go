@@ -15,13 +15,13 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/frametests"
 
-	"stawi.jobs/pkg/archive"
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 
-	adminv1 "stawi.jobs/apps/candidates/service/admin/v1"
-	eventv1 "stawi.jobs/apps/candidates/service/events/v1"
-	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
+	adminv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/admin/v1"
+	eventv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/events/v1"
+	httpv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/http/v1"
 )
 
 // --- fakes (local to the e2e test) ---

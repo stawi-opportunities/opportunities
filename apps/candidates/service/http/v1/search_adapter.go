@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 // ManticoreSearch adapts *searchindex.Client to the SearchIndex
@@ -16,7 +16,7 @@ type ManticoreSearch struct {
 }
 
 // NewManticoreSearch opens a Manticore client at the given URL and
-// returns an adapter bound to `index` (typically "idx_jobs_rt").
+// returns an adapter bound to `index` (typically "idx_opportunities_rt").
 func NewManticoreSearch(url, index string) (*ManticoreSearch, error) {
 	c, err := searchindex.Open(searchindex.Config{URL: url})
 	if err != nil {
@@ -33,7 +33,7 @@ func NewManticoreSearch(url, index string) (*ManticoreSearch, error) {
 // https://manual.manticoresearch.com/Searching/KNN ):
 //
 //	{
-//	  "index": "idx_jobs_rt",
+//	  "index": "idx_opportunities_rt",
 //	  "knn": { "field": "embedding", "query_vector": [...], "k": 200 },
 //	  "query": { "bool": { "must": [ ...filters... ] } },
 //	  "_source": ["canonical_id","slug","title","company"]

@@ -82,7 +82,7 @@ ui-build: $(HUGO_BIN)
 ui-dev:
 	@trap 'kill 0' EXIT INT TERM; \
 		(cd ui/app && npm run dev) & \
-		HUGO_PARAMS_oidcClientID=stawi-jobs-web-dev \
+		HUGO_PARAMS_oidcClientID=opportunities-web-dev \
 		HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqrhg \
 		HUGO_PARAMS_oidcRedirectURI=http://localhost:5170/auth/callback/ \
 		(cd ui && hugo server --bind 0.0.0.0 --port 5170 --disableFastRender) & \

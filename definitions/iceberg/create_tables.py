@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Idempotent: create all 11 stawi.jobs Iceberg tables.
+Idempotent: create all 11 stawi-opportunities/opportunities Iceberg tables.
 
 Run after create_namespaces.py.  Each create_* function is self-contained —
 modify or add individual tables without touching the rest of the script.
 
 Partition specs, sort orders, and bloom-filter properties are sized for
-scale: target ~1 M rows per bucket at 10 M canonical jobs.
+scale: target ~1 M rows per bucket at 10 M canonical opportunities.
 
 Table count history:
-  14 → 11 (2026-04-22): dropped jobs.canonicals, jobs.canonicals_expired,
-           jobs.translations — body now lives in R2 slug-direct JSON;
+  14 → 11 (2026-04-22): dropped opportunities.canonicals, opportunities.canonicals_expired,
+           opportunities.translations — body now lives in R2 slug-direct JSON;
            materializer subscribes to Frame topics directly.
 """
 
@@ -133,11 +133,11 @@ def _partition_bucket(schema, col: str, n: int, pid_offset: int = 2000) -> Parti
 
 
 # ---------------------------------------------------------------------------
-# jobs namespace
+# opportunities namespace
 # ---------------------------------------------------------------------------
 
 def create_variants(cat: Catalog) -> None:
-    """jobs.variants — VariantIngestedV1"""
+    """opportunities.variants — VariantIngestedV1"""
     schema = VARIANTS
     spec = PartitionSpec(
         _partition_days(schema, "occurred_at"),
@@ -147,11 +147,11 @@ def create_variants(cat: Catalog) -> None:
         _sort_field(schema, "posted_at", SortDirection.DESC),
         _sort_field(schema, "variant_id"),
     )
-    _create(cat, "jobs.variants", schema, spec, sort, bloom_cols=("variant_id", "hard_key"))
+    _create(cat, "opportunities.variants", schema, spec, sort, bloom_cols=("variant_id", "hard_key"))
 
 
 def create_embeddings(cat: Catalog) -> None:
-    """jobs.embeddings — EmbeddingV1 (all embedding events)"""
+    """opportunities.embeddings — EmbeddingV1 (all embedding events)"""
     schema = EMBEDDINGS
     spec = PartitionSpec(
         _partition_bucket(schema, "canonical_id", 32),
@@ -159,12 +159,12 @@ def create_embeddings(cat: Catalog) -> None:
     sort = SortOrder(
         _sort_field(schema, "canonical_id"),
     )
-    _create(cat, "jobs.embeddings", schema, spec, sort, bloom_cols=("canonical_id",))
+    _create(cat, "opportunities.embeddings", schema, spec, sort, bloom_cols=("canonical_id",))
 
 
 
 def create_published(cat: Catalog) -> None:
-    """jobs.published — PublishedV1"""
+    """opportunities.published — PublishedV1"""
     schema = PUBLISHED
     spec = PartitionSpec(
         _partition_days(schema, "occurred_at"),
@@ -173,11 +173,11 @@ def create_published(cat: Catalog) -> None:
         _sort_field(schema, "published_at"),
         _sort_field(schema, "canonical_id"),
     )
-    _create(cat, "jobs.published", schema, spec, sort, bloom_cols=("canonical_id", "slug"))
+    _create(cat, "opportunities.published", schema, spec, sort, bloom_cols=("canonical_id", "slug"))
 
 
 def create_crawl_page_completed(cat: Catalog) -> None:
-    """jobs.crawl_page_completed — CrawlPageCompletedV1"""
+    """opportunities.crawl_page_completed — CrawlPageCompletedV1"""
     schema = CRAWL_PAGE_COMPLETED
     spec = PartitionSpec(
         _partition_days(schema, "occurred_at"),
@@ -187,11 +187,11 @@ def create_crawl_page_completed(cat: Catalog) -> None:
         _sort_field(schema, "source_id"),
         _sort_field(schema, "occurred_at"),
     )
-    _create(cat, "jobs.crawl_page_completed", schema, spec, sort, bloom_cols=("request_id", "source_id"))
+    _create(cat, "opportunities.crawl_page_completed", schema, spec, sort, bloom_cols=("request_id", "source_id"))
 
 
 def create_sources_discovered(cat: Catalog) -> None:
-    """jobs.sources_discovered — SourceDiscoveredV1"""
+    """opportunities.sources_discovered — SourceDiscoveredV1"""
     schema = SOURCES_DISCOVERED
     spec = PartitionSpec(
         _partition_days(schema, "occurred_at"),
@@ -201,7 +201,7 @@ def create_sources_discovered(cat: Catalog) -> None:
         _sort_field(schema, "discovered_url"),
     )
     # No high-cardinality bloom targets for this table
-    _create(cat, "jobs.sources_discovered", schema, spec, sort)
+    _create(cat, "opportunities.sources_discovered", schema, spec, sort)
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ def create_matches_ready(cat: Catalog) -> None:
 # ---------------------------------------------------------------------------
 
 _ALL_CREATORS = [
-    # jobs (5 tables)
+    # opportunities (5 tables)
     create_variants,
     create_embeddings,
     create_published,

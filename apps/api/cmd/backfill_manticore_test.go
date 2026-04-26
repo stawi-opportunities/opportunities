@@ -15,7 +15,7 @@ import (
 // wiring once a local Manticore instance can be spun up in CI.
 //
 // TODO(wave7): wire a testcontainer-backed Manticore instance, seed
-// idx_jobs_rt with fixture rows (active + inactive, varying quality_score),
+// idx_opportunities_rt with fixture rows (active + inactive, varying quality_score),
 // and assert:
 //   - rows above min_quality are uploaded to the snapshotter
 //   - rows below min_quality are skipped

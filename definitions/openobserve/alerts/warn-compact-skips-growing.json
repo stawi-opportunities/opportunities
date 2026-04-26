@@ -1,6 +1,6 @@
 {
   "name": "warn-compact-skips-growing",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "warning",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/compact-skips"
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/compact-skips"
   },
   "description": "More than 500 partitions were skipped in the last compaction hour, suggesting the compactor is not keeping up with write volume. Review reason labels (already_large, single_file, other).",
   "enabled": true

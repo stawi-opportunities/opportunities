@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"stawi.jobs/pkg/candidatestore"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 type fakeInactiveRepo struct {

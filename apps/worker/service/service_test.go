@@ -11,10 +11,10 @@ import (
 	"github.com/pitabwire/frame/cache"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/kv"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/kv"
 
-	workersvc "stawi.jobs/apps/worker/service"
+	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
 )
 
 // collector subscribes to a single topic on the in-memory Frame pub/sub and

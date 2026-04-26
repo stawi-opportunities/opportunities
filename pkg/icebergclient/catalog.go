@@ -24,7 +24,7 @@ type CatalogConfig struct {
 	// URI is the Postgres DSN used by the SQL catalog backend.
 	URI string
 	// Warehouse is the S3 URI prefix for Iceberg metadata
-	// (e.g. "s3://stawi-jobs-log/iceberg").
+	// (e.g. "s3://opportunities-log/iceberg").
 	Warehouse string
 
 	// R2 / S3-compatible credentials.

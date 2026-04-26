@@ -1,4 +1,4 @@
-# Migrate stawi-jobs domain models to `data.BaseModel`
+# Migrate opportunities domain models to `data.BaseModel`
 
 **Status:** Tracked tech debt, not yet scheduled.
 
@@ -6,7 +6,7 @@
 
 The golang-patterns skill enforces a mandatory rule: every model embeds `github.com/pitabwire/frame/data.BaseModel`. It gives us a consistent ID format (`varchar(50)` XIDs), automatic `TenantID` / `PartitionID` columns for multi-tenant safety, and unified `CreatedAt` / `ModifiedAt` / `DeletedAt` columns handled by Frame's repository layer.
 
-stawi-jobs predates that rule. Every model under `pkg/domain/` uses plain GORM with `int64 autoIncrement` IDs:
+opportunities predates that rule. Every model under `pkg/domain/` uses plain GORM with `int64 autoIncrement` IDs:
 
 | File | Models with int64 IDs |
 |---|---|

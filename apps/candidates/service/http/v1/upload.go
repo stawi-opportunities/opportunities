@@ -14,8 +14,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/archive"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // TextExtractor abstracts plain-text extraction for PDF / DOCX bytes.

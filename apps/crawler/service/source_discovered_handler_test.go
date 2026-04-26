@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 type fakeSourceUpserter struct {

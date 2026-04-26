@@ -146,7 +146,7 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
                   └──────────┬───────────────────┘
                              ▼
                   ┌──────────────────────────────┐
-                  │ Manticore idx_jobs_rt        │
+                  │ Manticore idx_opportunities_rt        │
                   │  FTS + attr + HNSW vector    │
                   └──────────┬───────────────────┘
                              │
@@ -189,7 +189,7 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
 | `apps/crawler` | yes (extended) | Fetch pages, archive raw bytes to R2, AI extract (`Extract`, `DiscoverLinks`, opportunistic `DiscoverSites` via sampling); consume `crawl.requests.v1`; self-consume `crawl.page.completed.v1` to update `sources` (cursor, health, quality); Trustage admin endpoints (scheduler tick, retention, purge, reconcile, health decay) | `crawl.requests.v1`, `crawl.page.completed.v1` | `jobs.variants.ingested.v1`, `crawl.page.completed.v1`, continuation `crawl.requests.v1`, `sources.discovered.v1` | chat (Extract, DiscoverLinks, DiscoverSites) |
 | `apps/worker` | **new** | Single binary running all pipeline stages as independent internal subscriptions: normalize (deterministic) → validate (AI, fail-open) → dedup (KV + bloom) → canonical merge → (embed, translate, publish — parallel consumers of `canonicals.upserted`). Per-stage goroutine pools with per-backend rate limiters. | `jobs.variants.ingested.v1`, `jobs.variants.normalized.v1`, `jobs.variants.validated.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1` | `jobs.variants.normalized.v1`, `jobs.variants.validated.v1` or `.flagged.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1`, `jobs.embeddings.v1`, `jobs.translations.v1`, `jobs.published.v1` (+ R2 publish write) | chat (validate, translate), embed (job embeddings) |
 | `apps/writer` | **new** | Subscribes to every event topic. Buffers in-memory keyed by `(partition_dt, partition_sec)`. Flushes to R2 Parquet on `{10k events | 64 MB | 30 s}`. Acks only after R2 ETag confirms. Trustage admin endpoints for compaction. | all `*.v1` topics | R2 Parquet files | no |
-| `apps/materializer` | **new** | Polls R2 every 15 s for new Parquet files in tracked partitions. Upserts to Manticore `idx_jobs_rt`. Watermark in KV. | R2 Parquet diffs | Manticore upserts | no |
+| `apps/materializer` | **new** | Polls R2 every 15 s for new Parquet files in tracked partitions. Upserts to Manticore `idx_opportunities_rt`. Watermark in KV. | R2 Parquet diffs | Manticore upserts | no |
 | `apps/candidates` | yes (extended) | CV upload HTTP endpoint (synchronous extract + archive), consume candidates.cv.* topics internally for improve/embed/score, match endpoint for "jobs for me", Trustage admin endpoints (`matches.weekly_digest`, `cv.stale_nudge`). One binary owning the full candidate lifecycle. | HTTP (upload, match), `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1` | `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1`, `candidates.preferences.updated.v1`, `candidates.embeddings.v1`, `candidates.matches.ready.v1` | chat (ExtractCV, rewrites), embed (CV embeddings), scorer |
 | `apps/api` | yes (modified) | Job-seeker HTTP: search, browse, detail, facets, saved jobs, read-my-matches. All reads from Manticore + KV. Synchronous rerank on paid-tier requests. | HTTP | Manticore queries, KV reads, rerank calls | rerank (paid tier only, KV-cached) |
 
@@ -225,7 +225,7 @@ Trigger definitions live in `definitions/trustage/*.json` alongside the existing
 |---|---|
 | Cloudflare R2 | Parquet log (source of truth) + raw page archive + publish snapshots |
 | Valkey / Redis | dedup KV, bloom filters, rerank cache |
-| Manticore Search | FTS + attribute filtering + HNSW vector search (`idx_jobs_rt` in v1) |
+| Manticore Search | FTS + attribute filtering + HNSW vector search (`idx_opportunities_rt` in v1) |
 | Frame pub/sub | event transport, durable, at-least-once |
 | PostgreSQL | control-plane (sources), identity ref (candidates), billing, auth, saved_jobs |
 | Profile service (external) | candidate identity, auth, email, MFA |
@@ -255,7 +255,7 @@ Breaking changes bump the `.vN` suffix on `event_type` — producers emit the ne
 
 ### 5.2 Parquet partition layout
 
-All partitions live under a single R2 bucket, e.g. `r2://stawi-jobs-log/`.
+All partitions live under a single R2 bucket, e.g. `r2://opportunities-log/`.
 
 **Jobs partitions:**
 
@@ -285,10 +285,10 @@ All partitions live under a single R2 bucket, e.g. `r2://stawi-jobs-log/`.
 | `candidates_embeddings_current/cnd=<cnd_prefix_2hex>/<file>.parquet` | Latest embedding per candidate_id | daily rebuild |
 | `candidates_matches_ready/dt=/<uuid>.parquet` | candidate_id, match_batch_id, matches[] ({canonical_id, match_score, rerank_score?}), occurred_at | weekly |
 
-### 5.3 Manticore — `idx_jobs_rt` (v1)
+### 5.3 Manticore — `idx_opportunities_rt` (v1)
 
 ```sql
-CREATE TABLE idx_jobs_rt (
+CREATE TABLE idx_opportunities_rt (
   id                bigint PRIMARY KEY,
   canonical_id      string attribute indexed,
   slug              string attribute,
@@ -397,7 +397,7 @@ All KV keys are derived state. Cold start procedure (§9.4) rebuilds `dedup:*`, 
    - **translate** → for each configured target language, calls `extractor.Prompt(translatePrompt, …)` → emits `jobs.translations.v1` per lang.
    - **publish** → writes R2 job snapshot, emits `jobs.published.v1`.
 10. `apps/writer` subscribes to **all** event topics. For each consumed event, it buffers in memory keyed by `(partition_dt, partition_sec)`, and flushes a Parquet file to R2 when any buffer hits 10k events / 64 MB / 30 s. Ack to pub/sub only after R2 upload confirms.
-11. `apps/materializer` polls R2 every 15 s for new files under all partitions it tracks. For each new file: read rows, upsert into `idx_jobs_rt` (RT index UPDATE/INSERT). Stores a per-partition watermark in KV (`mat:watermark:{partition}`) so restarts resume cleanly.
+11. `apps/materializer` polls R2 every 15 s for new files under all partitions it tracks. For each new file: read rows, upsert into `idx_opportunities_rt` (RT index UPDATE/INSERT). Stores a per-partition watermark in KV (`mat:watermark:{partition}`) so restarts resume cleanly.
 12. Search is now live: the user's next query via `apps/api` hits Manticore, which has the canonical + embedding + translation state.
 
 End-to-end latency from crawl to searchable: dominated by writer flush (≤30 s) + materializer poll (≤15 s) + Manticore RT index apply (<1 s) → **typically 30–60 s**.
@@ -414,7 +414,7 @@ All candidate-side work lives in `apps/candidates` — one binary, multiple inte
 6. `apps/writer` persists all four event types to their respective Parquet partitions. `apps/materializer` at v1 does *not* index candidate data into Manticore (deferred to v1.1).
 7. When the user (or Trustage `matches.weekly_digest`) requests matches, `apps/candidates` match endpoint:
    1. Reads the candidate's embedding + preferences from R2 `candidates_*_current/` partitions directly (or via a small KV cache).
-   2. Queries `idx_jobs_rt` with hard filters (remote_preference, salary floor, preferred_locations) + KNN on candidate embedding → top 200.
+   2. Queries `idx_opportunities_rt` with hard filters (remote_preference, salary floor, preferred_locations) + KNN on candidate embedding → top 200.
    3. Runs in-Go composite scoring (skills overlap, salary fit, recency, seniority) → top K.
    4. If reranker enabled: `KV GET rerank:{mv}:{cv_hash}:{filter_hash}` → hit returns cached order; miss calls `extractor.Rerank` (200 ms timeout), KV SETs result (TTL 24 h). Fail-open on error/timeout (return composite order).
    5. Emits `candidates.matches.ready.v1` → writer → `candidates_matches_ready/` partition.
@@ -426,7 +426,7 @@ All candidate-side work lives in `apps/candidates` — one binary, multiple inte
 2. API constructs a Manticore query:
    ```sql
    SELECT id, slug, title, company, …, snippet(description, …)
-   FROM idx_jobs_rt
+   FROM idx_opportunities_rt
    WHERE MATCH('react')
      AND status='active'
      AND expires_at > UNIX_TIMESTAMP()
@@ -630,7 +630,7 @@ Recovery: HPA scales materializer pods on R2-poll lag; pods parallelize across p
 
 Effect: serving returns stale/wrong data, or nothing at all.
 
-Recovery: API returns 503 `Retry-After`; ops runs "Manticore rebuild from zero": wipe `idx_jobs_rt`, reset materializer watermark to epoch 0, let it replay `*_current/` partitions. Hours at v1 volume.
+Recovery: API returns 503 `Retry-After`; ops runs "Manticore rebuild from zero": wipe `idx_opportunities_rt`, reset materializer watermark to epoch 0, let it replay `*_current/` partitions. Hours at v1 volume.
 
 ### 9.4 KV lost (Valkey replica failure, region outage)
 
@@ -709,7 +709,7 @@ Recovery: Trustage returns → tick resumes. A long outage means compaction back
 
 ### 11.1 Pre-cut
 
-1. Provision managed infra: Manticore cluster, Valkey cluster, R2 bucket (`stawi-jobs-log`), TEI chat/embed/rerank deployments.
+1. Provision managed infra: Manticore cluster, Valkey cluster, R2 bucket (`opportunities-log`), TEI chat/embed/rerank deployments.
 2. Define Trustage triggers (`definitions/trustage/scheduler-tick.json`, `compact-hourly.json`, `compact-daily.json`, `sources-quality-reset.json`, `sources-health-decay.json`, `matches-weekly-digest.json`, `cv-stale-nudge.json`).
 3. Deploy new app skeletons with Postgres still as backend (no reads/writes to new stack yet).
 4. Run pub/sub topic creation migrations; verify Frame subscriptions and DLQs.
@@ -721,7 +721,7 @@ Recovery: Trustage returns → tick resumes. A long outage means compaction back
 3. Flip `apps/api` to read from Manticore (empty at this moment — returns zero results).
 4. Start the six services: `apps/crawler` (extended), `apps/worker` (new), `apps/writer` (new), `apps/materializer` (new), `apps/candidates` (extended), `apps/api` (modified).
 5. Trustage fires `scheduler.tick`; crawl-requests flow; pipeline fills; Manticore populates.
-6. Lift maintenance banner once `idx_jobs_rt` count > a sanity threshold (e.g., 50k jobs across top 10 countries).
+6. Lift maintenance banner once `idx_opportunities_rt` count > a sanity threshold (e.g., 50k jobs across top 10 countries).
 
 ### 11.3 Post-cut verification
 
@@ -737,7 +737,7 @@ Recovery: Trustage returns → tick resumes. A long outage means compaction back
 
 ### 11.4 v1.1 follow-up (deferred from v1)
 
-- Build `idx_candidates_rt` in Manticore (schema parallel to `idx_jobs_rt` with CV-derived fields).
+- Build `idx_candidates_rt` in Manticore (schema parallel to `idx_opportunities_rt` with CV-derived fields).
 - Extend materializer to index candidate partitions.
 - Build recruiter API surfaces: free-text candidate search, saved searches, candidate-by-id export.
 - Job → candidate matching fanout: triggered by `jobs.canonicals.upserted.v1`, query `idx_candidates_rt`, emit notifications.

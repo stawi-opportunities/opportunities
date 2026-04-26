@@ -11,7 +11,7 @@ import (
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // CommitBatchWithRetry applies a batch to a table with exponential backoff.

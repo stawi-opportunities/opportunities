@@ -7,8 +7,8 @@ import (
 	"github.com/pitabwire/util"
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/archive"
-	"stawi.jobs/pkg/repository"
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
 // purgeR2Archive finds canonicals stuck in status='deleted' past the

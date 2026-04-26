@@ -262,7 +262,7 @@ git commit -m "feat: add antinvestor service client setup (notification, files, 
 
 The verification email uses `notificationv1connect.Send()`:
 ```
-Subject: "Your stawi.jobs profile is ready"
+Subject: "Your stawi.opportunities profile is ready"
 Body: "Hi {name}, here's what we understood from your CV: ..."
 ```
 
@@ -409,21 +409,21 @@ Same pattern as crawler Dockerfile:
 
 - [ ] **Step 2: Create k8s manifests**
 
-In `antinvestor/deployments/manifests/namespaces/stawi-jobs/candidates/`:
+In `antinvestor/deployments/manifests/namespaces/opportunities/candidates/`:
 - `kustomization.yaml`
-- `stawi-jobs-candidates.yaml` — HelmRelease, 1 replica, 100m/256Mi, same DB credentials
+- `opportunities-candidates.yaml` — HelmRelease, 1 replica, 100m/256Mi, same DB credentials
 - Env vars: DATABASE_URL, OLLAMA_URL, OLLAMA_MODEL, NOTIFICATION_SERVICE_URI, FILE_SERVICE_URI, PAYMENT_SERVICE_URI, PROFILE_SERVICE_URI, REDIRECT_SERVICE_URI
 
 Update the parent `kustomization.yaml` to include `candidates/`.
 
 - [ ] **Step 3: Update kustomization_provider.yaml if needed**
 
-The stawi-jobs-setup kustomization already covers all subdirectories.
+The opportunities-setup kustomization already covers all subdirectories.
 
 - [ ] **Step 4: Commit both repos**
 
 ```bash
-# stawi.jobs repo
+# stawi.opportunities repo
 git add apps/candidates/Dockerfile
 git commit -m "feat: add candidates Dockerfile"
 git push origin main
@@ -431,8 +431,8 @@ git tag v0.9.0
 git push origin v0.9.0
 
 # deployments repo
-git add manifests/namespaces/stawi-jobs/candidates/
-git commit -m "feat: add stawi-jobs-candidates k8s deployment with antinvestor service URIs"
+git add manifests/namespaces/opportunities/candidates/
+git commit -m "feat: add opportunities-candidates k8s deployment with antinvestor service URIs"
 git push origin main
 ```
 

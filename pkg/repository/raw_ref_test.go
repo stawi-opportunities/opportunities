@@ -7,7 +7,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 func newTestDB(t *testing.T) *gorm.DB {

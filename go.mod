@@ -1,4 +1,4 @@
-module stawi.jobs
+module github.com/stawi-opportunities/opportunities
 
 go 1.26
 

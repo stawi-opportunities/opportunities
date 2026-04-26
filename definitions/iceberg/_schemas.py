@@ -1,10 +1,10 @@
 """
-Shared Iceberg schema definitions for all 11 stawi.jobs tables.
+Shared Iceberg schema definitions for all 11 stawi-opportunities/opportunities tables.
 
 Removed from Iceberg (body lives in R2 slug-direct JSON):
-  - CANONICALS          → s3://stawi-jobs-content/jobs/<slug>.json
+  - CANONICALS          → s3://opportunities-content/jobs/<slug>.json
   - CANONICALS_EXPIRED  → Frame event only; materializer subscribes directly
-  - TRANSLATIONS        → s3://stawi-jobs-content/jobs/<slug>/<lang>.json
+  - TRANSLATIONS        → s3://opportunities-content/jobs/<slug>/<lang>.json
 
 Field IDs start at 1 per table and are assigned in declaration order.
 Field names match the `parquet:"..."` struct tags in pkg/events/v1/*.go.
@@ -60,10 +60,10 @@ def _envelope(base_id: int):
     ]
 
 # ---------------------------------------------------------------------------
-# jobs namespace
+# opportunities namespace
 # ---------------------------------------------------------------------------
 
-# jobs.variants  (VariantIngestedV1)
+# opportunities.variants  (VariantIngestedV1)
 VARIANTS = Schema(
     _req(1,  "variant_id",            StringType()),
     _req(2,  "source_id",             StringType()),
@@ -96,11 +96,11 @@ VARIANTS = Schema(
     *_envelope(23),
 )
 
-# jobs.canonicals and jobs.canonicals_expired schemas removed from Iceberg.
-# Canonical body → s3://stawi-jobs-content/jobs/<slug>.json (R2-slug-direct).
+# opportunities.canonicals and opportunities.canonicals_expired schemas removed from Iceberg.
+# Canonical body → s3://opportunities-content/opportunities/<slug>.json (R2-slug-direct).
 # canonicals_expired → Frame event only; materializer subscribes directly.
 
-# jobs.embeddings  (EmbeddingV1)
+# opportunities.embeddings  (EmbeddingV1)
 # vector is []float32 — ListType of FloatType
 EMBEDDINGS = Schema(
     _req(1, "canonical_id",   StringType()),
@@ -109,10 +109,10 @@ EMBEDDINGS = Schema(
     *_envelope(4),
 )
 
-# jobs.translations schema removed from Iceberg.
-# Translated body → s3://stawi-jobs-content/jobs/<slug>/<lang>.json (R2-slug-direct).
+# opportunities.translations schema removed from Iceberg.
+# Translated body → s3://opportunities-content/opportunities/<slug>/<lang>.json (R2-slug-direct).
 
-# jobs.published  (PublishedV1)
+# opportunities.published  (PublishedV1)
 PUBLISHED = Schema(
     _req(1, "canonical_id", StringType()),
     _req(2, "slug",         StringType()),
@@ -121,7 +121,7 @@ PUBLISHED = Schema(
     *_envelope(5),
 )
 
-# jobs.crawl_page_completed  (CrawlPageCompletedV1)
+# opportunities.crawl_page_completed  (CrawlPageCompletedV1)
 CRAWL_PAGE_COMPLETED = Schema(
     _req(1,  "request_id",     StringType()),
     _req(2,  "source_id",      StringType()),
@@ -136,7 +136,7 @@ CRAWL_PAGE_COMPLETED = Schema(
     *_envelope(11),
 )
 
-# jobs.sources_discovered  (SourceDiscoveredV1)
+# opportunities.sources_discovered  (SourceDiscoveredV1)
 SOURCES_DISCOVERED = Schema(
     _req(1, "source_id",      StringType()),
     _req(2, "discovered_url", StringType()),

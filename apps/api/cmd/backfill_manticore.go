@@ -17,7 +17,7 @@ type r2Snapshotter interface {
 	TriggerDeploy() error
 }
 
-// backfillManticoreHandler scans idx_jobs_rt in Manticore for active jobs
+// backfillManticoreHandler scans idx_opportunities_rt in Manticore for active jobs
 // above minQuality (and optionally posted after a since time) and publishes
 // Hugo snapshots under jobs/<slug>.json.
 //
@@ -94,7 +94,7 @@ func backfillManticoreHandler(jm *jobsManticore, snap r2Snapshotter, defaultMinQ
 	}
 }
 
-// ScrollActive iterates Manticore's idx_jobs_rt with status='active' and
+// ScrollActive iterates Manticore's idx_opportunities_rt with status='active' and
 // quality_score >= minScore, optionally further filtered by posted_at >= since.
 // callback is called once per row; returning a non-nil error halts pagination.
 // pageSize controls the LIMIT per request; 500 is a safe default.
@@ -129,7 +129,7 @@ func (j *jobsManticore) ScrollActive(
 
 	for offset := 0; ; offset += pageSize {
 		q := map[string]any{
-			"index": "idx_jobs_rt",
+			"index": "idx_opportunities_rt",
 			"query": map[string]any{"bool": map[string]any{"filter": filter}},
 			"sort":  []any{map[string]any{"posted_at": "desc"}},
 			"limit": pageSize,
@@ -154,7 +154,7 @@ func (j *jobsManticore) ScrollActive(
 
 // buildHugoDocFromJob serialises a Manticore job row into the shape Hugo
 // consumes.  The schema is identical to buildHugoDoc (Iceberg canonicalRow)
-// because idx_jobs_rt is the materialised "latest canonical per cluster"
+// because idx_opportunities_rt is the materialised "latest canonical per cluster"
 // index — same fields, different source.
 func buildHugoDocFromJob(r job) map[string]any {
 	doc := map[string]any{

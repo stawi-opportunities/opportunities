@@ -38,7 +38,7 @@ go.mod                          ← add go-trafilatura, html-to-markdown
 - [ ] **Step 1: Add dependencies**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go get github.com/markusmobius/go-trafilatura@latest
 go get github.com/JohannesKaufmann/html-to-markdown/v2@latest
 go mod tidy
@@ -341,7 +341,7 @@ import (
     "github.com/redis/go-redis/v9"
     "gorm.io/gorm"
 
-    "stawi.jobs/pkg/domain"
+    "stawi.opportunities/pkg/domain"
 )
 
 const bitmapSize = 1 << 20 // 1M bits per source, ~128KB
@@ -626,7 +626,7 @@ git commit -m "feat: add stage tracking and quality window repository methods"
 Read `pkg/connectors/connector.go`. Add a `Content()` method to the `CrawlIterator` interface:
 
 ```go
-import "stawi.jobs/pkg/content"
+import "stawi.opportunities/pkg/content"
 
 type CrawlIterator interface {
     Next(ctx context.Context) bool

@@ -62,7 +62,7 @@ func v2SearchHandler(jm *jobsManticore) http.HandlerFunc {
 		}
 
 		query := map[string]any{
-			"index": "idx_jobs_rt",
+			"index": "idx_opportunities_rt",
 			"query": map[string]any{"bool": boolQ},
 			"limit": limit,
 			"aggs": map[string]any{

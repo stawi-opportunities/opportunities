@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // fakeCandidateRepo implements just ListActive.

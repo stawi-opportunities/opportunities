@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/candidatestore"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 )
 
 func TestMatchServiceRunMatchReturnsHits(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/table"
 
-	"stawi.jobs/pkg/memconfig"
+	"github.com/stawi-opportunities/opportunities/pkg/memconfig"
 )
 
 // StaleCandidate is the output shape for stale-nudge consumers.

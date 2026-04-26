@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/RadhiFadlillah/whatlanggo"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // JobVariant is the normalised, pipeline-ready representation of one observed

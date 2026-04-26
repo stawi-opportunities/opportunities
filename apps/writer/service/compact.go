@@ -59,8 +59,8 @@ import (
 	"github.com/apache/iceberg-go/table"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/memconfig"
-	"stawi.jobs/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/memconfig"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // CompactConfig tunes the compaction run.  All fields have safe defaults applied

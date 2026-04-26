@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	writersvc "stawi.jobs/apps/writer/service"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	writersvc "github.com/stawi-opportunities/opportunities/apps/writer/service"
 )
 
 var testPool = memory.NewGoAllocator()

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/quality"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/quality"
 )
 
 // validJob returns a fully populated job that passes all quality checks.

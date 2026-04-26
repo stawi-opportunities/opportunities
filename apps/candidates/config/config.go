@@ -20,7 +20,7 @@ type CandidatesConfig struct {
 	R2AccountID       string `env:"R2_ACCOUNT_ID"        envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"     envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2EventLogBucket  string `env:"R2_EVENTLOG_BUCKET"   envDefault:"stawi-jobs-log"`
+	R2EventLogBucket  string `env:"R2_EVENTLOG_BUCKET"   envDefault:"opportunities-log"`
 	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
 	R2Region          string `env:"R2_REGION"            envDefault:"auto"`
 
@@ -28,7 +28,7 @@ type CandidatesConfig struct {
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID"         envDefault:""`
 	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID"      envDefault:""`
 	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY"  envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET"             envDefault:"stawi-jobs-archive"`
+	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET"             envDefault:"opportunities-archive"`
 
 	// AI inference back-end (OpenAI-compatible).
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`

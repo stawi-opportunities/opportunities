@@ -14,7 +14,7 @@ type CrawlerConfig struct {
 	BatchSize         int    `env:"BATCH_SIZE" envDefault:"500"`
 	BatchFlushSec     int    `env:"BATCH_FLUSH_SEC" envDefault:"10"`
 	SeedsDir          string `env:"SEEDS_DIR" envDefault:"/seeds"`
-	UserAgent         string `env:"USER_AGENT" envDefault:"stawi.jobs-bot/2.0 (+https://stawi.jobs)"`
+	UserAgent         string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://stawi.jobs)"`
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
 	// Inference back-end (OpenAI-compatible). INFERENCE_BASE_URL /
@@ -44,7 +44,7 @@ type CrawlerConfig struct {
 	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
+	R2Bucket          string `env:"R2_BUCKET" envDefault:"opportunities-content"`
 	R2DeployHookURL   string `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 
 	// Archive R2 — separate bucket (and separate credentials) for
@@ -54,7 +54,7 @@ type CrawlerConfig struct {
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID" envDefault:""`
 	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID" envDefault:""`
 	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY" envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"stawi-jobs-archive"`
+	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"opportunities-archive"`
 
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 
@@ -70,7 +70,7 @@ type CrawlerConfig struct {
 	// BackpressureMonitorURL blank to disable entirely — the gate
 	// becomes a no-op that always reports open.
 	BackpressureMonitorURL   string `env:"BACKPRESSURE_MONITOR_URL" envDefault:"http://core-queue-headless.queue-system.svc.cluster.local:8222"`
-	BackpressureStreamName   string `env:"BACKPRESSURE_STREAM_NAME" envDefault:"svc_stawi_jobs_events"`
+	BackpressureStreamName   string `env:"BACKPRESSURE_STREAM_NAME" envDefault:"svc_opportunities_events"`
 	BackpressureConsumerName string `env:"BACKPRESSURE_CONSUMER_NAME" envDefault:"crawler-events"`
 	BackpressureHighWater    int    `env:"BACKPRESSURE_HIGH_WATER" envDefault:"100000"`
 	BackpressureLowWater     int    `env:"BACKPRESSURE_LOW_WATER" envDefault:"50000"`
@@ -93,7 +93,7 @@ type CrawlerConfig struct {
 	RedirectServiceURI    string `env:"REDIRECT_SERVICE_URI" envDefault:""`
 	RedirectPublicBaseURL string `env:"REDIRECT_PUBLIC_BASE_URL" envDefault:""`
 
-	// Analytics (OpenObserve) — shared across every stawi-jobs service.
+	// Analytics (OpenObserve) — shared across every opportunities service.
 	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`
 	AnalyticsOrg      string `env:"ANALYTICS_ORG" envDefault:"default"`
 	AnalyticsUsername string `env:"ANALYTICS_USERNAME" envDefault:""`

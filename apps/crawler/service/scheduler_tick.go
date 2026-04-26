@@ -11,8 +11,8 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // SourceLister is the narrow slice of *repository.SourceRepository the

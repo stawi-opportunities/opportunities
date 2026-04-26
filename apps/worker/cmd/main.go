@@ -18,12 +18,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"fmt"
 
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/kv"
-	"stawi.jobs/pkg/publish"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
 
-	workercfg "stawi.jobs/apps/worker/config"
-	workersvc "stawi.jobs/apps/worker/service"
+	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
+	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
 )
 
 func main() {

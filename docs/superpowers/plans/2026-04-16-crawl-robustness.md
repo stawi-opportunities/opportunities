@@ -632,7 +632,7 @@ Update all image tags in `antinvestor/deployments` to v1.0.0. Push and reconcile
 - [ ] **Step 4: Verify pods are running**
 
 ```bash
-kubectl get pods -n stawi-jobs
+kubectl get pods -n opportunities
 ```
 
 All 3 crawler pods + scheduler + api should be Running.
@@ -640,7 +640,7 @@ All 3 crawler pods + scheduler + api should be Running.
 - [ ] **Step 5: Trigger data rebuild**
 
 ```bash
-kubectl port-forward -n stawi-jobs deploy/stawi-jobs-crawler 8080:8080
+kubectl port-forward -n opportunities deploy/opportunities-crawler 8080:8080
 curl -X POST http://localhost:8080/admin/rebuild-canonicals
 ```
 

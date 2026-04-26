@@ -28,7 +28,7 @@ type Config struct {
 	// R2ContentBucket is the consumer-facing bucket scanned by kv/rebuild.
 	// Defaults to the publish bucket; override if a separate content bucket
 	// is used.
-	R2ContentBucket string `env:"R2_CONTENT_BUCKET" envDefault:"stawi-jobs-content"`
+	R2ContentBucket string `env:"R2_CONTENT_BUCKET" envDefault:"opportunities-content"`
 
 	// AI backends. All optional — empty disables the given stage
 	// gracefully (fall-through without that AI call).

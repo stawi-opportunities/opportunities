@@ -43,16 +43,16 @@ Reads `vault-seeds.env` and writes secrets to Vault via the cluster K8s-auth
 pattern (ServiceAccount token → `vault-openbao-0` pod → `bao kv put`).
 
 Writes:
-- `secret/antinvestor/stawi-jobs/common/iceberg-catalog` — Iceberg SQL catalog DSN
-- `secret/antinvestor/stawi-jobs/common/r2-log-credentials` — R2 event-log credentials
+- `secret/antinvestor/opportunities/common/iceberg-catalog` — Iceberg SQL catalog DSN
+- `secret/antinvestor/opportunities/common/r2-log-credentials` — R2 event-log credentials
 
 After seeding, ExternalSecrets sync within their `refreshInterval` (default 1h).
 Force immediate sync with:
 ```bash
-kubectl annotate externalsecret iceberg-catalog-credentials-stawi-jobs \
-  -n stawi-jobs reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
-kubectl annotate externalsecret r2-log-credentials-stawi-jobs \
-  -n stawi-jobs reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
+kubectl annotate externalsecret iceberg-catalog-credentials-opportunities \
+  -n opportunities reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
+kubectl annotate externalsecret r2-log-credentials-opportunities \
+  -n opportunities reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
 ```
 
 **Common failures:**
@@ -64,13 +64,13 @@ kubectl annotate externalsecret r2-log-credentials-stawi-jobs \
 
 ### `create-iceberg.sh`
 
-Submits a one-shot Kubernetes `batch/v1 Job` to the `stawi-jobs` namespace.
+Submits a one-shot Kubernetes `batch/v1 Job` to the `opportunities` namespace.
 The job clones this repo, installs `pyiceberg`, and runs:
 1. `definitions/iceberg/create_namespaces.py`
 2. `definitions/iceberg/create_tables.py`
 
-**Prerequisites:** ExternalSecrets `iceberg-catalog-credentials-stawi-jobs` and
-`r2-log-credentials-stawi-jobs` must be synced before this runs.
+**Prerequisites:** ExternalSecrets `iceberg-catalog-credentials-opportunities` and
+`r2-log-credentials-opportunities` must be synced before this runs.
 
 **Common failures:**
 - `ImagePullBackOff` on `python:3.12-slim` — cluster has no outbound internet; use
@@ -81,9 +81,9 @@ The job clones this repo, installs `pyiceberg`, and runs:
 
 ### `create-manticore-schema.sh`
 
-Pipes `definitions/manticore/idx_jobs_rt.sql` into Manticore via:
+Pipes `definitions/manticore/idx_opportunities_rt.sql` into Manticore via:
 ```bash
-kubectl -n stawi-jobs exec -i svc/manticore -- /usr/bin/mysql -h127.0.0.1 -P9306 < DDL_FILE
+kubectl -n opportunities exec -i svc/manticore -- /usr/bin/mysql -h127.0.0.1 -P9306 < DDL_FILE
 ```
 
 Pass an alternative DDL file as `$1` if you need to apply a schema variant.

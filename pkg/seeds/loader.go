@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/repository"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
 // priorityLabel is a JSON-friendly alias for domain.Priority that accepts

@@ -77,7 +77,7 @@
 - [ ] **Step 1: Add the dependency**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go get github.com/parquet-go/parquet-go@v0.25.1
 go mod tidy
 ```
@@ -185,7 +185,7 @@ func TestEnvelopeJSONRoundTrip(t *testing.T) {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./pkg/events/v1/...
 ```
 
@@ -609,7 +609,7 @@ type R2Config struct {
 	AccessKeyID     string
 	SecretAccessKey string
 
-	// Bucket is the event-log bucket name (e.g. stawi-jobs-log).
+	// Bucket is the event-log bucket name (e.g. opportunities-log).
 	Bucket string
 
 	// Endpoint allows tests to point at a MinIO container. Empty
@@ -874,8 +874,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/testcontainers/testcontainers-go/modules/minio"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 func TestParquetRoundTripViaMinio(t *testing.T) {
@@ -896,7 +896,7 @@ func TestParquetRoundTripViaMinio(t *testing.T) {
 		AccountID:       "test-account",
 		AccessKeyID:     mc.Username,
 		SecretAccessKey: mc.Password,
-		Bucket:          "stawi-jobs-log-test",
+		Bucket:          "opportunities-log-test",
 		Endpoint:        "http://" + endpoint,
 		UsePathStyle:    true,
 	}
@@ -1093,7 +1093,7 @@ import (
 	"testing"
 	"time"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 func newBufferForTest() *Buffer {
@@ -1177,7 +1177,7 @@ import (
 	"sync"
 	"time"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // Thresholds controls when a partition buffer flushes.
@@ -1390,7 +1390,7 @@ import (
 	"errors"
 	"fmt"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // WriterHandler implements frame's event handler interface for a
@@ -1534,8 +1534,8 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 // Service is apps/writer's composition root.
@@ -1704,11 +1704,11 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 
-	writercfg "stawi.jobs/apps/writer/config"
-	writersvc "stawi.jobs/apps/writer/service"
+	writercfg "stawi.opportunities/apps/writer/config"
+	writersvc "stawi.opportunities/apps/writer/service"
 )
 
 func main() {
@@ -1800,10 +1800,10 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/testcontainers/testcontainers-go/modules/minio"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 
-	writersvc "stawi.jobs/apps/writer/service"
+	writersvc "stawi.opportunities/apps/writer/service"
 )
 
 func TestWriterE2EVariantIngested(t *testing.T) {
@@ -1826,7 +1826,7 @@ func TestWriterE2EVariantIngested(t *testing.T) {
 		AccountID:       "test",
 		AccessKeyID:     mc.Username,
 		SecretAccessKey: mc.Password,
-		Bucket:          "stawi-jobs-log-e2e",
+		Bucket:          "opportunities-log-e2e",
 		Endpoint:        "http://" + endpoint,
 		UsePathStyle:    true,
 	}
@@ -1990,7 +1990,7 @@ Update the `.PHONY` block to include `run-writer`:
 - [ ] **Step 3: Verify the build works via the Makefile**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 make build
 ```
 

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"hash/fnv"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/searchindex"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/eventlog"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 // Indexer converts Parquet-decoded event rows into Manticore writes
@@ -39,7 +39,7 @@ func (i *Indexer) ApplyCanonicalsParquet(ctx context.Context, body []byte) (int,
 	return n, nil
 }
 
-// replaceOne issues a single /replace against idx_jobs_rt. The row
+// replaceOne issues a single /replace against idx_opportunities_rt. The row
 // id is a stable hash of canonical_id — Manticore requires a bigint
 // pk and keying on hash(canonical_id) gives us idempotent upsert.
 func (i *Indexer) replaceOne(ctx context.Context, r eventsv1.CanonicalUpsertedV1) error {
@@ -66,11 +66,11 @@ func (i *Indexer) replaceOne(ctx context.Context, r eventsv1.CanonicalUpsertedV1
 		"expires_at":      r.ExpiresAt.Unix(),
 		"status":          r.Status,
 	}
-	return i.client.Replace(ctx, "idx_jobs_rt", hashID(r.CanonicalID), doc)
+	return i.client.Replace(ctx, "idx_opportunities_rt", hashID(r.CanonicalID), doc)
 }
 
 // ApplyEmbeddingsParquet updates the `embedding` attribute on
-// idx_jobs_rt rows by canonical_id. If the row doesn't exist yet
+// idx_opportunities_rt rows by canonical_id. If the row doesn't exist yet
 // (embeddings can arrive slightly ahead of canonical for a fresh
 // job), Manticore's /update returns updated=0 and the call is
 // a no-op — the next canonical event will land the base row, and
@@ -87,7 +87,7 @@ func (i *Indexer) ApplyEmbeddingsParquet(ctx context.Context, body []byte) (int,
 			"embedding":       r.Vector,
 			"embedding_model": r.ModelVersion,
 		}
-		if err := i.client.Update(ctx, "idx_jobs_rt", id, doc); err != nil {
+		if err := i.client.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
 			return n, fmt.Errorf("indexer: update embedding: %w", err)
 		}
 		n++

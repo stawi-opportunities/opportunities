@@ -6,20 +6,20 @@ package eventsv1
 // SchemaVersion on the envelope.
 const (
 	// Job pipeline — variants.
-	TopicVariantsIngested   = "jobs.variants.ingested.v1"
-	TopicVariantsNormalized = "jobs.variants.normalized.v1"
-	TopicVariantsValidated  = "jobs.variants.validated.v1"
-	TopicVariantsFlagged    = "jobs.variants.flagged.v1"
-	TopicVariantsClustered  = "jobs.variants.clustered.v1"
+	TopicVariantsIngested   = "opportunities.variants.ingested.v1"
+	TopicVariantsNormalized = "opportunities.variants.normalized.v1"
+	TopicVariantsValidated  = "opportunities.variants.validated.v1"
+	TopicVariantsFlagged    = "opportunities.variants.flagged.v1"
+	TopicVariantsClustered  = "opportunities.variants.clustered.v1"
 
 	// Job pipeline — canonicals.
-	TopicCanonicalsUpserted = "jobs.canonicals.upserted.v1"
-	TopicCanonicalsExpired  = "jobs.canonicals.expired.v1"
+	TopicCanonicalsUpserted = "opportunities.canonicals.upserted.v1"
+	TopicCanonicalsExpired  = "opportunities.canonicals.expired.v1"
 
 	// Derived.
-	TopicEmbeddings   = "jobs.embeddings.v1"
-	TopicTranslations = "jobs.translations.v1"
-	TopicPublished    = "jobs.published.v1"
+	TopicEmbeddings   = "opportunities.embeddings.v1"
+	TopicTranslations = "opportunities.translations.v1"
+	TopicPublished    = "opportunities.published.v1"
 
 	// Crawl control plane.
 	TopicCrawlRequests      = "crawl.requests.v1"

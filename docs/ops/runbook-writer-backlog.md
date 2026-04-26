@@ -11,6 +11,6 @@
 3. If HPA not at ceiling, scale manually: kubectl scale deploy writer --replicas=20 -n prod
 4. kubectl logs -f -l app=writer --tail=20 | grep "parquet flushed" — verify ack rate recovers.
 5. If R2 is the bottleneck (5xx in writer logs), confirm Cloudflare status page. Backlog drains automatically when R2 returns.
-6. If caused by crawl burst still firing, dial down the scheduler-tick cadence: trustage update stawi-jobs.scheduler.tick --cron "120s" temporarily.
+6. If caused by crawl burst still firing, dial down the scheduler-tick cadence: trustage update opportunities.scheduler.tick --cron "120s" temporarily.
 
 **Success signal:** num_pending drops below 100k and stays there for 15 min.

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // Sentinel errors returned by Check.

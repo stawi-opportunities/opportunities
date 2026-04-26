@@ -13,7 +13,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 type prefCollector struct {

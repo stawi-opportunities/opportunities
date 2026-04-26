@@ -13,12 +13,12 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/icebergclient"
-	"stawi.jobs/pkg/telemetry"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 
-	writercfg "stawi.jobs/apps/writer/config"
-	writersvc "stawi.jobs/apps/writer/service"
+	writercfg "github.com/stawi-opportunities/opportunities/apps/writer/config"
+	writersvc "github.com/stawi-opportunities/opportunities/apps/writer/service"
 )
 
 func main() {
@@ -82,7 +82,7 @@ func main() {
 	// Admin HTTP mux — lightweight, not exposed to the public internet.
 	// Trustage fires POST /_admin/expire-snapshots nightly and
 	// POST /_admin/compact every 2 h via the in-cluster service DNS
-	// (stawi-jobs-writer.stawi-jobs.svc).
+	// (opportunities-writer.opportunities.svc).
 	expireCfg := writersvc.ExpireSnapshotsConfig{
 		OlderThan:          time.Duration(cfg.SnapshotRetentionDays) * 24 * time.Hour,
 		MinSnapshotsToKeep: cfg.MinSnapshotsToKeep,

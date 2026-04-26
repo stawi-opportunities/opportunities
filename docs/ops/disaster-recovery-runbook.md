@@ -2,7 +2,7 @@
 
 **Owner:** Platform / Peter Bwire
 **Audience:** On-call operator responding to a production incident
-**Scope:** stawi.jobs data-plane recovery — Manticore, Valkey, Postgres, R2, Iceberg, full cluster
+**Scope:** stawi.opportunities data-plane recovery — Manticore, Valkey, Postgres, R2, Iceberg, full cluster
 
 > This document combines and extends `docs/ops/runbook-manticore-rebuild.md` and
 > `docs/ops/runbook-kv-rebuild.md` with additional DR scenarios.
@@ -27,37 +27,37 @@
 
 **Symptoms:**
 - `GET /api/v2/search?q=engineer` returns 503 or empty hits
-- `kubectl logs -l app=stawi-jobs-materializer` shows `table not found` errors
-- `SELECT COUNT(*) FROM idx_jobs_rt` returns 0 or error
+- `kubectl logs -l app=opportunities-materializer` shows `table not found` errors
+- `SELECT COUNT(*) FROM idx_opportunities_rt` returns 0 or error
 
 **Recovery:**
 
 ```bash
 # 1. Confirm R2 event-log is intact
-aws s3 ls s3://stawi-jobs-log/canonicals_current/ | wc -l
+aws s3 ls s3://opportunities-log/canonicals_current/ | wc -l
 # Expect ≥ 200 files
 
 # 2. Drop and re-create the index
-kubectl -n stawi-jobs exec -i svc/manticore -- \
-    /usr/bin/mysql -h127.0.0.1 -P9306 -e "DROP TABLE IF EXISTS idx_jobs_rt;"
+kubectl -n opportunities exec -i svc/manticore -- \
+    /usr/bin/mysql -h127.0.0.1 -P9306 -e "DROP TABLE IF EXISTS idx_opportunities_rt;"
 
 ./scripts/bootstrap/create-manticore-schema.sh
 
 # 3. Reset materializer consumer position so it replays from the beginning
 # Frame/NATS: delete or reset the durable consumer so materializer replays all events
-kubectl -n stawi-jobs exec -it deploy/stawi-jobs-materializer -- \
-    nats consumer rm svc_stawi_jobs_events materializer-events --force 2>/dev/null || true
+kubectl -n opportunities exec -it deploy/opportunities-materializer -- \
+    nats consumer rm svc_opportunities_events materializer-events --force 2>/dev/null || true
 
 # 4. Restart materializer
-kubectl rollout restart deploy/stawi-jobs-materializer -n stawi-jobs
+kubectl rollout restart deploy/opportunities-materializer -n opportunities
 
 # 5. Monitor upsert rate
-kubectl logs -f -l app=stawi-jobs-materializer -n stawi-jobs | grep "manticore upsert"
+kubectl logs -f -l app=opportunities-materializer -n opportunities | grep "manticore upsert"
 # Expect ≥ 500 upserts/min during replay
 
 # 6. Poll row count
-watch -n 30 'kubectl -n stawi-jobs exec -i svc/manticore -- \
-    /usr/bin/mysql -h127.0.0.1 -P9306 -e "SELECT COUNT(*) FROM idx_jobs_rt;"'
+watch -n 30 'kubectl -n opportunities exec -i svc/manticore -- \
+    /usr/bin/mysql -h127.0.0.1 -P9306 -e "SELECT COUNT(*) FROM idx_opportunities_rt;"'
 ```
 
 **Estimated recovery time:** 60–120 minutes for 1M rows at ~500 upserts/s.
@@ -105,13 +105,13 @@ canonical upsert rate returns to normal within 10 minutes.
 **Symptoms:**
 - Writer fails on startup: `failed to load Iceberg catalog`
 - Crawler fails on startup: `database connection refused`
-- All `ExternalSecret` objects for `db-credentials-stawi-jobs` show `SecretSyncedError`
+- All `ExternalSecret` objects for `db-credentials-opportunities` show `SecretSyncedError`
 
 **Detection commands:**
 ```bash
-kubectl get pods -n stawi-jobs | grep -v Running
-kubectl describe externalsecret db-credentials-stawi-jobs -n stawi-jobs
-kubectl logs -l app=stawi-jobs-writer -n stawi-jobs | grep "catalog\|database" | tail -20
+kubectl get pods -n opportunities | grep -v Running
+kubectl describe externalsecret db-credentials-opportunities -n opportunities
+kubectl logs -l app=opportunities-writer -n opportunities | grep "catalog\|database" | tail -20
 ```
 
 **Recovery (using CNPG WAL backup on R2):**
@@ -123,18 +123,18 @@ kubectl get cluster -n datastore
 # 2. Trigger point-in-time recovery via CNPG backup
 # Edit the CNPG cluster manifest to set bootstrap.recovery.backup.name
 # and set a target time (use the last known-good checkpoint):
-kubectl edit cluster stawi-jobs-db -n datastore
+kubectl edit cluster opportunities-db -n datastore
 # Set: spec.bootstrap.recovery.source: <backup-name>
 #      spec.bootstrap.recovery.recoveryTarget.targetTime: "2026-04-22T10:00:00Z"
 
 # 3. Wait for CNPG to restore and promote the primary
-kubectl get cluster stawi-jobs-db -n datastore -w
+kubectl get cluster opportunities-db -n datastore -w
 
 # 4. Re-run Iceberg catalog migration if tables are missing
 psql "${DATABASE_URL}" -f db/migrations/0004_iceberg_catalog.sql
 
-# 5. Restart all stawi-jobs services
-kubectl rollout restart deployment -n stawi-jobs
+# 5. Restart all opportunities services
+kubectl rollout restart deployment -n opportunities
 ```
 
 **Data loss tolerance:** Events since the last WAL backup segment (typically < 5 min
@@ -150,7 +150,7 @@ Covered in Scenario 2. Valkey is ephemeral — all data rebuilds from R2.
 
 ---
 
-## Scenario 5 — R2 log bucket deleted (stawi-jobs-log)
+## Scenario 5 — R2 log bucket deleted (opportunities-log)
 
 This is the most severe recoverable scenario. All Parquet event-log files are stored
 here, as is the Iceberg metadata tree.
@@ -158,13 +158,13 @@ here, as is the Iceberg metadata tree.
 **Symptoms:**
 - Writer flush errors: `NoSuchBucket` or `AccessDenied`
 - Iceberg catalog returns `table metadata not found`
-- `aws s3 ls s3://stawi-jobs-log/` returns `NoSuchBucket`
+- `aws s3 ls s3://opportunities-log/` returns `NoSuchBucket`
 
 **Recovery:**
 
 ```bash
 # 1. Re-create the R2 bucket (via Cloudflare dashboard or API)
-# Bucket name must match: stawi-jobs-log
+# Bucket name must match: opportunities-log
 # Enable versioning if not already enabled
 
 # 2. Re-seed Vault credentials if the R2 access key was also rotated
@@ -182,7 +182,7 @@ here, as is the Iceberg metadata tree.
 # Events older than 24h are NOT in NATS — they are permanently lost from the log bucket
 
 # 6. Restart all services
-kubectl rollout restart deployment -n stawi-jobs
+kubectl rollout restart deployment -n opportunities
 ```
 
 **Data loss:** All Parquet files written before the bucket was deleted.
@@ -190,7 +190,7 @@ NATS retains 24 hours of events — the writer will replay those.
 Events older than 24 hours are permanently lost unless a separate backup exists.
 
 **Mitigation (prevent future loss):**
-- Enable Cloudflare R2 Object Lock or versioning on `stawi-jobs-log`
+- Enable Cloudflare R2 Object Lock or versioning on `opportunities-log`
 - Configure cross-bucket replication to a second R2 bucket as a backup
 - Consider periodic Iceberg snapshot exports to a separate storage account
 
@@ -199,14 +199,14 @@ history from NATS replay window.
 
 ---
 
-## Scenario 6 — R2 content bucket deleted (stawi-jobs-content)
+## Scenario 6 — R2 content bucket deleted (opportunities-content)
 
-The content bucket stores canonical JSON files at `s3://stawi-jobs-content/jobs/<slug>.json`.
+The content bucket stores canonical JSON files at `s3://opportunities-content/jobs/<slug>.json`.
 These are the source of truth for `/api/v2/jobs/<slug>` detail pages.
 
 **Symptoms:**
 - `/api/v2/jobs/<slug>` returns 404 for all slugs
-- `aws s3 ls s3://stawi-jobs-content/jobs/` returns `NoSuchBucket`
+- `aws s3 ls s3://opportunities-content/jobs/` returns `NoSuchBucket`
 
 **Recovery:**
 
@@ -246,7 +246,7 @@ kubectl get nodes
 ./scripts/bootstrap/bootstrap.sh
 
 # 5. Apply deployment manifests
-kubectl apply -k manifests/namespaces/stawi-jobs/
+kubectl apply -k manifests/namespaces/opportunities/
 
 # 6. Wait for fill checkpoint (same as first-deploy-runbook.md §6)
 ```
@@ -279,7 +279,7 @@ cat = load_catalog("stawi", **{
     "s3.access-key-id": os.environ["R2_ACCESS_KEY_ID"],
     "s3.secret-access-key": os.environ["R2_SECRET_ACCESS_KEY"],
     "s3.region": "auto",
-    "warehouse": "s3://stawi-jobs-log/iceberg",
+    "warehouse": "s3://opportunities-log/iceberg",
 })
 
 table = cat.load_table("jobs.variants")

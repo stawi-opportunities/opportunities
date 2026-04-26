@@ -9,8 +9,8 @@ import (
 
 	"github.com/pitabwire/frame"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/publish"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
 // PublishHandler consumes CanonicalUpsertedV1 and writes a JSON

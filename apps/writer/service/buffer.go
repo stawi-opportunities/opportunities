@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/memconfig"
-	"stawi.jobs/pkg/telemetry"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/memconfig"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // Thresholds controls when a partition buffer flushes.

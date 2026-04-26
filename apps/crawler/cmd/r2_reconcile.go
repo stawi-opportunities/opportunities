@@ -9,7 +9,7 @@ import (
 	"github.com/pitabwire/util"
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/archive"
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
 )
 
 // reconcileOrphans walks clusters/* in the archive bucket and deletes

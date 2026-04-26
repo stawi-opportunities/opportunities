@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.writer.expire-snapshots",
+  "name": "opportunities.writer.expire-snapshots",
   "description": "Daily at 03:30 UTC: expire Iceberg snapshots older than 14 days across all append-only tables. Keeps a floor of 100 snapshots per table so recent recovery is always possible.",
   "schedule": { "cron": "30 3 * * *", "active": true },
   "input": {},
@@ -17,7 +17,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/expire-snapshots",
+          "url": "http://opportunities-writer.opportunities.svc/_admin/expire-snapshots",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

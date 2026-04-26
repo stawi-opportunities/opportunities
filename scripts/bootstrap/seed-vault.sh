@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds the stawi.jobs Vault paths. Reads secrets from a local .env-like
+# Seeds the stawi-opportunities/opportunities Vault paths. Reads secrets from a local .env-like
 # file that is NEVER checked in. Usage:
 #   cp scripts/bootstrap/vault-seeds.env.example scripts/bootstrap/vault-seeds.env
 #   # fill in values
@@ -46,22 +46,22 @@ export BAO_CACERT="/vault/userconfig/vault-ca/ca.crt"
 export BAO_TOKEN=\$(bao write -field=token auth/kubernetes/login role=external-secrets jwt="__SA_TOKEN__")
 
 echo "  -> writing iceberg-catalog..."
-bao kv put secret/antinvestor/stawi-jobs/common/iceberg-catalog \
+bao kv put secret/stawi-opportunities/opportunities/common/iceberg-catalog \
     uri="__ICEBERG_CATALOG_URI__"
 
 echo "  -> writing r2-log-credentials..."
-bao kv put secret/antinvestor/stawi-jobs/common/r2-log-credentials \
+bao kv put secret/stawi-opportunities/opportunities/common/r2-log-credentials \
     r2_log_account_id="__R2_LOG_ACCOUNT_ID__" \
     r2_log_access_key_id="__R2_LOG_ACCESS_KEY_ID__" \
     r2_log_secret_access_key="__R2_LOG_SECRET_ACCESS_KEY__" \
     r2_log_endpoint="__R2_LOG_ENDPOINT__"
 
 echo "  -> verifying..."
-bao kv get -field=uri secret/antinvestor/stawi-jobs/common/iceberg-catalog >/dev/null
-bao kv get -field=r2_log_endpoint secret/antinvestor/stawi-jobs/common/r2-log-credentials >/dev/null
+bao kv get -field=uri secret/stawi-opportunities/opportunities/common/iceberg-catalog >/dev/null
+bao kv get -field=r2_log_endpoint secret/stawi-opportunities/opportunities/common/r2-log-credentials >/dev/null
 SCRIPT
 
 echo "Vault seeding complete. ExternalSecrets will sync within their refreshInterval (~1h)."
 echo "To force immediate sync:"
-echo "  kubectl annotate externalsecret iceberg-catalog-credentials-stawi-jobs -n stawi-jobs reconcile.external-secrets.io/trigger=\$(date +%s) --overwrite"
-echo "  kubectl annotate externalsecret r2-log-credentials-stawi-jobs -n stawi-jobs reconcile.external-secrets.io/trigger=\$(date +%s) --overwrite"
+echo "  kubectl annotate externalsecret iceberg-catalog-credentials-opportunities -n opportunities reconcile.external-secrets.io/trigger=\$(date +%s) --overwrite"
+echo "  kubectl annotate externalsecret r2-log-credentials-opportunities -n opportunities reconcile.external-secrets.io/trigger=\$(date +%s) --overwrite"

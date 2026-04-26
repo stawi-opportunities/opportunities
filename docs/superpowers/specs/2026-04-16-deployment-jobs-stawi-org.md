@@ -2,7 +2,7 @@
 
 ## Overview
 
-Deploy the stawi.jobs UI as a fully functional static site on Cloudflare Pages at `jobs.stawi.org`. Jobs are published to Cloudflare R2 as individual markdown files in real-time via an event-driven pipeline handler. OIDC authentication uses a dedicated child tenant and partition under Thesa in service-authentication. The site rebuilds automatically when new content is available.
+Deploy the stawi.opportunities UI as a fully functional static site on Cloudflare Pages at `jobs.stawi.org`. Jobs are published to Cloudflare R2 as individual markdown files in real-time via an event-driven pipeline handler. OIDC authentication uses a dedicated child tenant and partition under Thesa in service-authentication. The site rebuilds automatically when new content is available.
 
 ## Architecture
 
@@ -172,7 +172,7 @@ New env vars for the crawler:
 R2_ACCOUNT_ID=<cloudflare account id>
 R2_ACCESS_KEY_ID=<r2 api token key>
 R2_SECRET_ACCESS_KEY=<r2 api token secret>
-R2_BUCKET=stawi-jobs-content
+R2_BUCKET=opportunities-content
 R2_DEPLOY_HOOK_URL=<cf pages deploy hook url>
 PUBLISH_MIN_QUALITY=50
 ```
@@ -235,7 +235,7 @@ INSERT INTO clients (
     '<new-xid-tenant>',
     '<new-xid-partition>',
     'Stawi Jobs Web',
-    'stawi-jobs-web',
+    'opportunities-web',
     'public',
     '{"types": ["authorization_code", "refresh_token"]}',
     '{"types": ["code"]}',
@@ -254,7 +254,7 @@ Same structure with:
 - Different XIDs
 - `domain: 'jobs-dev.stawi.org'`
 - `redirect_uris: ["https://jobs-dev.stawi.org/auth/callback/", "http://localhost:1313/auth/callback/"]`
-- `client_id: 'stawi-jobs-web-dev'`
+- `client_id: 'opportunities-web-dev'`
 
 ### Hugo Config Updates
 
@@ -262,21 +262,21 @@ Update `ui/hugo.toml` to use the staging OIDC client by default:
 
 ```toml
 [params]
-  oidcIssuer = "https://auth.antinvestor.com/realms/stawi-jobs"
-  oidcClientID = "stawi-jobs-web-dev"
+  oidcIssuer = "https://auth.antinvestor.com/realms/opportunities"
+  oidcClientID = "opportunities-web-dev"
   oidcRedirectURI = "http://localhost:1313/auth/callback/"
 ```
 
 CF Pages environment variables override these for production:
-- `HUGO_PARAMS_oidcIssuer=https://auth.antinvestor.com/realms/stawi-jobs`
-- `HUGO_PARAMS_oidcClientID=stawi-jobs-web`
+- `HUGO_PARAMS_oidcIssuer=https://auth.antinvestor.com/realms/opportunities`
+- `HUGO_PARAMS_oidcClientID=opportunities-web`
 - `HUGO_PARAMS_oidcRedirectURI=https://jobs.stawi.org/auth/callback/`
 
 ## 4. Cloudflare Pages Deployment
 
 ### Project Setup
 
-- **Source**: GitHub repo `stawi-jobs`, branch `main`
+- **Source**: GitHub repo `opportunities`, branch `main`
 - **Root directory**: `ui`
 - **Build command**: `chmod +x scripts/sync-r2.sh && ./scripts/sync-r2.sh && hugo --minify --baseURL https://jobs.stawi.org`
 - **Build output**: `public`
@@ -290,7 +290,7 @@ CF Pages environment variables override these for production:
 | `AWS_ACCESS_KEY_ID` | R2 key | R2 key |
 | `AWS_SECRET_ACCESS_KEY` | R2 secret | R2 secret |
 | `R2_ACCOUNT_ID` | CF account ID | CF account ID |
-| `R2_BUCKET` | `stawi-jobs-content` | `stawi-jobs-content` |
+| `R2_BUCKET` | `opportunities-content` | `opportunities-content` |
 
 OIDC params are passed via `HUGO_PARAMS_*` env vars which Hugo reads automatically.
 
@@ -370,7 +370,7 @@ Usage: sitegen [flags]
   --r2-account-id    Cloudflare account ID
   --r2-access-key    R2 access key
   --r2-secret-key    R2 secret key
-  --r2-bucket        R2 bucket name (default: stawi-jobs-content)
+  --r2-bucket        R2 bucket name (default: opportunities-content)
   --min-quality      Minimum quality score (default: 50)
   --batch-size       Upload batch size (default: 500)
   --deploy-hook-url  CF Pages deploy hook to trigger after upload
@@ -399,7 +399,7 @@ The dashboard and search results that link to jobs by ID need a mapping. Since t
 
 ## Summary of Changes
 
-### In stawi.jobs repo:
+### In stawi.opportunities repo:
 1. Add `Slug` field to `CanonicalJob` model
 2. Add `BuildSlug` and `Slugify` functions to `pkg/domain/models.go`
 3. Update `CanonicalHandler` to generate slug on first creation
@@ -416,7 +416,7 @@ The dashboard and search results that link to jobs by ID need a mapping. Since t
 12. Create `20260416_create_stawi_jobs_test_tenant.sql` (staging)
 
 ### In Cloudflare Dashboard:
-13. Create R2 bucket `stawi-jobs-content`
+13. Create R2 bucket `opportunities-content`
 14. Create R2 API token with read/write access
 15. Create CF Pages project linked to GitHub
 16. Configure custom domain `jobs.stawi.org`

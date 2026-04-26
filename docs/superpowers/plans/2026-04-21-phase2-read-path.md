@@ -4,7 +4,7 @@
 
 **Goal:** Ship the read path — Manticore provisioning, an `apps/materializer` service that consumes Parquet from R2 and keeps Manticore in sync, and a new `/api/v2/search` endpoint on `apps/api` that reads from Manticore. End state: a manually-published `CanonicalUpsertedV1` event lands in the Parquet log (Phase 1), gets materialized into Manticore (Phase 2), and is returned by the new search endpoint.
 
-**Architecture:** Materializer is a disposable pod; it polls R2 every 15 s for new Parquet objects in tracked partition prefixes, downloads each one, decodes with `pkg/eventlog.ReadParquet`, and issues `REPLACE INTO` against Manticore's RT index using the event's `canonical_id` as the primary key (idempotent upsert). Watermark per partition prefix is stored in a tiny Postgres table so restarts resume cleanly. Manticore `idx_jobs_rt` matches the design doc schema (FTS + attributes + HNSW vector attribute). The API gains `/api/v2/search` next to the existing `/api/search` so Phase 6's cutover is a routing flip, not a rewrite.
+**Architecture:** Materializer is a disposable pod; it polls R2 every 15 s for new Parquet objects in tracked partition prefixes, downloads each one, decodes with `pkg/eventlog.ReadParquet`, and issues `REPLACE INTO` against Manticore's RT index using the event's `canonical_id` as the primary key (idempotent upsert). Watermark per partition prefix is stored in a tiny Postgres table so restarts resume cleanly. Manticore `idx_opportunities_rt` matches the design doc schema (FTS + attributes + HNSW vector attribute). The API gains `/api/v2/search` next to the existing `/api/search` so Phase 6's cutover is a routing flip, not a rewrite.
 
 **Tech stack:**
 - Go 1.26, Frame (`github.com/pitabwire/frame`), `pitabwire/util` logging
@@ -43,7 +43,7 @@
 | `pkg/events/v1/canonicals.go` | `CanonicalUpsertedV1`, `EmbeddingV1` payload structs |
 | `pkg/eventlog/reader.go` | R2 list + download + Parquet decode helpers used by materializer |
 | `pkg/searchindex/manticore.go` | MySQL-protocol client wrapper (connect, exec DDL, REPLACE INTO, SELECT) |
-| `pkg/searchindex/schema.go` | `idx_jobs_rt` DDL + `Apply(db)` function |
+| `pkg/searchindex/schema.go` | `idx_opportunities_rt` DDL + `Apply(db)` function |
 | `pkg/searchindex/schema_test.go` | Idempotent DDL apply test |
 | `db/migrations/0002_materializer_watermark.sql` | `materializer_watermarks` table |
 | `pkg/repository/materializer_watermark.go` | `WatermarkRepository` with `Get/Set` |
@@ -128,7 +128,7 @@ func TestEmbeddingRoundTrip(t *testing.T) {
 - [ ] **Step 2: Run test to verify failure**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./pkg/events/v1/...
 ```
 
@@ -146,7 +146,7 @@ import "time"
 // CanonicalUpsertedV1 is the event emitted by the canonical-merge
 // stage once a cluster of variants has been merged into a single
 // user-facing job row. Phase 2 consumes this event in the materializer
-// to populate idx_jobs_rt — the Manticore index that backs search,
+// to populate idx_opportunities_rt — the Manticore index that backs search,
 // browse, and detail.
 //
 // Fields mirror the design doc (§5.2 canonicals partition). Phase 2
@@ -183,7 +183,7 @@ type CanonicalUpsertedV1 struct {
 
 // EmbeddingV1 is the event emitted by the embedder stage once a
 // canonical job's semantic vector has been computed. Materializer
-// updates the `embedding` HNSW attribute on idx_jobs_rt; Phase 3+
+// updates the `embedding` HNSW attribute on idx_opportunities_rt; Phase 3+
 // adds hybrid BM25+KNN queries to /api/v2/search.
 type EmbeddingV1 struct {
 	CanonicalID  string    `json:"canonical_id"  parquet:"canonical_id"`
@@ -363,7 +363,7 @@ func (c *Client) SQL(ctx context.Context, stmt string) ([]byte, error) {
 		return out, fmt.Errorf("searchindex: sql status %d: %s", resp.StatusCode, string(out))
 	}
 	// Manticore sometimes returns 200 with a JSON error payload like
-	// [{"error":"table idx_jobs_rt already exists"}] — treat that
+	// [{"error":"table idx_opportunities_rt already exists"}] — treat that
 	// as an error so callers can detect it.
 	if bytes.Contains(out, []byte(`"error"`)) {
 		return out, fmt.Errorf("searchindex: sql error: %s", strings.TrimSpace(string(out)))
@@ -455,7 +455,7 @@ git commit -m "feat(searchindex): Manticore HTTP client (no MySQL driver)"
 
 ---
 
-## Task 5: Manticore `idx_jobs_rt` schema + idempotent apply
+## Task 5: Manticore `idx_opportunities_rt` schema + idempotent apply
 
 **Files:**
 - Create: `pkg/searchindex/schema.go`
@@ -478,7 +478,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 // startManticore boots a Manticore container and returns the HTTP
@@ -532,8 +532,8 @@ func TestApplySchemaIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("show tables: %v", err)
 	}
-	if !strings.Contains(string(raw), "idx_jobs_rt") {
-		t.Fatalf("idx_jobs_rt not present after Apply — SHOW TABLES returned:\n%s", string(raw))
+	if !strings.Contains(string(raw), "idx_opportunities_rt") {
+		t.Fatalf("idx_opportunities_rt not present after Apply — SHOW TABLES returned:\n%s", string(raw))
 	}
 }
 ```
@@ -565,9 +565,9 @@ import (
 //
 // Single-line form — Manticore's /sql endpoint accepts newlines, but
 // keeping it one line makes query-string escaping trivial.
-const idxJobsRTDDL = `CREATE TABLE idx_jobs_rt (canonical_id string attribute, slug string attribute, title text indexed, company text indexed, description text indexed stored, location_text text indexed, category string attribute, country string attribute, language string attribute, remote_type string attribute, employment_type string attribute, seniority string attribute, salary_min uint, salary_max uint, currency string attribute, quality_score float, is_featured bool, posted_at timestamp, last_seen_at timestamp, expires_at timestamp, status string attribute, embedding float_vector knn_type='hnsw' knn_dims='1536' hnsw_similarity='COSINE', embedding_model string attribute)`
+const idxJobsRTDDL = `CREATE TABLE idx_opportunities_rt (canonical_id string attribute, slug string attribute, title text indexed, company text indexed, description text indexed stored, location_text text indexed, category string attribute, country string attribute, language string attribute, remote_type string attribute, employment_type string attribute, seniority string attribute, salary_min uint, salary_max uint, currency string attribute, quality_score float, is_featured bool, posted_at timestamp, last_seen_at timestamp, expires_at timestamp, status string attribute, embedding float_vector knn_type='hnsw' knn_dims='1536' hnsw_similarity='COSINE', embedding_model string attribute)`
 
-// Apply creates idx_jobs_rt if it does not exist. Idempotent — on
+// Apply creates idx_opportunities_rt if it does not exist. Idempotent — on
 // re-run it swallows Manticore's "table already exists" error which
 // the HTTP /sql endpoint returns as an error JSON payload.
 func Apply(ctx context.Context, c *Client) error {
@@ -594,7 +594,7 @@ Expected: `PASS` (takes ~30 s on first run while the Manticore image downloads).
 
 ```bash
 git add pkg/searchindex/schema.go pkg/searchindex/schema_test.go
-git commit -m "feat(searchindex): idx_jobs_rt DDL + idempotent Apply"
+git commit -m "feat(searchindex): idx_opportunities_rt DDL + idempotent Apply"
 ```
 
 ---
@@ -945,9 +945,9 @@ import (
 	"fmt"
 	"hash/fnv"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/searchindex"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 // Indexer converts Parquet-decoded event rows into Manticore writes
@@ -979,7 +979,7 @@ func (i *Indexer) ApplyCanonicalsParquet(ctx context.Context, body []byte) (int,
 	return n, nil
 }
 
-// replaceOne issues a single /replace against idx_jobs_rt. The row
+// replaceOne issues a single /replace against idx_opportunities_rt. The row
 // id is a stable hash of canonical_id — Manticore requires a bigint
 // pk and keying on hash(canonical_id) gives us idempotent upsert.
 func (i *Indexer) replaceOne(ctx context.Context, r eventsv1.CanonicalUpsertedV1) error {
@@ -1006,11 +1006,11 @@ func (i *Indexer) replaceOne(ctx context.Context, r eventsv1.CanonicalUpsertedV1
 		"expires_at":      r.ExpiresAt.Unix(),
 		"status":          r.Status,
 	}
-	return i.client.Replace(ctx, "idx_jobs_rt", hashID(r.CanonicalID), doc)
+	return i.client.Replace(ctx, "idx_opportunities_rt", hashID(r.CanonicalID), doc)
 }
 
 // ApplyEmbeddingsParquet updates the `embedding` attribute on
-// idx_jobs_rt rows by canonical_id. If the row doesn't exist yet
+// idx_opportunities_rt rows by canonical_id. If the row doesn't exist yet
 // (embeddings can arrive slightly ahead of canonical for a fresh
 // job), Manticore's /update returns updated=0 and the call is
 // a no-op — the next canonical event will land the base row, and
@@ -1027,7 +1027,7 @@ func (i *Indexer) ApplyEmbeddingsParquet(ctx context.Context, body []byte) (int,
 			"embedding":       r.Vector,
 			"embedding_model": r.ModelVersion,
 		}
-		if err := i.client.Update(ctx, "idx_jobs_rt", id, doc); err != nil {
+		if err := i.client.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
 			return n, fmt.Errorf("indexer: update embedding: %w", err)
 		}
 		n++
@@ -1079,8 +1079,8 @@ import (
 
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/eventlog"
+	"stawi.opportunities/pkg/repository"
 )
 
 // Service drives the materializer's main poll loop. Each tick it
@@ -1219,7 +1219,7 @@ Create `apps/materializer/cmd/main.go`:
 // apps/materializer/cmd — entrypoint for the event-log → Manticore
 // materializer. The pod polls R2 every 15 s for new Parquet files
 // under tracked prefixes and upserts their rows into Manticore's
-// idx_jobs_rt RT index.
+// idx_opportunities_rt RT index.
 package main
 
 import (
@@ -1229,12 +1229,12 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/repository"
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/eventlog"
+	"stawi.opportunities/pkg/repository"
+	"stawi.opportunities/pkg/searchindex"
 
-	matcfg "stawi.jobs/apps/materializer/config"
-	matsvc "stawi.jobs/apps/materializer/service"
+	matcfg "stawi.opportunities/apps/materializer/config"
+	matsvc "stawi.opportunities/apps/materializer/service"
 )
 
 func main() {
@@ -1320,7 +1320,7 @@ git commit -m "feat(materializer): entrypoint wiring R2 + Manticore + watermarks
 
 - [ ] **Step 1: Write the test**
 
-Create `apps/materializer/service/service_test.go`. The test stands up MinIO + Manticore, seeds a Parquet file under `canonicals/` manually, runs one poll tick, and asserts the Manticore `idx_jobs_rt` table contains the expected row.
+Create `apps/materializer/service/service_test.go`. The test stands up MinIO + Manticore, seeds a Parquet file under `canonicals/` manually, runs one poll tick, and asserts the Manticore `idx_opportunities_rt` table contains the expected row.
 
 For the Postgres watermark: use the existing `glebarez/sqlite` driver for tests (already in go.mod) to avoid a Postgres container just for a tiny table. Open an in-memory SQLite, `AutoMigrate` the `MaterializerWatermark` model.
 
@@ -1338,12 +1338,12 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/minio"
 	"gorm.io/gorm"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/repository"
-	"stawi.jobs/pkg/searchindex"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
+	"stawi.opportunities/pkg/repository"
+	"stawi.opportunities/pkg/searchindex"
 
-	matsvc "stawi.jobs/apps/materializer/service"
+	matsvc "stawi.opportunities/apps/materializer/service"
 )
 
 func TestMaterializerE2E(t *testing.T) {
@@ -1362,7 +1362,7 @@ func TestMaterializerE2E(t *testing.T) {
 		AccountID:       "test",
 		AccessKeyID:     mc.Username,
 		SecretAccessKey: mc.Password,
-		Bucket:          "stawi-jobs-log-mat",
+		Bucket:          "opportunities-log-mat",
 		Endpoint:        "http://" + endpoint,
 		UsePathStyle:    true,
 	}
@@ -1437,7 +1437,7 @@ func TestMaterializerE2E(t *testing.T) {
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		raw, qerr := mtc.Search(ctx, map[string]any{
-			"index": "idx_jobs_rt",
+			"index": "idx_opportunities_rt",
 			"query": map[string]any{
 				"equals": map[string]any{"country": "KE"},
 			},
@@ -1525,7 +1525,7 @@ import (
 	"strconv"
 	"strings"
 
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 // searchV2Hit is the JSON shape returned by /api/v2/search. Kept
@@ -1561,7 +1561,7 @@ type manticoreSearchResponse struct {
 }
 
 // searchV2Handler returns an HTTP handler that queries Manticore's
-// idx_jobs_rt via the /search JSON endpoint. Params: q (text,
+// idx_opportunities_rt via the /search JSON endpoint. Params: q (text,
 // optional), country (alpha-2), remote_type, category, limit
 // (default 20, max 50). Always filters status='active'.
 //
@@ -1606,7 +1606,7 @@ func searchV2Handler(client *searchindex.Client) http.HandlerFunc {
 		}
 
 		query := map[string]any{
-			"index": "idx_jobs_rt",
+			"index": "idx_opportunities_rt",
 			"query": map[string]any{"bool": boolQ},
 			"sort":  []any{map[string]any{"posted_at": "desc"}},
 			"limit": limit,
@@ -1665,7 +1665,7 @@ if manticoreClient != nil {
 }
 ```
 
-3. Add the import for `stawi.jobs/pkg/searchindex` at the top.
+3. Add the import for `stawi.opportunities/pkg/searchindex` at the top.
 
 The conditional registration means the new endpoint only exists when `MANTICORE_URL` is set, so existing deploys that haven't provisioned Manticore yet continue to work unchanged.
 
@@ -1708,7 +1708,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 func startManticoreForAPITest(t *testing.T, ctx context.Context) (string, func()) {
@@ -1772,7 +1772,7 @@ func TestSearchV2HandlerReturnsManticoreRows(t *testing.T) {
 		"expires_at":      now + 86400,
 		"status":          "active",
 	}
-	if err := client.Replace(ctx, "idx_jobs_rt", 1, doc); err != nil {
+	if err := client.Replace(ctx, "idx_opportunities_rt", 1, doc); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 

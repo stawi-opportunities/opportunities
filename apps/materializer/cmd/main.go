@@ -2,7 +2,7 @@
 //
 // The materializer is now a pure Frame subscriber: it registers one handler
 // per topic (canonicals, canonicals_expired, translations, embeddings) and
-// upserts documents into Manticore's idx_jobs_rt RT index as events arrive.
+// upserts documents into Manticore's idx_opportunities_rt RT index as events arrive.
 //
 // There is no longer an Iceberg catalog scan, no watermark polling, and no
 // leader-election lease — Frame's NATS JetStream consumer group handles all
@@ -17,11 +17,11 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/searchindex"
-	"stawi.jobs/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 
-	matcfg "stawi.jobs/apps/materializer/config"
-	matsvc "stawi.jobs/apps/materializer/service"
+	matcfg "github.com/stawi-opportunities/opportunities/apps/materializer/config"
+	matsvc "github.com/stawi-opportunities/opportunities/apps/materializer/service"
 )
 
 func main() {

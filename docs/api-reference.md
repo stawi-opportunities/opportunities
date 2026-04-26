@@ -1,21 +1,21 @@
 # Stawi Jobs — API Reference
 
-Comprehensive reference for every HTTP, Connect RPC, NATS, and OpenObserve surface that stawi-jobs services expose or consume.
+Comprehensive reference for every HTTP, Connect RPC, NATS, and OpenObserve surface that opportunities services expose or consume.
 
 ## Contents
 
 - [Services overview](#services-overview)
-- [stawi-jobs-api](#stawi-jobs-api): public search, job detail, view beacon
+- [opportunities-api](#opportunities-api): public search, job detail, view beacon
   - [Public search & discovery](#public-search--discovery)
   - [View ingest & attribution](#view-ingest--attribution)
   - [Admin: republish & backfill](#admin-republish--backfill)
-- [stawi-jobs-candidates](#stawi-jobs-candidates): profile, saved jobs, CV scoring, notifications
+- [opportunities-candidates](#opportunities-candidates): profile, saved jobs, CV scoring, notifications
   - [Authenticated profile](#authenticated-profile)
   - [Saved jobs](#saved-jobs)
   - [CV Strength Report](#cv-strength-report)
   - [Internal signals](#internal-signals)
   - [Webhooks](#webhooks)
-- [stawi-jobs-crawler](#stawi-jobs-crawler): source lifecycle, dispatch, retention
+- [opportunities-crawler](#opportunities-crawler): source lifecycle, dispatch, retention
 - [redirect service (service-files)](#redirect-service): /r/{slug} + Connect RPC
 - [JobSnapshot wire format](#jobsnapshot-wire-format) — public R2 contract
 - [NATS events](#nats-events) — internal pipeline subjects
@@ -30,17 +30,17 @@ Comprehensive reference for every HTTP, Connect RPC, NATS, and OpenObserve surfa
 
 | Service | Port | Public host | Image |
 |---|---|---|---|
-| stawi-jobs-api | `:8082` | `api.stawi.org/jobs` | `ghcr.io/antinvestor/stawi-jobs-api` |
-| stawi-jobs-candidates | `:8080` | `api.stawi.org` | `ghcr.io/antinvestor/stawi-jobs-candidates` |
-| stawi-jobs-crawler | `:8080` | cluster-internal | `ghcr.io/antinvestor/stawi-jobs-crawler` |
+| opportunities-api | `:8082` | `api.stawi.org/jobs` | `ghcr.io/antinvestor/opportunities-api` |
+| opportunities-candidates | `:8080` | `api.stawi.org` | `ghcr.io/antinvestor/opportunities-candidates` |
+| opportunities-crawler | `:8080` | cluster-internal | `ghcr.io/antinvestor/opportunities-crawler` |
 | redirect (service-files) | `:8080` | `r.stawi.org` | `ghcr.io/antinvestor/service-files-redirect` |
 | jobs.stawi.org | — | CF Pages | static Hugo + Preact islands |
 
-Public traffic enters through the Envoy Gateway on `api.stawi.org` (Connect-auth middleware attaches JWT claims). Internal service-to-service calls go through cluster DNS (`*.stawi-jobs.svc`). Admin endpoints are reachable only from inside the cluster.
+Public traffic enters through the Envoy Gateway on `api.stawi.org` (Connect-auth middleware attaches JWT claims). Internal service-to-service calls go through cluster DNS (`*.opportunities.svc`). Admin endpoints are reachable only from inside the cluster.
 
 ---
 
-## stawi-jobs-api
+## opportunities-api
 
 Base: `https://api.stawi.org/jobs`
 
@@ -165,7 +165,7 @@ Prefix variants intended for the frontend's React islands (they expect `/api/*` 
 
 The browser fires this via `navigator.sendBeacon` on `JobDetail` mount. It serves two purposes:
 
-1. **Server-side attribution**: writes a `stawi_jobs_views` row to OpenObserve with `profile_id` pulled from the JWT, `ip_hash` (SHA-256 of CF-Connecting-IP), CF-IPCountry, User-Agent, Referer.
+1. **Server-side attribution**: writes a `opportunities_views` row to OpenObserve with `profile_id` pulled from the JWT, `ip_hash` (SHA-256 of CF-Connecting-IP), CF-IPCountry, User-Agent, Referer.
 2. **No liveness probe**: destination URL liveness lives entirely in the redirect service now. This endpoint is pure analytics.
 
 Request:
@@ -204,7 +204,7 @@ Response `202 Accepted`, job runs asynchronously.
 
 ---
 
-## stawi-jobs-candidates
+## opportunities-candidates
 
 Base: `https://api.stawi.org`
 
@@ -413,7 +413,7 @@ Updates the candidate's `subscription` tier and `auto_apply` flag. Signed by ser
 
 ---
 
-## stawi-jobs-crawler
+## opportunities-crawler
 
 Cluster-internal. Admin endpoints protected by the `SecurityManager` when configured; Trustage workflows call them over internal cluster DNS.
 
@@ -494,15 +494,15 @@ Resolve a tracked link. Happy path:
 
 1. Look up the Link by slug (cache-first, then DB).
 2. If `State != ACTIVE` → render the **dead-link page** (410 Gone with `X-Robots-Tag: noindex, nofollow`).
-3. Record the Click asynchronously (batched to DB, emits `stawi_jobs_applies` event to OpenObserve).
+3. Record the Click asynchronously (batched to DB, emits `opportunities_applies` event to OpenObserve).
 4. Fire a throttled destination-URL probe (background goroutine, 15-min throttle per link).
 5. 302 redirect to the destination URL with `Cache-Control: no-store`.
 
 On repeated probe failures (404/410 terminal, or 3 consecutive 5xx), the handler:
 - Flips `LinkState = EXPIRED`.
 - Invalidates the link cache so the next hit sees the dead-link page.
-- POSTs to every URL in `LINK_EXPIRED_WEBHOOKS` (stawi-jobs-candidates consumes this).
-- Emits `redirect_probe` event to `stawi_jobs_events` in OpenObserve.
+- POSTs to every URL in `LINK_EXPIRED_WEBHOOKS` (opportunities-candidates consumes this).
+- Emits `redirect_probe` event to `opportunities_events` in OpenObserve.
 
 ### Connect RPC: `redirect.v1.RedirectService`
 
@@ -510,7 +510,7 @@ Authenticated via OIDC interceptors — only internal service accounts.
 
 | RPC | Purpose |
 |---|---|
-| `CreateLink` | Mint a new tracked link. stawi-jobs-crawler calls this at publish time with `affiliate_id = "canonical_job_<id>"`. |
+| `CreateLink` | Mint a new tracked link. opportunities-crawler calls this at publish time with `affiliate_id = "canonical_job_<id>"`. |
 | `GetLink` | Fetch link metadata by ID. |
 | `UpdateLink` | Change state (ACTIVE / PAUSED / EXPIRED / DELETED), destination URL, or metadata. |
 | `DeleteLink` | Soft-delete; historical clicks remain queryable. |
@@ -584,9 +584,9 @@ Frontend fetcher: `ui/app/src/api/snapshot.ts`. The `fetchSnapshot(slug, lang)` 
 
 JetStream subjects the internal pipeline uses. All payloads are JSON.
 
-### Stream `svc_stawi_jobs_events`
+### Stream `svc_opportunities_events`
 
-Subject: `svc.stawi-jobs.events.>`. Retention: workqueue (exactly-once). MaxAge: 24h.
+Subject: `svc.opportunities.events.>`. Retention: workqueue (exactly-once). MaxAge: 24h.
 
 | Event | Payload | Emitter → Consumer |
 |---|---|---|
@@ -600,9 +600,9 @@ Subject: `svc.stawi-jobs.events.>`. Retention: workqueue (exactly-once). MaxAge:
 | `job.ready` | `{canonical_job_id}` | canonical → publish |
 | `job.published` | `{canonical_job_id, slug, source_lang, r2_version}` | publish → translate |
 
-### Stream `svc_stawi_jobs_candidates`
+### Stream `svc_opportunities_candidates`
 
-Subject: `svc.stawi-jobs.candidates.>`. Retention: workqueue. MaxAge: 24h.
+Subject: `svc.opportunities.candidates.>`. Retention: workqueue. MaxAge: 24h.
 
 | Event | Payload | Purpose |
 |---|---|---|
@@ -619,9 +619,9 @@ Currently used only for internal redirect-service queue work.
 
 ## OpenObserve streams
 
-Writes go through the shared `ANALYTICS_*` credentials (Vault: `antinvestor/stawi-jobs/common/analytics-credentials`). Ingest endpoint inside the cluster: `http://openobserve-openobserve-standalone.telemetry.svc:5080/api/default/<stream>/_json`.
+Writes go through the shared `ANALYTICS_*` credentials (Vault: `antinvestor/opportunities/common/analytics-credentials`). Ingest endpoint inside the cluster: `http://openobserve-openobserve-standalone.telemetry.svc:5080/api/default/<stream>/_json`.
 
-### `stawi_jobs_views`
+### `opportunities_views`
 
 Every page-view beacon + every inactive-link hit. Fields:
 
@@ -637,14 +637,14 @@ cf_country       CF-IPCountry
 cf_ray           CF-Ray
 ```
 
-### `stawi_jobs_applies`
+### `opportunities_applies`
 
 Every `/r/{slug}` redirect and every click on an inactive link. Fields:
 
 ```
 event                "redirect" | "link_inactive"
 link_id              redirect-service link UUID
-affiliate_id         "canonical_job_<id>" for stawi-jobs
+affiliate_id         "canonical_job_<id>" for opportunities
 slug                 redirect slug
 campaign / source / medium
 ip_address           raw IP (internal, not hashed)
@@ -652,7 +652,7 @@ user_agent / referer
 cf_country / cf_ray
 ```
 
-### `stawi_jobs_events`
+### `opportunities_events`
 
 Internal pipeline telemetry:
 
@@ -699,7 +699,7 @@ Every authenticated endpoint expects an RS256-signed JWT in `Authorization: Bear
 
 Key claims:
 - `sub`: the profile ID (matches `profile_profiles.id` in the profile service)
-- `aud`: `stawi_jobs_candidates` or `stawi_jobs_crawler` depending on service
+- `aud`: `opportunities_candidates` or `opportunities_crawler` depending on service
 - `iss`: `https://oauth2.stawi.org`
 - `exp`: expiry
 
@@ -759,7 +759,7 @@ Services expose Connect errors (mapped from gRPC codes):
 
 ## Client SDKs
 
-Go clients live in `stawi.jobs/pkg/services/`:
+Go clients live in `stawi.opportunities/pkg/services/`:
 
 - `services.RedirectClient` — `CreateLink`, `GetLink`, `UpdateLink`, `ExpireLink`.
 - `services.CreateTrackedLink(ctx, client, destinationURL, candidateID, campaign)` — thin wrapper for the apply-URL flow.
@@ -825,8 +825,8 @@ curl -H "Authorization: Bearer $TOKEN" 'https://api.stawi.org/candidates/cv/scor
 ### Fire a manual crawl dispatch (cluster-internal)
 
 ```bash
-kubectl run curl -n stawi-jobs --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -fsS -XPOST 'http://stawi-jobs-crawler.stawi-jobs.svc/admin/crawl/dispatch-due'
+kubectl run curl -n opportunities --image=curlimages/curl --rm -it --restart=Never -- \
+  curl -fsS -XPOST 'http://opportunities-crawler.opportunities.svc/admin/crawl/dispatch-due'
 # → {"ok":true,"considered":27,"dispatched":27}
 ```
 

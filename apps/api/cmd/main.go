@@ -17,9 +17,9 @@ import (
 	env "github.com/caarlos0/env/v11"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/analytics"
-	"stawi.jobs/pkg/publish"
-	"stawi.jobs/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/analytics"
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 type apiConfig struct {
@@ -28,7 +28,7 @@ type apiConfig struct {
 	R2AccountID       string  `env:"R2_ACCOUNT_ID"        envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID"     envDefault:""`
 	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string  `env:"R2_BUCKET"            envDefault:"stawi-jobs-content"`
+	R2Bucket          string  `env:"R2_BUCKET"            envDefault:"opportunities-content"`
 	R2Endpoint        string  `env:"R2_ENDPOINT"          envDefault:""`
 	R2Region          string  `env:"R2_REGION"            envDefault:"auto"`
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL"   envDefault:""`
@@ -113,7 +113,7 @@ func main() {
 	mux.HandleFunc("GET /stats", v2StatsHandler(jm))
 	mux.HandleFunc("GET /search", v2SearchHandler(jm))
 
-	// Hugo snapshot publishing — sources from Manticore idx_jobs_rt.
+	// Hugo snapshot publishing — sources from Manticore idx_opportunities_rt.
 	if r2Publisher != nil {
 		mux.HandleFunc("POST /admin/backfill",
 			backfillManticoreHandler(jm, r2Publisher, cfg.PublishMinQuality))
@@ -143,7 +143,7 @@ func main() {
 			if profileID := profileIDFromJWT(req); profileID != "" {
 				evt["profile_id"] = profileID
 			}
-			analyticsClient.Send(req.Context(), "stawi_jobs_views", evt)
+			analyticsClient.Send(req.Context(), "opportunities_views", evt)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})

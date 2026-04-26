@@ -5,7 +5,7 @@ import "time"
 // CanonicalUpsertedV1 is the event emitted by the canonical-merge
 // stage once a cluster of variants has been merged into a single
 // user-facing job row. Phase 2 consumes this event in the materializer
-// to populate idx_jobs_rt — the Manticore index that backs search,
+// to populate idx_opportunities_rt — the Manticore index that backs search,
 // browse, and detail.
 //
 // Fields mirror the design doc (§5.2 canonicals partition). Phase 2
@@ -45,7 +45,7 @@ type CanonicalUpsertedV1 struct {
 
 // CanonicalExpiredV1 is emitted by the retention sweep when a
 // canonical's apply link is determined dead or its expires_at has
-// passed. The materializer flips status to 'expired' on idx_jobs_rt.
+// passed. The materializer flips status to 'expired' on idx_opportunities_rt.
 type CanonicalExpiredV1 struct {
 	CanonicalID string    `json:"canonical_id" parquet:"canonical_id"`
 	ClusterID   string    `json:"cluster_id"   parquet:"cluster_id,optional"`
@@ -58,7 +58,7 @@ type CanonicalExpiredV1 struct {
 
 // EmbeddingV1 is the event emitted by the embedder stage once a
 // canonical job's semantic vector has been computed. Materializer
-// updates the `embedding` HNSW attribute on idx_jobs_rt; Phase 3+
+// updates the `embedding` HNSW attribute on idx_opportunities_rt; Phase 3+
 // adds hybrid BM25+KNN queries to /api/v2/search.
 type EmbeddingV1 struct {
 	CanonicalID  string    `json:"canonical_id"  parquet:"canonical_id"`

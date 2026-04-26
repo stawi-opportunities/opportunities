@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // TestExternalToVariant verifies the main conversion: trimming, company

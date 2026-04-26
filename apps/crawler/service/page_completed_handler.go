@@ -9,8 +9,8 @@ import (
 
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // SourceHealthRepo is the slice of SourceRepository used to reconcile

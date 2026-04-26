@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"stawi.jobs/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/kv"
 )
 
 // newMiniredisClient starts an in-memory Redis server and returns a go-redis

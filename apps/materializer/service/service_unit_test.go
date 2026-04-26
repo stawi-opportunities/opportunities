@@ -22,8 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	matsvc "stawi.jobs/apps/materializer/service"
-	"stawi.jobs/pkg/searchindex"
+	matsvc "github.com/stawi-opportunities/opportunities/apps/materializer/service"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 // ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ func newStubManticore(t *testing.T) (client *searchindex.Client, bodies *[][]byt
 func TestBulkUpserter_FlushEmpty(t *testing.T) {
 	c, bodies, stop := newStubManticore(t)
 	defer stop()
-	up := matsvc.NewBulkUpserter(c, "idx_jobs_rt", 500)
+	up := matsvc.NewBulkUpserter(c, "idx_opportunities_rt", 500)
 	require.NoError(t, up.Flush(context.Background()))
 	assert.Empty(t, *bodies, "empty flush should not hit /bulk")
 }
@@ -59,7 +59,7 @@ func TestBulkUpserter_AutoFlushOnMaxRows(t *testing.T) {
 	c, bodies, stop := newStubManticore(t)
 	defer stop()
 	// maxRows = 2 → flush fires on second Add.
-	up := matsvc.NewBulkUpserter(c, "idx_jobs_rt", 2)
+	up := matsvc.NewBulkUpserter(c, "idx_opportunities_rt", 2)
 	ctx := context.Background()
 
 	require.NoError(t, up.Add(ctx, 1, map[string]any{"title": "a"}))
@@ -72,7 +72,7 @@ func TestBulkUpserter_AutoFlushOnMaxRows(t *testing.T) {
 func TestBulkUpserter_ExplicitFlush(t *testing.T) {
 	c, bodies, stop := newStubManticore(t)
 	defer stop()
-	up := matsvc.NewBulkUpserter(c, "idx_jobs_rt", 500)
+	up := matsvc.NewBulkUpserter(c, "idx_opportunities_rt", 500)
 	ctx := context.Background()
 
 	require.NoError(t, up.Add(ctx, 1, map[string]any{"title": "job one"}))

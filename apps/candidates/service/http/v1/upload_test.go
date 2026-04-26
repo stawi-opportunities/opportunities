@@ -15,8 +15,8 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/frametests"
 
-	"stawi.jobs/pkg/archive"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // uploadCollector captures emitted CVUploadedV1 envelopes.

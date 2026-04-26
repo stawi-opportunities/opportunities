@@ -1,18 +1,18 @@
 //go:build integration
 
-// e2e_test.go — tighter-scope integration test for stawi.jobs.
+// e2e_test.go — tighter-scope integration test for stawi-opportunities/opportunities.
 //
 // # Scope
 //
 // This test targets the Frame→materializer→Manticore path only:
 //
 //  1. Start a real Manticore container (testcontainers).
-//  2. Apply idx_jobs_rt schema via pkg/searchindex.Apply.
+//  2. Apply idx_opportunities_rt schema via pkg/searchindex.Apply.
 //  3. Publish one TopicCanonicalsUpserted event via the materializer's
 //     CanonicalUpsertHandler directly (no full NATS round-trip — see NOTE).
-//  4. Assert Manticore idx_jobs_rt has one row with the expected slug.
+//  4. Assert Manticore idx_opportunities_rt has one row with the expected slug.
 //
-// NOTE: Full NATS-based wiring requires the stawi-jobs NATS JetStream
+// NOTE: Full NATS-based wiring requires the opportunities NATS JetStream
 // stream + consumer to be pre-created by the Frame pub/sub layer.
 // That setup is non-trivial in a test because Frame/NATS requires a
 // specific JetStream stream configuration that matches the production
@@ -45,9 +45,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/searchindex"
-	"stawi.jobs/tests/integration/testhelpers"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/tests/integration/testhelpers"
 )
 
 // TestMaterializerManticoreE2E exercises the canonical-upsert path
@@ -79,8 +79,8 @@ func TestMaterializerManticoreE2E(t *testing.T) {
 	// Retry Apply briefly — Manticore may still be warming up.
 	require.Eventually(t, func() bool {
 		return searchindex.Apply(ctx, mc) == nil
-	}, 30*time.Second, 2*time.Second, "idx_jobs_rt schema not applied within 30s")
-	t.Log("idx_jobs_rt schema applied")
+	}, 30*time.Second, 2*time.Second, "idx_opportunities_rt schema not applied within 30s")
+	t.Log("idx_opportunities_rt schema applied")
 
 	// --- 3. Build a canonical event and call Replace directly ---
 	// This is the same path taken by CanonicalUpsertHandler.Execute.
@@ -102,8 +102,8 @@ func TestMaterializerManticoreE2E(t *testing.T) {
 
 	doc := canonicalToDoc(canonical)
 	id := manticoreHashID(canonical.CanonicalID)
-	err = mc.Replace(ctx, "idx_jobs_rt", id, doc)
-	require.NoError(t, err, "Replace into idx_jobs_rt")
+	err = mc.Replace(ctx, "idx_opportunities_rt", id, doc)
+	require.NoError(t, err, "Replace into idx_opportunities_rt")
 	t.Logf("Inserted canonical_id=%s as Manticore row id=%d", canonical.CanonicalID, id)
 
 	// --- 4. Assert the row is present ---
@@ -117,15 +117,15 @@ func TestMaterializerManticoreE2E(t *testing.T) {
 		}
 		rowCount = rows
 		return rows >= 1
-	}, 10*time.Second, 500*time.Millisecond, "expected ≥1 row in idx_jobs_rt")
+	}, 10*time.Second, 500*time.Millisecond, "expected ≥1 row in idx_opportunities_rt")
 
-	assert.Equal(t, 1, rowCount, "idx_jobs_rt row count")
+	assert.Equal(t, 1, rowCount, "idx_opportunities_rt row count")
 
 	// Verify slug field via search
 	slugResults, err := manticoreSearchSlug(ctx, mc, canonical.Slug)
 	require.NoError(t, err, "search for slug")
 	assert.NotEmpty(t, slugResults, "search by slug should return the inserted row")
-	t.Logf("E2E test passed: %d row(s) in idx_jobs_rt, slug search returned %d result(s)",
+	t.Logf("E2E test passed: %d row(s) in idx_opportunities_rt, slug search returned %d result(s)",
 		rowCount, len(slugResults))
 }
 
@@ -210,9 +210,9 @@ func fnv64a(s string) uint64 {
 	return h
 }
 
-// manticoreCountRows issues SELECT COUNT(*) FROM idx_jobs_rt.
+// manticoreCountRows issues SELECT COUNT(*) FROM idx_opportunities_rt.
 func manticoreCountRows(ctx context.Context, mc *searchindex.Client) (int, error) {
-	resp, err := mc.SQL(ctx, "SELECT COUNT(*) FROM idx_jobs_rt")
+	resp, err := mc.SQL(ctx, "SELECT COUNT(*) FROM idx_opportunities_rt")
 	if err != nil {
 		return 0, err
 	}
@@ -235,7 +235,7 @@ func manticoreCountRows(ctx context.Context, mc *searchindex.Client) (int, error
 
 // manticoreSearchSlug does a simple attribute match on the slug field.
 func manticoreSearchSlug(ctx context.Context, mc *searchindex.Client, slug string) ([]map[string]json.Number, error) {
-	q := fmt.Sprintf("SELECT canonical_id FROM idx_jobs_rt WHERE slug = '%s'", slug)
+	q := fmt.Sprintf("SELECT canonical_id FROM idx_opportunities_rt WHERE slug = '%s'", slug)
 	resp, err := mc.SQL(ctx, q)
 	if err != nil {
 		return nil, err

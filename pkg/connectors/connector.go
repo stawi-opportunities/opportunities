@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"stawi.jobs/pkg/content"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // CrawlIterator is the page-level iterator returned by Connector.Crawl.

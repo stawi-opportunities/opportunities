@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"stawi.jobs/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 type job struct {
@@ -44,7 +44,7 @@ func newJobsManticore(c *searchindex.Client) *jobsManticore {
 
 func (j *jobsManticore) GetByID(ctx context.Context, id string) (*job, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{
 			"bool": map[string]any{
 				"filter": []map[string]any{
@@ -72,7 +72,7 @@ func (j *jobsManticore) Count(ctx context.Context, filter []map[string]any) (int
 	f := []map[string]any{{"equals": map[string]any{"status": "active"}}}
 	f = append(f, filter...)
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": f}},
 		"limit": 0,
 	}
@@ -88,7 +88,7 @@ func (j *jobsManticore) Top(ctx context.Context, minScore float64, limit int) ([
 		}})
 	}
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": f}},
 		"sort":  []any{map[string]any{"quality_score": "desc"}, map[string]any{"posted_at": "desc"}},
 		"limit": limit,
@@ -99,7 +99,7 @@ func (j *jobsManticore) Top(ctx context.Context, minScore float64, limit int) ([
 
 func (j *jobsManticore) Latest(ctx context.Context, limit int) ([]job, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": []map[string]any{
 			{"equals": map[string]any{"status": "active"}},
 		}}},
@@ -112,7 +112,7 @@ func (j *jobsManticore) Latest(ctx context.Context, limit int) ([]job, error) {
 
 func (j *jobsManticore) Facets(ctx context.Context) (map[string]map[string]int, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": []map[string]any{
 			{"equals": map[string]any{"status": "active"}},
 		}}},
@@ -155,7 +155,7 @@ func (j *jobsManticore) Facets(ctx context.Context) (map[string]map[string]int, 
 
 func (j *jobsManticore) searchFiltered(ctx context.Context, filter []map[string]any, limit int, sortField string) ([]job, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": filter}},
 		"sort":  []any{map[string]any{sortField: "desc"}},
 		"limit": limit,

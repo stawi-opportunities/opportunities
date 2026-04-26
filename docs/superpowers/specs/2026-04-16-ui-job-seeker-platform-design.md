@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Hugo-based static site with Alpine.js SPA islands that serves as the primary user-facing platform for stawi.jobs. Jobs are rendered as static HTML from generated data, while dynamic features (search, onboarding, dashboard, auth) are Alpine.js components embedded in Hugo page shells. Payments are handled via antinvestor/service-payment which integrates Polar.sh (cards/international) and M-PESA/MTN/Airtel (mobile money for East Africa).
+A Hugo-based static site with Alpine.js SPA islands that serves as the primary user-facing platform for stawi.opportunities. Jobs are rendered as static HTML from generated data, while dynamic features (search, onboarding, dashboard, auth) are Alpine.js components embedded in Hugo page shells. Payments are handled via antinvestor/service-payment which integrates Polar.sh (cards/international) and M-PESA/MTN/Airtel (mobile money for East Africa).
 
 ## Goals
 
@@ -162,7 +162,7 @@ Map from existing domain fields to display categories:
 - Same card format as `/jobs/`
 
 #### Static Content Pages
-- `/about/` — About stawi.jobs
+- `/about/` — About stawi.opportunities
 - `/pricing/` — Subscription plans
 - `/terms/` — Terms of service
 - `/privacy/` — Privacy policy
@@ -299,7 +299,7 @@ Token refresh: Alpine.js interceptor checks token expiry before each API call; i
 
 ### Identity Model
 
-**Principle: domain models never store identity data.** A user's name, avatar URL, and contacts are not duplicated into `CandidateProfile` or any other stawi.jobs table. Identity is resolved at runtime from two sources:
+**Principle: domain models never store identity data.** A user's name, avatar URL, and contacts are not duplicated into `CandidateProfile` or any other stawi.opportunities table. Identity is resolved at runtime from two sources:
 
 1. **JWT claims** (via Frame's `security.ClaimsFromContext(ctx)`) provide IDs:
    - `GetProfileID()` — the user's unique ID (JWT `sub` claim)
@@ -316,7 +316,7 @@ Token refresh: Alpine.js interceptor checks token expiry before each API call; i
 
 **How this works in practice:**
 
-- **Backend**: All stawi.jobs domain models link to the external profile via `ProfileID string` (the JWT `sub` claim). When a handler needs the user's name or avatar (e.g., for a response), it calls service-profile. No identity data is persisted locally.
+- **Backend**: All stawi.opportunities domain models link to the external profile via `ProfileID string` (the JWT `sub` claim). When a handler needs the user's name or avatar (e.g., for a response), it calls service-profile. No identity data is persisted locally.
 - **Frontend**: After OIDC login, Alpine.js calls a `/me` endpoint on the candidates service. That endpoint reads `claims.GetProfileID()`, calls service-profile, and returns `{ name, avatar_url, email, roles }`. This is cached in the Alpine.js global store for the session.
 
 **For organizations/employers** (future sub-project): same pattern. An employer is an authenticated profile with a `tenant_id` claim. The organization's name, logo, and contacts come from service-profile scoped to that tenant.
@@ -363,7 +363,7 @@ Hugo partial `partials/auth-guard.html` wraps protected content:
 
 ### Integration Flow
 
-stawi.jobs integrates with service-payment via ConnectRPC (buf.build-generated Go client). A thin API proxy in the candidates service exposes payment actions to the frontend:
+stawi.opportunities integrates with service-payment via ConnectRPC (buf.build-generated Go client). A thin API proxy in the candidates service exposes payment actions to the frontend:
 
 **New endpoints on candidates service:**
 
@@ -649,7 +649,7 @@ ProfileID string `gorm:"type:varchar(255);uniqueIndex;not null" json:"profile_id
 **Add onboarding domain fields:**
 
 ```go
-// Job search preferences (domain-specific to stawi.jobs)
+// Job search preferences (domain-specific to stawi.opportunities)
 TargetJobTitle     string `gorm:"type:text" json:"target_job_title"`
 ExperienceLevel    string `gorm:"type:varchar(30)" json:"experience_level"`
 JobSearchStatus    string `gorm:"type:varchar(30)" json:"job_search_status"`
@@ -687,7 +687,7 @@ type SavedJob struct {
 
 ### New Endpoint: `GET /me`
 
-Returns the authenticated user's display identity + stawi.jobs domain state in one call:
+Returns the authenticated user's display identity + stawi.opportunities domain state in one call:
 
 ```json
 {

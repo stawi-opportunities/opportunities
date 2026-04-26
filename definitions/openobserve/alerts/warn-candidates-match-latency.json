@@ -1,6 +1,6 @@
 {
   "name": "warn-candidates-match-latency",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "warning",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/candidates-match-latency"
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/candidates-match-latency"
   },
   "description": "Candidate match p95 latency exceeds 30 seconds. Weekly digest emails and real-time match events will be delayed. Check candidate embedding retrieval and Manticore vector search performance.",
   "enabled": true

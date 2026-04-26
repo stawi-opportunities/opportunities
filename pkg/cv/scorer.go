@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"stawi.jobs/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 // Weights sum to 100. Changing these is a user-visible score

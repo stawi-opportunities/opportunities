@@ -70,7 +70,7 @@ var ArrowSchemaVariants = arrow.NewSchema([]arrow.Field{
 }, nil)
 
 // jobs.canonicals and jobs.canonicals_expired are NOT persisted to Iceberg.
-// Canonical body lives at s3://stawi-jobs-content/jobs/<slug>.json (R2-direct).
+// Canonical body lives at s3://opportunities-content/jobs/<slug>.json (R2-direct).
 // canonicals_expired is a Frame event only — the materializer subscribes directly.
 
 // --------------------------------------------------------------------
@@ -87,7 +87,7 @@ var ArrowSchemaEmbeddings = arrow.NewSchema([]arrow.Field{
 }, nil)
 
 // jobs.translations is NOT persisted to Iceberg.
-// Translated body lives at s3://stawi-jobs-content/jobs/<slug>/<lang>.json (R2-direct).
+// Translated body lives at s3://opportunities-content/jobs/<slug>/<lang>.json (R2-direct).
 
 // --------------------------------------------------------------------
 // jobs.published  (PublishedV1)

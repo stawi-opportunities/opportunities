@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rewire `apps/candidates` to be what the greenfield spec §4.2 / §6.2 says it is — a single binary owning the CV lifecycle via event-sourced subscriptions plus a Manticore-backed match endpoint. Upload persists text to R2 and emits `candidates.cv.uploaded.v1`; internal subscribers extract/score, improve, and embed; the match endpoint reads the candidate's embedding + preferences from R2 `*_current/` partitions and queries `idx_jobs_rt`. Trustage fires `matches.weekly_digest` and `cv.stale_nudge` against new admin endpoints. Ancillary HTTP endpoints on the current binary (registration, profile CRUD, billing webhooks, saved jobs, link-expired, inbound-email, forceMatch, getCVScore, rescoreCV, listMatches, viewMatch, listCandidates) are removed from `apps/candidates` — identity lives in the external Profile service, saved jobs move to `apps/api`, billing webhooks move to a dedicated billing app, and the rest become dead code that Phase 6 deletes from Postgres.
+**Goal:** Rewire `apps/candidates` to be what the greenfield spec §4.2 / §6.2 says it is — a single binary owning the CV lifecycle via event-sourced subscriptions plus a Manticore-backed match endpoint. Upload persists text to R2 and emits `candidates.cv.uploaded.v1`; internal subscribers extract/score, improve, and embed; the match endpoint reads the candidate's embedding + preferences from R2 `*_current/` partitions and queries `idx_opportunities_rt`. Trustage fires `matches.weekly_digest` and `cv.stale_nudge` against new admin endpoints. Ancillary HTTP endpoints on the current binary (registration, profile CRUD, billing webhooks, saved jobs, link-expired, inbound-email, forceMatch, getCVScore, rescoreCV, listMatches, viewMatch, listCandidates) are removed from `apps/candidates` — identity lives in the external Profile service, saved jobs move to `apps/api`, billing webhooks move to a dedicated billing app, and the rest become dead code that Phase 6 deletes from Postgres.
 
 **Architecture:** One `apps/candidates` binary with **three internal Frame subscriptions** (cv-extract, cv-improve, cv-embed) + **three HTTP endpoints** (`POST /candidates/cv/upload`, `POST /candidates/preferences`, `GET /candidates/match`) + **two Trustage admin endpoints** (`POST /_admin/matches/weekly_digest`, `POST /_admin/cv/stale_nudge`) + a minimal `GET /healthz`. The match endpoint uses a new `pkg/candidatestore` reader that lists `candidates_embeddings_current/` and `candidates_preferences_current/` partitions for the requested `candidate_id` and falls back to a short-lived Valkey cache. No CV, preferences, or embedding data lands in Postgres anywhere in this plan — the `candidates` row keeps only `{id, profile_id, status, subscription, created_at, updated_at}` per §5.5. Phase 6 drops the CV/preferences/embedding columns.
 
@@ -274,7 +274,7 @@ func TestMatchesReadyRoundTrip(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./pkg/events/v1/...
 ```
 
@@ -696,7 +696,7 @@ func collectionForTopic(topic string) string {
 - [ ] **Step 4: Build + run writer tests**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go build ./apps/writer/...
 go test ./apps/writer/... -count=1 -timeout 5m
 ```
@@ -738,8 +738,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/testcontainers/testcontainers-go/modules/minio"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 func TestReaderReturnsLatestEmbedding(t *testing.T) {
@@ -757,7 +757,7 @@ func TestReaderReturnsLatestEmbedding(t *testing.T) {
 		AccountID:       "test",
 		AccessKeyID:     mc.Username,
 		SecretAccessKey: mc.Password,
-		Bucket:          "stawi-jobs-log-cand",
+		Bucket:          "opportunities-log-cand",
 		Endpoint:        "http://" + endpoint,
 		UsePathStyle:    true,
 	}
@@ -806,7 +806,7 @@ func TestReaderReturnsErrNotFoundWhenNoEmbedding(t *testing.T) {
 
 	cfg := eventlog.R2Config{
 		AccountID: "test", AccessKeyID: mc.Username, SecretAccessKey: mc.Password,
-		Bucket: "stawi-jobs-log-empty", Endpoint: "http://" + endpoint, UsePathStyle: true,
+		Bucket: "opportunities-log-empty", Endpoint: "http://" + endpoint, UsePathStyle: true,
 	}
 	client := eventlog.NewClient(cfg)
 	if _, err := client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(cfg.Bucket)}); err != nil {
@@ -824,7 +824,7 @@ func TestReaderReturnsErrNotFoundWhenNoEmbedding(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./pkg/candidatestore/...
 ```
 
@@ -858,7 +858,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/parquet-go/parquet-go"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // ErrNotFound is returned when no embedding/preferences row exists
@@ -1062,8 +1062,8 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/frametests"
 
-	"stawi.jobs/pkg/archive"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/archive"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // uploadCollector captures emitted CVUploadedV1 envelopes.
@@ -1183,7 +1183,7 @@ func TestUploadHandlerRejectsMissingCandidateID(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./apps/candidates/service/http/v1/... -run TestUploadHandler
 ```
 
@@ -1211,8 +1211,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/archive"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/archive"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // TextExtractor abstracts plain-text extraction for PDF / DOCX bytes.
@@ -1399,7 +1399,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 type prefCollector struct {
@@ -1518,7 +1518,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // PreferencesHandler returns an http.HandlerFunc for:
@@ -1614,8 +1614,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
 )
 
 // fakeCVExtractor returns a canned CVFields.
@@ -1743,8 +1743,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
 )
 
 // CVExtractor abstracts extraction.Extractor.ExtractCV so tests can
@@ -1906,7 +1906,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // fakeFixGenerator returns a hard-coded slice of PriorityFix.
@@ -2010,7 +2010,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // PriorityFix mirrors cv.PriorityFix.
@@ -2148,7 +2148,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // fakeEmbedder returns a canned vector.
@@ -2272,7 +2272,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // Embedder abstracts extraction.Extractor.Embed.
@@ -2429,7 +2429,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // fakeCandidateStore implements the reader interface used by the match handler.
@@ -2582,7 +2582,7 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // CandidateStore is the read-only interface the match handler needs.
@@ -2786,7 +2786,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 type fakeCandidateLister struct {
@@ -2857,7 +2857,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 type fakeStaleLister struct {
@@ -3029,7 +3029,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // StaleCandidate is one candidate whose most recent CV upload is older
@@ -3166,13 +3166,13 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/frametests"
 
-	"stawi.jobs/pkg/archive"
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	"stawi.opportunities/pkg/archive"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
 
-	adminv1 "stawi.jobs/apps/candidates/service/admin/v1"
-	eventv1 "stawi.jobs/apps/candidates/service/events/v1"
-	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
+	adminv1 "stawi.opportunities/apps/candidates/service/admin/v1"
+	eventv1 "stawi.opportunities/apps/candidates/service/events/v1"
+	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
 )
 
 // --- fakes (local to the e2e test) ---
@@ -3371,7 +3371,7 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 - [ ] **Step 2: Run — expect PASS**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./apps/candidates/service/... -run TestCandidatesE2EUploadToEmbedding -count=1 -timeout 3m
 ```
 
@@ -3437,7 +3437,7 @@ func TestManticoreSearchAdapterDecodesHits(t *testing.T) {
 	srv := fakeManticoreServer(t, body)
 	defer srv.Close()
 
-	adapter, err := NewManticoreSearch(srv.URL, "idx_jobs_rt")
+	adapter, err := NewManticoreSearch(srv.URL, "idx_opportunities_rt")
 	if err != nil {
 		t.Fatalf("NewManticoreSearch: %v", err)
 	}
@@ -3469,7 +3469,7 @@ func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter, _ := NewManticoreSearch(srv.URL, "idx_jobs_rt")
+	adapter, _ := NewManticoreSearch(srv.URL, "idx_opportunities_rt")
 	_, _ = adapter.KNNWithFilters(context.Background(), SearchRequest{
 		Vector:             []float32{0.5},
 		Limit:              20,
@@ -3480,8 +3480,8 @@ func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
 	if captured == nil {
 		t.Fatal("server saw no request body")
 	}
-	if captured["index"] != "idx_jobs_rt" {
-		t.Fatalf("index=%v, want idx_jobs_rt", captured["index"])
+	if captured["index"] != "idx_opportunities_rt" {
+		t.Fatalf("index=%v, want idx_opportunities_rt", captured["index"])
 	}
 	if _, ok := captured["knn"]; !ok {
 		t.Fatalf("expected knn clause, got %+v", captured)
@@ -3492,7 +3492,7 @@ func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
 - [ ] **Step 2: Run — expect build failure**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./apps/candidates/service/http/v1/... -run TestManticoreSearchAdapter
 ```
 
@@ -3510,7 +3510,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 // ManticoreSearch adapts *searchindex.Client to the SearchIndex
@@ -3521,7 +3521,7 @@ type ManticoreSearch struct {
 }
 
 // NewManticoreSearch opens a Manticore client at the given URL and
-// returns an adapter bound to `index` (typically "idx_jobs_rt").
+// returns an adapter bound to `index` (typically "idx_opportunities_rt").
 func NewManticoreSearch(url, index string) (*ManticoreSearch, error) {
 	c, err := searchindex.Open(searchindex.Config{URL: url})
 	if err != nil {
@@ -3538,7 +3538,7 @@ func NewManticoreSearch(url, index string) (*ManticoreSearch, error) {
 // https://manual.manticoresearch.com/Searching/KNN ):
 //
 //	{
-//	  "index": "idx_jobs_rt",
+//	  "index": "idx_opportunities_rt",
 //	  "knn": { "field": "embedding", "query_vector": [...], "k": 200 },
 //	  "query": { "bool": { "must": [ ...filters... ] } },
 //	  "_source": ["canonical_id","slug","title","company"]
@@ -3650,7 +3650,7 @@ import (
 	"context"
 	"testing"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 // fakeCandidateRepo implements just ListActive.
@@ -3696,7 +3696,7 @@ package v1
 import (
 	"context"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 // CandidateActiveRepo is the subset of repository.CandidateRepository
@@ -3772,7 +3772,7 @@ import (
 	"context"
 	"testing"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 func TestMatchServiceRunMatchReturnsHits(t *testing.T) {
@@ -3832,7 +3832,7 @@ import (
 
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // ErrNoEmbedding is returned by MatchService.RunMatch when the
@@ -4021,8 +4021,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 type matchesReadyCollector struct {
@@ -4149,8 +4149,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // ServiceMatchRunner wraps an *httpv1.MatchService so the cron calls
@@ -4255,7 +4255,7 @@ import (
 	"testing"
 	"time"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 type fakeInactiveRepo struct {
@@ -4307,7 +4307,7 @@ import (
 	"context"
 	"time"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 // InactiveRepo is the narrow interface the stale lister depends on.
@@ -4401,7 +4401,7 @@ The new `main.go` wires:
 - [ ] **Step 1: Read the current main.go** (to see what's there)
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 wc -l apps/candidates/cmd/main.go apps/candidates/cmd/billing.go
 grep -n "^func" apps/candidates/cmd/main.go | head -50
 ```
@@ -4428,18 +4428,18 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/util"
 
-	candidatesconfig "stawi.jobs/apps/candidates/config"
-	adminv1 "stawi.jobs/apps/candidates/service/admin/v1"
-	eventv1 "stawi.jobs/apps/candidates/service/events/v1"
-	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
-	"stawi.jobs/pkg/archive"
-	"stawi.jobs/pkg/candidatestore"
-	"stawi.jobs/pkg/cv"
-	"stawi.jobs/pkg/eventlog"
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/repository"
-	"stawi.jobs/pkg/telemetry"
+	candidatesconfig "stawi.opportunities/apps/candidates/config"
+	adminv1 "stawi.opportunities/apps/candidates/service/admin/v1"
+	eventv1 "stawi.opportunities/apps/candidates/service/events/v1"
+	httpv1 "stawi.opportunities/apps/candidates/service/http/v1"
+	"stawi.opportunities/pkg/archive"
+	"stawi.opportunities/pkg/candidatestore"
+	"stawi.opportunities/pkg/cv"
+	"stawi.opportunities/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
+	"stawi.opportunities/pkg/repository"
+	"stawi.opportunities/pkg/telemetry"
 )
 
 func main() {
@@ -4532,7 +4532,7 @@ func main() {
 
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
-	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_jobs_rt")
+	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_opportunities_rt")
 	if err != nil {
 		log.WithError(err).Fatal("candidates: Manticore adapter init failed")
 	}
@@ -4704,13 +4704,13 @@ Open `apps/candidates/config/config.go` and remove any fields only used by the d
 	R2AccountID       string `env:"R2_ACCOUNT_ID"         envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"      envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY"  envDefault:""`
-	R2EventLogBucket  string `env:"R2_EVENTLOG_BUCKET"    envDefault:"stawi-jobs-log"`
+	R2EventLogBucket  string `env:"R2_EVENTLOG_BUCKET"    envDefault:"opportunities-log"`
 
 	// Archive R2 (raw CV bytes).
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID"         envDefault:""`
 	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID"      envDefault:""`
 	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY"  envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET"             envDefault:"stawi-jobs-archive"`
+	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET"             envDefault:"opportunities-archive"`
 
 	// AI backends.
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
@@ -4729,7 +4729,7 @@ Leave other existing config fields that other services might pull via Configurat
 - [ ] **Step 5: Build + run tests**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go build ./apps/candidates/...
 go test ./apps/candidates/... -count=1 -timeout 5m
 ```
@@ -4767,7 +4767,7 @@ Create `definitions/trustage/candidates-matches-weekly-digest.json`:
 ```json
 {
   "version": "1.0",
-  "name": "stawi-jobs.candidates.matches.weekly-digest",
+  "name": "opportunities.candidates.matches.weekly-digest",
   "description": "Every Monday 09:00 UTC: run the match pipeline for every active candidate and emit candidates.matches.ready.v1 per candidate. A downstream notification service delivers the digest by email.",
   "schedule": {
     "cron": "0 9 * * 1",
@@ -4793,7 +4793,7 @@ Create `definitions/trustage/candidates-matches-weekly-digest.json`:
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-candidates.stawi-jobs.svc/_admin/matches/weekly_digest",
+          "url": "http://opportunities-candidates.opportunities.svc/_admin/matches/weekly_digest",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}
@@ -4812,7 +4812,7 @@ Create `definitions/trustage/candidates-cv-stale-nudge.json`:
 ```json
 {
   "version": "1.0",
-  "name": "stawi-jobs.candidates.cv.stale-nudge",
+  "name": "opportunities.candidates.cv.stale-nudge",
   "description": "Every day at 10:00 UTC: enumerate candidates whose latest CV upload is > 60 days old and emit candidates.cv.stale_nudge.v1 per candidate. A downstream notification service sends the nudge email.",
   "schedule": {
     "cron": "0 10 * * *",
@@ -4838,7 +4838,7 @@ Create `definitions/trustage/candidates-cv-stale-nudge.json`:
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-candidates.stawi-jobs.svc/_admin/cv/stale_nudge",
+          "url": "http://opportunities-candidates.opportunities.svc/_admin/cv/stale_nudge",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}
@@ -4874,7 +4874,7 @@ git commit -m "feat(trustage): candidate weekly-digest + CV stale-nudge triggers
 - [ ] **Step 1: Build the whole module**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go build ./...
 ```
 

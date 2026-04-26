@@ -1,6 +1,6 @@
 # Iceberg table definitions
 
-Scripts to provision the stawi.jobs Iceberg catalog. Run once per environment (dev/staging/prod).
+Scripts to provision the stawi.opportunities Iceberg catalog. Run once per environment (dev/staging/prod).
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Scripts to provision the stawi.jobs Iceberg catalog. Run once per environment (d
     export ICEBERG_CATALOG_URI="postgresql+psycopg2://$DATABASE_USERNAME:$DATABASE_PASSWORD@$DATABASE_HOST:5432/$DATABASE_NAME"
     export R2_ACCESS_KEY_ID=...
     export R2_SECRET_ACCESS_KEY=...
-    export R2_LOG_BUCKET=stawi-jobs-log
+    export R2_LOG_BUCKET=opportunities-log
     export R2_ENDPOINT=https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com
 
     python create_namespaces.py

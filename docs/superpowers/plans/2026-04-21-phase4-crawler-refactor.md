@@ -163,7 +163,7 @@ func TestSourceDiscoveredRoundTrip(t *testing.T) {
 - [ ] **Step 2: Run to verify build failure**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go test ./pkg/events/v1/...
 ```
 
@@ -619,8 +619,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // admitterFunc is a minimal Admitter used for unit tests so we don't
@@ -857,8 +857,8 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // SourceLister is the narrow slice of *repository.SourceRepository the
@@ -1010,11 +1010,11 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	"stawi.jobs/pkg/archive"
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/content"
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/archive"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/content"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // --- fakes ---
@@ -1295,13 +1295,13 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	"stawi.jobs/pkg/archive"
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/normalize"
-	"stawi.jobs/pkg/quality"
+	"stawi.opportunities/pkg/archive"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
+	"stawi.opportunities/pkg/normalize"
+	"stawi.opportunities/pkg/quality"
 )
 
 // SourceGetter is the narrow repository slice the crawl-request handler
@@ -1666,8 +1666,8 @@ import (
 	"testing"
 	"time"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // fakeSourceHealthRepo captures calls so tests can assert which
@@ -1783,8 +1783,8 @@ import (
 
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // SourceHealthRepo is the slice of SourceRepository used to reconcile
@@ -1942,8 +1942,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 type fakeSourceUpserter struct {
@@ -2057,8 +2057,8 @@ import (
 
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // SourceUpserter is the narrow slice of SourceRepository used by the
@@ -2085,7 +2085,7 @@ var blockedDiscoveredDomains = map[string]bool{
 	"play.google.com": true,
 	"apps.apple.com":  true,
 	"stawi.org":       true,
-	"stawi.jobs":      true,
+	"stawi.opportunities":      true,
 	"pages.dev":       true,
 }
 
@@ -2258,7 +2258,7 @@ Keep:
 Insert the new wiring at the point the legacy handlers used to be initialized. Add to imports:
 
 ```go
-crawlersvc "stawi.jobs/apps/crawler/service"
+crawlersvc "stawi.opportunities/apps/crawler/service"
 ```
 
 Then replace the deleted block with:
@@ -2305,14 +2305,14 @@ The existing `bpGate` already implements the `Admitter` interface after Task 4 a
 After the deletions the following imports in `main.go` are unused:
 
 - `"crypto/sha256"`, `"encoding/hex"` — used only by the removed `sha256Hex` helper.
-- `"stawi.jobs/pkg/pipeline/handlers"` — used only by the removed pipeline handlers and `crawlDependencies`.
-- `"stawi.jobs/pkg/normalize"` — used only inside the removed `processSource`.
-- `"stawi.jobs/pkg/quality"` — used only inside the removed `processSource`.
-- `"stawi.jobs/pkg/dedupe"` — **still used** by `rebuildCanonicalsHandler`; keep.
-- `"stawi.jobs/pkg/bloom"` — **still used** by the bloom filter initialization; keep.
-- `"stawi.jobs/pkg/services"` — used by `services.NewRedirectClient`. The client was consumed only by the legacy publish handler; after its deletion, delete the client construction and the `RedirectPublicBaseURL` / `RedirectServiceURI` wiring too.
-- `"stawi.jobs/pkg/publish"` — still used by `r2Publisher` construction, the CachePurger, and the retention endpoints (`purgeR2Archive`, `runRetention`); keep.
-- `"stawi.jobs/pkg/translate"` — only used by the legacy translate handler; delete the `translator` construction and the `TRANSLATE_*` config reads.
+- `"stawi.opportunities/pkg/pipeline/handlers"` — used only by the removed pipeline handlers and `crawlDependencies`.
+- `"stawi.opportunities/pkg/normalize"` — used only inside the removed `processSource`.
+- `"stawi.opportunities/pkg/quality"` — used only inside the removed `processSource`.
+- `"stawi.opportunities/pkg/dedupe"` — **still used** by `rebuildCanonicalsHandler`; keep.
+- `"stawi.opportunities/pkg/bloom"` — **still used** by the bloom filter initialization; keep.
+- `"stawi.opportunities/pkg/services"` — used by `services.NewRedirectClient`. The client was consumed only by the legacy publish handler; after its deletion, delete the client construction and the `RedirectPublicBaseURL` / `RedirectServiceURI` wiring too.
+- `"stawi.opportunities/pkg/publish"` — still used by `r2Publisher` construction, the CachePurger, and the retention endpoints (`purgeR2Archive`, `runRetention`); keep.
+- `"stawi.opportunities/pkg/translate"` — only used by the legacy translate handler; delete the `translator` construction and the `TRANSLATE_*` config reads.
 - `"github.com/pitabwire/frame/events"` — used only by the deleted `frame.WithRegisterEvents(eventHandlers...)` path via `[]events.EventI`; the new handlers implement the `frame.EventI` alias so `frame.WithRegisterEvents` typing works without the subpackage. Keep or drop based on compile errors.
 
 Run `goimports -w apps/crawler/cmd/main.go` to let the toolchain clean up.
@@ -2357,8 +2357,8 @@ Create `definitions/trustage/scheduler-tick.json`:
 ```json
 {
   "version": "1.0",
-  "name": "stawi-jobs.scheduler.tick",
-  "description": "Every 30 s: ask the stawi-jobs crawler to admit due sources through the backpressure gate and emit one crawl.requests.v1 per admitted source. Replaces source-crawl-sweep.json now that the crawler consumes v1 topics.",
+  "name": "opportunities.scheduler.tick",
+  "description": "Every 30 s: ask the opportunities crawler to admit due sources through the backpressure gate and emit one crawl.requests.v1 per admitted source. Replaces source-crawl-sweep.json now that the crawler consumes v1 topics.",
   "schedule": {
     "cron": "30s",
     "active": true
@@ -2383,7 +2383,7 @@ Create `definitions/trustage/scheduler-tick.json`:
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/scheduler/tick",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/scheduler/tick",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}
@@ -2444,9 +2444,9 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/domain"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // always-grant admitter reused from Task 5's test file.
@@ -2659,7 +2659,7 @@ git commit -m "test(crawler): end-to-end tick → crawl.requests → variants + 
 - [ ] **Step 1: Build the whole module**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go build ./...
 ```
 

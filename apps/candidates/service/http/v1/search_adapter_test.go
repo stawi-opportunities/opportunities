@@ -30,7 +30,7 @@ func TestManticoreSearchAdapterDecodesHits(t *testing.T) {
 	srv := fakeManticoreServer(t, body)
 	defer srv.Close()
 
-	adapter, err := NewManticoreSearch(srv.URL, "idx_jobs_rt")
+	adapter, err := NewManticoreSearch(srv.URL, "idx_opportunities_rt")
 	if err != nil {
 		t.Fatalf("NewManticoreSearch: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter, _ := NewManticoreSearch(srv.URL, "idx_jobs_rt")
+	adapter, _ := NewManticoreSearch(srv.URL, "idx_opportunities_rt")
 	_, _ = adapter.KNNWithFilters(context.Background(), SearchRequest{
 		Vector:             []float32{0.5},
 		Limit:              20,
@@ -73,8 +73,8 @@ func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
 	if captured == nil {
 		t.Fatal("server saw no request body")
 	}
-	if captured["index"] != "idx_jobs_rt" {
-		t.Fatalf("index=%v, want idx_jobs_rt", captured["index"])
+	if captured["index"] != "idx_opportunities_rt" {
+		t.Fatalf("index=%v, want idx_opportunities_rt", captured["index"])
 	}
 	if _, ok := captured["knn"]; !ok {
 		t.Fatalf("expected knn clause, got %+v", captured)

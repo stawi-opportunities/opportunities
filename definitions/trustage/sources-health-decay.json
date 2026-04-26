@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.sources.health-decay",
+  "name": "opportunities.sources.health-decay",
   "description": "Every hour at :15 — nudges every active source's health_score toward 1.0 by a small step (0.05). Allows sources that were degraded by transient failures to self-recover without manual intervention.",
   "schedule": {
     "cron": "15 * * * *",
@@ -26,7 +26,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/sources/health-decay",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/sources/health-decay",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

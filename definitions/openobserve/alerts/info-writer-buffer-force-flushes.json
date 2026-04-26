@@ -1,6 +1,6 @@
 {
   "name": "info-writer-buffer-force-flushes",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "info",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/writer-force-flush",
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/writer-force-flush",
     "metric": "writer_buffer_force_flushes_total"
   },
   "description": "The writer is force-flushing partition buffers due to the global memory cap (more than 3/min sustained). This produces smaller-than-ideal Parquet files. Consider increasing the writer pod memory limit (GOMEMLIMIT) or lowering MaxEvents/MaxBytes thresholds.",

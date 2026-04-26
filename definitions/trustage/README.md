@@ -1,6 +1,6 @@
 # Trustage workflow definitions
 
-These JSON files describe every scheduled job for stawi-jobs that needs to run on a cron. Trustage reads them (via its workflow / schedule provisioning path — see below) and handles the cadence; our services stay pure workers.
+These JSON files describe every scheduled job for opportunities that needs to run on a cron. Trustage reads them (via its workflow / schedule provisioning path — see below) and handles the cadence; our services stay pure workers.
 
 ## The workflows
 
@@ -44,7 +44,7 @@ Every admin endpoint is a plain HTTP POST, so testing is `curl`:
 ```bash
 # Inside the cluster:
 kubectl run curl --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -fsS -XPOST http://stawi-jobs-crawler.stawi-jobs.svc/admin/crawl/dispatch-due
+  curl -fsS -XPOST http://opportunities-crawler.opportunities.svc/admin/crawl/dispatch-due
 ```
 
 Expected body: `{"ok":true,"considered":N,"dispatched":N}`.

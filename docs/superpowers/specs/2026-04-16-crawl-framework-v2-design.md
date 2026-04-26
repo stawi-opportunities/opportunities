@@ -433,7 +433,7 @@ Follows the antinvestor deployments pattern (modeled on the `trustage` namespace
 ### Namespace Structure in antinvestor/deployments
 
 ```
-manifests/namespaces/stawi-jobs/
+manifests/namespaces/opportunities/
 ├── namespace.yaml                          ← namespace definition
 ├── kustomization.yaml                      ← root kustomization
 ├── kustomization_provider.yaml             ← FluxCD Kustomization CRDs per service
@@ -445,17 +445,17 @@ manifests/namespaces/stawi-jobs/
 │   └── setup_queue.yaml                    ← NATS account setup
 ├── crawler/
 │   ├── kustomization.yaml
-│   ├── stawi-jobs-crawler.yaml             ← HelmRelease (colony chart) for crawler workers
+│   ├── opportunities-crawler.yaml             ← HelmRelease (colony chart) for crawler workers
 │   ├── database.yaml                       ← CNPG Database + blue/green credentials
 │   ├── db-credentials.yaml                 ← ExternalSecret from Vault
 │   └── queue_setup.yaml                    ← NATS User + JetStream streams
 ├── scheduler/
 │   ├── kustomization.yaml
-│   ├── stawi-jobs-scheduler.yaml           ← HelmRelease for scheduler + discovery + dedupe
+│   ├── opportunities-scheduler.yaml           ← HelmRelease for scheduler + discovery + dedupe
 │   └── db-credentials.yaml                 ← shares same database, separate credentials
 └── api/
     ├── kustomization.yaml
-    ├── stawi-jobs-api.yaml                 ← HelmRelease for search-api + ops-control-plane
+    ├── opportunities-api.yaml                 ← HelmRelease for search-api + ops-control-plane
     └── db-credentials.yaml
 ```
 
@@ -463,17 +463,17 @@ manifests/namespaces/stawi-jobs/
 
 | HelmRelease | cmd/ binary | Replicas | Purpose |
 |---|---|---|---|
-| stawi-jobs-crawler | `worker` | 3 | Crawl workers (the bottleneck) |
-| stawi-jobs-scheduler | `scheduler` | 1 | Scheduler + discovery + dedupe runner |
-| stawi-jobs-api | `search-api` | 1 | Search API + ops control plane |
+| opportunities-crawler | `worker` | 3 | Crawl workers (the bottleneck) |
+| opportunities-scheduler | `scheduler` | 1 | Scheduler + discovery + dedupe runner |
+| opportunities-api | `search-api` | 1 | Search API + ops control plane |
 
 ### Colony Chart Configuration
 
 All three services use the `colony` chart v1.10.3 from the antinvestor HelmRepository.
 
 **Shared configuration across all services:**
-- Image: `ghcr.io/stawi-jobs/stawi-jobs:<tag>` (single image, different entrypoint per service)
-- Database: `pooler-rw.datastore.svc:5432/stawi_jobs` (read-write), `pooler-ro.datastore.svc:5432/stawi_jobs` (read-only)
+- Image: `ghcr.io/opportunities/opportunities:<tag>` (single image, different entrypoint per service)
+- Database: `pooler-rw.datastore.svc:5432/opportunities` (read-write), `pooler-ro.datastore.svc:5432/opportunities` (read-only)
 - NATS: `nats://core-queue-headless.queue-system.svc.cluster.local:4222`
 - Cache: `redis://valkey.datastore.svc:6379` (for Frame rate limiter)
 - OpenTelemetry: enabled, serviceName per release
@@ -483,13 +483,13 @@ All three services use the `colony` chart v1.10.3 from the antinvestor HelmRepos
 **Crawler-specific:**
 - Replicas: 3 (autoscaling disabled — fixed at 3 to stay within 5-pod budget)
 - Resources: 200m CPU / 512Mi memory requests
-- NATS consumer: queue group on `svc.stawi-jobs.crawl.>` subjects
+- NATS consumer: queue group on `svc.opportunities.crawl.>` subjects
 - Env: `WORKER_CONCURRENCY=4` (4 per pod x 3 pods = 12 total)
 
 **Scheduler-specific:**
 - Replicas: 1 (no autoscaling — singleton)
 - Resources: 50m CPU / 128Mi memory requests
-- NATS publisher: publishes to `svc.stawi-jobs.crawl.>` and `svc.stawi-jobs.dedupe.>`
+- NATS publisher: publishes to `svc.opportunities.crawl.>` and `svc.opportunities.dedupe.>`
 
 **API-specific:**
 - Replicas: 1 (autoscaling 1-2)
@@ -501,15 +501,15 @@ All three services use the `colony` chart v1.10.3 from the antinvestor HelmRepos
 
 ```yaml
 # Crawl requests stream
-name: svc_stawi_jobs_crawl
-subjects: ["svc.stawi-jobs.crawl.>"]
+name: svc_opportunities_crawl
+subjects: ["svc.opportunities.crawl.>"]
 retention: workqueue
 maxAge: 24h
 storage: file
 
 # Dedupe pending stream
-name: svc_stawi_jobs_dedupe
-subjects: ["svc.stawi-jobs.dedupe.>"]
+name: svc_opportunities_dedupe
+subjects: ["svc.opportunities.dedupe.>"]
 retention: workqueue
 maxAge: 24h
 storage: file
@@ -519,15 +519,15 @@ storage: file
 
 ```yaml
 publish:
-  allow: ["$JS.API.>", "svc.stawi-jobs.>"]
+  allow: ["$JS.API.>", "svc.opportunities.>"]
 subscribe:
-  allow: ["_INBOX.>", "svc.stawi-jobs.>"]
+  allow: ["_INBOX.>", "svc.opportunities.>"]
 ```
 
 ### Database (CNPG)
 
-- Database name: `stawi_jobs`
-- Owner: `stawi-jobs-crawler`
+- Database name: `opportunities`
+- Owner: `opportunities-crawler`
 - Cluster: `hub` (shared CNPG cluster in datastore namespace)
 - Extensions: `uuid-ossp`, `pg_stat_statements`, `pg_trgm`, `btree_gin`
 - Blue/green credential rotation via ExternalSecrets + PushSecret to Vault
@@ -539,15 +539,15 @@ All secrets via Vault + ExternalSecrets:
 
 | Secret | Vault path | Used by |
 |---|---|---|
-| db-credentials-stawi-jobs | `antinvestor/stawi-jobs/crawler/database` | All services |
+| db-credentials-opportunities | `antinvestor/opportunities/crawler/database` | All services |
 | ghcr-auth | `antinvestor/_shared/registry/ghcr-stawi` | Image pull |
 | NATS user creds | Generated by nauth.io operator | All services |
 
 ### Image Automation (FluxCD)
 
-- ImageRepository: scans `ghcr.io/stawi-jobs/stawi-jobs`
+- ImageRepository: scans `ghcr.io/opportunities/opportunities`
 - ImagePolicy: semver `>=v0.1.0`
-- ImageUpdateAutomation: updates manifests/namespaces/stawi-jobs/ on main branch
+- ImageUpdateAutomation: updates manifests/namespaces/opportunities/ on main branch
 
 ### Project Structure Change
 

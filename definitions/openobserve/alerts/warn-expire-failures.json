@@ -1,6 +1,6 @@
 {
   "name": "warn-expire-failures",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "warning",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/expire-failures"
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/expire-failures"
   },
   "description": "More than 3 Iceberg commit failures in 30 minutes. Repeated failures may leave orphaned snapshot files and stale catalog entries. Investigate nightly CronJob logs.",
   "enabled": true

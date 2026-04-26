@@ -17,8 +17,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/searchindex"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 // Service is the materializer composition root.
@@ -85,7 +85,7 @@ func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
 	}
 	doc := buildDocFromCanonical(env.Payload)
 	id := hashID(env.Payload.CanonicalID)
-	if err := h.s.manticore.Replace(ctx, "idx_jobs_rt", id, doc); err != nil {
+	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
 			WithField("canonical_id", env.Payload.CanonicalID).
 			Error("materializer: canonical upsert failed")
@@ -95,7 +95,7 @@ func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
 }
 
 // buildDocFromCanonical converts a CanonicalUpsertedV1 payload to a
-// Manticore document map. Field names must match the idx_jobs_rt schema.
+// Manticore document map. Field names must match the idx_opportunities_rt schema.
 func buildDocFromCanonical(p eventsv1.CanonicalUpsertedV1) map[string]any {
 	return map[string]any{
 		"canonical_id":    p.CanonicalID,
@@ -160,7 +160,7 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 		"expires_at": env.Payload.ExpiredAt.Unix(),
 	}
 	id := hashID(env.Payload.CanonicalID)
-	if err := h.s.manticore.Update(ctx, "idx_jobs_rt", id, doc); err != nil {
+	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
 			WithField("canonical_id", env.Payload.CanonicalID).
 			Error("materializer: canonical expired patch failed")
@@ -216,7 +216,7 @@ func (h *TranslationHandler) Execute(ctx context.Context, p any) error {
 		"model_version": pl.ModelVersion,
 	}
 	id := hashID(pl.CanonicalID + ":" + pl.Lang)
-	if err := h.s.manticore.Replace(ctx, "idx_jobs_rt", id, doc); err != nil {
+	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
 			WithField("canonical_id", pl.CanonicalID).
 			WithField("lang", pl.Lang).
@@ -265,7 +265,7 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 		"embedding_model": pl.ModelVersion,
 	}
 	id := hashID(pl.CanonicalID)
-	if err := h.s.manticore.Replace(ctx, "idx_jobs_rt", id, doc); err != nil {
+	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
 			WithField("canonical_id", pl.CanonicalID).
 			Error("materializer: embedding replace failed")

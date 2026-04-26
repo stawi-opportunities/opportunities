@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"stawi.jobs/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 // maxPriorityFixes is the UI's display cap. Generating more than this

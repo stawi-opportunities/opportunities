@@ -16,10 +16,10 @@ import (
 
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/content"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 const batchSize = 50

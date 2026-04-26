@@ -12,7 +12,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // Service is apps/writer's composition root.
@@ -140,35 +140,35 @@ func (s *Service) commitBatch(ctx context.Context, b *Batch) error {
 // schema for all pipeline stages, distinguished by the "stage" field.
 //
 // Topics that are NO LONGER persisted to Iceberg return (nil, nil):
-//   - TopicCanonicalsUpserted  — body lives at s3://stawi-jobs-content/jobs/<slug>.json
+//   - TopicCanonicalsUpserted  — body lives at s3://opportunities-content/jobs/<slug>.json
 //   - TopicCanonicalsExpired   — Frame event only; materializer subscribes directly
-//   - TopicTranslations        — body lives at s3://stawi-jobs-content/jobs/<slug>/<lang>.json
+//   - TopicTranslations        — body lives at s3://opportunities-content/jobs/<slug>/<lang>.json
 //
 // The writer still subscribes to these topics (they remain in AllTopics()); the
 // buffer receives them, commitBatch sees a nil builder, and acks without writing.
 func batchDispatch(topic string) ([]string, func(memory.Allocator, []json.RawMessage) (array.RecordReader, error)) {
 	switch topic {
 	case eventsv1.TopicVariantsIngested:
-		return []string{"jobs", "variants"}, BuildVariantIngestedRecord
+		return []string{"opportunities", "variants"}, BuildVariantIngestedRecord
 	case eventsv1.TopicVariantsNormalized:
-		return []string{"jobs", "variants"}, BuildVariantNormalizedRecord
+		return []string{"opportunities", "variants"}, BuildVariantNormalizedRecord
 	case eventsv1.TopicVariantsValidated:
-		return []string{"jobs", "variants"}, BuildVariantValidatedRecord
+		return []string{"opportunities", "variants"}, BuildVariantValidatedRecord
 	case eventsv1.TopicVariantsFlagged:
-		return []string{"jobs", "variants"}, BuildVariantFlaggedRecord
+		return []string{"opportunities", "variants"}, BuildVariantFlaggedRecord
 	case eventsv1.TopicVariantsClustered:
-		return []string{"jobs", "variants"}, BuildVariantClusteredRecord
+		return []string{"opportunities", "variants"}, BuildVariantClusteredRecord
 	// TopicCanonicalsUpserted, TopicCanonicalsExpired, TopicTranslations
 	// intentionally omitted — body is R2-slug-direct; materializer is a
 	// Frame subscriber, not an Iceberg scanner for these topics.
 	case eventsv1.TopicEmbeddings:
-		return []string{"jobs", "embeddings"}, BuildEmbeddingRecord
+		return []string{"opportunities", "embeddings"}, BuildEmbeddingRecord
 	case eventsv1.TopicPublished:
-		return []string{"jobs", "published"}, BuildPublishedRecord
+		return []string{"opportunities", "published"}, BuildPublishedRecord
 	case eventsv1.TopicCrawlPageCompleted:
-		return []string{"jobs", "crawl_page_completed"}, BuildCrawlPageCompletedRecord
+		return []string{"opportunities", "crawl_page_completed"}, BuildCrawlPageCompletedRecord
 	case eventsv1.TopicSourcesDiscovered:
-		return []string{"jobs", "sources_discovered"}, BuildSourceDiscoveredRecord
+		return []string{"opportunities", "sources_discovered"}, BuildSourceDiscoveredRecord
 	case eventsv1.TopicCVUploaded:
 		return []string{"candidates", "cv_uploaded"}, BuildCVUploadedRecord
 	case eventsv1.TopicCVExtracted:

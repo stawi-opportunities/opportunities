@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"stawi.jobs/apps/crawler/service"
+	"github.com/stawi-opportunities/opportunities/apps/crawler/service"
 )
 
 // ── fakes ────────────────────────────────────────────────────────────────────

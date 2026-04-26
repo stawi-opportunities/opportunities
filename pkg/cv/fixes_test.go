@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"stawi.jobs/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 // helper: does the fix list contain a given fix ID?

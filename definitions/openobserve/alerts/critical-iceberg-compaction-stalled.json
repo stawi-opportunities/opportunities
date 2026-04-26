@@ -1,6 +1,6 @@
 {
   "name": "critical-iceberg-compaction-stalled",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "critical",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/iceberg-compaction-stalled"
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/iceberg-compaction-stalled"
   },
   "description": "An Iceberg table's last successful compaction is more than 2 hours ago. Small-file accumulation will degrade read performance. Investigate the nightly CronJob or the writer commit path.",
   "enabled": true

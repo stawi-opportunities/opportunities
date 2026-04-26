@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/content"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 const baseURL = "https://www.arbeitnow.com/api/job-board-api"
@@ -23,7 +23,7 @@ type Connector struct {
 // New creates an Arbeitnow Connector with sensible defaults.
 func New() *Connector {
 	return &Connector{
-		client: httpx.NewClient(30*time.Second, "stawi.jobs/crawler"),
+		client: httpx.NewClient(30*time.Second, "github.com/stawi-opportunities/opportunities/crawler"),
 	}
 }
 

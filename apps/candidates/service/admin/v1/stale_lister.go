@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"stawi.jobs/pkg/candidatestore"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // InactiveRepo is the narrow interface the stale lister depends on.

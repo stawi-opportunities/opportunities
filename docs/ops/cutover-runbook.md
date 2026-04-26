@@ -14,23 +14,23 @@
 - [ ] Managed infra:
   - [ ] Manticore cluster at $MANTICORE_URL
   - [ ] Valkey at $VALKEY_URL
-  - [ ] R2 bucket stawi-jobs-log with writer credentials
+  - [ ] R2 bucket opportunities-log with writer credentials
   - [ ] TEI chat / embed / rerank endpoints answer /health
 - [ ] Iceberg catalog migration applied: `psql "$DATABASE_URL" -f db/migrations/0004_iceberg_catalog.sql`
 - [ ] Iceberg namespaces + tables bootstrapped:
   - `python3 definitions/iceberg/create_namespaces.py`
   - `python3 definitions/iceberg/create_tables.py`
-- [ ] Vault secret seeded at `antinvestor/stawi-jobs/common/iceberg-catalog` (ICEBERG_CATALOG_URI, warehouse, R2 credentials).
+- [ ] Vault secret seeded at `antinvestor/opportunities/common/iceberg-catalog` (ICEBERG_CATALOG_URI, warehouse, R2 credentials).
 - [ ] Trustage workflows deployed: scheduler-tick, writer-compact, writer-expire-snapshots, sources-quality-window-reset, sources-health-decay, candidates-matches-weekly-digest, candidates-cv-stale-nudge.
 - [ ] Backpressure gate env set: BACKPRESSURE_MAX_DRAIN=15m, BACKPRESSURE_HARD_CEILING=45m.
-- [ ] idx_jobs_rt schema provisioned (Phase 2 migration). Verify: curl -s $MANTICORE_URL/sql?mode=raw -d "query=SHOW TABLES"
+- [ ] idx_opportunities_rt schema provisioned (Phase 2 migration). Verify: curl -s $MANTICORE_URL/sql?mode=raw -d "query=SHOW TABLES"
 - [ ] All six app images built + pushed at the Phase 6 SHA.
 
 ## 1. Staging smoke (T-1 day)
 
 - [ ] Deploy Phase 6 images to staging.
 - [ ] Seed 3 live sources into sources.
-- [ ] Fire scheduler-tick manually: kubectl -n stage exec deploy/trustage -- trustage run stawi-jobs.scheduler.tick
+- [ ] Fire scheduler-tick manually: kubectl -n stage exec deploy/trustage -- trustage run opportunities.scheduler.tick
 - [ ] Wait 60s: assert a variant event landed in R2 under variants/dt=<today>/.
 - [ ] Wait 60s: assert a canonical landed in canonicals/dt=<today>/.
 - [ ] GET /api/v2/search?q=engineer returns non-empty hits.
@@ -64,7 +64,7 @@
 
 ### 2.4 Fill checkpoint (1–3 hours)
 
-Wait for idx_jobs_rt row count to cross launch threshold (default 50k):
+Wait for idx_opportunities_rt row count to cross launch threshold (default 50k):
 - [ ] Poll: curl -s $API_URL/healthz | jq .total_jobs
 - [ ] Tail writer flushes: kubectl logs -f -l app=writer | grep "parquet flushed"
 - [ ] Tail materializer upserts: kubectl logs -f -l app=materializer | grep "manticore upsert"
@@ -103,7 +103,7 @@ After 2.6: restore /tmp/pre-cutover.sql and revert to SHA 46a71bb.
 
 ## 5. Resource scaling
 
-All stawi-jobs services adapt their in-memory working set to the pod's
+All opportunities services adapt their in-memory working set to the pod's
 actual cgroup memory limit at runtime via `pkg/memconfig`. There are no
 hardcoded memory ceilings in the application code.
 
@@ -126,5 +126,5 @@ hardcoded memory ceilings in the application code.
 | candidates  | stale-reader     | 20%    | bounded map + heap retract         |
 | materializer| materializer-bulk| 10%    | Manticore NDJSON batch size        |
 
-See `manifests/namespaces/stawi-jobs/common/RESOURCE_SCALING.md` for
+See `manifests/namespaces/opportunities/common/RESOURCE_SCALING.md` for
 the full per-service breakdown.

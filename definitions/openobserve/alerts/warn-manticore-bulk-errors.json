@@ -1,6 +1,6 @@
 {
   "name": "warn-manticore-bulk-errors",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "warning",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/manticore-bulk-errors"
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/manticore-bulk-errors"
   },
   "description": "Manticore Search bulk upsert errors exceed 5 in 10 minutes. The materializer may be losing indexed documents. Check searchindex client logs and Manticore pod health.",
   "enabled": true

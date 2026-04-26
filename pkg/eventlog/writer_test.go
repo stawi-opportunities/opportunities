@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/testcontainers/testcontainers-go/modules/minio"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/eventlog"
 )
 
 func TestParquetRoundTripViaMinio(t *testing.T) {
@@ -33,7 +33,7 @@ func TestParquetRoundTripViaMinio(t *testing.T) {
 		AccountID:       "test-account",
 		AccessKeyID:     mc.Username,
 		SecretAccessKey: mc.Password,
-		Bucket:          "stawi-jobs-log-test",
+		Bucket:          "opportunities-log-test",
 		Endpoint:        "http://" + endpoint,
 		UsePathStyle:    true,
 	}

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.retention.expire",
+  "name": "opportunities.retention.expire",
   "description": "Every 15 minutes: flip canonical_jobs.status from 'active' to 'expired' for rows past expires_at. Idempotent — the SQL is a conditional UPDATE, so running twice in the same minute is safe. DISABLED — target handler /admin/retention/expire is not yet implemented; scheduled for Phase 6.5+.",
   "schedule": {
     "cron": "15m",
@@ -21,7 +21,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/retention/expire",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/retention/expire",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

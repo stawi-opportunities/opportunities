@@ -9,7 +9,7 @@ document describes the one-time setup needed per environment
 ## Flow recap
 
 ```
-Website (stawi.jobs)
+Website (stawi.opportunities)
     │ POST /billing/checkout
     ▼
 candidates service
@@ -38,8 +38,8 @@ Run once per environment, ideally via a seed job. Requires a
 
    ```
    BillingService.CreateCatalogVersion({
-     id: "stawi-jobs-v1",       // matches env BILLING_CATALOG_VERSION_ID
-     catalog_id: "stawi-jobs",
+     id: "opportunities-v1",       // matches env BILLING_CATALOG_VERSION_ID
+     catalog_id: "opportunities",
      name: "Stawi Jobs v1",
      currency: "USD"
    })
@@ -65,8 +65,8 @@ or "per-match-delivered" pricing without changing stawi code.
 ```yaml
 # Candidates-service env (staging → k8s Secret; prod → Vault)
 BILLING_SERVICE_URI: payment.antinvestor.svc.cluster.local:50051
-BILLING_CATALOG_VERSION_ID: stawi-jobs-v1
-BILLING_RECIPIENT_PROFILE_ID: <profile id of the stawi.jobs merchant in service_profile>
+BILLING_CATALOG_VERSION_ID: opportunities-v1
+BILLING_RECIPIENT_PROFILE_ID: <profile id of the stawi.opportunities merchant in service_profile>
 
 # Polar.sh — one product per tier created in polar.sh dashboard.
 # See https://docs.polar.sh/api/products
@@ -99,7 +99,7 @@ is the only selector.
 
 ## What ops must watch
 
-- `stawi.jobs.candidates` logs for `billing-reconciler` events —
+- `stawi.opportunities.candidates` logs for `billing-reconciler` events —
   steady-state is "no pending" most ticks. A growing pending count
   means service_payment → stawi subscription sync is broken.
 - service_payment prompt dashboard — checkout_url materialisation

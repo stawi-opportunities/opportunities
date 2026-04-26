@@ -13,18 +13,18 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/util"
 
-	candidatesconfig "stawi.jobs/apps/candidates/config"
-	adminv1 "stawi.jobs/apps/candidates/service/admin/v1"
-	eventv1 "stawi.jobs/apps/candidates/service/events/v1"
-	httpv1 "stawi.jobs/apps/candidates/service/http/v1"
-	"stawi.jobs/pkg/archive"
-	"stawi.jobs/pkg/candidatestore"
-	"stawi.jobs/pkg/cv"
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/icebergclient"
-	"stawi.jobs/pkg/repository"
-	"stawi.jobs/pkg/telemetry"
+	candidatesconfig "github.com/stawi-opportunities/opportunities/apps/candidates/config"
+	adminv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/admin/v1"
+	eventv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/events/v1"
+	httpv1 "github.com/stawi-opportunities/opportunities/apps/candidates/service/http/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	"github.com/stawi-opportunities/opportunities/pkg/cv"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
+	"github.com/stawi-opportunities/opportunities/pkg/repository"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 func main() {
@@ -98,7 +98,7 @@ func main() {
 
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
-	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_jobs_rt")
+	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_opportunities_rt")
 	if err != nil {
 		log.WithError(err).Fatal("candidates: Manticore adapter init failed")
 	}

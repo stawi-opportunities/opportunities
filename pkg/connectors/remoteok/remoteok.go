@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 const apiURL = "https://remoteok.com/api"
@@ -22,7 +22,7 @@ type Connector struct {
 // New creates a RemoteOK Connector with sensible defaults.
 func New() *Connector {
 	return &Connector{
-		client: httpx.NewClient(30*time.Second, "stawi.jobs/crawler"),
+		client: httpx.NewClient(30*time.Second, "github.com/stawi-opportunities/opportunities/crawler"),
 	}
 }
 
@@ -33,7 +33,7 @@ func (c *Connector) Type() domain.SourceType { return domain.SourceRemoteOK }
 func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.CrawlIterator {
 	raw, status, err := c.client.Get(ctx, apiURL, map[string]string{
 		"Accept":     "application/json",
-		"User-Agent": "stawi.jobs/1.0 (job aggregator; +https://stawi.jobs)",
+		"User-Agent": "github.com/stawi-opportunities/opportunities/1.0 (job aggregator; +https://stawi.jobs)",
 	})
 	if err != nil {
 		return connectors.NewSinglePageIterator(nil, raw, status, err)

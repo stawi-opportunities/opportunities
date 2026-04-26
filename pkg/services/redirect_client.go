@@ -37,7 +37,7 @@ func NewRedirectClient(baseURL string) *RedirectClient {
 }
 
 // LinkState mirrors redirect.v1.LinkState. Only the transitions we use
-// from stawi-jobs are declared; add more as needed. Values match the
+// from opportunities are declared; add more as needed. Values match the
 // proto enum so they serialize correctly over Connect/JSON.
 type LinkState int
 

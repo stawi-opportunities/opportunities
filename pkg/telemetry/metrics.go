@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	meter = otel.Meter("stawi.jobs.pipeline")
+	meter = otel.Meter("stawi.opportunities.pipeline")
 
 	StageTransitions metric.Int64Counter
 	StageDuration    metric.Float64Histogram

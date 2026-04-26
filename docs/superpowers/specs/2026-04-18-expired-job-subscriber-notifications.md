@@ -4,7 +4,7 @@
 
 **Problem:** When the redirect service expires a tracked link (destination
 URL probed 404/410 or 3 consecutive failures), the canonical job is still
-marked `active` in `stawi_jobs.canonical_jobs`, and candidates who saved
+marked `active` in `opportunities.canonical_jobs`, and candidates who saved
 the job have no idea it's dead. We need a signal that:
 
 1. Reflects `LinkStateExpired` on the redirect side into
@@ -28,7 +28,7 @@ Stream:  svc_files_redirect (existing, workqueue retention, 1h maxAge)
 Payload: LinkExpiredPayload {
   link_id:         string  // redirect-service UUID
   slug:            string  // /r/{slug} path
-  affiliate_id:    string  // "canonical_job_<id>" for stawi-jobs
+  affiliate_id:    string  // "canonical_job_<id>" for opportunities
   destination_url: string  // the dead URL, useful for debugging
   probe_status:    int     // last HTTP status observed (0 = no response)
   expired_at:      timestamp
@@ -42,11 +42,11 @@ succeeds, publish the event via `svc.Publish(ctx, subject, payload)`.
 NATS permissions already allow `pub: svc.files-redirect.>` — no new
 permissions needed.
 
-### Subscriber (stawi.jobs/candidates)
+### Subscriber (stawi.opportunities/candidates)
 
-1. **NATS permissions**: extend `stawi-jobs-nats-user-creds` to allow
+1. **NATS permissions**: extend `opportunities-nats-user-creds` to allow
    `sub: svc.files-redirect.link.expired`. One-liner in
-   `deployments/manifests/namespaces/stawi-jobs/common/setup_queue.yaml`.
+   `deployments/manifests/namespaces/opportunities/common/setup_queue.yaml`.
 
 2. **Handler**: new `pkg/pipeline/handlers/link_expired.go` that:
    - Parses `canonical_job_id` out of `affiliate_id` (strip the
@@ -79,7 +79,7 @@ permissions needed.
 
 ## Edge cases
 
-- **Affiliate_id not prefixed**: non-stawi-jobs links will eventually
+- **Affiliate_id not prefixed**: non-opportunities links will eventually
   flow through the same stream. The handler's `strings.HasPrefix`
   check must early-return without error so other domains can subscribe
   independently.
@@ -101,10 +101,10 @@ permissions needed.
 
 ## Rollout order
 
-1. Add the new repo method (stawi.jobs)
-2. Add the subscriber handler + wire it in candidates (stawi.jobs)
+1. Add the new repo method (stawi.opportunities)
+2. Add the subscriber handler + wire it in candidates (stawi.opportunities)
 3. Add the NATS sub permission (deployments)
-4. Deploy stawi-jobs first — subscriber is idempotent when no events
+4. Deploy opportunities first — subscriber is idempotent when no events
    are flowing yet
 5. Publish from the redirect handler (service-files)
 6. Deploy service-files

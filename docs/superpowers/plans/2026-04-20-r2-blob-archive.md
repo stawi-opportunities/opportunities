@@ -923,7 +923,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 func newTestDB(t *testing.T) *gorm.DB {
@@ -1005,7 +1005,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 // RawRefRepository tracks which variants reference which raw content
@@ -1118,7 +1118,7 @@ In `apps/crawler/config/config.go`, after the existing `R2*` fields add:
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID" envDefault:""`
 	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID" envDefault:""`
 	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY" envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"stawi-jobs-archive"`
+	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"opportunities-archive"`
 ```
 
 - [ ] **Step 2: Construct archive in crawler main**
@@ -1134,7 +1134,7 @@ In `apps/crawler/cmd/main.go`, near the existing `publish.NewR2Publisher` call, 
 	})
 ```
 
-Add the import: `"stawi.jobs/pkg/archive"`.
+Add the import: `"stawi.opportunities/pkg/archive"`.
 
 Thread `arch` into `crawlDependencies`. Add a field:
 
@@ -1323,7 +1323,7 @@ func NewNormalizeHandler(
 }
 ```
 
-Add the import: `"stawi.jobs/pkg/archive"`.
+Add the import: `"stawi.opportunities/pkg/archive"`.
 
 - [ ] **Step 2: Replace content-source logic to pull from archive**
 
@@ -1501,7 +1501,7 @@ func NewCanonicalHandler(
 }
 ```
 
-Add the import: `"stawi.jobs/pkg/archive"`.
+Add the import: `"stawi.opportunities/pkg/archive"`.
 
 - [ ] **Step 3: After canonical upsert, write to archive + register raw_ref**
 
@@ -1659,8 +1659,8 @@ import (
 	"github.com/pitabwire/util"
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/archive"
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/archive"
+	"stawi.opportunities/pkg/repository"
 )
 
 // purgeR2Archive finds canonicals stuck in status='deleted' past the
@@ -2170,7 +2170,7 @@ import (
 	"github.com/pitabwire/util"
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/archive"
+	"stawi.opportunities/pkg/archive"
 )
 
 // reconcileOrphans walks clusters/* in the archive bucket and deletes
@@ -2314,7 +2314,7 @@ git commit -m "feat(crawler): nightly reconciliation — delete orphan cluster d
       "name": "purge",
       "type": "http",
       "method": "POST",
-      "url": "http://stawi-jobs-crawler.stawi-jobs.svc:8080/admin/r2/purge?grace_days=7&limit=500",
+      "url": "http://opportunities-crawler.opportunities.svc:8080/admin/r2/purge?grace_days=7&limit=500",
       "timeout_seconds": 120,
       "retry_policy": {"max_attempts": 2, "backoff_seconds": 60}
     }
@@ -2334,7 +2334,7 @@ git commit -m "feat(crawler): nightly reconciliation — delete orphan cluster d
       "name": "reconcile",
       "type": "http",
       "method": "POST",
-      "url": "http://stawi-jobs-crawler.stawi-jobs.svc:8080/admin/r2/reconcile",
+      "url": "http://opportunities-crawler.opportunities.svc:8080/admin/r2/reconcile",
       "timeout_seconds": 300,
       "retry_policy": {"max_attempts": 2, "backoff_seconds": 120}
     }
@@ -2358,7 +2358,7 @@ git commit -m "feat(trustage): schedule R2 purge + reconcile crons"
 
 - [ ] **Step 1: Create the bucket**
 
-In Cloudflare dashboard (or via wrangler CLI): create `stawi-jobs-archive` as a private bucket (no public access, no custom domain).
+In Cloudflare dashboard (or via wrangler CLI): create `opportunities-archive` as a private bucket (no public access, no custom domain).
 
 Configure the R2 lifecycle rule:
 - Transition to IA storage class after 30 days.
@@ -2366,11 +2366,11 @@ Configure the R2 lifecycle rule:
 
 - [ ] **Step 2: Mint new access keys**
 
-Create a read-write API token scoped ONLY to `stawi-jobs-archive`. Store four values in Vault under `antinvestor/stawi-jobs/common/archive-r2/`:
+Create a read-write API token scoped ONLY to `opportunities-archive`. Store four values in Vault under `antinvestor/opportunities/common/archive-r2/`:
 - `account_id`
 - `access_key_id`
 - `secret_access_key`
-- `bucket` = `stawi-jobs-archive`
+- `bucket` = `opportunities-archive`
 
 - [ ] **Step 3: Add ExternalSecret + env wiring**
 

@@ -12,7 +12,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"stawi.jobs/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 // startManticore boots a Manticore container and returns the HTTP
@@ -68,7 +68,7 @@ func TestApplySchemaIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("show tables: %v", err)
 	}
-	if !strings.Contains(string(raw), "idx_jobs_rt") {
-		t.Fatalf("idx_jobs_rt not present after Apply — SHOW TABLES returned:\n%s", string(raw))
+	if !strings.Contains(string(raw), "idx_opportunities_rt") {
+		t.Fatalf("idx_opportunities_rt not present after Apply — SHOW TABLES returned:\n%s", string(raw))
 	}
 }

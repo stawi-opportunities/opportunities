@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 const apiURL = "https://jobicy.com/api/v2/remote-jobs?count=50"
@@ -23,7 +23,7 @@ type Connector struct {
 // New creates a Jobicy Connector with sensible defaults.
 func New() *Connector {
 	return &Connector{
-		client: httpx.NewClient(30*time.Second, "stawi.jobs/crawler"),
+		client: httpx.NewClient(30*time.Second, "github.com/stawi-opportunities/opportunities/crawler"),
 	}
 }
 

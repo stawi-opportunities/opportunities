@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"stawi.jobs/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 func stubManticore(responder func(req map[string]any) string) *httptest.Server {

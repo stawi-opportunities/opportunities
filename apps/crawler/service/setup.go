@@ -1,20 +1,20 @@
 package service
 
 import (
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/arbeitnow"
-	"stawi.jobs/pkg/connectors/greenhouse"
-	"stawi.jobs/pkg/connectors/himalayas"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/connectors/jobicy"
-	"stawi.jobs/pkg/connectors/remoteok"
-	"stawi.jobs/pkg/connectors/sitemapcrawler"
-	"stawi.jobs/pkg/connectors/smartrecruiters"
-	"stawi.jobs/pkg/connectors/themuse"
-	"stawi.jobs/pkg/connectors/universal"
-	"stawi.jobs/pkg/connectors/workday"
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/greenhouse"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/jobicy"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/remoteok"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/universal"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 // BuildRegistry creates a connector Registry with all available connectors

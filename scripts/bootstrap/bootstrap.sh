@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-shot cluster provisioning for stawi.jobs.
+# One-shot cluster provisioning for stawi-opportunities/opportunities.
 # Run once per environment (new cluster, DR recovery, staging reset).
 # Each step is idempotent — re-running is safe.
 #
@@ -14,7 +14,7 @@ set -euo pipefail
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 echo "============================================================"
-echo "  stawi.jobs cluster bootstrap"
+echo "  opportunities cluster bootstrap"
 echo "============================================================"
 
 echo ""
@@ -23,7 +23,7 @@ echo "[1/4] Seed Vault secrets"
 
 echo ""
 echo "[2/4] Apply Postgres migrations"
-echo "    stawi.jobs uses GORM AutoMigrate + explicit migration files."
+echo "    opportunities uses GORM AutoMigrate + explicit migration files."
 echo "    Apply in order:"
 echo "      psql \"\$DATABASE_URL\" -f db/migrations/0001_init.sql"
 echo "      psql \"\$DATABASE_URL\" -f db/migrations/0002_materializer_watermark.sql"

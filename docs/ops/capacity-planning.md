@@ -2,7 +2,7 @@
 
 Per-service sizing recommendations at four operational scales.
 
-All stawi.jobs services adapt their in-memory working set to the pod's actual
+All stawi.opportunities services adapt their in-memory working set to the pod's actual
 cgroup memory limit at runtime via `pkg/memconfig`. You can raise or lower
 `limits.memory` without restarting — the service resizes batch sizes and
 parallelism within 30 s.
@@ -41,14 +41,14 @@ ceiling the service will not exceed under any load.
 
 ### Manticore Search
 
-Manticore is a shared StatefulSet (`manticore.stawi-jobs.svc`). It is the primary
+Manticore is a shared StatefulSet (`manticore.opportunities.svc`). It is the primary
 hot-path bottleneck under high concurrent search load.
 
 | Scale | Recommended sizing | Notes |
 |-------|--------------------|-------|
 | Prototype (10k) | 1 replica, 512Mi / 2Gi, 1 CPU | Single RT index, no KNN queries |
 | Current-target (1M) | 1 replica, 2Gi / 8Gi, 2 CPU | KNN queries on 1536-dim vectors are expensive |
-| Growth-target (100M) | 2 replicas (percolate + query split), 8Gi / 32Gi, 4 CPU | Shard idx_jobs_rt by country or category |
+| Growth-target (100M) | 2 replicas (percolate + query split), 8Gi / 32Gi, 4 CPU | Shard idx_opportunities_rt by country or category |
 | Billion-scale | Dedicated Manticore cluster, 16Gi+ RAM per node | Requires distributed index; evaluate Elasticsearch migration |
 
 **Key driver:** The KNN `embedding` column (1536 float32 × 4 bytes = 6 KiB per row).

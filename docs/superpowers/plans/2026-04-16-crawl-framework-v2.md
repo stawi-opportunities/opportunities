@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rebuild the stawi.jobs crawling framework on Frame, add free JSON API and African board connectors, deploy to Kubernetes, and crawl quality global jobs into PostgreSQL.
+**Goal:** Rebuild the stawi.opportunities crawling framework on Frame, add free JSON API and African board connectors, deploy to Kubernetes, and crawl quality global jobs into PostgreSQL.
 
 **Architecture:** Three consolidated services (crawler, scheduler, api) built on the Frame framework with NATS JetStream for messaging, PostgreSQL via Frame's datastore for persistence, and an iterator-based connector pipeline with quality gates. Deployed via FluxCD + colony Helm chart to an existing Kubernetes cluster.
 
@@ -14,7 +14,7 @@
 
 ### Project Root Changes
 ```
-stawi.jobs/
+stawi.opportunities/
 ├── apps/
 │   ├── crawler/
 │   │   ├── Dockerfile
@@ -134,7 +134,7 @@ stawi.jobs/
 
 ### Deployment Repo (antinvestor/deployments)
 ```
-manifests/namespaces/stawi-jobs/
+manifests/namespaces/opportunities/
 ├── namespace.yaml
 ├── kustomization.yaml
 ├── kustomization_provider.yaml
@@ -146,17 +146,17 @@ manifests/namespaces/stawi-jobs/
 │   └── setup_queue.yaml
 ├── crawler/
 │   ├── kustomization.yaml
-│   ├── stawi-jobs-crawler.yaml
+│   ├── opportunities-crawler.yaml
 │   ├── database.yaml
 │   ├── db-credentials.yaml
 │   └── queue_setup.yaml
 ├── scheduler/
 │   ├── kustomization.yaml
-│   ├── stawi-jobs-scheduler.yaml
+│   ├── opportunities-scheduler.yaml
 │   └── db-credentials.yaml
 └── api/
     ├── kustomization.yaml
-    ├── stawi-jobs-api.yaml
+    ├── opportunities-api.yaml
     └── db-credentials.yaml
 ```
 
@@ -466,7 +466,7 @@ func main() {
 
 - [ ] **Step 3: Verify the project compiles**
 
-Run: `cd /home/j/code/stawi.jobs && go build ./...`
+Run: `cd /home/j/code/stawi.opportunities && go build ./...`
 Expected: Compiles cleanly (old cmd/ and internal/ still exist — they'll be removed after all code is migrated)
 
 - [ ] **Step 4: Commit**
@@ -665,7 +665,7 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 type SourceRepository struct {
@@ -754,7 +754,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 type CrawlRepository struct {
@@ -810,7 +810,7 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 type JobRepository struct {
@@ -963,7 +963,7 @@ import (
 	"context"
 
 	"gorm.io/gorm"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 type RejectedRepository struct {
@@ -1003,7 +1003,7 @@ func (r *RejectedRepository) CountBySourceType(ctx context.Context) (map[string]
 
 - [ ] **Step 5: Verify compilation**
 
-Run: `cd /home/j/code/stawi.jobs && go mod tidy && go build ./...`
+Run: `cd /home/j/code/stawi.opportunities && go mod tidy && go build ./...`
 
 - [ ] **Step 6: Commit**
 
@@ -1030,7 +1030,7 @@ package quality
 import (
 	"testing"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 func validJob() domain.ExternalJob {
@@ -1119,7 +1119,7 @@ func TestInvalidApplyURL(t *testing.T) {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/j/code/stawi.jobs && go test ./pkg/quality/...`
+Run: `cd /home/j/code/stawi.opportunities && go test ./pkg/quality/...`
 Expected: Compilation error (Check function doesn't exist yet)
 
 - [ ] **Step 3: Implement quality gate**
@@ -1133,7 +1133,7 @@ import (
 	"errors"
 	"strings"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 func Check(j domain.ExternalJob) error {
@@ -1162,7 +1162,7 @@ func Check(j domain.ExternalJob) error {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/j/code/stawi.jobs && go test ./pkg/quality/... -v`
+Run: `cd /home/j/code/stawi.opportunities && go test ./pkg/quality/... -v`
 Expected: All PASS
 
 - [ ] **Step 5: Commit**
@@ -1192,7 +1192,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 // CrawlIterator pages through results from a connector.
@@ -1350,7 +1350,7 @@ func (c *Client) Get(ctx context.Context, url string, headers map[string]string)
 
 - [ ] **Step 3: Verify compilation**
 
-Run: `cd /home/j/code/stawi.jobs && go build ./pkg/connectors/...`
+Run: `cd /home/j/code/stawi.opportunities && go build ./pkg/connectors/...`
 
 - [ ] **Step 4: Commit**
 
@@ -1378,7 +1378,7 @@ import (
 	"testing"
 	"time"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 func TestExternalToVariant(t *testing.T) {
@@ -1486,7 +1486,7 @@ import (
 	"strings"
 	"time"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 var companySuffixes = []string{
@@ -1597,7 +1597,7 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID int64, country, sourceBo
 
 - [ ] **Step 3: Run tests**
 
-Run: `cd /home/j/code/stawi.jobs && go test ./pkg/normalize/... -v`
+Run: `cd /home/j/code/stawi.opportunities && go test ./pkg/normalize/... -v`
 Expected: All PASS
 
 - [ ] **Step 4: Commit**
@@ -1626,8 +1626,8 @@ import (
 	"context"
 	"time"
 
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/repository"
 )
 
 type Engine struct {
@@ -1859,8 +1859,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/repository"
 )
 
 type SeedEntry struct {
@@ -1946,9 +1946,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2023,9 +2023,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2134,9 +2134,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2204,9 +2204,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2318,9 +2318,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2428,9 +2428,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2527,7 +2527,7 @@ func (it *iterator) Cursor() json.RawMessage        { return nil }
 
 - [ ] **Step 7: Verify all connectors compile**
 
-Run: `cd /home/j/code/stawi.jobs && go build ./pkg/connectors/...`
+Run: `cd /home/j/code/stawi.opportunities && go build ./pkg/connectors/...`
 
 - [ ] **Step 8: Commit**
 
@@ -2566,9 +2566,9 @@ import (
 	"regexp"
 	"strings"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2733,7 +2733,7 @@ Each connector must:
 
 - [ ] **Step 3: Verify compilation**
 
-Run: `cd /home/j/code/stawi.jobs && go build ./pkg/connectors/...`
+Run: `cd /home/j/code/stawi.opportunities && go build ./pkg/connectors/...`
 
 - [ ] **Step 4: Commit**
 
@@ -2770,9 +2770,9 @@ import (
 	"fmt"
 	"strings"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/domain"
 )
 
 type Connector struct {
@@ -2831,7 +2831,7 @@ Apply the same pattern for Lever, Workday, SmartRecruiters, and SchemaOrg — po
 - [ ] **Step 2: Verify compilation and commit**
 
 ```bash
-cd /home/j/code/stawi.jobs && go build ./pkg/connectors/...
+cd /home/j/code/stawi.opportunities && go build ./pkg/connectors/...
 git add pkg/connectors/greenhouse/ pkg/connectors/lever/ pkg/connectors/workday/ pkg/connectors/smartrecruiters/ pkg/connectors/schemaorg/
 git commit -m "feat: port existing connectors to iterator interface"
 ```
@@ -2856,8 +2856,8 @@ import (
 	"sync"
 	"time"
 
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/repository"
 )
 
 type BatchBuffer struct {
@@ -2935,12 +2935,12 @@ import (
 	"encoding/json"
 	"time"
 
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/dedupe"
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/normalize"
-	"stawi.jobs/pkg/quality"
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/dedupe"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/normalize"
+	"stawi.opportunities/pkg/quality"
+	"stawi.opportunities/pkg/repository"
 )
 
 type Worker struct {
@@ -3073,7 +3073,7 @@ func (w *Worker) ProcessRequest(ctx context.Context, req domain.CrawlRequest) Cr
 
 - [ ] **Step 3: Verify compilation**
 
-Run: `cd /home/j/code/stawi.jobs && go build ./pkg/pipeline/...`
+Run: `cd /home/j/code/stawi.opportunities && go build ./pkg/pipeline/...`
 
 - [ ] **Step 4: Commit**
 
@@ -3112,10 +3112,10 @@ type CrawlerConfig struct {
 	BatchSize         int    `env:"BATCH_SIZE" envDefault:"500"`
 	BatchFlushSec     int    `env:"BATCH_FLUSH_SEC" envDefault:"10"`
 	SeedsDir          string `env:"SEEDS_DIR" envDefault:"/seeds"`
-	UserAgent         string `env:"USER_AGENT" envDefault:"stawi.jobs-bot/2.0 (+https://stawi.jobs)"`
+	UserAgent         string `env:"USER_AGENT" envDefault:"stawi.opportunities-bot/2.0 (+https://stawi.opportunities)"`
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
-	CrawlQueueName string `env:"CRAWL_QUEUE_NAME" envDefault:"svc.stawi-jobs.crawl"`
+	CrawlQueueName string `env:"CRAWL_QUEUE_NAME" envDefault:"svc.opportunities.crawl"`
 	CrawlQueueURI  string `env:"CRAWL_QUEUE_URI" envDefault:"mem://crawl"`
 }
 ```
@@ -3139,7 +3139,7 @@ type SchedulerConfig struct {
 	DiscoveryIntervalSec int  `env:"DISCOVERY_INTERVAL_SEC" envDefault:"600"`
 	SeedsDir           string `env:"SEEDS_DIR" envDefault:"/seeds"`
 
-	CrawlQueueName string `env:"CRAWL_QUEUE_NAME" envDefault:"svc.stawi-jobs.crawl"`
+	CrawlQueueName string `env:"CRAWL_QUEUE_NAME" envDefault:"svc.opportunities.crawl"`
 	CrawlQueueURI  string `env:"CRAWL_QUEUE_URI" envDefault:"mem://crawl"`
 }
 ```
@@ -3175,30 +3175,30 @@ import (
 	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
 
-	aconfig "stawi.jobs/apps/crawler/config"
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/arbeitnow"
-	"stawi.jobs/pkg/connectors/brightermonday"
-	"stawi.jobs/pkg/connectors/careers24"
-	"stawi.jobs/pkg/connectors/findwork"
-	"stawi.jobs/pkg/connectors/greenhouse"
-	"stawi.jobs/pkg/connectors/himalayas"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/connectors/jobicy"
-	"stawi.jobs/pkg/connectors/jobberman"
-	"stawi.jobs/pkg/connectors/lever"
-	"stawi.jobs/pkg/connectors/myjobmag"
-	"stawi.jobs/pkg/connectors/njorku"
-	"stawi.jobs/pkg/connectors/pnet"
-	"stawi.jobs/pkg/connectors/remoteok"
-	"stawi.jobs/pkg/connectors/schemaorg"
-	"stawi.jobs/pkg/connectors/smartrecruiters"
-	"stawi.jobs/pkg/connectors/themuse"
-	"stawi.jobs/pkg/connectors/workday"
-	"stawi.jobs/pkg/dedupe"
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/pipeline"
-	"stawi.jobs/pkg/repository"
+	aconfig "stawi.opportunities/apps/crawler/config"
+	"stawi.opportunities/pkg/connectors"
+	"stawi.opportunities/pkg/connectors/arbeitnow"
+	"stawi.opportunities/pkg/connectors/brightermonday"
+	"stawi.opportunities/pkg/connectors/careers24"
+	"stawi.opportunities/pkg/connectors/findwork"
+	"stawi.opportunities/pkg/connectors/greenhouse"
+	"stawi.opportunities/pkg/connectors/himalayas"
+	"stawi.opportunities/pkg/connectors/httpx"
+	"stawi.opportunities/pkg/connectors/jobicy"
+	"stawi.opportunities/pkg/connectors/jobberman"
+	"stawi.opportunities/pkg/connectors/lever"
+	"stawi.opportunities/pkg/connectors/myjobmag"
+	"stawi.opportunities/pkg/connectors/njorku"
+	"stawi.opportunities/pkg/connectors/pnet"
+	"stawi.opportunities/pkg/connectors/remoteok"
+	"stawi.opportunities/pkg/connectors/schemaorg"
+	"stawi.opportunities/pkg/connectors/smartrecruiters"
+	"stawi.opportunities/pkg/connectors/themuse"
+	"stawi.opportunities/pkg/connectors/workday"
+	"stawi.opportunities/pkg/dedupe"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/pipeline"
+	"stawi.opportunities/pkg/repository"
 )
 
 func BuildRegistry(client *httpx.Client) *connectors.Registry {
@@ -3312,11 +3312,11 @@ import (
 	"github.com/pitabwire/frame/config"
 	"github.com/pitabwire/util"
 
-	aconfig "stawi.jobs/apps/crawler/config"
-	"stawi.jobs/apps/crawler/service"
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/seeds"
-	"stawi.jobs/pkg/repository"
+	aconfig "stawi.opportunities/apps/crawler/config"
+	"stawi.opportunities/apps/crawler/service"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/seeds"
+	"stawi.opportunities/pkg/repository"
 )
 
 func main() {
@@ -3378,7 +3378,7 @@ Create `apps/api/service/setup.go` and `apps/api/cmd/main.go` with chi HTTP rout
 
 - [ ] **Step 8: Verify compilation**
 
-Run: `cd /home/j/code/stawi.jobs && go mod tidy && go build ./...`
+Run: `cd /home/j/code/stawi.opportunities && go mod tidy && go build ./...`
 
 - [ ] **Step 9: Commit**
 
@@ -3397,7 +3397,7 @@ git commit -m "feat: add Frame-based service configs and main.go for crawler, sc
 - [ ] **Step 1: Add Frame and GORM dependencies**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go get github.com/pitabwire/frame@latest
 go get github.com/pitabwire/util@latest
 go get github.com/pitabwire/natspubsub@latest
@@ -3530,7 +3530,7 @@ git commit -m "feat: add Dockerfiles following service-profile standard"
 
 ## Task 16: Kubernetes Manifests (antinvestor/deployments)
 
-**Files:** All in `/home/j/code/antinvestor/deployments/manifests/namespaces/stawi-jobs/`
+**Files:** All in `/home/j/code/antinvestor/deployments/manifests/namespaces/opportunities/`
 
 This task creates the full namespace structure in the deployments repo, following the trustage pattern.
 
@@ -3540,7 +3540,7 @@ This task creates the full namespace structure in the deployments repo, followin
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: stawi-jobs
+  name: opportunities
   labels:
     environment: prod
     gateway-enabled: "true"
@@ -3567,13 +3567,13 @@ Three FluxCD Kustomization CRDs for crawler, scheduler, and api — each pointin
 
 - [ ] **Step 4: Create common/ directory**
 
-Following the trustage pattern: `kustomization.yaml`, `flux-image-automation.yaml` (ImageRepository for `ghcr.io/antinvestor/stawi-jobs-crawler`, ImagePolicy semver >= v0.1.0, ImageUpdateAutomation), `image_repository_secret.yaml`, `reference-grant.yaml`, `setup_queue.yaml` (NATS account).
+Following the trustage pattern: `kustomization.yaml`, `flux-image-automation.yaml` (ImageRepository for `ghcr.io/antinvestor/opportunities-crawler`, ImagePolicy semver >= v0.1.0, ImageUpdateAutomation), `image_repository_secret.yaml`, `reference-grant.yaml`, `setup_queue.yaml` (NATS account).
 
 - [ ] **Step 5: Create crawler/ directory**
 
 - `kustomization.yaml` listing resources
-- `stawi-jobs-crawler.yaml` — HelmRelease using colony v1.10.3 with:
-  - Image: `ghcr.io/antinvestor/stawi-jobs-crawler`
+- `opportunities-crawler.yaml` — HelmRelease using colony v1.10.3 with:
+  - Image: `ghcr.io/antinvestor/opportunities-crawler`
   - Replicas: 3 (no autoscaling)
   - Resources: 200m/512Mi CPU/memory
   - DB credentials from Vault
@@ -3581,7 +3581,7 @@ Following the trustage pattern: `kustomization.yaml`, `flux-image-automation.yam
   - Migration enabled
   - OpenTelemetry enabled
   - Environment: WORKER_CONCURRENCY=4, SEEDS_DIR=/seeds, CRAWL_QUEUE_NAME, CRAWL_QUEUE_URI
-- `database.yaml` — CNPG Database `stawi_jobs` on hub cluster, blue/green credentials
+- `database.yaml` — CNPG Database `opportunities` on hub cluster, blue/green credentials
 - `db-credentials.yaml` — ExternalSecret from Vault
 - `queue_setup.yaml` — NATS User + two JetStream streams (crawl, dedupe)
 
@@ -3589,16 +3589,16 @@ Following the trustage pattern: `kustomization.yaml`, `flux-image-automation.yam
 
 Similar to crawler but with different images, replicas (1 each), and environment variables.
 
-- [ ] **Step 7: Add stawi-jobs to parent kustomization**
+- [ ] **Step 7: Add opportunities to parent kustomization**
 
-Add `stawi-jobs` to the namespaces kustomization in the deployments repo.
+Add `opportunities` to the namespaces kustomization in the deployments repo.
 
 - [ ] **Step 8: Commit in deployments repo**
 
 ```bash
 cd /home/j/code/antinvestor/deployments
-git add manifests/namespaces/stawi-jobs/
-git commit -m "feat: add stawi-jobs namespace with crawler, scheduler, api services"
+git add manifests/namespaces/opportunities/
+git commit -m "feat: add opportunities namespace with crawler, scheduler, api services"
 ```
 
 ---
@@ -3649,7 +3649,7 @@ rm -rf cmd/ internal/ api/
 
 - [ ] **Step 3: Verify everything still compiles**
 
-Run: `cd /home/j/code/stawi.jobs && go build ./...`
+Run: `cd /home/j/code/stawi.opportunities && go build ./...`
 
 - [ ] **Step 4: Commit**
 
@@ -3665,18 +3665,18 @@ git commit -m "refactor: remove old cmd/internal structure, update Makefile for 
 - [ ] **Step 1: Build Docker images locally**
 
 ```bash
-cd /home/j/code/stawi.jobs
-docker build -f apps/crawler/Dockerfile -t ghcr.io/antinvestor/stawi-jobs-crawler:v0.1.0 .
-docker build -f apps/scheduler/Dockerfile -t ghcr.io/antinvestor/stawi-jobs-scheduler:v0.1.0 .
-docker build -f apps/api/Dockerfile -t ghcr.io/antinvestor/stawi-jobs-api:v0.1.0 .
+cd /home/j/code/stawi.opportunities
+docker build -f apps/crawler/Dockerfile -t ghcr.io/antinvestor/opportunities-crawler:v0.1.0 .
+docker build -f apps/scheduler/Dockerfile -t ghcr.io/antinvestor/opportunities-scheduler:v0.1.0 .
+docker build -f apps/api/Dockerfile -t ghcr.io/antinvestor/opportunities-api:v0.1.0 .
 ```
 
 - [ ] **Step 2: Push images to GHCR**
 
 ```bash
-docker push ghcr.io/antinvestor/stawi-jobs-crawler:v0.1.0
-docker push ghcr.io/antinvestor/stawi-jobs-scheduler:v0.1.0
-docker push ghcr.io/antinvestor/stawi-jobs-api:v0.1.0
+docker push ghcr.io/antinvestor/opportunities-crawler:v0.1.0
+docker push ghcr.io/antinvestor/opportunities-scheduler:v0.1.0
+docker push ghcr.io/antinvestor/opportunities-api:v0.1.0
 ```
 
 - [ ] **Step 3: Push deployment manifests**
@@ -3691,7 +3691,7 @@ FluxCD will pick up the changes and deploy.
 - [ ] **Step 4: Verify pods are running**
 
 ```bash
-kubectl get pods -n stawi-jobs
+kubectl get pods -n opportunities
 ```
 
 Expected: 3 crawler pods, 1 scheduler pod, 1 api pod — all Running.
@@ -3699,7 +3699,7 @@ Expected: 3 crawler pods, 1 scheduler pod, 1 api pod — all Running.
 - [ ] **Step 5: Check logs for crawl activity**
 
 ```bash
-kubectl logs -n stawi-jobs -l app=stawi-jobs-crawler --tail=100 -f
+kubectl logs -n opportunities -l app=opportunities-crawler --tail=100 -f
 ```
 
 Look for `crawl_batch_complete` log events with `jobs_accepted > 0`.
@@ -3707,13 +3707,13 @@ Look for `crawl_batch_complete` log events with `jobs_accepted > 0`.
 - [ ] **Step 6: Check job count**
 
 ```bash
-kubectl exec -n stawi-jobs deploy/stawi-jobs-api -- /api healthz
+kubectl exec -n opportunities deploy/opportunities-api -- /api healthz
 ```
 
 Or query the database directly:
 
 ```bash
-kubectl exec -n datastore pod/hub-1 -- psql -U stawi-jobs -d stawi_jobs -c "SELECT count(*) FROM job_variants;"
+kubectl exec -n datastore pod/hub-1 -- psql -U opportunities -d stawi_jobs -c "SELECT count(*) FROM job_variants;"
 ```
 
 - [ ] **Step 7: Monitor and fix issues**

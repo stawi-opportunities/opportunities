@@ -408,7 +408,7 @@ import (
     "github.com/pitabwire/frame"
     "github.com/pitabwire/frame/cache"
     framevalkey "github.com/pitabwire/frame/cache/valkey"
-    "stawi.jobs/pkg/kv"
+    "stawi.opportunities/pkg/kv"
 )
 
 // Register a single raw cache (Valkey-backed) with the Frame service.
@@ -536,7 +536,7 @@ import (
 
 	"github.com/pitabwire/frame"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // NormalizeHandler consumes VariantIngestedV1, applies deterministic
@@ -669,8 +669,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
 )
 
 // ValidationMinConfidence is set by the service wiring; tests can
@@ -855,7 +855,7 @@ import (
 	"github.com/pitabwire/frame/cache"
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
 )
 
 // DedupHandler consumes VariantValidatedV1, looks up the hard_key
@@ -963,8 +963,8 @@ import (
 	"github.com/pitabwire/frame/cache"
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/kv"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/kv"
 )
 
 // CanonicalHandler merges a newly-clustered variant into the
@@ -1140,8 +1140,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
 )
 
 // EmbedHandler consumes CanonicalUpsertedV1 and emits EmbeddingV1.
@@ -1245,8 +1245,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/extraction"
 )
 
 // TranslateHandler consumes CanonicalUpsertedV1 and emits one
@@ -1381,8 +1381,8 @@ import (
 
 	"github.com/pitabwire/frame"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/publish"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/publish"
 )
 
 // PublishHandler consumes CanonicalUpsertedV1 and writes a JSON
@@ -1483,9 +1483,9 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
 
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/kv"
-	"stawi.jobs/pkg/publish"
+	"stawi.opportunities/pkg/extraction"
+	"stawi.opportunities/pkg/kv"
+	"stawi.opportunities/pkg/publish"
 )
 
 // Service is the worker's composition root. RegisterAll wires the
@@ -1559,12 +1559,12 @@ import (
 	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/kv"
-	"stawi.jobs/pkg/publish"
+	"stawi.opportunities/pkg/extraction"
+	"stawi.opportunities/pkg/kv"
+	"stawi.opportunities/pkg/publish"
 
-	workercfg "stawi.jobs/apps/worker/config"
-	workersvc "stawi.jobs/apps/worker/service"
+	workercfg "stawi.opportunities/apps/worker/config"
+	workersvc "stawi.opportunities/apps/worker/service"
 )
 
 func main() {
@@ -1689,11 +1689,11 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/kv"
-	"stawi.jobs/pkg/publish"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/kv"
+	"stawi.opportunities/pkg/publish"
 
-	workersvc "stawi.jobs/apps/worker/service"
+	workersvc "stawi.opportunities/apps/worker/service"
 )
 
 // collector subscribes to a topic on the in-memory Frame pub/sub and

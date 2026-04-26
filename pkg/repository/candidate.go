@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // CandidateRepository wraps GORM operations for candidate profiles.

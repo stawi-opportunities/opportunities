@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"stawi.jobs/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 func TestScoreATS_fullStructure(t *testing.T) {

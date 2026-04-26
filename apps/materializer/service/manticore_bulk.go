@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"stawi.jobs/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 // BulkUpserter buffers Manticore replace operations and flushes them

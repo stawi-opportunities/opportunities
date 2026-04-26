@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.retention.stage2",
+  "name": "opportunities.retention.stage2",
   "description": "Nightly: physically delete R2 snapshots for canonical_jobs that have been 'expired' for more than RETENTION_GRACE_DAYS (default 7). The admin endpoint batches 1000 rows at a time and marks each deleted; running once per day is plenty for the typical expiry rate.",
   "schedule": {
     "cron": "24h",
@@ -21,7 +21,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/retention/stage2",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/retention/stage2",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

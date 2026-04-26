@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	connectors "stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/connectors/httpx"
-	"stawi.jobs/pkg/domain"
+	connectors "github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
 // Connector crawls SmartRecruiters-hosted job boards.

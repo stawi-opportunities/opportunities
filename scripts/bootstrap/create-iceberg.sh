@@ -5,8 +5,8 @@
 #
 # Prerequisites:
 #   - Vault secrets seeded (run seed-vault.sh first)
-#   - ExternalSecrets synced: iceberg-catalog-credentials-stawi-jobs and
-#     r2-log-credentials-stawi-jobs must exist in the stawi-jobs namespace
+#   - ExternalSecrets synced: iceberg-catalog-credentials-opportunities and
+#     r2-log-credentials-opportunities must exist in the opportunities namespace
 #   - Outbound internet access from the cluster (for git clone + pip install)
 #
 # Usage:
@@ -21,7 +21,7 @@ kubectl apply -f - <<EOF
 apiVersion: batch/v1
 kind: Job
 metadata:
-  namespace: stawi-jobs
+  namespace: opportunities
   name: ${JOB_NAME}
 spec:
   backoffLimit: 0
@@ -38,7 +38,7 @@ spec:
             - |
               set -euo pipefail
               apt-get update -qq && apt-get install -y -qq git
-              git clone --depth 1 https://github.com/antinvestor/stawi-jobs /tmp/sj
+              git clone --depth 1 https://github.com/stawi-opportunities/opportunities /tmp/sj
               cd /tmp/sj/definitions/iceberg
               pip install -q -r requirements.txt
               echo "Creating namespaces..."
@@ -50,29 +50,29 @@ spec:
             - name: ICEBERG_CATALOG_URI
               valueFrom:
                 secretKeyRef:
-                  name: iceberg-catalog-credentials-stawi-jobs
+                  name: iceberg-catalog-credentials-opportunities
                   key: ICEBERG_CATALOG_URI
             - name: R2_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: r2-log-credentials-stawi-jobs
+                  name: r2-log-credentials-opportunities
                   key: R2_LOG_ACCESS_KEY_ID
             - name: R2_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: r2-log-credentials-stawi-jobs
+                  name: r2-log-credentials-opportunities
                   key: R2_LOG_SECRET_ACCESS_KEY
             - name: R2_LOG_BUCKET
-              value: "stawi-jobs-log"
+              value: "opportunities-log"
             - name: R2_ENDPOINT
               valueFrom:
                 secretKeyRef:
-                  name: r2-log-credentials-stawi-jobs
+                  name: r2-log-credentials-opportunities
                   key: R2_LOG_ENDPOINT
 EOF
 
 echo "Waiting for Job ${JOB_NAME} to complete (timeout 10m)..."
-kubectl wait --for=condition=complete --timeout=600s "job/${JOB_NAME}" -n stawi-jobs \
-    || { echo "Job failed — check logs:"; kubectl logs -n stawi-jobs "job/${JOB_NAME}"; exit 1; }
+kubectl wait --for=condition=complete --timeout=600s "job/${JOB_NAME}" -n opportunities \
+    || { echo "Job failed — check logs:"; kubectl logs -n opportunities "job/${JOB_NAME}"; exit 1; }
 
 echo "Iceberg namespaces and tables bootstrapped successfully."

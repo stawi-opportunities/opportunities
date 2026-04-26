@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.writer.compact",
+  "name": "opportunities.writer.compact",
   "description": "Every 2 hours: compact small Parquet files across Iceberg append-only tables. Uses per-partition atomic Overwrite to consolidate files below 64 MiB into targets of 128 MiB. Bounded per-table to 30 minutes so a single slow table doesn't block the fleet.",
   "schedule": { "cron": "0 */2 * * *", "active": true },
   "input": {},
@@ -17,7 +17,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact",
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

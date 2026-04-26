@@ -12,20 +12,20 @@ Stawi Jobs uses a hybrid storage model:
 
 - **Append-only event log (Iceberg on R2 + JDBC catalog):** 11 tables across `jobs` and `candidates` namespaces. Writers commit Parquet files to R2 and register each file via an Iceberg `AppendFiles` transaction. The JDBC catalog lives on the existing Postgres instance.
 
-- **Canonical job body (R2-direct, no Iceberg):** Each canonical job is stored as a plain JSON file at `s3://stawi-jobs-content/jobs/<slug>.json`. Translations are at `jobs/<slug>/<lang>.json`. These paths are the authoritative source for job detail pages and for KV rebuild — there is no Iceberg `jobs.canonicals` table.
+- **Canonical job body (R2-direct, no Iceberg):** Each canonical job is stored as a plain JSON file at `s3://opportunities-content/jobs/<slug>.json`. Translations are at `jobs/<slug>/<lang>.json`. These paths are the authoritative source for job detail pages and for KV rebuild — there is no Iceberg `jobs.canonicals` table.
 
 - **Materializer (Frame subscriber):** The materializer subscribes to four NATS JetStream topics via Frame's handler registration. It does not scan Iceberg snapshots, does not hold a watermark, and does not participate in leader election. Consumer lag is observable via the NATS JetStream native metric `nats_jetstream_consumer_num_pending`.
 
 - **Valkey KV cache:** `cluster:<id>` keys hold `kv.ClusterSnapshot` JSON for the hot-path dedup and serve the search API. These keys are rebuilt from the R2 canonical files by the worker's `/_admin/kv/rebuild` endpoint.
 
-- **Search index (Manticore):** The materializer writes to `idx_jobs_rt` (replace + update). The materializer's Frame subscriber handlers are the only write path to Manticore.
+- **Search index (Manticore):** The materializer writes to `idx_opportunities_rt` (replace + update). The materializer's Frame subscriber handlers are the only write path to Manticore.
 
 **Tables NOT in Iceberg:**
 
 | Data | Storage |
 |---|---|
-| Canonical job body | `s3://stawi-jobs-content/jobs/<slug>.json` |
-| Job translations | `s3://stawi-jobs-content/jobs/<slug>/<lang>.json` |
+| Canonical job body | `s3://opportunities-content/jobs/<slug>.json` |
+| Job translations | `s3://opportunities-content/jobs/<slug>/<lang>.json` |
 | Canonical expiry events | Frame event only — no persistent table |
 
 ---
@@ -41,7 +41,7 @@ Stawi Jobs uses a hybrid storage model:
    ┌───────────────────────────┐   ┌──────────────────────────────┐
    │ apps/writer               │   │ apps/materializer            │
    │  Parquet → R2             │   │  Frame subscriber (4 topics) │
-   │  AppendFiles → catalog    │   │  → Manticore idx_jobs_rt     │
+   │  AppendFiles → catalog    │   │  → Manticore idx_opportunities_rt     │
    └─────┬──────────────┬──────┘   └──────────────────────────────┘
          │              │
          │              ▼
@@ -56,11 +56,11 @@ Stawi Jobs uses a hybrid storage model:
    ┌──────────────────────────────────────────────────────────────┐
    │ R2 (Cloudflare)                                              │
    │                                                              │
-   │  stawi-jobs-content/                                         │
+   │  opportunities-content/                                         │
    │    jobs/<slug>.json          ← canonical body (authoritative)│
    │    jobs/<slug>/<lang>.json   ← translation body              │
    │                                                              │
-   │  stawi-jobs-log/                                             │
+   │  opportunities-log/                                             │
    │    <collection>/dt=…/        ← Parquet (Iceberg files)       │
    └───────────────────────┬──────────────────────────────────────┘
                            │
@@ -82,7 +82,7 @@ Stawi Jobs uses a hybrid storage model:
 
 **Materializer** = four Frame handler registrations (`CanonicalUpserted`, `CanonicalExpired`, `Translation`, `Embedding`). No snapshot scan. No watermark. Consumer lag is `nats_jetstream_consumer_num_pending{consumer=~"materializer.*"}`.
 
-**KV rebuild** = `/_admin/kv/rebuild` pages through `stawi-jobs-content/jobs/*.json` (single-slash `.json` files only, skipping per-language translations), decodes `CanonicalUpsertedV1`, and writes `cluster:<id>` keys via Lua CAS. Concurrent 16-goroutine worker pool.
+**KV rebuild** = `/_admin/kv/rebuild` pages through `opportunities-content/jobs/*.json` (single-slash `.json` files only, skipping per-language translations), decodes `CanonicalUpsertedV1`, and writes `cluster:<id>` keys via Lua CAS. Concurrent 16-goroutine worker pool.
 
 **Maintenance** = a single Python pod, fires once nightly, runs ~5 min:
 
@@ -170,7 +170,7 @@ Applied during nightly compaction to the sort-key columns above. Pays off most o
 |---|---|---|
 | Go writer library | `github.com/apache/iceberg-go` | Pin to a version with write support. If current version's writes are shaky at spike time, fall back to Python sidecar |
 | Python maintenance | `pyiceberg >= 0.8` | Runs as a single `CronJob`, 512Mi memory |
-| Catalog backend | JDBC on existing `stawi_jobs` Postgres | Four catalog tables via migration `0004_iceberg_catalog.sql` |
+| Catalog backend | JDBC on existing `opportunities` Postgres | Four catalog tables via migration `0004_iceberg_catalog.sql` |
 | Ad-hoc query | DuckDB with `iceberg` extension | Zero-infra analytics |
 | Reader library (materializer, candidatestore, backfill) | `iceberg-go` | Same version as writer |
 
@@ -182,8 +182,8 @@ Applied during nightly compaction to the sort-key columns above. Pays off most o
 
 Applies before any code lands:
 - Phase 6's Postgres cutover migration (`0003_cutover_drop_legacy.sql`) can either merge cleanly with the new iceberg migration or ship first. Pick one order; doesn't matter which.
-- R2 bucket `stawi-jobs-log` exists (same bucket Phase 6 targets).
-- Vault path for `r2-log-credentials-stawi-jobs` seeded.
+- R2 bucket `opportunities-log` exists (same bucket Phase 6 targets).
+- Vault path for `r2-log-credentials-opportunities` seeded.
 
 ### 6.1 One-week spike (week 0)
 
@@ -245,9 +245,9 @@ func (s *Service) commitToCatalog(ctx context.Context, table string, parquetKey 
 - `apps/iceberg-ops/` — new tiny Python app with one main script
 - `apps/iceberg-ops/Dockerfile` — `python:3.12-slim` + `pyiceberg[sql]` + `psycopg2`
 - `apps/iceberg-ops/main.py` — the nightly rewrite + expire for the 11 append-only Iceberg tables
-- `manifests/namespaces/stawi-jobs/iceberg-ops/cronjob.yaml` — one CronJob at `0 2 * * *`
-- `manifests/namespaces/stawi-jobs/iceberg-ops/kustomization.yaml`
-- Add `iceberg-ops/` to the top-level `stawi-jobs/kustomization.yaml`
+- `manifests/namespaces/opportunities/iceberg-ops/cronjob.yaml` — one CronJob at `0 2 * * *`
+- `manifests/namespaces/opportunities/iceberg-ops/kustomization.yaml`
+- Add `iceberg-ops/` to the top-level `opportunities/kustomization.yaml`
 
 **Deploy:**
 - Build the image in the existing release workflow (add `apps/iceberg-ops` to the matrix)

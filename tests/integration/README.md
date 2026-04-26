@@ -6,7 +6,7 @@ Gate: `//go:build integration` — not run by `go test ./...` by default.
 
 | Test | Containers | What it verifies |
 |------|-----------|-----------------|
-| `TestMaterializerManticoreE2E` | Manticore | canonical event → searchindex.Client.Replace → idx_jobs_rt row present |
+| `TestMaterializerManticoreE2E` | Manticore | canonical event → searchindex.Client.Replace → idx_opportunities_rt row present |
 | `TestMaterializerManticoreSchemaIdempotent` | Manticore | Apply called twice → no error |
 
 ## What's not yet covered (TODO)
@@ -72,6 +72,6 @@ a full NATS JetStream stream configuration.
 
 To extend to a full Frame→handler test:
 1. Add a `NATSContainer` helper (already in `testhelpers/containers.go`)
-2. Create the `svc_stawi_jobs_events` JetStream stream in the test setup
+2. Create the `svc_opportunities_events` JetStream stream in the test setup
 3. Use `frame.NewServiceWithContext` with the NATS container URL as `EVENTS_QUEUE_URL`
 4. Publish via `frame.Publish` and assert the handler was called

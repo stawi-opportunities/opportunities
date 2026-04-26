@@ -1,4 +1,4 @@
-# stawi.jobs ingestion platform
+# stawi.opportunities ingestion platform
 
 Production-oriented job ingestion stack in Go for high-coverage global job discovery.
 

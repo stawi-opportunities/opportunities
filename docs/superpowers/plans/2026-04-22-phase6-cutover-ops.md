@@ -156,8 +156,8 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 // TestCompactHourly_DedupAndMerge seeds three small Parquet files for
@@ -274,8 +274,8 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 // Compactor merges small Parquet files under a day-partition into one
@@ -917,8 +917,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/require"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 func TestCompactHourlyHandler_OK(t *testing.T) {
@@ -1116,7 +1116,7 @@ Find the HTTP mux setup in `apps/writer/cmd/main.go` and add the two routes. The
 // In apps/writer/cmd/main.go, after the existing mux construction:
 
 import (
-    "stawi.jobs/apps/writer/service"
+    "stawi.opportunities/apps/writer/service"
 )
 
 // …
@@ -1136,7 +1136,7 @@ reader := eventlog.NewReader(s3Client, cfg.R2Bucket)
 compactor := service.NewCompactor(s3Client, reader, uploader, cfg.R2Bucket)
 ```
 
-If `apps/writer/cmd/main.go` currently doesn't build a `reader`, add the import `stawi.jobs/pkg/eventlog` if missing.
+If `apps/writer/cmd/main.go` currently doesn't build a `reader`, add the import `stawi.opportunities/pkg/eventlog` if missing.
 
 - [ ] **Step 6: Build all writer targets**
 
@@ -1173,7 +1173,7 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
 ```json
 {
   "version": "1.0",
-  "name": "stawi-jobs.writer.compact.hourly",
+  "name": "opportunities.writer.compact.hourly",
   "description": "Hourly: merge small Parquet files in today's partitions across every writer-backed collection and dedup by event_id. Runs against apps/writer's /_admin/compact/hourly endpoint once per collection.",
   "schedule": { "cron": "5 * * * *", "active": true },
   "input": {},
@@ -1183,61 +1183,61 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
   "steps": [
     { "id": "variants",                "type": "call", "name": "compact variants",                "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "variants" } },
         "output_var": "r_variants" } },
     { "id": "canonicals",              "type": "call", "name": "compact canonicals",              "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "canonicals" } },
         "output_var": "r_canonicals" } },
     { "id": "embeddings",              "type": "call", "name": "compact embeddings",              "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "embeddings" } },
         "output_var": "r_embeddings" } },
     { "id": "translations",            "type": "call", "name": "compact translations",            "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "translations" } },
         "output_var": "r_translations" } },
     { "id": "published",               "type": "call", "name": "compact published",               "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "published" } },
         "output_var": "r_published" } },
     { "id": "crawl_page_completed",    "type": "call", "name": "compact crawl_page_completed",    "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "crawl_page_completed" } },
         "output_var": "r_crawl_page" } },
     { "id": "candidates_cv",           "type": "call", "name": "compact candidates_cv",           "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "candidates_cv" } },
         "output_var": "r_cv" } },
     { "id": "candidates_improvements", "type": "call", "name": "compact candidates_improvements", "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "candidates_improvements" } },
         "output_var": "r_improvements" } },
     { "id": "candidates_preferences",  "type": "call", "name": "compact candidates_preferences",  "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "candidates_preferences" } },
         "output_var": "r_prefs" } },
     { "id": "candidates_embeddings",   "type": "call", "name": "compact candidates_embeddings",   "timeout": "5m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/hourly",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "candidates_embeddings" } },
         "output_var": "r_cv_emb" } }
@@ -1250,7 +1250,7 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
 ```json
 {
   "version": "1.0",
-  "name": "stawi-jobs.writer.compact.daily",
+  "name": "opportunities.writer.compact.daily",
   "description": "Daily at 02:00 UTC: rebuild *_current/ partitions from the full raw log for every collection that has a current view. Runs against apps/writer's /_admin/compact/daily endpoint once per collection.",
   "schedule": { "cron": "0 2 * * *", "active": true },
   "input": {},
@@ -1260,37 +1260,37 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
   "steps": [
     { "id": "canonicals",             "type": "call", "name": "rebuild canonicals_current",             "timeout": "30m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/daily",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "canonicals" } },
         "output_var": "r_canonicals" } },
     { "id": "embeddings",             "type": "call", "name": "rebuild embeddings_current",             "timeout": "30m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/daily",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "embeddings" } },
         "output_var": "r_embeddings" } },
     { "id": "translations",           "type": "call", "name": "rebuild translations_current",           "timeout": "30m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/daily",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "translations" } },
         "output_var": "r_translations" } },
     { "id": "candidates_cv",          "type": "call", "name": "rebuild candidates_cv_current",          "timeout": "30m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/daily",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "candidates_cv" } },
         "output_var": "r_cv" } },
     { "id": "candidates_embeddings",  "type": "call", "name": "rebuild candidates_embeddings_current",  "timeout": "30m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/daily",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "candidates_embeddings" } },
         "output_var": "r_cv_emb" } },
     { "id": "candidates_preferences", "type": "call", "name": "rebuild candidates_preferences_current", "timeout": "30m",
       "call": { "action": "http.request",
-        "input": { "url": "http://stawi-jobs-writer.stawi-jobs.svc/_admin/compact/daily",
+        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
                    "method": "POST", "headers": { "Content-Type": "application/json" },
                    "body": { "collection": "candidates_preferences" } },
         "output_var": "r_prefs" } }
@@ -1303,7 +1303,7 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
 ```json
 {
   "version": "1.0",
-  "name": "stawi-jobs.sources.quality-window-reset",
+  "name": "opportunities.sources.quality-window-reset",
   "description": "Weekly on Mondays 03:00 UTC: reset the per-source 7-day quality window counters on apps/crawler. Moves the 'window_*' fields to zero and marks the reset_at timestamp.",
   "schedule": { "cron": "0 3 * * 1", "active": true },
   "input": {},
@@ -1320,7 +1320,7 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/sources/quality-reset",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/sources/quality-reset",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}
@@ -1337,7 +1337,7 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
 ```json
 {
   "version": "1.0",
-  "name": "stawi-jobs.sources.health-decay",
+  "name": "opportunities.sources.health-decay",
   "description": "Hourly: nudge every active source's health_score back toward 1.0. A source without fresh failures heals over time even if nothing crawls it; the decay rate matches the exponential recovery shape used by the crawler's page-completed handler.",
   "schedule": { "cron": "15 * * * *", "active": true },
   "input": {},
@@ -1354,7 +1354,7 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/sources/health-decay",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/sources/health-decay",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}
@@ -1380,7 +1380,7 @@ import (
 
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/repository"
 )
 
 // QualityResetHandler zeros the rolling quality-window counters on
@@ -1836,8 +1836,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 func TestKVRebuild_Run(t *testing.T) {
@@ -1944,8 +1944,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 // KVRebuilder repopulates Valkey dedup + cluster keys from R2
@@ -2104,8 +2104,8 @@ Mount the admin on the worker's existing HTTP mux (the worker already exposes `/
 ```go
 // apps/worker/cmd/main.go — after the mux is built:
 import (
-    "stawi.jobs/apps/worker/service"
-    "stawi.jobs/pkg/eventlog"
+    "stawi.opportunities/apps/worker/service"
+    "stawi.opportunities/pkg/eventlog"
 )
 
 // …
@@ -2162,8 +2162,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 func TestStaleReader_ListStale(t *testing.T) {
@@ -2218,8 +2218,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 // StaleCandidate mirrors the admin handler's shape for stale-nudge.
@@ -2313,7 +2313,7 @@ import (
 	"context"
 	"time"
 
-	"stawi.jobs/pkg/candidatestore"
+	"stawi.opportunities/pkg/candidatestore"
 )
 
 // R2StaleLister reads "most recent CV upload" timestamps directly from
@@ -2405,7 +2405,7 @@ Replace the Phase 5 `RepoStaleLister` construction with `R2StaleLister`:
 
 ```go
 // apps/candidates/cmd/main.go
-import "stawi.jobs/pkg/candidatestore"
+import "stawi.opportunities/pkg/candidatestore"
 
 staleReader := candidatestore.NewStaleReader(s3Client, cfg.R2Bucket)
 staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
@@ -2458,7 +2458,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 func TestJobsManticore_GetByID(t *testing.T) {
@@ -2514,10 +2514,10 @@ import (
 	"fmt"
 	"time"
 
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/searchindex"
 )
 
-// job mirrors the Manticore idx_jobs_rt row shape the API returns.
+// job mirrors the Manticore idx_opportunities_rt row shape the API returns.
 // Fields here match searchV2Hit but are broader because the detail
 // endpoint returns everything including description + dates.
 type job struct {
@@ -2560,7 +2560,7 @@ func newJobsManticore(c *searchindex.Client) *jobsManticore {
 // canonical_id). Returns (nil, nil) if no match.
 func (j *jobsManticore) GetByID(ctx context.Context, id string) (*job, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{
 			"bool": map[string]any{
 				"filter": []map[string]any{
@@ -2590,7 +2590,7 @@ func (j *jobsManticore) Count(ctx context.Context, filter []map[string]any) (int
 	f := []map[string]any{{"equals": map[string]any{"status": "active"}}}
 	f = append(f, filter...)
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": f}},
 		"limit": 0,
 	}
@@ -2608,7 +2608,7 @@ func (j *jobsManticore) Top(ctx context.Context, minScore float64, limit int) ([
 		}})
 	}
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": f}},
 		"sort":  []any{map[string]any{"quality_score": "desc"}, map[string]any{"posted_at": "desc"}},
 		"limit": limit,
@@ -2620,7 +2620,7 @@ func (j *jobsManticore) Top(ctx context.Context, minScore float64, limit int) ([
 // Latest returns the most-recent `limit` active jobs.
 func (j *jobsManticore) Latest(ctx context.Context, limit int) ([]job, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": []map[string]any{
 			{"equals": map[string]any{"status": "active"}},
 		}}},
@@ -2637,7 +2637,7 @@ func (j *jobsManticore) Latest(ctx context.Context, limit int) ([]job, error) {
 // value → count.
 func (j *jobsManticore) Facets(ctx context.Context) (map[string]map[string]int, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": []map[string]any{
 			{"equals": map[string]any{"status": "active"}},
 		}}},
@@ -2727,7 +2727,7 @@ Replaces legacy Postgres-reading endpoints with Manticore-backed equivalents:
 
 | Legacy (deletes Task 12) | New (this task) | Backing call |
 |---|---|---|
-| `GET /search`, `GET /api/search` | `GET /api/v2/search` (expanded below) | Manticore `idx_jobs_rt` |
+| `GET /search`, `GET /api/search` | `GET /api/v2/search` (expanded below) | Manticore `idx_opportunities_rt` |
 | `GET /jobs/{id}` | `GET /api/v2/jobs/{id}` | `jobsManticore.GetByID` |
 | `GET /jobs/top` | `GET /api/v2/jobs/top` | `jobsManticore.Top` |
 | `GET /api/jobs/latest` | `GET /api/v2/jobs/latest` | `jobsManticore.Latest` |
@@ -2752,7 +2752,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 // stubManticore is an httptest server whose response body per POST /search
@@ -2913,7 +2913,7 @@ func v2SearchHandler(jm *jobsManticore) http.HandlerFunc {
 		}
 
 		query := map[string]any{
-			"index": "idx_jobs_rt",
+			"index": "idx_opportunities_rt",
 			"query": map[string]any{"bool": boolQ},
 			"limit": limit,
 			"aggs": map[string]any{
@@ -3069,7 +3069,7 @@ func v2StatsHandler(jm *jobsManticore) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		companies := 0 // Company facet not indexed in idx_jobs_rt v1; derive later.
+		companies := 0 // Company facet not indexed in idx_opportunities_rt v1; derive later.
 		countries := len(facets["country"])
 		w.Header().Set("Cache-Control", "public, max-age=300")
 		w.Header().Set("Content-Type", "application/json")
@@ -3243,7 +3243,7 @@ And add `searchFiltered` to `apps/api/cmd/manticore_client.go`:
 // — callers pass it in explicitly.
 func (j *jobsManticore) searchFiltered(ctx context.Context, filter []map[string]any, limit int, sortField string) ([]job, error) {
 	q := map[string]any{
-		"index": "idx_jobs_rt",
+		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": filter}},
 		"sort":  []any{map[string]any{sortField: "desc"}},
 		"limit": limit,
@@ -3295,8 +3295,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 type fakeR2Snapshotter struct {
@@ -3372,8 +3372,8 @@ import (
 
 	"github.com/pitabwire/util"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/eventlog"
+	eventsv1 "stawi.opportunities/pkg/events/v1"
+	"stawi.opportunities/pkg/eventlog"
 )
 
 // r2Snapshotter is the minimal publish interface the backfill needs.
@@ -3570,10 +3570,10 @@ import (
 	env "github.com/caarlos0/env/v11"
 	"github.com/pitabwire/util"
 
-	"stawi.jobs/pkg/analytics"
-	"stawi.jobs/pkg/eventlog"
-	"stawi.jobs/pkg/publish"
-	"stawi.jobs/pkg/searchindex"
+	"stawi.opportunities/pkg/analytics"
+	"stawi.opportunities/pkg/eventlog"
+	"stawi.opportunities/pkg/publish"
+	"stawi.opportunities/pkg/searchindex"
 )
 
 type apiConfig struct {
@@ -3582,8 +3582,8 @@ type apiConfig struct {
 	R2AccountID       string  `env:"R2_ACCOUNT_ID"      envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID"   envDefault:""`
 	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string  `env:"R2_BUCKET"          envDefault:"stawi-jobs-content"`
-	R2LogBucket       string  `env:"R2_LOG_BUCKET"      envDefault:"stawi-jobs-log"`
+	R2Bucket          string  `env:"R2_BUCKET"          envDefault:"opportunities-content"`
+	R2LogBucket       string  `env:"R2_LOG_BUCKET"      envDefault:"opportunities-log"`
 	R2Endpoint        string  `env:"R2_ENDPOINT"        envDefault:""`
 	R2Region          string  `env:"R2_REGION"          envDefault:"auto"`
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
@@ -3624,8 +3624,8 @@ func main() {
 		)
 		log.WithField("bucket", cfg.R2Bucket).Info("R2 publisher enabled")
 
-		// Reader targets the log bucket (stawi-jobs-log), not the
-		// content bucket (stawi-jobs-content). Two different buckets:
+		// Reader targets the log bucket (opportunities-log), not the
+		// content bucket (opportunities-content). Two different buckets:
 		// content holds Hugo snapshots, log holds the event log Parquet.
 		s3cli, err := eventlog.NewS3Client(ctx, cfg.R2Endpoint, cfg.R2Region, cfg.R2AccessKeyID, cfg.R2SecretAccessKey)
 		if err == nil {
@@ -3714,7 +3714,7 @@ func main() {
 			if profileID := profileIDFromJWT(req); profileID != "" {
 				evt["profile_id"] = profileID
 			}
-			analyticsClient.Send(req.Context(), "stawi_jobs_views", evt)
+			analyticsClient.Send(req.Context(), "opportunities_views", evt)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -4071,7 +4071,7 @@ For each candidate for deletion, grep first:
 for pkg in pkg/billing pkg/repository/facets pkg/repository/rerank_cache \
            pkg/repository/saved_job pkg/repository/rejected pkg/repository/retention; do
     echo "--- $pkg ---"
-    grep -r "stawi.jobs/${pkg}" --include='*.go' .
+    grep -r "stawi.opportunities/${pkg}" --include='*.go' .
 done
 ```
 
@@ -4292,14 +4292,14 @@ prior deployment restores the legacy Postgres read path.
 - [ ] Managed infra is up:
   - [ ] Manticore cluster reachable at `$MANTICORE_URL`
   - [ ] Valkey reachable at `$VALKEY_URL`
-  - [ ] R2 bucket `stawi-jobs-log` exists, writer key has `PutObject` + `ListObjectsV2`
+  - [ ] R2 bucket `opportunities-log` exists, writer key has `PutObject` + `ListObjectsV2`
   - [ ] TEI chat / embed / rerank endpoints answer `/health`
 - [ ] Trustage workflows deployed: `scheduler-tick`, `compact-hourly`,
   `compact-daily`, `sources-quality-window-reset`, `sources-health-decay`,
   `candidates-matches-weekly-digest`, `candidates-cv-stale-nudge`.
 - [ ] Backpressure gate default policies set via env:
   `BACKPRESSURE_MAX_DRAIN=15m`, `BACKPRESSURE_HARD_CEILING=45m`.
-- [ ] `idx_jobs_rt` schema provisioned (Phase 2 migration). Verify:
+- [ ] `idx_opportunities_rt` schema provisioned (Phase 2 migration). Verify:
   `curl -s $MANTICORE_URL/sql?mode=raw -d "query=SHOW TABLES"`
 - [ ] All six app images (`crawler`, `worker`, `writer`, `materializer`,
   `candidates`, `api`) built at the Phase 6 SHA, pushed, and deployed to
@@ -4310,7 +4310,7 @@ prior deployment restores the legacy Postgres read path.
 - [ ] Deploy Phase 6 images to staging.
 - [ ] Seed 3 live sources into `sources`.
 - [ ] Trigger `scheduler-tick` once manually:
-  `kubectl -n stage exec deploy/trustage -- trustage run stawi-jobs.scheduler.tick`
+  `kubectl -n stage exec deploy/trustage -- trustage run opportunities.scheduler.tick`
 - [ ] Wait 60 s. Assert a variant event landed in R2 under `variants/dt=<today>/`.
 - [ ] Wait 60 s. Assert a canonical landed in `canonicals/dt=<today>/`.
 - [ ] Call `GET /api/v2/search?q=engineer` on staging api — expect non-empty hits.
@@ -4358,7 +4358,7 @@ prior deployment restores the legacy Postgres read path.
 
 ### 2.4 Fill checkpoint (1–3 hours, variable)
 
-Wait for `idx_jobs_rt` row count to cross the launch threshold (50k
+Wait for `idx_opportunities_rt` row count to cross the launch threshold (50k
 default — adjust based on staging throughput):
 
 - [ ] Poll: `curl -s $API_URL/healthz | jq .total_jobs`
@@ -4373,7 +4373,7 @@ The api binary already mounts `/api/v2/*` and the legacy-shim paths
 redirect v1 → v2 (Task 12). No additional flip is needed at the API —
 the Phase 6 deploy in Step 2.2 already made them live.
 
-- [ ] Confirm the Cloudflare route for `stawi.jobs/api/*` points at
+- [ ] Confirm the Cloudflare route for `stawi.opportunities/api/*` points at
   the new api (unchanged — `/api/v2/*` is the new path, and the `/api/*`
   legacy paths share the same pod).
 - [ ] Hit the site from a browser, exercise: search, category page,
@@ -4440,7 +4440,7 @@ Three focused runbooks that the on-call operator reaches for when the correspond
 ```markdown
 # Runbook — Rebuild Manticore from zero
 
-**Symptom:** `idx_jobs_rt` is corrupt, empty, or serving wildly stale data.
+**Symptom:** `idx_opportunities_rt` is corrupt, empty, or serving wildly stale data.
 Serving returns 503 or wrong results.
 
 **Cause:** Manticore node restarted without its persistent volume, or an
@@ -4449,10 +4449,10 @@ admin wiped the index.
 **Recovery (60–120 min at current scale):**
 
 1. Confirm R2 is intact:
-   `aws s3 ls s3://stawi-jobs-log/canonicals_current/ | wc -l` — expect ≥ 200.
-2. `curl -XPOST $MANTICORE_URL/sql?mode=raw -d "query=DROP TABLE IF EXISTS idx_jobs_rt"`
+   `aws s3 ls s3://opportunities-log/canonicals_current/ | wc -l` — expect ≥ 200.
+2. `curl -XPOST $MANTICORE_URL/sql?mode=raw -d "query=DROP TABLE IF EXISTS idx_opportunities_rt"`
 3. Re-provision the schema:
-   `kubectl -n prod apply -f definitions/manticore/idx_jobs_rt.sql` (or
+   `kubectl -n prod apply -f definitions/manticore/idx_opportunities_rt.sql` (or
    re-run the Phase 2 migration).
 4. Reset the materializer watermark to epoch 0:
    `redis-cli SET mat:watermark:canonicals ""` etc. for every partition.
@@ -4460,7 +4460,7 @@ admin wiped the index.
 6. Watch: `kubectl logs -f deploy/materializer | grep "manticore upsert"`
    — expect ≥ 500 upserts/min for the first hour.
 7. Check row count every 10 min:
-   `curl -s $MANTICORE_URL/sql?mode=raw -d "query=SELECT COUNT(*) FROM idx_jobs_rt"`
+   `curl -s $MANTICORE_URL/sql?mode=raw -d "query=SELECT COUNT(*) FROM idx_opportunities_rt"`
 8. Lift the serving 503 when count passes the launch threshold (50k).
 
 **Success signal:** `/api/v2/search?q=engineer` returns ≥ 10 hits.
@@ -4520,7 +4520,7 @@ writer HPA ceiling.
    automatically.
 6. If the backlog was caused by a crawl burst that's still emitting,
    dial down the `scheduler-tick` cadence via Trustage:
-   `trustage update stawi-jobs.scheduler.tick --cron "120s"` temporarily.
+   `trustage update opportunities.scheduler.tick --cron "120s"` temporarily.
 
 **Success signal:** `num_pending` drops below 100k and stays there for
 15 min.
@@ -4624,7 +4624,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend } from 'k6/metrics';
 
-const BASE = __ENV.API_URL || 'https://stawi.jobs';
+const BASE = __ENV.API_URL || 'https://stawi.opportunities';
 
 const queries = [
     'engineer', 'designer', 'sales', 'remote', 'kenya',
@@ -4712,7 +4712,7 @@ Expected: PASS. If your laptop's Docker can't host all five containers, run in C
 - [ ] **Step 4: Dry-run k6**
 
 ```bash
-k6 run --vus 1 --duration 10s -e API_URL=https://staging.stawi.jobs tests/k6/smoke_post_cut.js
+k6 run --vus 1 --duration 10s -e API_URL=https://staging.stawi.opportunities tests/k6/smoke_post_cut.js
 ```
 
 Expected: passes thresholds against staging. Don't run against prod until after Step 2.6 of the cutover runbook.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Idempotent: create jobs + candidates namespaces. Safe to re-run."""
+"""Idempotent: create opportunities + candidates namespaces. Safe to re-run."""
 import os
 import sys
 from pyiceberg.catalog import load_catalog
@@ -15,7 +15,7 @@ def main() -> None:
         "s3.region": os.environ.get("R2_REGION", "auto"),
         "warehouse": f"s3://{os.environ['R2_LOG_BUCKET']}/iceberg",
     })
-    for ns in (("jobs",), ("candidates",)):
+    for ns in (("opportunities",), ("candidates",)):
         try:
             cat.create_namespace(ns)
             print(f"created namespace {ns}")

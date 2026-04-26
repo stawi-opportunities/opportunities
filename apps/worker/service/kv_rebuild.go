@@ -13,9 +13,9 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/redis/go-redis/v9"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/kv"
-	"stawi.jobs/pkg/memconfig"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/memconfig"
 )
 
 // KVRebuilder repopulates Valkey cluster:* keys by scanning the R2 content

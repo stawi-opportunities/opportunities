@@ -9,10 +9,10 @@ import (
 	"github.com/pitabwire/frame/cache"
 	"github.com/pitabwire/frame/events"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/kv"
-	"stawi.jobs/pkg/publish"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
 // Service is the worker's composition root. Handlers returns the

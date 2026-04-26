@@ -1,6 +1,6 @@
 {
   "name": "info-frame-redelivery-rate",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "info",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/frame-redelivery"
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/frame-redelivery"
   },
   "description": "NATS JetStream consumer redelivery rate exceeds 0.1/s. Occasional redeliveries are normal (at-least-once delivery); sustained high rates indicate handler errors or slow processing causing ack timeouts.",
   "enabled": true

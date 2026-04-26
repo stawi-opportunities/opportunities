@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // noIcebergPersistence lists topics that are intentionally not persisted to

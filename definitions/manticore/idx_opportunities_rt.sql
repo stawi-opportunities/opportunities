@@ -1,8 +1,8 @@
--- idx_jobs_rt — primary job search RT index for Manticore Search.
+-- idx_opportunities_rt — primary job search RT index for Manticore Search.
 -- Extracted from pkg/searchindex/schema.go (idxJobsRTDDL constant).
 --
 -- Apply via:
---   kubectl -n stawi-jobs exec -i svc/manticore -- /usr/bin/mysql -h127.0.0.1 -P9306 < definitions/manticore/idx_jobs_rt.sql
+--   kubectl -n opportunities exec -i svc/manticore -- /usr/bin/mysql -h127.0.0.1 -P9306 < definitions/manticore/idx_opportunities_rt.sql
 -- Or use scripts/bootstrap/create-manticore-schema.sh which wraps the above.
 --
 -- This is idempotent if Manticore returns "table already exists" — the bootstrap
@@ -11,7 +11,7 @@
 -- Embedding dimension is pinned to 1536 (OpenAI text-embedding-3-small).
 -- Changing knn_dims is a full rebuild (DROP + re-create + re-materialize).
 
-CREATE TABLE IF NOT EXISTS idx_jobs_rt (
+CREATE TABLE IF NOT EXISTS idx_opportunities_rt (
     canonical_id    string attribute,
     slug            string attribute,
     title           text indexed,

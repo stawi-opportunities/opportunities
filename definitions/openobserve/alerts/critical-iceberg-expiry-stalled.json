@@ -1,6 +1,6 @@
 {
   "name": "critical-iceberg-expiry-stalled",
-  "org_id": "stawi-jobs",
+  "org_id": "opportunities",
   "stream_type": "metrics",
   "stream_name": "default",
   "is_real_time": false,
@@ -26,7 +26,7 @@
   "context_attributes": {
     "severity": "critical",
     "team": "platform",
-    "runbook": "https://docs.stawi.jobs/ops/runbooks/iceberg-expiry-stalled"
+    "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/iceberg-expiry-stalled"
   },
   "description": "Iceberg snapshot expiry has not succeeded in more than 24 hours. R2 storage costs will grow unbounded as unreferenced snapshot files accumulate.",
   "enabled": true

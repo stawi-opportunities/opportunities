@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // fakeSourceHealthRepo captures calls so tests can assert which

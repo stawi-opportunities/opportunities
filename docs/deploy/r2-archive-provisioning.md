@@ -7,7 +7,7 @@ One-time operator steps required before the R2 blob archive (spec
 
 In the Cloudflare dashboard (or via wrangler):
 
-- **Bucket name:** `stawi-jobs-archive`
+- **Bucket name:** `opportunities-archive`
 - **Public access:** disabled. This bucket holds raw HTML + cluster
   bundles; it must not be addressable via a custom domain and must
   never be exposed through a CDN.
@@ -39,11 +39,11 @@ fires only when `canonical_jobs.status = 'deleted'` + 7-day grace).
 
 ## 2. Mint scoped access credentials
 
-Create a new R2 API token scoped only to `stawi-jobs-archive`:
+Create a new R2 API token scoped only to `opportunities-archive`:
 
 - Permissions: Object Read & Write + Bucket Admin (for `ListObjectsV2`
   and `DeleteObjects`).
-- No access to the public `stawi-jobs-content` bucket.
+- No access to the public `opportunities-content` bucket.
 
 Record:
 
@@ -51,12 +51,12 @@ Record:
   public bucket)
 - `ARCHIVE_R2_ACCESS_KEY_ID`
 - `ARCHIVE_R2_SECRET_ACCESS_KEY`
-- `ARCHIVE_R2_BUCKET` = `stawi-jobs-archive`
+- `ARCHIVE_R2_BUCKET` = `opportunities-archive`
 
 ## 3. Store credentials in Vault
 
-Path: `secret/antinvestor/stawi-jobs/common/archive-r2-credentials`
-(mirrors the existing `secret/antinvestor/stawi-jobs/common/r2-credentials`
+Path: `secret/antinvestor/opportunities/common/archive-r2-credentials`
+(mirrors the existing `secret/antinvestor/opportunities/common/r2-credentials`
 layout used for the public bucket).
 
 Keys (match the public bucket's property names so the ExternalSecret
@@ -66,7 +66,7 @@ shape stays consistent):
 r2_account_id         = <from step 2>
 r2_access_key_id      = <from step 2>
 r2_secret_access_key  = <from step 2>
-r2_bucket             = stawi-jobs-archive
+r2_bucket             = opportunities-archive
 ```
 
 Use the `vault-secret` skill at
@@ -78,34 +78,34 @@ is needed for the new path.
 
 Optional: if the Cloudflare dashboard API token is also handed over at
 provisioning, store it alongside at
-`secret/antinvestor/stawi-jobs/common/cloudflare-api` with key
+`secret/antinvestor/opportunities/common/cloudflare-api` with key
 `api_token`. The crawler does not consume it directly — it's for
 future automation (bucket CRUD, Pages deploys).
 
 ## 4. Wire the ExternalSecret
 
 In the GitOps repo (`antinvestor/deployments`), add a new
-`ExternalSecret` named `archive-r2-credentials-stawi-jobs` mirroring
-the existing `r2-credentials-stawi-jobs` that sources the public
+`ExternalSecret` named `archive-r2-credentials-opportunities` mirroring
+the existing `r2-credentials-opportunities` that sources the public
 bucket's creds:
 
 ```yaml
 # New ExternalSecret for the archive bucket.
 - secretKey: ARCHIVE_R2_ACCOUNT_ID
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    key: antinvestor/opportunities/common/archive-r2-credentials
     property: r2_account_id
 - secretKey: ARCHIVE_R2_ACCESS_KEY_ID
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    key: antinvestor/opportunities/common/archive-r2-credentials
     property: r2_access_key_id
 - secretKey: ARCHIVE_R2_SECRET_ACCESS_KEY
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    key: antinvestor/opportunities/common/archive-r2-credentials
     property: r2_secret_access_key
 - secretKey: ARCHIVE_R2_BUCKET
   remoteRef:
-    key: antinvestor/stawi-jobs/common/archive-r2-credentials
+    key: antinvestor/opportunities/common/archive-r2-credentials
     property: r2_bucket
 ```
 
@@ -119,14 +119,14 @@ After the crawler pod has rolled with the new secret:
 
 ```bash
 # Tail logs for archive construction.
-kubectl logs -n stawi-jobs deploy/stawi-jobs-crawler | grep -i archive
+kubectl logs -n opportunities deploy/opportunities-crawler | grep -i archive
 
 # Trigger a crawl and confirm raw_payloads + raw/ in R2.
-kubectl exec -n stawi-jobs deploy/stawi-jobs-crawler -- \
+kubectl exec -n opportunities deploy/opportunities-crawler -- \
   curl -sS -X POST http://localhost:8080/admin/crawl/dispatch-due?limit=1
 
 # After ~30s, sample the archive.
-ARCHIVE_R2_BUCKET=stawi-jobs-archive \
+ARCHIVE_R2_BUCKET=opportunities-archive \
 ARCHIVE_R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com \
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
   make archive-verify SAMPLE=10
@@ -145,7 +145,7 @@ deployment is wired up the usual way.
 Verify:
 
 ```bash
-# Trustage admin UI → Schedules → filter stawi-jobs.r2.*
+# Trustage admin UI → Schedules → filter opportunities.r2.*
 ```
 
 Both entries should show `active: true` with next-run timestamps.

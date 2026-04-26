@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 func newBufferForTest() *Buffer {

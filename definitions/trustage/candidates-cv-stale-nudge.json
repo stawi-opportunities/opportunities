@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.candidates.cv.stale-nudge",
+  "name": "opportunities.candidates.cv.stale-nudge",
   "description": "Every day at 10:00 UTC: enumerate candidates whose latest CV upload is > 60 days old and emit candidates.cv.stale_nudge.v1 per candidate. A downstream notification service sends the nudge email.",
   "schedule": {
     "cron": "0 10 * * *",
@@ -26,7 +26,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-candidates.stawi-jobs.svc/_admin/cv/stale_nudge",
+          "url": "http://opportunities-candidates.opportunities.svc/_admin/cv/stale_nudge",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

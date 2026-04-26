@@ -23,7 +23,7 @@ func CreateTrackedLink(
 		DestinationURL: destinationURL,
 		AffiliateID:    "candidate_" + candidateID,
 		Campaign:       campaign,
-		Source:         "stawi-jobs",
+		Source:         "opportunities",
 		Medium:         "platform",
 	})
 	if err != nil {

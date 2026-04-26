@@ -2,7 +2,7 @@ package telemetry
 
 // iceberg.go — OpenTelemetry metrics for the Iceberg layer.
 //
-// All instruments are registered under meter name "stawi.jobs.iceberg".
+// All instruments are registered under meter name "stawi.opportunities.iceberg".
 // InitIceberg() is called from Init() and must be invoked once, early in
 // main(), before any Iceberg operations run.
 //
@@ -32,7 +32,7 @@ import (
 // ---------------------------------------------------------------------------
 
 var (
-	icebergMeter = otel.Meter("stawi.jobs.iceberg")
+	icebergMeter = otel.Meter("stawi.opportunities.iceberg")
 
 	// Writer commit hot path
 	IcebergCommitsTotal    metric.Int64Counter

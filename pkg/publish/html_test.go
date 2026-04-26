@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"stawi.jobs/pkg/publish"
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
 func TestRenderDescriptionHTML_StripsScript(t *testing.T) {

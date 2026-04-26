@@ -215,15 +215,15 @@ quality_flagged       INT DEFAULT 0
 ### NATS JetStream Streams
 
 ```
-Stream: svc_stawi_jobs_pipeline
+Stream: svc_opportunities_pipeline
 Subjects:
-  - svc.stawi-jobs.pipeline.variant.raw.stored
-  - svc.stawi-jobs.pipeline.variant.deduped
-  - svc.stawi-jobs.pipeline.variant.normalized
-  - svc.stawi-jobs.pipeline.variant.validated
-  - svc.stawi-jobs.pipeline.source.urls.discovered
-  - svc.stawi-jobs.pipeline.source.quality.review
-  - svc.stawi-jobs.pipeline.job.ready
+  - svc.opportunities.pipeline.variant.raw.stored
+  - svc.opportunities.pipeline.variant.deduped
+  - svc.opportunities.pipeline.variant.normalized
+  - svc.opportunities.pipeline.variant.validated
+  - svc.opportunities.pipeline.source.urls.discovered
+  - svc.opportunities.pipeline.source.quality.review
+  - svc.opportunities.pipeline.job.ready
 Retention: workqueue
 Storage: file
 MaxAge: 720h (30 days)

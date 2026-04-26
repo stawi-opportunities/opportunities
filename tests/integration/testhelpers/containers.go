@@ -1,7 +1,7 @@
 //go:build integration
 
 // Package testhelpers provides shared testcontainer setup helpers for
-// the stawi.jobs integration test suite.
+// the stawi-opportunities/opportunities integration test suite.
 //
 // Each helper starts a real container via testcontainers-go and returns
 // the connection string / client so the test can wire services.
@@ -120,7 +120,7 @@ func PostgresContainer(t *testing.T, ctx context.Context) string {
 		Env: map[string]string{
 			"POSTGRES_USER":     "stawi",
 			"POSTGRES_PASSWORD": "stawi",
-			"POSTGRES_DB":       "stawi_jobs",
+			"POSTGRES_DB":       "opportunities",
 		},
 		WaitingFor: tcwait.ForAll(
 			tcwait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
@@ -137,5 +137,5 @@ func PostgresContainer(t *testing.T, ctx context.Context) string {
 	require.NoError(t, err)
 	port, err := c.MappedPort(ctx, "5432")
 	require.NoError(t, err)
-	return fmt.Sprintf("postgres://stawi:stawi@%s:%s/stawi_jobs?sslmode=disable", host, port.Port())
+	return fmt.Sprintf("postgres://stawi:stawi@%s:%s/opportunities?sslmode=disable", host, port.Port())
 }

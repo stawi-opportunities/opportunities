@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.r2.reconcile",
+  "name": "opportunities.r2.reconcile",
   "description": "Daily at 04:30 UTC: walks clusters/* in the archive bucket and deletes any cluster directory whose cluster_id has no canonical_jobs row. Backstop for the purge sweeper's DeleteRaw partial-failure window and for archive-succeeded-but-DB-failed writes. DISABLED — target handler queries canonical_jobs which is dropped in Phase 6; will be re-enabled in v1.1 once the Parquet-backed retention compactor is implemented.",
   "schedule": {
     "cron": "30 4 * * *",
@@ -21,7 +21,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-crawler.stawi-jobs.svc/admin/r2/reconcile",
+          "url": "http://opportunities-crawler.opportunities.svc/admin/r2/reconcile",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

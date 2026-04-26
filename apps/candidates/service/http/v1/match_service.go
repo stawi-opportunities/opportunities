@@ -7,8 +7,8 @@ import (
 
 	"github.com/rs/xid"
 
-	"stawi.jobs/pkg/candidatestore"
-	eventsv1 "stawi.jobs/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 // ErrNoEmbedding is returned by MatchService.RunMatch when the

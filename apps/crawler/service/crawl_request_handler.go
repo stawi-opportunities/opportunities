@@ -15,14 +15,14 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	"stawi.jobs/pkg/archive"
-	"stawi.jobs/pkg/connectors"
-	"stawi.jobs/pkg/content"
-	"stawi.jobs/pkg/domain"
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/extraction"
-	"stawi.jobs/pkg/normalize"
-	"stawi.jobs/pkg/quality"
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/normalize"
+	"github.com/stawi-opportunities/opportunities/pkg/quality"
 )
 
 // SourceGetter is the narrow repository slice the crawl-request handler

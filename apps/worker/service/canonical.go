@@ -10,8 +10,8 @@ import (
 	"github.com/pitabwire/frame/cache"
 	"github.com/rs/xid"
 
-	eventsv1 "stawi.jobs/pkg/events/v1"
-	"stawi.jobs/pkg/kv"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/kv"
 )
 
 // CanonicalHandler merges a newly-clustered variant into the

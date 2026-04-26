@@ -348,7 +348,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 // SavedJobRepository manages bookmarked jobs.
@@ -499,8 +499,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/repository"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/repository"
 )
 
 type jobEntry struct {
@@ -1181,7 +1181,7 @@ cd ui && hugo new site . --force
 Create `ui/hugo.toml`:
 
 ```toml
-baseURL = "https://stawi.jobs/"
+baseURL = "https://stawi.opportunities/"
 languageCode = "en"
 title = "Stawi.jobs — Remote Jobs in Africa and Beyond"
 
@@ -1222,7 +1222,7 @@ Create `ui/package.json`:
 
 ```json
 {
-  "name": "stawi-jobs-ui",
+  "name": "opportunities-ui",
   "private": true,
   "scripts": {
     "dev": "hugo server --bind 0.0.0.0 --port 1313",
@@ -2451,7 +2451,7 @@ Stawi.jobs connects skilled professionals in Africa with top remote companies wo
 
 ## Contact
 
-For questions or partnerships, reach us at hello@stawi.jobs.
+For questions or partnerships, reach us at hello@stawi.opportunities.
 ```
 
 Create `ui/content/pricing.md`:
@@ -2596,7 +2596,7 @@ git commit -m "feat: add static content pages and SPA shell pages"
 Create `ui/assets/js/app.js`:
 
 ```js
-// Alpine.js global initialization for stawi.jobs
+// Alpine.js global initialization for stawi.opportunities
 document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
   const config = params ? JSON.parse(params.content) : {};
@@ -2748,7 +2748,7 @@ function isTokenExpired(token) {
 Create `ui/assets/js/auth.js`:
 
 ```js
-// OIDC Authorization Code + PKCE flow for stawi.jobs
+// OIDC Authorization Code + PKCE flow for stawi.opportunities
 
 document.addEventListener("alpine:init", () => {
   const params = document.querySelector("meta[name=site-params]");
@@ -3928,7 +3928,7 @@ git commit -m "feat: add candidate dashboard with matches, saved jobs, profile, 
 
 - [ ] **Step 1: Update root Makefile**
 
-In `/home/j/code/stawi.jobs/Makefile`, add after the existing targets:
+In `/home/j/code/stawi.opportunities/Makefile`, add after the existing targets:
 
 ```makefile
 # UI targets
@@ -3953,7 +3953,7 @@ ui-deps:
 
 - [ ] **Step 2: Update .gitignore**
 
-In `/home/j/code/stawi.jobs/.gitignore`, add:
+In `/home/j/code/stawi.opportunities/.gitignore`, add:
 
 ```
 ui/node_modules/
@@ -4015,7 +4015,7 @@ Create `ui/static/robots.txt`:
 User-agent: *
 Allow: /
 
-Sitemap: https://stawi.jobs/sitemap.xml
+Sitemap: https://stawi.opportunities/sitemap.xml
 ```
 
 In `ui/hugo.toml`, ensure sitemap is enabled by adding to `[outputs]`:
@@ -4077,7 +4077,7 @@ Check in browser:
 
 ```bash
 git add -A
-git commit -m "feat: stawi.jobs UI platform — initial release
+git commit -m "feat: stawi.opportunities UI platform — initial release
 
 Hugo static site with Alpine.js SPA islands, Pagefind search,
 OIDC auth, 3-step onboarding wizard, candidate dashboard,

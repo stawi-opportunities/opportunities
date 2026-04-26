@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "name": "stawi-jobs.candidates.matches.weekly-digest",
+  "name": "opportunities.candidates.matches.weekly-digest",
   "description": "Every Monday 09:00 UTC: run the match pipeline for every active candidate and emit candidates.matches.ready.v1 per candidate. A downstream notification service delivers the digest by email.",
   "schedule": {
     "cron": "0 9 * * 1",
@@ -26,7 +26,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://stawi-jobs-candidates.stawi-jobs.svc/_admin/matches/weekly_digest",
+          "url": "http://opportunities-candidates.opportunities.svc/_admin/matches/weekly_digest",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

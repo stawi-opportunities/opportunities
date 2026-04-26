@@ -177,7 +177,7 @@ git commit -m "feat: generate permanent slug on first canonical job creation"
 - [ ] **Step 1: Add aws-sdk-go-v2 dependencies**
 
 ```bash
-cd /home/j/code/stawi.jobs
+cd /home/j/code/stawi.opportunities
 go get github.com/aws/aws-sdk-go-v2@latest
 go get github.com/aws/aws-sdk-go-v2/config@latest
 go get github.com/aws/aws-sdk-go-v2/credentials@latest
@@ -322,7 +322,7 @@ import (
 	"strings"
 	"time"
 
-	"stawi.jobs/pkg/domain"
+	"stawi.opportunities/pkg/domain"
 )
 
 // RenderJobMarkdown produces a Hugo-compatible markdown file with YAML frontmatter
@@ -446,13 +446,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"stawi.jobs/pkg/domain"
-	"stawi.jobs/pkg/publish"
-	"stawi.jobs/pkg/repository"
-	"stawi.jobs/pkg/telemetry"
+	"stawi.opportunities/pkg/domain"
+	"stawi.opportunities/pkg/publish"
+	"stawi.opportunities/pkg/repository"
+	"stawi.opportunities/pkg/telemetry"
 )
 
-var publishTracer = otel.Tracer("stawi.jobs.publish")
+var publishTracer = otel.Tracer("stawi.opportunities.publish")
 
 // PublishHandler subscribes to job.ready events and uploads job markdown to R2.
 type PublishHandler struct {
@@ -598,7 +598,7 @@ In `apps/crawler/config/config.go`, add after `ValkeyAddr`:
 	R2AccountID       string  `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID" envDefault:""`
 	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string  `env:"R2_BUCKET" envDefault:"stawi-jobs-content"`
+	R2Bucket          string  `env:"R2_BUCKET" envDefault:"opportunities-content"`
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 ```
@@ -608,7 +608,7 @@ In `apps/crawler/config/config.go`, add after `ValkeyAddr`:
 In `apps/crawler/cmd/main.go`, add the import:
 
 ```go
-	"stawi.jobs/pkg/publish"
+	"stawi.opportunities/pkg/publish"
 ```
 
 After the bloom filter initialization (around line 126) and before the pipeline handler registration, add:
@@ -700,7 +700,7 @@ Add these flags after the existing flag definitions:
 	r2AccountID := flag.String("r2-account-id", os.Getenv("R2_ACCOUNT_ID"), "Cloudflare account ID")
 	r2AccessKey := flag.String("r2-access-key", os.Getenv("R2_ACCESS_KEY_ID"), "R2 access key")
 	r2SecretKey := flag.String("r2-secret-key", os.Getenv("R2_SECRET_ACCESS_KEY"), "R2 secret key")
-	r2Bucket    := flag.String("r2-bucket", "stawi-jobs-content", "R2 bucket name")
+	r2Bucket    := flag.String("r2-bucket", "opportunities-content", "R2 bucket name")
 	deployHook  := flag.String("deploy-hook-url", os.Getenv("R2_DEPLOY_HOOK_URL"), "CF Pages deploy hook URL")
 	batchSize   := flag.Int("batch-size", 500, "Upload batch size")
 ```
@@ -708,7 +708,7 @@ Add these flags after the existing flag definitions:
 Add the import for the publish package:
 
 ```go
-	"stawi.jobs/pkg/publish"
+	"stawi.opportunities/pkg/publish"
 ```
 
 After the `flag.Parse()` and database connection, add the R2 upload branch:
@@ -827,7 +827,7 @@ Production:
 - Tenant ID: `ctqj8k0hijjg0sj0b01g`
 - Partition ID: `ctqj8k0hijjg0sj0b020`
 - Client row ID: `ctqj8k0hijjg0sj0b030`
-- Client ID (OAuth2): `stawi-jobs-web`
+- Client ID (OAuth2): `opportunities-web`
 - Role owner: `ctqj8k0hijjg0sj0b040`
 - Role admin: `ctqj8k0hijjg0sj0b041`
 - Role member: `ctqj8k0hijjg0sj0b042`
@@ -836,7 +836,7 @@ Staging:
 - Tenant ID: `ctqj8k0hijjg0sj0b050`
 - Partition ID: `ctqj8k0hijjg0sj0b060`
 - Client row ID: `ctqj8k0hijjg0sj0b070`
-- Client ID (OAuth2): `stawi-jobs-web-dev`
+- Client ID (OAuth2): `opportunities-web-dev`
 - Role owner: `ctqj8k0hijjg0sj0b080`
 - Role admin: `ctqj8k0hijjg0sj0b081`
 - Role member: `ctqj8k0hijjg0sj0b082`
@@ -876,7 +876,7 @@ VALUES ('ctqj8k0hijjg0sj0b020', 'ctqj8k0hijjg0sj0b01g', 'ctqj8k0hijjg0sj0b020',
           "default_role": "user",
           "allow_auto_access": true,
           "support_contacts": {
-            "email": "hello@stawi.jobs"
+            "email": "hello@stawi.opportunities"
           }
         }');
 
@@ -904,7 +904,7 @@ INSERT INTO clients (
     'ctqj8k0hijjg0sj0b01g',
     'ctqj8k0hijjg0sj0b020',
     'Stawi Jobs Web',
-    'stawi-jobs-web',
+    'opportunities-web',
     'public',
     '{"types": ["authorization_code", "refresh_token"]}',
     '{"types": ["code"]}',
@@ -949,7 +949,7 @@ VALUES ('ctqj8k0hijjg0sj0b060', 'ctqj8k0hijjg0sj0b050', 'ctqj8k0hijjg0sj0b060',
           "default_role": "user",
           "allow_auto_access": true,
           "support_contacts": {
-            "email": "hello@stawi.jobs"
+            "email": "hello@stawi.opportunities"
           }
         }');
 
@@ -977,7 +977,7 @@ INSERT INTO clients (
     'ctqj8k0hijjg0sj0b050',
     'ctqj8k0hijjg0sj0b060',
     'Stawi Jobs Development',
-    'stawi-jobs-web-dev',
+    'opportunities-web-dev',
     'public',
     '{"types": ["authorization_code", "refresh_token"]}',
     '{"types": ["code"]}',
@@ -1023,7 +1023,7 @@ Update `[params]` to use staging OIDC client by default:
   apiURL = "http://localhost:8082"
   candidatesAPIURL = "http://localhost:8080"
   oidcIssuer = "https://auth-dev.antinvestor.com"
-  oidcClientID = "stawi-jobs-web-dev"
+  oidcClientID = "opportunities-web-dev"
   oidcRedirectURI = "http://localhost:1313/auth/callback/"
 ```
 
@@ -1049,7 +1049,7 @@ if [ -z "${R2_ACCOUNT_ID:-}" ]; then
 fi
 
 R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-BUCKET="${R2_BUCKET:-stawi-jobs-content}"
+BUCKET="${R2_BUCKET:-opportunities-content}"
 
 echo "Installing AWS CLI..."
 pip install awscli --quiet 2>/dev/null
@@ -1091,7 +1091,7 @@ In `ui/.gitignore`, add a comment and entries for R2-synced content that should 
 
 - [ ] **Step 4: Verify Hugo still builds locally**
 
-Run: `cd /home/j/code/stawi.jobs/ui && hugo --minify`
+Run: `cd /home/j/code/stawi.opportunities/ui && hugo --minify`
 Expected: builds with local sample content (sync script skipped since R2_ACCOUNT_ID is not set)
 
 - [ ] **Step 5: Commit**
@@ -1113,12 +1113,12 @@ git commit -m "feat: add R2 sync script and update Hugo config for jobs.stawi.or
 
 The `CanonicalJob` struct already has `Slug` with a `json:"slug"` tag (added in Task 1), so it's automatically included in all JSON API responses. No code change needed — just verify.
 
-Run: `grep -n 'Slug' /home/j/code/stawi.jobs/pkg/domain/models.go`
+Run: `grep -n 'Slug' /home/j/code/stawi.opportunities/pkg/domain/models.go`
 Expected: `Slug string ... json:"slug"` is present.
 
 - [ ] **Step 2: Add R2 backfill target to Makefile**
 
-In `/home/j/code/stawi.jobs/Makefile`, add after the existing `sitegen` target:
+In `/home/j/code/stawi.opportunities/Makefile`, add after the existing `sitegen` target:
 
 ```makefile
 r2-backfill:
@@ -1141,7 +1141,7 @@ Note the `;` instead of `&&` after sync-r2.sh — the sync will skip gracefully 
 Run:
 ```bash
 go build ./apps/... && go build ./pkg/...
-cd /home/j/code/stawi.jobs/ui && hugo --minify
+cd /home/j/code/stawi.opportunities/ui && hugo --minify
 ```
 Expected: both pass
 
