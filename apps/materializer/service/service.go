@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -95,52 +96,64 @@ func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
 }
 
 // buildDocFromCanonical converts a CanonicalUpsertedV1 payload to a
-// Manticore document map. Field names must match the idx_opportunities_rt schema.
-//
-// TODO(opportunity-generification): Phase 3.3 will rewrite the
-// idx_opportunities_rt schema to surface kind + Attributes-driven
-// facets. The mapping below extracts a few well-known string keys from
-// Attributes so the materializer compiles against the new event shape.
+// Manticore document map shaped for the polymorphic idx_opportunities_rt
+// schema (kind + universal columns + per-kind sparse facet columns).
+// Field names must match the DDL in pkg/searchindex/schema.go.
 func buildDocFromCanonical(p eventsv1.CanonicalUpsertedV1) map[string]any {
-	desc, _ := p.Attributes["description"].(string)
-	location, _ := p.Attributes["location_text"].(string)
-	lang, _ := p.Attributes["language"].(string)
-	remote, _ := p.Attributes["remote_type"].(string)
-	employment, _ := p.Attributes["employment_type"].(string)
-	seniority, _ := p.Attributes["seniority"].(string)
-	category := ""
-	if len(p.Categories) > 0 {
-		category = p.Categories[0]
+	desc := attrString(p.Attributes, "description")
+
+	doc := map[string]any{
+		// Discriminator
+		"kind": p.Kind,
+		// Universal indexable text + categories
+		"title":          p.Title,
+		"description":    desc,
+		"issuing_entity": p.IssuingEntity,
+		"categories":     categoryIDs(p.Categories),
+		// Universal location
+		"country":   p.AnchorCountry,
+		"region":    p.AnchorRegion,
+		"city":      p.AnchorCity,
+		"lat":       p.Lat,
+		"lon":       p.Lon,
+		"remote":    p.Remote,
+		"geo_scope": p.GeoScope,
+		// Universal time (unix seconds; timestamp columns)
+		"posted_at": p.PostedAt.Unix(),
+		"deadline":  deadlineUnix(p.Deadline),
+		// Universal monetary
+		"amount_min": p.AmountMin,
+		"amount_max": p.AmountMax,
+		"currency":   p.Currency,
 	}
-	return map[string]any{
-		"canonical_id":    p.OpportunityID,
-		"slug":            p.Slug,
-		"kind":            p.Kind,
-		"title":           p.Title,
-		"company":         p.IssuingEntity,
-		"description":     desc,
-		"location_text":   location,
-		"category":        category,
-		"country":         p.AnchorCountry,
-		"language":        lang,
-		"remote_type":     remote,
-		"employment_type": employment,
-		"seniority":       seniority,
-		"salary_min":      uint64(p.AmountMin),
-		"salary_max":      uint64(p.AmountMax),
-		"currency":        p.Currency,
-		"posted_at":       p.PostedAt.Unix(),
-		"last_seen_at":    p.UpsertedAt.Unix(),
-		"status":          "active",
+	// Per-kind sparse facet columns. Splice in only the columns the kind
+	// owns; absent columns stay zero-valued in Manticore.
+	cols, vals := sparseColsForKind(p.Kind, p.Attributes)
+	for i, c := range cols {
+		doc[c] = vals[i]
 	}
+	return doc
+}
+
+// deadlineUnix safely flattens an optional deadline pointer to a unix
+// epoch second; nil → 0 (which Manticore treats as "no value").
+func deadlineUnix(t *time.Time) int64 {
+	if t == nil {
+		return 0
+	}
+	return t.Unix()
 }
 
 // ---------------------------------------------------------------------------
 // CanonicalExpiredHandler — TopicCanonicalsExpired
 // ---------------------------------------------------------------------------
 
-// CanonicalExpiredHandler patches status='expired' + expires_at on the
-// Manticore document when a canonical expires.
+// CanonicalExpiredHandler marks an opportunity as expired by patching
+// its `deadline` to the expiry instant. Search queries filter by
+// `deadline > now()`, so a past deadline drops the row from results
+// without losing it (history is still browseable by id). The polymorphic
+// schema has no `status` column — `deadline` is the single source of
+// truth for liveness.
 type CanonicalExpiredHandler struct{ s *Service }
 
 func NewCanonicalExpiredHandler(s *Service) *CanonicalExpiredHandler {
@@ -169,8 +182,7 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 		return fmt.Errorf("canonical-expired: decode: %w", err)
 	}
 	doc := map[string]any{
-		"status":     "expired",
-		"expires_at": env.Payload.ExpiredAt.Unix(),
+		"deadline": env.Payload.ExpiredAt.Unix(),
 	}
 	id := hashID(env.Payload.OpportunityID)
 	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
@@ -186,10 +198,15 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 // TranslationHandler — TopicTranslations
 // ---------------------------------------------------------------------------
 
-// TranslationHandler records per-language translated text. It stores the
-// translated body into a per-(canonical, lang) Manticore document keyed by
-// hashID(canonical_id + ":" + lang). This is the first point where
-// TopicTranslations reaches the search index.
+// TranslationHandler is a no-op against Manticore for the polymorphic
+// schema. Translated bodies live in R2 slug-direct (one object per
+// canonical+lang) and are read by the public site/api at request time;
+// the Manticore row carries only the source-language title/description.
+//
+// We keep the subscription so the Frame consumer-group acks the topic
+// (no infinite redelivery), and so a future variant that surfaces
+// per-lang title to BM25 can be added without re-introducing the
+// subscription.
 type TranslationHandler struct{ s *Service }
 
 func NewTranslationHandler(s *Service) *TranslationHandler {
@@ -217,25 +234,11 @@ func (h *TranslationHandler) Execute(ctx context.Context, p any) error {
 	if err := json.Unmarshal(*raw, &env); err != nil {
 		return fmt.Errorf("translation: decode: %w", err)
 	}
-	pl := env.Payload
-	// Patch the title and description for the given language on the
-	// per-(canonical,lang) document. The lang suffix in the key keeps
-	// per-language rows independent so update is idempotent.
-	doc := map[string]any{
-		"canonical_id":  pl.OpportunityID,
-		"lang":          pl.Lang,
-		"title":         pl.TitleTr,
-		"description":   pl.DescriptionTr,
-		"model_version": pl.ModelVersion,
-	}
-	id := hashID(pl.OpportunityID + ":" + pl.Lang)
-	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", pl.OpportunityID).
-			WithField("lang", pl.Lang).
-			Error("materializer: translation replace failed")
-		return fmt.Errorf("translation: replace: %w", err)
-	}
+	// No Manticore write — translations are served from R2 slug-direct.
+	util.Log(ctx).
+		WithField("opportunity_id", env.Payload.OpportunityID).
+		WithField("lang", env.Payload.Lang).
+		Debug("materializer: translation observed (R2-slug authoritative; no Manticore write)")
 	return nil
 }
 
@@ -273,16 +276,19 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 		return fmt.Errorf("embedding: decode: %w", err)
 	}
 	pl := env.Payload
+	// /update patches the existing row in place. If the row hasn't been
+	// upserted yet (embedding raced ahead of canonical), Manticore returns
+	// updated=0 — the next CanonicalUpsertedV1 will re-build the doc and
+	// the next embedding event for that id will re-apply.
 	doc := map[string]any{
-		"embedding":       pl.Vector,
-		"embedding_model": pl.ModelVersion,
+		"embedding": pl.Vector,
 	}
 	id := hashID(pl.OpportunityID)
-	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
+	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
 		util.Log(ctx).WithError(err).
 			WithField("opportunity_id", pl.OpportunityID).
-			Error("materializer: embedding replace failed")
-		return fmt.Errorf("embedding: replace: %w", err)
+			Error("materializer: embedding update failed")
+		return fmt.Errorf("embedding: update: %w", err)
 	}
 	return nil
 }

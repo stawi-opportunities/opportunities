@@ -72,3 +72,39 @@ func TestApplySchemaIsIdempotent(t *testing.T) {
 		t.Fatalf("idx_opportunities_rt not present after Apply — SHOW TABLES returned:\n%s", string(raw))
 	}
 }
+
+// TestApplySchema_HasKindColumn verifies the polymorphic Opportunity
+// shape: discriminator (kind), universal location/time/money columns,
+// and the per-kind sparse facet columns.
+func TestApplySchema_HasKindColumn(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	url, stop := startManticore(t, ctx)
+	defer stop()
+	client, err := searchindex.Open(searchindex.Config{URL: url})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+	if err := client.Ping(ctx); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+	if err := searchindex.Apply(ctx, client); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	raw, err := client.SQL(ctx, "DESCRIBE idx_opportunities_rt")
+	if err != nil {
+		t.Fatalf("describe: %v", err)
+	}
+	body := string(raw)
+	for _, col := range []string{
+		"kind", "issuing_entity", "country", "region", "city",
+		"lat", "lon", "remote", "amount_min", "amount_max", "currency",
+		"employment_type", "seniority", "field_of_study", "degree_level",
+		"procurement_domain", "funding_focus", "discount_percent",
+	} {
+		if !strings.Contains(body, col) {
+			t.Errorf("expected column %q in idx_opportunities_rt, got:\n%s", col, body)
+		}
+	}
+}
