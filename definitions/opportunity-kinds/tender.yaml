@@ -1,0 +1,19 @@
+kind: tender
+display_name: Tender
+issuing_entity_label: Issuing Agency
+amount_kind: budget
+url_prefix: tenders
+universal_required: [title, description, issuing_entity, anchor_country]
+kind_required: [deadline]
+kind_optional: [procurement_domain, bidder_eligibility, certifications_required, service_areas]
+categories: [Construction, IT, Consulting, Healthcare, Transport, Energy, Education, Other]
+search_facets: [procurement_domain]
+extraction_prompt: |
+  Extract tender / RFP details from the page. Output JSON with fields:
+  title, description (markdown), issuing_entity (the issuing agency),
+  apply_url (submission portal), anchor_country, deadline (RFC3339),
+  procurement_domain, amount_min, amount_max (contract budget range),
+  currency, bidder_eligibility (free text), certifications_required
+  (string array), service_areas (string array of countries/regions).
+onboarding_flow: tender-onboarding-v1
+matcher: tender-matcher-v1

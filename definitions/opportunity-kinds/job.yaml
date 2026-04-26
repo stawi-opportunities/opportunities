@@ -1,0 +1,21 @@
+kind: job
+display_name: Job
+issuing_entity_label: Company
+amount_kind: salary
+url_prefix: jobs
+universal_required: [title, description, issuing_entity, apply_url, anchor_country]
+kind_required: [employment_type]
+kind_optional: [remote_type, seniority, skills, benefits, geo_restrictions, ats_platform]
+categories: [Programming, Design, Marketing, Sales, Operations, Finance, HR, Customer-Support, Data, Product, Legal, Other]
+search_facets: [employment_type, remote_type, seniority]
+extraction_prompt: |
+  Extract job posting details from the page. Output JSON with fields:
+  title, description (markdown), issuing_entity (the hiring company),
+  apply_url, anchor_country (ISO 3166-1 alpha-2 of hiring country),
+  anchor_region, anchor_city, remote (bool), employment_type
+  (one of: full-time, part-time, contract, internship, freelance),
+  seniority (one of: intern, junior, mid, senior, lead, manager, director, executive),
+  amount_min, amount_max, currency, skills (string array),
+  geo_restrictions (e.g. "US-only", "EMEA", or empty for global).
+onboarding_flow: job-onboarding-v1
+matcher: job-matcher-v1
