@@ -158,6 +158,8 @@ func batchDispatch(topic string) ([]string, func(memory.Allocator, []json.RawMes
 		return []string{"opportunities", "variants"}, BuildVariantFlaggedRecord
 	case eventsv1.TopicVariantsClustered:
 		return []string{"opportunities", "variants"}, BuildVariantClusteredRecord
+	case eventsv1.TopicVariantsRejected:
+		return []string{"opportunities", "variants_rejected"}, BuildVariantRejectedRecord
 	// TopicCanonicalsUpserted, TopicCanonicalsExpired, TopicTranslations
 	// intentionally omitted — body is R2-slug-direct; materializer is a
 	// Frame subscriber, not an Iceberg scanner for these topics.

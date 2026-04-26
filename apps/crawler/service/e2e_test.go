@@ -150,7 +150,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	defer svc.Stop(ctx)
 
 	// Fake source repo + connector. Description is padded past the
-	// 50-char gate so the job passes quality.Check and counts as emitted.
+	// 50-char gate so the job passes opportunity.Verify and counts as emitted.
 	repo := newFakeCrawlerRepo(&domain.Source{
 		BaseModel:        domain.BaseModel{ID: "src_e2e"},
 		Type:             domain.SourceGenericHTML,

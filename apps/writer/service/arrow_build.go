@@ -551,14 +551,39 @@ func BuildPublishedRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 // --------------------------------------------------------------------
 // opportunities.variants_rejected  (Verify-stage rejection sink)
 //
-// No matching wire event exists yet — Phase 4.x adds VariantRejectedV1
-// with {VariantID, SourceID, Kind, Title, Reasons []string,
-// RejectedAt}. The Arrow schema and table are bootstrapped here so the
-// downstream code can land cleanly without another Iceberg migration.
-//
-// TODO(phase-4.2): wire BuildVariantRejectedRecord into batchDispatch
-// once eventsv1.VariantRejectedV1 lands.
+// One row per VariantRejectedV1 event. Reasons is serialised as a JSON
+// array string so downstream SQL can `JSON_EXTRACT` the first element
+// without a schema change when new categorical reasons are added.
 // --------------------------------------------------------------------
+
+func BuildVariantRejectedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
+	b := array.NewRecordBuilder(pool, ArrowSchemaVariantsRejected)
+	defer b.Release()
+
+	for _, raw := range raws {
+		var env eventsv1.Envelope[eventsv1.VariantRejectedV1]
+		if err := json.Unmarshal(raw, &env); err != nil {
+			return nil, fmt.Errorf("decode VariantRejectedV1: %w", err)
+		}
+		p := env.Payload
+
+		reasonsJSON, err := json.Marshal(p.Reasons)
+		if err != nil {
+			return nil, fmt.Errorf("marshal reasons: %w", err)
+		}
+
+		b.Field(0).(*array.StringBuilder).Append(p.VariantID)
+		b.Field(1).(*array.StringBuilder).Append(p.SourceID)
+		b.Field(2).(*array.StringBuilder).Append(p.Kind)
+		b.Field(3).(*array.StringBuilder).Append(p.Title)
+		b.Field(4).(*array.StringBuilder).Append(string(reasonsJSON))
+		appendTS(b.Field(5).(*array.TimestampBuilder), p.RejectedAt)
+	}
+
+	rec := b.NewRecord()
+	defer rec.Release()
+	return makeRecordReader(ArrowSchemaVariantsRejected, rec)
+}
 
 // --------------------------------------------------------------------
 // jobs.crawl_page_completed  (CrawlPageCompletedV1)

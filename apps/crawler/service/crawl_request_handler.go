@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -22,7 +23,8 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
-	"github.com/stawi-opportunities/opportunities/pkg/quality"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // SourceGetter is the narrow repository slice the crawl-request handler
@@ -37,6 +39,7 @@ type CrawlRequestDeps struct {
 	Svc       *frame.Service
 	Sources   SourceGetter
 	Registry  *connectors.Registry
+	Kinds     *opportunity.Registry // opportunity-kind registry; required by Verify
 	Archive   archive.Archive
 	Extractor *extraction.Extractor // nil → skip AI enrichment
 	// DiscoverSample is the probability [0..1] that a given iterator
@@ -169,17 +172,37 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		for _, extJob := range iter.Items() {
 			jobsFound++
 
-			// Apply-URL fallback chain first — normalize and quality both see the
+			// Apply-URL fallback chain first — normalize and Verify both see the
 			// resolved URL.
-			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
+			ensureApplyURL(&extJob, extJob.SourceURL)
 			if extJob.ApplyURL == "" {
-				quality.EnsureApplyURL(&extJob, src.BaseURL)
+				ensureApplyURL(&extJob, src.BaseURL)
 			}
 
-			// Deterministic quality gate — same check the legacy crawler ran.
-			if qErr := quality.Check(extJob); qErr != nil {
-				jobsRejected++
-				continue
+			// Resolve kind: prefer the connector-tagged kind on the
+			// ExternalOpportunity, falling back to the source's first
+			// declared Kind so single-kind connectors keep working when a
+			// connector forgets to tag.
+			kind := extJob.Kind
+			if kind == "" && len(src.Kinds) > 0 {
+				kind = src.Kinds[0]
+				extJob.Kind = kind
+			}
+
+			// Source contract + kind contract gate. Replaces the old
+			// pkg/quality/gate.Check. Rejected records dead-letter to
+			// opportunities.variants.rejected.v1 (and the matching Iceberg
+			// table via the writer subscription).
+			if h.deps.Kinds != nil {
+				if res := opportunity.Verify(&extJob, src, h.deps.Kinds); !res.OK {
+					jobsRejected++
+					reason := rejectionReason(res)
+					telemetry.RecordVerifyRejection(kind, reason)
+					if rerr := h.publishRejected(ctx, src.ID, kind, extJob, res); rerr != nil {
+						log.WithError(rerr).Warn("crawl.request: publishRejected failed")
+					}
+					continue
+				}
 			}
 
 			// Convert to a VariantIngested payload via the existing normalize
@@ -189,11 +212,10 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				extJob, src.ID, src.Country, string(src.Type), src.Language, now,
 			)
 
-			// Resolve kind: prefer the connector-tagged kind on the
-			// ExternalOpportunity, falling back to "job" so legacy
-			// connectors keep working until Phase 4 lands Source.Kinds.
-			kind := extJob.Kind
 			if kind == "" {
+				// Belt-and-braces — Verify above would have rejected an
+				// empty kind, but keep the legacy fallback so a missing
+				// Kinds registry never empties the kind column.
 				kind = "job"
 			}
 
@@ -240,6 +262,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				continue
 			}
 			jobsEmitted++
+			telemetry.RecordOpportunityReady(kind)
 		}
 
 		// Capture the connector's cursor on every successful page; the
@@ -345,4 +368,52 @@ func resolveArchiveRef(ctx context.Context, arch archive.Archive, page *content.
 func sha256Hex(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
+}
+
+// publishRejected emits VariantRejectedV1 for a record that failed
+// opportunity.Verify. The writer subscribes to the matching topic and
+// appends a row to opportunities.variants_rejected so the rejection is
+// durable and operator-inspectable.
+func (h *CrawlRequestHandler) publishRejected(ctx context.Context, sourceID, kind string, opp domain.ExternalOpportunity, res opportunity.VerifyResult) error {
+	reasons := append([]string(nil), res.Missing...)
+	if res.Mismatch != "" {
+		reasons = append(reasons, res.Mismatch)
+	}
+	if len(reasons) == 0 {
+		reasons = []string{"verify_failed"}
+	}
+	rej := eventsv1.VariantRejectedV1{
+		VariantID:  xid.New().String(),
+		SourceID:   sourceID,
+		Kind:       kind,
+		Title:      opp.Title,
+		Reasons:    reasons,
+		RejectedAt: time.Now().UTC(),
+	}
+	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsRejected, rej)
+	return h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsRejected, env)
+}
+
+// rejectionReason categorises a VerifyResult into a low-cardinality
+// metric attribute. Mismatch wins over missing because a kind-mismatch
+// rejection is a source-config bug, while a missing field is a
+// connector or extractor bug.
+func rejectionReason(r opportunity.VerifyResult) string {
+	if r.Mismatch != "" {
+		return "mismatch"
+	}
+	if len(r.Missing) > 0 {
+		return "missing_" + r.Missing[0]
+	}
+	return "unknown"
+}
+
+// ensureApplyURL sets opp.ApplyURL to fallbackURL if the field is
+// currently empty. Replaces pkg/quality.EnsureApplyURL — the only
+// remaining surface that helper provided once Verify took over the
+// content gate.
+func ensureApplyURL(opp *domain.ExternalOpportunity, fallbackURL string) {
+	if strings.TrimSpace(opp.ApplyURL) == "" && fallbackURL != "" {
+		opp.ApplyURL = fallbackURL
+	}
 }

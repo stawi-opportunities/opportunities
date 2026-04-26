@@ -253,6 +253,7 @@ func main() {
 		Svc:            svc,
 		Sources:        sourceRepo,
 		Registry:       registry,
+		Kinds:          reg,
 		Archive:        arch,
 		Extractor:      extractor,
 		DiscoverSample: 0.05, // roughly 1-in-20 pages get DiscoverSites

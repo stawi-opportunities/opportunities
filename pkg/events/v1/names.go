@@ -11,6 +11,7 @@ const (
 	TopicVariantsValidated  = "opportunities.variants.validated.v1"
 	TopicVariantsFlagged    = "opportunities.variants.flagged.v1"
 	TopicVariantsClustered  = "opportunities.variants.clustered.v1"
+	TopicVariantsRejected   = "opportunities.variants.rejected.v1"
 
 	// Opportunity pipeline — canonicals.
 	TopicCanonicalsUpserted = "opportunities.canonicals.upserted.v1"
@@ -52,6 +53,7 @@ func AllTopics() []string {
 		TopicVariantsValidated,
 		TopicVariantsFlagged,
 		TopicVariantsClustered,
+		TopicVariantsRejected,
 		TopicCanonicalsUpserted,
 		TopicCanonicalsExpired,
 		TopicEmbeddings,

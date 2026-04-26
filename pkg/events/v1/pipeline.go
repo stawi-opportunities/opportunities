@@ -47,6 +47,20 @@ type VariantClusteredV1 struct {
 	ClusteredAt   time.Time `json:"clustered_at"`
 }
 
+// VariantRejectedV1 is emitted when opportunity.Verify rejects a variant
+// during the extract → publish handoff. The same record is durably
+// appended to opportunities.variants_rejected via the writer's
+// append-only path so operators can inspect rejection rates per
+// (kind, source, reason) without a re-crawl.
+type VariantRejectedV1 struct {
+	VariantID  string    `json:"variant_id"`
+	SourceID   string    `json:"source_id"`
+	Kind       string    `json:"kind"`
+	Title      string    `json:"title"`
+	Reasons    []string  `json:"reasons"`
+	RejectedAt time.Time `json:"rejected_at"`
+}
+
 // TranslationV1 — emitted by the translate handler once an opportunity
 // has been translated to a single target language. One event per
 // (opportunity, lang) pair.
