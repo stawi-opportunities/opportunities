@@ -11,7 +11,7 @@ title = "Stawi Opportunities"
   # shared api.stawi.org host.
   apiURL = "https://api.stawi.org/jobs"
   candidatesAPIURL = "https://api.stawi.org"
-  contentOrigin = "https://job-repo.stawi.org"
+  contentOrigin = "https://opportunities-data.stawi.org"
   # OIDC — Thesa's Ory Hydra at oauth2.stawi.org.
   # JWKS:       https://oauth2.stawi.org/.well-known/jwks.json
   # Discovery:  https://oauth2.stawi.org/.well-known/openid-configuration

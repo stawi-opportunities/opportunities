@@ -3,6 +3,15 @@
 One-time operator steps required before the R2 blob archive (spec
 `2026-04-20-r2-blob-archive-design.md`) can run in production.
 
+> **Note (post-consolidation):** As of the credential-consolidation
+> change, all three product-opportunities R2 buckets (`cluster-chronicle`,
+> `product-opportunities-content`, `product-opportunities-archive`)
+> share a **single** Cloudflare R2 account token, seeded once at
+> `secret/stawi-opportunities/opportunities/common/r2-account`. There
+> is no separate `archive-r2-credentials` Vault path or ExternalSecret
+> any more. The bucket-creation steps below still apply; the credential
+> steps now point at the shared `r2-account` Vault path.
+
 ## 1. Create the private bucket
 
 In the Cloudflare dashboard (or via wrangler):
@@ -11,8 +20,8 @@ In the Cloudflare dashboard (or via wrangler):
 - **Public access:** disabled. This bucket holds raw HTML + cluster
   bundles; it must not be addressable via a custom domain and must
   never be exposed through a CDN.
-- **Location hint:** same as the public `job-repo` bucket to keep
-  intra-region latency low.
+- **Location hint:** same as the public content bucket
+  (`product-opportunities-content`) to keep intra-region latency low.
 
 Apply the R2 lifecycle rule (JSON configuration or dashboard):
 
@@ -37,81 +46,48 @@ Apply the R2 lifecycle rule (JSON configuration or dashboard):
 **No deletion rule.** Retention is lifecycle-driven (purge sweeper
 fires only when `canonical_jobs.status = 'deleted'` + 7-day grace).
 
-## 2. Mint scoped access credentials
+## 2. Mint the shared account token (if not already done)
 
-Create a new R2 API token scoped only to `product-opportunities-archive`:
+The Product Opportunities Account Token must have R2 Read+Write on all
+three buckets:
 
-- Permissions: Object Read & Write + Bucket Admin (for `ListObjectsV2`
-  and `DeleteObjects`).
-- No access to the public `product-opportunities-content` bucket.
+- `cluster-chronicle`
+- `product-opportunities-content`
+- `product-opportunities-archive`
 
-Record:
-
-- `ARCHIVE_R2_ACCOUNT_ID` (same Cloudflare account ID used for the
-  public bucket)
-- `ARCHIVE_R2_ACCESS_KEY_ID`
-- `ARCHIVE_R2_SECRET_ACCESS_KEY`
-- `ARCHIVE_R2_BUCKET` = `product-opportunities-archive`
+If the token already exists (the chronicle/content buckets typically
+provision it first), nothing to do here — the same key authorises the
+archive bucket too.
 
 ## 3. Store credentials in Vault
 
-Path: `secret/antinvestor/opportunities/common/archive-r2-credentials`
-(mirrors the existing `secret/antinvestor/opportunities/common/r2-credentials`
-layout used for the public bucket).
+Path: `secret/stawi-opportunities/opportunities/common/r2-account`
 
-Keys (match the public bucket's property names so the ExternalSecret
-shape stays consistent):
+Properties (set once for the whole opportunities platform):
 
 ```
-r2_account_id         = <from step 2>
-r2_access_key_id      = <from step 2>
-r2_secret_access_key  = <from step 2>
-r2_bucket             = product-opportunities-archive
+r2_account_id         = <Cloudflare account ID>
+r2_access_key_id      = <token's key ID>
+r2_secret_access_key  = <token's secret>
+r2_endpoint           = https://<account_id>.r2.cloudflarestorage.com
+r2_deploy_hook_url    = <optional CF Pages deploy hook URL>
 ```
 
-Use the `vault-secret` skill at
-`/home/j/code/antinvestor/deployments/.claude/skills/vault-secret/`
-(kubectl exec into `vault-openbao-0` with a freshly-minted
-`external-secrets` SA token; `bao` CLI, not `vault`). The external-
-secrets policy has CRUD on all of `secret/data/*` so no policy change
-is needed for the new path.
+Use the `vault-secret` skill (kubectl exec into `vault-openbao-0` with
+a freshly-minted `external-secrets` SA token; `bao` CLI, not `vault`).
 
-Optional: if the Cloudflare dashboard API token is also handed over at
-provisioning, store it alongside at
-`secret/antinvestor/opportunities/common/cloudflare-api` with key
-`api_token`. The crawler does not consume it directly — it's for
-future automation (bucket CRUD, Pages deploys).
+Bucket *names* are NOT stored in Vault — they're plain config in each
+HelmRelease (`R2_CONTENT_BUCKET`, `R2_ARCHIVE_BUCKET`,
+`R2_CHRONICLE_BUCKET`).
 
-## 4. Wire the ExternalSecret
+## 4. ExternalSecret (already wired)
 
-In the GitOps repo (`antinvestor/deployments`), add a new
-`ExternalSecret` named `archive-r2-credentials-opportunities` mirroring
-the existing `r2-credentials-opportunities` that sources the public
-bucket's creds:
-
-```yaml
-# New ExternalSecret for the archive bucket.
-- secretKey: ARCHIVE_R2_ACCOUNT_ID
-  remoteRef:
-    key: antinvestor/opportunities/common/archive-r2-credentials
-    property: r2_account_id
-- secretKey: ARCHIVE_R2_ACCESS_KEY_ID
-  remoteRef:
-    key: antinvestor/opportunities/common/archive-r2-credentials
-    property: r2_access_key_id
-- secretKey: ARCHIVE_R2_SECRET_ACCESS_KEY
-  remoteRef:
-    key: antinvestor/opportunities/common/archive-r2-credentials
-    property: r2_secret_access_key
-- secretKey: ARCHIVE_R2_BUCKET
-  remoteRef:
-    key: antinvestor/opportunities/common/archive-r2-credentials
-    property: r2_bucket
-```
-
-The Go config layer (`apps/crawler/config/config.go`) consumes
-`ARCHIVE_R2_*` via the `env:` tags defined in T7. No code change on
-bump.
+A single `r2-account-credentials-opportunities` ExternalSecret in
+`namespaces/product-opportunities/common/r2-account-credentials.yaml`
+projects the Vault path into a Kubernetes Secret. Each HelmRelease
+(api, crawler, worker, writer, matching, bootstrap) reads
+`R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_ENDPOINT` from
+that one Secret. There's no per-bucket ExternalSecret to wire.
 
 ## 5. Verify post-deploy
 
@@ -119,15 +95,15 @@ After the crawler pod has rolled with the new secret:
 
 ```bash
 # Tail logs for archive construction.
-kubectl logs -n opportunities deploy/opportunities-crawler | grep -i archive
+kubectl logs -n product-opportunities deploy/opportunities-crawler | grep -i archive
 
 # Trigger a crawl and confirm raw_payloads + raw/ in R2.
-kubectl exec -n opportunities deploy/opportunities-crawler -- \
+kubectl exec -n product-opportunities deploy/opportunities-crawler -- \
   curl -sS -X POST http://localhost:8080/admin/crawl/dispatch-due?limit=1
 
 # After ~30s, sample the archive.
-ARCHIVE_R2_BUCKET=product-opportunities-archive \
-ARCHIVE_R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com \
+R2_ARCHIVE_BUCKET=product-opportunities-archive \
+R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com \
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
   make archive-verify SAMPLE=10
 ```
@@ -154,7 +130,11 @@ Both entries should show `active: true` with next-run timestamps.
 
 If the archive bucket needs to be disabled in a hurry:
 
-1. Revoke the R2 API token (Cloudflare dashboard).
+1. Revoke the shared R2 API token (Cloudflare dashboard). **Note:** this
+   also revokes content + chronicle access — there's no longer a
+   separate "archive only" key. If you need to rotate without taking
+   down ingest, mint a new token first, update Vault, then revoke the
+   old one.
 2. The crawler's next PutRaw will fail, aborting variant ingest. No
    data is lost — NATS queue buffers events until the token is
    rotated back in.
@@ -162,5 +142,5 @@ If the archive bucket needs to be disabled in a hurry:
    they persist until the purge sweeper runs against deleted
    canonicals.
 
-The public `job-repo` bucket and production traffic are unaffected by
+The public content bucket and production traffic are unaffected by
 archive outages — archive is strictly internal.

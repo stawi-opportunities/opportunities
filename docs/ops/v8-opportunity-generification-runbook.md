@@ -149,12 +149,29 @@ The bootstrap Job assumes three R2 buckets exist:
 | `product-opportunities-content` | Public job/opportunity JSONs (slug-direct) |
 | `product-opportunities-archive` | Private raw HTTP bodies + per-cluster JSON bundles |
 
-When seeding the Vault secrets `stawi-opportunities/opportunities/common/{r2-credentials,r2-log-credentials,archive-r2-credentials}`,
-use bucket names `cluster-chronicle`, `product-opportunities-content`,
-`product-opportunities-archive` for the `R2_BUCKET` /
-`R2_LOG_BUCKET` / `ARCHIVE_R2_BUCKET` values respectively. The Vault
-path names themselves are unchanged — only the bucket *values* inside
-those secrets reflect the new names.
+Provision **one** Cloudflare R2 account token ("Product Opportunities
+Account Token") with Read+Write on all three buckets, and seed it once
+into Vault at:
+
+```
+secret/stawi-opportunities/opportunities/common/r2-account
+```
+
+with properties `r2_account_id`, `r2_access_key_id`,
+`r2_secret_access_key`, `r2_endpoint` (and optional
+`r2_deploy_hook_url` for the public Hugo site). Bucket *names* are
+**not** stored in Vault — they're static config baked into each
+HelmRelease as `R2_CONTENT_BUCKET=product-opportunities-content`,
+`R2_ARCHIVE_BUCKET=product-opportunities-archive`, and
+`R2_CHRONICLE_BUCKET=cluster-chronicle`. This collapses what used to be
+three Vault paths (`r2-credentials`, `r2-log-credentials`,
+`archive-r2-credentials`) into one, and removes per-bucket key
+rotation as a separate operator step.
+
+Bind `opportunities-data.stawi.org` as a Cloudflare R2 Custom Domain on
+the `product-opportunities-content` bucket before traffic flows — this
+is the public CDN origin the api/UI fetch slug-direct snapshots from
+(it replaces the legacy `job-repo.stawi.org` host).
 
 ---
 

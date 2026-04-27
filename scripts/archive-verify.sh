@@ -8,8 +8,8 @@
 # runs as a cheap consistency sentinel between Postgres and R2.
 #
 # Required env:
-#   ARCHIVE_R2_BUCKET    — private archive bucket name
-#   ARCHIVE_R2_ENDPOINT  — https://<account>.r2.cloudflarestorage.com
+#   R2_ARCHIVE_BUCKET    — private archive bucket name
+#   R2_ENDPOINT  — https://<account>.r2.cloudflarestorage.com
 #   PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE  — standard psql env
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  — archive bucket creds
 #
@@ -22,8 +22,8 @@
 
 set -euo pipefail
 
-: "${ARCHIVE_R2_BUCKET:?ARCHIVE_R2_BUCKET required}"
-: "${ARCHIVE_R2_ENDPOINT:?ARCHIVE_R2_ENDPOINT required (e.g. https://<account>.r2.cloudflarestorage.com)}"
+: "${R2_ARCHIVE_BUCKET:?R2_ARCHIVE_BUCKET required}"
+: "${R2_ENDPOINT:?R2_ENDPOINT required (e.g. https://<account>.r2.cloudflarestorage.com)}"
 
 SAMPLE=${SAMPLE:-50}
 
@@ -50,9 +50,9 @@ while IFS='|' read -r canonical_id cluster_id; do
 
     # 1. canonical.json present.
     if ! aws s3api head-object \
-         --bucket "$ARCHIVE_R2_BUCKET" \
+         --bucket "$R2_ARCHIVE_BUCKET" \
          --key "clusters/$cluster_id/canonical.json" \
-         --endpoint-url "$ARCHIVE_R2_ENDPOINT" >/dev/null 2>&1; then
+         --endpoint-url "$R2_ENDPOINT" >/dev/null 2>&1; then
         echo "MISSING canonical.json for cluster=$cluster_id"
         fail=1
         continue
@@ -60,9 +60,9 @@ while IFS='|' read -r canonical_id cluster_id; do
 
     # 2. manifest.json present.
     if ! aws s3api head-object \
-         --bucket "$ARCHIVE_R2_BUCKET" \
+         --bucket "$R2_ARCHIVE_BUCKET" \
          --key "clusters/$cluster_id/manifest.json" \
-         --endpoint-url "$ARCHIVE_R2_ENDPOINT" >/dev/null 2>&1; then
+         --endpoint-url "$R2_ENDPOINT" >/dev/null 2>&1; then
         echo "MISSING manifest.json for cluster=$cluster_id"
         fail=1
         continue
@@ -76,17 +76,17 @@ while IFS='|' read -r canonical_id cluster_id; do
     " | while IFS='|' read -r variant_id raw_hash; do
         if [[ -z "${variant_id:-}" ]]; then continue; fi
         if ! aws s3api head-object \
-             --bucket "$ARCHIVE_R2_BUCKET" \
+             --bucket "$R2_ARCHIVE_BUCKET" \
              --key "clusters/$cluster_id/variants/$variant_id.json" \
-             --endpoint-url "$ARCHIVE_R2_ENDPOINT" >/dev/null 2>&1; then
+             --endpoint-url "$R2_ENDPOINT" >/dev/null 2>&1; then
             echo "MISSING variant.json cluster=$cluster_id variant=$variant_id"
             exit 1
         fi
         if [[ -n "$raw_hash" ]]; then
             if ! aws s3api head-object \
-                 --bucket "$ARCHIVE_R2_BUCKET" \
+                 --bucket "$R2_ARCHIVE_BUCKET" \
                  --key "raw/$raw_hash.html.gz" \
-                 --endpoint-url "$ARCHIVE_R2_ENDPOINT" >/dev/null 2>&1; then
+                 --endpoint-url "$R2_ENDPOINT" >/dev/null 2>&1; then
                 echo "MISSING raw blob hash=$raw_hash (used by variant=$variant_id)"
                 exit 1
             fi

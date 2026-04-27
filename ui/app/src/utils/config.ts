@@ -40,7 +40,7 @@ export interface SiteConfig {
 const DEFAULTS: SiteConfig = {
   apiURL: "https://api.stawi.org/jobs",
   candidatesAPIURL: "https://api.stawi.org",
-  contentOrigin: "https://job-repo.stawi.org",
+  contentOrigin: "https://opportunities-data.stawi.org",
   oidcIssuer: "https://oauth2.stawi.org",
   oidcClientID: "d7is2kspf2t7cl19qlpg",
   oidcInstallationID: "d7gi6lkpf2t67dlsqrhg",

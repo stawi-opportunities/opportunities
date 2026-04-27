@@ -77,11 +77,13 @@ func main() {
 	}
 
 	// --- Archive (raw CV bytes → R2) ---
+	// Same R2 account token used by the rest of the platform; only
+	// the bucket name differs.
 	arch := archive.NewR2Archive(archive.R2Config{
-		AccountID:       cfg.ArchiveR2AccountID,
-		AccessKeyID:     cfg.ArchiveR2AccessKeyID,
-		SecretAccessKey: cfg.ArchiveR2SecretAccessKey,
-		Bucket:          cfg.ArchiveR2Bucket,
+		AccountID:       cfg.R2AccountID,
+		AccessKeyID:     cfg.R2AccessKeyID,
+		SecretAccessKey: cfg.R2SecretAccessKey,
+		Bucket:          cfg.R2ArchiveBucket,
 	})
 
 	// --- Iceberg catalog (for candidatestore Reader + StaleReader) ---

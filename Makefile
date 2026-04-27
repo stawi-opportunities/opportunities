@@ -93,7 +93,7 @@ ui-dev:
 # Post-deploy + nightly sentinel: samples active canonicals and checks that
 # each has canonical.json, manifest.json, per-variant JSON, and raw blobs in
 # the R2 archive bucket. Non-zero exit on any drift. See scripts/archive-verify.sh
-# for required env (ARCHIVE_R2_BUCKET, ARCHIVE_R2_ENDPOINT, PG*, AWS_*).
+# for required env (R2_ARCHIVE_BUCKET, R2_ENDPOINT, PG*, AWS_*).
 archive-verify:
 	@scripts/archive-verify.sh
 

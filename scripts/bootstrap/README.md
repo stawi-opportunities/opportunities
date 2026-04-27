@@ -43,16 +43,19 @@ Reads `vault-seeds.env` and writes secrets to Vault via the cluster K8s-auth
 pattern (ServiceAccount token → `vault-openbao-0` pod → `bao kv put`).
 
 Writes:
-- `secret/antinvestor/opportunities/common/iceberg-catalog` — Iceberg SQL catalog DSN
-- `secret/antinvestor/opportunities/common/r2-log-credentials` — R2 event-log credentials
+- `secret/stawi-opportunities/opportunities/common/iceberg-catalog` — Iceberg catalog DSN
+- `secret/stawi-opportunities/opportunities/common/r2-account` — single Cloudflare R2 account
+  token authorised on all three product buckets (cluster-chronicle,
+  product-opportunities-content, product-opportunities-archive). Bucket
+  names are NOT in the secret — they're plain config in each HelmRelease.
 
 After seeding, ExternalSecrets sync within their `refreshInterval` (default 1h).
 Force immediate sync with:
 ```bash
 kubectl annotate externalsecret iceberg-catalog-credentials-opportunities \
-  -n opportunities reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
-kubectl annotate externalsecret r2-log-credentials-opportunities \
-  -n opportunities reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
+  -n product-opportunities reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
+kubectl annotate externalsecret r2-account-credentials-opportunities \
+  -n product-opportunities reconcile.external-secrets.io/trigger=$(date +%s) --overwrite
 ```
 
 **Common failures:**
@@ -70,7 +73,7 @@ The job clones this repo, installs `pyiceberg`, and runs:
 2. `definitions/iceberg/create_tables.py`
 
 **Prerequisites:** ExternalSecrets `iceberg-catalog-credentials-opportunities` and
-`r2-log-credentials-opportunities` must be synced before this runs.
+`r2-account-credentials-opportunities` must be synced before this runs.
 
 **Common failures:**
 - `ImagePullBackOff` on `python:3.12-slim` — cluster has no outbound internet; use

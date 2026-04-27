@@ -24,11 +24,15 @@ type CandidatesConfig struct {
 	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:"product-opportunities"`
 	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`
 
-	// Archive R2 (raw CV bytes uploaded by candidates).
-	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID"         envDefault:""`
-	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID"      envDefault:""`
-	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY"  envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET"             envDefault:"product-opportunities-archive"`
+	// Cloudflare R2 — one account token authorised on all three
+	// product-opportunities buckets. Matching uses the archive
+	// bucket for raw CV bytes uploaded by candidates; chronicle
+	// reads go through the Iceberg catalog (Lakekeeper).
+	R2AccountID       string `env:"R2_ACCOUNT_ID"        envDefault:""`
+	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"     envDefault:""`
+	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
+	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET"    envDefault:"product-opportunities-archive"`
 
 	// AI inference back-end (OpenAI-compatible).
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`

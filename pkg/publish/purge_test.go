@@ -26,7 +26,7 @@ func TestCachePurger_PurgeURL_PostsExpectedRequest(t *testing.T) {
 	defer srv.Close()
 
 	p := publish.NewCachePurger("zone123", "token-xyz", srv.URL)
-	if err := p.PurgeURL(context.Background(), "https://job-repo.stawi.org/jobs/abc.json"); err != nil {
+	if err := p.PurgeURL(context.Background(), "https://opportunities-data.stawi.org/jobs/abc.json"); err != nil {
 		t.Fatalf("purge: %v", err)
 	}
 	if !strings.Contains(gotPath, "zone123/purge_cache") {
@@ -36,7 +36,7 @@ func TestCachePurger_PurgeURL_PostsExpectedRequest(t *testing.T) {
 		t.Errorf("auth header = %q", gotAuth)
 	}
 	files := gotBody["files"]
-	if len(files) != 1 || files[0] != "https://job-repo.stawi.org/jobs/abc.json" {
+	if len(files) != 1 || files[0] != "https://opportunities-data.stawi.org/jobs/abc.json" {
 		t.Errorf("body.files = %v", files)
 	}
 }

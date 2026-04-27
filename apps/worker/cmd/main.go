@@ -100,31 +100,34 @@ func main() {
 		util.Log(ctx).Fatal("worker: cluster cache wiring failed (GetCache returned nil)")
 	}
 
-	// R2 publisher for canonical JSON snapshots.
-	// pkg/publish.NewR2Publisher takes positional args:
-	// accountID, accessKeyID, secretKey, bucket, deployHookURL.
-	// The worker has no Pages deploy hook — pass empty string.
+	// R2 publisher for canonical JSON snapshots. Single Cloudflare R2
+	// account token + content-bucket name. The worker has no Pages
+	// deploy hook — pass empty string.
 	publisher := publish.NewR2Publisher(
-		cfg.R2PublishAccountID,
-		cfg.R2PublishAccessKeyID,
-		cfg.R2PublishSecretAccessKey,
-		cfg.R2PublishBucket,
+		cfg.R2AccountID,
+		cfg.R2AccessKeyID,
+		cfg.R2SecretAccessKey,
+		cfg.R2ContentBucket,
 		"", // no Pages deploy hook for the worker
 	)
 
 	service := workersvc.NewService(svc, ex, publisher, reg, dedupCache, clusterCache, cfg.TranslationLangs)
 
 	// S3-compatible client for the R2 content bucket (used by kv/rebuild
-	// to list jobs/*.json slug files). Reuses the publish bucket credentials.
-	contentBucketEndpoint := fmt.Sprintf(
-		"https://%s.r2.cloudflarestorage.com",
-		cfg.R2PublishAccountID,
-	)
+	// to list <kind>/*.json slug files). Same R2 account credentials —
+	// only the bucket name differs across workloads.
+	contentBucketEndpoint := cfg.R2Endpoint
+	if contentBucketEndpoint == "" {
+		contentBucketEndpoint = fmt.Sprintf(
+			"https://%s.r2.cloudflarestorage.com",
+			cfg.R2AccountID,
+		)
+	}
 	r2S3Client := s3.New(s3.Options{
 		Region: "auto",
 		Credentials: credentials.NewStaticCredentialsProvider(
-			cfg.R2PublishAccessKeyID,
-			cfg.R2PublishSecretAccessKey,
+			cfg.R2AccessKeyID,
+			cfg.R2SecretAccessKey,
 			"",
 		),
 		BaseEndpoint: aws.String(contentBucketEndpoint),

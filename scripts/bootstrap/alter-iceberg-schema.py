@@ -16,7 +16,7 @@ Environment variables (same as create_namespaces.py / create_tables.py):
     ICEBERG_CATALOG_URI     postgres://user:pass@host:5432/stawi_jobs?sslmode=require
     R2_ACCESS_KEY_ID
     R2_SECRET_ACCESS_KEY
-    R2_LOG_BUCKET           cluster-chronicle
+    R2_CHRONICLE_BUCKET     cluster-chronicle
     R2_ENDPOINT             https://<account_id>.r2.cloudflarestorage.com
     R2_REGION               auto  (default)
 
@@ -45,7 +45,7 @@ def get_catalog():
         "s3.access-key-id": os.environ["R2_ACCESS_KEY_ID"],
         "s3.secret-access-key": os.environ["R2_SECRET_ACCESS_KEY"],
         "s3.region": os.environ.get("R2_REGION", "auto"),
-        "warehouse": f"s3://{os.environ['R2_LOG_BUCKET']}/iceberg",
+        "warehouse": f"s3://{os.environ['R2_CHRONICLE_BUCKET']}/iceberg",
     })
 
 
@@ -112,7 +112,7 @@ def apply_op(catalog, op: dict) -> None:
 
 
 def main() -> None:
-    required = ["ICEBERG_CATALOG_URI", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_LOG_BUCKET"]
+    required = ["ICEBERG_CATALOG_URI", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_CHRONICLE_BUCKET"]
     missing = [v for v in required if not os.environ.get(v)]
     if missing:
         print(f"ERROR: missing env vars: {', '.join(missing)}", file=sys.stderr)

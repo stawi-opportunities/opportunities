@@ -527,8 +527,8 @@ Full proto: `service-files/proto/redirect/redirect/v1/redirect.proto`.
 The public contract between the backend and the frontend. Served from R2 at:
 
 ```
-https://job-repo.stawi.org/jobs/{slug}.json            # source language
-https://job-repo.stawi.org/jobs/{slug}.{lang}.json     # translated variants
+https://opportunities-data.stawi.org/jobs/{slug}.json            # source language
+https://opportunities-data.stawi.org/jobs/{slug}.{lang}.json     # translated variants
 ```
 
 Supported language codes: `en`, `es`, `fr`, `de`, `pt`, `ja`, `ar`, `zh`.

@@ -40,21 +40,23 @@ type CrawlerConfig struct {
 	RerankBaseURL     string `env:"RERANK_BASE_URL" envDefault:""`
 	RerankAPIKey      string `env:"RERANK_API_KEY" envDefault:""`
 	RerankModel       string `env:"RERANK_MODEL" envDefault:""`
-	ValkeyAddr        string `env:"VALKEY_ADDR" envDefault:""`
+	ValkeyAddr string `env:"VALKEY_ADDR" envDefault:""`
+
+	// Cloudflare R2 — one account token authorised on all three
+	// product-opportunities buckets. Bucket names live in the static
+	// R2*Bucket fields below; only credentials + endpoint come from
+	// the secret store.
 	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string `env:"R2_BUCKET" envDefault:"product-opportunities-content"`
+	R2Endpoint        string `env:"R2_ENDPOINT" envDefault:""`
 	R2DeployHookURL   string `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 
-	// Archive R2 — separate bucket (and separate credentials) for
-	// raw HTML + variant blobs + canonical snapshots. Distinct from
-	// the public job-repo bucket above so least-privilege leaks
-	// stay contained.
-	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID" envDefault:""`
-	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID" envDefault:""`
-	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY" envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"product-opportunities-archive"`
+	// Bucket names — static config, not secret material. The crawler
+	// publishes snapshots to the content bucket and writes raw HTML
+	// + variant blobs + canonical bundles to the archive bucket.
+	R2ContentBucket string `env:"R2_CONTENT_BUCKET" envDefault:"product-opportunities-content"`
+	R2ArchiveBucket string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
 
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 
@@ -100,11 +102,12 @@ type CrawlerConfig struct {
 	AnalyticsPassword string `env:"ANALYTICS_PASSWORD" envDefault:""`
 
 	// ContentOrigin is the public CDN origin used when building cache-purge URLs.
-	ContentOrigin string `env:"CONTENT_ORIGIN" envDefault:"https://job-repo.stawi.org"`
+	ContentOrigin string `env:"CONTENT_ORIGIN" envDefault:"https://opportunities-data.stawi.org"`
 
 	// CloudflareZoneID / CloudflareAPIToken: when both set, the publish handler
-	// best-effort purges job-repo.stawi.org edge cache after each upload. When
-	// either is empty, the purger is a silent no-op (useful for local dev).
+	// best-effort purges opportunities-data.stawi.org edge cache after each
+	// upload. When either is empty, the purger is a silent no-op (useful for
+	// local dev).
 	CloudflareZoneID   string `env:"CLOUDFLARE_ZONE_ID" envDefault:""`
 	CloudflareAPIToken string `env:"CLOUDFLARE_API_TOKEN" envDefault:""`
 

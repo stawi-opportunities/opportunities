@@ -86,7 +86,7 @@ func TranslationKey(prefix, slug, lang string) string {
 
 // ContentOrigin is the public CDN origin for R2-served content. Overridden at
 // deploy time via CONTENT_ORIGIN env var (use SetContentOrigin).
-var ContentOrigin = "https://job-repo.stawi.org"
+var ContentOrigin = "https://opportunities-data.stawi.org"
 
 // SetContentOrigin overrides the default ContentOrigin. Empty inputs are
 // ignored so callers can unconditionally pass env vars.

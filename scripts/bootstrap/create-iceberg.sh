@@ -12,7 +12,7 @@
 # Prerequisites:
 #   - Vault secrets seeded (run seed-vault.sh first)
 #   - ExternalSecrets synced: iceberg-catalog-credentials-opportunities and
-#     r2-log-credentials-opportunities must exist in the opportunities namespace
+#     r2-account-credentials-opportunities must exist in the product-opportunities namespace
 #   - Outbound internet access from the cluster (for git clone + pip install)
 #
 # Usage:
@@ -61,20 +61,20 @@ spec:
             - name: R2_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: r2-log-credentials-opportunities
-                  key: R2_LOG_ACCESS_KEY_ID
+                  name: r2-account-credentials-opportunities
+                  key: R2_ACCESS_KEY_ID
             - name: R2_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: r2-log-credentials-opportunities
-                  key: R2_LOG_SECRET_ACCESS_KEY
-            - name: R2_LOG_BUCKET
+                  name: r2-account-credentials-opportunities
+                  key: R2_SECRET_ACCESS_KEY
+            - name: R2_CHRONICLE_BUCKET
               value: "cluster-chronicle"
             - name: R2_ENDPOINT
               valueFrom:
                 secretKeyRef:
-                  name: r2-log-credentials-opportunities
-                  key: R2_LOG_ENDPOINT
+                  name: r2-account-credentials-opportunities
+                  key: R2_ENDPOINT
 EOF
 
 echo "Waiting for Job ${JOB_NAME} to complete (timeout 10m)..."

@@ -24,15 +24,20 @@ import (
 )
 
 type apiConfig struct {
-	ServerPort        string  `env:"SERVER_PORT"          envDefault:":8082"`
-	ManticoreURL      string  `env:"MANTICORE_URL"        envDefault:""`
-	R2AccountID       string  `env:"R2_ACCOUNT_ID"        envDefault:""`
-	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID"     envDefault:""`
-	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string  `env:"R2_BUCKET"            envDefault:"product-opportunities-content"`
-	R2Endpoint        string  `env:"R2_ENDPOINT"          envDefault:""`
-	R2Region          string  `env:"R2_REGION"            envDefault:"auto"`
-	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL"   envDefault:""`
+	ServerPort   string `env:"SERVER_PORT"   envDefault:":8082"`
+	ManticoreURL string `env:"MANTICORE_URL" envDefault:""`
+
+	// Cloudflare R2 — one account token authorised on all three
+	// product-opportunities buckets. The api publishes Hugo snapshots
+	// to the content bucket via POST /admin/backfill.
+	R2AccountID       string `env:"R2_ACCOUNT_ID"        envDefault:""`
+	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"     envDefault:""`
+	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2ContentBucket   string `env:"R2_CONTENT_BUCKET"    envDefault:"product-opportunities-content"`
+	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
+	R2Region          string `env:"R2_REGION"            envDefault:"auto"`
+	R2DeployHookURL   string `env:"R2_DEPLOY_HOOK_URL"   envDefault:""`
+
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY"  envDefault:"50"`
 	AnalyticsBaseURL  string  `env:"ANALYTICS_BASE_URL"   envDefault:""`
 	AnalyticsOrg      string  `env:"ANALYTICS_ORG"        envDefault:"default"`
@@ -75,9 +80,9 @@ func main() {
 	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
 		r2Publisher = publish.NewR2Publisher(
 			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
-			cfg.R2Bucket, cfg.R2DeployHookURL,
+			cfg.R2ContentBucket, cfg.R2DeployHookURL,
 		)
-		log.WithField("bucket", cfg.R2Bucket).Info("R2 publisher enabled")
+		log.WithField("bucket", cfg.R2ContentBucket).Info("R2 publisher enabled")
 	}
 
 	analyticsClient := analytics.New(analytics.Config{

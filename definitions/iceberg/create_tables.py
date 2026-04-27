@@ -358,7 +358,7 @@ def main() -> None:
         "s3.access-key-id": os.environ["R2_ACCESS_KEY_ID"],
         "s3.secret-access-key": os.environ["R2_SECRET_ACCESS_KEY"],
         "s3.region": os.environ.get("R2_REGION", "auto"),
-        "warehouse": f"s3://{os.environ['R2_LOG_BUCKET']}/iceberg",
+        "warehouse": f"s3://{os.environ['R2_CHRONICLE_BUCKET']}/iceberg",
     })
 
     errors: list[tuple[str, Exception]] = []

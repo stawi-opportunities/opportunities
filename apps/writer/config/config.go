@@ -14,13 +14,17 @@ import (
 type Config struct {
 	fconfig.ConfigurationDefault
 
-	// R2 / S3-compatible event log bucket.
-	R2AccountID       string `env:"R2_LOG_ACCOUNT_ID,required"`
-	R2AccessKeyID     string `env:"R2_LOG_ACCESS_KEY_ID,required"`
-	R2SecretAccessKey string `env:"R2_LOG_SECRET_ACCESS_KEY,required"`
-	R2Bucket          string `env:"R2_LOG_BUCKET,required"`
-	R2Endpoint        string `env:"R2_LOG_ENDPOINT" envDefault:""`
-	R2UsePathStyle    bool   `env:"R2_LOG_PATH_STYLE" envDefault:"false"`
+	// Cloudflare R2 — one account token authorised on all three
+	// product-opportunities buckets. The writer talks to the
+	// chronicle bucket: bootstrap-iceberg passes these credentials
+	// to Lakekeeper at warehouse-registration time, and the runtime
+	// writer commits parquet via the Iceberg REST catalog.
+	R2AccountID       string `env:"R2_ACCOUNT_ID,required"`
+	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID,required"`
+	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY,required"`
+	R2Bucket          string `env:"R2_CHRONICLE_BUCKET,required"`
+	R2Endpoint        string `env:"R2_ENDPOINT" envDefault:""`
+	R2UsePathStyle    bool   `env:"R2_PATH_STYLE" envDefault:"false"`
 
 	// Iceberg catalog — Lakekeeper REST endpoint. Lakekeeper owns the
 	// metadata DB and storage credentials; this binary only speaks REST.
@@ -36,7 +40,7 @@ type Config struct {
 	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`
 
 	// R2 region used when signing requests to the object store.
-	R2Region string `env:"R2_LOG_REGION" envDefault:"auto"`
+	R2Region string `env:"R2_REGION" envDefault:"auto"`
 
 	// Flush thresholds. Whichever trips first forces a flush of the
 	// affected partition's buffer. Defaults match the design doc F2

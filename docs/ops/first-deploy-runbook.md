@@ -18,7 +18,13 @@
 - [ ] Managed infra ready:
   - [ ] Manticore StatefulSet running: `kubectl get pods -n opportunities -l app=manticore`
   - [ ] Valkey reachable from within the cluster
-  - [ ] R2 bucket `cluster-chronicle` created with credentials at hand
+  - [ ] Three Cloudflare R2 buckets created: `cluster-chronicle`,
+        `product-opportunities-content`, `product-opportunities-archive`
+  - [ ] **One** Cloudflare R2 account token ("Product Opportunities
+        Account Token") with Read+Write on all three buckets, credentials
+        at hand
+  - [ ] `opportunities-data.stawi.org` bound as a Cloudflare R2 Custom
+        Domain on the `product-opportunities-content` bucket
   - [ ] TEI embed/rerank endpoints answer `/health`
 - [ ] NATS JetStream provisioned: `kubectl get pods -n queue-system`
 - [ ] All six app images built and pushed for the target SHA
@@ -38,7 +44,11 @@ chmod +x scripts/bootstrap/*.sh
 ```
 
 The bootstrap script runs:
-1. `seed-vault.sh` — writes Vault paths for iceberg-catalog + r2-log-credentials
+1. `seed-vault.sh` — writes the iceberg-catalog DSN and the single R2
+   account token to Vault paths
+   `stawi-opportunities/opportunities/common/{iceberg-catalog,r2-account}`.
+   Bucket names are NOT seeded — they're plain config in each
+   HelmRelease.
 2. Postgres migrations (manual step; follow the on-screen prompt)
 3. `create-iceberg.sh` — creates Iceberg namespaces and tables via a k8s Job
 4. `create-manticore-schema.sh` — applies `idx_opportunities_rt` DDL to Manticore

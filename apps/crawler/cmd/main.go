@@ -145,16 +145,17 @@ func main() {
 	// Connector registry.
 	registry := service.BuildRegistry(httpClient, extractor)
 
-	// Archive R2 client + raw_ref repository. Separate bucket/creds
-	// from the public job-repo above; carries raw HTML + variant
-	// blobs + canonical snapshots. rawRefRepo tracks which variants
-	// reference which raw/{hash} blobs so the purge sweeper can GC
-	// orphans safely.
+	// Archive R2 client + raw_ref repository. Same R2 account token
+	// as the public content bucket — Cloudflare R2 IAM scopes the
+	// token to specific buckets, so the platform doesn't need to
+	// manage two key sets. rawRefRepo tracks which variants reference
+	// which raw/{hash} blobs so the purge sweeper can GC orphans
+	// safely.
 	arch := archive.NewR2Archive(archive.R2Config{
-		AccountID:       cfg.ArchiveR2AccountID,
-		AccessKeyID:     cfg.ArchiveR2AccessKeyID,
-		SecretAccessKey: cfg.ArchiveR2SecretAccessKey,
-		Bucket:          cfg.ArchiveR2Bucket,
+		AccountID:       cfg.R2AccountID,
+		AccessKeyID:     cfg.R2AccessKeyID,
+		SecretAccessKey: cfg.R2SecretAccessKey,
+		Bucket:          cfg.R2ArchiveBucket,
 	})
 	rawRefRepo := repository.NewRawRefRepository(dbFn)
 
