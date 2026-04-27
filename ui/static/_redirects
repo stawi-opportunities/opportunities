@@ -6,8 +6,22 @@
 # Order matters — first match wins. Literal section roots must come before
 # their splat siblings, otherwise the splat swallows the listing page.
 
-/jobs/          /jobs/        200
-/jobs/*         /job/         200
+/jobs/             /jobs/             200
+/jobs/*            /job/              200
 
-/categories/    /categories/  200
-/categories/*   /categories/  200
+/scholarships/     /scholarships/     200
+/scholarships/*    /scholarship/      200
+
+/tenders/          /tenders/          200
+/tenders/*         /tender/           200
+
+/deals/            /deals/            200
+/deals/*           /deal/             200
+
+# Funding's listing path is singular (/funding/), so its detail shell
+# lives at /funding-detail/ to avoid shadowing the listing.
+/funding/          /funding/          200
+/funding/*         /funding-detail/   200
+
+/categories/       /categories/       200
+/categories/*      /categories/       200

@@ -1,7 +1,8 @@
 {{ define "main" }}
-<!-- Shell for /funding/<slug>/. CF Pages rewrites /funding/* (except /funding/)
-     to this page; React reads the slug from window.location.pathname. -->
-<div id="mount-funding-detail" data-kind="funding">
+<!-- Shell for /deals/<slug>/. CF Pages rewrites /deals/* (except /deals/) to
+     this page; the React island reads the slug from window.location.pathname
+     and hydrates from R2 under product-opportunities-content/deals/<slug>.json. -->
+<div id="mount-deal-detail" data-kind="deal">
   <div class="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
     <div class="animate-pulse space-y-3">
       <div class="h-7 w-2/3 rounded bg-slate-200"></div>
