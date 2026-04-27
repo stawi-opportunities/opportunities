@@ -149,9 +149,12 @@ The bootstrap Job assumes three R2 buckets exist:
 | `product-opportunities-content` | Public job/opportunity JSONs (slug-direct) |
 | `product-opportunities-archive` | Private raw HTTP bodies + per-cluster JSON bundles |
 
-Provision **one** Cloudflare R2 account token ("Product Opportunities
-Account Token") with Read+Write on all three buckets, and seed it once
-into Vault at:
+Each bucket keeps its own Cloudflare R2 bucket-level access policy
+(distinct scopes, lifecycle rules, public-vs-private posture). The
+**deployment** simply uses one credential — the "Product Opportunities
+Account Token" — that has been granted the union of permissions across
+the three buckets. Bucket policies stay independent; the token is the
+shared key. Seed it once into Vault at:
 
 ```
 secret/stawi-opportunities/opportunities/common/r2-account
