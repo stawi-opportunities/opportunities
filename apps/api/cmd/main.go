@@ -109,7 +109,7 @@ func main() {
 	})
 
 	// v2 endpoints (Manticore-only).
-	mux.HandleFunc("GET /api/v2/search", v2SearchHandler(jm))
+	mux.HandleFunc("GET /api/v2/search", v2SearchHandler(jm, reg))
 	mux.HandleFunc("GET /api/v2/jobs/{id}", v2JobByIDHandler(jm))
 	mux.HandleFunc("GET /api/v2/jobs/top", v2TopHandler(jm))
 	mux.HandleFunc("GET /api/v2/jobs/latest", v2LatestHandler(jm))
@@ -119,7 +119,7 @@ func main() {
 	mux.HandleFunc("GET /api/v2/feed/tier", v2FeedTierHandler(jm))
 
 	// Legacy shims - v1 paths route to v2 handlers during transition.
-	mux.HandleFunc("GET /api/search", v2SearchHandler(jm))
+	mux.HandleFunc("GET /api/search", v2SearchHandler(jm, reg))
 	mux.HandleFunc("GET /api/categories", v2CategoriesHandler(jm))
 	mux.HandleFunc("GET /api/jobs/latest", v2LatestHandler(jm))
 	mux.HandleFunc("GET /api/stats/summary", v2StatsHandler(jm))
@@ -129,13 +129,18 @@ func main() {
 	mux.HandleFunc("GET /jobs/{id}", v2JobByIDHandler(jm))
 	mux.HandleFunc("GET /categories", v2CategoriesHandler(jm))
 	mux.HandleFunc("GET /stats", v2StatsHandler(jm))
-	mux.HandleFunc("GET /search", v2SearchHandler(jm))
+	mux.HandleFunc("GET /search", v2SearchHandler(jm, reg))
 
 	// Hugo snapshot publishing — sources from Manticore idx_opportunities_rt.
 	if r2Publisher != nil {
 		mux.HandleFunc("POST /admin/backfill",
 			backfillManticoreHandler(jm, r2Publisher, cfg.PublishMinQuality))
 	}
+
+	// Verify-stage rejection visibility — operator-facing read of the
+	// opportunities.variants_rejected Iceberg sink. Currently stubbed
+	// to 501; see endpoints_v2.go for the implementation note.
+	mux.HandleFunc("GET /admin/variants/rejected", v2VariantsRejectedHandler())
 
 	// Analytics beacon — no DB.
 	mux.HandleFunc("OPTIONS /jobs/{slug}/view", func(w http.ResponseWriter, _ *http.Request) {

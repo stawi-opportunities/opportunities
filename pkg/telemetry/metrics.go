@@ -11,15 +11,18 @@ import (
 var (
 	meter = otel.Meter("stawi.opportunities.pipeline")
 
-	StageTransitions   metric.Int64Counter
-	StageDuration      metric.Float64Histogram
-	BloomHits          metric.Int64Counter
-	BloomMisses        metric.Int64Counter
-	OpportunitiesReady metric.Int64Counter
-	VerifyRejections   metric.Int64Counter
-	ExtractionLatency  metric.Float64Histogram
-	AIExtractions      metric.Int64Counter
-	AIFailures         metric.Int64Counter
+	StageTransitions          metric.Int64Counter
+	StageDuration             metric.Float64Histogram
+	BloomHits                 metric.Int64Counter
+	BloomMisses               metric.Int64Counter
+	OpportunitiesReady        metric.Int64Counter
+	VerifyRejections          metric.Int64Counter
+	ExtractionLatency         metric.Float64Histogram
+	AIExtractions             metric.Int64Counter
+	AIFailures                metric.Int64Counter
+	EmbedFailures             metric.Int64Counter
+	TranslateFailures         metric.Int64Counter
+	PreferenceTriggeredRuns   metric.Int64Counter
 )
 
 // Init registers all pipeline metrics with the global OTel meter provider.
@@ -90,6 +93,27 @@ func Init() error {
 		return err
 	}
 
+	EmbedFailures, err = meter.Int64Counter("pipeline.embed.failures",
+		metric.WithDescription("Permanent embedding failures (LLM rate-limit, parse, etc.)"),
+	)
+	if err != nil {
+		return err
+	}
+
+	TranslateFailures, err = meter.Int64Counter("pipeline.translate.failures",
+		metric.WithDescription("Permanent translation failures, labelled by target language"),
+	)
+	if err != nil {
+		return err
+	}
+
+	PreferenceTriggeredRuns, err = meter.Int64Counter("pipeline.matching.preference_triggered_runs",
+		metric.WithDescription("Match runs triggered by a preferences-updated event, labelled by kind"),
+	)
+	if err != nil {
+		return err
+	}
+
 	return InitIceberg()
 }
 
@@ -126,5 +150,39 @@ func RecordExtractionLatency(kind string, seconds float64) {
 		return
 	}
 	ExtractionLatency.Record(context.Background(), seconds,
+		metric.WithAttributes(attribute.String("kind", kind)))
+}
+
+// RecordEmbedFailure increments the embed-failures counter. reason is a
+// short, low-cardinality tag like "rate_limit", "parse", "network".
+func RecordEmbedFailure(reason string) {
+	if EmbedFailures == nil {
+		return
+	}
+	EmbedFailures.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("reason", reason)))
+}
+
+// RecordTranslateFailure increments the translate-failures counter.
+// lang is the target language code; reason is a short, low-cardinality
+// tag like "rate_limit", "parse", "network".
+func RecordTranslateFailure(lang, reason string) {
+	if TranslateFailures == nil {
+		return
+	}
+	TranslateFailures.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("lang", lang),
+			attribute.String("reason", reason),
+		))
+}
+
+// RecordPreferenceTriggeredRun increments the preference-triggered-runs
+// counter. kind is the matcher kind whose preferences fired the rerun.
+func RecordPreferenceTriggeredRun(kind string) {
+	if PreferenceTriggeredRuns == nil {
+		return
+	}
+	PreferenceTriggeredRuns.Add(context.Background(), 1,
 		metric.WithAttributes(attribute.String("kind", kind)))
 }

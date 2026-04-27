@@ -32,12 +32,17 @@ type SearchRequest struct {
 }
 
 // SearchHit is one Manticore row returned to the match handler.
+//
+// Reasons is an optional list of short, human-readable strings explaining
+// why this opportunity matched (populated when the per-kind matcher is
+// run; empty for the legacy CV-vs-job KNN-only pipeline).
 type SearchHit struct {
 	CanonicalID string
 	Slug        string
 	Title       string
 	Company     string
 	Score       float64
+	Reasons     []string
 }
 
 // SearchIndex is the interface the handler depends on. Real impl
@@ -63,11 +68,12 @@ type matchResponse struct {
 }
 
 type matchResponseRow struct {
-	CanonicalID string  `json:"canonical_id"`
-	Slug        string  `json:"slug,omitempty"`
-	Title       string  `json:"title,omitempty"`
-	Company     string  `json:"company,omitempty"`
-	Score       float64 `json:"score"`
+	CanonicalID string   `json:"canonical_id"`
+	Slug        string   `json:"slug,omitempty"`
+	Title       string   `json:"title,omitempty"`
+	Company     string   `json:"company,omitempty"`
+	Score       float64  `json:"score"`
+	Reasons     []string `json:"reasons,omitempty"`
 }
 
 // MatchHandler returns an http.HandlerFunc for:

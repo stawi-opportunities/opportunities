@@ -5,6 +5,17 @@ import (
 	"encoding/json"
 )
 
+// ScoreResult is the structured output of Matcher.Score. Score is in
+// [0, 1]; Reasons is an optional list of short, human-readable strings
+// explaining why this score was assigned. The HTTP match handler
+// surfaces Reasons to the candidate so they can see *why* a given
+// opportunity matched (e.g. "title contains target role", "salary
+// above floor"). Stub matchers return Score=0 and Reasons=nil.
+type ScoreResult struct {
+	Score   float64
+	Reasons []string
+}
+
 // Matcher is the contract every kind-specific matcher implements.
 // Registered with the matchers Registry at app boot; the router selects
 // by Kind().
@@ -18,9 +29,10 @@ type Matcher interface {
 	// SearchFilter returns a kind-scoped Manticore filter expression
 	// (or equivalent) built from the candidate's preferences blob.
 	SearchFilter(prefs json.RawMessage) (any, error)
-	// Score ranks one opportunity against the same preferences blob.
-	// Returns a value in [0, 1].
-	Score(ctx context.Context, prefs json.RawMessage, opp any) (float64, error)
+	// Score ranks one opportunity against the same preferences blob and
+	// returns a Score in [0, 1] plus optional Reasons describing the
+	// contributing factors.
+	Score(ctx context.Context, prefs json.RawMessage, opp any) (ScoreResult, error)
 }
 
 type Registry struct{ m map[string]Matcher }
@@ -45,7 +57,7 @@ func (r *Registry) Kinds() []string {
 // EnabledKinds returns the kinds whose matcher is not disabled. Used by
 // the /v1/match-kinds endpoint to tell the UI which onboarding tabs to
 // render — stubs (Disabled() == true) are excluded so candidates can't
-// opt into a kind whose matcher returns uniform 0.5 scores.
+// opt into a kind whose matcher returns a zero score with no signal.
 func (r *Registry) EnabledKinds() []string {
 	out := make([]string, 0, len(r.m))
 	for k, mt := range r.m {

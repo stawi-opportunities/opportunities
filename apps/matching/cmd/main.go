@@ -161,8 +161,30 @@ func main() {
 			name: improveH.Name(),
 			hs:   []events.EventI{improveH, embedH},
 		}
-		svc.Init(ctx, frame.WithRegisterEvents(extractH, extractedFanout))
+		// Preference-update → immediate re-match handler. Subscribes to
+		// TopicCandidatePreferencesUpdated so the candidate sees fresh
+		// matches within seconds of saving preferences (the weekly-digest
+		// cron is the slow path).
+		prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
+			Svc:      svc,
+			Match:    matchSvc,
+			Matchers: matcherReg,
+			TopK:     50,
+		})
+		svc.Init(ctx, frame.WithRegisterEvents(extractH, extractedFanout, prefMatchH))
 	} else {
+		// Even without an extractor we still want preference-update
+		// re-matching, since that path runs the existing match service
+		// (which uses a previously-stored embedding, not a live LLM
+		// call). Wire it in degraded mode so candidates with a CV that
+		// was extracted in a prior run still get re-matched.
+		prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
+			Svc:      svc,
+			Match:    matchSvc,
+			Matchers: matcherReg,
+			TopK:     50,
+		})
+		svc.Init(ctx, frame.WithRegisterEvents(prefMatchH))
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscriptions disabled; uploads will archive but not enrich")
 	}
 

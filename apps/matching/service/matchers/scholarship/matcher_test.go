@@ -37,7 +37,10 @@ func TestScore_DegreeAndFieldAndDeadlineHorizon(t *testing.T) {
 	deadline := time.Now().Add(60 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	opp := map[string]any{"degree_level": "masters", "field_of_study": "Climate", "deadline": deadline}
 	got, err := New().Score(context.Background(), prefs, opp)
-	if err != nil || got < 0.9 {
-		t.Fatalf("Score=%v err=%v, want >= 0.9", got, err)
+	if err != nil || got.Score < 0.9 {
+		t.Fatalf("Score=%v err=%v, want >= 0.9", got.Score, err)
+	}
+	if len(got.Reasons) < 2 {
+		t.Fatalf("expected at least 2 reasons, got %v", got.Reasons)
 	}
 }

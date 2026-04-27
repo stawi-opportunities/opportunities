@@ -6,9 +6,21 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-func v2SearchHandler(jm *jobsManticore) http.HandlerFunc {
+// universalFacets are facet families that apply across every kind. They
+// are always included in the search response regardless of which kinds
+// appear in the result set.
+var universalFacets = map[string]struct{}{
+	"country":     {},
+	"remote":      {},
+	"remote_type": {},
+	"currency":    {},
+}
+
+func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -29,6 +41,9 @@ func v2SearchHandler(jm *jobsManticore) http.HandlerFunc {
 		}
 		if v := strings.TrimSpace(qs.Get("seniority")); v != "" {
 			filter = append(filter, map[string]any{"equals": map[string]any{"seniority": v}})
+		}
+		if v := strings.TrimSpace(qs.Get("kind")); v != "" {
+			filter = append(filter, map[string]any{"equals": map[string]any{"kind": v}})
 		}
 		if v := qs.Get("salary_min"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
@@ -66,11 +81,14 @@ func v2SearchHandler(jm *jobsManticore) http.HandlerFunc {
 			"query": map[string]any{"bool": boolQ},
 			"limit": limit,
 			"aggs": map[string]any{
+				"kind":            map[string]any{"terms": map[string]any{"field": "kind", "size": 16}},
 				"category":        map[string]any{"terms": map[string]any{"field": "category", "size": 32}},
 				"country":         map[string]any{"terms": map[string]any{"field": "country", "size": 200}},
 				"remote_type":     map[string]any{"terms": map[string]any{"field": "remote_type", "size": 8}},
 				"employment_type": map[string]any{"terms": map[string]any{"field": "employment_type", "size": 16}},
 				"seniority":       map[string]any{"terms": map[string]any{"field": "seniority", "size": 16}},
+				"field_of_study":  map[string]any{"terms": map[string]any{"field": "field_of_study", "size": 32}},
+				"degree_level":    map[string]any{"terms": map[string]any{"field": "degree_level", "size": 8}},
 			},
 		}
 		if sortSpec != nil {
@@ -104,8 +122,49 @@ func v2SearchHandler(jm *jobsManticore) http.HandlerFunc {
 		for _, h := range parsed.Hits.Hits {
 			hits = append(hits, h.Source)
 		}
+
+		// Per-kind facet filtering. Build the set of kinds seen in the
+		// result set; consult the registry for each kind's
+		// SearchFacets; intersect with the universal facets so the UI
+		// only sees facet families relevant to the kinds it's
+		// rendering. This prevents (e.g.) scholarship results from
+		// surfacing employment_type buckets in the sidebar.
+		allowedFacets := map[string]struct{}{}
+		for k := range universalFacets {
+			allowedFacets[k] = struct{}{}
+		}
+		// Always allow the kind facet itself — operators and the UI use
+		// it to render kind tabs.
+		allowedFacets["kind"] = struct{}{}
+		// Always allow the category facet — it's universal across kinds.
+		allowedFacets["category"] = struct{}{}
+
+		if reg != nil {
+			kindsSeen := map[string]struct{}{}
+			for _, hit := range hits {
+				if hit.Kind != "" {
+					kindsSeen[hit.Kind] = struct{}{}
+				}
+			}
+			for kind := range kindsSeen {
+				spec := reg.Resolve(kind)
+				for _, f := range spec.SearchFacets {
+					allowedFacets[f] = struct{}{}
+				}
+			}
+		} else {
+			// No registry — fall back to including every facet family
+			// (legacy behaviour). Should only happen in tests.
+			for name := range parsed.Aggregations {
+				allowedFacets[name] = struct{}{}
+			}
+		}
+
 		facets := map[string]map[string]int{}
 		for name, agg := range parsed.Aggregations {
+			if _, ok := allowedFacets[name]; !ok {
+				continue
+			}
 			m := map[string]int{}
 			for _, b := range agg.Buckets {
 				if b.Key != "" {
@@ -303,6 +362,21 @@ func v2FeedTierHandler(jm *jobsManticore) http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tier":    tierName,
 			"results": rows,
+		})
+	}
+}
+
+// v2VariantsRejectedHandler returns the most-recently rejected variants
+// (Verify-stage rejections) read from the
+// opportunities.variants_rejected Iceberg table. Stub for now —
+// returns 501 until a follow-up wires the catalog client query.
+func v2VariantsRejectedHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "not yet implemented",
+			"note":  "TODO: query opportunities.variants_rejected via icebergclient catalog and return last N rows",
 		})
 	}
 }

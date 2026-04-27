@@ -13,6 +13,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // TranslateHandler consumes CanonicalUpsertedV1 and emits one
@@ -67,7 +68,11 @@ func (h *TranslateHandler) Execute(ctx context.Context, payload any) error {
 		}
 		tr, err := h.translate(ctx, c, lang)
 		if err != nil {
-			util.Log(ctx).WithError(err).WithField("lang", lang).
+			reason := classifyTranslateFailure(err)
+			telemetry.RecordTranslateFailure(lang, reason)
+			util.Log(ctx).WithError(err).
+				WithField("lang", lang).
+				WithField("reason", reason).
 				Warn("translate: provider failed, skipping")
 			continue
 		}
@@ -101,4 +106,25 @@ func (h *TranslateHandler) translate(ctx context.Context, c eventsv1.CanonicalUp
 		DescriptionTr: out.Description,
 		TranslatedAt:  time.Now().UTC(),
 	}, nil
+}
+
+// classifyTranslateFailure maps an error from the translation provider
+// to a short, low-cardinality reason tag suitable for an OTel attribute.
+func classifyTranslateFailure(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "rate limit"), strings.Contains(msg, "429"):
+		return "rate_limit"
+	case strings.Contains(msg, "parse"), strings.Contains(msg, "decode"), strings.Contains(msg, "unmarshal"):
+		return "parse"
+	case strings.Contains(msg, "context deadline"), strings.Contains(msg, "timeout"):
+		return "timeout"
+	case strings.Contains(msg, "connection"), strings.Contains(msg, "network"), strings.Contains(msg, "no such host"):
+		return "network"
+	default:
+		return "unknown"
+	}
 }

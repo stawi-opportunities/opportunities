@@ -11,7 +11,29 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
+
+// classifyEmbedFailure maps an error from the embed provider to a
+// short, low-cardinality reason tag suitable for an OTel attribute.
+func classifyEmbedFailure(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "rate limit"), strings.Contains(msg, "429"):
+		return "rate_limit"
+	case strings.Contains(msg, "parse"), strings.Contains(msg, "decode"), strings.Contains(msg, "unmarshal"):
+		return "parse"
+	case strings.Contains(msg, "context deadline"), strings.Contains(msg, "timeout"):
+		return "timeout"
+	case strings.Contains(msg, "connection"), strings.Contains(msg, "network"), strings.Contains(msg, "no such host"):
+		return "network"
+	default:
+		return "unknown"
+	}
+}
 
 // EmbedHandler consumes CanonicalUpsertedV1 and emits EmbeddingV1.
 // If no embedder is configured, it emits nothing (caller's search
@@ -61,7 +83,10 @@ func (h *EmbedHandler) Execute(ctx context.Context, payload any) error {
 	text := strings.Join([]string{c.Title, c.IssuingEntity, desc}, " · ")
 	vec, err := h.extractor.Embed(ctx, text)
 	if err != nil {
-		util.Log(ctx).WithError(err).Warn("embed: provider failed, skipping")
+		reason := classifyEmbedFailure(err)
+		telemetry.RecordEmbedFailure(reason)
+		util.Log(ctx).WithError(err).WithField("reason", reason).
+			Warn("embed: provider failed, skipping")
 		return nil // fail-open — no embedding is better than no row
 	}
 	if len(vec) == 0 {

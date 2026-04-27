@@ -11,6 +11,7 @@ import (
 
 type job struct {
 	CanonicalID    string     `json:"canonical_id"`
+	Kind           string     `json:"kind,omitempty"`
 	Slug           string     `json:"slug"`
 	Title          string     `json:"title"`
 	Company        string     `json:"company"`
