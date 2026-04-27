@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Idempotent: create opportunities + candidates namespaces. Safe to re-run."""
+"""
+DEPRECATED — kept as historical reference only.
+
+Namespace creation is now handled by the `bootstrap-iceberg` Go
+subcommand of the writer image, executed by the
+`opportunities-iceberg-bootstrap` Kubernetes Job on every FluxCD
+reconcile. See pkg/icebergclient/schemas.go for the canonical list.
+
+Idempotent: create opportunities + candidates namespaces. Safe to re-run.
+"""
 import os
 import sys
 from pyiceberg.catalog import load_catalog

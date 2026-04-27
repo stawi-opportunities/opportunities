@@ -1,28 +1,35 @@
-# Iceberg table definitions
+# Iceberg table definitions (DEPRECATED — see below)
 
-Scripts to provision the stawi.opportunities Iceberg catalog. Run once per environment (dev/staging/prod).
+The Python scripts in this directory are kept as historical reference.
+The canonical Iceberg layout (warehouse, namespaces, tables) is now
+materialised in Go and provisioned automatically by the
+`opportunities-iceberg-bootstrap` Kubernetes Job on every FluxCD
+reconcile.
 
-## Prerequisites
+## Where the source of truth lives
 
-- Postgres reachable with iceberg_* catalog tables migrated (see `db/migrations/0004_iceberg_catalog.sql`)
-- R2 credentials for the log bucket
-- Python 3.11+
+- Schemas: `pkg/icebergclient/schemas.go`
+- Bootstrap entry point: `apps/writer/cmd/bootstrap.go`
+- Job manifest: `deployment.manifests/namespaces/product-opportunities/bootstrap/`
 
-## Run
+## Why these scripts still exist
 
-    pip install -r requirements.txt
+`_schemas.py` is preserved as analyst-facing documentation: pyiceberg
+schema literals are easy to read alongside Iceberg's spec.
+`create_tables.py` and `create_namespaces.py` document the partition
+specs, sort orders, and bloom-filter properties used in production.
+None of them are executed by any deployment path.
 
-    export ICEBERG_CATALOG_URI="postgresql+psycopg2://$DATABASE_USERNAME:$DATABASE_PASSWORD@$DATABASE_HOST:5432/$DATABASE_NAME"
-    export R2_ACCESS_KEY_ID=...
-    export R2_SECRET_ACCESS_KEY=...
-    export R2_LOG_BUCKET=opportunities-log
-    export R2_ENDPOINT=https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com
+## Required R2 buckets (operator action)
 
-    python create_namespaces.py
-    python create_tables.py
+The bootstrap process assumes three Cloudflare R2 buckets exist:
 
-## Idempotency
+| Bucket | Purpose |
+|---|---|
+| `cluster-chronicle` | Lakekeeper warehouse (Iceberg data + metadata) |
+| `product-opportunities-content` | Public job/opportunity slug-direct JSONs |
+| `product-opportunities-archive` | Private raw bodies + JSON bundles |
 
-Both scripts skip existing namespaces/tables. Safe to re-run after schema bumps — but note that
-Iceberg partition specs are NOT easily evolvable once created. Bucket counts especially cannot
-change without table recreation.
+The Vault paths under `stawi-opportunities/opportunities/common/` keep
+their original names; the bucket *values* inside those secrets are the
+new names above.

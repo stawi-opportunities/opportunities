@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 """
+DEPRECATED — kept as historical reference only.
+
+The Iceberg warehouse, namespaces, and tables are now bootstrapped by
+the Go `bootstrap-iceberg` subcommand of the writer image, executed by
+the `opportunities-iceberg-bootstrap` Kubernetes Job on every FluxCD
+reconcile. The canonical table layout lives in
+pkg/icebergclient/schemas.go.
+
+Do not invoke this script for new deployments. Refer to it only when
+migrating an existing pyiceberg-managed warehouse — partition specs,
+sort orders, and bloom-filter properties below remain accurate
+documentation of the production layout.
+
 Idempotent: create all 12 stawi-opportunities Iceberg tables.
 
 Run after create_namespaces.py.  Each create_* function is self-contained —

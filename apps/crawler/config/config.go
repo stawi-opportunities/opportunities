@@ -44,7 +44,7 @@ type CrawlerConfig struct {
 	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string `env:"R2_BUCKET" envDefault:"opportunities-content"`
+	R2Bucket          string `env:"R2_BUCKET" envDefault:"product-opportunities-content"`
 	R2DeployHookURL   string `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
 
 	// Archive R2 — separate bucket (and separate credentials) for
@@ -54,7 +54,7 @@ type CrawlerConfig struct {
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID" envDefault:""`
 	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID" envDefault:""`
 	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY" envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"opportunities-archive"`
+	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET" envDefault:"product-opportunities-archive"`
 
 	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
 

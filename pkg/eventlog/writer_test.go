@@ -33,7 +33,7 @@ func TestParquetRoundTripViaMinio(t *testing.T) {
 		AccountID:       "test-account",
 		AccessKeyID:     mc.Username,
 		SecretAccessKey: mc.Password,
-		Bucket:          "opportunities-log-test",
+		Bucket:          "cluster-chronicle-test",
 		Endpoint:        "http://" + endpoint,
 		UsePathStyle:    true,
 	}

@@ -34,7 +34,7 @@
 
 ```bash
 # 1. Confirm R2 event-log is intact
-aws s3 ls s3://opportunities-log/canonicals_current/ | wc -l
+aws s3 ls s3://cluster-chronicle/canonicals_current/ | wc -l
 # Expect ≥ 200 files
 
 # 2. Drop and re-create the index
@@ -150,7 +150,7 @@ Covered in Scenario 2. Valkey is ephemeral — all data rebuilds from R2.
 
 ---
 
-## Scenario 5 — R2 log bucket deleted (opportunities-log)
+## Scenario 5 — R2 log bucket deleted (cluster-chronicle)
 
 This is the most severe recoverable scenario. All Parquet event-log files are stored
 here, as is the Iceberg metadata tree.
@@ -158,13 +158,13 @@ here, as is the Iceberg metadata tree.
 **Symptoms:**
 - Writer flush errors: `NoSuchBucket` or `AccessDenied`
 - Iceberg catalog returns `table metadata not found`
-- `aws s3 ls s3://opportunities-log/` returns `NoSuchBucket`
+- `aws s3 ls s3://cluster-chronicle/` returns `NoSuchBucket`
 
 **Recovery:**
 
 ```bash
 # 1. Re-create the R2 bucket (via Cloudflare dashboard or API)
-# Bucket name must match: opportunities-log
+# Bucket name must match: cluster-chronicle
 # Enable versioning if not already enabled
 
 # 2. Re-seed Vault credentials if the R2 access key was also rotated
@@ -190,7 +190,7 @@ NATS retains 24 hours of events — the writer will replay those.
 Events older than 24 hours are permanently lost unless a separate backup exists.
 
 **Mitigation (prevent future loss):**
-- Enable Cloudflare R2 Object Lock or versioning on `opportunities-log`
+- Enable Cloudflare R2 Object Lock or versioning on `cluster-chronicle`
 - Configure cross-bucket replication to a second R2 bucket as a backup
 - Consider periodic Iceberg snapshot exports to a separate storage account
 
@@ -199,14 +199,14 @@ history from NATS replay window.
 
 ---
 
-## Scenario 6 — R2 content bucket deleted (opportunities-content)
+## Scenario 6 — R2 content bucket deleted (product-opportunities-content)
 
-The content bucket stores canonical JSON files at `s3://opportunities-content/jobs/<slug>.json`.
+The content bucket stores canonical JSON files at `s3://product-opportunities-content/jobs/<slug>.json`.
 These are the source of truth for `/api/v2/jobs/<slug>` detail pages.
 
 **Symptoms:**
 - `/api/v2/jobs/<slug>` returns 404 for all slugs
-- `aws s3 ls s3://opportunities-content/jobs/` returns `NoSuchBucket`
+- `aws s3 ls s3://product-opportunities-content/jobs/` returns `NoSuchBucket`
 
 **Recovery:**
 
@@ -279,7 +279,7 @@ cat = load_catalog("stawi", **{
     "s3.access-key-id": os.environ["R2_ACCESS_KEY_ID"],
     "s3.secret-access-key": os.environ["R2_SECRET_ACCESS_KEY"],
     "s3.region": "auto",
-    "warehouse": "s3://opportunities-log/iceberg",
+    "warehouse": "s3://cluster-chronicle/iceberg",
 })
 
 table = cat.load_table("jobs.variants")

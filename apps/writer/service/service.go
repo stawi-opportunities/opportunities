@@ -140,9 +140,9 @@ func (s *Service) commitBatch(ctx context.Context, b *Batch) error {
 // schema for all pipeline stages, distinguished by the "stage" field.
 //
 // Topics that are NO LONGER persisted to Iceberg return (nil, nil):
-//   - TopicCanonicalsUpserted  — body lives at s3://opportunities-content/jobs/<slug>.json
+//   - TopicCanonicalsUpserted  — body lives at s3://product-opportunities-content/jobs/<slug>.json
 //   - TopicCanonicalsExpired   — Frame event only; materializer subscribes directly
-//   - TopicTranslations        — body lives at s3://opportunities-content/jobs/<slug>/<lang>.json
+//   - TopicTranslations        — body lives at s3://product-opportunities-content/jobs/<slug>/<lang>.json
 //
 // The writer still subscribes to these topics (they remain in AllTopics()); the
 // buffer receives them, commitBatch sees a nil builder, and acks without writing.

@@ -18,7 +18,7 @@
 - [ ] Managed infra ready:
   - [ ] Manticore StatefulSet running: `kubectl get pods -n opportunities -l app=manticore`
   - [ ] Valkey reachable from within the cluster
-  - [ ] R2 bucket `opportunities-log` created with credentials at hand
+  - [ ] R2 bucket `cluster-chronicle` created with credentials at hand
   - [ ] TEI embed/rerank endpoints answer `/health`
 - [ ] NATS JetStream provisioned: `kubectl get pods -n queue-system`
 - [ ] All six app images built and pushed for the target SHA

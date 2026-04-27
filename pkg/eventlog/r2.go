@@ -27,7 +27,7 @@ type R2Config struct {
 	AccessKeyID     string
 	SecretAccessKey string
 
-	// Bucket is the event-log bucket name (e.g. opportunities-log).
+	// Bucket is the event-log bucket name (e.g. cluster-chronicle).
 	Bucket string
 
 	// Endpoint allows tests to point at a MinIO container. Empty

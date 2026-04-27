@@ -28,7 +28,7 @@ type CandidatesConfig struct {
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID"         envDefault:""`
 	ArchiveR2AccessKeyID     string `env:"ARCHIVE_R2_ACCESS_KEY_ID"      envDefault:""`
 	ArchiveR2SecretAccessKey string `env:"ARCHIVE_R2_SECRET_ACCESS_KEY"  envDefault:""`
-	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET"             envDefault:"opportunities-archive"`
+	ArchiveR2Bucket          string `env:"ARCHIVE_R2_BUCKET"             envDefault:"product-opportunities-archive"`
 
 	// AI inference back-end (OpenAI-compatible).
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`

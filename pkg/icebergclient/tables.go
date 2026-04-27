@@ -17,8 +17,8 @@ package icebergclient
 // and that snapshot expiry, compaction, and maintenance jobs operate on.
 //
 // Dropped from Iceberg (body now lives in R2 slug-direct JSON):
-//   - jobs.canonicals      → s3://opportunities-content/jobs/<slug>.json
-//   - jobs.translations    → s3://opportunities-content/jobs/<slug>/<lang>.json
+//   - jobs.canonicals      → s3://product-opportunities-content/jobs/<slug>.json
+//   - jobs.translations    → s3://product-opportunities-content/jobs/<slug>/<lang>.json
 //   - jobs.canonicals_expired → Frame event only; materializer subscribes directly
 var AppendOnlyTables = [][]string{
 	{"opportunities", "variants"},

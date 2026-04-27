@@ -7,7 +7,7 @@ One-time operator steps required before the R2 blob archive (spec
 
 In the Cloudflare dashboard (or via wrangler):
 
-- **Bucket name:** `opportunities-archive`
+- **Bucket name:** `product-opportunities-archive`
 - **Public access:** disabled. This bucket holds raw HTML + cluster
   bundles; it must not be addressable via a custom domain and must
   never be exposed through a CDN.
@@ -39,11 +39,11 @@ fires only when `canonical_jobs.status = 'deleted'` + 7-day grace).
 
 ## 2. Mint scoped access credentials
 
-Create a new R2 API token scoped only to `opportunities-archive`:
+Create a new R2 API token scoped only to `product-opportunities-archive`:
 
 - Permissions: Object Read & Write + Bucket Admin (for `ListObjectsV2`
   and `DeleteObjects`).
-- No access to the public `opportunities-content` bucket.
+- No access to the public `product-opportunities-content` bucket.
 
 Record:
 
@@ -51,7 +51,7 @@ Record:
   public bucket)
 - `ARCHIVE_R2_ACCESS_KEY_ID`
 - `ARCHIVE_R2_SECRET_ACCESS_KEY`
-- `ARCHIVE_R2_BUCKET` = `opportunities-archive`
+- `ARCHIVE_R2_BUCKET` = `product-opportunities-archive`
 
 ## 3. Store credentials in Vault
 
@@ -66,7 +66,7 @@ shape stays consistent):
 r2_account_id         = <from step 2>
 r2_access_key_id      = <from step 2>
 r2_secret_access_key  = <from step 2>
-r2_bucket             = opportunities-archive
+r2_bucket             = product-opportunities-archive
 ```
 
 Use the `vault-secret` skill at
@@ -126,7 +126,7 @@ kubectl exec -n opportunities deploy/opportunities-crawler -- \
   curl -sS -X POST http://localhost:8080/admin/crawl/dispatch-due?limit=1
 
 # After ~30s, sample the archive.
-ARCHIVE_R2_BUCKET=opportunities-archive \
+ARCHIVE_R2_BUCKET=product-opportunities-archive \
 ARCHIVE_R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com \
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
   make archive-verify SAMPLE=10

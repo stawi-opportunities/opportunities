@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# DEPRECATED — Iceberg bootstrap is now performed by the
+# opportunities-iceberg-bootstrap Kubernetes Job (see
+# deployment.manifests/namespaces/product-opportunities/bootstrap/) which
+# runs the writer image's `bootstrap-iceberg` subcommand on every Flux
+# reconcile. Do not invoke this script for new deployments.
+#
 # Creates Iceberg namespaces and tables by running a one-shot Kubernetes Job.
 # The job clones the repo and runs definitions/iceberg/create_namespaces.py
 # and definitions/iceberg/create_tables.py against the live catalog.
@@ -63,7 +69,7 @@ spec:
                   name: r2-log-credentials-opportunities
                   key: R2_LOG_SECRET_ACCESS_KEY
             - name: R2_LOG_BUCKET
-              value: "opportunities-log"
+              value: "cluster-chronicle"
             - name: R2_ENDPOINT
               valueFrom:
                 secretKeyRef:

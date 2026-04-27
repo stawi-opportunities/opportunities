@@ -14,7 +14,7 @@
 - [ ] Managed infra:
   - [ ] Manticore cluster at $MANTICORE_URL
   - [ ] Valkey at $VALKEY_URL
-  - [ ] R2 bucket opportunities-log with writer credentials
+  - [ ] R2 bucket cluster-chronicle with writer credentials
   - [ ] TEI chat / embed / rerank endpoints answer /health
 - [ ] Iceberg catalog migration applied: `psql "$DATABASE_URL" -f db/migrations/0004_iceberg_catalog.sql`
 - [ ] Iceberg namespaces + tables bootstrapped:

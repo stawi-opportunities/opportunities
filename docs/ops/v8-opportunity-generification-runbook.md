@@ -103,93 +103,58 @@ instead of running its own SQL/Postgres catalog. Lakekeeper holds the
 metadata DB and the storage credentials; apps no longer need a
 catalog-specific Postgres DSN or R2 access keys to commit snapshots.
 
-### 4a. Register the `product-opportunities` warehouse (one-time)
+Iceberg warehouse + namespaces + tables are bootstrapped automatically
+by the `opportunities-iceberg-bootstrap` Job on every FluxCD reconcile.
+The Job runs the `bootstrap-iceberg` subcommand of the writer image and
+is idempotent — re-running it is safe.
 
-The warehouse must exist in Lakekeeper before any commit. Run this from a
-debug pod inside the cluster (or `kubectl exec` on a pod that already has
-egress to the lakehouse namespace).
-
-```bash
-# Verify Lakekeeper is reachable + see version-specific schema.
-curl -fsS http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/management/v1/info
-
-# (Optional) fetch the canonical OpenAPI schema for the management API.
-# Lakekeeper 0.10.x exposes this under /management/v1/openapi.json or
-# /management/v1/openapi — check whichever the deployed version serves.
-curl -fsS http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/management/v1/openapi.json | jq .
-```
-
-Pull the R2 log credentials from Vault (`kv/data/r2-log-credentials-opportunities`)
-into local shell variables, then POST the warehouse definition:
+To verify after a reconcile:
 
 ```bash
-curl -fsS -X POST http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/management/v1/warehouse \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"warehouse-name\": \"product-opportunities\",
-    \"project-id\": \"00000000-0000-0000-0000-000000000000\",
-    \"storage-profile\": {
-      \"type\": \"s3\",
-      \"bucket\": \"opportunities-log\",
-      \"endpoint\": \"https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com\",
-      \"region\": \"auto\",
-      \"key-prefix\": \"iceberg\",
-      \"path-style-access\": true,
-      \"flavor\": \"s3-compat\"
-    },
-    \"storage-credential\": {
-      \"type\": \"s3\",
-      \"credential-type\": \"access-key\",
-      \"aws-access-key-id\": \"${R2_LOG_ACCESS_KEY_ID}\",
-      \"aws-secret-access-key\": \"${R2_LOG_SECRET_ACCESS_KEY}\"
-    }
-  }"
-```
+kubectl -n product-opportunities get jobs/opportunities-iceberg-bootstrap
+# STATUS should show Complete.
 
-Idempotency: POST returns 409 Conflict if the warehouse already exists —
-that's fine on re-runs. The exact request shape may vary between
-Lakekeeper versions; consult the OpenAPI document fetched above for the
-deployed chart version (currently `lakekeeper-0.10.1`). If the deployed
-version uses a slightly different field name, adapt accordingly.
-
-Lakekeeper's `LAKEKEEPER__OPENID_PROVIDER_URI` is unset in the cluster
-chart, so auth is disabled for v1 — no bearer token is required for
-either the management API or the catalog API. When OIDC is later enabled,
-each app reads `ICEBERG_CATALOG_TOKEN` (or the operator switches to the
-client-credentials path via a small extension to `pkg/icebergclient`).
-
-### 4b. Create the project namespaces + tables
-
-```bash
-python3 definitions/iceberg/create_tables.py
-```
-
-The script creates:
-- `opportunities.variants` (new shape: kind discriminator + attributes JSON)
-- `opportunities.variants_rejected` (new dead-letter table)
-- `opportunities.embeddings` (new: kind + vector + embedded_at)
-- `opportunities.published` (mirrors variants)
-- `opportunities.crawl_page_completed`, `opportunities.sources_discovered` (unchanged)
-- `candidates.*` (unchanged)
-
-Verify via the REST catalog (no longer via psql — the catalog is HTTP):
-
-```bash
+# Confirm the catalog now lists every namespace + table:
 curl -fsS \
-  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces" \
-  -H "X-Iceberg-Access-Delegation: vended-credentials" \
-  | jq
-
-# Per-namespace table listing:
+  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces" | jq
 curl -fsS \
-  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces/opportunities/tables" \
-  | jq
+  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces/opportunities/tables" | jq
 curl -fsS \
-  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces/candidates/tables" \
-  | jq
+  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces/candidates/tables" | jq
 ```
 
-Expected: 12 tables (5 opportunities + 6 candidates + 1 new opportunities.variants_rejected).
+Expected: 12 tables (6 opportunities + 6 candidates), namespace
+`opportunities` and `candidates` both present.
+
+If the bootstrap Job fails, inspect logs:
+
+```bash
+kubectl -n product-opportunities logs jobs/opportunities-iceberg-bootstrap
+```
+
+Common causes: Lakekeeper not yet ready (Job retries automatically, up
+to 5 minutes of polling per attempt), R2 bucket missing in Cloudflare
+(operator must pre-create — see "Cloudflare R2 buckets" below), or
+schema migration that needs an explicit DROP first (the bootstrap will
+not destructively rewrite an existing-but-incompatible table — drop it
+manually first via the catalog API and re-run).
+
+### Cloudflare R2 buckets (operator action, one-time per cluster)
+
+The bootstrap Job assumes three R2 buckets exist:
+
+| Bucket | Used by |
+|---|---|
+| `cluster-chronicle` | Lakekeeper warehouse data + metadata (Iceberg) |
+| `product-opportunities-content` | Public job/opportunity JSONs (slug-direct) |
+| `product-opportunities-archive` | Private raw HTTP bodies + per-cluster JSON bundles |
+
+When seeding the Vault secrets `stawi-opportunities/opportunities/common/{r2-credentials,r2-log-credentials,archive-r2-credentials}`,
+use bucket names `cluster-chronicle`, `product-opportunities-content`,
+`product-opportunities-archive` for the `R2_BUCKET` /
+`R2_LOG_BUCKET` / `ARCHIVE_R2_BUCKET` values respectively. The Vault
+path names themselves are unchanged — only the bucket *values* inside
+those secrets reflect the new names.
 
 ---
 
@@ -306,7 +271,7 @@ curl -s "$MANTICORE_URL/sql?mode=raw" -d "query=SELECT id, kind, title, issuing_
 # Expect: 3 rows
 
 # 3. Slug-direct R2 file exists
-aws s3 ls s3://opportunities-content/jobs/ --endpoint-url=$R2_ENDPOINT | head -5
+aws s3 ls s3://product-opportunities-content/jobs/ --endpoint-url=$R2_ENDPOINT | head -5
 # Expect: at least one .json file from this run
 
 # 4. Telemetry counter incremented
@@ -347,7 +312,7 @@ psql "$ICEBERG_CATALOG_URI" -c "
 curl -s "$MANTICORE_URL/sql?mode=raw" \
     -d "query=SELECT id, kind, title, field_of_study, degree_level FROM idx_opportunities_rt WHERE kind='scholarship' LIMIT 3"
 
-aws s3 ls s3://opportunities-content/scholarships/ --endpoint-url=$R2_ENDPOINT | head
+aws s3 ls s3://product-opportunities-content/scholarships/ --endpoint-url=$R2_ENDPOINT | head
 ```
 
 If scholarship records appear with non-empty `field_of_study` and `degree_level` in Manticore, the polymorphic pipeline is fully validated end-to-end.

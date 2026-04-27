@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -24,6 +25,17 @@ import (
 
 func main() {
 	ctx := context.Background()
+
+	// Subcommand dispatch. The bootstrap-iceberg subcommand is invoked
+	// by the opportunities-iceberg-bootstrap Kubernetes Job on every
+	// FluxCD reconcile to register the Lakekeeper warehouse + create
+	// every namespace/table this platform persists to. Idempotent.
+	if len(os.Args) > 1 && os.Args[1] == "bootstrap-iceberg" {
+		if err := runBootstrap(ctx); err != nil {
+			util.Log(ctx).WithError(err).Fatal("bootstrap-iceberg failed")
+		}
+		return
+	}
 
 	cfg, err := writercfg.Load()
 	if err != nil {

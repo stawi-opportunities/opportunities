@@ -16,7 +16,7 @@ Environment variables (same as create_namespaces.py / create_tables.py):
     ICEBERG_CATALOG_URI     postgres://user:pass@host:5432/stawi_jobs?sslmode=require
     R2_ACCESS_KEY_ID
     R2_SECRET_ACCESS_KEY
-    R2_LOG_BUCKET           opportunities-log
+    R2_LOG_BUCKET           cluster-chronicle
     R2_ENDPOINT             https://<account_id>.r2.cloudflarestorage.com
     R2_REGION               auto  (default)
 

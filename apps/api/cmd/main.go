@@ -29,7 +29,7 @@ type apiConfig struct {
 	R2AccountID       string  `env:"R2_ACCOUNT_ID"        envDefault:""`
 	R2AccessKeyID     string  `env:"R2_ACCESS_KEY_ID"     envDefault:""`
 	R2SecretAccessKey string  `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Bucket          string  `env:"R2_BUCKET"            envDefault:"opportunities-content"`
+	R2Bucket          string  `env:"R2_BUCKET"            envDefault:"product-opportunities-content"`
 	R2Endpoint        string  `env:"R2_ENDPOINT"          envDefault:""`
 	R2Region          string  `env:"R2_REGION"            envDefault:"auto"`
 	R2DeployHookURL   string  `env:"R2_DEPLOY_HOOK_URL"   envDefault:""`

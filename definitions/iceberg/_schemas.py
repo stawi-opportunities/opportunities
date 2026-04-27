@@ -1,10 +1,17 @@
 """
+DEPRECATED — kept as a documentation artifact.
+
+The canonical, source-of-truth Iceberg schemas now live in Go at
+pkg/icebergclient/schemas.go and are materialised at deploy time by the
+`bootstrap-iceberg` subcommand of the writer image. Edits here have no
+effect on the deployed catalog.
+
 Shared Iceberg schema definitions for all 12 stawi-opportunities Iceberg tables.
 
 Removed from Iceberg (body lives in R2 slug-direct JSON):
-  - CANONICALS          → s3://opportunities-content/jobs/<slug>.json
+  - CANONICALS          → s3://product-opportunities-content/jobs/<slug>.json
   - CANONICALS_EXPIRED  → Frame event only; materializer subscribes directly
-  - TRANSLATIONS        → s3://opportunities-content/jobs/<slug>/<lang>.json
+  - TRANSLATIONS        → s3://product-opportunities-content/jobs/<slug>/<lang>.json
 
 Phase 3.2 (opportunity-generification) reshaped opportunities.variants /
 opportunities.published / opportunities.embeddings to the polymorphic

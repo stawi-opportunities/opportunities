@@ -6,7 +6,7 @@
 
 **Recovery (60–120 min):**
 
-1. Confirm R2 intact: aws s3 ls s3://opportunities-log/canonicals_current/ | wc -l — expect ≥200.
+1. Confirm R2 intact: aws s3 ls s3://cluster-chronicle/canonicals_current/ | wc -l — expect ≥200.
 2. curl -XPOST $MANTICORE_URL/sql?mode=raw -d "query=DROP TABLE IF EXISTS idx_opportunities_rt"
 3. Re-provision the schema: kubectl apply -f definitions/manticore/idx_opportunities_rt.sql (or re-run Phase 2 migration).
 4. Reset materializer watermarks: redis-cli SET mat:watermark:canonicals "" (and other partitions).

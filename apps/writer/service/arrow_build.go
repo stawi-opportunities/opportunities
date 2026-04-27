@@ -505,7 +505,7 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 
 // BuildTranslationRecord is removed.
 // jobs.translations is no longer written to Iceberg.
-// Translated body lives at s3://opportunities-content/jobs/<slug>/<lang>.json (R2-direct).
+// Translated body lives at s3://product-opportunities-content/jobs/<slug>/<lang>.json (R2-direct).
 
 // --------------------------------------------------------------------
 // opportunities.published  (PublishedV1) — Verify-passing variants.
