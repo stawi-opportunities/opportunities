@@ -10,7 +10,7 @@ export interface SiteConfig {
   apiURL: string;
   /** Candidates / profile API origin (unified api.stawi.org root). */
   candidatesAPIURL: string;
-  /** R2 public content origin for JobSnapshot JSON. */
+  /** R2 public content origin for OpportunitySnapshot JSON. */
   contentOrigin: string;
   /** OIDC issuer (Ory Hydra). */
   oidcIssuer: string;
