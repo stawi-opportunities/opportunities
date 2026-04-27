@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"buf.build/gen/go/antinvestor/billing/connectrpc/go/billing/v1/billingv1connect"
+	"buf.build/gen/go/antinvestor/billing/connectrpc/go/v1/billingv1connect"
 	"buf.build/gen/go/antinvestor/files/connectrpc/go/files/v1/filesv1connect"
 	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
 	"buf.build/gen/go/antinvestor/payment/connectrpc/go/v1/paymentv1connect"
