@@ -1,86 +1,72 @@
-// Package icebergclient provides shared helpers for opening Iceberg SQL
-// catalogs backed by Postgres + an S3-compatible object store (R2).
+// Package icebergclient provides shared helpers for opening the
+// cluster's Iceberg REST catalog (Lakekeeper).
 //
 // This is the canonical home for catalog construction logic. Both the
 // writer service and candidatestore import from here; apps/writer/service
 // re-exports the symbols for back-compat.
+//
+// Lakekeeper owns metadata storage (its own Postgres) and storage-side
+// credentials (R2 access keys configured per-warehouse). Apps no longer
+// hold catalog DB credentials. R2 access for direct parquet writes
+// (eventlog uploads, KV rebuild) is still configured per-app via R2_*
+// env vars; that path is independent of catalog operations.
 package icebergclient
 
 import (
 	"context"
-	"database/sql"
-	"time"
 
-	iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
-	sqlcat "github.com/apache/iceberg-go/catalog/sql"
-	_ "github.com/jackc/pgx/v5/stdlib" // register "pgx" database/sql driver
+	restcat "github.com/apache/iceberg-go/catalog/rest"
 )
 
-// CatalogConfig carries all parameters needed to open an Iceberg SQL catalog.
+// CatalogConfig carries everything needed to open the shared cluster
+// Iceberg REST catalog (Lakekeeper).
 type CatalogConfig struct {
-	// Name is the catalog registration name (e.g. "stawi").
+	// Name is the local catalog handle (e.g. "stawi"). Used by
+	// iceberg-go for logs and identification — not the warehouse name.
 	Name string
-	// URI is the Postgres DSN used by the SQL catalog backend.
+
+	// URI is the Lakekeeper REST endpoint, e.g.
+	// http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog
 	URI string
-	// Warehouse is the S3 URI prefix for Iceberg metadata
-	// (e.g. "s3://opportunities-log/iceberg").
+
+	// Warehouse is the logical warehouse name registered in Lakekeeper
+	// (e.g. "product-opportunities"). The catalog client passes this on
+	// every request so Lakekeeper knows which storage backend to use.
 	Warehouse string
 
-	// R2 / S3-compatible credentials.
-	R2Endpoint        string
-	R2AccessKeyID     string
-	R2SecretAccessKey string
-	R2Region          string
+	// OAuthToken is an optional pre-obtained bearer token. Empty string
+	// disables auth on requests (matches Lakekeeper running with
+	// LAKEKEEPER__OPENID_PROVIDER_URI unset).
+	OAuthToken string
 
-	// Connection pool sizing for the Postgres catalog backend.
-	//
-	// With 6 services × 2+ replicas × concurrent catalog commits, the default
-	// unlimited connection pool can exhaust Postgres max_connections during
-	// compaction bursts. Tune these to stay within the cluster's connection
-	// budget (typically 100–200 total across all services).
-	//
-	// Defaults: MaxOpenConns=10, MaxIdleConns=5.
-	// Expose as ICEBERG_CATALOG_MAX_OPEN_CONNS / ICEBERG_CATALOG_MAX_IDLE_CONNS
-	// environment variables in each service's config loader.
-	MaxOpenConns int // default 10
-	MaxIdleConns int // default 5
+	// Credential is an optional "client_id:client_secret" pair for the
+	// OAuth2 client_credentials flow. Empty string disables. Reserved
+	// for the future when cluster Lakekeeper enables OIDC.
+	Credential string
 }
 
-// LoadCatalog opens a named SQL catalog backed by Postgres + R2.
-// The returned catalog.Catalog is safe for concurrent use across
-// goroutines; callers should construct it once at startup and share it.
+// LoadCatalog opens the shared Lakekeeper REST catalog. The returned
+// catalog.Catalog is safe for concurrent use across goroutines; callers
+// should construct it once at startup and share it.
 //
-// Connection pool: MaxOpenConns and MaxIdleConns from cfg are applied to
-// the underlying *sql.DB before handing it to the catalog constructor.
-// This prevents unconstrained connection growth under compaction bursts.
+// The returned catalog talks REST to Lakekeeper. Lakekeeper handles the
+// underlying metadata storage and the data storage (R2 via vended
+// credentials or pre-configured per-warehouse access). The Go binary
+// doesn't need R2 credentials for catalog operations — data-plane R2
+// access is still configured per-app for parquet writes.
 func LoadCatalog(ctx context.Context, cfg CatalogConfig) (catalog.Catalog, error) {
-	maxOpen := cfg.MaxOpenConns
-	if maxOpen <= 0 {
-		maxOpen = 10
+	opts := []restcat.Option{}
+	if cfg.Warehouse != "" {
+		opts = append(opts, restcat.WithWarehouseLocation(cfg.Warehouse))
 	}
-	maxIdle := cfg.MaxIdleConns
-	if maxIdle <= 0 {
-		maxIdle = 5
+	if cfg.OAuthToken != "" {
+		opts = append(opts, restcat.WithOAuthToken(cfg.OAuthToken))
 	}
-
-	db, err := sql.Open("pgx", cfg.URI)
-	if err != nil {
-		return nil, err
+	if cfg.Credential != "" {
+		opts = append(opts, restcat.WithCredential(cfg.Credential))
 	}
-	db.SetMaxOpenConns(maxOpen)
-	db.SetMaxIdleConns(maxIdle)
-	db.SetConnMaxLifetime(30 * time.Minute)
-
-	props := iceberg.Properties{
-		"warehouse":            cfg.Warehouse,
-		"s3.endpoint":          cfg.R2Endpoint,
-		"s3.access-key-id":     cfg.R2AccessKeyID,
-		"s3.secret-access-key": cfg.R2SecretAccessKey,
-		"s3.region":            cfg.R2Region,
-		"s3.path-style-access": "true",
-	}
-	return sqlcat.NewCatalog(cfg.Name, db, sqlcat.Postgres, props)
+	return restcat.NewCatalog(ctx, cfg.Name, cfg.URI, opts...)
 }
 
 // Ensure catalog.Catalog is still satisfied — compile-time guard.

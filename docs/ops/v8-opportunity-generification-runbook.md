@@ -95,7 +95,70 @@ PY
 
 ---
 
-## Step 4 — Recreate Iceberg tables under the new schema
+## Step 4 — Register the Lakekeeper warehouse and recreate Iceberg tables
+
+The opportunities platform now talks to the cluster's shared Lakekeeper REST
+catalog at `http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog`
+instead of running its own SQL/Postgres catalog. Lakekeeper holds the
+metadata DB and the storage credentials; apps no longer need a
+catalog-specific Postgres DSN or R2 access keys to commit snapshots.
+
+### 4a. Register the `product-opportunities` warehouse (one-time)
+
+The warehouse must exist in Lakekeeper before any commit. Run this from a
+debug pod inside the cluster (or `kubectl exec` on a pod that already has
+egress to the lakehouse namespace).
+
+```bash
+# Verify Lakekeeper is reachable + see version-specific schema.
+curl -fsS http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/management/v1/info
+
+# (Optional) fetch the canonical OpenAPI schema for the management API.
+# Lakekeeper 0.10.x exposes this under /management/v1/openapi.json or
+# /management/v1/openapi — check whichever the deployed version serves.
+curl -fsS http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/management/v1/openapi.json | jq .
+```
+
+Pull the R2 log credentials from Vault (`kv/data/r2-log-credentials-opportunities`)
+into local shell variables, then POST the warehouse definition:
+
+```bash
+curl -fsS -X POST http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/management/v1/warehouse \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"warehouse-name\": \"product-opportunities\",
+    \"project-id\": \"00000000-0000-0000-0000-000000000000\",
+    \"storage-profile\": {
+      \"type\": \"s3\",
+      \"bucket\": \"opportunities-log\",
+      \"endpoint\": \"https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com\",
+      \"region\": \"auto\",
+      \"key-prefix\": \"iceberg\",
+      \"path-style-access\": true,
+      \"flavor\": \"s3-compat\"
+    },
+    \"storage-credential\": {
+      \"type\": \"s3\",
+      \"credential-type\": \"access-key\",
+      \"aws-access-key-id\": \"${R2_LOG_ACCESS_KEY_ID}\",
+      \"aws-secret-access-key\": \"${R2_LOG_SECRET_ACCESS_KEY}\"
+    }
+  }"
+```
+
+Idempotency: POST returns 409 Conflict if the warehouse already exists —
+that's fine on re-runs. The exact request shape may vary between
+Lakekeeper versions; consult the OpenAPI document fetched above for the
+deployed chart version (currently `lakekeeper-0.10.1`). If the deployed
+version uses a slightly different field name, adapt accordingly.
+
+Lakekeeper's `LAKEKEEPER__OPENID_PROVIDER_URI` is unset in the cluster
+chart, so auth is disabled for v1 — no bearer token is required for
+either the management API or the catalog API. When OIDC is later enabled,
+each app reads `ICEBERG_CATALOG_TOKEN` (or the operator switches to the
+client-credentials path via a small extension to `pkg/icebergclient`).
+
+### 4b. Create the project namespaces + tables
 
 ```bash
 python3 definitions/iceberg/create_tables.py
@@ -109,14 +172,21 @@ The script creates:
 - `opportunities.crawl_page_completed`, `opportunities.sources_discovered` (unchanged)
 - `candidates.*` (unchanged)
 
-Verify:
+Verify via the REST catalog (no longer via psql — the catalog is HTTP):
 
 ```bash
-psql "$ICEBERG_CATALOG_URI" -c "
-  SELECT namespace, name FROM iceberg.tables
-  WHERE namespace IN ('opportunities', 'candidates')
-  ORDER BY namespace, name;
-"
+curl -fsS \
+  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces" \
+  -H "X-Iceberg-Access-Delegation: vended-credentials" \
+  | jq
+
+# Per-namespace table listing:
+curl -fsS \
+  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces/opportunities/tables" \
+  | jq
+curl -fsS \
+  "http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog/v1/namespaces/candidates/tables" \
+  | jq
 ```
 
 Expected: 12 tables (5 opportunities + 6 candidates + 1 new opportunities.variants_rejected).

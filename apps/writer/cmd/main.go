@@ -45,15 +45,12 @@ func main() {
 	}
 	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
-	// Open the Iceberg SQL catalog backed by Postgres + R2.
+	// Open the shared cluster Iceberg REST catalog (Lakekeeper).
 	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:              "stawi",
-		URI:               cfg.IcebergCatalogURI,
-		Warehouse:         "s3://" + cfg.R2Bucket + "/iceberg",
-		R2Endpoint:        cfg.R2Endpoint,
-		R2AccessKeyID:     cfg.R2AccessKeyID,
-		R2SecretAccessKey: cfg.R2SecretAccessKey,
-		R2Region:          cfg.R2Region,
+		Name:       cfg.IcebergCatalogName,
+		URI:        cfg.IcebergCatalogURI,
+		Warehouse:  cfg.IcebergWarehouse,
+		OAuthToken: cfg.IcebergCatalogToken,
 	})
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("writer: catalog load failed")

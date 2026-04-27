@@ -85,18 +85,11 @@ func main() {
 	})
 
 	// --- Iceberg catalog (for candidatestore Reader + StaleReader) ---
-	icebergWarehouse := cfg.IcebergWarehouse
-	if icebergWarehouse == "" {
-		icebergWarehouse = "s3://" + cfg.R2EventLogBucket + "/iceberg"
-	}
 	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:              cfg.IcebergCatalogName,
-		URI:               cfg.IcebergCatalogURI,
-		Warehouse:         icebergWarehouse,
-		R2Endpoint:        cfg.R2Endpoint,
-		R2AccessKeyID:     cfg.R2AccessKeyID,
-		R2SecretAccessKey: cfg.R2SecretAccessKey,
-		R2Region:          cfg.R2Region,
+		Name:       cfg.IcebergCatalogName,
+		URI:        cfg.IcebergCatalogURI,
+		Warehouse:  cfg.IcebergWarehouse,
+		OAuthToken: cfg.IcebergCatalogToken,
 	})
 	if err != nil {
 		log.WithError(err).Fatal("candidates: iceberg catalog load failed")

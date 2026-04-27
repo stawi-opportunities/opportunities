@@ -9,20 +9,20 @@ import (
 type CandidatesConfig struct {
 	fconfig.ConfigurationDefault
 
-	// Iceberg catalog — SQL catalog backed by Postgres + R2.
-	// Used by candidatestore.Reader and candidatestore.StaleReader to read
-	// candidates.{embeddings,preferences,cv_extracted}_current tables.
-	IcebergCatalogURI string `env:"ICEBERG_CATALOG_URI"          envDefault:""`
-	IcebergWarehouse  string `env:"ICEBERG_WAREHOUSE"            envDefault:""`
-	IcebergCatalogName string `env:"ICEBERG_CATALOG_NAME"        envDefault:"stawi"`
-
-	// R2 event log credentials (shared with Iceberg warehouse and archive).
-	R2AccountID       string `env:"R2_ACCOUNT_ID"        envDefault:""`
-	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"     envDefault:""`
-	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2EventLogBucket  string `env:"R2_EVENTLOG_BUCKET"   envDefault:"opportunities-log"`
-	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
-	R2Region          string `env:"R2_REGION"            envDefault:"auto"`
+	// Iceberg catalog — Lakekeeper REST endpoint. Lakekeeper owns the
+	// metadata DB and storage credentials; this binary only speaks REST.
+	// Used by candidatestore.Reader and candidatestore.StaleReader to
+	// read candidates.{embeddings,preferences,cv_extracted}_current tables.
+	//
+	//   ICEBERG_CATALOG_URI   e.g. http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog
+	//   ICEBERG_CATALOG_NAME  local catalog handle, e.g. "stawi"
+	//   ICEBERG_WAREHOUSE     logical warehouse registered in Lakekeeper, e.g. "product-opportunities"
+	//   ICEBERG_CATALOG_TOKEN optional pre-obtained bearer; leave unset when
+	//                         the cluster Lakekeeper runs with auth disabled.
+	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI,required"`
+	IcebergCatalogName  string `env:"ICEBERG_CATALOG_NAME"  envDefault:"stawi"`
+	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:"product-opportunities"`
+	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`
 
 	// Archive R2 (raw CV bytes uploaded by candidates).
 	ArchiveR2AccountID       string `env:"ARCHIVE_R2_ACCOUNT_ID"         envDefault:""`

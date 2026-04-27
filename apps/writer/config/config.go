@@ -22,8 +22,18 @@ type Config struct {
 	R2Endpoint        string `env:"R2_LOG_ENDPOINT" envDefault:""`
 	R2UsePathStyle    bool   `env:"R2_LOG_PATH_STYLE" envDefault:"false"`
 
-	// Iceberg catalog. Points to the Postgres-backed SQL catalog.
-	IcebergCatalogURI string `env:"ICEBERG_CATALOG_URI" envDefault:""`
+	// Iceberg catalog — Lakekeeper REST endpoint. Lakekeeper owns the
+	// metadata DB and storage credentials; this binary only speaks REST.
+	//
+	//   ICEBERG_CATALOG_URI   e.g. http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog
+	//   ICEBERG_CATALOG_NAME  local catalog handle, e.g. "stawi"
+	//   ICEBERG_WAREHOUSE     logical warehouse registered in Lakekeeper, e.g. "product-opportunities"
+	//   ICEBERG_CATALOG_TOKEN optional pre-obtained bearer; leave unset when
+	//                         the cluster Lakekeeper runs with auth disabled.
+	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI,required"`
+	IcebergCatalogName  string `env:"ICEBERG_CATALOG_NAME"  envDefault:"stawi"`
+	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:"product-opportunities"`
+	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`
 
 	// R2 region used when signing requests to the object store.
 	R2Region string `env:"R2_LOG_REGION" envDefault:"auto"`

@@ -23,7 +23,6 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-rod/rod v0.116.2
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
-	github.com/jackc/pgx/v5 v5.9.1
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.10.9
 	github.com/markusmobius/go-trafilatura v1.12.2
@@ -69,13 +68,20 @@ require (
 	github.com/apache/thrift v0.22.0 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.32.9 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.22 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.21 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.0.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.15 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.19 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.41.10 // indirect
 	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -99,7 +105,6 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/elliotchance/pie/v2 v2.9.0 // indirect
 	github.com/exaring/otelpgx v0.10.0 // indirect
-	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/forPelevin/gomoji v1.2.0 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
@@ -125,6 +130,7 @@ require (
 	github.com/hamba/avro/v2 v2.31.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.9.1 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jalaali/go-jalaali v0.0.0-20210801064154-80525e88d958 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
@@ -176,7 +182,6 @@ require (
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/pterm/pterm v0.12.82 // indirect
-	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
@@ -190,18 +195,8 @@ require (
 	github.com/tetratelabs/wazero v1.8.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
-	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/twmb/murmur3 v1.1.8 // indirect
-	github.com/uptrace/bun v1.2.17 // indirect
-	github.com/uptrace/bun/dialect/mssqldialect v1.2.17 // indirect
-	github.com/uptrace/bun/dialect/mysqldialect v1.2.17 // indirect
-	github.com/uptrace/bun/dialect/oracledialect v1.2.17 // indirect
-	github.com/uptrace/bun/dialect/pgdialect v1.2.17 // indirect
-	github.com/uptrace/bun/dialect/sqlitedialect v1.2.17 // indirect
-	github.com/uptrace/bun/extra/bundebug v1.2.17 // indirect
 	github.com/valkey-io/valkey-go v1.0.74 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wasilibs/go-re2 v1.7.0 // indirect
 	github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
