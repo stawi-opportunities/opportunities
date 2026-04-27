@@ -9,20 +9,20 @@ import (
 // AppendOnlyTables without a matching maintenance-scope update. If you
 // add a table, update this count and add the table to the comment below.
 //
-// Current tables (11):
+// Current tables (12):
 //
-//	jobs:       variants, embeddings, published, crawl_page_completed,
-//	            sources_discovered
-//	candidates: cv_uploaded, cv_extracted, cv_improved, preferences,
-//	            embeddings, matches_ready
+//	opportunities: variants, variants_rejected, embeddings, published,
+//	               crawl_page_completed, sources_discovered
+//	candidates:    cv_uploaded, cv_extracted, cv_improved, preferences,
+//	               embeddings, matches_ready
 //
 // Dropped (R2-direct or Frame-event only, no Iceberg table):
 //
-//	jobs.canonicals         → s3://…/jobs/<slug>.json
-//	jobs.canonicals_expired → Frame event only
-//	jobs.translations       → s3://…/jobs/<slug>/<lang>.json
+//	opportunities.canonicals         → s3://…/opportunities/<slug>.json
+//	opportunities.canonicals_expired → Frame event only
+//	opportunities.translations       → s3://…/opportunities/<slug>/<lang>.json
 func TestAppendOnlyTables_Count(t *testing.T) {
-	const want = 11
+	const want = 12
 	if got := len(AppendOnlyTables); got != want {
 		t.Errorf("AppendOnlyTables: got %d tables, want %d — update this test when adding/removing tables", got, want)
 	}

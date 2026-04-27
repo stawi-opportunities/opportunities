@@ -29,44 +29,73 @@ func _opt(name string, dt arrow.DataType) arrow.Field {
 // a non-nullable list of non-nullable strings.
 var _strListType = arrow.ListOf(arrow.BinaryTypes.String)
 
-// _floatListType is the Arrow representation of []float32 vector
-// columns.
-var _floatListType = arrow.ListOf(arrow.PrimitiveTypes.Float32)
+// _f32ListType is the Arrow representation of []float32 vector columns
+// (used by candidate embeddings, where the wire format is []float32).
+var _f32ListType = arrow.ListOf(arrow.PrimitiveTypes.Float32)
+
+// _f64ListType is the Arrow representation of List<Double> used by
+// opportunities.embeddings — matches the Iceberg
+// ListType(element_type=DoubleType()) in _schemas.py.
+var _f64ListType = arrow.ListOf(arrow.PrimitiveTypes.Float64)
 
 // _tsType is the timestamp type for all occurred_at / posted_at fields —
 // matches Iceberg TimestamptzType (µs precision).
 var _tsType arrow.DataType = &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "UTC"}
 
+// _tsNaiveType matches Iceberg TimestampType (no zone) used by the
+// polymorphic Opportunity tables (variants / variants_rejected /
+// embeddings / published) where the timestamp IS the business timestamp
+// and we don't double-store the envelope occurred_at.
+var _tsNaiveType arrow.DataType = &arrow.TimestampType{Unit: arrow.Microsecond}
+
 // --------------------------------------------------------------------
-// jobs.variants  (VariantIngestedV1 + all variant pipeline stages)
+// opportunities.variants  (polymorphic Opportunity — all variant
+// pipeline stages share this table, distinguished by the "stage"
+// column).  Mirrors VARIANTS in definitions/iceberg/_schemas.py
+// column-for-column.
 // --------------------------------------------------------------------
 
-var ArrowSchemaVariants = arrow.NewSchema([]arrow.Field{
+// _polyVariantFields is the column list shared by ArrowSchemaVariants
+// and ArrowSchemaPublished — both tables hold polymorphic Opportunity
+// records with identical shape; published just filters to Verify-pass.
+var _polyVariantFields = []arrow.Field{
 	_req("variant_id", arrow.BinaryTypes.String),
 	_req("source_id", arrow.BinaryTypes.String),
 	_req("external_id", arrow.BinaryTypes.String),
 	_req("hard_key", arrow.BinaryTypes.String),
+	_req("kind", arrow.BinaryTypes.String),
 	_req("stage", arrow.BinaryTypes.String),
-	_opt("title", arrow.BinaryTypes.String),
-	_opt("company", arrow.BinaryTypes.String),
-	_opt("location_text", arrow.BinaryTypes.String),
+	_req("title", arrow.BinaryTypes.String),
+	_opt("issuing_entity", arrow.BinaryTypes.String),
 	_opt("country", arrow.BinaryTypes.String),
-	_opt("language", arrow.BinaryTypes.String),
-	_opt("remote_type", arrow.BinaryTypes.String),
-	_opt("employment_type", arrow.BinaryTypes.String),
-	_opt("salary_min", arrow.PrimitiveTypes.Float64),
-	_opt("salary_max", arrow.PrimitiveTypes.Float64),
+	_opt("region", arrow.BinaryTypes.String),
+	_opt("city", arrow.BinaryTypes.String),
+	_opt("lat", arrow.PrimitiveTypes.Float64),
+	_opt("lon", arrow.PrimitiveTypes.Float64),
+	_opt("remote", arrow.FixedWidthTypes.Boolean),
+	_opt("geo_scope", arrow.BinaryTypes.String),
 	_opt("currency", arrow.BinaryTypes.String),
-	_opt("description", arrow.BinaryTypes.String),
-	_opt("apply_url", arrow.BinaryTypes.String),
-	_opt("posted_at", _tsType),
-	_opt("scraped_at", _tsType),
-	_opt("content_hash", arrow.BinaryTypes.String),
-	_opt("raw_archive_ref", arrow.BinaryTypes.String),
-	_opt("model_version_extract", arrow.BinaryTypes.String),
-	// envelope tail
-	_req("event_id", arrow.BinaryTypes.String),
-	_req("occurred_at", _tsType),
+	_opt("amount_min", arrow.PrimitiveTypes.Float64),
+	_opt("amount_max", arrow.PrimitiveTypes.Float64),
+	_opt("deadline", _tsNaiveType),
+	_opt("categories", arrow.BinaryTypes.String), // comma-joined
+	_opt("attributes", arrow.BinaryTypes.String), // JSON
+	_req("scraped_at", _tsNaiveType),
+}
+
+var ArrowSchemaVariants = arrow.NewSchema(_polyVariantFields, nil)
+
+// --------------------------------------------------------------------
+// opportunities.variants_rejected  (Verify-stage rejection sink)
+// --------------------------------------------------------------------
+
+var ArrowSchemaVariantsRejected = arrow.NewSchema([]arrow.Field{
+	_req("variant_id", arrow.BinaryTypes.String),
+	_req("source_id", arrow.BinaryTypes.String),
+	_req("kind", arrow.BinaryTypes.String),
+	_req("title", arrow.BinaryTypes.String),
+	_req("reasons", arrow.BinaryTypes.String), // JSON array
+	_req("rejected_at", _tsNaiveType),
 }, nil)
 
 // jobs.canonicals and jobs.canonicals_expired are NOT persisted to Iceberg.
@@ -74,34 +103,24 @@ var ArrowSchemaVariants = arrow.NewSchema([]arrow.Field{
 // canonicals_expired is a Frame event only — the materializer subscribes directly.
 
 // --------------------------------------------------------------------
-// jobs.embeddings  (EmbeddingV1)
+// opportunities.embeddings  (EmbeddingV1) — List<Double>
 // --------------------------------------------------------------------
 
 var ArrowSchemaEmbeddings = arrow.NewSchema([]arrow.Field{
-	_req("canonical_id", arrow.BinaryTypes.String),
-	_req("vector", _floatListType),
-	_req("model_version", arrow.BinaryTypes.String),
-	// envelope tail
-	_req("event_id", arrow.BinaryTypes.String),
-	_req("occurred_at", _tsType),
+	_req("variant_id", arrow.BinaryTypes.String),
+	_req("kind", arrow.BinaryTypes.String),
+	_req("vector", _f64ListType),
+	_req("embedded_at", _tsNaiveType),
 }, nil)
 
 // jobs.translations is NOT persisted to Iceberg.
 // Translated body lives at s3://opportunities-content/jobs/<slug>/<lang>.json (R2-direct).
 
 // --------------------------------------------------------------------
-// jobs.published  (PublishedV1)
+// opportunities.published — mirrors ArrowSchemaVariants column-for-column.
 // --------------------------------------------------------------------
 
-var ArrowSchemaPublished = arrow.NewSchema([]arrow.Field{
-	_req("canonical_id", arrow.BinaryTypes.String),
-	_req("slug", arrow.BinaryTypes.String),
-	_req("r2_version", arrow.PrimitiveTypes.Int32),
-	_req("published_at", _tsType),
-	// envelope tail
-	_req("event_id", arrow.BinaryTypes.String),
-	_req("occurred_at", _tsType),
-}, nil)
+var ArrowSchemaPublished = arrow.NewSchema(_polyVariantFields, nil)
 
 // --------------------------------------------------------------------
 // jobs.crawl_page_completed  (CrawlPageCompletedV1)
@@ -238,7 +257,7 @@ var ArrowSchemaCVImproved = arrow.NewSchema([]arrow.Field{
 var ArrowSchemaCandidateEmbeddings = arrow.NewSchema([]arrow.Field{
 	_req("candidate_id", arrow.BinaryTypes.String),
 	_req("cv_version", arrow.PrimitiveTypes.Int32),
-	_req("vector", _floatListType),
+	_req("vector", _f32ListType),
 	_opt("model_version", arrow.BinaryTypes.String),
 	// envelope tail
 	_req("event_id", arrow.BinaryTypes.String),
@@ -247,19 +266,17 @@ var ArrowSchemaCandidateEmbeddings = arrow.NewSchema([]arrow.Field{
 
 // --------------------------------------------------------------------
 // candidates.preferences  (PreferencesUpdatedV1)
+//
+// OptIns is a kind-keyed map of opaque JSON blobs; we persist it as a
+// single JSON-encoded string to keep the Iceberg schema kind-agnostic
+// (kinds may be added without a schema migration). Readers decode
+// opt_ins_json with json.Unmarshal into map[string]json.RawMessage.
 // --------------------------------------------------------------------
 
 var ArrowSchemaPreferences = arrow.NewSchema([]arrow.Field{
 	_req("candidate_id", arrow.BinaryTypes.String),
-	_opt("remote_preference", arrow.BinaryTypes.String),
-	_opt("salary_min", arrow.PrimitiveTypes.Int32),
-	_opt("salary_max", arrow.PrimitiveTypes.Int32),
-	_opt("currency", arrow.BinaryTypes.String),
-	_opt("preferred_locations", _strListType),
-	_opt("excluded_companies", _strListType),
-	_opt("target_roles", _strListType),
-	_opt("languages", _strListType),
-	_opt("availability", arrow.BinaryTypes.String),
+	_opt("opt_ins_json", arrow.BinaryTypes.String),
+	_req("updated_at", _tsType),
 	// envelope tail
 	_req("event_id", arrow.BinaryTypes.String),
 	_req("occurred_at", _tsType),

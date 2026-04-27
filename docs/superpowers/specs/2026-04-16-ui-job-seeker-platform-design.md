@@ -594,7 +594,7 @@ Usage: sitegen [flags]
 
 ### New Candidates Service Endpoints
 
-Added to `apps/candidates/cmd/main.go`. All authenticated endpoints extract `ProfileID` from `security.ClaimsFromContext(ctx).GetProfileID()` — never from query params or request body.
+Added to `apps/matching/cmd/main.go`. All authenticated endpoints extract `ProfileID` from `security.ClaimsFromContext(ctx).GetProfileID()` — never from query params or request body.
 
 ```go
 // Identity (composes service-profile + local domain data)

@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -22,7 +24,8 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
-	"github.com/stawi-opportunities/opportunities/pkg/quality"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // SourceGetter is the narrow repository slice the crawl-request handler
@@ -34,11 +37,13 @@ type SourceGetter interface {
 // CrawlRequestDeps bundles the handler's collaborators so construction
 // stays one-shot and tests can inject fakes without ceremony.
 type CrawlRequestDeps struct {
-	Svc       *frame.Service
-	Sources   SourceGetter
-	Registry  *connectors.Registry
-	Archive   archive.Archive
-	Extractor *extraction.Extractor // nil → skip AI enrichment
+	Svc        *frame.Service
+	Sources    SourceGetter
+	Registry   *connectors.Registry
+	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
+	Archive    archive.Archive
+	Extractor  *extraction.Extractor // nil → skip AI enrichment
+	Normalizer *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
 	// DiscoverSample is the probability [0..1] that a given iterator
 	// page triggers an additional DiscoverSites call. 0.0 = disabled
 	// (unit-test default). In production, set ~0.05 so roughly one in
@@ -130,6 +135,17 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		log.Warn("crawl.request: source not found")
 		return nil
 	}
+	// Defensive default: in-code Source construction (tests, CLI tools,
+	// edge cases) can leave Kinds empty even though the DB column
+	// defaults to '{job}'. Without this, Verify rejects every record
+	// with the operator-confusing "kind \"job\" not declared by source
+	// (declared: [])" message. Treat empty as the conservative single-
+	// kind default and warn so ops notice the misconfiguration.
+	if len(src.Kinds) == 0 {
+		util.Log(ctx).WithField("source_id", src.ID).
+			Warn("crawl.request: source has empty Kinds; defaulting to [job]")
+		src.Kinds = []string{"job"}
+	}
 	if src.Status != domain.SourceActive && src.Status != domain.SourceDegraded {
 		h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
 			RequestID: req.RequestID,
@@ -166,57 +182,108 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	for iter.Next(ctx) {
 		status = iter.HTTPStatus()
 		pageArchiveRef := resolveArchiveRef(ctx, h.deps.Archive, iter.Content())
-		for _, extJob := range iter.Jobs() {
+		for _, extJob := range iter.Items() {
 			jobsFound++
 
-			// Apply-URL fallback chain first — normalize and quality both see the
+			// Apply-URL fallback chain first — normalize and Verify both see the
 			// resolved URL.
-			quality.EnsureApplyURL(&extJob, extJob.SourceURL)
+			ensureApplyURL(&extJob, extJob.SourceURL)
 			if extJob.ApplyURL == "" {
-				quality.EnsureApplyURL(&extJob, src.BaseURL)
+				ensureApplyURL(&extJob, src.BaseURL)
 			}
 
-			// Deterministic quality gate — same check the legacy crawler ran.
-			if qErr := quality.Check(extJob); qErr != nil {
-				jobsRejected++
-				continue
+			// Resolve kind: prefer the connector-tagged kind on the
+			// ExternalOpportunity, falling back to the source's first
+			// declared Kind so single-kind connectors keep working when a
+			// connector forgets to tag.
+			kind := extJob.Kind
+			if kind == "" && len(src.Kinds) > 0 {
+				kind = src.Kinds[0]
+				extJob.Kind = kind
 			}
 
-			// Convert to a VariantIngested payload via the existing normalize
-			// helper. Hard-key, stage, and mapping live there.
+			// Source contract + kind contract gate. Replaces the old
+			// pkg/quality/gate.Check. Rejected records dead-letter to
+			// opportunities.variants.rejected.v1 (and the matching Iceberg
+			// table via the writer subscription).
+			if h.deps.Kinds != nil {
+				if res := opportunity.Verify(&extJob, src, h.deps.Kinds); !res.OK {
+					jobsRejected++
+					reason := rejectionReason(res)
+					telemetry.RecordVerifyRejection(kind, reason)
+					if rerr := h.publishRejected(ctx, src.ID, kind, extJob, res); rerr != nil {
+						log.WithError(rerr).Warn("crawl.request: publishRejected failed")
+					}
+					continue
+				}
+			}
+
+			// Convert to a VariantIngested payload via the normalize
+			// helper. Hard-key, stage, and mapping live there. When a
+			// Normalizer is wired (production), it runs the bundled
+			// gazetteer enrich pass first so AnchorLocation gets
+			// Lat/Lon/Region filled in for recognised cities.
 			now := time.Now().UTC()
-			variant := normalize.ExternalToVariant(
-				extJob, src.ID, src.Country, string(src.Type), src.Language, now,
-			)
-
-			// Build the event payload from the domain variant. Fields
-			// the pipeline does not need at ingest (extended JobFields,
-			// intelligence signals) land in later events — spec §5.2
-			// keeps variant-ingested narrow.
-			eventPayload := eventsv1.VariantIngestedV1{
-				VariantID:      xid.New().String(),
-				SourceID:       src.ID,
-				ExternalID:     variant.ExternalJobID,
-				HardKey:        variant.HardKey,
-				Stage:          string(domain.StageRaw),
-				Title:          variant.Title,
-				Company:        variant.Company,
-				LocationText:   variant.LocationText,
-				Country:        variant.Country,
-				Language:       variant.Language,
-				RemoteType:     variant.RemoteType,
-				EmploymentType: variant.EmploymentType,
-				SalaryMin:      variant.SalaryMin,
-				SalaryMax:      variant.SalaryMax,
-				Currency:       variant.Currency,
-				Description:    variant.Description,
-				ApplyURL:       variant.ApplyURL,
-				ScrapedAt:      now,
-				ContentHash:    variant.ContentHash,
-				RawArchiveRef:  pageArchiveRef,
+			var variant normalize.JobVariant
+			if h.deps.Normalizer != nil {
+				variant = h.deps.Normalizer.Normalize(
+					&extJob, src.ID, src.Country, string(src.Type), src.Language, now,
+				)
+			} else {
+				variant = normalize.ExternalToVariant(
+					extJob, src.ID, src.Country, string(src.Type), src.Language, now,
+				)
 			}
+
+			if kind == "" {
+				// Belt-and-braces — Verify above would have rejected an
+				// empty kind, but keep the legacy fallback so a missing
+				// Kinds registry never empties the kind column.
+				kind = "job"
+			}
+
+			// Pack the kind-specific fields into Attributes so the new
+			// polymorphic VariantIngestedV1 carries them through. The
+			// universal envelope fields (title, currency, anchor) ride
+			// at the top level for partition pruning.
+			//
+			// Start from the connector-/extractor-supplied Attributes so
+			// kind-specific keys (e.g. field_of_study, degree_level for
+			// scholarships) survive the normalize step. The job-shaped
+			// overlays below are harmless for non-job kinds — they ride
+			// in as empty strings — but stay required for jobs.
+			attrs := maps.Clone(extJob.Attributes)
+			if attrs == nil {
+				attrs = map[string]any{}
+			}
+			attrs["description"] = variant.Description
+			attrs["apply_url"] = variant.ApplyURL
+			attrs["language"] = variant.Language
+			attrs["remote_type"] = variant.RemoteType
+			attrs["employment_type"] = variant.EmploymentType
+			attrs["location_text"] = variant.LocationText
+			attrs["content_hash"] = variant.ContentHash
+			attrs["raw_archive_ref"] = pageArchiveRef
 			if variant.PostedAt != nil {
-				eventPayload.PostedAt = *variant.PostedAt
+				attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
+			}
+
+			eventPayload := eventsv1.VariantIngestedV1{
+				VariantID:     xid.New().String(),
+				SourceID:      src.ID,
+				ExternalID:    variant.ExternalJobID,
+				HardKey:       variant.HardKey,
+				Kind:          kind,
+				Stage:         string(domain.StageRaw),
+				Title:         variant.Title,
+				IssuingEntity: variant.Company,
+				AnchorCountry: variant.Country,
+				Remote:        variant.RemoteType == "remote",
+				Currency:      variant.Currency,
+				AmountMin:     variant.SalaryMin,
+				AmountMax:     variant.SalaryMax,
+				Attributes:    attrs,
+				ScrapedAt:     now,
 			}
 
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
@@ -226,6 +293,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				continue
 			}
 			jobsEmitted++
+			telemetry.RecordOpportunityReady(kind)
 		}
 
 		// Capture the connector's cursor on every successful page; the
@@ -331,4 +399,52 @@ func resolveArchiveRef(ctx context.Context, arch archive.Archive, page *content.
 func sha256Hex(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
+}
+
+// publishRejected emits VariantRejectedV1 for a record that failed
+// opportunity.Verify. The writer subscribes to the matching topic and
+// appends a row to opportunities.variants_rejected so the rejection is
+// durable and operator-inspectable.
+func (h *CrawlRequestHandler) publishRejected(ctx context.Context, sourceID, kind string, opp domain.ExternalOpportunity, res opportunity.VerifyResult) error {
+	reasons := append([]string(nil), res.Missing...)
+	if res.Mismatch != "" {
+		reasons = append(reasons, res.Mismatch)
+	}
+	if len(reasons) == 0 {
+		reasons = []string{"verify_failed"}
+	}
+	rej := eventsv1.VariantRejectedV1{
+		VariantID:  xid.New().String(),
+		SourceID:   sourceID,
+		Kind:       kind,
+		Title:      opp.Title,
+		Reasons:    reasons,
+		RejectedAt: time.Now().UTC(),
+	}
+	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsRejected, rej)
+	return h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsRejected, env)
+}
+
+// rejectionReason categorises a VerifyResult into a low-cardinality
+// metric attribute. Mismatch wins over missing because a kind-mismatch
+// rejection is a source-config bug, while a missing field is a
+// connector or extractor bug.
+func rejectionReason(r opportunity.VerifyResult) string {
+	if r.Mismatch != "" {
+		return "mismatch"
+	}
+	if len(r.Missing) > 0 {
+		return "missing_" + r.Missing[0]
+	}
+	return "unknown"
+}
+
+// ensureApplyURL sets opp.ApplyURL to fallbackURL if the field is
+// currently empty. Replaces pkg/quality.EnsureApplyURL — the only
+// remaining surface that helper provided once Verify took over the
+// content gate.
+func ensureApplyURL(opp *domain.ExternalOpportunity, fallbackURL string) {
+	if strings.TrimSpace(opp.ApplyURL) == "" && fallbackURL != "" {
+		opp.ApplyURL = fallbackURL
+	}
 }

@@ -2,103 +2,92 @@ package eventsv1
 
 import "time"
 
-// VariantNormalizedV1 — post-normalize stage. Same fields as
-// VariantIngestedV1 plus normalized versions of country (ISO 2),
-// remote_type, and parsed salary numbers. Phase 3's normalize
-// handler consumes VariantIngestedV1 and emits this.
+// VariantNormalizedV1 — post-normalize stage. Attributes carries
+// the kind-specific normalized fields.
 type VariantNormalizedV1 struct {
-	VariantID      string    `json:"variant_id"       parquet:"variant_id"`
-	SourceID       string    `json:"source_id"        parquet:"source_id"`
-	ExternalID     string    `json:"external_id"      parquet:"external_id"`
-	HardKey        string    `json:"hard_key"         parquet:"hard_key"`
-	Stage          string    `json:"stage"            parquet:"stage"`
-	Title          string    `json:"title"            parquet:"title,optional"`
-	Company        string    `json:"company"          parquet:"company,optional"`
-	LocationText   string    `json:"location_text"    parquet:"location_text,optional"`
-	Country        string    `json:"country"          parquet:"country,optional"`
-	Language       string    `json:"language"         parquet:"language,optional"`
-	RemoteType     string    `json:"remote_type"      parquet:"remote_type,optional"`
-	EmploymentType string    `json:"employment_type"  parquet:"employment_type,optional"`
-	SalaryMin      float64   `json:"salary_min"       parquet:"salary_min,optional"`
-	SalaryMax      float64   `json:"salary_max"       parquet:"salary_max,optional"`
-	Currency       string    `json:"currency"         parquet:"currency,optional"`
-	Description    string    `json:"description"      parquet:"description,optional"`
-	ApplyURL       string    `json:"apply_url"        parquet:"apply_url,optional"`
-	PostedAt       time.Time `json:"posted_at"        parquet:"posted_at,optional"`
-	ScrapedAt      time.Time `json:"scraped_at"       parquet:"scraped_at,optional"`
-	ContentHash    string    `json:"content_hash"     parquet:"content_hash,optional"`
-	RawArchiveRef  string    `json:"raw_archive_ref"  parquet:"raw_archive_ref,optional"`
-
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	VariantID    string         `json:"variant_id"`
+	HardKey      string         `json:"hard_key"`
+	Kind         string         `json:"kind"`
+	NormalizedAt time.Time      `json:"normalized_at"`
+	Attributes   map[string]any `json:"attributes,omitempty"`
 }
 
 // VariantValidatedV1 — emitted when a variant passes the AI
-// validator with confidence >= threshold. Carries the variant
-// state forward plus validation metadata.
+// validator with confidence >= threshold. Carries validation metadata
+// AND the per-kind Attributes map propagated forward from
+// VariantNormalizedV1, so the dedup stage can seed the cluster
+// snapshot's Attributes without re-reading the normalized payload.
 type VariantValidatedV1 struct {
-	VariantID       string `json:"variant_id"        parquet:"variant_id"`
-	SourceID        string `json:"source_id"         parquet:"source_id"`
-	ValidationScore float64 `json:"validation_score"  parquet:"validation_score"`
-	ValidationNotes string `json:"validation_notes"  parquet:"validation_notes,optional"`
-	ModelVersion    string `json:"model_version"     parquet:"model_version,optional"`
-	// Normalized is the full previous-stage payload, so downstream
-	// consumers (dedup, canonical) don't need to re-fetch.
-	Normalized VariantNormalizedV1 `json:"normalized"       parquet:"normalized"`
-
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	VariantID    string         `json:"variant_id"`
+	HardKey      string         `json:"hard_key"`
+	Kind         string         `json:"kind"`
+	Valid        bool           `json:"valid"`
+	Reasons      []string       `json:"reasons,omitempty"`
+	ValidatedAt  time.Time      `json:"validated_at"`
+	QualityScore float64        `json:"quality_score,omitempty"`
+	Attributes   map[string]any `json:"attributes,omitempty"`
 }
 
 // VariantFlaggedV1 — emitted when a variant fails validation. Terminal
 // for the happy path; audit sink.
 type VariantFlaggedV1 struct {
-	VariantID    string  `json:"variant_id"    parquet:"variant_id"`
-	SourceID     string  `json:"source_id"     parquet:"source_id"`
-	Reason       string  `json:"reason"        parquet:"reason"`
-	Confidence   float64 `json:"confidence"    parquet:"confidence,optional"`
-	ModelVersion string  `json:"model_version" parquet:"model_version,optional"`
-
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	VariantID    string    `json:"variant_id"`
+	HardKey      string    `json:"hard_key"`
+	Kind         string    `json:"kind"`
+	Reason       string    `json:"reason"`
+	Confidence   float64   `json:"confidence,omitempty"`
+	ModelVersion string    `json:"model_version,omitempty"`
+	FlaggedAt    time.Time `json:"flagged_at"`
 }
 
 // VariantClusteredV1 — emitted post-dedup. Identifies which cluster
-// this variant belongs to. Downstream canonical-merge uses cluster_id
-// to look up the current snapshot + merge in the new variant's fields.
+// (opportunity) this variant belongs to. Attributes is the per-kind
+// merge state for the canonical-merge stage; dedup also writes the
+// same map onto the cluster snapshot so on-disk state and the
+// in-flight event agree.
 type VariantClusteredV1 struct {
-	VariantID string             `json:"variant_id" parquet:"variant_id"`
-	ClusterID string             `json:"cluster_id" parquet:"cluster_id"`
-	IsNew     bool               `json:"is_new"     parquet:"is_new"`
-	Validated VariantValidatedV1 `json:"validated"  parquet:"validated"`
-
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	VariantID     string         `json:"variant_id"`
+	OpportunityID string         `json:"opportunity_id"`
+	HardKey       string         `json:"hard_key"`
+	Kind          string         `json:"kind"`
+	IsNew         bool           `json:"is_new"`
+	ClusteredAt   time.Time      `json:"clustered_at"`
+	Attributes    map[string]any `json:"attributes,omitempty"`
 }
 
-// TranslationV1 — emitted by the translate handler once a canonical
+// VariantRejectedV1 is emitted when opportunity.Verify rejects a variant
+// during the extract → publish handoff. The same record is durably
+// appended to opportunities.variants_rejected via the writer's
+// append-only path so operators can inspect rejection rates per
+// (kind, source, reason) without a re-crawl.
+type VariantRejectedV1 struct {
+	VariantID  string    `json:"variant_id"`
+	SourceID   string    `json:"source_id"`
+	Kind       string    `json:"kind"`
+	Title      string    `json:"title"`
+	Reasons    []string  `json:"reasons"`
+	RejectedAt time.Time `json:"rejected_at"`
+}
+
+// TranslationV1 — emitted by the translate handler once an opportunity
 // has been translated to a single target language. One event per
-// (canonical, lang) pair.
+// (opportunity, lang) pair.
 type TranslationV1 struct {
-	CanonicalID   string `json:"canonical_id"   parquet:"canonical_id"`
-	Lang          string `json:"lang"           parquet:"lang"`
-	TitleTr       string `json:"title_tr"       parquet:"title_tr,optional"`
-	DescriptionTr string `json:"description_tr" parquet:"description_tr,optional"`
-	ModelVersion  string `json:"model_version"  parquet:"model_version,optional"`
-
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	OpportunityID string    `json:"opportunity_id"`
+	Lang          string    `json:"lang"`
+	TitleTr       string    `json:"title_tr,omitempty"`
+	DescriptionTr string    `json:"description_tr,omitempty"`
+	ModelVersion  string    `json:"model_version,omitempty"`
+	TranslatedAt  time.Time `json:"translated_at"`
 }
 
-// PublishedV1 — emitted by the publish handler after a canonical's
+// PublishedV1 — emitted by the publish handler after an opportunity's
 // R2 snapshot is written. Downstream analytics + cache-purge listeners
 // consume this.
 type PublishedV1 struct {
-	CanonicalID string    `json:"canonical_id" parquet:"canonical_id"`
-	Slug        string    `json:"slug"         parquet:"slug"`
-	R2Version   int       `json:"r2_version"   parquet:"r2_version"`
-	PublishedAt time.Time `json:"published_at" parquet:"published_at"`
-
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	OpportunityID string    `json:"opportunity_id"`
+	Slug          string    `json:"slug"`
+	Kind          string    `json:"kind"`
+	R2Version     int       `json:"r2_version"`
+	PublishedAt   time.Time `json:"published_at"`
 }

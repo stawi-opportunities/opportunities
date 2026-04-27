@@ -107,4 +107,8 @@ type CrawlerConfig struct {
 	// either is empty, the purger is a silent no-op (useful for local dev).
 	CloudflareZoneID   string `env:"CLOUDFLARE_ZONE_ID" envDefault:""`
 	CloudflareAPIToken string `env:"CLOUDFLARE_API_TOKEN" envDefault:""`
+
+	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
+	// registry. Mounted as a ConfigMap in production at this path.
+	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 }

@@ -1,4 +1,24 @@
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/canva", "country": "AU", "region": "oceania", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/atlassian", "country": "AU", "region": "oceania", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "base_url": "https://boards.greenhouse.io/canva",
+    "country": "AU",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "priority": "normal",
+    "region": "oceania",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/atlassian",
+    "country": "AU",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "priority": "normal",
+    "region": "oceania",
+    "source_type": "greenhouse"
+  }
 ]

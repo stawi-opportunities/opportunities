@@ -23,6 +23,9 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/geocode"
+	"github.com/stawi-opportunities/opportunities/pkg/normalize"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
@@ -51,6 +54,14 @@ func main() {
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 
 	log := util.Log(ctx)
+
+	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
+	// later phases consult the registry on the publish/index paths.
+	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	if err != nil {
+		log.WithError(err).Fatal("opportunity registry: load failed")
+	}
+	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
 	// Initialize pipeline telemetry metrics. Frame has already configured the
 	// global OTel provider, so this registers our custom instruments into it.
@@ -87,8 +98,10 @@ func main() {
 
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
-	// Load seed sources.
-	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo)
+	// Load seed sources. The registry is consulted to validate every
+	// seed's declared kinds — boot fails fast on a typo or a kind YAML
+	// that was disabled.
+	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo, reg)
 	if seedErr != nil {
 		log.WithError(seedErr).WithField("loaded", n).Warn("seed loading incomplete")
 	} else {
@@ -124,6 +137,7 @@ func main() {
 			RerankBaseURL:    cfg.RerankBaseURL,
 			RerankAPIKey:     cfg.RerankAPIKey,
 			RerankModel:      cfg.RerankModel,
+			Registry:         reg,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
@@ -238,16 +252,25 @@ func main() {
 	//   crawl.requests.v1       → CrawlRequestHandler (fetch + archive + extract + emit)
 	//   crawl.page.completed.v1 → PageCompletedHandler (self-consumed; cursor + health)
 	//   sources.discovered.v1   → SourceDiscoveredHandler (self-consumed; upsert)
+	// Bundled-gazetteer geocoder. Singleton — parses ~300 rows once at
+	// boot and reads concurrently thereafter. The Normalizer wraps it
+	// so AnchorLocation gets Lat/Lon enriched on every variant whose
+	// LLM-extracted city is recognised.
+	geocoder := geocode.New()
+	normalizer := normalize.New(geocoder)
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:            svc,
 		Sources:        sourceRepo,
 		Registry:       registry,
+		Kinds:          reg,
 		Archive:        arch,
 		Extractor:      extractor,
+		Normalizer:     normalizer,
 		DiscoverSample: 0.05, // roughly 1-in-20 pages get DiscoverSites
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
-	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo)
+	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
 
 	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
 

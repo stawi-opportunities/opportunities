@@ -1,0 +1,18 @@
+kind: deal
+display_name: Deal
+issuing_entity_label: Merchant
+amount_kind: discount
+url_prefix: deals
+universal_required: [title, description, issuing_entity, apply_url]
+kind_required: [expiry]
+kind_optional: [discount_percent, redemption_countries, coupon_code]
+categories: [Software, Hardware, Travel, Education, Subscriptions, Other]
+search_facets: [discount_percent]
+extraction_prompt: |
+  Extract deal / promotion details from the page. Output JSON with fields:
+  title, description (markdown), issuing_entity (the merchant),
+  apply_url (deal redemption URL), expiry (RFC3339), discount_percent,
+  amount_min, amount_max (savings range when not a percent),
+  currency, coupon_code, redemption_countries (ISO 3166-1 alpha-2 codes).
+onboarding_flow: deal-onboarding-v1
+matcher: deal-matcher-v1

@@ -1,5 +1,38 @@
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/grab", "country": "SG", "language": "en", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/seagroup", "country": "SG", "language": "en", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/carousell", "country": "SG", "language": "en", "region": "asia", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "base_url": "https://boards.greenhouse.io/grab",
+    "country": "SG",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "en",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/seagroup",
+    "country": "SG",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "en",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://jobs.lever.co/carousell",
+    "country": "SG",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "en",
+    "priority": "normal",
+    "region": "asia",
+    "source_type": "lever"
+  }
 ]

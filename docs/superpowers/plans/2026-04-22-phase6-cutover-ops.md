@@ -10,7 +10,7 @@
 - `apps/worker` gains `POST /_admin/kv/rebuild` that scans `canonicals_current/` and repopulates `dedup:*`, `cluster:*`, and `bloom:dedup:*` (spec §9.4).
 - `pkg/backpressure.Gate.Admit` gets its full policy (drain-time per topic, HPA-ceiling awareness). The Phase 4 stub stays backward-compatible — its wait-hint shape is unchanged.
 - `apps/api`'s legacy `canonical_jobs`-reading endpoints are replaced with Manticore-backed equivalents under `/api/v2/*` or rewritten in place. `/admin/backfill` (Hugo snapshot publishing) sources from R2 `canonicals_current/` Parquet. `/admin/feeds/rebuild` (country-sharded feed manifests) sources from Manticore. `/admin/republish`, `/admin/backfill/country` are deleted.
-- `apps/candidates/service/admin/v1/stale_lister.go` (Phase 5) stops using `candidates.updated_at` as a proxy — the new `pkg/candidatestore.StaleReader` reads `candidates_cv_current/` Parquet.
+- `apps/matching/service/admin/v1/stale_lister.go` (Phase 5) stops using `candidates.updated_at` as a proxy — the new `pkg/candidatestore.StaleReader` reads `candidates_cv_current/` Parquet.
 - Legacy candidate handler files (`embedding.go`, `profile_created.go`), legacy pipeline handlers, legacy event topic constants (`variant.raw.stored`, `source.urls.discovered`, `source.quality.review`), orphan packages (`pkg/billing/`), and dead repository adapters (`pkg/repository/{facets,rerank_cache,saved_job,rejected}.go`) all delete in one bundle.
 - One consolidated SQL migration (`db/migrations/0003_cutover_drop_legacy.sql`) drops `canonical_jobs`, `job_variants`, `job_clusters`, `job_cluster_members`, `crawl_page_state`, `rerank_cache`, `mv_job_facets`, `saved_jobs`, plus the CV/preferences/embedding columns on `candidates`. Domain model + AutoMigrate lists in `apps/crawler/cmd/main.go` and `apps/api/cmd/main.go` update to match.
 
@@ -30,7 +30,7 @@
 - KV rebuild admin endpoint on `apps/worker`.
 - `pkg/candidatestore.StaleReader` — R2-backed listing of candidates whose latest CV upload is older than cutoff.
 - Full `apps/api` rewrite to Manticore-only reads: expanded `/api/v2/search`, new `/api/v2/jobs/{id}`, `/api/v2/jobs/top`, `/api/v2/jobs/latest`, `/api/v2/categories`, `/api/v2/stats/summary`, Manticore-sourced `/api/feed` + `/api/feed/tier` + `/admin/feeds/rebuild`, R2-Parquet-sourced `/admin/backfill`. All legacy Postgres read endpoints deleted.
-- Legacy code deletion: `apps/candidates/service/events/{embedding.go, profile_created.go}`, all of `pkg/pipeline/handlers/`, all of `pkg/billing/`, `pkg/repository/{facets,rerank_cache,saved_job,rejected}.go`, `apps/api/cmd/{country_backfill,manifest,tiered}.go` (rebuilt fresh), dead `domain.*` types.
+- Legacy code deletion: `apps/matching/service/events/{embedding.go, profile_created.go}`, all of `pkg/pipeline/handlers/`, all of `pkg/billing/`, `pkg/repository/{facets,rerank_cache,saved_job,rejected}.go`, `apps/api/cmd/{country_backfill,manifest,tiered}.go` (rebuilt fresh), dead `domain.*` types.
 - Consolidated SQL migration (`0003_cutover_drop_legacy.sql`) and aligned domain model + AutoMigrate calls.
 - Cutover runbook (`docs/ops/cutover-runbook.md`) and rebuild runbooks (Manticore-from-zero, KV-from-R2, writer-backlog).
 - End-to-end smoke test + k6 scripts for §11.3 post-cut verification.
@@ -85,9 +85,9 @@
 |---|---|
 | `pkg/backpressure/gate.go` | Replace `Admit` stub with full policy: per-topic drain-time thresholds + HPA-ceiling awareness. Add `UpdateLag` + `Config` methods from spec §8.3 |
 | `pkg/backpressure/gate_test.go` | New tests for drain-time admit + per-topic config + HPA-ceiling behaviour |
-| `apps/candidates/service/admin/v1/stale_lister.go` | Use `candidatestore.StaleReader` instead of `repository.CandidateRepository.ListInactiveSince` |
-| `apps/candidates/service/admin/v1/stale_lister_test.go` | Rewrite test against `StaleReader` fake |
-| `apps/candidates/cmd/main.go` | Wire `candidatestore.StaleReader` into `CVStaleNudgeDeps` (replaces `RepoStaleLister`) |
+| `apps/matching/service/admin/v1/stale_lister.go` | Use `candidatestore.StaleReader` instead of `repository.CandidateRepository.ListInactiveSince` |
+| `apps/matching/service/admin/v1/stale_lister_test.go` | Rewrite test against `StaleReader` fake |
+| `apps/matching/cmd/main.go` | Wire `candidatestore.StaleReader` into `CVStaleNudgeDeps` (replaces `RepoStaleLister`) |
 | `apps/writer/cmd/main.go` | Wire the compactor + mount the two admin endpoints |
 | `apps/worker/cmd/main.go` | Wire the KV rebuilder + mount the admin endpoint |
 | `apps/worker/service/embed.go:1204` | Surface `ModelVersion` from `Extractor` into `EmbeddingV1` |
@@ -104,8 +104,8 @@
 
 | File | Reason |
 |---|---|
-| `apps/candidates/service/events/embedding.go` | Legacy — Phase 5 replaced |
-| `apps/candidates/service/events/profile_created.go` | Legacy — Phase 5 replaced |
+| `apps/matching/service/events/embedding.go` | Legacy — Phase 5 replaced |
+| `apps/matching/service/events/profile_created.go` | Legacy — Phase 5 replaced |
 | `pkg/pipeline/handlers/canonical.go` | Legacy worker pipeline — Phase 3 replaced |
 | `pkg/pipeline/handlers/dedup.go` | Legacy — Phase 3 replaced |
 | `pkg/pipeline/handlers/normalize.go` | Legacy — Phase 3 replaced |
@@ -2139,9 +2139,9 @@ git commit -m "feat(worker): KV rebuild admin endpoint from canonicals_current P
 **Files:**
 - Create: `pkg/candidatestore/stale_reader.go`
 - Create: `pkg/candidatestore/stale_reader_test.go`
-- Modify: `apps/candidates/service/admin/v1/stale_lister.go`
-- Modify: `apps/candidates/service/admin/v1/stale_lister_test.go`
-- Modify: `apps/candidates/cmd/main.go`
+- Modify: `apps/matching/service/admin/v1/stale_lister.go`
+- Modify: `apps/matching/service/admin/v1/stale_lister_test.go`
+- Modify: `apps/matching/cmd/main.go`
 
 Phase 5 shipped `RepoStaleLister` that used `candidates.updated_at` as a proxy for "time of last CV upload" — inaccurate but dependency-light. Now that daily compaction (Task 2) produces `candidates_cv_current/`, we have a real last-upload timestamp per candidate. This task swaps the proxy for the real source.
 
@@ -2303,10 +2303,10 @@ Expected: PASS.
 
 - [ ] **Step 5: Rewire the admin handler to use `StaleReader`**
 
-The Phase 5 `RepoStaleLister` lives in `apps/candidates/service/admin/v1/stale_lister.go` and implements the `StaleLister` interface consumed by `CVStaleNudgeDeps`. Replace its implementation so it delegates to `candidatestore.StaleReader` and the shape remains:
+The Phase 5 `RepoStaleLister` lives in `apps/matching/service/admin/v1/stale_lister.go` and implements the `StaleLister` interface consumed by `CVStaleNudgeDeps`. Replace its implementation so it delegates to `candidatestore.StaleReader` and the shape remains:
 
 ```go
-// apps/candidates/service/admin/v1/stale_lister.go (rewrite)
+// apps/matching/service/admin/v1/stale_lister.go (rewrite)
 package v1
 
 import (
@@ -2359,7 +2359,7 @@ func (l *R2StaleLister) ListStale(ctx context.Context, asOf time.Time) ([]StaleC
 Delete the legacy `RepoStaleLister` body from the same file if still present. Update its corresponding test file `stale_lister_test.go` to exercise `R2StaleLister` against a fake `candidatestore.StaleReader`.
 
 ```go
-// apps/candidates/service/admin/v1/stale_lister_test.go
+// apps/matching/service/admin/v1/stale_lister_test.go
 package v1
 
 import (
@@ -2399,12 +2399,12 @@ type StaleReaderIface interface {
 // satisfies it.
 ```
 
-- [ ] **Step 6: Wire in `apps/candidates/cmd/main.go`**
+- [ ] **Step 6: Wire in `apps/matching/cmd/main.go`**
 
 Replace the Phase 5 `RepoStaleLister` construction with `R2StaleLister`:
 
 ```go
-// apps/candidates/cmd/main.go
+// apps/matching/cmd/main.go
 import "stawi.opportunities/pkg/candidatestore"
 
 staleReader := candidatestore.NewStaleReader(s3Client, cfg.R2Bucket)
@@ -2418,16 +2418,16 @@ cvStaleNudgeHandler := adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
 
 - [ ] **Step 7: Run every candidates test**
 
-Run: `go test ./apps/candidates/... -v`
+Run: `go test ./apps/matching/... -v`
 Expected: all pass.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add pkg/candidatestore/stale_reader.go pkg/candidatestore/stale_reader_test.go \
-        apps/candidates/service/admin/v1/stale_lister.go \
-        apps/candidates/service/admin/v1/stale_lister_test.go \
-        apps/candidates/cmd/main.go
+        apps/matching/service/admin/v1/stale_lister.go \
+        apps/matching/service/admin/v1/stale_lister_test.go \
+        apps/matching/cmd/main.go
 git commit -m "feat(candidates): R2-backed StaleReader replaces updated_at proxy"
 ```
 
@@ -3889,8 +3889,8 @@ git commit -m "refactor(api): rewrite main.go — Manticore-only reads, delete P
 ## Task 13: Delete legacy candidate handler files + plumb model versions
 
 **Files:**
-- Delete: `apps/candidates/service/events/embedding.go`
-- Delete: `apps/candidates/service/events/profile_created.go`
+- Delete: `apps/matching/service/events/embedding.go`
+- Delete: `apps/matching/service/events/profile_created.go`
 - Delete any `_test.go` sibling files for the above.
 - Modify: `apps/worker/service/embed.go`
 - Modify: `apps/worker/service/publish.go`
@@ -3904,17 +3904,17 @@ Also fix the two Phase 3 inline-TODOs:
 - [ ] **Step 1: Delete the legacy candidate files**
 
 ```bash
-rm apps/candidates/service/events/embedding.go \
-   apps/candidates/service/events/profile_created.go
+rm apps/matching/service/events/embedding.go \
+   apps/matching/service/events/profile_created.go
 
 # And any sibling tests — check first:
-find apps/candidates/service/events -maxdepth 1 -name '*_test.go' \
+find apps/matching/service/events -maxdepth 1 -name '*_test.go' \
      -not -path '*/v1/*' -exec rm {} +
 ```
 
 - [ ] **Step 2: Verify nothing imports the deleted files**
 
-Run: `grep -r "service/events\"" apps/candidates/ --include='*.go'`
+Run: `grep -r "service/events\"" apps/matching/ --include='*.go'`
 Expected: no matches. If matches, those call sites need rewiring to `service/events/v1`.
 
 - [ ] **Step 3: Surface model version on EmbeddingV1**
@@ -3980,7 +3980,7 @@ out := eventsv1.PublishedV1{
 
 - [ ] **Step 5: Build and test**
 
-Run: `go build ./... && go test ./apps/worker/... ./apps/candidates/... -v`
+Run: `go build ./... && go test ./apps/worker/... ./apps/matching/... -v`
 Expected: success.
 
 - [ ] **Step 6: Commit**
@@ -3988,8 +3988,8 @@ Expected: success.
 ```bash
 git add apps/worker/service/embed.go apps/worker/service/publish.go \
         pkg/extraction/extractor.go pkg/publish/r2.go
-git rm apps/candidates/service/events/embedding.go \
-       apps/candidates/service/events/profile_created.go
+git rm apps/matching/service/events/embedding.go \
+       apps/matching/service/events/profile_created.go
 git commit -m "refactor(candidates): drop legacy handler files; surface model+R2 versions on events"
 ```
 
@@ -4614,7 +4614,7 @@ func TestCutoverE2E(t *testing.T) {
 }
 ```
 
-The helpers (`bringUpEnvironment`, `startApps`, `seedSource`, `apps.*`) already exist in patterns across the Phase 3–5 test suites (`apps/worker/service/service_test.go`, `apps/crawler/service/e2e_test.go`, `apps/candidates/service/e2e_test.go`). This test composes them. If a helper is missing, add it in `tests/integration/helpers_test.go` following the existing pattern — one `*testcontainers.Container` per service, wired via env vars.
+The helpers (`bringUpEnvironment`, `startApps`, `seedSource`, `apps.*`) already exist in patterns across the Phase 3–5 test suites (`apps/worker/service/service_test.go`, `apps/crawler/service/e2e_test.go`, `apps/matching/service/e2e_test.go`). This test composes them. If a helper is missing, add it in `tests/integration/helpers_test.go` following the existing pattern — one `*testcontainers.Container` per service, wired via env vars.
 
 - [ ] **Step 2: Write the k6 smoke script**
 
@@ -4746,7 +4746,7 @@ psql "$DATABASE_URL" -f db/migrations/0003_cutover_drop_legacy.sql  # twice, mus
 
 # 5. Binary starts with the trimmed AutoMigrate list
 DATABASE_URL="$DATABASE_URL" DO_DATABASE_MIGRATE=true go run ./apps/crawler/cmd
-DATABASE_URL="$DATABASE_URL" DO_DATABASE_MIGRATE=true go run ./apps/candidates/cmd
+DATABASE_URL="$DATABASE_URL" DO_DATABASE_MIGRATE=true go run ./apps/matching/cmd
 ```
 
 After this plan ships, the platform is fully greenfield:

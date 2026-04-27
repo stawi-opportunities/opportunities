@@ -1,7 +1,62 @@
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/hellofresh", "country": "DE", "language": "de", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/n26", "country": "DE", "language": "de", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/traderepublic", "country": "DE", "language": "de", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/celonis", "country": "DE", "language": "de", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/contentful", "country": "DE", "language": "de", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "base_url": "https://boards.greenhouse.io/hellofresh",
+    "country": "DE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "de",
+    "priority": "normal",
+    "region": "europe",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/n26",
+    "country": "DE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "de",
+    "priority": "normal",
+    "region": "europe",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/traderepublic",
+    "country": "DE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "de",
+    "priority": "normal",
+    "region": "europe",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/celonis",
+    "country": "DE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "de",
+    "priority": "normal",
+    "region": "europe",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://jobs.lever.co/contentful",
+    "country": "DE",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "de",
+    "priority": "normal",
+    "region": "europe",
+    "source_type": "lever"
+  }
 ]

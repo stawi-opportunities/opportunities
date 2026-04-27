@@ -1,20 +1,25 @@
 package telemetry
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
 var (
 	meter = otel.Meter("stawi.opportunities.pipeline")
 
-	StageTransitions metric.Int64Counter
-	StageDuration    metric.Float64Histogram
-	BloomHits        metric.Int64Counter
-	BloomMisses      metric.Int64Counter
-	JobsReady        metric.Int64Counter
-	AIExtractions    metric.Int64Counter
-	AIFailures       metric.Int64Counter
+	StageTransitions   metric.Int64Counter
+	StageDuration      metric.Float64Histogram
+	BloomHits          metric.Int64Counter
+	BloomMisses        metric.Int64Counter
+	OpportunitiesReady metric.Int64Counter
+	VerifyRejections   metric.Int64Counter
+	ExtractionLatency  metric.Float64Histogram
+	AIExtractions      metric.Int64Counter
+	AIFailures         metric.Int64Counter
 )
 
 // Init registers all pipeline metrics with the global OTel meter provider.
@@ -50,8 +55,22 @@ func Init() error {
 		return err
 	}
 
-	JobsReady, err = meter.Int64Counter("pipeline.jobs.ready",
-		metric.WithDescription("Jobs that reached ready stage"),
+	OpportunitiesReady, err = meter.Int64Counter("pipeline.opportunities.ready",
+		metric.WithDescription("Opportunities that reached ready stage (per kind)"),
+	)
+	if err != nil {
+		return err
+	}
+
+	VerifyRejections, err = meter.Int64Counter("pipeline.verify.rejections",
+		metric.WithDescription("Variants rejected by opportunity.Verify (per kind/reason)"),
+	)
+	if err != nil {
+		return err
+	}
+
+	ExtractionLatency, err = meter.Float64Histogram("pipeline.extraction.latency_seconds",
+		metric.WithDescription("Extraction stage latency in seconds (per kind)"),
 	)
 	if err != nil {
 		return err
@@ -72,4 +91,40 @@ func Init() error {
 	}
 
 	return InitIceberg()
+}
+
+// RecordOpportunityReady increments the per-kind ready counter. Safe to
+// call before Init (e.g. from tests); the no-op branch keeps unwired
+// callsites from panicking.
+func RecordOpportunityReady(kind string) {
+	if OpportunitiesReady == nil {
+		return
+	}
+	OpportunitiesReady.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("kind", kind)))
+}
+
+// RecordVerifyRejection increments the verify-rejection counter with
+// the kind and the categorised reason ("mismatch", "missing_<field>",
+// "unknown").
+func RecordVerifyRejection(kind, reason string) {
+	if VerifyRejections == nil {
+		return
+	}
+	VerifyRejections.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("kind", kind),
+			attribute.String("reason", reason),
+		))
+}
+
+// RecordExtractionLatency observes the extraction-stage duration for a
+// given kind. seconds is the elapsed time in seconds (use
+// time.Since(t).Seconds()).
+func RecordExtractionLatency(kind string, seconds float64) {
+	if ExtractionLatency == nil {
+		return
+	}
+	ExtractionLatency.Record(context.Background(), seconds,
+		metric.WithAttributes(attribute.String("kind", kind)))
 }

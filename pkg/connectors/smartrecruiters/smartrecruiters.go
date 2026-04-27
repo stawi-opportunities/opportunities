@@ -49,15 +49,24 @@ func (c *Connector) Crawl(ctx context.Context, src domain.Source) connectors.Cra
 		return connectors.NewSinglePageIterator(nil, body, status, fmt.Errorf("decode smartrecruiters payload: %w", err))
 	}
 
-	out := make([]domain.ExternalJob, 0, len(payload.Content))
+	out := make([]domain.ExternalOpportunity, 0, len(payload.Content))
 	for _, job := range payload.Content {
-		out = append(out, domain.ExternalJob{
-			ExternalID:   job.ID,
-			SourceURL:    src.BaseURL,
-			ApplyURL:     src.BaseURL + "/" + job.ID,
-			Title:        job.Name,
-			Company:      job.Department.Label,
-			LocationText: strings.TrimSpace(job.Location.City + ", " + job.Location.Country),
+		anchor := &domain.Location{
+			City:    job.Location.City,
+			Country: job.Location.Country,
+		}
+		if anchor.IsZero() {
+			anchor = nil
+		}
+		out = append(out, domain.ExternalOpportunity{
+			Kind:           "job",
+			ExternalID:     job.ID,
+			SourceURL:      src.BaseURL,
+			ApplyURL:       src.BaseURL + "/" + job.ID,
+			Title:          job.Name,
+			IssuingEntity:  job.Department.Label,
+			LocationText:   strings.TrimSpace(job.Location.City + ", " + job.Location.Country),
+			AnchorLocation: anchor,
 		})
 	}
 	return connectors.NewSinglePageIterator(out, body, status, nil)

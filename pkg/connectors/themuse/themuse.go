@@ -44,7 +44,7 @@ type iterator struct {
 	client     *httpx.Client
 	page       int
 	pageCount  int
-	jobs       []domain.ExternalJob
+	jobs       []domain.ExternalOpportunity
 	raw        []byte
 	httpStatus int
 	err        error
@@ -119,28 +119,32 @@ func (it *iterator) Next(ctx context.Context) bool {
 
 	it.pageCount = resp.PageCount
 
-	jobs := make([]domain.ExternalJob, 0, len(resp.Results))
+	jobs := make([]domain.ExternalOpportunity, 0, len(resp.Results))
 	for _, item := range resp.Results {
 		location := ""
 		if len(item.Locations) > 0 {
 			location = item.Locations[0].Name
 		}
-		jobs = append(jobs, domain.ExternalJob{
-			ExternalID:     strconv.Itoa(item.ID),
-			Title:          item.Name,
-			Company:        item.Company.Name,
-			LocationText:   location,
-			Description:    item.Contents,
-			ApplyURL:       item.Refs.LandingPage,
-			EmploymentType: item.Type,
-		})
+		opp := domain.ExternalOpportunity{
+			Kind:          "job",
+			ExternalID:    strconv.Itoa(item.ID),
+			Title:         item.Name,
+			IssuingEntity: item.Company.Name,
+			LocationText:  location,
+			Description:   item.Contents,
+			ApplyURL:      item.Refs.LandingPage,
+		}
+		if item.Type != "" {
+			opp.Attributes = map[string]any{"employment_type": item.Type}
+		}
+		jobs = append(jobs, opp)
 	}
 	it.jobs = jobs
 	it.page++
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalJob    { return it.jobs }
+func (it *iterator) Items() []domain.ExternalOpportunity   { return it.jobs }
 func (it *iterator) RawPayload() []byte            { return it.raw }
 func (it *iterator) HTTPStatus() int               { return it.httpStatus }
 func (it *iterator) Err() error                    { return it.err }

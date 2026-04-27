@@ -14,19 +14,22 @@ import (
 func TestExternalToVariant(t *testing.T) {
 	scrapedAt := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
 
-	ext := domain.ExternalJob{
-		ExternalID:     "  job-123  ",
-		Title:          "  Software Engineer  ",
-		Company:        "  Acme Corp Ltd  ",
-		LocationText:   "  Nairobi, Kenya  ",
-		Description:    "  Great role.\x00  Exciting team.  ",
-		ApplyURL:       "  https://apply.example.com  ",
-		SourceURL:      "  https://source.example.com  ",
-		RemoteType:     "REMOTE",
-		EmploymentType: "FULL_TIME",
-		Currency:       "kes",
-		SalaryMin:      50000,
-		SalaryMax:      80000,
+	ext := domain.ExternalOpportunity{
+		Kind:          "job",
+		ExternalID:    "  job-123  ",
+		Title:         "  Software Engineer  ",
+		IssuingEntity: "  Acme Corp Ltd  ",
+		LocationText:  "  Nairobi, Kenya  ",
+		Description:   "  Great role.\x00  Exciting team.  ",
+		ApplyURL:      "  https://apply.example.com  ",
+		SourceURL:     "  https://source.example.com  ",
+		Currency:      "kes",
+		AmountMin:     50000,
+		AmountMax:     80000,
+		Attributes: map[string]any{
+			"remote_type":     "REMOTE",
+			"employment_type": "FULL_TIME",
+		},
 	}
 
 	v := ExternalToVariant(ext, "src_test_42", "ke", "brightermonday", "en", scrapedAt)
@@ -112,12 +115,13 @@ func TestExternalToVariant(t *testing.T) {
 // TestGeneratedIDWhenMissing verifies that an empty ExternalID is replaced by
 // the first 16 characters of the content hash.
 func TestGeneratedIDWhenMissing(t *testing.T) {
-	ext := domain.ExternalJob{
-		ExternalID:  "",
-		Title:       "Data Analyst",
-		Company:     "BigCo",
-		LocationText: "Lagos",
-		Description: "Analyse data.",
+	ext := domain.ExternalOpportunity{
+		Kind:          "job",
+		ExternalID:    "",
+		Title:         "Data Analyst",
+		IssuingEntity: "BigCo",
+		LocationText:  "Lagos",
+		Description:   "Analyse data.",
 	}
 
 	v := ExternalToVariant(ext, "src_test_1", "NG", "jobberman", "en", time.Now())
@@ -172,18 +176,19 @@ func TestExternalToVariantLanguage(t *testing.T) {
 		"Le poste est basé dans le 9e arrondissement avec télétravail partiel possible. " +
 		"Vous serez responsable de la conception et du développement de services financiers. " +
 		"Nous cherchons quelqu'un avec une solide expérience en systèmes distribués."
-	ext := domain.ExternalJob{
-		ExternalID:  "fr-1",
-		Title:       "Ingénieur",
-		Company:     "ACME",
-		Description: longFR,
+	ext := domain.ExternalOpportunity{
+		Kind:          "job",
+		ExternalID:    "fr-1",
+		Title:         "Ingénieur",
+		IssuingEntity: "ACME",
+		Description:   longFR,
 	}
 	v := ExternalToVariant(ext, "src_test_1", "FR", "greenhouse", "en", time.Now())
 	if v.Language != "fr" {
 		t.Errorf("Language = %q, want %q (whatlanggo should override)", v.Language, "fr")
 	}
 
-	vShort := ExternalToVariant(domain.ExternalJob{ExternalID: "j", Title: "Dev", Company: "ACME", Description: "Short"},
+	vShort := ExternalToVariant(domain.ExternalOpportunity{Kind: "job", ExternalID: "j", Title: "Dev", IssuingEntity: "ACME", Description: "Short"},
 		"src_test_1", "FR", "greenhouse", "fr", time.Now())
 	if vShort.Language != "fr" {
 		t.Errorf("Language = %q, want %q (short text should inherit source)", vShort.Language, "fr")

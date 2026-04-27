@@ -73,6 +73,17 @@ func (p *R2Publisher) UploadPublicSnapshot(ctx context.Context, key string, cont
 	return err
 }
 
+// ObjectKey returns the R2 object key for an opportunity body file.
+// The prefix is Spec.URLPrefix (jobs, scholarships, tenders, ...).
+func ObjectKey(prefix, slug string) string {
+	return prefix + "/" + slug + ".json"
+}
+
+// TranslationKey returns the R2 object key for a translated body file.
+func TranslationKey(prefix, slug, lang string) string {
+	return prefix + "/" + slug + "/" + lang + ".json"
+}
+
 // ContentOrigin is the public CDN origin for R2-served content. Overridden at
 // deploy time via CONTENT_ORIGIN env var (use SetContentOrigin).
 var ContentOrigin = "https://job-repo.stawi.org"

@@ -10,6 +10,7 @@ import (
 	"github.com/pitabwire/frame"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
@@ -18,11 +19,12 @@ import (
 type PublishHandler struct {
 	svc       *frame.Service
 	publisher *publish.R2Publisher
+	registry  *opportunity.Registry
 }
 
 // NewPublishHandler ...
-func NewPublishHandler(svc *frame.Service, p *publish.R2Publisher) *PublishHandler {
-	return &PublishHandler{svc: svc, publisher: p}
+func NewPublishHandler(svc *frame.Service, p *publish.R2Publisher, reg *opportunity.Registry) *PublishHandler {
+	return &PublishHandler{svc: svc, publisher: p, registry: reg}
 }
 
 // Name returns the topic this handler consumes (canonical upserts).
@@ -61,16 +63,18 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 	if err != nil {
 		return fmt.Errorf("publish: marshal: %w", err)
 	}
-	key := "jobs/" + c.Slug + ".json"
+	spec := h.registry.Resolve(c.Kind)
+	key := publish.ObjectKey(spec.URLPrefix, c.Slug)
 	if err := h.publisher.UploadPublicSnapshot(ctx, key, snap); err != nil {
 		return fmt.Errorf("publish: upload: %w", err)
 	}
 
 	out := eventsv1.PublishedV1{
-		CanonicalID: c.CanonicalID,
-		Slug:        c.Slug,
-		R2Version:   int(time.Now().Unix()),
-		PublishedAt: time.Now().UTC(),
+		OpportunityID: c.OpportunityID,
+		Slug:          c.Slug,
+		Kind:          c.Kind,
+		R2Version:     int(time.Now().Unix()),
+		PublishedAt:   time.Now().UTC(),
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicPublished, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicPublished, outEnv)

@@ -46,15 +46,16 @@ func TestParquetRoundTripViaMinio(t *testing.T) {
 
 	rows := []eventsv1.VariantIngestedV1{
 		{
-			VariantID:  "var_1",
-			SourceID:   "src_greenhouse",
-			ExternalID: "abc123",
-			HardKey:    "src_greenhouse|abc123",
-			Stage:      "ingested",
-			Title:      "Senior Backend Engineer",
-			Company:    "Acme",
-			Country:    "KE",
-			ScrapedAt:  time.Now().UTC(),
+			VariantID:     "var_1",
+			SourceID:      "src_greenhouse",
+			ExternalID:    "abc123",
+			HardKey:       "src_greenhouse|abc123",
+			Kind:          "job",
+			Stage:         "ingested",
+			Title:         "Senior Backend Engineer",
+			IssuingEntity: "Acme",
+			AnchorCountry: "KE",
+			ScrapedAt:     time.Now().UTC(),
 		},
 	}
 

@@ -1,6 +1,6 @@
 -- db/migrations/0004_iceberg_catalog.sql
 -- Iceberg JDBC/SQL catalog tables. These back the Iceberg catalog service
--- used by apps/writer, apps/worker, apps/materializer, apps/candidates,
+-- used by apps/writer, apps/worker, apps/materializer, apps/matching,
 -- apps/api, and apps/iceberg-ops. Hosting them on the existing opportunities
 -- Postgres avoids a second stateful service.
 --

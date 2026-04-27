@@ -1,0 +1,20 @@
+kind: funding
+display_name: Funding Opportunity
+issuing_entity_label: Funder
+amount_kind: grant
+url_prefix: funding
+universal_required: [title, description, issuing_entity, deadline]
+kind_required: [focus_area]
+kind_optional: [organisation_eligibility, target_regions, funding_amount_range]
+categories: [Climate, Education, Health, Tech, Arts, Social-Enterprise, Other]
+search_facets: [focus_area]
+extraction_prompt: |
+  Extract grant / funding opportunity details. Output JSON with fields:
+  title, description (markdown), issuing_entity (the funder),
+  apply_url, anchor_country (or empty for global funds),
+  deadline (RFC3339), focus_area, amount_min, amount_max (grant
+  amount range), currency, organisation_eligibility (one of:
+  nonprofit, for_profit, individual, any), target_regions
+  (ISO 3166-1 alpha-2 codes or region names; empty for global).
+onboarding_flow: funding-onboarding-v1
+matcher: funding-matcher-v1

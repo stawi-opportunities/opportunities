@@ -59,7 +59,7 @@ func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.Crawl
 		URL         string `json:"url"`
 	}
 
-	var jobs []domain.ExternalJob
+	var jobs []domain.ExternalOpportunity
 	for _, item := range items {
 		var j remoteOKJob
 		if err := json.Unmarshal(item, &j); err != nil {
@@ -73,15 +73,17 @@ func (c *Connector) Crawl(ctx context.Context, _ domain.Source) connectors.Crawl
 		if applyURL == "" {
 			applyURL = j.URL
 		}
-		jobs = append(jobs, domain.ExternalJob{
-			ExternalID:  j.Slug,
-			Title:       j.Position,
-			Company:     j.Company,
-			LocationText: j.Location,
-			Description: j.Description,
-			ApplyURL:    applyURL,
-			RemoteType:  "remote",
-			Currency:    "USD",
+		jobs = append(jobs, domain.ExternalOpportunity{
+			Kind:          "job",
+			ExternalID:    j.Slug,
+			Title:         j.Position,
+			IssuingEntity: j.Company,
+			LocationText:  j.Location,
+			Description:   j.Description,
+			ApplyURL:      applyURL,
+			Remote:        true,
+			Currency:      "USD",
+			Attributes:    map[string]any{"remote_type": "remote"},
 		})
 	}
 

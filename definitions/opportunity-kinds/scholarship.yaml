@@ -1,0 +1,20 @@
+kind: scholarship
+display_name: Scholarship
+issuing_entity_label: Institution
+amount_kind: stipend
+url_prefix: scholarships
+universal_required: [title, description, issuing_entity, deadline]
+kind_required: [field_of_study]
+kind_optional: [degree_level, gpa_min, age_max, eligible_nationalities, study_location]
+categories: [STEM, Humanities, Arts, Business, Medicine, Law, Other]
+search_facets: [field_of_study, degree_level]
+extraction_prompt: |
+  Extract scholarship details from the page. Output JSON with fields:
+  title, description (markdown), issuing_entity (the awarding body),
+  apply_url, anchor_country (ISO 3166-1 alpha-2 of where the scholarship
+  is held; empty if global), deadline (RFC3339), field_of_study,
+  degree_level (one of: undergraduate, masters, doctoral, postdoc),
+  amount_min, amount_max, currency, gpa_min (float),
+  eligible_nationalities (ISO 3166-1 alpha-2 codes; empty for any).
+onboarding_flow: scholarship-onboarding-v1
+matcher: scholarship-matcher-v1

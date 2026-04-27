@@ -1,6 +1,50 @@
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/nubank", "country": "BR", "language": "pt", "region": "latam", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/quintoandar", "country": "BR", "language": "pt", "region": "latam", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/loft", "country": "BR", "language": "pt", "region": "latam", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/getninjas", "country": "BR", "language": "pt", "region": "latam", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "base_url": "https://boards.greenhouse.io/nubank",
+    "country": "BR",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "pt",
+    "priority": "normal",
+    "region": "latam",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://boards.greenhouse.io/quintoandar",
+    "country": "BR",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "pt",
+    "priority": "normal",
+    "region": "latam",
+    "source_type": "greenhouse"
+  },
+  {
+    "base_url": "https://jobs.lever.co/loft",
+    "country": "BR",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "pt",
+    "priority": "normal",
+    "region": "latam",
+    "source_type": "lever"
+  },
+  {
+    "base_url": "https://jobs.lever.co/getninjas",
+    "country": "BR",
+    "crawl_interval_sec": 14400,
+    "kinds": [
+      "job"
+    ],
+    "language": "pt",
+    "priority": "normal",
+    "region": "latam",
+    "source_type": "lever"
+  }
 ]

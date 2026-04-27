@@ -107,13 +107,78 @@ func appendStrList(lb *array.ListBuilder, vals []string) {
 }
 
 // appendF32List appends a non-nullable list-of-float32 (used for
-// embedding vectors). An empty slice appends an empty list (not null).
+// candidate-embedding vectors). An empty slice appends an empty list
+// (not null).
 func appendF32List(lb *array.ListBuilder, vals []float32) {
 	lb.Append(true)
 	vb := lb.ValueBuilder().(*array.Float32Builder)
 	for _, v := range vals {
 		vb.Append(v)
 	}
+}
+
+// appendF32ListAsF64 widens a wire-format []float32 into a List<Double>
+// — used for opportunities.embeddings, where the Iceberg schema is
+// List<Double> for analytics-friendly width-agnostic encoding while
+// the EmbeddingV1 wire payload still ships []float32.
+func appendF32ListAsF64(lb *array.ListBuilder, vals []float32) {
+	lb.Append(true)
+	vb := lb.ValueBuilder().(*array.Float64Builder)
+	for _, v := range vals {
+		vb.Append(float64(v))
+	}
+}
+
+// appendOptBool appends v unconditionally — bool has no natural "null"
+// sentinel; callers that genuinely don't know append null directly.
+// Phase 3.2 keeps Remote nullable in Iceberg but the Go wire type is a
+// plain bool, so we forward false as a real value.
+func appendOptBool(b *array.BooleanBuilder, v bool) {
+	b.Append(v)
+}
+
+// appendOptDeadline appends a *time.Time deadline; null when nil or zero.
+func appendOptDeadline(b *array.TimestampBuilder, t *time.Time) {
+	if t == nil || t.IsZero() {
+		b.AppendNull()
+		return
+	}
+	b.Append(arrow.Timestamp(t.UTC().UnixMicro()))
+}
+
+// attrString returns the string value for key from attrs, or "" when
+// the key is missing or carries a non-string value.
+func attrString(attrs map[string]any, key string) string {
+	if v, ok := attrs[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// attrFloat64 returns the float64 value for key from attrs, or 0 when
+// missing. Zero is a valid float — caller checks "_, ok" semantics by
+// using attrFloat64Opt when nullability matters.
+func attrFloat64Opt(attrs map[string]any, key string) (float64, bool) {
+	if v, ok := attrs[key].(float64); ok {
+		return v, true
+	}
+	return 0, false
+}
+
+// attrTimestamp returns the time value for key from attrs by parsing
+// an RFC3339 string, or zero time when missing/unparseable. Used for
+// the optional deadline column on variants — absent in the legacy
+// VariantIngestedV1 envelope, often present in Attributes.
+func attrTimestamp(attrs map[string]any, key string) time.Time {
+	s, ok := attrs[key].(string)
+	if !ok || s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // makeRecordReader wraps a single RecordBatch into a RecordReader.
@@ -127,13 +192,18 @@ func makeRecordReader(schema *arrow.Schema, rec arrow.RecordBatch) (array.Record
 }
 
 // --------------------------------------------------------------------
-// jobs.variants  (VariantIngestedV1 — all variant pipeline stages
-// write to the same Iceberg table jobs.variants, distinguished by
-// the "stage" field)
+// opportunities.variants  (polymorphic Opportunity — all variant
+// pipeline stages share this Iceberg table, distinguished by the
+// "stage" column)
 // --------------------------------------------------------------------
 
-// BuildVariantIngestedRecord builds an Arrow record for the jobs.variants
-// table from VariantIngestedV1 envelopes.
+// BuildVariantIngestedRecord builds an Arrow record for
+// opportunities.variants from VariantIngestedV1 envelopes.
+//
+// All universal columns read directly from the new event fields. The
+// kind-specific blob lands in `attributes` as JSON; `categories` is
+// comma-joined when present in Attributes (post-Phase-3.1 connectors
+// surface it there until VariantIngestedV1 grows a typed slot).
 func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -143,15 +213,7 @@ func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (
 		if err := json.Unmarshal(raw, &env); err != nil {
 			return nil, fmt.Errorf("decode VariantIngestedV1: %w", err)
 		}
-		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
-		appendVariantFields(b, p.VariantID, p.SourceID, p.ExternalID, p.HardKey, p.Stage,
-			p.Title, p.Company, p.LocationText, p.Country, p.Language,
-			p.RemoteType, p.EmploymentType, p.SalaryMin, p.SalaryMax,
-			p.Currency, p.Description, p.ApplyURL, p.PostedAt, p.ScrapedAt,
-			p.ContentHash, p.RawArchiveRef, p.ModelVersionExtract,
-			p.EventID, p.OccurredAt)
+		appendPolyVariant(b, env.Payload, env.Payload.Stage, env.Payload.ScrapedAt)
 	}
 
 	rec := b.NewRecord()
@@ -160,7 +222,13 @@ func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (
 }
 
 // BuildVariantNormalizedRecord builds for VariantNormalizedV1.
-// Routes to jobs.variants with stage field filled from payload.
+//
+// VariantNormalizedV1 only carries {VariantID, HardKey, Kind,
+// NormalizedAt, Attributes}. The remaining universal columns are
+// recovered from Attributes where the normalizer surfaced them; the
+// rest land null. scraped_at is required, so we substitute
+// NormalizedAt — the writer's timestamp invariant on this table is
+// "the latest stage-event timestamp", not the original scrape moment.
 func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -171,14 +239,28 @@ func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage)
 			return nil, fmt.Errorf("decode VariantNormalizedV1: %w", err)
 		}
 		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
-		appendVariantFields(b, p.VariantID, p.SourceID, p.ExternalID, p.HardKey, p.Stage,
-			p.Title, p.Company, p.LocationText, p.Country, p.Language,
-			p.RemoteType, p.EmploymentType, p.SalaryMin, p.SalaryMax,
-			p.Currency, p.Description, p.ApplyURL, p.PostedAt, p.ScrapedAt,
-			p.ContentHash, p.RawArchiveRef, "" /*model_version_extract not on normalized*/,
-			p.EventID, p.OccurredAt)
+		// Synthesise an Opportunity-shaped record from the slim
+		// stage payload + Attributes.
+		stage := eventsv1.VariantIngestedV1{
+			VariantID:     p.VariantID,
+			HardKey:       p.HardKey,
+			Kind:          p.Kind,
+			Stage:         "normalized",
+			Title:         attrString(p.Attributes, "title"),
+			IssuingEntity: attrString(p.Attributes, "issuing_entity"),
+			AnchorCountry: attrString(p.Attributes, "country"),
+			AnchorRegion:  attrString(p.Attributes, "region"),
+			AnchorCity:    attrString(p.Attributes, "city"),
+			Currency:      attrString(p.Attributes, "currency"),
+			Attributes:    p.Attributes,
+		}
+		if v, ok := attrFloat64Opt(p.Attributes, "amount_min"); ok {
+			stage.AmountMin = v
+		}
+		if v, ok := attrFloat64Opt(p.Attributes, "amount_max"); ok {
+			stage.AmountMax = v
+		}
+		appendPolyVariant(b, stage, "normalized", p.NormalizedAt)
 	}
 
 	rec := b.NewRecord()
@@ -186,9 +268,9 @@ func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage)
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
 
-// BuildVariantValidatedRecord builds for VariantValidatedV1.
-// Routes to jobs.variants — the embedded Normalized payload supplies
-// the variant columns; stage is overwritten as "validated".
+// BuildVariantValidatedRecord builds for VariantValidatedV1. The slim
+// stage event only carries identity + validation result; universal
+// columns land null.
 func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -198,15 +280,14 @@ func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) 
 		if err := json.Unmarshal(raw, &env); err != nil {
 			return nil, fmt.Errorf("decode VariantValidatedV1: %w", err)
 		}
-		v := env.Payload
-		n := v.Normalized
-		appendVariantFields(b, n.VariantID, n.SourceID, n.ExternalID, n.HardKey,
-			"validated",
-			n.Title, n.Company, n.LocationText, n.Country, n.Language,
-			n.RemoteType, n.EmploymentType, n.SalaryMin, n.SalaryMax,
-			n.Currency, n.Description, n.ApplyURL, n.PostedAt, n.ScrapedAt,
-			n.ContentHash, n.RawArchiveRef, "" /*no model_version_extract*/,
-			env.EventID, env.OccurredAt)
+		p := env.Payload
+		stage := eventsv1.VariantIngestedV1{
+			VariantID: p.VariantID,
+			HardKey:   p.HardKey,
+			Kind:      p.Kind,
+			Stage:     "validated",
+		}
+		appendPolyVariant(b, stage, "validated", p.ValidatedAt)
 	}
 
 	rec := b.NewRecord()
@@ -215,8 +296,6 @@ func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) 
 }
 
 // BuildVariantFlaggedRecord builds for VariantFlaggedV1.
-// Routes to jobs.variants. Only variant_id, source_id, stage are
-// meaningful; remaining variant columns are null.
 func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -227,14 +306,13 @@ func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (a
 			return nil, fmt.Errorf("decode VariantFlaggedV1: %w", err)
 		}
 		p := env.Payload
-		appendVariantFields(b, p.VariantID, p.SourceID, "" /*external_id*/, "" /*hard_key*/,
-			"flagged",
-			"" /*title*/, "" /*company*/, "" /*location_text*/, "" /*country*/, "" /*language*/,
-			"" /*remote_type*/, "" /*employment_type*/, 0 /*salary_min*/, 0 /*salary_max*/,
-			"" /*currency*/, "" /*description*/, "" /*apply_url*/,
-			time.Time{} /*posted_at*/, time.Time{} /*scraped_at*/,
-			"" /*content_hash*/, "" /*raw_archive_ref*/, "" /*model_version_extract*/,
-			env.EventID, env.OccurredAt)
+		stage := eventsv1.VariantIngestedV1{
+			VariantID: p.VariantID,
+			HardKey:   p.HardKey,
+			Kind:      p.Kind,
+			Stage:     "flagged",
+		}
+		appendPolyVariant(b, stage, "flagged", p.FlaggedAt)
 	}
 
 	rec := b.NewRecord()
@@ -243,7 +321,6 @@ func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (a
 }
 
 // BuildVariantClusteredRecord builds for VariantClusteredV1.
-// Routes to jobs.variants via the embedded Validated.Normalized chain.
 func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
 	b := array.NewRecordBuilder(pool, ArrowSchemaVariants)
 	defer b.Release()
@@ -253,15 +330,14 @@ func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) 
 		if err := json.Unmarshal(raw, &env); err != nil {
 			return nil, fmt.Errorf("decode VariantClusteredV1: %w", err)
 		}
-		c := env.Payload
-		n := c.Validated.Normalized
-		appendVariantFields(b, n.VariantID, n.SourceID, n.ExternalID, n.HardKey,
-			"clustered",
-			n.Title, n.Company, n.LocationText, n.Country, n.Language,
-			n.RemoteType, n.EmploymentType, n.SalaryMin, n.SalaryMax,
-			n.Currency, n.Description, n.ApplyURL, n.PostedAt, n.ScrapedAt,
-			n.ContentHash, n.RawArchiveRef, "" /*no model_version_extract*/,
-			env.EventID, env.OccurredAt)
+		p := env.Payload
+		stage := eventsv1.VariantIngestedV1{
+			VariantID: p.VariantID,
+			HardKey:   p.HardKey,
+			Kind:      p.Kind,
+			Stage:     "clustered",
+		}
+		appendPolyVariant(b, stage, "clustered", p.ClusteredAt)
 	}
 
 	rec := b.NewRecord()
@@ -269,44 +345,123 @@ func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) 
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
 
-// appendVariantFields is the shared column-append logic for all
-// variant-family builders (same physical Arrow schema = jobs.variants).
-func appendVariantFields(
+// appendPolyVariant writes one row to a polymorphic-Opportunity Arrow
+// builder (variants or published — both share _polyVariantFields).
+//
+// Field offsets MUST stay in lock-step with _polyVariantFields in
+// arrow_schemas.go and the VARIANTS schema in
+// definitions/iceberg/_schemas.py.
+func appendPolyVariant(
 	b *array.RecordBuilder,
-	variantID, sourceID, externalID, hardKey, stage string,
-	title, company, locationText, country, language,
-	remoteType, employmentType string,
-	salaryMin, salaryMax float64,
-	currency, description, applyURL string,
-	postedAt, scrapedAt time.Time,
-	contentHash, rawArchiveRef, modelVersionExtract string,
-	eventID string,
-	occurredAt time.Time,
+	p eventsv1.VariantIngestedV1,
+	stage string,
+	scrapedAt time.Time,
 ) {
-	b.Field(0).(*array.StringBuilder).Append(variantID)
-	b.Field(1).(*array.StringBuilder).Append(sourceID)
-	b.Field(2).(*array.StringBuilder).Append(externalID)
-	b.Field(3).(*array.StringBuilder).Append(hardKey)
-	b.Field(4).(*array.StringBuilder).Append(stage)
-	appendOptStr(b.Field(5).(*array.StringBuilder), title)
-	appendOptStr(b.Field(6).(*array.StringBuilder), company)
-	appendOptStr(b.Field(7).(*array.StringBuilder), locationText)
-	appendOptStr(b.Field(8).(*array.StringBuilder), country)
-	appendOptStr(b.Field(9).(*array.StringBuilder), language)
-	appendOptStr(b.Field(10).(*array.StringBuilder), remoteType)
-	appendOptStr(b.Field(11).(*array.StringBuilder), employmentType)
-	appendOptF64(b.Field(12).(*array.Float64Builder), salaryMin)
-	appendOptF64(b.Field(13).(*array.Float64Builder), salaryMax)
-	appendOptStr(b.Field(14).(*array.StringBuilder), currency)
-	appendOptStr(b.Field(15).(*array.StringBuilder), description)
-	appendOptStr(b.Field(16).(*array.StringBuilder), applyURL)
-	appendOptTS(b.Field(17).(*array.TimestampBuilder), postedAt)
-	appendOptTS(b.Field(18).(*array.TimestampBuilder), scrapedAt)
-	appendOptStr(b.Field(19).(*array.StringBuilder), contentHash)
-	appendOptStr(b.Field(20).(*array.StringBuilder), rawArchiveRef)
-	appendOptStr(b.Field(21).(*array.StringBuilder), modelVersionExtract)
-	b.Field(22).(*array.StringBuilder).Append(eventID)
-	appendTS(b.Field(23).(*array.TimestampBuilder), occurredAt)
+	// 0–6: required identity + discriminators + title.
+	b.Field(0).(*array.StringBuilder).Append(p.VariantID)
+	b.Field(1).(*array.StringBuilder).Append(p.SourceID)
+	b.Field(2).(*array.StringBuilder).Append(p.ExternalID)
+	b.Field(3).(*array.StringBuilder).Append(p.HardKey)
+	b.Field(4).(*array.StringBuilder).Append(p.Kind)
+	b.Field(5).(*array.StringBuilder).Append(stage)
+	b.Field(6).(*array.StringBuilder).Append(p.Title)
+
+	// 7–10: optional descriptors.
+	appendOptStr(b.Field(7).(*array.StringBuilder), p.IssuingEntity)
+	appendOptStr(b.Field(8).(*array.StringBuilder), p.AnchorCountry)
+	appendOptStr(b.Field(9).(*array.StringBuilder), p.AnchorRegion)
+	appendOptStr(b.Field(10).(*array.StringBuilder), p.AnchorCity)
+
+	// 11–12: lat/lon — pulled from Attributes since
+	// VariantIngestedV1 doesn't yet carry typed coordinates.
+	if v, ok := attrFloat64Opt(p.Attributes, "lat"); ok {
+		b.Field(11).(*array.Float64Builder).Append(v)
+	} else {
+		b.Field(11).(*array.Float64Builder).AppendNull()
+	}
+	if v, ok := attrFloat64Opt(p.Attributes, "lon"); ok {
+		b.Field(12).(*array.Float64Builder).Append(v)
+	} else {
+		b.Field(12).(*array.Float64Builder).AppendNull()
+	}
+
+	// 13: remote (bool — append false as a real value).
+	appendOptBool(b.Field(13).(*array.BooleanBuilder), p.Remote)
+
+	// 14: geo_scope — also Attributes-sourced today.
+	appendOptStr(b.Field(14).(*array.StringBuilder), attrString(p.Attributes, "geo_scope"))
+
+	// 15–17: monetary.
+	appendOptStr(b.Field(15).(*array.StringBuilder), p.Currency)
+	appendOptF64(b.Field(16).(*array.Float64Builder), p.AmountMin)
+	appendOptF64(b.Field(17).(*array.Float64Builder), p.AmountMax)
+
+	// 18: deadline — Attributes-sourced (RFC3339 string).
+	deadline := attrTimestamp(p.Attributes, "deadline")
+	appendOptTS(b.Field(18).(*array.TimestampBuilder), deadline)
+
+	// 19: categories — comma-joined string from Attributes (the
+	// Phase 3.1 envelope doesn't carry a typed Categories slot;
+	// connectors stash it in attributes["categories"] until then).
+	appendOptStr(b.Field(19).(*array.StringBuilder), categoriesFromAttrs(p.Attributes))
+
+	// 20: attributes JSON blob.
+	appendOptStr(b.Field(20).(*array.StringBuilder), marshalAttrs(p.Attributes))
+
+	// 21: scraped_at — required.
+	appendTS(b.Field(21).(*array.TimestampBuilder), scrapedAt)
+}
+
+// categoriesFromAttrs joins a categories list from Attributes into a
+// comma-separated string. Accepts either []any or []string. Empty/nil
+// → "".
+func categoriesFromAttrs(attrs map[string]any) string {
+	v, ok := attrs["categories"]
+	if !ok || v == nil {
+		return ""
+	}
+	switch xs := v.(type) {
+	case []string:
+		return joinCSV(xs)
+	case []any:
+		out := make([]string, 0, len(xs))
+		for _, x := range xs {
+			if s, ok := x.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return joinCSV(out)
+	case string:
+		return xs
+	}
+	return ""
+}
+
+func joinCSV(xs []string) string {
+	if len(xs) == 0 {
+		return ""
+	}
+	out := xs[0]
+	for _, s := range xs[1:] {
+		out += "," + s
+	}
+	return out
+}
+
+// marshalAttrs JSON-encodes attrs to a string. Empty/nil → "".
+// Marshal failure (unlikely with map[string]any) returns "" and the
+// caller writes null — losing the blob is preferable to dropping the
+// row, since attributes is a search/diagnostic column and Iceberg
+// commits are append-only.
+func marshalAttrs(attrs map[string]any) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // BuildCanonicalUpsertedRecord and BuildCanonicalExpiredRecord are removed.
@@ -314,7 +469,8 @@ func appendVariantFields(
 // Canonical body is published as R2-slug-direct JSON; expired is a Frame event only.
 
 // --------------------------------------------------------------------
-// jobs.embeddings  (EmbeddingV1)
+// opportunities.embeddings  (EmbeddingV1) — variant-keyed semantic
+// vectors. Wire format remains []float32; Iceberg stores List<Double>.
 // --------------------------------------------------------------------
 
 func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
@@ -327,14 +483,19 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 			return nil, fmt.Errorf("decode EmbeddingV1: %w", err)
 		}
 		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
 
-		b.Field(0).(*array.StringBuilder).Append(p.CanonicalID)
-		appendF32List(b.Field(1).(*array.ListBuilder), p.Vector)
-		b.Field(2).(*array.StringBuilder).Append(p.ModelVersion)
-		b.Field(3).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(4).(*array.TimestampBuilder), p.OccurredAt)
+		// EmbeddingV1 still carries OpportunityID (legacy field name);
+		// Phase 3.x repurposes it as the variant key. ModelVersion is
+		// the closest existing carrier for the kind discriminator;
+		// Phase 4.x will add a typed Kind slot. Until then we leave
+		// kind="" (the Iceberg column is required, so we substitute
+		// "unknown" to keep commits succeeding).
+		b.Field(0).(*array.StringBuilder).Append(p.OpportunityID)
+		kind := "unknown"
+		b.Field(1).(*array.StringBuilder).Append(kind)
+		appendF32ListAsF64(b.Field(2).(*array.ListBuilder), p.Vector)
+		// embedded_at — EmbeddingV1 has no explicit field; use envelope OccurredAt.
+		appendTS(b.Field(3).(*array.TimestampBuilder), env.OccurredAt)
 	}
 
 	rec := b.NewRecord()
@@ -347,7 +508,16 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 // Translated body lives at s3://opportunities-content/jobs/<slug>/<lang>.json (R2-direct).
 
 // --------------------------------------------------------------------
-// jobs.published  (PublishedV1)
+// opportunities.published  (PublishedV1) — Verify-passing variants.
+//
+// Mirrors opportunities.variants column-for-column. PublishedV1's
+// current wire shape ({OpportunityID, Slug, Kind, R2Version,
+// PublishedAt}) is much narrower than the new published schema; the
+// Phase 3.1 transitional payload doesn't yet carry the full polymorphic
+// envelope, so we emit a minimal record (identity + kind + stage +
+// title=slug as a placeholder) and leave the rest null. Phase 4.x will
+// thicken PublishedV1 to mirror VariantIngestedV1 and we'll route
+// straight through appendPolyVariant.
 // --------------------------------------------------------------------
 
 func BuildPublishedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
@@ -360,20 +530,59 @@ func BuildPublishedRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 			return nil, fmt.Errorf("decode PublishedV1: %w", err)
 		}
 		p := env.Payload
-		p.EventID = env.EventID
-		p.OccurredAt = env.OccurredAt
 
-		b.Field(0).(*array.StringBuilder).Append(p.CanonicalID)
-		b.Field(1).(*array.StringBuilder).Append(p.Slug)
-		b.Field(2).(*array.Int32Builder).Append(int32(p.R2Version))
-		appendTS(b.Field(3).(*array.TimestampBuilder), p.PublishedAt)
-		b.Field(4).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(5).(*array.TimestampBuilder), p.OccurredAt)
+		stage := eventsv1.VariantIngestedV1{
+			VariantID:  p.OpportunityID,
+			SourceID:   "",
+			ExternalID: "",
+			HardKey:    "",
+			Kind:       p.Kind,
+			Stage:      "published",
+			Title:      p.Slug, // placeholder until PublishedV1 carries Title.
+		}
+		appendPolyVariant(b, stage, "published", p.PublishedAt)
 	}
 
 	rec := b.NewRecord()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaPublished, rec)
+}
+
+// --------------------------------------------------------------------
+// opportunities.variants_rejected  (Verify-stage rejection sink)
+//
+// One row per VariantRejectedV1 event. Reasons is serialised as a JSON
+// array string so downstream SQL can `JSON_EXTRACT` the first element
+// without a schema change when new categorical reasons are added.
+// --------------------------------------------------------------------
+
+func BuildVariantRejectedRecord(pool memory.Allocator, raws []json.RawMessage) (array.RecordReader, error) {
+	b := array.NewRecordBuilder(pool, ArrowSchemaVariantsRejected)
+	defer b.Release()
+
+	for _, raw := range raws {
+		var env eventsv1.Envelope[eventsv1.VariantRejectedV1]
+		if err := json.Unmarshal(raw, &env); err != nil {
+			return nil, fmt.Errorf("decode VariantRejectedV1: %w", err)
+		}
+		p := env.Payload
+
+		reasonsJSON, err := json.Marshal(p.Reasons)
+		if err != nil {
+			return nil, fmt.Errorf("marshal reasons: %w", err)
+		}
+
+		b.Field(0).(*array.StringBuilder).Append(p.VariantID)
+		b.Field(1).(*array.StringBuilder).Append(p.SourceID)
+		b.Field(2).(*array.StringBuilder).Append(p.Kind)
+		b.Field(3).(*array.StringBuilder).Append(p.Title)
+		b.Field(4).(*array.StringBuilder).Append(string(reasonsJSON))
+		appendTS(b.Field(5).(*array.TimestampBuilder), p.RejectedAt)
+	}
+
+	rec := b.NewRecord()
+	defer rec.Release()
+	return makeRecordReader(ArrowSchemaVariantsRejected, rec)
 }
 
 // --------------------------------------------------------------------
@@ -626,18 +835,26 @@ func BuildPreferencesRecord(pool memory.Allocator, raws []json.RawMessage) (arra
 		p.EventID = env.EventID
 		p.OccurredAt = env.OccurredAt
 
+		// OptIns map → opaque JSON string. Empty/nil maps still serialise
+		// to "{}" rather than NULL so readers always get a parseable
+		// string back, but we mark the column optional in the schema in
+		// case future writers want to drop the field entirely.
+		var optInsStr string
+		if len(p.OptIns) > 0 {
+			out, err := json.Marshal(p.OptIns)
+			if err != nil {
+				return nil, fmt.Errorf("encode PreferencesUpdatedV1.OptIns: %w", err)
+			}
+			optInsStr = string(out)
+		} else {
+			optInsStr = "{}"
+		}
+
 		b.Field(0).(*array.StringBuilder).Append(p.CandidateID)
-		appendOptStr(b.Field(1).(*array.StringBuilder), p.RemotePreference)
-		appendOptI32(b.Field(2).(*array.Int32Builder), p.SalaryMin)
-		appendOptI32(b.Field(3).(*array.Int32Builder), p.SalaryMax)
-		appendOptStr(b.Field(4).(*array.StringBuilder), p.Currency)
-		appendStrList(b.Field(5).(*array.ListBuilder), p.PreferredLocations)
-		appendStrList(b.Field(6).(*array.ListBuilder), p.ExcludedCompanies)
-		appendStrList(b.Field(7).(*array.ListBuilder), p.TargetRoles)
-		appendStrList(b.Field(8).(*array.ListBuilder), p.Languages)
-		appendOptStr(b.Field(9).(*array.StringBuilder), p.Availability)
-		b.Field(10).(*array.StringBuilder).Append(p.EventID)
-		appendTS(b.Field(11).(*array.TimestampBuilder), p.OccurredAt)
+		appendOptStr(b.Field(1).(*array.StringBuilder), optInsStr)
+		appendTS(b.Field(2).(*array.TimestampBuilder), p.UpdatedAt)
+		b.Field(3).(*array.StringBuilder).Append(p.EventID)
+		appendTS(b.Field(4).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
 	rec := b.NewRecord()

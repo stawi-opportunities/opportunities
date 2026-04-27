@@ -1,0 +1,20 @@
+[
+  {
+    "source_type": "generic_html",
+    "base_url": "https://www.daad.de/en/study-and-research-in-germany/scholarships/",
+    "country": "DE",
+    "language": "en",
+    "region": "europe",
+    "crawl_interval_sec": 86400,
+    "priority": "normal",
+    "kinds": [
+      "scholarship"
+    ],
+    "required_attributes_by_kind": {
+      "scholarship": [
+        "deadline",
+        "field_of_study"
+      ]
+    }
+  }
+]

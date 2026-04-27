@@ -10,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
@@ -35,22 +38,33 @@ func (p priorityLabel) toDomain() (domain.Priority, error) {
 
 // SeedEntry is the JSON shape used in every seeds/**/*.json file.
 type SeedEntry struct {
-	SourceType       domain.SourceType `json:"source_type"`
-	BaseURL          string            `json:"base_url"`
-	Country          string            `json:"country"`
+	SourceType domain.SourceType `json:"source_type"`
+	BaseURL    string            `json:"base_url"`
+	Country    string            `json:"country"`
 	// Language is the ISO 639-1 code of postings served by this source
 	// (e.g. "en", "fr", "ja"). Blank entries default to "en" — almost
 	// every legacy seed predates this field.
-	Language         string            `json:"language"`
-	Region           string            `json:"region"`
-	CrawlIntervalSec int               `json:"crawl_interval_sec"`
-	Priority         priorityLabel     `json:"priority"`
+	Language         string        `json:"language"`
+	Region           string        `json:"region"`
+	CrawlIntervalSec int           `json:"crawl_interval_sec"`
+	Priority         priorityLabel `json:"priority"`
+	// Kinds declares which opportunity kinds this seeded source emits.
+	// Blank entries default to ["job"] — every legacy seed predates the
+	// generification work and is a job-only source.
+	Kinds []string `json:"kinds,omitempty"`
+	// RequiredAttributesByKind tightens Spec.KindRequired for this source.
+	// Optional; blank entries default to {}.
+	RequiredAttributesByKind map[string][]string `json:"required_attributes_by_kind,omitempty"`
 }
 
 // LoadAndUpsert walks seedsDir recursively, reads every .json file, unmarshals
 // the entries into []SeedEntry, and upserts each one as a domain.Source.
 // It returns the total number of entries processed (not unique inserts).
-func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.SourceRepository) (int, error) {
+//
+// reg may be nil — when nil, kind validation is skipped (useful for tests
+// that don't load the opportunity registry). In production reg should
+// always be non-nil so seeds with unknown kinds are caught at boot.
+func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.SourceRepository, reg *opportunity.Registry) (int, error) {
 	total := 0
 
 	err := filepath.WalkDir(seedsDir, func(path string, d fs.DirEntry, walkErr error) error {
@@ -77,22 +91,42 @@ func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.Source
 				return fmt.Errorf("%s entry %d: %w", path, i, err)
 			}
 
+			kinds := e.Kinds
+			if len(kinds) == 0 {
+				kinds = []string{"job"}
+			}
+			if reg != nil {
+				for _, k := range kinds {
+					if _, ok := reg.Lookup(k); !ok {
+						return fmt.Errorf("%s entry %d (%s %s): unknown kind %q (known: %v)",
+							path, i, e.SourceType, e.BaseURL, k, reg.Known())
+					}
+				}
+			}
+
+			reqByKind := e.RequiredAttributesByKind
+			if reqByKind == nil {
+				reqByKind = map[string][]string{}
+			}
+
 			now := time.Now().UTC()
 			lang := strings.ToLower(strings.TrimSpace(e.Language))
 			if lang == "" {
 				lang = "en"
 			}
 			src := &domain.Source{
-				Type:             e.SourceType,
-				BaseURL:          e.BaseURL,
-				Country:          e.Country,
-				Language:         lang,
-				Status:           domain.SourceActive,
-				Priority:         prio,
-				CrawlIntervalSec: e.CrawlIntervalSec,
-				HealthScore:      1.0,
-				Config:           "{}",
-				NextCrawlAt:      now,
+				Type:                     e.SourceType,
+				BaseURL:                  e.BaseURL,
+				Country:                  e.Country,
+				Language:                 lang,
+				Status:                   domain.SourceActive,
+				Priority:                 prio,
+				CrawlIntervalSec:         e.CrawlIntervalSec,
+				HealthScore:              1.0,
+				Config:                   "{}",
+				NextCrawlAt:              now,
+				Kinds:                    pq.StringArray(kinds),
+				RequiredAttributesByKind: reqByKind,
 			}
 
 			if err := repo.Upsert(ctx, src); err != nil {

@@ -150,7 +150,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	defer svc.Stop(ctx)
 
 	// Fake source repo + connector. Description is padded past the
-	// 50-char gate so the job passes quality.Check and counts as emitted.
+	// 50-char gate so the job passes opportunity.Verify and counts as emitted.
 	repo := newFakeCrawlerRepo(&domain.Source{
 		BaseModel:        domain.BaseModel{ID: "src_e2e"},
 		Type:             domain.SourceGenericHTML,
@@ -164,20 +164,22 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 
 	reg := connectors.NewRegistry()
 	reg.Register(&fakeConnector{
-		jobs: []domain.ExternalJob{
+		jobs: []domain.ExternalOpportunity{
 			{
-				ExternalID:  "ext-a",
-				Title:       "Backend Engineer",
-				Company:     "Acme",
-				ApplyURL:    "https://acme.example/jobs/ext-a",
-				Description: "We are hiring a backend engineer to own our Go services across the stack.",
+				Kind:          "job",
+				ExternalID:    "ext-a",
+				Title:         "Backend Engineer",
+				IssuingEntity: "Acme",
+				ApplyURL:      "https://acme.example/jobs/ext-a",
+				Description:   "We are hiring a backend engineer to own our Go services across the stack.",
 			},
 			{
-				ExternalID:  "ext-b",
-				Title:       "Data Scientist",
-				Company:     "Acme",
-				ApplyURL:    "https://acme.example/jobs/ext-b",
-				Description: "We are hiring a data scientist focused on analytics tooling and experiment design.",
+				Kind:          "job",
+				ExternalID:    "ext-b",
+				Title:         "Data Scientist",
+				IssuingEntity: "Acme",
+				ApplyURL:      "https://acme.example/jobs/ext-b",
+				Description:   "We are hiring a data scientist focused on analytics tooling and experiment design.",
 			},
 		},
 		raw: []byte("<html>page</html>"),
@@ -200,7 +202,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	reqH := NewCrawlRequestHandler(CrawlRequestDeps{
 		Svc: svc, Sources: repo, Registry: reg, Archive: archive.NewFakeArchive(),
 	})
-	discH := NewSourceDiscoveredHandler(repo)
+	discH := NewSourceDiscoveredHandler(repo, nil)
 	for _, c := range []events.EventI{reqH, fanout, discH} {
 		svc.EventsManager().Add(c)
 	}

@@ -49,6 +49,10 @@ type Config struct {
 
 	// Validation LLM request timeout.
 	ValidationTimeout time.Duration `env:"VALIDATION_TIMEOUT" envDefault:"30s"`
+
+	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
+	// registry. Mounted as a ConfigMap in production at this path.
+	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 }
 
 // Load parses env → Config.

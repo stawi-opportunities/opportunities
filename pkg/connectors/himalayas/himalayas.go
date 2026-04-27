@@ -40,7 +40,7 @@ func (c *Connector) Crawl(_ context.Context, _ domain.Source) connectors.CrawlIt
 type iterator struct {
 	client     *httpx.Client
 	page       int
-	jobs       []domain.ExternalJob
+	jobs       []domain.ExternalOpportunity
 	raw        []byte
 	httpStatus int
 	err        error
@@ -101,7 +101,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 		return false
 	}
 
-	jobs := make([]domain.ExternalJob, 0, len(resp.Jobs))
+	jobs := make([]domain.ExternalOpportunity, 0, len(resp.Jobs))
 	for _, item := range resp.Jobs {
 		// ID may be int or string in the API response.
 		externalID := ""
@@ -117,18 +117,22 @@ func (it *iterator) Next(ctx context.Context) bool {
 			applyURL = item.ExternalURL
 		}
 
-		jobs = append(jobs, domain.ExternalJob{
-			ExternalID:     externalID,
-			Title:          item.Title,
-			Company:        item.CompanyName,
-			LocationText:   item.LocationRestrictions.String(),
-			Description:    item.Excerpt,
-			ApplyURL:       applyURL,
-			Currency:       item.Currency,
-			SalaryMin:      item.MinSalary,
-			SalaryMax:      item.MaxSalary,
-			EmploymentType: item.EmploymentType,
-			RemoteType:     "remote",
+		jobs = append(jobs, domain.ExternalOpportunity{
+			Kind:          "job",
+			ExternalID:    externalID,
+			Title:         item.Title,
+			IssuingEntity: item.CompanyName,
+			LocationText:  item.LocationRestrictions.String(),
+			Description:   item.Excerpt,
+			ApplyURL:      applyURL,
+			Currency:      item.Currency,
+			AmountMin:     item.MinSalary,
+			AmountMax:     item.MaxSalary,
+			Remote:        true,
+			Attributes: map[string]any{
+				"employment_type": item.EmploymentType,
+				"remote_type":     "remote",
+			},
 		})
 	}
 	it.jobs = jobs
@@ -136,7 +140,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 	return true
 }
 
-func (it *iterator) Jobs() []domain.ExternalJob    { return it.jobs }
+func (it *iterator) Items() []domain.ExternalOpportunity   { return it.jobs }
 func (it *iterator) RawPayload() []byte            { return it.raw }
 func (it *iterator) HTTPStatus() int               { return it.httpStatus }
 func (it *iterator) Err() error                    { return it.err }

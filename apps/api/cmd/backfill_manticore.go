@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/pitabwire/util"
+
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
 // r2Snapshotter is the minimal publish interface the backfill needs.
@@ -61,7 +63,7 @@ func backfillManticoreHandler(jm *jobsManticore, snap r2Snapshotter, defaultMinQ
 				skipped++
 				return nil
 			}
-			if uerr := snap.UploadPublicSnapshot(ctx, "jobs/"+row.Slug+".json", snapJSON); uerr != nil {
+			if uerr := snap.UploadPublicSnapshot(ctx, publish.ObjectKey("jobs", row.Slug), snapJSON); uerr != nil {
 				util.Log(ctx).WithError(uerr).WithField("slug", row.Slug).Warn("backfill: upload failed")
 				skipped++
 				return nil

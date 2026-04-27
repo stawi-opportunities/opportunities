@@ -1,6 +1,9 @@
 package eventsv1
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // CVUploadedV1 is emitted by the candidates HTTP upload handler after
 // the raw bytes have been archived to R2 and the plain-text has been
@@ -120,20 +123,19 @@ type CandidateEmbeddingV1 struct {
 	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
 
-// PreferencesUpdatedV1 is emitted by the preferences HTTP endpoint.
-// It carries the complete preferences set for the candidate — each
-// event is a replace-all snapshot, not a delta.
+// PreferencesUpdatedV1 carries the candidate's per-kind preferences as
+// opaque JSON blobs. Each opt-in is the kind-specific preferences struct
+// (JobPreferences, ScholarshipPreferences, etc.) marshalled to JSON.
+// Consumers unmarshal the relevant kind blob into its concrete prefs type.
+//
+// Each event is a replace-all snapshot of the candidate's opt-ins, not
+// a delta. The map key is the kind ID ("job", "scholarship", "tender",
+// "deal", "funding"); a missing key means the candidate has not opted
+// into that kind.
 type PreferencesUpdatedV1 struct {
-	CandidateID        string   `json:"candidate_id"                  parquet:"candidate_id"`
-	RemotePreference   string   `json:"remote_preference,omitempty"   parquet:"remote_preference,optional"`
-	SalaryMin          int      `json:"salary_min,omitempty"          parquet:"salary_min,optional"`
-	SalaryMax          int      `json:"salary_max,omitempty"          parquet:"salary_max,optional"`
-	Currency           string   `json:"currency,omitempty"            parquet:"currency,optional"`
-	PreferredLocations []string `json:"preferred_locations,omitempty" parquet:"preferred_locations,list,optional"`
-	ExcludedCompanies  []string `json:"excluded_companies,omitempty"  parquet:"excluded_companies,list,optional"`
-	TargetRoles        []string `json:"target_roles,omitempty"        parquet:"target_roles,list,optional"`
-	Languages          []string `json:"languages,omitempty"           parquet:"languages,list,optional"`
-	Availability       string   `json:"availability,omitempty"        parquet:"availability,optional"`
+	CandidateID string                     `json:"candidate_id" parquet:"candidate_id"`
+	OptIns      map[string]json.RawMessage `json:"opt_ins"      parquet:"opt_ins"`
+	UpdatedAt   time.Time                  `json:"updated_at"   parquet:"updated_at"`
 
 	EventID    string    `json:"-" parquet:"event_id"`
 	OccurredAt time.Time `json:"-" parquet:"occurred_at"`

@@ -17,6 +17,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 
@@ -37,6 +38,14 @@ func main() {
 		frame.WithConfig(&cfg),
 	)
 	defer svc.Stop(ctx)
+
+	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
+	// later phases consult the registry on the publish/index paths.
+	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	if err != nil {
+		util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
+	}
+	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
 	// Manticore client.
 	mc, err := searchindex.Open(searchindex.Config{

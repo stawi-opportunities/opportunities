@@ -379,7 +379,7 @@ Schema migrations: `searchindex.Apply` is idempotent and applies `ALTER TABLE` f
 
 ## Matchers & onboarding
 
-### `apps/matching/` (renamed from `apps/candidates/`)
+### `apps/matching/` (renamed from `apps/matching/`)
 
 ```
 apps/matching/
@@ -591,7 +591,7 @@ Old job-shaped Iceberg/Manticore artifacts dropped in the migration. The cluster
 
 ### Phase 7 — Matchers + per-kind onboarding
 
-- `apps/candidates/` renamed `apps/matching/`
+- `apps/matching/` renamed `apps/matching/`
 - `Matcher` interface introduced; matchers registered for all five kinds (tender/funding stubs ship disabled)
 - Preferences event becomes polymorphic (`OptIns map[kind]RawMessage`)
 - UI onboarding flows per kind, versioned, with a shared `LocationPicker` component

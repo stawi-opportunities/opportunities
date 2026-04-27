@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/frame"
 
@@ -14,6 +15,13 @@ import (
 // NormalizeHandler consumes VariantIngestedV1, applies deterministic
 // normalization (country codes, remote-type inference), and emits
 // VariantNormalizedV1.
+//
+// The Attributes map flows through verbatim; well-known string keys
+// (location_text, language, employment_type, …) are trimmed and
+// lowercased in place. Universal envelope fields (title,
+// issuing_entity, country, currency, amount_min/max) are mirrored
+// into Attributes so downstream stages can read everything from a
+// single map.
 type NormalizeHandler struct {
 	svc *frame.Service
 }
@@ -57,34 +65,49 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsNormalized, outEnv)
 }
 
-// normalize applies deterministic field cleanup. Rules mirror the
-// legacy pkg/pipeline/handlers/normalize.go but without the Postgres
-// load — we operate purely on the event payload.
+// normalize applies deterministic field cleanup against the universal
+// envelope (and pulls a few well-known string Attributes through the
+// same trim/lower passes).
 func normalize(in eventsv1.VariantIngestedV1) eventsv1.VariantNormalizedV1 {
-	out := eventsv1.VariantNormalizedV1{
-		VariantID:      in.VariantID,
-		SourceID:       in.SourceID,
-		ExternalID:     in.ExternalID,
-		HardKey:        in.HardKey,
-		Stage:          "normalized",
-		Title:          strings.TrimSpace(in.Title),
-		Company:        strings.TrimSpace(in.Company),
-		LocationText:   strings.TrimSpace(in.LocationText),
-		Country:        strings.ToUpper(strings.TrimSpace(in.Country)),
-		Language:       strings.ToLower(strings.TrimSpace(in.Language)),
-		RemoteType:     inferRemoteType(in.RemoteType, in.LocationText),
-		EmploymentType: strings.ToLower(strings.TrimSpace(in.EmploymentType)),
-		SalaryMin:      in.SalaryMin,
-		SalaryMax:      in.SalaryMax,
-		Currency:       strings.ToUpper(strings.TrimSpace(in.Currency)),
-		Description:    strings.TrimSpace(in.Description),
-		ApplyURL:       strings.TrimSpace(in.ApplyURL),
-		PostedAt:       in.PostedAt,
-		ScrapedAt:      in.ScrapedAt,
-		ContentHash:    in.ContentHash,
-		RawArchiveRef:  in.RawArchiveRef,
+	attrs := map[string]any{}
+	for k, v := range in.Attributes {
+		attrs[k] = v
 	}
-	return out
+	if s, ok := attrs["location_text"].(string); ok {
+		attrs["location_text"] = strings.TrimSpace(s)
+	}
+	if s, ok := attrs["language"].(string); ok {
+		attrs["language"] = strings.ToLower(strings.TrimSpace(s))
+	}
+	if s, ok := attrs["employment_type"].(string); ok {
+		attrs["employment_type"] = strings.ToLower(strings.TrimSpace(s))
+	}
+	// remote_type inference uses location_text fallback.
+	loc, _ := attrs["location_text"].(string)
+	rt, _ := attrs["remote_type"].(string)
+	attrs["remote_type"] = inferRemoteType(rt, loc)
+	if s, ok := attrs["description"].(string); ok {
+		attrs["description"] = strings.TrimSpace(s)
+	}
+	if s, ok := attrs["apply_url"].(string); ok {
+		attrs["apply_url"] = strings.TrimSpace(s)
+	}
+
+	// Universal envelope echo as attributes for downstream simplicity.
+	attrs["title"] = strings.TrimSpace(in.Title)
+	attrs["issuing_entity"] = strings.TrimSpace(in.IssuingEntity)
+	attrs["country"] = strings.ToUpper(strings.TrimSpace(in.AnchorCountry))
+	attrs["currency"] = strings.ToUpper(strings.TrimSpace(in.Currency))
+	attrs["amount_min"] = in.AmountMin
+	attrs["amount_max"] = in.AmountMax
+
+	return eventsv1.VariantNormalizedV1{
+		VariantID:    in.VariantID,
+		HardKey:      in.HardKey,
+		Kind:         in.Kind,
+		NormalizedAt: time.Now().UTC(),
+		Attributes:   attrs,
+	}
 }
 
 // inferRemoteType applies the legacy normalize.go heuristic — if the

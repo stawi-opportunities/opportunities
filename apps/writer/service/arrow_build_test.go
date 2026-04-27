@@ -57,6 +57,7 @@ func TestBuildVariantIngestedRecord(t *testing.T) {
 		SourceID:   "acme",
 		ExternalID: "ext-1",
 		HardKey:    "acme|ext-1",
+		Kind:       "job",
 		Stage:      "ingested",
 		Title:      "Go Engineer",
 		ScrapedAt:  now,
@@ -69,21 +70,28 @@ func TestBuildVariantIngestedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 
+	// Column layout (polymorphic VARIANTS schema):
+	//   0=variant_id 1=source_id 2=external_id 3=hard_key
+	//   4=kind 5=stage 6=title 7=issuing_entity ...
+	//   21=scraped_at
 	assert.Equal(t, "var-1", rec.Column(0).(*array.String).Value(0))
 	assert.Equal(t, "acme", rec.Column(1).(*array.String).Value(0))
-	assert.Equal(t, "ingested", rec.Column(4).(*array.String).Value(0))
-	assert.Equal(t, "Go Engineer", rec.Column(5).(*array.String).Value(0))
-	// scraped_at (field 18) — microsecond timestamp
-	assert.False(t, rec.Column(18).IsNull(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "ingested", rec.Column(5).(*array.String).Value(0))
+	assert.Equal(t, "Go Engineer", rec.Column(6).(*array.String).Value(0))
+	// scraped_at — microsecond timestamp at field 21.
+	assert.False(t, rec.Column(21).IsNull(0))
 }
 
 func TestBuildVariantNormalizedRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsNormalized, eventsv1.VariantNormalizedV1{
-		VariantID: "var-2",
-		SourceID:  "beta",
-		HardKey:   "beta|v2",
-		Stage:     "normalized",
-		ScrapedAt: time.Now().UTC(),
+		VariantID:    "var-2",
+		HardKey:      "beta|v2",
+		Kind:         "job",
+		NormalizedAt: time.Now().UTC(),
+		Attributes: map[string]any{
+			"title": "Software Engineer",
+		},
 	})
 	rdr, err := writersvc.BuildVariantNormalizedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -91,20 +99,18 @@ func TestBuildVariantNormalizedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-2", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "normalized", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "normalized", rec.Column(5).(*array.String).Value(0))
 }
 
 func TestBuildVariantValidatedRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsValidated, eventsv1.VariantValidatedV1{
-		VariantID:       "var-3",
-		ValidationScore: 0.9,
-		Normalized: eventsv1.VariantNormalizedV1{
-			VariantID: "var-3",
-			SourceID:  "gamma",
-			HardKey:   "gamma|v3",
-			Stage:     "normalized",
-			ScrapedAt: time.Now().UTC(),
-		},
+		VariantID:    "var-3",
+		HardKey:      "gamma|v3",
+		Kind:         "job",
+		Valid:        true,
+		QualityScore: 0.9,
+		ValidatedAt:  time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildVariantValidatedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -112,14 +118,17 @@ func TestBuildVariantValidatedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-3", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "validated", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "validated", rec.Column(5).(*array.String).Value(0))
 }
 
 func TestBuildVariantFlaggedRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsFlagged, eventsv1.VariantFlaggedV1{
 		VariantID: "var-4",
-		SourceID:  "delta",
+		HardKey:   "delta|v4",
+		Kind:      "job",
 		Reason:    "low_quality",
+		FlaggedAt: time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildVariantFlaggedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -127,23 +136,17 @@ func TestBuildVariantFlaggedRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-4", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "flagged", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "flagged", rec.Column(5).(*array.String).Value(0))
 }
 
 func TestBuildVariantClusteredRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicVariantsClustered, eventsv1.VariantClusteredV1{
-		VariantID: "var-5",
-		ClusterID: "clust-1",
-		Validated: eventsv1.VariantValidatedV1{
-			VariantID: "var-5",
-			Normalized: eventsv1.VariantNormalizedV1{
-				VariantID: "var-5",
-				SourceID:  "epsilon",
-				HardKey:   "epsilon|v5",
-				Stage:     "normalized",
-				ScrapedAt: time.Now().UTC(),
-			},
-		},
+		VariantID:     "var-5",
+		OpportunityID: "opp-1",
+		HardKey:       "epsilon|v5",
+		Kind:          "job",
+		ClusteredAt:   time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildVariantClusteredRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -151,7 +154,8 @@ func TestBuildVariantClusteredRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "var-5", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "clustered", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "clustered", rec.Column(5).(*array.String).Value(0))
 }
 
 // jobs.canonicals and jobs.canonicals_expired Arrow builders removed —
@@ -164,18 +168,18 @@ func TestBuildVariantClusteredRecord(t *testing.T) {
 
 func TestBuildEmbeddingRecord(t *testing.T) {
 	raw := marshalEnv(t, eventsv1.TopicEmbeddings, eventsv1.EmbeddingV1{
-		CanonicalID:  "can-3",
-		Vector:       []float32{0.1, 0.2, 0.3},
-		ModelVersion: "text-embed-v1",
+		OpportunityID: "can-3",
+		Vector:        []float32{0.1, 0.2, 0.3},
+		ModelVersion:  "text-embed-v1",
 	})
 	rdr, err := writersvc.BuildEmbeddingRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
 	defer rdr.Release()
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
+	// Polymorphic EMBEDDINGS schema: 0=variant_id 1=kind 2=vector 3=embedded_at.
 	assert.Equal(t, "can-3", rec.Column(0).(*array.String).Value(0))
-	// vector field (1) is a list; check length
-	vecList := rec.Column(1).(*array.List)
+	vecList := rec.Column(2).(*array.List)
 	start, end := vecList.ValueOffsets(0)
 	assert.EqualValues(t, 3, end-start)
 }
@@ -190,18 +194,23 @@ func TestBuildEmbeddingRecord(t *testing.T) {
 func TestBuildPublishedRecord(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	raw := marshalEnv(t, eventsv1.TopicPublished, eventsv1.PublishedV1{
-		CanonicalID: "can-5",
-		Slug:        "go-engineer-acme",
-		R2Version:   3,
-		PublishedAt: now,
+		OpportunityID: "can-5",
+		Slug:          "go-engineer-acme",
+		Kind:          "job",
+		R2Version:     3,
+		PublishedAt:   now,
 	})
 	rdr, err := writersvc.BuildPublishedRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
 	defer rdr.Release()
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
+	// Polymorphic PUBLISHED mirrors VARIANTS — same column layout.
+	// 0=variant_id 4=kind 5=stage 6=title 21=scraped_at(=published_at).
 	assert.Equal(t, "can-5", rec.Column(0).(*array.String).Value(0))
-	assert.EqualValues(t, 3, rec.Column(2).(*array.Int32).Value(0))
+	assert.Equal(t, "job", rec.Column(4).(*array.String).Value(0))
+	assert.Equal(t, "published", rec.Column(5).(*array.String).Value(0))
+	assert.False(t, rec.Column(21).IsNull(0))
 }
 
 // -----------------------------------------------------------------------
@@ -330,14 +339,16 @@ func TestBuildCandidateEmbeddingRecord(t *testing.T) {
 }
 
 func TestBuildPreferencesRecord(t *testing.T) {
+	jobBlob, _ := json.Marshal(map[string]any{
+		"target_roles": []string{"Backend Engineer"},
+		"salary_min":   80000,
+		"currency":     "USD",
+		"locations":    map[string]any{"cities": []string{"Nairobi", "Lagos"}, "remote_ok": true},
+	})
 	raw := marshalEnv(t, eventsv1.TopicCandidatePreferencesUpdated, eventsv1.PreferencesUpdatedV1{
-		CandidateID:        "cand-5",
-		RemotePreference:   "remote_only",
-		SalaryMin:          80000,
-		SalaryMax:          120000,
-		Currency:           "USD",
-		PreferredLocations: []string{"Nairobi", "Lagos"},
-		TargetRoles:        []string{"Backend Engineer"},
+		CandidateID: "cand-5",
+		OptIns:      map[string]json.RawMessage{"job": jobBlob},
+		UpdatedAt:   time.Now().UTC(),
 	})
 	rdr, err := writersvc.BuildPreferencesRecord(testPool, []json.RawMessage{raw})
 	require.NoError(t, err)
@@ -345,10 +356,12 @@ func TestBuildPreferencesRecord(t *testing.T) {
 	rec, cleanup := readOneRow(t, rdr)
 	defer cleanup()
 	assert.Equal(t, "cand-5", rec.Column(0).(*array.String).Value(0))
-	assert.Equal(t, "remote_only", rec.Column(1).(*array.String).Value(0))
-	locList := rec.Column(5).(*array.List)
-	ls, le := locList.ValueOffsets(0)
-	assert.EqualValues(t, 2, le-ls)
+	// Column 1 is opt_ins_json — a JSON string with the kind-keyed blobs.
+	optInsJSON := rec.Column(1).(*array.String).Value(0)
+	var decoded map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(optInsJSON), &decoded))
+	_, ok := decoded["job"]
+	assert.True(t, ok, "expected job opt-in in opt_ins_json: %s", optInsJSON)
 }
 
 func TestBuildMatchesReadyRecord(t *testing.T) {

@@ -20,6 +20,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 
 	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
@@ -59,6 +60,14 @@ func main() {
 	)
 	defer svc.Stop(ctx)
 
+	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
+	// later phases consult the registry on the publish/index paths.
+	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	if err != nil {
+		util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
+	}
+	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+
 	// Extractor (AI). nil if no inference URL configured — handlers
 	// degrade gracefully.
 	var ex *extraction.Extractor
@@ -70,6 +79,7 @@ func main() {
 			EmbeddingBaseURL: cfg.EmbeddingBaseURL,
 			EmbeddingAPIKey:  cfg.EmbeddingAPIKey,
 			EmbeddingModel:   cfg.EmbeddingModel,
+			Registry:         reg,
 		})
 	}
 
@@ -102,7 +112,7 @@ func main() {
 		"", // no Pages deploy hook for the worker
 	)
 
-	service := workersvc.NewService(svc, ex, publisher, dedupCache, clusterCache, cfg.TranslationLangs)
+	service := workersvc.NewService(svc, ex, publisher, reg, dedupCache, clusterCache, cfg.TranslationLangs)
 
 	// S3-compatible client for the R2 content bucket (used by kv/rebuild
 	// to list jobs/*.json slug files). Reuses the publish bucket credentials.
@@ -119,7 +129,7 @@ func main() {
 		),
 		BaseEndpoint: aws.String(contentBucketEndpoint),
 	})
-	kvRebuilder := workersvc.NewKVRebuilder(r2S3Client, cfg.R2ContentBucket, kvClient)
+	kvRebuilder := workersvc.NewKVRebuilder(r2S3Client, cfg.R2ContentBucket, kvClient, reg)
 
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("POST /_admin/kv/rebuild", workersvc.KVRebuildHandler(kvRebuilder))

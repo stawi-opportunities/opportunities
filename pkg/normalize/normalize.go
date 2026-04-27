@@ -9,7 +9,35 @@ import (
 
 	"github.com/RadhiFadlillah/whatlanggo"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 )
+
+// Normalizer holds optional collaborators (currently a geocoder) that
+// enrich an ExternalOpportunity in-place before the variant is built.
+// It is safe to leave the geocoder nil — Normalize falls back to the
+// raw ExternalToVariant pipeline.
+type Normalizer struct {
+	geocoder *geocode.Geocoder
+}
+
+// New constructs a Normalizer. Pass nil for geocoder to skip
+// gazetteer enrichment (useful in unit tests that don't care about
+// coordinates).
+func New(geocoder *geocode.Geocoder) *Normalizer {
+	return &Normalizer{geocoder: geocoder}
+}
+
+// Normalize converts an ExternalOpportunity into a JobVariant. It
+// mutates ext.AnchorLocation when the bundled gazetteer recognises
+// the city (Lat/Lon and Region get filled in if blank), then
+// delegates to ExternalToVariant for the existing field-level
+// normalisation.
+func (n *Normalizer) Normalize(ext *domain.ExternalOpportunity, sourceID, country, sourceBoard, language string, scrapedAt time.Time) JobVariant {
+	if n != nil && n.geocoder != nil {
+		n.geocoder.Enrich(ext)
+	}
+	return ExternalToVariant(*ext, sourceID, country, sourceBoard, language, scrapedAt)
+}
 
 // JobVariant is the normalised, pipeline-ready representation of one observed
 // job posting. It is an in-memory-only struct — it is never persisted to
@@ -180,17 +208,24 @@ func contentHash(externalID, title, company, location, description string) strin
 	return hex.EncodeToString(h[:])
 }
 
-// ExternalToVariant converts a raw ExternalJob into a normalised JobVariant
+// ExternalToVariant converts a raw ExternalOpportunity into a normalised JobVariant
 // ready for deduplication and storage.
 //
 // language is the ISO 639-1 code declared on the source (e.g. "en", "fr",
 // "ja"). Callers that don't yet track language per source should pass "en".
 // The normalizer will opportunistically override this with a whatlanggo
 // detection when the description is long enough to give a reliable signal.
-func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceBoard, language string, scrapedAt time.Time) JobVariant {
+//
+// Field mapping versus the old ExternalJob shape: job-specific scalars
+// (RemoteType, EmploymentType, Seniority, etc.) and slices (Skills, Roles,
+// Benefits, RequiredSkills, NiceToHaveSkills, ToolsFrameworks, ...) now live
+// under ext.Attributes and are read via the AttrString / AttrStringSlice /
+// AttrFloat helpers. This keeps the same JobVariant wire layout while the
+// connector emits a kind-agnostic ExternalOpportunity.
+func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country, sourceBoard, language string, scrapedAt time.Time) JobVariant {
 	// 1. Trim all text fields.
 	title := strings.TrimSpace(ext.Title)
-	company := strings.TrimSpace(ext.Company)
+	company := strings.TrimSpace(ext.IssuingEntity)
 	location := strings.TrimSpace(ext.LocationText)
 	description := strings.TrimSpace(ext.Description)
 	applyURL := strings.TrimSpace(ext.ApplyURL)
@@ -206,8 +241,11 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceB
 	// 4. Case normalization.
 	country = strings.ToUpper(strings.TrimSpace(country))
 	currency := strings.ToUpper(ext.Currency)
-	remoteType := strings.ToLower(ext.RemoteType)
-	employmentType := strings.ToLower(ext.EmploymentType)
+	remoteType := strings.ToLower(ext.AttrString("remote_type"))
+	if remoteType == "" && ext.Remote {
+		remoteType = "remote"
+	}
+	employmentType := strings.ToLower(ext.AttrString("employment_type"))
 
 	// 5. Compute SHA-256 content hash.
 	hash := contentHash(externalID, title, company, location, description)
@@ -230,13 +268,20 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceB
 	lang := detectLanguage(description, language)
 
 	// Serialize array fields to comma-separated strings for storage.
-	skills := strings.Join(ext.Skills, ", ")
-	roles := strings.Join(ext.Roles, ", ")
-	benefits := strings.Join(ext.Benefits, ", ")
-	urgencySignals := strings.Join(ext.UrgencySignals, ", ")
-	requiredSkills := strings.Join(ext.RequiredSkills, ", ")
-	niceToHaveSkills := strings.Join(ext.NiceToHaveSkills, ", ")
-	toolsFrameworks := strings.Join(ext.ToolsFrameworks, ", ")
+	skills := strings.Join(ext.AttrStringSlice("skills"), ", ")
+	roles := strings.Join(ext.AttrStringSlice("roles"), ", ")
+	benefits := strings.Join(ext.AttrStringSlice("benefits"), ", ")
+	urgencySignals := strings.Join(ext.AttrStringSlice("urgency_signals"), ", ")
+	requiredSkills := strings.Join(ext.AttrStringSlice("required_skills"), ", ")
+	niceToHaveSkills := strings.Join(ext.AttrStringSlice("nice_to_have_skills"), ", ")
+	toolsFrameworks := strings.Join(ext.AttrStringSlice("tools_frameworks"), ", ")
+
+	// Deadline is now *time.Time on ExternalOpportunity. JobVariant still
+	// carries a free-form string (RFC3339 if present, blank otherwise).
+	deadlineStr := ""
+	if ext.Deadline != nil && !ext.Deadline.IsZero() {
+		deadlineStr = ext.Deadline.UTC().Format(time.RFC3339)
+	}
 
 	return JobVariant{
 		ExternalJobID:    externalID,
@@ -251,41 +296,56 @@ func ExternalToVariant(ext domain.ExternalJob, sourceID string, country, sourceB
 		Language:         lang,
 		RemoteType:       remoteType,
 		EmploymentType:   employmentType,
-		SalaryMin:        ext.SalaryMin,
-		SalaryMax:        ext.SalaryMax,
+		SalaryMin:        ext.AmountMin,
+		SalaryMax:        ext.AmountMax,
 		Currency:         currency,
 		Description:      description,
-		Seniority:        strings.ToLower(strings.TrimSpace(ext.Seniority)),
+		Seniority:        strings.ToLower(strings.TrimSpace(ext.AttrString("seniority"))),
 		Skills:           skills,
 		Roles:            roles,
 		Benefits:         benefits,
-		ContactName:      strings.TrimSpace(ext.ContactName),
-		ContactEmail:     strings.TrimSpace(ext.ContactEmail),
-		Department:       strings.TrimSpace(ext.Department),
-		Industry:         strings.TrimSpace(ext.Industry),
-		Education:        strings.TrimSpace(ext.Education),
-		Experience:       strings.TrimSpace(ext.Experience),
-		Deadline:         strings.TrimSpace(ext.Deadline),
-		UrgencyLevel:     strings.ToLower(strings.TrimSpace(ext.UrgencyLevel)),
+		ContactName:      strings.TrimSpace(ext.AttrString("contact_name")),
+		ContactEmail:     strings.TrimSpace(ext.AttrString("contact_email")),
+		Department:       strings.TrimSpace(ext.AttrString("department")),
+		Industry:         strings.TrimSpace(ext.AttrString("industry")),
+		Education:        strings.TrimSpace(ext.AttrString("education")),
+		Experience:       strings.TrimSpace(ext.AttrString("experience")),
+		Deadline:         deadlineStr,
+		UrgencyLevel:     strings.ToLower(strings.TrimSpace(ext.AttrString("urgency_level"))),
 		UrgencySignals:   urgencySignals,
-		HiringTimeline:   strings.ToLower(strings.TrimSpace(ext.HiringTimeline)),
-		InterviewStages:  ext.InterviewStages,
-		HasTakeHome:      ext.HasTakeHome,
-		FunnelComplexity: strings.ToLower(strings.TrimSpace(ext.FunnelComplexity)),
-		CompanySize:      strings.ToLower(strings.TrimSpace(ext.CompanySize)),
-		FundingStage:     strings.ToLower(strings.TrimSpace(ext.FundingStage)),
+		HiringTimeline:   strings.ToLower(strings.TrimSpace(ext.AttrString("hiring_timeline"))),
+		InterviewStages:  int(ext.AttrFloat("interview_stages")),
+		HasTakeHome:      attrBool(ext, "has_take_home"),
+		FunnelComplexity: strings.ToLower(strings.TrimSpace(ext.AttrString("funnel_complexity"))),
+		CompanySize:      strings.ToLower(strings.TrimSpace(ext.AttrString("company_size"))),
+		FundingStage:     strings.ToLower(strings.TrimSpace(ext.AttrString("funding_stage"))),
 		RequiredSkills:   requiredSkills,
 		NiceToHaveSkills: niceToHaveSkills,
 		ToolsFrameworks:  toolsFrameworks,
-		GeoRestrictions:  strings.ToLower(strings.TrimSpace(ext.GeoRestrictions)),
-		TimezoneReq:      strings.TrimSpace(ext.TimezoneReq),
-		ApplicationType:  strings.ToLower(strings.TrimSpace(ext.ApplicationType)),
-		ATSPlatform:      strings.ToLower(strings.TrimSpace(ext.ATSPlatform)),
-		RoleScope:        strings.ToLower(strings.TrimSpace(ext.RoleScope)),
-		TeamSize:         strings.ToLower(strings.TrimSpace(ext.TeamSize)),
-		ReportsTo:        strings.TrimSpace(ext.ReportsTo),
+		GeoRestrictions:  strings.ToLower(strings.TrimSpace(ext.AttrString("geo_restrictions"))),
+		TimezoneReq:      strings.TrimSpace(ext.AttrString("timezone_req")),
+		ApplicationType:  strings.ToLower(strings.TrimSpace(ext.AttrString("application_type"))),
+		ATSPlatform:      strings.ToLower(strings.TrimSpace(ext.AttrString("ats_platform"))),
+		RoleScope:        strings.ToLower(strings.TrimSpace(ext.AttrString("role_scope"))),
+		TeamSize:         strings.ToLower(strings.TrimSpace(ext.AttrString("team_size"))),
+		ReportsTo:        strings.TrimSpace(ext.AttrString("reports_to")),
 		PostedAt:         ext.PostedAt,
 		ScrapedAt:        scrapedAt,
 		ContentHash:      hash,
 	}
+}
+
+// attrBool reads a boolean attribute. Accepts native bool plus the string
+// values commonly emitted by JSON encoders ("true"/"false").
+func attrBool(ext domain.ExternalOpportunity, key string) bool {
+	if ext.Attributes == nil {
+		return false
+	}
+	switch v := ext.Attributes[key].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	return false
 }

@@ -57,7 +57,8 @@ func (h *EmbedHandler) Execute(ctx context.Context, payload any) error {
 		return nil // embedder disabled — search degrades to BM25
 	}
 
-	text := strings.Join([]string{c.Title, c.Company, c.Description}, " · ")
+	desc, _ := c.Attributes["description"].(string)
+	text := strings.Join([]string{c.Title, c.IssuingEntity, desc}, " · ")
 	vec, err := h.extractor.Embed(ctx, text)
 	if err != nil {
 		util.Log(ctx).WithError(err).Warn("embed: provider failed, skipping")
@@ -68,9 +69,9 @@ func (h *EmbedHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	out := eventsv1.EmbeddingV1{
-		CanonicalID:  c.CanonicalID,
-		Vector:       vec,
-		ModelVersion: h.extractor.EmbedModelVersion(),
+		OpportunityID: c.OpportunityID,
+		Vector:        vec,
+		ModelVersion:  h.extractor.EmbedModelVersion(),
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicEmbeddings, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicEmbeddings, outEnv)

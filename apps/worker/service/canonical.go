@@ -8,8 +8,8 @@ import (
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
-	"github.com/rs/xid"
 
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 )
@@ -17,6 +17,13 @@ import (
 // CanonicalHandler merges a newly-clustered variant into the
 // current cluster snapshot (or creates one) and emits
 // CanonicalUpsertedV1.
+//
+// The merge state lives in Valkey via cache.Cache[string,
+// kv.ClusterSnapshot]. Attributes flow forward from
+// VariantValidatedV1 → VariantClusteredV1 → snapshot, then are
+// merged with the snapshot's prior Attributes (newer keys win) and
+// re-emitted on CanonicalUpsertedV1. The materializer's
+// sparseColsForKind reads the per-kind facets out of that map.
 type CanonicalHandler struct {
 	svc   *frame.Service
 	cache cache.Cache[string, kv.ClusterSnapshot]
@@ -53,47 +60,73 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	in := env.Payload
-	n := in.Validated.Normalized
 
-	// Load existing snapshot, if any.
-	prev, _, err := h.cache.Get(ctx, in.ClusterID)
+	prev, _, err := h.cache.Get(ctx, in.OpportunityID)
 	if err != nil {
 		return err
 	}
 
 	now := time.Now().UTC()
 
+	// Merge Attributes — dedup already wrote a refreshed map onto
+	// the snapshot, but the in-flight VariantClusteredV1 also
+	// carries the latest variant's Attributes. Apply both: prev
+	// snapshot first, then this variant's keys win.
+	mergedAttrs := mergeAttributes(prev.Attributes, in.Attributes)
+
+	// Universal-envelope fields are echoed into Attributes by
+	// normalize, so we can read them straight back out for the
+	// merged snapshot. preferNonEmpty falls back to the prior
+	// snapshot when the current variant is missing the field.
+	title := preferNonEmpty(attrStr(mergedAttrs, "title"), prev.Title)
+	issuer := preferNonEmpty(attrStr(mergedAttrs, "issuing_entity"), prev.Company)
+	country := preferNonEmpty(attrStr(mergedAttrs, "country"), prev.Country)
+	currency := preferNonEmpty(attrStr(mergedAttrs, "currency"), prev.Currency)
+	desc := preferLonger(attrStr(mergedAttrs, "description"), prev.Description)
+	lang := preferNonEmpty(attrStr(mergedAttrs, "language"), prev.Language)
+	remoteType := preferNonEmpty(attrStr(mergedAttrs, "remote_type"), prev.RemoteType)
+	applyURL := preferNonEmpty(attrStr(mergedAttrs, "apply_url"), prev.ApplyURL)
+	salaryMin := preferNonZero(attrFloat(mergedAttrs, "amount_min"), prev.SalaryMin)
+	salaryMax := preferNonZero(attrFloat(mergedAttrs, "amount_max"), prev.SalaryMax)
+
+	// CanonicalID == ClusterID == in.OpportunityID. Dedup allocates
+	// the cluster_id; canonical_id is the same xid (one logical
+	// identity per opportunity). The kv_rebuild path reconstructs
+	// this invariant from slug JSON, so they must agree at write
+	// time too.
 	merged := kv.ClusterSnapshot{
-		ClusterID:      in.ClusterID,
-		CanonicalID:    prev.CanonicalID,
-		Slug:           prev.Slug,
-		Title:          preferNonEmpty(n.Title, prev.Title),
-		Company:        preferNonEmpty(n.Company, prev.Company),
-		Description:    preferLonger(n.Description, prev.Description),
-		Country:        preferNonEmpty(n.Country, prev.Country),
-		Language:       preferNonEmpty(n.Language, prev.Language),
-		RemoteType:     preferNonEmpty(n.RemoteType, prev.RemoteType),
-		EmploymentType: preferNonEmpty(n.EmploymentType, prev.EmploymentType),
-		SalaryMin:      preferNonZero(n.SalaryMin, prev.SalaryMin),
-		SalaryMax:      preferNonZero(n.SalaryMax, prev.SalaryMax),
-		Currency:       preferNonEmpty(n.Currency, prev.Currency),
-		Category:       prev.Category,
-		QualityScore:   prev.QualityScore,
-		Status:         "active",
-		LastSeenAt:     now,
-		PostedAt:       n.PostedAt,
-		ApplyURL:       preferNonEmpty(n.ApplyURL, prev.ApplyURL),
+		ClusterID:    in.OpportunityID,
+		CanonicalID:  in.OpportunityID,
+		Slug:         prev.Slug,
+		Kind:         in.Kind,
+		Title:        title,
+		Company:      issuer,
+		Description:  desc,
+		Country:      country,
+		Language:     lang,
+		RemoteType:   remoteType,
+		SalaryMin:    salaryMin,
+		SalaryMax:    salaryMax,
+		Currency:     currency,
+		Status:       "active",
+		LastSeenAt:   now,
+		PostedAt:     prev.PostedAt,
+		ApplyURL:     applyURL,
+		QualityScore: prev.QualityScore,
+		Attributes:   mergedAttrs,
 	}
-	if merged.FirstSeenAt.IsZero() {
+	if prev.FirstSeenAt.IsZero() {
 		merged.FirstSeenAt = now
 	} else {
 		merged.FirstSeenAt = prev.FirstSeenAt
 	}
-	if merged.CanonicalID == "" {
-		merged.CanonicalID = xid.New().String()
-	}
 	if merged.Slug == "" {
-		merged.Slug = merged.CanonicalID // placeholder — Phase 5 replaces with human-readable slug generator
+		// Build a human-readable slug from kind + title + issuer + a short ID suffix.
+		hashSuffix := merged.CanonicalID
+		if len(hashSuffix) > 8 {
+			hashSuffix = hashSuffix[:8]
+		}
+		merged.Slug = domain.BuildSlug(in.Kind, merged.Title, merged.Company, hashSuffix)
 	}
 
 	if err := h.cache.Set(ctx, merged.ClusterID, merged, 0*time.Second); err != nil {
@@ -101,29 +134,21 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	out := eventsv1.CanonicalUpsertedV1{
-		CanonicalID:    merged.CanonicalID,
-		ClusterID:      merged.ClusterID,
-		Slug:           merged.Slug,
-		Title:          merged.Title,
-		Company:        merged.Company,
-		Description:    merged.Description,
-		LocationText:   n.LocationText,
-		Country:        merged.Country,
-		Language:       merged.Language,
-		RemoteType:     merged.RemoteType,
-		EmploymentType: merged.EmploymentType,
-		Seniority:      merged.Seniority,
-		SalaryMin:      merged.SalaryMin,
-		SalaryMax:      merged.SalaryMax,
-		Currency:       merged.Currency,
-		Category:       merged.Category,
-		QualityScore:   merged.QualityScore,
-		Status:         merged.Status,
-		PostedAt:       merged.PostedAt,
-		FirstSeenAt:    merged.FirstSeenAt,
-		LastSeenAt:     merged.LastSeenAt,
-		ExpiresAt:      merged.FirstSeenAt.Add(120 * 24 * time.Hour),
-		ApplyURL:       merged.ApplyURL,
+		OpportunityID: merged.CanonicalID,
+		Slug:          merged.Slug,
+		HardKey:       in.HardKey,
+		Kind:          in.Kind,
+		Title:         merged.Title,
+		IssuingEntity: merged.Company,
+		ApplyURL:      merged.ApplyURL,
+		AnchorCountry: merged.Country,
+		Remote:        merged.RemoteType == "remote",
+		PostedAt:      merged.PostedAt,
+		Currency:      merged.Currency,
+		AmountMin:     merged.SalaryMin,
+		AmountMax:     merged.SalaryMax,
+		Attributes:    merged.Attributes,
+		UpsertedAt:    now,
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicCanonicalsUpserted, out)
 	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv)
@@ -148,4 +173,31 @@ func preferNonZero(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+func attrStr(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func attrFloat(m map[string]any, key string) float64 {
+	if m == nil {
+		return 0
+	}
+	switch v := m[key].(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	}
+	return 0
 }

@@ -12,6 +12,7 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
@@ -22,6 +23,7 @@ type Service struct {
 	svc       *frame.Service
 	extractor *extraction.Extractor
 	publisher *publish.R2Publisher
+	registry  *opportunity.Registry
 
 	dedupCache   cache.Cache[string, string]
 	clusterCache cache.Cache[string, kv.ClusterSnapshot]
@@ -34,6 +36,7 @@ func NewService(
 	svc *frame.Service,
 	ex *extraction.Extractor,
 	publisher *publish.R2Publisher,
+	registry *opportunity.Registry,
 	dedupCache cache.Cache[string, string],
 	clusterCache cache.Cache[string, kv.ClusterSnapshot],
 	translationLangs []string,
@@ -42,6 +45,7 @@ func NewService(
 		svc:              svc,
 		extractor:        ex,
 		publisher:        publisher,
+		registry:         registry,
 		dedupCache:       dedupCache,
 		clusterCache:     clusterCache,
 		translationLangs: translationLangs,
@@ -58,9 +62,9 @@ func (s *Service) Handlers() []events.EventI {
 	return []events.EventI{
 		NewNormalizeHandler(s.svc),
 		NewValidateHandler(s.svc, s.extractor),
-		NewDedupHandler(s.svc, s.dedupCache),
+		NewDedupHandlerWithCluster(s.svc, s.dedupCache, s.clusterCache),
 		NewCanonicalHandler(s.svc, s.clusterCache),
-		newCanonicalFanout(s.svc, s.extractor, s.publisher, s.translationLangs),
+		newCanonicalFanout(s.svc, s.extractor, s.publisher, s.registry, s.translationLangs),
 	}
 }
 
@@ -79,12 +83,13 @@ func newCanonicalFanout(
 	svc *frame.Service,
 	ex *extraction.Extractor,
 	pub *publish.R2Publisher,
+	reg *opportunity.Registry,
 	langs []string,
 ) *canonicalFanout {
 	return &canonicalFanout{
 		embed:     NewEmbedHandler(svc, ex),
 		translate: NewTranslateHandler(svc, ex, langs),
-		publish:   NewPublishHandler(svc, pub),
+		publish:   NewPublishHandler(svc, pub, reg),
 	}
 }
 

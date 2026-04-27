@@ -85,7 +85,7 @@ func TestWorkerPipelineE2E(t *testing.T) {
 
 	// Build the service. We pass nil extractor (validate fail-opens with
 	// score=0.5) and nil publisher (publish handler is a no-op).
-	wsvc := workersvc.NewService(svc, nil, nil, dedupCache, clusterCache, nil)
+	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil)
 
 	// Register a collector on TopicCanonicalsUpserted BEFORE the pipeline
 	// handlers so we can observe the canonical-merge output. We only
@@ -115,17 +115,16 @@ func TestWorkerPipelineE2E(t *testing.T) {
 	// that normalize uppercased it to "KE" on the cluster snapshot.
 	now := time.Now().UTC()
 	in := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventsv1.VariantIngestedV1{
-		VariantID:  "var_pipe_1",
-		SourceID:   "src_pipe",
-		ExternalID: "ext_1",
-		HardKey:    "src_pipe|ext_1",
-		Stage:      "ingested",
-		Title:      "Backend Engineer",
-		Company:    "Acme",
-		Country:    "ke", // lowercase — normalize should uppercase this
-		RemoteType: "",
-		ScrapedAt:  now,
-		PostedAt:   now,
+		VariantID:     "var_pipe_1",
+		SourceID:      "src_pipe",
+		ExternalID:    "ext_1",
+		HardKey:       "src_pipe|ext_1",
+		Kind:          "job",
+		Stage:         "ingested",
+		Title:         "Backend Engineer",
+		IssuingEntity: "Acme",
+		AnchorCountry: "ke", // lowercase — normalize should uppercase this
+		ScrapedAt:     now,
 	})
 	if err := svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsIngested, in); err != nil {
 		t.Fatalf("emit seed event: %v", err)
@@ -156,25 +155,149 @@ func TestWorkerPipelineE2E(t *testing.T) {
 		t.Fatalf("decode canonical envelope: %v", err)
 	}
 	c := canonicalEnv.Payload
-	if c.CanonicalID == "" {
-		t.Fatalf("canonical_id is empty: %+v", c)
+	if c.OpportunityID == "" {
+		t.Fatalf("opportunity_id is empty: %+v", c)
 	}
-	if c.ClusterID == "" {
-		t.Fatalf("cluster_id is empty: %+v", c)
+	if c.Kind != "job" {
+		t.Errorf("kind: got %q, want %q", c.Kind, "job")
+	}
+	if c.Title != "Backend Engineer" {
+		t.Errorf("title: got %q, want %q", c.Title, "Backend Engineer")
+	}
+	if c.IssuingEntity != "Acme" {
+		t.Errorf("issuing_entity: got %q, want %q", c.IssuingEntity, "Acme")
+	}
+	if c.AnchorCountry != "KE" {
+		t.Errorf("anchor_country: got %q, want %q (normalize should uppercase)", c.AnchorCountry, "KE")
+	}
+	if c.Slug == "" {
+		t.Errorf("slug is empty")
 	}
 
-	// Verify the cluster cache holds the snapshot with the normalised country.
-	snap, hit, err := clusterCache.Get(ctx, c.ClusterID)
+	// Cluster snapshot should also reflect the merged state.
+	snap, hit, err := clusterCache.Get(ctx, c.OpportunityID)
 	if err != nil {
-		t.Fatalf("clusterCache.Get(%q): %v", c.ClusterID, err)
+		t.Fatalf("cluster cache get: %v", err)
 	}
 	if !hit {
-		t.Fatalf("no cluster snapshot found for cluster_id=%q", c.ClusterID)
+		t.Fatalf("cluster snapshot missing for opportunity %q", c.OpportunityID)
+	}
+	if snap.Title != "Backend Engineer" {
+		t.Errorf("snap.Title: got %q", snap.Title)
+	}
+	if snap.Company != "Acme" {
+		t.Errorf("snap.Company: got %q", snap.Company)
 	}
 	if snap.Country != "KE" {
-		t.Fatalf("cluster snapshot country not normalized: got %q, want %q", snap.Country, "KE")
+		t.Errorf("snap.Country: got %q", snap.Country)
 	}
-	if snap.CanonicalID == "" {
-		t.Fatalf("cluster snapshot missing canonical_id")
+}
+
+// TestPipeline_ScholarshipPropagatesAttributes drives a scholarship
+// variant through the full normalize → validate → dedup → canonical
+// pipeline and asserts the per-kind facets (field_of_study, degree_level)
+// survive on the emitted CanonicalUpsertedV1.Attributes map. This is
+// the regression guard for the Fix #3 attribute-propagation bug.
+func TestPipeline_ScholarshipPropagatesAttributes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	ctx, svc := frame.NewServiceWithContext(ctx,
+		frame.WithCacheManager(),
+		frame.WithInMemoryCache("worker"),
+		frametests.WithNoopDriver(),
+	)
+	defer svc.Stop(ctx)
+
+	dedupCache, ok := cache.GetCache[string, string](
+		svc.CacheManager(), "worker",
+		func(k string) string { return "dedup:" + k },
+	)
+	if !ok {
+		t.Fatal("dedup cache not wired")
+	}
+	clusterCache, ok := cache.GetCache[string, kv.ClusterSnapshot](
+		svc.CacheManager(), "worker",
+		func(k string) string { return "cluster:" + k },
+	)
+	if !ok {
+		t.Fatal("cluster cache not wired")
+	}
+
+	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil)
+
+	colCanonical := &collector{topic: eventsv1.TopicCanonicalsUpserted}
+	svc.EventsManager().Add(colCanonical)
+
+	handlers := wsvc.Handlers()
+	svc.Init(ctx, frame.WithRegisterEvents(handlers[:4]...))
+
+	go func() { _ = svc.Run(ctx, "") }()
+
+	time.Sleep(300 * time.Millisecond)
+
+	now := time.Now().UTC()
+	in := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventsv1.VariantIngestedV1{
+		VariantID:     "var_sch_1",
+		SourceID:      "src_sch",
+		ExternalID:    "ext_sch_1",
+		HardKey:       "src_sch|ext_sch_1",
+		Kind:          "scholarship",
+		Stage:         "ingested",
+		Title:         "MSc Climate Resilience Fellowship",
+		IssuingEntity: "African Climate Foundation",
+		AnchorCountry: "KE",
+		Attributes: map[string]any{
+			"field_of_study": "Climate",
+			"degree_level":   "masters",
+		},
+		ScrapedAt: now,
+	})
+	if err := svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsIngested, in); err != nil {
+		t.Fatalf("emit seed event: %v", err)
+	}
+
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if colCanonical.Len() > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if colCanonical.Len() == 0 {
+		t.Fatal("pipeline did not produce a CanonicalUpsertedV1 event within timeout")
+	}
+
+	colCanonical.mu.Lock()
+	rawCanonical := colCanonical.got[0]
+	colCanonical.mu.Unlock()
+
+	var env eventsv1.Envelope[eventsv1.CanonicalUpsertedV1]
+	if err := json.Unmarshal(rawCanonical, &env); err != nil {
+		t.Fatalf("decode canonical envelope: %v", err)
+	}
+	c := env.Payload
+
+	if c.Kind != "scholarship" {
+		t.Errorf("kind: got %q, want %q", c.Kind, "scholarship")
+	}
+	if c.Title != "MSc Climate Resilience Fellowship" {
+		t.Errorf("title: got %q", c.Title)
+	}
+	if c.IssuingEntity != "African Climate Foundation" {
+		t.Errorf("issuing_entity: got %q", c.IssuingEntity)
+	}
+	if c.Attributes == nil {
+		t.Fatalf("attributes nil — Fix #3 propagation broken")
+	}
+	if got, want := c.Attributes["field_of_study"], "Climate"; got != want {
+		t.Errorf("attributes[field_of_study]: got %v, want %v", got, want)
+	}
+	if got, want := c.Attributes["degree_level"], "masters"; got != want {
+		t.Errorf("attributes[degree_level]: got %v, want %v", got, want)
+	}
+	if c.Slug == "" {
+		t.Errorf("slug empty")
 	}
 }

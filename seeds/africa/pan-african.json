@@ -1,6 +1,46 @@
 [
-  {"source_type": "njorku", "base_url": "https://www.njorku.com", "country": "", "region": "africa", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.co.ke", "country": "KE", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.co.za", "country": "ZA", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.com.gh", "country": "GH", "region": "africa", "crawl_interval_sec": 7200, "priority": "normal"}
+  {
+    "base_url": "https://www.njorku.com",
+    "country": "",
+    "crawl_interval_sec": 3600,
+    "kinds": [
+      "job"
+    ],
+    "priority": "hot",
+    "region": "africa",
+    "source_type": "njorku"
+  },
+  {
+    "base_url": "https://www.myjobmag.co.ke",
+    "country": "KE",
+    "crawl_interval_sec": 7200,
+    "kinds": [
+      "job"
+    ],
+    "priority": "normal",
+    "region": "africa",
+    "source_type": "myjobmag"
+  },
+  {
+    "base_url": "https://www.myjobmag.co.za",
+    "country": "ZA",
+    "crawl_interval_sec": 7200,
+    "kinds": [
+      "job"
+    ],
+    "priority": "normal",
+    "region": "africa",
+    "source_type": "myjobmag"
+  },
+  {
+    "base_url": "https://www.myjobmag.com.gh",
+    "country": "GH",
+    "crawl_interval_sec": 7200,
+    "kinds": [
+      "job"
+    ],
+    "priority": "normal",
+    "region": "africa",
+    "source_type": "myjobmag"
+  }
 ]

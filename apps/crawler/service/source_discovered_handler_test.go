@@ -38,7 +38,7 @@ func TestSourceDiscoveredUpsertsNewURL(t *testing.T) {
 		BaseModel: domain.BaseModel{ID: "s-origin"},
 		BaseURL:   "https://example.com",
 	}
-	h := NewSourceDiscoveredHandler(repo)
+	h := NewSourceDiscoveredHandler(repo, nil)
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
 		DiscoveredURL: "https://anotherboard.example/careers",
@@ -61,7 +61,7 @@ func TestSourceDiscoveredSkipsSameDomain(t *testing.T) {
 		BaseModel: domain.BaseModel{ID: "s-origin"},
 		BaseURL:   "https://example.com",
 	}
-	h := NewSourceDiscoveredHandler(repo)
+	h := NewSourceDiscoveredHandler(repo, nil)
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
 		DiscoveredURL: "https://example.com/another-page",
@@ -82,7 +82,7 @@ func TestSourceDiscoveredSkipsBlocklistedDomain(t *testing.T) {
 		BaseModel: domain.BaseModel{ID: "s-origin"},
 		BaseURL:   "https://example.com",
 	}
-	h := NewSourceDiscoveredHandler(repo)
+	h := NewSourceDiscoveredHandler(repo, nil)
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
 		DiscoveredURL: "https://linkedin.com/jobs/apply/foo",
@@ -100,7 +100,7 @@ func TestSourceDiscoveredSkipsBlocklistedDomain(t *testing.T) {
 func TestSourceDiscoveredDropsEventIfOriginMissing(t *testing.T) {
 	// No rows seeded in the repo, so GetByID returns (nil, nil) for any id.
 	repo := newFakeUpserter()
-	h := NewSourceDiscoveredHandler(repo)
+	h := NewSourceDiscoveredHandler(repo, nil)
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
 		DiscoveredURL: "https://newboard.example/careers",

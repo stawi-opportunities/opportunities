@@ -1,4 +1,24 @@
 [
-  {"source_type": "brightermonday", "base_url": "https://www.brightermonday.co.ke", "country": "KE", "region": "africa", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "sitemap", "base_url": "https://www.brightermonday.co.ke", "country": "KE", "region": "east_africa", "crawl_interval_sec": 3600, "priority": "hot"}
+  {
+    "base_url": "https://www.brightermonday.co.ke",
+    "country": "KE",
+    "crawl_interval_sec": 3600,
+    "kinds": [
+      "job"
+    ],
+    "priority": "hot",
+    "region": "africa",
+    "source_type": "brightermonday"
+  },
+  {
+    "base_url": "https://www.brightermonday.co.ke",
+    "country": "KE",
+    "crawl_interval_sec": 3600,
+    "kinds": [
+      "job"
+    ],
+    "priority": "hot",
+    "region": "east_africa",
+    "source_type": "sitemap"
+  }
 ]
