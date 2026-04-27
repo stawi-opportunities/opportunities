@@ -441,11 +441,9 @@ func InitIceberg() error {
 			wmKey := "mat:snap:" + tableKey
 			v, err := kv.Get(ctx, wmKey).Result()
 			if err != nil {
-				// Key absent (cold start) — lag equals age of current snapshot.
-				lagMs := currentMs - (time.Now().UnixMilli() - currentMs)
-				if lagMs < 0 {
-					lagMs = 0
-				}
+				// Key absent (cold start) — observe the current-snapshot
+				// timestamp directly; the watermark will populate on the
+				// next materializer commit.
 				o.ObserveFloat64(materializerLagGauge, float64(currentMs)/1000.0,
 					metric.WithAttributes(attribute.String("table", tableKey)))
 				continue

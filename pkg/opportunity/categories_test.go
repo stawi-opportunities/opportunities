@@ -6,7 +6,8 @@ import (
 )
 
 func TestHashCategory_Deterministic(t *testing.T) {
-	if HashCategory("STEM") != HashCategory("STEM") {
+	got := HashCategory("STEM")
+	if got != HashCategory("STEM") {
 		t.Fatal("HashCategory not deterministic")
 	}
 	if HashCategory("STEM") == HashCategory("Arts") {

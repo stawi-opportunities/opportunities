@@ -127,7 +127,7 @@ func waitForLakekeeper(ctx context.Context, client *http.Client, base string) er
 		}
 
 		if time.Now().After(deadline) {
-			return fmt.Errorf("Lakekeeper not ready after %s (last err: %v)", readinessTimeout, err)
+			return fmt.Errorf("lakekeeper not ready after %s (last err: %v)", readinessTimeout, err)
 		}
 		select {
 		case <-ctx.Done():
@@ -153,7 +153,7 @@ func acceptBootstrapTerms(ctx context.Context, client *http.Client, base string)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		util.Log(ctx).Info("bootstrap: accept-terms accepted")
 		return nil
@@ -190,7 +190,7 @@ func ensureWarehouse(ctx context.Context, client *http.Client, base string, cfg 
 	if err != nil {
 		return fmt.Errorf("list warehouses: %w", err)
 	}
-	defer listResp.Body.Close()
+	defer func() { _ = listResp.Body.Close() }()
 	if listResp.StatusCode < 200 || listResp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(listResp.Body, 1024))
 		return fmt.Errorf("list warehouses: status %d: %s", listResp.StatusCode, string(b))
@@ -238,7 +238,7 @@ func ensureWarehouse(ctx context.Context, client *http.Client, base string, cfg 
 	if err != nil {
 		return fmt.Errorf("post warehouse: %w", err)
 	}
-	defer postResp.Body.Close()
+	defer func() { _ = postResp.Body.Close() }()
 	switch {
 	case postResp.StatusCode >= 200 && postResp.StatusCode < 300:
 		log.Info("bootstrap: warehouse registered")

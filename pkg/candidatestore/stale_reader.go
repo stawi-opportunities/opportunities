@@ -133,7 +133,7 @@ func flushStaleMap(m map[string]time.Time, cutoff time.Time, topN *staleHeap) {
 
 // foldStaleBatch updates latest with the max occurred_at per candidate_id from
 // one Arrow RecordBatch.
-func foldStaleBatch(rec arrow.Record, latest map[string]time.Time) {
+func foldStaleBatch(rec arrow.RecordBatch, latest map[string]time.Time) {
 	sc := rec.Schema()
 	cidxCandidateID := sc.FieldIndices("candidate_id")
 	cidxOccurredAt := sc.FieldIndices("occurred_at")
@@ -325,7 +325,7 @@ func (h *staleHeap) sorted() []StaleCandidate {
 // occurred_at) only.)
 // ---------------------------------------------------------------------------
 
-func staleStringCol(rec arrow.Record, colIdx int) *array.String {
+func staleStringCol(rec arrow.RecordBatch, colIdx int) *array.String {
 	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
 		return nil
 	}
@@ -333,7 +333,7 @@ func staleStringCol(rec arrow.Record, colIdx int) *array.String {
 	return c
 }
 
-func staleTimestampCol(rec arrow.Record, colIdx int) *array.Timestamp {
+func staleTimestampCol(rec arrow.RecordBatch, colIdx int) *array.Timestamp {
 	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
 		return nil
 	}
@@ -343,7 +343,7 @@ func staleTimestampCol(rec arrow.Record, colIdx int) *array.Timestamp {
 
 // staleTimestampToTime converts one Timestamp cell to time.Time,
 // respecting the column's TimeUnit from the schema.
-func staleTimestampToTime(rec arrow.Record, colIdx int, col *array.Timestamp, i int) time.Time {
+func staleTimestampToTime(rec arrow.RecordBatch, colIdx int, col *array.Timestamp, i int) time.Time {
 	ts := col.Value(i)
 	field := rec.Schema().Field(colIdx)
 	if tsType, ok := field.Type.(*arrow.TimestampType); ok {
@@ -356,14 +356,8 @@ func staleTimestampToTime(rec arrow.Record, colIdx int, col *array.Timestamp, i 
 	return ts.ToTime(arrow.Microsecond)
 }
 
-// timestampColOrNil returns the Timestamp column at colIdx, or nil if the
-// column is absent or has an unexpected type. Used by reader.go.
-func timestampColOrNil(rec arrow.Record, colIdx int) *array.Timestamp {
-	return staleTimestampCol(rec, colIdx)
-}
-
 // timestampToTime converts row i of a Timestamp column to time.Time,
 // respecting the column's TimeUnit from the schema. Used by reader.go.
-func timestampToTime(rec arrow.Record, colIdx int, col *array.Timestamp, i int) time.Time {
+func timestampToTime(rec arrow.RecordBatch, colIdx int, col *array.Timestamp, i int) time.Time {
 	return staleTimestampToTime(rec, colIdx, col, i)
 }

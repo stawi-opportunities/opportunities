@@ -137,15 +137,6 @@ func appendOptBool(b *array.BooleanBuilder, v bool) {
 	b.Append(v)
 }
 
-// appendOptDeadline appends a *time.Time deadline; null when nil or zero.
-func appendOptDeadline(b *array.TimestampBuilder, t *time.Time) {
-	if t == nil || t.IsZero() {
-		b.AppendNull()
-		return
-	}
-	b.Append(arrow.Timestamp(t.UTC().UnixMicro()))
-}
-
 // attrString returns the string value for key from attrs, or "" when
 // the key is missing or carries a non-string value.
 func attrString(attrs map[string]any, key string) string {
@@ -216,7 +207,7 @@ func BuildVariantIngestedRecord(pool memory.Allocator, raws []json.RawMessage) (
 		appendPolyVariant(b, env.Payload, env.Payload.Stage, env.Payload.ScrapedAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
@@ -263,7 +254,7 @@ func BuildVariantNormalizedRecord(pool memory.Allocator, raws []json.RawMessage)
 		appendPolyVariant(b, stage, "normalized", p.NormalizedAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
@@ -290,7 +281,7 @@ func BuildVariantValidatedRecord(pool memory.Allocator, raws []json.RawMessage) 
 		appendPolyVariant(b, stage, "validated", p.ValidatedAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
@@ -315,7 +306,7 @@ func BuildVariantFlaggedRecord(pool memory.Allocator, raws []json.RawMessage) (a
 		appendPolyVariant(b, stage, "flagged", p.FlaggedAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
@@ -340,7 +331,7 @@ func BuildVariantClusteredRecord(pool memory.Allocator, raws []json.RawMessage) 
 		appendPolyVariant(b, stage, "clustered", p.ClusteredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaVariants, rec)
 }
@@ -498,7 +489,7 @@ func BuildEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 		appendTS(b.Field(3).(*array.TimestampBuilder), env.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaEmbeddings, rec)
 }
@@ -543,7 +534,7 @@ func BuildPublishedRecord(pool memory.Allocator, raws []json.RawMessage) (array.
 		appendPolyVariant(b, stage, "published", p.PublishedAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaPublished, rec)
 }
@@ -580,7 +571,7 @@ func BuildVariantRejectedRecord(pool memory.Allocator, raws []json.RawMessage) (
 		appendTS(b.Field(5).(*array.TimestampBuilder), p.RejectedAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaVariantsRejected, rec)
 }
@@ -616,7 +607,7 @@ func BuildCrawlPageCompletedRecord(pool memory.Allocator, raws []json.RawMessage
 		appendTS(b.Field(11).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaCrawlPageCompleted, rec)
 }
@@ -647,7 +638,7 @@ func BuildSourceDiscoveredRecord(pool memory.Allocator, raws []json.RawMessage) 
 		appendTS(b.Field(6).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaSourcesDiscovered, rec)
 }
@@ -680,7 +671,7 @@ func BuildCVUploadedRecord(pool memory.Allocator, raws []json.RawMessage) (array
 		appendTS(b.Field(8).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaCVUploaded, rec)
 }
@@ -737,7 +728,7 @@ func BuildCVExtractedRecord(pool memory.Allocator, raws []json.RawMessage) (arra
 		appendTS(b.Field(32).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaCVExtracted, rec)
 }
@@ -783,7 +774,7 @@ func BuildCVImprovedRecord(pool memory.Allocator, raws []json.RawMessage) (array
 		appendTS(b.Field(5).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaCVImproved, rec)
 }
@@ -813,7 +804,7 @@ func BuildCandidateEmbeddingRecord(pool memory.Allocator, raws []json.RawMessage
 		appendTS(b.Field(5).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaCandidateEmbeddings, rec)
 }
@@ -857,7 +848,7 @@ func BuildPreferencesRecord(pool memory.Allocator, raws []json.RawMessage) (arra
 		appendTS(b.Field(4).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaPreferences, rec)
 }
@@ -898,7 +889,7 @@ func BuildMatchesReadyRecord(pool memory.Allocator, raws []json.RawMessage) (arr
 		appendTS(b.Field(4).(*array.TimestampBuilder), p.OccurredAt)
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 	return makeRecordReader(ArrowSchemaMatchesReady, rec)
 }

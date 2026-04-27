@@ -159,7 +159,7 @@ func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eve
 
 // decodeEmbeddingRow extracts one row from a RecordBatch that has the
 // embeddings schema (candidate_id, cv_version, vector, model_version, occurred_at).
-func decodeEmbeddingRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.CandidateEmbeddingV1 {
+func decodeEmbeddingRow(rec arrow.RecordBatch, sc *arrow.Schema, i int) eventsv1.CandidateEmbeddingV1 {
 	var row eventsv1.CandidateEmbeddingV1
 
 	if idxs := sc.FieldIndices("candidate_id"); len(idxs) > 0 {
@@ -194,7 +194,7 @@ func decodeEmbeddingRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.Cand
 // preferences schema. The OptIns map is JSON-decoded from the
 // opt_ins_json column (the writer marshals the kind→blob map into a
 // single JSON string to keep the schema kind-agnostic).
-func decodePreferencesRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.PreferencesUpdatedV1 {
+func decodePreferencesRow(rec arrow.RecordBatch, sc *arrow.Schema, i int) eventsv1.PreferencesUpdatedV1 {
 	var row eventsv1.PreferencesUpdatedV1
 
 	if idxs := sc.FieldIndices("candidate_id"); len(idxs) > 0 {
@@ -225,7 +225,7 @@ func decodePreferencesRow(rec arrow.Record, sc *arrow.Schema, i int) eventsv1.Pr
 
 // --- low-level Arrow column helpers ---
 
-func stringColOrNil(rec arrow.Record, colIdx int) *array.String {
+func stringColOrNil(rec arrow.RecordBatch, colIdx int) *array.String {
 	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
 		return nil
 	}
@@ -233,7 +233,7 @@ func stringColOrNil(rec arrow.Record, colIdx int) *array.String {
 	return c
 }
 
-func listColOrNil(rec arrow.Record, colIdx int) *array.List {
+func listColOrNil(rec arrow.RecordBatch, colIdx int) *array.List {
 	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
 		return nil
 	}
@@ -257,20 +257,3 @@ func listFloat32Values(col *array.List, i int) []float32 {
 	return out
 }
 
-// listStringValues extracts []string from row i of a List<string> column.
-func listStringValues(col *array.List, i int) []string {
-	start, end := col.ValueOffsets(i)
-	vals, ok := col.ListValues().(*array.String)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, end-start)
-	for j := int(start); j < int(end); j++ {
-		if vals.IsNull(j) {
-			out = append(out, "")
-		} else {
-			out = append(out, vals.Value(j))
-		}
-	}
-	return out
-}

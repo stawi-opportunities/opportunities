@@ -24,19 +24,6 @@ func writeTempFile(t *testing.T, content string) string {
 	return f.Name()
 }
 
-// patchFile replaces the given path variable with a temp file of given content,
-// and restores the original on cleanup.
-func patchCgroupV2(t *testing.T, content string) {
-	t.Helper()
-	orig := cgroupV2File
-	tmp := writeTempFile(t, content)
-	// Patch the package-level variable via a test-only indirection.
-	// Since cgroupV2File is a const, we test readCgroupV2 by making it
-	// read the temp file. We expose a testable variant below.
-	_ = orig
-	_ = tmp
-}
-
 // TestReadCgroupV2_Number verifies a valid cgroup v2 file returns the value.
 func TestReadCgroupV2_Number(t *testing.T) {
 	path := writeTempFile(t, "1073741824\n")

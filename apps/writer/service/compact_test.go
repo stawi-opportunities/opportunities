@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -218,7 +219,7 @@ func TestCompactPartition_SingleFile_Skipped(t *testing.T) {
 	}
 	// compactPartition with a nil table would panic at Overwrite, but the
 	// single-file check fires before any table access.
-	processed, skipReason, _, _, err := compactPartition(nil, nil, tasks,
+	processed, skipReason, _, _, err := compactPartition(context.TODO(), nil, tasks,
 		CompactConfig{MinFileSize: 64 * 1024 * 1024, MaxInputPerCommit: 20}, "p0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -237,7 +238,7 @@ func TestCompactPartition_AllLarge_Skipped(t *testing.T) {
 		{File: &stubDataFile{path: "a", sizeBytes: 200 * 1024 * 1024}},
 		{File: &stubDataFile{path: "b", sizeBytes: 150 * 1024 * 1024}},
 	}
-	processed, skipReason, _, _, err := compactPartition(nil, nil, tasks,
+	processed, skipReason, _, _, err := compactPartition(context.TODO(), nil, tasks,
 		CompactConfig{MinFileSize: minSize, MaxInputPerCommit: 20}, "p0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -260,7 +261,7 @@ func TestCompactPartition_SelectionNotEnough_Skipped(t *testing.T) {
 		{File: &stubDataFile{path: "b", sizeBytes: 200 * 1024 * 1024}}, // large
 		{File: &stubDataFile{path: "c", sizeBytes: 300 * 1024 * 1024}}, // large
 	}
-	processed, skipReason, _, _, err := compactPartition(nil, nil, tasks,
+	processed, skipReason, _, _, err := compactPartition(context.TODO(), nil, tasks,
 		CompactConfig{MinFileSize: minSize, MaxInputPerCommit: 20}, "p0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
