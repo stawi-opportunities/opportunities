@@ -48,6 +48,28 @@ const (
 	TopicCandidateCVStaleNudge = "candidates.cv.stale_nudge.v1"
 )
 
+// Queue subject names for the durable, retry-safe handlers (per the
+// Frame async decision tree, external-API calls live on Frame Queue
+// not Frame Events). Each subject maps to a NATS JetStream subject
+// under the matching/worker streams (see deployment manifests). The
+// payload format on each is the same envelope as the equivalent
+// event topic — only the transport differs.
+const (
+	// Candidate CV pipeline (apps/matching). The cv-uploaded ingress
+	// stays an HTTP-driven publish; cv-extract / cv-improve / cv-embed
+	// are durable queue consumers that call external LLM endpoints.
+	SubjectCVExtract = "svc.opportunities.matching.cv.extract.v1"
+	SubjectCVImprove = "svc.opportunities.matching.cv.improve.v1"
+	SubjectCVEmbed   = "svc.opportunities.matching.cv.embed.v1"
+
+	// Canonical fan-out (apps/worker). Embed and translate fire
+	// independently after a canonical is upserted. Each is its own
+	// durable subscriber so a transient embed/translate provider
+	// outage doesn't block the publish path.
+	SubjectWorkerEmbed     = "svc.opportunities.worker.embed.v1"
+	SubjectWorkerTranslate = "svc.opportunities.worker.translate.v1"
+)
+
 // AllTopics returns every topic the writer is expected to subscribe
 // to for Phase 1. Kept as a single source of truth so `apps/writer`
 // doesn't drift from the declared topics.

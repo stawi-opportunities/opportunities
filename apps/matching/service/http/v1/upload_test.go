@@ -12,34 +12,32 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
-	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/frametests"
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
-// uploadCollector captures emitted CVUploadedV1 envelopes.
-type uploadCollector struct {
+// queueCollector implements queue.SubscribeWorker. It captures
+// payloads published to the cv-extract subject so the test can
+// assert the upload handler enqueued the right envelope.
+type queueCollector struct {
 	mu  sync.Mutex
-	got []eventsv1.Envelope[eventsv1.CVUploadedV1]
+	got [][]byte
 }
 
-func (c *uploadCollector) Name() string     { return eventsv1.TopicCVUploaded }
-func (c *uploadCollector) PayloadType() any { var raw json.RawMessage; return &raw }
-func (c *uploadCollector) Validate(context.Context, any) error { return nil }
-func (c *uploadCollector) Execute(_ context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
-	var env eventsv1.Envelope[eventsv1.CVUploadedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
-		return err
-	}
+func (c *queueCollector) Handle(_ context.Context, _ map[string]string, payload []byte) error {
 	c.mu.Lock()
-	c.got = append(c.got, env)
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	c.got = append(c.got, append([]byte(nil), payload...))
 	return nil
 }
-func (c *uploadCollector) Len() int { c.mu.Lock(); defer c.mu.Unlock(); return len(c.got) }
+
+func (c *queueCollector) Len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.got)
+}
 
 // fakeTextExtractor returns a hard-coded plain-text extraction.
 type fakeTextExtractor struct{ out string }
@@ -47,19 +45,22 @@ type fakeTextExtractor struct{ out string }
 func (f *fakeTextExtractor) FromPDF(_ []byte) (string, error)  { return f.out, nil }
 func (f *fakeTextExtractor) FromDOCX(_ []byte) (string, error) { return f.out, nil }
 
-func TestUploadHandlerArchivesAndEmits(t *testing.T) {
+func TestUploadHandlerArchivesAndEnqueues(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	col := &queueCollector{}
+
+	const memURL = "mem://cv-extract-test"
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithName("cv-upload-test"),
 		frametests.WithNoopDriver(),
+		frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, memURL),
+		frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, memURL, col),
 	)
 	defer svc.Stop(ctx)
 
-	col := &uploadCollector{}
-	svc.EventsManager().Add(col)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	deps := UploadDeps{
 		Svc:     svc,
@@ -85,7 +86,7 @@ func TestUploadHandlerArchivesAndEmits(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if col.Len() >= 1 {
 			break
@@ -93,14 +94,20 @@ func TestUploadHandlerArchivesAndEmits(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if col.Len() != 1 {
-		t.Fatalf("emitted=%d, want 1", col.Len())
+		t.Fatalf("enqueued=%d, want 1", col.Len())
 	}
-	p := col.got[0].Payload
+	col.mu.Lock()
+	rawEnvelope := col.got[0]
+	col.mu.Unlock()
+
+	var env eventsv1.Envelope[eventsv1.CVUploadedV1]
+	if err := json.Unmarshal(rawEnvelope, &env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	p := env.Payload
 	if p.CandidateID != "cnd_test" || p.CVVersion != 1 || p.RawArchiveRef == "" || p.ExtractedText == "" {
 		t.Fatalf("bad payload: %+v", p)
 	}
-
-	_ = events.EventI(col) // keep import referenced
 }
 
 func TestUploadHandlerRejectsMissingCandidateID(t *testing.T) {

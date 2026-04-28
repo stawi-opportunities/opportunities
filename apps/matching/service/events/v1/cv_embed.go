@@ -25,8 +25,8 @@ type CVEmbedDeps struct {
 	ModelVersion string
 }
 
-// CVEmbedHandler consumes candidates.cv.extracted.v1 and emits
-// candidates.embeddings.v1.
+// CVEmbedHandler consumes the cv-embed queue subject and emits a
+// CandidateEmbeddingV1 event onto the events bus.
 //
 // The input is an extracted payload; the handler composes an embedding
 // text from the stable CV fields (name, bio, skills, roles) and sends
@@ -40,22 +40,13 @@ func NewCVEmbedHandler(deps CVEmbedDeps) *CVEmbedHandler {
 	return &CVEmbedHandler{deps: deps}
 }
 
-func (h *CVEmbedHandler) Name() string { return eventsv1.TopicCVExtracted }
-func (h *CVEmbedHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-func (h *CVEmbedHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
+// Handle implements queue.SubscribeWorker.
+func (h *CVEmbedHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
+	if len(payload) == 0 {
 		return errors.New("cv-embed: empty payload")
 	}
-	return nil
-}
-func (h *CVEmbedHandler) Execute(ctx context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[eventsv1.CVExtractedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return fmt.Errorf("cv-embed: decode: %w", err)
 	}
 	in := env.Payload

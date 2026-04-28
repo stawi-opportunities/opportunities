@@ -15,7 +15,10 @@ import (
 )
 
 // fakeEmbedder returns a canned vector.
-type fakeEmbedder struct{ vec []float32; err error }
+type fakeEmbedder struct {
+	vec []float32
+	err error
+}
 
 func (f *fakeEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
 	return f.vec, f.err
@@ -66,10 +69,12 @@ func TestCVEmbedHandlerEmitsEmbedding(t *testing.T) {
 	inEnv := eventsv1.NewEnvelope(eventsv1.TopicCVExtracted, eventsv1.CVExtractedV1{
 		CandidateID: "cnd_1", CVVersion: 1, Bio: "seasoned backend engineer in Nairobi",
 	})
-	raw, _ := json.Marshal(inEnv)
-	rm := json.RawMessage(raw)
-	if err := h.Execute(ctx, &rm); err != nil {
-		t.Fatalf("Execute: %v", err)
+	raw, err := json.Marshal(inEnv)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := h.Handle(ctx, nil, raw); err != nil {
+		t.Fatalf("Handle: %v", err)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -103,10 +108,11 @@ func TestCVEmbedHandlerReturnsErrorOnEmbedFailure(t *testing.T) {
 	inEnv := eventsv1.NewEnvelope(eventsv1.TopicCVExtracted, eventsv1.CVExtractedV1{
 		CandidateID: "cnd_x", CVVersion: 1, Bio: "experienced developer",
 	})
-	raw, _ := json.Marshal(inEnv)
-	rm := json.RawMessage(raw)
-	err := h.Execute(ctx, &rm)
-	if err == nil {
+	raw, err := json.Marshal(inEnv)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := h.Handle(ctx, nil, raw); err == nil {
 		t.Fatalf("expected error when embedder fails, got nil (Frame redelivery required)")
 	}
 }

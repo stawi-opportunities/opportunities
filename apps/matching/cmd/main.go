@@ -11,7 +11,6 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
-	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/util"
 
 	candidatesconfig "github.com/stawi-opportunities/opportunities/apps/matching/config"
@@ -133,9 +132,21 @@ func main() {
 	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
 
 	// --- Subscription handlers ---
-	// These all require AI. Skip when extractor is unconfigured so the
-	// binary still serves the upload + preferences + match endpoints
-	// in a degraded mode (uploads archive but don't enrich).
+	// CV-pipeline handlers (cv-extract / cv-improve / cv-embed) are
+	// durable Frame Queue subscribers, not Frame Events. Each calls
+	// an external LLM/embedding endpoint that may take seconds and may
+	// fail; the Queue gives us retry-with-backoff + per-subject dead
+	// letters per the Frame async decision tree.
+	//
+	// Skip when extractor is unconfigured so the binary still serves
+	// the upload + preferences + match endpoints in a degraded mode
+	// (uploads archive but don't enrich).
+	prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
+		Svc:      svc,
+		Match:    matchSvc,
+		Matchers: matcherReg,
+		TopK:     50,
+	})
 	if extractor != nil {
 		scorer := cv.NewScorer(extractor)
 		extractH := eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
@@ -155,38 +166,32 @@ func main() {
 			Embedder:     embedderAdapter{extractor},
 			ModelVersion: cfg.EmbeddingModel,
 		})
-		// Parallel fanout: both improveH and embedH subscribe to
-		// TopicCVExtracted. Frame v1.94.1's event registry is one handler
-		// per topic, so we compose them into a single EventI.
-		extractedFanout := parallelFanout{
-			name: improveH.Name(),
-			hs:   []events.EventI{improveH, embedH},
-		}
-		// Preference-update → immediate re-match handler. Subscribes to
-		// TopicCandidatePreferencesUpdated so the candidate sees fresh
-		// matches within seconds of saving preferences (the weekly-digest
-		// cron is the slow path).
-		prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
-			Svc:      svc,
-			Match:    matchSvc,
-			Matchers: matcherReg,
-			TopK:     50,
-		})
-		svc.Init(ctx, frame.WithRegisterEvents(extractH, extractedFanout, prefMatchH))
+		// Wire the cv-pipeline as durable queue subscribers. The upload
+		// HTTP handler publishes onto SubjectCVExtract; cv-extract fans
+		// out to SubjectCVImprove + SubjectCVEmbed; both terminate by
+		// emitting their own events for the writer + materialiser.
+		svc.Init(ctx,
+			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL),
+			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
+			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
+			frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL, embedH),
+			frame.WithRegisterEvents(prefMatchH),
+		)
 	} else {
 		// Even without an extractor we still want preference-update
 		// re-matching, since that path runs the existing match service
 		// (which uses a previously-stored embedding, not a live LLM
-		// call). Wire it in degraded mode so candidates with a CV that
-		// was extracted in a prior run still get re-matched.
-		prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
-			Svc:      svc,
-			Match:    matchSvc,
-			Matchers: matcherReg,
-			TopK:     50,
-		})
-		svc.Init(ctx, frame.WithRegisterEvents(prefMatchH))
-		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscriptions disabled; uploads will archive but not enrich")
+		// call). The upload handler still needs the cv-extract publisher
+		// registered so POST /candidates/cv/upload doesn't fail; with no
+		// subscriber the message lands and is dropped (or retained for
+		// later replay) — explicitly degraded mode.
+		svc.Init(ctx,
+			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
+			frame.WithRegisterEvents(prefMatchH),
+		)
+		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
 
 	// --- HTTP mux ---
@@ -303,31 +308,4 @@ type embedderAdapter struct{ e *extraction.Extractor }
 
 func (a embedderAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
 	return a.e.Embed(ctx, text)
-}
-
-// parallelFanout runs N handlers under one topic (Frame v1.94.1
-// limitation workaround). Errors fail fast — any child error aborts
-// the fanout and Frame redelivers.
-type parallelFanout struct {
-	name string
-	hs   []events.EventI
-}
-
-func (f parallelFanout) Name() string     { return f.name }
-func (f parallelFanout) PayloadType() any { return f.hs[0].PayloadType() }
-func (f parallelFanout) Validate(ctx context.Context, payload any) error {
-	for _, h := range f.hs {
-		if err := h.Validate(ctx, payload); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (f parallelFanout) Execute(ctx context.Context, payload any) error {
-	for _, h := range f.hs {
-		if err := h.Execute(ctx, payload); err != nil {
-			return err
-		}
-	}
-	return nil
 }

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
-	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/frametests"
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
@@ -55,7 +54,8 @@ func (f *fakeEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
 	return []float32{0.11, 0.22, 0.33}, nil
 }
 
-// --- generic collector ---
+// --- generic event collector (still useful for the terminal events
+// that cv-improve / cv-embed emit on the events bus). ---
 
 type envCol[P any] struct {
 	topic string
@@ -63,9 +63,9 @@ type envCol[P any] struct {
 	got   []eventsv1.Envelope[P]
 }
 
-func (c *envCol[P]) Name() string     { return c.topic }
-func (c *envCol[P]) PayloadType() any { var raw json.RawMessage; return &raw }
-func (c *envCol[P]) Validate(context.Context, any) error { return nil }
+func (c *envCol[P]) Name() string                          { return c.topic }
+func (c *envCol[P]) PayloadType() any                      { var raw json.RawMessage; return &raw }
+func (c *envCol[P]) Validate(context.Context, any) error   { return nil }
 func (c *envCol[P]) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[P]
@@ -79,77 +79,74 @@ func (c *envCol[P]) Execute(_ context.Context, payload any) error {
 }
 func (c *envCol[P]) Len() int { c.mu.Lock(); defer c.mu.Unlock(); return len(c.got) }
 
-// --- fanout wrapper: N handlers on the same topic ---
-
-type fanout struct {
-	name string
-	hs   []events.EventI
-}
-
-func (f *fanout) Name() string     { return f.name }
-func (f *fanout) PayloadType() any { return f.hs[0].PayloadType() }
-func (f *fanout) Validate(ctx context.Context, payload any) error {
-	for _, h := range f.hs {
-		if err := h.Validate(ctx, payload); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (f *fanout) Execute(ctx context.Context, payload any) error {
-	for _, h := range f.hs {
-		if err := h.Execute(ctx, payload); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // --- test ---
 
+// TestCandidatesE2EUploadToEmbedding drives the full upload → cv-extract
+// → cv-improve / cv-embed pipeline through Frame's in-memory queue
+// (mem://) so we exercise the production transport without NATS. The
+// cv-extract handler fans out to two queue subjects; cv-improve emits
+// CVImprovedV1 onto the events bus and cv-embed emits
+// CandidateEmbeddingV1.
 func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	const extractURL = "mem://e2e.cv.extract"
+	const improveURL = "mem://e2e.cv.improve"
+	const embedURL = "mem://e2e.cv.embed"
+
+	// Production handlers — constructed with svc (set after init).
+	var extractH *eventv1.CVExtractHandler
+	var improveH *eventv1.CVImproveHandler
+	var embedH *eventv1.CVEmbedHandler
+	// Production handler factories take *frame.Service so we wire up
+	// in two stages: build the service with publishers + placeholder
+	// subscribers (the handlers reference svc), then call Init for the
+	// subscribers. Frame's option pipeline allows constructing handlers
+	// that hold a back-pointer to svc as long as we register them
+	// inside the same NewServiceWithContext call as svc itself.
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithName("candidates-e2e"),
 		frametests.WithNoopDriver(),
+		frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, extractURL),
+		frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, improveURL),
+		frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, embedURL),
 	)
 	defer svc.Stop(ctx)
 
-	// Output-topic collectors.
-	extractedCol := &envCol[eventsv1.CVExtractedV1]{topic: eventsv1.TopicCVExtracted}
-	improvedCol := &envCol[eventsv1.CVImprovedV1]{topic: eventsv1.TopicCVImproved}
-	embeddingCol := &envCol[eventsv1.CandidateEmbeddingV1]{topic: eventsv1.TopicCandidateEmbedding}
-	prefsCol := &envCol[eventsv1.PreferencesUpdatedV1]{topic: eventsv1.TopicCandidatePreferencesUpdated}
-
-	// Production handlers.
-	extractH := eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
+	extractH = eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
 		Svc:       svc,
 		Extractor: &fakeExtractor{fields: &extraction.CVFields{Name: "Jane", Bio: "backend engineer"}},
 		Scorer:    &fakeScorer{},
 	})
-	improveH := eventv1.NewCVImproveHandler(eventv1.CVImproveDeps{
+	improveH = eventv1.NewCVImproveHandler(eventv1.CVImproveDeps{
 		Svc: svc, Fixes: &fakeFixes{},
 	})
-	embedH := eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
+	embedH = eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
 		Svc: svc, Embedder: &fakeEmbedder{},
 	})
 
-	// Both improveH and embedH subscribe to TopicCVExtracted. Wrap
-	// them + the extractedCol as a single fanout registered under that
-	// topic.
-	extractedFanout := &fanout{
-		name: eventsv1.TopicCVExtracted,
-		hs:   []events.EventI{extractedCol, improveH, embedH},
-	}
-	svc.EventsManager().Add(extractH)        // TopicCVUploaded
-	svc.EventsManager().Add(extractedFanout) // TopicCVExtracted
-	svc.EventsManager().Add(improvedCol)     // TopicCVImproved
-	svc.EventsManager().Add(embeddingCol)    // TopicCandidateEmbedding
-	svc.EventsManager().Add(prefsCol)        // TopicCandidatePreferencesUpdated
+	// Register subscribers post-construction.
+	svc.Init(ctx,
+		frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, extractURL, extractH),
+		frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, improveURL, improveH),
+		frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, embedURL, embedH),
+	)
+
+	// Terminal-event collectors — cv-improve emits CVImprovedV1, cv-embed
+	// emits CandidateEmbeddingV1, and the preferences flow emits
+	// PreferencesUpdatedV1. These all stay on the events bus because
+	// they are fast/internal — only the external-LLM stages were
+	// migrated to Queue.
+	improvedCol := &envCol[eventsv1.CVImprovedV1]{topic: eventsv1.TopicCVImproved}
+	embeddingCol := &envCol[eventsv1.CandidateEmbeddingV1]{topic: eventsv1.TopicCandidateEmbedding}
+	prefsCol := &envCol[eventsv1.PreferencesUpdatedV1]{topic: eventsv1.TopicCandidatePreferencesUpdated}
+	svc.EventsManager().Add(improvedCol)
+	svc.EventsManager().Add(embeddingCol)
+	svc.EventsManager().Add(prefsCol)
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(250 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 
 	// --- POST /candidates/cv/upload ---
 	uploadHandler := httpv1.UploadHandler(httpv1.UploadDeps{
@@ -173,13 +170,10 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if extractedCol.Len() >= 1 && improvedCol.Len() >= 1 && embeddingCol.Len() >= 1 {
+		if improvedCol.Len() >= 1 && embeddingCol.Len() >= 1 {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
-	}
-	if extractedCol.Len() != 1 {
-		t.Fatalf("extracted=%d, want 1", extractedCol.Len())
 	}
 	if improvedCol.Len() != 1 {
 		t.Fatalf("improved=%d, want 1", improvedCol.Len())

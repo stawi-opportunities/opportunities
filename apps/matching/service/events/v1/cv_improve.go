@@ -37,8 +37,9 @@ type CVImproveDeps struct {
 	ModelVersion string
 }
 
-// CVImproveHandler consumes candidates.cv.extracted.v1 and emits
-// candidates.cv.improved.v1.
+// CVImproveHandler consumes the cv-improve queue subject and emits a
+// CVImprovedV1 event (kept on the events bus because it is purely
+// internal/UI-facing — fast and not externally consumed).
 type CVImproveHandler struct {
 	deps CVImproveDeps
 }
@@ -47,22 +48,19 @@ func NewCVImproveHandler(deps CVImproveDeps) *CVImproveHandler {
 	return &CVImproveHandler{deps: deps}
 }
 
-func (h *CVImproveHandler) Name() string { return eventsv1.TopicCVExtracted }
-func (h *CVImproveHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-func (h *CVImproveHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
+// Handle implements queue.SubscribeWorker. Failure modes:
+//   - fix-generator outage → log + emit empty fixes (fail-open: a
+//     transient AI outage shouldn't block the pipeline)
+//   - emit failure → return error so Frame redelivers
+//
+// Idempotency: re-delivery yields the same envelope (candidate_id +
+// cv_version is the dedup key downstream).
+func (h *CVImproveHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
+	if len(payload) == 0 {
 		return errors.New("cv-improve: empty payload")
 	}
-	return nil
-}
-func (h *CVImproveHandler) Execute(ctx context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[eventsv1.CVExtractedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return fmt.Errorf("cv-improve: decode: %w", err)
 	}
 	in := env.Payload

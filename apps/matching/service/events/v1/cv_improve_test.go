@@ -20,6 +20,9 @@ func (f *fakeFixGenerator) Generate(_ context.Context, _ *eventsv1.CVExtractedV1
 	return f.fixes, nil
 }
 
+// improvedCollector subscribes to TopicCVImproved on Frame's events
+// bus (cv-improve still emits an event since the consumer is purely
+// internal/UI-facing — fast and bounded).
 type improvedCollector struct {
 	mu  sync.Mutex
 	got []eventsv1.Envelope[eventsv1.CVImprovedV1]
@@ -67,10 +70,12 @@ func TestCVImproveHandlerEmitsImproved(t *testing.T) {
 	inEnv := eventsv1.NewEnvelope(eventsv1.TopicCVExtracted, eventsv1.CVExtractedV1{
 		CandidateID: "cnd_1", CVVersion: 1, ScoreOverall: 70,
 	})
-	raw, _ := json.Marshal(inEnv)
-	rm := json.RawMessage(raw)
-	if err := h.Execute(ctx, &rm); err != nil {
-		t.Fatalf("Execute: %v", err)
+	raw, err := json.Marshal(inEnv)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := h.Handle(ctx, nil, raw); err != nil {
+		t.Fatalf("Handle: %v", err)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)

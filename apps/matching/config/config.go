@@ -61,4 +61,15 @@ type CandidatesConfig struct {
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
+
+	// CV-pipeline queue subject URLs. The cv-extract / cv-improve /
+	// cv-embed handlers are durable Frame Queue subscribers (per the
+	// async decision tree: external LLM calls + long-running work →
+	// Queue, not Events). Each maps to its own NATS subject under
+	// the svc_opportunities_matching stream so per-stage backpressure
+	// + dead-letter behaviour is independent. Empty defaults to the
+	// in-memory driver so local dev / tests work without NATS.
+	CVExtractQueueURL string `env:"CV_EXTRACT_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
+	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
+	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
 }

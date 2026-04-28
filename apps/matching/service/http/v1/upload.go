@@ -127,9 +127,19 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 			ExtractedText: text,
 		}
 		env := eventsv1.NewEnvelope(eventsv1.TopicCVUploaded, payload)
-		if err := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCVUploaded, env); err != nil {
-			log.WithError(err).Error("upload: emit failed")
-			http.Error(w, `{"error":"emit failed"}`, http.StatusInternalServerError)
+		envBytes, marshalErr := json.Marshal(env)
+		if marshalErr != nil {
+			log.WithError(marshalErr).Error("upload: marshal failed")
+			http.Error(w, `{"error":"marshal failed"}`, http.StatusInternalServerError)
+			return
+		}
+		// Publish onto the durable cv-extract queue subject. The
+		// extract handler is a Frame Queue subscriber (external LLM
+		// call), not a Frame Event handler, so it survives restarts +
+		// retries with backoff if Cloudflare AI Gateway is flaky.
+		if pubErr := deps.Svc.QueueManager().Publish(ctx, eventsv1.SubjectCVExtract, envBytes); pubErr != nil {
+			log.WithError(pubErr).Error("upload: publish failed")
+			http.Error(w, `{"error":"publish failed"}`, http.StatusInternalServerError)
 			return
 		}
 

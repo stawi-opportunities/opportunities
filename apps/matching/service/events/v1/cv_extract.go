@@ -1,14 +1,13 @@
-// Package v1 holds the Phase 5 event subscription handlers for
+// Package v1 holds the candidate-CV pipeline subscribers for
 // apps/matching — cv-extract, cv-improve, cv-embed. Each implements
-// Frame's events.EventI contract.
+// Frame's queue.SubscribeWorker contract so the chain is durable and
+// retry-safe in the face of transient LLM/embedding failures.
 //
-// TODO(golang-patterns): cv-extract, cv-improve, and cv-embed all call
-// external LLM/embedding endpoints (Cloudflare AI Gateway, TEI). Per
-// the Frame decision tree these should be Queue subscribers (durable,
-// external-IO-tolerant) rather than Events (fast in-process). Migrate
-// once the pipeline's chaining semantics can be expressed as
-// pub/sub-with-retry; today the per-event Validate gate and the
-// EventsManager.Emit fan-in pattern make Queue conversion non-trivial.
+// External LLM/embedding calls (Cloudflare AI Gateway, TEI) take
+// seconds and may fail; per the Frame async decision tree the right
+// abstraction is Frame Queue, not Frame Events. The chain semantics
+// (cv_uploaded → cv_extracted → cv_improved → cv_embedded) are
+// unchanged; only the underlying delivery mechanism differs.
 package v1
 
 import (
@@ -56,35 +55,42 @@ type CVExtractDeps struct {
 	Scorer                CVScorer
 	ExtractorModelVersion string
 	ScorerModelVersion    string
+	// PublishRef is the queue publisher reference used to forward
+	// CVExtractedV1 envelopes to the cv-improve / cv-embed stages.
+	// Defaults to SubjectCVImprove when empty (the cv-extract handler
+	// emits to BOTH improve and embed; see Handle).
+	PublishImproveRef string
+	PublishEmbedRef   string
 }
 
-// CVExtractHandler consumes candidates.cv.uploaded.v1 and emits
-// candidates.cv.extracted.v1.
+// CVExtractHandler consumes the cv-extract queue subject and publishes
+// CVExtractedV1 envelopes to the improve + embed subjects.
 type CVExtractHandler struct {
 	deps CVExtractDeps
 }
 
 // NewCVExtractHandler wires the handler.
 func NewCVExtractHandler(deps CVExtractDeps) *CVExtractHandler {
+	if deps.PublishImproveRef == "" {
+		deps.PublishImproveRef = eventsv1.SubjectCVImprove
+	}
+	if deps.PublishEmbedRef == "" {
+		deps.PublishEmbedRef = eventsv1.SubjectCVEmbed
+	}
 	return &CVExtractHandler{deps: deps}
 }
 
-func (h *CVExtractHandler) Name() string { return eventsv1.TopicCVUploaded }
-func (h *CVExtractHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-func (h *CVExtractHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
+// Handle implements queue.SubscribeWorker. The candidate_id +
+// cv_version pair is the dedup key — re-delivery from NATS won't
+// double-write because the downstream writer keys on (candidate_id,
+// cv_version) and the LLM extraction itself is content-deterministic
+// modulo provider variance.
+func (h *CVExtractHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
+	if len(payload) == 0 {
 		return errors.New("cv-extract: empty payload")
 	}
-	return nil
-}
-func (h *CVExtractHandler) Execute(ctx context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[eventsv1.CVUploadedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return fmt.Errorf("cv-extract: decode: %w", err)
 	}
 	in := env.Payload
@@ -137,8 +143,18 @@ func (h *CVExtractHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	envOut := eventsv1.NewEnvelope(eventsv1.TopicCVExtracted, out)
-	if err := h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCVExtracted, envOut); err != nil {
-		return fmt.Errorf("cv-extract: emit: %w", err)
+	body, err := json.Marshal(envOut)
+	if err != nil {
+		return fmt.Errorf("cv-extract: marshal: %w", err)
+	}
+	// Fan out to both improve + embed. Each is its own durable
+	// consumer; failures in one don't block the other.
+	qm := h.deps.Svc.QueueManager()
+	if err := qm.Publish(ctx, h.deps.PublishImproveRef, body); err != nil {
+		return fmt.Errorf("cv-extract: publish improve: %w", err)
+	}
+	if err := qm.Publish(ctx, h.deps.PublishEmbedRef, body); err != nil {
+		return fmt.Errorf("cv-extract: publish embed: %w", err)
 	}
 	log.WithField("score_overall", out.ScoreOverall).Info("cv-extract: done")
 	return nil
