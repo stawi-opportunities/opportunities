@@ -49,10 +49,12 @@ func (c *collector) Len() int {
 // canonical chain using Frame's in-memory pub/sub and in-memory cache.
 // No external services are required.
 //
-// The canonicalFanout handler (embed/translate/publish) is intentionally
-// excluded from this test to avoid a Name-keyed registry collision with the
-// canonical collector registered on TopicCanonicalsUpserted. Embed, translate,
-// and publish are all no-ops when extractor/publisher are nil anyway.
+// The publish handler (handlers[4]) is intentionally excluded to avoid a
+// Name-keyed registry collision with the canonical collector registered on
+// TopicCanonicalsUpserted. Publish is a no-op when publisher is nil anyway.
+// The canonical handler still attempts to publish to the embed/translate
+// queue subjects but that fails open with a warn-log when the publishers
+// are not registered (which is fine for this test).
 func TestWorkerPipelineE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

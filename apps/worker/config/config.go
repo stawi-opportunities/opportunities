@@ -53,6 +53,16 @@ type Config struct {
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
+
+	// Canonical-fanout queue subject URLs. The embed + translate
+	// handlers are durable Frame Queue subscribers (per the async
+	// decision tree: external LLM calls + long-running work →
+	// Queue, not Events). Each maps to its own NATS subject under
+	// the svc_opportunities_events stream so per-stage backpressure
+	// + dead-letter behaviour is independent. Empty defaults to the
+	// in-memory driver so local dev / tests work without NATS.
+	WorkerEmbedQueueURL     string `env:"WORKER_EMBED_QUEUE_URL"     envDefault:"mem://svc.opportunities.worker.embed.v1"`
+	WorkerTranslateQueueURL string `env:"WORKER_TRANSLATE_QUEUE_URL" envDefault:"mem://svc.opportunities.worker.translate.v1"`
 }
 
 // Load parses env → Config.

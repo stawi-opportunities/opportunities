@@ -16,9 +16,15 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
-// TranslateHandler consumes CanonicalUpsertedV1 and emits one
-// TranslationV1 per configured target language. If TranslationLangs
-// is empty the handler is a no-op.
+// TranslateHandler is a Frame Queue subscriber on
+// SubjectWorkerTranslate. It receives a CanonicalUpsertedV1 envelope
+// and emits one TranslationV1 per configured target language. If
+// TranslationLangs is empty the handler is a no-op.
+//
+// Translation calls are external LLM I/O (Groq) that may take seconds
+// and may fail. Per the Frame async decision tree these belong on a
+// Queue with retry/backoff, not on the events bus. The dedup key is
+// opportunity_id + lang + canonical_revision, so re-delivery is safe.
 type TranslateHandler struct {
 	svc       *frame.Service
 	extractor *extraction.Extractor
@@ -30,33 +36,16 @@ func NewTranslateHandler(svc *frame.Service, ex *extraction.Extractor, langs []s
 	return &TranslateHandler{svc: svc, extractor: ex, langs: langs}
 }
 
-// Name returns the topic this handler consumes (canonical upserts).
-func (h *TranslateHandler) Name() string { return eventsv1.TopicCanonicalsUpserted }
-
-// PayloadType ...
-func (h *TranslateHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate ...
-func (h *TranslateHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("translate: empty payload")
-	}
-	return nil
-}
-
-// Execute translates into each configured target lang. Skips langs
-// already matching the canonical's own language.
-func (h *TranslateHandler) Execute(ctx context.Context, payload any) error {
+// Handle implements queue.SubscribeWorker.
+func (h *TranslateHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	if len(h.langs) == 0 || h.extractor == nil {
 		return nil
 	}
-	raw := payload.(*json.RawMessage)
+	if len(payload) == 0 {
+		return errors.New("translate: empty payload")
+	}
 	var env eventsv1.Envelope[eventsv1.CanonicalUpsertedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return err
 	}
 	c := env.Payload

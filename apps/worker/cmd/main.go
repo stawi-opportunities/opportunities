@@ -11,12 +11,12 @@ import (
 	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/util"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -37,26 +37,15 @@ func main() {
 	// Build a Valkey-backed raw cache and register it with Frame
 	// under a single name. Two typed views on it — one for dedup
 	// (hard_key → cluster_id) and one for cluster snapshots — are
-	// taken below via GetCache with different keyFuncs.
+	// taken below via GetCache with different keyFuncs. The same
+	// RawCache is also the backing store for the kv-rebuild path
+	// (replaces the prior direct go-redis client; see kv_rebuild.go
+	// for the GET+conditional-SET pattern that takes the place of
+	// the previous Lua-CAS script).
 	raw, err := framevalkey.New(cache.WithDSN(data.DSN(cfg.ValkeyURL)))
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("worker: valkey cache open")
 	}
-
-	// Direct go-redis client on the same Valkey instance, used by the
-	// KV rebuild admin endpoint which writes raw JSON rather than going
-	// through Frame's typed cache layer.
-	//
-	// TODO(golang-patterns): Frame's cache.Manager covers typed CRUD but
-	// the KV rebuild path needs a Lua-CAS script to atomically merge
-	// last_seen_at across parallel pages — Frame doesn't expose EVAL/
-	// SCRIPT yet, so we keep a direct go-redis client here. Track in
-	// pkg/counters too. Revisit when frame/cache/valkey adds Eval.
-	kvOpts, err := redis.ParseURL(cfg.ValkeyURL)
-	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("worker: parse valkey URL")
-	}
-	kvClient := redis.NewClient(kvOpts)
 
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithConfig(&cfg),
@@ -138,13 +127,23 @@ func main() {
 		),
 		BaseEndpoint: aws.String(contentBucketEndpoint),
 	})
-	kvRebuilder := workersvc.NewKVRebuilder(r2S3Client, cfg.R2ContentBucket, kvClient, reg)
+	kvRebuilder := workersvc.NewKVRebuilder(r2S3Client, cfg.R2ContentBucket, raw, reg)
 
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("POST /_admin/kv/rebuild", workersvc.KVRebuildHandler(kvRebuilder))
 
+	// Register the worker pipeline:
+	//   - Frame Events for fast in-process stages (normalize, validate,
+	//     dedup, canonical, publish).
+	//   - Frame Queue for external-LLM stages (embed, translate). Each
+	//     gets its own subject + durable consumer so per-stage
+	//     backpressure is independent.
 	svc.Init(ctx,
-		frame.WithRegisterEvents(service.Handlers()...),
+		frame.WithRegisterEvents(service.EventHandlers()...),
+		frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
+		frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
+		frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
+		frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
 		frame.WithHTTPHandler(adminMux),
 	)
 

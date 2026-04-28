@@ -35,9 +35,18 @@ func classifyEmbedFailure(err error) string {
 	}
 }
 
-// EmbedHandler consumes CanonicalUpsertedV1 and emits EmbeddingV1.
+// EmbedHandler is a Frame Queue subscriber on
+// SubjectWorkerEmbed. It receives a CanonicalUpsertedV1 envelope,
+// computes the embedding, and emits EmbeddingV1 onto the events bus.
 // If no embedder is configured, it emits nothing (caller's search
 // degrades to BM25 only).
+//
+// Embedding calls are external HTTP I/O (TEI / Cloudflare AI Gateway)
+// that may take seconds and may fail. Per the Frame async decision
+// tree these belong on a Queue with retry/backoff, not on the events
+// bus. The dedup key is opportunity_id + model_version, so re-delivery
+// from NATS is safe — re-embedding the same canonical produces the
+// same vector modulo provider variance.
 type EmbedHandler struct {
 	svc       *frame.Service
 	extractor *extraction.Extractor
@@ -48,29 +57,13 @@ func NewEmbedHandler(svc *frame.Service, ex *extraction.Extractor) *EmbedHandler
 	return &EmbedHandler{svc: svc, extractor: ex}
 }
 
-// Name ...
-func (h *EmbedHandler) Name() string { return eventsv1.TopicCanonicalsUpserted }
-
-// PayloadType ...
-func (h *EmbedHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate ...
-func (h *EmbedHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
+// Handle implements queue.SubscribeWorker.
+func (h *EmbedHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
+	if len(payload) == 0 {
 		return errors.New("embed: empty payload")
 	}
-	return nil
-}
-
-// Execute embeds the canonical's text and emits EmbeddingV1.
-func (h *EmbedHandler) Execute(ctx context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[eventsv1.CanonicalUpsertedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return err
 	}
 	c := env.Payload

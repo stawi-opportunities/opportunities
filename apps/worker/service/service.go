@@ -1,32 +1,33 @@
 package service
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
-
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
 	"github.com/pitabwire/frame/events"
+	"github.com/pitabwire/frame/queue"
 
-	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
-// Service is the worker's composition root. Handlers returns the
-// seven internal subscriptions to be registered with the Frame event
-// manager via frame.WithRegisterEvents.
+// Service is the worker's composition root.
 //
-// TODO(golang-patterns): the embed/translate handlers call external
-// LLM endpoints; per the canonical Frame decision tree these are
-// "external API" work and should be Queue subscribers rather than
-// Events. Migrate when the pipeline's chained-fanout semantics can be
-// expressed as durable pub/sub — today the canonicalFanout
-// composition relies on event ordering that Queue retries would
-// disrupt without coordinated dedupe.
+// The pipeline mixes Frame Events (fast in-process work) and Frame
+// Queue (durable retry-safe external I/O) per the Frame async decision
+// tree:
+//
+//   - Events: normalize, validate, dedup, canonical, publish — all
+//     fast and process-local. They use Frame's events bus for low-
+//     latency chaining.
+//   - Queue:  embed + translate — both call external LLM endpoints
+//     (TEI / Groq) that may take seconds and may fail; durable retry
+//     with backoff is mandatory.
+//
+// The canonical handler emits the events-bus event AND publishes to
+// the queue subjects so the fan-out is explicit (canonical-publish
+// runs in process; embed/translate run with full retry semantics).
 type Service struct {
 	svc       *frame.Service
 	extractor *extraction.Extractor
@@ -60,74 +61,37 @@ func NewService(
 	}
 }
 
-// Handlers returns the four registered Frame event handlers.
+// EventHandlers returns the in-process Frame Event handlers.
 //
-// Frame's event registry maps one handler per topic name. Three
-// downstream stages (embed, translate, publish) all react to
-// TopicCanonicalsUpserted, so they are wrapped in a single
-// canonicalFanout handler that dispatches to each in turn.
-func (s *Service) Handlers() []events.EventI {
+// These are fast, internal-only stages. External-API stages
+// (embed/translate) are returned by QueueWorkers instead.
+func (s *Service) EventHandlers() []events.EventI {
 	return []events.EventI{
 		NewNormalizeHandler(s.svc),
 		NewValidateHandler(s.svc, s.extractor),
 		NewDedupHandlerWithCluster(s.svc, s.dedupCache, s.clusterCache),
 		NewCanonicalHandler(s.svc, s.clusterCache),
-		newCanonicalFanout(s.svc, s.extractor, s.publisher, s.registry, s.translationLangs),
+		NewPublishHandler(s.svc, s.publisher, s.registry),
 	}
 }
 
-// canonicalFanout is a single Frame handler registered on
-// TopicCanonicalsUpserted that sequentially calls the embed,
-// translate, and publish sub-handlers. This satisfies Frame's
-// one-handler-per-topic constraint while preserving the three logical
-// stages.
-type canonicalFanout struct {
-	embed     *EmbedHandler
-	translate *TranslateHandler
-	publish   *PublishHandler
+// EmbedWorker returns the queue subscriber for SubjectWorkerEmbed.
+// The caller registers it via frame.WithRegisterSubscriber.
+func (s *Service) EmbedWorker() queue.SubscribeWorker {
+	return NewEmbedHandler(s.svc, s.extractor)
 }
 
-func newCanonicalFanout(
-	svc *frame.Service,
-	ex *extraction.Extractor,
-	pub *publish.R2Publisher,
-	reg *opportunity.Registry,
-	langs []string,
-) *canonicalFanout {
-	return &canonicalFanout{
-		embed:     NewEmbedHandler(svc, ex),
-		translate: NewTranslateHandler(svc, ex, langs),
-		publish:   NewPublishHandler(svc, pub, reg),
-	}
+// TranslateWorker returns the queue subscriber for SubjectWorkerTranslate.
+func (s *Service) TranslateWorker() queue.SubscribeWorker {
+	return NewTranslateHandler(s.svc, s.extractor, s.translationLangs)
 }
 
-// Name registers this handler on the canonical-upsert topic.
-func (f *canonicalFanout) Name() string { return eventsv1.TopicCanonicalsUpserted }
-
-// PayloadType returns the raw JSON template used by Frame's dispatcher.
-func (f *canonicalFanout) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate accepts any non-empty JSON payload.
-func (f *canonicalFanout) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("canonical-fanout: empty payload")
-	}
-	return nil
-}
-
-// Execute calls embed, translate, and publish in order. Each
-// sub-handler is fail-open on its own AI calls; a hard error (e.g.
-// R2 write failure) propagates so Frame can redeliver.
-func (f *canonicalFanout) Execute(ctx context.Context, payload any) error {
-	if err := f.embed.Execute(ctx, payload); err != nil {
-		return err
-	}
-	if err := f.translate.Execute(ctx, payload); err != nil {
-		return err
-	}
-	return f.publish.Execute(ctx, payload)
+// Handlers is retained for backwards compatibility with existing
+// pipeline tests that exercise the events-bus chain. It returns just
+// the event handlers (matching the previous behaviour after the
+// embed/translate/publish fanout split — publish remains here).
+//
+// Deprecated: prefer EventHandlers + EmbedWorker + TranslateWorker.
+func (s *Service) Handlers() []events.EventI {
+	return s.EventHandlers()
 }

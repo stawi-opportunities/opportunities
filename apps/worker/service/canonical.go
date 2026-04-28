@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
+	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -151,7 +153,36 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		UpsertedAt:    now,
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicCanonicalsUpserted, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv)
+	// Emit the canonical-upserted event for the (in-process) publish
+	// handler — it's a fast R2 write, not external LLM I/O, so it
+	// stays on the events bus.
+	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv); err != nil {
+		return err
+	}
+	// Also publish to the durable Queue subjects for embed + translate.
+	// Both are external LLM calls (TEI + Groq) that need retry-with-
+	// backoff per the Frame async decision tree. The body is the same
+	// envelope; only the transport differs.
+	body, err := json.Marshal(outEnv)
+	if err != nil {
+		return fmt.Errorf("canonical: marshal: %w", err)
+	}
+	qm := h.svc.QueueManager()
+	if pubErr := qm.Publish(ctx, eventsv1.SubjectWorkerEmbed, body); pubErr != nil {
+		// A queue publish failure mustn't block the rest of the
+		// pipeline (publish handler already ran above). Log and continue
+		// — the canonical row is still in cache + R2; a re-emission on
+		// the next variant for the same opportunity will retry.
+		util.Log(ctx).WithError(pubErr).
+			WithField("subject", eventsv1.SubjectWorkerEmbed).
+			Warn("canonical: queue publish failed, continuing")
+	}
+	if pubErr := qm.Publish(ctx, eventsv1.SubjectWorkerTranslate, body); pubErr != nil {
+		util.Log(ctx).WithError(pubErr).
+			WithField("subject", eventsv1.SubjectWorkerTranslate).
+			Warn("canonical: queue publish failed, continuing")
+	}
+	return nil
 }
 
 func preferNonEmpty(a, b string) string {
