@@ -10,8 +10,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/pitabwire/frame/cache"
 	"github.com/pitabwire/util"
-	"github.com/redis/go-redis/v9"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
@@ -19,40 +19,56 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-// KVRebuilder repopulates Valkey cluster:* keys by scanning every registered
-// kind's URL prefix in the R2 content bucket (e.g. jobs/, scholarships/) and
-// applying the Lua CAS script to ensure the latest value wins even under
-// parallel page fetches.
+// KVRebuilder repopulates Valkey cluster:* keys by scanning every
+// registered kind's URL prefix in the R2 content bucket (e.g. jobs/,
+// scholarships/) and writing the latest-by-last_seen_at row through
+// Frame's cache.RawCache.
 //
 // Memory model (O(batch), not O(partition)):
 //
-//   - A memconfig.Budget("kv-rebuild", 30) governs maximum in-flight keys.
-//   - When the bounded map reaches maxKeysInMemory, ALL current entries are
-//     flushed to Valkey via the Lua CAS script.
-//   - After a flush the map is reset; slug files that arrive later for the
-//     same cluster_id are compared by the CAS script.
+//   - A memconfig.Budget("kv-rebuild", 30) governs maximum in-flight
+//     keys.
+//   - When the bounded map reaches maxKeysInMemory, ALL current
+//     entries are flushed to Valkey with a GET-then-conditional-SET
+//     pattern (see flushOne).
+//   - After a flush the map is reset; slug files that arrive later
+//     for the same cluster_id are reconciled against the existing
+//     value via the same pattern.
 //
 // Peak memory = maxKeysInMemory × 256 bytes, regardless of bucket size.
 //
 // Valkey key format:
 //
-//	SET cluster:<id> <json>
+//	cluster:<id> -> JSON-encoded kv.ClusterSnapshot (same shape Frame's
+//	cache.Cache[string, kv.ClusterSnapshot] writes during normal
+//	pipeline operation).
 //
-// Where <json> is the JSON-encoded kv.ClusterSnapshot, matching the
-// format Frame's cache.Cache[string, kv.ClusterSnapshot] writes during
-// normal pipeline operation.
+// Atomicity note (replaces the previous Lua-CAS path):
+//
+// Frame's cache.Manager / cache.RawCache abstraction does not expose
+// EVAL/SCRIPT, so we replace the prior Lua compare-and-set with a
+// GET → compare-timestamp-locally → SET sequence. The race window is
+// the canonical handler writing a fresher snapshot in-between our
+// GET and SET, in which case our older row briefly overwrites a
+// newer one. The canonical handler is the only other writer and
+// runs in real time on every incoming variant; it will re-overwrite
+// with fresh data on the next variant for that opportunity, so the
+// loss-of-atomicity window is bounded by one variant cycle and never
+// produces a permanently-stale entry. Rebuilds are admin-triggered
+// (rare) so the cumulative race exposure is negligible.
 type KVRebuilder struct {
 	s3Client *s3.Client
 	bucket   string
-	kv       *redis.Client
+	cache    cache.RawCache
 	registry *opportunity.Registry
 }
 
-// NewKVRebuilder constructs a KVRebuilder backed by an S3-compatible client,
-// a Valkey client, and the opportunity-kinds registry. The registry drives
-// which R2 prefixes are walked on each rebuild run.
-func NewKVRebuilder(s3Client *s3.Client, bucket string, kv *redis.Client, registry *opportunity.Registry) *KVRebuilder {
-	return &KVRebuilder{s3Client: s3Client, bucket: bucket, kv: kv, registry: registry}
+// NewKVRebuilder constructs a KVRebuilder backed by an S3-compatible
+// client, a Frame cache.RawCache, and the opportunity-kinds registry.
+// The registry drives which R2 prefixes are walked on each rebuild
+// run.
+func NewKVRebuilder(s3Client *s3.Client, bucket string, raw cache.RawCache, registry *opportunity.Registry) *KVRebuilder {
+	return &KVRebuilder{s3Client: s3Client, bucket: bucket, cache: raw, registry: registry}
 }
 
 // KVRebuildResult holds counters reported by a single rebuild run.
@@ -61,27 +77,8 @@ type KVRebuildResult struct {
 	ClusterKeysSet int `json:"cluster_keys_set"`
 }
 
-// kvCASScript sets cluster:<id> to ARGV[1] ONLY if the new row's
-// last_seen_at (ARGV[2], RFC3339 string) is strictly greater than the
-// existing value's last_seen_at field. If the key is missing, sets
-// unconditionally. Works against Frame's plain-string cluster cache
-// format (GET returns the JSON-encoded kv.ClusterSnapshot body).
-const kvCASScript = `
-local existing = redis.call('GET', KEYS[1])
-if existing == false or existing == nil then
-    redis.call('SET', KEYS[1], ARGV[1])
-    return 1
-end
-local existingTs = string.match(existing, '"last_seen_at":"([^"]+)"')
-if existingTs == nil or ARGV[2] > existingTs then
-    redis.call('SET', KEYS[1], ARGV[1])
-    return 1
-end
-return 0
-`
-
-// Run is the rebuild entry point. It iterates every registered kind and
-// walks <kind.URLPrefix>/ in R2, processing each slug-direct JSON.
+// Run is the rebuild entry point. It iterates every registered kind
+// and walks <kind.URLPrefix>/ in R2, processing each slug-direct JSON.
 func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	var res KVRebuildResult
 	if r.registry == nil {
@@ -109,11 +106,12 @@ func (r *KVRebuilder) Run(ctx context.Context) (KVRebuildResult, error) {
 	return res, nil
 }
 
-// walkPrefix lists all R2 <prefix>*.json slug files, fetches them concurrently
-// via a worker pool, folds per cluster_id keeping the latest last_seen_at, and
-// writes Valkey via Lua CAS. Pages through the bucket up to 1000 objects at a
-// time; concurrent GETs are bounded by the pool size. Counters accumulate into
-// the supplied result so a multi-prefix Run reports a combined total.
+// walkPrefix lists all R2 <prefix>*.json slug files, fetches them
+// concurrently via a worker pool, folds per cluster_id keeping the
+// latest last_seen_at, and writes Valkey via the GET+SET pattern.
+// Pages through the bucket up to 1000 objects at a time; concurrent
+// GETs are bounded by the pool size. Counters accumulate into the
+// supplied result so a multi-prefix Run reports a combined total.
 func (r *KVRebuilder) walkPrefix(ctx context.Context, prefix string, res *KVRebuildResult) error {
 	budget := memconfig.NewBudget("kv-rebuild", 30)
 	maxKeysInMemory := budget.BatchSizeFor(256)
@@ -285,44 +283,87 @@ func (r *KVRebuilder) walkPrefix(ctx context.Context, prefix string, res *KVRebu
 }
 
 // flushToValkey writes each (clusterID → canonicalMinimal) entry to
-// Valkey via pipelined Lua CAS.
+// Valkey via Frame's RawCache. For each row we GET the current value
+// (if any), parse out the existing last_seen_at, and SET only if the
+// candidate row is newer (or no existing row is found).
+//
+// This pattern replaces the prior Lua compare-and-set; see the type
+// doc-comment on KVRebuilder for the atomicity trade-off.
 func (r *KVRebuilder) flushToValkey(ctx context.Context, m map[string]canonicalMinimal) (int, error) {
 	if len(m) == 0 {
 		return 0, nil
 	}
+	if r.cache == nil {
+		return 0, fmt.Errorf("kv rebuild: cache is nil")
+	}
 
-	pipe := r.kv.Pipeline()
-	batchSize := 0
 	keysWritten := 0
-
 	for clusterID, row := range m {
-		snap := clusterSnapshotFromMinimal(row)
-		body, err := json.Marshal(snap)
+		written, err := r.flushOne(ctx, clusterID, row)
 		if err != nil {
-			continue // skip corrupt row
+			return keysWritten, err
 		}
-		tsISO := snap.LastSeenAt.UTC().Format(time.RFC3339)
-		key := "cluster:" + clusterID
-
-		pipe.Eval(ctx, kvCASScript, []string{key}, string(body), tsISO)
-		keysWritten++
-		batchSize++
-
-		if batchSize >= 500 {
-			if _, err := pipe.Exec(ctx); err != nil {
-				return keysWritten - batchSize, fmt.Errorf("pipe exec: %w", err)
-			}
-			pipe = r.kv.Pipeline()
-			batchSize = 0
+		if written {
+			keysWritten++
 		}
 	}
-	if batchSize > 0 {
-		if _, err := pipe.Exec(ctx); err != nil {
-			return keysWritten - batchSize, fmt.Errorf("pipe final: %w", err)
-		}
-	}
-
 	return keysWritten, nil
+}
+
+// flushOne implements the per-key conditional write. Returns true if
+// the cache was written (i.e. our row was newer than what was there,
+// or no existing row was found).
+func (r *KVRebuilder) flushOne(ctx context.Context, clusterID string, row canonicalMinimal) (bool, error) {
+	snap := clusterSnapshotFromMinimal(row)
+	body, err := json.Marshal(snap)
+	if err != nil {
+		// Skip corrupt row but don't fail the rebuild — analogous to
+		// the prior pipe.Eval path that silently skipped marshal errs.
+		return false, nil
+	}
+	key := "cluster:" + clusterID
+	candidateTS := snap.LastSeenAt.UTC().Format(time.RFC3339)
+
+	existing, found, err := r.cache.Get(ctx, key)
+	if err != nil {
+		return false, fmt.Errorf("cache get %s: %w", key, err)
+	}
+	if found {
+		existingTS := extractLastSeenAt(existing)
+		if existingTS != "" && existingTS >= candidateTS {
+			// Existing row is newer or equal; preserve it.
+			return false, nil
+		}
+	}
+
+	// Write unconditionally with no TTL. Frame's RawCache.Set treats
+	// ttl=0 as "use default maxAge"; passing a tiny negative duration
+	// is invalid, so we use the same TTL the canonical-merge path
+	// uses (0 → cache default). The cluster:* key family is meant to
+	// outlive a single TTL window, so we accept Frame's default and
+	// rely on the canonical handler refreshing on every variant.
+	if err := r.cache.Set(ctx, key, body, 0); err != nil {
+		return false, fmt.Errorf("cache set %s: %w", key, err)
+	}
+	return true, nil
+}
+
+// extractLastSeenAt pulls the RFC3339 last_seen_at field out of a
+// JSON-encoded cluster snapshot WITHOUT a full unmarshal. Mirrors
+// the prior Lua-CAS pattern of comparing timestamps as lexically-
+// orderable strings (RFC3339 sorts correctly as a string).
+func extractLastSeenAt(raw []byte) string {
+	const marker = `"last_seen_at":"`
+	idx := strings.Index(string(raw), marker)
+	if idx < 0 {
+		return ""
+	}
+	tail := string(raw)[idx+len(marker):]
+	end := strings.IndexByte(tail, '"')
+	if end < 0 {
+		return ""
+	}
+	return tail[:end]
 }
 
 // canonicalMinimalFromCanonical converts a CanonicalUpsertedV1 (from a slug

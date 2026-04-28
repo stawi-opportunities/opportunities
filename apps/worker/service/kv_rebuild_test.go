@@ -6,19 +6,26 @@ import (
 	"context"
 	"testing"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/pitabwire/frame/cache"
+	framevalkey "github.com/pitabwire/frame/cache/valkey"
+	"github.com/pitabwire/frame/data"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// valkeyHarness holds a running Valkey container and a go-redis client.
+// valkeyHarness holds a running Valkey container and a Frame RawCache.
 type valkeyHarness struct {
-	Client    *redis.Client
+	Cache     cache.RawCache
 	container testcontainers.Container
 }
 
-func (h *valkeyHarness) Close() { _ = h.container.Terminate(context.Background()) }
+func (h *valkeyHarness) Close() {
+	if h.Cache != nil {
+		_ = h.Cache.Close()
+	}
+	_ = h.container.Terminate(context.Background())
+}
 
 func startValkey(t *testing.T) *valkeyHarness {
 	t.Helper()
@@ -37,9 +44,9 @@ func startValkey(t *testing.T) *valkeyHarness {
 	require.NoError(t, err)
 	port, err := c.MappedPort(ctx, "6379")
 	require.NoError(t, err)
-	client := redis.NewClient(&redis.Options{Addr: host + ":" + port.Port()})
-	require.NoError(t, client.Ping(ctx).Err())
-	return &valkeyHarness{Client: client, container: c}
+	rc, err := framevalkey.New(cache.WithDSN(data.DSN("redis://" + host + ":" + port.Port())))
+	require.NoError(t, err)
+	return &valkeyHarness{Cache: rc, container: c}
 }
 
 // TestKVRebuild_Integration is a placeholder for Wave 7 testcontainer
@@ -60,7 +67,7 @@ func TestKVRebuild_Integration(t *testing.T) {
 	defer kv.Close()
 
 	// cat would be constructed from a testcontainer catalog in Wave 7.
-	// r := NewKVRebuilder(cat, kv.Client)
+	// r := NewKVRebuilder(cat, kv.Cache)
 	// res, err := r.Run(ctx)
 	// require.NoError(t, err)
 	// require.Equal(t, 2, res.Rows)

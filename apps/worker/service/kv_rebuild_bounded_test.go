@@ -7,36 +7,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
+	"github.com/pitabwire/frame/cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 )
 
-// newMiniredisClient starts an in-memory Redis server and returns a go-redis
-// client connected to it.
-func newMiniredisClient(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
+// newInMemoryRawCache returns an in-memory cache.RawCache for tests.
+// Frame's cache.NewInMemoryCache satisfies the same RawCache contract
+// as the production valkey driver.
+func newInMemoryRawCache(t *testing.T) cache.RawCache {
 	t.Helper()
-	mr, err := miniredis.Run()
-	require.NoError(t, err)
-	t.Cleanup(mr.Close)
-	c := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = c.Close() })
-	return c, mr
+	rc := cache.NewInMemoryCache()
+	t.Cleanup(func() { _ = rc.Close() })
+	return rc
 }
 
 // TestFlushToValkey_Basic verifies that flushToValkey writes all entries and
 // returns the correct count.
 func TestFlushToValkey_Basic(t *testing.T) {
-	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
+	c := newInMemoryRawCache(t)
+	r := &KVRebuilder{cache: c, bucket: "test-bucket"}
 
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	m := map[string]canonicalMinimal{
-		"c1": {ClusterID: "c1", Title: "Job A", OccurredAt: ts},
-		"c2": {ClusterID: "c2", Title: "Job B", OccurredAt: ts.Add(time.Hour)},
+		"c1": {ClusterID: "c1", Title: "Job A", LastSeenAt: ts, OccurredAt: ts},
+		"c2": {ClusterID: "c2", Title: "Job B", LastSeenAt: ts.Add(time.Hour), OccurredAt: ts.Add(time.Hour)},
 	}
 
 	n, err := r.flushToValkey(context.Background(), m)
@@ -45,27 +42,28 @@ func TestFlushToValkey_Basic(t *testing.T) {
 
 	// Verify the keys exist and are readable as plain JSON strings.
 	for id := range m {
-		val, err := c.Get(context.Background(), "cluster:"+id).Result()
-		require.NoError(t, err, "cluster:%s should exist", id)
+		raw, found, err := c.Get(context.Background(), "cluster:"+id)
+		require.NoError(t, err)
+		require.True(t, found, "cluster:%s should exist", id)
 		var snap kv.ClusterSnapshot
-		require.NoError(t, json.Unmarshal([]byte(val), &snap))
+		require.NoError(t, json.Unmarshal(raw, &snap))
 		assert.Equal(t, id, snap.ClusterID)
 	}
 }
 
-// TestFlushToValkey_CAS_NewerWins verifies the Lua CAS script: if a key
-// already exists with an older ts, the newer entry replaces it.
+// TestFlushToValkey_CAS_NewerWins verifies the GET+conditional-SET path:
+// if a key already exists with an older ts, the newer entry replaces it.
 func TestFlushToValkey_CAS_NewerWins(t *testing.T) {
-	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
+	c := newInMemoryRawCache(t)
+	r := &KVRebuilder{cache: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	old := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	newer := old.Add(24 * time.Hour)
 
-	// First flush: older entry written as plain JSON (matching Frame's format).
+	// First flush: older entry written as plain JSON.
 	oldJSON, _ := json.Marshal(kv.ClusterSnapshot{ClusterID: "c1", Title: "Old Title", LastSeenAt: old})
-	require.NoError(t, c.Set(ctx, "cluster:c1", string(oldJSON), 0).Err())
+	require.NoError(t, c.Set(ctx, "cluster:c1", oldJSON, 0))
 
 	// Second flush: newer entry should overwrite.
 	m := map[string]canonicalMinimal{
@@ -75,18 +73,19 @@ func TestFlushToValkey_CAS_NewerWins(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 
-	val, err := c.Get(ctx, "cluster:c1").Result()
+	raw, found, err := c.Get(ctx, "cluster:c1")
 	require.NoError(t, err)
+	require.True(t, found)
 	var snap kv.ClusterSnapshot
-	require.NoError(t, json.Unmarshal([]byte(val), &snap))
+	require.NoError(t, json.Unmarshal(raw, &snap))
 	assert.Equal(t, "New Title", snap.Title)
 }
 
-// TestFlushToValkey_CAS_OlderLoses verifies the Lua CAS script: if a key
-// already exists with a newer ts, an older entry is rejected.
+// TestFlushToValkey_CAS_OlderLoses verifies the GET+conditional-SET path:
+// if a key already exists with a newer ts, an older entry is rejected.
 func TestFlushToValkey_CAS_OlderLoses(t *testing.T) {
-	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
+	c := newInMemoryRawCache(t)
+	r := &KVRebuilder{cache: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	newer := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -94,21 +93,23 @@ func TestFlushToValkey_CAS_OlderLoses(t *testing.T) {
 
 	// Pre-set a newer entry as plain JSON (matching Frame's format).
 	newerJSON, _ := json.Marshal(kv.ClusterSnapshot{ClusterID: "c1", Title: "Newer Title", LastSeenAt: newer})
-	require.NoError(t, c.Set(ctx, "cluster:c1", string(newerJSON), 0).Err())
+	require.NoError(t, c.Set(ctx, "cluster:c1", newerJSON, 0))
 
 	// Attempt to flush an older entry.
 	m := map[string]canonicalMinimal{
 		"c1": {ClusterID: "c1", Title: "Older Title", LastSeenAt: older, OccurredAt: older},
 	}
-	_, err := r.flushToValkey(ctx, m)
+	n, err := r.flushToValkey(ctx, m)
 	require.NoError(t, err)
+	assert.Equal(t, 0, n, "older flush must report 0 keys written")
 
 	// The existing (newer) entry must not be replaced.
-	val, err := c.Get(ctx, "cluster:c1").Result()
+	raw, found, err := c.Get(ctx, "cluster:c1")
 	require.NoError(t, err)
+	require.True(t, found)
 	var snap kv.ClusterSnapshot
-	require.NoError(t, json.Unmarshal([]byte(val), &snap))
-	assert.Equal(t, "Newer Title", snap.Title, "older flush must not overwrite newer Valkey entry")
+	require.NoError(t, json.Unmarshal(raw, &snap))
+	assert.Equal(t, "Newer Title", snap.Title, "older flush must not overwrite newer entry")
 }
 
 // TestBoundedMapFlushCycle verifies that when the bounded map is full it is
@@ -116,8 +117,8 @@ func TestFlushToValkey_CAS_OlderLoses(t *testing.T) {
 //
 // This is a unit test of the algorithm, not the full Run() path.
 func TestBoundedMapFlushCycle(t *testing.T) {
-	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
+	c := newInMemoryRawCache(t)
+	r := &KVRebuilder{cache: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	maxKeys := 3
@@ -132,6 +133,7 @@ func TestBoundedMapFlushCycle(t *testing.T) {
 		rows[i] = canonicalMinimal{
 			ClusterID:  fmt.Sprintf("c%d", i),
 			Title:      fmt.Sprintf("Job %d", i),
+			LastSeenAt: now.Add(time.Duration(i) * time.Second),
 			OccurredAt: now.Add(time.Duration(i) * time.Second),
 		}
 	}
@@ -156,12 +158,12 @@ func TestBoundedMapFlushCycle(t *testing.T) {
 	// All 10 unique cluster IDs should have been flushed.
 	assert.Equal(t, 10, totalFlushed)
 
-	// Verify each key exists in Valkey.
+	// Verify each key exists in the cache.
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("cluster:c%d", i)
-		exists, err := c.Exists(ctx, key).Result()
+		exists, err := c.Exists(ctx, key)
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), exists, "key %s should exist", key)
+		assert.True(t, exists, "key %s should exist", key)
 	}
 }
 
@@ -170,10 +172,10 @@ func TestBoundedMapFlushCycle(t *testing.T) {
 // expects: a plain string key whose value is JSON-encoded kv.ClusterSnapshot.
 //
 // This proves writer/reader compatibility end-to-end without requiring a full
-// Frame wiring: write via flushToValkey, read via plain GET + json.Unmarshal.
+// Frame wiring: write via flushToValkey, read via plain Get + json.Unmarshal.
 func TestFlushToValkey_RoundTrip(t *testing.T) {
-	c, _ := newMiniredisClient(t)
-	r := &KVRebuilder{kv: c, bucket: "test-bucket"}
+	c := newInMemoryRawCache(t)
+	r := &KVRebuilder{cache: c, bucket: "test-bucket"}
 	ctx := context.Background()
 
 	ts := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
@@ -193,12 +195,13 @@ func TestFlushToValkey_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 
-	// Read exactly as Frame's cache.GetCache path would: plain GET, then JSON decode.
-	raw, err := c.Get(ctx, "cluster:rt1").Result()
-	require.NoError(t, err, "key must be stored as a plain string")
+	// Read exactly as Frame's cache.GetCache path would: plain Get, then JSON decode.
+	raw, found, err := c.Get(ctx, "cluster:rt1")
+	require.NoError(t, err)
+	require.True(t, found, "key must be stored")
 
 	var snap kv.ClusterSnapshot
-	require.NoError(t, json.Unmarshal([]byte(raw), &snap), "value must be valid JSON kv.ClusterSnapshot")
+	require.NoError(t, json.Unmarshal(raw, &snap), "value must be valid JSON kv.ClusterSnapshot")
 
 	assert.Equal(t, "rt1", snap.ClusterID)
 	assert.Equal(t, "canon-42", snap.CanonicalID)

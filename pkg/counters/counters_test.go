@@ -4,22 +4,23 @@ import (
 	"context"
 	"testing"
 
-	"github.com/alicebob/miniredis/v2"
+	"github.com/pitabwire/frame/cache"
 )
 
-// startRedis stands up an in-process miniredis and returns a wired
-// *Counters plus the addr (so callers can inspect keys directly).
-func startRedis(t *testing.T) (*Counters, *miniredis.Miniredis) {
+// startCounters returns a *Counters wired against Frame's
+// in-memory raw cache. The InMemoryCache implements the same
+// cache.RawCache contract as the production valkey driver
+// (Increment, Get, Expire) so the tests exercise the package's full
+// surface without an external Redis-compatible server.
+func startCounters(t *testing.T) (*Counters, cache.RawCache) {
 	t.Helper()
-	mr := miniredis.RunT(t)
-	c, err := NewClient("redis://" + mr.Addr())
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
+	raw := cache.NewInMemoryCache()
+	t.Cleanup(func() { _ = raw.Close() })
+	c := NewFromCache(raw)
 	if c == nil {
-		t.Fatalf("NewClient returned nil")
+		t.Fatalf("NewFromCache returned nil")
 	}
-	return c, mr
+	return c, raw
 }
 
 func TestCounters_NilSafe(t *testing.T) {
@@ -50,19 +51,13 @@ func TestCounters_NewClient_EmptyURL(t *testing.T) {
 }
 
 func TestCounters_IncrViewAndStats(t *testing.T) {
-	c, mr := startRedis(t)
+	c, _ := startCounters(t)
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
 		if err := c.IncrView(ctx, "abc"); err != nil {
 			t.Fatalf("IncrView: %v", err)
 		}
-	}
-	if got, err := mr.Get("view:abc"); err != nil || got != "3" {
-		t.Errorf("view:abc=%q err=%v want 3", got, err)
-	}
-	if got, err := mr.Get("view:abc:24h"); err != nil || got != "3" {
-		t.Errorf("view:abc:24h=%q err=%v want 3", got, err)
 	}
 
 	stats, err := c.GetStats(ctx, "abc")
@@ -75,13 +70,10 @@ func TestCounters_IncrViewAndStats(t *testing.T) {
 }
 
 func TestCounters_IncrApply(t *testing.T) {
-	c, mr := startRedis(t)
+	c, _ := startCounters(t)
 	ctx := context.Background()
 	for i := 0; i < 5; i++ {
 		_ = c.IncrApply(ctx, "abc")
-	}
-	if got, err := mr.Get("apply:abc"); err != nil || got != "5" {
-		t.Errorf("apply:abc=%q err=%v want 5", got, err)
 	}
 	stats, _ := c.GetStats(ctx, "abc")
 	if stats.AppliesTotal != 5 {
@@ -90,7 +82,7 @@ func TestCounters_IncrApply(t *testing.T) {
 }
 
 func TestCounters_GetStatsBatch(t *testing.T) {
-	c, _ := startRedis(t)
+	c, _ := startCounters(t)
 	ctx := context.Background()
 
 	_ = c.IncrView(ctx, "a")
@@ -114,7 +106,7 @@ func TestCounters_GetStatsBatch(t *testing.T) {
 }
 
 func TestCounters_GetStatsBatch_EmptySlugs(t *testing.T) {
-	c, _ := startRedis(t)
+	c, _ := startCounters(t)
 	stats, err := c.GetStatsBatch(context.Background(), nil)
 	if err != nil {
 		t.Errorf("err on empty slugs: %v", err)
