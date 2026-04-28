@@ -13,7 +13,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
 	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc
 	github.com/alicebob/miniredis/v2 v2.37.0
-	github.com/antinvestor/common v1.4.4
+	github.com/antinvestor/common v1.4.5
 	github.com/apache/arrow-go/v18 v18.5.2
 	github.com/apache/iceberg-go v0.5.0
 	github.com/aws/aws-sdk-go-v2 v1.41.6
