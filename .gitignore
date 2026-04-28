@@ -13,3 +13,4 @@ bin/
 
 # Bootstrap secrets — NEVER commit these
 scripts/bootstrap/vault-seeds.env
+.claude/
