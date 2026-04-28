@@ -202,6 +202,141 @@ Publishes canonical jobs to R2 for Hugo site generation. Useful for initial site
 
 Response `202 Accepted`, job runs asynchronously.
 
+### Admin: Source Management
+
+Optional surface, gated by `SOURCE_ADMIN_ENABLED=true` on the `opportunities-api` deployment. When enabled, the api opens its own database connection (Frame `POSTGRES_*` vars) and exposes the canonical CRUD + lifecycle endpoints for sources. The crawler keeps its low-level operational primitives (`/admin/sources/pause`, `/admin/scheduler/tick`, etc.) — these are higher-level, operator-facing.
+
+Every endpoint requires `Authorization: Bearer <jwt>`. The middleware records the `sub` claim as `operator_id` on every audit log line; signature verification happens at the gateway. All responses are JSON; errors follow a consistent envelope:
+
+```json
+{ "error": { "code": "string", "message": "string" } }
+```
+
+Source lifecycle:
+
+```
+            ┌──────────────┐
+discovered →│   pending    │── verify ──► verifying ──► verified ──► (approve) ──► active
+            └──────────────┘                                ▲                        │
+                                                            │                       pause
+                                                          reject                     │
+                                                            │                        ▼
+            ┌──────────────┐                                │                    paused
+operator →  │ pending +    │── verify ──► verifying ─────► rejected                  │
+            │ auto_approve │                                                       resume
+            └──────────────┘                                                          │
+                                                                                      ▼
+                                                                                   active
+```
+
+#### `GET /admin/sources`
+
+List sources. Query params (all optional):
+
+| Param | Type | Notes |
+|---|---|---|
+| `status` | string | One of `pending`, `verifying`, `verified`, `rejected`, `active`, `degraded`, `paused`, `blocked`, `disabled` |
+| `kind` | string | Filter by declared opportunity kind (e.g. `job`, `scholarship`) |
+| `type` | string | Source type / connector (e.g. `remoteok`, `greenhouse`) |
+| `country` | string | ISO 3166-1 alpha-2 |
+| `limit` | int | 1–500, default 50 |
+| `offset` | int | default 0 |
+
+Response: `{ "sources": [...], "total": int, "limit": int, "offset": int }`. Returns `400 invalid_status` if `status` is not a known value.
+
+#### `GET /admin/sources/{id}`
+
+Returns the full source row including `verification_report`. `404 not_found` when missing.
+
+#### `POST /admin/sources`
+
+Create a source manually. Request body:
+
+```json
+{
+  "type": "greenhouse",
+  "name": "Acme Careers",
+  "base_url": "https://boards.greenhouse.io/acme",
+  "country": "KE",
+  "language": "en",
+  "priority": 1,
+  "crawl_interval_sec": 3600,
+  "kinds": ["job"],
+  "required_attributes_by_kind": {},
+  "auto_approve": true
+}
+```
+
+Required: `type`, `base_url`. `kinds` defaults to `["job"]`. `auto_approve` defaults to `true` (operator-trusted). Response: `201 Created` with the full source row, `Status="pending"`.
+
+Errors:
+- `400 missing_field` — `type` or `base_url` empty
+- `400 unknown_kind` — declared kind not in registry
+- `400 blocked_url` — host is on the platform blocklist
+- `400 bad_json` — body parse failed
+
+#### `PUT /admin/sources/{id}`
+
+Partial update. Editable fields: `name`, `country`, `language`, `priority`, `crawl_interval_sec`, `kinds`, `required_attributes_by_kind`, `auto_approve`. **Status transitions go through the dedicated lifecycle endpoints — `PUT` will not change `status`.**
+
+Errors: `400 invalid_interval` (interval < 60s), `400 unknown_kind`, `400 no_fields`, `404 not_found`.
+
+#### `DELETE /admin/sources/{id}?hard=false`
+
+Soft-delete by default (sets `Status=disabled`). Pass `?hard=true` to physically remove the row.
+
+Response: `{ "ok": true, "id": "...", "hard": false }`.
+
+#### `POST /admin/sources/{id}/verify`
+
+Run source-level verification synchronously. Returns the `VerificationReport` directly. Side-effects:
+
+- Persists the report on the row.
+- Sets `status` to `verified` (when `OverallPass=true`) or `rejected` (otherwise).
+- If `auto_approve=true` and verification passed, also flips `status` to `active` and records `approved_by="system"`.
+
+Verification probes:
+
+| Check | Hard / soft | Details |
+|---|---|---|
+| `url_valid` | hard | scheme http/https, host non-empty |
+| `blocklist_clean` | hard | host not on platform blocklist |
+| `kinds_known` | hard | every declared kind resolves in the registry |
+| `reachable` | hard | HEAD (falls back to GET on 405/501); 2xx/3xx counts as reachable |
+| `robots_allowed` | hard | parses target's `/robots.txt`; permissive on errors |
+| `sample_extracted` | soft | best-effort connector + extractor fetch of first record |
+| `sample_verify_pass` | soft | runs `opportunity.Verify` on the first record |
+
+Soft checks contribute to the report but do NOT flip `OverallPass`. Operators decide via `auto_approve` whether the absence of an LLM-driven sample blocks promotion.
+
+Errors: `503 not_configured` (verifier dependencies missing), `404 not_found`, `500 verify_failed`.
+
+#### `POST /admin/sources/{id}/approve`
+
+Promote a verified source to active. Records `approved_at` (now) and `approved_by` (operator's `sub` claim, or `"anonymous"` when missing).
+
+Errors: `404 not_found`, `409 invalid_transition` when current status is not `verified`.
+
+#### `POST /admin/sources/{id}/reject?reason=...`
+
+Mark as rejected. The reason can be supplied via query param or JSON body `{ "reason": "..." }`. Defaults to `"no reason given"` when both are empty.
+
+Errors: `404 not_found`.
+
+#### `POST /admin/sources/{id}/pause`
+
+`active → paused`. Errors: `404 not_found`, `500 pause_failed`.
+
+#### `POST /admin/sources/{id}/resume`
+
+`paused → active`. Also clears `consecutive_failures`. Errors: `404 not_found`.
+
+#### `GET /admin/sources/discovered`
+
+Convenience: list every source whose status is `pending`, `verifying`, `verified`, or `rejected`. This is the operator review queue. Optional `?limit=` (default 100, max 500).
+
+Response: `{ "sources": [...], "count": int }`.
+
 ---
 
 ## opportunities-candidates

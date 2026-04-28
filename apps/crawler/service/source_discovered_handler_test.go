@@ -53,6 +53,20 @@ func TestSourceDiscoveredUpsertsNewURL(t *testing.T) {
 	if len(repo.upserts) != 1 {
 		t.Fatalf("upserts=%v, want one", repo.upserts)
 	}
+
+	// New source must land in SourcePending so the scheduler does not
+	// pick it up before an operator (or the verifier auto-promotion path)
+	// has approved it.
+	saved := repo.rows["https://anotherboard.example"]
+	if saved == nil {
+		t.Fatalf("expected upsert to record under base URL key")
+	}
+	if saved.Status != domain.SourcePending {
+		t.Errorf("Status=%q want %q", saved.Status, domain.SourcePending)
+	}
+	if saved.AutoApprove {
+		t.Errorf("AutoApprove=true on a discovered source; should default to false")
+	}
 }
 
 func TestSourceDiscoveredSkipsSameDomain(t *testing.T) {

@@ -47,6 +47,21 @@ type apiConfig struct {
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
+
+	// SourceAdminEnabled gates the /admin/sources/* endpoints. Defaults
+	// off so plain api deployments (no DB credentials) keep working
+	// unchanged. Set to true in clusters where api should also serve
+	// the source-management surface.
+	SourceAdminEnabled bool `env:"SOURCE_ADMIN_ENABLED" envDefault:"false"`
+
+	// HTTPTimeoutSec controls outbound HTTP timeout for the
+	// source-verifier (reachability + robots probes). Sane default of
+	// 15s keeps verification responsive even when the target is slow.
+	HTTPTimeoutSec int `env:"HTTP_TIMEOUT_SEC" envDefault:"15"`
+
+	// UserAgent is the User-Agent header the verifier sends on
+	// reachability and robots.txt probes.
+	UserAgent string `env:"USER_AGENT" envDefault:"stawi-source-verifier/1.0"`
 }
 
 func main() {
@@ -135,6 +150,15 @@ func main() {
 	if r2Publisher != nil {
 		mux.HandleFunc("POST /admin/backfill",
 			backfillManticoreHandler(jm, r2Publisher, cfg.PublishMinQuality))
+	}
+
+	// Source-management admin surface. Optional: only wired when the
+	// operator opts in via SOURCE_ADMIN_ENABLED=true and the cluster
+	// supplies Frame's database config (POSTGRES_*). The handlers run
+	// the source-level verifier (reachability + robots + sample
+	// extraction) and own the pending → verified → active lifecycle.
+	if cfg.SourceAdminEnabled {
+		registerSourcesAdmin(ctx, mux, &cfg, reg)
 	}
 
 	// Verify-stage rejection visibility — operator-facing read of the

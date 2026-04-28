@@ -14,6 +14,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/sourceverify"
 )
 
 // SourceUpserter is the narrow slice of SourceRepository used by the
@@ -21,28 +22,6 @@ import (
 type SourceUpserter interface {
 	GetByID(ctx context.Context, id string) (*domain.Source, error)
 	Upsert(ctx context.Context, src *domain.Source) error
-}
-
-// blockedDiscoveredDomains mirrors the blocklist in the legacy
-// pkg/pipeline/handlers/source_expand.go. Kept local so this file can
-// be tested without importing the legacy handler, and so the legacy
-// file can be deleted in Phase 6 without touching Plan 4 code.
-var blockedDiscoveredDomains = map[string]bool{
-	"google.com":      true,
-	"facebook.com":    true,
-	"twitter.com":     true,
-	"instagram.com":   true,
-	"youtube.com":     true,
-	"wikipedia.org":   true,
-	"linkedin.com":    true,
-	"github.com":      true,
-	"apple.com":       true,
-	"play.google.com": true,
-	"apps.apple.com":  true,
-	"stawi.org":              true,
-	"opportunities.stawi.org": true,
-	"jobs.stawi.org":          true, // CNAME alias of opportunities.stawi.org
-	"pages.dev":               true,
 }
 
 // SourceDiscoveredHandler consumes sources.discovered.v1 and upserts
@@ -141,33 +120,43 @@ func (h *SourceDiscoveredHandler) Execute(ctx context.Context, payload any) erro
 		}
 	}
 
+	// Discovered sources land in SourcePending. They become eligible for
+	// crawling only after passing source-level verification AND being
+	// approved (manually by an operator, or automatically when
+	// AutoApprove=true). The legacy "discovered → active" flow is gone:
+	// every new domain now goes through the same lifecycle as an
+	// operator-created source, except AutoApprove defaults to false so
+	// a real human reviews the verification report before it starts
+	// burning crawl budget.
 	newSrc := &domain.Source{
 		Type:                     domain.SourceGenericHTML,
 		BaseURL:                  baseURL,
 		Country:                  p.Country,
-		Status:                   domain.SourceActive,
+		Status:                   domain.SourcePending,
 		Priority:                 domain.PriorityNormal,
 		CrawlIntervalSec:         7200,
 		HealthScore:              1.0,
 		Config:                   "{}",
 		Kinds:                    pq.StringArray(kinds),
 		RequiredAttributesByKind: map[string][]string{},
+		AutoApprove:              false,
 	}
 	if err := h.repo.Upsert(ctx, newSrc); err != nil {
 		return fmt.Errorf("source-discovered: upsert %s: %w", baseURL, err)
 	}
 	log.Info("source-discovered: upserted new source")
+
+	// TODO(source-admin): kick off async verification here once the
+	// crawler boot wires a sourceverify.Dispatcher. The synchronous
+	// admin POST /admin/sources/{id}/verify on apps/api covers the
+	// operator-driven path; auto-verify-on-discovery is purely a UX
+	// nicety so the operator's first review of a discovered source
+	// already shows a populated VerificationReport.
 	return nil
 }
 
+// isBlockedHost is a thin wrapper around sourceverify.IsBlockedHost so
+// existing call sites keep working unchanged.
 func isBlockedHost(host string) bool {
-	if blockedDiscoveredDomains[host] {
-		return true
-	}
-	for blocked := range blockedDiscoveredDomains {
-		if strings.HasSuffix(host, "."+blocked) {
-			return true
-		}
-	}
-	return false
+	return sourceverify.IsBlockedHost(host)
 }

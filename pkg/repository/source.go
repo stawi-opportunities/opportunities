@@ -34,9 +34,137 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 				"crawl_interval_sec", "health_score", "config",
 				"last_seen_at", "next_crawl_at", "updated_at",
 				"kinds", "required_attributes_by_kind",
+				"auto_approve",
 			}),
 		}).
 		Create(s).Error
+}
+
+// Create inserts a new source row. Unlike Upsert this returns an error on
+// conflict — use it for operator-driven creation where a duplicate should
+// surface rather than silently merge.
+func (r *SourceRepository) Create(ctx context.Context, s *domain.Source) error {
+	return r.db(ctx, false).Create(s).Error
+}
+
+// Update applies a partial update to a source. The map is passed through
+// to GORM's Updates so callers can update arbitrary subsets safely.
+func (r *SourceRepository) Update(ctx context.Context, id string, fields map[string]any) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Updates(fields).Error
+}
+
+// HardDelete physically removes a source row. Use sparingly — prefer
+// soft-delete (DisableSource) for operator-facing flows.
+func (r *SourceRepository) HardDelete(ctx context.Context, id string) error {
+	return r.db(ctx, false).Unscoped().Where("id = ?", id).Delete(&domain.Source{}).Error
+}
+
+// SaveVerificationReport persists the report and stamps LastVerifiedAt.
+// Status transitions (Verifying → Verified/Rejected) are caller-driven so
+// the verifier can compose the persisted state with auto-approve logic.
+func (r *SourceRepository) SaveVerificationReport(ctx context.Context, id string, report *domain.VerificationReport, status domain.SourceStatus, at time.Time) error {
+	updates := map[string]any{
+		"verification_report": report,
+		"last_verified_at":    at,
+		"status":              status,
+	}
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// SetStatus is a narrow helper for lifecycle transitions that touch only
+// the status column.
+func (r *SourceRepository) SetStatus(ctx context.Context, id string, status domain.SourceStatus) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Update("status", status).Error
+}
+
+// Approve flips a verified source to active. Records the operator and
+// timestamp.
+func (r *SourceRepository) Approve(ctx context.Context, id, operator string, at time.Time) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"status":      domain.SourceActive,
+			"approved_at": at,
+			"approved_by": operator,
+			// Clear any stale rejection reason so the row reflects the
+			// current decision unambiguously.
+			"rejection_reason": "",
+		}).Error
+}
+
+// Reject marks a source as rejected with a reason.
+func (r *SourceRepository) Reject(ctx context.Context, id, reason string) error {
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"status":           domain.SourceRejected,
+			"rejection_reason": reason,
+		}).Error
+}
+
+// ListFilter is the parameter bag for ListWithFilters. Empty fields are
+// treated as "no filter for this dimension".
+type ListFilter struct {
+	Status  domain.SourceStatus
+	Kind    string
+	Type    domain.SourceType
+	Country string
+	Limit   int
+	Offset  int
+}
+
+// ListWithFilters returns a paginated slice of sources matching the
+// supplied filters and the unrestricted total for pagination metadata.
+func (r *SourceRepository) ListWithFilters(ctx context.Context, f ListFilter) ([]*domain.Source, int64, error) {
+	q := r.db(ctx, true).Model(&domain.Source{})
+
+	if f.Status != "" {
+		q = q.Where("status = ?", f.Status)
+	}
+	if f.Type != "" {
+		q = q.Where("type = ?", f.Type)
+	}
+	if f.Country != "" {
+		q = q.Where("country = ?", f.Country)
+	}
+	if f.Kind != "" {
+		// kinds is a TEXT[] column; ANY(kinds) = ? selects rows where the
+		// kind is declared. Postgres-specific but the rest of this app is
+		// already Postgres-only.
+		q = q.Where("? = ANY(kinds)", f.Kind)
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	var sources []*domain.Source
+	err := q.Order("created_at DESC").Limit(limit).Offset(f.Offset).Find(&sources).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return sources, total, nil
+}
+
+// ListByStatuses returns every source whose status is in statuses. Used
+// by the discovered-queue endpoint.
+func (r *SourceRepository) ListByStatuses(ctx context.Context, statuses []domain.SourceStatus, limit int) ([]*domain.Source, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	var sources []*domain.Source
+	err := r.db(ctx, true).Where("status IN ?", statuses).Order("created_at DESC").Limit(limit).Find(&sources).Error
+	return sources, err
 }
 
 // GetByID returns a source by its primary key. Returns (nil, nil) when

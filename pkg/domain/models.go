@@ -45,12 +45,51 @@ const (
 type SourceStatus string
 
 const (
+	// Verification lifecycle (pre-operational).
+	SourcePending   SourceStatus = "pending"   // newly created/discovered, awaiting verification
+	SourceVerifying SourceStatus = "verifying" // verification in progress
+	SourceVerified  SourceStatus = "verified"  // verification passed, awaiting operator approval
+	SourceRejected  SourceStatus = "rejected"  // verification failed; held until operator action
+
+	// Operational lifecycle.
 	SourceActive   SourceStatus = "active"
 	SourceDegraded SourceStatus = "degraded"
 	SourcePaused   SourceStatus = "paused"
 	SourceBlocked  SourceStatus = "blocked"
 	SourceDisabled SourceStatus = "disabled"
 )
+
+// IsKnownSourceStatus reports whether s is one of the documented values.
+func IsKnownSourceStatus(s SourceStatus) bool {
+	switch s {
+	case SourcePending, SourceVerifying, SourceVerified, SourceRejected,
+		SourceActive, SourceDegraded, SourcePaused, SourceBlocked, SourceDisabled:
+		return true
+	}
+	return false
+}
+
+// VerificationReport captures the outcome of running the source-level
+// fitness checks against a Source. It is persisted on the Source row
+// (jsonb) so operators can review it via the admin API. Zero values mean
+// "the check was not performed"; ErrorList captures unexpected failures
+// (network errors, etc.) that do not map to any one boolean.
+type VerificationReport struct {
+	StartedAt        time.Time  `json:"started_at"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
+	URLValid         bool       `json:"url_valid"`
+	BlocklistClean   bool       `json:"blocklist_clean"`
+	KindsKnown       bool       `json:"kinds_known"`
+	Reachable        bool       `json:"reachable"`
+	ReachableStatus  int        `json:"reachable_status,omitempty"`
+	RobotsAllowed    bool       `json:"robots_allowed"`
+	SampleExtracted  bool       `json:"sample_extracted"`
+	SampleVerifyPass bool       `json:"sample_verify_pass"`
+	SampleReasons    []string   `json:"sample_reasons,omitempty"`
+	SampleTitle      string     `json:"sample_title,omitempty"`
+	OverallPass      bool       `json:"overall_pass"`
+	Errors           []string   `json:"errors,omitempty"`
+}
 
 // CrawlJobStatus tracks the lifecycle of a crawl job.
 type CrawlJobStatus string
@@ -112,6 +151,23 @@ type Source struct {
 	// when a specific portal is known to always carry an attribute that the
 	// kind YAML marks optional. Map from kind → list of attribute keys.
 	RequiredAttributesByKind map[string][]string `gorm:"type:jsonb;not null;default:'{}';serializer:json" json:"required_attributes_by_kind" db:"required_attributes_by_kind"`
+
+	// Source-level verification + approval lifecycle. Discovered sources
+	// land in SourcePending and only enter SourceActive after verification
+	// passes and an operator approves them (or AutoApprove flips it). The
+	// VerificationReport records the most recent run; LastVerifiedAt is set
+	// in two places — the per-record reachability probe (above) reuses
+	// LastVerifyStatus, while the source-level verifier writes the report.
+	VerificationReport *VerificationReport `gorm:"type:jsonb;serializer:json" json:"verification_report,omitempty"`
+	ApprovedAt         *time.Time          `json:"approved_at,omitempty"`
+	ApprovedBy         string              `gorm:"type:varchar(64)" json:"approved_by,omitempty"` // operator profile_id, or "system" for auto-approve
+	RejectionReason    string              `gorm:"type:text"        json:"rejection_reason,omitempty"`
+
+	// AutoApprove flips a verified source straight to SourceActive without
+	// waiting for operator approval. Operator-created sources default to
+	// true (the operator already vouched for it); discovered sources
+	// default to false (operator review queue).
+	AutoApprove bool `gorm:"not null;default:false" json:"auto_approve"`
 }
 
 func (Source) TableName() string { return "sources" }
