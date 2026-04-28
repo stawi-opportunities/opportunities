@@ -5,22 +5,33 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/pitabwire/util"
 )
+
+// HTTPClient is the minimal http.Client surface R2Publisher needs to call
+// the Cloudflare Pages deploy hook. Frame's HTTPClientManager.Client(ctx)
+// satisfies it; tests use a stdlib http.Client.
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
 
 // R2Publisher uploads content to a Cloudflare R2 bucket via the S3-compatible API.
 type R2Publisher struct {
 	client        *s3.Client
 	bucket        string
 	deployHookURL string
+	httpClient    HTTPClient
 }
 
 // NewR2Publisher creates an R2Publisher configured for the given Cloudflare account.
+// The deploy-hook HTTP client falls back to http.DefaultClient when nil; production
+// callers should pass svc.HTTPClientManager().Client(ctx) so OTEL trace propagation
+// and Frame retry policy apply.
 func NewR2Publisher(accountID, accessKeyID, secretKey, bucket, deployHookURL string) *R2Publisher {
 	endpoint := fmt.Sprintf("https://%s.r2.cloudflarestorage.com", accountID)
 
@@ -34,6 +45,14 @@ func NewR2Publisher(accountID, accessKeyID, secretKey, bucket, deployHookURL str
 		client:        client,
 		bucket:        bucket,
 		deployHookURL: deployHookURL,
+	}
+}
+
+// SetHTTPClient overrides the deploy-hook HTTP client. Production callers
+// pass svc.HTTPClientManager().Client(ctx) at boot.
+func (p *R2Publisher) SetHTTPClient(c HTTPClient) {
+	if c != nil {
+		p.httpClient = c
 	}
 }
 
@@ -124,11 +143,20 @@ func (p *R2Publisher) Download(ctx context.Context, key string) ([]byte, error) 
 }
 
 // TriggerDeploy POSTs to the Cloudflare Pages deploy hook to trigger a site rebuild.
-func (p *R2Publisher) TriggerDeploy() error {
+func (p *R2Publisher) TriggerDeploy(ctx context.Context) error {
 	if p.deployHookURL == "" {
 		return nil
 	}
-	resp, err := http.Post(p.deployHookURL, "application/json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.deployHookURL, nil)
+	if err != nil {
+		return fmt.Errorf("deploy hook build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	hc := p.httpClient
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+	resp, err := hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("deploy hook POST failed: %w", err)
 	}
@@ -136,6 +164,6 @@ func (p *R2Publisher) TriggerDeploy() error {
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("deploy hook returned status %d", resp.StatusCode)
 	}
-	log.Printf("publish: deploy hook triggered successfully (status %d)", resp.StatusCode)
+	util.Log(ctx).WithField("status", resp.StatusCode).Info("publish: deploy hook triggered successfully")
 	return nil
 }

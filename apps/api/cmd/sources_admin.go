@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
+	frameclient "github.com/pitabwire/frame/client"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
@@ -107,13 +108,16 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	}
 	repo := repository.NewSourceRepository(pool.DB)
 
-	connClient := httpx.NewClient(time.Duration(cfg.HTTPTimeoutSec)*time.Second, cfg.UserAgent)
+	// Frame-managed HTTP client (OTEL trace propagation + retry hooks).
+	// Both the connector retry path and the verifier's raw HEAD/GET probes
+	// share the same underlying client so admin verification feels
+	// consistent with the timeout budget.
+	verifyClient := frameclient.NewHTTPClient(ctx,
+		frameclient.WithHTTPTimeout(time.Duration(cfg.HTTPTimeoutSec)*time.Second),
+		frameclient.WithHTTPTraceRequests(),
+	)
+	connClient := httpx.NewClientFromDoer(verifyClient, cfg.UserAgent)
 	connReg := buildAdminConnectorRegistry(connClient)
-
-	// The verifier needs a stdlib *http.Client (it issues raw HEAD/GET
-	// probes, not a connector-style retry path). Reuse the same timeout
-	// budget so admin verification feels consistent.
-	verifyClient := &http.Client{Timeout: time.Duration(cfg.HTTPTimeoutSec) * time.Second}
 	verifier := sourceverify.NewVerifier(sourceverify.Config{
 		HTTP:       verifyClient,
 		Connectors: connReg,

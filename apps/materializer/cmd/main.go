@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"log"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -30,7 +29,7 @@ func main() {
 
 	cfg, err := matcfg.Load()
 	if err != nil {
-		log.Fatalf("materializer: load config: %v", err)
+		util.Log(ctx).WithError(err).Fatal("materializer: load config")
 	}
 
 	// Frame service — NATS-backed pub/sub + OTEL.
@@ -47,10 +46,12 @@ func main() {
 	}
 	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
-	// Manticore client.
+	// Manticore client. Pass Frame's HTTP client so OTEL trace propagation
+	// applies to every /sql + /search round trip.
 	mc, err := searchindex.Open(searchindex.Config{
-		URL:     cfg.ManticoreURL,
-		Timeout: cfg.ManticoreTimeout,
+		URL:        cfg.ManticoreURL,
+		Timeout:    cfg.ManticoreTimeout,
+		HTTPClient: svc.HTTPClientManager().Client(ctx),
 	})
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("materializer: open manticore failed")

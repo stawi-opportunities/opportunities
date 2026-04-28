@@ -38,6 +38,12 @@ type ClientConfig struct {
 	RedirectURI     string
 	BillingURI      string
 	ProfileURI      string
+
+	// HTTPClient overrides the http.Client backing the redirect REST
+	// client. Production callers should pass
+	// svc.HTTPClientManager().Client(ctx); nil falls back to
+	// http.DefaultClient.
+	HTTPClient HTTPDoer
 }
 
 // NewClients creates Connect RPC clients for each configured service.
@@ -79,7 +85,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	}
 
 	if cc.RedirectURI != "" {
-		clients.Redirect = NewRedirectClient(cc.RedirectURI)
+		clients.Redirect = NewRedirectClient(cc.RedirectURI, cc.HTTPClient)
 	}
 
 	// service_payment + service_billing are co-deployed under the

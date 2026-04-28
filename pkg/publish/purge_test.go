@@ -25,7 +25,7 @@ func TestCachePurger_PurgeURL_PostsExpectedRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := publish.NewCachePurger("zone123", "token-xyz", srv.URL)
+	p := publish.NewCachePurger("zone123", "token-xyz", srv.URL, nil)
 	if err := p.PurgeURL(context.Background(), "https://opportunities-data.stawi.org/jobs/abc.json"); err != nil {
 		t.Fatalf("purge: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestCachePurger_PurgeURL_PostsExpectedRequest(t *testing.T) {
 }
 
 func TestCachePurger_EmptyConfigIsNoOp(t *testing.T) {
-	p := publish.NewCachePurger("", "", "")
+	p := publish.NewCachePurger("", "", "", nil)
 	if err := p.PurgeURL(context.Background(), "https://x"); err != nil {
 		t.Fatalf("no-op purger should not error, got %v", err)
 	}
@@ -61,7 +61,7 @@ func TestCachePurger_Non2xxReturnsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := publish.NewCachePurger("z", "t", srv.URL)
+	p := publish.NewCachePurger("z", "t", srv.URL, nil)
 	if err := p.PurgeURL(context.Background(), "https://x"); err == nil {
 		t.Error("expected error on 403")
 	}

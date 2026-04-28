@@ -107,6 +107,12 @@ type Config struct {
 	// prefix alone and defaults the kind to "job" so legacy callers
 	// (and tests not wired through boot) keep working.
 	Registry *opportunity.Registry
+
+	// HTTPClient overrides the underlying HTTP client. Production callers
+	// should pass svc.HTTPClientManager().Client(ctx) so OTEL trace
+	// propagation applies to LLM/embedding/rerank requests; nil falls
+	// back to a stdlib client with the package-level extractionTimeout.
+	HTTPClient HTTPDoer
 }
 
 // chat posts an OpenAI-compatible chat completion request and returns the

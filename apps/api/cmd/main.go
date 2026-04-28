@@ -15,6 +15,7 @@ import (
 	"time"
 
 	env "github.com/caarlos0/env/v11"
+	frameclient "github.com/pitabwire/frame/client"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
@@ -91,7 +92,19 @@ func main() {
 	if cfg.ManticoreURL == "" {
 		log.Fatal("api: MANTICORE_URL is required")
 	}
-	manticore, err := searchindex.Open(searchindex.Config{URL: cfg.ManticoreURL})
+
+	// Frame-managed HTTP client (OTEL trace propagation + retry policy).
+	// Used by Manticore + analytics + R2 deploy-hook wiring; the api
+	// still owns its own http.Server so we don't take on the full Frame
+	// service lifecycle.
+	frameHTTPClient := frameclient.NewHTTPClient(ctx,
+		frameclient.WithHTTPTraceRequests(),
+	)
+
+	manticore, err := searchindex.Open(searchindex.Config{
+		URL:        cfg.ManticoreURL,
+		HTTPClient: frameHTTPClient,
+	})
 	if err != nil {
 		log.WithError(err).Fatal("api: manticore open failed")
 	}
@@ -104,14 +117,16 @@ func main() {
 			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
 			cfg.R2ContentBucket, cfg.R2DeployHookURL,
 		)
+		r2Publisher.SetHTTPClient(frameHTTPClient)
 		log.WithField("bucket", cfg.R2ContentBucket).Info("R2 publisher enabled")
 	}
 
 	analyticsClient := analytics.New(analytics.Config{
-		BaseURL:  cfg.AnalyticsBaseURL,
-		Org:      cfg.AnalyticsOrg,
-		Username: cfg.AnalyticsUsername,
-		Password: cfg.AnalyticsPassword,
+		BaseURL:    cfg.AnalyticsBaseURL,
+		Org:        cfg.AnalyticsOrg,
+		Username:   cfg.AnalyticsUsername,
+		Password:   cfg.AnalyticsPassword,
+		HTTPClient: frameHTTPClient,
 	})
 
 	// Counters (Valkey-backed view + apply counts). nil when ValkeyURL

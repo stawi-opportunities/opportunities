@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/apache/iceberg-go/catalog"
+	frameclient "github.com/pitabwire/frame/client"
 	"github.com/pitabwire/util"
 
 	writercfg "github.com/stawi-opportunities/opportunities/apps/writer/config"
@@ -48,7 +49,13 @@ func runBootstrap(ctx context.Context) error {
 	log := util.Log(ctx)
 
 	mgmtBase := managementBase(cfg.IcebergCatalogURI)
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	// Frame-managed HTTP client — bootstrap runs as a one-shot Job so we
+	// build the client directly rather than spinning up a full Frame
+	// service for a couple of management calls.
+	httpClient := frameclient.NewHTTPClient(ctx,
+		frameclient.WithHTTPTimeout(30*time.Second),
+		frameclient.WithHTTPTraceRequests(),
+	)
 
 	log.WithField("base", mgmtBase).Info("bootstrap: waiting for Lakekeeper readiness")
 	if err := waitForLakekeeper(ctx, httpClient, mgmtBase); err != nil {

@@ -42,6 +42,12 @@ currency codes. Dates are RFC3339 timestamps in UTC.`
 const maxContentChars = 4000
 const extractionTimeout = 10 * time.Minute // was 120s — let AI finish on CPU
 
+// HTTPDoer is the minimal http.Client surface this package exercises.
+// Frame's HTTPClientManager.Client(ctx) satisfies it; tests use stdlib.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // Extractor calls an OpenAI-compatible chat completions endpoint to extract
 // structured opportunity fields from HTML. Works against Cloudflare AI
 // Gateway, Groq, OpenAI, and Ollama 0.3+ unchanged.
@@ -63,7 +69,7 @@ type Extractor struct {
 	rerankAPIKey  string
 	rerankModel   string
 
-	client *http.Client
+	client HTTPDoer
 
 	llm      LLM
 	registry *opportunity.Registry
@@ -78,6 +84,10 @@ type Extractor struct {
 // alone is used and the classifier falls back to "job" as the single
 // implicit kind.
 func New(cfg Config) *Extractor {
+	hc := cfg.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: extractionTimeout}
+	}
 	e := &Extractor{
 		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),
 		apiKey:           cfg.APIKey,
@@ -88,7 +98,7 @@ func New(cfg Config) *Extractor {
 		rerankBaseURL:    strings.TrimRight(cfg.RerankBaseURL, "/"),
 		rerankAPIKey:     cfg.RerankAPIKey,
 		rerankModel:      cfg.RerankModel,
-		client:           &http.Client{Timeout: extractionTimeout},
+		client:           hc,
 		registry:         cfg.Registry,
 	}
 	e.llm = chatLLM{e: e}

@@ -19,18 +19,39 @@ const (
 	jitterFraction = 0.3 // ±30 % of computed backoff
 )
 
+// HTTPDoer is the minimal http.Client surface this package exercises.
+// Frame's HTTPClientManager.Client(ctx) satisfies it; tests use stdlib.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // Client is a resilient HTTP client that retries on transient failures.
 type Client struct {
-	http      *http.Client
+	http      HTTPDoer
 	userAgent string
 }
 
 // NewClient creates a Client with the given request timeout and User-Agent.
+// This constructor builds a stdlib *http.Client internally — it is kept
+// for callers (notably tests) that don't have a Frame service handy.
+// Production paths should prefer NewClientFromDoer with a Frame-managed
+// client so OTEL trace propagation and retry policy apply.
 func NewClient(timeout time.Duration, userAgent string) *Client {
 	return &Client{
 		http:      &http.Client{Timeout: timeout},
 		userAgent: userAgent,
 	}
+}
+
+// NewClientFromDoer wraps an HTTP doer (typically
+// svc.HTTPClientManager().Client(ctx)) with the retry/backoff policy.
+// The supplied client owns request timeouts; callers should construct it
+// with the desired timeout via Frame's client options.
+func NewClientFromDoer(doer HTTPDoer, userAgent string) *Client {
+	if doer == nil {
+		doer = http.DefaultClient
+	}
+	return &Client{http: doer, userAgent: userAgent}
 }
 
 // Get performs a GET request to url, attaching any extra headers supplied.

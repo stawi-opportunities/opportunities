@@ -17,20 +17,33 @@ import (
 	"time"
 )
 
+// HTTPDoer is the minimal http.Client surface this package exercises.
+// Frame's HTTPClientManager.Client(ctx) satisfies it; tests use stdlib.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // Config describes how to reach Manticore.
 type Config struct {
 	// URL is the root of Manticore's HTTP endpoint,
 	// e.g. "http://manticore:9308". Trailing slashes are trimmed.
 	URL string
 
-	// Timeout bounds every request. Default 10s.
+	// Timeout bounds every request. Default 10s. Ignored when HTTPClient
+	// is non-nil — production callers pass a Frame-managed client which
+	// owns its own timeout.
 	Timeout time.Duration
+
+	// HTTPClient overrides the underlying HTTP client. Production callers
+	// should pass svc.HTTPClientManager().Client(ctx); nil falls back to
+	// a stdlib client with Timeout for backward compatibility.
+	HTTPClient HTTPDoer
 }
 
 // Client is the high-level Manticore handle. Safe for concurrent use
 // (delegates to http.Client which is goroutine-safe).
 type Client struct {
-	http *http.Client
+	http HTTPDoer
 	base string
 }
 
@@ -40,12 +53,16 @@ func Open(cfg Config) (*Client, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("searchindex: empty URL")
 	}
-	t := cfg.Timeout
-	if t == 0 {
-		t = 10 * time.Second
+	hc := cfg.HTTPClient
+	if hc == nil {
+		t := cfg.Timeout
+		if t == 0 {
+			t = 10 * time.Second
+		}
+		hc = &http.Client{Timeout: t}
 	}
 	return &Client{
-		http: &http.Client{Timeout: t},
+		http: hc,
 		base: strings.TrimRight(cfg.URL, "/"),
 	}, nil
 }

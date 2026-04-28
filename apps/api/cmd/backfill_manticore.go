@@ -16,7 +16,7 @@ import (
 // r2Snapshotter is the minimal publish interface the backfill needs.
 type r2Snapshotter interface {
 	UploadPublicSnapshot(ctx context.Context, key string, body []byte) error
-	TriggerDeploy() error
+	TriggerDeploy(ctx context.Context) error
 }
 
 // backfillManticoreHandler scans idx_opportunities_rt in Manticore for active jobs
@@ -85,7 +85,7 @@ func backfillManticoreHandler(jm *jobsManticore, snap r2Snapshotter, defaultMinQ
 		}
 
 		if triggerDeploy && uploaded > 0 {
-			if derr := snap.TriggerDeploy(); derr != nil {
+			if derr := snap.TriggerDeploy(ctx); derr != nil {
 				util.Log(ctx).WithError(derr).Warn("backfill: deploy hook failed")
 			}
 		}

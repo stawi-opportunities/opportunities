@@ -17,6 +17,12 @@ import (
 	"time"
 )
 
+// HTTPDoer is the minimal http.Client surface this package exercises.
+// Frame's HTTPClientManager.Client(ctx) satisfies it; tests use stdlib.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // Client is an OpenObserve ingest client. It batches events in memory and
 // flushes either when the batch reaches MaxBatchSize or when FlushInterval
 // elapses — whichever comes first. The batching matters because each ingest
@@ -31,7 +37,7 @@ type Client struct {
 	org      string // OpenObserve organisation, usually "default"
 	username string // Basic-auth email
 	password string // Basic-auth password/token
-	http     *http.Client
+	http     HTTPDoer
 
 	maxBatch int
 	flushInt time.Duration
@@ -54,6 +60,12 @@ type Config struct {
 	MaxBatchSize  int           // 0 → 100
 	FlushInterval time.Duration // 0 → 2s
 	HTTPTimeout   time.Duration // 0 → 10s
+
+	// HTTPClient overrides the underlying HTTP client. Production callers
+	// should pass svc.HTTPClientManager().Client(ctx) so OTEL trace
+	// propagation applies; nil falls back to a stdlib client with
+	// HTTPTimeout for backward compatibility.
+	HTTPClient HTTPDoer
 }
 
 // New constructs a Client and starts its background flusher. Return nil
@@ -76,12 +88,16 @@ func New(cfg Config) *Client {
 		cfg.HTTPTimeout = 10 * time.Second
 	}
 
+	hc := cfg.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: cfg.HTTPTimeout}
+	}
 	c := &Client{
 		baseURL:  strings.TrimRight(cfg.BaseURL, "/"),
 		org:      cfg.Org,
 		username: cfg.Username,
 		password: cfg.Password,
-		http:     &http.Client{Timeout: cfg.HTTPTimeout},
+		http:     hc,
 		maxBatch: cfg.MaxBatchSize,
 		flushInt: cfg.FlushInterval,
 		buckets:  make(map[string][]map[string]any),

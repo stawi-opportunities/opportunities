@@ -21,18 +21,29 @@ type RedirectLink struct {
 	Medium         string `json:"medium,omitempty"`
 }
 
+// HTTPDoer is the minimal http.Client surface this package exercises.
+// Frame's HTTPClientManager.Client(ctx) satisfies it; tests use stdlib.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // RedirectClient is a lightweight client for the redirect.v1.RedirectService.
 // It speaks Connect protocol (JSON) over HTTP without needing generated protobuf code.
 type RedirectClient struct {
 	baseURL    string
-	httpClient *http.Client
+	httpClient HTTPDoer
 }
 
 // NewRedirectClient creates a new redirect client for the given base URL.
-func NewRedirectClient(baseURL string) *RedirectClient {
+// httpClient may be nil; production callers should pass
+// svc.HTTPClientManager().Client(ctx) so OTEL trace propagation applies.
+func NewRedirectClient(baseURL string, httpClient HTTPDoer) *RedirectClient {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
 	return &RedirectClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{},
+		httpClient: httpClient,
 	}
 }
 

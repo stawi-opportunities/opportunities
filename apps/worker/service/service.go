@@ -19,6 +19,14 @@ import (
 // Service is the worker's composition root. Handlers returns the
 // seven internal subscriptions to be registered with the Frame event
 // manager via frame.WithRegisterEvents.
+//
+// TODO(golang-patterns): the embed/translate handlers call external
+// LLM endpoints; per the canonical Frame decision tree these are
+// "external API" work and should be Queue subscribers rather than
+// Events. Migrate when the pipeline's chained-fanout semantics can be
+// expressed as durable pub/sub — today the canonicalFanout
+// composition relies on event ordering that Queue retries would
+// disrupt without coordinated dedupe.
 type Service struct {
 	svc       *frame.Service
 	extractor *extraction.Extractor

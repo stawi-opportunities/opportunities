@@ -115,6 +115,7 @@ func main() {
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
 			Registry:         reg,
+			HTTPClient:       svc.HTTPClientManager().Client(ctx),
 		})
 		log.WithField("url", infBase).Info("AI extraction enabled")
 	}

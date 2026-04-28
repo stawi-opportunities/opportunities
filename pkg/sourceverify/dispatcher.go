@@ -91,6 +91,12 @@ func (d *Dispatcher) VerifyAndPersist(ctx context.Context, sourceID string) (*do
 // by source-discovery so the operator's first review of a discovered
 // source already shows a verification report. Errors are logged and
 // dropped — the caller does not block on the outcome.
+//
+// TODO(golang-patterns): this work calls external HTTP (HEAD/GET probes,
+// /robots.txt, sample extraction) so it should ideally run on Frame's
+// workerpool — restart-resilience and bounded parallelism would protect
+// the verifier from runaway discovery floods. Migrate when the
+// crawler service exposes a workerpool.Manager hook on Dispatcher.
 func (d *Dispatcher) VerifyAsync(parent context.Context, sourceID string) {
 	go func() {
 		// Detach the context so a request cancellation in the parent

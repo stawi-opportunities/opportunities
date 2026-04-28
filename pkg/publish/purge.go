@@ -15,20 +15,25 @@ type CachePurger struct {
 	zoneID  string
 	token   string
 	baseURL string
-	client  *http.Client
+	client  HTTPClient
 }
 
 // NewCachePurger constructs a purger. Pass empty strings for a no-op.
 // baseURL == "" means use Cloudflare's production API root.
-func NewCachePurger(zoneID, token, baseURL string) *CachePurger {
+// httpClient may be nil; production callers should pass
+// svc.HTTPClientManager().Client(ctx) so OTEL trace propagation applies.
+func NewCachePurger(zoneID, token, baseURL string, httpClient HTTPClient) *CachePurger {
 	if baseURL == "" {
 		baseURL = "https://api.cloudflare.com/client/v4"
+	}
+	if httpClient == nil {
+		httpClient = http.DefaultClient
 	}
 	return &CachePurger{
 		zoneID:  zoneID,
 		token:   token,
 		baseURL: baseURL,
-		client:  &http.Client{},
+		client:  httpClient,
 	}
 }
 

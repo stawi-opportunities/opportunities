@@ -1,6 +1,14 @@
 // Package v1 holds the Phase 5 event subscription handlers for
 // apps/matching — cv-extract, cv-improve, cv-embed. Each implements
 // Frame's events.EventI contract.
+//
+// TODO(golang-patterns): cv-extract, cv-improve, and cv-embed all call
+// external LLM/embedding endpoints (Cloudflare AI Gateway, TEI). Per
+// the Frame decision tree these should be Queue subscribers (durable,
+// external-IO-tolerant) rather than Events (fast in-process). Migrate
+// once the pipeline's chaining semantics can be expressed as
+// pub/sub-with-retry; today the per-event Validate gate and the
+// EventsManager.Emit fan-in pattern make Queue conversion non-trivial.
 package v1
 
 import (

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
+	frameclient "github.com/pitabwire/frame/client"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
@@ -108,11 +109,17 @@ func main() {
 		log.WithField("count", n).Info("seed sources loaded")
 	}
 
-	// HTTP client for connectors.
-	httpClient := httpx.NewClient(
-		time.Duration(cfg.HTTPTimeoutSec)*time.Second,
-		cfg.UserAgent,
+	// HTTP client for connectors. Frame's HTTPClientManager wraps the
+	// stdlib client with OTEL trace propagation and retry policy; we
+	// layer the connector retry/backoff loop on top in pkg/connectors/httpx.
+	// Frame's manager.Client(ctx) returns a client we share by default;
+	// when the operator wants a tighter per-request timeout we build a
+	// dedicated client via Frame's NewHTTPClient helper.
+	httpDoer := frameclient.NewHTTPClient(ctx,
+		frameclient.WithHTTPTimeout(time.Duration(cfg.HTTPTimeoutSec)*time.Second),
+		frameclient.WithHTTPTraceRequests(),
 	)
+	httpClient := httpx.NewClientFromDoer(httpDoer, cfg.UserAgent)
 
 	// AI extractor — OpenAI-compatible back-end. Reads INFERENCE_* first,
 	// falls back to the legacy OLLAMA_* vars during the Cloudflare AI
@@ -138,6 +145,7 @@ func main() {
 			RerankAPIKey:     cfg.RerankAPIKey,
 			RerankModel:      cfg.RerankModel,
 			Registry:         reg,
+			HTTPClient:       svc.HTTPClientManager().Client(ctx),
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
@@ -162,10 +170,11 @@ func main() {
 	// Analytics client — batches events to OpenObserve. Nil when
 	// ANALYTICS_BASE_URL is unset; all call sites handle the no-op.
 	analyticsClient := analytics.New(analytics.Config{
-		BaseURL:  cfg.AnalyticsBaseURL,
-		Org:      cfg.AnalyticsOrg,
-		Username: cfg.AnalyticsUsername,
-		Password: cfg.AnalyticsPassword,
+		BaseURL:    cfg.AnalyticsBaseURL,
+		Org:        cfg.AnalyticsOrg,
+		Username:   cfg.AnalyticsUsername,
+		Password:   cfg.AnalyticsPassword,
+		HTTPClient: svc.HTTPClientManager().Client(ctx),
 	})
 	if analyticsClient != nil {
 		svc.AddCleanupMethod(func(ctx context.Context) { _ = analyticsClient.Close(ctx) })
@@ -182,7 +191,7 @@ func main() {
 		ConsumerName: cfg.BackpressureConsumerName,
 		HighWater:    cfg.BackpressureHighWater,
 		LowWater:     cfg.BackpressureLowWater,
-	}, nil)
+	}, svc.HTTPClientManager().Client(ctx))
 
 	// ── Task 5: per-topic drain-time policy ────────────────────────
 	//

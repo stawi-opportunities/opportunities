@@ -3,7 +3,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net/http"
 
 	"github.com/pitabwire/frame"
@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"fmt"
 
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
@@ -32,7 +31,7 @@ func main() {
 
 	cfg, err := workercfg.Load()
 	if err != nil {
-		log.Fatalf("worker: load config: %v", err)
+		util.Log(ctx).WithError(err).Fatal("worker: load config")
 	}
 
 	// Build a Valkey-backed raw cache and register it with Frame
@@ -41,15 +40,21 @@ func main() {
 	// taken below via GetCache with different keyFuncs.
 	raw, err := framevalkey.New(cache.WithDSN(data.DSN(cfg.ValkeyURL)))
 	if err != nil {
-		log.Fatalf("worker: valkey cache open: %v", err)
+		util.Log(ctx).WithError(err).Fatal("worker: valkey cache open")
 	}
 
 	// Direct go-redis client on the same Valkey instance, used by the
 	// KV rebuild admin endpoint which writes raw JSON rather than going
 	// through Frame's typed cache layer.
+	//
+	// TODO(golang-patterns): Frame's cache.Manager covers typed CRUD but
+	// the KV rebuild path needs a Lua-CAS script to atomically merge
+	// last_seen_at across parallel pages — Frame doesn't expose EVAL/
+	// SCRIPT yet, so we keep a direct go-redis client here. Track in
+	// pkg/counters too. Revisit when frame/cache/valkey adds Eval.
 	kvOpts, err := redis.ParseURL(cfg.ValkeyURL)
 	if err != nil {
-		log.Fatalf("worker: parse valkey URL: %v", err)
+		util.Log(ctx).WithError(err).Fatal("worker: parse valkey URL")
 	}
 	kvClient := redis.NewClient(kvOpts)
 
@@ -80,6 +85,7 @@ func main() {
 			EmbeddingAPIKey:  cfg.EmbeddingAPIKey,
 			EmbeddingModel:   cfg.EmbeddingModel,
 			Registry:         reg,
+			HTTPClient:       svc.HTTPClientManager().Client(ctx),
 		})
 	}
 
