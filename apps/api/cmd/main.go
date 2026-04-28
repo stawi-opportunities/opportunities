@@ -18,6 +18,7 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
+	"github.com/stawi-opportunities/opportunities/pkg/counters"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
@@ -62,6 +63,12 @@ type apiConfig struct {
 	// UserAgent is the User-Agent header the verifier sends on
 	// reachability and robots.txt probes.
 	UserAgent string `env:"USER_AGENT" envDefault:"stawi-source-verifier/1.0"`
+
+	// ValkeyURL points at the platform Valkey instance. Used by the
+	// view + apply counters and the /opportunities/{slug}/stats
+	// endpoint. Empty disables the counters surface — the analytics
+	// log path keeps working unchanged.
+	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
 }
 
 func main() {
@@ -107,6 +114,18 @@ func main() {
 		Password: cfg.AnalyticsPassword,
 	})
 
+	// Counters (Valkey-backed view + apply counts). nil when ValkeyURL
+	// is empty — every counter call becomes a no-op so the api still
+	// serves the search/detail surface without Valkey wired.
+	countersClient, err := counters.NewClient(cfg.ValkeyURL)
+	if err != nil {
+		log.WithError(err).Warn("api: counters init failed; view/apply counters disabled")
+		countersClient = nil
+	}
+	if countersClient != nil {
+		log.Info("api: view/apply counters enabled")
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, req *http.Request) {
@@ -123,8 +142,9 @@ func main() {
 		})
 	})
 
-	// v2 endpoints (Manticore-only).
-	mux.HandleFunc("GET /api/v2/search", v2SearchHandler(jm, reg))
+	// v2 endpoints (Manticore-only). Search results are post-decorated
+	// with view/apply counters when Valkey is configured.
+	mux.HandleFunc("GET /api/v2/search", v2SearchHandler(jm, reg, countersClient))
 	mux.HandleFunc("GET /api/v2/jobs/{id}", v2JobByIDHandler(jm))
 	mux.HandleFunc("GET /api/v2/jobs/top", v2TopHandler(jm))
 	mux.HandleFunc("GET /api/v2/jobs/latest", v2LatestHandler(jm))
@@ -134,7 +154,7 @@ func main() {
 	mux.HandleFunc("GET /api/v2/feed/tier", v2FeedTierHandler(jm))
 
 	// Legacy shims - v1 paths route to v2 handlers during transition.
-	mux.HandleFunc("GET /api/search", v2SearchHandler(jm, reg))
+	mux.HandleFunc("GET /api/search", v2SearchHandler(jm, reg, countersClient))
 	mux.HandleFunc("GET /api/categories", v2CategoriesHandler(jm))
 	mux.HandleFunc("GET /api/jobs/latest", v2LatestHandler(jm))
 	mux.HandleFunc("GET /api/stats/summary", v2StatsHandler(jm))
@@ -144,7 +164,12 @@ func main() {
 	mux.HandleFunc("GET /jobs/{id}", v2JobByIDHandler(jm))
 	mux.HandleFunc("GET /categories", v2CategoriesHandler(jm))
 	mux.HandleFunc("GET /stats", v2StatsHandler(jm))
-	mux.HandleFunc("GET /search", v2SearchHandler(jm, reg))
+	mux.HandleFunc("GET /search", v2SearchHandler(jm, reg, countersClient))
+
+	// Per-slug stats — Valkey-backed view + apply counters. Public,
+	// no auth. When Valkey is not configured the response is the
+	// well-formed all-zero shape (callers can branch on that).
+	mux.HandleFunc("GET /opportunities/{slug}/stats", statsHandler(countersClient))
 
 	// Hugo snapshot publishing — sources from Manticore idx_opportunities_rt.
 	if r2Publisher != nil {
@@ -157,8 +182,18 @@ func main() {
 	// supplies Frame's database config (POSTGRES_*). The handlers run
 	// the source-level verifier (reachability + robots + sample
 	// extraction) and own the pending → verified → active lifecycle.
+	//
+	// Flag-admin shares the same toggle: both surfaces need the api's
+	// own Postgres connection, so wiring them together keeps the
+	// "should the api own a DB?" decision a single env var.
 	if cfg.SourceAdminEnabled {
 		registerSourcesAdmin(ctx, mux, &cfg, reg)
+		registerFlagsAdmin(ctx, mux, jm)
+		// Top-applied lives on the api side (Valkey-backed) — wired
+		// alongside the flag-admin toggle so operators get both
+		// dashboards (top-flagged + top-applied) at the same time.
+		mux.HandleFunc("GET /admin/opportunities/top-applied",
+			requireAdmin(topAppliedHandler(jm, countersClient)))
 	}
 
 	// Verify-stage rejection visibility — operator-facing read of the
@@ -166,34 +201,21 @@ func main() {
 	// to 501; see endpoints_v2.go for the implementation note.
 	mux.HandleFunc("GET /admin/variants/rejected", v2VariantsRejectedHandler())
 
-	// Analytics beacon — no DB.
-	mux.HandleFunc("OPTIONS /jobs/{slug}/view", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		w.Header().Set("Access-Control-Max-Age", "3600")
-		w.WriteHeader(http.StatusNoContent)
-	})
-	mux.HandleFunc("POST /jobs/{slug}/view", func(w http.ResponseWriter, req *http.Request) {
-		slug := req.PathValue("slug")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		if slug != "" && analyticsClient != nil {
-			evt := map[string]any{
-				"event":      "server_view",
-				"slug":       slug,
-				"ip_hash":    hashIP(req),
-				"user_agent": req.Header.Get("User-Agent"),
-				"referer":    req.Header.Get("Referer"),
-				"cf_country": req.Header.Get("CF-IPCountry"),
-				"cf_ray":     req.Header.Get("CF-Ray"),
-			}
-			if profileID := profileIDFromJWT(req); profileID != "" {
-				evt["profile_id"] = profileID
-			}
-			analyticsClient.Send(req.Context(), "opportunities_views", evt)
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
+	// Analytics beacon — view path. Increments the Valkey counters
+	// (atomic INCR + 24h-windowed key with TTL) AND ships an
+	// OpenObserve event so analytics queries can dedup by profile_id
+	// downstream. Both writes are best-effort; the response is always
+	// 204 so a slow Valkey can't add user-facing latency.
+	mux.HandleFunc("OPTIONS /jobs/{slug}/view", corsBeaconPreflight)
+	mux.HandleFunc("POST /jobs/{slug}/view", viewBeaconHandler(analyticsClient, countersClient))
+
+	// Mirror beacon for the apply surface. The redirect service
+	// (or the UI when it owns the apply click) fires this on every
+	// /r/{slug} hit so the apply count tracks alongside the view
+	// count. Auth is optional; the JWT (when present) attributes the
+	// apply to a profile_id in OpenObserve.
+	mux.HandleFunc("OPTIONS /opportunities/{slug}/apply", corsBeaconPreflight)
+	mux.HandleFunc("POST /opportunities/{slug}/apply", applyBeaconHandler(analyticsClient, countersClient))
 
 	srv := &http.Server{Addr: cfg.ServerPort, Handler: mux}
 	go func() {

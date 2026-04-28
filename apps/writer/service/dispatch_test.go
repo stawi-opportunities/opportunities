@@ -9,16 +9,21 @@ import (
 // noIcebergPersistence lists topics that are intentionally not persisted to
 // Iceberg by the writer. Their payloads are authoritative elsewhere:
 //
-//   - TopicCanonicalsUpserted: canonical body lives at s3://…/jobs/<slug>.json (R2-direct)
-//   - TopicCanonicalsExpired:  expiry is a Frame event only; no Iceberg table
-//   - TopicTranslations:       translation body lives at s3://…/jobs/<slug>/<lang>.json
+//   - TopicCanonicalsUpserted:    canonical body lives at s3://…/jobs/<slug>.json (R2-direct)
+//   - TopicCanonicalsExpired:     expiry is a Frame event only; no Iceberg table
+//   - TopicTranslations:          translation body lives at s3://…/jobs/<slug>/<lang>.json
+//   - TopicOpportunityAutoFlagged: user-driven moderation signal — the
+//     materializer subscribes to it to hide rows from search; the
+//     authoritative record of the underlying user flag lives in
+//     opportunity_flags (Postgres).
 //
 // The writer ACKs these events without writing an Iceberg record so that the
 // materializer's Frame subscriber receives them without writer interference.
 var noIcebergPersistence = map[string]bool{
-	eventsv1.TopicCanonicalsUpserted: true,
-	eventsv1.TopicCanonicalsExpired:  true,
-	eventsv1.TopicTranslations:       true,
+	eventsv1.TopicCanonicalsUpserted:    true,
+	eventsv1.TopicCanonicalsExpired:     true,
+	eventsv1.TopicTranslations:          true,
+	eventsv1.TopicOpportunityAutoFlagged: true,
 }
 
 // TestAllTopicsHaveDispatch verifies that every topic returned by

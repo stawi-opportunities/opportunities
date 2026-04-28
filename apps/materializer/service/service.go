@@ -48,6 +48,7 @@ func (s *Service) RegisterSubscriptions() error {
 	mgr.Add(NewCanonicalExpiredHandler(s))
 	mgr.Add(NewTranslationHandler(s))
 	mgr.Add(NewEmbeddingHandler(s))
+	mgr.Add(NewAutoFlaggedHandler(s))
 	return nil
 }
 
@@ -290,5 +291,84 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 			Error("materializer: embedding update failed")
 		return fmt.Errorf("embedding: update: %w", err)
 	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// AutoFlaggedHandler — TopicOpportunityAutoFlagged
+// ---------------------------------------------------------------------------
+
+// AutoFlaggedHandler responds to the user-flag-threshold trip emitted
+// by the api. The signal carries a slug (not a canonical_id), so the
+// handler issues a SQL UPDATE keyed on slug rather than the primary
+// key. The polymorphic schema's single source of truth for liveness
+// is `deadline` (search filters by `deadline > now`), so we push it
+// into the past — that drops the row from search exactly as
+// CanonicalExpiredHandler does for the retention sweep.
+//
+// Operator review still happens — the auto-action is containment, not
+// a final verdict. A subsequent /admin/flags/{id}/resolve with action
+// "ignore" can be paired with a manual Manticore patch to restore the
+// row, but that's intentionally manual: an opportunity that tripped
+// the user threshold should get human eyes before it surfaces again.
+type AutoFlaggedHandler struct{ s *Service }
+
+func NewAutoFlaggedHandler(s *Service) *AutoFlaggedHandler {
+	return &AutoFlaggedHandler{s: s}
+}
+
+func (h *AutoFlaggedHandler) Name() string { return eventsv1.TopicOpportunityAutoFlagged }
+
+func (h *AutoFlaggedHandler) PayloadType() any {
+	var raw json.RawMessage
+	return &raw
+}
+
+func (h *AutoFlaggedHandler) Validate(_ context.Context, p any) error {
+	r, ok := p.(*json.RawMessage)
+	if !ok || r == nil || len(*r) == 0 {
+		return errors.New("auto-flagged: empty payload")
+	}
+	return nil
+}
+
+func (h *AutoFlaggedHandler) Execute(ctx context.Context, p any) error {
+	raw := p.(*json.RawMessage)
+	var env eventsv1.Envelope[eventsv1.OpportunityAutoFlaggedV1]
+	if err := json.Unmarshal(*raw, &env); err != nil {
+		return fmt.Errorf("auto-flagged: decode: %w", err)
+	}
+	pl := env.Payload
+	if pl.OpportunityID == "" {
+		// Slug-only events are non-fatal — log and skip. The api emits
+		// canonical_id when it can resolve one; events without it
+		// likely point at a slug whose canonical hasn't materialized
+		// yet (race) and operator-driven action via /admin/flags
+		// covers the same outcome.
+		util.Log(ctx).
+			WithField("slug", pl.Slug).
+			WithField("flag_count", pl.FlagCount).
+			Warn("materializer: auto-flag event missing opportunity_id; skipping Manticore update")
+		return nil
+	}
+	// Push deadline to "now" so the search filter (deadline > now)
+	// drops the row immediately. Mirrors the CanonicalExpiredHandler
+	// path so liveness has a single source of truth on the schema.
+	doc := map[string]any{
+		"deadline": time.Now().UTC().Unix(),
+	}
+	id := hashID(pl.OpportunityID)
+	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
+		util.Log(ctx).WithError(err).
+			WithField("opportunity_id", pl.OpportunityID).
+			WithField("slug", pl.Slug).
+			Error("materializer: auto-flag update failed")
+		return fmt.Errorf("auto-flagged: update: %w", err)
+	}
+	util.Log(ctx).
+		WithField("opportunity_id", pl.OpportunityID).
+		WithField("slug", pl.Slug).
+		WithField("flag_count", pl.FlagCount).
+		Warn("materializer: opportunity auto-flagged → hidden from search")
 	return nil
 }

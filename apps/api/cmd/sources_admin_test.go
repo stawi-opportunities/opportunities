@@ -111,6 +111,23 @@ func (f *fakeSourceRepo) EnableSource(_ context.Context, id string) error {
 	return nil
 }
 
+func (f *fakeSourceRepo) StopSource(_ context.Context, id, operator string, at time.Time) error {
+	if s, ok := f.rows[id]; ok {
+		s.Status = domain.SourceDisabled
+		s.LastStoppedAt = &at
+		s.LastStoppedBy = operator
+	}
+	return nil
+}
+
+func (f *fakeSourceRepo) StartSource(_ context.Context, id string) error {
+	if s, ok := f.rows[id]; ok {
+		s.Status = domain.SourceActive
+		s.ConsecutiveFailures = 0
+	}
+	return nil
+}
+
 func (f *fakeSourceRepo) Approve(_ context.Context, id, operator string, at time.Time) error {
 	if s, ok := f.rows[id]; ok {
 		s.Status = domain.SourceActive
@@ -236,6 +253,8 @@ extraction_prompt: ""
 	mux.HandleFunc("POST /admin/sources/{id}/reject", requireAdmin(a.handleReject))
 	mux.HandleFunc("POST /admin/sources/{id}/pause", requireAdmin(a.handlePause))
 	mux.HandleFunc("POST /admin/sources/{id}/resume", requireAdmin(a.handleResume))
+	mux.HandleFunc("POST /admin/sources/{id}/stop", requireAdmin(a.handleStop))
+	mux.HandleFunc("POST /admin/sources/{id}/start", requireAdmin(a.handleStart))
 	mux.HandleFunc("GET /admin/sources/{id}", requireAdmin(a.handleGet))
 	mux.HandleFunc("PUT /admin/sources/{id}", requireAdmin(a.handleUpdate))
 	mux.HandleFunc("DELETE /admin/sources/{id}", requireAdmin(a.handleDelete))
@@ -450,6 +469,77 @@ func TestSourcesAdmin_PauseAndResume(t *testing.T) {
 	}
 	if repo.rows["s1"].Status != domain.SourceActive {
 		t.Errorf("not active: %q", repo.rows["s1"].Status)
+	}
+}
+
+func TestSourcesAdmin_StopAndStart(t *testing.T) {
+	_, repo, _, mux := adminTestHarness(t)
+	repo.rows["s1"] = &domain.Source{
+		BaseModel: domain.BaseModel{ID: "s1"},
+		Status:    domain.SourceActive,
+	}
+
+	stop := httptest.NewRequest("POST", "/admin/sources/s1/stop", nil)
+	stop.Header.Set("Authorization", authHeader())
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, stop)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stop: %d body=%s", rr.Code, rr.Body.String())
+	}
+	if repo.rows["s1"].Status != domain.SourceDisabled {
+		t.Errorf("not disabled: %q", repo.rows["s1"].Status)
+	}
+	if repo.rows["s1"].LastStoppedAt == nil {
+		t.Errorf("last_stopped_at was not set")
+	}
+	if repo.rows["s1"].LastStoppedBy == "" {
+		t.Errorf("last_stopped_by was empty")
+	}
+
+	// Second stop should 409.
+	stop2 := httptest.NewRequest("POST", "/admin/sources/s1/stop", nil)
+	stop2.Header.Set("Authorization", authHeader())
+	rr2 := httptest.NewRecorder()
+	mux.ServeHTTP(rr2, stop2)
+	if rr2.Code != http.StatusConflict {
+		t.Errorf("expected 409 on double-stop, got %d", rr2.Code)
+	}
+
+	start := httptest.NewRequest("POST", "/admin/sources/s1/start", nil)
+	start.Header.Set("Authorization", authHeader())
+	rr3 := httptest.NewRecorder()
+	mux.ServeHTTP(rr3, start)
+	if rr3.Code != http.StatusOK {
+		t.Fatalf("start: %d body=%s", rr3.Code, rr3.Body.String())
+	}
+	if repo.rows["s1"].Status != domain.SourceActive {
+		t.Errorf("not active: %q", repo.rows["s1"].Status)
+	}
+}
+
+func TestSourcesAdmin_StartRequiresDisabled(t *testing.T) {
+	_, repo, _, mux := adminTestHarness(t)
+	repo.rows["s1"] = &domain.Source{
+		BaseModel: domain.BaseModel{ID: "s1"},
+		Status:    domain.SourceActive, // not stopped
+	}
+	req := httptest.NewRequest("POST", "/admin/sources/s1/start", nil)
+	req.Header.Set("Authorization", authHeader())
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d", rr.Code)
+	}
+}
+
+func TestSourcesAdmin_StopNotFound(t *testing.T) {
+	_, _, _, mux := adminTestHarness(t)
+	req := httptest.NewRequest("POST", "/admin/sources/missing/stop", nil)
+	req.Header.Set("Authorization", authHeader())
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rr.Code)
 	}
 }
 

@@ -7,6 +7,8 @@ import {
 import { fmtMoney } from "@/utils/format";
 import { mountSanitisedHTML } from "@/utils/html";
 import { useI18n } from "@/i18n/I18nProvider";
+import FlagModal from "@/components/FlagModal";
+import StatsLine from "@/components/StatsLine";
 
 /**
  * JobBody renders the kind=job-specific portion of an OpportunityDetail
@@ -103,6 +105,9 @@ export default function JobBody({ snap }: { snap: OpportunitySnapshot }) {
         className="prose prose-slate mt-8 max-w-none whitespace-pre-line"
         aria-label="Job description"
       />
+
+      <StatsLine slug={snap.slug} />
+      <FlagModal slug={snap.slug} />
     </>
   );
 }

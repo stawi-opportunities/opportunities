@@ -40,7 +40,7 @@ func TestV2Search_ReturnsHitsAndFacets(t *testing.T) {
 	defer ts.Close()
 	client, _ := searchindex.Open(searchindex.Config{URL: ts.URL})
 	jm := newJobsManticore(client)
-	h := v2SearchHandler(jm, nil)
+	h := v2SearchHandler(jm, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/search?q=go&country=KE", nil)
 	rr := httptest.NewRecorder()
@@ -93,7 +93,7 @@ search_facets: [field_of_study, degree_level]
 	reg, err := opportunity.LoadFromDir(dir)
 	require.NoError(t, err)
 
-	h := v2SearchHandler(jm, reg)
+	h := v2SearchHandler(jm, reg, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/search", nil)
 	rr := httptest.NewRecorder()
 	h(rr, req)

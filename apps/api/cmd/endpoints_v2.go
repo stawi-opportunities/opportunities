@@ -2,11 +2,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/pitabwire/util"
+
+	"github.com/stawi-opportunities/opportunities/pkg/counters"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
@@ -20,7 +24,7 @@ var universalFacets = map[string]struct{}{
 	"currency":    {},
 }
 
-func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry) http.HandlerFunc {
+func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry, ct *counters.Counters) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -123,6 +127,12 @@ func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry) http.HandlerF
 			hits = append(hits, h.Source)
 		}
 
+		// Decorate each hit with Valkey-backed view + apply counts
+		// (24h windowed). Single MGET for the whole result page —
+		// adds <1ms typical and gives the UI live engagement signal
+		// without waiting for a Manticore-side re-index.
+		decorated := embedCounters(ctx, ct, hits)
+
 		// Per-kind facet filtering. Build the set of kinds seen in the
 		// result set; consult the registry for each kind's
 		// SearchFacets; intersect with the universal facets so the UI
@@ -177,12 +187,53 @@ func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry) http.HandlerF
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"query":   q,
-			"results": hits,
+			"results": decorated,
 			"facets":  facets,
 			"total":   parsed.Hits.Total,
 			"sort":    sort,
 		})
 	}
+}
+
+// jobWithStats is the v2-search result row: every job field plus the
+// 24h view + apply counters. The counters are embedded in-line
+// (rather than as a nested object) so existing UI bindings that
+// already render `job` keep working — they'll just ignore the new
+// fields until the components opt in.
+type jobWithStats struct {
+	job
+	Views24h   int64 `json:"views_24h"`
+	Applies24h int64 `json:"applies_24h"`
+}
+
+// embedCounters fetches view+apply counts in one Valkey MGET and
+// attaches them to every hit. Returns the original hits unchanged
+// when the counters client is nil (Valkey-disabled deployments).
+func embedCounters(ctx context.Context, ct *counters.Counters, hits []job) []jobWithStats {
+	out := make([]jobWithStats, len(hits))
+	for i, h := range hits {
+		out[i] = jobWithStats{job: h}
+	}
+	if ct == nil || len(hits) == 0 {
+		return out
+	}
+	slugs := make([]string, 0, len(hits))
+	for _, h := range hits {
+		if h.Slug != "" {
+			slugs = append(slugs, h.Slug)
+		}
+	}
+	stats, err := ct.GetStatsBatch(ctx, slugs)
+	if err != nil {
+		util.Log(ctx).WithError(err).Debug("search: counters batch failed")
+		return out
+	}
+	for i, h := range hits {
+		s := stats[h.Slug]
+		out[i].Views24h = s.Views24h
+		out[i].Applies24h = s.Applies24h
+	}
+	return out
 }
 
 func v2JobByIDHandler(jm *jobsManticore) http.HandlerFunc {

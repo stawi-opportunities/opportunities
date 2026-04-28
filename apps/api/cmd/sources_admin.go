@@ -59,6 +59,8 @@ type sourceAdminRepo interface {
 	DisableSource(ctx context.Context, id string) error
 	PauseSource(ctx context.Context, id string) error
 	EnableSource(ctx context.Context, id string) error
+	StopSource(ctx context.Context, id, operator string, at time.Time) error
+	StartSource(ctx context.Context, id string) error
 	Approve(ctx context.Context, id, operator string, at time.Time) error
 	Reject(ctx context.Context, id, reason string) error
 	ListWithFilters(ctx context.Context, f repository.ListFilter) ([]*domain.Source, int64, error)
@@ -135,6 +137,8 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	mux.HandleFunc("POST /admin/sources/{id}/reject", requireAdmin(a.handleReject))
 	mux.HandleFunc("POST /admin/sources/{id}/pause", requireAdmin(a.handlePause))
 	mux.HandleFunc("POST /admin/sources/{id}/resume", requireAdmin(a.handleResume))
+	mux.HandleFunc("POST /admin/sources/{id}/stop", requireAdmin(a.handleStop))
+	mux.HandleFunc("POST /admin/sources/{id}/start", requireAdmin(a.handleStart))
 	mux.HandleFunc("GET /admin/sources/{id}", requireAdmin(a.handleGet))
 	mux.HandleFunc("PUT /admin/sources/{id}", requireAdmin(a.handleUpdate))
 	mux.HandleFunc("DELETE /admin/sources/{id}", requireAdmin(a.handleDelete))
@@ -556,6 +560,66 @@ func (a *sourcesAdmin) handleResume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logAction(r, "resume", id)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceActive})
+}
+
+// handleStop is the operator's "kill switch": permanently disables a
+// source while keeping it reversible via /start. Allowed from any
+// non-terminal status (pending/verifying/verified/rejected/active/
+// degraded/paused/blocked); records last_stopped_at + last_stopped_by
+// for audit. Already-disabled sources return 409.
+func (a *sourcesAdmin) handleStop(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, err := a.repo.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load_failed", err.Error())
+		return
+	}
+	if src == nil {
+		writeError(w, http.StatusNotFound, "not_found", "source not found")
+		return
+	}
+	if src.Status == domain.SourceDisabled {
+		writeError(w, http.StatusConflict, "already_stopped",
+			"source is already stopped; use /start to revive")
+		return
+	}
+	operator := profileIDFromJWT(r)
+	if operator == "" {
+		operator = "anonymous"
+	}
+	if err := a.repo.StopSource(r.Context(), id, operator, time.Now().UTC()); err != nil {
+		writeError(w, http.StatusInternalServerError, "stop_failed", err.Error())
+		return
+	}
+	logAction(r, "stop", id)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceDisabled})
+}
+
+// handleStart reverses a stop. Requires current status == SourceDisabled
+// — pause/resume covers transient holds, this path is specifically for
+// reviving a stopped source.
+func (a *sourcesAdmin) handleStart(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, err := a.repo.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load_failed", err.Error())
+		return
+	}
+	if src == nil {
+		writeError(w, http.StatusNotFound, "not_found", "source not found")
+		return
+	}
+	if src.Status != domain.SourceDisabled {
+		writeError(w, http.StatusConflict, "invalid_transition",
+			fmt.Sprintf("source must be in %q to start (current: %q)", domain.SourceDisabled, src.Status))
+		return
+	}
+	if err := a.repo.StartSource(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, "start_failed", err.Error())
+		return
+	}
+	logAction(r, "start", id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceActive})
 }
 

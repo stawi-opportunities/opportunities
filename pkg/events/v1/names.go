@@ -29,6 +29,11 @@ const (
 	// Source discovery.
 	TopicSourcesDiscovered = "sources.discovered.v1"
 
+	// User-driven scam-flagging auto-action. Emitted by the api when
+	// ≥ domain.FlagAutoActionThreshold distinct scam flags accumulate
+	// on a slug. The materializer hides the row from search.
+	TopicOpportunityAutoFlagged = "opportunities.auto_flagged.v1"
+
 	// Candidate lifecycle (Phase 5).
 	TopicCVUploaded                  = "candidates.cv.uploaded.v1"
 	TopicCVExtracted                 = "candidates.cv.extracted.v1"
@@ -67,5 +72,6 @@ func AllTopics() []string {
 		TopicCandidateEmbedding,
 		TopicCandidatePreferencesUpdated,
 		TopicCandidateMatchesReady,
+		TopicOpportunityAutoFlagged,
 	}
 }

@@ -57,3 +57,22 @@ type EmbeddingV1 struct {
 	Vector        []float32 `json:"vector"`
 	ModelVersion  string    `json:"model_version"`
 }
+
+// OpportunityAutoFlaggedV1 is emitted when ≥ FlagAutoActionThreshold
+// distinct unresolved scam flags from distinct users accumulate on
+// the same canonical opportunity. The materializer subscribes and
+// drops the row from search by pushing deadline to now (the
+// polymorphic schema's single source of truth for liveness — search
+// filters by `deadline > now`). Operator review still happens —
+// auto-action is containment, not a final verdict.
+//
+// OpportunityID is the canonical's xid; the materializer maps it to
+// Manticore's bigint pk via the same hashID() the rest of the
+// pipeline uses. Slug is carried for log/audit context.
+type OpportunityAutoFlaggedV1 struct {
+	OpportunityID string    `json:"opportunity_id"`
+	Slug          string    `json:"slug"`
+	Kind          string    `json:"kind"`
+	FlagCount     int       `json:"flag_count"`
+	FlaggedAt     time.Time `json:"flagged_at"`
+}

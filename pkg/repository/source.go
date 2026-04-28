@@ -343,6 +343,35 @@ func (r *SourceRepository) DisableSource(ctx context.Context, id string) error {
 		Update("status", domain.SourceDisabled).Error
 }
 
+// StopSource is the operator-driven "kill switch" — flips a source to
+// SourceDisabled regardless of its current operational status and stamps
+// last_stopped_at / last_stopped_by for audit. Distinct from
+// PauseSource (transient quality hold) and from soft-delete (which uses
+// DisableSource without the audit fields).
+func (r *SourceRepository) StopSource(ctx context.Context, id, operator string, at time.Time) error {
+	return r.db(ctx, false).Model(&domain.Source{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":          domain.SourceDisabled,
+			"last_stopped_at": at,
+			"last_stopped_by": operator,
+		}).Error
+}
+
+// StartSource reverses a stop — flips a SourceDisabled row back to
+// SourceActive and clears consecutive_failures so the scheduler picks
+// it up immediately. Caller must verify current status == SourceDisabled
+// before invoking; this method does NOT enforce the precondition (the
+// admin handler does).
+func (r *SourceRepository) StartSource(ctx context.Context, id string) error {
+	return r.db(ctx, false).Model(&domain.Source{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":               domain.SourceActive,
+			"consecutive_failures": 0,
+		}).Error
+}
+
 // RecordVerifyResult stores the outcome of a pre-crawl reachability probe.
 // On failure, callers should also push NextCrawlAt out via UpdateNextCrawl
 // (kept separate so the caller can choose the backoff curve).

@@ -163,10 +163,11 @@ Prefix variants intended for the frontend's React islands (they expect `/api/*` 
 
 #### `POST /jobs/{slug}/view`
 
-The browser fires this via `navigator.sendBeacon` on `JobDetail` mount. It serves two purposes:
+The browser fires this via `navigator.sendBeacon` on `JobDetail` mount. It serves three purposes:
 
 1. **Server-side attribution**: writes a `opportunities_views` row to OpenObserve with `profile_id` pulled from the JWT, `ip_hash` (SHA-256 of CF-Connecting-IP), CF-IPCountry, User-Agent, Referer.
-2. **No liveness probe**: destination URL liveness lives entirely in the redirect service now. This endpoint is pure analytics.
+2. **Atomic Valkey counters**: increments `view:{slug}` (no TTL) and `view:{slug}:24h` (TTL 25h) so the public stats endpoint and search-result decoration have sub-millisecond reads.
+3. **No liveness probe**: destination URL liveness lives entirely in the redirect service now.
 
 Request:
 - Method: `POST`
@@ -178,6 +179,32 @@ Request:
 Response: `204 No Content`. Fire-and-forget; the browser doesn't wait.
 
 `OPTIONS` preflight is answered with the same CORS envelope.
+
+#### `POST /opportunities/{slug}/apply`
+
+Mirror of the view beacon for the apply funnel. Fired by the redirect service (or the UI when it owns the apply click) on every `/r/{slug}` hit.
+
+Increments Valkey `apply:{slug}` and `apply:{slug}:24h` (TTL 25h) and ships an `opportunity_applies` row to OpenObserve with the same envelope as the view beacon.
+
+Request shape, auth, and CORS match `POST /jobs/{slug}/view`. Response: `204 No Content`.
+
+#### `GET /opportunities/{slug}/stats`
+
+Public, unauthenticated. Reads the four Valkey counters and returns them in a single envelope:
+
+```json
+{
+  "slug": "senior-go-engineer-at-acme-abc123",
+  "views_total": 4291,
+  "views_24h": 89,
+  "applies_total": 142,
+  "applies_24h": 7
+}
+```
+
+When Valkey isn't configured (or a key is missing), the corresponding count returns `0` — the response shape is always well-formed. Cache: `public, max-age=15`.
+
+Search results from `GET /search` are also decorated with `views_24h` and `applies_24h` per result row when Valkey is configured (Path A, single MGET per search).
 
 ### Admin: republish & backfill
 
@@ -331,11 +358,136 @@ Errors: `404 not_found`.
 
 `paused → active`. Also clears `consecutive_failures`. Errors: `404 not_found`.
 
+#### `POST /admin/sources/{id}/stop`
+
+Operator's "kill switch". Allowed from any non-terminal status; flips the source to `disabled` and stamps `last_stopped_at` + `last_stopped_by` for audit. Distinct from pause (transient quality hold) — stop is intended for longer-term decisions but stays reversible via `/start`.
+
+Errors: `404 not_found`, `409 already_stopped` if the source is already disabled.
+
+Response: `{ "ok": true, "id": "...", "status": "disabled" }`.
+
+#### `POST /admin/sources/{id}/start`
+
+Reverses a stop. Requires current status `disabled` — pause/resume covers transient holds. Also clears `consecutive_failures` so the scheduler picks the source up immediately.
+
+Errors: `404 not_found`, `409 invalid_transition` if current status is not `disabled`.
+
+Response: `{ "ok": true, "id": "...", "status": "active" }`.
+
 #### `GET /admin/sources/discovered`
 
 Convenience: list every source whose status is `pending`, `verifying`, `verified`, or `rejected`. This is the operator review queue. Optional `?limit=` (default 100, max 500).
 
 Response: `{ "sources": [...], "count": int }`.
+
+### User: Flagging
+
+Logged-in users can flag a canonical opportunity as suspicious. Multiple flags from distinct users on the same slug trigger auto-action: when the count of unresolved scam flags reaches 3, the api emits `OpportunityAutoFlaggedV1` and the materializer drops the row from search by pushing `deadline` to now (the polymorphic schema's single source of truth for liveness).
+
+Anonymous flagging is **disabled** — every POST requires `Authorization: Bearer <jwt>` so the api can attribute the flag to a `profile_id` and enforce the one-flag-per-user-per-slug rule.
+
+#### `POST /opportunities/{slug}/flag`
+
+Request body:
+
+```json
+{
+  "reason": "scam",
+  "description": "this links to a phishing site"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `reason` | string | One of `scam`, `expired`, `duplicate`, `spam`, `other`. |
+| `description` | string | Free-text, ≤ 1000 chars. Optional. |
+
+Response `201 Created`:
+
+```json
+{
+  "id": "ckhq3...xid",
+  "slug": "senior-go-engineer-at-acme-abc123",
+  "kind": "job",
+  "reason": "scam",
+  "auto_actioned": false
+}
+```
+
+`auto_actioned` is `true` when this flag pushed the slug's unresolved scam count over the threshold and the auto-flag event was emitted.
+
+Errors:
+- `401 unauthorized` — missing or malformed JWT.
+- `400 invalid_reason` — reason not in the controlled vocabulary.
+- `400 description_too_long` — description > 1000 chars.
+- `409 already_flagged` — this profile has already flagged this slug.
+
+### Admin: Flags + Triage
+
+Same `Bearer` token middleware as the source-admin endpoints. Wired alongside source-admin (`SOURCE_ADMIN_ENABLED=true`).
+
+#### `GET /admin/flags`
+
+List unresolved flags, paginated. Query params (all optional): `reason`, `slug`, `limit` (default 50, max 500), `offset`.
+
+Response: `{ "flags": [...], "count": int, "limit": int, "offset": int }`.
+
+#### `GET /admin/flags/{id}`
+
+Returns one flag row including resolution metadata when present. `404 not_found` when missing.
+
+#### `POST /admin/flags/{id}/resolve`
+
+Request body:
+
+```json
+{
+  "action": "ignore",
+  "note": "false positive — confirmed live listing",
+  "source_id": "..."
+}
+```
+
+`action` is `ignore`, `hide`, or `ban_source`. `source_id` is required when `action == "ban_source"` — the canonical row in Manticore doesn't carry source_id today, so operators must point us at the offending source explicitly. When provided, the api calls the `/admin/sources/{source_id}/stop` flow and bulk-resolves every other unresolved flag on the same slug with the same action.
+
+Response on `ban_source`:
+
+```json
+{
+  "ok": true,
+  "id": "...",
+  "action": "ban_source",
+  "banned_source_id": "src-abc",
+  "bulk_resolved": 4
+}
+```
+
+Errors: `400 invalid_action`, `404 not_found`.
+
+#### `GET /admin/opportunities/{slug}/flags`
+
+Every flag (resolved or not) for one slug — context for an operator reviewing a specific listing.
+
+Response: `{ "slug": "...", "flags": [...], "count": int }`.
+
+#### `GET /admin/opportunities/top-flagged?limit=20`
+
+Most-flagged opportunities by unresolved flag count. Useful for operator triage. Response:
+
+```json
+{
+  "results": [
+    { "opportunity_slug": "...", "kind": "job", "flag_count": 5 }
+  ],
+  "count": 1
+}
+```
+
+#### `GET /admin/opportunities/top-applied?limit=20`
+
+Most-applied opportunities, ordered by `applies_total` then `applies_24h`. Approximate — Latest+MGET (no full-Valkey scan): picks "popular among recently-posted", which is the common interpretation of "top-applied this week".
+
+Response rows include `slug`, `title`, `kind`, `applies_total`, `applies_24h`, `views_24h`.
 
 ---
 

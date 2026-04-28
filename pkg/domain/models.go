@@ -168,6 +168,15 @@ type Source struct {
 	// true (the operator already vouched for it); discovered sources
 	// default to false (operator review queue).
 	AutoApprove bool `gorm:"not null;default:false" json:"auto_approve"`
+
+	// Stop/start audit trail. The /admin/sources/{id}/stop verb is the
+	// operator's "kill switch" — distinct from pause (transient quality
+	// hold) in that it is intended as a longer-term decision but stays
+	// reversible via /start. Both fields are written on every stop call
+	// (resetting on start) so the most recent operator who killed the
+	// source is always visible without trawling audit logs.
+	LastStoppedAt *time.Time `json:"last_stopped_at,omitempty"`
+	LastStoppedBy string     `gorm:"type:varchar(64)" json:"last_stopped_by,omitempty"`
 }
 
 func (Source) TableName() string { return "sources" }
