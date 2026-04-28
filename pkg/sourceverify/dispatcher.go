@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/pitabwire/frame/workerpool"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -19,16 +20,46 @@ type SourceStore interface {
 	Approve(ctx context.Context, id, operator string, at time.Time) error
 }
 
+// asyncRunner abstracts how VerifyAsync schedules background work.
+// The production wiring uses Frame's workerpool (NewDispatcher); the
+// test/CLI fallback uses a goroutine (NewDispatcherWithGoroutine).
+type asyncRunner func(parent context.Context, run func(ctx context.Context))
+
 // Dispatcher couples a Verifier with a SourceStore: load source, run
 // verification, persist outcome, optionally auto-promote on pass.
 type Dispatcher struct {
 	verifier *Verifier
 	store    SourceStore
+	runAsync asyncRunner
 }
 
-// NewDispatcher wires a verifier with the source store.
-func NewDispatcher(v *Verifier, store SourceStore) *Dispatcher {
-	return &Dispatcher{verifier: v, store: store}
+// NewDispatcher wires a verifier with the source store using Frame's
+// workerpool for async verification (per the golang-patterns rule:
+// no raw goroutines for critical work). The pool is shared with the
+// rest of the host service so verification is bounded by the same
+// concurrency budget that governs other async tasks.
+//
+// Pass workerpool.Manager from svc.WorkManager() at construction.
+// A nil workMan falls back to a goroutine-based runner so a partially
+// initialised host (e.g. in tests / CLI tools that don't boot a full
+// Frame service) keeps working — but production callers should always
+// supply a real manager.
+func NewDispatcher(v *Verifier, store SourceStore, workMan workerpool.Manager) *Dispatcher {
+	d := &Dispatcher{verifier: v, store: store}
+	if workMan != nil {
+		d.runAsync = workerpoolRunner(workMan)
+	} else {
+		d.runAsync = goroutineRunner()
+	}
+	return d
+}
+
+// NewDispatcherWithGoroutine constructs a Dispatcher whose async path
+// runs work on a fresh detached goroutine. Intended for tests + CLI
+// tools that don't have a Frame workerpool. Prefer NewDispatcher in
+// production code.
+func NewDispatcherWithGoroutine(v *Verifier, store SourceStore) *Dispatcher {
+	return &Dispatcher{verifier: v, store: store, runAsync: goroutineRunner()}
 }
 
 // VerifyAndPersist runs the synchronous flow used by the admin
@@ -87,26 +118,57 @@ func (d *Dispatcher) VerifyAndPersist(ctx context.Context, sourceID string) (*do
 	return report, nil
 }
 
-// VerifyAsync runs VerifyAndPersist in a fresh detached goroutine. Used
-// by source-discovery so the operator's first review of a discovered
-// source already shows a verification report. Errors are logged and
-// dropped — the caller does not block on the outcome.
+// VerifyAsync schedules VerifyAndPersist on Frame's workerpool (or a
+// fallback goroutine when constructed via NewDispatcherWithGoroutine).
+// Used by source-discovery so the operator's first review of a
+// discovered source already shows a verification report. Errors are
+// logged and dropped — the caller does not block on the outcome.
 //
-// TODO(golang-patterns): this work calls external HTTP (HEAD/GET probes,
-// /robots.txt, sample extraction) so it should ideally run on Frame's
-// workerpool — restart-resilience and bounded parallelism would protect
-// the verifier from runaway discovery floods. Migrate when the
-// crawler service exposes a workerpool.Manager hook on Dispatcher.
+// Restart-resilience: the workerpool is process-local, so a restart
+// during verification loses the in-flight job. Source-discovery is
+// idempotent (re-discovery upserts the same row) and the operator
+// can manually trigger via POST /admin/sources/{id}/verify if the
+// async run never completes; making this fully durable would require
+// promoting verification to a Frame Queue subject, which is a bigger
+// refactor and unnecessary for the pre-review UX.
 func (d *Dispatcher) VerifyAsync(parent context.Context, sourceID string) {
-	go func() {
-		// Detach the context so a request cancellation in the parent
-		// (e.g. discovery handler returning) doesn't kill the verifier.
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		// Carry the logger fields if present in the parent.
+	d.runAsync(parent, func(ctx context.Context) {
 		log := util.Log(parent).WithField("source_id", sourceID)
 		if _, err := d.VerifyAndPersist(ctx, sourceID); err != nil {
 			log.WithError(err).Warn("sourceverify: async verification failed")
 		}
-	}()
+	})
+}
+
+// workerpoolRunner builds an asyncRunner that submits work to Frame's
+// workerpool. Each VerifyAsync invocation creates a single Job whose
+// body runs the supplied function with a detached + timeout-bounded
+// context.
+func workerpoolRunner(m workerpool.Manager) asyncRunner {
+	return func(parent context.Context, run func(ctx context.Context)) {
+		job := workerpool.NewJob(func(_ context.Context, _ workerpool.JobResultPipe[struct{}]) error {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			run(ctx)
+			return nil
+		})
+		if err := workerpool.SubmitJob(parent, m, job); err != nil {
+			util.Log(parent).WithError(err).
+				Warn("sourceverify: failed to submit async job to workerpool; falling back to inline goroutine")
+			goroutineRunner()(parent, run)
+		}
+	}
+}
+
+// goroutineRunner is the fallback async runner for tests + CLI use.
+// It detaches the context so a parent cancellation (e.g. an HTTP
+// handler returning) doesn't kill the verifier.
+func goroutineRunner() asyncRunner {
+	return func(_ context.Context, run func(ctx context.Context)) {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			run(ctx)
+		}()
+	}
 }

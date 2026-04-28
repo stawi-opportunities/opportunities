@@ -125,7 +125,10 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 		Robots:     sourceverify.NewRobotsHTTPChecker(verifyClient, 5*time.Second),
 		UserAgent:  cfg.UserAgent,
 	})
-	dispatcher := sourceverify.NewDispatcher(verifier, repo)
+	// Wire the dispatcher onto Frame's workerpool. svc.WorkManager() is
+	// the same pool that backs the queue subscribers, giving us bounded
+	// parallelism for async source verification.
+	dispatcher := sourceverify.NewDispatcher(verifier, repo, svc.WorkManager())
 
 	_ = verifier // retained for future direct invocation; dispatcher wraps it for now.
 	a := &sourcesAdmin{
