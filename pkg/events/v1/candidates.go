@@ -144,6 +144,7 @@ type PreferencesUpdatedV1 struct {
 // MatchRow is one candidate-to-job match, carried inside MatchesReadyV1.
 type MatchRow struct {
 	CanonicalID string  `json:"canonical_id"           parquet:"canonical_id"`
+	ApplyURL    string  `json:"apply_url,omitempty"    parquet:"apply_url,optional"`
 	Score       float64 `json:"score"                  parquet:"score"`
 	RerankScore float64 `json:"rerank_score,omitempty" parquet:"rerank_score,optional"`
 }
@@ -154,6 +155,47 @@ type MatchesReadyV1 struct {
 	CandidateID  string     `json:"candidate_id"   parquet:"candidate_id"`
 	MatchBatchID string     `json:"match_batch_id" parquet:"match_batch_id"`
 	Matches      []MatchRow `json:"matches"        parquet:"matches,list"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+}
+
+// AutoApplyIntentV1 is published onto SubjectAutoApplySubmit by the
+// matching service when a qualified match is ready for auto-apply.
+// The autoapply service consumes this, submits, and records the result.
+// All candidate form-fill data is packed at intent-creation time so the
+// autoapply service needs no Postgres or Iceberg read on the hot path.
+type AutoApplyIntentV1 struct {
+	CandidateID    string  `json:"candidate_id"`
+	MatchID        string  `json:"match_id"`
+	CanonicalJobID string  `json:"canonical_job_id"`
+	ApplyURL       string  `json:"apply_url"`
+	SourceType     string  `json:"source_type"`
+	Score          float64 `json:"score"`
+	CVUrl          string  `json:"cv_url"`
+
+	// Candidate form-fill data packed at intent time.
+	FullName     string `json:"full_name"`
+	Email        string `json:"email"`
+	Phone        string `json:"phone"`
+	Location     string `json:"location"`
+	CurrentTitle string `json:"current_title"`
+	Skills       string `json:"skills"`
+	CoverLetter  string `json:"cover_letter"`
+}
+
+// ApplicationSubmittedV1 is emitted by the autoapply service after a
+// submission attempt completes (success, failure, or skip).
+type ApplicationSubmittedV1 struct {
+	CandidateID    string    `json:"candidate_id"          parquet:"candidate_id"`
+	ApplicationID  string    `json:"application_id"        parquet:"application_id"`
+	MatchID        string    `json:"match_id"              parquet:"match_id"`
+	CanonicalJobID string    `json:"canonical_job_id"      parquet:"canonical_job_id"`
+	Method         string    `json:"method"                parquet:"method"`
+	Status         string    `json:"status"                parquet:"status"`
+	SkipReason     string    `json:"skip_reason,omitempty" parquet:"skip_reason,optional"`
+	ExternalRef    string    `json:"external_ref,omitempty" parquet:"external_ref,optional"`
+	SubmittedAt    time.Time `json:"submitted_at"          parquet:"submitted_at"`
 
 	EventID    string    `json:"-" parquet:"event_id"`
 	OccurredAt time.Time `json:"-" parquet:"occurred_at"`

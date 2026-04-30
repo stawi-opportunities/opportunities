@@ -23,6 +23,9 @@ var (
 	EmbedFailures             metric.Int64Counter
 	TranslateFailures         metric.Int64Counter
 	PreferenceTriggeredRuns   metric.Int64Counter
+
+	AutoApplyAttempts     metric.Int64Counter
+	AutoApplyLimitReached metric.Int64Counter
 )
 
 // Init registers all pipeline metrics with the global OTel meter provider.
@@ -114,6 +117,20 @@ func Init() error {
 		return err
 	}
 
+	AutoApplyAttempts, err = meter.Int64Counter("autoapply.attempts",
+		metric.WithDescription("Auto-apply submission attempts, labelled by status and method"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyLimitReached, err = meter.Int64Counter("autoapply.daily_limit_reached",
+		metric.WithDescription("Times the per-candidate daily auto-apply limit was reached"),
+	)
+	if err != nil {
+		return err
+	}
+
 	return InitIceberg()
 }
 
@@ -185,4 +202,26 @@ func RecordPreferenceTriggeredRun(kind string) {
 	}
 	PreferenceTriggeredRuns.Add(context.Background(), 1,
 		metric.WithAttributes(attribute.String("kind", kind)))
+}
+
+// RecordAutoApplyAttempt increments the auto-apply attempt counter.
+// status is one of "submitted", "skipped", "failed"; method is the
+// submitter that handled it (e.g. "greenhouse_ui", "email_fallback").
+func RecordAutoApplyAttempt(status, method string) {
+	if AutoApplyAttempts == nil {
+		return
+	}
+	AutoApplyAttempts.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("status", status),
+			attribute.String("method", method),
+		))
+}
+
+// RecordAutoApplyLimitReached increments the daily-limit counter.
+func RecordAutoApplyLimitReached() {
+	if AutoApplyLimitReached == nil {
+		return
+	}
+	AutoApplyLimitReached.Add(context.Background(), 1)
 }

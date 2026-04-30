@@ -41,6 +41,7 @@ type SearchHit struct {
 	Slug        string
 	Title       string
 	Company     string
+	ApplyURL    string
 	Score       float64
 	Reasons     []string
 }
@@ -113,8 +114,15 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 		rows := make([]matchResponseRow, 0, len(res.Matches))
 		eventRows := make([]eventsv1.MatchRow, 0, len(res.Matches))
 		for _, h := range res.Matches {
-			rows = append(rows, matchResponseRow(h))
-			eventRows = append(eventRows, eventsv1.MatchRow{CanonicalID: h.CanonicalID, Score: h.Score})
+			rows = append(rows, matchResponseRow{
+			CanonicalID: h.CanonicalID,
+			Slug:        h.Slug,
+			Title:       h.Title,
+			Company:     h.Company,
+			Score:       h.Score,
+			Reasons:     h.Reasons,
+		})
+			eventRows = append(eventRows, eventsv1.MatchRow{CanonicalID: h.CanonicalID, ApplyURL: h.ApplyURL, Score: h.Score})
 		}
 		resp := matchResponse{
 			OK: true, CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: rows,

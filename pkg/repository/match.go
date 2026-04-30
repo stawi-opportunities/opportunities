@@ -100,6 +100,19 @@ func (r *MatchRepository) MarkViewed(ctx context.Context, id string) error {
 		}).Error
 }
 
+
+// MarkApplied sets status='applied' and applied_at=now() for the given match ID.
+func (r *MatchRepository) MarkApplied(ctx context.Context, id string) error {
+	now := time.Now()
+	return r.db(ctx, false).
+		Model(&domain.CandidateMatch{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"status":     domain.MatchApplied,
+			"applied_at": now,
+		}).Error
+}
+
 // CountForCandidate returns the total number of matches for a candidate.
 func (r *MatchRepository) CountForCandidate(ctx context.Context, candidateID string) (int64, error) {
 	var count int64

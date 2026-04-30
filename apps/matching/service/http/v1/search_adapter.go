@@ -70,7 +70,7 @@ func (m *ManticoreSearch) KNNWithFilters(ctx context.Context, req SearchRequest)
 			"k":            limit,
 		},
 		"query":   map[string]any{"bool": map[string]any{"must": filters}},
-		"_source": []string{"canonical_id", "slug", "title", "company"},
+		"_source": []string{"canonical_id", "slug", "title", "company", "apply_url"},
 		"limit":   limit,
 	}
 
@@ -89,6 +89,7 @@ func (m *ManticoreSearch) KNNWithFilters(ctx context.Context, req SearchRequest)
 					Slug        string `json:"slug"`
 					Title       string `json:"title"`
 					Company     string `json:"company"`
+					ApplyURL    string `json:"apply_url"`
 				} `json:"_source"`
 			} `json:"hits"`
 		} `json:"hits"`
@@ -104,6 +105,7 @@ func (m *ManticoreSearch) KNNWithFilters(ctx context.Context, req SearchRequest)
 			Slug:        h.Source.Slug,
 			Title:       h.Source.Title,
 			Company:     h.Source.Company,
+			ApplyURL:    h.Source.ApplyURL,
 			Score:       h.Score,
 		})
 	}

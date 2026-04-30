@@ -46,6 +46,11 @@ const (
 	// the writer does NOT persist it to Parquet, so it is intentionally
 	// absent from AllTopics() below.
 	TopicCandidateCVStaleNudge = "candidates.cv.stale_nudge.v1"
+
+	// TopicApplicationSubmitted is emitted by the autoapply service after
+	// each submission attempt (success, failure, or skip). The writer
+	// sinks it to Iceberg for analytics.
+	TopicApplicationSubmitted = "candidates.applications.submitted.v1"
 )
 
 // Queue subject names for the durable, retry-safe handlers (per the
@@ -68,6 +73,11 @@ const (
 	// outage doesn't block the publish path.
 	SubjectWorkerEmbed     = "svc.opportunities.worker.embed.v1"
 	SubjectWorkerTranslate = "svc.opportunities.worker.translate.v1"
+
+	// SubjectAutoApplySubmit is published by apps/matching when a
+	// qualified match is ready for auto-apply, consumed by apps/autoapply
+	// which executes the browser submission and records the result.
+	SubjectAutoApplySubmit = "svc.opportunities.autoapply.submit.v1"
 )
 
 // AllTopics returns every topic the writer is expected to subscribe
@@ -95,5 +105,6 @@ func AllTopics() []string {
 		TopicCandidatePreferencesUpdated,
 		TopicCandidateMatchesReady,
 		TopicOpportunityAutoFlagged,
+		TopicApplicationSubmitted,
 	}
 }

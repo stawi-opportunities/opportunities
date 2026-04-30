@@ -126,6 +126,8 @@ func buildDocFromCanonical(p eventsv1.CanonicalUpsertedV1) map[string]any {
 		"amount_min": p.AmountMin,
 		"amount_max": p.AmountMax,
 		"currency":   p.Currency,
+		// Apply URL
+		"apply_url": p.ApplyURL,
 	}
 	// Per-kind sparse facet columns. Splice in only the columns the kind
 	// owns; absent columns stay zero-valued in Manticore.

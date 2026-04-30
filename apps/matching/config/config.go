@@ -72,4 +72,10 @@ type CandidatesConfig struct {
 	CVExtractQueueURL string `env:"CV_EXTRACT_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
 	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
 	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
+
+	// Auto-apply trigger settings.
+	AutoApplyEnabled    bool    `env:"AUTO_APPLY_ENABLED"     envDefault:"false"`
+	AutoApplyScoreMin   float64 `env:"AUTO_APPLY_SCORE_MIN"   envDefault:"0.75"`
+	AutoApplyDailyLimit int     `env:"AUTO_APPLY_DAILY_LIMIT" envDefault:"5"`
+	AutoApplyQueueURL   string  `env:"AUTO_APPLY_QUEUE_URL"   envDefault:"mem://svc.opportunities.autoapply.submit.v1"`
 }

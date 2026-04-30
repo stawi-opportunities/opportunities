@@ -121,6 +121,7 @@ func main() {
 
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
+	appRepo := repository.NewApplicationRepository(dbFn)
 	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_opportunities_rt")
 	if err != nil {
 		log.WithError(err).Fatal("candidates: Manticore adapter init failed")
@@ -147,6 +148,17 @@ func main() {
 		Matchers: matcherReg,
 		TopK:     50,
 	})
+	// --- Auto-apply trigger handler ---
+	autoApplyH := eventv1.NewAutoApplyTriggerHandler(eventv1.AutoApplyTriggerDeps{
+		Svc:           svc,
+		CandidateRepo: candidateRepo,
+		AppRepo:       appRepo,
+		ScoreMin:      cfg.AutoApplyScoreMin,
+		DailyLimit:    cfg.AutoApplyDailyLimit,
+		QueueURL:      cfg.AutoApplyQueueURL,
+		Enabled:       cfg.AutoApplyEnabled,
+	})
+
 	if extractor != nil {
 		scorer := cv.NewScorer(extractor)
 		extractH := eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
@@ -174,10 +186,11 @@ func main() {
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL, embedH),
-			frame.WithRegisterEvents(prefMatchH),
+			frame.WithRegisterEvents(prefMatchH, autoApplyH),
 		)
 	} else {
 		// Even without an extractor we still want preference-update
@@ -189,7 +202,8 @@ func main() {
 		// later replay) — explicitly degraded mode.
 		svc.Init(ctx,
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
-			frame.WithRegisterEvents(prefMatchH),
+			frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
+			frame.WithRegisterEvents(prefMatchH, autoApplyH),
 		)
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
@@ -212,6 +226,8 @@ func main() {
 		Text:    textExtractor{},
 	}))
 	mux.HandleFunc("POST /candidates/preferences", httpv1.PreferencesHandler(svc))
+	mux.HandleFunc("POST /candidates/{id}/auto-apply/enable", httpv1.AutoApplyEnableHandler(candidateRepo))
+	mux.HandleFunc("POST /candidates/{id}/auto-apply/disable", httpv1.AutoApplyDisableHandler(candidateRepo))
 	mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
 		Svc:    svc,
 		Store:  candStore,

@@ -2,6 +2,7 @@ package searchindex
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -50,6 +51,8 @@ const idxOpportunitiesRTDDL = `CREATE TABLE idx_opportunities_rt (` +
 	`procurement_domain string attribute,` +
 	`funding_focus string attribute,` +
 	`discount_percent float,` +
+	// Apply URL (needed by the auto-apply trigger to pack intent events)
+	`apply_url string attribute,` +
 	// Embedding
 	`embedding float_vector knn_type='hnsw' knn_dims='384' hnsw_similarity='cosine'` +
 	`)`
@@ -63,9 +66,16 @@ func Apply(ctx context.Context, c *Client) error {
 	if err != nil && !isAlreadyExists(err) {
 		return err
 	}
-	// Future: ALTER TABLE statements for newly-introduced sparse columns
-	// based on the kind registry. For now, the seed kinds' columns are
-	// all present in idxOpportunitiesRTDDL.
+	// Backfill apply_url column for existing tables created before this column
+	// was added. Manticore silently accepts the ALTER if the column already exists.
+	alters := []string{
+		`ALTER TABLE idx_opportunities_rt ADD COLUMN IF NOT EXISTS apply_url string attribute`,
+	}
+	for _, alter := range alters {
+		if _, err := c.SQL(ctx, alter); err != nil && !isAlreadyExists(err) {
+			return fmt.Errorf("schema: alter: %w", err)
+		}
+	}
 	return nil
 }
 

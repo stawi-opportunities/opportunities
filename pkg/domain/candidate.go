@@ -143,6 +143,14 @@ type CandidateMatch struct {
 func (CandidateMatch) TableName() string { return "candidate_matches" }
 
 
+// Application status constants for CandidateApplication.Status.
+const (
+	AppStatusPending   = "pending"
+	AppStatusSubmitted = "submitted"
+	AppStatusFailed    = "failed"
+	AppStatusSkipped   = "skipped"
+)
+
 // CandidateApplication records a job application submitted by or on behalf of a candidate.
 type CandidateApplication struct {
 	BaseModel
