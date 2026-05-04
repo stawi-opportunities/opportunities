@@ -11,13 +11,14 @@ import (
 )
 
 // WorkdaySubmitter handles Workday application forms. Workday uses
-// data-automation-id attributes consistently across all tenant instances,
-// which makes it feasible to automate despite the AJAX-heavy UI.
+// data-automation-id attributes consistently across all tenant
+// instances, which makes it feasible to automate despite the AJAX-heavy
+// UI.
 type WorkdaySubmitter struct {
-	client *browser.ApplyClient
+	client browser.ApplyClient
 }
 
-func NewWorkdaySubmitter(client *browser.ApplyClient) *WorkdaySubmitter {
+func NewWorkdaySubmitter(client browser.ApplyClient) *WorkdaySubmitter {
 	return &WorkdaySubmitter{client: client}
 }
 
@@ -29,35 +30,39 @@ func (s *WorkdaySubmitter) CanHandle(sourceType domain.SourceType, applyURL stri
 	}
 	lower := strings.ToLower(applyURL)
 	return strings.Contains(lower, "myworkdayjobs.com") ||
-		strings.Contains(lower, "wd3.myworkday.com") ||
-		strings.Contains(lower, "wd5.myworkday.com")
+		strings.Contains(lower, "myworkday.com")
 }
 
 func (s *WorkdaySubmitter) Submit(ctx context.Context, req autoapply.SubmitRequest) (autoapply.SubmitResult, error) {
 	firstName, lastName := splitName(req.FullName)
 
 	textFields := map[string]string{
-		"[data-automation-id='firstName']":   firstName,
-		"[data-automation-id='lastName']":    lastName,
-		"[data-automation-id='email']":       req.Email,
+		"[data-automation-id='firstName']":    firstName,
+		"[data-automation-id='lastName']":     lastName,
+		"[data-automation-id='email']":        req.Email,
 		"[data-automation-id='phone-number']": req.Phone,
 	}
 
-	err := s.client.FillAndSubmit(
-		ctx,
-		req.ApplyURL,
-		textFields,
-		"[data-automation-id='file-upload-input-ref']",
-		req.CVBytes,
-		req.CVFilename,
-		"[data-automation-id='bottom-navigation-next-button'], button[data-automation-id='saveAndContinueButton']",
-	)
+	err := s.client.FillAndSubmit(ctx, browser.SubmitOptions{
+		URL:        req.ApplyURL,
+		TextFields: textFields,
+		FileField:  "[data-automation-id='file-upload-input-ref']",
+		FileBytes:  req.CVBytes,
+		FileName:   req.CVFilename,
+		SubmitSel:  "[data-automation-id='bottom-navigation-next-button'], button[data-automation-id='saveAndContinueButton']",
+		// Workday's flow is multi-step (Save & Continue → next page).
+		// A successful click leads to a page with progress indicators.
+		ConfirmSel: "[data-automation-id='progressBar'], [data-automation-id='applicationProgress']",
+	})
 	if err != nil {
 		if errors.Is(err, browser.ErrCAPTCHA) {
 			return autoapply.SubmitResult{Method: "skipped", SkipReason: "captcha"}, nil
 		}
 		if errors.Is(err, browser.ErrElementNotFound) {
 			return autoapply.SubmitResult{Method: "skipped", SkipReason: "unsupported"}, nil
+		}
+		if errors.Is(err, browser.ErrSubmitNotConfirmed) {
+			return autoapply.SubmitResult{Method: "skipped", SkipReason: "not_confirmed"}, nil
 		}
 		return autoapply.SubmitResult{}, err
 	}

@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"sync"
 	"testing"
-	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,46 +19,80 @@ import (
 // --- fakes ---
 
 type fakeAppRepo struct {
-	existing map[string]bool // "candidateID:canonicalJobID"
-	created  []*domain.CandidateApplication
+	mu          sync.Mutex
+	existing    map[string]bool // "candidateID:canonicalJobID"
+	createErr   error
+	created     []*domain.CandidateApplication
+	updates     []updateCall
+	updateErr   error
+}
+
+type updateCall struct {
+	id, status, method, externalRef string
 }
 
 func (f *fakeAppRepo) ExistsForCandidate(_ context.Context, cid, jid string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.existing[cid+":"+jid], nil
 }
+
 func (f *fakeAppRepo) Create(_ context.Context, app *domain.CandidateApplication) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.createErr != nil {
+		return f.createErr
+	}
+	if app.ID == "" {
+		app.ID = "app_test_" + string(rune('a'+len(f.created)))
+	}
 	f.created = append(f.created, app)
 	return nil
 }
 
+func (f *fakeAppRepo) UpdateStatus(_ context.Context, id, status, method, externalRef string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.updates = append(f.updates, updateCall{id, status, method, externalRef})
+	return f.updateErr
+}
+
 type fakeMatchRepo struct {
+	mu         sync.Mutex
 	appliedIDs []string
 }
 
 func (f *fakeMatchRepo) MarkApplied(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.appliedIDs = append(f.appliedIDs, id)
 	return nil
 }
 
-type fakeRegistry struct {
+type fakeRouter struct {
 	result autoapply.SubmitResult
 	err    error
+	calls  int
+	lastReq autoapply.SubmitRequest
 }
 
-func (f *fakeRegistry) Submit(_ context.Context, _ autoapply.SubmitRequest) (autoapply.SubmitResult, error) {
-	return f.result, f.err
+func (r *fakeRouter) Submit(_ context.Context, req autoapply.SubmitRequest) (autoapply.SubmitResult, error) {
+	r.calls++
+	r.lastReq = req
+	return r.result, r.err
 }
 
-// submitFn lets us inject the registry into AutoApplyHandler without
-// exposing the *Registry type — wrap it in an inline adapter.
-type registryAdapter struct{ reg *fakeRegistry }
-
-func (r *registryAdapter) Submit(ctx context.Context, req autoapply.SubmitRequest) (autoapply.SubmitResult, error) {
-	return r.reg.Submit(ctx, req)
+type fakeCV struct {
+	data []byte
+	name string
+	err  error
 }
 
-// buildPayload marshals an AutoApplyIntentV1 into the wire format.
-func buildPayload(t *testing.T, intent eventsv1.AutoApplyIntentV1) []byte {
+func (f *fakeCV) Fetch(_ context.Context, _ string) ([]byte, string, error) {
+	return f.data, f.name, f.err
+}
+
+func payload(t *testing.T, intent eventsv1.AutoApplyIntentV1) []byte {
 	t.Helper()
 	env := eventsv1.NewEnvelope(eventsv1.SubjectAutoApplySubmit, intent)
 	b, err := json.Marshal(env)
@@ -64,88 +100,27 @@ func buildPayload(t *testing.T, intent eventsv1.AutoApplyIntentV1) []byte {
 	return b
 }
 
-// handlerWithFakes builds an AutoApplyHandler wired with fakes.
-// We need to reach the registry interface, so we use a shim that
-// replaces the real *autoapply.Registry with a testable interface.
-func handlerWithFakes(appRepo *fakeAppRepo, matchRepo *fakeMatchRepo, reg *fakeRegistry) *testableHandler {
-	return &testableHandler{
-		appRepo:   appRepo,
-		matchRepo: matchRepo,
-		reg:       reg,
-		http:      nil, // CV download skipped (CVUrl empty in tests)
-	}
-}
-
-// testableHandler mirrors AutoApplyHandler but accepts the fake registry.
-type testableHandler struct {
-	appRepo   ApplicationRepo
-	matchRepo MatchRepo
-	reg       *fakeRegistry
-	http      interface{} // unused in tests
-}
-
-func (h *testableHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
-	var env eventsv1.Envelope[eventsv1.AutoApplyIntentV1]
-	if err := json.Unmarshal(payload, &env); err != nil {
-		return err
-	}
-	intent := env.Payload
-
-	exists, err := h.appRepo.ExistsForCandidate(ctx, intent.CandidateID, intent.CanonicalJobID)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-
-	result, submitErr := h.reg.Submit(ctx, autoapply.SubmitRequest{
-		ApplyURL:    intent.ApplyURL,
-		CandidateID: intent.CandidateID,
+func newHandler(app ApplicationRepo, m MatchRepo, r SubmitterRouter, cv CVFetcher, cfg Config) *AutoApplyHandler {
+	return NewAutoApplyHandler(HandlerDeps{
+		Router:    r,
+		AppRepo:   app,
+		MatchRepo: m,
+		CV:        cv,
+		Config:    cfg,
 	})
-	if submitErr != nil {
-		_ = h.appRepo.Create(ctx, &domain.CandidateApplication{
-			CandidateID:    intent.CandidateID,
-			CanonicalJobID: intent.CanonicalJobID,
-			Status:         domain.AppStatusFailed,
-			Method:         "error",
-		})
-		return nil
-	}
+}
 
-	status := domain.AppStatusSubmitted
-	if result.Method == "skipped" {
-		status = domain.AppStatusSkipped
-	}
-
-	now := time.Now().UTC()
-	app := &domain.CandidateApplication{
-		CandidateID:    intent.CandidateID,
-		CanonicalJobID: intent.CanonicalJobID,
-		Method:         result.Method,
-		Status:         status,
-		SubmittedAt:    &now,
-	}
-	if intent.MatchID != "" {
-		app.MatchID = &intent.MatchID
-	}
-	if err := h.appRepo.Create(ctx, app); err != nil {
-		return err
-	}
-
-	if status == domain.AppStatusSubmitted && intent.MatchID != "" {
-		_ = h.matchRepo.MarkApplied(ctx, intent.MatchID)
-	}
-	return nil
+func defaultCfg() Config {
+	return Config{Enabled: true}
 }
 
 // --- tests ---
 
-func TestAutoApplyHandler_HappyPath(t *testing.T) {
-	appRepo := &fakeAppRepo{existing: map[string]bool{}}
-	matchRepo := &fakeMatchRepo{}
-	reg := &fakeRegistry{result: autoapply.SubmitResult{Method: "ats_ui"}}
-	h := handlerWithFakes(appRepo, matchRepo, reg)
+func TestHandle_HappyPath(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	m := &fakeMatchRepo{}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "ats_ui", ExternalRef: "ats-123"}}
+	h := newHandler(app, m, r, &fakeCV{}, defaultCfg())
 
 	intent := eventsv1.AutoApplyIntentV1{
 		CandidateID:    "cnd_1",
@@ -153,73 +128,181 @@ func TestAutoApplyHandler_HappyPath(t *testing.T) {
 		CanonicalJobID: "job_1",
 		ApplyURL:       "https://boards.greenhouse.io/co/jobs/1",
 	}
-	err := h.Handle(context.Background(), nil, buildPayload(t, intent))
-	require.NoError(t, err)
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
 
-	require.Len(t, appRepo.created, 1)
-	assert.Equal(t, domain.AppStatusSubmitted, appRepo.created[0].Status)
-	assert.Equal(t, "ats_ui", appRepo.created[0].Method)
-	require.Len(t, matchRepo.appliedIDs, 1)
-	assert.Equal(t, "match_1", matchRepo.appliedIDs[0])
+	require.Len(t, app.created, 1, "should insert pending row")
+	assert.Equal(t, domain.AppStatusPending, app.created[0].Status)
+	require.Len(t, app.updates, 1, "should update to terminal status")
+	assert.Equal(t, domain.AppStatusSubmitted, app.updates[0].status)
+	assert.Equal(t, "ats_ui", app.updates[0].method)
+	assert.Equal(t, "ats-123", app.updates[0].externalRef)
+	require.Len(t, m.appliedIDs, 1)
+	assert.Equal(t, "match_1", m.appliedIDs[0])
+	assert.Equal(t, 1, r.calls)
 }
 
-func TestAutoApplyHandler_SkippedSubmission(t *testing.T) {
-	appRepo := &fakeAppRepo{existing: map[string]bool{}}
-	matchRepo := &fakeMatchRepo{}
-	reg := &fakeRegistry{result: autoapply.SubmitResult{Method: "skipped", SkipReason: "captcha"}}
-	h := handlerWithFakes(appRepo, matchRepo, reg)
+func TestHandle_SkippedDoesNotMarkMatchApplied(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	m := &fakeMatchRepo{}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "skipped", SkipReason: "captcha"}}
+	h := newHandler(app, m, r, &fakeCV{}, defaultCfg())
 
 	intent := eventsv1.AutoApplyIntentV1{
 		CandidateID:    "cnd_2",
 		MatchID:        "match_2",
 		CanonicalJobID: "job_2",
-		ApplyURL:       "https://boards.greenhouse.io/co/jobs/2",
+		ApplyURL:       "https://x/y",
 	}
-	err := h.Handle(context.Background(), nil, buildPayload(t, intent))
-	require.NoError(t, err)
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
 
-	require.Len(t, appRepo.created, 1)
-	assert.Equal(t, domain.AppStatusSkipped, appRepo.created[0].Status)
-	// Match must NOT be marked applied on a skip.
-	assert.Empty(t, matchRepo.appliedIDs)
+	require.Len(t, app.updates, 1)
+	assert.Equal(t, domain.AppStatusSkipped, app.updates[0].status)
+	assert.Empty(t, m.appliedIDs)
 }
 
-func TestAutoApplyHandler_IdempotencyGuard(t *testing.T) {
-	appRepo := &fakeAppRepo{existing: map[string]bool{"cnd_3:job_3": true}}
-	matchRepo := &fakeMatchRepo{}
-	reg := &fakeRegistry{result: autoapply.SubmitResult{Method: "ats_ui"}}
-	h := handlerWithFakes(appRepo, matchRepo, reg)
+func TestHandle_AlreadyAppliedShortCircuits(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{"cnd_3:job_3": true}}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "ats_ui"}}
+	h := newHandler(app, &fakeMatchRepo{}, r, &fakeCV{}, defaultCfg())
 
 	intent := eventsv1.AutoApplyIntentV1{
-		CandidateID:    "cnd_3",
-		MatchID:        "match_3",
-		CanonicalJobID: "job_3",
-		ApplyURL:       "https://boards.greenhouse.io/co/jobs/3",
+		CandidateID: "cnd_3", CanonicalJobID: "job_3", MatchID: "m3",
+		ApplyURL: "https://x",
 	}
-	err := h.Handle(context.Background(), nil, buildPayload(t, intent))
-	require.NoError(t, err)
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
 
-	// Nothing created, nothing applied.
-	assert.Empty(t, appRepo.created)
-	assert.Empty(t, matchRepo.appliedIDs)
+	assert.Empty(t, app.created, "no pending row when already applied")
+	assert.Empty(t, app.updates)
+	assert.Equal(t, 0, r.calls, "submitter must not run")
 }
 
-func TestAutoApplyHandler_SubmitError_RecordsFailedApplication(t *testing.T) {
-	appRepo := &fakeAppRepo{existing: map[string]bool{}}
-	matchRepo := &fakeMatchRepo{}
-	reg := &fakeRegistry{err: context.DeadlineExceeded}
-	h := handlerWithFakes(appRepo, matchRepo, reg)
+func TestHandle_TransientSubmitErrorReturnsError(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{err: errors.New("browser: connect refused")}
+	h := newHandler(app, &fakeMatchRepo{}, r, &fakeCV{}, defaultCfg())
 
 	intent := eventsv1.AutoApplyIntentV1{
-		CandidateID:    "cnd_4",
-		MatchID:        "match_4",
-		CanonicalJobID: "job_4",
-		ApplyURL:       "https://boards.greenhouse.io/co/jobs/4",
+		CandidateID: "cnd_4", CanonicalJobID: "job_4",
+		ApplyURL: "https://x",
 	}
-	err := h.Handle(context.Background(), nil, buildPayload(t, intent))
-	require.NoError(t, err) // handler swallows transient errors after recording
+	err := h.Handle(context.Background(), nil, payload(t, intent))
+	require.Error(t, err, "transient errors must propagate so the queue redelivers")
 
-	require.Len(t, appRepo.created, 1)
-	assert.Equal(t, domain.AppStatusFailed, appRepo.created[0].Status)
-	assert.Empty(t, matchRepo.appliedIDs)
+	require.Len(t, app.created, 1, "pending row inserted")
+	require.Len(t, app.updates, 1, "pending row marked failed before redelivery")
+	assert.Equal(t, domain.AppStatusFailed, app.updates[0].status)
+}
+
+func TestHandle_UniqueViolationOnPendingIsAcked(t *testing.T) {
+	app := &fakeAppRepo{
+		existing: map[string]bool{},
+		// Simulate the partial-unique-index race: a concurrent worker
+		// already inserted the pending row, so our INSERT trips 23505.
+		createErr: &pgconn.PgError{Code: "23505"},
+	}
+	r := &fakeRouter{}
+	h := newHandler(app, &fakeMatchRepo{}, r, &fakeCV{}, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_5", CanonicalJobID: "job_5",
+		ApplyURL: "https://x",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)),
+		"race-dup must be acked, not redelivered")
+	assert.Equal(t, 0, r.calls, "submitter must not run when another worker holds the slot")
+}
+
+func TestHandle_ExistsCheckErrorIsTransient(t *testing.T) {
+	// We can't easily inject into ExistsForCandidate via fakeAppRepo's
+	// current shape; substitute a custom impl.
+	app := &existsErrRepo{err: errors.New("db down")}
+	r := &fakeRouter{}
+	h := newHandler(app, &fakeMatchRepo{}, r, &fakeCV{}, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_6", CanonicalJobID: "job_6",
+		ApplyURL: "https://x",
+	}
+	err := h.Handle(context.Background(), nil, payload(t, intent))
+	require.Error(t, err)
+	assert.Equal(t, 0, r.calls)
+}
+
+type existsErrRepo struct{ err error }
+
+func (e *existsErrRepo) ExistsForCandidate(_ context.Context, _, _ string) (bool, error) {
+	return false, e.err
+}
+func (e *existsErrRepo) Create(_ context.Context, _ *domain.CandidateApplication) error {
+	return nil
+}
+func (e *existsErrRepo) UpdateStatus(_ context.Context, _, _, _, _ string) error { return nil }
+
+func TestHandle_DisabledByConfigAcks(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{}
+	h := newHandler(app, &fakeMatchRepo{}, r, &fakeCV{}, Config{Enabled: false})
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_7", CanonicalJobID: "job_7", ApplyURL: "https://x",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+	assert.Empty(t, app.created)
+	assert.Equal(t, 0, r.calls)
+}
+
+func TestHandle_ScoreBackstopAcks(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{}
+	h := newHandler(app, &fakeMatchRepo{}, r, &fakeCV{}, Config{Enabled: true, ScoreMinBackstop: 0.9})
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_8", CanonicalJobID: "job_8", ApplyURL: "https://x",
+		Score: 0.7,
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+	assert.Empty(t, app.created)
+}
+
+func TestHandle_UnsafeCVURLFails(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "ats_ui"}}
+	cv := &fakeCV{err: ErrCVUnsafeURL}
+	h := newHandler(app, &fakeMatchRepo{}, r, cv, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_9", CanonicalJobID: "job_9", ApplyURL: "https://x",
+		CVUrl: "http://169.254.169.254/latest/meta-data/",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+
+	require.Len(t, app.updates, 1)
+	assert.Equal(t, domain.AppStatusFailed, app.updates[0].status)
+	assert.Equal(t, 0, r.calls, "must not submit when CV URL is unsafe")
+}
+
+func TestHandle_CVDownloadSoftFailureProceedsWithoutCV(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "ats_ui"}}
+	cv := &fakeCV{err: errors.New("network blip")}
+	h := newHandler(app, &fakeMatchRepo{}, r, cv, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_10", CanonicalJobID: "job_10", ApplyURL: "https://x",
+		CVUrl: "https://cv.example.com/foo.pdf",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+
+	assert.Equal(t, 1, r.calls)
+	assert.Empty(t, r.lastReq.CVBytes, "missing CV must not block submit")
+}
+
+func TestHandle_EmptyPayloadReturnsError(t *testing.T) {
+	h := newHandler(&fakeAppRepo{existing: map[string]bool{}}, &fakeMatchRepo{}, &fakeRouter{}, &fakeCV{}, defaultCfg())
+	require.Error(t, h.Handle(context.Background(), nil, nil))
+}
+
+func TestHandle_BadJSONIsAcked(t *testing.T) {
+	h := newHandler(&fakeAppRepo{existing: map[string]bool{}}, &fakeMatchRepo{}, &fakeRouter{}, &fakeCV{}, defaultCfg())
+	require.NoError(t, h.Handle(context.Background(), nil, []byte("not json")))
 }

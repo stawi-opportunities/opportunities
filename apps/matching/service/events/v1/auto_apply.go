@@ -29,6 +29,13 @@ type AppRepo interface {
 	CountTodayForCandidate(ctx context.Context, candidateID string) (int, error)
 }
 
+// MatchLookup is the narrow slice of repository.MatchRepository the
+// trigger handler needs to populate MatchID on each intent so the
+// downstream autoapply service can mark the match as applied.
+type MatchLookup interface {
+	GetIDByCandidateJob(ctx context.Context, candidateID, canonicalJobID string) (string, error)
+}
+
 // CVStore loads the extracted CV fields for a candidate. The matching
 // service already has a candidatestore.Reader; this is the minimal slice
 // needed for packing the intent event.
@@ -43,10 +50,11 @@ type AutoApplyTriggerDeps struct {
 	Svc           *frame.Service
 	CandidateRepo CandidateRepo
 	AppRepo       AppRepo
-	CVStore       CVStore // optional; intent is still published without CV fields
-	ScoreMin      float64 // default 0.75
-	DailyLimit    int     // default 5
-	QueueURL      string  // SubjectAutoApplySubmit publisher URL
+	MatchLookup   MatchLookup // optional; without it MatchID is left empty
+	CVStore       CVStore     // optional; intent is still published without CV fields
+	ScoreMin      float64     // default 0.75
+	DailyLimit    int         // default 5
+	QueueURL      string      // SubjectAutoApplySubmit publisher URL
 	Enabled       bool
 
 	// PublishFn overrides Svc.QueueManager().Publish in tests. When nil,
@@ -174,9 +182,22 @@ func (h *AutoApplyTriggerHandler) Execute(ctx context.Context, payload any) erro
 			continue
 		}
 
+		// Populate MatchID so the autoapply consumer can flip the
+		// CandidateMatch row to status='applied' on success. Best
+		// effort — a missing row leaves the field empty and downstream
+		// MarkApplied is a no-op.
+		var matchID string
+		if h.deps.MatchLookup != nil {
+			id, err := h.deps.MatchLookup.GetIDByCandidateJob(ctx, in.CandidateID, match.CanonicalID)
+			if err != nil {
+				log.WithError(err).Debug("auto-apply trigger: match-id lookup failed")
+			}
+			matchID = id
+		}
+
 		intent := eventsv1.AutoApplyIntentV1{
 			CandidateID:    in.CandidateID,
-			MatchID:        "", // MatchID is the CandidateMatch row ID, not in MatchRow
+			MatchID:        matchID,
 			CanonicalJobID: match.CanonicalID,
 			ApplyURL:       match.ApplyURL,
 			SourceType:     deriveSourceType(match.ApplyURL),

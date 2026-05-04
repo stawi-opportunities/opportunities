@@ -24,8 +24,13 @@ var (
 	TranslateFailures         metric.Int64Counter
 	PreferenceTriggeredRuns   metric.Int64Counter
 
-	AutoApplyAttempts     metric.Int64Counter
-	AutoApplyLimitReached metric.Int64Counter
+	AutoApplyAttempts        metric.Int64Counter
+	AutoApplyLimitReached    metric.Int64Counter
+	AutoApplySubmitDuration  metric.Float64Histogram
+	AutoApplyCVDownloadFails metric.Int64Counter
+	AutoApplyBrowserRestarts metric.Int64Counter
+	AutoApplyCaptcha         metric.Int64Counter
+	AutoApplyTransientErrors metric.Int64Counter
 )
 
 // Init registers all pipeline metrics with the global OTel meter provider.
@@ -131,6 +136,41 @@ func Init() error {
 		return err
 	}
 
+	AutoApplySubmitDuration, err = meter.Float64Histogram("autoapply.submit.duration_seconds",
+		metric.WithDescription("End-to-end submission latency, labelled by method and status"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyCVDownloadFails, err = meter.Int64Counter("autoapply.cv_download.failures",
+		metric.WithDescription("CV download failures, labelled by reason (network, http_status, too_large, blocked_url)"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyBrowserRestarts, err = meter.Int64Counter("autoapply.browser.restarts",
+		metric.WithDescription("Headless browser process restarts, labelled by reason (launch_failed, health_check, crashed)"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyCaptcha, err = meter.Int64Counter("autoapply.captcha_detected",
+		metric.WithDescription("CAPTCHA walls detected, labelled by host bucket"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyTransientErrors, err = meter.Int64Counter("autoapply.transient_errors",
+		metric.WithDescription("Transient infra errors that triggered a redelivery, labelled by stage"),
+	)
+	if err != nil {
+		return err
+	}
+
 	return InitIceberg()
 }
 
@@ -224,4 +264,56 @@ func RecordAutoApplyLimitReached() {
 		return
 	}
 	AutoApplyLimitReached.Add(context.Background(), 1)
+}
+
+// RecordAutoApplySubmitDuration records end-to-end submission latency.
+// status is "submitted", "skipped", or "failed"; method is the submitter
+// that handled it (e.g. "greenhouse_ui").
+func RecordAutoApplySubmitDuration(seconds float64, status, method string) {
+	if AutoApplySubmitDuration == nil {
+		return
+	}
+	AutoApplySubmitDuration.Record(context.Background(), seconds,
+		metric.WithAttributes(
+			attribute.String("status", status),
+			attribute.String("method", method),
+		))
+}
+
+// RecordAutoApplyCVDownloadFailure increments the CV-download failure
+// counter. reason is a low-cardinality tag.
+func RecordAutoApplyCVDownloadFailure(reason string) {
+	if AutoApplyCVDownloadFails == nil {
+		return
+	}
+	AutoApplyCVDownloadFails.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("reason", reason)))
+}
+
+// RecordAutoApplyBrowserRestart increments the browser-restart counter.
+func RecordAutoApplyBrowserRestart(reason string) {
+	if AutoApplyBrowserRestarts == nil {
+		return
+	}
+	AutoApplyBrowserRestarts.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("reason", reason)))
+}
+
+// RecordAutoApplyCaptcha increments the captcha-detected counter.
+func RecordAutoApplyCaptcha(host string) {
+	if AutoApplyCaptcha == nil {
+		return
+	}
+	AutoApplyCaptcha.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("host", host)))
+}
+
+// RecordAutoApplyTransientError increments the transient-error counter.
+// stage is one of "exists_check", "persist", "publish", "browser_init".
+func RecordAutoApplyTransientError(stage string) {
+	if AutoApplyTransientErrors == nil {
+		return
+	}
+	AutoApplyTransientErrors.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("stage", stage)))
 }

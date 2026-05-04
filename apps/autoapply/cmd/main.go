@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -32,6 +33,9 @@ func main() {
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("autoapply: config parse failed")
 	}
+	if err := cfg.Validate(); err != nil {
+		util.Log(ctx).WithError(err).Fatal("autoapply: config invalid")
+	}
 
 	opts := []frame.Option{
 		frame.WithConfig(&cfg),
@@ -56,12 +60,16 @@ func main() {
 	appRepo := repository.NewApplicationRepository(pool.DB)
 	matchRepo := repository.NewMatchRepository(pool.DB)
 
-	browserTimeout := time.Duration(cfg.BrowserTimeoutSec) * time.Second
-	browserClient := browser.NewApplyClient(browserTimeout, "")
+	browserClient := browser.NewPool(
+		cfg.BrowserConcurrency,
+		time.Duration(cfg.BrowserTimeoutSec)*time.Second,
+		cfg.BrowserUserAgent,
+	)
 	defer browserClient.Close()
 
 	// Build tier list. LLM tier is inserted before email only when
-	// InferenceBaseURL is configured.
+	// InferenceBaseURL is configured (Validate already enforced
+	// InferenceModel != "" in that case).
 	tiers := []autoapply.Submitter{
 		ats.NewGreenhouseSubmitter(browserClient),
 		ats.NewLeverSubmitter(browserClient),
@@ -77,7 +85,23 @@ func main() {
 	)
 
 	registry := autoapply.NewRegistry(tiers...)
-	queueHandler := service.NewAutoApplyHandler(svc, registry, appRepo, matchRepo)
+	cvFetcher := service.NewHTTPCVFetcher(
+		time.Duration(cfg.CVDownloadTimeoutSec)*time.Second,
+		cfg.CVMaxBytes,
+	)
+
+	queueHandler := service.NewAutoApplyHandler(service.HandlerDeps{
+		Svc:       svc,
+		Router:    registry,
+		AppRepo:   appRepo,
+		MatchRepo: matchRepo,
+		CV:        cvFetcher,
+		Config: service.Config{
+			Enabled:            cfg.Enabled,
+			DailyLimitBackstop: cfg.DailyLimitBackstop,
+			ScoreMinBackstop:   cfg.ScoreMinBackstop,
+		},
+	})
 
 	svc.Init(ctx,
 		frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
@@ -98,8 +122,9 @@ func main() {
 	}
 }
 
-// openAIClient implements autoapply.LLMClient via a minimal OpenAI-compatible
-// chat completion call. Reuses the same pattern as extraction.Extractor.
+// openAIClient implements autoapply.LLMClient via a minimal
+// OpenAI-compatible chat completion call. Reuses the same pattern as
+// extraction.Extractor.
 type openAIClient struct {
 	baseURL string
 	apiKey  string
@@ -141,6 +166,11 @@ func (c *openAIClient) Complete(ctx context.Context, system, user string) (strin
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		return "", fmt.Errorf("llm: http %d: %s", resp.StatusCode, string(body))
+	}
 
 	var out struct {
 		Choices []struct {

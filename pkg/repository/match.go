@@ -101,6 +101,27 @@ func (r *MatchRepository) MarkViewed(ctx context.Context, id string) error {
 }
 
 
+// GetIDByCandidateJob returns the CandidateMatch row id for the given
+// candidate × canonical-job pair, or "" with nil error when no row
+// exists. Used by the auto-apply trigger to populate AutoApplyIntentV1
+// without loading the entire row.
+func (r *MatchRepository) GetIDByCandidateJob(ctx context.Context, candidateID, canonicalJobID string) (string, error) {
+	var id string
+	err := r.db(ctx, true).
+		Model(&domain.CandidateMatch{}).
+		Select("id").
+		Where("candidate_id = ? AND canonical_job_id = ?", candidateID, canonicalJobID).
+		Limit(1).
+		Scan(&id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", nil
+		}
+		return "", err
+	}
+	return id, nil
+}
+
 // MarkApplied sets status='applied' and applied_at=now() for the given match ID.
 func (r *MatchRepository) MarkApplied(ctx context.Context, id string) error {
 	now := time.Now()

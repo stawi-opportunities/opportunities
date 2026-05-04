@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/browser"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
-// LLMClient is the narrow interface the LLMFormSubmitter needs —
-// a single chat completion call. Production wiring uses extraction.Extractor.
+// LLMClient is the narrow interface the LLMFormSubmitter needs — a
+// single chat completion call. Production wiring uses the OpenAI client
+// in apps/autoapply/cmd.
 type LLMClient interface {
 	// Complete sends a system + user prompt and returns the model's reply.
 	Complete(ctx context.Context, system, user string) (string, error)
@@ -23,12 +25,12 @@ type LLMClient interface {
 // prompt, fills them, and submits. Handles any URL not matched by a
 // Tier-1 ATS handler.
 type LLMFormSubmitter struct {
-	client *browser.ApplyClient
+	client browser.ApplyClient
 	llm    LLMClient
 }
 
 // NewLLMFormSubmitter wires the handler.
-func NewLLMFormSubmitter(client *browser.ApplyClient, llm LLMClient) *LLMFormSubmitter {
+func NewLLMFormSubmitter(client browser.ApplyClient, llm LLMClient) *LLMFormSubmitter {
 	return &LLMFormSubmitter{client: client, llm: llm}
 }
 
@@ -77,15 +79,14 @@ Return JSON: {"selector": "value", ...}`,
 		return SubmitResult{Method: "skipped", SkipReason: "llm_no_fields"}, nil
 	}
 
-	fillErr := s.client.FillAndSubmit(
-		ctx,
-		req.ApplyURL,
-		fieldMap,
-		"input[type='file']",
-		req.CVBytes,
-		req.CVFilename,
-		"button[type='submit'], input[type='submit']",
-	)
+	fillErr := s.client.FillAndSubmit(ctx, browser.SubmitOptions{
+		URL:        req.ApplyURL,
+		TextFields: fieldMap,
+		FileField:  "input[type='file']",
+		FileBytes:  req.CVBytes,
+		FileName:   req.CVFilename,
+		SubmitSel:  "button[type='submit'], input[type='submit']",
+	})
 	if fillErr != nil {
 		if errors.Is(fillErr, browser.ErrCAPTCHA) {
 			return SubmitResult{Method: "skipped", SkipReason: "captcha"}, nil
@@ -93,85 +94,146 @@ Return JSON: {"selector": "value", ...}`,
 		if errors.Is(fillErr, browser.ErrElementNotFound) {
 			return SubmitResult{Method: "skipped", SkipReason: "unsupported"}, nil
 		}
+		if errors.Is(fillErr, browser.ErrSubmitNotConfirmed) {
+			return SubmitResult{Method: "skipped", SkipReason: "not_confirmed"}, nil
+		}
 		return SubmitResult{}, fillErr
 	}
 
 	return SubmitResult{Method: "llm_form"}, nil
 }
 
-// extractFormHTML strips non-form content and truncates to maxLen runes.
-// Keeps only tags related to forms (form, input, label, select, textarea,
-// button) to minimise the LLM prompt size.
-func extractFormHTML(html string, maxLen int) string {
-	var sb strings.Builder
-	lower := strings.ToLower(html)
+// formStartRE matches an opening <form ...> tag. Used to locate every
+// candidate form in the page so we can score and pick the application
+// form rather than always taking the first (which is often the search
+// box at the top of the page).
+var formStartRE = regexp.MustCompile(`(?i)<form\b`)
 
-	// Find the first <form element.
-	start := strings.Index(lower, "<form")
-	if start < 0 {
+// extractFormHTML strips non-form content and truncates to maxLen runes.
+// Picks the form whose attributes / nearby text suggest "application"
+// over the noisy login/search/newsletter forms common at the top of
+// careers pages.
+func extractFormHTML(html string, maxLen int) string {
+	type candidate struct {
+		body  string
+		score int
+	}
+	var picks []candidate
+
+	for _, idx := range formStartRE.FindAllStringIndex(html, -1) {
+		start := idx[0]
+		// Find the matching </form> after this <form>.
+		rest := strings.ToLower(html[start:])
+		end := strings.Index(rest, "</form>")
+		if end < 0 {
+			continue
+		}
+		body := html[start : start+end+len("</form>")]
+		picks = append(picks, candidate{body: body, score: scoreForm(body)})
+	}
+	if len(picks) == 0 {
 		return ""
 	}
-	// Find the closing </form>.
-	end := strings.LastIndex(lower, "</form>")
-	if end < 0 || end <= start {
-		end = len(html)
-	} else {
-		end += len("</form>")
-	}
 
-	snippet := html[start:end]
-	// Strip script/style tags.
-	snippet = removeTagContent(snippet, "script")
-	snippet = removeTagContent(snippet, "style")
-
-	for _, r := range snippet {
-		if sb.Len() >= maxLen {
-			break
+	// Pick highest-scoring form.
+	best := picks[0]
+	for _, p := range picks[1:] {
+		if p.score > best.score {
+			best = p
 		}
-		sb.WriteRune(r)
 	}
-	return sb.String()
+
+	snippet := stripTag(best.body, "script")
+	snippet = stripTag(snippet, "style")
+
+	if len(snippet) > maxLen {
+		// Truncate by runes to avoid splitting a UTF-8 sequence.
+		runes := []rune(snippet)
+		if len(runes) > maxLen {
+			runes = runes[:maxLen]
+		}
+		snippet = string(runes)
+	}
+	return snippet
 }
 
-// removeTagContent removes all content between <tag> and </tag> (case-insensitive).
-func removeTagContent(s, tag string) string {
+// scoreForm assigns a weight to a candidate <form> body. Application
+// forms typically contain many <input> fields and keywords like
+// "apply", "resume", "cover letter".
+func scoreForm(body string) int {
+	lower := strings.ToLower(body)
+	score := 0
+	score += strings.Count(lower, "<input") * 2
+	score += strings.Count(lower, "<textarea") * 3
+	score += strings.Count(lower, "<select") * 2
+	for _, kw := range []string{"apply", "application", "resume", "cv", "cover letter", "first name", "last name"} {
+		if strings.Contains(lower, kw) {
+			score += 5
+		}
+	}
+	for _, anti := range []string{"search", "subscribe", "newsletter", "login", "sign in"} {
+		if strings.Contains(lower, anti) {
+			score -= 4
+		}
+	}
+	return score
+}
+
+// stripTag removes every <tag>...</tag> pair from s in a single pass.
+// Case-insensitive on the tag name; tag content (including nested
+// tags) is dropped wholesale.
+func stripTag(s, tag string) string {
+	open := "<" + strings.ToLower(tag)
+	closeT := "</" + strings.ToLower(tag) + ">"
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
 	lower := strings.ToLower(s)
-	open := "<" + tag
-	close := "</" + tag + ">"
-	var sb strings.Builder
-	for {
-		start := strings.Index(strings.ToLower(s), open)
-		if start < 0 {
-			sb.WriteString(s)
+	for i < len(s) {
+		o := strings.Index(lower[i:], open)
+		if o < 0 {
+			b.WriteString(s[i:])
 			break
 		}
-		sb.WriteString(s[:start])
-		end := strings.Index(strings.ToLower(s[start:]), close)
-		if end < 0 {
+		b.WriteString(s[i : i+o])
+		c := strings.Index(lower[i+o:], closeT)
+		if c < 0 {
 			break
 		}
-		s = s[start+end+len(close):]
-		lower = strings.ToLower(s)
-		_ = lower
+		i = i + o + c + len(closeT)
 	}
-	return sb.String()
+	return b.String()
 }
 
-// parseFieldMap unmarshals the LLM reply into a map[string]string.
-// The LLM is instructed to return raw JSON; any markdown fences are
-// stripped before parsing.
+// parseFieldMap unmarshals the LLM reply into a map[string]string. The
+// LLM is instructed to return raw JSON; markdown fences are stripped
+// before parsing. Object values are coerced to their JSON string form
+// so a model that returns {"a": 5} doesn't blow up the unmarshal.
 func parseFieldMap(reply string) (map[string]string, error) {
 	s := strings.TrimSpace(reply)
-	// Strip ```json ... ``` fences if the model ignored instructions.
 	if strings.HasPrefix(s, "```") {
-		lines := strings.Split(s, "\n")
-		if len(lines) > 2 {
-			s = strings.Join(lines[1:len(lines)-1], "\n")
+		// Drop the first line ("```json" or "```") and the last "```".
+		if nl := strings.Index(s, "\n"); nl >= 0 {
+			s = s[nl+1:]
 		}
+		if end := strings.LastIndex(s, "```"); end >= 0 {
+			s = s[:end]
+		}
+		s = strings.TrimSpace(s)
 	}
-	var m map[string]string
-	if err := json.Unmarshal([]byte(s), &m); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(s), &raw); err != nil {
 		return nil, fmt.Errorf("parseFieldMap: %w", err)
 	}
-	return m, nil
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		var sv string
+		if err := json.Unmarshal(v, &sv); err == nil {
+			out[k] = sv
+			continue
+		}
+		// Number / bool / null → use raw JSON literal.
+		out[k] = strings.Trim(string(v), `"`)
+	}
+	return out, nil
 }

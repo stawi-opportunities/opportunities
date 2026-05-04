@@ -24,6 +24,13 @@ var noIcebergPersistence = map[string]bool{
 	eventsv1.TopicCanonicalsExpired:     true,
 	eventsv1.TopicTranslations:          true,
 	eventsv1.TopicOpportunityAutoFlagged: true,
+	// TopicApplicationSubmitted: needs an Iceberg table + Arrow
+	// schema + builder before it can leave this list. The auto-apply
+	// service emits it, the candidate_applications Postgres row is
+	// the authoritative store for now; analytics rollup over Iceberg
+	// is a follow-up. Listing it here keeps the writer from panicking
+	// the dispatch test and acks the message harmlessly.
+	eventsv1.TopicApplicationSubmitted: true,
 }
 
 // TestAllTopicsHaveDispatch verifies that every topic returned by

@@ -122,6 +122,7 @@ func main() {
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
 	appRepo := repository.NewApplicationRepository(dbFn)
+	matchRepo := repository.NewMatchRepository(dbFn)
 	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_opportunities_rt")
 	if err != nil {
 		log.WithError(err).Fatal("candidates: Manticore adapter init failed")
@@ -153,6 +154,7 @@ func main() {
 		Svc:           svc,
 		CandidateRepo: candidateRepo,
 		AppRepo:       appRepo,
+		MatchLookup:   matchRepo,
 		ScoreMin:      cfg.AutoApplyScoreMin,
 		DailyLimit:    cfg.AutoApplyDailyLimit,
 		QueueURL:      cfg.AutoApplyQueueURL,

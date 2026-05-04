@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-APP_DIRS := apps/crawler apps/scheduler apps/api apps/writer apps/materializer apps/worker
+APP_DIRS := apps/crawler apps/scheduler apps/api apps/writer apps/materializer apps/worker apps/matching apps/autoapply
 
 # Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
 HUGO_VERSION := 0.160.1

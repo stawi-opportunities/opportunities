@@ -16,11 +16,11 @@ import (
 // (boards.greenhouse.io/<company>/jobs/<id>), making it the most
 // reliable ATS-UI target.
 type GreenhouseSubmitter struct {
-	client *browser.ApplyClient
+	client browser.ApplyClient
 }
 
 // NewGreenhouseSubmitter wires the submitter with an ApplyClient.
-func NewGreenhouseSubmitter(client *browser.ApplyClient) *GreenhouseSubmitter {
+func NewGreenhouseSubmitter(client browser.ApplyClient) *GreenhouseSubmitter {
 	return &GreenhouseSubmitter{client: client}
 }
 
@@ -40,30 +40,38 @@ func (s *GreenhouseSubmitter) Submit(ctx context.Context, req autoapply.SubmitRe
 	firstName, lastName := splitName(req.FullName)
 
 	textFields := map[string]string{
-		"#first_name": firstName,
-		"#last_name":  lastName,
-		"#email":      req.Email,
-		"#phone":      req.Phone,
+		"#first_name":                            firstName,
+		"#last_name":                             lastName,
+		"#email":                                 req.Email,
+		"#phone":                                 req.Phone,
+		"#job_application_first_name":            firstName,
+		"#job_application_last_name":             lastName,
+		"#job_application_email":                 req.Email,
+		"#job_application_phone":                 req.Phone,
 	}
 	if req.CoverLetter != "" {
 		textFields["#cover_letter_text"] = req.CoverLetter
+		textFields["#job_application_cover_letter_text"] = req.CoverLetter
 	}
 
-	err := s.client.FillAndSubmit(
-		ctx,
-		req.ApplyURL,
-		textFields,
-		"#resume",
-		req.CVBytes,
-		req.CVFilename,
-		"[data-submit='true'], input[type='submit'], button[type='submit']",
-	)
+	err := s.client.FillAndSubmit(ctx, browser.SubmitOptions{
+		URL:         req.ApplyURL,
+		TextFields:  textFields,
+		FileField:   "#resume, #job_application_resume",
+		FileBytes:   req.CVBytes,
+		FileName:    req.CVFilename,
+		SubmitSel:   "[data-submit='true'], input[type='submit'], button[type='submit']",
+		ConfirmText: "thank you for applying",
+	})
 	if err != nil {
 		if errors.Is(err, browser.ErrCAPTCHA) {
 			return autoapply.SubmitResult{Method: "skipped", SkipReason: "captcha"}, nil
 		}
 		if errors.Is(err, browser.ErrElementNotFound) {
 			return autoapply.SubmitResult{Method: "skipped", SkipReason: "unsupported"}, nil
+		}
+		if errors.Is(err, browser.ErrSubmitNotConfirmed) {
+			return autoapply.SubmitResult{Method: "skipped", SkipReason: "not_confirmed"}, nil
 		}
 		return autoapply.SubmitResult{}, err
 	}

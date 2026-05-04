@@ -13,10 +13,10 @@ import (
 // SmartRecruitersSubmitter handles SmartRecruiters application forms
 // (jobs.smartrecruiters.com/<company>/<job-id>).
 type SmartRecruitersSubmitter struct {
-	client *browser.ApplyClient
+	client browser.ApplyClient
 }
 
-func NewSmartRecruitersSubmitter(client *browser.ApplyClient) *SmartRecruitersSubmitter {
+func NewSmartRecruitersSubmitter(client browser.ApplyClient) *SmartRecruitersSubmitter {
 	return &SmartRecruitersSubmitter{client: client}
 }
 
@@ -39,21 +39,24 @@ func (s *SmartRecruitersSubmitter) Submit(ctx context.Context, req autoapply.Sub
 		"[name='phoneNumber']": req.Phone,
 	}
 
-	err := s.client.FillAndSubmit(
-		ctx,
-		req.ApplyURL,
-		textFields,
-		"input[type='file']",
-		req.CVBytes,
-		req.CVFilename,
-		"[data-test-id='apply-button-bottom'], button[type='submit']",
-	)
+	err := s.client.FillAndSubmit(ctx, browser.SubmitOptions{
+		URL:         req.ApplyURL,
+		TextFields:  textFields,
+		FileField:   "input[type='file']",
+		FileBytes:   req.CVBytes,
+		FileName:    req.CVFilename,
+		SubmitSel:   "[data-test-id='apply-button-bottom'], button[type='submit']",
+		ConfirmText: "application sent",
+	})
 	if err != nil {
 		if errors.Is(err, browser.ErrCAPTCHA) {
 			return autoapply.SubmitResult{Method: "skipped", SkipReason: "captcha"}, nil
 		}
 		if errors.Is(err, browser.ErrElementNotFound) {
 			return autoapply.SubmitResult{Method: "skipped", SkipReason: "unsupported"}, nil
+		}
+		if errors.Is(err, browser.ErrSubmitNotConfirmed) {
+			return autoapply.SubmitResult{Method: "skipped", SkipReason: "not_confirmed"}, nil
 		}
 		return autoapply.SubmitResult{}, err
 	}
@@ -63,6 +66,7 @@ func (s *SmartRecruitersSubmitter) Submit(ctx context.Context, req autoapply.Sub
 
 // splitName splits "First Last" into (First, Last). When the name has
 // no space, the full string is used as first name and last name is "".
+// Multi-word last names ("Anne Marie Smith") fold the tail into Last.
 // Shared by all ATS submitters via this unexported helper.
 func splitName(full string) (string, string) {
 	full = strings.TrimSpace(full)

@@ -26,6 +26,28 @@ func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Candidat
 	return r.db(ctx, false).Create(app).Error
 }
 
+// UpdateStatus transitions a row to its terminal state and stamps
+// submitted_at when the new status is "submitted" or "skipped".
+//
+// Used by the autoapply handler to flip a "pending" reservation row
+// into its final outcome after the submitter returns.
+func (r *ApplicationRepository) UpdateStatus(ctx context.Context, id, status, method, externalRef string) error {
+	updates := map[string]interface{}{
+		"status": status,
+		"method": method,
+	}
+	if externalRef != "" {
+		updates["response_type"] = externalRef
+	}
+	if status == domain.AppStatusSubmitted || status == domain.AppStatusSkipped {
+		updates["submitted_at"] = time.Now().UTC()
+	}
+	return r.db(ctx, false).
+		Model(&domain.CandidateApplication{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
 // GetByMatchID returns the application for the given match ID, or (nil, nil)
 // when no row exists.
 func (r *ApplicationRepository) GetByMatchID(ctx context.Context, matchID string) (*domain.CandidateApplication, error) {
@@ -57,16 +79,23 @@ func (r *ApplicationRepository) ExistsForCandidate(ctx context.Context, candidat
 	return count > 0, nil
 }
 
-// CountTodayForCandidate counts non-failed applications submitted since
-// midnight UTC today. Used by the auto-apply daily-limit check.
+// CountTodayForCandidate counts applications attempted since midnight
+// UTC today that count against the per-candidate daily limit.
+//
+// Both submitted and skipped attempts count: a skip still consumed a
+// browser run / LLM call / ATS round-trip, so allowing unbounded skips
+// would let one candidate hammer crawled URLs without limit. Failed
+// attempts (transient infra errors) are excluded so a flapping queue
+// can't burn a candidate's quota.
 func (r *ApplicationRepository) CountTodayForCandidate(ctx context.Context, candidateID string) (int, error) {
 	now := time.Now().UTC()
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	var count int64
 	err := r.db(ctx, true).
 		Model(&domain.CandidateApplication{}).
-		Where("candidate_id = ? AND submitted_at >= ? AND status != ?",
-			candidateID, midnight, "failed").
+		Where("candidate_id = ? AND submitted_at >= ? AND status IN ?",
+			candidateID, midnight,
+			[]string{domain.AppStatusSubmitted, domain.AppStatusSkipped}).
 		Count(&count).Error
 	return int(count), err
 }
