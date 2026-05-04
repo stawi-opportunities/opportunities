@@ -306,3 +306,25 @@ func TestHandle_BadJSONIsAcked(t *testing.T) {
 	h := newHandler(&fakeAppRepo{existing: map[string]bool{}}, &fakeMatchRepo{}, &fakeRouter{}, &fakeCV{}, defaultCfg())
 	require.NoError(t, h.Handle(context.Background(), nil, []byte("not json")))
 }
+
+func TestHandle_DryRunSkipsRouter(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	m := &fakeMatchRepo{}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "ats_ui"}}
+	cfg := defaultCfg()
+	cfg.DryRun = true
+	h := newHandler(app, m, r, &fakeCV{}, cfg)
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_dr", CanonicalJobID: "job_dr", MatchID: "m_dr",
+		ApplyURL: "https://boards.greenhouse.io/co/jobs/dr",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+
+	require.Len(t, app.created, 1, "pending row still inserted in dry-run")
+	require.Len(t, app.updates, 1)
+	assert.Equal(t, domain.AppStatusSkipped, app.updates[0].status)
+	assert.Equal(t, "skipped", app.updates[0].method)
+	assert.Equal(t, 0, r.calls, "router must not be called in dry-run")
+	assert.Empty(t, m.appliedIDs, "dry-run must not mark match applied")
+}

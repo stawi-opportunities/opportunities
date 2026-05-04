@@ -43,6 +43,7 @@ type MatchRepo interface {
 // Config bundles the runtime knobs that affect handler behaviour.
 type Config struct {
 	Enabled            bool
+	DryRun             bool
 	DailyLimitBackstop int
 	ScoreMinBackstop   float64
 }
@@ -202,6 +203,17 @@ func (h *AutoApplyHandler) Handle(ctx context.Context, _ map[string]string, payl
 		CoverLetter:  intent.CoverLetter,
 		CVBytes:      cvBytes,
 		CVFilename:   cvFilename,
+	}
+
+	// Dry-run short-circuits the submitter so a developer can drive
+	// the full pipeline (queue → DB → analytics emit) without sending
+	// any real browser traffic. Persisted as "skipped/dry_run".
+	if h.cfg.DryRun {
+		log.Info("autoapply: dry-run; skipping submitter")
+		h.finalise(ctx, log, pending, intent,
+			autoapply.SubmitResult{Method: "skipped", SkipReason: "dry_run"},
+			domain.AppStatusSkipped, started)
+		return nil
 	}
 
 	result, submitErr := h.router.Submit(ctx, req)

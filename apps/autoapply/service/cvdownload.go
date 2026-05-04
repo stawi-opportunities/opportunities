@@ -32,6 +32,13 @@ type CVFetcher interface {
 // NewHTTPCVFetcher constructs a fetcher that uses a stdlib http.Client
 // with a per-request timeout and the given byte cap.
 func NewHTTPCVFetcher(timeout time.Duration, maxBytes int64) CVFetcher {
+	return NewHTTPCVFetcherWithOptions(timeout, maxBytes, false)
+}
+
+// NewHTTPCVFetcherWithOptions is the same as NewHTTPCVFetcher but lets
+// callers disable the SSRF guard for local dev (devmode build only —
+// main.go hard-fails if the flag is set against a non-devmode binary).
+func NewHTTPCVFetcherWithOptions(timeout time.Duration, maxBytes int64, allowInsecure bool) CVFetcher {
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
@@ -39,14 +46,16 @@ func NewHTTPCVFetcher(timeout time.Duration, maxBytes int64) CVFetcher {
 		maxBytes = 10 << 20
 	}
 	return &httpCVFetcher{
-		client:   &http.Client{Timeout: timeout},
-		maxBytes: maxBytes,
+		client:        &http.Client{Timeout: timeout},
+		maxBytes:      maxBytes,
+		allowInsecure: allowInsecure,
 	}
 }
 
 type httpCVFetcher struct {
-	client   *http.Client
-	maxBytes int64
+	client        *http.Client
+	maxBytes      int64
+	allowInsecure bool
 }
 
 // Fetch validates rawURL, downloads the body up to the cap, and derives
@@ -56,9 +65,11 @@ func (f *httpCVFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, strin
 	if strings.TrimSpace(rawURL) == "" {
 		return nil, "", nil // not an error — no CV is fine
 	}
-	if err := validateCVURL(rawURL); err != nil {
-		telemetry.RecordAutoApplyCVDownloadFailure("blocked_url")
-		return nil, "", fmt.Errorf("%w: %v", ErrCVUnsafeURL, err)
+	if !f.allowInsecure {
+		if err := validateCVURL(rawURL); err != nil {
+			telemetry.RecordAutoApplyCVDownloadFailure("blocked_url")
+			return nil, "", fmt.Errorf("%w: %v", ErrCVUnsafeURL, err)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)

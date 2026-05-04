@@ -15,6 +15,24 @@ type AutoApplyConfig struct {
 	// useful for emergency drain without removing the deployment.
 	Enabled bool `env:"AUTO_APPLY_ENABLED" envDefault:"true"`
 
+	// DryRun makes the handler do everything except call the
+	// submitter: it still inserts the pending row, persists a
+	// "skipped/dry_run" outcome, emits ApplicationSubmittedV1, and
+	// records metrics. Use it locally to exercise the full pipeline
+	// without sending any browser traffic to a real ATS.
+	DryRun bool `env:"AUTO_APPLY_DRY_RUN" envDefault:"false"`
+
+	// DevAllowInsecureCV bypasses the https-only / private-IP guard on
+	// CV downloads. Only honoured when the binary is built with the
+	// "devmode" build tag — production binaries hard-fail at boot if
+	// it's set, so this is safe to leave in env files.
+	DevAllowInsecureCV bool `env:"AUTO_APPLY_DEV_ALLOW_INSECURE_CV" envDefault:"false"`
+
+	// DevIntentEndpoint mounts POST /dev/intent on the HTTP mux so a
+	// developer can publish an AutoApplyIntentV1 with curl instead of
+	// learning the NATS CLI. Off by default; enable only in local dev.
+	DevIntentEndpoint bool `env:"AUTO_APPLY_DEV_INTENT_ENDPOINT" envDefault:"false"`
+
 	// Queue subject URL for incoming auto-apply intents.
 	// Defaults to in-memory driver for local dev / tests.
 	AutoApplyQueueURL string `env:"AUTO_APPLY_QUEUE_URL" envDefault:"mem://svc.opportunities.autoapply.submit.v1"`

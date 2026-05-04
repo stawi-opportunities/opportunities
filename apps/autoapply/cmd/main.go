@@ -37,6 +37,16 @@ func main() {
 		util.Log(ctx).WithError(err).Fatal("autoapply: config invalid")
 	}
 
+	// Refuse to start a non-devmode binary with any dev flag enabled
+	// — those bypass the SSRF guard and add a public-ish HTTP endpoint
+	// that can publish to the queue, neither of which should ever be
+	// reachable in production.
+	if !service.DevModeBuild && (cfg.DevAllowInsecureCV || cfg.DevIntentEndpoint) {
+		util.Log(ctx).Fatal(
+			"autoapply: AUTO_APPLY_DEV_ALLOW_INSECURE_CV / AUTO_APPLY_DEV_INTENT_ENDPOINT " +
+				"are only honoured when the binary is built with -tags=devmode")
+	}
+
 	opts := []frame.Option{
 		frame.WithConfig(&cfg),
 		frame.WithDatastore(),
@@ -85,9 +95,10 @@ func main() {
 	)
 
 	registry := autoapply.NewRegistry(tiers...)
-	cvFetcher := service.NewHTTPCVFetcher(
+	cvFetcher := service.NewHTTPCVFetcherWithOptions(
 		time.Duration(cfg.CVDownloadTimeoutSec)*time.Second,
 		cfg.CVMaxBytes,
+		cfg.DevAllowInsecureCV,
 	)
 
 	queueHandler := service.NewAutoApplyHandler(service.HandlerDeps{
@@ -98,6 +109,7 @@ func main() {
 		CV:        cvFetcher,
 		Config: service.Config{
 			Enabled:            cfg.Enabled,
+			DryRun:             cfg.DryRun,
 			DailyLimitBackstop: cfg.DailyLimitBackstop,
 			ScoreMinBackstop:   cfg.ScoreMinBackstop,
 		},
@@ -113,6 +125,10 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+	if cfg.DevIntentEndpoint && service.DevModeBuild {
+		mux.Handle("POST /dev/intent", devIntentHandler(svc, cfg.AutoApplyQueueURL))
+		log.Warn("autoapply: POST /dev/intent enabled — devmode build only")
+	}
 	svc.Init(ctx, frame.WithHTTPHandler(mux))
 
 	log.Info("autoapply: service starting")
@@ -120,6 +136,46 @@ func main() {
 		log.WithError(err).Error("autoapply: service run failed")
 		os.Exit(1)
 	}
+}
+
+// devIntentHandler accepts a JSON AutoApplyIntentV1 (NOT an envelope —
+// the handler wraps it) and publishes it to the autoapply queue. Mounts
+// only when AUTO_APPLY_DEV_INTENT_ENDPOINT=true and the binary was
+// built with -tags=devmode.
+//
+// curl example:
+//
+//	curl -X POST localhost:8080/dev/intent \
+//	     -H 'content-type: application/json' \
+//	     -d '{"candidate_id":"cnd_1","canonical_job_id":"job_1",
+//	          "apply_url":"https://boards.greenhouse.io/co/jobs/1"}'
+func devIntentHandler(svc *frame.Service, _ string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var intent eventsv1.AutoApplyIntentV1
+		if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&intent); err != nil {
+			http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if intent.CandidateID == "" || intent.CanonicalJobID == "" || intent.ApplyURL == "" {
+			http.Error(w, "candidate_id, canonical_job_id, apply_url required", http.StatusBadRequest)
+			return
+		}
+		env := eventsv1.NewEnvelope(eventsv1.SubjectAutoApplySubmit, intent)
+		body, err := json.Marshal(env)
+		if err != nil {
+			http.Error(w, "marshal: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		if err := svc.QueueManager().Publish(ctx, eventsv1.SubjectAutoApplySubmit, body); err != nil {
+			http.Error(w, "publish: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"status":"queued","event_id":%q}`, env.EventID)))
+	})
 }
 
 // openAIClient implements autoapply.LLMClient via a minimal
