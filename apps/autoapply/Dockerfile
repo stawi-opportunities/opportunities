@@ -33,7 +33,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # rest of the fleet. We use debian-slim with only the libs Chromium
 # needs and drop to a non-root user.
 FROM debian:bookworm-slim
-LABEL maintainer="Bwire Peter <bwire517@gmail.com>"
+LABEL maintainer="Joakim Bwire <joakimbwire23@gmail.com>"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium \
