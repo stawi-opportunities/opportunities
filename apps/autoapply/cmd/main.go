@@ -60,10 +60,14 @@ func main() {
 
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	if pool == nil {
-		log.Fatal("autoapply: no datastore pool available")
+		log.Fatal("autoapply: no datastore pool available — set DATABASE_URL")
+	}
+	gdb := pool.DB(ctx, false)
+	if gdb == nil {
+		log.Fatal("autoapply: datastore pool returned a nil DB — DATABASE_URL likely unset or unreachable")
 	}
 
-	if err := pool.DB(ctx, false).AutoMigrate(&domain.CandidateApplication{}); err != nil {
+	if err := gdb.AutoMigrate(&domain.CandidateApplication{}); err != nil {
 		log.WithError(err).Warn("autoapply: auto-migrate candidate_applications failed")
 	}
 
