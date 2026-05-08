@@ -8,7 +8,7 @@ import (
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
-	framevalkey "github.com/pitabwire/frame/cache/valkey"
+	framejskv "github.com/pitabwire/frame/cache/jetstreamkv"
 	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/util"
 
@@ -34,17 +34,21 @@ func main() {
 		util.Log(ctx).WithError(err).Fatal("worker: load config")
 	}
 
-	// Build a Valkey-backed raw cache and register it with Frame
-	// under a single name. Two typed views on it — one for dedup
-	// (hard_key → cluster_id) and one for cluster snapshots — are
-	// taken below via GetCache with different keyFuncs. The same
+	// Build a JetStream-KV-backed raw cache and register it with
+	// Frame under a single name. Two typed views on it — one for
+	// dedup (hard_key → cluster_id) and one for cluster snapshots —
+	// are taken below via GetCache with different keyFuncs. The same
 	// RawCache is also the backing store for the kv-rebuild path
 	// (replaces the prior direct go-redis client; see kv_rebuild.go
 	// for the GET+conditional-SET pattern that takes the place of
 	// the previous Lua-CAS script).
-	raw, err := framevalkey.New(cache.WithDSN(data.DSN(cfg.ValkeyURL)))
+	raw, err := framejskv.New(
+		cache.WithDSN(data.DSN(cfg.CacheNATSURL)),
+		cache.WithCredsFile(cfg.CacheNATSCredsFile),
+		cache.WithName(cfg.CacheBucket),
+	)
 	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("worker: valkey cache open")
+		util.Log(ctx).WithError(err).Fatal("worker: jetstream-kv cache open")
 	}
 
 	ctx, svc := frame.NewServiceWithContext(ctx,

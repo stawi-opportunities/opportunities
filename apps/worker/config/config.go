@@ -8,14 +8,26 @@ import (
 )
 
 // Config for apps/worker. Frame base handles Postgres + pub/sub +
-// OTEL; this struct adds Valkey (via Frame's cache framework),
+// OTEL; this struct adds JetStream KV (via Frame's cache framework),
 // R2 publish, LLM backends, and translation configuration.
 type Config struct {
 	fconfig.ConfigurationDefault
 
-	// Valkey URL for Frame's cache framework (backs dedup + cluster
-	// snapshot storage). Handed to frame/cache/valkey.New(cache.WithDSN).
-	ValkeyURL string `env:"VALKEY_URL,required"`
+	// NATS connection URL for Frame's cache framework. Backs dedup
+	// (hard_key -> cluster_id) and cluster-snapshot storage via
+	// JetStream KV buckets, replacing the prior Valkey deployment.
+	// Handed to frame/cache/jetstreamkv.New(cache.WithDSN).
+	CacheNATSURL string `env:"CACHE_NATS_URL,required"`
+
+	// User credentials file for the NATS connection (decentralized
+	// auth — operator/account/user JWTs, signed by nauth). Mounted
+	// from a Secret created by the User CR.
+	CacheNATSCredsFile string `env:"CACHE_NATS_CREDS_FILE,required"`
+
+	// CacheBucket is the JetStream KV bucket name. Worker uses this
+	// single bucket for both dedup and cluster-snapshot views (the
+	// distinct keyFuncs in pkg/kv namespace the keys).
+	CacheBucket string `env:"CACHE_BUCKET" envDefault:"opportunities-worker"`
 
 	// Cloudflare R2 — one account token authorised on all three
 	// product-opportunities buckets. Worker uses the content bucket
