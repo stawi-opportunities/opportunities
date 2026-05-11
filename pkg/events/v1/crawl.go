@@ -94,3 +94,26 @@ type SourceDiscoveredV1 struct {
 	EventID    string    `json:"-" parquet:"event_id"`
 	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
+
+// SourceStoppedV1 is emitted by the crawler's /admin/sources/stop
+// endpoint when an operator pulls the kill switch on a source. Two
+// downstream consumers act on it:
+//
+//   - materializer: removes every Manticore document carrying the
+//     matching source_id (DELETE WHERE source_id = hashID(SourceID)).
+//     Without this, stopping a source would only halt new crawls and
+//     leave its historical jobs visible in search until they age out
+//     of the retention window.
+//   - writer: persists the event to the Parquet audit log.
+//
+// Reason is free-form ("operator request", "compliance", "abuse",
+// …); StoppedBy is the audit identity from the calling request.
+type SourceStoppedV1 struct {
+	SourceID  string    `json:"source_id"            parquet:"source_id"`
+	Reason    string    `json:"reason,omitempty"     parquet:"reason,optional"`
+	StoppedBy string    `json:"stopped_by,omitempty" parquet:"stopped_by,optional"`
+	StoppedAt time.Time `json:"stopped_at"           parquet:"stopped_at"`
+
+	EventID    string    `json:"-" parquet:"event_id"`
+	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+}

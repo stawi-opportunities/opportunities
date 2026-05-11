@@ -139,6 +139,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		OpportunityID: merged.CanonicalID,
 		Slug:          merged.Slug,
 		HardKey:       in.HardKey,
+		SourceID:      merged.SourceID,
 		Kind:          in.Kind,
 		Title:         merged.Title,
 		IssuingEntity: merged.Company,

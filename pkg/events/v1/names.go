@@ -29,6 +29,14 @@ const (
 	// Source discovery.
 	TopicSourcesDiscovered = "sources.discovered.v1"
 
+	// Operator-driven kill switch. Emitted by the crawler when an admin
+	// calls /admin/sources/stop. The materializer subscribes and
+	// removes every Manticore document carrying the matching source_id;
+	// the writer persists the event for audit. Downstream consumers
+	// must treat it as terminal — the source is no longer crawled,
+	// and its historical jobs disappear from search.
+	TopicSourcesStopped = "sources.stopped.v1"
+
 	// User-driven scam-flagging auto-action. Emitted by the api when
 	// ≥ domain.FlagAutoActionThreshold distinct scam flags accumulate
 	// on a slug. The materializer hides the row from search.
@@ -88,6 +96,12 @@ func AllTopics() []string {
 		TopicPublished,
 		TopicCrawlPageCompleted,
 		TopicSourcesDiscovered,
+		// TopicSourcesStopped is intentionally NOT persisted to Parquet
+		// today — the materializer cascade-delete is the load-bearing
+		// behaviour; audit trails live in the materializer's INFO logs
+		// plus the sources.last_stopped_at / last_stopped_by columns
+		// in Postgres. Add an arrow schema + BuildSourceStoppedRecord
+		// in apps/writer when permanent audit is required.
 		TopicCVUploaded,
 		TopicCVExtracted,
 		TopicCVImproved,

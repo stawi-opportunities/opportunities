@@ -103,6 +103,7 @@ func normalize(in eventsv1.VariantIngestedV1) eventsv1.VariantNormalizedV1 {
 
 	return eventsv1.VariantNormalizedV1{
 		VariantID:    in.VariantID,
+		SourceID:     in.SourceID,
 		HardKey:      in.HardKey,
 		Kind:         in.Kind,
 		NormalizedAt: time.Now().UTC(),

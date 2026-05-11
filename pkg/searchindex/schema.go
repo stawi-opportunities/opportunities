@@ -20,6 +20,11 @@ import (
 // Single-line form — Manticore's /sql endpoint accepts newlines, but
 // keeping it one line makes query-string escaping trivial.
 const idxOpportunitiesRTDDL = `CREATE TABLE idx_opportunities_rt (` +
+	// Provenance — `bigint` of hashID(source_id). Used by
+	// /admin/sources/stop in the crawler to DELETE all docs from a
+	// stopped source in one Manticore statement. Indexed as an
+	// attribute so equality filters are O(log n).
+	`source_id bigint,` +
 	// Discriminator
 	`kind string attribute,` +
 	// Universal indexable text + categories
@@ -63,10 +68,26 @@ func Apply(ctx context.Context, c *Client) error {
 	if err != nil && !isAlreadyExists(err) {
 		return err
 	}
-	// Future: ALTER TABLE statements for newly-introduced sparse columns
-	// based on the kind registry. For now, the seed kinds' columns are
-	// all present in idxOpportunitiesRTDDL.
+	// Additive migrations land here. `source_id` was added after
+	// idx_opportunities_rt shipped, so existing installations need
+	// an ALTER TABLE; "duplicate column" is the success signal on
+	// re-runs.
+	if _, alterErr := c.SQL(ctx, `ALTER TABLE idx_opportunities_rt ADD COLUMN source_id bigint`); alterErr != nil {
+		if !isAlreadyExists(alterErr) && !isDuplicateColumn(alterErr) {
+			return alterErr
+		}
+	}
 	return nil
+}
+
+// isDuplicateColumn matches Manticore's "duplicate column" error from
+// repeated ALTER TABLE ADD COLUMN calls.
+func isDuplicateColumn(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate") || strings.Contains(msg, "already exists")
 }
 
 // isAlreadyExists matches Manticore's "table already exists" error.

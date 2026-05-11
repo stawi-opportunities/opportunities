@@ -129,6 +129,21 @@ func (c *Client) Update(ctx context.Context, index string, id uint64, doc map[st
 	})
 }
 
+// DeleteWhere removes every document where `column` equals `value`.
+// Used by the materializer's SourceStoppedHandler to bulk-delete all
+// canonicals attributed to a stopped source. Manticore /delete with a
+// `query.equals` clause is documented at
+// https://manual.manticoresearch.com/Data_creation_and_modification/Deletion#JSON
+// and returns {deleted: N} on success; no error is raised when N == 0.
+func (c *Client) DeleteWhere(ctx context.Context, index, column string, value uint64) error {
+	return c.postJSON(ctx, "/delete", map[string]any{
+		"index": index,
+		"query": map[string]any{
+			"equals": map[string]any{column: value},
+		},
+	})
+}
+
 // Bulk issues a multi-operation request against /bulk. Body must be
 // NDJSON: one {"replace":{...}} (or other action) object per line.
 // Used by BulkUpserter to batch many /replace ops into a single RTT.

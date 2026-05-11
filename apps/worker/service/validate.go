@@ -145,6 +145,7 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 	}
 	out := eventsv1.VariantValidatedV1{
 		VariantID:    n.VariantID,
+		SourceID:     n.SourceID,
 		HardKey:      n.HardKey,
 		Kind:         n.Kind,
 		Valid:        true,

@@ -101,6 +101,14 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		prev.ClusterID = clusterID
 		prev.Kind = val.Kind
 		prev.Attributes = merged
+		// Track the source — last-write-wins for clusters that span
+		// multiple sources, since /admin/sources/stop only needs to
+		// hit the most recent contributing source to remove a
+		// canonical from search. (A future per-source partial-delete
+		// would need a multi-source set here.)
+		if val.SourceID != "" {
+			prev.SourceID = val.SourceID
+		}
 		if err := h.clusterCache.Set(ctx, clusterID, prev, 0*time.Second); err != nil {
 			return err
 		}

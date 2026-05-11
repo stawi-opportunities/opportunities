@@ -49,6 +49,64 @@ func (s *Service) RegisterSubscriptions() error {
 	mgr.Add(NewTranslationHandler(s))
 	mgr.Add(NewEmbeddingHandler(s))
 	mgr.Add(NewAutoFlaggedHandler(s))
+	mgr.Add(NewSourceStoppedHandler(s))
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// SourceStoppedHandler — TopicSourcesStopped
+// ---------------------------------------------------------------------------
+
+// SourceStoppedHandler deletes every Manticore document carrying the
+// matching source_id. Emitted by the crawler's /admin/sources/stop
+// endpoint when an operator pulls the kill switch on a source — this
+// is what makes historical jobs disappear from search.
+//
+// Implementation: Manticore's SQL surface supports
+// `DELETE FROM <index> WHERE source_id = N`; one round-trip removes
+// the whole source's footprint regardless of doc count.
+type SourceStoppedHandler struct{ s *Service }
+
+func NewSourceStoppedHandler(s *Service) *SourceStoppedHandler {
+	return &SourceStoppedHandler{s: s}
+}
+
+func (h *SourceStoppedHandler) Name() string { return eventsv1.TopicSourcesStopped }
+
+func (h *SourceStoppedHandler) PayloadType() any {
+	var raw json.RawMessage
+	return &raw
+}
+
+func (h *SourceStoppedHandler) Validate(_ context.Context, p any) error {
+	r, ok := p.(*json.RawMessage)
+	if !ok || r == nil || len(*r) == 0 {
+		return errors.New("source-stopped: empty payload")
+	}
+	return nil
+}
+
+func (h *SourceStoppedHandler) Execute(ctx context.Context, p any) error {
+	raw := p.(*json.RawMessage)
+	var env eventsv1.Envelope[eventsv1.SourceStoppedV1]
+	if err := json.Unmarshal(*raw, &env); err != nil {
+		return fmt.Errorf("source-stopped: decode: %w", err)
+	}
+	if env.Payload.SourceID == "" {
+		return errors.New("source-stopped: empty source_id")
+	}
+	id := hashID(env.Payload.SourceID)
+	if err := h.s.manticore.DeleteWhere(ctx, "idx_opportunities_rt", "source_id", id); err != nil {
+		util.Log(ctx).WithError(err).
+			WithField("source_id", env.Payload.SourceID).
+			Error("materializer: source-stopped delete failed")
+		return fmt.Errorf("source-stopped: delete: %w", err)
+	}
+	util.Log(ctx).
+		WithField("source_id", env.Payload.SourceID).
+		WithField("reason", env.Payload.Reason).
+		WithField("stopped_by", env.Payload.StoppedBy).
+		Info("materializer: source stopped, jobs removed from search")
 	return nil
 }
 
@@ -104,6 +162,10 @@ func buildDocFromCanonical(p eventsv1.CanonicalUpsertedV1) map[string]any {
 	desc := attrString(p.Attributes, "description")
 
 	doc := map[string]any{
+		// Provenance — `bigint` hash of source_id, used by
+		// SourceStoppedHandler to bulk-delete a stopped source's
+		// canonicals. Always written so equality filters can match.
+		"source_id": hashID(p.SourceID),
 		// Discriminator
 		"kind": p.Kind,
 		// Universal indexable text + categories

@@ -345,6 +345,71 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
 	})
 
+	// Admin: stop a source AND cascade-delete its jobs from search.
+	//
+	// Two-step contract:
+	//   1. Flip sources.status to `disabled` with audit stamps
+	//      (last_stopped_at / last_stopped_by) so future scheduler
+	//      ticks skip it. ListDue's WHERE clause already excludes
+	//      `disabled`, so this halts new crawls without further
+	//      coordination.
+	//   2. Emit SourceStoppedV1. The materializer's subscriber runs
+	//      DELETE FROM idx_opportunities_rt WHERE source_id =
+	//      hashID(id) — removing every historical job attributed to
+	//      this source from search in one round-trip.
+	//
+	// Query params: ?id=<source_id>&reason=<text>&operator=<actor>
+	// `operator` is the audit identity (defaults to "unknown" when
+	// the caller hasn't propagated one).
+	adminMux.HandleFunc("/admin/sources/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, `{"error":"invalid or missing id parameter"}`, http.StatusBadRequest)
+			return
+		}
+		operator := r.URL.Query().Get("operator")
+		if operator == "" {
+			operator = "unknown"
+		}
+		reason := r.URL.Query().Get("reason")
+		now := time.Now().UTC()
+
+		if stopErr := sourceRepo.StopSource(r.Context(), id, operator, now); stopErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, stopErr.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		// Emit the cascade-delete event. Best-effort; the source is
+		// already marked disabled so missing the emit only delays
+		// Manticore cleanup (it would normally happen on the
+		// canonical_expired path once the retention sweep runs).
+		if evtMgr := svc.EventsManager(); evtMgr != nil {
+			env := eventsv1.NewEnvelope(eventsv1.TopicSourcesStopped, eventsv1.SourceStoppedV1{
+				SourceID:  id,
+				Reason:    reason,
+				StoppedBy: operator,
+				StoppedAt: now,
+			})
+			if emitErr := svc.EventsManager().Emit(r.Context(), eventsv1.TopicSourcesStopped, env); emitErr != nil {
+				log.WithError(emitErr).WithField("source_id", id).Warn("source-stop: emit failed; jobs will be removed only by retention sweep")
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":         true,
+			"id":         id,
+			"status":     "stopped",
+			"operator":   operator,
+			"reason":     reason,
+			"stopped_at": now,
+		})
+	})
+
 	// Admin: health report -- all sources ordered by worst health first
 	adminMux.HandleFunc("/admin/sources/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
