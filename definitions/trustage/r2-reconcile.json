@@ -21,7 +21,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-crawler.opportunities.svc/admin/r2/reconcile",
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/r2/reconcile",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

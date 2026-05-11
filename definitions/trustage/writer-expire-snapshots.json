@@ -17,7 +17,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-writer.opportunities.svc/_admin/expire-snapshots",
+          "url": "http://opportunities-writer.product-opportunities.svc/_admin/expire-snapshots",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

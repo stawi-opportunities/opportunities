@@ -21,7 +21,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-crawler.opportunities.svc/admin/retention/stage2",
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/retention/stage2",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

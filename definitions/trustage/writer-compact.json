@@ -17,7 +17,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-writer.opportunities.svc/_admin/compact",
+          "url": "http://opportunities-writer.product-opportunities.svc/_admin/compact",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}
