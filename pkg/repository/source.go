@@ -173,7 +173,12 @@ func (r *SourceRepository) ListByStatuses(ctx context.Context, statuses []domain
 // JobRepository.FindByHardKey and the wider repository convention.
 func (r *SourceRepository) GetByID(ctx context.Context, id string) (*domain.Source, error) {
 	var s domain.Source
-	err := r.db(ctx, true).First(&s, id).Error
+	// GORM's `First(&s, id)` form treats a non-numeric string second
+	// argument as a raw SQL fragment ("WHERE <fragment>"), causing the
+	// xid PK value to be interpreted as a column reference and
+	// triggering "column ... does not exist" on every lookup. Use the
+	// explicit primary-key syntax instead.
+	err := r.db(ctx, true).First(&s, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
