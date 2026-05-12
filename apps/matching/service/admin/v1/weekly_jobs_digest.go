@@ -256,9 +256,7 @@ func inferKinds(r *domain.CandidateProfile) []string {
 	// candidate row. Until then the digest spans every kind the
 	// platform indexes — broader than the matching pipeline but
 	// fine for a non-personalised re-engagement email.
-	for _, k := range []string{"scholarship", "tender", "deal", "funding"} {
-		kinds = append(kinds, k)
-	}
+	kinds = append(kinds, "scholarship", "tender", "deal", "funding")
 	if len(kinds) == 0 {
 		return nil
 	}
