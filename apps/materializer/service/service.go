@@ -39,6 +39,15 @@ func NewService(svc *frame.Service, mc *searchindex.Client, bulkBatch int) *Serv
 
 // RegisterSubscriptions wires one handler per topic into the Frame
 // events manager. Call this before svc.Run.
+//
+// The materializer's NATS consumer subscribes to a broad subject
+// (svc.opportunities.events.>) so it sees every event flowing through
+// the stream — including ones that aren't relevant to indexing
+// (variant lifecycle, crawl progress, etc.). For those we register a
+// silent-ack handler that ACKs the message and returns nil, otherwise
+// Frame logs "event not found in registry" + a retries-exhausted
+// failure on every redelivery. A narrower subject filter is preferable
+// long-term but requires Frame multi-subject consumer support.
 func (s *Service) RegisterSubscriptions() error {
 	mgr := s.svc.EventsManager()
 	if mgr == nil {
@@ -50,7 +59,33 @@ func (s *Service) RegisterSubscriptions() error {
 	mgr.Add(NewEmbeddingHandler(s))
 	mgr.Add(NewAutoFlaggedHandler(s))
 	mgr.Add(NewSourceStoppedHandler(s))
+	for _, t := range materializerIgnoreEvents {
+		mgr.Add(&eventsv1.NoopHandler{Topic: t})
+	}
 	return nil
+}
+
+// Events that the materializer does NOT consume but that flow through
+// the same NATS subject namespace. Adding silent-ack handlers stops
+// Frame from logging "event not found in registry" on every delivery.
+var materializerIgnoreEvents = []string{
+	eventsv1.TopicVariantsIngested,
+	eventsv1.TopicVariantsNormalized,
+	eventsv1.TopicVariantsValidated,
+	eventsv1.TopicVariantsFlagged,
+	eventsv1.TopicVariantsClustered,
+	eventsv1.TopicVariantsRejected,
+	eventsv1.TopicCrawlRequests,
+	eventsv1.TopicCrawlPageCompleted,
+	eventsv1.TopicSourcesDiscovered,
+	eventsv1.TopicPublished,
+	eventsv1.TopicCVUploaded,
+	eventsv1.TopicCVExtracted,
+	eventsv1.TopicCVImproved,
+	eventsv1.TopicCandidateEmbedding,
+	eventsv1.TopicCandidatePreferencesUpdated,
+	eventsv1.TopicCandidateMatchesReady,
+	eventsv1.TopicCandidateCVStaleNudge,
 }
 
 // ---------------------------------------------------------------------------

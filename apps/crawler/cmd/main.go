@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/events"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
@@ -288,7 +289,36 @@ func main() {
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
 
-	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
+	// The crawler's NATS consumer subscribes to svc.opportunities.events.>
+	// so it sees every topic on the stream. We only handle three (crawl
+	// requests, page completed, source discovered) — silent-ack the rest
+	// so Frame doesn't log "event not found in registry" + retries-
+	// exhausted on every redelivery of unrelated traffic (variants,
+	// canonicals, embeddings, candidate lifecycle, etc.).
+	crawlerIgnore := []events.EventI{
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicVariantsIngested},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicVariantsNormalized},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicVariantsValidated},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicVariantsFlagged},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicVariantsClustered},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicVariantsRejected},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCanonicalsUpserted},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCanonicalsExpired},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicTranslations},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicEmbeddings},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicPublished},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicOpportunityAutoFlagged},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicSourcesStopped},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCVUploaded},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCVExtracted},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCVImproved},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCandidateEmbedding},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCandidatePreferencesUpdated},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCandidateMatchesReady},
+		&eventsv1.NoopHandler{Topic: eventsv1.TopicCandidateCVStaleNudge},
+	}
+	allHandlers := append([]events.EventI{crawlReqH, pageDoneH, srcDiscH}, crawlerIgnore...)
+	svc.Init(ctx, frame.WithRegisterEvents(allHandlers...))
 
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()
