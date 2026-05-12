@@ -69,33 +69,38 @@ const idxOpportunitiesRTDDL = `CREATE TABLE %s (` +
 // Apply makes idx_opportunities_rt exist. Idempotent — repeated calls
 // swallow Manticore's "table already exists" error. Future evolutions
 // (new sparse facet columns added by future kind YAMLs) will land via
-// ALTER TABLE in this same function. When the Client is configured for
-// replication (Client.Cluster() non-empty) the DDL is qualified with
-// the cluster prefix so the table participates in Galera replication
-// across all replicas; bare table names only replicate locally.
+// ALTER TABLE in this same function.
+//
+// DDL is always unqualified. Manticore's parser rejects
+// `CREATE TABLE cluster:name (...)` ("syntax error near ':name'"); the
+// cluster-aware path is to create the table bare and then `ALTER
+// CLUSTER name ADD table_name` to enrol it in Galera replication. Only
+// DML (Replace/Update/DeleteWhere/Bulk) uses the cluster:table form,
+// which Client.qualify applies automatically.
 func Apply(ctx context.Context, c *Client) error {
-	qualified := c.qualify(idxOpportunitiesRT)
-	ddl := fmt.Sprintf(idxOpportunitiesRTDDL, qualified)
-	_, err := c.SQL(ctx, ddl)
-	if err != nil && !isAlreadyExists(err) {
+	ddl := fmt.Sprintf(idxOpportunitiesRTDDL, idxOpportunitiesRT)
+	if _, err := c.SQL(ctx, ddl); err != nil && !isAlreadyExists(err) {
 		return err
 	}
-	// Best-effort migration for legacy single-node installs where the
-	// table was originally created outside any cluster. Fresh installs
-	// using CREATE TABLE cluster:name already participate; this statement
-	// returns "already a member" or "no such table" in steady state, so
-	// we discard the error either way.
-	if c.cluster != "" {
-		_, _ = c.SQL(ctx, fmt.Sprintf("ALTER CLUSTER %s ADD %s", c.cluster, idxOpportunitiesRT))
-	}
-	// Additive column migrations land here. `source_id` was added after
-	// idx_opportunities_rt shipped, so existing installations need an
-	// ALTER TABLE; "duplicate column" / "already in schema" is the
-	// success signal on re-runs.
-	alterStmt := fmt.Sprintf("ALTER TABLE %s ADD COLUMN source_id bigint", qualified)
-	if _, alterErr := c.SQL(ctx, alterStmt); alterErr != nil {
+	// Additive column migrations. `source_id` was added after the
+	// initial DDL shipped, so existing installations need an ALTER
+	// TABLE; "duplicate column" / "already in schema" is the success
+	// signal on re-runs.
+	alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN source_id bigint", idxOpportunitiesRT)
+	if _, alterErr := c.SQL(ctx, alter); alterErr != nil {
 		if !isAlreadyExists(alterErr) && !isDuplicateColumn(alterErr) {
 			return alterErr
+		}
+	}
+	// Enrol the table into the Galera cluster when configured. ALTER
+	// CLUSTER ADD is a no-op when the table is already a member; we
+	// only fail on errors that aren't already-a-member.
+	if c.cluster != "" {
+		add := fmt.Sprintf("ALTER CLUSTER %s ADD %s", c.cluster, idxOpportunitiesRT)
+		if _, addErr := c.SQL(ctx, add); addErr != nil {
+			if !isAlreadyExists(addErr) && !isDuplicateColumn(addErr) {
+				return fmt.Errorf("alter cluster add: %w", addErr)
+			}
 		}
 	}
 	return nil
