@@ -124,12 +124,14 @@ func isDuplicateColumn(err error) bool {
 		strings.Contains(msg, "alter is not supported for tables in cluster")
 }
 
-// isAlreadyExists matches Manticore's "table already exists" error.
-// The /sql endpoint surfaces this as an error JSON whose message
-// contains the substring "already exists" (case-insensitive).
+// isAlreadyExists matches Manticore's "already exists / already part of"
+// family of idempotency errors — surfaced for CREATE TABLE, ALTER
+// CLUSTER ADD against an already-attached table, etc.
 func isAlreadyExists(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "already exists")
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "already part of")
 }
