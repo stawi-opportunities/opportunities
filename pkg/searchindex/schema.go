@@ -109,6 +109,10 @@ func Apply(ctx context.Context, c *Client) error {
 // isDuplicateColumn matches Manticore's "duplicate column" error from
 // repeated ALTER TABLE ADD COLUMN calls. Manticore phrases it as
 // "already in schema" in 25.x and "duplicate column" in older builds.
+// Also matches the 25.x "ALTER is not supported for tables in cluster"
+// response — when the table is already a Galera member the column was
+// either created with the initial DDL or added by an earlier pass on
+// another replica that propagated via Galera, so re-trying is a no-op.
 func isDuplicateColumn(err error) bool {
 	if err == nil {
 		return false
@@ -116,7 +120,8 @@ func isDuplicateColumn(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "duplicate") ||
 		strings.Contains(msg, "already exists") ||
-		strings.Contains(msg, "already in schema")
+		strings.Contains(msg, "already in schema") ||
+		strings.Contains(msg, "alter is not supported for tables in cluster")
 }
 
 // isAlreadyExists matches Manticore's "table already exists" error.
