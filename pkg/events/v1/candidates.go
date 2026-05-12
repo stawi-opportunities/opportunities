@@ -158,3 +158,50 @@ type MatchesReadyV1 struct {
 	EventID    string    `json:"-" parquet:"event_id"`
 	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
 }
+
+// DigestJob is one new-job item carried inside WeeklyJobsDigestV1.
+// Shape is intentionally minimal — the notification service builds
+// the canonical URL from `Slug` and looks up nothing else.
+type DigestJob struct {
+	CanonicalID string    `json:"canonical_id"`
+	Title       string    `json:"title"`
+	Company     string    `json:"company,omitempty"`
+	Country     string    `json:"country,omitempty"`
+	Kind        string    `json:"kind"`
+	Slug        string    `json:"slug"`
+	PostedAt    time.Time `json:"posted_at"`
+}
+
+// DigestStatBucket is one row of a top-N analytics breakdown.
+type DigestStatBucket struct {
+	Code  string `json:"code"`
+	Count int    `json:"count"`
+}
+
+// DigestStats carries the headline analytics block shown above the
+// jobs list. All counts are over the same 7-day window as the jobs.
+type DigestStats struct {
+	TotalNewThisWeek int                `json:"total_new_this_week"`
+	TopCountries     []DigestStatBucket `json:"top_countries,omitempty"`
+	TopKinds         []DigestStatBucket `json:"top_kinds,omitempty"`
+}
+
+// WeeklyJobsDigestV1 is emitted by the matching app's weekly admin
+// handler once per unpaid candidate. The notification service is the
+// sole consumer; the writer does NOT persist this event to Parquet.
+//
+// Personalisation lives in `Country` and the `Kind` field of each
+// embedded job — the rendering side decides whether to localise
+// based on `Locale`. `PlansURL` is included so the template doesn't
+// have to assume the host (allows reuse on preview deploys).
+type WeeklyJobsDigestV1 struct {
+	CandidateID string      `json:"candidate_id"`
+	Country     string      `json:"country,omitempty"`
+	Locale      string      `json:"locale,omitempty"`
+	Jobs        []DigestJob `json:"jobs"`
+	Stats       DigestStats `json:"stats"`
+	PlansURL    string      `json:"plans_url"`
+
+	EventID    string    `json:"-"`
+	OccurredAt time.Time `json:"-"`
+}

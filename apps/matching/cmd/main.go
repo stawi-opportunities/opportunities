@@ -130,6 +130,13 @@ func main() {
 	matchRunner := adminv1.NewServiceMatchRunner(svc, matchSvc)
 	staleReader := candidatestore.NewStaleReader(cat)
 	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
+	// Weekly jobs digest collaborators — non-personalised email for
+	// candidates who completed signup but not checkout. Same Manticore
+	// client backs the existing match service; we reuse its handle
+	// rather than redial.
+	unpaidLister := adminv1.NewRepoUnpaidCandidateLister(candidateRepo, 5000)
+	newJobsLister := adminv1.NewManticoreJobsLister(search.Client())
+	weeklyStats := adminv1.NewManticoreWeeklyStatsLister(search.Client())
 
 	// --- Subscription handlers ---
 	// CV-pipeline handlers (cv-extract / cv-improve / cv-embed) are
@@ -229,6 +236,16 @@ func main() {
 			Svc:        svc,
 			Lister:     staleLister,
 			StaleAfter: 60 * 24 * time.Hour,
+		}))
+	mux.HandleFunc("POST /_admin/candidates/weekly_jobs_digest",
+		adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
+			Svc:      svc,
+			Lister:   unpaidLister,
+			Jobs:     newJobsLister,
+			Stats:    weeklyStats,
+			PlansURL: cfg.PlansURL,
+			Window:   7 * 24 * time.Hour,
+			JobLimit: 10,
 		}))
 
 	svc.Init(ctx, frame.WithHTTPHandler(mux))

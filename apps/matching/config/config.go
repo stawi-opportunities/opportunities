@@ -73,4 +73,9 @@ type CandidatesConfig struct {
 	CVExtractQueueURL string `env:"CV_EXTRACT_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
 	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
 	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
+
+	// PlansURL is embedded into the weekly-jobs-digest event so the
+	// notification service's email template doesn't have to assume the
+	// host. Defaults to production; preview deploys override via env.
+	PlansURL string `env:"PLANS_URL" envDefault:"https://jobs.stawi.org/pricing/"`
 }

@@ -27,6 +27,11 @@ func NewManticoreSearch(url, cluster, index string) (*ManticoreSearch, error) {
 	return &ManticoreSearch{client: c, index: c.QualifyIndex(index)}, nil
 }
 
+// Client returns the underlying searchindex.Client. Used by code that
+// needs to issue raw queries (e.g. the weekly-digest stats lister)
+// without redialling the Manticore endpoint.
+func (m *ManticoreSearch) Client() *searchindex.Client { return m.client }
+
 // KNNWithFilters builds a Manticore JSON query combining a KNN clause
 // on the `embedding` attribute with hard filters on remote_type /
 // salary_min / country. Returns the decoded hits.

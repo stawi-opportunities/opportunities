@@ -54,6 +54,17 @@ const (
 	// the writer does NOT persist it to Parquet, so it is intentionally
 	// absent from AllTopics() below.
 	TopicCandidateCVStaleNudge = "candidates.cv.stale_nudge.v1"
+
+	// TopicCandidateWeeklyJobsDigest is a notification-only event
+	// targeting candidates who completed signup/onboarding but have
+	// not finished checkout (Subscription IN free/trial/cancelled OR
+	// SubscriptionID empty). Emitted once per such candidate by the
+	// Trustage weekly cron in apps/matching. Carries the top-N freshest
+	// jobs in the candidate's country + opted-in kinds plus headline
+	// analytics for the past 7 days. The external notification service
+	// renders the digest email; the writer does NOT persist this event
+	// to Parquet, so it is intentionally absent from AllTopics() below.
+	TopicCandidateWeeklyJobsDigest = "candidates.weekly_jobs_digest.v1"
 )
 
 // Queue subject names for the durable, retry-safe handlers (per the
