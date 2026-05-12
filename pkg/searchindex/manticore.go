@@ -38,13 +38,21 @@ type Config struct {
 	// should pass svc.HTTPClientManager().Client(ctx); nil falls back to
 	// a stdlib client with Timeout for backward compatibility.
 	HTTPClient HTTPDoer
+
+	// Cluster, when non-empty, names the Manticore replication cluster
+	// every index reference is qualified against (e.g. "opportunities"
+	// → "opportunities:idx_opportunities_rt"). Required for writes to
+	// replicate across a multi-replica StatefulSet; left empty in single-
+	// node setups and unit tests, where the bare table name is fine.
+	Cluster string
 }
 
 // Client is the high-level Manticore handle. Safe for concurrent use
 // (delegates to http.Client which is goroutine-safe).
 type Client struct {
-	http HTTPDoer
-	base string
+	http    HTTPDoer
+	base    string
+	cluster string
 }
 
 // Open constructs a Client. No network I/O — call Ping to verify
@@ -62,10 +70,32 @@ func Open(cfg Config) (*Client, error) {
 		hc = &http.Client{Timeout: t}
 	}
 	return &Client{
-		http: hc,
-		base: strings.TrimRight(cfg.URL, "/"),
+		http:    hc,
+		base:    strings.TrimRight(cfg.URL, "/"),
+		cluster: cfg.Cluster,
 	}, nil
 }
+
+// Cluster returns the configured cluster name (or "" when running
+// single-node). Callers that emit SQL DDL referencing the table name
+// (CREATE TABLE / ALTER TABLE) must qualify with this prefix so the
+// statement participates in Galera replication.
+func (c *Client) Cluster() string { return c.cluster }
+
+// QualifyIndex prepends the cluster name to an index when configured.
+// Replace/Update/DeleteWhere call it internally; external callers (the
+// materializer's BulkUpserter assembling NDJSON) use it to keep the
+// index reference inside opaque payloads consistent with the rest of
+// the package.
+func (c *Client) QualifyIndex(index string) string {
+	if c.cluster == "" {
+		return index
+	}
+	return c.cluster + ":" + index
+}
+
+// qualify is the package-internal alias.
+func (c *Client) qualify(index string) string { return c.QualifyIndex(index) }
 
 // Close is a no-op for the HTTP client but kept for symmetry with
 // other resource-owning packages.
@@ -113,7 +143,7 @@ func (c *Client) SQL(ctx context.Context, stmt string) ([]byte, error) {
 // the operation idempotent.
 func (c *Client) Replace(ctx context.Context, index string, id uint64, doc map[string]any) error {
 	return c.postJSON(ctx, "/replace", map[string]any{
-		"index": index,
+		"index": c.qualify(index),
 		"id":    id,
 		"doc":   doc,
 	})
@@ -123,7 +153,7 @@ func (c *Client) Replace(ctx context.Context, index string, id uint64, doc map[s
 // A missing id is a no-op (Manticore returns {updated: 0}).
 func (c *Client) Update(ctx context.Context, index string, id uint64, doc map[string]any) error {
 	return c.postJSON(ctx, "/update", map[string]any{
-		"index": index,
+		"index": c.qualify(index),
 		"id":    id,
 		"doc":   doc,
 	})
@@ -137,7 +167,7 @@ func (c *Client) Update(ctx context.Context, index string, id uint64, doc map[st
 // and returns {deleted: N} on success; no error is raised when N == 0.
 func (c *Client) DeleteWhere(ctx context.Context, index, column string, value uint64) error {
 	return c.postJSON(ctx, "/delete", map[string]any{
-		"index": index,
+		"index": c.qualify(index),
 		"query": map[string]any{
 			"equals": map[string]any{column: value},
 		},

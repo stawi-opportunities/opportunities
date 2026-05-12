@@ -23,6 +23,11 @@ type Config struct {
 	ManticoreURL           string        `env:"MANTICORE_URL,required"`
 	ManticoreTimeout       time.Duration `env:"MANTICORE_TIMEOUT" envDefault:"10s"`
 	ManticoreBulkBatchSize int           `env:"MANTICORE_BULK_BATCH_SIZE" envDefault:"1000"`
+	// ManticoreCluster names the Galera-replicated cluster every Manticore
+	// table reference is qualified against (e.g. "opportunities"). Empty
+	// means single-node — leave unset in dev/tests, set to the cluster
+	// name in production to make writes replicate across replicas.
+	ManticoreCluster string `env:"MANTICORE_CLUSTER" envDefault:""`
 
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.

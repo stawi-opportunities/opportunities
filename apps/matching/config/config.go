@@ -56,7 +56,8 @@ type CandidatesConfig struct {
 	RerankTopK        int     `env:"RERANK_TOP_K"        envDefault:"100"`
 
 	// Manticore Search URL (vector + full-text index for job matching).
-	ManticoreURL string `env:"MANTICORE_URL" envDefault:""`
+	ManticoreURL     string `env:"MANTICORE_URL"     envDefault:""`
+	ManticoreCluster string `env:"MANTICORE_CLUSTER" envDefault:""`
 
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.

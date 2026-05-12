@@ -121,7 +121,7 @@ func main() {
 
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
-	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_opportunities_rt")
+	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, cfg.ManticoreCluster, "idx_opportunities_rt")
 	if err != nil {
 		log.WithError(err).Fatal("candidates: Manticore adapter init failed")
 	}

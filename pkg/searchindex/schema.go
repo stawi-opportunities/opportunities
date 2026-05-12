@@ -2,6 +2,7 @@ package searchindex
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -19,7 +20,13 @@ import (
 //
 // Single-line form — Manticore's /sql endpoint accepts newlines, but
 // keeping it one line makes query-string escaping trivial.
-const idxOpportunitiesRTDDL = `CREATE TABLE idx_opportunities_rt (` +
+// idxOpportunitiesRT is the search-index table name. Apply() qualifies
+// it with the cluster prefix when the Client is configured for
+// replication; callers that emit DML (Replace/Update/DeleteWhere) get
+// qualification automatically via Client.qualify.
+const idxOpportunitiesRT = "idx_opportunities_rt"
+
+const idxOpportunitiesRTDDL = `CREATE TABLE %s (` +
 	// Provenance — `bigint` of hashID(source_id). Used by
 	// /admin/sources/stop in the crawler to DELETE all docs from a
 	// stopped source in one Manticore statement. Indexed as an
@@ -62,17 +69,31 @@ const idxOpportunitiesRTDDL = `CREATE TABLE idx_opportunities_rt (` +
 // Apply makes idx_opportunities_rt exist. Idempotent — repeated calls
 // swallow Manticore's "table already exists" error. Future evolutions
 // (new sparse facet columns added by future kind YAMLs) will land via
-// ALTER TABLE in this same function.
+// ALTER TABLE in this same function. When the Client is configured for
+// replication (Client.Cluster() non-empty) the DDL is qualified with
+// the cluster prefix so the table participates in Galera replication
+// across all replicas; bare table names only replicate locally.
 func Apply(ctx context.Context, c *Client) error {
-	_, err := c.SQL(ctx, idxOpportunitiesRTDDL)
+	qualified := c.qualify(idxOpportunitiesRT)
+	ddl := fmt.Sprintf(idxOpportunitiesRTDDL, qualified)
+	_, err := c.SQL(ctx, ddl)
 	if err != nil && !isAlreadyExists(err) {
 		return err
 	}
-	// Additive migrations land here. `source_id` was added after
-	// idx_opportunities_rt shipped, so existing installations need
-	// an ALTER TABLE; "duplicate column" is the success signal on
-	// re-runs.
-	if _, alterErr := c.SQL(ctx, `ALTER TABLE idx_opportunities_rt ADD COLUMN source_id bigint`); alterErr != nil {
+	// Best-effort migration for legacy single-node installs where the
+	// table was originally created outside any cluster. Fresh installs
+	// using CREATE TABLE cluster:name already participate; this statement
+	// returns "already a member" or "no such table" in steady state, so
+	// we discard the error either way.
+	if c.cluster != "" {
+		_, _ = c.SQL(ctx, fmt.Sprintf("ALTER CLUSTER %s ADD %s", c.cluster, idxOpportunitiesRT))
+	}
+	// Additive column migrations land here. `source_id` was added after
+	// idx_opportunities_rt shipped, so existing installations need an
+	// ALTER TABLE; "duplicate column" / "already in schema" is the
+	// success signal on re-runs.
+	alterStmt := fmt.Sprintf("ALTER TABLE %s ADD COLUMN source_id bigint", qualified)
+	if _, alterErr := c.SQL(ctx, alterStmt); alterErr != nil {
 		if !isAlreadyExists(alterErr) && !isDuplicateColumn(alterErr) {
 			return alterErr
 		}

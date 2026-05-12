@@ -52,6 +52,7 @@ func main() {
 		URL:        cfg.ManticoreURL,
 		Timeout:    cfg.ManticoreTimeout,
 		HTTPClient: svc.HTTPClientManager().Client(ctx),
+		Cluster:    cfg.ManticoreCluster,
 	})
 	if err != nil {
 		util.Log(ctx).WithError(err).Fatal("materializer: open manticore failed")

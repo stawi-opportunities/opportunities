@@ -30,7 +30,7 @@ func TestManticoreSearchAdapterDecodesHits(t *testing.T) {
 	srv := fakeManticoreServer(t, body)
 	defer srv.Close()
 
-	adapter, err := NewManticoreSearch(srv.URL, "idx_opportunities_rt")
+	adapter, err := NewManticoreSearch(srv.URL, "", "idx_opportunities_rt")
 	if err != nil {
 		t.Fatalf("NewManticoreSearch: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestManticoreSearchAdapterBuildsKNNQuery(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter, _ := NewManticoreSearch(srv.URL, "idx_opportunities_rt")
+	adapter, _ := NewManticoreSearch(srv.URL, "", "idx_opportunities_rt")
 	_, _ = adapter.KNNWithFilters(context.Background(), SearchRequest{
 		Vector:             []float32{0.5},
 		Limit:              20,

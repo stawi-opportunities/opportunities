@@ -55,12 +55,15 @@ func (b *BulkUpserter) Flush(ctx context.Context) error {
 	if len(b.buffer) == 0 {
 		return nil
 	}
-	// Build NDJSON: one {"replace":{...}} JSON object per line.
+	// Build NDJSON: one {"replace":{...}} JSON object per line. Cluster-
+	// qualified so the buffered writes replicate when the client points
+	// at a multi-replica Manticore cluster (no-op for single-node).
+	idx := b.client.QualifyIndex(b.index)
 	var ndjson bytes.Buffer
 	for _, op := range b.buffer {
 		line, err := json.Marshal(map[string]any{
 			"replace": map[string]any{
-				"index": b.index,
+				"index": idx,
 				"id":    op.ID,
 				"doc":   op.Doc,
 			},

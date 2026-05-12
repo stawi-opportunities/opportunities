@@ -26,8 +26,9 @@ import (
 )
 
 type apiConfig struct {
-	ServerPort   string `env:"SERVER_PORT"   envDefault:":8082"`
-	ManticoreURL string `env:"MANTICORE_URL" envDefault:""`
+	ServerPort       string `env:"SERVER_PORT"       envDefault:":8082"`
+	ManticoreURL     string `env:"MANTICORE_URL"     envDefault:""`
+	ManticoreCluster string `env:"MANTICORE_CLUSTER" envDefault:""`
 
 	// Cloudflare R2 — one account token authorised on all three
 	// product-opportunities buckets. The api publishes Hugo snapshots
@@ -104,6 +105,7 @@ func main() {
 	manticore, err := searchindex.Open(searchindex.Config{
 		URL:        cfg.ManticoreURL,
 		HTTPClient: frameHTTPClient,
+		Cluster:    cfg.ManticoreCluster,
 	})
 	if err != nil {
 		log.WithError(err).Fatal("api: manticore open failed")

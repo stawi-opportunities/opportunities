@@ -17,12 +17,14 @@ type ManticoreSearch struct {
 
 // NewManticoreSearch opens a Manticore client at the given URL and
 // returns an adapter bound to `index` (typically "idx_opportunities_rt").
-func NewManticoreSearch(url, index string) (*ManticoreSearch, error) {
-	c, err := searchindex.Open(searchindex.Config{URL: url})
+// `cluster` qualifies the index for cluster-routed reads when running
+// against a replicated Manticore; pass "" for single-node setups.
+func NewManticoreSearch(url, cluster, index string) (*ManticoreSearch, error) {
+	c, err := searchindex.Open(searchindex.Config{URL: url, Cluster: cluster})
 	if err != nil {
 		return nil, fmt.Errorf("search: open: %w", err)
 	}
-	return &ManticoreSearch{client: c, index: index}, nil
+	return &ManticoreSearch{client: c, index: c.QualifyIndex(index)}, nil
 }
 
 // KNNWithFilters builds a Manticore JSON query combining a KNN clause
