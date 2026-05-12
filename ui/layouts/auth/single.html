@@ -1,7 +1,8 @@
 {{ define "main" }}
-<!-- Rendered by ui/app/src/components/AuthCallback.tsx. This route only
-     exists so the OAuth popup has something same-origin to land on; the
-     parent polls popup.location, reads ?code=, closes it. -->
+<!-- Rendered by ui/app/src/components/AuthCallback.tsx. Receives the
+     full-page OIDC redirect with ?code=&state=, completes the token
+     exchange via runtime.completeRedirect(), then navigates the user
+     to /dashboard/. -->
 <div id="mount-auth-callback">
   <div class="flex min-h-[60vh] items-center justify-center px-4 py-16">
     <div class="w-full max-w-md text-center">

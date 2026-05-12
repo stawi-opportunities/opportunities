@@ -130,9 +130,11 @@ export default function Onboarding() {
   // Unauthenticated visitors land here by navigating directly (e.g.
   // a bookmark) or via the Get Started CTA before login completed.
   // Either way, skip the dedicated sign-in page — just trigger the
-  // widget's OAuth flow. On success the popup closes, the state
-  // transitions to "authenticated", and this component re-renders
-  // with the multi-step form below.
+  // widget's OAuth flow. With @stawi/auth-runtime 1.1+ this is a
+  // full-page redirect: the user leaves this URL, signs in, and
+  // returns via /auth/callback/ → /dashboard/ (not back here). The
+  // dashboard's CompletePaymentPanel routes them back to /pricing/
+  // or onboarding completion as needed.
   useEffect(() => {
     if (state === "unauthenticated") {
       void login();
