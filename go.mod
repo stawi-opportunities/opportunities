@@ -28,7 +28,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/nguyenthenguyen/docx v0.0.0-20230621112118-9c8e795a11db
 	github.com/parquet-go/parquet-go v0.29.0
-	github.com/pitabwire/frame v1.96.0
+	github.com/pitabwire/frame v1.97.0
 	github.com/pitabwire/util v0.9.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/rs/xid v1.6.0
