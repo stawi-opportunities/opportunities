@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
@@ -405,4 +407,167 @@ func unixSecondsToTime(v any) *time.Time {
 	}
 	t := time.Unix(s, 0).UTC()
 	return &t
+}
+
+// searchResult is the wire shape every public list endpoint emits.
+// Matches ui/app/src/types/search.ts SearchResult exactly so the SPA
+// can render results without a translation layer.
+//
+// The polymorphic idx_opportunities_rt schema does not carry slug,
+// company, location_text, remote_type, category (singular), or
+// quality_score — those derived fields are computed here from the
+// columns the schema does carry:
+//
+//	slug          ← strconv.FormatUint(id, 10) (numeric id as string)
+//	company       ← issuing_entity
+//	location_text ← "city, region, country" (compact, skips empties)
+//	remote_type   ← derived from `remote` bool + `geo_scope`
+//	category      ← first categories[] entry resolved via Registry; "" otherwise
+//	quality_score ← 0 (no proxy in the polymorphic schema)
+//	snippet       ← first 280 chars of description, on a word boundary
+type searchResult struct {
+	ID            string  `json:"id"`
+	Slug          string  `json:"slug"`
+	Title         string  `json:"title"`
+	Company       string  `json:"company"`
+	Description   string  `json:"description,omitempty"`
+	LocationText  string  `json:"location_text"`
+	Country       string  `json:"country"`
+	RemoteType    string  `json:"remote_type"`
+	Category      string  `json:"category"`
+	EmploymentType string `json:"employment_type,omitempty"`
+	Seniority      string `json:"seniority,omitempty"`
+	SalaryMin     float64 `json:"salary_min"`
+	SalaryMax     float64 `json:"salary_max"`
+	Currency      string  `json:"currency"`
+	PostedAt      *time.Time `json:"posted_at"`
+	QualityScore  float64 `json:"quality_score"`
+	Snippet       string  `json:"snippet"`
+	IsFeatured    bool    `json:"is_featured"`
+	Kind          string  `json:"kind,omitempty"`
+}
+
+// toSearchResult converts an internal job (typed mirror of the
+// Manticore document) into the SPA-facing wire shape.
+func toSearchResult(j job, categoryLabel func(int64) string) searchResult {
+	idStr := strconv.FormatUint(j.ID, 10)
+	out := searchResult{
+		ID:             idStr,
+		Slug:           idStr,
+		Title:          j.Title,
+		Company:        j.IssuingEntity,
+		Description:    j.Description,
+		LocationText:   buildLocationText(j),
+		Country:        j.Country,
+		RemoteType:     deriveRemoteType(j),
+		EmploymentType: j.EmploymentType,
+		Seniority:      j.Seniority,
+		SalaryMin:      j.AmountMin,
+		SalaryMax:      j.AmountMax,
+		Currency:       j.Currency,
+		PostedAt:       j.PostedAt,
+		Snippet:        buildSnippet(j.Description),
+		Kind:           j.Kind,
+	}
+	if len(j.Categories) > 0 && categoryLabel != nil {
+		out.Category = categoryLabel(j.Categories[0])
+	}
+	return out
+}
+
+// toSearchResults converts a slice of jobs to wire shape with a single
+// closure over the registry resolver.
+func toSearchResults(jobs []job, categoryLabel func(int64) string) []searchResult {
+	out := make([]searchResult, 0, len(jobs))
+	for _, j := range jobs {
+		out = append(out, toSearchResult(j, categoryLabel))
+	}
+	return out
+}
+
+func buildLocationText(j job) string {
+	parts := make([]string, 0, 3)
+	if j.City != "" {
+		parts = append(parts, j.City)
+	}
+	if j.Region != "" {
+		parts = append(parts, j.Region)
+	}
+	if j.Country != "" {
+		parts = append(parts, j.Country)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// deriveRemoteType collapses the schema's separate (remote bool, geo_scope)
+// columns into the single string the SPA expects: "remote" | "hybrid" |
+// "on_site" | "" (unknown).
+func deriveRemoteType(j job) string {
+	if j.Remote {
+		return "remote"
+	}
+	switch j.GeoScope {
+	case "hybrid":
+		return "hybrid"
+	case "remote":
+		return "remote"
+	case "local", "national", "regional", "onsite", "on_site":
+		return "on_site"
+	}
+	return ""
+}
+
+// buildSnippet trims description to ~280 chars on a word boundary,
+// suitable for the search-result card. Empty description ⇒ empty.
+func buildSnippet(desc string) string {
+	const max = 280
+	if len(desc) <= max {
+		return desc
+	}
+	cut := desc[:max]
+	if i := strings.LastIndex(cut, " "); i > max/2 {
+		cut = cut[:i]
+	}
+	return cut + "…"
+}
+
+// facetEntry / facetEntries match Facets / FacetEntry in
+// ui/app/src/types/search.ts. The internal Manticore aggregation comes
+// back as map[string]int; the SPA expects []{key, count} sorted by
+// count desc for stable rendering.
+type facetEntry struct {
+	Key   string `json:"key"`
+	Count int    `json:"count"`
+}
+
+// toFacetEntries flattens a {key:count} map into a count-desc slice.
+func toFacetEntries(m map[string]int) []facetEntry {
+	out := make([]facetEntry, 0, len(m))
+	for k, c := range m {
+		out = append(out, facetEntry{Key: k, Count: c})
+	}
+	// Bubble the largest counts first; secondary sort by key for determinism.
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j].Count > out[i].Count || (out[j].Count == out[i].Count && out[j].Key < out[i].Key) {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return out
+}
+
+// shapeFacetsForSPA converts the Manticore aggregation shape used by
+// jobsManticore.Facets into the SPA's required category/remote_type/
+// employment_type/seniority/country families. Missing families are
+// emitted as empty slices so the SPA can iterate without nil checks.
+func shapeFacetsForSPA(raw map[string]map[string]int) map[string][]facetEntry {
+	out := map[string][]facetEntry{
+		"category":        toFacetEntries(raw["categories"]),
+		"remote_type":     toFacetEntries(raw["geo_scope"]),
+		"employment_type": toFacetEntries(raw["employment_type"]),
+		"seniority":       toFacetEntries(raw["seniority"]),
+		"country":         toFacetEntries(raw["country"]),
+	}
+	return out
 }

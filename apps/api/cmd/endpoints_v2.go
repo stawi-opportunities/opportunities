@@ -14,15 +14,9 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-// universalFacets are facet families that apply across every kind. They
-// are always included in the search response regardless of which kinds
-// appear in the result set.
-var universalFacets = map[string]struct{}{
-	"country":     {},
-	"remote":      {},
-	"remote_type": {},
-	"currency":    {},
-}
+// (universalFacets was removed when the search response moved to the
+// fixed SPA-shaped facet families in shapeFacetsForSPA — the SPA's
+// Facets type already enumerates the wanted families.)
 
 func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry, ct *counters.Counters) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -161,89 +155,69 @@ func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry, ct *counters.
 		// Decorate each hit with Valkey-backed view + apply counts
 		// (24h windowed). Single MGET for the whole result page —
 		// adds <1ms typical and gives the UI live engagement signal
-		// without waiting for a Manticore-side re-index.
-		decorated := embedCounters(ctx, ct, hits)
+		// without waiting for a Manticore-side re-index. Conversion
+		// to wire shape (job → searchResult) happens inside.
+		decorated := embedCounters(ctx, ct, hits, registryCategoryLabel(reg))
 
-		// Per-kind facet filtering. Build the set of kinds seen in the
-		// result set; consult the registry for each kind's
-		// SearchFacets; intersect with the universal facets so the UI
-		// only sees facet families relevant to the kinds it's
-		// rendering. This prevents (e.g.) scholarship results from
-		// surfacing employment_type buckets in the sidebar.
-		allowedFacets := map[string]struct{}{}
-		for k := range universalFacets {
-			allowedFacets[k] = struct{}{}
-		}
-		// Always allow the kind facet itself — operators and the UI use
-		// it to render kind tabs.
-		allowedFacets["kind"] = struct{}{}
-		// Always allow the category facet — it's universal across kinds.
-		allowedFacets["category"] = struct{}{}
-
-		if reg != nil {
-			kindsSeen := map[string]struct{}{}
-			for _, hit := range hits {
-				if hit.Kind != "" {
-					kindsSeen[hit.Kind] = struct{}{}
-				}
-			}
-			for kind := range kindsSeen {
-				spec := reg.Resolve(kind)
-				for _, f := range spec.SearchFacets {
-					allowedFacets[f] = struct{}{}
-				}
-			}
-		} else {
-			// No registry — fall back to including every facet family
-			// (legacy behaviour). Should only happen in tests.
-			for name := range parsed.Aggregations {
-				allowedFacets[name] = struct{}{}
-			}
-		}
-
-		facets := map[string]map[string]int{}
+		// Build raw facet map from Manticore aggregations using the
+		// schema-aligned field names. Per-kind facet filtering is
+		// applied after the shape transform — universal families
+		// (country, remote_type-derived, employment_type, seniority,
+		// category) always pass through; kind-specific families are
+		// intersected against the result set's kinds.
+		rawFacets := map[string]map[string]int{}
 		for name, agg := range parsed.Aggregations {
-			if _, ok := allowedFacets[name]; !ok {
-				continue
-			}
 			m := map[string]int{}
 			for _, b := range agg.Buckets {
 				if b.Key != "" {
 					m[b.Key] = b.DocCount
 				}
 			}
-			facets[name] = m
+			rawFacets[name] = m
+		}
+		facets := shapeFacetsForSPA(rawFacets)
+
+		// Cursor / pagination — the SPA's SearchResponse expects both
+		// has_more and cursor_next so the "Load more" affordance can
+		// fetch the next page. Manticore offset-based pagination here:
+		// cursor encodes the next offset.
+		hasMore := len(hits) < parsed.Hits.Total
+		cursorNext := ""
+		if hasMore {
+			cursorNext = strconv.Itoa(limit)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"query":   q,
-			"results": decorated,
-			"facets":  facets,
-			"total":   parsed.Hits.Total,
-			"sort":    sort,
+			"query":       q,
+			"results":     decorated,
+			"facets":      facets,
+			"total":       parsed.Hits.Total,
+			"sort":        sort,
+			"has_more":    hasMore,
+			"cursor_next": cursorNext,
 		})
 	}
 }
 
-// jobWithStats is the v2-search result row: every job field plus the
-// 24h view + apply counters. The counters are embedded in-line
-// (rather than as a nested object) so existing UI bindings that
-// already render `job` keep working — they'll just ignore the new
-// fields until the components opt in.
-type jobWithStats struct {
-	job
+// searchResultWithStats is the v2-search result row in the wire shape
+// the SPA expects, plus the 24h view + apply counters. Embedded
+// in-line so the SPA component reads the counters as top-level fields.
+type searchResultWithStats struct {
+	searchResult
 	Views24h   int64 `json:"views_24h"`
 	Applies24h int64 `json:"applies_24h"`
 }
 
 // embedCounters fetches view+apply counts in one Valkey MGET and
-// attaches them to every hit. Returns the original hits unchanged
-// when the counters client is nil (Valkey-disabled deployments).
-func embedCounters(ctx context.Context, ct *counters.Counters, hits []job) []jobWithStats {
-	out := make([]jobWithStats, len(hits))
+// attaches them to every hit. Returns the converted-to-wire-shape
+// hits unchanged when the counters client is nil. `categoryLabel`
+// resolves the first categories[] id to a display string; pass a nil
+// resolver to leave Category empty.
+func embedCounters(ctx context.Context, ct *counters.Counters, hits []job, categoryLabel func(int64) string) []searchResultWithStats {
+	out := make([]searchResultWithStats, len(hits))
 	for i, h := range hits {
-		out[i] = jobWithStats{job: h}
+		out[i] = searchResultWithStats{searchResult: toSearchResult(h, categoryLabel)}
 	}
 	if ct == nil || len(hits) == 0 {
 		return out
@@ -268,6 +242,20 @@ func embedCounters(ctx context.Context, ct *counters.Counters, hits []job) []job
 	return out
 }
 
+// registryCategoryLabel returns a label-resolver function suitable for
+// passing to toSearchResult / toSearchResults. nil registry yields a
+// nil resolver so callers' wire output has Category=="" for every row,
+// which is the right fallback when the registry can't be loaded.
+func registryCategoryLabel(reg *opportunity.Registry) func(int64) string {
+	if reg == nil {
+		return nil
+	}
+	labels := reg.CategoryLabels()
+	return func(id int64) string {
+		return labels[id]
+	}
+}
+
 func v2JobByIDHandler(jm *jobsManticore) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
@@ -285,7 +273,7 @@ func v2JobByIDHandler(jm *jobsManticore) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(j)
+		_ = json.NewEncoder(w).Encode(toSearchResult(*j, nil))
 	}
 }
 
@@ -307,7 +295,7 @@ func v2TopHandler(jm *jobsManticore) http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"min_score": minScore,
 			"count":     len(rows),
-			"results":   rows,
+			"results":   toSearchResults(rows, nil),
 		})
 	}
 }
@@ -322,7 +310,7 @@ func v2LatestHandler(jm *jobsManticore) http.HandlerFunc {
 		}
 		w.Header().Set("Cache-Control", "public, max-age=30")
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"results": rows})
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": toSearchResults(rows, nil)})
 	}
 }
 
@@ -371,6 +359,48 @@ func v2StatsHandler(jm *jobsManticore) http.HandlerFunc {
 	}
 }
 
+// feedTier matches the FeedTier type the SPA imports from
+// ui/app/src/types/search.ts. Field names use snake_case to match the
+// SPA's JSON parsing; cursor + has_more drive client-side pagination
+// for the "Load more" affordance.
+type feedTier struct {
+	ID        string         `json:"id"`
+	Label     string         `json:"label"`
+	Jobs      []searchResult `json:"jobs"`
+	Cursor    string         `json:"cursor"`
+	HasMore   bool           `json:"has_more"`
+	Country   string         `json:"country,omitempty"`
+	Countries []string       `json:"countries,omitempty"`
+	Language  string         `json:"language,omitempty"`
+}
+
+// feedContext matches FeedContext on the SPA side. The geo-IP-derived
+// country drives "local" tier filtering; the SPA reads context.country
+// directly so this MUST be populated (or set to "") — `undefined` here
+// is the exact crash the SPA exhibited before this rewrite.
+type feedContext struct {
+	Country   string   `json:"country"`
+	Languages []string `json:"languages"`
+	Region    string   `json:"region"`
+}
+
+// feedResponse matches FeedResponse on the SPA side. Facets is required
+// (the SPA sidebar reads it); empty slices are fine for the no-result
+// case. Sort echoes back the input so the SPA can show the active sort.
+type feedResponse struct {
+	Context feedContext             `json:"context"`
+	Tiers   []feedTier              `json:"tiers"`
+	Facets  map[string][]facetEntry `json:"facets"`
+	Sort    string                  `json:"sort"`
+}
+
+// v2FeedHandler returns the home-page tiered feed in the shape the
+// front-end SPA expects (see ui/app/src/types/search.ts FeedResponse).
+// Previous response (root-level `country`, tiers with `name`/`results`)
+// caused the SPA to crash with "Cannot read properties of undefined
+// (reading 'country')" because it dereferenced `context.country` and
+// expected `tiers[].id`/`jobs` not `name`/`results`. This rewrite
+// produces the exact wire shape the SPA imports.
 func v2FeedHandler(jm *jobsManticore) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
@@ -380,36 +410,65 @@ func v2FeedHandler(jm *jobsManticore) http.HandlerFunc {
 		if country == "" {
 			country = strings.ToUpper(req.Header.Get("CF-IPCountry"))
 		}
-		perTier := parseLimit(qs.Get("per_tier"), 10, 30)
-
-		type tier struct {
-			Name    string `json:"name"`
-			Country string `json:"country,omitempty"`
-			Results []job  `json:"results"`
+		perTier := parseLimit(qs.Get("per_tier"), 20, 30)
+		sort := qs.Get("sort")
+		if sort == "" {
+			sort = "recent"
 		}
 
-		resp := struct {
-			Country string `json:"country"`
-			Tiers   []tier `json:"tiers"`
-		}{Country: country}
+		resp := feedResponse{
+			Context: feedContext{
+				Country:   country,
+				Languages: []string{},
+				Region:    "",
+			},
+			Tiers:  []feedTier{},
+			Facets: map[string][]facetEntry{},
+			Sort:   sort,
+		}
 
 		if country != "" {
 			localFilter := append(activeFilter(),
 				map[string]any{"equals": map[string]any{"country": country}})
-			local, err := jm.searchFiltered(ctx, localFilter, perTier, "posted_at")
+			local, err := jm.searchFiltered(ctx, localFilter, perTier+1, "posted_at")
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadGateway)
 				return
 			}
-			resp.Tiers = append(resp.Tiers, tier{Name: "local", Country: country, Results: local})
+			hasMore := len(local) > perTier
+			if hasMore {
+				local = local[:perTier]
+			}
+			resp.Tiers = append(resp.Tiers, feedTier{
+				ID:      "local",
+				Label:   "Near you",
+				Jobs:    toSearchResults(local, nil),
+				Country: country,
+				HasMore: hasMore,
+			})
 		}
 
-		global, err := jm.Latest(ctx, perTier)
+		global, err := jm.Latest(ctx, perTier+1)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		resp.Tiers = append(resp.Tiers, tier{Name: "global", Results: global})
+		hasMoreGlobal := len(global) > perTier
+		if hasMoreGlobal {
+			global = global[:perTier]
+		}
+		resp.Tiers = append(resp.Tiers, feedTier{
+			ID:      "global",
+			Label:   "Global",
+			Jobs:    toSearchResults(global, nil),
+			HasMore: hasMoreGlobal,
+		})
+
+		// Best-effort facets — failure here should not blank out the
+		// feed since results are the more important payload.
+		if facets, ferr := jm.Facets(ctx); ferr == nil {
+			resp.Facets = shapeFacetsForSPA(facets)
+		}
 
 		w.Header().Set("Cache-Control", "public, max-age=60")
 		w.Header().Set("Content-Type", "application/json")
@@ -417,14 +476,21 @@ func v2FeedHandler(jm *jobsManticore) http.HandlerFunc {
 	}
 }
 
+// v2FeedTierHandler returns one page of a specific tier (used by the
+// SPA's "Load more" button). Response shape mirrors TierPageResponse
+// in ui/app/src/types/search.ts.
 func v2FeedTierHandler(jm *jobsManticore) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
 		tierName := qs.Get("tier")
+		if tierName == "" {
+			tierName = qs.Get("id")
+		}
 		limit := parseLimit(qs.Get("limit"), 20, 50)
 
 		filter := append([]map[string]any{}, activeFilter()...)
+		respCountry := ""
 		if tierName == "local" {
 			country := strings.ToUpper(qs.Get("country"))
 			if country == "" {
@@ -432,17 +498,26 @@ func v2FeedTierHandler(jm *jobsManticore) http.HandlerFunc {
 				return
 			}
 			filter = append(filter, map[string]any{"equals": map[string]any{"country": country}})
+			respCountry = country
 		}
 
-		rows, err := jm.searchFiltered(ctx, filter, limit, "posted_at")
+		rows, err := jm.searchFiltered(ctx, filter, limit+1, "posted_at")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
+		hasMore := len(rows) > limit
+		if hasMore {
+			rows = rows[:limit]
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"tier":    tierName,
-			"results": rows,
+		_ = json.NewEncoder(w).Encode(feedTier{
+			ID:      tierName,
+			Label:   tierName,
+			Jobs:    toSearchResults(rows, nil),
+			Country: respCountry,
+			HasMore: hasMore,
 		})
 	}
 }

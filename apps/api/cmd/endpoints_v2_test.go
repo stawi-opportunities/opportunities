@@ -50,26 +50,29 @@ func TestV2Search_ReturnsHitsAndFacets(t *testing.T) {
 	h(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Contains(t, rr.Body.String(), `"id":1`)
+	// id is a string in the SPA wire shape ("1", "2") — see
+	// ui/app/src/types/search.ts SearchResult.id: string
+	require.Contains(t, rr.Body.String(), `"id":"1"`)
 	require.Contains(t, rr.Body.String(), `"facets"`)
+	// facets are []{key, count}, not a map
+	require.Contains(t, rr.Body.String(), `"country":[`)
 }
 
-func TestV2Search_PerKindFacetFiltering(t *testing.T) {
-	// Result set is all scholarships → employment_type and seniority
-	// (job-only facets) must NOT appear; field_of_study (scholarship
-	// facet) must appear; universal facets (country) must appear.
+func TestV2Search_FacetsShapedForSPA(t *testing.T) {
+	// /api/search emits the five facet families the SPA's Facets type
+	// declares: category, remote_type, employment_type, seniority,
+	// country. Other Manticore aggregations are dropped because the
+	// SPA never reads them. Each family is a []FacetEntry — count-desc.
 	ts := stubManticore(func(_ map[string]any) string {
 		return `{"hits":{"total":1,"hits":[
-            {"_id":1,"_source":{"canonical_id":"s1","kind":"scholarship","slug":"a","title":"Climate MSc","country":"DE"}}
+            {"_id":1,"_source":{"kind":"scholarship","title":"Climate MSc","country":"DE","geo_scope":"remote"}}
         ]},"aggregations":{
             "kind":{"buckets":[{"key":"scholarship","doc_count":1}]},
-            "category":{"buckets":[]},
+            "categories":{"buckets":[{"key":"42","doc_count":1}]},
             "country":{"buckets":[{"key":"DE","doc_count":1}]},
-            "remote_type":{"buckets":[]},
+            "geo_scope":{"buckets":[{"key":"remote","doc_count":1}]},
             "employment_type":{"buckets":[{"key":"full-time","doc_count":1}]},
-            "seniority":{"buckets":[{"key":"senior","doc_count":1}]},
-            "field_of_study":{"buckets":[{"key":"Climate","doc_count":1}]},
-            "degree_level":{"buckets":[{"key":"masters","doc_count":1}]}
+            "seniority":{"buckets":[{"key":"senior","doc_count":1}]}
         }}`
 	})
 	defer ts.Close()
@@ -81,12 +84,6 @@ func TestV2Search_PerKindFacetFiltering(t *testing.T) {
 		t.Helper()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644))
 	}
-	writeKindYAML(t, "job.yaml", `kind: job
-display_name: Job
-issuing_entity_label: Company
-url_prefix: jobs
-search_facets: [employment_type, seniority]
-`)
 	writeKindYAML(t, "scholarship.yaml", `kind: scholarship
 display_name: Scholarship
 issuing_entity_label: Institution
@@ -103,20 +100,21 @@ search_facets: [field_of_study, degree_level]
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var resp struct {
-		Facets map[string]map[string]int `json:"facets"`
+		Facets map[string][]struct {
+			Key   string `json:"key"`
+			Count int    `json:"count"`
+		} `json:"facets"`
 	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 
-	// scholarship-only facets should be present
-	require.Contains(t, resp.Facets, "field_of_study")
-	require.Contains(t, resp.Facets, "degree_level")
-	// universal facets always allowed
-	require.Contains(t, resp.Facets, "country")
-	// job-only facets should be filtered out (no job kinds in results)
-	require.NotContains(t, resp.Facets, "employment_type",
-		"employment_type should be filtered out — no job results in set")
-	require.NotContains(t, resp.Facets, "seniority",
-		"seniority should be filtered out — no job results in set")
+	// The five families the SPA's Facets type declares must all be
+	// present (empty slice is fine when no buckets matched).
+	for _, family := range []string{"category", "remote_type", "employment_type", "seniority", "country"} {
+		require.Contains(t, resp.Facets, family, family+" facet family must be present")
+	}
+	// country bucket from the stubbed aggregation should round-trip.
+	require.Equal(t, "DE", resp.Facets["country"][0].Key)
+	require.Equal(t, 1, resp.Facets["country"][0].Count)
 }
 
 func TestV2JobByID_NotFound(t *testing.T) {
