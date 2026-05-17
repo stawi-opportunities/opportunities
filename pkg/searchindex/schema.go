@@ -34,10 +34,17 @@ const idxOpportunitiesRTDDL = `CREATE TABLE %s (` +
 	`source_id bigint,` +
 	// Discriminator
 	`kind string attribute,` +
-	// Universal indexable text + categories
-	`title text indexed,` +
-	`description text indexed,` +
-	`issuing_entity text indexed,` +
+	// Universal indexable text + categories.
+	// `text indexed stored` keeps the column searchable AND retrievable
+	// — the bare `text indexed` form indexes for FTS but doesn't store
+	// the raw value, so /search responses come back with empty title /
+	// description / issuing_entity fields, which the SPA renders as
+	// blank job cards. Stored adds the source bytes back into the
+	// document body at a small disk cost (text is already on disk via
+	// the inverted index).
+	`title text indexed stored,` +
+	`description text indexed stored,` +
+	`issuing_entity text indexed stored,` +
 	`categories multi64,` +
 	// Universal location
 	`country string attribute,` +
