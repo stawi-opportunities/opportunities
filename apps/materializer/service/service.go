@@ -374,19 +374,25 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 		return fmt.Errorf("embedding: decode: %w", err)
 	}
 	pl := env.Payload
-	// /update patches the existing row in place. If the row hasn't been
-	// upserted yet (embedding raced ahead of canonical), Manticore returns
-	// updated=0 — the next CanonicalUpsertedV1 will re-build the doc and
-	// the next embedding event for that id will re-apply.
 	doc := map[string]any{
 		"embedding": pl.Vector,
 	}
 	id := hashID(pl.OpportunityID)
 	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
+		// Manticore /update does not support partial updates of
+		// float_vector knn columns — every embedding write returns
+		// 400 "MVA elements should be integers" even though embedding
+		// is declared `float_vector`. Until the embedding refresh
+		// path is rewritten to issue a full /replace (which requires
+		// re-fetching the canonical doc), accept the failure and ack
+		// the message: text search + listing keep working, only
+		// vector-search ranking is degraded. Continuing to nack would
+		// stall the rest of the materializer behind a poison-pill
+		// stream of embedding events that can never succeed.
 		util.Log(ctx).WithError(err).
 			WithField("opportunity_id", pl.OpportunityID).
-			Error("materializer: embedding update failed")
-		return fmt.Errorf("embedding: update: %w", err)
+			Warn("materializer: embedding update skipped (Manticore /update cannot patch float_vector — vector search will be stale)")
+		return nil
 	}
 	return nil
 }
