@@ -83,19 +83,17 @@ func Open(cfg Config) (*Client, error) {
 func (c *Client) Cluster() string { return c.cluster }
 
 // QualifyIndex prepends the cluster name to an index when configured.
-// Replace/Update/DeleteWhere call it internally; external callers (the
-// materializer's BulkUpserter assembling NDJSON) use it to keep the
-// index reference inside opaque payloads consistent with the rest of
-// the package.
+// Used only by SQL DDL paths (Apply, ALTER CLUSTER ADD ...) where the
+// cluster-qualified table name appears inline in the statement;
+// Replace/Update/DeleteWhere/Bulk use the separate `cluster` + `index`
+// JSON properties via withCluster instead because Manticore 25.x
+// rejects the inline form on DML.
 func (c *Client) QualifyIndex(index string) string {
 	if c.cluster == "" {
 		return index
 	}
 	return c.cluster + ":" + index
 }
-
-// qualify is the package-internal alias.
-func (c *Client) qualify(index string) string { return c.QualifyIndex(index) }
 
 // Close is a no-op for the HTTP client but kept for symmetry with
 // other resource-owning packages.
