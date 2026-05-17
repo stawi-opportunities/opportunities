@@ -26,6 +26,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
@@ -70,6 +71,30 @@ func main() {
 
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	dbFn := pool.DB
+
+	// Handle database migration if configured (colony Helm chart sets
+	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). Runs
+	// AutoMigrate on every model this service reads/writes, then exits.
+	// Without this branch the matching binary kept starting the full
+	// service inside the migration Job and never returning, which the
+	// Helm controller flagged as InProgress and the upgrade rolled back
+	// (the production HR was looping on this — migration-21, -22, ...).
+	if cfg.DoDatabaseMigrate() {
+		migrationDB := dbFn(ctx, false)
+		if err := migrationDB.AutoMigrate(
+			&domain.CandidateProfile{},
+			&domain.CandidateMatch{},
+			&domain.CandidateApplication{},
+			&domain.OpportunityFlag{},
+		); err != nil {
+			log.WithError(err).Fatal("auto-migrate failed")
+		}
+		if err := repository.FinalizeSchema(migrationDB); err != nil {
+			log.WithError(err).Fatal("finalize schema failed")
+		}
+		log.Info("migration complete")
+		return
+	}
 
 	if err := telemetry.Init(); err != nil {
 		log.WithError(err).Warn("candidates: telemetry init failed")
