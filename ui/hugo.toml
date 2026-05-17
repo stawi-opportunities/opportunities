@@ -37,7 +37,7 @@ title = "Stawi Opportunities"
   rumOrganization    = "default"
   rumEnv             = "production"
   rumService         = "opportunities-web"
-  rumVersion         = "0.0.0"
+  rumVersion         = "0.0.1"
 
 [params.nav]
   logo = "/images/logo.svg"
