@@ -284,7 +284,7 @@ func main() {
 		Extractor:         extractor,
 		Normalizer:        normalizer,
 		PageFetcher:       httpClient,
-		EnrichConcurrency: 4,
+		EnrichConcurrency: cfg.EnrichConcurrency,
 		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)

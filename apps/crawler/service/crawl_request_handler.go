@@ -509,6 +509,13 @@ func (h *CrawlRequestHandler) enrichStubs(ctx context.Context, items []domain.Ex
 	if h.deps.Extractor == nil || h.deps.PageFetcher == nil {
 		return
 	}
+	// EnrichConcurrency==0 disables enrichment entirely — used as a
+	// load-shedding lever when the shared inference fleet is saturated
+	// and we'd rather let URL-only stubs dead-letter than backpressure
+	// the LLM-dependent worker pipeline.
+	if h.deps.EnrichConcurrency == 0 {
+		return
+	}
 
 	stubIdx := make([]int, 0, len(items))
 	for i := range items {
@@ -521,7 +528,7 @@ func (h *CrawlRequestHandler) enrichStubs(ctx context.Context, items []domain.Ex
 	}
 
 	conc := h.deps.EnrichConcurrency
-	if conc <= 0 {
+	if conc < 0 {
 		conc = 4
 	}
 	sem := make(chan struct{}, conc)
