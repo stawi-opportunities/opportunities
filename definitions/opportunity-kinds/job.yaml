@@ -3,7 +3,7 @@ display_name: Job
 issuing_entity_label: Company
 amount_kind: salary
 url_prefix: jobs
-universal_required: [title, description, issuing_entity, apply_url, anchor_country]
+universal_required: [title, description, issuing_entity, apply_url]
 kind_required: []
 kind_optional: [employment_type, remote_type, seniority, skills, benefits, geo_restrictions, ats_platform]
 categories: [Programming, Design, Marketing, Sales, Operations, Finance, HR, Customer-Support, Data, Product, Legal, Other]
