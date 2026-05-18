@@ -202,6 +202,26 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				extJob.Kind = kind
 			}
 
+			// Anchor-country fallback chain. Every source carries a
+			// declared country (geolocated at registration). When the
+			// LLM extractor fails to populate AnchorLocation.Country —
+			// which is most pages in practice; LLMs miss it on listings
+			// that don't mention the country explicitly — fall back to
+			// the source's country. Without this, every variant fails
+			// opportunity.Verify's "anchor_country" check, dead-letters
+			// to variants.rejected.v1, and the canonical chain never
+			// produces a single canonicals.upserted.v1 event —
+			// observable in production as the materializer acking
+			// thousands of variants.rejected events with zero rows
+			// ever landing in idx_opportunities_rt.
+			if src.Country != "" {
+				if extJob.AnchorLocation == nil {
+					extJob.AnchorLocation = &domain.Location{Country: src.Country}
+				} else if extJob.AnchorLocation.Country == "" {
+					extJob.AnchorLocation.Country = src.Country
+				}
+			}
+
 			// Source contract + kind contract gate. Replaces the old
 			// pkg/quality/gate.Check. Rejected records dead-letter to
 			// opportunities.variants.rejected.v1 (and the matching Iceberg
