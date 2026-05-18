@@ -167,3 +167,62 @@ type CandidateApplication struct {
 }
 
 func (CandidateApplication) TableName() string { return "candidate_applications" }
+
+// Capture-origin constants for CandidateSession.CaptureOrigin.
+const (
+	SessionOriginExtension     = "extension"
+	SessionOriginRemoteBrowser = "remote_browser"
+)
+
+// CandidateSession holds an authenticated session captured from a candidate's
+// real browser (via the extension) so the autoapply pipeline can submit
+// applications to sources that gate behind login (BrighterMonday, LinkedIn,
+// Workday tenants, …).
+//
+// Payload is envelope-encrypted: PayloadEnc is AES-256-GCM(plaintext, DEK),
+// the DEK is AES-256-GCM-wrapped under a master key, KeyID identifies that
+// master (so rotation re-wraps DEKs without re-encrypting PayloadEnc).
+type CandidateSession struct {
+	BaseModel
+	CandidateID string     `gorm:"type:varchar(20);not null;index" json:"candidate_id"`
+	SourceType  SourceType `gorm:"type:varchar(40);not null"        json:"source_type"`
+
+	PayloadEnc   []byte `gorm:"type:bytea;not null" json:"-"`
+	PayloadNonce []byte `gorm:"type:bytea;not null" json:"-"`
+	DEKWrapped   []byte `gorm:"type:bytea;not null" json:"-"`
+	DEKNonce     []byte `gorm:"type:bytea;not null" json:"-"`
+	KeyID        string `gorm:"type:varchar(64);not null" json:"key_id"`
+
+	CapturedAt    time.Time  `gorm:"not null"            json:"captured_at"`
+	ExpiresAt     *time.Time `                           json:"expires_at,omitempty"`
+	LastUsedAt    *time.Time `                           json:"last_used_at,omitempty"`
+	RevokedAt     *time.Time `                           json:"revoked_at,omitempty"`
+	UserAgent     string     `gorm:"type:varchar(255);not null;default:''" json:"user_agent"`
+	CaptureOrigin string     `gorm:"type:varchar(40);not null;default:'extension'" json:"capture_origin"`
+}
+
+func (CandidateSession) TableName() string { return "candidate_sessions" }
+
+// SessionPayload is the plaintext shape of an encrypted session row. It is
+// never persisted — the Store marshals it to JSON, encrypts, and writes the
+// ciphertext to PayloadEnc; on load the ciphertext is decrypted and
+// unmarshaled back into this struct.
+type SessionPayload struct {
+	Cookies []SessionCookie   `json:"cookies"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Storage map[string]string `json:"storage,omitempty"`
+}
+
+// SessionCookie mirrors net/http.Cookie's persisted fields. We keep our own
+// type so we control the wire format independent of stdlib changes and so
+// JSON marshaling stays explicit.
+type SessionCookie struct {
+	Name     string     `json:"name"`
+	Value    string     `json:"value"`
+	Domain   string     `json:"domain,omitempty"`
+	Path     string     `json:"path,omitempty"`
+	Expires  *time.Time `json:"expires,omitempty"`
+	HTTPOnly bool       `json:"http_only,omitempty"`
+	Secure   bool       `json:"secure,omitempty"`
+	SameSite string     `json:"same_site,omitempty"`
+}

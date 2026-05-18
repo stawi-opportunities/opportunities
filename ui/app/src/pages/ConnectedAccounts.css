@@ -1,0 +1,131 @@
+.connected-accounts {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.connected-accounts header h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+}
+
+.connected-accounts .muted {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.pairing {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.pairing h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.pair-code code {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 28px;
+  letter-spacing: 0.2em;
+  padding: 8px 16px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  margin: 8px 0;
+}
+
+.sources {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0 0;
+}
+
+.source {
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.source-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.source-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.status {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+}
+
+.status-connected {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-expired {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-revoked,
+.status-not_connected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+button {
+  padding: 6px 12px;
+  background: #0f172a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button:hover {
+  background: #1e293b;
+}
+
+button.danger {
+  background: #b91c1c;
+}
+
+button.danger:hover {
+  background: #991b1b;
+}
+
+.error {
+  color: #b91c1c;
+  margin: 12px 0;
+}
+
+.instructions {
+  background: #f8fafc;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-top: 8px;
+}

@@ -271,6 +271,56 @@ func (h *AutoApplyHandler) finalise(
 		Info("autoapply: attempt complete")
 
 	h.emitApplicationSubmitted(ctx, intent, result, status, pending.ID)
+	h.emitSessionLifecycleIfApplicable(ctx, intent, result)
+}
+
+// emitSessionLifecycleIfApplicable mirrors the session-related skip
+// reasons emitted by the sessionsubmitter into the
+// SessionRequiredV1 / SessionExpiredV1 event topics. The
+// notification service subscribes to these and surfaces the
+// "Reconnect your account" CTA in the UI; analytics subscribes for
+// the per-source recapture funnel.
+//
+// We intentionally emit at the handler layer, not the submitter
+// layer, so a future second submitter that also detects expiry (e.g.
+// the headless leg) gets the same event taxonomy without duplicating
+// the emit logic.
+func (h *AutoApplyHandler) emitSessionLifecycleIfApplicable(
+	ctx context.Context,
+	intent eventsv1.AutoApplyIntentV1,
+	result autoapply.SubmitResult,
+) {
+	if h.svc == nil || h.svc.EventsManager() == nil {
+		return
+	}
+	if result.Method != "skipped" {
+		return
+	}
+	emitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	switch result.SkipReason {
+	case "session_required":
+		env := eventsv1.NewEnvelope(eventsv1.TopicSessionRequired, eventsv1.SessionRequiredV1{
+			CandidateID:    intent.CandidateID,
+			SourceType:     intent.SourceType,
+			CanonicalJobID: intent.CanonicalJobID,
+			ApplyURL:       intent.ApplyURL,
+			RequestedAt:    time.Now().UTC(),
+		})
+		if err := h.svc.EventsManager().Emit(emitCtx, eventsv1.TopicSessionRequired, env); err != nil {
+			util.Log(ctx).WithError(err).Warn("autoapply: emit SessionRequiredV1 failed")
+		}
+	case "session_expired":
+		env := eventsv1.NewEnvelope(eventsv1.TopicSessionExpired, eventsv1.SessionExpiredV1{
+			CandidateID: intent.CandidateID,
+			SourceType:  intent.SourceType,
+			Reason:      "replay_detected",
+			DetectedAt:  time.Now().UTC(),
+		})
+		if err := h.svc.EventsManager().Emit(emitCtx, eventsv1.TopicSessionExpired, env); err != nil {
+			util.Log(ctx).WithError(err).Warn("autoapply: emit SessionExpiredV1 failed")
+		}
+	}
 }
 
 func (h *AutoApplyHandler) emitApplicationSubmitted(

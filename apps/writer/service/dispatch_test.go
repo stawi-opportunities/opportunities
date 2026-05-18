@@ -31,6 +31,15 @@ var noIcebergPersistence = map[string]bool{
 	// is a follow-up. Listing it here keeps the writer from panicking
 	// the dispatch test and acks the message harmlessly.
 	eventsv1.TopicApplicationSubmitted: true,
+
+	// Session-capture events: the authoritative store is the
+	// candidate_sessions Postgres table + the notification service
+	// downstream of TopicSessionRequired/Expired. An analytics rollup
+	// over these events is a Phase 8+ follow-up — until then they ack
+	// without writing to Iceberg.
+	eventsv1.TopicSessionCaptured: true,
+	eventsv1.TopicSessionRequired: true,
+	eventsv1.TopicSessionExpired:  true,
 }
 
 // TestAllTopicsHaveDispatch verifies that every topic returned by

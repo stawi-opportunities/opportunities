@@ -62,6 +62,11 @@ type CandidatesConfig struct {
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 
+	// SourceAuthDir is the directory holding the per-source authentication
+	// manifests (pkg/authmanifest). Empty / missing directory leaves the
+	// registry empty and disables session-based capture endpoints.
+	SourceAuthDir string `env:"SOURCE_AUTH_DIR" envDefault:"/etc/source-auth"`
+
 	// CV-pipeline queue subject URLs. The cv-extract / cv-improve /
 	// cv-embed handlers are durable Frame Queue subscribers (per the
 	// async decision tree: external LLM calls + long-running work →
@@ -78,4 +83,29 @@ type CandidatesConfig struct {
 	AutoApplyScoreMin   float64 `env:"AUTO_APPLY_SCORE_MIN"   envDefault:"0.75"`
 	AutoApplyDailyLimit int     `env:"AUTO_APPLY_DAILY_LIMIT" envDefault:"5"`
 	AutoApplyQueueURL   string  `env:"AUTO_APPLY_QUEUE_URL"   envDefault:"mem://svc.opportunities.autoapply.submit.v1"`
+
+	// Session-capture cryptography.
+	//
+	//   SESSION_MASTER_KEY  — base64-encoded 32 bytes; wraps per-row DEKs
+	//                         in candidate_sessions (envelope encryption).
+	//   SESSION_MASTER_KEY_ID — opaque identifier ("v1") stored alongside
+	//                           each row so a future rotation can keep
+	//                           multiple masters resident.
+	//   SESSION_TOKEN_KEY   — base64-encoded 32 bytes; HMAC key for the
+	//                         opaque Stawi access/refresh tokens used by
+	//                         the browser extension. Distinct from
+	//                         SESSION_MASTER_KEY so a leak of one does
+	//                         not implicate the other.
+	//
+	// All three are required for session-capture to start; the wiring
+	// in cmd/main.go skips the routes when any of them is empty so the
+	// service still boots in dev without sessions configured.
+	SessionMasterKey   string `env:"SESSION_MASTER_KEY"    envDefault:""`
+	SessionMasterKeyID string `env:"SESSION_MASTER_KEY_ID" envDefault:"v1"`
+	SessionTokenKey    string `env:"SESSION_TOKEN_KEY"     envDefault:""`
+
+	// Valkey URL backing pairing codes + Stawi token storage. Empty
+	// means "use Frame's in-memory cache" — fine for local dev and
+	// tests, NOT safe in production (a restart drops all live tokens).
+	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
 }

@@ -1,0 +1,58 @@
+# BrighterMonday Kenya — extension-captured session, HTTP-form replay.
+#
+# Loaded at boot by pkg/authmanifest into the in-process Store. The
+# extension fetches the public projection via GET /sources/auth-manifest;
+# the UI fetches the full manifest (including instructions_md) via
+# GET /sources/brightermonday/auth.
+#
+# The form_url_pattern is anchored on /job/.+/apply to avoid the
+# autoapply submitter trying to POST against listing pages or the
+# saved-jobs UI by accident — false positives are silently dropped by
+# the Registry, but tight scoping makes log triage easier.
+
+source_type: brightermonday
+auth_method: extension
+display_name: BrighterMonday Kenya
+login_url: https://www.brightermonday.co.ke/login
+home_url: https://www.brightermonday.co.ke
+cookie_domains:
+  - .brightermonday.co.ke
+storage_keys: []
+required_cookies:
+  - laravel_session
+  - XSRF-TOKEN
+session_ttl: 720h
+detect_logged_in:
+  method: GET
+  url: https://www.brightermonday.co.ke/api/v1/me
+  expect_status: 200
+apply_flow:
+  type: http_form
+  form_url_pattern: '^https://www\.brightermonday\.co\.ke/job/.+/apply$'
+  fields:
+    cv_file:
+      name: resume
+      source: cv_bytes
+    cover_letter:
+      name: cover_letter
+      source: cover_letter
+    phone:
+      name: phone
+      source: phone
+    full_name:
+      name: full_name
+      source: full_name
+  csrf:
+    source: cookie
+    cookie: XSRF-TOKEN
+    header: X-XSRF-TOKEN
+instructions_md: |
+  ### Connect BrighterMonday
+
+  1. **Install the Stawi extension** from the Chrome Web Store or Firefox Add-ons.
+  2. Go to <https://www.brightermonday.co.ke/login> and sign in to your BrighterMonday account.
+  3. Click the **Stawi** icon in your browser toolbar and choose **"Connect this account"**.
+  4. Return to this page — the BrighterMonday card should flip to **Connected ✓**.
+
+  Stawi will only access BrighterMonday while submitting applications you've approved.
+  You can disconnect at any time from this page.

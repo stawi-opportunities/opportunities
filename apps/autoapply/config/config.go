@@ -72,6 +72,20 @@ type AutoApplyConfig struct {
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
 	InferenceAPIKey  string `env:"INFERENCE_API_KEY"  envDefault:""`
 	InferenceModel   string `env:"INFERENCE_MODEL"    envDefault:""`
+
+	// Session-replay submitter inputs. Mirrors the matching service:
+	//   SOURCE_AUTH_DIR     — per-source manifests (pkg/authmanifest)
+	//   SESSION_MASTER_KEY  — base64-encoded 32 bytes; needed to
+	//                         decrypt captured session payloads
+	//   SESSION_MASTER_KEY_ID — opaque ID stored alongside each row
+	//                           (must match the value the matching
+	//                           service used when capturing)
+	// When SESSION_MASTER_KEY is empty the session-replay submitter
+	// is omitted from the registry and traffic falls through to the
+	// existing tiers, matching the pre-Phase-5 behaviour.
+	SourceAuthDir      string `env:"SOURCE_AUTH_DIR"       envDefault:"/etc/source-auth"`
+	SessionMasterKey   string `env:"SESSION_MASTER_KEY"    envDefault:""`
+	SessionMasterKeyID string `env:"SESSION_MASTER_KEY_ID" envDefault:"v1"`
 }
 
 // Validate checks invariants that env tags can't express. Called from

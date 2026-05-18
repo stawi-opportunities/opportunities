@@ -51,6 +51,21 @@ const (
 	// each submission attempt (success, failure, or skip). The writer
 	// sinks it to Iceberg for analytics.
 	TopicApplicationSubmitted = "candidates.applications.submitted.v1"
+
+	// TopicSessionCaptured is emitted by the matching service when the
+	// browser extension uploads a fresh authenticated session for a
+	// (candidate, source) pair. Analytics-only.
+	TopicSessionCaptured = "candidates.sessions.captured.v1"
+	// TopicSessionRequired is emitted by the autoapply handler when an
+	// intent arrives but no live session exists for the (candidate,
+	// source). The notification service maps this to a "Re-connect your
+	// account" CTA in the UI.
+	TopicSessionRequired = "candidates.sessions.required.v1"
+	// TopicSessionExpired is emitted by the autoapply replay leg when
+	// it detects a captured session is no longer accepted by the source
+	// (redirect to login, 401, captcha). Triggers UI re-onboarding and
+	// records the failure for analytics.
+	TopicSessionExpired = "candidates.sessions.expired.v1"
 )
 
 // Queue subject names for the durable, retry-safe handlers (per the
@@ -106,5 +121,8 @@ func AllTopics() []string {
 		TopicCandidateMatchesReady,
 		TopicOpportunityAutoFlagged,
 		TopicApplicationSubmitted,
+		TopicSessionCaptured,
+		TopicSessionRequired,
+		TopicSessionExpired,
 	}
 }

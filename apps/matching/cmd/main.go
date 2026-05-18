@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/cache"
+	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	fconfig "github.com/pitabwire/frame/config"
+	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
 
@@ -24,6 +27,9 @@ import (
 	scholarshipm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/scholarship"
 	tenderm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/tender"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	"github.com/stawi-opportunities/opportunities/pkg/authmanifest"
+	"github.com/stawi-opportunities/opportunities/pkg/authsession"
+	"github.com/stawi-opportunities/opportunities/pkg/authz/stawitok"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -56,6 +62,18 @@ func main() {
 		log.WithError(err).Fatal("opportunity registry: load failed")
 	}
 	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+
+	// Load the per-source authentication manifest registry. Missing or
+	// empty SOURCE_AUTH_DIR is tolerated — the registry stays empty and
+	// the session-capture endpoints serve an empty list. A YAML parse or
+	// validation failure is fatal so misconfiguration surfaces at boot.
+	authManifests, err := authmanifest.LoadFromDir(cfg.SourceAuthDir)
+	if err != nil {
+		log.WithError(err).Fatal("authmanifest: load failed")
+	}
+	log.WithField("source_auth_count", len(authManifests.Known())).
+		WithField("source_auth_dir", cfg.SourceAuthDir).
+		Info("authmanifest: loaded")
 
 	// Matcher registry: per-kind preference scorers. Phase 7.5 only
 	// constructs + logs; Phase 7.6/7.7 will route the candidates/match
@@ -236,6 +254,58 @@ func main() {
 		Search: search,
 	}))
 
+	// Source-auth manifest endpoints. Read-only metadata; cheap to
+	// expose unconditionally so the extension can fetch them even when
+	// session-capture itself is disabled.
+	mux.HandleFunc("GET /sources/auth-manifest", httpv1.AuthManifestListHandler(authManifests))
+	mux.HandleFunc("GET /sources/{source_type}/auth", httpv1.SourceAuthHandler(authManifests))
+
+	// Session-capture wiring. Skipped (with a loud warning) when any
+	// of the three keys is missing — the rest of the matching service
+	// still boots so local-dev cycles do not require Valkey + KMS
+	// setup just to iterate on the matching pipeline.
+	if cfg.SessionMasterKey != "" && cfg.SessionTokenKey != "" {
+		rawCache, err := buildSessionCache(ctx, cfg.ValkeyURL)
+		if err != nil {
+			log.WithError(err).Fatal("session-capture: cache wiring failed")
+		}
+		wrapper, err := authsession.NewLocalWrapperFromBase64(cfg.SessionMasterKey, cfg.SessionMasterKeyID)
+		if err != nil {
+			log.WithError(err).Fatal("session-capture: master key invalid")
+		}
+		issuer, err := stawitok.NewIssuerFromBase64(rawCache, cfg.SessionTokenKey)
+		if err != nil {
+			log.WithError(err).Fatal("session-capture: token key invalid")
+		}
+		sessionRepo := repository.NewCandidateSessionRepository(dbFn)
+		sessionStore := authsession.NewStore(sessionRepo, wrapper)
+
+		pairingDeps := httpv1.PairingDeps{
+			KV:       rawCache,
+			Issuer:   issuer,
+			Resolver: candidateRepo,
+		}
+		sessionDeps := httpv1.SessionDeps{
+			Svc:       svc,
+			Issuer:    issuer,
+			Resolver:  candidateRepo,
+			Recorder:  sessionStore,
+			Lister:    sessionRepo,
+			Manifests: authManifests,
+		}
+
+		mux.HandleFunc("POST /pairings", httpv1.PairingCreateHandler(pairingDeps))
+		mux.HandleFunc("POST /pairings/redeem", httpv1.PairingRedeemHandler(pairingDeps))
+		mux.HandleFunc("POST /pairings/refresh", httpv1.PairingRefreshHandler(pairingDeps))
+		mux.HandleFunc("POST /pairings/revoke", httpv1.PairingRevokeHandler(pairingDeps))
+		mux.HandleFunc("POST /candidates/me/sessions/{source_type}", httpv1.SessionCaptureHandler(sessionDeps))
+		mux.HandleFunc("GET /candidates/me/sessions", httpv1.SessionListHandler(sessionDeps))
+		mux.HandleFunc("DELETE /candidates/me/sessions/{source_type}", httpv1.SessionRevokeHandler(sessionDeps))
+		log.WithField("valkey", cfg.ValkeyURL != "").Info("session-capture: enabled")
+	} else {
+		log.Warn("session-capture: disabled (SESSION_MASTER_KEY or SESSION_TOKEN_KEY missing)")
+	}
+
 	// --- Trustage admin endpoints ---
 	mux.HandleFunc("POST /_admin/matches/weekly_digest",
 		adminv1.MatchesWeeklyHandler(adminv1.MatchesWeeklyDeps{
@@ -326,4 +396,17 @@ type embedderAdapter struct{ e *extraction.Extractor }
 
 func (a embedderAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
 	return a.e.Embed(ctx, text)
+}
+
+
+// buildSessionCache returns a RawCache suitable for pairing codes and
+// Stawi tokens. A Valkey URL produces the production driver; an empty
+// URL falls back to Frame's in-memory cache so local dev cycles work
+// without standing up Valkey. The in-memory fallback is NOT safe in
+// production — every restart drops every live token.
+func buildSessionCache(_ context.Context, valkeyURL string) (cache.RawCache, error) {
+	if valkeyURL == "" {
+		return cache.NewInMemoryCache(), nil
+	}
+	return framevalkey.New(cache.WithDSN(data.DSN(valkeyURL)))
 }

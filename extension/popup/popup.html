@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Stawi AutoApply</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Stawi AutoApply</h1>
+    </header>
+
+    <main>
+      <section id="unpaired" hidden>
+        <p>Paste the 6-character code from your Stawi dashboard.</p>
+        <form id="pair-form">
+          <input
+            id="pair-code"
+            type="text"
+            maxlength="6"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            required
+          />
+          <button type="submit">Pair</button>
+        </form>
+        <p class="error" id="pair-error" hidden></p>
+      </section>
+
+      <section id="paired" hidden>
+        <p class="ok">Extension paired ✓</p>
+        <h2>Supported sources</h2>
+        <ul id="source-list"></ul>
+        <p class="muted small">
+          Stawi captures session cookies for sources you log into above.
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

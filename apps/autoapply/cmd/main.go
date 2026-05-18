@@ -17,9 +17,12 @@ import (
 
 	autoapplyconfig "github.com/stawi-opportunities/opportunities/apps/autoapply/config"
 	"github.com/stawi-opportunities/opportunities/apps/autoapply/service"
+	"github.com/stawi-opportunities/opportunities/pkg/authmanifest"
+	"github.com/stawi-opportunities/opportunities/pkg/authsession"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/ats"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/browser"
+	"github.com/stawi-opportunities/opportunities/pkg/autoapply/sessionsubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
@@ -81,15 +84,53 @@ func main() {
 	)
 	defer browserClient.Close()
 
+	// Session-replay submitter — registered ahead of every other tier
+	// for sources with an extension-auth manifest. When the candidate
+	// has no captured session for the source, this returns
+	// Method=skipped/session_required and the next tier gets a chance.
+	// The autoapply handler then emits SessionRequiredV1 so the UI
+	// surfaces a reconnect CTA.
+	authManifests, err := authmanifest.LoadFromDir(cfg.SourceAuthDir)
+	if err != nil {
+		log.WithError(err).Fatal("autoapply: source-auth manifest load failed")
+	}
+	log.WithField("source_auth_count", len(authManifests.Known())).
+		WithField("source_auth_dir", cfg.SourceAuthDir).
+		Info("autoapply: source-auth manifests loaded")
+
+	var sessionProvider authsession.SessionProvider
+	if cfg.SessionMasterKey != "" {
+		wrapper, werr := authsession.NewLocalWrapperFromBase64(cfg.SessionMasterKey, cfg.SessionMasterKeyID)
+		if werr != nil {
+			log.WithError(werr).Fatal("autoapply: session master key invalid")
+		}
+		if err := gdb.AutoMigrate(&domain.CandidateSession{}); err != nil {
+			log.WithError(err).Warn("autoapply: auto-migrate candidate_sessions failed")
+		}
+		sessionRepo := repository.NewCandidateSessionRepository(pool.DB)
+		sessionProvider = authsession.NewStore(sessionRepo, wrapper)
+		log.Info("autoapply: session-replay submitter enabled")
+	} else {
+		log.Warn("autoapply: SESSION_MASTER_KEY unset — session-replay disabled")
+	}
+
 	// Build tier list. LLM tier is inserted before email only when
 	// InferenceBaseURL is configured (Validate already enforced
 	// InferenceModel != "" in that case).
-	tiers := []autoapply.Submitter{
+	tiers := []autoapply.Submitter{}
+	if sessionProvider != nil {
+		tiers = append(tiers, sessionsubmitter.New(sessionsubmitter.Config{
+			Manifests:   authManifests,
+			Sessions:    sessionProvider,
+			HTTPTimeout: 30 * time.Second,
+		}))
+	}
+	tiers = append(tiers,
 		ats.NewGreenhouseSubmitter(browserClient),
 		ats.NewLeverSubmitter(browserClient),
 		ats.NewWorkdaySubmitter(browserClient),
 		ats.NewSmartRecruitersSubmitter(browserClient),
-	}
+	)
 	if cfg.InferenceBaseURL != "" {
 		llm := newOpenAIClient(cfg.InferenceBaseURL, cfg.InferenceAPIKey, cfg.InferenceModel)
 		tiers = append(tiers, autoapply.NewLLMFormSubmitter(browserClient, llm))
