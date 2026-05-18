@@ -8,6 +8,7 @@ import (
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
+	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -72,19 +73,32 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	}
 	val := env.Payload
 
+	// Cache calls are best-effort: a degraded JetStream KV (timeout,
+	// missing bucket, transient) used to nack the entire variant,
+	// triggering NATS redelivery on a consumer with ack_wait=600s and
+	// pinning the worker-events ack_floor for minutes per stuck
+	// message. Treat KV failures as "cluster not found" — dedup
+	// behaves as if every variant is a fresh cluster, which costs a
+	// downstream re-clustering but keeps the canonical chain flowing.
+	// Logs at WARN so ops can see the degradation but the pipeline
+	// stays unblocked.
 	clusterID, hit, err := h.cache.Get(ctx, val.HardKey)
 	if err != nil {
-		return err
+		util.Log(ctx).WithError(err).
+			WithField("hard_key", val.HardKey).
+			Warn("dedup: cache.Get failed; treating as cluster miss")
+		hit = false
 	}
 	isNew := false
 	if !hit {
 		clusterID = xid.New().String()
 		isNew = true
-		// TTL 0 means "no expiry" for Frame caches that honour it;
-		// backends that don't get the framework default. Dedup
-		// assignments are permanent.
+		// Best-effort Set: if it fails, we just lose this dedup entry
+		// for next time. Don't abort the chain on KV write errors.
 		if err := h.cache.Set(ctx, val.HardKey, clusterID, 0*time.Second); err != nil {
-			return err
+			util.Log(ctx).WithError(err).
+				WithField("hard_key", val.HardKey).
+				Warn("dedup: cache.Set failed; cluster mapping lost for next variant")
 		}
 	}
 
@@ -95,7 +109,10 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	if h.clusterCache != nil {
 		prev, _, gerr := h.clusterCache.Get(ctx, clusterID)
 		if gerr != nil {
-			return gerr
+			util.Log(ctx).WithError(gerr).
+				WithField("cluster_id", clusterID).
+				Warn("dedup: clusterCache.Get failed; starting from empty snapshot")
+			prev = kv.ClusterSnapshot{}
 		}
 		merged := mergeAttributes(prev.Attributes, val.Attributes)
 		prev.ClusterID = clusterID
@@ -110,7 +127,9 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 			prev.SourceID = val.SourceID
 		}
 		if err := h.clusterCache.Set(ctx, clusterID, prev, 0*time.Second); err != nil {
-			return err
+			util.Log(ctx).WithError(err).
+				WithField("cluster_id", clusterID).
+				Warn("dedup: clusterCache.Set failed; canonical merge will start from empty snapshot")
 		}
 	}
 
