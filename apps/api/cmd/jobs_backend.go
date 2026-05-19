@@ -233,7 +233,7 @@ func (p *jobsPostgres) GetBySlug(ctx context.Context, slug string) (*job, error)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: get by slug: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return nil, nil
 	}
@@ -295,7 +295,7 @@ func (p *jobsPostgres) list(ctx context.Context, filter []map[string]any, limit 
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]job, 0, limit)
 	for rows.Next() {
 		j, scanErr := scanJob(rows)
@@ -357,14 +357,14 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 			var k sql.NullString
 			var n int
 			if err := rows.Scan(&k, &n); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, err
 			}
 			if k.Valid && k.String != "" {
 				buckets[k.String] = n
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 		out[f.name] = buckets
 	}
 	return out, nil
@@ -433,7 +433,7 @@ func (p *jobsPostgres) Search(
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("postgres: search: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	hits := make([]job, 0, limit)
 	for rows.Next() {
 		// The BM25 query has one extra column; scanJob's known shape
@@ -685,8 +685,3 @@ func intToStr(n int) string {
 
 // Compile-time check that jobsPostgres satisfies JobsBackend.
 var _ JobsBackend = (*jobsPostgres)(nil)
-
-// Sentinel for callers that want to know whether a "not found" is
-// distinguishable from a query error. errors.Is(err, errPostgresNoRow)
-// → true only when the underlying driver signalled sql.ErrNoRows.
-var errPostgresNoRow = errors.New("postgres: no row")
