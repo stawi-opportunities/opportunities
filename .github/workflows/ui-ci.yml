@@ -1,0 +1,42 @@
+name: UI CI
+
+on:
+  push:
+    paths:
+      - 'ui/**'
+  pull_request:
+    paths:
+      - 'ui/**'
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies (ui/app)
+        run: |
+          cd ui/app
+          npm ci
+
+      - name: Typecheck
+        run: |
+          cd ui/app
+          npm run typecheck
+
+      - name: Lint
+        run: |
+          cd ui/app
+          npm run lint
+
+      - name: Format check
+        run: |
+          cd ui/app
+          npx prettier --check "**/*.{ts,tsx,js,json,md}"

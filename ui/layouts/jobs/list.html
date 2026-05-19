@@ -1,9 +1,90 @@
 {{ define "main" }}
 <!-- Rendered by ui/app/src/components/JobList.tsx. -->
 <div id="mount-job-list">
-  <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-    <h1 class="text-3xl font-bold text-gray-900">All jobs</h1>
-    <div class="mt-6 h-40 animate-pulse rounded-lg bg-gray-100"></div>
+  <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-12">
+      <div class="flex-1">
+        <div class="flex items-center justify-between gap-4">
+          <h1 class="text-3xl font-bold text-gray-900">All jobs</h1>
+          <div class="hidden sm:flex items-center gap-3">
+            <a href="/onboarding/" class="btn-primary">Create profile</a>
+          </div>
+        </div>
+
+        <!-- Toolbar: search + quick filters -->
+        <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <div class="flex-1">
+            <label for="site-search" class="sr-only">Search jobs</label>
+            <div class="relative">
+              <input id="site-search" name="q" class="input-field" placeholder="Search roles, companies, locations" aria-label="Search jobs" />
+              <button aria-hidden="true" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-navy-900">🔍</button>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button class="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-white">Remote</button>
+            <button class="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-white">Full-time</button>
+            <button class="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-white">Entry</button>
+          </div>
+        </div>
+
+        <!-- Client-side app mounts here; provide a rich skeleton for no-js/first-paint -->
+        <div class="mt-6" role="status" aria-live="polite">
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {{ range seq 6 }}
+            <article class="card p-4">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <div class="h-4 w-3/5 rounded bg-gray-200"></div>
+                  <div class="mt-3 h-3 w-1/2 rounded bg-gray-200"></div>
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    <span class="h-6 w-16 rounded-full bg-gray-200"></span>
+                    <span class="h-6 w-12 rounded-full bg-gray-200"></span>
+                    <span class="h-6 w-10 rounded-full bg-gray-200"></span>
+                  </div>
+                </div>
+                <div class="flex flex-col items-end gap-2 text-right">
+                  <div class="h-3 w-14 rounded bg-gray-200"></div>
+                  <div class="h-3 w-10 rounded bg-gray-200"></div>
+                </div>
+              </div>
+            </article>
+            {{ end }}
+          </div>
+        </div>
+
+        <noscript>
+          <div class="mt-6 panel">
+            <p class="text-sm text-gray-700">JavaScript is required to interact with the live job list. You can still browse curated pages: <a href="/categories/" class="text-accent-700 underline">browse categories</a>.</p>
+          </div>
+        </noscript>
+      </div>
+
+      <!-- Filters sidebar (progressive enhancement: visible on large screens) -->
+      <aside class="hidden w-72 shrink-0 lg:block">
+        <div class="panel">
+          <h3 class="text-sm font-semibold text-gray-700">Filters</h3>
+          <div class="mt-4 space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-600">Location</label>
+              <input class="input-field mt-2" placeholder="e.g. Nairobi, Remote" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600">Employment type</label>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button class="badge-type">Full-time</button>
+                <button class="badge-type">Part-time</button>
+                <button class="badge-type">Contract</button>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600">Salary</label>
+              <input class="input-field mt-2" placeholder="e.g. 3000-5000" />
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
   </div>
 </div>
 {{ end }}

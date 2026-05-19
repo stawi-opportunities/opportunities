@@ -1,9 +1,11 @@
 {{ define "main" }}
 {{ partial "breadcrumbs.html" . }}
 <article class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-  <h1 class="text-3xl font-bold text-gray-900">{{ .Title }}</h1>
-  <div class="prose mt-6 max-w-none">
-    {{ .Content }}
+  <div class="rounded-[2rem] bg-white p-8 shadow-sm ring-1 ring-gray-200 sm:p-10">
+    <h1 class="text-3xl font-bold text-gray-900">{{ .Title }}</h1>
+    <div class="prose mt-8 max-w-none prose-a:text-accent-600 prose-a:font-semibold prose-blockquote:border-accent-300 prose-blockquote:bg-accent-50 prose-img:rounded-3xl">
+      {{ .Content }}
+    </div>
   </div>
 </article>
 {{ end }}
