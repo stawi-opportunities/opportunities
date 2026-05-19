@@ -29,6 +29,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 func main() {
@@ -275,6 +276,12 @@ func main() {
 	geocoder := geocode.New()
 	normalizer := normalize.New(geocoder)
 
+	// pipeline_variants store — soft-fails on Postgres outage. Crawler
+	// already has dbFn, so we wire the store directly. Writes the
+	// ingested ledger row before the NATS emit (and rejected rows on
+	// Verify failures).
+	variantStore := variantstate.NewStore(dbFn)
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:               svc,
 		Sources:           sourceRepo,
@@ -286,6 +293,7 @@ func main() {
 		PageFetcher:       httpClient,
 		EnrichConcurrency: cfg.EnrichConcurrency,
 		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
+		VariantStore:      variantStore,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)

@@ -15,7 +15,10 @@ import (
 	"time"
 
 	env "github.com/caarlos0/env/v11"
+	"github.com/pitabwire/frame"
 	frameclient "github.com/pitabwire/frame/client"
+	fconfig "github.com/pitabwire/frame/config"
+	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
@@ -26,9 +29,32 @@ import (
 )
 
 type apiConfig struct {
+	// Embed Frame's ConfigurationDefault so DATABASE_URL is parsed by
+	// the same path Worker/Crawler/Materializer use. Frame's
+	// WithDatastore() reads from this struct via the FrameConfig
+	// adapter exposed below.
+	fconfig.ConfigurationDefault
+
 	ServerPort       string `env:"SERVER_PORT"       envDefault:":8082"`
 	ManticoreURL     string `env:"MANTICORE_URL"     envDefault:""`
 	ManticoreCluster string `env:"MANTICORE_CLUSTER" envDefault:""`
+
+	// SearchBackend picks which jobs backend serves read traffic:
+	//
+	//   "manticore" (default) — historical Manticore RT index
+	//   "postgres"            — opportunities table + pg_search BM25 +
+	//                           pgvectorscale DiskANN (Phase 6)
+	//
+	// Any other value falls back to manticore. The cutover is gated on
+	// the SPA accepting real slugs (not hashID-stringified numerics) in
+	// /api/v2/jobs/{slug} routes — searchResult.slug already drives URL
+	// generation, so once the backend returns a real slug there the
+	// rest follows.
+	SearchBackend string `env:"SEARCH_BACKEND" envDefault:"manticore"`
+
+	// DatabaseURL is the CNPG pooler-rw connection string used by the
+	// Postgres backend. Required when SEARCH_BACKEND=postgres.
+	DatabaseURL string `env:"DATABASE_URL" envDefault:""`
 
 	// Cloudflare R2 — one account token authorised on all three
 	// product-opportunities buckets. The api publishes Hugo snapshots
@@ -90,28 +116,59 @@ func main() {
 	}
 	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
 
-	if cfg.ManticoreURL == "" {
-		log.Fatal("api: MANTICORE_URL is required")
+	// Frame service — pulls in DatastoreManager which gives us the
+	// CNPG pool the rest of the platform uses. We bring the api under
+	// the same wiring as worker/crawler/materializer per the golang-
+	// patterns skill ("Database — frame.WithDatastore()"). HTTP serving
+	// stays in the existing http.Server below; Frame's HTTP handler is
+	// not registered because the api owns its own mux + middleware.
+	ctx, svc := frame.NewServiceWithContext(ctx,
+		frame.WithConfig(&cfg),
+		frame.WithDatastore(),
+	)
+	defer svc.Stop(ctx)
+
+	// jobs backend selection. Direction change: "straight to Postgres
+	// — no Manticore double-write". jobsPostgres is the default; the
+	// legacy Manticore backend stays available behind
+	// SEARCH_BACKEND=manticore for the 30-day rollback window.
+	var jm JobsBackend
+	switch cfg.SearchBackend {
+	case "manticore":
+		if cfg.ManticoreURL == "" {
+			log.Fatal("api: SEARCH_BACKEND=manticore requires MANTICORE_URL")
+		}
+		frameHTTPClient := frameclient.NewHTTPClient(ctx,
+			frameclient.WithHTTPTraceRequests(),
+		)
+		manticore, mErr := searchindex.Open(searchindex.Config{
+			URL:        cfg.ManticoreURL,
+			HTTPClient: frameHTTPClient,
+			Cluster:    cfg.ManticoreCluster,
+		})
+		if mErr != nil {
+			log.WithError(mErr).Fatal("api: manticore open failed")
+		}
+		defer func() { _ = manticore.Close() }()
+		jm = newJobsManticore(manticore)
+		log.Info("api: jobs backend = manticore (legacy)")
+	default:
+		// Default: Postgres. opportunities table populated by
+		// worker.canonical + materializer admin handlers.
+		pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
+		if pool == nil {
+			log.Fatal("api: DATABASE_URL required for jobs backend = postgres")
+		}
+		jm = newJobsPostgres(pool.DB)
+		log.Info("api: jobs backend = postgres")
 	}
 
-	// Frame-managed HTTP client (OTEL trace propagation + retry policy).
-	// Used by Manticore + analytics + R2 deploy-hook wiring; the api
-	// still owns its own http.Server so we don't take on the full Frame
-	// service lifecycle.
+	// Frame-managed HTTP client (OTEL trace propagation + retry policy)
+	// for analytics + R2 deploy-hook wiring. Manticore opens its own
+	// client above when SEARCH_BACKEND=manticore.
 	frameHTTPClient := frameclient.NewHTTPClient(ctx,
 		frameclient.WithHTTPTraceRequests(),
 	)
-
-	manticore, err := searchindex.Open(searchindex.Config{
-		URL:        cfg.ManticoreURL,
-		HTTPClient: frameHTTPClient,
-		Cluster:    cfg.ManticoreCluster,
-	})
-	if err != nil {
-		log.WithError(err).Fatal("api: manticore open failed")
-	}
-	defer func() { _ = manticore.Close() }()
-	jm := newJobsManticore(manticore)
 
 	var r2Publisher *publish.R2Publisher
 	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
@@ -188,10 +245,15 @@ func main() {
 	// well-formed all-zero shape (callers can branch on that).
 	mux.HandleFunc("GET /opportunities/{slug}/stats", statsHandler(countersClient))
 
-	// Hugo snapshot publishing — sources from Manticore idx_opportunities_rt.
+	// Hugo snapshot publishing — Manticore-specific legacy path. Only
+	// wired when the api is running on the Manticore backend; with
+	// SEARCH_BACKEND=postgres the snapshot publisher will be replaced
+	// by a Postgres-sourced equivalent (see SHARED_TASK_NOTES.md).
 	if r2Publisher != nil {
-		mux.HandleFunc("POST /admin/backfill",
-			backfillManticoreHandler(jm, r2Publisher, cfg.PublishMinQuality))
+		if jmConcrete, ok := jm.(*jobsManticore); ok {
+			mux.HandleFunc("POST /admin/backfill",
+				backfillManticoreHandler(jmConcrete, r2Publisher, cfg.PublishMinQuality))
+		}
 	}
 
 	// Source-management admin surface. Optional: only wired when the
@@ -205,12 +267,15 @@ func main() {
 	// "should the api own a DB?" decision a single env var.
 	if cfg.SourceAdminEnabled {
 		registerSourcesAdmin(ctx, mux, &cfg, reg)
-		registerFlagsAdmin(ctx, mux, jm)
-		// Top-applied lives on the api side (Valkey-backed) — wired
-		// alongside the flag-admin toggle so operators get both
-		// dashboards (top-flagged + top-applied) at the same time.
-		mux.HandleFunc("GET /admin/opportunities/top-applied",
-			requireAdmin(topAppliedHandler(jm, countersClient)))
+		// flags-admin + top-applied are Manticore-keyed (they look up
+		// by hashID). They light up only on the legacy backend; the
+		// Postgres-keyed replacement lands when the slug-routing
+		// migration completes (see SHARED_TASK_NOTES.md).
+		if jmConcrete, ok := jm.(*jobsManticore); ok {
+			registerFlagsAdmin(ctx, mux, jmConcrete)
+			mux.HandleFunc("GET /admin/opportunities/top-applied",
+				requireAdmin(topAppliedHandler(jmConcrete, countersClient)))
+		}
 	}
 
 	// Verify-stage rejection visibility — operator-facing read of the

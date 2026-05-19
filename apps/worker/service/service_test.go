@@ -87,7 +87,7 @@ func TestWorkerPipelineE2E(t *testing.T) {
 
 	// Build the service. We pass nil extractor (validate fail-opens with
 	// score=0.5) and nil publisher (publish handler is a no-op).
-	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil, false, false)
+	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil, nil, false, false, "valkey")
 
 	// Register a collector on TopicCanonicalsUpserted BEFORE the pipeline
 	// handlers so we can observe the canonical-merge output. We only
@@ -226,7 +226,7 @@ func TestPipeline_ScholarshipPropagatesAttributes(t *testing.T) {
 		t.Fatal("cluster cache not wired")
 	}
 
-	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil, false, false)
+	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil, nil, false, false, "valkey")
 
 	colCanonical := &collector{topic: eventsv1.TopicCanonicalsUpserted}
 	svc.EventsManager().Add(colCanonical)

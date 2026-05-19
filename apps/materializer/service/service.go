@@ -19,22 +19,26 @@ import (
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // Service is the materializer composition root.
+//
+// Post-consolidation the materializer is Postgres-only: every handler
+// writes through the variantstate Store into the opportunities table.
+// Worker.canonical writes the canonical row in-process, so the
+// CanonicalUpsertHandler here is a no-op that just acks the
+// CanonicalUpsertedV1 event. The remaining handlers (Embedding,
+// SourceStopped, AutoFlagged, CanonicalExpired) push admin-state
+// changes directly into opportunities.
 type Service struct {
-	svc       *frame.Service
-	manticore *searchindex.Client
-	bulkBatch int
+	svc   *frame.Service
+	store *variantstate.Store
 }
 
-// NewService wires the Frame service and Manticore client.
-// bulkBatch is currently unused (handlers do single-doc replaces);
-// it is retained so future buffered-handler variants can be added
-// without a signature change.
-func NewService(svc *frame.Service, mc *searchindex.Client, bulkBatch int) *Service {
-	return &Service{svc: svc, manticore: mc, bulkBatch: bulkBatch}
+// NewService wires the Frame service and the opportunities-table store.
+func NewService(svc *frame.Service, store *variantstate.Store) *Service {
+	return &Service{svc: svc, store: store}
 }
 
 // RegisterSubscriptions wires one handler per topic into the Frame
@@ -120,18 +124,16 @@ func (h *SourceStoppedHandler) Execute(ctx context.Context, p any) error {
 	if env.Payload.SourceID == "" {
 		return errors.New("source-stopped: empty source_id")
 	}
-	id := hashID(env.Payload.SourceID)
-	if err := h.s.manticore.DeleteWhere(ctx, "idx_opportunities_rt", "source_id", id); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("source_id", env.Payload.SourceID).
-			Error("materializer: source-stopped delete failed")
-		return fmt.Errorf("source-stopped: delete: %w", err)
+	// Postgres-only: hide every canonical with this source_id. Manticore
+	// is being decommissioned; the API reads from opportunities directly.
+	if err := h.s.store.HideBySource(ctx, env.Payload.SourceID, "source_stopped:"+env.Payload.Reason); err != nil {
+		return fmt.Errorf("source-stopped: hide: %w", err)
 	}
 	util.Log(ctx).
 		WithField("source_id", env.Payload.SourceID).
 		WithField("reason", env.Payload.Reason).
 		WithField("stopped_by", env.Payload.StoppedBy).
-		Info("materializer: source stopped, jobs removed from search")
+		Info("materializer: source stopped, opportunities hidden")
 	return nil
 }
 
@@ -163,19 +165,17 @@ func (h *CanonicalUpsertHandler) Validate(_ context.Context, p any) error {
 }
 
 func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
-	raw := p.(*json.RawMessage)
-	var env eventsv1.Envelope[eventsv1.CanonicalUpsertedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
-		return fmt.Errorf("canonical-upsert: decode: %w", err)
-	}
-	doc := buildDocFromCanonical(env.Payload)
-	id := hashID(env.Payload.OpportunityID)
-	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", env.Payload.OpportunityID).
-			Error("materializer: canonical upsert failed")
-		return fmt.Errorf("canonical-upsert: replace: %w", err)
-	}
+	// Worker.CanonicalHandler already UPSERTs opportunities in-process
+	// before emitting CanonicalUpsertedV1 (see worker/service/canonical.go).
+	// This handler stays subscribed so Frame loose-mode still has a
+	// concrete handler to ack on, but does no work — the canonical row
+	// is already in Postgres by the time we receive the event.
+	//
+	// Keeping the subscription avoids strict-mode redelivery storms if
+	// SetStrict ever flips back on, and gives ops a clear place to add
+	// downstream side-effects (notifications, web-hooks) later.
+	_ = p
+	_ = ctx
 	return nil
 }
 
@@ -269,15 +269,8 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 	if err := json.Unmarshal(*raw, &env); err != nil {
 		return fmt.Errorf("canonical-expired: decode: %w", err)
 	}
-	doc := map[string]any{
-		"deadline": env.Payload.ExpiredAt.Unix(),
-	}
-	id := hashID(env.Payload.OpportunityID)
-	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", env.Payload.OpportunityID).
-			Error("materializer: canonical expired patch failed")
-		return fmt.Errorf("canonical-expired: update: %w", err)
+	if err := h.s.store.ExpireCanonical(ctx, env.Payload.OpportunityID, env.Payload.ExpiredAt); err != nil {
+		return fmt.Errorf("canonical-expired: expire: %w", err)
 	}
 	return nil
 }
@@ -364,25 +357,8 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 		return fmt.Errorf("embedding: decode: %w", err)
 	}
 	pl := env.Payload
-	doc := map[string]any{
-		"embedding": pl.Vector,
-	}
-	id := hashID(pl.OpportunityID)
-	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		// Manticore /update does not support partial updates of
-		// float_vector knn columns — every embedding write returns
-		// 400 "MVA elements should be integers" even though embedding
-		// is declared `float_vector`. Until the embedding refresh
-		// path is rewritten to issue a full /replace (which requires
-		// re-fetching the canonical doc), accept the failure and ack
-		// the message: text search + listing keep working, only
-		// vector-search ranking is degraded. Continuing to nack would
-		// stall the rest of the materializer behind a poison-pill
-		// stream of embedding events that can never succeed.
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", pl.OpportunityID).
-			Warn("materializer: embedding update skipped (Manticore /update cannot patch float_vector — vector search will be stale)")
-		return nil
+	if err := h.s.store.UpdateEmbedding(ctx, pl.OpportunityID, pl.Vector); err != nil {
+		return fmt.Errorf("embedding: update: %w", err)
 	}
 	return nil
 }
@@ -433,30 +409,14 @@ func (h *AutoFlaggedHandler) Execute(ctx context.Context, p any) error {
 	}
 	pl := env.Payload
 	if pl.OpportunityID == "" {
-		// Slug-only events are non-fatal — log and skip. The api emits
-		// canonical_id when it can resolve one; events without it
-		// likely point at a slug whose canonical hasn't materialized
-		// yet (race) and operator-driven action via /admin/flags
-		// covers the same outcome.
 		util.Log(ctx).
 			WithField("slug", pl.Slug).
 			WithField("flag_count", pl.FlagCount).
-			Warn("materializer: auto-flag event missing opportunity_id; skipping Manticore update")
+			Warn("materializer: auto-flag event missing opportunity_id; nothing to hide")
 		return nil
 	}
-	// Push deadline to "now" so the search filter (deadline > now)
-	// drops the row immediately. Mirrors the CanonicalExpiredHandler
-	// path so liveness has a single source of truth on the schema.
-	doc := map[string]any{
-		"deadline": time.Now().UTC().Unix(),
-	}
-	id := hashID(pl.OpportunityID)
-	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", pl.OpportunityID).
-			WithField("slug", pl.Slug).
-			Error("materializer: auto-flag update failed")
-		return fmt.Errorf("auto-flagged: update: %w", err)
+	if err := h.s.store.HideByCanonical(ctx, pl.OpportunityID, "auto_flagged"); err != nil {
+		return fmt.Errorf("auto-flagged: hide: %w", err)
 	}
 	util.Log(ctx).
 		WithField("opportunity_id", pl.OpportunityID).

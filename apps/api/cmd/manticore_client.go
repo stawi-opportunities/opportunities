@@ -35,9 +35,17 @@ func hashID(s string) uint64 {
 // (numeric primary key) and a deadline-driven "active" predicate.
 type job struct {
 	// Numeric primary key — hashID(opportunity_id) on write. Stable
-	// across replays; the only field clients can use to dereference
-	// a single opportunity.
+	// across replays; populated by the Manticore backend, zero on the
+	// Postgres backend (which uses Slug/CanonicalID as the public
+	// identifier).
 	ID uint64 `json:"id"`
+	// Public string identifier. Set by the Postgres backend to the
+	// real opportunities.slug; the Manticore backend leaves this empty
+	// and toSearchResult falls back to strconv.FormatUint(ID,10).
+	Slug string `json:"slug,omitempty"`
+	// CanonicalID is the xid that worker.canonical assigns. Postgres
+	// backend fills it; Manticore backend leaves empty.
+	CanonicalID string `json:"canonical_id,omitempty"`
 	// Polymorphic discriminator: job, scholarship, tender, deal, funding.
 	Kind string `json:"kind,omitempty"`
 	// Universal text — written by buildDocFromCanonical.
@@ -107,20 +115,97 @@ func activeFilter() []map[string]any {
 	}
 }
 
-// GetByID fetches a single opportunity by its public string identifier
-// (slug or canonical_id — the polymorphic schema collapses both into
-// the same numeric primary key). The lookup hashes the supplied string
-// the same way materializer.hashID hashes the canonical_id on write,
-// so passing whichever identifier the URL routing surfaces yields the
-// right row. The legacy "match status=active AND (canonical_id=X OR
-// slug=X)" path is replaced because neither column exists in the
-// polymorphic idx_opportunities_rt; rows are kept active by deletion
-// of expired ones (see activeFilter).
+// GetBySlug fetches by the public string identifier. The polymorphic
+// idx_opportunities_rt schema doesn't carry a slug column, so this
+// hashes the supplied string the same way materializer.hashID hashes
+// the canonical_id on write — when the SPA sends a Manticore-era
+// numeric slug ("123456…") this resolves directly; when it sends a
+// real Postgres-era slug ("software-engineer-acme-…") the hash misses
+// and we return (nil, nil) for a 404. The backend cutover (Phase 6
+// → Phase 7) is gated on the SPA switching to real slugs.
 //
 // Returns (nil, nil) for not-found.
-func (j *jobsManticore) GetByID(ctx context.Context, id string) (*job, error) {
-	return j.GetByNumericID(ctx, hashID(id))
+func (j *jobsManticore) GetBySlug(ctx context.Context, slug string) (*job, error) {
+	return j.GetByNumericID(ctx, hashID(slug))
 }
+
+// GetByID is retained for callers (flags_admin, endpoints_v2) that
+// haven't been migrated to the slug-keyed JobsBackend interface yet.
+// Same semantics as GetBySlug — the input is hashed to the numeric
+// primary key.
+func (j *jobsManticore) GetByID(ctx context.Context, id string) (*job, error) {
+	return j.GetBySlug(ctx, id)
+}
+
+// SearchFiltered satisfies JobsBackend by exposing the lower-cased
+// implementation under the interface's exported name.
+func (j *jobsManticore) Search(
+	ctx context.Context,
+	q string,
+	filter []map[string]any,
+	sort string,
+	limit int,
+	aggs map[string]any,
+) ([]job, int, map[string]map[string]int, error) {
+	boolQ := map[string]any{"filter": filter}
+	if q != "" {
+		boolQ["must"] = []map[string]any{{"match": map[string]any{"*": q}}}
+	}
+	query := map[string]any{
+		"index": "idx_opportunities_rt",
+		"query": map[string]any{"bool": boolQ},
+		"limit": limit,
+	}
+	if sort != "" {
+		query["sort"] = []any{map[string]any{sort: "desc"}}
+	}
+	if aggs != nil {
+		query["aggs"] = aggs
+	}
+	raw, err := j.c.Search(ctx, query)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	var parsed struct {
+		Hits struct {
+			Total int `json:"total"`
+			Hits  []struct {
+				ID     uint64         `json:"_id"`
+				Source map[string]any `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+		Aggregations map[string]struct {
+			Buckets []struct {
+				Key      string `json:"key"`
+				DocCount int    `json:"doc_count"`
+			} `json:"buckets"`
+		} `json:"aggregations"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, 0, nil, fmt.Errorf("manticore decode: %w", err)
+	}
+	hits := make([]job, 0, len(parsed.Hits.Hits))
+	for _, h := range parsed.Hits.Hits {
+		jrow, derr := decodeHit(h.ID, h.Source)
+		if derr != nil {
+			continue
+		}
+		hits = append(hits, jrow)
+	}
+	out := map[string]map[string]int{}
+	for name, agg := range parsed.Aggregations {
+		out[name] = map[string]int{}
+		for _, b := range agg.Buckets {
+			if b.Key != "" {
+				out[name][b.Key] = b.DocCount
+			}
+		}
+	}
+	return hits, parsed.Hits.Total, out, nil
+}
+
+// Compile-time assertion that jobsManticore satisfies JobsBackend.
+var _ JobsBackend = (*jobsManticore)(nil)
 
 // GetByNumericID looks up by the raw uint64 Manticore primary key.
 // Callers that already hold the hashed id (e.g. internal pipeline
@@ -232,7 +317,7 @@ func (j *jobsManticore) Facets(ctx context.Context) (map[string]map[string]int, 
 	return out, nil
 }
 
-func (j *jobsManticore) searchFiltered(ctx context.Context, filter []map[string]any, limit int, sortField string) ([]job, error) {
+func (j *jobsManticore) SearchFiltered(ctx context.Context, filter []map[string]any, limit int, sortField string) ([]job, error) {
 	q := map[string]any{
 		"index": "idx_opportunities_rt",
 		"query": map[string]any{"bool": map[string]any{"filter": filter}},

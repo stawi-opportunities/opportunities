@@ -11,6 +11,7 @@ import (
 	framejskv "github.com/pitabwire/frame/cache/jetstreamkv"
 	cachevalkey "github.com/pitabwire/frame/cache/valkey"
 	"github.com/pitabwire/frame/data"
+	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -23,6 +24,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 
 	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
 	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
@@ -74,12 +76,29 @@ func main() {
 		util.Log(ctx).Fatal("worker: no cache backend configured (set VALKEY_DSN or CACHE_NATS_URL)")
 	}
 
+	// Service wiring. WithDatastore adds the Postgres connection that
+	// the pipeline_variants ledger (pkg/variantstate) writes to. The
+	// DSN comes from DATABASE_URL the same way the crawler's already
+	// consumes it.
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithConfig(&cfg),
+		frame.WithDatastore(),
 		frame.WithCacheManager(),
 		frame.WithCache("worker", raw),
 	)
 	defer svc.Stop(ctx)
+
+	// pipeline_variants store — the master ledger that lets ops answer
+	// "where is variant X" and that replaces NATS purge as a recovery
+	// strategy. Soft-fail on Postgres outages: writes degrade
+	// observability but never stall the chain.
+	var variantStore *variantstate.Store
+	if pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName); pool != nil {
+		variantStore = variantstate.NewStore(pool.DB)
+		util.Log(ctx).Info("worker: pipeline_variants store wired")
+	} else {
+		util.Log(ctx).Warn("worker: no datastore pool — pipeline_variants writes disabled")
+	}
 
 	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
 	// later phases consult the registry on the publish/index paths.
@@ -149,7 +168,7 @@ func main() {
 		"", // no Pages deploy hook for the worker
 	)
 
-	service := workersvc.NewService(svc, ex, publisher, reg, dedupCache, clusterCache, cfg.TranslationLangs, cfg.ValidationSkipLLM, cfg.DedupSkipCache)
+	service := workersvc.NewService(svc, ex, publisher, reg, dedupCache, clusterCache, variantStore, cfg.TranslationLangs, cfg.ValidationSkipLLM, cfg.DedupSkipCache, cfg.DedupReadBackend)
 
 	// S3-compatible client for the R2 content bucket (used by kv/rebuild
 	// to list <kind>/*.json slug files). Same R2 account credentials —

@@ -28,6 +28,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // SourceGetter is the narrow repository slice the crawl-request handler
@@ -67,6 +68,12 @@ type CrawlRequestDeps struct {
 	// seeded in init(). Tests can inject a fixed seed to make sampling
 	// predictable.
 	Rand *rand.Rand
+	// VariantStore writes to the pipeline_variants Postgres ledger so
+	// ops can answer "where is variant X?" without scanning NATS. nil
+	// disables ledger writes (the worker's defensive Upsert backstops
+	// missing rows). Soft-fail throughout: a Postgres outage degrades
+	// observability but does not stall the chain.
+	VariantStore *variantstate.Store
 }
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
@@ -329,6 +336,20 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				ScrapedAt:     now,
 			}
 
+			// Write the ledger row BEFORE the NATS emit so the worker's
+			// AdvanceStage(ingested → normalized) always finds an existing
+			// row. The normalize handler also Upserts defensively for
+			// the rare case where Postgres replication lag puts the row
+			// behind the NATS delivery, but the canonical path is:
+			// crawler writes → crawler emits → worker reads.
+			_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
+				VariantID:    eventPayload.VariantID,
+				SourceID:     eventPayload.SourceID,
+				HardKey:      eventPayload.HardKey,
+				Kind:         eventPayload.Kind,
+				CurrentStage: variantstate.StageIngested,
+			})
+
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
 				eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload),
 			); emitErr != nil {
@@ -464,6 +485,22 @@ func (h *CrawlRequestHandler) publishRejected(ctx context.Context, sourceID, kin
 		Reasons:    reasons,
 		RejectedAt: time.Now().UTC(),
 	}
+	// Ledger row at terminal stage 'rejected' — never enters the
+	// normal chain so AdvanceStage wouldn't find a prior row. We
+	// write directly with CurrentStage=rejected; HardKey carries the
+	// computed dedup key when available so ops can correlate
+	// rejections with later accepted variants of the same logical job.
+	hk := opp.ExternalID
+	if hk == "" {
+		hk = opp.Title
+	}
+	_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
+		VariantID:    rej.VariantID,
+		SourceID:     sourceID,
+		HardKey:      hk,
+		Kind:         kind,
+		CurrentStage: variantstate.StageRejected,
+	})
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsRejected, rej)
 	return h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsRejected, env)
 }

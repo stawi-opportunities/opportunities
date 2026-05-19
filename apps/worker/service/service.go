@@ -10,6 +10,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // Service is the worker's composition root.
@@ -37,9 +38,16 @@ type Service struct {
 	dedupCache   cache.Cache[string, string]
 	clusterCache cache.Cache[string, kv.ClusterSnapshot]
 
+	// pipeline_variants ledger (Postgres). nil when DATABASE_URL is
+	// absent — handlers degrade to NATS+Valkey only and skip the
+	// observability writes. See pkg/variantstate for the soft-fail
+	// guarantees.
+	variantStore *variantstate.Store
+
 	translationLangs  []string
 	validationSkipLLM bool
 	dedupSkipCache    bool
+	dedupReadBackend  string
 }
 
 // NewService ...
@@ -50,9 +58,11 @@ func NewService(
 	registry *opportunity.Registry,
 	dedupCache cache.Cache[string, string],
 	clusterCache cache.Cache[string, kv.ClusterSnapshot],
+	variantStore *variantstate.Store,
 	translationLangs []string,
 	validationSkipLLM bool,
 	dedupSkipCache bool,
+	dedupReadBackend string,
 ) *Service {
 	return &Service{
 		svc:               svc,
@@ -61,9 +71,11 @@ func NewService(
 		registry:          registry,
 		dedupCache:        dedupCache,
 		clusterCache:      clusterCache,
+		variantStore:      variantStore,
 		translationLangs:  translationLangs,
 		validationSkipLLM: validationSkipLLM,
 		dedupSkipCache:    dedupSkipCache,
+		dedupReadBackend:  dedupReadBackend,
 	}
 }
 
@@ -79,11 +91,11 @@ func NewService(
 // previous per-topic NoopHandler block is no longer needed.
 func (s *Service) EventHandlers() []events.EventI {
 	return []events.EventI{
-		NewNormalizeHandler(s.svc),
-		NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM),
-		NewDedupHandlerWithSkip(s.svc, s.dedupCache, s.clusterCache, s.dedupSkipCache),
-		NewCanonicalHandler(s.svc, s.clusterCache),
-		NewPublishHandler(s.svc, s.publisher, s.registry),
+		NewNormalizeHandler(s.svc, s.variantStore),
+		NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM, s.variantStore),
+		NewDedupHandlerWithBackend(s.svc, s.dedupCache, s.clusterCache, s.dedupSkipCache, s.variantStore, s.dedupReadBackend),
+		NewCanonicalHandler(s.svc, s.clusterCache, s.variantStore),
+		NewPublishHandler(s.svc, s.publisher, s.registry, s.variantStore),
 	}
 }
 

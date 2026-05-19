@@ -11,6 +11,7 @@ import (
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // NormalizeHandler consumes VariantIngestedV1, applies deterministic
@@ -24,13 +25,14 @@ import (
 // into Attributes so downstream stages can read everything from a
 // single map.
 type NormalizeHandler struct {
-	svc *frame.Service
+	svc   *frame.Service
+	store *variantstate.Store // nil-safe; soft-fails on Postgres outage
 }
 
 // NewNormalizeHandler binds a handler to the Frame service for
 // re-emitting events.
-func NewNormalizeHandler(svc *frame.Service) *NormalizeHandler {
-	return &NormalizeHandler{svc: svc}
+func NewNormalizeHandler(svc *frame.Service, store *variantstate.Store) *NormalizeHandler {
+	return &NormalizeHandler{svc: svc, store: store}
 }
 
 // Name is the topic this handler consumes.
@@ -62,12 +64,30 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 		util.Log(ctx).WithError(err).Warn("normalize: unmarshal failed")
 		return err
 	}
+
+	// (Defensive ledger upsert removed.) The worker reads pooler-rw so
+	// there's no replication lag between the crawler's commit and the
+	// worker's AdvanceStage. With the TimescaleDB hypertable PK now
+	// being composite (variant_id, ingested_at), a defensive INSERT
+	// with a fresh ingested_at would create a second row for the same
+	// variant_id rather than no-op'ing — so the safer move is to let
+	// AdvanceStage fall through as a no-op when the row is genuinely
+	// absent.
 	t1 := time.Now()
 	out := normalize(env.Payload)
 	t2 := time.Now()
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsNormalized, out)
 	err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsNormalized, outEnv)
 	t3 := time.Now()
+
+	// Ledger advance — only on successful emit. CAS guards against
+	// double-advance on redelivery.
+	if err == nil {
+		_ = h.store.AdvanceStage(ctx, env.Payload.VariantID,
+			variantstate.StageIngested, variantstate.StageNormalized,
+			nil, nil)
+	}
+
 	util.Log(ctx).
 		WithField("variant_id", env.Payload.VariantID).
 		WithField("payload_bytes", len(*raw)).

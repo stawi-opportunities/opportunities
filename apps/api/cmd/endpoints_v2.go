@@ -18,7 +18,7 @@ import (
 // fixed SPA-shaped facet families in shapeFacetsForSPA — the SPA's
 // Facets type already enumerates the wanted families.)
 
-func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry, ct *counters.Counters) http.HandlerFunc {
+func v2SearchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Counters) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -92,96 +92,34 @@ func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry, ct *counters.
 			}
 		}
 
-		query := map[string]any{
-			"index": "idx_opportunities_rt",
-			"query": map[string]any{"bool": boolQ},
-			"limit": limit,
-			// Facet field names must exactly match schema columns —
-			// `category`/`remote_type` from the pre-polymorphic schema
-			// would 400 here, so they map to `categories`/`geo_scope`.
-			"aggs": map[string]any{
-				"kind":            map[string]any{"terms": map[string]any{"field": "kind", "size": 16}},
-				"categories":      map[string]any{"terms": map[string]any{"field": "categories", "size": 32}},
-				"country":         map[string]any{"terms": map[string]any{"field": "country", "size": 200}},
-				"geo_scope":       map[string]any{"terms": map[string]any{"field": "geo_scope", "size": 8}},
-				"employment_type": map[string]any{"terms": map[string]any{"field": "employment_type", "size": 16}},
-				"seniority":       map[string]any{"terms": map[string]any{"field": "seniority", "size": 16}},
-				"field_of_study":  map[string]any{"terms": map[string]any{"field": "field_of_study", "size": 32}},
-				"degree_level":    map[string]any{"terms": map[string]any{"field": "degree_level", "size": 8}},
-			},
+		// Facet families requested per page; backends decide whether
+		// to translate them (Manticore aggs, Postgres GROUP BY).
+		aggs := map[string]any{
+			"kind":            map[string]any{"terms": map[string]any{"field": "kind", "size": 16}},
+			"categories":      map[string]any{"terms": map[string]any{"field": "categories", "size": 32}},
+			"country":         map[string]any{"terms": map[string]any{"field": "country", "size": 200}},
+			"geo_scope":       map[string]any{"terms": map[string]any{"field": "geo_scope", "size": 8}},
+			"employment_type": map[string]any{"terms": map[string]any{"field": "employment_type", "size": 16}},
+			"seniority":       map[string]any{"terms": map[string]any{"field": "seniority", "size": 16}},
+			"field_of_study":  map[string]any{"terms": map[string]any{"field": "field_of_study", "size": 32}},
+			"degree_level":    map[string]any{"terms": map[string]any{"field": "degree_level", "size": 8}},
 		}
+		sortKey := ""
 		if sortSpec != nil {
-			query["sort"] = sortSpec
+			// jobs_backend.Search takes a single sort key; preserve the
+			// posted_at-desc semantic the old handler had.
+			sortKey = "posted_at"
 		}
-
-		raw, err := jm.c.Search(ctx, query)
+		_ = boolQ // composed into the backend Search via filter slice below
+		hits, total, rawFacets, err := jm.Search(ctx, q, filter, sortKey, limit, aggs)
 		if err != nil {
 			http.Error(w, `{"error":"search failed: `+err.Error()+`"}`, http.StatusBadGateway)
 			return
 		}
-		// Decode hits with the same shape jobsManticore.search uses —
-		// numeric _id is sibling of _source, not inside it, and the
-		// polymorphic schema's column names map onto the job struct via
-		// decodeHit so consumers receive the populated ID + schema
-		// fields rather than a zero ID.
-		var parsed struct {
-			Hits struct {
-				Total int `json:"total"`
-				Hits  []struct {
-					ID     uint64         `json:"_id"`
-					Source map[string]any `json:"_source"`
-				} `json:"hits"`
-			} `json:"hits"`
-			Aggregations map[string]struct {
-				Buckets []struct {
-					Key      string `json:"key"`
-					DocCount int    `json:"doc_count"`
-				} `json:"buckets"`
-			} `json:"aggregations"`
-		}
-		if err := json.Unmarshal(raw, &parsed); err != nil {
-			http.Error(w, `{"error":"decode failed"}`, http.StatusInternalServerError)
-			return
-		}
-		hits := make([]job, 0, len(parsed.Hits.Hits))
-		for _, h := range parsed.Hits.Hits {
-			j, derr := decodeHit(h.ID, h.Source)
-			if derr != nil {
-				continue
-			}
-			hits = append(hits, j)
-		}
 
-		// Decorate each hit with Valkey-backed view + apply counts
-		// (24h windowed). Single MGET for the whole result page —
-		// adds <1ms typical and gives the UI live engagement signal
-		// without waiting for a Manticore-side re-index. Conversion
-		// to wire shape (job → searchResult) happens inside.
 		decorated := embedCounters(ctx, ct, hits, registryCategoryLabel(reg))
-
-		// Build raw facet map from Manticore aggregations using the
-		// schema-aligned field names. Per-kind facet filtering is
-		// applied after the shape transform — universal families
-		// (country, remote_type-derived, employment_type, seniority,
-		// category) always pass through; kind-specific families are
-		// intersected against the result set's kinds.
-		rawFacets := map[string]map[string]int{}
-		for name, agg := range parsed.Aggregations {
-			m := map[string]int{}
-			for _, b := range agg.Buckets {
-				if b.Key != "" {
-					m[b.Key] = b.DocCount
-				}
-			}
-			rawFacets[name] = m
-		}
 		facets := shapeFacetsForSPA(rawFacets)
-
-		// Cursor / pagination — the SPA's SearchResponse expects both
-		// has_more and cursor_next so the "Load more" affordance can
-		// fetch the next page. Manticore offset-based pagination here:
-		// cursor encodes the next offset.
-		hasMore := len(hits) < parsed.Hits.Total
+		hasMore := len(hits) < total
 		cursorNext := ""
 		if hasMore {
 			cursorNext = strconv.Itoa(limit)
@@ -192,7 +130,7 @@ func v2SearchHandler(jm *jobsManticore, reg *opportunity.Registry, ct *counters.
 			"query":       q,
 			"results":     decorated,
 			"facets":      facets,
-			"total":       parsed.Hits.Total,
+			"total":       total,
 			"sort":        sort,
 			"has_more":    hasMore,
 			"cursor_next": cursorNext,
@@ -256,14 +194,14 @@ func registryCategoryLabel(reg *opportunity.Registry) func(int64) string {
 	}
 }
 
-func v2JobByIDHandler(jm *jobsManticore) http.HandlerFunc {
+func v2JobByIDHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
 		if id == "" {
 			http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
 			return
 		}
-		j, err := jm.GetByID(req.Context(), id)
+		j, err := jm.GetBySlug(req.Context(), id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
@@ -277,7 +215,7 @@ func v2JobByIDHandler(jm *jobsManticore) http.HandlerFunc {
 	}
 }
 
-func v2TopHandler(jm *jobsManticore) http.HandlerFunc {
+func v2TopHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		limit := parseLimit(req.URL.Query().Get("limit"), 20, 200)
 		minScore := 60.0
@@ -300,7 +238,7 @@ func v2TopHandler(jm *jobsManticore) http.HandlerFunc {
 	}
 }
 
-func v2LatestHandler(jm *jobsManticore) http.HandlerFunc {
+func v2LatestHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
 		rows, err := jm.Latest(req.Context(), limit)
@@ -314,7 +252,7 @@ func v2LatestHandler(jm *jobsManticore) http.HandlerFunc {
 	}
 }
 
-func v2CategoriesHandler(jm *jobsManticore) http.HandlerFunc {
+func v2CategoriesHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		facets, err := jm.Facets(req.Context())
 		if err != nil {
@@ -335,7 +273,7 @@ func v2CategoriesHandler(jm *jobsManticore) http.HandlerFunc {
 	}
 }
 
-func v2StatsHandler(jm *jobsManticore) http.HandlerFunc {
+func v2StatsHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		totalJobs, err := jm.Count(ctx, nil)
@@ -401,7 +339,7 @@ type feedResponse struct {
 // (reading 'country')" because it dereferenced `context.country` and
 // expected `tiers[].id`/`jobs` not `name`/`results`. This rewrite
 // produces the exact wire shape the SPA imports.
-func v2FeedHandler(jm *jobsManticore) http.HandlerFunc {
+func v2FeedHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -430,7 +368,7 @@ func v2FeedHandler(jm *jobsManticore) http.HandlerFunc {
 		if country != "" {
 			localFilter := append(activeFilter(),
 				map[string]any{"equals": map[string]any{"country": country}})
-			local, err := jm.searchFiltered(ctx, localFilter, perTier+1, "posted_at")
+			local, err := jm.SearchFiltered(ctx, localFilter, perTier+1, "posted_at")
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadGateway)
 				return
@@ -479,7 +417,7 @@ func v2FeedHandler(jm *jobsManticore) http.HandlerFunc {
 // v2FeedTierHandler returns one page of a specific tier (used by the
 // SPA's "Load more" button). Response shape mirrors TierPageResponse
 // in ui/app/src/types/search.ts.
-func v2FeedTierHandler(jm *jobsManticore) http.HandlerFunc {
+func v2FeedTierHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -501,7 +439,7 @@ func v2FeedTierHandler(jm *jobsManticore) http.HandlerFunc {
 			respCountry = country
 		}
 
-		rows, err := jm.searchFiltered(ctx, filter, limit+1, "posted_at")
+		rows, err := jm.SearchFiltered(ctx, filter, limit+1, "posted_at")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return

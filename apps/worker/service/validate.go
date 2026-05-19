@@ -12,6 +12,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // ValidationMinConfidence is set by the service wiring; tests can
@@ -60,6 +61,7 @@ type ValidateHandler struct {
 	extractor     *extraction.Extractor
 	minConfidence float64
 	skipLLM       bool
+	store         *variantstate.Store
 }
 
 // NewValidateHandler uses the package-level ValidationMinConfidence.
@@ -69,12 +71,13 @@ func NewValidateHandler(svc *frame.Service, ex *extraction.Extractor) *ValidateH
 
 // NewValidateHandlerWithSkip returns a handler that skips the LLM
 // validation pass entirely. Every variant emits VariantValidated@1.0.
-func NewValidateHandlerWithSkip(svc *frame.Service, ex *extraction.Extractor, skipLLM bool) *ValidateHandler {
+func NewValidateHandlerWithSkip(svc *frame.Service, ex *extraction.Extractor, skipLLM bool, store *variantstate.Store) *ValidateHandler {
 	return &ValidateHandler{
 		svc:           svc,
 		extractor:     ex,
 		minConfidence: ValidationMinConfidence,
 		skipLLM:       skipLLM,
+		store:         store,
 	}
 }
 
@@ -182,7 +185,13 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 	}
 	_ = model
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsValidated, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsValidated, env)
+	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsValidated, env); err != nil {
+		return err
+	}
+	_ = h.store.AdvanceStage(ctx, n.VariantID,
+		variantstate.StageNormalized, variantstate.StageValidated,
+		nil, nil)
+	return nil
 }
 
 func (h *ValidateHandler) emitFlagged(ctx context.Context, n eventsv1.VariantNormalizedV1, reason string, conf float64, model string) error {
@@ -196,7 +205,13 @@ func (h *ValidateHandler) emitFlagged(ctx context.Context, n eventsv1.VariantNor
 		FlaggedAt:    time.Now().UTC(),
 	}
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsFlagged, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsFlagged, env)
+	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsFlagged, env); err != nil {
+		return err
+	}
+	_ = h.store.AdvanceStage(ctx, n.VariantID,
+		variantstate.StageNormalized, variantstate.StageFlagged,
+		nil, nil)
+	return nil
 }
 
 func first500(s string) string {

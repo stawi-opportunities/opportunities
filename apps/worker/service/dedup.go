@@ -13,6 +13,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // DedupHandler consumes VariantValidatedV1, looks up the hard_key
@@ -36,6 +37,13 @@ type DedupHandler struct {
 	cache        cache.Cache[string, string]
 	clusterCache cache.Cache[string, kv.ClusterSnapshot]
 	skipCache    bool
+	store        *variantstate.Store // nil-safe; soft-fails on Postgres outage
+	// readBackend controls hard_key → cluster_id lookup order:
+	//   "valkey" (default) — Valkey first, Postgres fallback (Phase 4a)
+	//   "postgres"         — Postgres first, Valkey fallback (Phase 4b)
+	//   "postgres-only"    — Postgres only, no Valkey reads or writes (4c)
+	// Any other value, including "", is treated as "valkey".
+	readBackend string
 }
 
 // NewDedupHandler binds the handler. clusterCache may be nil in
@@ -53,9 +61,24 @@ func NewDedupHandlerWithCluster(svc *frame.Service, c cache.Cache[string, string
 	return &DedupHandler{svc: svc, cache: c, clusterCache: cs}
 }
 
-// NewDedupHandlerWithSkip returns a handler with cache bypass toggled.
-func NewDedupHandlerWithSkip(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], skipCache bool) *DedupHandler {
-	return &DedupHandler{svc: svc, cache: c, clusterCache: cs, skipCache: skipCache}
+// NewDedupHandlerWithSkip returns a handler with cache bypass toggled,
+// defaulting to the Valkey-primary read order. Retained for tests that
+// don't exercise the Postgres-cutover flag.
+func NewDedupHandlerWithSkip(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], skipCache bool, store *variantstate.Store) *DedupHandler {
+	return NewDedupHandlerWithBackend(svc, c, cs, skipCache, store, "valkey")
+}
+
+// NewDedupHandlerWithBackend wires the read-order cutover flag. See
+// DedupHandler.readBackend for the legal values.
+func NewDedupHandlerWithBackend(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], skipCache bool, store *variantstate.Store, readBackend string) *DedupHandler {
+	return &DedupHandler{
+		svc:          svc,
+		cache:        c,
+		clusterCache: cs,
+		skipCache:    skipCache,
+		store:        store,
+		readBackend:  readBackend,
+	}
 }
 
 // Name ...
@@ -91,9 +114,10 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	// (the same job at two sources clusters separately) until the
 	// flag flips back.
 	if h.skipCache {
+		canonicalID := val.HardKey
 		out := eventsv1.VariantClusteredV1{
 			VariantID:     val.VariantID,
-			OpportunityID: val.HardKey,
+			OpportunityID: canonicalID,
 			HardKey:       val.HardKey,
 			Kind:          val.Kind,
 			IsNew:         true,
@@ -101,31 +125,32 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 			Attributes:    val.Attributes,
 		}
 		outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out)
-		return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv)
+		if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv); err != nil {
+			return err
+		}
+		_ = h.store.AdvanceStage(ctx, val.VariantID,
+			variantstate.StageValidated, variantstate.StageClustered,
+			&canonicalID, nil)
+		return nil
 	}
 
-	// Cache calls are best-effort: a degraded JetStream KV (timeout,
-	// missing bucket, transient) used to nack the entire variant,
-	// triggering NATS redelivery on a consumer with ack_wait=600s and
-	// pinning the worker-events ack_floor for minutes per stuck
-	// message. Treat KV failures as "cluster not found" — dedup
-	// behaves as if every variant is a fresh cluster, which costs a
-	// downstream re-clustering but keeps the canonical chain flowing.
-	// Logs at WARN so ops can see the degradation but the pipeline
-	// stays unblocked.
-	clusterID, hit, err := h.cache.Get(ctx, val.HardKey)
-	if err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("hard_key", val.HardKey).
-			Warn("dedup: cache.Get failed; treating as cluster miss")
-		hit = false
-	}
+	// Hard-key resolution. The read order is controlled by
+	// h.readBackend (Phase 4 cutover flag); writes go to both stores
+	// until "postgres-only" is set.
+	//
+	// Errors at either store fall back to a "miss" so the canonical
+	// chain never stalls on a degraded backend — same soft-fail
+	// philosophy as Phase 3's variantstate writes.
+	clusterID, hit := h.lookupHardKey(ctx, val.HardKey)
 	isNew := false
 	if !hit {
 		clusterID = xid.New().String()
 		isNew = true
-		// Best-effort Set: if it fails, we just lose this dedup entry
-		// for next time. Don't abort the chain on KV write errors.
+	}
+	// Writes (additive; AdvanceStage below records the canonical_id in
+	// pipeline_variants on every emit, so Postgres always sees the
+	// mapping even when we read Valkey-first).
+	if h.readBackend != "postgres-only" {
 		if err := h.cache.Set(ctx, val.HardKey, clusterID, 0*time.Second); err != nil {
 			util.Log(ctx).WithError(err).
 				WithField("hard_key", val.HardKey).
@@ -174,7 +199,71 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		Attributes:    val.Attributes,
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv)
+	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv); err != nil {
+		return err
+	}
+	_ = h.store.AdvanceStage(ctx, val.VariantID,
+		variantstate.StageValidated, variantstate.StageClustered,
+		&clusterID, nil)
+	return nil
+}
+
+// lookupHardKey resolves a hard_key to its cluster_id (canonical_id),
+// honouring the Phase 4 readBackend cutover flag.
+//
+// Returns (clusterID, true) on hit, ("", false) on miss in both
+// stores. A backend-specific error is treated as a clean miss after a
+// WARN log so the chain proceeds without nacking.
+func (h *DedupHandler) lookupHardKey(ctx context.Context, hardKey string) (string, bool) {
+	postgresFirst := h.readBackend == "postgres" || h.readBackend == "postgres-only"
+	noValkey := h.readBackend == "postgres-only"
+
+	tryPostgres := func() (string, bool) {
+		cid, err := h.store.LookupCanonical(ctx, hardKey)
+		if err != nil {
+			// LookupCanonical already soft-fails internally; this
+			// branch is here for future strict-error variants.
+			util.Log(ctx).WithError(err).
+				WithField("hard_key", hardKey).
+				Warn("dedup: postgres lookup failed; treating as miss")
+			return "", false
+		}
+		if cid == nil || *cid == "" {
+			return "", false
+		}
+		return *cid, true
+	}
+
+	tryValkey := func() (string, bool) {
+		v, hit, err := h.cache.Get(ctx, hardKey)
+		if err != nil {
+			util.Log(ctx).WithError(err).
+				WithField("hard_key", hardKey).
+				Warn("dedup: valkey lookup failed; treating as miss")
+			return "", false
+		}
+		if !hit {
+			return "", false
+		}
+		return v, true
+	}
+
+	if postgresFirst {
+		if cid, ok := tryPostgres(); ok {
+			return cid, true
+		}
+		if noValkey {
+			return "", false
+		}
+		return tryValkey()
+	}
+	// Valkey-first (default, Phase 4a). On miss, the Postgres fallback
+	// surfaces cross-source dedup entries written by an earlier
+	// AdvanceStage from another worker pod.
+	if cid, ok := tryValkey(); ok {
+		return cid, true
+	}
+	return tryPostgres()
 }
 
 // mergeAttributes returns a fresh map containing prev keys overlaid

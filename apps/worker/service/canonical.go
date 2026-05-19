@@ -14,6 +14,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // CanonicalHandler merges a newly-clustered variant into the
@@ -29,11 +30,13 @@ import (
 type CanonicalHandler struct {
 	svc   *frame.Service
 	cache cache.Cache[string, kv.ClusterSnapshot]
+	store *variantstate.Store // nil-safe; soft-fails on Postgres outage
 }
 
-// NewCanonicalHandler binds the handler.
-func NewCanonicalHandler(svc *frame.Service, c cache.Cache[string, kv.ClusterSnapshot]) *CanonicalHandler {
-	return &CanonicalHandler{svc: svc, cache: c}
+// NewCanonicalHandler binds the handler. store is the pipeline_variants
+// ledger writer used to mark the variant as canonical with its slug.
+func NewCanonicalHandler(svc *frame.Service, c cache.Cache[string, kv.ClusterSnapshot], store *variantstate.Store) *CanonicalHandler {
+	return &CanonicalHandler{svc: svc, cache: c, store: store}
 }
 
 // Name ...
@@ -158,6 +161,14 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 		Attributes:    merged.Attributes,
 		UpsertedAt:    now,
 	}
+	// Postgres opportunities UPSERT (Phase 4). Writes the same merged
+	// snapshot to the canonical table — gives the API a Postgres-backed
+	// view alongside the Valkey cache. JSONB attribute merge happens
+	// inside the SQL; this struct just carries the latest fields.
+	// Soft-fails — Postgres outage doesn't block the chain.
+	oppRow := snapshotToOpportunity(merged, in.HardKey)
+	_ = h.store.UpsertOpportunity(ctx, oppRow)
+
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicCanonicalsUpserted, out)
 	// Emit the canonical-upserted event for the (in-process) publish
 	// handler — it's a fast R2 write, not external LLM I/O, so it
@@ -165,6 +176,10 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv); err != nil {
 		return err
 	}
+	slug := merged.Slug
+	_ = h.store.AdvanceStage(ctx, in.VariantID,
+		variantstate.StageClustered, variantstate.StageCanonical,
+		&merged.CanonicalID, &slug)
 	// Also publish to the durable Queue subjects for embed + translate.
 	// Both are external LLM calls (TEI + Groq) that need retry-with-
 	// backoff per the Frame async decision tree. The body is the same
@@ -220,6 +235,97 @@ func attrStr(m map[string]any, key string) string {
 		return v
 	}
 	return ""
+}
+
+// snapshotToOpportunity converts the in-memory merged ClusterSnapshot
+// into the variantstate.Opportunity row shape for the UPSERT.
+//
+// hardKey is passed through into the Attributes map under the
+// "hard_key" key so downstream consumers (admin sweeps, debug
+// tooling) can correlate the canonical to its dedup key without
+// re-querying pipeline_variants. The JSONB merge in
+// UpsertOpportunity preserves it across UPSERTs.
+//
+// All pointer fields use the snapshot value verbatim — empty strings
+// flow through as non-nil pointers, then COALESCE/NULLIF inside the
+// SQL handles the "blank an established field" guard.
+func snapshotToOpportunity(s kv.ClusterSnapshot, hardKey string) variantstate.Opportunity {
+	attrs := s.Attributes
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+	if hardKey != "" {
+		// non-mutating copy so we don't leak hard_key into the in-memory
+		// snapshot kept by the cluster cache
+		copyAttrs := make(map[string]any, len(attrs)+1)
+		for k, v := range attrs {
+			copyAttrs[k] = v
+		}
+		copyAttrs["hard_key"] = hardKey
+		attrs = copyAttrs
+	}
+	remote := s.RemoteType == "remote"
+	pPostedAt := (*time.Time)(nil)
+	if !s.PostedAt.IsZero() {
+		p := s.PostedAt
+		pPostedAt = &p
+	}
+	pFirst := s.FirstSeenAt
+	if pFirst.IsZero() {
+		pFirst = time.Now().UTC()
+	}
+	pLast := s.LastSeenAt
+	if pLast.IsZero() {
+		pLast = time.Now().UTC()
+	}
+	srcID := s.SourceID
+	desc := s.Description
+	iss := s.Company
+	country := s.Country
+	apply := s.ApplyURL
+	currency := s.Currency
+	amin := s.SalaryMin
+	amax := s.SalaryMax
+	qs := s.QualityScore
+	status := s.Status
+	if status == "" {
+		status = "active"
+	}
+	return variantstate.Opportunity{
+		CanonicalID:   s.CanonicalID,
+		Slug:          s.Slug,
+		Kind:          s.Kind,
+		SourceID:      ptrIfNonEmpty(srcID),
+		Title:         s.Title,
+		Description:   ptrIfNonEmpty(desc),
+		IssuingEntity: ptrIfNonEmpty(iss),
+		Country:       ptrIfNonEmpty(country),
+		Remote:        &remote,
+		ApplyURL:      ptrIfNonEmpty(apply),
+		PostedAt:      pPostedAt,
+		Currency:      ptrIfNonEmpty(currency),
+		AmountMin:     ptrIfNonZero(amin),
+		AmountMax:     ptrIfNonZero(amax),
+		Status:        status,
+		FirstSeenAt:   pFirst,
+		LastSeenAt:    pLast,
+		Attributes:    attrs,
+		QualityScore:  ptrIfNonZero(qs),
+	}
+}
+
+func ptrIfNonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func ptrIfNonZero(f float64) *float64 {
+	if f == 0 {
+		return nil
+	}
+	return &f
 }
 
 func attrFloat(m map[string]any, key string) float64 {

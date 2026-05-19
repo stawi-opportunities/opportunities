@@ -92,6 +92,19 @@ type Config struct {
 	// onto the website while we diagnose the NATS-KV latency.
 	DedupSkipCache bool `env:"DEDUP_SKIP_CACHE" envDefault:"false"`
 
+	// DedupReadBackend controls which store DedupHandler consults first
+	// to resolve hard_key → cluster_id. Phase 4 cutover values:
+	//
+	//   "valkey"   — Valkey first, Postgres fallback (Phase 4a, default)
+	//   "postgres" — Postgres first, Valkey fallback (Phase 4b)
+	//   "postgres-only" — Postgres only, no Valkey reads or writes
+	//                     (Phase 4c — terminal state)
+	//
+	// Writes always go to both stores until "postgres-only" lands. A
+	// missing or unknown value behaves as "valkey" so deploys without
+	// the env var stay safe.
+	DedupReadBackend string `env:"DEDUP_READ_BACKEND" envDefault:"valkey"`
+
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
