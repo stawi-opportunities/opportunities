@@ -152,6 +152,13 @@ func (s *Store) Upsert(ctx context.Context, v Variant) error {
 	if v.CurrentStage == "" {
 		v.CurrentStage = StageIngested
 	}
+	// pipeline_variants.attempts is NOT NULL DEFAULT '{}'::jsonb. GORM's
+	// json serializer writes NULL for a nil map, violating the column
+	// constraint. Default to an empty map at the Go layer so the INSERT
+	// always carries a valid JSON object.
+	if v.Attempts == nil {
+		v.Attempts = map[string]any{}
+	}
 	// Composite PK target — TimescaleDB requires the partition column
 	// (ingested_at) in every unique constraint. variant_id is
 	// xid-generated so the tuple is unique in practice; DO NOTHING
