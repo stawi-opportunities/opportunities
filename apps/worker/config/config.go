@@ -13,20 +13,25 @@ import (
 type Config struct {
 	fconfig.ConfigurationDefault
 
-	// NATS connection URL for Frame's cache framework. Backs dedup
-	// (hard_key -> cluster_id) and cluster-snapshot storage via
-	// JetStream KV buckets, replacing the prior Valkey deployment.
-	// Handed to frame/cache/jetstreamkv.New(cache.WithDSN).
-	CacheNATSURL string `env:"CACHE_NATS_URL,required"`
+	// ValkeyDSN is the Valkey/Redis URL backing dedup (hard_key →
+	// cluster_id) and cluster-snapshot storage. Format:
+	// redis://host:port (no auth) or redis://:password@host:port.
+	// When set, the worker uses frame/cache/valkey instead of the
+	// JetStream-KV backend below. We moved off NATS-KV because of
+	// pathological 5s/op timeouts that stalled the canonical chain
+	// (see deployment.manifests workspace memory on the symptom).
+	ValkeyDSN string `env:"VALKEY_DSN"`
 
-	// User credentials file for the NATS connection (decentralized
-	// auth — operator/account/user JWTs, signed by nauth). Mounted
-	// from a Secret created by the User CR.
-	CacheNATSCredsFile string `env:"CACHE_NATS_CREDS_FILE,required"`
+	// Legacy JetStream-KV settings. Used only when ValkeyDSN is empty
+	// — kept around so existing dev/test envs without Valkey continue
+	// to work and so the cutover stays reversible if Valkey hits its
+	// own problems.
+	CacheNATSURL       string `env:"CACHE_NATS_URL"`
+	CacheNATSCredsFile string `env:"CACHE_NATS_CREDS_FILE"`
 
-	// CacheBucket is the JetStream KV bucket name. Worker uses this
-	// single bucket for both dedup and cluster-snapshot views (the
-	// distinct keyFuncs in pkg/kv namespace the keys).
+	// CacheBucket is the cache namespace name. With Valkey it's the
+	// keyspace prefix that Frame's typed-cache views inherit; with
+	// JetStream-KV it's the bucket name.
 	CacheBucket string `env:"CACHE_BUCKET" envDefault:"opportunities-worker"`
 
 	// Cloudflare R2 — one account token authorised on all three

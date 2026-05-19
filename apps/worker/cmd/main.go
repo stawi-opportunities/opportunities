@@ -9,6 +9,7 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
 	framejskv "github.com/pitabwire/frame/cache/jetstreamkv"
+	cachevalkey "github.com/pitabwire/frame/cache/valkey"
 	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/util"
 
@@ -43,13 +44,34 @@ func main() {
 	// (replaces the prior direct go-redis client; see kv_rebuild.go
 	// for the GET+conditional-SET pattern that takes the place of
 	// the previous Lua-CAS script).
-	raw, err := framejskv.New(
-		cache.WithDSN(data.DSN(cfg.CacheNATSURL)),
-		cache.WithCredsFile(cfg.CacheNATSCredsFile),
-		cache.WithName(cfg.CacheBucket),
-	)
-	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("worker: jetstream-kv cache open")
+	// Pick the cache backend. Prefer Valkey when VALKEY_DSN is set —
+	// in-cluster Valkey replies in <1ms per Get/Set, vs the 5s
+	// request-reply timeout we hit consistently on JetStream-KV in
+	// this environment. JetStream-KV stays available as a fallback
+	// so the worker can still boot in dev/test envs without Valkey.
+	var raw cache.RawCache
+	switch {
+	case cfg.ValkeyDSN != "":
+		raw, err = cachevalkey.New(
+			cache.WithDSN(data.DSN(cfg.ValkeyDSN)),
+			cache.WithName(cfg.CacheBucket),
+		)
+		if err != nil {
+			util.Log(ctx).WithError(err).WithField("dsn", cfg.ValkeyDSN).Fatal("worker: valkey cache open")
+		}
+		util.Log(ctx).WithField("dsn", cfg.ValkeyDSN).Info("worker: cache backend = valkey")
+	case cfg.CacheNATSURL != "":
+		raw, err = framejskv.New(
+			cache.WithDSN(data.DSN(cfg.CacheNATSURL)),
+			cache.WithCredsFile(cfg.CacheNATSCredsFile),
+			cache.WithName(cfg.CacheBucket),
+		)
+		if err != nil {
+			util.Log(ctx).WithError(err).Fatal("worker: jetstream-kv cache open")
+		}
+		util.Log(ctx).WithField("url", cfg.CacheNATSURL).Info("worker: cache backend = jetstream-kv")
+	default:
+		util.Log(ctx).Fatal("worker: no cache backend configured (set VALKEY_DSN or CACHE_NATS_URL)")
 	}
 
 	ctx, svc := frame.NewServiceWithContext(ctx,
