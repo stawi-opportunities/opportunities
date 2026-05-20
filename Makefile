@@ -6,7 +6,7 @@ APP_DIRS := apps/crawler apps/scheduler apps/api apps/writer apps/materializer a
 HUGO_VERSION := 0.160.1
 HUGO_BIN     := $(CURDIR)/bin/hugo
 
-.PHONY: deps build test run-crawler run-scheduler run-api run-writer run-materializer run-worker \
+.PHONY: deps build test test-integration run-crawler run-scheduler run-api run-writer run-materializer run-worker \
         infra-up infra-down \
         ui-deps ui-build ui-dev \
         archive-verify \
@@ -22,6 +22,11 @@ build:
 
 test:
 	go test ./...
+
+# Run integration tests (requires Docker for testcontainers).
+# Slow — ~3-5 minutes for the matching+applications phase 1 suite.
+test-integration:
+	go test -tags integration -count=1 -timeout 10m ./tests/integration/...
 
 run-crawler:
 	go run ./apps/crawler/cmd
