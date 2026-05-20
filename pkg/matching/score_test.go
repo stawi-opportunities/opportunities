@@ -109,7 +109,10 @@ func TestScore_StalePenalty(t *testing.T) {
 	}{
 		{"fresh — 0 penalty", now.Add(-1 * time.Hour), 0.0},
 		{"7 days old — 0 penalty", now.Add(-7 * 24 * time.Hour), 0.0},
-		{"30 days old — partial penalty", now.Add(-30 * 24 * time.Hour), 0.5},
+		// Just past the grace period — penalty should be near 0 (continuity).
+		{"7 days + 1 hour — near 0", now.Add(-(7*24 + 1) * time.Hour), 1.0 / (53 * 24)},
+		// 30 days old: (30-7)/53 ≈ 0.434
+		{"30 days old — partial penalty", now.Add(-30 * 24 * time.Hour), 23.0 / 53.0},
 		{"60 days old — full penalty", now.Add(-60 * 24 * time.Hour), 1.0},
 		{"future seen (clock skew) — 0", now.Add(1 * time.Hour), 0.0},
 	}

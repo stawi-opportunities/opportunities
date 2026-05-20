@@ -156,7 +156,9 @@ func salaryFit(candFloor, oppMax *int) float64 {
 	return 0.0
 }
 
-// stalePenalty ramps from 0 at day 0 to 1 at day 60 (clamped to 0 for days <= 7).
+// stalePenalty is 0 for the first 7 days, then ramps linearly to 1 at
+// day 60. The ramp subtracts the 7-day grace period so the curve is
+// continuous at the day-7 boundary (no jump).
 // Unspecified firstSeen (zero time) returns 0. Future timestamps (clock skew) return 0.
 func stalePenalty(firstSeen, now time.Time) float64 {
 	if firstSeen.IsZero() {
@@ -169,7 +171,7 @@ func stalePenalty(firstSeen, now time.Time) float64 {
 	if age >= 60*24*time.Hour {
 		return 1.0
 	}
-	// Linear ramp from 0 to 60 days.
-	span := float64(60 * 24 * 60 * 60)
-	return age.Seconds() / span
+	span := float64((60 - 7) * 24 * 60 * 60)
+	excess := age.Seconds() - float64(7*24*60*60)
+	return excess / span
 }
