@@ -98,11 +98,19 @@ func newJobsPostgres(pool func(ctx context.Context, readOnly bool) *gorm.DB) *jo
 // sqlDB returns the underlying *sql.DB for the read-only or read-write
 // connection. Surfaced as a single helper so the per-method query
 // sites stay terse.
+//
+// Frame's DatastoreManager returns nil from the readOnly factory when
+// the cluster doesn't have a separate REPLICA_DATABASE_URL wired —
+// which is our case, the api speaks only to pooler-rw. Fall back to
+// the RW pool transparently so callers don't have to branch.
 func (p *jobsPostgres) sqlDB(ctx context.Context, readOnly bool) (*sql.DB, error) {
 	if p == nil || p.pool == nil {
 		return nil, errors.New("jobsPostgres: pool not wired")
 	}
 	gdb := p.pool(ctx, readOnly)
+	if gdb == nil && readOnly {
+		gdb = p.pool(ctx, false) // RW fallback
+	}
 	if gdb == nil {
 		return nil, errors.New("jobsPostgres: gorm pool returned nil")
 	}
