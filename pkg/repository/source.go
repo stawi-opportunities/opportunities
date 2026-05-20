@@ -249,13 +249,26 @@ func (r *SourceRepository) Count(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-// RecordSuccess resets failure count, bumps health score, returns source to active.
+// RecordSuccess resets failure count + bumps health score after a
+// crawl finishes successfully. Status is promoted to active only when
+// the row is currently in degraded (the legitimate "recovered" path);
+// active rows stay active, and everything else (pending / verifying /
+// verified / paused / blocked / disabled / rejected) keeps its
+// current status — a successful crawl is not a substitute for
+// operator approval.
 func (r *SourceRepository) RecordSuccess(ctx context.Context, id string, healthScore float64) error {
+	// CASE WHEN flips status only for degraded; active stays active
+	// (status = status is a no-op), other states keep their current
+	// status verbatim.
+	statusExpr := gorm.Expr(
+		"CASE WHEN status = ? THEN ? ELSE status END",
+		domain.SourceDegraded, domain.SourceActive,
+	)
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
 		Updates(map[string]any{
 			"health_score":         healthScore,
 			"consecutive_failures": 0,
-			"status":               domain.SourceActive,
+			"status":               statusExpr,
 			"last_seen_at":         time.Now(),
 		}).Error
 }
