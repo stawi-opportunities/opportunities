@@ -50,7 +50,9 @@ type apiConfig struct {
 	// /api/v2/jobs/{slug} routes — searchResult.slug already drives URL
 	// generation, so once the backend returns a real slug there the
 	// rest follows.
-	SearchBackend string `env:"SEARCH_BACKEND" envDefault:"manticore"`
+	// Default postgres post-consolidation. Manticore branch retained
+	// behind SEARCH_BACKEND=manticore for the rollback window.
+	SearchBackend string `env:"SEARCH_BACKEND" envDefault:"postgres"`
 
 	// DatabaseURL is the CNPG pooler-rw connection string used by the
 	// Postgres backend. Required when SEARCH_BACKEND=postgres.
