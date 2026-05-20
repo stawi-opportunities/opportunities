@@ -117,13 +117,12 @@ func ValkeyContainer(t *testing.T, ctx context.Context) string {
 	return fmt.Sprintf("redis://%s:%s", host, port.Port())
 }
 
-// PostgresContainer boots TimescaleDB + pgvector (the official ha image
-// ships both) and applies every db/migrations/*.sql in numeric order.
-// Returns a *sql.DB connected to the freshly migrated database.
+// PostgresContainerNoMigrate boots TimescaleDB + pgvector (the official ha image
+// ships both) and returns a connected *sql.DB without applying any migrations.
 //
-// Use this in any integration suite that needs a clean DB with the
-// project's schema applied. The container is torn down via t.Cleanup.
-func PostgresContainer(t *testing.T, ctx context.Context, migrationsDir string) *sql.DB {
+// Use this when you need to interleave database setup steps (e.g., creating stub tables
+// before running migrations). The container is torn down via t.Cleanup.
+func PostgresContainerNoMigrate(t *testing.T, ctx context.Context) *sql.DB {
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
@@ -158,11 +157,12 @@ func PostgresContainer(t *testing.T, ctx context.Context, migrationsDir string) 
 	require.Eventually(t, func() bool { return db.PingContext(ctx) == nil },
 		60*time.Second, 250*time.Millisecond, "postgres ping")
 
-	applyMigrations(t, ctx, db, migrationsDir)
 	return db
 }
 
-func applyMigrations(t *testing.T, ctx context.Context, db *sql.DB, dir string) {
+// ApplyMigrationsDir applies every db/migrations/*.sql file in the given directory
+// in numeric order. Useful when you need to interleave database setup before migrations.
+func ApplyMigrationsDir(t *testing.T, ctx context.Context, db *sql.DB, dir string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err, "read migrations dir %s", dir)
@@ -181,4 +181,38 @@ func applyMigrations(t *testing.T, ctx context.Context, db *sql.DB, dir string) 
 		_, err = db.ExecContext(ctx, string(body))
 		require.NoError(t, err, "apply %s", name)
 	}
+}
+
+// EnsureOpportunitiesStub creates a minimal opportunities table with the columns
+// needed by migration 0012 (and likely other migrations). This is a temporary
+// stub before AutoMigrate runs in production (which creates the full table from
+// the Opportunity struct). In the smoke test, we create this stub manually before
+// applying SQL migrations so that migration 0012 (which creates an index on
+// opportunities) does not fail.
+func EnsureOpportunitiesStub(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS opportunities (
+			id TEXT PRIMARY KEY,
+			posted_at TIMESTAMPTZ,
+			status TEXT,
+			hidden BOOLEAN
+		)
+	`)
+	return err
+}
+
+// PostgresContainer boots TimescaleDB + pgvector (the official ha image
+// ships both) and applies every db/migrations/*.sql in numeric order.
+// Returns a *sql.DB connected to the freshly migrated database.
+//
+// Use this in any integration suite that needs a clean DB with the
+// project's schema applied. The container is torn down via t.Cleanup.
+//
+// For more control (e.g., creating stub tables before migrations),
+// use PostgresContainerNoMigrate + EnsureOpportunitiesStub + ApplyMigrationsDir directly.
+func PostgresContainer(t *testing.T, ctx context.Context, migrationsDir string) *sql.DB {
+	t.Helper()
+	db := PostgresContainerNoMigrate(t, ctx)
+	ApplyMigrationsDir(t, ctx, db, migrationsDir)
+	return db
 }
