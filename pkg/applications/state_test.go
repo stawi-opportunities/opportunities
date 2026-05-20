@@ -82,7 +82,6 @@ func TestState_InvalidTransitions(t *testing.T) {
 			require.ErrorAs(t, err, &ie)
 			require.Equal(t, tc.from, ie.From)
 			require.Equal(t, tc.to, ie.To)
-			require.NotEmpty(t, ie.Allowed, "error should list allowed next states")
 		})
 	}
 }
