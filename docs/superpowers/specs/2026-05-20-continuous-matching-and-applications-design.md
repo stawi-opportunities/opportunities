@@ -475,3 +475,13 @@ The system is considered complete when:
 ## 7. Open questions
 
 None as of writing — every decision has a chosen option recorded in the relevant section. Questions that arise during planning should be appended here before the writing-plans transition.
+
+## 8. Progress log
+
+- **Phase 1 (foundation) — done.** Schema migrations 0009–0012 land four
+  hypertables, the applications OLTP tables, match_rules,
+  candidate_match_indexes, and extension_grants. Three pure packages
+  (`pkg/matching/score`, `pkg/applications/state`,
+  `pkg/applications/rules`) carry the scoring function, state machine,
+  and rules schema validator. Integration test `TestMigrationsApplyCleanly`
+  smokes the schema on a fresh TimescaleDB + pgvector container.
