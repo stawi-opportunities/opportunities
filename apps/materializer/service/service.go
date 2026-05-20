@@ -1,7 +1,8 @@
 // Package service drives the materializer as a Frame topic subscriber.
-// Each Frame event (canonicals, canonicals_expired, translations, embeddings)
-// is decoded and upserted to Manticore immediately — no Iceberg scan, no
-// watermark polling, no leader election.
+// Each Frame event (canonicals, canonicals_expired, translations,
+// embeddings, source-stopped, auto-flagged) is decoded and written
+// directly to the Postgres opportunities table via variantstate.Store —
+// no Iceberg scan, no watermark polling, no leader election.
 //
 // Frame's NATS JetStream consumer group handles deduplication, redelivery,
 // and consumer-lag observability natively (visible via `nats_jetstream_*`
@@ -13,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
@@ -86,14 +86,16 @@ func (s *Service) RegisterSubscriptions() error {
 // SourceStoppedHandler — TopicSourcesStopped
 // ---------------------------------------------------------------------------
 
-// SourceStoppedHandler deletes every Manticore document carrying the
-// matching source_id. Emitted by the crawler's /admin/sources/stop
-// endpoint when an operator pulls the kill switch on a source — this
-// is what makes historical jobs disappear from search.
+// SourceStoppedHandler hides every opportunity row carrying the matching
+// source_id. Emitted by the crawler's /admin/sources/stop endpoint when
+// an operator pulls the kill switch on a source — this is what makes
+// historical jobs disappear from search.
 //
-// Implementation: Manticore's SQL surface supports
-// `DELETE FROM <index> WHERE source_id = N`; one round-trip removes
-// the whole source's footprint regardless of doc count.
+// Implementation: variantstate.Store.HideBySource issues a single
+// UPDATE that flips `deadline` into the past for every canonical with
+// the given source_id. The API's search query filters by
+// `deadline > now()` so the rows drop out of results immediately
+// without loss of history.
 type SourceStoppedHandler struct{ s *Service }
 
 func NewSourceStoppedHandler(s *Service) *SourceStoppedHandler {
@@ -141,8 +143,11 @@ func (h *SourceStoppedHandler) Execute(ctx context.Context, p any) error {
 // CanonicalUpsertHandler — TopicCanonicalsUpserted
 // ---------------------------------------------------------------------------
 
-// CanonicalUpsertHandler decodes CanonicalUpsertedV1 and replaces the
-// Manticore document keyed by hashID(canonical_id).
+// CanonicalUpsertHandler observes CanonicalUpsertedV1. The canonical
+// row is already written by worker.CanonicalHandler in-process before
+// the event is emitted (see worker/service/canonical.go), so the
+// materializer's job here is to ack the event and let downstream
+// side-effects hang off the same subscription later.
 type CanonicalUpsertHandler struct{ s *Service }
 
 func NewCanonicalUpsertHandler(s *Service) *CanonicalUpsertHandler {
@@ -177,59 +182,6 @@ func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
 	_ = p
 	_ = ctx
 	return nil
-}
-
-// buildDocFromCanonical converts a CanonicalUpsertedV1 payload to a
-// Manticore document map shaped for the polymorphic idx_opportunities_rt
-// schema (kind + universal columns + per-kind sparse facet columns).
-// Field names must match the DDL in pkg/searchindex/schema.go.
-func buildDocFromCanonical(p eventsv1.CanonicalUpsertedV1) map[string]any {
-	desc := attrString(p.Attributes, "description")
-
-	doc := map[string]any{
-		// Provenance — `bigint` hash of source_id, used by
-		// SourceStoppedHandler to bulk-delete a stopped source's
-		// canonicals. Always written so equality filters can match.
-		"source_id": hashID(p.SourceID),
-		// Discriminator
-		"kind": p.Kind,
-		// Universal indexable text + categories
-		"title":          p.Title,
-		"description":    desc,
-		"issuing_entity": p.IssuingEntity,
-		"categories":     categoryIDs(p.Categories),
-		// Universal location
-		"country":   p.AnchorCountry,
-		"region":    p.AnchorRegion,
-		"city":      p.AnchorCity,
-		"lat":       p.Lat,
-		"lon":       p.Lon,
-		"remote":    p.Remote,
-		"geo_scope": p.GeoScope,
-		// Universal time (unix seconds; timestamp columns)
-		"posted_at": p.PostedAt.Unix(),
-		"deadline":  deadlineUnix(p.Deadline),
-		// Universal monetary
-		"amount_min": p.AmountMin,
-		"amount_max": p.AmountMax,
-		"currency":   p.Currency,
-	}
-	// Per-kind sparse facet columns. Splice in only the columns the kind
-	// owns; absent columns stay zero-valued in Manticore.
-	cols, vals := sparseColsForKind(p.Kind, p.Attributes)
-	for i, c := range cols {
-		doc[c] = vals[i]
-	}
-	return doc
-}
-
-// deadlineUnix safely flattens an optional deadline pointer to a unix
-// epoch second; nil → 0 (which Manticore treats as "no value").
-func deadlineUnix(t *time.Time) int64 {
-	if t == nil {
-		return 0
-	}
-	return t.Unix()
 }
 
 // ---------------------------------------------------------------------------
@@ -279,15 +231,16 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 // TranslationHandler — TopicTranslations
 // ---------------------------------------------------------------------------
 
-// TranslationHandler is a no-op against Manticore for the polymorphic
-// schema. Translated bodies live in R2 slug-direct (one object per
+// TranslationHandler is a no-op against the opportunities table.
+// Translated bodies live in R2 slug-direct (one object per
 // canonical+lang) and are read by the public site/api at request time;
-// the Manticore row carries only the source-language title/description.
+// the opportunities row carries only the source-language
+// title/description.
 //
 // We keep the subscription so the Frame consumer-group acks the topic
 // (no infinite redelivery), and so a future variant that surfaces
-// per-lang title to BM25 can be added without re-introducing the
-// subscription.
+// per-lang title to the search path can be added without re-introducing
+// the subscription.
 type TranslationHandler struct{ s *Service }
 
 func NewTranslationHandler(s *Service) *TranslationHandler {
@@ -315,11 +268,11 @@ func (h *TranslationHandler) Execute(ctx context.Context, p any) error {
 	if err := json.Unmarshal(*raw, &env); err != nil {
 		return fmt.Errorf("translation: decode: %w", err)
 	}
-	// No Manticore write — translations are served from R2 slug-direct.
+	// No write — translations are served from R2 slug-direct.
 	util.Log(ctx).
 		WithField("opportunity_id", env.Payload.OpportunityID).
 		WithField("lang", env.Payload.Lang).
-		Debug("materializer: translation observed (R2-slug authoritative; no Manticore write)")
+		Debug("materializer: translation observed (R2-slug authoritative)")
 	return nil
 }
 
@@ -327,8 +280,8 @@ func (h *TranslationHandler) Execute(ctx context.Context, p any) error {
 // EmbeddingHandler — TopicEmbeddings
 // ---------------------------------------------------------------------------
 
-// EmbeddingHandler updates the embedding attribute on the Manticore
-// document for a given canonical.
+// EmbeddingHandler updates the embedding column on the opportunities
+// row for a given canonical.
 type EmbeddingHandler struct{ s *Service }
 
 func NewEmbeddingHandler(s *Service) *EmbeddingHandler {
@@ -377,9 +330,9 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 //
 // Operator review still happens — the auto-action is containment, not
 // a final verdict. A subsequent /admin/flags/{id}/resolve with action
-// "ignore" can be paired with a manual Manticore patch to restore the
-// row, but that's intentionally manual: an opportunity that tripped
-// the user threshold should get human eyes before it surfaces again.
+// "ignore" can be paired with a manual UPDATE to restore the row, but
+// that's intentionally manual: an opportunity that tripped the user
+// threshold should get human eyes before it surfaces again.
 type AutoFlaggedHandler struct{ s *Service }
 
 func NewAutoFlaggedHandler(s *Service) *AutoFlaggedHandler {
