@@ -95,7 +95,6 @@ type CandidateProfile struct {
 	CommSMS      bool `gorm:"not null;default:false" json:"comm_sms"`
 
 	// Matching metadata
-	Embedding       string     `gorm:"type:text" json:"-"`
 	MatchesSent     int        `gorm:"not null;default:0" json:"matches_sent"`
 	LastMatchedAt   *time.Time `json:"last_matched_at"`
 	LastContactedAt *time.Time `json:"last_contacted_at"`
@@ -112,40 +111,6 @@ type CandidateProfile struct {
 }
 
 func (CandidateProfile) TableName() string { return "candidate_profiles" }
-
-// CandidateMatch records a scored pairing between a candidate and a canonical job.
-//
-// MatchScore is the final score used for ordering; it's the reranker score
-// when available, otherwise the bi-encoder EmbeddingSimilarity. Keeping the
-// upstream signals on the row makes it trivial to diff "before/after
-// reranker" in observability without re-running the cron.
-type CandidateMatch struct {
-	BaseModel
-	CandidateID         string      `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_candidate_job" json:"candidate_id"`
-	CanonicalJobID      string      `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_candidate_job" json:"canonical_job_id"`
-	MatchScore          float32     `gorm:"type:real;not null" json:"match_score"`
-	SkillsOverlap       float32     `gorm:"type:real" json:"skills_overlap"`
-	EmbeddingSimilarity float32     `gorm:"type:real" json:"embedding_similarity"`
-
-	// Reranker metadata (nullable — v1 ships with flag off).
-	RerankScore      *float32   `gorm:"type:real;index:,where:rerank_score IS NOT NULL,sort:desc" json:"rerank_score,omitempty"`
-	RetrievalScore   *float32   `gorm:"type:real" json:"retrieval_score,omitempty"`
-	RetrievalRank    *int       `gorm:"type:int" json:"retrieval_rank,omitempty"`
-	RerankerVersion  string     `gorm:"type:varchar(64)" json:"reranker_version,omitempty"`
-	RerankedAt       *time.Time `json:"reranked_at,omitempty"`
-
-	Status    MatchStatus `gorm:"type:varchar(20);not null;default:'new'" json:"status"`
-	SentAt    *time.Time  `json:"sent_at"`
-	ViewedAt  *time.Time  `json:"viewed_at"`
-	AppliedAt *time.Time  `json:"applied_at"`
-}
-
-// TableName binds the legacy GORM struct to the renamed table. Migration
-// 0013 renamed the GORM-managed table to `candidate_matches_legacy`;
-// the new SQL-managed `candidate_matches` is owned by pkg/matching.Store.
-// Both tables co-exist until Phase 6 drops the legacy one (spec §5.5).
-func (CandidateMatch) TableName() string { return "candidate_matches_legacy" }
-
 
 // CandidateApplication records a job application submitted by or on behalf of a candidate.
 type CandidateApplication struct {

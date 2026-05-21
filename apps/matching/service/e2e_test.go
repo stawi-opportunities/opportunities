@@ -18,7 +18,6 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 
-	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
 	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 )
@@ -212,6 +211,4 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 		t.Fatalf("prefs=%d, want 1", prefsCol.Len())
 	}
 
-	// keep adminv1 imported for future extension
-	_ = adminv1.MatchesWeeklyDeps{}
 }

@@ -48,12 +48,11 @@ type flagAdminRepo interface {
 	TopFlagged(ctx context.Context, limit int) ([]repository.TopFlaggedRow, error)
 }
 
-// jobsManticoreLookup is the narrow slice of jobsManticore the flag
-// admin uses to resolve a slug → opportunity row (kind discriminator)
-// when annotating a freshly-submitted flag. GetByID accepts either a
-// canonical_id or a slug — the flag handler always passes a slug.
-type jobsManticoreLookup interface {
-	GetByID(ctx context.Context, id string) (*job, error)
+// jobsLookup is the narrow slice of JobsBackend the flag admin uses
+// to resolve a slug → opportunity row (kind discriminator) when
+// annotating a freshly-submitted flag.
+type jobsLookup interface {
+	GetBySlug(ctx context.Context, slug string) (*job, error)
 }
 
 // flagEventEmitter is the auto-flag event emit interface. The
@@ -79,7 +78,7 @@ func (f frameEmitter) Emit(ctx context.Context, topic string, payload any) error
 type flagsAdmin struct {
 	repo        flagAdminRepo
 	sourceRepo  sourceAdminRepo // reused for ban_source action
-	jobs        jobsManticoreLookup
+	jobs        jobsLookup
 	emitter     flagEventEmitter
 }
 
@@ -88,7 +87,7 @@ type flagsAdmin struct {
 // route. Mirrors registerSourcesAdmin's "open DB pool, build repo,
 // register handlers" structure so both surfaces share the same Frame
 // configuration and auth pattern.
-func registerFlagsAdmin(ctx context.Context, mux *http.ServeMux, jm *jobsManticore) {
+func registerFlagsAdmin(ctx context.Context, mux *http.ServeMux, jm JobsBackend) {
 	log := util.Log(ctx)
 
 	fc, err := fconfig.FromEnv[fconfig.ConfigurationDefault]()
@@ -192,17 +191,13 @@ func (a *flagsAdmin) handleUserFlag(w http.ResponseWriter, r *http.Request) {
 	// Resolve the kind + canonical_id from the canonical row
 	// (best-effort — missing values are non-fatal, the flag still
 	// records). The canonical_id lets the auto-flag emit carry the
-	// pk-mappable id so the materializer can update Manticore by
-	// hashID rather than by slug-string.
+	// pk-mappable id so the materializer can update the row by
+	// canonical_id.
 	kind, canonicalID := "", ""
 	if a.jobs != nil {
-		if j, _ := a.jobs.GetByID(r.Context(), slug); j != nil {
+		if j, _ := a.jobs.GetBySlug(r.Context(), slug); j != nil {
 			kind = j.Kind
-			// The polymorphic schema has no canonical_id column; the
-			// numeric ID is the closest stable identifier we can hand
-			// the downstream flag record. Format as decimal so the
-			// repository continues to see a printable string.
-			canonicalID = strconv.FormatUint(j.ID, 10)
+			canonicalID = j.CanonicalID
 		}
 	}
 
@@ -483,6 +478,5 @@ func logFlagAction(r *http.Request, action, flagID, slug string) {
 		Info("flag admin action")
 }
 
-// Compile-time assertion: jobsManticore implements the lookup
-// interface. Catches accidental signature drift on jm.GetByID.
-var _ jobsManticoreLookup = (*jobsManticore)(nil)
+// Compile-time assertion: jobsPostgres implements the lookup interface.
+var _ jobsLookup = (*jobsPostgres)(nil)

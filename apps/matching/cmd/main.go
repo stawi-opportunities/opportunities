@@ -87,7 +87,6 @@ func main() {
 		migrationDB := dbFn(ctx, false)
 		if err := migrationDB.AutoMigrate(
 			&domain.CandidateProfile{},
-			&domain.CandidateMatch{},
 			&domain.CandidateApplication{},
 			&domain.OpportunityFlag{},
 		); err != nil {
@@ -155,8 +154,6 @@ func main() {
 	// existing read-only pool. No new dialer, no extra service.
 	search := httpv1.NewPostgresSearch(dbFn)
 	matchSvc := httpv1.NewMatchService(candStore, search, 20)
-	candidateLister := adminv1.NewRepoCandidateLister(candidateRepo, 1000)
-	matchRunner := adminv1.NewServiceMatchRunner(svc, matchSvc)
 	staleReader := candidatestore.NewStaleReader(cat)
 	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
 	// Weekly jobs digest collaborators — non-personalised email for
@@ -342,11 +339,6 @@ func main() {
 	}))
 
 	// --- Trustage admin endpoints ---
-	mux.HandleFunc("POST /_admin/matches/weekly_digest",
-		adminv1.MatchesWeeklyHandler(adminv1.MatchesWeeklyDeps{
-			Lister: candidateLister,
-			Runner: matchRunner,
-		}))
 	mux.HandleFunc("POST /_admin/cv/stale_nudge",
 		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
 			Svc:        svc,
