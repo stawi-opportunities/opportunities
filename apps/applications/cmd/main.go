@@ -13,6 +13,8 @@ import (
 	"github.com/pitabwire/util"
 
 	appsconfig "github.com/stawi-opportunities/opportunities/apps/applications/config"
+	v1 "github.com/stawi-opportunities/opportunities/apps/applications/service/http/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/applications"
 )
 
 func main() {
@@ -36,6 +38,16 @@ func main() {
 		log.WithError(err).Fatal("applications: open *sql.DB")
 	}
 
+	store := applications.NewStore(sqlDB)
+	events := applications.NewEventLog(sqlDB)
+	notes := applications.NewNotesStore(sqlDB)
+	reminders := applications.NewRemindersStore(sqlDB)
+	attachments := applications.NewAttachmentsStore(sqlDB)
+	idem := applications.NewIdempotencyStore(sqlDB, time.Duration(cfg.IdempotencyTTLHours)*time.Hour)
+
+	// Phase 5 will add the real R2 adapter; for now always use MemoryBlobStore.
+	var blobs applications.BlobStore = applications.NewMemoryBlobStore()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -46,15 +58,19 @@ func main() {
 	})
 
 	if cfg.ApplicationsEnabled {
-		// Business routes are mounted by handlers.Register in Task 9-10
-		// once those handlers land. Until then we expose only /healthz.
-		log.Info("applications: enabled, but no business routes wired yet (Task 11 wires them)")
+		v1.Mount(mux, &v1.Deps{
+			Store:            store,
+			EventLog:         events,
+			NotesStore:       notes,
+			RemindersStore:   reminders,
+			AttachmentsStore: attachments,
+			BlobStore:        blobs,
+			Idempotency:      idem,
+		})
+		log.Info("applications: HTTP routes mounted")
 	} else {
 		log.Info("applications: APPLICATIONS_ENABLED=false; only healthz exposed")
 	}
-
-	_ = sqlDB // used by handlers in Task 11
-	_ = cfg.IdempotencyTTLHours
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
