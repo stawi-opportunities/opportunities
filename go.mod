@@ -22,6 +22,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-rod/rod v0.116.2
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.12.3
 	github.com/markusmobius/go-trafilatura v1.12.2
@@ -40,6 +41,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.43.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
+	pgregory.net/rapid v1.3.0
 )
 
 require (
@@ -152,7 +154,6 @@ require (
 	github.com/hamba/avro/v2 v2.31.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.9.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jalaali/go-jalaali v0.0.0-20250521085720-bf793ab67800 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect

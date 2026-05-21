@@ -17,6 +17,7 @@ import (
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
 	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
+	matchingv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/matching/v1"
 	matchersreg "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
 	dealm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/deal"
 	fundingm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/funding"
@@ -30,6 +31,7 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
+	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
@@ -226,6 +228,76 @@ func main() {
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
 
+	// --- Phase-2 continuous matching pipeline (flag-gated per spec §5.5) ---
+
+	if cfg.MatchingFanoutEnabled || cfg.MatchingCandidateChangeEnabled {
+		// Extract *sql.DB from the existing GORM pool so the new pipeline
+		// can use database/sql directly. pool.DB returns *gorm.DB; .DB()
+		// unwraps the underlying connection pool.
+		gdb := dbFn(ctx, false)
+		sqlDB, err := gdb.DB()
+		if err != nil {
+			log.WithError(err).Fatal("matching: unwrap sql.DB from pool")
+		}
+
+		matchStore := matching.NewStore(sqlDB)
+		matchEvents := matching.NewEventLog(sqlDB)
+		matchIdx := matching.NewIndexStore(sqlDB)
+		matchKNN := matching.NewKNN(sqlDB)
+
+		var rerank matching.Reranker = matching.NoopReranker{}
+		if cfg.MatchingRerankerEnabled {
+			// Upstream reranker client is Phase 5. Until then, wrap the noop
+			// in the pool so the rest of the wiring behaves identically.
+			// TODO(phase-5): drive concurrency + timeout from
+			// cfg.MatchingRerankerConcurrency / cfg.MatchingRerankerTimeoutSeconds.
+			rerank = matching.NewPooledReranker(matching.NoopReranker{}, 8, time.Second)
+		}
+
+		dlqPub := &queuePublisherAdapter{svc: svc}
+		dlq := matchingv1.NewDLQGuard(dlqPub, eventsv1.SubjectMatchingDeadletter, cfg.MatchingDLQThreshold)
+
+		if cfg.MatchingFanoutEnabled {
+			fanout := matchingv1.NewFanOutConsumer(matchingv1.FanOutConsumerDeps{
+				Store:    matchStore,
+				EventLog: matchEvents,
+				KNN:      matchKNN,
+				Reranker: rerank,
+				Weights:  matching.DefaultWeights(),
+				DLQ:      dlq,
+				OppEmbedQ: matchingv1.NewSQLOppEmbeddingQuery(sqlDB),
+			})
+			svc.Init(ctx,
+				frame.WithRegisterSubscriber(fanout.Name(), fanout.Name(), fanout))
+			log.Info("matching: fan-out (Path A) enabled")
+		}
+
+		if cfg.MatchingCandidateChangeEnabled {
+			deb := matching.NewMemoryDebouncer()
+			debounceTTL := time.Duration(cfg.MatchingDebounceTTLSeconds) * time.Second
+			for _, topic := range []string{
+				eventsv1.TopicCandidatePreferencesUpdated,
+				eventsv1.TopicCandidateEmbedding,
+			} {
+				cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
+					IndexStore: matchIdx,
+					KNN:        matchKNN,
+					Store:      matchStore,
+					EventLog:   matchEvents,
+					Reranker:   rerank,
+					Weights:    matching.DefaultWeights(),
+					Debouncer:  deb,
+					DLQ:        dlq,
+					Topic:      topic,
+				})
+				_ = debounceTTL // TTL carried per-candidate via CandidateChange.DebounceTTL in Phase 5
+				svc.Init(ctx,
+					frame.WithRegisterSubscriber(cc.Name(), cc.Name(), cc))
+			}
+			log.Info("matching: candidate-change (Path C) enabled")
+		}
+	}
+
 	// --- HTTP mux ---
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -282,6 +354,15 @@ func main() {
 }
 
 // --- Adapters — wire concrete pkg/* types to the v1 handler interfaces. ---
+
+// queuePublisherAdapter bridges *frame.Service to matchingv1.DeadLetterPublisher.
+// It publishes raw bytes directly onto the named queue subject so the DLQGuard
+// can drop poisoned messages without re-encoding them.
+type queuePublisherAdapter struct{ svc *frame.Service }
+
+func (a *queuePublisherAdapter) Publish(ctx context.Context, subject string, payload []byte) error {
+	return a.svc.QueueManager().Publish(ctx, subject, payload)
+}
 
 type textExtractor struct{}
 

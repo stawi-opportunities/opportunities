@@ -140,7 +140,11 @@ type CandidateMatch struct {
 	AppliedAt *time.Time  `json:"applied_at"`
 }
 
-func (CandidateMatch) TableName() string { return "candidate_matches" }
+// TableName binds the legacy GORM struct to the renamed table. Migration
+// 0013 renamed the GORM-managed table to `candidate_matches_legacy`;
+// the new SQL-managed `candidate_matches` is owned by pkg/matching.Store.
+// Both tables co-exist until Phase 6 drops the legacy one (spec §5.5).
+func (CandidateMatch) TableName() string { return "candidate_matches_legacy" }
 
 
 // CandidateApplication records a job application submitted by or on behalf of a candidate.

@@ -10,10 +10,16 @@ package testhelpers
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
@@ -111,20 +117,24 @@ func ValkeyContainer(t *testing.T, ctx context.Context) string {
 	return fmt.Sprintf("redis://%s:%s", host, port.Port())
 }
 
-// PostgresContainer starts a Postgres server and returns its DSN.
-func PostgresContainer(t *testing.T, ctx context.Context) string {
+// PostgresContainerNoMigrate boots TimescaleDB + pgvector (the official ha image
+// ships both) and returns a connected *sql.DB without applying any migrations.
+//
+// Use this when you need to interleave database setup steps (e.g., creating stub tables
+// before running migrations). The container is torn down via t.Cleanup.
+func PostgresContainerNoMigrate(t *testing.T, ctx context.Context) *sql.DB {
 	t.Helper()
+
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:16-alpine",
+		Image:        "timescale/timescaledb-ha:pg16",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
-			"POSTGRES_USER":     "stawi",
-			"POSTGRES_PASSWORD": "stawi",
-			"POSTGRES_DB":       "opportunities",
+			"POSTGRES_USER":     "test",
+			"POSTGRES_PASSWORD": "test",
+			"POSTGRES_DB":       "opportunities_test",
 		},
-		WaitingFor: tcwait.ForAll(
-			tcwait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		WaitingFor: tcwait.ForListeningPort("5432/tcp").
+			WithStartupTimeout(90 * time.Second),
 	}
 	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -135,7 +145,79 @@ func PostgresContainer(t *testing.T, ctx context.Context) string {
 
 	host, err := c.Host(ctx)
 	require.NoError(t, err)
-	port, err := c.MappedPort(ctx, "5432")
+	port, err := c.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err)
-	return fmt.Sprintf("postgres://stawi:stawi@%s:%s/opportunities?sslmode=disable", host, port.Port())
+
+	dsn := fmt.Sprintf("postgres://test:test@%s:%s/opportunities_test?sslmode=disable",
+		host, port.Port())
+	db, err := sql.Open("pgx", dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	require.Eventually(t, func() bool { return db.PingContext(ctx) == nil },
+		60*time.Second, 250*time.Millisecond, "postgres ping")
+
+	return db
+}
+
+// ApplyMigrationsDir applies every db/migrations/*.sql file in the given directory
+// in numeric order. Useful when you need to interleave database setup before migrations.
+func ApplyMigrationsDir(t *testing.T, ctx context.Context, db *sql.DB, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err, "read migrations dir %s", dir)
+
+	files := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+	sort.Strings(files)
+
+	for _, name := range files {
+		body, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err, "read %s", name)
+		_, err = db.ExecContext(ctx, string(body))
+		require.NoError(t, err, "apply %s", name)
+	}
+}
+
+// EnsureOpportunitiesStub creates minimal stub tables required before migrations
+// can run cleanly on a fresh container:
+//
+//   - opportunities: needed by migration 0012 (partial index on opportunities).
+//   - candidate_profiles: needed by migration 0003 (ALTER TABLE DROP COLUMN IF EXISTS).
+//
+// These are temporary stubs; production uses GORM AutoMigrate for the full
+// schemas. The IF NOT EXISTS guard makes every call idempotent.
+func EnsureOpportunitiesStub(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS opportunities (
+			id TEXT PRIMARY KEY,
+			posted_at TIMESTAMPTZ,
+			status TEXT,
+			hidden BOOLEAN
+		);
+		CREATE TABLE IF NOT EXISTS candidate_profiles (
+			id TEXT PRIMARY KEY
+		);
+	`)
+	return err
+}
+
+// PostgresContainer boots TimescaleDB + pgvector (the official ha image
+// ships both) and applies every db/migrations/*.sql in numeric order.
+// Returns a *sql.DB connected to the freshly migrated database.
+//
+// Use this in any integration suite that needs a clean DB with the
+// project's schema applied. The container is torn down via t.Cleanup.
+//
+// For more control (e.g., creating stub tables before migrations),
+// use PostgresContainerNoMigrate + EnsureOpportunitiesStub + ApplyMigrationsDir directly.
+func PostgresContainer(t *testing.T, ctx context.Context, migrationsDir string) *sql.DB {
+	t.Helper()
+	db := PostgresContainerNoMigrate(t, ctx)
+	ApplyMigrationsDir(t, ctx, db, migrationsDir)
+	return db
 }
