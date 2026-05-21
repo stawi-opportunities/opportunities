@@ -87,6 +87,10 @@ const (
 	// outage doesn't block the publish path.
 	SubjectWorkerEmbed     = "svc.opportunities.worker.embed.v1"
 	SubjectWorkerTranslate = "svc.opportunities.worker.translate.v1"
+
+	// SubjectMatchingDeadletter receives matching events that exceeded the
+	// redelivery budget. Admin /api/admin/dlq/replay re-publishes them.
+	SubjectMatchingDeadletter = "svc.opportunities.matching.deadletter"
 )
 
 // AllTopics returns every topic the writer is expected to subscribe
