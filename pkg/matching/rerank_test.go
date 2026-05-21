@@ -3,7 +3,6 @@ package matching_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -54,7 +53,6 @@ func TestPooledReranker_FallsBackOnUpstreamError(t *testing.T) {
 }
 
 type blockingReranker struct {
-	mu    sync.Mutex
 	block chan struct{}
 }
 

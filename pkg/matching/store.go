@@ -252,7 +252,7 @@ LIMIT $` + fmt.Sprint(len(args))
 	if err != nil {
 		return ListByCandidatePage{}, fmt.Errorf("matching: list: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]Match, 0, limit)
 	for rows.Next() {

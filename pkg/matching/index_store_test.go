@@ -17,7 +17,7 @@ func TestIndexStore_UpsertAndGet(t *testing.T) {
 	floor := 30000
 	err := s.Upsert(ctx, matching.CandidateIndex{
 		CandidateID:    "c1",
-		Embedding:      makeUnitVector(1536, 0),
+		Embedding:      unitVec(1536, 0),
 		MinScore:       0.62,
 		DailyCap:       25,
 		WeeklyCap:      100,
@@ -37,12 +37,3 @@ func TestIndexStore_UpsertAndGet(t *testing.T) {
 	require.ElementsMatch(t, []string{"job", "scholarship"}, got.Kinds)
 }
 
-func makeUnitVector(dim, axis int) []float32 {
-	v := make([]float32, dim)
-	if axis >= 0 && axis < dim {
-		v[axis] = 1
-	} else {
-		v[0] = 1
-	}
-	return v
-}

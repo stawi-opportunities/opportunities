@@ -60,7 +60,7 @@ func (k *KNN) FanOutKNN(ctx context.Context, p FanOutKNNParams) ([]CandidateHit,
 	if err != nil {
 		return nil, fmt.Errorf("matching: fan-out knn: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]CandidateHit, 0, limit)
 	for rows.Next() {
 		var (
@@ -128,7 +128,7 @@ func (k *KNN) ReverseKNN(ctx context.Context, p ReverseKNNParams) ([]OppHit, err
 	if err != nil {
 		return nil, fmt.Errorf("matching: reverse knn: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]OppHit, 0, limit)
 	for rows.Next() {
 		var h OppHit
