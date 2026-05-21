@@ -83,4 +83,6 @@ type CandidatesConfig struct {
 	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
 	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
 	MatchingDebounceTTLSeconds     int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
+	// Phase-4 extension-facing /api/me/* routes (spec §5.5).
+	MatchingExtensionEnabled bool `env:"MATCHING_EXTENSION_ENABLED" envDefault:"false"`
 }

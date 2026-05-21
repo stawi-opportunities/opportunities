@@ -17,6 +17,7 @@ import (
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
 	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
+	meV1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/me/v1"
 	matchingv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/matching/v1"
 	matchersreg "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
 	dealm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/deal"
@@ -24,6 +25,7 @@ import (
 	jobm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/job"
 	scholarshipm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/scholarship"
 	tenderm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/tender"
+	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
@@ -344,6 +346,31 @@ func main() {
 			Window:   7 * 24 * time.Hour,
 			JobLimit: 10,
 		}))
+
+	// --- Phase-4 extension-facing /api/me/* routes (flag-gated per spec §5.5) ---
+	if cfg.MatchingExtensionEnabled {
+		// Open *sql.DB for the new pkg/matching stores. The same pattern
+		// already used by the Phase-2 fan-out wiring above.
+		gdb := dbFn(ctx, false)
+		sqlDB, err := gdb.DB()
+		if err != nil {
+			log.WithError(err).Fatal("matching: open sql.DB for /api/me/* routes")
+		}
+		extDeps := &meV1.Deps{
+			DB:               sqlDB,
+			Matches:          matching.NewStore(sqlDB),
+			MatchEvents:      matching.NewEventLog(sqlDB),
+			Rules:            matching.NewRulesStore(sqlDB),
+			IndexStore:       matching.NewIndexStore(sqlDB),
+			KNN:              matching.NewKNN(sqlDB),
+			Reranker:         matching.NoopReranker{},
+			Weights:          matching.DefaultWeights(),
+			Debouncer:        matching.NewMemoryDebouncer(),
+			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
+		}
+		meV1.Mount(mux, extDeps)
+		log.Info("matching: /api/me/* routes enabled")
+	}
 
 	svc.Init(ctx, frame.WithHTTPHandler(mux))
 

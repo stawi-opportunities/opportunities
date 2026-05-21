@@ -538,3 +538,29 @@ None as of writing — every decision has a chosen option recorded in the releva
   invalid transition surfaces 409 + allowed list; idempotency
   replay returns identical bytes; sub-resources emit their event
   kinds; cross-candidate isolation hides A's rows from B.
+
+- **Phase 4 (extension-facing endpoints) — done.** New
+  `apps/matching/service/http/me/v1` package wired into the matching
+  binary's mux behind `MATCHING_EXTENSION_ENABLED`. Endpoints:
+  `GET /api/me` (candidate id + autoapply state),
+  `GET /api/me/matches` (paginated, status csv filter, cursor),
+  `GET /api/me/matches/{match_id}`,
+  `POST /api/me/matches/{match_id}/dismiss` (idempotent, writes
+  `candidate_match_events`),
+  `POST /api/me/matches/{match_id}/view` (writes
+  `engagement_events`),
+  `GET /api/me/rules`, `PUT /api/me/rules` (validated via
+  `applications.ParseRules`, persisted via
+  `matching.RulesStore`, triggers Path C via
+  `matching.RunCandidateChange` best-effort),
+  `GET /api/me/profile-fields` (loads `candidate_profiles` via
+  `pkg/candidatestore.GetProfileFields` with stable
+  `If-None-Match` / `ETag` round-trip).
+  Shared middleware lifted to `pkg/httpmw` so both
+  `apps/applications` and `apps/matching` consume the same
+  `CandidateAuth` + `Idempotency` + `Problem`/`ProblemJSON`
+  primitives. New `pkg/matching/rules_store.go` keeps the
+  denormalized `enabled` / `autoapply` booleans in sync with the
+  JSONB rules document. Integration suite in
+  `apps/matching/service/http/me/v1/handlers_test.go` covers all
+  endpoints + cross-candidate isolation + ETag conditional GET.
