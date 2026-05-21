@@ -234,16 +234,7 @@ func (s *Search) scan(ctx context.Context, q string, args []any) ([]Hit, error) 
 	}
 	out := make([]Hit, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Hit{
-			CanonicalID: r.CanonicalID,
-			Slug:        r.Slug,
-			Title:       r.Title,
-			Company:     r.Company,
-			Country:     r.Country,
-			Kind:        r.Kind,
-			PostedAt:    r.PostedAt,
-			Score:       r.Score,
-		})
+		out = append(out, Hit(r))
 	}
 	return out, nil
 }
