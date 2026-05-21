@@ -508,3 +508,33 @@ None as of writing — every decision has a chosen option recorded in the releva
   TTL gate (Valkey-backed replacement in Phase 5). Integration
   coverage in `MatchingPipelineSuite`: Path A happy path, idempotent
   replay, terminal-state immunity, Path B merging without duplicates.
+
+- **Phase 3 (applications service) — done.** New `apps/applications`
+  binary (frame service + `http.NewServeMux`) flag-gated by
+  `APPLICATIONS_ENABLED`. `pkg/applications` gains the data-access
+  layer: `Store` (applications CRUD + state-machine-enforced
+  `ApplyTransition`), `EventLog` (append-only writer for
+  `application_events`), `NotesStore` / `RemindersStore` /
+  `AttachmentsStore` with soft-delete, `IdempotencyStore`
+  (pg-backed, 24h TTL, first-writer-wins), and the `BlobStore`
+  interface with `MemoryBlobStore` for dev/test (R2 adapter in
+  Phase 5). Migration 0014 adds `idempotency_keys` (the soft-delete
+  columns were already in 0010). HTTP surface implemented in
+  `apps/applications/service/http/v1`:
+  `POST/GET/PATCH /api/me/applications`,
+  `GET /api/me/applications/{id}` (with embedded event tail),
+  `GET/POST /api/me/applications/{id}/events`,
+  `POST/PATCH/DELETE /api/me/applications/{id}/notes(/{note_id})`,
+  `POST/PATCH/DELETE /api/me/applications/{id}/reminders(/{rid})`,
+  `POST/DELETE /api/me/applications/{id}/attachments(/{att_id})`,
+  `GET /api/me/attachments/{att_id}` (pre-signed download),
+  `GET /api/me/reminders`. Middleware: `CandidateAuth`
+  (`X-Candidate-ID` for now — OIDC bearer landing later), pg-backed
+  `Idempotency` (replays cached 2xx bytes), and RFC 9457
+  `problem+json` errors that include the state-machine `allowed`
+  set on 409 invalid transitions. Integration coverage in
+  `ApplicationsLifecycleSuite`: full new → applying → submitted →
+  screening → interview → offer → accepted walk with event audit;
+  invalid transition surfaces 409 + allowed list; idempotency
+  replay returns identical bytes; sub-resources emit their event
+  kinds; cross-candidate isolation hides A's rows from B.
