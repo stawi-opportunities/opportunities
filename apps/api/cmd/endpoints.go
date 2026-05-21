@@ -18,7 +18,7 @@ import (
 // fixed SPA-shaped facet families in shapeFacetsForSPA — the SPA's
 // Facets type already enumerates the wanted families.)
 
-func v2SearchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Counters) http.HandlerFunc {
+func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Counters) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -194,7 +194,7 @@ func registryCategoryLabel(reg *opportunity.Registry) func(int64) string {
 	}
 }
 
-func v2JobByIDHandler(jm JobsBackend) http.HandlerFunc {
+func jobByIDHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
 		if id == "" {
@@ -215,7 +215,7 @@ func v2JobByIDHandler(jm JobsBackend) http.HandlerFunc {
 	}
 }
 
-func v2TopHandler(jm JobsBackend) http.HandlerFunc {
+func topHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		limit := parseLimit(req.URL.Query().Get("limit"), 20, 200)
 		minScore := 60.0
@@ -238,7 +238,7 @@ func v2TopHandler(jm JobsBackend) http.HandlerFunc {
 	}
 }
 
-func v2LatestHandler(jm JobsBackend) http.HandlerFunc {
+func latestHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
 		rows, err := jm.Latest(req.Context(), limit)
@@ -252,7 +252,7 @@ func v2LatestHandler(jm JobsBackend) http.HandlerFunc {
 	}
 }
 
-func v2CategoriesHandler(jm JobsBackend) http.HandlerFunc {
+func categoriesHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		facets, err := jm.Facets(req.Context())
 		if err != nil {
@@ -273,7 +273,7 @@ func v2CategoriesHandler(jm JobsBackend) http.HandlerFunc {
 	}
 }
 
-func v2StatsHandler(jm JobsBackend) http.HandlerFunc {
+func jobStatsHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		totalJobs, err := jm.Count(ctx, nil)
@@ -332,14 +332,14 @@ type feedResponse struct {
 	Sort    string                  `json:"sort"`
 }
 
-// v2FeedHandler returns the home-page tiered feed in the shape the
+// feedHandler returns the home-page tiered feed in the shape the
 // front-end SPA expects (see ui/app/src/types/search.ts FeedResponse).
 // Previous response (root-level `country`, tiers with `name`/`results`)
 // caused the SPA to crash with "Cannot read properties of undefined
 // (reading 'country')" because it dereferenced `context.country` and
 // expected `tiers[].id`/`jobs` not `name`/`results`. This rewrite
 // produces the exact wire shape the SPA imports.
-func v2FeedHandler(jm JobsBackend) http.HandlerFunc {
+func feedHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -414,10 +414,10 @@ func v2FeedHandler(jm JobsBackend) http.HandlerFunc {
 	}
 }
 
-// v2FeedTierHandler returns one page of a specific tier (used by the
+// feedTierHandler returns one page of a specific tier (used by the
 // SPA's "Load more" button). Response shape mirrors TierPageResponse
 // in ui/app/src/types/search.ts.
-func v2FeedTierHandler(jm JobsBackend) http.HandlerFunc {
+func feedTierHandler(jm JobsBackend) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		qs := req.URL.Query()
@@ -460,11 +460,11 @@ func v2FeedTierHandler(jm JobsBackend) http.HandlerFunc {
 	}
 }
 
-// v2VariantsRejectedHandler returns the most-recently rejected variants
+// variantsRejectedHandler returns the most-recently rejected variants
 // (Verify-stage rejections) read from the
 // opportunities.variants_rejected Iceberg table. Stub for now —
 // returns 501 until a follow-up wires the catalog client query.
-func v2VariantsRejectedHandler() http.HandlerFunc {
+func variantsRejectedHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)

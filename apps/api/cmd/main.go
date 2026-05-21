@@ -149,29 +149,16 @@ func main() {
 		})
 	})
 
-	// v2 endpoints (Manticore-only). Search results are post-decorated
+	// Flat /api/* endpoints. Search results are post-decorated
 	// with view/apply counters when Valkey is configured.
-	mux.HandleFunc("GET /api/v2/search", v2SearchHandler(jm, reg, countersClient))
-	mux.HandleFunc("GET /api/v2/jobs/{id}", v2JobByIDHandler(jm))
-	mux.HandleFunc("GET /api/v2/jobs/top", v2TopHandler(jm))
-	mux.HandleFunc("GET /api/v2/jobs/latest", v2LatestHandler(jm))
-	mux.HandleFunc("GET /api/v2/categories", v2CategoriesHandler(jm))
-	mux.HandleFunc("GET /api/v2/stats", v2StatsHandler(jm))
-	mux.HandleFunc("GET /api/v2/feed", v2FeedHandler(jm))
-	mux.HandleFunc("GET /api/v2/feed/tier", v2FeedTierHandler(jm))
-
-	// Legacy shims - v1 paths route to v2 handlers during transition.
-	mux.HandleFunc("GET /api/search", v2SearchHandler(jm, reg, countersClient))
-	mux.HandleFunc("GET /api/categories", v2CategoriesHandler(jm))
-	mux.HandleFunc("GET /api/jobs/latest", v2LatestHandler(jm))
-	mux.HandleFunc("GET /api/stats/summary", v2StatsHandler(jm))
-	mux.HandleFunc("GET /api/feed", v2FeedHandler(jm))
-	mux.HandleFunc("GET /api/feed/tier", v2FeedTierHandler(jm))
-	mux.HandleFunc("GET /jobs/top", v2TopHandler(jm))
-	mux.HandleFunc("GET /jobs/{id}", v2JobByIDHandler(jm))
-	mux.HandleFunc("GET /categories", v2CategoriesHandler(jm))
-	mux.HandleFunc("GET /stats", v2StatsHandler(jm))
-	mux.HandleFunc("GET /search", v2SearchHandler(jm, reg, countersClient))
+	mux.HandleFunc("GET /api/search", searchHandler(jm, reg, countersClient))
+	mux.HandleFunc("GET /api/jobs/{id}", jobByIDHandler(jm))
+	mux.HandleFunc("GET /api/jobs/top", topHandler(jm))
+	mux.HandleFunc("GET /api/jobs/latest", latestHandler(jm))
+	mux.HandleFunc("GET /api/categories", categoriesHandler(jm))
+	mux.HandleFunc("GET /api/stats", jobStatsHandler(jm))
+	mux.HandleFunc("GET /api/feed", feedHandler(jm))
+	mux.HandleFunc("GET /api/feed/tier", feedTierHandler(jm))
 
 	// Per-slug stats — Valkey-backed view + apply counters. Public,
 	// no auth. When Valkey is not configured the response is the
@@ -195,7 +182,7 @@ func main() {
 	// Verify-stage rejection visibility — operator-facing read of the
 	// opportunities.variants_rejected Iceberg sink. Currently stubbed
 	// to 501; see endpoints_v2.go for the implementation note.
-	mux.HandleFunc("GET /admin/variants/rejected", v2VariantsRejectedHandler())
+	mux.HandleFunc("GET /admin/variants/rejected", variantsRejectedHandler())
 
 	// Analytics beacon — view path. Increments the Valkey counters
 	// (atomic INCR + 24h-windowed key with TTL) AND ships an
