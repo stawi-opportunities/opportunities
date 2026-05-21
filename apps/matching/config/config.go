@@ -74,4 +74,13 @@ type CandidatesConfig struct {
 	// notification service's email template doesn't have to assume the
 	// host. Defaults to production; preview deploys override via env.
 	PlansURL string `env:"PLANS_URL" envDefault:"https://jobs.stawi.org/pricing/"`
+
+	// Phase-2 continuous matching pipeline feature flags (spec §5.5).
+	// All default to false so the binary is safe to deploy before the
+	// pipeline is validated in staging.
+	MatchingFanoutEnabled          bool `env:"MATCHING_FANOUT_ENABLED"           envDefault:"false"`
+	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"false"`
+	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
+	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
+	MatchingDebounceTTLSeconds     int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
 }
