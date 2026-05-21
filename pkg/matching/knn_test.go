@@ -20,26 +20,26 @@ func TestFanOutKNN_OrdersByDistanceAndFilters(t *testing.T) {
 	knn := matching.NewKNN(db)
 
 	require.NoError(t, idx.Upsert(ctx, matching.CandidateIndex{
-		CandidateID: "c_close", Embedding: makeUnitVector(1536, 0),
+		CandidateID: "c_close", Embedding: unitVec(1536, 0),
 		MinScore: 0.5, DailyCap: 25, WeeklyCap: 100,
 		Kinds: []string{"job"}, Countries: []string{"KE"},
 		Enabled: true,
 	}))
 	require.NoError(t, idx.Upsert(ctx, matching.CandidateIndex{
-		CandidateID: "c_far", Embedding: makeUnitVector(1536, 5),
+		CandidateID: "c_far", Embedding: unitVec(1536, 5),
 		MinScore: 0.5, DailyCap: 25, WeeklyCap: 100,
 		Kinds: []string{"job"}, Countries: []string{"KE"},
 		Enabled: true,
 	}))
 	require.NoError(t, idx.Upsert(ctx, matching.CandidateIndex{
-		CandidateID: "c_wrong_kind", Embedding: makeUnitVector(1536, 0),
+		CandidateID: "c_wrong_kind", Embedding: unitVec(1536, 0),
 		MinScore: 0.5, DailyCap: 25, WeeklyCap: 100,
 		Kinds: []string{"scholarship"}, Countries: []string{"KE"},
 		Enabled: true,
 	}))
 
 	hits, err := knn.FanOutKNN(ctx, matching.FanOutKNNParams{
-		OppEmbedding: makeUnitVector(1536, 0),
+		OppEmbedding: unitVec(1536, 0),
 		OppKind:      "job",
 		OppCountry:   "KE",
 		Limit:        10,
@@ -66,7 +66,7 @@ func TestReverseKNN_OrdersByDistanceSinceCursor(t *testing.T) {
 
 	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	seedOpp := func(id string, axis int, kind, country string, firstSeen time.Time) {
-		v := makeUnitVector(1536, axis)
+		v := unitVec(1536, axis)
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO opportunities (id, posted_at, status, hidden, embedding, kind, country, first_seen_at)
 			VALUES ($1, now(), 'active', false, $2::vector, $3, $4, $5)
@@ -79,7 +79,7 @@ func TestReverseKNN_OrdersByDistanceSinceCursor(t *testing.T) {
 	seedOpp("opp_wrong_kind", 0, "scholarship", "KE", now)
 
 	hits, err := knn.ReverseKNN(ctx, matching.ReverseKNNParams{
-		CandidateEmbedding: makeUnitVector(1536, 0),
+		CandidateEmbedding: unitVec(1536, 0),
 		Kinds:              []string{"job"},
 		Countries:          []string{"KE"},
 		Since:              now.Add(-2 * time.Hour),
