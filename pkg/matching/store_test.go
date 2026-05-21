@@ -139,3 +139,57 @@ func TestStore_UpsertMatches_Bulk(t *testing.T) {
 		`SELECT count(*) FROM candidate_matches WHERE candidate_id='c'`).Scan(&cnt))
 	require.Equal(t, 3, cnt)
 }
+
+func TestStore_ListByCandidate_Pagination(t *testing.T) {
+	db, ctx := setupStoreDB(t)
+	s := matching.NewStore(db)
+
+	rows := []matching.Match{
+		{MatchID: "p1", CandidateID: "u", OpportunityID: "o1", Status: matching.StatusNew, Score: 0.9, LastEventID: "e"},
+		{MatchID: "p2", CandidateID: "u", OpportunityID: "o2", Status: matching.StatusViewed, Score: 0.8, LastEventID: "e"},
+		{MatchID: "p3", CandidateID: "u", OpportunityID: "o3", Status: matching.StatusApplying, Score: 0.7, LastEventID: "e"},
+		{MatchID: "p4", CandidateID: "u", OpportunityID: "o4", Status: matching.StatusDismissed, Score: 0.6, LastEventID: "e"},
+		{MatchID: "p5", CandidateID: "u", OpportunityID: "o5", Status: matching.StatusOverflow, Score: 0.5, LastEventID: "e"},
+	}
+	for _, m := range rows {
+		_, err := s.UpsertMatch(ctx, m)
+		require.NoError(t, err)
+	}
+
+	// Default status filter ([new, viewed, applying]) excludes dismissed/overflow.
+	page, err := s.ListByCandidate(ctx, matching.ListByCandidateParams{
+		CandidateID: "u",
+		Statuses:    []matching.MatchStatus{matching.StatusNew, matching.StatusViewed, matching.StatusApplying},
+		Limit:       10,
+	})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 3)
+	require.Equal(t, "p1", page.Items[0].MatchID)
+	require.Equal(t, "p2", page.Items[1].MatchID)
+	require.Equal(t, "p3", page.Items[2].MatchID)
+	require.False(t, page.HasMore)
+
+	// Pagination: limit=2 → page 1 + cursor.
+	page1, err := s.ListByCandidate(ctx, matching.ListByCandidateParams{
+		CandidateID: "u",
+		Statuses:    []matching.MatchStatus{matching.StatusNew, matching.StatusViewed, matching.StatusApplying},
+		Limit:       2,
+	})
+	require.NoError(t, err)
+	require.Len(t, page1.Items, 2)
+	require.True(t, page1.HasMore)
+	require.NotEmpty(t, page1.NextCursor)
+
+	// Page 2 picks up from cursor.
+	page2, err := s.ListByCandidate(ctx, matching.ListByCandidateParams{
+		CandidateID: "u",
+		Statuses:    []matching.MatchStatus{matching.StatusNew, matching.StatusViewed, matching.StatusApplying},
+		Cursor:      page1.NextCursor,
+		Limit:       2,
+	})
+	require.NoError(t, err)
+	require.Len(t, page2.Items, 1)
+	require.False(t, page2.HasMore)
+	// And the page-2 item is the third in the ordered list:
+	require.Equal(t, "p3", page2.Items[0].MatchID)
+}
