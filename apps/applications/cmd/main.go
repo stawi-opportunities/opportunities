@@ -45,8 +45,20 @@ func main() {
 	attachments := applications.NewAttachmentsStore(sqlDB)
 	idem := applications.NewIdempotencyStore(sqlDB, time.Duration(cfg.IdempotencyTTLHours)*time.Hour)
 
-	// Phase 5 will add the real R2 adapter; for now always use MemoryBlobStore.
 	var blobs applications.BlobStore = applications.NewMemoryBlobStore()
+	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" && cfg.R2SecretAccessKey != "" && cfg.R2AttachmentsBucket != "" {
+		r2, err := applications.NewR2BlobStore(applications.R2BlobConfig{
+			AccountID:       cfg.R2AccountID,
+			AccessKeyID:     cfg.R2AccessKeyID,
+			SecretAccessKey: cfg.R2SecretAccessKey,
+			Bucket:          cfg.R2AttachmentsBucket,
+		})
+		if err != nil {
+			log.WithError(err).Fatal("applications: r2 blob store init failed")
+		}
+		blobs = r2
+		log.WithField("bucket", cfg.R2AttachmentsBucket).Info("applications: R2 blob store enabled")
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {

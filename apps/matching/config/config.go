@@ -75,6 +75,11 @@ type CandidatesConfig struct {
 	// host. Defaults to production; preview deploys override via env.
 	PlansURL string `env:"PLANS_URL" envDefault:"https://jobs.stawi.org/pricing/"`
 
+	// ValkeyURL is the Valkey/Redis connection URL for the distributed debouncer.
+	// When empty (default) the in-memory MemoryDebouncer is used, which is safe
+	// for dev/test but does not survive restarts or span multiple replicas.
+	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
+
 	// Phase-2 continuous matching pipeline feature flags (spec §5.5).
 	// All default to false so the binary is safe to deploy before the
 	// pipeline is validated in staging.

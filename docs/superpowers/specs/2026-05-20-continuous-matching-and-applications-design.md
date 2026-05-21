@@ -564,3 +564,28 @@ None as of writing — every decision has a chosen option recorded in the releva
   JSONB rules document. Integration suite in
   `apps/matching/service/http/me/v1/handlers_test.go` covers all
   endpoints + cross-candidate isolation + ETag conditional GET.
+
+- **Phase 5 (production hardening) — done.** Migration 0015 lands two
+  TimescaleDB continuous aggregates — `candidate_match_events_daily`
+  (per-candidate daily counts of generated/dismissed/overflow matches)
+  and `engagement_events_hourly` (per-candidate+opportunity hourly
+  beacon counters) — both auto-refreshed every 5 minutes via the
+  `add_continuous_aggregate_policy`. `pkg/matching/daily_cap.go` adds
+  a `DailyCapQuery` that reads the daily CAGG + a 10-minute raw-tail
+  UNION so the fan-out path sees today's count without waiting on the
+  next refresh. `pkg/matching/fanout.go` gains a `DailyCap` dep:
+  rows beyond the candidate's `daily_cap` write with status='overflow'
+  and emit `EventKindOverflow` instead of `EventKindGenerated`,
+  matching spec §3.1 step 9. Two production adapters replace the
+  Phase-3/Phase-4 in-memory placeholders: `pkg/applications/
+  blob_store_r2.go` (Cloudflare R2 over the S3-compatible API,
+  pre-signed GET URLs with 15-minute TTL per spec §5.4) and
+  `pkg/matching/debounce_valkey.go` (Frame `cache/valkey` raw cache
+  with TTL — uses `Exists`+`Set` fallback until Frame exposes
+  `SetNX`). Both swapped in at runtime when their env config is
+  populated; otherwise the in-memory stores still ship for local dev.
+  `apps/matching/cmd/main.go` and `apps/applications/cmd/main.go`
+  consume the env vars (`R2_*`, `VALKEY_URL`) and feed the production
+  adapters into the existing dependency wiring. Integration coverage
+  in `pkg/matching/daily_cap_test.go` exercises both the CAGG query
+  and the end-to-end fan-out → overflow path.

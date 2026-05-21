@@ -137,4 +137,11 @@ func TestMigrationsApplyCleanly(t *testing.T) {
        AND constraint_name='candidate_matches_pair_uniq'`).Scan(&cnt)
 	require.NoError(t, err)
 	require.Equal(t, 1, cnt, "(candidate_id, opportunity_id) UNIQUE should exist")
+
+	// Continuous aggregates from 0015.
+	err = db.QueryRowContext(ctx,
+		`SELECT count(*) FROM pg_class
+     WHERE relname IN ('candidate_match_events_daily', 'engagement_events_hourly')`).Scan(&cnt)
+	require.NoError(t, err)
+	require.Equal(t, 2, cnt, "both continuous aggregates should exist post-0015")
 }
