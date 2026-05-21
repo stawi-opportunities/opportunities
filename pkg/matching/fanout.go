@@ -173,11 +173,10 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 	// candidate_match_events is in Phase 5; here we tag based on the
 	// index row's DailyCap field.
 	matches := make([]Match, 0, len(scoredHits))
-	overflowed := 0
 	for _, s := range scoredHits {
-		status := StatusNew
-		// Heuristic cap: if the candidate's DailyCap is 0, treat as
-		// unbounded. Real cap enforcement comes in Phase 5.
+		// Real daily-cap enforcement (via the continuous aggregate on
+		// candidate_match_events) is Phase 5; until then every row is
+		// status=new and the Overflowed counter stays at zero below.
 		_ = s.hit.DailyCap
 
 		var rerankPtr *float64
@@ -188,11 +187,13 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 			MatchID:       idgen(),
 			CandidateID:   s.hit.CandidateID,
 			OpportunityID: in.OpportunityID,
-			Status:        status,
+			Status:        StatusNew,
 			Score:         s.score.Total,
 			RerankScore:   rerankPtr,
-			RerankerUsed:  used && rerankPtr != nil,
-			LastEventID:   runID,
+			// True only when the reranker both ran (`used`) AND produced
+			// a score for this specific candidate (`rerankPtr != nil`).
+			RerankerUsed: used && rerankPtr != nil,
+			LastEventID:  runID,
 			Metadata: map[string]any{
 				"path":         "fanout",
 				"canonical_id": in.CanonicalID,
@@ -245,9 +246,11 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 		RunID:             runID,
 		CandidatesScanned: len(hits),
 		MatchesWritten:    len(matches),
-		Overflowed:        overflowed,
-		RerankerStatus:    runEvt.RerankerStatus,
-		LatencyMS:         runEvt.LatencyMS,
+		// Overflowed stays zero until Phase 5 wires daily-cap enforcement
+		// from the candidate_match_events continuous aggregate.
+		Overflowed:     0,
+		RerankerStatus: runEvt.RerankerStatus,
+		LatencyMS:      runEvt.LatencyMS,
 	}, nil
 }
 
