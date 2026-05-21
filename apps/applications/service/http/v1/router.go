@@ -25,4 +25,30 @@ func Mount(mux *http.ServeMux, deps *Deps) {
 		auth(listEvents(deps)))
 	mux.Handle("POST /api/me/applications/{id}/events",
 		auth(idem("applications.events.append", appendEvent(deps))))
+
+	// Notes
+	mux.Handle("POST /api/me/applications/{id}/notes",
+		auth(idem("applications.notes.create", createNote(deps))))
+	mux.Handle("PATCH /api/me/applications/{id}/notes/{note_id}",
+		auth(idem("applications.notes.update", updateNote(deps))))
+	mux.Handle("DELETE /api/me/applications/{id}/notes/{note_id}",
+		auth(deleteNote(deps)))
+
+	// Reminders
+	mux.Handle("GET /api/me/reminders",
+		auth(listAllReminders(deps)))
+	mux.Handle("POST /api/me/applications/{id}/reminders",
+		auth(idem("applications.reminders.create", createReminder(deps))))
+	mux.Handle("PATCH /api/me/applications/{id}/reminders/{rid}",
+		auth(idem("applications.reminders.update", updateReminder(deps))))
+	mux.Handle("DELETE /api/me/applications/{id}/reminders/{rid}",
+		auth(deleteReminder(deps)))
+
+	// Attachments
+	mux.Handle("POST /api/me/applications/{id}/attachments",
+		auth(uploadAttachment(deps)))
+	mux.Handle("DELETE /api/me/applications/{id}/attachments/{att_id}",
+		auth(deleteAttachment(deps)))
+	mux.Handle("GET /api/me/attachments/{att_id}",
+		auth(presignAttachment(deps)))
 }
