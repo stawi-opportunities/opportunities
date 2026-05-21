@@ -230,6 +230,22 @@ func main() {
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
 
+	// --- Debouncer (shared by Phase-2 and Phase-4 paths) ---
+	// Constructed here so both the candidate-change consumers (Phase 2) and
+	// the /api/me/* extension routes (Phase 4) share the same distributed
+	// debouncer when VALKEY_URL is configured.
+	var deb matching.Debouncer = matching.NewMemoryDebouncer()
+	if cfg.ValkeyURL != "" {
+		valkey, valkeyErr := matching.NewValkeyDebouncer(cfg.ValkeyURL)
+		if valkeyErr != nil {
+			log.WithError(valkeyErr).Fatal("matching: valkey debouncer init failed")
+		}
+		if valkey != nil {
+			deb = valkey
+			log.WithField("url", cfg.ValkeyURL).Info("matching: valkey debouncer enabled")
+		}
+	}
+
 	// --- Phase-2 continuous matching pipeline (flag-gated per spec §5.5) ---
 
 	if cfg.MatchingFanoutEnabled || cfg.MatchingCandidateChangeEnabled {
@@ -268,6 +284,8 @@ func main() {
 				Weights:  matching.DefaultWeights(),
 				DLQ:      dlq,
 				OppEmbedQ: matchingv1.NewSQLOppEmbeddingQuery(sqlDB),
+				// Phase 5: daily-cap enforcement via the continuous aggregate.
+				DailyCap: matching.NewPGDailyCapQuery(sqlDB),
 			})
 			svc.Init(ctx,
 				frame.WithRegisterSubscriber(fanout.Name(), fanout.Name(), fanout))
@@ -275,7 +293,6 @@ func main() {
 		}
 
 		if cfg.MatchingCandidateChangeEnabled {
-			deb := matching.NewMemoryDebouncer()
 			debounceTTL := time.Duration(cfg.MatchingDebounceTTLSeconds) * time.Second
 			for _, topic := range []string{
 				eventsv1.TopicCandidatePreferencesUpdated,
@@ -365,7 +382,7 @@ func main() {
 			KNN:              matching.NewKNN(sqlDB),
 			Reranker:         matching.NoopReranker{},
 			Weights:          matching.DefaultWeights(),
-			Debouncer:        matching.NewMemoryDebouncer(),
+			Debouncer:        deb,
 			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
 		}
 		meV1.Mount(mux, extDeps)

@@ -22,6 +22,9 @@ type FanOutConsumerDeps struct {
 	Weights   matching.Weights
 	DLQ       *DLQGuard
 	OppEmbedQ OppEmbeddingQuery
+	// DailyCap is the optional continuous-aggregate-backed query for
+	// today's per-candidate match count. When nil, no cap is enforced.
+	DailyCap matching.DailyCapQuery
 }
 
 // OppEmbeddingQuery hides the opportunity-embedding fetch from the
@@ -96,6 +99,7 @@ func (c *FanOutConsumer) handleOnce(ctx context.Context, payload []byte) error {
 		EventLog: c.deps.EventLog,
 		Reranker: c.deps.Reranker,
 		Weights:  c.deps.Weights,
+		DailyCap: c.deps.DailyCap,
 	})
 	return err
 }
