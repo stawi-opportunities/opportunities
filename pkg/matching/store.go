@@ -27,6 +27,11 @@ var ErrNotFound = errors.New("matching: not found")
 // upsertOneSQL is intentionally a single statement: the UNIQUE constraint
 // on (candidate_id, opportunity_id) collides, and ON CONFLICT branches
 // into the score-monotonic, status='new'-guarded update.
+//
+// RETURNING (xmax = 0) AS inserted distinguishes a fresh INSERT (xmax=0)
+// from an UPDATE (xmax holds the old row's transaction ID). When the
+// conflict fires but the WHERE guard prevents the update, no row is
+// returned — the caller treats sql.ErrNoRows as inserted=false.
 const upsertOneSQL = `
 INSERT INTO candidate_matches (
     match_id, candidate_id, opportunity_id, status,
@@ -42,40 +47,38 @@ ON CONFLICT (candidate_id, opportunity_id) DO UPDATE
        updated_at    = now()
    WHERE candidate_matches.status = 'new'
      AND EXCLUDED.score > candidate_matches.score
+RETURNING (xmax = 0) AS inserted
 `
 
 // UpsertMatch inserts a new row, or updates an existing pair-row when:
 //   - the existing status is 'new' (terminal states are protected), and
 //   - the incoming score is strictly greater (score-monotonic).
 //
-// Returns created=true as a best-effort signal for telemetry only; correctness
-// does not depend on this value (see wasInserted documentation).
+// Returns inserted=true when a brand-new row was created, false when an
+// existing row was updated or when the conflict guard prevented any change.
+// This is a best-effort telemetry signal; correctness does not depend on it.
 func (s *Store) UpsertMatch(ctx context.Context, m Match) (bool, error) {
+	if m.Status == "" {
+		m.Status = StatusNew
+	}
 	md := m.Metadata
 	if md == nil {
 		md = map[string]any{}
 	}
-	res, err := s.db.ExecContext(ctx, upsertOneSQL,
+	var inserted bool
+	err := s.db.QueryRowContext(ctx, upsertOneSQL,
 		m.MatchID, m.CandidateID, m.OpportunityID,
 		string(m.Status), m.Score, nullableF64(m.RerankScore),
 		m.RerankerUsed, m.LastEventID, mustEncodeJSON(md),
-	)
+	).Scan(&inserted)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Conflict fired but WHERE guard blocked the update — row unchanged.
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("matching: upsert: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("matching: upsert rows-affected: %w", err)
-	}
-	return n > 0 && wasInserted(res), nil
-}
-
-// wasInserted is a best-effort signal only used for telemetry; correctness
-// does not depend on it. The database/sql adapter does not expose the Postgres
-// CommandTag needed to distinguish INSERT from UPDATE, so we always return true
-// when rows were affected. Callers must not rely on this for business logic.
-func wasInserted(_ sql.Result) bool {
-	return true
+	return inserted, nil
 }
 
 const getByPairSQL = `
@@ -298,6 +301,9 @@ func decodeCursor(s string) (pageCursor, error) {
 	var c pageCursor
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return pageCursor{}, err
+	}
+	if c.MatchID == "" || c.CreatedAt.IsZero() {
+		return pageCursor{}, fmt.Errorf("matching: cursor: missing required fields")
 	}
 	return c, nil
 }
