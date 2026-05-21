@@ -485,3 +485,26 @@ None as of writing — every decision has a chosen option recorded in the releva
   `pkg/applications/rules`) carry the scoring function, state machine,
   and rules schema validator. Integration test `TestMigrationsApplyCleanly`
   smokes the schema on a fresh TimescaleDB + pgvector container.
+
+- **Phase 2 (matching pipeline) — done.** Migration 0013 lands the new
+  OLTP `candidate_matches` (legacy GORM-managed table renamed to
+  `candidate_matches_legacy`). `pkg/matching` gains the data-access
+  layer (`Store`, `EventLog`, `IndexStore`, `KNN`) with monotonic-score
+  + terminal-protected `ON CONFLICT … WHERE status='new'` UPSERT,
+  cursor-paginated reads, and append-only event writers. Three pure
+  orchestrators — `FanOut` (Path A), `GapFill` (Path B),
+  `RunCandidateChange` (Path C) — share the deterministic scoring
+  function and write through the same event log. JetStream consumers
+  in `apps/matching/service/matching/v1` subscribe Path A to
+  `TopicCanonicalsUpserted` and Path C to
+  `TopicCandidatePreferencesUpdated` + `TopicCandidateEmbedding`,
+  guarded by `MATCHING_FANOUT_ENABLED` /
+  `MATCHING_CANDIDATE_CHANGE_ENABLED` env flags. Reranker is bounded
+  + best-effort with retrieval-score fallback (`NoopReranker` default,
+  `PooledReranker` when `MATCHING_RERANKER_ENABLED=true`). `DLQGuard`
+  publishes to `svc.opportunities.matching.deadletter` after 5
+  redeliveries via the Frame `QueueManager`. Prometheus collectors
+  defined per §5.2. In-memory `MemoryDebouncer` ships as the Path-C
+  TTL gate (Valkey-backed replacement in Phase 5). Integration
+  coverage in `MatchingPipelineSuite`: Path A happy path, idempotent
+  replay, terminal-state immunity, Path B merging without duplicates.
