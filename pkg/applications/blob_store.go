@@ -94,27 +94,3 @@ func (m *MemoryBlobStore) PresignGet(_ context.Context, key string, ttl time.Dur
 	return "memory://" + key + "?ttl=" + ttl.String(), nil
 }
 
-// ---- R2BlobStore stub -------------------------------------------------------
-
-// R2BlobStore implements BlobStore against Cloudflare R2.
-//
-// Construction:
-//
-//	store := NewR2BlobStore(R2Config{
-//	    AccountID:       os.Getenv("R2_ACCOUNT_ID"),
-//	    AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
-//	    SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
-//	    Bucket:          os.Getenv("R2_BUCKET"),
-//	    PublicBaseURL:   os.Getenv("R2_PUBLIC_BASE_URL"), // optional, for presigned URLs
-//	})
-//
-// The implementation uses the AWS S3 SDK v2 pointed at the R2 endpoint
-// (https://<accountID>.r2.cloudflarestorage.com). Presigned URLs are
-// generated with s3.NewPresignClient.
-//
-// This type is declared here so callers can reference R2BlobStore in
-// production wiring without importing a separate package. The implementation
-// body is omitted to keep this package free of heavy SDK dependencies at
-// compile time; add it in an adjacent r2_blob_store.go when wiring the
-// production binary.
-type R2BlobStore struct{}
