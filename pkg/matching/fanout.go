@@ -10,6 +10,12 @@ import (
 	"github.com/pitabwire/util"
 )
 
+// DailyCapQuery returns the number of 'generated' candidate_match_events
+// rows for `candidateID` since the start of today (UTC).
+type DailyCapQuery interface {
+	TodayCount(ctx context.Context, candidateID string) (int, error)
+}
+
 // FanOutDeps is the minimal contract Path A needs.
 type FanOutDeps struct {
 	KNN      fanOutSearcher
@@ -19,6 +25,11 @@ type FanOutDeps struct {
 	Weights  Weights
 	Now      func() time.Time
 	NewID    func() string // ID factory; defaults to xid-style hex
+	// DailyCap is the optional query for today's per-candidate match count.
+	// When nil (or unconfigured), the cap check is skipped — useful for
+	// tests and for the bootstrap phase before the continuous aggregate
+	// has any data.
+	DailyCap DailyCapQuery
 }
 
 type fanOutSearcher interface {
@@ -165,19 +176,25 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 		runEvt.RerankerStatus = "skipped"
 	}
 
-	// 4. Daily-cap enforcement is applied during write: rows beyond the
-	// candidate's daily_cap are stored with status='overflow'. This is
-	// a per-candidate cap, but in a single fan-out we only see one
-	// candidate at most once, so the cap matters only across runs.
-	// The check that uses the continuous aggregate on
-	// candidate_match_events is in Phase 5; here we tag based on the
-	// index row's DailyCap field.
+	// 4. Daily-cap enforcement: rows beyond the candidate's daily_cap are
+	// stored with status='overflow'. The cap is checked per-candidate via
+	// the continuous aggregate on candidate_match_events (Phase 5).
 	matches := make([]Match, 0, len(scoredHits))
+	overflowCount := 0
+	overflowEventKinds := map[string]EventKind{}
 	for _, s := range scoredHits {
-		// Real daily-cap enforcement (via the continuous aggregate on
-		// candidate_match_events) is Phase 5; until then every row is
-		// status=new and the Overflowed counter stays at zero below.
-		_ = s.hit.DailyCap
+		status := StatusNew
+		eventKind := EventKindGenerated
+		if deps.DailyCap != nil && s.hit.DailyCap > 0 {
+			todayCount, err := deps.DailyCap.TodayCount(ctx, s.hit.CandidateID)
+			if err == nil && todayCount >= s.hit.DailyCap {
+				status = StatusOverflow
+				eventKind = EventKindOverflow
+				runEvt.Status = "ok" // not an error; just overflow
+				overflowCount++
+			}
+		}
+		overflowEventKinds[s.hit.CandidateID] = eventKind
 
 		var rerankPtr *float64
 		if v, ok := rerankByID[s.hit.CandidateID]; ok {
@@ -187,7 +204,7 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 			MatchID:       idgen(),
 			CandidateID:   s.hit.CandidateID,
 			OpportunityID: in.OpportunityID,
-			Status:        StatusNew,
+			Status:        status,
 			Score:         s.score.Total,
 			RerankScore:   rerankPtr,
 			// True only when the reranker both ran (`used`) AND produced
@@ -213,12 +230,16 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 	// 6. Per-match events.
 	for _, m := range matches {
 		rerankPtr := m.RerankScore
+		kind := overflowEventKinds[m.CandidateID]
+		if kind == "" {
+			kind = EventKindGenerated
+		}
 		evt := MatchEvent{
 			EventID:       idgen(),
 			CandidateID:   m.CandidateID,
 			OpportunityID: in.OpportunityID,
 			CanonicalID:   in.CanonicalID,
-			Kind:          EventKindGenerated,
+			Kind:          kind,
 			Path:          PathFanout,
 			Score:         m.Score,
 			RerankScore:   rerankPtr,
@@ -246,11 +267,9 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 		RunID:             runID,
 		CandidatesScanned: len(hits),
 		MatchesWritten:    len(matches),
-		// Overflowed stays zero until Phase 5 wires daily-cap enforcement
-		// from the candidate_match_events continuous aggregate.
-		Overflowed:     0,
-		RerankerStatus: runEvt.RerankerStatus,
-		LatencyMS:      runEvt.LatencyMS,
+		Overflowed:        overflowCount,
+		RerankerStatus:    runEvt.RerankerStatus,
+		LatencyMS:         runEvt.LatencyMS,
 	}, nil
 }
 
