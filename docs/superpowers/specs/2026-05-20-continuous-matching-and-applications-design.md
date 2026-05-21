@@ -589,3 +589,29 @@ None as of writing — every decision has a chosen option recorded in the releva
   adapters into the existing dependency wiring. Integration coverage
   in `pkg/matching/daily_cap_test.go` exercises both the CAGG query
   and the end-to-end fan-out → overflow path.
+
+- **Phase 6 (legacy retirement) — done.** Migration 0016 drops the
+  renamed-to-`candidate_matches_legacy` table from Phase 1 and the
+  long-unused `candidate_profiles.embedding` column (the vector now
+  lives in `candidate_match_indexes` exclusively). The
+  `domain.CandidateMatch` GORM struct, the `pkg/repository`
+  `MatchRepository`, the weekly digest sweep
+  (`apps/matching/service/admin/v1/matches_weekly{,_test}.go` and
+  its helper `match_runner{,_test}.go`), and the entire Manticore
+  search backend (`pkg/searchindex/`,
+  `apps/api/cmd/manticore_client{,_test}.go`,
+  `apps/api/cmd/backfill_manticore{,_test}.go`, the manticore
+  e2e test, and the `SEARCH_BACKEND=manticore` branch in
+  `apps/api/cmd/main.go`) are deleted. Search helpers that lived
+  inside the manticore file (`toSearchResult`, `shapeFacetsForSPA`,
+  facet/active-filter utilities) move to a new
+  `apps/api/cmd/search_helpers.go` so `endpoints.go` and
+  `flags_admin.go` keep compiling against the postgres-only
+  `JobsBackend` interface. The `/api/v2/*` prefix is dropped in
+  favour of the flat `/api/*` namespace (handler function names
+  lose their `v2` prefix too — `v2SearchHandler` →
+  `searchHandler`, etc., with the one exception of `v2StatsHandler`
+  becoming `jobStatsHandler` to avoid colliding with the beacon
+  per-slug `statsHandler`). The 30-day quiet window the spec
+  reserved for the legacy table is collapsed to zero since the
+  table has no production data pre-launch.

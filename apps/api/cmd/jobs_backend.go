@@ -2,10 +2,8 @@
 // implementation that drives Phase 6 of the consolidation plan
 // (see deployment.manifests/SHARED_TASK_NOTES.md).
 //
-// The Manticore backend (jobsManticore) and the Postgres backend
-// (jobsPostgres) both satisfy this interface so the handlers in
-// endpoints_v2.go can take JobsBackend instead of a concrete type.
-// The wire shape is identical; only the underlying store differs.
+// jobsPostgres satisfies this interface; the legacy Manticore backend
+// has been retired (Phase 6, spec §5.6).
 //
 // 1-month default time window: every list / count query that doesn't
 // explicitly pass `since` filters on `last_seen_at >= now() - 1 month`.
@@ -20,12 +18,60 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/util"
 	"gorm.io/gorm"
 )
+
+// hashID mirrors materializer/service/indexer.go::hashID. Kept here
+// for test compatibility until all callers migrate to slug-based lookups.
+func hashID(s string) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum64()
+}
+
+// job is the canonical in-memory representation shared by all endpoint
+// handlers. The Postgres backend populates Slug and CanonicalID; the
+// legacy Manticore backend (now retired) populated ID.
+type job struct {
+	// Numeric primary key — used by the retired Manticore backend.
+	// Zero on the Postgres backend (which uses Slug/CanonicalID).
+	ID uint64 `json:"id"`
+	// Public string identifier (opportunities.slug).
+	Slug string `json:"slug,omitempty"`
+	// CanonicalID is the xid that worker.canonical assigns.
+	CanonicalID string `json:"canonical_id,omitempty"`
+	// Polymorphic discriminator: job, scholarship, tender, deal, funding.
+	Kind          string `json:"kind,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Description   string `json:"description,omitempty"`
+	IssuingEntity string `json:"issuing_entity,omitempty"`
+	Categories    []int64 `json:"categories,omitempty"`
+	Country       string  `json:"country,omitempty"`
+	Region        string  `json:"region,omitempty"`
+	City          string  `json:"city,omitempty"`
+	Lat           float64 `json:"lat,omitempty"`
+	Lon           float64 `json:"lon,omitempty"`
+	Remote        bool    `json:"remote,omitempty"`
+	GeoScope      string  `json:"geo_scope,omitempty"`
+	PostedAt      *time.Time `json:"posted_at,omitempty"`
+	Deadline      *time.Time `json:"deadline,omitempty"`
+	AmountMin     float64 `json:"amount_min,omitempty"`
+	AmountMax     float64 `json:"amount_max,omitempty"`
+	Currency      string  `json:"currency,omitempty"`
+	EmploymentType    string  `json:"employment_type,omitempty"`
+	Seniority         string  `json:"seniority,omitempty"`
+	FieldOfStudy      string  `json:"field_of_study,omitempty"`
+	DegreeLevel       string  `json:"degree_level,omitempty"`
+	ProcurementDomain string  `json:"procurement_domain,omitempty"`
+	FundingFocus      string  `json:"funding_focus,omitempty"`
+	DiscountPercent   float64 `json:"discount_percent,omitempty"`
+	SourceID          uint64  `json:"source_id,omitempty"`
+}
 
 // JobsBackend is the common read API every public endpoint uses.
 // Implementations live in manticore_client.go (Manticore-RT) and

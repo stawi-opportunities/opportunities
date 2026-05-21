@@ -24,8 +24,6 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/counters"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
-	"github.com/stawi-opportunities/opportunities/pkg/publish"
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
 )
 
 type apiConfig struct {
@@ -35,41 +33,11 @@ type apiConfig struct {
 	// adapter exposed below.
 	fconfig.ConfigurationDefault
 
-	ServerPort       string `env:"SERVER_PORT"       envDefault:":8082"`
-	ManticoreURL     string `env:"MANTICORE_URL"     envDefault:""`
-	ManticoreCluster string `env:"MANTICORE_CLUSTER" envDefault:""`
+	ServerPort string `env:"SERVER_PORT" envDefault:":8082"`
 
-	// SearchBackend picks which jobs backend serves read traffic:
-	//
-	//   "manticore" (default) — historical Manticore RT index
-	//   "postgres"            — opportunities table + pg_search BM25 +
-	//                           pgvectorscale DiskANN (Phase 6)
-	//
-	// Any other value falls back to manticore. The cutover is gated on
-	// the SPA accepting real slugs (not hashID-stringified numerics) in
-	// /api/v2/jobs/{slug} routes — searchResult.slug already drives URL
-	// generation, so once the backend returns a real slug there the
-	// rest follows.
-	// Default postgres post-consolidation. Manticore branch retained
-	// behind SEARCH_BACKEND=manticore for the rollback window.
-	SearchBackend string `env:"SEARCH_BACKEND" envDefault:"postgres"`
-
-	// DatabaseURL is the CNPG pooler-rw connection string used by the
-	// Postgres backend. Required when SEARCH_BACKEND=postgres.
+	// DatabaseURL is the CNPG pooler-rw connection string.
 	DatabaseURL string `env:"DATABASE_URL" envDefault:""`
 
-	// Cloudflare R2 — one account token authorised on all three
-	// product-opportunities buckets. The api publishes Hugo snapshots
-	// to the content bucket via POST /admin/backfill.
-	R2AccountID       string `env:"R2_ACCOUNT_ID"        envDefault:""`
-	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"     envDefault:""`
-	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2ContentBucket   string `env:"R2_CONTENT_BUCKET"    envDefault:"product-opportunities-content"`
-	R2Endpoint        string `env:"R2_ENDPOINT"          envDefault:""`
-	R2Region          string `env:"R2_REGION"            envDefault:"auto"`
-	R2DeployHookURL   string `env:"R2_DEPLOY_HOOK_URL"   envDefault:""`
-
-	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY"  envDefault:"50"`
 	AnalyticsBaseURL  string  `env:"ANALYTICS_BASE_URL"   envDefault:""`
 	AnalyticsOrg      string  `env:"ANALYTICS_ORG"        envDefault:"default"`
 	AnalyticsUsername string  `env:"ANALYTICS_USERNAME"   envDefault:""`
@@ -130,57 +98,20 @@ func main() {
 	)
 	defer svc.Stop(ctx)
 
-	// jobs backend selection. Direction change: "straight to Postgres
-	// — no Manticore double-write". jobsPostgres is the default; the
-	// legacy Manticore backend stays available behind
-	// SEARCH_BACKEND=manticore for the 30-day rollback window.
-	var jm JobsBackend
-	switch cfg.SearchBackend {
-	case "manticore":
-		if cfg.ManticoreURL == "" {
-			log.Fatal("api: SEARCH_BACKEND=manticore requires MANTICORE_URL")
-		}
-		frameHTTPClient := frameclient.NewHTTPClient(ctx,
-			frameclient.WithHTTPTraceRequests(),
-		)
-		manticore, mErr := searchindex.Open(searchindex.Config{
-			URL:        cfg.ManticoreURL,
-			HTTPClient: frameHTTPClient,
-			Cluster:    cfg.ManticoreCluster,
-		})
-		if mErr != nil {
-			log.WithError(mErr).Fatal("api: manticore open failed")
-		}
-		defer func() { _ = manticore.Close() }()
-		jm = newJobsManticore(manticore)
-		log.Info("api: jobs backend = manticore (legacy)")
-	default:
-		// Default: Postgres. opportunities table populated by
-		// worker.canonical + materializer admin handlers.
-		pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
-		if pool == nil {
-			log.Fatal("api: DATABASE_URL required for jobs backend = postgres")
-		}
-		jm = newJobsPostgres(pool.DB)
-		log.Info("api: jobs backend = postgres")
+	// Postgres backend — opportunities table populated by worker.canonical
+	// + materializer admin handlers. Manticore path retired in Phase 6.
+	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
+	if pool == nil {
+		log.Fatal("api: DATABASE_URL required")
 	}
+	jm := newJobsPostgres(pool.DB)
+	log.Info("api: jobs backend = postgres")
 
 	// Frame-managed HTTP client (OTEL trace propagation + retry policy)
-	// for analytics + R2 deploy-hook wiring. Manticore opens its own
-	// client above when SEARCH_BACKEND=manticore.
+	// for analytics + R2 deploy-hook wiring.
 	frameHTTPClient := frameclient.NewHTTPClient(ctx,
 		frameclient.WithHTTPTraceRequests(),
 	)
-
-	var r2Publisher *publish.R2Publisher
-	if cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" {
-		r2Publisher = publish.NewR2Publisher(
-			cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey,
-			cfg.R2ContentBucket, cfg.R2DeployHookURL,
-		)
-		r2Publisher.SetHTTPClient(frameHTTPClient)
-		log.WithField("bucket", cfg.R2ContentBucket).Info("R2 publisher enabled")
-	}
 
 	analyticsClient := analytics.New(analytics.Config{
 		BaseURL:    cfg.AnalyticsBaseURL,
@@ -218,45 +149,21 @@ func main() {
 		})
 	})
 
-	// v2 endpoints (Manticore-only). Search results are post-decorated
+	// Flat /api/* endpoints. Search results are post-decorated
 	// with view/apply counters when Valkey is configured.
-	mux.HandleFunc("GET /api/v2/search", v2SearchHandler(jm, reg, countersClient))
-	mux.HandleFunc("GET /api/v2/jobs/{id}", v2JobByIDHandler(jm))
-	mux.HandleFunc("GET /api/v2/jobs/top", v2TopHandler(jm))
-	mux.HandleFunc("GET /api/v2/jobs/latest", v2LatestHandler(jm))
-	mux.HandleFunc("GET /api/v2/categories", v2CategoriesHandler(jm))
-	mux.HandleFunc("GET /api/v2/stats", v2StatsHandler(jm))
-	mux.HandleFunc("GET /api/v2/feed", v2FeedHandler(jm))
-	mux.HandleFunc("GET /api/v2/feed/tier", v2FeedTierHandler(jm))
-
-	// Legacy shims - v1 paths route to v2 handlers during transition.
-	mux.HandleFunc("GET /api/search", v2SearchHandler(jm, reg, countersClient))
-	mux.HandleFunc("GET /api/categories", v2CategoriesHandler(jm))
-	mux.HandleFunc("GET /api/jobs/latest", v2LatestHandler(jm))
-	mux.HandleFunc("GET /api/stats/summary", v2StatsHandler(jm))
-	mux.HandleFunc("GET /api/feed", v2FeedHandler(jm))
-	mux.HandleFunc("GET /api/feed/tier", v2FeedTierHandler(jm))
-	mux.HandleFunc("GET /jobs/top", v2TopHandler(jm))
-	mux.HandleFunc("GET /jobs/{id}", v2JobByIDHandler(jm))
-	mux.HandleFunc("GET /categories", v2CategoriesHandler(jm))
-	mux.HandleFunc("GET /stats", v2StatsHandler(jm))
-	mux.HandleFunc("GET /search", v2SearchHandler(jm, reg, countersClient))
+	mux.HandleFunc("GET /api/search", searchHandler(jm, reg, countersClient))
+	mux.HandleFunc("GET /api/jobs/{id}", jobByIDHandler(jm))
+	mux.HandleFunc("GET /api/jobs/top", topHandler(jm))
+	mux.HandleFunc("GET /api/jobs/latest", latestHandler(jm))
+	mux.HandleFunc("GET /api/categories", categoriesHandler(jm))
+	mux.HandleFunc("GET /api/stats", jobStatsHandler(jm))
+	mux.HandleFunc("GET /api/feed", feedHandler(jm))
+	mux.HandleFunc("GET /api/feed/tier", feedTierHandler(jm))
 
 	// Per-slug stats — Valkey-backed view + apply counters. Public,
 	// no auth. When Valkey is not configured the response is the
 	// well-formed all-zero shape (callers can branch on that).
 	mux.HandleFunc("GET /opportunities/{slug}/stats", statsHandler(countersClient))
-
-	// Hugo snapshot publishing — Manticore-specific legacy path. Only
-	// wired when the api is running on the Manticore backend; with
-	// SEARCH_BACKEND=postgres the snapshot publisher will be replaced
-	// by a Postgres-sourced equivalent (see SHARED_TASK_NOTES.md).
-	if r2Publisher != nil {
-		if jmConcrete, ok := jm.(*jobsManticore); ok {
-			mux.HandleFunc("POST /admin/backfill",
-				backfillManticoreHandler(jmConcrete, r2Publisher, cfg.PublishMinQuality))
-		}
-	}
 
 	// Source-management admin surface. Optional: only wired when the
 	// operator opts in via SOURCE_ADMIN_ENABLED=true and the cluster
@@ -269,21 +176,13 @@ func main() {
 	// "should the api own a DB?" decision a single env var.
 	if cfg.SourceAdminEnabled {
 		registerSourcesAdmin(ctx, mux, &cfg, reg)
-		// flags-admin + top-applied are Manticore-keyed (they look up
-		// by hashID). They light up only on the legacy backend; the
-		// Postgres-keyed replacement lands when the slug-routing
-		// migration completes (see SHARED_TASK_NOTES.md).
-		if jmConcrete, ok := jm.(*jobsManticore); ok {
-			registerFlagsAdmin(ctx, mux, jmConcrete)
-			mux.HandleFunc("GET /admin/opportunities/top-applied",
-				requireAdmin(topAppliedHandler(jmConcrete, countersClient)))
-		}
+		registerFlagsAdmin(ctx, mux, jm)
 	}
 
 	// Verify-stage rejection visibility — operator-facing read of the
 	// opportunities.variants_rejected Iceberg sink. Currently stubbed
 	// to 501; see endpoints_v2.go for the implementation note.
-	mux.HandleFunc("GET /admin/variants/rejected", v2VariantsRejectedHandler())
+	mux.HandleFunc("GET /admin/variants/rejected", variantsRejectedHandler())
 
 	// Analytics beacon — view path. Increments the Valkey counters
 	// (atomic INCR + 24h-windowed key with TTL) AND ships an

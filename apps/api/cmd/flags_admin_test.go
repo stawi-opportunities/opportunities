@@ -180,8 +180,8 @@ func (uniqueViolationError) Error() string { return "duplicate key value violate
 // resolution path.
 type fakeJobsLookup struct{ rows map[string]*job }
 
-func (f *fakeJobsLookup) GetByID(_ context.Context, id string) (*job, error) {
-	if j, ok := f.rows[id]; ok {
+func (f *fakeJobsLookup) GetBySlug(_ context.Context, slug string) (*job, error) {
+	if j, ok := f.rows[slug]; ok {
 		return j, nil
 	}
 	return nil, nil
@@ -254,7 +254,7 @@ func TestFlags_UserFlag_RequiresAuth(t *testing.T) {
 
 func TestFlags_UserFlag_HappyPath(t *testing.T) {
 	_, repo, _, jobs, _, mux := flagsTestHarness(t)
-	jobs.rows["abc"] = &job{ID: hashID("abc"), Kind: "job", Title: "Engineer"}
+	jobs.rows["abc"] = &job{CanonicalID: "abc", Kind: "job", Title: "Engineer"}
 
 	body := `{"reason":"scam","description":"this is a phishing site"}`
 	req := httptest.NewRequest("POST", "/opportunities/abc/flag", bytes.NewReader([]byte(body)))
