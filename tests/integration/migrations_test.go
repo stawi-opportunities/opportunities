@@ -122,4 +122,19 @@ func TestMigrationsApplyCleanly(t *testing.T) {
 		)
 	`).Scan(&idxExists))
 	require.True(t, idxExists, "opportunities_active_posted_idx should exist")
+
+	// New OLTP table from 0013.
+	var cnt int
+	err = db.QueryRowContext(ctx,
+		`SELECT count(*) FROM information_schema.tables
+     WHERE table_schema='public' AND table_name='candidate_matches'`).Scan(&cnt)
+	require.NoError(t, err)
+	require.Equal(t, 1, cnt, "candidate_matches should exist post-0013")
+
+	err = db.QueryRowContext(ctx,
+		`SELECT count(*) FROM information_schema.table_constraints
+     WHERE table_name='candidate_matches'
+       AND constraint_name='candidate_matches_pair_uniq'`).Scan(&cnt)
+	require.NoError(t, err)
+	require.Equal(t, 1, cnt, "(candidate_id, opportunity_id) UNIQUE should exist")
 }

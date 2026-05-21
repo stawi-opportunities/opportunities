@@ -183,12 +183,14 @@ func ApplyMigrationsDir(t *testing.T, ctx context.Context, db *sql.DB, dir strin
 	}
 }
 
-// EnsureOpportunitiesStub creates a minimal opportunities table with the columns
-// needed by migration 0012 (and likely other migrations). This is a temporary
-// stub before AutoMigrate runs in production (which creates the full table from
-// the Opportunity struct). In the smoke test, we create this stub manually before
-// applying SQL migrations so that migration 0012 (which creates an index on
-// opportunities) does not fail.
+// EnsureOpportunitiesStub creates minimal stub tables required before migrations
+// can run cleanly on a fresh container:
+//
+//   - opportunities: needed by migration 0012 (partial index on opportunities).
+//   - candidate_profiles: needed by migration 0003 (ALTER TABLE DROP COLUMN IF EXISTS).
+//
+// These are temporary stubs; production uses GORM AutoMigrate for the full
+// schemas. The IF NOT EXISTS guard makes every call idempotent.
 func EnsureOpportunitiesStub(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS opportunities (
@@ -196,7 +198,10 @@ func EnsureOpportunitiesStub(ctx context.Context, db *sql.DB) error {
 			posted_at TIMESTAMPTZ,
 			status TEXT,
 			hidden BOOLEAN
-		)
+		);
+		CREATE TABLE IF NOT EXISTS candidate_profiles (
+			id TEXT PRIMARY KEY
+		);
 	`)
 	return err
 }
