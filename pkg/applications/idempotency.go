@@ -7,14 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
-// StoredResponse is the cached value of an idempotency-protected call.
-type StoredResponse struct {
-	StatusCode int               `json:"status"`
-	Body       json.RawMessage   `json:"body"`
-	Headers    map[string]string `json:"headers"`
-}
+// StoredResponse is re-exported for callers that don't pull in
+// pkg/httpmw directly. It IS the same type — alias, not value copy —
+// so *IdempotencyStore satisfies pkg/httpmw.IdempotencyStore.
+type StoredResponse = httpmw.StoredResponse
 
 // IdempotencyStore is the persistent store for replay protection.
 //
