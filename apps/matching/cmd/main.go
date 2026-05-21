@@ -249,6 +249,8 @@ func main() {
 		if cfg.MatchingRerankerEnabled {
 			// Upstream reranker client is Phase 5. Until then, wrap the noop
 			// in the pool so the rest of the wiring behaves identically.
+			// TODO(phase-5): drive concurrency + timeout from
+			// cfg.MatchingRerankerConcurrency / cfg.MatchingRerankerTimeoutSeconds.
 			rerank = matching.NewPooledReranker(matching.NoopReranker{}, 8, time.Second)
 		}
 
