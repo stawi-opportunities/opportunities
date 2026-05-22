@@ -19,6 +19,7 @@ package integration
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +36,7 @@ import (
 
 	autoapplyconfig "github.com/stawi-opportunities/opportunities/apps/autoapply/config"
 	"github.com/stawi-opportunities/opportunities/apps/autoapply/service"
+	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -64,6 +66,11 @@ type e2eFixture struct {
 	router   *fakeRouter
 	appRepo  *repository.ApplicationRepository
 	db       *gorm.DB
+	// rawDB is the *sql.DB the migrations were applied on. The
+	// applications.Store used by the tracker bridge runs against this
+	// connection; tests inspect the `applications` table via the same
+	// handle to assert the bridge wrote a row.
+	rawDB *sql.DB
 }
 
 func setupAutoApplyE2E(t *testing.T, dryRun bool, cvServerURL string) *e2eFixture {
@@ -72,13 +79,24 @@ func setupAutoApplyE2E(t *testing.T, dryRun bool, cvServerURL string) *e2eFixtur
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
 
-	pgDSN := testhelpers.PostgresContainer(t, ctx)
+	// PostgresContainerNoMigrate + EnsureOpportunitiesStub + ApplyMigrationsDir
+	// is the explicit path the existing pkg/applications integration
+	// tests use. Migration 0003 drops legacy columns from
+	// candidate_profiles, which must exist before the migration runs;
+	// likewise 0012 partial-indexes opportunities. EnsureOpportunitiesStub
+	// creates idempotent placeholders for both so the full migration
+	// chain — including my-branch additions (candidate_applications,
+	// candidate_sessions) and main's applications-OLTP tables — can run
+	// against a clean container.
+	rawDB := testhelpers.PostgresContainerNoMigrate(t, ctx)
+	require.NoError(t, testhelpers.EnsureOpportunitiesStub(ctx, rawDB))
+	testhelpers.ApplyMigrationsDir(t, ctx, rawDB, "../../db/migrations")
 	natsURL := testhelpers.NATSContainer(t, ctx)
 
-	// AutoApplyHandler talks to the DB through a *gorm.DB wrapper that
-	// matches repository.NewApplicationRepository's contract; open the
-	// DB directly so we don't need the full Frame DataStore manager.
-	gdb, err := gorm.Open(postgres.Open(pgDSN), &gorm.Config{})
+	// AutoApplyHandler still uses GORM repos for the legacy persistence
+	// path. Open a GORM view on the same *sql.DB so both layers share
+	// one connection pool — no extra dial, no risk of pool drift.
+	gdb, err := gorm.Open(postgres.New(postgres.Config{Conn: rawDB}), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, gdb.AutoMigrate(&domain.CandidateApplication{}))
 
@@ -100,11 +118,17 @@ func setupAutoApplyE2E(t *testing.T, dryRun bool, cvServerURL string) *e2eFixtur
 	}
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 
+	// The tracker bridge writes into main's applications-OLTP table
+	// via pkg/applications.Store. Wiring it here lets us assert the
+	// end-to-end flow (intent → submit → bridge → applications row).
+	tracker := service.NewPkgApplicationsTracker(applications.NewStore(rawDB))
+
 	handler := service.NewAutoApplyHandler(service.HandlerDeps{
 		Svc:       svc,
 		Router:    router,
 		AppRepo:   appRepo,
 		MatchRepo: matchRepo,
+		Tracker:   tracker,
 		CV:        cvFetcher,
 		Config: service.Config{
 			Enabled: true,
@@ -133,6 +157,7 @@ func setupAutoApplyE2E(t *testing.T, dryRun bool, cvServerURL string) *e2eFixtur
 		router:   router,
 		appRepo:  appRepo,
 		db:       gdb,
+		rawDB:    rawDB,
 	}
 }
 
@@ -163,6 +188,48 @@ func (f *e2eFixture) waitForApplication(candidateID, jobID string) *domain.Candi
 	return &app
 }
 
+// trackerRow holds the subset of the applications-OLTP row the bridge
+// is responsible for populating. Used in assertions that the tracker
+// bridge wrote a row alongside the legacy candidate_applications row.
+type trackerRow struct {
+	candidateID   string
+	opportunityID string
+	matchID       string
+	status        string
+}
+
+// queryTrackerRow returns the applications-OLTP row for the pair, or
+// (nil, sql.ErrNoRows) when the bridge has not yet written one.
+func (f *e2eFixture) queryTrackerRow(candidateID, opportunityID string) (*trackerRow, error) {
+	row := f.rawDB.QueryRowContext(f.ctx, `
+		SELECT candidate_id, opportunity_id, match_id, status
+		  FROM applications
+		 WHERE candidate_id = $1 AND opportunity_id = $2
+	`, candidateID, opportunityID)
+	out := trackerRow{}
+	if err := row.Scan(&out.candidateID, &out.opportunityID, &out.matchID, &out.status); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// waitForTrackerRow polls until the bridge writes the applications row.
+// Used in happy-path assertions where the bridge is expected to fire.
+func (f *e2eFixture) waitForTrackerRow(candidateID, opportunityID string) *trackerRow {
+	f.t.Helper()
+	var out *trackerRow
+	require.Eventually(f.t, func() bool {
+		row, err := f.queryTrackerRow(candidateID, opportunityID)
+		if err != nil {
+			return false
+		}
+		out = row
+		return true
+	}, 10*time.Second, 250*time.Millisecond,
+		"tracker did not write applications row for %s × %s", candidateID, opportunityID)
+	return out
+}
+
 func TestAutoApplyE2E_HappyPath(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipped under -short (requires Docker)")
@@ -190,6 +257,14 @@ func TestAutoApplyE2E_HappyPath(t *testing.T) {
 	assert.Equal(t, domain.AppStatusSubmitted, app.Status)
 	assert.Equal(t, "ats_ui", app.Method)
 	assert.Equal(t, int32(1), f.router.calls.Load(), "router must be called exactly once")
+
+	// Bridge assertion: a successful submit must also have populated
+	// main's applications-OLTP table so the candidate sees the job in
+	// their dashboard. The tracker writes Status=StatusSubmitted
+	// directly (skipping the "applying" intermediate).
+	tr := f.waitForTrackerRow(intent.CandidateID, intent.CanonicalJobID)
+	assert.Equal(t, "submitted", tr.status)
+	assert.Equal(t, intent.MatchID, tr.matchID)
 }
 
 func TestAutoApplyE2E_RedeliveryIsIdempotent(t *testing.T) {
@@ -251,4 +326,13 @@ func TestAutoApplyE2E_DryRunSkipsRouter(t *testing.T) {
 	app := f.waitForApplication(intent.CandidateID, intent.CanonicalJobID)
 	assert.Equal(t, domain.AppStatusSkipped, app.Status)
 	assert.Equal(t, int32(0), f.router.calls.Load(), "dry-run must skip the router entirely")
+
+	// Bridge negative-assertion: a dry-run (or any skip) must NOT write
+	// to the applications-OLTP table — the candidate's tracking
+	// dashboard should not show jobs we never actually submitted.
+	// Allow a beat for any racing write to land.
+	time.Sleep(1 * time.Second)
+	_, err := f.queryTrackerRow(intent.CandidateID, intent.CanonicalJobID)
+	assert.ErrorIs(t, err, sql.ErrNoRows,
+		"tracker must NOT mirror dry-run/skip outcomes into applications")
 }
