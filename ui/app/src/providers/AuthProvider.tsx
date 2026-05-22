@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { AuthRuntime, AuthState } from "@stawi/auth-runtime";
 import { authRuntime } from "@/auth/runtime";
-import { setAnalyticsUser } from "@/analytics/ga4";
+import { setAnalyticsUser } from "@/analytics/posthog";
 
 // Thin context around the module-level runtime singleton. Every React
 // island that's wrapped in <AuthProvider> gets the same instance, and

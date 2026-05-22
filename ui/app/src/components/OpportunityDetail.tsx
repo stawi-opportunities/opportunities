@@ -10,7 +10,7 @@ import {
   trackApplyClick,
   trackJobView,
   trackJobViewEngaged,
-} from "@/analytics/ga4";
+} from "@/analytics/posthog";
 import {
   isDeal,
   isFunding,

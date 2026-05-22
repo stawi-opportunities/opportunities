@@ -21,8 +21,10 @@ export interface SiteConfig {
   /** Registered redirect URI — must match Hydra's client record exactly. */
   oidcRedirectURI: string;
 
-  /** GA4 measurement ID, e.g. "G-XXXXXXXXXX". Empty disables analytics. */
-  gaMeasurementId: string;
+  /** PostHog project API key (public, starts with "phc_"). Empty disables. */
+  posthogApiKey: string;
+  /** PostHog ingest host. Defaults to us.i.posthog.com when blank. */
+  posthogHost: string;
 }
 
 const DEFAULTS: SiteConfig = {
@@ -36,11 +38,12 @@ const DEFAULTS: SiteConfig = {
     typeof window !== "undefined"
       ? `${window.location.origin}/auth/callback/`
       : "http://localhost:5170/auth/callback/",
-  // GA4 measurement ID — empty default so the gtag.js script tag is
-  // skipped in head.html unless HUGO_PARAMS_gaMeasurementId is set at
-  // build time. IDs are public ("G-XXXXXXXXXX") so they can live in
-  // hugo.toml directly when needed.
-  gaMeasurementId: "",
+  // PostHog — empty default so initPostHog() short-circuits unless
+  // HUGO_PARAMS_posthogApiKey is set at build time. Keys are public
+  // (phc_...) and safe in hugo.toml. posthogHost falls back to PostHog
+  // Cloud US in the runtime module when blank.
+  posthogApiKey: "",
+  posthogHost: "",
 };
 
 let cached: SiteConfig | null = null;

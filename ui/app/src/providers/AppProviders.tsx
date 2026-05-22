@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { QueryProvider } from "./QueryProvider";
 import { AuthProvider } from "./AuthProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
-import { initGA4 } from "@/analytics/ga4";
+import { initPostHog } from "@/analytics/posthog";
 
 // Fire the analytics init exactly once per page load — not per React
 // island. Every Hugo page mounts its own React root through
@@ -12,7 +12,7 @@ let analyticsInitCalled = false;
 function ensureAnalyticsInitOnce() {
   if (analyticsInitCalled) return;
   analyticsInitCalled = true;
-  initGA4();
+  initPostHog();
 }
 
 /**
