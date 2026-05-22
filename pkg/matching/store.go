@@ -282,6 +282,35 @@ LIMIT $` + fmt.Sprint(len(args))
 	return ListByCandidatePage{Items: out, NextCursor: nextCur, HasMore: hasMore}, nil
 }
 
+// SubscriptionSummary returns the two match-volume counts the
+// candidate dashboard surfaces alongside subscription state:
+//
+//   - queued: rows still in `new` (matched but the candidate hasn't
+//     viewed yet).
+//   - deliveredThisWeek: rows created in the last seven days that
+//     reached the candidate, i.e. anything that isn't still `new`
+//     (viewed/applying/applied/dismissed) and isn't suppressed by
+//     daily-cap (`overflow`).
+//
+// One round-trip — the dashboard /me/subscription handler calls this
+// per request and the two scalars are tiny.
+func (s *Store) SubscriptionSummary(ctx context.Context, candidateID string) (queued, deliveredThisWeek int, err error) {
+	const q = `
+SELECT
+  COUNT(*) FILTER (WHERE status = 'new')                                                  AS queued,
+  COUNT(*) FILTER (
+    WHERE status IN ('viewed','applying','applied','dismissed')
+      AND created_at > NOW() - INTERVAL '7 days'
+  )                                                                                       AS delivered_this_week
+FROM candidate_matches
+WHERE candidate_id = $1
+`
+	if err := s.db.QueryRowContext(ctx, q, candidateID).Scan(&queued, &deliveredThisWeek); err != nil {
+		return 0, 0, fmt.Errorf("matching: subscription summary: %w", err)
+	}
+	return queued, deliveredThisWeek, nil
+}
+
 type pageCursor struct {
 	Score     float64   `json:"s"`
 	CreatedAt time.Time `json:"c"`

@@ -193,3 +193,75 @@ func TestStore_ListByCandidate_Pagination(t *testing.T) {
 	// And the page-2 item is the third in the ordered list:
 	require.Equal(t, "p3", page2.Items[0].MatchID)
 }
+
+func TestStore_SubscriptionSummary_CountsByStatusAndAge(t *testing.T) {
+	db, ctx := setupStoreDB(t)
+	s := matching.NewStore(db)
+
+	// Two candidates so the WHERE candidate_id = $1 filter is actually
+	// exercised (a regression in the filter would otherwise count both).
+	const candA = "cand_sub_a"
+	const candB = "cand_sub_b"
+
+	// Seed candA: 3 new (all queued), 2 within-week delivered (viewed/applied),
+	// 1 within-week dismissed (counted as delivered), 1 within-week overflow
+	// (NOT counted — cap-suppressed), 1 nine-day-old viewed (NOT counted —
+	// outside the 7-day window).
+	seed := []struct {
+		matchID string
+		status  matching.MatchStatus
+		ageDays int
+	}{
+		{"sub_new_1", matching.StatusNew, 0},
+		{"sub_new_2", matching.StatusNew, 0},
+		{"sub_new_3", matching.StatusNew, 0},
+		{"sub_view_1", matching.StatusViewed, 1},
+		{"sub_apply_1", matching.StatusApplied, 2},
+		{"sub_dism_1", matching.StatusDismissed, 3},
+		{"sub_overflow", matching.StatusOverflow, 1},
+		{"sub_old_view", matching.StatusViewed, 9},
+	}
+	for i, row := range seed {
+		// Insert directly so we can control created_at (UpsertMatch
+		// always uses NOW(), which would land everything inside the
+		// window and hide the boundary-condition bug we want to guard).
+		_, err := db.ExecContext(ctx, `
+INSERT INTO candidate_matches
+  (match_id, candidate_id, opportunity_id, status, score, last_event_id,
+   metadata, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb,
+        NOW() - make_interval(days => $7),
+        NOW() - make_interval(days => $7))
+`,
+			row.matchID, candA, "opp_"+row.matchID,
+			string(row.status), 0.5, "evt_"+row.matchID, row.ageDays)
+		require.NoError(t, err, "seed row %d", i)
+	}
+
+	// Seed candB with a single new row — must NOT appear in candA's counts.
+	_, err := db.ExecContext(ctx, `
+INSERT INTO candidate_matches
+  (match_id, candidate_id, opportunity_id, status, score, last_event_id, metadata, created_at, updated_at)
+VALUES ('sub_other_new', $1, 'opp_other', 'new', 0.5, 'evt_other', '{}'::jsonb, NOW(), NOW())
+`, candB)
+	require.NoError(t, err)
+
+	queued, delivered, err := s.SubscriptionSummary(ctx, candA)
+	require.NoError(t, err)
+	require.Equal(t, 3, queued, "queued should count only status='new' rows for candA")
+	require.Equal(t, 3, delivered,
+		"delivered_this_week should count viewed+applied+dismissed within 7 days; "+
+			"overflow and 9-day-old rows must be excluded")
+
+	// candB returns its own isolated counts.
+	queuedB, deliveredB, err := s.SubscriptionSummary(ctx, candB)
+	require.NoError(t, err)
+	require.Equal(t, 1, queuedB)
+	require.Equal(t, 0, deliveredB)
+
+	// Unknown candidate yields zeros, not an error.
+	queuedX, deliveredX, err := s.SubscriptionSummary(ctx, "cand_nonexistent")
+	require.NoError(t, err)
+	require.Equal(t, 0, queuedX)
+	require.Equal(t, 0, deliveredX)
+}

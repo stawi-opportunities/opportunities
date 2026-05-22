@@ -32,6 +32,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -337,6 +338,27 @@ func main() {
 		Store:  candStore,
 		Search: search,
 	}))
+
+	// --- /me/subscription (dashboard summary) ---
+	// The gateway HTTPRoute forwards /me/* unchanged to this backend.
+	// The Phase-4 router uses /api/me/* paths which aren't exposed
+	// through the gateway today, so register on the gateway-visible
+	// path. A nil MatchSummarizer is acceptable — the handler returns
+	// zero counts and the dashboard renders its setup-incomplete state.
+	var meSubMatches httpv1.MatchSummarizer
+	if gdb := dbFn(ctx, true); gdb != nil {
+		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
+			meSubMatches = matching.NewStore(sqlDB)
+		} else {
+			log.WithError(dbErr).Warn("me/subscription: sql.DB unwrap failed; counts will be zero")
+		}
+	}
+	mux.Handle("GET /me/subscription", httpmw.CandidateAuth(
+		httpv1.SubscriptionHandler(httpv1.SubscriptionDeps{
+			Candidates: candidateRepo,
+			Matches:    meSubMatches,
+		}),
+	))
 
 	// --- Trustage admin endpoints ---
 	mux.HandleFunc("POST /_admin/cv/stale_nudge",
