@@ -2,7 +2,14 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
-import { submitOnboarding, uploadCV, createCheckout } from "@/api/candidates";
+import {
+  submitOnboarding,
+  uploadCV,
+  createCheckout,
+  fetchOnboardingDraft,
+  saveOnboardingDraft,
+  type OnboardingDraftFields,
+} from "@/api/candidates";
 import { PLANS, planById, type PlanId } from "@/utils/plans";
 
 // Each step owns a contiguous slice of fields; we validate one step at a
@@ -106,6 +113,8 @@ function readPlanFromQuery(): PlanId {
 export default function Onboarding() {
   const { state, login } = useAuth();
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftSaveWarning, setDraftSaveWarning] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const initialPlan = useMemo(readPlanFromQuery, []);
@@ -140,6 +149,30 @@ export default function Onboarding() {
       void login();
     }
   }, [state, login]);
+
+  // Resume from server-persisted draft as soon as the candidate is
+  // authenticated. The fetch never throws (api/candidates.ts handles
+  // that); a missing/empty draft renders the wizard at step 1 with
+  // current defaults, which is identical to the initial render.
+  useEffect(() => {
+    if (state !== "authenticated") return;
+    if (draftLoaded) return;
+    let cancelled = false;
+    (async () => {
+      const draft = await fetchOnboardingDraft();
+      if (cancelled) return;
+      // Only overwrite form values we actually have in the draft;
+      // react-hook-form's reset() with partial values keeps the rest
+      // of the defaults intact.
+      form.reset({ ...form.getValues(), ...(draft.fields as Record<string, unknown>) }, {
+        keepDirty: false,
+        keepDefaultValues: true,
+      });
+      setStep(draft.step);
+      setDraftLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [state, draftLoaded, form]);
 
   if (state === "unauthenticated" || state === "initializing") {
     return (
@@ -240,8 +273,37 @@ export default function Onboarding() {
       }
       return;
     }
-    if (step < 3) setStep((s) => (s + 1) as 1 | 2 | 3);
-    else await form.handleSubmit(onSubmit)();
+    if (step < 3) {
+      const nextStep = (step + 1) as 1 | 2 | 3;
+      const values = form.getValues();
+      // Subset of the form we expose as `OnboardingDraftFields` —
+      // the cv File and agreeTerms boolean are intentionally excluded
+      // (set on the final submit only).
+      const fieldsForServer: OnboardingDraftFields = {
+        target_job_title:    values.targetJobTitle,
+        experience_level:    values.experienceLevel,
+        job_search_status:   values.jobSearchStatus,
+        salary_range:        values.salaryRange,
+        wants_ats_report:    values.wantsATSReport,
+        preferred_regions:   values.preferredRegions,
+        preferred_timezones: values.preferredTimezones,
+        preferred_languages: values.preferredLanguages,
+        job_types:           values.jobTypes,
+        country:             values.country,
+        plan:                values.plan,
+      };
+      try {
+        await saveOnboardingDraft(nextStep, fieldsForServer);
+        setDraftSaveWarning(null);
+      } catch {
+        // Non-blocking: advance the wizard anyway; show a warning
+        // that the draft didn't save. The next Next click retries.
+        setDraftSaveWarning(
+          "We couldn't save your progress to the server. Your answers are still here; we'll try again on the next step.",
+        );
+      }
+      setStep(nextStep);
+    } else await form.handleSubmit(onSubmit)();
   }
 
   const selectedPlan = form.watch("plan");
@@ -251,6 +313,14 @@ export default function Onboarding() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      {draftSaveWarning && (
+        <div
+          role="status"
+          className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          {draftSaveWarning}
+        </div>
+      )}
       <Progress step={step} />
       <form
         className="mt-8"

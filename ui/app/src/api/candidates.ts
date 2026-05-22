@@ -193,8 +193,8 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
  *  the form so we can `form.reset(fields)` on resume. */
 export interface OnboardingDraftFields {
   target_job_title?: string;
-  experience_level?: "entry" | "mid" | "senior" | "lead";
-  job_search_status?: "actively_looking" | "open" | "not_looking";
+  experience_level?: "entry" | "junior" | "mid" | "senior" | "lead" | "executive";
+  job_search_status?: "actively_looking" | "open_to_offers" | "casually_browsing";
   salary_range?: string;
   wants_ats_report?: boolean;
   preferred_regions?: string[];
