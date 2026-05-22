@@ -22,6 +22,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/authsession"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/ats"
+	"github.com/stawi-opportunities/opportunities/pkg/autoapply/brightermondaysubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/browser"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/sessionsubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -120,6 +121,16 @@ func main() {
 	// InferenceModel != "" in that case).
 	tiers := []autoapply.Submitter{}
 	if sessionProvider != nil {
+		// Register BrighterMonday-specific submitter BEFORE the generic
+		// session-replay submitter. The BM apply is a Laravel form POST
+		// to a templated URL (/account/customer/enquiries/<id>/store-enquiry)
+		// extracted from the listing page's <form action="…">; the
+		// generic submitter can't infer that URL from the manifest's
+		// form_url_pattern alone.
+		tiers = append(tiers, brightermondaysubmitter.New(brightermondaysubmitter.Config{
+			Sessions:    sessionProvider,
+			HTTPTimeout: 30 * time.Second,
+		}))
 		tiers = append(tiers, sessionsubmitter.New(sessionsubmitter.Config{
 			Manifests:   authManifests,
 			Sessions:    sessionProvider,

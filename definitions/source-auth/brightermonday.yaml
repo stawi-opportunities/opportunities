@@ -18,17 +18,29 @@ home_url: https://www.brightermonday.co.ke
 cookie_domains:
   - .brightermonday.co.ke
 storage_keys: []
-required_cookies:
-  - laravel_session
-  - XSRF-TOKEN
+# required_cookies disabled in local dev — BrighterMonday's real cookie
+# names may differ from these guesses. Without the check the extension
+# captures whatever exists on .brightermonday.co.ke and we let matching
+# accept it. The replay leg is the next thing that will validate the
+# session against the apply form, which is where we want the real
+# validation to happen anyway.
+required_cookies: []
 session_ttl: 720h
+# Real BM logged-in probe. /account/customer/enquiries is the
+# candidate's "my applications" dashboard — returns 200 when the
+# session is valid, 302 → /login when it's not. The extension uses
+# this both for the auto-capture gate AND the popup's per-source
+# status indicator ("Logged in" vs "Not logged in").
 detect_logged_in:
   method: GET
-  url: https://www.brightermonday.co.ke/api/v1/me
+  url: https://www.brightermonday.co.ke/account/customer/enquiries
   expect_status: 200
 apply_flow:
   type: http_form
-  form_url_pattern: '^https://www\.brightermonday\.co\.ke/job/.+/apply$'
+  # Matches both legacy /job/<id>/apply and current /listings/<slug>
+  # URL shapes. The replay leg parses the page for a <form> action so
+  # the exact apply-page URL doesn't have to be the form-submission URL.
+  form_url_pattern: '^https://www\.brightermonday\.co\.ke/(job/.+/apply|listings/.+)$'
   fields:
     cv_file:
       name: resume
