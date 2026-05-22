@@ -164,3 +164,60 @@ func (r *CandidateRepository) ListInactiveSince(ctx context.Context, cutoff time
 		Find(&out).Error
 	return out, err
 }
+
+// GetOnboardingDraft returns the candidate's persisted wizard draft as
+// raw JSON. Unknown candidates return `{}` rather than an error — the
+// onboarding handler treats "no draft" identically to "candidate
+// doesn't exist yet"; a fresh user has the same empty wizard either
+// way.
+func (r *CandidateRepository) GetOnboardingDraft(ctx context.Context, id string) ([]byte, error) {
+	var result struct {
+		OnboardingDraft []byte `gorm:"column:onboarding_draft"`
+	}
+	err := r.db(ctx, true).
+		Raw(`SELECT onboarding_draft FROM candidate_profiles WHERE id = ? LIMIT 1`, id).
+		Scan(&result).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(result.OnboardingDraft) == 0 {
+		return []byte("{}"), nil
+	}
+	return result.OnboardingDraft, nil
+}
+
+// SetOnboardingDraft writes the wizard draft. The body is opaque to
+// the repository; the matching service owns the schema. The candidate
+// row must already exist — sign-in creates one before the wizard
+// mounts (see [POST /candidates/onboard] for the canonical row
+// creation path; a draft-only candidate is created lazily by
+// SetOnboardingDraft via an UPDATE that hits zero rows then INSERTs
+// the bare minimum).
+func (r *CandidateRepository) SetOnboardingDraft(ctx context.Context, id string, draft []byte) error {
+	res := r.db(ctx, false).
+		Exec(`UPDATE candidate_profiles SET onboarding_draft = ?::jsonb WHERE id = ?`, string(draft), id)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		// Lazy-create the candidate row so the wizard can persist
+		// before the final /candidates/onboard call. The row uses
+		// id as its own profile_id (they're the same value pre-Phase-4
+		// split, set by the auth layer). All other columns get their
+		// NOT NULL DEFAULT values from the schema.
+		return r.db(ctx, false).Exec(
+			`INSERT INTO candidate_profiles (id, onboarding_draft) VALUES (?, ?::jsonb)
+			 ON CONFLICT (id) DO UPDATE SET onboarding_draft = EXCLUDED.onboarding_draft`,
+			id, string(draft),
+		).Error
+	}
+	return nil
+}
+
+// ClearOnboardingDraft resets the draft to '{}'. Called inside the
+// same transaction as POST /candidates/onboard so a successful submit
+// atomically promotes the draft into the canonical profile columns.
+func (r *CandidateRepository) ClearOnboardingDraft(ctx context.Context, id string) error {
+	return r.db(ctx, false).
+		Exec(`UPDATE candidate_profiles SET onboarding_draft = '{}'::jsonb WHERE id = ?`, id).Error
+}

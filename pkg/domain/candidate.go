@@ -108,6 +108,12 @@ type CandidateProfile struct {
 	CVReportJSON      string     `gorm:"type:jsonb;default:'{}'" json:"-"`
 	CVScoredAt        *time.Time `json:"cv_scored_at"`
 	CVScoredVersion   string     `gorm:"type:varchar(32)" json:"cv_scored_version"`
+
+	// OnboardingDraft persists the multi-step wizard state between
+	// sessions. The wizard writes here on every step; POST
+	// /candidates/onboard promotes the draft into the canonical
+	// profile columns and resets this to '{}'.
+	OnboardingDraft string `gorm:"type:jsonb;not null;default:'{}'" json:"-"`
 }
 
 func (CandidateProfile) TableName() string { return "candidate_profiles" }
