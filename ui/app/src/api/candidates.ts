@@ -242,6 +242,67 @@ export async function saveOnboardingDraft(
   });
 }
 
+// ── /me/opportunities ─────────────────────────────────────────────
+
+export type OpportunityFilter = "all" | "matches" | "starred" | "applied";
+
+export interface ApplicationSummary {
+  status: "applied" | "responded" | "interview" | "offer" | "rejected" | "hired" | string;
+  applied_at: string;
+  last_event_at: string;
+  method: "auto" | "manual" | string;
+}
+
+export interface FeedItem {
+  opportunity_id: string;
+  score?: number;
+  starred: boolean;
+  application?: ApplicationSummary;
+  created_at: string;
+}
+
+export interface FeedPage {
+  items: FeedItem[];
+  next_cursor?: string;
+}
+
+export async function fetchOpportunities(
+  opts: { filter?: OpportunityFilter; cursor?: string; limit?: number } = {},
+): Promise<FeedPage> {
+  const params = new URLSearchParams();
+  if (opts.filter && opts.filter !== "all") params.set("filter", opts.filter);
+  if (opts.cursor) params.set("cursor", opts.cursor);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const query = params.toString();
+  const path = `/matching/me/opportunities${query ? `?${query}` : ""}`;
+  return await authRuntime().fetch<FeedPage>(path);
+}
+
+export async function starOpportunity(opportunityId: string): Promise<void> {
+  await authRuntime().fetch("/matching/me/saved-jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ opportunity_id: opportunityId }),
+  });
+}
+
+export async function unstarOpportunity(opportunityId: string): Promise<void> {
+  await authRuntime().fetch(`/matching/me/saved-jobs/${encodeURIComponent(opportunityId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function applyToOpportunity(
+  opportunityId: string,
+  method: "manual" | "auto" = "manual",
+): Promise<{ application_id: string; status: string; applied_at: string }> {
+  return await authRuntime().fetch("/matching/me/applications", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ opportunity_id: opportunityId, method }),
+  });
+}
+
 // ── helpers ──────────────────────────────────────────────────────
 
 function getCandidatesOrigin(): string {
