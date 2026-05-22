@@ -512,7 +512,14 @@ func main() {
 		log.Info("matching: /api/me/* routes enabled")
 	}
 
-	svc.Init(ctx, frame.WithHTTPHandler(mux))
+	// Wrap the mux in a tiny CORS shim so the browser extension (running
+	// under a `chrome-extension://…` origin) and any UI on a different
+	// host can call /pairings, /candidates/me/sessions/*, etc. without
+	// being blocked by preflight. In production the gateway in front of
+	// this service handles CORS; the duplicate headers do no harm. Safe
+	// because every candidate-scoped endpoint already authorises via
+	// Bearer token — CORS is not the security boundary.
+	svc.Init(ctx, frame.WithHTTPHandler(withCORS(mux)))
 
 	if err := svc.Run(ctx, ""); err != nil {
 		log.WithError(err).Error("candidates: service run failed")
@@ -635,4 +642,30 @@ func eventHandlersNonNil(h ...events.EventI) []events.EventI {
 		out = append(out, e)
 	}
 	return out
+}
+
+// withCORS adds the headers needed by the browser extension popup
+// (and any non-gateway UI) to reach this service cross-origin. The
+// allow-origin echoes the request's Origin when set, so the response
+// stays correct when called from multiple extension IDs or local UI
+// hosts. credentials are NOT marked allowed — every authed endpoint
+// uses Bearer-in-header, not cookies, so that's fine.
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
