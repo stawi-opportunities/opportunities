@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -8,6 +9,7 @@ import {
   createCheckout,
   fetchOnboardingDraft,
   saveOnboardingDraft,
+  fetchMeSubscription,
   type OnboardingDraftFields,
 } from "@/api/candidates";
 import { PLANS, planById, type PlanId } from "@/utils/plans";
@@ -112,6 +114,23 @@ function readPlanFromQuery(): PlanId {
 
 export default function Onboarding() {
   const { state, login } = useAuth();
+  const subQ = useQuery({
+    queryKey: ["me-subscription"],
+    queryFn: fetchMeSubscription,
+    enabled: state === "authenticated",
+    staleTime: 60_000,
+  });
+
+  // Mirror guard: a paid user shouldn't be in the wizard. Bouncing
+  // them keeps the URL bar honest.
+  useEffect(() => {
+    if (state !== "authenticated") return;
+    if (subQ.isLoading) return;
+    if (subQ.data?.status === "active") {
+      window.location.assign("/dashboard/");
+    }
+  }, [state, subQ.isLoading, subQ.data?.status]);
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftSaveWarning, setDraftSaveWarning] = useState<string | null>(null);
