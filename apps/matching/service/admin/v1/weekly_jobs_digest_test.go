@@ -14,6 +14,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // digestCollector mirrors the pattern in cv_stale_nudge_test.go: a
@@ -61,7 +62,7 @@ func newDigestSvc(t *testing.T) (context.Context, *frame.Service, *digestCollect
 	col := &digestCollector{}
 	svc.EventsManager().Add(col)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(150 * time.Millisecond) // let the subscriber wire up
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidateWeeklyJobsDigest, 2*time.Second)
 	return ctx, svc, col
 }
 

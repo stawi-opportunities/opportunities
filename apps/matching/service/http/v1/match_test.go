@@ -14,6 +14,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // fakeCandidateStore implements the reader interface used by the match handler.
@@ -73,7 +74,7 @@ func TestMatchHandlerReturnsScoredTopK(t *testing.T) {
 	col := &matchReadyCollector{}
 	svc.EventsManager().Add(col)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidateMatchesReady, 2*time.Second)
 
 	jobBlob, _ := json.Marshal(map[string]any{
 		"target_roles": []string{"backend-engineer"},

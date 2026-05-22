@@ -11,6 +11,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // fakeFixGenerator returns a hard-coded slice of PriorityFix.
@@ -65,7 +66,7 @@ func TestCVImproveHandlerEmitsImproved(t *testing.T) {
 	})
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCVImproved, 2*time.Second)
 
 	inEnv := eventsv1.NewEnvelope(eventsv1.TopicCVExtracted, eventsv1.CVExtractedV1{
 		CandidateID: "cnd_1", CVVersion: 1, ScoreOverall: 70,

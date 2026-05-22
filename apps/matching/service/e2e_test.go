@@ -17,6 +17,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 
 	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
@@ -145,7 +146,9 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 	svc.EventsManager().Add(prefsCol)
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(400 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVExtract, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVImprove, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVEmbed, 2*time.Second)
 
 	// --- POST /candidates/cv/upload ---
 	uploadHandler := httpv1.UploadHandler(httpv1.UploadDeps{
