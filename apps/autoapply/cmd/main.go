@@ -17,6 +17,7 @@ import (
 
 	autoapplyconfig "github.com/stawi-opportunities/opportunities/apps/autoapply/config"
 	"github.com/stawi-opportunities/opportunities/apps/autoapply/service"
+	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/authmanifest"
 	"github.com/stawi-opportunities/opportunities/pkg/authsession"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply"
@@ -146,11 +147,27 @@ func main() {
 		cfg.DevAllowInsecureCV,
 	)
 
+	// Bridge to main's apps/applications tracking surface. We open a
+	// *sql.DB view of the same pool the GORM repos use, so this is the
+	// same connection-pool footprint as the legacy persistence path —
+	// no extra pool, no second DB env var.
+	//
+	// A failure to grab the *sql.DB here is fatal: the bridge is part
+	// of the v1 contract once SESSION_MASTER_KEY is set, and silently
+	// degrading to "we apply but the candidate never sees it on their
+	// dashboard" is a worse outcome than crashing the boot.
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		log.WithError(err).Fatal("autoapply: open *sql.DB for applications tracker")
+	}
+	tracker := service.NewPkgApplicationsTracker(applications.NewStore(sqlDB))
+
 	queueHandler := service.NewAutoApplyHandler(service.HandlerDeps{
 		Svc:       svc,
 		Router:    registry,
 		AppRepo:   appRepo,
 		MatchRepo: matchRepo,
+		Tracker:   tracker,
 		CV:        cvFetcher,
 		Config: service.Config{
 			Enabled:            cfg.Enabled,

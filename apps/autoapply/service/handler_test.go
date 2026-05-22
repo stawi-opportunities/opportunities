@@ -100,11 +100,36 @@ func payload(t *testing.T, intent eventsv1.AutoApplyIntentV1) []byte {
 	return b
 }
 
+// fakeTracker captures bridge calls to pkg/applications. Returning an
+// error lets tests assert the handler's "log-and-continue" behaviour
+// for a flaky tracking surface.
+type fakeTracker struct {
+	calls []TrackerRecord
+	err   error
+}
+
+func (t *fakeTracker) Record(_ context.Context, in TrackerRecord) error {
+	t.calls = append(t.calls, in)
+	return t.err
+}
+
 func newHandler(app ApplicationRepo, m MatchRepo, r SubmitterRouter, cv CVFetcher, cfg Config) *AutoApplyHandler {
+	return newHandlerWith(app, m, r, cv, nil, cfg)
+}
+
+func newHandlerWith(
+	app ApplicationRepo,
+	m MatchRepo,
+	r SubmitterRouter,
+	cv CVFetcher,
+	tracker ApplicationsTracker,
+	cfg Config,
+) *AutoApplyHandler {
 	return NewAutoApplyHandler(HandlerDeps{
 		Router:    r,
 		AppRepo:   app,
 		MatchRepo: m,
+		Tracker:   tracker,
 		CV:        cv,
 		Config:    cfg,
 	})
@@ -158,6 +183,75 @@ func TestHandle_SkippedDoesNotMarkMatchApplied(t *testing.T) {
 	require.Len(t, app.updates, 1)
 	assert.Equal(t, domain.AppStatusSkipped, app.updates[0].status)
 	assert.Empty(t, m.appliedIDs)
+}
+
+func TestHandle_BridgesSuccessfulSubmitToApplicationsTracker(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "session_replay", ExternalRef: "bm-9876"}}
+	tracker := &fakeTracker{}
+	h := newHandlerWith(app, &fakeMatchRepo{}, r, &fakeCV{}, tracker, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID:    "cnd_bridge",
+		MatchID:        "m_bridge",
+		CanonicalJobID: "job_bridge",
+		SourceType:     "brightermonday",
+		ApplyURL:       "https://www.brightermonday.co.ke/job/1/apply",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+
+	require.Len(t, tracker.calls, 1, "tracker should receive one Record call on success")
+	rec := tracker.calls[0]
+	assert.Equal(t, "cnd_bridge", rec.CandidateID)
+	assert.Equal(t, "job_bridge", rec.CanonicalJobID)
+	assert.Equal(t, "m_bridge", rec.MatchID)
+	assert.Equal(t, "session_replay", rec.Method)
+	assert.Equal(t, "bm-9876", rec.ExternalRef)
+	assert.Equal(t, "brightermonday", rec.SourceType)
+	assert.False(t, rec.SubmittedAt.IsZero(), "SubmittedAt should be stamped")
+}
+
+func TestHandle_SkippedDoesNotBridgeToTracker(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "skipped", SkipReason: "captcha"}}
+	tracker := &fakeTracker{}
+	h := newHandlerWith(app, &fakeMatchRepo{}, r, &fakeCV{}, tracker, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_skip", CanonicalJobID: "job_skip", ApplyURL: "https://x",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+
+	assert.Empty(t, tracker.calls, "skips must not pollute the tracking dashboard")
+}
+
+func TestHandle_TrackerErrorDoesNotFailHandler(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "session_replay"}}
+	tracker := &fakeTracker{err: errors.New("simulated tracker outage")}
+	h := newHandlerWith(app, &fakeMatchRepo{}, r, &fakeCV{}, tracker, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_flaky", CanonicalJobID: "job_flaky", ApplyURL: "https://x",
+	}
+	// A tracker failure must not surface as a transient handler error
+	// (which would trigger queue redelivery); the legacy candidate_applications
+	// row already records truth.
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
+	require.Len(t, app.updates, 1, "legacy persistence still completed")
+	assert.Equal(t, domain.AppStatusSubmitted, app.updates[0].status)
+}
+
+func TestHandle_NoTrackerIsSafe(t *testing.T) {
+	app := &fakeAppRepo{existing: map[string]bool{}}
+	r := &fakeRouter{result: autoapply.SubmitResult{Method: "session_replay"}}
+	// Explicitly omit the tracker (pre-merge wiring).
+	h := newHandler(app, &fakeMatchRepo{}, r, &fakeCV{}, defaultCfg())
+
+	intent := eventsv1.AutoApplyIntentV1{
+		CandidateID: "cnd_old", CanonicalJobID: "job_old", ApplyURL: "https://x",
+	}
+	require.NoError(t, h.Handle(context.Background(), nil, payload(t, intent)))
 }
 
 func TestHandle_AlreadyAppliedShortCircuits(t *testing.T) {

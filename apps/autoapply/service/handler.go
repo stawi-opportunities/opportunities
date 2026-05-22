@@ -40,6 +40,37 @@ type MatchRepo interface {
 	MarkApplied(ctx context.Context, id string) error
 }
 
+// ApplicationsTracker is the narrow seam onto main's pkg/applications.Store
+// (apps/applications-backed tracking surface). The autoapply handler calls
+// Record after every successful submission so the candidate sees the
+// auto-applied job in their main dashboard, alongside applications they
+// recorded manually.
+//
+// Skips and failures are intentionally NOT mirrored — they're internal
+// retries, not user-facing application records. The legacy
+// candidate_applications table still captures them for operational
+// telemetry.
+//
+// A nil tracker disables the bridge entirely so the handler still
+// works in environments where pkg/applications isn't wired (e.g.
+// the integration test stack).
+type ApplicationsTracker interface {
+	Record(ctx context.Context, in TrackerRecord) error
+}
+
+// TrackerRecord is the autoapply-side view of what a successful
+// submission produced. The tracker maps this to a
+// pkg/applications.Application row.
+type TrackerRecord struct {
+	CandidateID    string
+	CanonicalJobID string
+	MatchID        string
+	Method         string // session_replay, ats_ui, llm_form, email
+	ExternalRef    string // ATS application id when the source returned one
+	SourceType     string // brightermonday, jobberman, greenhouse, ...
+	SubmittedAt    time.Time
+}
+
 // Config bundles the runtime knobs that affect handler behaviour.
 type Config struct {
 	Enabled            bool
@@ -56,6 +87,7 @@ type AutoApplyHandler struct {
 	router    SubmitterRouter
 	appRepo   ApplicationRepo
 	matchRepo MatchRepo
+	tracker   ApplicationsTracker
 	cv        CVFetcher
 	cfg       Config
 }
@@ -67,8 +99,12 @@ type HandlerDeps struct {
 	Router    SubmitterRouter
 	AppRepo   ApplicationRepo
 	MatchRepo MatchRepo
-	CV        CVFetcher
-	Config    Config
+	// Tracker bridges to main's apps/applications surface. Optional —
+	// when nil the handler skips the bridge and behaves as it did
+	// pre-merge. Production wiring sets this.
+	Tracker ApplicationsTracker
+	CV      CVFetcher
+	Config  Config
 }
 
 // NewAutoApplyHandler wires the handler.
@@ -78,6 +114,7 @@ func NewAutoApplyHandler(d HandlerDeps) *AutoApplyHandler {
 		router:    d.Router,
 		appRepo:   d.AppRepo,
 		matchRepo: d.MatchRepo,
+		tracker:   d.Tracker,
 		cv:        d.CV,
 		cfg:       d.Config,
 	}
@@ -258,6 +295,28 @@ func (h *AutoApplyHandler) finalise(
 	if status == domain.AppStatusSubmitted && intent.MatchID != "" && h.matchRepo != nil {
 		if err := h.matchRepo.MarkApplied(ctx, intent.MatchID); err != nil {
 			log.WithError(err).Warn("autoapply: mark match applied failed")
+		}
+	}
+
+	// Bridge to main's apps/applications tracking surface. Only on
+	// successful submits — skips and failures stay internal so the
+	// candidate's dashboard reflects real applications, not retries.
+	if status == domain.AppStatusSubmitted && h.tracker != nil {
+		rec := TrackerRecord{
+			CandidateID:    intent.CandidateID,
+			CanonicalJobID: intent.CanonicalJobID,
+			MatchID:        intent.MatchID,
+			Method:         result.Method,
+			ExternalRef:    result.ExternalRef,
+			SourceType:     intent.SourceType,
+			SubmittedAt:    time.Now().UTC(),
+		}
+		if err := h.tracker.Record(ctx, rec); err != nil {
+			// Tracker failures are non-fatal: the legacy
+			// candidate_applications row is the authoritative record
+			// of what we did. Log so operators can spot a drift
+			// between the two stores.
+			log.WithError(err).Warn("autoapply: applications tracker bridge failed")
 		}
 	}
 
