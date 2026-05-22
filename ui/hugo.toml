@@ -37,19 +37,13 @@ title = "Stawi Opportunities"
   oidcClientID       = "d7is2kspf2t7cl19qlpg"
   oidcInstallationID = "d7gi6lkpf2t67dlsqreg"
 
-  # OpenObserve RUM. rumClientToken is the public browser token minted
-  # from observe.stawi.org → Data Sources → RUM → "opportunities-web". It
-  # ships in every browser bundle so it's not a secret, but Vault holds
-  # the canonical rotation copy at stawi-opportunities/opportunities/common/rum-token.
-  # Branch previews can override to blank via HUGO_PARAMS_rumClientToken=""
-  # so pre-merge sessions don't bleed into production data.
-  rumClientToken     = "rumJQxpgPXy1z2iRqt6"
-  rumApplicationId   = "opportunities-web"
-  rumSite            = "observe.stawi.org"
-  rumOrganization    = "default"
-  rumEnv             = "production"
-  rumService         = "opportunities-web"
-  rumVersion         = "0.0.1"
+  # Google Analytics 4 — measurement ID (public, "G-XXXXXXXXXX"). Empty
+  # default disables the gtag.js script tag in head.html and turns every
+  # ga4.ts helper into a no-op, so branch previews / local dev stay
+  # silent. Populate via HUGO_PARAMS_gaMeasurementId at build time, or
+  # set the literal value here once you've created the GA4 property at
+  # analytics.google.com → Admin → Data Streams → Web → Measurement ID.
+  gaMeasurementId    = ""
 
 [params.nav]
   logo = "/images/logo.svg"

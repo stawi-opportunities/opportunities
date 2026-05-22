@@ -21,20 +21,8 @@ export interface SiteConfig {
   /** Registered redirect URI — must match Hydra's client record exactly. */
   oidcRedirectURI: string;
 
-  /** OpenObserve RUM ingest token (browser-only). Provision from OO UI. */
-  rumClientToken: string;
-  /** Logical app identifier registered in OpenObserve. */
-  rumApplicationId: string;
-  /** OpenObserve host:port (no scheme), e.g. "observe.stawi.org". */
-  rumSite: string;
-  /** OpenObserve organisation slug. */
-  rumOrganization: string;
-  /** Free-form environment tag for OO session filtering. */
-  rumEnv: string;
-  /** Service name reported on every RUM event. */
-  rumService: string;
-  /** Frontend version for OO session filtering. Wire to git-sha at build. */
-  rumVersion: string;
+  /** GA4 measurement ID, e.g. "G-XXXXXXXXXX". Empty disables analytics. */
+  gaMeasurementId: string;
 }
 
 const DEFAULTS: SiteConfig = {
@@ -48,17 +36,11 @@ const DEFAULTS: SiteConfig = {
     typeof window !== "undefined"
       ? `${window.location.origin}/auth/callback/`
       : "http://localhost:5170/auth/callback/",
-  // OpenObserve RUM — default to empty so the SDK stays silent unless
-  // hugo.toml params (or HUGO_PARAMS_* env overrides at build time)
-  // actually provide a client token. `rumSite` is public and can ship
-  // as a default; the token cannot.
-  rumClientToken: "",
-  rumApplicationId: "stawi-jobs-web",
-  rumSite: "observe.stawi.org",
-  rumOrganization: "default",
-  rumEnv: "production",
-  rumService: "stawi-jobs-web",
-  rumVersion: "0.0.0",
+  // GA4 measurement ID — empty default so the gtag.js script tag is
+  // skipped in head.html unless HUGO_PARAMS_gaMeasurementId is set at
+  // build time. IDs are public ("G-XXXXXXXXXX") so they can live in
+  // hugo.toml directly when needed.
+  gaMeasurementId: "",
 };
 
 let cached: SiteConfig | null = null;
