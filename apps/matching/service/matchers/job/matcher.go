@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/pgsearch"
 )
 
 type Matcher struct{}
@@ -21,28 +21,32 @@ func (m *Matcher) SearchFilter(prefs json.RawMessage) (any, error) {
 	var p JobPreferences
 	if len(prefs) > 0 {
 		if err := json.Unmarshal(prefs, &p); err != nil {
-			return searchindex.Filter{}, err
+			return pgsearch.Filter{}, err
 		}
 	}
-	f := searchindex.Filter{Kind: "job"}
+	f := pgsearch.Filter{Kind: "job"}
+	// employment_type / seniority live in the jsonb attributes blob —
+	// the polymorphic schema keeps per-kind facets out of the
+	// top-level columns.
 	if len(p.EmploymentTypes) > 0 {
-		f.AnyOf = append(f.AnyOf, searchindex.AnyOf{Field: "employment_type", Values: p.EmploymentTypes})
+		f.AttributeAnyOf = append(f.AttributeAnyOf, pgsearch.AnyOf{Field: "employment_type", Values: p.EmploymentTypes})
 	}
 	if len(p.SeniorityLevels) > 0 {
-		f.AnyOf = append(f.AnyOf, searchindex.AnyOf{Field: "seniority", Values: p.SeniorityLevels})
+		f.AttributeAnyOf = append(f.AttributeAnyOf, pgsearch.AnyOf{Field: "seniority", Values: p.SeniorityLevels})
 	}
 	if p.SalaryMin > 0 {
-		f.RangeMin = append(f.RangeMin, searchindex.RangeMin{Field: "amount_min", Value: p.SalaryMin})
+		f.RangeMin = append(f.RangeMin, pgsearch.RangeMin{Field: "amount_min", Value: p.SalaryMin})
 	}
 	if len(p.Locations.Countries) > 0 {
-		f.AnyOf = append(f.AnyOf, searchindex.AnyOf{Field: "country", Values: p.Locations.Countries})
+		f.AnyOf = append(f.AnyOf, pgsearch.AnyOf{Field: "country", Values: p.Locations.Countries})
 	}
 	if p.Locations.RemoteOK {
-		f.OrTerm = "remote = 1"
+		f.RemoteOK = true
 	}
-	if p.Locations.NearLat != 0 && p.Locations.RadiusKm > 0 {
-		f.GeoDist = &searchindex.GeoDist{Lat: p.Locations.NearLat, Lon: p.Locations.NearLon, RadiusKm: p.Locations.RadiusKm}
-	}
+	// GeoDist is intentionally dropped during the Postgres cutover —
+	// the schema has no lat/lon columns. Restore once postgis is
+	// added and we have a "near me" UX surface to drive it.
+	_ = fmt.Sprintf // keep import in case the file grows
 	return f, nil
 }
 

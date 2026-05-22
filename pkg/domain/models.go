@@ -119,7 +119,11 @@ type Source struct {
 	BaseURL          string         `gorm:"type:text;not null;uniqueIndex:idx_source_type_url" json:"base_url"`
 	Country          string         `gorm:"type:varchar(10)" json:"country"`
 	Language         string         `gorm:"type:varchar(10);not null;default:'en';index" json:"language"`
-	Status           SourceStatus   `gorm:"type:varchar(20);not null;default:'active'" json:"status"`
+	// Default is 'pending': any INSERT that forgets to set Status now
+	// lands in the verify-then-approve lifecycle instead of accidentally
+	// being treated as already-trusted. Seed/admin/discovery paths set
+	// the column explicitly; this default is the safety net.
+	Status           SourceStatus   `gorm:"type:varchar(20);not null;default:'pending'" json:"status"`
 	Priority         Priority       `gorm:"type:smallint;not null;default:1" json:"priority"`
 	CrawlIntervalSec int            `gorm:"not null;default:3600" json:"crawl_interval_sec"`
 	HealthScore         float64        `gorm:"type:real;not null;default:1.0" json:"health_score"`

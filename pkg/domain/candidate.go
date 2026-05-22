@@ -95,7 +95,6 @@ type CandidateProfile struct {
 	CommSMS      bool `gorm:"not null;default:false" json:"comm_sms"`
 
 	// Matching metadata
-	Embedding       string     `gorm:"type:text" json:"-"`
 	MatchesSent     int        `gorm:"not null;default:0" json:"matches_sent"`
 	LastMatchedAt   *time.Time `json:"last_matched_at"`
 	LastContactedAt *time.Time `json:"last_contacted_at"`
@@ -119,6 +118,12 @@ func (CandidateProfile) TableName() string { return "candidate_profiles" }
 // when available, otherwise the bi-encoder EmbeddingSimilarity. Keeping the
 // upstream signals on the row makes it trivial to diff "before/after
 // reranker" in observability without re-running the cron.
+//
+// NOTE: main retired this type in PR #6 (manticore/match-table cleanup).
+// We retain it on feature/auto-apply because the event-driven auto-apply
+// pipeline (apps/autoapply, apps/matching/service/events/v1/auto_apply.go)
+// still depends on it. Consolidation onto main's apps/applications HTTP
+// CRUD model is tracked as a follow-up.
 type CandidateMatch struct {
 	BaseModel
 	CandidateID         string      `gorm:"type:varchar(20);not null;index;uniqueIndex:idx_candidate_job" json:"candidate_id"`
@@ -142,8 +147,9 @@ type CandidateMatch struct {
 
 func (CandidateMatch) TableName() string { return "candidate_matches" }
 
-
-// Application status constants for CandidateApplication.Status.
+// Application status constants for CandidateApplication.Status. Retained
+// alongside CandidateMatch above for the same reason — the event-driven
+// autoapply handler reads these.
 const (
 	AppStatusPending   = "pending"
 	AppStatusSubmitted = "submitted"

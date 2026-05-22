@@ -8,14 +8,31 @@ import (
 )
 
 // Config for apps/worker. Frame base handles Postgres + pub/sub +
-// OTEL; this struct adds Valkey (via Frame's cache framework),
+// OTEL; this struct adds JetStream KV (via Frame's cache framework),
 // R2 publish, LLM backends, and translation configuration.
 type Config struct {
 	fconfig.ConfigurationDefault
 
-	// Valkey URL for Frame's cache framework (backs dedup + cluster
-	// snapshot storage). Handed to frame/cache/valkey.New(cache.WithDSN).
-	ValkeyURL string `env:"VALKEY_URL,required"`
+	// ValkeyDSN is the Valkey/Redis URL backing dedup (hard_key →
+	// cluster_id) and cluster-snapshot storage. Format:
+	// redis://host:port (no auth) or redis://:password@host:port.
+	// When set, the worker uses frame/cache/valkey instead of the
+	// JetStream-KV backend below. We moved off NATS-KV because of
+	// pathological 5s/op timeouts that stalled the canonical chain
+	// (see deployment.manifests workspace memory on the symptom).
+	ValkeyDSN string `env:"VALKEY_DSN"`
+
+	// Legacy JetStream-KV settings. Used only when ValkeyDSN is empty
+	// — kept around so existing dev/test envs without Valkey continue
+	// to work and so the cutover stays reversible if Valkey hits its
+	// own problems.
+	CacheNATSURL       string `env:"CACHE_NATS_URL"`
+	CacheNATSCredsFile string `env:"CACHE_NATS_CREDS_FILE"`
+
+	// CacheBucket is the cache namespace name. With Valkey it's the
+	// keyspace prefix that Frame's typed-cache views inherit; with
+	// JetStream-KV it's the bucket name.
+	CacheBucket string `env:"CACHE_BUCKET" envDefault:"opportunities-worker"`
 
 	// Cloudflare R2 — one account token authorised on all three
 	// product-opportunities buckets. Worker uses the content bucket
@@ -49,6 +66,44 @@ type Config struct {
 
 	// Validation LLM request timeout.
 	ValidationTimeout time.Duration `env:"VALIDATION_TIMEOUT" envDefault:"30s"`
+
+	// ValidationSkipLLM short-circuits the validation LLM call and
+	// emits VariantValidated@1.0 confidence for every record. Use when
+	// the shared llama fleet is saturated by other consumers (crawler
+	// enrichStubs, embed/translate) and validate is bottlenecking
+	// the canonical chain: variants.ingested → normalize → validate
+	// (LLM) → dedup → canonical → publish. The canonical chain
+	// produces the canonicals.upserted events that the materializer
+	// turns into Manticore rows — so a stalled validate keeps the
+	// /jobs page empty even when the rest of the pipeline is healthy.
+	// Connector-supplied fields are already the authoritative data
+	// path for greenhouse/themuse/arbeitnow/etc., so skipping the
+	// LLM QC step is a clean way to trade quality scoring for
+	// throughput.
+	ValidationSkipLLM bool `env:"VALIDATION_SKIP_LLM" envDefault:"false"`
+
+	// DedupSkipCache bypasses the JetStream-KV dedup lookup and uses
+	// HardKey directly as the cluster_id. Use when KV operations are
+	// timing out under load (5s per call × four calls per dedup =
+	// ~20s wall-time per variant; with max_ack_pending=32 throughput
+	// caps near 1.6 msgs/sec — Manticore stays effectively empty).
+	// Trade-off: lose dedup so a job posted at two sources or seen on
+	// two crawls produces two clusters. Acceptable for getting jobs
+	// onto the website while we diagnose the NATS-KV latency.
+	DedupSkipCache bool `env:"DEDUP_SKIP_CACHE" envDefault:"false"`
+
+	// DedupReadBackend controls which store DedupHandler consults first
+	// to resolve hard_key → cluster_id. Phase 4 cutover values:
+	//
+	//   "valkey"   — Valkey first, Postgres fallback (Phase 4a, default)
+	//   "postgres" — Postgres first, Valkey fallback (Phase 4b)
+	//   "postgres-only" — Postgres only, no Valkey reads or writes
+	//                     (Phase 4c — terminal state)
+	//
+	// Writes always go to both stores until "postgres-only" lands. A
+	// missing or unknown value behaves as "valkey" so deploys without
+	// the env var stay safe.
+	DedupReadBackend string `env:"DEDUP_READ_BACKEND" envDefault:"valkey"`
 
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.

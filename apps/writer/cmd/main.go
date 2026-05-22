@@ -14,6 +14,16 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
+	// Side-effect import: registers s3/s3a/s3n/gs/mem/abfs IO scheme
+	// factories with iceberg-go's filesystem registry. Without this,
+	// every catalog metadata load against s3://... fails with
+	// "io scheme not registered for path …" and the writer can't
+	// commit anything (variants, variants_rejected, crawl_page_completed
+	// all dead-letter through Frame redelivery). The gocloud blob
+	// adapter wraps aws-sdk-go-v2/s3 so the writer's existing R2
+	// credentials flow continues to work.
+	_ "github.com/apache/iceberg-go/io/gocloud"
+
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -56,6 +66,17 @@ func main() {
 		util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
 	}
 	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+
+	// Initialize pipeline + Iceberg telemetry instruments. Without this,
+	// every commit-retry path in the writer hits a nil-Counter and SIGSEGVs
+	// (the production-observed cause of the writer crashloop). Frame has
+	// already configured the global OTel provider, so this registers our
+	// custom instruments into it; failures here are non-fatal — we just
+	// log and continue with no metrics rather than block writes on a
+	// telemetry-collector outage.
+	if err := telemetry.Init(); err != nil {
+		util.Log(ctx).WithError(err).Warn("telemetry metrics init failed")
+	}
 
 	// Open the shared cluster Iceberg REST catalog (Lakekeeper).
 	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{

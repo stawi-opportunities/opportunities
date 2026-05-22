@@ -1,12 +1,24 @@
 {{ define "main" }}
-<!-- Rendered by ui/app/src/components/AuthCallback.tsx. This route only
-     exists so the OAuth popup has something same-origin to land on; the
-     parent polls popup.location, reads ?code=, closes it. -->
+<!-- Rendered by ui/app/src/components/AuthCallback.tsx. Receives the
+     full-page OIDC redirect with ?code=&state=, completes the token
+     exchange via runtime.completeRedirect(), then navigates the user
+     to /dashboard/. -->
 <div id="mount-auth-callback">
   <div class="flex min-h-[60vh] items-center justify-center px-4 py-16">
-    <div class="w-full max-w-md text-center">
-      <div class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent" aria-label="Completing sign in"></div>
-      <p class="mt-4 text-gray-600">Completing sign in…</p>
+    <div class="w-full max-w-md text-center panel">
+      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-navy-50 text-navy-900">
+        <svg class="h-6 w-6 animate-spin text-accent-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+        </svg>
+      </div>
+      <h2 class="mt-4 text-lg font-semibold text-gray-900">Signing you in</h2>
+      <p class="mt-2 text-sm text-gray-600">We're finalising authentication — this usually takes a moment.</p>
+      <div class="mt-6 flex items-center justify-center gap-3">
+        <a href="/dashboard/" class="btn-primary">Go to dashboard</a>
+        <a href="/" class="btn-secondary">Return home</a>
+      </div>
+      <p class="mt-4 text-xs text-gray-400">If this page doesn't change after a minute, try refreshing or returning to the site and signing in again.</p>
     </div>
   </div>
 </div>

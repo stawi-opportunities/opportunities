@@ -3,9 +3,7 @@
     "base_url": "https://www.njorku.com",
     "country": "",
     "crawl_interval_sec": 3600,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "hot",
     "region": "africa",
     "source_type": "njorku"
@@ -13,34 +11,55 @@
   {
     "base_url": "https://www.myjobmag.co.ke",
     "country": "KE",
-    "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
-    "priority": "normal",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
     "region": "africa",
     "source_type": "myjobmag"
   },
   {
     "base_url": "https://www.myjobmag.co.za",
     "country": "ZA",
-    "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
-    "priority": "normal",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
     "region": "africa",
     "source_type": "myjobmag"
   },
   {
-    "base_url": "https://www.myjobmag.com.gh",
+    "base_url": "https://www.myjobmagghana.com",
     "country": "GH",
-    "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
-    "priority": "normal",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
     "region": "africa",
     "source_type": "myjobmag"
+  },
+  {
+    "base_url": "https://www.iworkinafrika.com",
+    "country": "",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
+    "region": "africa",
+    "source_type": "generic_html"
+  },
+  {
+    "base_url": "https://careerlinkafrica.com",
+    "country": "",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
+    "region": "africa",
+    "source_type": "generic_html"
+  },
+  {
+    "base_url": "https://jobmatchafrica.com",
+    "country": "",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
+    "region": "africa",
+    "source_type": "generic_html"
   }
 ]

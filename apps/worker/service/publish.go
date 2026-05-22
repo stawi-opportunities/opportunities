@@ -12,6 +12,7 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // PublishHandler consumes CanonicalUpsertedV1 and writes a JSON
@@ -20,11 +21,12 @@ type PublishHandler struct {
 	svc       *frame.Service
 	publisher *publish.R2Publisher
 	registry  *opportunity.Registry
+	store     *variantstate.Store // nil-safe; soft-fails on Postgres outage
 }
 
 // NewPublishHandler ...
-func NewPublishHandler(svc *frame.Service, p *publish.R2Publisher, reg *opportunity.Registry) *PublishHandler {
-	return &PublishHandler{svc: svc, publisher: p, registry: reg}
+func NewPublishHandler(svc *frame.Service, p *publish.R2Publisher, reg *opportunity.Registry, store *variantstate.Store) *PublishHandler {
+	return &PublishHandler{svc: svc, publisher: p, registry: reg, store: store}
 }
 
 // Name returns the topic this handler consumes (canonical upserts).
@@ -77,5 +79,12 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 		PublishedAt:   time.Now().UTC(),
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicPublished, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicPublished, outEnv)
+	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicPublished, outEnv); err != nil {
+		return err
+	}
+	// Bulk-advance every variant in this canonical from `canonical`
+	// → `published`. CanonicalUpsertedV1 is a many-to-one fan-in
+	// (multiple variants share a canonical), so update by canonical_id.
+	_ = h.store.MarkPublishedByCanonical(ctx, c.OpportunityID)
+	return nil
 }

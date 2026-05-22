@@ -11,6 +11,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 )
 
@@ -111,7 +112,7 @@ func TestDedup_StoresAttributesInSnapshot(t *testing.T) {
 	svc.EventsManager().Add(colClustered)
 	svc.Init(ctx)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsClustered, 2*time.Second)
 
 	h := NewDedupHandlerWithCluster(svc, dedupCache, clusterCache)
 

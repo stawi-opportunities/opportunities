@@ -21,7 +21,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-api.opportunities.svc/admin/feeds/rebuild",
+          "url": "http://opportunities-api.product-opportunities.svc/admin/feeds/rebuild",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

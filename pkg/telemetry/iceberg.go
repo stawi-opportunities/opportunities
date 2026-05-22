@@ -548,6 +548,13 @@ func RegisterBufferStats(fn BufferStatsFunc, topics []string) {
 // cycles and keep call sites readable
 // ---------------------------------------------------------------------------
 
+// Every Record* helper below is nil-safe on its instruments: if a binary
+// forgets to call telemetry.Init() (or Init() returns an error and the
+// caller chooses to continue), recording a metric must drop the sample
+// rather than SIGSEGV. The matching pattern is used by RecordOpportunity*
+// in metrics.go. Crash-on-missing-telemetry is exactly the cascade that
+// previously crashloop'd the writer 94 times in 15h.
+
 // RecordCommit records the outcome of one Iceberg commit attempt.
 // outcome should be one of: "ok", "retry", "fail".
 func RecordCommit(tableName, outcome string, durationSecs float64, rows int64) {
@@ -555,9 +562,13 @@ func RecordCommit(tableName, outcome string, durationSecs float64, rows int64) {
 		attribute.String("table", tableName),
 		attribute.String("outcome", outcome),
 	)
-	IcebergCommitsTotal.Add(context.Background(), 1, attrs)
-	IcebergCommitDuration.Record(context.Background(), durationSecs, attrs)
-	if rows > 0 {
+	if IcebergCommitsTotal != nil {
+		IcebergCommitsTotal.Add(context.Background(), 1, attrs)
+	}
+	if IcebergCommitDuration != nil {
+		IcebergCommitDuration.Record(context.Background(), durationSecs, attrs)
+	}
+	if rows > 0 && IcebergCommitRowsTotal != nil {
 		IcebergCommitRowsTotal.Add(context.Background(), rows,
 			metric.WithAttributes(attribute.String("table", tableName)))
 	}
@@ -565,12 +576,18 @@ func RecordCommit(tableName, outcome string, durationSecs float64, rows int64) {
 
 // RecordCommitRetry records a single retry attempt on a table.
 func RecordCommitRetry(tableName string) {
+	if IcebergCommitRetries == nil {
+		return
+	}
 	IcebergCommitRetries.Add(context.Background(), 1,
 		metric.WithAttributes(attribute.String("table", tableName)))
 }
 
 // RecordCompactDuration records the duration of a per-table compact run.
 func RecordCompactDuration(tableName string, secs float64) {
+	if IcebergCompactDuration == nil {
+		return
+	}
 	IcebergCompactDuration.Record(context.Background(), secs,
 		metric.WithAttributes(attribute.String("table", tableName)))
 }
@@ -578,18 +595,28 @@ func RecordCompactDuration(tableName string, secs float64) {
 // RecordCompactFileCounts records file-count before/after for a table.
 func RecordCompactFileCounts(tableName string, before, after int) {
 	attrs := metric.WithAttributes(attribute.String("table", tableName))
-	IcebergCompactFilesBefore.Add(context.Background(), int64(before), attrs)
-	IcebergCompactFilesAfter.Add(context.Background(), int64(after), attrs)
+	if IcebergCompactFilesBefore != nil {
+		IcebergCompactFilesBefore.Add(context.Background(), int64(before), attrs)
+	}
+	if IcebergCompactFilesAfter != nil {
+		IcebergCompactFilesAfter.Add(context.Background(), int64(after), attrs)
+	}
 }
 
 // RecordCompactBytesRewritten increments the bytes-rewritten counter.
 func RecordCompactBytesRewritten(tableName string, bytes int64) {
+	if IcebergCompactBytesRewritten == nil {
+		return
+	}
 	IcebergCompactBytesRewritten.Add(context.Background(), bytes,
 		metric.WithAttributes(attribute.String("table", tableName)))
 }
 
 // RecordCompactPartitionProcessed increments the processed-partitions counter.
 func RecordCompactPartitionProcessed(tableName string) {
+	if IcebergCompactPartitionsProcessed == nil {
+		return
+	}
 	IcebergCompactPartitionsProcessed.Add(context.Background(), 1,
 		metric.WithAttributes(attribute.String("table", tableName)))
 }
@@ -597,6 +624,9 @@ func RecordCompactPartitionProcessed(tableName string) {
 // RecordCompactPartitionSkipped increments the skipped-partitions counter.
 // reason should be one of: "already_large", "single_file", "other".
 func RecordCompactPartitionSkipped(tableName, reason string) {
+	if IcebergCompactPartitionsSkipped == nil {
+		return
+	}
 	IcebergCompactPartitionsSkipped.Add(context.Background(), 1,
 		metric.WithAttributes(
 			attribute.String("table", tableName),
@@ -607,6 +637,10 @@ func RecordCompactPartitionSkipped(tableName, reason string) {
 // RecordExpire records the outcome of one expire-snapshots run for a table.
 func RecordExpire(tableName string, durationSecs float64, removed int) {
 	attrs := metric.WithAttributes(attribute.String("table", tableName))
-	IcebergExpireDuration.Record(context.Background(), durationSecs, attrs)
-	IcebergExpireSnapshotsRemoved.Add(context.Background(), int64(removed), attrs)
+	if IcebergExpireDuration != nil {
+		IcebergExpireDuration.Record(context.Background(), durationSecs, attrs)
+	}
+	if IcebergExpireSnapshotsRemoved != nil {
+		IcebergExpireSnapshotsRemoved.Add(context.Background(), int64(removed), attrs)
+	}
 }

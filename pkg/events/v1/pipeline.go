@@ -5,7 +5,11 @@ import "time"
 // VariantNormalizedV1 — post-normalize stage. Attributes carries
 // the kind-specific normalized fields.
 type VariantNormalizedV1 struct {
-	VariantID    string         `json:"variant_id"`
+	VariantID string `json:"variant_id"`
+	// SourceID propagates forward from VariantIngestedV1 so downstream
+	// stages (dedup, canonical-merge) can attribute the cluster to a
+	// source for /admin/sources/stop's cascade-delete.
+	SourceID     string         `json:"source_id,omitempty"`
 	HardKey      string         `json:"hard_key"`
 	Kind         string         `json:"kind"`
 	NormalizedAt time.Time      `json:"normalized_at"`
@@ -18,7 +22,11 @@ type VariantNormalizedV1 struct {
 // VariantNormalizedV1, so the dedup stage can seed the cluster
 // snapshot's Attributes without re-reading the normalized payload.
 type VariantValidatedV1 struct {
-	VariantID    string         `json:"variant_id"`
+	VariantID string `json:"variant_id"`
+	// SourceID propagated from upstream stages. The dedup stage writes
+	// it onto the cluster snapshot so canonical-merge can include it
+	// on CanonicalUpsertedV1.
+	SourceID     string         `json:"source_id,omitempty"`
 	HardKey      string         `json:"hard_key"`
 	Kind         string         `json:"kind"`
 	Valid        bool           `json:"valid"`

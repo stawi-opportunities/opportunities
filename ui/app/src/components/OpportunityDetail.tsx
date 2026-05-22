@@ -10,7 +10,7 @@ import {
   trackApplyClick,
   trackJobView,
   trackJobViewEngaged,
-} from "@/analytics/openobserve";
+} from "@/analytics/posthog";
 import {
   isDeal,
   isFunding,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { authRuntime } from "@/auth/runtime";
 
 /**
@@ -46,7 +46,7 @@ export default function FlagModal({ slug }: { slug: string }) {
     setState({ kind: "idle" });
   }
 
-  async function handleSubmit(e: Event): Promise<void> {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     if (state.kind === "submitting") return;
     setState({ kind: "submitting" });

@@ -39,6 +39,14 @@ type ClusterSnapshot struct {
 	PostedAt     time.Time `json:"posted_at,omitempty"`
 	ApplyURL     string    `json:"apply_url,omitempty"`
 
+	// SourceID is the dominant source for this cluster — the source
+	// of the first variant that created the cluster (dedup) plus
+	// last-write-wins overwrites from subsequent variants. The
+	// canonical-merge stage propagates it onto CanonicalUpsertedV1
+	// so the materializer can index it on idx_opportunities_rt and
+	// /admin/sources/stop can DELETE WHERE source_id = hashID(SourceID).
+	SourceID string `json:"source_id,omitempty"`
+
 	// Attributes is the polymorphic per-kind merge state. The dedup
 	// stage seeds this from VariantValidatedV1.Attributes; the
 	// canonical-merge stage reads it back and re-emits on

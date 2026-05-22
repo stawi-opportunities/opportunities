@@ -46,11 +46,20 @@ func NewService(
 // Frame events manager. Called during startup, before svc.Run. Each
 // handler is the Frame-dispatched entry point for that topic's
 // messages.
+//
+// The writer subscribes to the catch-all svc.opportunities.events.>
+// NATS subject and only persists topics in eventsv1.AllTopics(). Loose
+// mode (Frame v1.97.3+) tells the events.Manager to ack-and-skip any
+// other topic instead of returning ErrUnregisteredEvent — that removes
+// the per-topic NoopHandler block that used to live here without
+// reintroducing the "permanent NATS retry storm" wedge from the bare
+// strict-mode catch-all.
 func (s *Service) RegisterSubscriptions(topics []string) error {
 	mgr := s.svc.EventsManager()
 	if mgr == nil {
 		return fmt.Errorf("writer: events manager unavailable — check NATS configuration")
 	}
+	mgr.SetStrict(false)
 	for _, t := range topics {
 		h := NewWriterHandler(t, s.buffer)
 		mgr.Add(h)

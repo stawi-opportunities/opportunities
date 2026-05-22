@@ -37,6 +37,7 @@ func TestSourceDiscoveredUpsertsNewURL(t *testing.T) {
 	repo.rows["s-origin"] = &domain.Source{
 		BaseModel: domain.BaseModel{ID: "s-origin"},
 		BaseURL:   "https://example.com",
+		Status:    domain.SourceActive,
 	}
 	h := NewSourceDiscoveredHandler(repo, nil)
 
@@ -66,6 +67,68 @@ func TestSourceDiscoveredUpsertsNewURL(t *testing.T) {
 	}
 	if saved.AutoApprove {
 		t.Errorf("AutoApprove=true on a discovered source; should default to false")
+	}
+}
+
+// TestSourceDiscoveredDroppedFromUnapprovedOrigin verifies that the
+// handler refuses to mint a new source when the origin that emitted
+// the discovery is itself not yet approved. Without this gate a freshly
+// discovered (and still-pending) source could mint *more* pending
+// sources if a crawl ever ran against it, fanning out unverified
+// domains into the platform.
+func TestSourceDiscoveredDroppedFromUnapprovedOrigin(t *testing.T) {
+	for _, status := range []domain.SourceStatus{
+		domain.SourcePending, domain.SourceVerifying, domain.SourceVerified,
+		domain.SourceRejected, domain.SourcePaused, domain.SourceBlocked,
+		domain.SourceDisabled,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			repo := newFakeUpserter()
+			repo.rows["s-origin"] = &domain.Source{
+				BaseModel: domain.BaseModel{ID: "s-origin"},
+				BaseURL:   "https://example.com",
+				Status:    status,
+			}
+			h := NewSourceDiscoveredHandler(repo, nil)
+			env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
+				DiscoveredURL: "https://otherboard.example/careers",
+				SourceID:      "s-origin",
+			})
+			raw, _ := json.Marshal(env)
+			rm := json.RawMessage(raw)
+			if err := h.Execute(context.Background(), &rm); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if len(repo.upserts) != 0 {
+				t.Errorf("status=%s upserts=%v, want none", status, repo.upserts)
+			}
+		})
+	}
+}
+
+// TestSourceDiscoveredAcceptedFromDegradedOrigin covers the
+// "transiently unhealthy but previously approved" path. Degraded
+// sources have already passed approval at least once, so the
+// discovery they emit is still trustworthy.
+func TestSourceDiscoveredAcceptedFromDegradedOrigin(t *testing.T) {
+	repo := newFakeUpserter()
+	repo.rows["s-origin"] = &domain.Source{
+		BaseModel: domain.BaseModel{ID: "s-origin"},
+		BaseURL:   "https://example.com",
+		Status:    domain.SourceDegraded,
+	}
+	h := NewSourceDiscoveredHandler(repo, nil)
+	env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
+		DiscoveredURL: "https://degraded-found.example/careers",
+		SourceID:      "s-origin",
+	})
+	raw, _ := json.Marshal(env)
+	rm := json.RawMessage(raw)
+	if err := h.Execute(context.Background(), &rm); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(repo.upserts) != 1 {
+		t.Fatalf("upserts=%v, want one", repo.upserts)
 	}
 }
 

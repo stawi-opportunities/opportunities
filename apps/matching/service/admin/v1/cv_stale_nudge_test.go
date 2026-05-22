@@ -13,6 +13,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 type fakeStaleLister struct {
@@ -52,7 +53,7 @@ func TestCVStaleNudgeHandlerEmitsOneEventPerStaleCandidate(t *testing.T) {
 	col := &nudgeCollector{}
 	svc.EventsManager().Add(col)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidateCVStaleNudge, 2*time.Second)
 
 	handler := CVStaleNudgeHandler(CVStaleNudgeDeps{
 		Svc: svc,

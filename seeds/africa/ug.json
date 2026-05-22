@@ -2,23 +2,28 @@
   {
     "base_url": "https://www.brightermonday.co.ug",
     "country": "UG",
-    "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
-    "priority": "normal",
-    "region": "africa",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
+    "region": "east_africa",
     "source_type": "brightermonday"
   },
   {
     "base_url": "https://www.brightermonday.co.ug",
     "country": "UG",
-    "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
-    "priority": "normal",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
     "region": "east_africa",
     "source_type": "sitemap"
+  },
+  {
+    "base_url": "https://www.careerjet.ug",
+    "country": "UG",
+    "crawl_interval_sec": 3600,
+    "kinds": ["job"],
+    "priority": "hot",
+    "region": "east_africa",
+    "source_type": "generic_html"
   }
 ]

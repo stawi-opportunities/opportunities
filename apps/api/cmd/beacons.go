@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/pitabwire/util"
@@ -151,79 +150,3 @@ func statsHandler(ct *counters.Counters) http.HandlerFunc {
 	}
 }
 
-// topAppliedHandler is GET /admin/opportunities/top-applied?limit=20.
-// Walks the most-recently-active slugs in Manticore (via Latest) and
-// reads their apply counts from Valkey. This is intentionally
-// approximate — Valkey doesn't natively support "top N keys by
-// value" without a SCAN, and a SCAN under load is the wrong tradeoff.
-// The Latest+MGet approach picks "popular among recently-posted",
-// which is what operators usually mean by "top-applied this week".
-func topAppliedHandler(jm *jobsManticore, ct *counters.Counters) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
-		// Cast a wider net than `limit` so the post-filter has room
-		// to surface high-apply rows even when they're not the most
-		// recent. 5x the request limit, capped at 500, matches the
-		// existing pagination caps in the source-admin list path.
-		fetch := limit * 5
-		if fetch > 500 {
-			fetch = 500
-		}
-		hits, err := jm.Latest(req.Context(), fetch)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		slugs := make([]string, 0, len(hits))
-		for _, h := range hits {
-			if h.Slug != "" {
-				slugs = append(slugs, h.Slug)
-			}
-		}
-
-		stats := map[string]counters.Stats{}
-		if ct != nil {
-			s, err := ct.GetStatsBatch(req.Context(), slugs)
-			if err != nil {
-				util.Log(req.Context()).WithError(err).Warn("top-applied: stats batch failed")
-			} else {
-				stats = s
-			}
-		}
-
-		type row struct {
-			Slug         string `json:"slug"`
-			Title        string `json:"title"`
-			Kind         string `json:"kind,omitempty"`
-			AppliesTotal int64  `json:"applies_total"`
-			Applies24h   int64  `json:"applies_24h"`
-			Views24h     int64  `json:"views_24h"`
-		}
-		out := make([]row, 0, len(hits))
-		for _, h := range hits {
-			s := stats[h.Slug]
-			out = append(out, row{
-				Slug:         h.Slug,
-				Title:        h.Title,
-				Kind:         h.Kind,
-				AppliesTotal: s.AppliesTotal,
-				Applies24h:   s.Applies24h,
-				Views24h:     s.Views24h,
-			})
-		}
-		sort.Slice(out, func(i, j int) bool {
-			if out[i].AppliesTotal != out[j].AppliesTotal {
-				return out[i].AppliesTotal > out[j].AppliesTotal
-			}
-			return out[i].Applies24h > out[j].Applies24h
-		})
-		if len(out) > limit {
-			out = out[:limit]
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"results": out,
-			"count":   len(out),
-		})
-	}
-}

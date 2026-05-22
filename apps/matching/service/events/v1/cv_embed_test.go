@@ -12,6 +12,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // fakeEmbedder returns a canned vector.
@@ -64,7 +65,7 @@ func TestCVEmbedHandlerEmitsEmbedding(t *testing.T) {
 	})
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidateEmbedding, 2*time.Second)
 
 	inEnv := eventsv1.NewEnvelope(eventsv1.TopicCVExtracted, eventsv1.CVExtractedV1{
 		CandidateID: "cnd_1", CVVersion: 1, Bio: "seasoned backend engineer in Nairobi",

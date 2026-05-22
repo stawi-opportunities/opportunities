@@ -21,8 +21,8 @@ type CandidateStore interface {
 	LatestPreferences(ctx context.Context, candidateID string) (eventsv1.PreferencesUpdatedV1, error)
 }
 
-// SearchRequest carries the parameters the match handler wants
-// Manticore to filter on. Vector is the KNN query vector.
+// SearchRequest carries the parameters the match handler wants the
+// search adapter to filter on. Vector is the KNN query vector.
 type SearchRequest struct {
 	Vector             []float32
 	Limit              int
@@ -31,7 +31,8 @@ type SearchRequest struct {
 	PreferredLocations []string
 }
 
-// SearchHit is one Manticore row returned to the match handler.
+// SearchHit is one row from the opportunities canonical store returned
+// to the match handler.
 //
 // Reasons is an optional list of short, human-readable strings explaining
 // why this opportunity matched (populated when the per-kind matcher is
@@ -46,8 +47,8 @@ type SearchHit struct {
 	Reasons     []string
 }
 
-// SearchIndex is the interface the handler depends on. Real impl
-// wraps pkg/searchindex.Client.
+// SearchIndex is the interface the handler depends on. The production
+// implementation is *PostgresSearch (pgvector KNN + JSONB filters).
 type SearchIndex interface {
 	KNNWithFilters(ctx context.Context, req SearchRequest) ([]SearchHit, error)
 }
@@ -81,9 +82,10 @@ type matchResponseRow struct {
 //
 //	GET /candidates/match?candidate_id=cnd_X
 //
-// Reads the candidate's latest embedding + preferences from R2, queries
-// Manticore for up to 200 KNN+filter candidates, takes the top-K by
-// score, emits MatchesReadyV1, returns JSON.
+// Reads the candidate's latest embedding + preferences from R2, runs
+// a pgvector KNN-with-filters query for up to 200 candidates against
+// the opportunities table, takes the top-K by score, emits
+// MatchesReadyV1, returns JSON.
 func MatchHandler(deps MatchDeps) http.HandlerFunc {
 	svcPipeline := NewMatchService(deps.Store, deps.Search, deps.TopK)
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -20,21 +20,26 @@ import (
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
 	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
+	meV1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/me/v1"
+	matchingv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/matching/v1"
 	matchersreg "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
 	dealm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/deal"
 	fundingm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/funding"
 	jobm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/job"
 	scholarshipm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/scholarship"
 	tenderm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/tender"
+	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/authmanifest"
 	"github.com/stawi-opportunities/opportunities/pkg/authsession"
 	"github.com/stawi-opportunities/opportunities/pkg/authz/stawitok"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
+	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
@@ -89,6 +94,29 @@ func main() {
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	dbFn := pool.DB
 
+	// Handle database migration if configured (colony Helm chart sets
+	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). Runs
+	// AutoMigrate on every model this service reads/writes, then exits.
+	// Without this branch the matching binary kept starting the full
+	// service inside the migration Job and never returning, which the
+	// Helm controller flagged as InProgress and the upgrade rolled back
+	// (the production HR was looping on this — migration-21, -22, ...).
+	if cfg.DoDatabaseMigrate() {
+		migrationDB := dbFn(ctx, false)
+		if err := migrationDB.AutoMigrate(
+			&domain.CandidateProfile{},
+			&domain.CandidateApplication{},
+			&domain.OpportunityFlag{},
+		); err != nil {
+			log.WithError(err).Fatal("auto-migrate failed")
+		}
+		if err := repository.FinalizeSchema(migrationDB); err != nil {
+			log.WithError(err).Fatal("finalize schema failed")
+		}
+		log.Info("migration complete")
+		return
+	}
+
 	if err := telemetry.Init(); err != nil {
 		log.WithError(err).Warn("candidates: telemetry init failed")
 	}
@@ -139,17 +167,27 @@ func main() {
 
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
+	// appRepo + matchRepo are retained on this branch for the
+	// event-driven autoapply trigger path
+	// (service/events/v1/auto_apply.go). Main retired them in PR #6
+	// alongside Manticore; consolidating onto main's HTTP-CRUD
+	// applications model is a separate follow-up.
 	appRepo := repository.NewApplicationRepository(dbFn)
 	matchRepo := repository.NewMatchRepository(dbFn)
-	search, err := httpv1.NewManticoreSearch(cfg.ManticoreURL, "idx_opportunities_rt")
-	if err != nil {
-		log.WithError(err).Fatal("candidates: Manticore adapter init failed")
-	}
+	// Post-Manticore: the search adapter speaks pgvector + JSONB
+	// filters directly against the `opportunities` table over the
+	// existing read-only pool. No new dialer, no extra service.
+	search := httpv1.NewPostgresSearch(dbFn)
 	matchSvc := httpv1.NewMatchService(candStore, search, 20)
-	candidateLister := adminv1.NewRepoCandidateLister(candidateRepo, 1000)
-	matchRunner := adminv1.NewServiceMatchRunner(svc, matchSvc)
 	staleReader := candidatestore.NewStaleReader(cat)
 	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
+	// Weekly jobs digest collaborators — non-personalised email for
+	// candidates who completed signup but not checkout. The same
+	// pgsearch.Search backs the match service; we reuse its handle
+	// rather than redial.
+	unpaidLister := adminv1.NewRepoUnpaidCandidateLister(candidateRepo, 5000)
+	newJobsLister := adminv1.NewPostgresJobsLister(search.Search())
+	weeklyStats := adminv1.NewPostgresWeeklyStatsLister(search.Search())
 
 	// --- Subscription handlers ---
 	// CV-pipeline handlers (cv-extract / cv-improve / cv-embed) are
@@ -226,6 +264,93 @@ func main() {
 			frame.WithRegisterEvents(prefMatchH, autoApplyH),
 		)
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
+	}
+
+	// --- Debouncer (shared by Phase-2 and Phase-4 paths) ---
+	// Constructed here so both the candidate-change consumers (Phase 2) and
+	// the /api/me/* extension routes (Phase 4) share the same distributed
+	// debouncer when VALKEY_URL is configured.
+	var deb matching.Debouncer = matching.NewMemoryDebouncer()
+	if cfg.ValkeyURL != "" {
+		valkey, valkeyErr := matching.NewValkeyDebouncer(cfg.ValkeyURL)
+		if valkeyErr != nil {
+			log.WithError(valkeyErr).Fatal("matching: valkey debouncer init failed")
+		}
+		if valkey != nil {
+			deb = valkey
+			log.WithField("url", cfg.ValkeyURL).Info("matching: valkey debouncer enabled")
+		}
+	}
+
+	// --- Phase-2 continuous matching pipeline (flag-gated per spec §5.5) ---
+
+	if cfg.MatchingFanoutEnabled || cfg.MatchingCandidateChangeEnabled {
+		// Extract *sql.DB from the existing GORM pool so the new pipeline
+		// can use database/sql directly. pool.DB returns *gorm.DB; .DB()
+		// unwraps the underlying connection pool.
+		gdb := dbFn(ctx, false)
+		sqlDB, err := gdb.DB()
+		if err != nil {
+			log.WithError(err).Fatal("matching: unwrap sql.DB from pool")
+		}
+
+		matchStore := matching.NewStore(sqlDB)
+		matchEvents := matching.NewEventLog(sqlDB)
+		matchIdx := matching.NewIndexStore(sqlDB)
+		matchKNN := matching.NewKNN(sqlDB)
+
+		var rerank matching.Reranker = matching.NoopReranker{}
+		if cfg.MatchingRerankerEnabled {
+			// Upstream reranker client is Phase 5. Until then, wrap the noop
+			// in the pool so the rest of the wiring behaves identically.
+			// TODO(phase-5): drive concurrency + timeout from
+			// cfg.MatchingRerankerConcurrency / cfg.MatchingRerankerTimeoutSeconds.
+			rerank = matching.NewPooledReranker(matching.NoopReranker{}, 8, time.Second)
+		}
+
+		dlqPub := &queuePublisherAdapter{svc: svc}
+		dlq := matchingv1.NewDLQGuard(dlqPub, eventsv1.SubjectMatchingDeadletter, cfg.MatchingDLQThreshold)
+
+		if cfg.MatchingFanoutEnabled {
+			fanout := matchingv1.NewFanOutConsumer(matchingv1.FanOutConsumerDeps{
+				Store:    matchStore,
+				EventLog: matchEvents,
+				KNN:      matchKNN,
+				Reranker: rerank,
+				Weights:  matching.DefaultWeights(),
+				DLQ:      dlq,
+				OppEmbedQ: matchingv1.NewSQLOppEmbeddingQuery(sqlDB),
+				// Phase 5: daily-cap enforcement via the continuous aggregate.
+				DailyCap: matching.NewPGDailyCapQuery(sqlDB),
+			})
+			svc.Init(ctx,
+				frame.WithRegisterSubscriber(fanout.Name(), fanout.Name(), fanout))
+			log.Info("matching: fan-out (Path A) enabled")
+		}
+
+		if cfg.MatchingCandidateChangeEnabled {
+			debounceTTL := time.Duration(cfg.MatchingDebounceTTLSeconds) * time.Second
+			for _, topic := range []string{
+				eventsv1.TopicCandidatePreferencesUpdated,
+				eventsv1.TopicCandidateEmbedding,
+			} {
+				cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
+					IndexStore: matchIdx,
+					KNN:        matchKNN,
+					Store:      matchStore,
+					EventLog:   matchEvents,
+					Reranker:   rerank,
+					Weights:    matching.DefaultWeights(),
+					Debouncer:  deb,
+					DLQ:        dlq,
+					Topic:      topic,
+				})
+				_ = debounceTTL // TTL carried per-candidate via CandidateChange.DebounceTTL in Phase 5
+				svc.Init(ctx,
+					frame.WithRegisterSubscriber(cc.Name(), cc.Name(), cc))
+			}
+			log.Info("matching: candidate-change (Path C) enabled")
+		}
 	}
 
 	// --- HTTP mux ---
@@ -307,17 +432,47 @@ func main() {
 	}
 
 	// --- Trustage admin endpoints ---
-	mux.HandleFunc("POST /_admin/matches/weekly_digest",
-		adminv1.MatchesWeeklyHandler(adminv1.MatchesWeeklyDeps{
-			Lister: candidateLister,
-			Runner: matchRunner,
-		}))
 	mux.HandleFunc("POST /_admin/cv/stale_nudge",
 		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
 			Svc:        svc,
 			Lister:     staleLister,
 			StaleAfter: 60 * 24 * time.Hour,
 		}))
+	mux.HandleFunc("POST /_admin/candidates/weekly_jobs_digest",
+		adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
+			Svc:      svc,
+			Lister:   unpaidLister,
+			Jobs:     newJobsLister,
+			Stats:    weeklyStats,
+			PlansURL: cfg.PlansURL,
+			Window:   7 * 24 * time.Hour,
+			JobLimit: 10,
+		}))
+
+	// --- Phase-4 extension-facing /api/me/* routes (flag-gated per spec §5.5) ---
+	if cfg.MatchingExtensionEnabled {
+		// Open *sql.DB for the new pkg/matching stores. The same pattern
+		// already used by the Phase-2 fan-out wiring above.
+		gdb := dbFn(ctx, false)
+		sqlDB, err := gdb.DB()
+		if err != nil {
+			log.WithError(err).Fatal("matching: open sql.DB for /api/me/* routes")
+		}
+		extDeps := &meV1.Deps{
+			DB:               sqlDB,
+			Matches:          matching.NewStore(sqlDB),
+			MatchEvents:      matching.NewEventLog(sqlDB),
+			Rules:            matching.NewRulesStore(sqlDB),
+			IndexStore:       matching.NewIndexStore(sqlDB),
+			KNN:              matching.NewKNN(sqlDB),
+			Reranker:         matching.NoopReranker{},
+			Weights:          matching.DefaultWeights(),
+			Debouncer:        deb,
+			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
+		}
+		meV1.Mount(mux, extDeps)
+		log.Info("matching: /api/me/* routes enabled")
+	}
 
 	svc.Init(ctx, frame.WithHTTPHandler(mux))
 
@@ -328,6 +483,15 @@ func main() {
 }
 
 // --- Adapters — wire concrete pkg/* types to the v1 handler interfaces. ---
+
+// queuePublisherAdapter bridges *frame.Service to matchingv1.DeadLetterPublisher.
+// It publishes raw bytes directly onto the named queue subject so the DLQGuard
+// can drop poisoned messages without re-encoding them.
+type queuePublisherAdapter struct{ svc *frame.Service }
+
+func (a *queuePublisherAdapter) Publish(ctx context.Context, subject string, payload []byte) error {
+	return a.svc.QueueManager().Publish(ctx, subject, payload)
+}
 
 type textExtractor struct{}
 

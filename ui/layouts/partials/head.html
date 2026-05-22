@@ -43,14 +43,9 @@
     "oidcIssuer"         .Site.Params.oidcIssuer
     "oidcClientID"       .Site.Params.oidcClientID
     "oidcInstallationID" .Site.Params.oidcInstallationID
-    "oidcRedirectURI"    .Site.Params.oidcRedirectURI
-    "rumClientToken"     .Site.Params.rumClientToken
-    "rumApplicationId"   .Site.Params.rumApplicationId
-    "rumSite"            .Site.Params.rumSite
-    "rumOrganization"    .Site.Params.rumOrganization
-    "rumEnv"             .Site.Params.rumEnv
-    "rumService"         .Site.Params.rumService
-    "rumVersion"         .Site.Params.rumVersion
+    "oidcRedirectURI"    (.Site.Params.oidcRedirectURI | default "")
+    "posthogApiKey"      (.Site.Params.posthogApiKey | default "")
+    "posthogHost"        (.Site.Params.posthogHost | default "")
   | jsonify }}'>
 
 <!-- CSS: Tailwind source now includes ui/app/src/**/*.{ts,tsx} so classes

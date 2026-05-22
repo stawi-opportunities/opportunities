@@ -14,6 +14,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 type prefCollector struct {
@@ -49,7 +50,7 @@ func TestPreferencesHandlerEmitsEvent(t *testing.T) {
 	col := &prefCollector{}
 	svc.EventsManager().Add(col)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidatePreferencesUpdated, 2*time.Second)
 
 	handler := PreferencesHandler(svc)
 

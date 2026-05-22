@@ -16,6 +16,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // queueCollector implements queue.SubscribeWorker. It captures
@@ -60,7 +61,7 @@ func TestUploadHandlerArchivesAndEnqueues(t *testing.T) {
 	defer svc.Stop(ctx)
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(300 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVExtract, 2*time.Second)
 
 	deps := UploadDeps{
 		Svc:     svc,

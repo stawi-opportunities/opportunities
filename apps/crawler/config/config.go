@@ -17,6 +17,13 @@ type CrawlerConfig struct {
 	UserAgent         string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
+	// EnrichConcurrency caps the parallel fetch+LLM-extract calls
+	// per crawler page for URL-only stubs (sitemap + universal
+	// AI-link-discovery iterators). 0 disables enrichment entirely
+	// (stubs flow through unmodified and fail Verify — useful for
+	// load-shedding when the shared inference fleet is saturated).
+	EnrichConcurrency int `env:"ENRICH_CONCURRENCY" envDefault:"4"`
+
 	// Inference back-end (OpenAI-compatible). INFERENCE_BASE_URL /
 	// INFERENCE_MODEL are the current knobs; OLLAMA_URL / OLLAMA_MODEL
 	// are accepted as fallbacks so existing deploys keep working during

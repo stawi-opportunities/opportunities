@@ -303,8 +303,8 @@ func TestSourcesAdmin_CreateAndGet(t *testing.T) {
 	if created.Status != domain.SourcePending {
 		t.Errorf("status=%q want pending", created.Status)
 	}
-	if !created.AutoApprove {
-		t.Errorf("AutoApprove=false; operator-created sources should default to true")
+	if created.AutoApprove {
+		t.Errorf("AutoApprove=true; operator-created sources should default to false so they walk through verify→approve")
 	}
 	if _, ok := repo.rows[created.ID]; !ok {
 		t.Errorf("created source not in repo")

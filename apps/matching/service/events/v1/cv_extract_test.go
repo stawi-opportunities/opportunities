@@ -13,6 +13,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // fakeCVExtractor returns a canned CVFields.
@@ -83,7 +84,8 @@ func TestCVExtractHandlerPublishesToImproveAndEmbed(t *testing.T) {
 	defer svc.Stop(ctx)
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(300 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVImprove, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVEmbed, 2*time.Second)
 
 	h := NewCVExtractHandler(CVExtractDeps{
 		Svc: svc,

@@ -12,6 +12,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // ValidationMinConfidence is set by the service wiring; tests can
@@ -48,15 +49,36 @@ type validationResult struct {
 // with confidence=0.5. On LLM *rate-limit / 429* (not an "error" per
 // se, an overload), it returns a non-nil error so Frame redelivers
 // later.
+//
+// When skipLLM is true the handler short-circuits the LLM call and
+// emits VariantValidated@1.0 for every record. Used to keep the
+// canonical chain moving when the shared inference fleet is saturated
+// elsewhere (crawler enrichStubs, embed/translate). Connector-
+// supplied fields remain the authoritative data; only the QC pass
+// is skipped.
 type ValidateHandler struct {
 	svc           *frame.Service
 	extractor     *extraction.Extractor
 	minConfidence float64
+	skipLLM       bool
+	store         *variantstate.Store
 }
 
 // NewValidateHandler uses the package-level ValidationMinConfidence.
 func NewValidateHandler(svc *frame.Service, ex *extraction.Extractor) *ValidateHandler {
 	return &ValidateHandler{svc: svc, extractor: ex, minConfidence: ValidationMinConfidence}
+}
+
+// NewValidateHandlerWithSkip returns a handler that skips the LLM
+// validation pass entirely. Every variant emits VariantValidated@1.0.
+func NewValidateHandlerWithSkip(svc *frame.Service, ex *extraction.Extractor, skipLLM bool, store *variantstate.Store) *ValidateHandler {
+	return &ValidateHandler{
+		svc:           svc,
+		extractor:     ex,
+		minConfidence: ValidationMinConfidence,
+		skipLLM:       skipLLM,
+		store:         store,
+	}
 }
 
 // Name ...
@@ -85,6 +107,13 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 		return err
 	}
 	n := env.Payload
+
+	// Skip-LLM bypass — pass through every variant with confidence=1.0.
+	// Used when the shared inference fleet is saturated and validate is
+	// stalling the canonical chain.
+	if h.skipLLM {
+		return h.emitValidated(ctx, n, 1.0, "validation skipped (VALIDATION_SKIP_LLM)", "")
+	}
 
 	// If no extractor is configured, accept without AI — same semantics
 	// as the legacy handler's "LLM unavailable" branch.
@@ -145,6 +174,7 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 	}
 	out := eventsv1.VariantValidatedV1{
 		VariantID:    n.VariantID,
+		SourceID:     n.SourceID,
 		HardKey:      n.HardKey,
 		Kind:         n.Kind,
 		Valid:        true,
@@ -155,7 +185,13 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 	}
 	_ = model
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsValidated, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsValidated, env)
+	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsValidated, env); err != nil {
+		return err
+	}
+	_ = h.store.AdvanceStage(ctx, n.VariantID,
+		variantstate.StageNormalized, variantstate.StageValidated,
+		nil, nil)
+	return nil
 }
 
 func (h *ValidateHandler) emitFlagged(ctx context.Context, n eventsv1.VariantNormalizedV1, reason string, conf float64, model string) error {
@@ -169,7 +205,13 @@ func (h *ValidateHandler) emitFlagged(ctx context.Context, n eventsv1.VariantNor
 		FlaggedAt:    time.Now().UTC(),
 	}
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsFlagged, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsFlagged, env)
+	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsFlagged, env); err != nil {
+		return err
+	}
+	_ = h.store.AdvanceStage(ctx, n.VariantID,
+		variantstate.StageNormalized, variantstate.StageFlagged,
+		nil, nil)
+	return nil
 }
 
 func first500(s string) string {

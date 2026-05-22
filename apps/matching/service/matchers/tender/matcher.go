@@ -38,7 +38,7 @@ import (
 	"encoding/json"
 
 	"github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/pgsearch"
 )
 
 type Matcher struct{}
@@ -51,7 +51,7 @@ func (*Matcher) Disabled() bool { return true }
 // matcher lands and Disabled() flips, the kind-scope is correct from
 // day one.
 func (*Matcher) SearchFilter(prefs json.RawMessage) (any, error) {
-	return searchindex.Filter{Kind: "tender"}, nil
+	return pgsearch.Filter{Kind: "tender"}, nil
 }
 
 func (*Matcher) Score(ctx context.Context, prefs json.RawMessage, opp any) (matchers.ScoreResult, error) {

@@ -145,6 +145,38 @@ func (r *CandidateRepository) ListAutoApplyEligible(ctx context.Context, afterID
 	return out, err
 }
 
+// ListUnpaidWithProfile returns candidates who completed signup +
+// onboarding but have not finished checkout — i.e. their effective
+// subscription is not 'paid'. Used by the weekly jobs digest cron to
+// re-engage these users with a non-personalised "new jobs this week"
+// email.
+//
+// "Unpaid" is defined as one of:
+//   - Subscription IN (free, trial, cancelled)
+//   - Subscription = paid BUT SubscriptionID = '' (the candidate row
+//     was set to 'paid' optimistically without a backing subscription;
+//     the reconciler will eventually correct this)
+//
+// We exclude rows where Status='unverified' since those candidates
+// haven't gone through onboarding yet and don't have country / opt-in
+// signal to personalise on. Result is ordered by id so the sweep is
+// deterministic across runs.
+func (r *CandidateRepository) ListUnpaidWithProfile(ctx context.Context, limit int) ([]*domain.CandidateProfile, error) {
+	var out []*domain.CandidateProfile
+	err := r.db(ctx, true).
+		Where("status <> ? AND (subscription IN ? OR subscription_id = '')",
+			domain.CandidateUnverified,
+			[]domain.SubscriptionTier{
+				domain.SubscriptionFree,
+				domain.SubscriptionTrial,
+				domain.SubscriptionCancelled,
+			}).
+		Order("id ASC").
+		Limit(limit).
+		Find(&out).Error
+	return out, err
+}
+
 // ListInactiveSince returns active candidates whose `updated_at` is
 // older than cutoff, up to limit rows. Used by the daily stale-nudge
 // cron as a proxy for "no recent activity".

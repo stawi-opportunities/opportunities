@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/pgsearch"
 )
 
 func TestSearchFilter_KindScopedToScholarship(t *testing.T) {
@@ -16,20 +16,45 @@ func TestSearchFilter_KindScopedToScholarship(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, ok := got.(searchindex.Filter)
+	f, ok := got.(pgsearch.Filter)
 	if !ok {
-		t.Fatalf("got %T, want searchindex.Filter", got)
+		t.Fatalf("got %T, want pgsearch.Filter", got)
 	}
-	sql := f.SQL()
-	if !strings.Contains(sql, "kind = 'scholarship'") {
-		t.Errorf("missing kind clause: %s", sql)
+	if f.Kind != "scholarship" {
+		t.Errorf("Kind=%q, want scholarship", f.Kind)
 	}
-	if !strings.Contains(sql, "degree_level IN ('masters')") {
-		t.Errorf("missing degree_level clause: %s", sql)
+	wantFields := map[string][]string{
+		"degree_level":   {"masters"},
+		"field_of_study": {"Climate"},
 	}
-	if !strings.Contains(sql, "field_of_study IN ('Climate')") {
-		t.Errorf("missing field_of_study clause: %s", sql)
+	got2 := map[string][]string{}
+	for _, a := range f.AttributeAnyOf {
+		got2[a.Field] = a.Values
 	}
+	for k, v := range wantFields {
+		if !equalSlice(got2[k], v) {
+			t.Errorf("attribute %s: got %v, want %v", k, got2[k], v)
+		}
+	}
+	sql, _ := f.Build(1)
+	if !strings.Contains(sql, "kind = $") {
+		t.Errorf("missing kind clause in %q", sql)
+	}
+	if !strings.Contains(sql, "attributes->>'degree_level'") {
+		t.Errorf("missing degree_level clause in %q", sql)
+	}
+}
+
+func equalSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestScore_DegreeAndFieldAndDeadlineHorizon(t *testing.T) {

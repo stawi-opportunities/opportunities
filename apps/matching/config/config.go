@@ -55,9 +55,6 @@ type CandidatesConfig struct {
 	RerankSampleRatio float64 `env:"RERANK_SAMPLE_RATIO" envDefault:"1.0"`
 	RerankTopK        int     `env:"RERANK_TOP_K"        envDefault:"100"`
 
-	// Manticore Search URL (vector + full-text index for job matching).
-	ManticoreURL string `env:"MANTICORE_URL" envDefault:""`
-
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
@@ -104,8 +101,27 @@ type CandidatesConfig struct {
 	SessionMasterKeyID string `env:"SESSION_MASTER_KEY_ID" envDefault:"v1"`
 	SessionTokenKey    string `env:"SESSION_TOKEN_KEY"     envDefault:""`
 
-	// Valkey URL backing pairing codes + Stawi token storage. Empty
-	// means "use Frame's in-memory cache" — fine for local dev and
-	// tests, NOT safe in production (a restart drops all live tokens).
+	// PlansURL is embedded into the weekly-jobs-digest event so the
+	// notification service's email template doesn't have to assume the
+	// host. Defaults to production; preview deploys override via env.
+	PlansURL string `env:"PLANS_URL" envDefault:"https://jobs.stawi.org/pricing/"`
+
+	// ValkeyURL backs both the distributed debouncer used by the
+	// Phase-2 continuous matching pipeline AND the pairing-code +
+	// Stawi-token storage for session-capture. Empty falls back to
+	// the in-memory cache, which is safe for dev/test but does not
+	// survive restarts or span multiple replicas. A single URL serves
+	// both consumers — they use disjoint key prefixes.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
+
+	// Phase-2 continuous matching pipeline feature flags (spec §5.5).
+	// All default to false so the binary is safe to deploy before the
+	// pipeline is validated in staging.
+	MatchingFanoutEnabled          bool `env:"MATCHING_FANOUT_ENABLED"           envDefault:"false"`
+	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"false"`
+	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
+	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
+	MatchingDebounceTTLSeconds     int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
+	// Phase-4 extension-facing /api/me/* routes (spec §5.5).
+	MatchingExtensionEnabled bool `env:"MATCHING_EXTENSION_ENABLED" envDefault:"false"`
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
-	frameclient "github.com/pitabwire/frame/client"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
@@ -30,6 +29,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 func main() {
@@ -109,16 +109,18 @@ func main() {
 		log.WithField("count", n).Info("seed sources loaded")
 	}
 
-	// HTTP client for connectors. Frame's HTTPClientManager wraps the
-	// stdlib client with OTEL trace propagation and retry policy; we
-	// layer the connector retry/backoff loop on top in pkg/connectors/httpx.
-	// Frame's manager.Client(ctx) returns a client we share by default;
-	// when the operator wants a tighter per-request timeout we build a
-	// dedicated client via Frame's NewHTTPClient helper.
-	httpDoer := frameclient.NewHTTPClient(ctx,
-		frameclient.WithHTTPTimeout(time.Duration(cfg.HTTPTimeoutSec)*time.Second),
-		frameclient.WithHTTPTraceRequests(),
-	)
+	// HTTP client for connectors — stdlib client, no OAuth wrapping.
+	// Frame's NewHTTPClient auto-attaches an OAuth2 token source when
+	// OAUTH2_* env is configured, which sends Bearer headers to every
+	// outbound request including public job-board URLs. Public sites
+	// reject (or worse, accept) those tokens, and our own signer
+	// endpoint correctly refuses to mint assertions for arbitrary
+	// audiences (Hydra returns invalid_client). Use a plain stdlib
+	// client; the connector retry/backoff loop in pkg/connectors/httpx
+	// already provides resilience.
+	httpDoer := &http.Client{
+		Timeout: time.Duration(cfg.HTTPTimeoutSec) * time.Second,
+	}
 	httpClient := httpx.NewClientFromDoer(httpDoer, cfg.UserAgent)
 
 	// AI extractor — OpenAI-compatible back-end. Reads INFERENCE_* first,
@@ -145,7 +147,12 @@ func main() {
 			RerankAPIKey:     cfg.RerankAPIKey,
 			RerankModel:      cfg.RerankModel,
 			Registry:         reg,
-			HTTPClient:       svc.HTTPClientManager().Client(ctx),
+			// Plain stdlib client: the inference back-end is an external
+			// API (Groq, OpenAI, Cloudflare AI Gateway) that authenticates
+			// with INFERENCE_API_KEY directly, not Hydra-issued JWTs.
+			// Frame's HTTPClientManager would attach an OAuth Bearer
+			// targeting our own audience list and fail at the signer.
+			HTTPClient: httpDoer,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
@@ -269,20 +276,38 @@ func main() {
 	geocoder := geocode.New()
 	normalizer := normalize.New(geocoder)
 
+	// pipeline_variants store — soft-fails on Postgres outage. Crawler
+	// already has dbFn, so we wire the store directly. Writes the
+	// ingested ledger row before the NATS emit (and rejected rows on
+	// Verify failures).
+	variantStore := variantstate.NewStore(dbFn)
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
-		Svc:            svc,
-		Sources:        sourceRepo,
-		Registry:       registry,
-		Kinds:          reg,
-		Archive:        arch,
-		Extractor:      extractor,
-		Normalizer:     normalizer,
-		DiscoverSample: 0.05, // roughly 1-in-20 pages get DiscoverSites
+		Svc:               svc,
+		Sources:           sourceRepo,
+		Registry:          registry,
+		Kinds:             reg,
+		Archive:           arch,
+		Extractor:         extractor,
+		Normalizer:        normalizer,
+		PageFetcher:       httpClient,
+		EnrichConcurrency: cfg.EnrichConcurrency,
+		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
+		VariantStore:      variantStore,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
 
+	// The crawler subscribes to svc.opportunities.events.> (catch-all)
+	// but only handles three topics. Frame v1.97.3 loose-mode acks-and-
+	// skips every other topic on the shared stream — replaces the
+	// per-topic NoopHandler block that used to live here and prevents
+	// the "permanent NATS retry storm" wedge from a bare strict-mode
+	// catch-all.
 	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
+	if mgr := svc.EventsManager(); mgr != nil {
+		mgr.SetStrict(false)
+	}
 
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()
@@ -337,6 +362,71 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
+	})
+
+	// Admin: stop a source AND cascade-delete its jobs from search.
+	//
+	// Two-step contract:
+	//   1. Flip sources.status to `disabled` with audit stamps
+	//      (last_stopped_at / last_stopped_by) so future scheduler
+	//      ticks skip it. ListDue's WHERE clause already excludes
+	//      `disabled`, so this halts new crawls without further
+	//      coordination.
+	//   2. Emit SourceStoppedV1. The materializer's subscriber runs
+	//      DELETE FROM idx_opportunities_rt WHERE source_id =
+	//      hashID(id) — removing every historical job attributed to
+	//      this source from search in one round-trip.
+	//
+	// Query params: ?id=<source_id>&reason=<text>&operator=<actor>
+	// `operator` is the audit identity (defaults to "unknown" when
+	// the caller hasn't propagated one).
+	adminMux.HandleFunc("/admin/sources/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, `{"error":"invalid or missing id parameter"}`, http.StatusBadRequest)
+			return
+		}
+		operator := r.URL.Query().Get("operator")
+		if operator == "" {
+			operator = "unknown"
+		}
+		reason := r.URL.Query().Get("reason")
+		now := time.Now().UTC()
+
+		if stopErr := sourceRepo.StopSource(r.Context(), id, operator, now); stopErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, stopErr.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		// Emit the cascade-delete event. Best-effort; the source is
+		// already marked disabled so missing the emit only delays
+		// Manticore cleanup (it would normally happen on the
+		// canonical_expired path once the retention sweep runs).
+		if evtMgr := svc.EventsManager(); evtMgr != nil {
+			env := eventsv1.NewEnvelope(eventsv1.TopicSourcesStopped, eventsv1.SourceStoppedV1{
+				SourceID:  id,
+				Reason:    reason,
+				StoppedBy: operator,
+				StoppedAt: now,
+			})
+			if emitErr := svc.EventsManager().Emit(r.Context(), eventsv1.TopicSourcesStopped, env); emitErr != nil {
+				log.WithError(emitErr).WithField("source_id", id).Warn("source-stop: emit failed; jobs will be removed only by retention sweep")
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":         true,
+			"id":         id,
+			"status":     "stopped",
+			"operator":   operator,
+			"reason":     reason,
+			"stopped_at": now,
+		})
 	})
 
 	// Admin: health report -- all sources ordered by worst health first

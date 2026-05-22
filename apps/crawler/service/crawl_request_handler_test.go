@@ -17,6 +17,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/content"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
@@ -99,7 +100,7 @@ func TestCrawlRequestHandlerEmitsVariantAndPageCompleted(t *testing.T) {
 
 	// Start Frame so subscriptions are live before Execute runs.
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
 
 	reg := connectors.NewRegistry()
 	reg.Register(&fakeConnector{
@@ -196,7 +197,7 @@ func TestCrawlRequestHandlerUnknownSourceEmitsErrorCompleted(t *testing.T) {
 	svc.EventsManager().Add(pageCol)
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCrawlPageCompleted, 2*time.Second)
 
 	h := NewCrawlRequestHandler(CrawlRequestDeps{
 		Svc:      svc,
@@ -254,7 +255,7 @@ func TestCrawlRequestHandler_ForwardsKindSpecificAttributes(t *testing.T) {
 	}
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
 
 	reg, err := opportunity.LoadFromDir("../../../definitions/opportunity-kinds")
 	if err != nil {
@@ -360,7 +361,7 @@ func TestCrawlRequestHandler_EmptyKindsDefaultsToJob(t *testing.T) {
 	}
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
 
 	reg, err := opportunity.LoadFromDir("../../../definitions/opportunity-kinds")
 	if err != nil {

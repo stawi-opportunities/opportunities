@@ -20,24 +20,33 @@ title = "Stawi Opportunities"
   # oidcInstallationID is the PARTITION XID (not the tenant XID) — the login
   # UI routes on partition context. scripts/dev.sh passes HUGO_PARAMS_oidc*
   # overrides to swap in the Development partition client for local work.
+  #
+  # oidcRedirectURI is intentionally *not* pinned to a single host. config.ts
+  # falls back to `${window.location.origin}/auth/callback/`, so sign-in
+  # completes on whichever host the user is on (jobs.stawi.org primary,
+  # opportunities.stawi.org alias). Origin-scoped sessionStorage and
+  # IndexedDB mean the PKCE verifier and tokens cannot cross origins — if we
+  # hardcoded one host here, sign-in from the other alias would land tokens
+  # on the wrong origin and the dashboard would show "Sign in to continue"
+  # despite a successful Hydra exchange. Every alias's
+  # `https://<host>/auth/callback/` must be registered on the Hydra client
+  # (oidcClientID) or Hydra rejects the auth request as invalid_redirect_uri.
+  # Override at build time via HUGO_PARAMS_oidcRedirectURI when you need to
+  # pin a callback (e.g. the Makefile ui-dev target pins :5170).
   oidcIssuer         = "https://oauth2.stawi.org"
   oidcClientID       = "d7is2kspf2t7cl19qlpg"
   oidcInstallationID = "d7gi6lkpf2t67dlsqreg"
-  oidcRedirectURI    = "https://opportunities.stawi.org/auth/callback/"
 
-  # OpenObserve RUM. rumClientToken is the public browser token minted
-  # from observe.stawi.org → Data Sources → RUM → "opportunities-web". It
-  # ships in every browser bundle so it's not a secret, but Vault holds
-  # the canonical rotation copy at stawi-opportunities/opportunities/common/rum-token.
-  # Branch previews can override to blank via HUGO_PARAMS_rumClientToken=""
-  # so pre-merge sessions don't bleed into production data.
-  rumClientToken     = "rumJQxpgPXy1z2iRqt6"
-  rumApplicationId   = "opportunities-web"
-  rumSite            = "observe.stawi.org"
-  rumOrganization    = "default"
-  rumEnv             = "production"
-  rumService         = "opportunities-web"
-  rumVersion         = "0.0.0"
+  # PostHog — posthogApiKey is the public project API key ("phc_..."),
+  # safe to ship in the browser. posthogHost overrides the default
+  # ingest origin (us.i.posthog.com) — set it for the EU region
+  # (eu.i.posthog.com) or a self-hosted instance. Empty defaults keep
+  # branch previews / local dev silent; the SDK only initialises when
+  # posthogApiKey is non-empty. Populate via HUGO_PARAMS_posthogApiKey
+  # at build time, or paste the value here once you've created the
+  # project at app.posthog.com → Settings → Project → Project API key.
+  posthogApiKey      = ""
+  posthogHost        = ""
 
 [params.nav]
   logo = "/images/logo.svg"

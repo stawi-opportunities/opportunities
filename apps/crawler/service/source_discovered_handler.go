@@ -84,6 +84,24 @@ func (h *SourceDiscoveredHandler) Execute(ctx context.Context, payload any) erro
 		log.Warn("source-discovered: origin source missing; dropping")
 		return nil
 	}
+	// Only accept discoveries from origins the operator has already
+	// approved. Seeded sources (Status=SourceActive at boot) qualify;
+	// degraded ones still do because they were once approved and are
+	// transiently unhealthy. Everything else — pending, verifying,
+	// verified-but-not-approved, paused, blocked, disabled, rejected —
+	// is held back: we don't want a half-trusted page to mint more
+	// half-trusted sources.
+	//
+	// In practice the scheduler already gates crawl requests on the
+	// same (active|degraded) predicate, so this branch only ever fires
+	// if an out-of-band call (manual crawl trigger, replay) routed a
+	// page through an unapproved origin. Keeping the check here makes
+	// that exfiltration impossible by construction.
+	if origin.Status != domain.SourceActive && origin.Status != domain.SourceDegraded {
+		log.WithField("origin_status", origin.Status).
+			Debug("source-discovered: origin not approved; dropping")
+		return nil
+	}
 
 	target, err := url.Parse(p.DiscoveredURL)
 	if err != nil || target.Host == "" {

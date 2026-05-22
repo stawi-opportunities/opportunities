@@ -17,6 +17,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // fakeCrawlerRepo implements every narrow interface the Phase 4 crawler
@@ -209,7 +210,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 
 	// Start Frame so every subscription is live before the tick emits.
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(250 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCrawlRequests, 2*time.Second)
 
 	// Hit the tick endpoint; the admitter grants everything.
 	admit := admitterFunc(func(_ context.Context, _ string, want int) (int, time.Duration) {

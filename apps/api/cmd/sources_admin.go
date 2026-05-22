@@ -282,7 +282,11 @@ func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	autoApprove := true
+	// Default is false: operator-created sources walk through
+	// pending → verifying → verified and wait for an explicit
+	// POST /admin/sources/{id}/approve. The operator can opt in to
+	// auto-promotion by setting auto_approve=true on creation.
+	autoApprove := false
 	if req.AutoApprove != nil {
 		autoApprove = *req.AutoApprove
 	}

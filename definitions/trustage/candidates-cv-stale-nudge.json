@@ -26,7 +26,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-candidates.opportunities.svc/_admin/cv/stale_nudge",
+          "url": "http://opportunities-candidates.product-opportunities.svc/_admin/cv/stale_nudge",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

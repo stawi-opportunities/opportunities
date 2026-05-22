@@ -1,7 +1,8 @@
 // Package service drives the materializer as a Frame topic subscriber.
-// Each Frame event (canonicals, canonicals_expired, translations, embeddings)
-// is decoded and upserted to Manticore immediately — no Iceberg scan, no
-// watermark polling, no leader election.
+// Each Frame event (canonicals, canonicals_expired, translations,
+// embeddings, source-stopped, auto-flagged) is decoded and written
+// directly to the Postgres opportunities table via variantstate.Store —
+// no Iceberg scan, no watermark polling, no leader election.
 //
 // Frame's NATS JetStream consumer group handles deduplication, redelivery,
 // and consumer-lag observability natively (visible via `nats_jetstream_*`
@@ -13,42 +14,128 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // Service is the materializer composition root.
+//
+// Post-consolidation the materializer is Postgres-only: every handler
+// writes through the variantstate Store into the opportunities table.
+// Worker.canonical writes the canonical row in-process, so the
+// CanonicalUpsertHandler here is a no-op that just acks the
+// CanonicalUpsertedV1 event. The remaining handlers (Embedding,
+// SourceStopped, AutoFlagged, CanonicalExpired) push admin-state
+// changes directly into opportunities.
 type Service struct {
-	svc       *frame.Service
-	manticore *searchindex.Client
-	bulkBatch int
+	svc   *frame.Service
+	store *variantstate.Store
 }
 
-// NewService wires the Frame service and Manticore client.
-// bulkBatch is currently unused (handlers do single-doc replaces);
-// it is retained so future buffered-handler variants can be added
-// without a signature change.
-func NewService(svc *frame.Service, mc *searchindex.Client, bulkBatch int) *Service {
-	return &Service{svc: svc, manticore: mc, bulkBatch: bulkBatch}
+// NewService wires the Frame service and the opportunities-table store.
+func NewService(svc *frame.Service, store *variantstate.Store) *Service {
+	return &Service{svc: svc, store: store}
 }
 
 // RegisterSubscriptions wires one handler per topic into the Frame
 // events manager. Call this before svc.Run.
+//
+// The materializer's NATS consumer subscribes to a broad subject
+// (svc.opportunities.events.>) so it sees every event flowing through
+// the stream — including ones that aren't relevant to indexing
+// (variant lifecycle, crawl progress, etc.). For those we register a
+// silent-ack handler that ACKs the message and returns nil, otherwise
+// Frame logs "event not found in registry" + a retries-exhausted
+// failure on every redelivery. A narrower subject filter is preferable
+// long-term but requires Frame multi-subject consumer support.
 func (s *Service) RegisterSubscriptions() error {
 	mgr := s.svc.EventsManager()
 	if mgr == nil {
 		return fmt.Errorf("materializer: events manager unavailable")
 	}
+	// The materializer subscribes to the catch-all svc.opportunities.events.>
+	// stream subject (same stream the worker + writer drain). Loose-mode
+	// asks Frame to ack-and-skip any event whose Name() isn't on the
+	// list below, instead of nack-storming on every sibling-consumer
+	// event. The opt-in replaces the per-topic NoopHandler block that
+	// used to live here — adding a new ignore-able topic now means
+	// doing nothing, and adding a new INTERESTING topic means writing a
+	// real handler and registering it here (the failure mode if you
+	// forget is "ack-and-skip", which is debuggable; the old failure
+	// mode if you forgot was "permanent NATS retry storm" which wedged
+	// the consumer behind max_ack_pending).
+	mgr.SetStrict(false)
 	mgr.Add(NewCanonicalUpsertHandler(s))
 	mgr.Add(NewCanonicalExpiredHandler(s))
 	mgr.Add(NewTranslationHandler(s))
 	mgr.Add(NewEmbeddingHandler(s))
 	mgr.Add(NewAutoFlaggedHandler(s))
+	mgr.Add(NewSourceStoppedHandler(s))
+	return nil
+}
+
+// (materializerIgnoreEvents removed — Frame v1.97.3 loose-mode handles
+// the catch-all-stream pattern at the framework layer. See
+// EventsManager().SetStrict(false) in RegisterSubscriptions above.)
+
+// ---------------------------------------------------------------------------
+// SourceStoppedHandler — TopicSourcesStopped
+// ---------------------------------------------------------------------------
+
+// SourceStoppedHandler hides every opportunity row carrying the matching
+// source_id. Emitted by the crawler's /admin/sources/stop endpoint when
+// an operator pulls the kill switch on a source — this is what makes
+// historical jobs disappear from search.
+//
+// Implementation: variantstate.Store.HideBySource issues a single
+// UPDATE that flips `deadline` into the past for every canonical with
+// the given source_id. The API's search query filters by
+// `deadline > now()` so the rows drop out of results immediately
+// without loss of history.
+type SourceStoppedHandler struct{ s *Service }
+
+func NewSourceStoppedHandler(s *Service) *SourceStoppedHandler {
+	return &SourceStoppedHandler{s: s}
+}
+
+func (h *SourceStoppedHandler) Name() string { return eventsv1.TopicSourcesStopped }
+
+func (h *SourceStoppedHandler) PayloadType() any {
+	var raw json.RawMessage
+	return &raw
+}
+
+func (h *SourceStoppedHandler) Validate(_ context.Context, p any) error {
+	r, ok := p.(*json.RawMessage)
+	if !ok || r == nil || len(*r) == 0 {
+		return errors.New("source-stopped: empty payload")
+	}
+	return nil
+}
+
+func (h *SourceStoppedHandler) Execute(ctx context.Context, p any) error {
+	raw := p.(*json.RawMessage)
+	var env eventsv1.Envelope[eventsv1.SourceStoppedV1]
+	if err := json.Unmarshal(*raw, &env); err != nil {
+		return fmt.Errorf("source-stopped: decode: %w", err)
+	}
+	if env.Payload.SourceID == "" {
+		return errors.New("source-stopped: empty source_id")
+	}
+	// Postgres-only: hide every canonical with this source_id. Manticore
+	// is being decommissioned; the API reads from opportunities directly.
+	if err := h.s.store.HideBySource(ctx, env.Payload.SourceID, "source_stopped:"+env.Payload.Reason); err != nil {
+		return fmt.Errorf("source-stopped: hide: %w", err)
+	}
+	util.Log(ctx).
+		WithField("source_id", env.Payload.SourceID).
+		WithField("reason", env.Payload.Reason).
+		WithField("stopped_by", env.Payload.StoppedBy).
+		Info("materializer: source stopped, opportunities hidden")
 	return nil
 }
 
@@ -56,8 +143,11 @@ func (s *Service) RegisterSubscriptions() error {
 // CanonicalUpsertHandler — TopicCanonicalsUpserted
 // ---------------------------------------------------------------------------
 
-// CanonicalUpsertHandler decodes CanonicalUpsertedV1 and replaces the
-// Manticore document keyed by hashID(canonical_id).
+// CanonicalUpsertHandler observes CanonicalUpsertedV1. The canonical
+// row is already written by worker.CanonicalHandler in-process before
+// the event is emitted (see worker/service/canonical.go), so the
+// materializer's job here is to ack the event and let downstream
+// side-effects hang off the same subscription later.
 type CanonicalUpsertHandler struct{ s *Service }
 
 func NewCanonicalUpsertHandler(s *Service) *CanonicalUpsertHandler {
@@ -80,71 +170,18 @@ func (h *CanonicalUpsertHandler) Validate(_ context.Context, p any) error {
 }
 
 func (h *CanonicalUpsertHandler) Execute(ctx context.Context, p any) error {
-	raw := p.(*json.RawMessage)
-	var env eventsv1.Envelope[eventsv1.CanonicalUpsertedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
-		return fmt.Errorf("canonical-upsert: decode: %w", err)
-	}
-	doc := buildDocFromCanonical(env.Payload)
-	id := hashID(env.Payload.OpportunityID)
-	if err := h.s.manticore.Replace(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", env.Payload.OpportunityID).
-			Error("materializer: canonical upsert failed")
-		return fmt.Errorf("canonical-upsert: replace: %w", err)
-	}
+	// Worker.CanonicalHandler already UPSERTs opportunities in-process
+	// before emitting CanonicalUpsertedV1 (see worker/service/canonical.go).
+	// This handler stays subscribed so Frame loose-mode still has a
+	// concrete handler to ack on, but does no work — the canonical row
+	// is already in Postgres by the time we receive the event.
+	//
+	// Keeping the subscription avoids strict-mode redelivery storms if
+	// SetStrict ever flips back on, and gives ops a clear place to add
+	// downstream side-effects (notifications, web-hooks) later.
+	_ = p
+	_ = ctx
 	return nil
-}
-
-// buildDocFromCanonical converts a CanonicalUpsertedV1 payload to a
-// Manticore document map shaped for the polymorphic idx_opportunities_rt
-// schema (kind + universal columns + per-kind sparse facet columns).
-// Field names must match the DDL in pkg/searchindex/schema.go.
-func buildDocFromCanonical(p eventsv1.CanonicalUpsertedV1) map[string]any {
-	desc := attrString(p.Attributes, "description")
-
-	doc := map[string]any{
-		// Discriminator
-		"kind": p.Kind,
-		// Universal indexable text + categories
-		"title":          p.Title,
-		"description":    desc,
-		"issuing_entity": p.IssuingEntity,
-		"categories":     categoryIDs(p.Categories),
-		// Universal location
-		"country":   p.AnchorCountry,
-		"region":    p.AnchorRegion,
-		"city":      p.AnchorCity,
-		"lat":       p.Lat,
-		"lon":       p.Lon,
-		"remote":    p.Remote,
-		"geo_scope": p.GeoScope,
-		// Universal time (unix seconds; timestamp columns)
-		"posted_at": p.PostedAt.Unix(),
-		"deadline":  deadlineUnix(p.Deadline),
-		// Universal monetary
-		"amount_min": p.AmountMin,
-		"amount_max": p.AmountMax,
-		"currency":   p.Currency,
-		// Apply URL
-		"apply_url": p.ApplyURL,
-	}
-	// Per-kind sparse facet columns. Splice in only the columns the kind
-	// owns; absent columns stay zero-valued in Manticore.
-	cols, vals := sparseColsForKind(p.Kind, p.Attributes)
-	for i, c := range cols {
-		doc[c] = vals[i]
-	}
-	return doc
-}
-
-// deadlineUnix safely flattens an optional deadline pointer to a unix
-// epoch second; nil → 0 (which Manticore treats as "no value").
-func deadlineUnix(t *time.Time) int64 {
-	if t == nil {
-		return 0
-	}
-	return t.Unix()
 }
 
 // ---------------------------------------------------------------------------
@@ -184,15 +221,8 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 	if err := json.Unmarshal(*raw, &env); err != nil {
 		return fmt.Errorf("canonical-expired: decode: %w", err)
 	}
-	doc := map[string]any{
-		"deadline": env.Payload.ExpiredAt.Unix(),
-	}
-	id := hashID(env.Payload.OpportunityID)
-	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", env.Payload.OpportunityID).
-			Error("materializer: canonical expired patch failed")
-		return fmt.Errorf("canonical-expired: update: %w", err)
+	if err := h.s.store.ExpireCanonical(ctx, env.Payload.OpportunityID, env.Payload.ExpiredAt); err != nil {
+		return fmt.Errorf("canonical-expired: expire: %w", err)
 	}
 	return nil
 }
@@ -201,15 +231,16 @@ func (h *CanonicalExpiredHandler) Execute(ctx context.Context, p any) error {
 // TranslationHandler — TopicTranslations
 // ---------------------------------------------------------------------------
 
-// TranslationHandler is a no-op against Manticore for the polymorphic
-// schema. Translated bodies live in R2 slug-direct (one object per
+// TranslationHandler is a no-op against the opportunities table.
+// Translated bodies live in R2 slug-direct (one object per
 // canonical+lang) and are read by the public site/api at request time;
-// the Manticore row carries only the source-language title/description.
+// the opportunities row carries only the source-language
+// title/description.
 //
 // We keep the subscription so the Frame consumer-group acks the topic
 // (no infinite redelivery), and so a future variant that surfaces
-// per-lang title to BM25 can be added without re-introducing the
-// subscription.
+// per-lang title to the search path can be added without re-introducing
+// the subscription.
 type TranslationHandler struct{ s *Service }
 
 func NewTranslationHandler(s *Service) *TranslationHandler {
@@ -237,11 +268,11 @@ func (h *TranslationHandler) Execute(ctx context.Context, p any) error {
 	if err := json.Unmarshal(*raw, &env); err != nil {
 		return fmt.Errorf("translation: decode: %w", err)
 	}
-	// No Manticore write — translations are served from R2 slug-direct.
+	// No write — translations are served from R2 slug-direct.
 	util.Log(ctx).
 		WithField("opportunity_id", env.Payload.OpportunityID).
 		WithField("lang", env.Payload.Lang).
-		Debug("materializer: translation observed (R2-slug authoritative; no Manticore write)")
+		Debug("materializer: translation observed (R2-slug authoritative)")
 	return nil
 }
 
@@ -249,8 +280,8 @@ func (h *TranslationHandler) Execute(ctx context.Context, p any) error {
 // EmbeddingHandler — TopicEmbeddings
 // ---------------------------------------------------------------------------
 
-// EmbeddingHandler updates the embedding attribute on the Manticore
-// document for a given canonical.
+// EmbeddingHandler updates the embedding column on the opportunities
+// row for a given canonical.
 type EmbeddingHandler struct{ s *Service }
 
 func NewEmbeddingHandler(s *Service) *EmbeddingHandler {
@@ -279,18 +310,7 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 		return fmt.Errorf("embedding: decode: %w", err)
 	}
 	pl := env.Payload
-	// /update patches the existing row in place. If the row hasn't been
-	// upserted yet (embedding raced ahead of canonical), Manticore returns
-	// updated=0 — the next CanonicalUpsertedV1 will re-build the doc and
-	// the next embedding event for that id will re-apply.
-	doc := map[string]any{
-		"embedding": pl.Vector,
-	}
-	id := hashID(pl.OpportunityID)
-	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", pl.OpportunityID).
-			Error("materializer: embedding update failed")
+	if err := h.s.store.UpdateEmbedding(ctx, pl.OpportunityID, pl.Vector); err != nil {
 		return fmt.Errorf("embedding: update: %w", err)
 	}
 	return nil
@@ -310,9 +330,9 @@ func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
 //
 // Operator review still happens — the auto-action is containment, not
 // a final verdict. A subsequent /admin/flags/{id}/resolve with action
-// "ignore" can be paired with a manual Manticore patch to restore the
-// row, but that's intentionally manual: an opportunity that tripped
-// the user threshold should get human eyes before it surfaces again.
+// "ignore" can be paired with a manual UPDATE to restore the row, but
+// that's intentionally manual: an opportunity that tripped the user
+// threshold should get human eyes before it surfaces again.
 type AutoFlaggedHandler struct{ s *Service }
 
 func NewAutoFlaggedHandler(s *Service) *AutoFlaggedHandler {
@@ -342,30 +362,14 @@ func (h *AutoFlaggedHandler) Execute(ctx context.Context, p any) error {
 	}
 	pl := env.Payload
 	if pl.OpportunityID == "" {
-		// Slug-only events are non-fatal — log and skip. The api emits
-		// canonical_id when it can resolve one; events without it
-		// likely point at a slug whose canonical hasn't materialized
-		// yet (race) and operator-driven action via /admin/flags
-		// covers the same outcome.
 		util.Log(ctx).
 			WithField("slug", pl.Slug).
 			WithField("flag_count", pl.FlagCount).
-			Warn("materializer: auto-flag event missing opportunity_id; skipping Manticore update")
+			Warn("materializer: auto-flag event missing opportunity_id; nothing to hide")
 		return nil
 	}
-	// Push deadline to "now" so the search filter (deadline > now)
-	// drops the row immediately. Mirrors the CanonicalExpiredHandler
-	// path so liveness has a single source of truth on the schema.
-	doc := map[string]any{
-		"deadline": time.Now().UTC().Unix(),
-	}
-	id := hashID(pl.OpportunityID)
-	if err := h.s.manticore.Update(ctx, "idx_opportunities_rt", id, doc); err != nil {
-		util.Log(ctx).WithError(err).
-			WithField("opportunity_id", pl.OpportunityID).
-			WithField("slug", pl.Slug).
-			Error("materializer: auto-flag update failed")
-		return fmt.Errorf("auto-flagged: update: %w", err)
+	if err := h.s.store.HideByCanonical(ctx, pl.OpportunityID, "auto_flagged"); err != nil {
+		return fmt.Errorf("auto-flagged: hide: %w", err)
 	}
 	util.Log(ctx).
 		WithField("opportunity_id", pl.OpportunityID).

@@ -26,7 +26,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-crawler.opportunities.svc/admin/scheduler/tick",
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/scheduler/tick",
           "method": "POST",
           "headers": { "Content-Type": "application/json" },
           "body": {}

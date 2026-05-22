@@ -10,6 +10,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/publish"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // Service is the worker's composition root.
@@ -37,7 +38,16 @@ type Service struct {
 	dedupCache   cache.Cache[string, string]
 	clusterCache cache.Cache[string, kv.ClusterSnapshot]
 
-	translationLangs []string
+	// pipeline_variants ledger (Postgres). nil when DATABASE_URL is
+	// absent — handlers degrade to NATS+Valkey only and skip the
+	// observability writes. See pkg/variantstate for the soft-fail
+	// guarantees.
+	variantStore *variantstate.Store
+
+	translationLangs  []string
+	validationSkipLLM bool
+	dedupSkipCache    bool
+	dedupReadBackend  string
 }
 
 // NewService ...
@@ -48,16 +58,24 @@ func NewService(
 	registry *opportunity.Registry,
 	dedupCache cache.Cache[string, string],
 	clusterCache cache.Cache[string, kv.ClusterSnapshot],
+	variantStore *variantstate.Store,
 	translationLangs []string,
+	validationSkipLLM bool,
+	dedupSkipCache bool,
+	dedupReadBackend string,
 ) *Service {
 	return &Service{
-		svc:              svc,
-		extractor:        ex,
-		publisher:        publisher,
-		registry:         registry,
-		dedupCache:       dedupCache,
-		clusterCache:     clusterCache,
-		translationLangs: translationLangs,
+		svc:               svc,
+		extractor:         ex,
+		publisher:         publisher,
+		registry:          registry,
+		dedupCache:        dedupCache,
+		clusterCache:      clusterCache,
+		variantStore:      variantStore,
+		translationLangs:  translationLangs,
+		validationSkipLLM: validationSkipLLM,
+		dedupSkipCache:    dedupSkipCache,
+		dedupReadBackend:  dedupReadBackend,
 	}
 }
 
@@ -65,13 +83,19 @@ func NewService(
 //
 // These are fast, internal-only stages. External-API stages
 // (embed/translate) are returned by QueueWorkers instead.
+//
+// The worker subscribes to the catch-all svc.opportunities.events.>
+// stream subject. Frame v1.97.3 loose-mode (configured via the
+// main.go wiring: svc.EventsManager().SetStrict(false)) acks-and-skips
+// any event whose Name() isn't a registered handler below, so the
+// previous per-topic NoopHandler block is no longer needed.
 func (s *Service) EventHandlers() []events.EventI {
 	return []events.EventI{
-		NewNormalizeHandler(s.svc),
-		NewValidateHandler(s.svc, s.extractor),
-		NewDedupHandlerWithCluster(s.svc, s.dedupCache, s.clusterCache),
-		NewCanonicalHandler(s.svc, s.clusterCache),
-		NewPublishHandler(s.svc, s.publisher, s.registry),
+		NewNormalizeHandler(s.svc, s.variantStore),
+		NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM, s.variantStore),
+		NewDedupHandlerWithBackend(s.svc, s.dedupCache, s.clusterCache, s.dedupSkipCache, s.variantStore, s.dedupReadBackend),
+		NewCanonicalHandler(s.svc, s.clusterCache, s.variantStore),
+		NewPublishHandler(s.svc, s.publisher, s.registry, s.variantStore),
 	}
 }
 

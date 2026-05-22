@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/pgsearch"
 )
 
 func TestSearchFilter_BuildsKindClause(t *testing.T) {
@@ -15,19 +15,30 @@ func TestSearchFilter_BuildsKindClause(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, ok := got.(searchindex.Filter)
+	f, ok := got.(pgsearch.Filter)
 	if !ok {
-		t.Fatalf("got %T, want searchindex.Filter", got)
+		t.Fatalf("got %T, want pgsearch.Filter", got)
 	}
-	sql := f.SQL()
-	if !strings.Contains(sql, "kind = 'job'") {
-		t.Errorf("missing kind clause: %s", sql)
+	if f.Kind != "job" {
+		t.Errorf("Kind=%q, want %q", f.Kind, "job")
 	}
-	if !strings.Contains(sql, "employment_type IN ('full-time')") {
-		t.Errorf("missing employment_type clause: %s", sql)
+	if len(f.AttributeAnyOf) == 0 || f.AttributeAnyOf[0].Field != "employment_type" {
+		t.Errorf("expected AttributeAnyOf employment_type, got %+v", f.AttributeAnyOf)
 	}
-	if !strings.Contains(sql, "amount_min >= 80000") {
-		t.Errorf("missing salary clause: %s", sql)
+	if len(f.RangeMin) == 0 || f.RangeMin[0].Field != "amount_min" || f.RangeMin[0].Value != 80000 {
+		t.Errorf("expected RangeMin amount_min=80000, got %+v", f.RangeMin)
+	}
+	// Sanity: Build() produces a syntactically reasonable WHERE
+	// fragment that names the columns we care about.
+	sql, _ := f.Build(1)
+	if !strings.Contains(sql, "kind = $") {
+		t.Errorf("missing kind clause in %q", sql)
+	}
+	if !strings.Contains(sql, "attributes->>'employment_type'") {
+		t.Errorf("missing employment_type clause in %q", sql)
+	}
+	if !strings.Contains(sql, "amount_min >= $") {
+		t.Errorf("missing amount_min clause in %q", sql)
 	}
 }
 

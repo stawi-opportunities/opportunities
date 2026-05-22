@@ -13,6 +13,7 @@ import (
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 	"github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 type prefMatchesReadyCollector struct {
@@ -77,7 +78,7 @@ func TestPreferenceMatchHandler_EmitsMatchesPerEnabledKind(t *testing.T) {
 	col := &prefMatchesReadyCollector{}
 	svc.EventsManager().Add(col)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidateMatchesReady, 2*time.Second)
 
 	store := &prefFakeStore{emb: eventsv1.CandidateEmbeddingV1{
 		CandidateID: "cnd_1", Vector: []float32{0.1},
@@ -142,7 +143,7 @@ func TestPreferenceMatchHandler_NoEmitWhenAllMatchersDisabled(t *testing.T) {
 	col := &prefMatchesReadyCollector{}
 	svc.EventsManager().Add(col)
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidateMatchesReady, 2*time.Second)
 
 	store := &prefFakeStore{emb: eventsv1.CandidateEmbeddingV1{
 		CandidateID: "cnd_1", Vector: []float32{0.1},

@@ -12,6 +12,14 @@ type CanonicalUpsertedV1 struct {
 	Slug          string `json:"slug"`
 	HardKey       string `json:"hard_key"`
 
+	// SourceID is the dominant source contributing to this canonical's
+	// cluster (the source of the variant the worker picked as the
+	// canonical-merge winner). The materializer indexes it on
+	// idx_opportunities_rt so /admin/sources/stop can DELETE WHERE
+	// source_id = hashID(SourceID) and purge a stopped source's jobs
+	// from search.
+	SourceID string `json:"source_id,omitempty"`
+
 	Kind          string `json:"kind"`
 	Title         string `json:"title"`
 	IssuingEntity string `json:"issuing_entity"`

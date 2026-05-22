@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
-	"github.com/stawi-opportunities/opportunities/pkg/searchindex"
+	"github.com/stawi-opportunities/opportunities/pkg/pgsearch"
 )
 
 type Matcher struct{}
@@ -21,18 +21,20 @@ func (m *Matcher) SearchFilter(prefs json.RawMessage) (any, error) {
 	var p ScholarshipPreferences
 	if len(prefs) > 0 {
 		if err := json.Unmarshal(prefs, &p); err != nil {
-			return searchindex.Filter{}, err
+			return pgsearch.Filter{}, err
 		}
 	}
-	f := searchindex.Filter{Kind: "scholarship"}
+	f := pgsearch.Filter{Kind: "scholarship"}
+	// degree_level / field_of_study are per-kind facets stored in
+	// `attributes` jsonb, not top-level columns.
 	if len(p.DegreeLevels) > 0 {
-		f.AnyOf = append(f.AnyOf, searchindex.AnyOf{Field: "degree_level", Values: p.DegreeLevels})
+		f.AttributeAnyOf = append(f.AttributeAnyOf, pgsearch.AnyOf{Field: "degree_level", Values: p.DegreeLevels})
 	}
 	if len(p.FieldsOfStudy) > 0 {
-		f.AnyOf = append(f.AnyOf, searchindex.AnyOf{Field: "field_of_study", Values: p.FieldsOfStudy})
+		f.AttributeAnyOf = append(f.AttributeAnyOf, pgsearch.AnyOf{Field: "field_of_study", Values: p.FieldsOfStudy})
 	}
 	if len(p.Locations.Countries) > 0 {
-		f.AnyOf = append(f.AnyOf, searchindex.AnyOf{Field: "country", Values: p.Locations.Countries})
+		f.AnyOf = append(f.AnyOf, pgsearch.AnyOf{Field: "country", Values: p.Locations.Countries})
 	}
 	return f, nil
 }
