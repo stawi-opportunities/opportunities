@@ -43,7 +43,7 @@
     "oidcIssuer"         .Site.Params.oidcIssuer
     "oidcClientID"       .Site.Params.oidcClientID
     "oidcInstallationID" .Site.Params.oidcInstallationID
-    "oidcRedirectURI"    .Site.Params.oidcRedirectURI
+    "oidcRedirectURI"    (.Site.Params.oidcRedirectURI | default "")
     "rumClientToken"     .Site.Params.rumClientToken
     "rumApplicationId"   .Site.Params.rumApplicationId
     "rumSite"            .Site.Params.rumSite
