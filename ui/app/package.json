@@ -12,8 +12,8 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
-    "@stawi/auth-runtime": "^1.1.2",
-    "@stawi/profile": "^1.1.2",
+    "@stawi/auth-runtime": "^1.2.0",
+    "@stawi/profile": "^1.2.0",
     "@tanstack/react-query": "^5.60.0",
     "posthog-js": "^1.375.0",
     "react": "^19.0.0",
