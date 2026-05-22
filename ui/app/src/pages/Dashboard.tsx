@@ -465,7 +465,7 @@ function PreferencesPanel() {
   useEffect(() => {
     let cancelled = false;
     authRuntime()
-      .fetch<{ enabled_kinds?: string[] }>("/candidates/match-kinds")
+      .fetch<{ enabled_kinds?: string[] }>("/matching/candidates/match-kinds")
       .then((data) => {
         if (cancelled) return;
         setEnabledKinds(data.enabled_kinds ?? ["job", "scholarship"]);
@@ -505,7 +505,7 @@ function PreferencesPanel() {
       // Posts the polymorphic PreferencesUpdatedV1 envelope (Phase 7.6)
       // with just the active kind populated. The matching service merges
       // server-side; we only carry the slice the user just edited.
-      await authRuntime().fetch("/candidates/preferences", {
+      await authRuntime().fetch("/matching/candidates/preferences", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ opt_ins: { [kind]: prefs } }),

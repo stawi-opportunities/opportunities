@@ -38,7 +38,7 @@ export interface OnboardingPayload {
 export async function submitOnboarding(
   payload: OnboardingPayload,
 ): Promise<{ id: string; profile_id: string }> {
-  return authRuntime().fetch("/candidates/onboard", {
+  return authRuntime().fetch("/matching/candidates/onboard", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -51,7 +51,7 @@ export async function submitOnboarding(
  * response carries the updated candidate row.
  */
 export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: number }> {
-  return authRuntime().upload("/me/cv", file);
+  return authRuntime().upload("/matching/me/cv", file);
 }
 
 /** Subset of CandidateProfile the UI consumes. */
@@ -71,7 +71,7 @@ export interface CandidateSummary {
  *  null on any failure so callers can render anon fallback. */
 export async function fetchCandidate(): Promise<CandidateSummary | null> {
   try {
-    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>("/me");
+    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>("/matching/me");
     return body.candidate ?? null;
   } catch {
     return null;
@@ -102,7 +102,7 @@ export interface BillingPlansResponse {
  *  consistency with the R2-origin calls that don't need a token. */
 export async function fetchBillingPlans(): Promise<BillingPlansResponse> {
   const base = getCandidatesOrigin();
-  const res = await fetch(`${base}/billing/plans`, { credentials: "omit" });
+  const res = await fetch(`${base}/matching/billing/plans`, { credentials: "omit" });
   if (!res.ok) throw new Error(`fetchBillingPlans: HTTP ${res.status}`);
   return (await res.json()) as BillingPlansResponse;
 }
@@ -131,7 +131,7 @@ export interface CheckoutCreateInput {
 
 /** POST /billing/checkout — auth'd. */
 export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
-  return authRuntime().fetch("/billing/checkout", {
+  return authRuntime().fetch("/matching/billing/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -152,7 +152,7 @@ export interface CheckoutStatusResponse {
 
 /** GET /billing/checkout/status?prompt_id=… — auth'd long-poll. */
 export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
-  return authRuntime().fetch(`/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`);
+  return authRuntime().fetch(`/matching/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`);
 }
 
 // ── /me/subscription ─────────────────────────────────────────────
@@ -178,7 +178,7 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
     agent: null,
   };
   try {
-    const body = await authRuntime().fetch<MeSubscription>("/me/subscription");
+    const body = await authRuntime().fetch<MeSubscription>("/matching/me/subscription");
     return { ...fallback, ...body };
   } catch {
     return fallback;

@@ -51,7 +51,11 @@ export default function FlagModal({ slug }: { slug: string }) {
     if (state.kind === "submitting") return;
     setState({ kind: "submitting" });
     try {
-      await authRuntime().fetch(`/opportunities/${encodeURIComponent(slug)}/flag`, {
+      // /jobs prefix routes to opportunities-api (per the
+      // api-gateway-path-prefix-convention memory); URLRewrite strips
+      // /jobs before the backend handler at /opportunities/{slug}/flag
+      // sees it.
+      await authRuntime().fetch(`/jobs/opportunities/${encodeURIComponent(slug)}/flag`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason, description: description.trim() }),

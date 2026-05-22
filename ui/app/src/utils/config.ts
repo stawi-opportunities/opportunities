@@ -29,6 +29,11 @@ export interface SiteConfig {
 
 const DEFAULTS: SiteConfig = {
   apiURL: "https://api.stawi.org/jobs",
+  // Bare base URL — the matching service's /matching/* prefix is added
+  // inline by each candidate-API call site (see api/candidates.ts and
+  // Dashboard.tsx). Kept bare because the shared @stawi/profile widget
+  // also uses this runtime and calls /profile.v1.*. See
+  // api-gateway-path-prefix-convention memory for the org-wide rule.
   candidatesAPIURL: "https://api.stawi.org",
   contentOrigin: "https://opportunities-data.stawi.org",
   oidcIssuer: "https://oauth2.stawi.org",
