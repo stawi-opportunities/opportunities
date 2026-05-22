@@ -194,6 +194,86 @@ func TestStore_ListByCandidate_Pagination(t *testing.T) {
 	require.Equal(t, "p3", page2.Items[0].MatchID)
 }
 
+func TestStore_ListOpportunitiesForCandidate_Filters(t *testing.T) {
+	db, ctx := setupStoreDB(t)
+	s := matching.NewStore(db)
+
+	const candID = "cand_feed"
+	// Seed: opp_match (only matched), opp_starred (only starred),
+	// opp_applied (matched AND applied AND starred), opp_overflow
+	// (matched but overflow — should never appear regardless of filter).
+	insertMatch := func(matchID, oppID string, status matching.MatchStatus) {
+		_, err := db.ExecContext(ctx, `
+INSERT INTO candidate_matches (match_id, candidate_id, opportunity_id, status, score, last_event_id, metadata, created_at, updated_at)
+VALUES ($1, $2, $3, $4, 0.7, 'evt_'||$1, '{}'::jsonb, NOW(), NOW())`,
+			matchID, candID, oppID, string(status))
+		require.NoError(t, err)
+	}
+	insertMatch("m_match", "opp_match", matching.StatusNew)
+	insertMatch("m_applied", "opp_applied", matching.StatusApplied)
+	insertMatch("m_overflow", "opp_overflow", matching.StatusOverflow)
+
+	_, err := db.ExecContext(ctx, `INSERT INTO candidate_saved_jobs (candidate_id, opportunity_id) VALUES ($1, $2), ($1, $3)`,
+		candID, "opp_starred", "opp_applied")
+	require.NoError(t, err)
+
+	// Seed an application row for opp_applied. Use the REAL `applications` table.
+	_, err = db.ExecContext(ctx, `
+INSERT INTO applications (application_id, candidate_id, opportunity_id, match_id, status, metadata, submitted_at, created_at, updated_at)
+VALUES ('app_1', $1, 'opp_applied', 'm_applied', 'applied', '{"method":"manual"}'::jsonb, NOW(), NOW(), NOW())`, candID)
+	require.NoError(t, err)
+
+	// filter=all → matches union starred union applied; overflow excluded.
+	page, err := s.ListOpportunitiesForCandidate(ctx, matching.ListOpportunitiesParams{
+		CandidateID: candID, Filter: matching.FilterAll, Limit: 50,
+	})
+	require.NoError(t, err)
+	ids := opportunityIDs(page.Items)
+	require.ElementsMatch(t, []string{"opp_match", "opp_starred", "opp_applied"}, ids)
+
+	// filter=matches → matches only (no overflow).
+	page, err = s.ListOpportunitiesForCandidate(ctx, matching.ListOpportunitiesParams{
+		CandidateID: candID, Filter: matching.FilterMatches, Limit: 50,
+	})
+	require.NoError(t, err)
+	ids = opportunityIDs(page.Items)
+	require.ElementsMatch(t, []string{"opp_match", "opp_applied"}, ids)
+
+	// filter=starred → only what's in candidate_saved_jobs.
+	page, err = s.ListOpportunitiesForCandidate(ctx, matching.ListOpportunitiesParams{
+		CandidateID: candID, Filter: matching.FilterStarred, Limit: 50,
+	})
+	require.NoError(t, err)
+	ids = opportunityIDs(page.Items)
+	require.ElementsMatch(t, []string{"opp_starred", "opp_applied"}, ids)
+
+	// filter=applied → only what's in applications.
+	page, err = s.ListOpportunitiesForCandidate(ctx, matching.ListOpportunitiesParams{
+		CandidateID: candID, Filter: matching.FilterApplied, Limit: 50,
+	})
+	require.NoError(t, err)
+	ids = opportunityIDs(page.Items)
+	require.Equal(t, []string{"opp_applied"}, ids)
+
+	// State annotations land on the right rows.
+	for _, item := range page.Items {
+		if item.OpportunityID == "opp_applied" {
+			require.True(t, item.Starred)
+			require.NotNil(t, item.Application)
+			require.Equal(t, "applied", item.Application.Status)
+			require.Equal(t, "manual", item.Application.Method)
+		}
+	}
+}
+
+func opportunityIDs(items []matching.OpportunityFeedItem) []string {
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.OpportunityID)
+	}
+	return out
+}
+
 func TestStore_SubscriptionSummary_CountsByStatusAndAge(t *testing.T) {
 	db, ctx := setupStoreDB(t)
 	s := matching.NewStore(db)

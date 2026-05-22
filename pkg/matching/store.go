@@ -348,6 +348,201 @@ func mustEncodeJSON(v any) []byte {
 	return b
 }
 
+// FeedFilter is the dashboard's filter chip — drives which join the
+// /me/opportunities query uses as its base set.
+type FeedFilter string
+
+const (
+	FilterAll     FeedFilter = "all"
+	FilterMatches FeedFilter = "matches"
+	FilterStarred FeedFilter = "starred"
+	FilterApplied FeedFilter = "applied"
+)
+
+// ApplicationSummary is the slice of `applications` (per
+// db/migrations/0010_applications_oltp.sql) the dashboard renders
+// next to each opportunity. Status uses the pkg/applications
+// state-machine values directly. Method is pulled from the
+// applications.metadata JSONB at `metadata->>'method'`; "manual" is
+// the default when absent (the field was added later than the table).
+type ApplicationSummary struct {
+	Status      string
+	AppliedAt   time.Time // submitted_at if non-null, else created_at
+	LastEventAt time.Time // applications.updated_at
+	Method      string    // metadata->>'method', or "manual"
+}
+
+// OpportunityFeedItem is one row of the unified opportunities feed.
+// Score is only meaningful when the opportunity has a match row;
+// the handler omits it when Score is the zero value.
+type OpportunityFeedItem struct {
+	OpportunityID string
+	Score         float64
+	Starred       bool
+	Application   *ApplicationSummary
+	CreatedAt     time.Time
+}
+
+// ListOpportunitiesParams configures the unified opportunities feed query.
+type ListOpportunitiesParams struct {
+	CandidateID string
+	Filter      FeedFilter
+	Cursor      string
+	Limit       int
+}
+
+// ListOpportunitiesPage is the result envelope for the unified feed.
+type ListOpportunitiesPage struct {
+	Items      []OpportunityFeedItem
+	NextCursor string
+	HasMore    bool
+}
+
+// ListOpportunitiesForCandidate is the dashboard's main feed query.
+// One round-trip; joins candidate_matches, candidate_saved_jobs, and
+// applications (all in the shared candidates database). The filter
+// determines the base set:
+//
+//	FilterAll      — union of matches (excluding overflow) ∪ starred ∪ applied
+//	FilterMatches  — matches only (excluding overflow); annotated with starred + application
+//	FilterStarred  — starred only; annotated with score (if matched) + application
+//	FilterApplied  — applied only; annotated with score + starred
+//
+// Pagination via the existing pageCursor pattern (score-desc,
+// created-at-desc, opportunity-id-asc) so the ordering is fully
+// deterministic and cursor-resumable.
+func (s *Store) ListOpportunitiesForCandidate(ctx context.Context, p ListOpportunitiesParams) (ListOpportunitiesPage, error) {
+	limit := p.Limit
+	if limit <= 0 {
+		limit = defaultPageLimit
+	}
+	if limit > maxPageLimit {
+		limit = maxPageLimit
+	}
+
+	var baseCTE string
+	switch p.Filter {
+	case FilterMatches:
+		baseCTE = `
+WITH base AS (
+  SELECT opportunity_id, score, created_at FROM candidate_matches
+  WHERE candidate_id = $1 AND status != 'overflow'
+)`
+	case FilterStarred:
+		baseCTE = `
+WITH base AS (
+  SELECT s.opportunity_id, COALESCE(m.score, 0) AS score, s.created_at
+  FROM candidate_saved_jobs s
+  LEFT JOIN candidate_matches m
+    ON m.candidate_id = s.candidate_id AND m.opportunity_id = s.opportunity_id AND m.status != 'overflow'
+  WHERE s.candidate_id = $1
+)`
+	case FilterApplied:
+		baseCTE = `
+WITH base AS (
+  SELECT a.opportunity_id, COALESCE(m.score, 0) AS score, COALESCE(a.submitted_at, a.created_at) AS created_at
+  FROM applications a
+  LEFT JOIN candidate_matches m
+    ON m.candidate_id = a.candidate_id AND m.opportunity_id = a.opportunity_id AND m.status != 'overflow'
+  WHERE a.candidate_id = $1
+)`
+	default: // FilterAll
+		baseCTE = `
+WITH base AS (
+  SELECT DISTINCT ON (opportunity_id) opportunity_id, score, created_at
+  FROM (
+    SELECT opportunity_id, score, created_at FROM candidate_matches
+      WHERE candidate_id = $1 AND status != 'overflow'
+    UNION ALL
+    SELECT s.opportunity_id, 0 AS score, s.created_at FROM candidate_saved_jobs s
+      WHERE s.candidate_id = $1
+    UNION ALL
+    SELECT a.opportunity_id, 0 AS score, COALESCE(a.submitted_at, a.created_at) AS created_at FROM applications a
+      WHERE a.candidate_id = $1
+  ) combined
+  ORDER BY opportunity_id, score DESC
+)`
+	}
+
+	args := []any{p.CandidateID}
+	cursorWhere := ""
+	if p.Cursor != "" {
+		cur, err := decodeCursor(p.Cursor)
+		if err != nil {
+			return ListOpportunitiesPage{}, fmt.Errorf("matching: cursor: %w", err)
+		}
+		args = append(args, cur.Score, cur.CreatedAt, cur.MatchID)
+		cursorWhere = " AND (b.score, b.created_at, b.opportunity_id) < ($2, $3::timestamptz, $4)"
+	}
+	args = append(args, limit+1)
+
+	q := baseCTE + `
+SELECT b.opportunity_id, b.score, b.created_at,
+       (s.opportunity_id IS NOT NULL) AS starred,
+       a.status, COALESCE(a.submitted_at, a.created_at) AS applied_at, a.updated_at,
+       a.metadata->>'method' AS method
+FROM base b
+LEFT JOIN candidate_saved_jobs s
+  ON s.candidate_id = $1 AND s.opportunity_id = b.opportunity_id
+LEFT JOIN applications a
+  ON a.candidate_id = $1 AND a.opportunity_id = b.opportunity_id
+WHERE 1=1` + cursorWhere + `
+ORDER BY b.score DESC, b.created_at DESC, b.opportunity_id ASC
+LIMIT $` + fmt.Sprint(len(args))
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return ListOpportunitiesPage{}, fmt.Errorf("matching: list opportunities: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]OpportunityFeedItem, 0, limit)
+	for rows.Next() {
+		var (
+			item       OpportunityFeedItem
+			appStatus  sql.NullString
+			appAt      sql.NullTime
+			appUpdated sql.NullTime
+			appMethod  sql.NullString
+		)
+		if err := rows.Scan(&item.OpportunityID, &item.Score, &item.CreatedAt,
+			&item.Starred, &appStatus, &appAt, &appUpdated, &appMethod); err != nil {
+			return ListOpportunitiesPage{}, fmt.Errorf("matching: scan opportunity feed: %w", err)
+		}
+		if appStatus.Valid {
+			method := "manual"
+			if appMethod.Valid && appMethod.String != "" {
+				method = appMethod.String
+			}
+			item.Application = &ApplicationSummary{
+				Status:      appStatus.String,
+				AppliedAt:   appAt.Time,
+				LastEventAt: appUpdated.Time,
+				Method:      method,
+			}
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return ListOpportunitiesPage{}, fmt.Errorf("matching: list opportunities rows: %w", err)
+	}
+
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	var nextCur string
+	if hasMore {
+		last := out[len(out)-1]
+		nextCur = encodeCursor(pageCursor{
+			Score:     last.Score,
+			CreatedAt: last.CreatedAt,
+			MatchID:   last.OpportunityID,
+		})
+	}
+	return ListOpportunitiesPage{Items: out, NextCursor: nextCur, HasMore: hasMore}, nil
+}
+
 func decodeJSONMap(raw []byte) map[string]any {
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
