@@ -22,7 +22,8 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "baseUrl": "."
+    "baseUrl": ".",
+    "types": ["@testing-library/jest-dom"]
   },
   "include": ["src"],
   "references": []
