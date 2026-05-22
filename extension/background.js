@@ -76,21 +76,27 @@ async function onCookieChange(cookie) {
   );
 }
 
+// tryCapture returns `true` on a successful upload, or one of these
+// string reasons on failure: "not_logged_in" | "no_cookies" |
+// "needs_repair" | "upload_failed". The popup uses these to render a
+// concrete status next to each source rather than a generic spinner.
 async function tryCapture(entry) {
   const loggedIn = await detectLoggedIn(entry.detect_logged_in);
-  if (!loggedIn) return;
+  if (!loggedIn) return "not_logged_in";
   const cap = await captureForSource(entry);
-  if (!cap) return;
+  if (!cap) return "no_cookies";
   try {
     await uploadCapture(entry.source_type, cap);
     console.info("stawi: uploaded capture for", entry.source_type);
+    return true;
   } catch (err) {
     if (err instanceof HttpError && err.status === 401) {
-      // Refresh dance in api.js already cleared tokens — nothing more
-      // to do here; the popup will surface the "needs re-pair" state.
-      return;
+      // Refresh dance in api.js already cleared tokens — popup will
+      // surface "needs re-pair".
+      return "needs_repair";
     }
     console.warn("stawi: capture upload failed", err);
+    return "upload_failed";
   }
 }
 
@@ -114,8 +120,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: false, error: "unknown source" });
         return;
       }
-      await tryCapture(entry);
-      sendResponse({ ok: true });
+      // tryCapture handles the detectLoggedIn gate + cookie capture +
+      // upload. Surface the result so the popup can show "Captured ✓"
+      // vs "Not logged in" rather than a generic spinner.
+      const result = await tryCapture(entry);
+      sendResponse({ ok: result === true, reason: result === true ? undefined : result });
     })();
     return true; // async sendResponse
   }
@@ -123,6 +132,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       await refreshManifest();
       sendResponse({ ok: true });
+    })();
+    return true;
+  }
+  if (msg?.type === "stawi:status") {
+    // Per-source status snapshot for the popup. Runs the same
+    // detect_logged_in probe the auto-capture path uses, plus
+    // optionally pulls the last-captured-at timestamp from the
+    // server's session list. Cheap to call from popup mount.
+    (async () => {
+      const manifest = await getManifest();
+      const sources = manifest?.sources || [];
+      const results = await Promise.all(
+        sources.map(async (s) => {
+          const loggedIn = await detectLoggedIn(s.detect_logged_in);
+          return { source_type: s.source_type, logged_in: loggedIn };
+        }),
+      );
+      sendResponse({ ok: true, statuses: results });
     })();
     return true;
   }

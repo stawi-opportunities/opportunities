@@ -6,14 +6,38 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header>
-      <h1>Stawi AutoApply</h1>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo-mark" aria-hidden="true">S</span>
+        <span class="brand-text">
+          <span class="brand-name">Stawi</span>
+          <span class="brand-sub">AutoApply</span>
+        </span>
+      </div>
+      <button
+        id="refresh"
+        class="icon-btn"
+        title="Refresh status"
+        aria-label="Refresh status"
+        hidden
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      </button>
     </header>
 
     <main>
-      <section id="unpaired" hidden>
-        <p>Paste the 6-character code from your Stawi dashboard.</p>
-        <form id="pair-form">
+      <!-- ─── Unpaired ───────────────────────────────────────────── -->
+      <section id="unpaired" class="card pair-card" hidden>
+        <h2>Connect to Stawi</h2>
+        <p class="muted">
+          Paste the 6-character code from your Stawi dashboard.
+        </p>
+        <form id="pair-form" class="pair-form">
           <input
             id="pair-code"
             type="text"
@@ -21,20 +45,40 @@
             autocomplete="off"
             autocapitalize="characters"
             spellcheck="false"
+            placeholder="ABC123"
             required
           />
-          <button type="submit">Pair</button>
+          <button type="submit" class="primary">
+            <span class="btn-label">Pair</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
         </form>
-        <p class="error" id="pair-error" hidden></p>
+        <p id="pair-error" class="error" hidden></p>
       </section>
 
+      <!-- ─── Paired ─────────────────────────────────────────────── -->
       <section id="paired" hidden>
-        <p class="ok">Extension paired ✓</p>
-        <h2>Supported sources</h2>
-        <ul id="source-list"></ul>
+        <div class="status-banner ok">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+               stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>Extension paired</span>
+        </div>
+
+        <h3 class="section-title">Supported sources</h3>
+        <ul id="source-list" class="sources"></ul>
+
         <p class="muted small">
-          Stawi captures session cookies for sources you log into above.
+          Sign in to a source above so Stawi can submit applications on your behalf.
+          Your cookies are encrypted at rest and never leave your account.
         </p>
+      </section>
+
+      <!-- ─── Loading ─────────────────────────────────────────────── -->
+      <section id="loading">
+        <div class="spinner large"></div>
+        <p class="muted center">Loading…</p>
       </section>
     </main>
 

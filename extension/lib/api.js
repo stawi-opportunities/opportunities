@@ -11,7 +11,11 @@
 
 import { getTokens, setTokens, clearTokens } from "./storage.js";
 
-const API_ORIGIN = "https://api.stawi.org";
+// Local-dev override: when the extension is loaded unpacked we want
+// it to talk to the local matching service on :8082, not production.
+// Flip this back to https://api.stawi.org before packaging for the
+// Chrome Web Store / AMO.
+const API_ORIGIN = "http://localhost:8082";
 
 class HttpError extends Error {
   constructor(status, body) {
