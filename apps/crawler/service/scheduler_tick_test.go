@@ -14,6 +14,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
 // admitterFunc is a minimal Admitter used for unit tests so we don't
@@ -72,7 +73,7 @@ func TestSchedulerTickEmitsOneRequestPerAdmittedSource(t *testing.T) {
 	// Run Frame so the in-memory subscriber becomes ready before
 	// the scheduler emits. Same pattern as apps/writer/service_test.go.
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCrawlRequests, 2*time.Second)
 
 	// Seed two due sources in the fake repo (defined below).
 	repo := newFakeSourceRepo(
@@ -142,7 +143,7 @@ func TestSchedulerTickRespectsAdmitDecisions(t *testing.T) {
 	svc.EventsManager().Add(&tickCollector{topic: eventsv1.TopicCrawlRequests})
 
 	go func() { _ = svc.Run(ctx, "") }()
-	time.Sleep(200 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCrawlRequests, 2*time.Second)
 
 	repo := newFakeSourceRepo(
 		&domain.Source{BaseModel: domain.BaseModel{ID: "s1"}, Status: domain.SourceActive, CrawlIntervalSec: 60},

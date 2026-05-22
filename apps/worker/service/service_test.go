@@ -12,6 +12,7 @@ import (
 	"github.com/pitabwire/frame/frametests"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 
 	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
@@ -108,10 +109,9 @@ func TestWorkerPipelineE2E(t *testing.T) {
 	// executes here, registering all four pipeline handlers. The
 	// collector was added directly before Init so it is not overwritten.
 	go func() { _ = svc.Run(ctx, "") }()
-
-	// Give the subscriber goroutine time to start consuming from the
-	// in-memory queue before we emit.
-	time.Sleep(300 * time.Millisecond)
+	// Wait for the events-bus publisher to finish Init so the upcoming
+	// Emit() doesn't race with publisher.topic assignment.
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
 
 	// Emit the seed event. Country is lowercase "ke" so we can assert
 	// that normalize uppercased it to "KE" on the cluster snapshot.
@@ -235,8 +235,7 @@ func TestPipeline_ScholarshipPropagatesAttributes(t *testing.T) {
 	svc.Init(ctx, frame.WithRegisterEvents(handlers[:4]...))
 
 	go func() { _ = svc.Run(ctx, "") }()
-
-	time.Sleep(300 * time.Millisecond)
+	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
 
 	now := time.Now().UTC()
 	in := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventsv1.VariantIngestedV1{
