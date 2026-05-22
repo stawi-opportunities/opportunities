@@ -360,6 +360,16 @@ func main() {
 		}),
 	))
 
+	// /me/onboarding — resumable wizard. Same handler serves GET +
+	// PUT; the underlying repo type implements both interfaces.
+	// CandidateAuth wraps the registration; the wrapper populates
+	// the candidate ID into the request context.
+	onboardingHandler := httpmw.CandidateAuth(httpv1.OnboardingHandler(httpv1.OnboardingDeps{
+		Drafts: candidateRepo,
+	}))
+	mux.Handle("GET /me/onboarding", onboardingHandler)
+	mux.Handle("PUT /me/onboarding", onboardingHandler)
+
 	// --- Trustage admin endpoints ---
 	mux.HandleFunc("POST /_admin/cv/stale_nudge",
 		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
