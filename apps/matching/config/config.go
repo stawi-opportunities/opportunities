@@ -19,7 +19,15 @@ type CandidatesConfig struct {
 	//   ICEBERG_WAREHOUSE     logical warehouse registered in Lakekeeper, e.g. "product-opportunities"
 	//   ICEBERG_CATALOG_TOKEN optional pre-obtained bearer; leave unset when
 	//                         the cluster Lakekeeper runs with auth disabled.
-	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI,required"`
+	//
+	// ICEBERG_CATALOG_URI is optional. When unset, the matching service
+	// degrades: /candidates/match, /_admin/cv/stale_nudge, and the
+	// preference-update re-match handler are not registered. The rest
+	// of the surface (CV upload, preferences, auto-apply toggle, the
+	// /pairings + /candidates/me/sessions session-capture endpoints,
+	// and admin/candidates/weekly_jobs_digest) still boots so local-dev
+	// cycles can iterate on session-capture without a Lakekeeper.
+	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI"`
 	IcebergCatalogName  string `env:"ICEBERG_CATALOG_NAME"  envDefault:"stawi"`
 	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:"product-opportunities"`
 	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`

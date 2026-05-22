@@ -13,6 +13,7 @@ import (
 	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/data"
+	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
 
@@ -106,6 +107,7 @@ func main() {
 		if err := migrationDB.AutoMigrate(
 			&domain.CandidateProfile{},
 			&domain.CandidateApplication{},
+			&domain.CandidateSession{},
 			&domain.OpportunityFlag{},
 		); err != nil {
 			log.WithError(err).Fatal("auto-migrate failed")
@@ -132,16 +134,29 @@ func main() {
 	})
 
 	// --- Iceberg catalog (for candidatestore Reader + StaleReader) ---
-	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:       cfg.IcebergCatalogName,
-		URI:        cfg.IcebergCatalogURI,
-		Warehouse:  cfg.IcebergWarehouse,
-		OAuthToken: cfg.IcebergCatalogToken,
-	})
-	if err != nil {
-		log.WithError(err).Fatal("candidates: iceberg catalog load failed")
+	//
+	// Optional in local-dev: when ICEBERG_CATALOG_URI is empty the
+	// iceberg-dependent endpoints (/candidates/match,
+	// /_admin/cv/stale_nudge) and the preference-update re-match event
+	// handler are skipped, but the rest of the service — including
+	// session-capture — boots normally.
+	var candStore *candidatestore.Reader
+	var staleReader *candidatestore.StaleReader
+	if cfg.IcebergCatalogURI != "" {
+		cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+			Name:       cfg.IcebergCatalogName,
+			URI:        cfg.IcebergCatalogURI,
+			Warehouse:  cfg.IcebergWarehouse,
+			OAuthToken: cfg.IcebergCatalogToken,
+		})
+		if err != nil {
+			log.WithError(err).Fatal("candidates: iceberg catalog load failed")
+		}
+		candStore = candidatestore.NewReader(cat)
+		staleReader = candidatestore.NewStaleReader(cat)
+	} else {
+		log.Warn("candidates: ICEBERG_CATALOG_URI unset — /candidates/match + /_admin/cv/stale_nudge disabled")
 	}
-	candStore := candidatestore.NewReader(cat)
 
 	// --- AI extractor ---
 	var extractor *extraction.Extractor
@@ -178,9 +193,17 @@ func main() {
 	// filters directly against the `opportunities` table over the
 	// existing read-only pool. No new dialer, no extra service.
 	search := httpv1.NewPostgresSearch(dbFn)
-	matchSvc := httpv1.NewMatchService(candStore, search, 20)
-	staleReader := candidatestore.NewStaleReader(cat)
-	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
+	// matchSvc + staleLister both need the iceberg-backed candidatestore
+	// so they're nil in the degraded (no-iceberg) mode. Every consumer
+	// below is wrapped in a nil check.
+	var matchSvc *httpv1.MatchService
+	var staleLister adminv1.StaleLister
+	if candStore != nil {
+		matchSvc = httpv1.NewMatchService(candStore, search, 20)
+	}
+	if staleReader != nil {
+		staleLister = adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
+	}
 	// Weekly jobs digest collaborators — non-personalised email for
 	// candidates who completed signup but not checkout. The same
 	// pgsearch.Search backs the match service; we reuse its handle
@@ -199,12 +222,19 @@ func main() {
 	// Skip when extractor is unconfigured so the binary still serves
 	// the upload + preferences + match endpoints in a degraded mode
 	// (uploads archive but don't enrich).
-	prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
-		Svc:      svc,
-		Match:    matchSvc,
-		Matchers: matcherReg,
-		TopK:     50,
-	})
+	// PreferenceMatchHandler re-runs matching when a candidate updates
+	// their preferences. Needs the iceberg-backed match service — if
+	// iceberg is unconfigured the handler is left nil and the
+	// frame.WithRegisterEvents calls below are gated to skip it.
+	var prefMatchH *eventv1.PreferenceMatchHandler
+	if matchSvc != nil {
+		prefMatchH = eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
+			Svc:      svc,
+			Match:    matchSvc,
+			Matchers: matcherReg,
+			TopK:     50,
+		})
+	}
 	// --- Auto-apply trigger handler ---
 	autoApplyH := eventv1.NewAutoApplyTriggerHandler(eventv1.AutoApplyTriggerDeps{
 		Svc:           svc,
@@ -248,7 +278,7 @@ func main() {
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL, embedH),
-			frame.WithRegisterEvents(prefMatchH, autoApplyH),
+			frame.WithRegisterEvents(eventHandlersNonNil(prefMatchH, autoApplyH)...),
 		)
 	} else {
 		// Even without an extractor we still want preference-update
@@ -261,7 +291,7 @@ func main() {
 		svc.Init(ctx,
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
-			frame.WithRegisterEvents(prefMatchH, autoApplyH),
+			frame.WithRegisterEvents(eventHandlersNonNil(prefMatchH, autoApplyH)...),
 		)
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
@@ -373,11 +403,16 @@ func main() {
 	mux.HandleFunc("POST /candidates/preferences", httpv1.PreferencesHandler(svc))
 	mux.HandleFunc("POST /candidates/{id}/auto-apply/enable", httpv1.AutoApplyEnableHandler(candidateRepo))
 	mux.HandleFunc("POST /candidates/{id}/auto-apply/disable", httpv1.AutoApplyDisableHandler(candidateRepo))
-	mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
-		Svc:    svc,
-		Store:  candStore,
-		Search: search,
-	}))
+	// /candidates/match requires the iceberg-backed candidate store.
+	// Skip the route entirely when iceberg is unconfigured rather than
+	// surfacing a 500 — the UI's match list just shows empty.
+	if candStore != nil {
+		mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
+			Svc:    svc,
+			Store:  candStore,
+			Search: search,
+		}))
+	}
 
 	// Source-auth manifest endpoints. Read-only metadata; cheap to
 	// expose unconditionally so the extension can fetch them even when
@@ -432,12 +467,15 @@ func main() {
 	}
 
 	// --- Trustage admin endpoints ---
-	mux.HandleFunc("POST /_admin/cv/stale_nudge",
-		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
-			Svc:        svc,
-			Lister:     staleLister,
-			StaleAfter: 60 * 24 * time.Hour,
-		}))
+	// stale_nudge requires the iceberg-backed StaleReader.
+	if staleLister != nil {
+		mux.HandleFunc("POST /_admin/cv/stale_nudge",
+			adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
+				Svc:        svc,
+				Lister:     staleLister,
+				StaleAfter: 60 * 24 * time.Hour,
+			}))
+	}
 	mux.HandleFunc("POST /_admin/candidates/weekly_jobs_digest",
 		adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
 			Svc:      svc,
@@ -573,4 +611,28 @@ func buildSessionCache(_ context.Context, valkeyURL string) (cache.RawCache, err
 		return cache.NewInMemoryCache(), nil
 	}
 	return framevalkey.New(cache.WithDSN(data.DSN(valkeyURL)))
+}
+
+// eventHandlersNonNil filters out nil handlers before passing the slice
+// to frame.WithRegisterEvents. Nil handlers come from feature-gated
+// wiring (e.g. prefMatchH is nil when ICEBERG_CATALOG_URI is unset).
+// Frame would panic on a nil registration; we silently drop it.
+func eventHandlersNonNil(h ...events.EventI) []events.EventI {
+	out := make([]events.EventI, 0, len(h))
+	for _, e := range h {
+		if e == nil {
+			continue
+		}
+		// Catch typed nil — *PreferenceMatchHandler with a nil pointer
+		// satisfies the events.EventI interface (non-nil interface,
+		// nil dynamic value), which Frame can't detect with a plain
+		// h == nil check. We do a reflect-free check via the only
+		// methods every EventI implements: Name() returns "" on the
+		// zero value of our concrete handler types.
+		if e.Name() == "" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
