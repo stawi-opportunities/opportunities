@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +15,7 @@ import (
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
+	"github.com/rs/xid"
 
 	candidatesconfig "github.com/stawi-opportunities/opportunities/apps/matching/config"
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
@@ -38,6 +41,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
+	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
@@ -381,6 +385,56 @@ func main() {
 		httpv1.CandidatesOnboardHandler(httpv1.CandidatesOnboardDeps{Store: onboardStore}),
 	))
 
+	// /me/saved-jobs — star/unstar. Both verbs share the same handler;
+	// the handler dispatches on r.Method internally.
+	var savedJobsStore *savedjobs.Store
+	if gdb := dbFn(ctx, false); gdb != nil {
+		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
+			savedJobsStore = savedjobs.NewStore(sqlDB)
+		} else {
+			log.WithError(dbErr).Warn("me/saved-jobs: sql.DB unwrap failed; star/unstar will 502")
+		}
+	}
+	savedJobsHandler := httpmw.CandidateAuth(httpv1.SavedJobsHandler(httpv1.SavedJobsDeps{
+		Store: savedJobsStore,
+	}))
+	mux.Handle("POST /me/saved-jobs", savedJobsHandler)
+	mux.Handle("DELETE /me/saved-jobs/{opportunity_id}", savedJobsHandler)
+
+	// /me/opportunities — unified feed (joins matches + saved + applications).
+	// Constructs a fresh *matching.Store from the same pool the subscription
+	// handler uses. Guard against nil: if the DB is unavailable, skip the
+	// route rather than panic on first request — the dashboard degrades
+	// gracefully without the feed.
+	if gdb := dbFn(ctx, true); gdb != nil {
+		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
+			oppFeedStore := matching.NewStore(sqlDB)
+			mux.Handle("GET /me/opportunities", httpmw.CandidateAuth(
+				httpv1.OpportunitiesHandler(httpv1.OpportunitiesDeps{Store: oppFeedStore}),
+			))
+		} else {
+			log.WithError(dbErr).Warn("me/opportunities: sql.DB unwrap failed; GET /me/opportunities not registered")
+		}
+	} else {
+		log.Warn("me/opportunities: DB pool unavailable; GET /me/opportunities not registered")
+	}
+
+	// /me/applications — manual apply. Writes directly to the applications
+	// table via directApplicationStarter; the standalone apps/applications
+	// service isn't deployed yet (see paid-flow spec, "Reality check on
+	// what's already shipped").
+	var appStarter httpv1.ApplicationStarter
+	if gdb := dbFn(ctx, false); gdb != nil {
+		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
+			appStarter = &directApplicationStarter{db: sqlDB}
+		} else {
+			log.WithError(dbErr).Warn("me/applications: sql.DB unwrap failed; apply will 502")
+		}
+	}
+	mux.Handle("POST /me/applications", httpmw.CandidateAuth(
+		httpv1.ApplicationsHandler(httpv1.ApplicationsDeps{Starter: appStarter}),
+	))
+
 	// --- Trustage admin endpoints ---
 	mux.HandleFunc("POST /_admin/cv/stale_nudge",
 		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
@@ -546,4 +600,63 @@ func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candida
 		}
 		return nil
 	})
+}
+
+// directApplicationStarter is the pragmatic ApplicationStarter while
+// apps/applications isn't deployed as its own service. It writes
+// directly to the shared `applications` table via pkg/applications.Store.
+//
+// Idempotent: if the (candidate, opportunity) pair already has an
+// application row, StartApplication returns the existing row's ID and
+// submitted_at rather than 409-ing. This mirrors the idempotent style
+// the rest of the /me/* surface uses.
+//
+// match_id is NOT NULL in the schema. We do a best-effort lookup of an
+// existing match_id from candidate_matches for the pair; if nothing is
+// found we synthesise one ("manual_"+xid) so the insert can proceed.
+type directApplicationStarter struct {
+	db *sql.DB
+}
+
+func (a *directApplicationStarter) StartApplication(ctx context.Context, candidateID, opportunityID, method string) (string, time.Time, error) {
+	if a.db == nil {
+		return "", time.Time{}, fmt.Errorf("applications: sql.DB unavailable")
+	}
+
+	// Best-effort: reuse an existing match's id if there is one.
+	matchID := "manual_" + xid.New().String()
+	_ = a.db.QueryRowContext(ctx,
+		`SELECT match_id FROM candidate_matches WHERE candidate_id=$1 AND opportunity_id=$2 LIMIT 1`,
+		candidateID, opportunityID,
+	).Scan(&matchID)
+
+	store := applications.NewStore(a.db)
+	app, err := store.Create(ctx, applications.Application{
+		ApplicationID: xid.New().String(),
+		CandidateID:   candidateID,
+		OpportunityID: opportunityID,
+		MatchID:       matchID,
+		Status:        applications.Status("applied"),
+		Metadata:      map[string]any{"method": method},
+	})
+	if errors.Is(err, applications.ErrAlreadyExists) {
+		// Idempotent: return the existing row.
+		existing, getErr := store.GetByPair(ctx, candidateID, opportunityID)
+		if getErr != nil {
+			return "", time.Time{}, fmt.Errorf("applications: fetch existing after conflict: %w", getErr)
+		}
+		appliedAt := existing.CreatedAt
+		if existing.SubmittedAt != nil {
+			appliedAt = *existing.SubmittedAt
+		}
+		return existing.ApplicationID, appliedAt, nil
+	}
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("applications: create: %w", err)
+	}
+	appliedAt := app.CreatedAt
+	if app.SubmittedAt != nil {
+		appliedAt = *app.SubmittedAt
+	}
+	return app.ApplicationID, appliedAt, nil
 }
