@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AuthError } from "@stawi/auth-runtime";
 import { authRuntime } from "@/auth/runtime";
+import { fetchMeSubscription } from "@/api/candidates";
 
 /**
  * /auth/callback/ — landing page for the OIDC full-page redirect.
@@ -21,9 +22,17 @@ export default function AuthCallback() {
     let cancelled = false;
     const rt = authRuntime();
     rt.completeRedirect()
-      .then(() => {
+      .then(async () => {
         if (cancelled) return;
-        window.location.assign("/dashboard/");
+        // Single gate: payment status decides where the user lands.
+        // fetchMeSubscription's try/catch fallback returns
+        // {status: "none", ...} on any failure, so a wedged
+        // matching service degrades to "send the user to
+        // onboarding" — the safer default for an inactive-or-unknown
+        // subscription. See the paid-flow-routing spec.
+        const sub = await fetchMeSubscription();
+        const target = sub.status === "active" ? "/dashboard/" : "/onboarding/";
+        window.location.assign(target);
       })
       .catch((err: unknown) => {
         if (cancelled) return;

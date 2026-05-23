@@ -52,6 +52,18 @@ export default function Dashboard() {
     staleTime: 60_000,
   });
 
+  // Page-level guard: if the user lands here without an active
+  // subscription (direct URL, browser back from /onboarding/, etc.),
+  // bounce them to the wizard. Doesn't fire until the query resolves
+  // so the Skeleton renders during the wait — no flash.
+  useEffect(() => {
+    if (state !== "authenticated") return;
+    if (subQ.isLoading) return;
+    if (subQ.data?.status !== "active") {
+      window.location.assign("/onboarding/");
+    }
+  }, [state, subQ.isLoading, subQ.data?.status]);
+
   if (state === "initializing") return <Skeleton />;
   if (state !== "authenticated") return <SignedOut onSignIn={login} />;
 

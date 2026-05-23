@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -87,4 +88,38 @@ func TestCandidateRepository_OnboardingDraft_LazyCreate(t *testing.T) {
 	got, err := repo.GetOnboardingDraft(ctx, "cand_lazy")
 	require.NoError(t, err)
 	require.JSONEq(t, string(draft), string(got))
+}
+
+func TestCandidateRepository_Transaction_DraftClearedOnCommit(t *testing.T) {
+	g, sqlDB, ctx := setupCandidateDB(t)
+	repo := repository.NewCandidateRepository(func(_ context.Context, _ bool) *gorm.DB { return g })
+
+	insertCandidate(t, ctx, sqlDB, "cand_txn")
+	require.NoError(t, repo.SetOnboardingDraft(ctx, "cand_txn", json.RawMessage(`{"step":3,"fields":{"plan":"pro"}}`)))
+
+	err := repo.Transaction(ctx, func(tx *repository.CandidateRepository) error {
+		return tx.ClearOnboardingDraft(ctx, "cand_txn")
+	})
+	require.NoError(t, err)
+
+	got, err := repo.GetOnboardingDraft(ctx, "cand_txn")
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(got))
+}
+
+func TestCandidateRepository_Transaction_DraftSurvivesOnRollback(t *testing.T) {
+	g, sqlDB, ctx := setupCandidateDB(t)
+	repo := repository.NewCandidateRepository(func(_ context.Context, _ bool) *gorm.DB { return g })
+
+	insertCandidate(t, ctx, sqlDB, "cand_txn2")
+	require.NoError(t, repo.SetOnboardingDraft(ctx, "cand_txn2", json.RawMessage(`{"step":2,"fields":{"target_job_title":"PM"}}`)))
+
+	_ = repo.Transaction(ctx, func(tx *repository.CandidateRepository) error {
+		require.NoError(t, tx.ClearOnboardingDraft(ctx, "cand_txn2"))
+		return errors.New("force rollback")
+	})
+
+	got, err := repo.GetOnboardingDraft(ctx, "cand_txn2")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"step":2,"fields":{"target_job_title":"PM"}}`, string(got))
 }

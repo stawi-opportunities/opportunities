@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"sort"
@@ -370,6 +371,16 @@ func main() {
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
 
+	// /candidates/onboard — wizard final submit. Promotes the draft
+	// into the canonical profile columns and clears the draft in one
+	// transaction. The candidate's subscription tier stays "free"
+	// here; service-payment flips it to "active" via webhook when
+	// the checkout the wizard kicked off completes.
+	onboardStore := &candidateOnboardAdapter{repo: candidateRepo}
+	mux.Handle("POST /candidates/onboard", httpmw.CandidateAuth(
+		httpv1.CandidatesOnboardHandler(httpv1.CandidatesOnboardDeps{Store: onboardStore}),
+	))
+
 	// --- Trustage admin endpoints ---
 	mux.HandleFunc("POST /_admin/cv/stale_nudge",
 		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
@@ -499,4 +510,40 @@ type embedderAdapter struct{ e *extraction.Extractor }
 
 func (a embedderAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
 	return a.e.Embed(ctx, text)
+}
+
+// candidateOnboardAdapter satisfies httpv1.CandidatesOnboardStore by
+// running the wizard-finalisation work inside a single
+// CandidateRepository.Transaction. The transaction guarantees the
+// canonical profile update and the draft clear commit together — a
+// crash between them otherwise leaves a "completed onboarding but
+// the draft still says step 2" state that confuses the resume path.
+type candidateOnboardAdapter struct {
+	repo *repository.CandidateRepository
+}
+
+func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candidateID string, mutate func(*domain.CandidateProfile)) error {
+	return a.repo.Transaction(ctx, func(txRepo *repository.CandidateRepository) error {
+		// Load (or lazy-create) the candidate row inside the tx so
+		// the read is consistent with the subsequent writes.
+		cand, err := txRepo.GetByID(ctx, candidateID)
+		if err != nil {
+			return fmt.Errorf("candidate lookup: %w", err)
+		}
+		if cand == nil {
+			cand = &domain.CandidateProfile{ProfileID: candidateID}
+			cand.ID = candidateID
+			if err := txRepo.Create(ctx, cand); err != nil {
+				return fmt.Errorf("candidate create: %w", err)
+			}
+		}
+		mutate(cand)
+		if err := txRepo.Update(ctx, cand); err != nil {
+			return fmt.Errorf("candidate update: %w", err)
+		}
+		if err := txRepo.ClearOnboardingDraft(ctx, candidateID); err != nil {
+			return fmt.Errorf("draft clear: %w", err)
+		}
+		return nil
+	})
 }

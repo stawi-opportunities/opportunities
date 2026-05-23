@@ -185,6 +185,63 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
   }
 }
 
+// ── /me/onboarding ─────────────────────────────────────────────
+
+/** The wizard's persisted form values. Shape mirrors the Onboarding.tsx
+ *  FormValues minus file (`cv`) and the agree-terms boolean (those are
+ *  set on the final submit, not autosaved). Keep field names matching
+ *  the form so we can `form.reset(fields)` on resume. */
+export interface OnboardingDraftFields {
+  target_job_title?: string;
+  experience_level?: "entry" | "junior" | "mid" | "senior" | "lead" | "executive";
+  job_search_status?: "actively_looking" | "open_to_offers" | "casually_browsing";
+  salary_range?: string;
+  wants_ats_report?: boolean;
+  preferred_regions?: string[];
+  preferred_timezones?: string[];
+  preferred_languages?: string[];
+  job_types?: string[];
+  country?: string;
+  plan?: "starter" | "pro" | "managed";
+}
+
+export interface OnboardingDraft {
+  step: 1 | 2 | 3;
+  fields: OnboardingDraftFields;
+  updated_at?: string;
+}
+
+/** GET /matching/me/onboarding — never throws; returns the canonical
+ *  empty draft on any failure so the wizard mount is non-blocking. */
+export async function fetchOnboardingDraft(): Promise<OnboardingDraft> {
+  const empty: OnboardingDraft = { step: 1, fields: {} };
+  try {
+    const body = await authRuntime().fetch<OnboardingDraft>("/matching/me/onboarding");
+    return {
+      step: body.step ?? 1,
+      fields: body.fields ?? {},
+      updated_at: body.updated_at,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+/** PUT /matching/me/onboarding — fire-and-forget autosave. Errors are
+ *  surfaced via the returned promise so the caller can show a
+ *  non-blocking warning; we do NOT throw to the caller's `await` in
+ *  the happy path. */
+export async function saveOnboardingDraft(
+  step: 1 | 2 | 3,
+  fields: OnboardingDraftFields,
+): Promise<void> {
+  await authRuntime().fetch("/matching/me/onboarding", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ step, fields }),
+  });
+}
+
 // ── helpers ──────────────────────────────────────────────────────
 
 function getCandidatesOrigin(): string {

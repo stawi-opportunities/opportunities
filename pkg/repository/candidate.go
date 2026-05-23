@@ -221,3 +221,16 @@ func (r *CandidateRepository) ClearOnboardingDraft(ctx context.Context, id strin
 	return r.db(ctx, false).
 		Exec(`UPDATE candidate_profiles SET onboarding_draft = '{}'::jsonb WHERE id = ?`, id).Error
 }
+
+// Transaction runs fn inside a single database transaction. The
+// closure receives a CandidateRepository scoped to the transaction —
+// any write methods called on it (Update, ClearOnboardingDraft, etc.)
+// commit or rollback atomically with each other. Used by the
+// /candidates/onboard handler to promote the wizard draft into the
+// canonical profile columns and clear the draft in one atomic step.
+func (r *CandidateRepository) Transaction(ctx context.Context, fn func(txRepo *CandidateRepository) error) error {
+	return r.db(ctx, false).Transaction(func(tx *gorm.DB) error {
+		txRepo := &CandidateRepository{db: func(_ context.Context, _ bool) *gorm.DB { return tx }}
+		return fn(txRepo)
+	})
+}
