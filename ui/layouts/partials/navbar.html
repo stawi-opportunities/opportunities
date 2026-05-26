@@ -1,24 +1,22 @@
-<!-- Skeleton rendered server-side so the viewport has stable
-     dimensions + a working Jobs link before React hydrates
-     ui/app/src/components/Nav.tsx into the mount-nav container.
-     Post-redesign the top bar is three items: logo, single Jobs
-     link, sign-in widget. Auth fallback renders a link to /search/
-     so even with JS disabled the visitor can browse. -->
+﻿<!-- Static navbar skeleton — matches Nav.tsx exactly to prevent layout shift
+     before React hydrates #mount-nav. -->
 <div id="mount-nav">
-  <header class="sticky top-0 z-40 border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur-xl transition-shadow">
-    <div class="mx-auto flex h-24 max-w-7xl items-center justify-between gap-6 px-6 sm:px-8 lg:px-12">
-      <a href="/" class="flex items-center" aria-label="Stawi — Growing together">
-        <img src="/images/logo.svg" alt="Stawi — Growing together" height="56" class="h-14 w-auto"/>
+  <header class="sticky top-0 z-40 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur-xl">
+    <div class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <a href="/" class="flex-shrink-0" aria-label="Stawi — Growing together">
+        <img src="/images/logo.svg" alt="Stawi" height="36" class="h-9 w-auto"/>
       </a>
-      <a href="/search/" class="text-lg font-semibold text-navy-900 hover:text-accent-600">
-        Jobs
-      </a>
-      <a
-        href="/onboarding/"
-        class="inline-flex items-center rounded-md bg-accent-400 px-5 py-2.5 text-sm font-semibold text-navy-900 hover:bg-accent-300"
-      >
-        Sign in
-      </a>
+      <nav class="hidden items-center gap-1 md:flex" aria-label="Main navigation">
+        <span class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Browse</span>
+        <a href="/categories/" class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Categories</a>
+        <a href="/pricing/"    class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Pricing</a>
+        <a href="/about/"      class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">About</a>
+      </nav>
+      <div class="flex items-center gap-2">
+        <a href="/onboarding/" class="inline-flex items-center rounded-lg bg-navy-900 px-4 py-2 text-sm font-semibold text-white">
+          Get started
+        </a>
+      </div>
     </div>
   </header>
 </div>

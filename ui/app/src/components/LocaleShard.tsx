@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 import Cascade from "./Cascade";
-import { useAuth } from "@/providers/AuthProvider";
-import { fetchCandidate } from "@/api/candidates";
+import { useCandidateProfile } from "@/hooks/useCandidateProfile";
 
 // LocaleShard is the per-country landing page component. The Hugo
 // layout at ui/layouts/locale/shard.html renders a mount element
@@ -43,21 +41,7 @@ export default function LocaleShard() {
     return () => { meta.remove(); };
   }, [country, languages]);
 
-  const auth = useAuth();
-  const profile = useQuery({
-    queryKey: ["candidate-profile"],
-    queryFn: fetchCandidate,
-    enabled: auth.state === "authenticated",
-    staleTime: 5 * 60_000,
-  });
-  const preferredCountries = useMemo(
-    () => splitCSV(profile.data?.preferred_countries),
-    [profile.data?.preferred_countries],
-  );
-  const preferredLanguages = useMemo(
-    () => splitCSV(profile.data?.languages),
-    [profile.data?.languages],
-  );
+  const { preferredCountries, preferredLanguages } = useCandidateProfile();
 
   // Forward the shard's country/langs into the Cascade via explicit
   // overrides.  Cascade already reads getVisitorLocale() by default,
@@ -110,10 +94,3 @@ function ShardStatusBanner({
   );
 }
 
-function splitCSV(csv: string | undefined | null): string[] {
-  if (!csv) return [];
-  return csv
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}

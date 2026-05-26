@@ -1,9 +1,20 @@
 {{ define "main" }}
 <!-- Rendered by ui/app/src/components/CategoryIndex.tsx. -->
 <div id="mount-category-index">
-  <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-    <h1 class="text-3xl font-bold text-gray-900">Browse by category</h1>
-    <div class="mt-8 h-40 animate-pulse rounded-lg bg-gray-100"></div>
+  <!-- Static skeleton shown before React hydrates -->
+  <div class="bg-white">
+    <div class="border-b border-gray-100 bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
+      <div class="mx-auto max-w-5xl text-center">
+        <h1 class="text-4xl font-bold tracking-tight text-gray-900">Browse by category</h1>
+        <p class="mt-3 text-lg text-gray-500">Discover opportunities across jobs, scholarships, tenders, deals and funding — all in one place.</p>
+      </div>
+    </div>
+    <div class="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+      <div class="h-5 w-40 animate-pulse rounded bg-gray-100"></div>
+      <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {{ range seq 5 }}<div class="h-28 animate-pulse rounded-xl bg-gray-100"></div>{{ end }}
+      </div>
+    </div>
   </div>
 </div>
 {{ end }}

@@ -39,17 +39,14 @@ export default function SignupCta() {
 
     const onClick = async (e: MouseEvent) => {
       e.preventDefault();
+      const href = (btn as HTMLAnchorElement).href || "/onboarding/";
       try {
         await login();
-        // login() resolves once ensureAuthenticated() returns —
-        // meaning the popup completed and tokens are persisted.
-        // Head to onboarding to let them finish the profile.
         window.location.href = "/onboarding/";
-      } catch (err) {
-        // Widget already renders its own error banner; no UI to
-        // duplicate. Log so it's diagnosable via RUM.
-        // eslint-disable-next-line no-console
-        console.error("[signup-cta] login failed:", err);
+      } catch {
+        // Auth widget not configured or user dismissed — fall back to
+        // direct navigation so the button never silently does nothing.
+        window.location.href = href;
       }
     };
 

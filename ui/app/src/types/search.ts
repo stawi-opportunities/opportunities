@@ -16,6 +16,8 @@ export interface SearchResult {
   quality_score: number;
   snippet: string;
   is_featured: boolean;
+  views_24h?: number;
+  applies_24h?: number;
 }
 
 export interface FacetEntry {

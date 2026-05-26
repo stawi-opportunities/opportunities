@@ -65,5 +65,23 @@ export default defineConfig({
     strictPort: true,
     cors: true,
     origin: "http://localhost:5173",
+    // Proxy API requests to the production backend so the browser never
+    // makes a cross-origin fetch — CORS is bypassed entirely in dev.
+    // Start Hugo with HUGO_PARAMS_apiURL=http://localhost:5173/jobs-api
+    // and HUGO_PARAMS_candidatesAPIURL=http://localhost:5173/candidates-api.
+    proxy: {
+      "/jobs-api": {
+        target: "https://api.stawi.org",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path: string) => path.replace(/^\/jobs-api/, "/jobs"),
+      },
+      "/candidates-api": {
+        target: "https://api.stawi.org",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path: string) => path.replace(/^\/candidates-api/, ""),
+      },
+    },
   },
 });

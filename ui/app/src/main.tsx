@@ -1,6 +1,7 @@
 import { StrictMode, type ComponentType, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { AppProviders } from "@/providers/AppProviders";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 
 // Every island is a [id → component] pair. Only the components whose mount
 // target exists on the page get rendered. Components are lazy-imported so
@@ -37,9 +38,11 @@ async function hydrate(island: Island, el: HTMLElement) {
   createRoot(el).render(
     <StrictMode>
       <AppProviders>
-        <Suspense fallback={null}>
-          <Component />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <Component />
+          </Suspense>
+        </ErrorBoundary>
       </AppProviders>
     </StrictMode>,
   );

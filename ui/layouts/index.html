@@ -1,279 +1,438 @@
-{{ define "main" }}
-<!-- Hero. Solid navy block, left-aligned copy, single CTA. One path for
-     the visitor: get started. The "email us your CV" line is a commercial
-     hook and doesn't belong on the website itself. -->
-<section class="bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 text-white">
-  <div class="mx-auto max-w-6xl px-6 py-24 sm:px-8 sm:py-28 lg:px-12 lg:py-32">
-    <div class="max-w-3xl">
-      <h1 class="text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
-        Your next job, found for you.
-      </h1>
-      <p class="mt-6 max-w-2xl text-xl leading-relaxed text-gray-200 sm:text-2xl">
-        Tell us what you want, upload your CV, and we bring matching
-        roles to your inbox. Let us do the searching so you can focus
-        on the conversation.
-      </p>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <span class="rounded-full bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/10">
-          Fully curated roles matched to your experience
-        </span>
-        <span class="rounded-full bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/10">
-          CV upload makes matching instant
-        </span>
+﻿{{ define "main" }}
+
+{{/* ═══════════════════════════════════════════════════════
+     HERO — cinematic dark, animated orbs, inline search
+     ═══════════════════════════════════════════════════════ */}}
+<section class="relative min-h-screen overflow-hidden bg-[#060b18] text-white flex items-center">
+
+  {{/* Animated gradient orbs */}}
+  <div class="pointer-events-none absolute inset-0" aria-hidden="true">
+    <div class="animate-orb absolute -left-32 top-[-10%] h-[640px] w-[640px] rounded-full bg-[#219c3f]/20 blur-[130px]"></div>
+    <div class="animate-orb-slow absolute right-[-5%] top-[20%] h-[480px] w-[480px] rounded-full bg-indigo-600/15 blur-[110px]"></div>
+    <div class="animate-orb absolute bottom-[-8%] left-[45%] h-[500px] w-[500px] rounded-full bg-[#0c1226]/80 blur-[90px]"></div>
+    {{/* Subtle dot grid */}}
+    <div class="absolute inset-0 opacity-[0.07]"
+      style="background-image:radial-gradient(circle,rgba(255,255,255,0.6) 1px,transparent 1px);background-size:40px 40px"></div>
+  </div>
+
+  <div class="relative z-10 mx-auto w-full max-w-7xl px-4 py-28 sm:px-6 sm:py-32 lg:px-8 lg:py-40">
+    <div class="grid items-center gap-12 lg:grid-cols-[1fr_420px]">
+
+      {{/* ── Left copy ── */}}
+      <div class="max-w-2xl">
+        {{/* Eyebrow badge */}}
+        <div class="animate-fade-up mb-7 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-sm text-gray-300 backdrop-blur-sm">
+          <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#45b739] opacity-70"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-[#45b739]"></span>
+          </span>
+          AI-powered &bull; 5 opportunity types &bull; 120+ countries
+        </div>
+
+        {{/* Headline */}}
+        <h1 class="animate-fade-up animation-delay-100 text-5xl font-extrabold leading-[1.07] tracking-tight sm:text-6xl xl:text-[4.5rem]">
+          Your next big<br>
+          <span class="gradient-text">opportunity,</span><br>
+          found for&nbsp;you.
+        </h1>
+
+        {{/* Subheadline */}}
+        <p class="animate-fade-up animation-delay-200 mt-6 text-lg leading-relaxed text-gray-400 sm:text-xl">
+          Jobs, scholarships, tenders, funding and deals &mdash; curated by AI,
+          matched to your profile, delivered in one feed.
+        </p>
+
+        {{/* Search bar */}}
+        <form action="/search/" method="GET" class="animate-fade-up animation-delay-300 mt-10">
+          <div class="flex overflow-hidden rounded-xl border border-white/15 bg-white/5 backdrop-blur-sm focus-within:border-[#219c3f]/60 focus-within:ring-2 focus-within:ring-[#219c3f]/20 transition-all">
+            <div class="flex items-center pl-4 text-gray-400">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+              </svg>
+            </div>
+            <input type="search" name="q"
+              placeholder="Search jobs, scholarships, tenders&hellip;"
+              class="flex-1 bg-transparent py-4 pl-3 pr-4 text-white placeholder-gray-500 focus:outline-none text-base"/>
+            <button type="submit"
+              class="m-1.5 rounded-lg bg-[#219c3f] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#45b739] focus:outline-none focus:ring-2 focus:ring-[#219c3f]/50">
+              Search
+            </button>
+          </div>
+        </form>
+
+        {{/* Quick browse pills */}}
+        <div class="animate-fade-up animation-delay-400 mt-5 flex flex-wrap items-center gap-2">
+          <span class="text-xs text-gray-600">Browse:</span>
+          <a href="/jobs/"         class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">💼 Jobs</a>
+          <a href="/scholarships/" class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">🎓 Scholarships</a>
+          <a href="/tenders/"      class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">📋 Tenders</a>
+          <a href="/deals/"        class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">🏷️ Deals</a>
+          <a href="/funding/"      class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">💰 Funding</a>
+        </div>
+
+        {{/* Trust badges */}}
+        <ul class="animate-fade-up animation-delay-500 mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-500">
+          <li class="flex items-center gap-1.5">
+            <svg class="h-4 w-4 text-[#45b739]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            Free for seekers
+          </li>
+          <li class="flex items-center gap-1.5">
+            <svg class="h-4 w-4 text-[#45b739]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            No recruiter spam
+          </li>
+          <li class="flex items-center gap-1.5">
+            <svg class="h-4 w-4 text-[#45b739]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            Verified daily
+          </li>
+        </ul>
       </div>
-      <div class="mt-10">
-        <a
-          href="/onboarding/"
-          class="btn-primary shadow-lg shadow-accent-500/20"
-        >
-          Get started
-        </a>
+
+      {{/* ── Right — floating opportunity cards ── */}}
+      <div class="hidden lg:block">
+        <div class="relative h-[500px]">
+          {{/* Card 1 — Job */}}
+          <div class="animate-float-y absolute left-0 top-6 w-64 rounded-2xl border border-white/10 bg-[#0d1629] p-5 shadow-2xl">
+            <div class="flex items-start gap-3">
+              <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-blue-500/20 text-xl">💼</div>
+              <div class="min-w-0">
+                <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Featured Role</p>
+                <p class="mt-0.5 truncate text-sm font-semibold text-white">Senior Software Engineer</p>
+                <p class="text-xs text-gray-400">Andela &bull; Remote</p>
+              </div>
+            </div>
+            <div class="mt-3 flex items-center gap-2 border-t border-white/5 pt-3">
+              <span class="rounded-full bg-[#219c3f]/20 px-2 py-0.5 text-[10px] font-semibold text-[#45b739]">Remote</span>
+              <span class="text-xs text-gray-500">$90k &ndash; $120k</span>
+              <span class="ml-auto text-[10px] text-gray-600">2h ago</span>
+            </div>
+          </div>
+
+          {{/* Card 2 — Scholarship */}}
+          <div class="animate-float-y animation-delay-300 absolute right-0 top-28 w-64 rounded-2xl border border-white/10 bg-[#0d1629] p-5 shadow-2xl">
+            <div class="flex items-start gap-3">
+              <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-green-500/20 text-xl">🎓</div>
+              <div class="min-w-0">
+                <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Scholarship</p>
+                <p class="mt-0.5 truncate text-sm font-semibold text-white">DAAD Research Fellowship</p>
+                <p class="text-xs text-gray-400">Germany &bull; Masters/PhD</p>
+              </div>
+            </div>
+            <div class="mt-3 flex items-center gap-2 border-t border-white/5 pt-3">
+              <span class="rounded-full bg-green-500/20 px-2 py-0.5 text-[10px] font-semibold text-green-400">Open</span>
+              <span class="text-xs text-gray-500">Up to &euro;15,000</span>
+            </div>
+          </div>
+
+          {{/* Card 3 — Funding */}}
+          <div class="animate-float-y animation-delay-200 absolute bottom-16 left-8 w-64 rounded-2xl border border-white/10 bg-[#0d1629] p-5 shadow-2xl">
+            <div class="flex items-start gap-3">
+              <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-purple-500/20 text-xl">💰</div>
+              <div class="min-w-0">
+                <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Funding</p>
+                <p class="mt-0.5 truncate text-sm font-semibold text-white">Tech Innovation Grant</p>
+                <p class="text-xs text-gray-400">Africa &bull; Startups</p>
+              </div>
+            </div>
+            <div class="mt-3 flex items-center gap-2 border-t border-white/5 pt-3">
+              <span class="rounded-full bg-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-400">New</span>
+              <span class="text-xs text-gray-500">Up to $50,000</span>
+            </div>
+          </div>
+
+          {{/* Live indicator */}}
+          <div class="absolute right-4 bottom-6 flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0d1629] px-3 py-1.5 text-[11px] text-gray-400">
+            <span class="relative flex h-1.5 w-1.5">
+              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#45b739] opacity-70"></span>
+              <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#45b739]"></span>
+            </span>
+            Updated live
+          </div>
+        </div>
       </div>
-      <p class="mt-8 text-base text-gray-300">
-        Prefer to look yourself?
-        <a href="/jobs/" class="font-medium text-white underline underline-offset-4 hover:text-accent-300">
-          Search jobs
-        </a>
-      </p>
+    </div>
+  </div>
+
+  {{/* Bottom gradient transition to white */}}
+  <div class="pointer-events-none absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-white/5 to-transparent" aria-hidden="true"></div>
+</section>
+
+{{/* ═══════════════════════════════════════════════════════
+     STATS — clean white bar
+     ═══════════════════════════════════════════════════════ */}}
+<section class="border-y border-gray-100 bg-white">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <dl class="grid grid-cols-2 md:grid-cols-4 divide-x divide-gray-100">
+      <div class="flex flex-col items-center px-8 py-10 text-center">
+        <dd class="text-4xl font-black text-[#0c1226] tabular-nums">50k<span class="text-[#219c3f]">+</span></dd>
+        <dt class="mt-1.5 text-sm font-medium text-gray-500">Active opportunities</dt>
+      </div>
+      <div class="flex flex-col items-center px-8 py-10 text-center">
+        <dd class="text-4xl font-black text-[#0c1226] tabular-nums">120<span class="text-[#219c3f]">+</span></dd>
+        <dt class="mt-1.5 text-sm font-medium text-gray-500">Countries covered</dt>
+      </div>
+      <div class="flex flex-col items-center px-8 py-10 text-center">
+        <dd class="text-4xl font-black text-[#0c1226] tabular-nums">5,000<span class="text-[#219c3f]">+</span></dd>
+        <dt class="mt-1.5 text-sm font-medium text-gray-500">Hiring organisations</dt>
+      </div>
+      <div class="flex flex-col items-center px-8 py-10 text-center">
+        <dd class="text-4xl font-black text-[#0c1226] tabular-nums">5<span class="text-[#219c3f]"> types</span></dd>
+        <dt class="mt-1.5 text-sm font-medium text-gray-500">Opportunity types</dt>
+      </div>
+    </dl>
+  </div>
+</section>
+
+{{/* ═══════════════════════════════════════════════════════
+     OPPORTUNITY TYPES — light gray, full showcase
+     ═══════════════════════════════════════════════════════ */}}
+<section class="bg-slate-50 py-24 sm:py-32">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-[#219c3f]">One platform, every opportunity</p>
+      <h2 class="mt-3 text-4xl font-bold tracking-tight text-[#0c1226] sm:text-5xl">Everything you need to grow.</h2>
+      <p class="mt-4 text-lg text-gray-500">Jobs, scholarships, tenders, deals and funding &mdash; all in one place.</p>
+    </div>
+
+    <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {{/* Jobs */}}
+      <a href="/jobs/" class="group relative overflow-hidden rounded-2xl bg-white p-7 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:ring-blue-300">
+        <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-blue-50 transition-transform duration-300 group-hover:scale-[2]"></div>
+        <div class="relative">
+          <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-2xl shadow-sm">💼</div>
+          <h3 class="text-lg font-bold text-[#0c1226]">Jobs</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-500">Full-time, part-time, remote and contract roles across every industry, verified daily.</p>
+          <span class="mt-5 flex items-center gap-1 text-sm font-semibold text-blue-600 transition-all group-hover:gap-2">Browse jobs
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </div>
+      </a>
+      {{/* Scholarships */}}
+      <a href="/scholarships/" class="group relative overflow-hidden rounded-2xl bg-white p-7 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:ring-green-300">
+        <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-green-50 transition-transform duration-300 group-hover:scale-[2]"></div>
+        <div class="relative">
+          <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 text-2xl shadow-sm">🎓</div>
+          <h3 class="text-lg font-bold text-[#0c1226]">Scholarships</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-500">Grants, bursaries and fellowships for students and researchers worldwide.</p>
+          <span class="mt-5 flex items-center gap-1 text-sm font-semibold text-green-600 transition-all group-hover:gap-2">Find scholarships
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </div>
+      </a>
+      {{/* Tenders */}}
+      <a href="/tenders/" class="group relative overflow-hidden rounded-2xl bg-white p-7 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:ring-orange-300">
+        <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-50 transition-transform duration-300 group-hover:scale-[2]"></div>
+        <div class="relative">
+          <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-2xl shadow-sm">📋</div>
+          <h3 class="text-lg font-bold text-[#0c1226]">Tenders</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-500">Government and private-sector RFPs, bids and procurement notices.</p>
+          <span class="mt-5 flex items-center gap-1 text-sm font-semibold text-orange-600 transition-all group-hover:gap-2">Browse tenders
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </div>
+      </a>
+      {{/* Deals */}}
+      <a href="/deals/" class="group relative overflow-hidden rounded-2xl bg-white p-7 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:ring-pink-300">
+        <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-pink-50 transition-transform duration-300 group-hover:scale-[2]"></div>
+        <div class="relative">
+          <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-pink-100 text-2xl shadow-sm">🏷️</div>
+          <h3 class="text-lg font-bold text-[#0c1226]">Deals</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-500">Curated discounts, partnerships and exclusive offers for professionals.</p>
+          <span class="mt-5 flex items-center gap-1 text-sm font-semibold text-pink-600 transition-all group-hover:gap-2">Explore deals
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </div>
+      </a>
+      {{/* Funding */}}
+      <a href="/funding/" class="group relative overflow-hidden rounded-2xl bg-white p-7 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:ring-purple-300">
+        <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-purple-50 transition-transform duration-300 group-hover:scale-[2]"></div>
+        <div class="relative">
+          <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100 text-2xl shadow-sm">💰</div>
+          <h3 class="text-lg font-bold text-[#0c1226]">Funding</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-500">Grants, VC and angel investor opportunities for startups and social enterprises.</p>
+          <span class="mt-5 flex items-center gap-1 text-sm font-semibold text-purple-600 transition-all group-hover:gap-2">Find funding
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </div>
+      </a>
+      {{/* Explore all */}}
+      <a href="/categories/" class="group flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 p-7 text-center transition-all duration-200 hover:border-[#219c3f] hover:bg-[#f0fdf4] hover:-translate-y-1">
+        <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 text-2xl transition-colors group-hover:bg-[#219c3f]/10">🔍</div>
+        <p class="font-bold text-gray-700 group-hover:text-[#219c3f]">Explore all</p>
+        <p class="mt-1 text-sm text-gray-400">50+ industries &amp; sectors</p>
+      </a>
     </div>
   </div>
 </section>
 
-<!-- Who we're for. Five industries alternating image/text, text/image.
-     Copy is deliberately specific — which roles we place, for whom —
-     so a visitor understands the product reaches their vertical. -->
-<section class="bg-white py-20 sm:py-24">
-  <div class="mx-auto max-w-6xl px-6 sm:px-8 lg:px-12">
-    <header class="max-w-2xl">
-      <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-        Every industry
-      </p>
-      <h2 class="mt-3 text-4xl font-bold tracking-tight text-navy-900 sm:text-5xl">
-        Roles across the work you actually do.
-      </h2>
-      <p class="mt-4 text-lg leading-relaxed text-gray-700">
-        Healthcare, aviation, hospitality, technology, personal care — we
-        match against the CV you upload, whatever industry it's from.
-      </p>
-    </header>
+{{/* ═══════════════════════════════════════════════════════
+     HOW IT WORKS — white section, solid numbered steps
+     ═══════════════════════════════════════════════════════ */}}
+<section class="bg-white py-24 sm:py-32">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-[#219c3f]">How it works</p>
+      <h2 class="mt-3 text-4xl font-bold tracking-tight text-[#0c1226] sm:text-5xl">Three steps to your next role.</h2>
+      <p class="mt-4 text-lg text-gray-500">From upload to offer &mdash; set up in under two minutes.</p>
+    </div>
 
-    <!-- Healthcare — image left, text right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=1200&q=75"
-          alt="A doctor outside her practice"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="1200"
-          height="900"
-        />
-      </figure>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Healthcare
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Clinical, care, and allied health.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          From care assistants and community nurses to consultant
-          surgeons and hospital administrators — we match by speciality,
-          clinical setting, and shift pattern. Strong demand right now in
-          mental health, community care, and clinical research.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse healthcare roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
+    {{/* Steps grid */}}
+    <div class="relative mt-20">
+      {{/* Connecting line desktop */}}
+      <div class="absolute left-[calc(50%_-_300px)] right-[calc(50%_-_300px)] top-6 hidden h-0.5 bg-gradient-to-r from-transparent via-gray-200 to-transparent lg:block" aria-hidden="true"></div>
 
-    <!-- Computer networks & technology — text left, image right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <div class="lg:order-2">
-        <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-          <img
-            src="https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=1200&q=75"
-            alt="Network and systems engineers at their workstation"
-            loading="lazy"
-            class="absolute inset-0 h-full w-full object-cover"
-            width="1200"
-            height="900"
-          />
-        </figure>
-      </div>
-      <div class="lg:order-1">
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Computer networks &amp; technology
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Engineering from the wire to the cloud.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Network engineers, systems admins, security analysts, cloud
-          architects, SRE and DevOps. On-site, hybrid, and remote roles
-          from ISPs, banks, telcos, and SaaS companies. We read your
-          stack, seniority, and clearance before we suggest a single
-          role.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse technology roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
+      <div class="grid gap-10 lg:grid-cols-3 lg:gap-8">
+        {{/* Step 1 */}}
+        <div class="group relative rounded-2xl border border-gray-200 bg-white p-8 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-[#219c3f]/30 hover:shadow-md">
+          <div class="absolute -top-5 left-8">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-[#219c3f] text-lg font-extrabold text-white shadow-lg shadow-[#219c3f]/30">1</div>
+          </div>
+          <div class="mt-4">
+            <div class="mb-4 text-3xl">📄</div>
+            <h3 class="text-xl font-bold text-[#0c1226]">Upload your profile</h3>
+            <p class="mt-3 text-sm leading-relaxed text-gray-500">Upload your CV or link your LinkedIn. Our AI reads your skills, experience and salary expectations automatically.</p>
+          </div>
+        </div>
 
-    <!-- Aviation — image left, text right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=1200&q=75"
-          alt="A passenger aircraft at the gate"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="1200"
-          height="900"
-        />
-      </figure>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Aviation
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Flight deck, cabin, and ground.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Pilots, cabin crew, ground operations, aircraft maintenance,
-          and dispatch. Airlines hire on specific rotations and
-          seniority bands — we know the cycles and surface roles when
-          they open, not when they're about to expire.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse aviation roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
+        {{/* Step 2 */}}
+        <div class="group relative rounded-2xl border border-[#219c3f]/25 bg-gradient-to-br from-[#f0fdf4] to-white p-8 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+          <div class="absolute -top-5 left-8">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-[#219c3f] text-lg font-extrabold text-white shadow-lg shadow-[#219c3f]/30">2</div>
+          </div>
+          <div class="mt-4">
+            <div class="mb-4 text-3xl">⚙️</div>
+            <h3 class="text-xl font-bold text-[#0c1226]">Set your preferences</h3>
+            <p class="mt-3 text-sm leading-relaxed text-gray-500">Choose opportunity types, locations and salary range. Two minutes of setup &mdash; we handle the rest from there.</p>
+          </div>
+        </div>
 
-    <!-- Hospitality — text left, image right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <div class="lg:order-2">
-        <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-          <img
-            src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=75"
-            alt="A modern hotel suite"
-            loading="lazy"
-            class="absolute inset-0 h-full w-full object-cover"
-            width="1200"
-            height="900"
-          />
-        </figure>
+        {{/* Step 3 */}}
+        <div class="group relative rounded-2xl border border-gray-200 bg-white p-8 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-[#219c3f]/30 hover:shadow-md">
+          <div class="absolute -top-5 left-8">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-[#219c3f] text-lg font-extrabold text-white shadow-lg shadow-[#219c3f]/30">3</div>
+          </div>
+          <div class="mt-4">
+            <div class="mb-4 text-3xl">🎯</div>
+            <h3 class="text-xl font-bold text-[#0c1226]">Get matched &amp; apply</h3>
+            <p class="mt-3 text-sm leading-relaxed text-gray-500">Receive curated, relevant matches in your feed. Apply with one click whenever you are ready to make your move.</p>
+          </div>
+        </div>
       </div>
-      <div class="lg:order-1">
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Hospitality
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Hotels, F&amp;B, and venues.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Front-of-house, housekeeping, chefs, food and beverage, duty
-          managers, and GMs. Boutique hotels to international chains,
-          seasonal and permanent, local contracts and expat packages —
-          filtered by region, property type, and the cuisine or brand
-          you've worked with before.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse hospitality roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
+    </div>
 
-    <!-- Salon & personal care — image left, text right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1200&q=75"
-          alt="A hair stylist at work in a salon"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="1200"
-          height="900"
-        />
-      </figure>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Salon &amp; personal care
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Stylists, therapists, and spa professionals.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Hair stylists, barbers, nail technicians, beauty therapists,
-          and spa managers. Salaried, booth-rent, and commission
-          arrangements across chains, boutique salons, and wellness
-          centres — matched by discipline, clientele, and schedule.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse personal-care roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
-  </div>
-</section>
-
-<!-- What we do. Three short paragraphs, no icons, no coloured blocks.
-     Generous type size so no one has to squint. -->
-<section class="border-t border-gray-200 bg-white py-24">
-  <div class="mx-auto max-w-6xl px-6 sm:px-8 lg:px-12">
-    <div class="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Curated
-        </p>
-        <h3 class="mt-3 text-2xl font-bold text-navy-900">
-          Real jobs, checked daily
-        </h3>
-        <p class="mt-3 text-lg leading-relaxed text-gray-700">
-          Every listing is reviewed for a real employer, a real role,
-          and a fresh posting date. No recycled titles, no ghost
-          postings.
-        </p>
-      </div>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Matched
-        </p>
-        <h3 class="mt-3 text-2xl font-bold text-navy-900">
-          Roles picked for your CV
-        </h3>
-        <p class="mt-3 text-lg leading-relaxed text-gray-700">
-          We read your résumé, understand your seniority and salary
-          range, and surface roles you'd realistically land — not every
-          open requisition on the internet.
-        </p>
-      </div>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          With you
-        </p>
-        <h3 class="mt-3 text-2xl font-bold text-navy-900">
-          A recruiter when you want one
-        </h3>
-        <p class="mt-3 text-lg leading-relaxed text-gray-700">
-          On our top tier, a dedicated recruiter runs the search,
-          handles applications, and coaches you through negotiations.
-          A real person, not a newsletter.
-        </p>
-      </div>
+    {{/* CTA */}}
+    <div class="mt-16 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+      <a href="/onboarding/"
+        class="inline-flex items-center gap-2 rounded-xl bg-[#219c3f] px-8 py-4 text-base font-bold text-white shadow-lg shadow-[#219c3f]/30 transition-all hover:bg-[#45b739] hover:-translate-y-0.5 hover:shadow-xl">
+        Start for free &mdash; 2 min setup
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+      </a>
+      <a href="/jobs/"
+        class="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-8 py-4 text-base font-semibold text-[#0c1226] transition-all hover:border-gray-400 hover:-translate-y-0.5 hover:shadow-sm">
+        Browse opportunities
+      </a>
     </div>
   </div>
 </section>
 
-{{/* "Two minutes to set up" moved to partials/get-started-cta.html
-     so every page shows the CTA above the footer for anonymous
-     visitors, not just the homepage. */}}
+{{/* ═══════════════════════════════════════════════════════
+     INDUSTRIES — light gray
+     ═══════════════════════════════════════════════════════ */}}
+<section class="bg-slate-50 py-24 sm:py-32">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-[#219c3f]">Every industry</p>
+        <h2 class="mt-3 text-4xl font-bold tracking-tight text-[#0c1226] sm:text-5xl">We cover the work you actually do.</h2>
+      </div>
+      <a href="/categories/" class="flex-shrink-0 text-sm font-semibold text-[#0c1226] underline underline-offset-4 hover:text-[#219c3f] transition-colors">View all &rarr;</a>
+    </div>
+
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <a href="/jobs/?category=healthcare" class="group relative overflow-hidden rounded-2xl bg-white p-7 ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:ring-red-200">
+        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-2xl">🏥</div>
+        <h3 class="font-bold text-[#0c1226] transition-colors group-hover:text-red-600">Healthcare</h3>
+        <p class="mt-1 text-sm text-gray-500">Clinical, nursing, allied health &amp; admin</p>
+        <span class="mt-4 flex items-center gap-1 text-xs font-semibold text-red-500 opacity-0 transition-all group-hover:opacity-100">Browse <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg></span>
+      </a>
+      <a href="/jobs/?category=technology" class="group relative overflow-hidden rounded-2xl bg-white p-7 ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:ring-blue-200">
+        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-2xl">💻</div>
+        <h3 class="font-bold text-[#0c1226] transition-colors group-hover:text-blue-600">Technology</h3>
+        <p class="mt-1 text-sm text-gray-500">Engineering, DevOps, security &amp; cloud</p>
+        <span class="mt-4 flex items-center gap-1 text-xs font-semibold text-blue-500 opacity-0 transition-all group-hover:opacity-100">Browse <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg></span>
+      </a>
+      <a href="/jobs/?category=finance" class="group relative overflow-hidden rounded-2xl bg-white p-7 ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:ring-emerald-200">
+        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-2xl">🏦</div>
+        <h3 class="font-bold text-[#0c1226] transition-colors group-hover:text-emerald-600">Finance</h3>
+        <p class="mt-1 text-sm text-gray-500">Banking, accounting &amp; investment</p>
+        <span class="mt-4 flex items-center gap-1 text-xs font-semibold text-emerald-500 opacity-0 transition-all group-hover:opacity-100">Browse <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg></span>
+      </a>
+      <a href="/jobs/?category=education" class="group relative overflow-hidden rounded-2xl bg-white p-7 ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:ring-yellow-200">
+        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-50 text-2xl">📚</div>
+        <h3 class="font-bold text-[#0c1226] transition-colors group-hover:text-yellow-600">Education</h3>
+        <p class="mt-1 text-sm text-gray-500">Teaching, training &amp; research</p>
+        <span class="mt-4 flex items-center gap-1 text-xs font-semibold text-yellow-500 opacity-0 transition-all group-hover:opacity-100">Browse <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg></span>
+      </a>
+      <a href="/jobs/?category=engineering" class="group relative overflow-hidden rounded-2xl bg-white p-7 ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:ring-orange-200">
+        <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-2xl">⚙️</div>
+        <h3 class="font-bold text-[#0c1226] transition-colors group-hover:text-orange-600">Engineering</h3>
+        <p class="mt-1 text-sm text-gray-500">Civil, mechanical &amp; electrical</p>
+        <span class="mt-4 flex items-center gap-1 text-xs font-semibold text-orange-500 opacity-0 transition-all group-hover:opacity-100">Browse <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg></span>
+      </a>
+      <a href="/categories/" class="group flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 p-7 text-center transition-all duration-200 hover:border-[#219c3f] hover:bg-[#f0fdf4] hover:-translate-y-1">
+        <p class="text-3xl font-light text-gray-300 transition-colors group-hover:text-[#219c3f]">+</p>
+        <p class="mt-1 font-bold text-gray-600 group-hover:text-[#219c3f]">50+ categories</p>
+        <p class="mt-0.5 text-sm text-gray-400">View all industries</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+{{/* ═══════════════════════════════════════════════════════
+     WHY STAWI — deep navy, solid cards with real colors
+     ═══════════════════════════════════════════════════════ */}}
+<section class="relative overflow-hidden bg-[#060b18] py-24 text-white sm:py-32">
+  <div class="pointer-events-none absolute inset-0" aria-hidden="true">
+    <div class="absolute right-0 top-1/2 h-[500px] w-[500px] -translate-y-1/2 translate-x-1/4 rounded-full bg-[#219c3f]/8 blur-[120px]"></div>
+  </div>
+  <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mb-16 text-center">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-[#45b739]">Why Stawi</p>
+      <h2 class="mt-3 text-4xl font-bold tracking-tight sm:text-5xl">Opportunity search, done properly.</h2>
+      <p class="mx-auto mt-4 max-w-xl text-lg text-gray-400">We built Stawi because scrolling 10 job boards and 5 scholarship sites is exhausting.</p>
+    </div>
+
+    <div class="grid gap-6 md:grid-cols-3">
+      <div class="rounded-2xl bg-[#0d1629] p-8 ring-1 ring-white/10 transition-all duration-200 hover:-translate-y-1 hover:ring-[#219c3f]/30">
+        <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#219c3f]/15 text-2xl">✅</div>
+        <h3 class="text-xl font-bold text-white">Verified listings, daily</h3>
+        <p class="mt-3 text-sm leading-relaxed text-gray-400">Every post is checked for a genuine employer and fresh posting date. No recycled titles, no ghost postings.</p>
+      </div>
+      <div class="rounded-2xl bg-[#0d1629] p-8 ring-1 ring-[#219c3f]/25 transition-all duration-200 hover:-translate-y-1 hover:ring-[#219c3f]/40">
+        <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#219c3f]/15 text-2xl">⚡</div>
+        <h3 class="text-xl font-bold text-white">Matched to your profile</h3>
+        <p class="mt-3 text-sm leading-relaxed text-gray-400">We read your CV, understand your level and salary range, and surface only what you would realistically land.</p>
+      </div>
+      <div class="rounded-2xl bg-[#0d1629] p-8 ring-1 ring-white/10 transition-all duration-200 hover:-translate-y-1 hover:ring-[#219c3f]/30">
+        <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#219c3f]/15 text-2xl">🌍</div>
+        <h3 class="text-xl font-bold text-white">Truly global coverage</h3>
+        <p class="mt-3 text-sm leading-relaxed text-gray-400">120+ countries, 50+ industries, 5 opportunity types. Whether you want to move cities or continents &mdash; we find the match.</p>
+      </div>
+    </div>
+
+    {{/* Aligned CTA row */}}
+    <div class="mt-14 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+      <a href="/onboarding/"
+        class="inline-flex items-center gap-2 rounded-xl bg-[#219c3f] px-8 py-4 text-base font-bold text-white shadow-lg shadow-[#219c3f]/20 transition-all hover:bg-[#45b739] hover:-translate-y-0.5">
+        Get started free
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+      </a>
+      <a href="/pricing/"
+        class="inline-flex items-center gap-2 rounded-xl border border-white/20 px-8 py-4 text-base font-semibold text-white transition-all hover:bg-white/5 hover:border-white/40 hover:-translate-y-0.5">
+        Compare plans
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
 {{ end }}

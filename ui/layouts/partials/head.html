@@ -18,6 +18,11 @@
 <!-- Canonical -->
 <link rel="canonical" href="{{ .Permalink }}">
 
+<!-- Google Fonts: Inter -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+
 <!-- Favicon / icons -->
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="mask-icon" href="/favicon.svg" color="#45b739">
@@ -48,10 +53,10 @@
     "posthogHost"        (.Site.Params.posthogHost | default "")
   | jsonify }}'>
 
-<!-- CSS: Tailwind source now includes ui/app/src/**/*.{ts,tsx} so classes
-     used in React components generate into main.css at Hugo build time. -->
-{{ $css := resources.Get "css/main.css" | css.PostCSS | minify | fingerprint }}
-<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+<!-- CSS: served from /css/main.css (pre-built by PostCSS+Tailwind).
+     In dev, rebuild with: cd ui && npx postcss assets/css/main.css -o static/css/main.css
+     In production (CF Pages / make ui-build), the Makefile runs postcss before hugo. -->
+<link rel="stylesheet" href="/css/main.css">
 
 <!-- Warm auth + content + jobs-API connections so the first click /
      snapshot fetch / search doesn't pay cold DNS + TLS latency. -->
@@ -70,17 +75,18 @@
      server (HMR); in production we load the hashed bundle recorded in
      data/app_manifest.json by the Vite build. -->
 {{ if hugo.IsServer }}
-  <script type="module" src="http://localhost:5173/@vite/client"></script>
+  <!-- Vite v6 serves all modules under the /app/ base path. -->
+  <script type="module" src="http://localhost:5173/app/@vite/client"></script>
   <!-- @vitejs/plugin-react preamble. When Vite itself serves the HTML it
        injects this automatically; under Hugo we have to do it ourselves. -->
   <script type="module">
-    import RefreshRuntime from "http://localhost:5173/@react-refresh";
+    import RefreshRuntime from "http://localhost:5173/app/@react-refresh";
     RefreshRuntime.injectIntoGlobalHook(window);
     window.$RefreshReg$ = () => {};
     window.$RefreshSig$ = () => (type) => type;
     window.__vite_plugin_react_preamble_installed__ = true;
   </script>
-  <script type="module" src="http://localhost:5173/src/main.tsx"></script>
+  <script type="module" src="http://localhost:5173/app/src/main.tsx"></script>
 {{ else }}
   {{ with (index hugo.Data "app_manifest") }}
     {{ with (index . "main.css") }}<link rel="stylesheet" href="/{{ . }}">{{ end }}

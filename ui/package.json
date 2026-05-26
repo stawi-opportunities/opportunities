@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "build:hugo": "hugo --minify",
-    "build:app": "cd app && npm run build"
+    "build:app": "cd app && npm run build",
+    "css:build": "postcss assets/css/main.css -o static/css/main.css",
+    "css:watch": "postcss assets/css/main.css --watch -o static/css/main.css"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.9",

@@ -2,7 +2,8 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/providers/AuthProvider";
-import { submitOnboarding, uploadCV, createCheckout } from "@/api/candidates";
+import { submitOnboarding, uploadCV } from "@/api/profile";
+import { createCheckout } from "@/api/billing";
 import { PLANS, planById, type PlanId } from "@/utils/plans";
 
 // Each step owns a contiguous slice of fields; we validate one step at a
