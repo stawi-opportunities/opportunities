@@ -195,7 +195,9 @@ function RetryCheckoutButton({ plan }: { plan: PlanId }) {
         disabled={busy}
         className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800 disabled:opacity-60"
       >
-        {busy ? t('dash.openingPayment') : `Pay $${info.price}/mo`}
+        {busy
+          ? t('dash.openingPayment')
+          : `${t('dash.payPerMonth')} $${info.price}${t('dash.perMonth')}`}
       </button>
       {err && <p className="mt-2 text-xs text-red-700">{err}</p>}
     </div>
@@ -450,8 +452,8 @@ function BillingPanel({ plan, renewsAt }: { plan: PlanId; renewsAt?: string }) {
   return (
     <Panel title={t('dash.billing')}>
       <p className="text-sm text-gray-700">
-        <span className="font-medium">{info.name}</span> · ${info.price}/month ·{' '}
-        <span className="text-emerald-700">{t('dash.active')}</span>
+        <span className="font-medium">{info.name}</span> · ${info.price}
+        {t('dash.perMonth')} · <span className="text-emerald-700">{t('dash.active')}</span>
       </p>
       {renewsAt && (
         <p className="mt-1 text-xs text-gray-500">

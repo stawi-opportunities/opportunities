@@ -237,6 +237,8 @@ export interface Strings {
   'dash.finishSetup': string;
   'dash.matchingHint': string;
   'dash.openingPayment': string;
+  'dash.payPerMonth': string;
+  'dash.perMonth': string;
 
   // ---- CTA ----
   'cta.twoMinutes': string;
@@ -463,6 +465,8 @@ const en: Strings = {
   'dash.matchingHint':
     "We'll only run our matching engine on your CV once a plan is active. It takes two minutes.",
   'dash.openingPayment': 'Opening payment…',
+  'dash.payPerMonth': 'Pay',
+  'dash.perMonth': '/month',
 
   'footer.jobSeekers': 'Job seekers',
   'footer.browseJobs': 'Browse jobs',
@@ -684,6 +688,8 @@ const es: Strings = {
   'dash.matchingHint':
     'Solo ejecutaremos nuestro motor de emparejamiento con tu CV cuando tengas un plan activo. Tarda dos minutos.',
   'dash.openingPayment': 'Abriendo pago…',
+  'dash.payPerMonth': 'Pagar',
+  'dash.perMonth': '/mes',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar empleos',
@@ -908,6 +914,8 @@ const fr: Strings = {
   'dash.matchingHint':
     "Nous n'exécuterons notre moteur de matching sur votre CV qu'une fois un plan actif. Cela prend deux minutes.",
   'dash.openingPayment': 'Ouverture du paiement…',
+  'dash.payPerMonth': 'Payer',
+  'dash.perMonth': '/mois',
 
   'footer.jobSeekers': 'Candidats',
   'footer.browseJobs': 'Parcourir les offres',
@@ -1130,6 +1138,8 @@ const de: Strings = {
   'dash.matchingHint':
     'Wir führen unser Matching erst aus, wenn ein Plan aktiv ist. Es dauert zwei Minuten.',
   'dash.openingPayment': 'Zahlung wird geöffnet…',
+  'dash.payPerMonth': 'Zahlen',
+  'dash.perMonth': '/Monat',
 
   'footer.jobSeekers': 'Jobsuchende',
   'footer.browseJobs': 'Stellen durchsuchen',
@@ -1351,6 +1361,8 @@ const pt: Strings = {
   'dash.matchingHint':
     'Só executaremos nosso motor de matching no seu CV quando um plano estiver ativo. Leva dois minutos.',
   'dash.openingPayment': 'Abrindo pagamento…',
+  'dash.payPerMonth': 'Pagar',
+  'dash.perMonth': '/mês',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar vagas',
@@ -1570,6 +1582,8 @@ const ja: Strings = {
   'dash.matchingHint':
     'プランが有効になってから、あなたの履歴書でマッチングエンジンを実行します。所要時間は2分です。',
   'dash.openingPayment': '決済画面を開いています…',
+  'dash.payPerMonth': '支払う',
+  'dash.perMonth': '/月',
 
   'footer.jobSeekers': '求職者の方へ',
   'footer.browseJobs': '求人を閲覧',
@@ -1789,6 +1803,8 @@ const ar: Strings = {
   'dash.matchingHint':
     'لن نشغّل محرك المطابقة على سيرتك الذاتية إلا عند تفعيل خطة. يستغرق الأمر دقيقتين.',
   'dash.openingPayment': 'جارٍ فتح صفحة الدفع…',
+  'dash.payPerMonth': 'ادفع',
+  'dash.perMonth': '/شهر',
 
   'footer.jobSeekers': 'الباحثون عن عمل',
   'footer.browseJobs': 'تصفح الوظائف',
@@ -2004,6 +2020,8 @@ const zh: Strings = {
   'dash.finishSetup': '完成 {plan} 套餐的设置',
   'dash.matchingHint': '只有套餐生效后，我们才会对您的简历运行匹配引擎。整个过程只需两分钟。',
   'dash.openingPayment': '正在打开支付页面…',
+  'dash.payPerMonth': '支付',
+  'dash.perMonth': '/月',
 
   'footer.jobSeekers': '求职者',
   'footer.browseJobs': '浏览职位',

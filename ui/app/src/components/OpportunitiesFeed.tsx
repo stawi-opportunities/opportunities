@@ -39,24 +39,21 @@ export function OpportunitiesFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
 
-  const load = useCallback(
-    async (f: OpportunityFilter, cursor?: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const page = await fetchOpportunities({ filter: f, cursor });
-        setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
-        setNextCursor(page.next_cursor);
-      } catch {
-        setError(t('feed.loadError'));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [t]
-  );
+  const load = useCallback(async (f: OpportunityFilter, cursor?: string) => {
+    setLoading(true);
+    setHasError(false);
+    try {
+      const page = await fetchOpportunities({ filter: f, cursor });
+      setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
+      setNextCursor(page.next_cursor);
+    } catch {
+      setHasError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void load(filter);
@@ -150,12 +147,12 @@ export function OpportunitiesFeed() {
         })}
       </div>
 
-      {error ? (
+      {hasError ? (
         <div
           role="alert"
           className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800"
         >
-          {error}
+          {t('feed.loadError')}
         </div>
       ) : loading && items.length === 0 ? (
         <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-600">
