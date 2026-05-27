@@ -238,13 +238,27 @@ export interface Strings {
   'dash.matchingHint': string;
   'dash.openingPayment': string;
 
+  // ---- CTA ----
+  'cta.twoMinutes': string;
+  'cta.twoMinutesHint': string;
+  'cta.getStarted': string;
+
   // ---- Footer ----
+  'footer.jobSeekers': string;
+  'footer.browseJobs': string;
+  'footer.categories': string;
+  'footer.advancedSearch': string;
+  'footer.company': string;
   'footer.about': string;
   'footer.pricing': string;
+  'footer.contact': string;
+  'footer.legal': string;
+  'footer.termsOfService': string;
+  'footer.privacyPolicy': string;
   'footer.privacy': string;
   'footer.terms': string;
-  'footer.contact': string;
   'footer.rights': string;
+  'footer.madeBy': string;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +292,9 @@ const en: Strings = {
   'cta.close': 'Close',
   'cta.dismiss': 'Dismiss',
   'cta.retry': 'Retry',
+  'cta.twoMinutes': 'Two minutes to set up.',
+  'cta.twoMinutesHint': 'Upload your CV, tell us what you want, we take it from there.',
+  'cta.getStarted': 'Get started',
 
   'job.postedOn': 'Posted',
   'job.remote': 'Remote',
@@ -447,12 +464,21 @@ const en: Strings = {
     "We'll only run our matching engine on your CV once a plan is active. It takes two minutes.",
   'dash.openingPayment': 'Opening payment…',
 
+  'footer.jobSeekers': 'Job seekers',
+  'footer.browseJobs': 'Browse jobs',
+  'footer.categories': 'Categories',
+  'footer.advancedSearch': 'Advanced search',
+  'footer.company': 'Company',
   'footer.about': 'About',
   'footer.pricing': 'Pricing',
+  'footer.contact': 'Contact',
+  'footer.legal': 'Legal',
+  'footer.termsOfService': 'Terms of service',
+  'footer.privacyPolicy': 'Privacy policy',
   'footer.privacy': 'Privacy',
   'footer.terms': 'Terms',
-  'footer.contact': 'Contact',
   'footer.rights': 'All rights reserved.',
+  'footer.madeBy': 'A product of',
 };
 
 // ---------------------------------------------------------------------------
@@ -486,6 +512,9 @@ const es: Strings = {
   'cta.close': 'Cerrar',
   'cta.dismiss': 'Descartar',
   'cta.retry': 'Reintentar',
+  'cta.twoMinutes': 'Listo en dos minutos.',
+  'cta.twoMinutesHint': 'Sube tu CV, dinos qué buscas y nosotros nos encargamos del resto.',
+  'cta.getStarted': 'Comenzar',
 
   'job.postedOn': 'Publicado',
   'job.remote': 'Remoto',
@@ -656,12 +685,21 @@ const es: Strings = {
     'Solo ejecutaremos nuestro motor de emparejamiento con tu CV cuando tengas un plan activo. Tarda dos minutos.',
   'dash.openingPayment': 'Abriendo pago…',
 
+  'footer.jobSeekers': 'Candidatos',
+  'footer.browseJobs': 'Explorar empleos',
+  'footer.categories': 'Categorías',
+  'footer.advancedSearch': 'Búsqueda avanzada',
+  'footer.company': 'Empresa',
   'footer.about': 'Nosotros',
   'footer.pricing': 'Precios',
+  'footer.contact': 'Contacto',
+  'footer.legal': 'Legal',
+  'footer.termsOfService': 'Términos de servicio',
+  'footer.privacyPolicy': 'Política de privacidad',
   'footer.privacy': 'Privacidad',
   'footer.terms': 'Términos',
-  'footer.contact': 'Contacto',
   'footer.rights': 'Todos los derechos reservados.',
+  'footer.madeBy': 'Un producto de',
 };
 
 // ---------------------------------------------------------------------------
@@ -695,6 +733,9 @@ const fr: Strings = {
   'cta.close': 'Fermer',
   'cta.dismiss': 'Ignorer',
   'cta.retry': 'Réessayer',
+  'cta.twoMinutes': 'Prêt en deux minutes.',
+  'cta.twoMinutesHint': "Importez votre CV, dites-nous ce que vous cherchez, on s'occupe du reste.",
+  'cta.getStarted': 'Commencer',
 
   'job.postedOn': 'Publié le',
   'job.remote': 'Télétravail',
@@ -868,12 +909,21 @@ const fr: Strings = {
     "Nous n'exécuterons notre moteur de matching sur votre CV qu'une fois un plan actif. Cela prend deux minutes.",
   'dash.openingPayment': 'Ouverture du paiement…',
 
+  'footer.jobSeekers': 'Candidats',
+  'footer.browseJobs': 'Parcourir les offres',
+  'footer.categories': 'Catégories',
+  'footer.advancedSearch': 'Recherche avancée',
+  'footer.company': 'Entreprise',
   'footer.about': 'À propos',
   'footer.pricing': 'Tarifs',
+  'footer.contact': 'Contact',
+  'footer.legal': 'Mentions légales',
+  'footer.termsOfService': "Conditions d'utilisation",
+  'footer.privacyPolicy': 'Politique de confidentialité',
   'footer.privacy': 'Confidentialité',
   'footer.terms': 'Conditions',
-  'footer.contact': 'Contact',
   'footer.rights': 'Tous droits réservés.',
+  'footer.madeBy': 'Un produit de',
 };
 
 // ---------------------------------------------------------------------------
@@ -907,6 +957,10 @@ const de: Strings = {
   'cta.close': 'Schließen',
   'cta.dismiss': 'Ausblenden',
   'cta.retry': 'Wiederholen',
+  'cta.twoMinutes': 'In zwei Minuten startklar.',
+  'cta.twoMinutesHint':
+    'Laden Sie Ihren Lebenslauf hoch, sagen Sie uns, was Sie suchen, und wir erledigen den Rest.',
+  'cta.getStarted': 'Loslegen',
 
   'job.postedOn': 'Veröffentlicht',
   'job.remote': 'Remote',
@@ -1077,12 +1131,21 @@ const de: Strings = {
     'Wir führen unser Matching erst aus, wenn ein Plan aktiv ist. Es dauert zwei Minuten.',
   'dash.openingPayment': 'Zahlung wird geöffnet…',
 
+  'footer.jobSeekers': 'Jobsuchende',
+  'footer.browseJobs': 'Stellen durchsuchen',
+  'footer.categories': 'Kategorien',
+  'footer.advancedSearch': 'Erweiterte Suche',
+  'footer.company': 'Unternehmen',
   'footer.about': 'Über uns',
   'footer.pricing': 'Preise',
+  'footer.contact': 'Kontakt',
+  'footer.legal': 'Rechtliches',
+  'footer.termsOfService': 'Nutzungsbedingungen',
+  'footer.privacyPolicy': 'Datenschutzerklärung',
   'footer.privacy': 'Datenschutz',
   'footer.terms': 'AGB',
-  'footer.contact': 'Kontakt',
   'footer.rights': 'Alle Rechte vorbehalten.',
+  'footer.madeBy': 'Ein Produkt von',
 };
 
 // ---------------------------------------------------------------------------
@@ -1116,6 +1179,9 @@ const pt: Strings = {
   'cta.close': 'Fechar',
   'cta.dismiss': 'Dispensar',
   'cta.retry': 'Tentar novamente',
+  'cta.twoMinutes': 'Pronto em dois minutos.',
+  'cta.twoMinutesHint': 'Envie seu currículo, diga-nos o que procura e nós cuidamos do resto.',
+  'cta.getStarted': 'Começar',
 
   'job.postedOn': 'Publicada em',
   'job.remote': 'Remoto',
@@ -1286,12 +1352,21 @@ const pt: Strings = {
     'Só executaremos nosso motor de matching no seu CV quando um plano estiver ativo. Leva dois minutos.',
   'dash.openingPayment': 'Abrindo pagamento…',
 
+  'footer.jobSeekers': 'Candidatos',
+  'footer.browseJobs': 'Explorar vagas',
+  'footer.categories': 'Categorias',
+  'footer.advancedSearch': 'Busca avançada',
+  'footer.company': 'Empresa',
   'footer.about': 'Sobre',
   'footer.pricing': 'Planos',
+  'footer.contact': 'Contato',
+  'footer.legal': 'Jurídico',
+  'footer.termsOfService': 'Termos de serviço',
+  'footer.privacyPolicy': 'Política de privacidade',
   'footer.privacy': 'Privacidade',
   'footer.terms': 'Termos',
-  'footer.contact': 'Contato',
   'footer.rights': 'Todos os direitos reservados.',
+  'footer.madeBy': 'Um produto de',
 };
 
 // ---------------------------------------------------------------------------
@@ -1325,6 +1400,9 @@ const ja: Strings = {
   'cta.close': '閉じる',
   'cta.dismiss': '非表示',
   'cta.retry': '再試行',
+  'cta.twoMinutes': '設定はたった2分。',
+  'cta.twoMinutesHint': '履歴書をアップロードし、希望を伝えるだけ。あとはお任せください。',
+  'cta.getStarted': '始める',
 
   'job.postedOn': '掲載日',
   'job.remote': 'リモート',
@@ -1493,12 +1571,21 @@ const ja: Strings = {
     'プランが有効になってから、あなたの履歴書でマッチングエンジンを実行します。所要時間は2分です。',
   'dash.openingPayment': '決済画面を開いています…',
 
+  'footer.jobSeekers': '求職者の方へ',
+  'footer.browseJobs': '求人を閲覧',
+  'footer.categories': 'カテゴリ',
+  'footer.advancedSearch': '詳細検索',
+  'footer.company': '会社情報',
   'footer.about': '会社概要',
   'footer.pricing': '料金',
+  'footer.contact': 'お問い合わせ',
+  'footer.legal': '法的情報',
+  'footer.termsOfService': '利用規約',
+  'footer.privacyPolicy': 'プライバシーポリシー',
   'footer.privacy': 'プライバシー',
   'footer.terms': '利用規約',
-  'footer.contact': 'お問い合わせ',
   'footer.rights': 'All rights reserved.',
+  'footer.madeBy': '提供元',
 };
 
 // ---------------------------------------------------------------------------
@@ -1532,6 +1619,9 @@ const ar: Strings = {
   'cta.close': 'إغلاق',
   'cta.dismiss': 'تجاهل',
   'cta.retry': 'إعادة المحاولة',
+  'cta.twoMinutes': 'جاهز في دقيقتين.',
+  'cta.twoMinutesHint': 'ارفع سيرتك الذاتية، أخبرنا بما تبحث عنه، ونحن نتولى الباقي.',
+  'cta.getStarted': 'ابدأ الآن',
 
   'job.postedOn': 'نُشرت في',
   'job.remote': 'عن بُعد',
@@ -1700,12 +1790,21 @@ const ar: Strings = {
     'لن نشغّل محرك المطابقة على سيرتك الذاتية إلا عند تفعيل خطة. يستغرق الأمر دقيقتين.',
   'dash.openingPayment': 'جارٍ فتح صفحة الدفع…',
 
+  'footer.jobSeekers': 'الباحثون عن عمل',
+  'footer.browseJobs': 'تصفح الوظائف',
+  'footer.categories': 'الفئات',
+  'footer.advancedSearch': 'بحث متقدم',
+  'footer.company': 'الشركة',
   'footer.about': 'من نحن',
   'footer.pricing': 'الأسعار',
+  'footer.contact': 'اتصل بنا',
+  'footer.legal': 'قانوني',
+  'footer.termsOfService': 'شروط الخدمة',
+  'footer.privacyPolicy': 'سياسة الخصوصية',
   'footer.privacy': 'الخصوصية',
   'footer.terms': 'الشروط',
-  'footer.contact': 'اتصل بنا',
   'footer.rights': 'جميع الحقوق محفوظة.',
+  'footer.madeBy': 'منتج من',
 };
 
 // ---------------------------------------------------------------------------
@@ -1739,6 +1838,9 @@ const zh: Strings = {
   'cta.close': '关闭',
   'cta.dismiss': '忽略',
   'cta.retry': '重试',
+  'cta.twoMinutes': '两分钟即可完成设置。',
+  'cta.twoMinutesHint': '上传简历，告诉我们您的求职意向，剩下的交给我们。',
+  'cta.getStarted': '立即开始',
 
   'job.postedOn': '发布时间',
   'job.remote': '远程',
@@ -1903,12 +2005,21 @@ const zh: Strings = {
   'dash.matchingHint': '只有套餐生效后，我们才会对您的简历运行匹配引擎。整个过程只需两分钟。',
   'dash.openingPayment': '正在打开支付页面…',
 
+  'footer.jobSeekers': '求职者',
+  'footer.browseJobs': '浏览职位',
+  'footer.categories': '分类',
+  'footer.advancedSearch': '高级搜索',
+  'footer.company': '公司',
   'footer.about': '关于',
   'footer.pricing': '定价',
+  'footer.contact': '联系我们',
+  'footer.legal': '法律信息',
+  'footer.termsOfService': '服务条款',
+  'footer.privacyPolicy': '隐私政策',
   'footer.privacy': '隐私',
   'footer.terms': '条款',
-  'footer.contact': '联系我们',
   'footer.rights': '保留所有权利。',
+  'footer.madeBy': '出品方',
 };
 
 export const CATALOG: Record<LangCode, Strings> = {
