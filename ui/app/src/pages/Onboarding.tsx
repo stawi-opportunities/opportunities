@@ -22,16 +22,17 @@ type FormValues = Omit<z.infer<typeof Step1Schema>, 'cv'> & { cv?: File } & z.in
   z.infer<typeof Step3Schema>;
 
 const Step1Schema = z.object({
-  targetJobTitle: z.string().min(2),
-  experienceLevel: z.enum(['entry', 'junior', 'mid', 'senior', 'lead', 'executive']),
-  jobSearchStatus: z.enum(['actively_looking', 'open_to_offers', 'casually_browsing']),
-  salaryRange: z.string().optional(),
-  wantsATSReport: z.boolean(),
   cv: z
     .any()
     .refine((v) => v instanceof File)
     .refine((v) => !(v instanceof File) || v.size <= 10 * 1024 * 1024)
     .refine((v) => !(v instanceof File) || /\.(pdf|docx?|rtf|txt)$/i.test(v.name)),
+  targetJobTitle: z.string().min(2),
+  experienceLevel: z.enum(['entry', 'junior', 'mid', 'senior', 'lead', 'executive']),
+  jobSearchStatus: z.enum(['actively_looking', 'open_to_offers', 'casually_browsing']),
+  extraInfo: z.string().optional(),
+  salaryAmount: z.coerce.number().nonnegative().optional(),
+  salaryCurrency: z.string().optional(),
 });
 
 const Step2Schema = z.object({
@@ -93,6 +94,27 @@ const JOB_TYPE_KEYS: { value: string; labelKey: StringKey }[] = [
   { value: 'Internship', labelKey: 'onboard.internship' },
 ];
 
+const CURRENCIES = [
+  'USD',
+  'EUR',
+  'GBP',
+  'KES',
+  'NGN',
+  'ZAR',
+  'GHS',
+  'AED',
+  'INR',
+  'JPY',
+  'CNY',
+  'BRL',
+  'MXN',
+  'CAD',
+  'AUD',
+  'CHF',
+  'SGD',
+  'SAR',
+];
+
 function readPlanFromQuery(): PlanId {
   if (typeof window === 'undefined') return 'starter';
   const p = new URL(window.location.href).searchParams.get('plan');
@@ -126,10 +148,13 @@ export default function Onboarding() {
   const initialPlan = useMemo(readPlanFromQuery, []);
   const form = useForm<FormValues>({
     defaultValues: {
+      cv: undefined,
       targetJobTitle: '',
       experienceLevel: 'mid',
       jobSearchStatus: 'actively_looking',
-      wantsATSReport: true,
+      extraInfo: '',
+      salaryAmount: undefined,
+      salaryCurrency: 'USD',
       preferredRegions: [],
       preferredTimezones: [],
       preferredLanguages: ['English'],
@@ -137,7 +162,6 @@ export default function Onboarding() {
       country: '',
       plan: initialPlan,
       agreeTerms: false as unknown as true,
-      cv: undefined,
     },
     mode: 'onBlur',
   });
@@ -183,8 +207,10 @@ export default function Onboarding() {
         target_job_title: data.targetJobTitle,
         experience_level: data.experienceLevel,
         job_search_status: data.jobSearchStatus,
-        salary_range: data.salaryRange ?? '',
-        wants_ats_report: data.wantsATSReport,
+        salary_min: data.salaryAmount ?? undefined,
+        salary_max: data.salaryAmount ?? undefined,
+        currency: data.salaryCurrency ?? 'USD',
+        wants_ats_report: true,
         preferred_regions: data.preferredRegions,
         preferred_timezones: data.preferredTimezones,
         preferred_languages: data.preferredLanguages,
@@ -264,8 +290,10 @@ export default function Onboarding() {
         target_job_title: values.targetJobTitle,
         experience_level: values.experienceLevel,
         job_search_status: values.jobSearchStatus,
-        salary_range: values.salaryRange,
-        wants_ats_report: values.wantsATSReport,
+        salary_range: values.salaryAmount
+          ? `${values.salaryCurrency ?? 'USD'} ${values.salaryAmount}`
+          : undefined,
+        wants_ats_report: true,
         preferred_regions: values.preferredRegions,
         preferred_timezones: values.preferredTimezones,
         preferred_languages: values.preferredLanguages,
@@ -390,62 +418,7 @@ function Step1Form({ form, t }: FormProps) {
         <h1 className="text-3xl font-bold text-gray-900">{t('onboard.aboutYou')}</h1>
         <p className="mt-1 text-gray-600">{t('onboard.aboutYouHint')}</p>
       </header>
-      <Field label={t('onboard.targetJobTitle')} error={errors.targetJobTitle?.message}>
-        {(id) => (
-          <input
-            id={id}
-            type="text"
-            autoComplete="organization-title"
-            placeholder={t('onboard.targetJobTitlePlaceholder')}
-            {...register('targetJobTitle')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          />
-        )}
-      </Field>
-      <Field label={t('onboard.experienceLevel')}>
-        {(id) => (
-          <select
-            id={id}
-            {...register('experienceLevel')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          >
-            <option value="entry">{t('onboard.entry')}</option>
-            <option value="junior">{t('onboard.junior')}</option>
-            <option value="mid">{t('onboard.mid')}</option>
-            <option value="senior">{t('onboard.senior')}</option>
-            <option value="lead">{t('onboard.lead')}</option>
-            <option value="executive">{t('onboard.executive')}</option>
-          </select>
-        )}
-      </Field>
-      <Field label={t('onboard.jobSearchStatus')}>
-        {(id) => (
-          <select
-            id={id}
-            {...register('jobSearchStatus')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          >
-            <option value="actively_looking">{t('onboard.activelyLooking')}</option>
-            <option value="open_to_offers">{t('onboard.openToOffers')}</option>
-            <option value="casually_browsing">{t('onboard.casuallyBrowsing')}</option>
-          </select>
-        )}
-      </Field>
-      <Field label={t('onboard.targetSalary')}>
-        {(id) => (
-          <select
-            id={id}
-            {...register('salaryRange')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          >
-            <option value="">{t('onboard.preferNotToSay')}</option>
-            <option value="30k-50k">$30,000 – $50,000</option>
-            <option value="50k-75k">$50,000 – $75,000</option>
-            <option value="75k-100k">$75,000 – $100,000</option>
-            <option value="100k+">$100,000+</option>
-          </select>
-        )}
-      </Field>
+
       <Field label={t('onboard.uploadCV')} error={errors.cv?.message as string | undefined}>
         {(id) => (
           <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4">
@@ -504,14 +477,85 @@ function Step1Form({ form, t }: FormProps) {
         )}
       </Field>
       <p className="text-xs text-gray-500">{t('onboard.cvPrivacy')}</p>
-      <label className="flex items-start gap-3 rounded-md border border-gray-200 p-3">
-        <input
-          type="checkbox"
-          {...register('wantsATSReport')}
-          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-navy-900 focus:ring-navy-900"
-        />
-        <span className="text-sm text-gray-700">{t('onboard.atsReport')}</span>
-      </label>
+
+      <Field label={t('onboard.targetJobTitle')} error={errors.targetJobTitle?.message}>
+        {(id) => (
+          <input
+            id={id}
+            type="text"
+            autoComplete="organization-title"
+            placeholder={t('onboard.targetJobTitlePlaceholder')}
+            {...register('targetJobTitle')}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+          />
+        )}
+      </Field>
+      <Field label={t('onboard.experienceLevel')}>
+        {(id) => (
+          <select
+            id={id}
+            {...register('experienceLevel')}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+          >
+            <option value="entry">{t('onboard.entry')}</option>
+            <option value="junior">{t('onboard.junior')}</option>
+            <option value="mid">{t('onboard.mid')}</option>
+            <option value="senior">{t('onboard.senior')}</option>
+            <option value="lead">{t('onboard.lead')}</option>
+            <option value="executive">{t('onboard.executive')}</option>
+          </select>
+        )}
+      </Field>
+      <Field label={t('onboard.jobSearchStatus')}>
+        {(id) => (
+          <select
+            id={id}
+            {...register('jobSearchStatus')}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+          >
+            <option value="actively_looking">{t('onboard.activelyLooking')}</option>
+            <option value="open_to_offers">{t('onboard.openToOffers')}</option>
+            <option value="casually_browsing">{t('onboard.casuallyBrowsing')}</option>
+          </select>
+        )}
+      </Field>
+
+      <Field label={t('onboard.extraInfo')}>
+        {(id) => (
+          <textarea
+            id={id}
+            rows={3}
+            placeholder={t('onboard.extraInfoPlaceholder')}
+            {...register('extraInfo')}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+          />
+        )}
+      </Field>
+
+      <Field label={t('onboard.targetSalary')}>
+        {() => (
+          <div className="flex gap-3">
+            <select
+              {...register('salaryCurrency')}
+              className="w-28 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              placeholder={t('onboard.salaryPlaceholder')}
+              {...register('salaryAmount', { valueAsNumber: true })}
+              className="flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+            />
+          </div>
+        )}
+      </Field>
     </div>
   );
 }

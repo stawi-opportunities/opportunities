@@ -262,15 +262,18 @@ export interface Strings {
   'onboard.activelyLooking': string;
   'onboard.openToOffers': string;
   'onboard.casuallyBrowsing': string;
+  'onboard.extraInfo': string;
+  'onboard.extraInfoPlaceholder': string;
   'onboard.targetSalary': string;
-  'onboard.preferNotToSay': string;
+  'onboard.salaryPlaceholder': string;
+
   'onboard.uploadCV': string;
   'onboard.chooseFile': string;
   'onboard.cvFormats': string;
   'onboard.readyToUpload': string;
   'onboard.remove': string;
   'onboard.cvPrivacy': string;
-  'onboard.atsReport': string;
+
   'onboard.regions': string;
   'onboard.anywhere': string;
   'onboard.africa': string;
@@ -521,8 +524,11 @@ const en: Strings = {
   'onboard.activelyLooking': 'Actively looking',
   'onboard.openToOffers': 'Open to offers',
   'onboard.casuallyBrowsing': 'Casually browsing',
+  'onboard.extraInfo': 'Additional information',
+  'onboard.extraInfoPlaceholder':
+    'Anything else you want us to know — certifications, visa status, notice period, etc.',
+  'onboard.salaryPlaceholder': 'Annual amount',
   'onboard.targetSalary': 'Target salary (optional)',
-  'onboard.preferNotToSay': 'Prefer not to say',
   'onboard.uploadCV': 'Upload your CV (optional)',
   'onboard.chooseFile': 'Choose file',
   'onboard.cvFormats': 'PDF, DOCX, RTF, or TXT · up to 10 MB',
@@ -530,7 +536,6 @@ const en: Strings = {
   'onboard.remove': 'Remove',
   'onboard.cvPrivacy':
     "Your CV is used to match you with relevant jobs. It's never shared with employers without your action.",
-  'onboard.atsReport': 'Email me a free resume score (ATS-compatibility check).',
   'onboard.regions': "Regions you're able to work in",
   'onboard.anywhere': 'Anywhere',
   'onboard.africa': 'Africa',
@@ -820,8 +825,11 @@ const es: Strings = {
   'onboard.activelyLooking': 'En búsqueda activa',
   'onboard.openToOffers': 'Abierto a ofertas',
   'onboard.casuallyBrowsing': 'Explorando sin prisa',
+  'onboard.extraInfo': 'Información adicional',
+  'onboard.extraInfoPlaceholder':
+    'Cualquier otra cosa que quieras que sepamos: certificaciones, situación de visa, período de preaviso, etc.',
+  'onboard.salaryPlaceholder': 'Monto anual',
   'onboard.targetSalary': 'Salario objetivo (opcional)',
-  'onboard.preferNotToSay': 'Prefiero no decirlo',
   'onboard.uploadCV': 'Sube tu CV (opcional)',
   'onboard.chooseFile': 'Elegir archivo',
   'onboard.cvFormats': 'PDF, DOCX, RTF o TXT · hasta 10 MB',
@@ -829,8 +837,6 @@ const es: Strings = {
   'onboard.remove': 'Eliminar',
   'onboard.cvPrivacy':
     'Tu CV se usa para encontrarte vacantes relevantes. Nunca se comparte con empleadores sin tu acción.',
-  'onboard.atsReport':
-    'Envíame un análisis gratuito de mi CV (verificación de compatibilidad ATS).',
   'onboard.regions': 'Regiones en las que puedes trabajar',
   'onboard.anywhere': 'Cualquier lugar',
   'onboard.africa': 'África',
@@ -1122,8 +1128,11 @@ const fr: Strings = {
   'onboard.activelyLooking': 'En recherche active',
   'onboard.openToOffers': 'Ouvert aux opportunités',
   'onboard.casuallyBrowsing': 'En veille',
+  'onboard.extraInfo': 'Informations complémentaires',
+  'onboard.extraInfoPlaceholder':
+    'Tout ce que vous souhaitez nous faire savoir : certifications, statut de visa, préavis, etc.',
+  'onboard.salaryPlaceholder': 'Montant annuel',
   'onboard.targetSalary': 'Salaire cible (facultatif)',
-  'onboard.preferNotToSay': 'Je préfère ne pas répondre',
   'onboard.uploadCV': 'Importez votre CV (facultatif)',
   'onboard.chooseFile': 'Choisir un fichier',
   'onboard.cvFormats': 'PDF, DOCX, RTF ou TXT · 10 Mo maximum',
@@ -1131,8 +1140,6 @@ const fr: Strings = {
   'onboard.remove': 'Supprimer',
   'onboard.cvPrivacy':
     "Votre CV est utilisé pour vous proposer des offres pertinentes. Il n'est jamais partagé avec les employeurs sans votre action.",
-  'onboard.atsReport':
-    'Envoyez-moi une évaluation gratuite de mon CV (vérification de compatibilité ATS).',
   'onboard.regions': 'Régions dans lesquelles vous pouvez travailler',
   'onboard.anywhere': 'Partout',
   'onboard.africa': 'Afrique',
@@ -1425,8 +1432,11 @@ const de: Strings = {
   'onboard.activelyLooking': 'Aktiv auf der Suche',
   'onboard.openToOffers': 'Offen für Angebote',
   'onboard.casuallyBrowsing': 'Gelegentlich stöbernd',
+  'onboard.extraInfo': 'Zusätzliche Informationen',
+  'onboard.extraInfoPlaceholder':
+    'Alles Weitere, das wir wissen sollten — Zertifizierungen, Visastatus, Kündigungsfrist usw.',
+  'onboard.salaryPlaceholder': 'Jahresbetrag',
   'onboard.targetSalary': 'Zielgehalt (optional)',
-  'onboard.preferNotToSay': 'Möchte ich nicht angeben',
   'onboard.uploadCV': 'Lade deinen Lebenslauf hoch (optional)',
   'onboard.chooseFile': 'Datei auswählen',
   'onboard.cvFormats': 'PDF, DOCX, RTF oder TXT · bis zu 10 MB',
@@ -1434,8 +1444,6 @@ const de: Strings = {
   'onboard.remove': 'Entfernen',
   'onboard.cvPrivacy':
     'Dein Lebenslauf wird verwendet, um passende Stellen zu finden. Er wird nie ohne dein Zutun an Arbeitgeber weitergegeben.',
-  'onboard.atsReport':
-    'Schick mir eine kostenlose Lebenslauf-Bewertung (ATS-Kompatibilitätsprüfung).',
   'onboard.regions': 'Regionen, in denen du arbeiten kannst',
   'onboard.anywhere': 'Überall',
   'onboard.africa': 'Afrika',
@@ -1726,8 +1734,11 @@ const pt: Strings = {
   'onboard.activelyLooking': 'Buscando ativamente',
   'onboard.openToOffers': 'Aberto a propostas',
   'onboard.casuallyBrowsing': 'Explorando sem pressa',
+  'onboard.extraInfo': 'Informações adicionais',
+  'onboard.extraInfoPlaceholder':
+    'Qualquer outra coisa que queira nos contar — certificações, situação de visto, período de aviso prévio, etc.',
+  'onboard.salaryPlaceholder': 'Valor anual',
   'onboard.targetSalary': 'Salário desejado (opcional)',
-  'onboard.preferNotToSay': 'Prefiro não informar',
   'onboard.uploadCV': 'Envie seu currículo (opcional)',
   'onboard.chooseFile': 'Escolher arquivo',
   'onboard.cvFormats': 'PDF, DOCX, RTF ou TXT · até 10 MB',
@@ -1735,8 +1746,6 @@ const pt: Strings = {
   'onboard.remove': 'Remover',
   'onboard.cvPrivacy':
     'Seu currículo é usado para encontrar vagas relevantes. Ele nunca é compartilhado com empregadores sem a sua ação.',
-  'onboard.atsReport':
-    'Envie-me uma avaliação gratuita do currículo (verificação de compatibilidade ATS).',
   'onboard.regions': 'Regiões em que você pode trabalhar',
   'onboard.anywhere': 'Qualquer lugar',
   'onboard.africa': 'África',
@@ -2024,8 +2033,11 @@ const ja: Strings = {
   'onboard.activelyLooking': '積極的に探している',
   'onboard.openToOffers': 'オファーに前向き',
   'onboard.casuallyBrowsing': '気軽に閲覧中',
+  'onboard.extraInfo': '補足情報',
+  'onboard.extraInfoPlaceholder':
+    'その他お知らせいただきたいこと — 資格、ビザの状況、退職予定時期など。',
+  'onboard.salaryPlaceholder': '年収',
   'onboard.targetSalary': '希望年収（任意）',
-  'onboard.preferNotToSay': '回答しない',
   'onboard.uploadCV': '履歴書をアップロード（任意）',
   'onboard.chooseFile': 'ファイルを選択',
   'onboard.cvFormats': 'PDF、DOCX、RTF、TXT · 10 MBまで',
@@ -2033,7 +2045,6 @@ const ja: Strings = {
   'onboard.remove': '削除',
   'onboard.cvPrivacy':
     '履歴書は適切な求人とのマッチングに使用されます。あなたの操作なしに雇用主と共有されることはありません。',
-  'onboard.atsReport': '無料の履歴書スコア（ATS互換性チェック）をメールで送ってください。',
   'onboard.regions': '勤務可能な地域',
   'onboard.anywhere': 'どこでも',
   'onboard.africa': 'アフリカ',
@@ -2320,8 +2331,11 @@ const ar: Strings = {
   'onboard.activelyLooking': 'أبحث بنشاط',
   'onboard.openToOffers': 'منفتح على العروض',
   'onboard.casuallyBrowsing': 'أتصفح بدون عجلة',
+  'onboard.extraInfo': 'معلومات إضافية',
+  'onboard.extraInfoPlaceholder':
+    'أي شيء آخر تريد إطلاعنا عليه — شهادات، حالة التأشيرة، فترة الإشعار، إلخ.',
+  'onboard.salaryPlaceholder': 'المبلغ السنوي',
   'onboard.targetSalary': 'الراتب المستهدف (اختياري)',
-  'onboard.preferNotToSay': 'أفضّل عدم الإفصاح',
   'onboard.uploadCV': 'ارفع سيرتك الذاتية (اختياري)',
   'onboard.chooseFile': 'اختر ملفاً',
   'onboard.cvFormats': 'PDF أو DOCX أو RTF أو TXT · حتى 10 ميجابايت',
@@ -2329,7 +2343,6 @@ const ar: Strings = {
   'onboard.remove': 'إزالة',
   'onboard.cvPrivacy':
     'تُستخدم سيرتك الذاتية لمطابقتك بالوظائف المناسبة. لن تتم مشاركتها مع أصحاب العمل دون إجراء منك.',
-  'onboard.atsReport': 'أرسل لي تقييماً مجانياً لسيرتي الذاتية (فحص توافق ATS).',
   'onboard.regions': 'المناطق التي يمكنك العمل فيها',
   'onboard.anywhere': 'أي مكان',
   'onboard.africa': 'أفريقيا',
@@ -2614,15 +2627,16 @@ const zh: Strings = {
   'onboard.activelyLooking': '积极求职中',
   'onboard.openToOffers': '对机会持开放态度',
   'onboard.casuallyBrowsing': '随便看看',
+  'onboard.extraInfo': '补充信息',
+  'onboard.extraInfoPlaceholder': '其他需要我们了解的信息——证书、签证状态、离职通知期等。',
+  'onboard.salaryPlaceholder': '年薪金额',
   'onboard.targetSalary': '目标薪资（可选）',
-  'onboard.preferNotToSay': '不方便透露',
   'onboard.uploadCV': '上传简历（可选）',
   'onboard.chooseFile': '选择文件',
   'onboard.cvFormats': 'PDF、DOCX、RTF 或 TXT · 最大 10 MB',
   'onboard.readyToUpload': '准备上传',
   'onboard.remove': '移除',
   'onboard.cvPrivacy': '您的简历仅用于匹配相关职位，未经您的操作不会与雇主共享。',
-  'onboard.atsReport': '发送免费简历评分（ATS 兼容性检查）到我的邮箱。',
   'onboard.regions': '您可以工作的地区',
   'onboard.anywhere': '全球',
   'onboard.africa': '非洲',
