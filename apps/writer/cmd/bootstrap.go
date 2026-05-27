@@ -60,8 +60,8 @@ func runBootstrap(ctx context.Context) error {
 
 	// Wait for the catalog REST endpoint to be reachable before
 	// creating namespaces and tables.
-	log.WithField("uri", cfg.IcebergCatalogURI).Info("bootstrap: waiting for catalog readiness")
-	if err := waitForCatalog(ctx, httpClient, cfg.IcebergCatalogURI, cfg.IcebergCatalogToken); err != nil {
+	log.WithField("bucket", cfg.R2Bucket).Info("bootstrap: waiting for catalog to be active")
+	if err := waitForCatalog(ctx, httpClient, cfg); err != nil {
 		return fmt.Errorf("catalog readiness: %w", err)
 	}
 
@@ -152,11 +152,14 @@ func ensureR2Catalog(ctx context.Context, client *http.Client, cfg writercfg.Con
 	return fmt.Errorf("enable catalog: status %d: %s", enableResp.StatusCode, string(b))
 }
 
-// waitForCatalog polls the Iceberg REST catalog's GET /v1/config
-// endpoint until it responds with 2xx or the deadline expires.
-func waitForCatalog(ctx context.Context, client *http.Client, catalogURI, token string) error {
+// waitForCatalog polls the Cloudflare R2 Data Catalog management API
+// until the catalog status is "active" or the deadline expires.
+func waitForCatalog(ctx context.Context, client *http.Client, cfg writercfg.Config) error {
 	deadline := time.Now().Add(readinessTimeout)
-	url := strings.TrimRight(catalogURI, "/") + "/v1/config"
+	url := fmt.Sprintf(
+		"https://api.cloudflare.com/client/v4/accounts/%s/r2-catalog/%s",
+		cfg.R2AccountID, cfg.R2Bucket,
+	)
 	log := util.Log(ctx)
 
 	for {
@@ -164,23 +167,27 @@ func waitForCatalog(ctx context.Context, client *http.Client, catalogURI, token 
 		if err != nil {
 			return err
 		}
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
+		req.Header.Set("Authorization", "Bearer "+cfg.CloudflareAPIToken)
 		resp, err := client.Do(req)
 		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				log.WithField("status", resp.StatusCode).Info("bootstrap: catalog ready")
+			var body struct {
+				Result struct {
+					Status string `json:"status"`
+				} `json:"result"`
+			}
+			if decErr := json.NewDecoder(resp.Body).Decode(&body); decErr == nil && body.Result.Status == "active" {
+				_ = resp.Body.Close()
+				log.Info("bootstrap: catalog active")
 				return nil
 			}
-			log.WithField("status", resp.StatusCode).Debug("bootstrap: catalog not yet ready")
+			_ = resp.Body.Close()
+			log.WithField("status", resp.StatusCode).Debug("bootstrap: catalog not yet active")
 		} else {
 			log.WithError(err).Debug("bootstrap: catalog probe failed")
 		}
 
 		if time.Now().After(deadline) {
-			return fmt.Errorf("catalog not ready after %s (last err: %v)", readinessTimeout, err)
+			return fmt.Errorf("catalog not active after %s (last err: %v)", readinessTimeout, err)
 		}
 		select {
 		case <-ctx.Done():
