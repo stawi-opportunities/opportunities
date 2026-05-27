@@ -220,10 +220,12 @@ func ensureNamespaces(ctx context.Context, cat catalog.Catalog) error {
 }
 
 // ensureTables iterates AllTableSchemas and CreateTable's each entry.
-// "Already exists" errors are tolerated.
+// "Already exists" errors are tolerated. A 2-second pause between calls
+// avoids tripping R2 Data Catalog's write rate limit (~10 writes/min).
 func ensureTables(ctx context.Context, cat catalog.Catalog) error {
 	log := util.Log(ctx)
-	for _, ts := range icebergclient.AllTableSchemas() {
+	schemas := icebergclient.AllTableSchemas()
+	for i, ts := range schemas {
 		_, err := cat.CreateTable(ctx, ts.Identifier, ts.Schema())
 		switch {
 		case err == nil:
@@ -233,12 +235,36 @@ func ensureTables(ctx context.Context, cat catalog.Catalog) error {
 		default:
 			if isAlreadyExistsErr(err) {
 				log.WithField("table", ts.Identifier).Debug("bootstrap: table already exists (string match)")
-				continue
+			} else if isRateLimitErr(err) {
+				log.WithField("table", ts.Identifier).Warn("bootstrap: rate limited, backing off 30s")
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(30 * time.Second):
+				}
+				// Retry once after backoff.
+				_, retryErr := cat.CreateTable(ctx, ts.Identifier, ts.Schema())
+				if retryErr != nil && !isAlreadyExistsErr(retryErr) && !errors.Is(retryErr, catalog.ErrTableAlreadyExists) {
+					return fmt.Errorf("create table %v (after retry): %w", ts.Identifier, retryErr)
+				}
+				log.WithField("table", ts.Identifier).Info("bootstrap: table created (after retry)")
+			} else {
+				return fmt.Errorf("create table %v: %w", ts.Identifier, err)
 			}
-			return fmt.Errorf("create table %v: %w", ts.Identifier, err)
+		}
+		if i < len(schemas)-1 {
+			time.Sleep(2 * time.Second)
 		}
 	}
 	return nil
+}
+
+func isRateLimitErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "rate limit") || strings.Contains(msg, "toomanyrequests") || strings.Contains(msg, "429")
 }
 
 // isAlreadyExistsErr is a defensive fallback for catalog backends whose
