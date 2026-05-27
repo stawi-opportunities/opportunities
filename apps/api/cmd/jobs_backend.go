@@ -18,21 +18,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/util"
 	"gorm.io/gorm"
 )
-
-// hashID mirrors materializer/service/indexer.go::hashID. Kept here
-// for test compatibility until all callers migrate to slug-based lookups.
-func hashID(s string) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(s))
-	return h.Sum64()
-}
 
 // job is the canonical in-memory representation shared by all endpoint
 // handlers. The Postgres backend populates Slug and CanonicalID; the
