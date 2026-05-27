@@ -35,9 +35,6 @@ const Step1Schema = z
         (v) => !(v instanceof File) || /\.(pdf|docx?|rtf|txt)$/i.test(v.name),
         'Upload a PDF, DOCX, RTF, or TXT file'
       ),
-    targetJobTitle: z.string().optional(),
-    experienceLevel: z.enum(['entry', 'junior', 'mid', 'senior', 'lead', 'executive']).optional(),
-    jobSearchStatus: z.enum(['actively_looking', 'open_to_offers', 'casually_browsing']).optional(),
     extraInfo: z.string().optional(),
     salaryAmount: z.coerce.number().nonnegative().optional(),
     salaryCurrency: z.string().optional(),
@@ -161,9 +158,6 @@ export default function Onboarding() {
   const form = useForm<FormValues>({
     defaultValues: {
       cv: undefined,
-      targetJobTitle: '',
-      experienceLevel: 'mid',
-      jobSearchStatus: 'actively_looking',
       extraInfo: '',
       salaryAmount: undefined,
       salaryCurrency: 'USD',
@@ -216,9 +210,9 @@ export default function Onboarding() {
     setSubmitError(null);
     try {
       await submitOnboarding({
-        target_job_title: data.targetJobTitle ?? '',
-        experience_level: data.experienceLevel ?? 'mid',
-        job_search_status: data.jobSearchStatus ?? 'actively_looking',
+        target_job_title: '',
+        experience_level: 'mid',
+        job_search_status: 'actively_looking',
         salary_min: data.salaryAmount ?? undefined,
         salary_max: data.salaryAmount ?? undefined,
         currency: data.salaryCurrency ?? 'USD',
@@ -299,9 +293,9 @@ export default function Onboarding() {
       const nextStep = (step + 1) as 1 | 2 | 3;
       const values = form.getValues();
       const fieldsForServer: OnboardingDraftFields = {
-        target_job_title: values.targetJobTitle,
-        experience_level: values.experienceLevel,
-        job_search_status: values.jobSearchStatus,
+        target_job_title: '',
+        experience_level: 'mid',
+        job_search_status: 'actively_looking',
         salary_range: values.salaryAmount
           ? `${values.salaryCurrency ?? 'USD'} ${values.salaryAmount}`
           : undefined,
@@ -490,49 +484,7 @@ function Step1Form({ form, t }: FormProps) {
       </Field>
       <p className="text-xs text-gray-500">{t('onboard.cvPrivacy')}</p>
 
-      <Field label={t('onboard.targetJobTitle')} error={errors.targetJobTitle?.message}>
-        {(id) => (
-          <input
-            id={id}
-            type="text"
-            autoComplete="organization-title"
-            placeholder={t('onboard.targetJobTitlePlaceholder')}
-            {...register('targetJobTitle')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          />
-        )}
-      </Field>
-      <Field label={t('onboard.experienceLevel')}>
-        {(id) => (
-          <select
-            id={id}
-            {...register('experienceLevel')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          >
-            <option value="entry">{t('onboard.entry')}</option>
-            <option value="junior">{t('onboard.junior')}</option>
-            <option value="mid">{t('onboard.mid')}</option>
-            <option value="senior">{t('onboard.senior')}</option>
-            <option value="lead">{t('onboard.lead')}</option>
-            <option value="executive">{t('onboard.executive')}</option>
-          </select>
-        )}
-      </Field>
-      <Field label={t('onboard.jobSearchStatus')}>
-        {(id) => (
-          <select
-            id={id}
-            {...register('jobSearchStatus')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          >
-            <option value="actively_looking">{t('onboard.activelyLooking')}</option>
-            <option value="open_to_offers">{t('onboard.openToOffers')}</option>
-            <option value="casually_browsing">{t('onboard.casuallyBrowsing')}</option>
-          </select>
-        )}
-      </Field>
-
-      <Field label={t('onboard.extraInfo')}>
+      <Field label={t('onboard.extraInfo')} error={errors.extraInfo?.message as string | undefined}>
         {(id) => (
           <textarea
             id={id}
