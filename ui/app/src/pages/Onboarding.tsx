@@ -21,19 +21,31 @@ type FormValues = Omit<z.infer<typeof Step1Schema>, 'cv'> & { cv?: File } & z.in
   > &
   z.infer<typeof Step3Schema>;
 
-const Step1Schema = z.object({
-  cv: z
-    .any()
-    .refine((v) => v instanceof File)
-    .refine((v) => !(v instanceof File) || v.size <= 10 * 1024 * 1024)
-    .refine((v) => !(v instanceof File) || /\.(pdf|docx?|rtf|txt)$/i.test(v.name)),
-  targetJobTitle: z.string().optional(),
-  experienceLevel: z.enum(['entry', 'junior', 'mid', 'senior', 'lead', 'executive']).optional(),
-  jobSearchStatus: z.enum(['actively_looking', 'open_to_offers', 'casually_browsing']).optional(),
-  extraInfo: z.string().optional(),
-  salaryAmount: z.coerce.number().nonnegative().optional(),
-  salaryCurrency: z.string().optional(),
-});
+const Step1Schema = z
+  .object({
+    cv: z
+      .any()
+      .optional()
+      .refine((v) => !v || v instanceof File, 'Invalid file')
+      .refine(
+        (v) => !(v instanceof File) || v.size <= 10 * 1024 * 1024,
+        'CV must be 10 MB or smaller'
+      )
+      .refine(
+        (v) => !(v instanceof File) || /\.(pdf|docx?|rtf|txt)$/i.test(v.name),
+        'Upload a PDF, DOCX, RTF, or TXT file'
+      ),
+    targetJobTitle: z.string().optional(),
+    experienceLevel: z.enum(['entry', 'junior', 'mid', 'senior', 'lead', 'executive']).optional(),
+    jobSearchStatus: z.enum(['actively_looking', 'open_to_offers', 'casually_browsing']).optional(),
+    extraInfo: z.string().optional(),
+    salaryAmount: z.coerce.number().nonnegative().optional(),
+    salaryCurrency: z.string().optional(),
+  })
+  .refine((d) => d.cv instanceof File || (d.extraInfo && d.extraInfo.trim().length > 0), {
+    path: ['extraInfo'],
+    message: 'Provide a CV or tell us about yourself',
+  });
 
 const Step2Schema = z.object({
   preferredRegions: z.array(z.string()).min(1),
@@ -265,7 +277,7 @@ export default function Onboarding() {
     if (parsed.success) return true;
 
     const msgMap: Record<string, StringKey> = {
-      targetJobTitle: 'onboard.validationJobTitle',
+      extraInfo: 'onboard.validationCVOrInfo',
       cv: 'onboard.validationCV',
       preferredRegions: 'onboard.validationRegion',
       country: 'onboard.validationCountry',

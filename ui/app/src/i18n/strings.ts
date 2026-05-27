@@ -305,6 +305,7 @@ export interface Strings {
   'onboard.openingSignIn': string;
   'onboard.draftSaveWarning': string;
   'onboard.validationJobTitle': string;
+  'onboard.validationCVOrInfo': string;
   'onboard.validationCV': string;
   'onboard.validationCVSize': string;
   'onboard.validationCVFormat': string;
@@ -570,6 +571,7 @@ const en: Strings = {
   'onboard.draftSaveWarning':
     "We couldn't save your progress. Your answers are still here; we'll try again on the next step.",
   'onboard.validationJobTitle': 'Enter a target job title',
+  'onboard.validationCVOrInfo': 'Provide a CV or tell us about yourself',
   'onboard.validationCV': 'Upload your CV to continue',
   'onboard.validationCVSize': 'CV must be 10 MB or smaller',
   'onboard.validationCVFormat': 'Upload a PDF, DOCX, RTF, or TXT file',
@@ -871,6 +873,7 @@ const es: Strings = {
   'onboard.draftSaveWarning':
     'No pudimos guardar tu progreso. Tus respuestas siguen aquí; lo intentaremos de nuevo en el siguiente paso.',
   'onboard.validationJobTitle': 'Introduce un puesto objetivo',
+  'onboard.validationCVOrInfo': 'Proporciona un CV o cuéntanos sobre ti',
   'onboard.validationCV': 'Sube tu CV para continuar',
   'onboard.validationCVSize': 'El CV debe ser de 10 MB o menos',
   'onboard.validationCVFormat': 'Sube un archivo PDF, DOCX, RTF o TXT',
@@ -1174,6 +1177,7 @@ const fr: Strings = {
   'onboard.draftSaveWarning':
     "Nous n'avons pas pu sauvegarder votre progression. Vos réponses sont toujours là ; nous réessaierons à l'étape suivante.",
   'onboard.validationJobTitle': 'Entrez un poste recherché',
+  'onboard.validationCVOrInfo': 'Fournissez un CV ou parlez-nous de vous',
   'onboard.validationCV': 'Importez votre CV pour continuer',
   'onboard.validationCVSize': 'Le CV doit faire 10 Mo ou moins',
   'onboard.validationCVFormat': 'Importez un fichier PDF, DOCX, RTF ou TXT',
@@ -1478,6 +1482,7 @@ const de: Strings = {
   'onboard.draftSaveWarning':
     'Dein Fortschritt konnte nicht gespeichert werden. Deine Antworten sind noch da; wir versuchen es beim nächsten Schritt erneut.',
   'onboard.validationJobTitle': 'Gib eine gesuchte Berufsbezeichnung ein',
+  'onboard.validationCVOrInfo': 'Lade einen Lebenslauf hoch oder erzähle uns etwas über dich',
   'onboard.validationCV': 'Lade deinen Lebenslauf hoch, um fortzufahren',
   'onboard.validationCVSize': 'Der Lebenslauf darf maximal 10 MB groß sein',
   'onboard.validationCVFormat': 'Lade eine PDF-, DOCX-, RTF- oder TXT-Datei hoch',
@@ -1780,6 +1785,7 @@ const pt: Strings = {
   'onboard.draftSaveWarning':
     'Não foi possível salvar seu progresso. Suas respostas ainda estão aqui; tentaremos novamente no próximo passo.',
   'onboard.validationJobTitle': 'Informe um cargo desejado',
+  'onboard.validationCVOrInfo': 'Envie um currículo ou conte-nos sobre você',
   'onboard.validationCV': 'Envie seu currículo para continuar',
   'onboard.validationCVSize': 'O currículo deve ter no máximo 10 MB',
   'onboard.validationCVFormat': 'Envie um arquivo PDF, DOCX, RTF ou TXT',
@@ -2079,6 +2085,7 @@ const ja: Strings = {
   'onboard.draftSaveWarning':
     '進行状況を保存できませんでした。入力内容はそのまま残っています。次のステップで再試行します。',
   'onboard.validationJobTitle': '希望職種を入力してください',
+  'onboard.validationCVOrInfo': '履歴書を提出するか、自己紹介を記入してください',
   'onboard.validationCV': '続行するには履歴書をアップロードしてください',
   'onboard.validationCVSize': '履歴書は10 MB以下にしてください',
   'onboard.validationCVFormat': 'PDF、DOCX、RTF、またはTXTファイルをアップロードしてください',
@@ -2377,6 +2384,7 @@ const ar: Strings = {
   'onboard.draftSaveWarning':
     'تعذر حفظ تقدمك. إجاباتك لا تزال هنا؛ سنحاول مجدداً في الخطوة التالية.',
   'onboard.validationJobTitle': 'أدخل المسمى الوظيفي المطلوب',
+  'onboard.validationCVOrInfo': 'قدّم سيرة ذاتية أو أخبرنا عن نفسك',
   'onboard.validationCV': 'ارفع سيرتك الذاتية للمتابعة',
   'onboard.validationCVSize': 'يجب ألا يتجاوز حجم السيرة الذاتية 10 ميجابايت',
   'onboard.validationCVFormat': 'ارفع ملف PDF أو DOCX أو RTF أو TXT',
@@ -2668,6 +2676,7 @@ const zh: Strings = {
   'onboard.openingSignIn': '正在打开登录页面…',
   'onboard.draftSaveWarning': '无法保存您的进度。您的回答仍在这里，我们将在下一步重试。',
   'onboard.validationJobTitle': '请输入目标职位',
+  'onboard.validationCVOrInfo': '请提供简历或介绍一下您自己',
   'onboard.validationCV': '请上传简历以继续',
   'onboard.validationCVSize': '简历大小不能超过 10 MB',
   'onboard.validationCVFormat': '请上传 PDF、DOCX、RTF 或 TXT 文件',
