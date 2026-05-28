@@ -78,25 +78,15 @@ func main() {
 
 	// Handle database migration if configured (colony Helm chart sets
 	// DO_DATABASE_MIGRATE=true for the pre-install migration job).
-	// Pattern follows service-profile: migrate, then return immediately.
+	// Pattern follows service-trustage: pool.Migrate scans
+	// MIGRATION_PATH for *.sql files and applies any not yet recorded
+	// in the migrations tracking table, then GORM AutoMigrate keeps
+	// the two historically-GORM-managed tables (sources + raw_refs)
+	// in shape. FinalizeSchema applies pg_trgm + other extensions GORM
+	// cannot express. Returns immediately after migration completes.
 	if cfg.DoDatabaseMigrate() {
-		migrationDB := dbFn(ctx, false)
-		// CrawlJob and RawPayload are TimescaleDB hypertables — the SQL
-		// migrations (0019) own their schema, same pattern as
-		// pipeline_variants. Including them in AutoMigrate creates a
-		// plain-PK shadow table that 0019's DROP TABLE then has to
-		// reclaim. Exclude.
-		if err := migrationDB.AutoMigrate(
-			&domain.Source{},
-			&domain.RawRef{},
-		); err != nil {
-			log.WithError(err).Fatal("auto-migrate failed")
-		}
-		// Postgres-specific schema bits GORM AutoMigrate can't express.
-		// Crawler runs the migration job on every Helm install, so
-		// putting it here keeps the finalize step in one place.
-		if err := repository.FinalizeSchema(migrationDB); err != nil {
-			log.WithError(err).Fatal("finalize schema failed")
+		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
+			log.WithError(err).Fatal("database migration failed")
 		}
 		// Sync Trustage workflow definitions from the mounted ConfigMap.
 		if cfg.TrustageURL != "" && cfg.TrustageWorkflowsDir != "" {
