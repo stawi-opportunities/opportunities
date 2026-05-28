@@ -104,6 +104,21 @@ func (r *CrawlRepository) SaveRawPayload(ctx context.Context, payload *domain.Ra
 	return r.db(ctx, false).Create(payload).Error
 }
 
+// GetRawPayload returns the raw_payloads row matching id, or
+// (nil, nil) when not found (expired by retention or never written).
+// Used by /admin/raw_payloads/{id}/body.
+func (r *CrawlRepository) GetRawPayload(ctx context.Context, id string) (*domain.RawPayload, error) {
+	var rp domain.RawPayload
+	err := r.db(ctx, true).Where("id = ?", id).First(&rp).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &rp, nil
+}
+
 // CrawlJobSummary is the per-row projection /admin/crawl_jobs returns.
 // Decoupled from domain.CrawlJob because the API shape carries a
 // computed `raw_payloads` count joined in via a correlated subquery.

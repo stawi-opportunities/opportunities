@@ -35,6 +35,7 @@ import (
 	"github.com/pitabwire/frame/security"
 	"github.com/pitabwire/util"
 
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/greenhouse"
@@ -159,6 +160,24 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	// the source-lookup leg, so we wire it here rather than duplicating
 	// the frame-datastore boot in main.go.
 	registerTraceAdmin(mux, repository.NewTraceRepository(pool.DB), repo)
+
+	// /admin/raw_payloads/{id}/body — operator pulls the original HTML
+	// from R2 for rejection drill-down. Wired only when R2 creds + the
+	// archive bucket name are present; otherwise the endpoint stays
+	// disabled and the rest of the admin surface keeps working.
+	if cfg.R2AccountID != "" && cfg.R2ArchiveBucket != "" {
+		arch := archive.NewR2Archive(archive.R2Config{
+			AccountID:       cfg.R2AccountID,
+			AccessKeyID:     cfg.R2AccessKeyID,
+			SecretAccessKey: cfg.R2SecretAccessKey,
+			Bucket:          cfg.R2ArchiveBucket,
+		})
+		crawlRepo := repository.NewCrawlRepository(pool.DB)
+		registerRawPayloadAdmin(mux, crawlRepo, arch)
+		log.Info("source admin: /admin/raw_payloads/{id}/body wired")
+	} else {
+		log.Warn("source admin: R2 not configured; /admin/raw_payloads/{id}/body disabled")
+	}
 
 	log.Info("source admin: endpoints registered under /admin/sources, /admin/trace")
 }

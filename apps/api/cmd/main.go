@@ -67,6 +67,23 @@ type apiConfig struct {
 	// endpoint. Empty disables the counters surface — the analytics
 	// log path keeps working unchanged.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
+
+	// R2* config powers /admin/raw_payloads/{id}/body — the operator
+	// drill-down that streams the original archived HTML from R2. The
+	// same credentials secret is mounted on the crawler/worker pods;
+	// the api just needs read access on the raw/* prefix inside the
+	// archive bucket (where crawler.PutRaw stores the gzipped HTML).
+	// All fields are optional — when AccountID or ArchiveBucket is
+	// empty the endpoint is not wired and the rest of the admin
+	// surface keeps working unchanged. R2Endpoint mirrors the
+	// crawler/worker config for parity, even though pkg/archive
+	// derives the endpoint URL from R2AccountID.
+	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
+	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
+	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2Endpoint        string `env:"R2_ENDPOINT" envDefault:""`
+	R2ContentBucket   string `env:"R2_CONTENT_BUCKET" envDefault:"product-opportunities-content"`
+	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
 }
 
 func main() {
