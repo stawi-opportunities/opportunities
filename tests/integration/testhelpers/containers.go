@@ -188,6 +188,8 @@ func ApplyMigrationsDir(t *testing.T, ctx context.Context, db *sql.DB, dir strin
 //
 //   - opportunities: needed by migration 0012 (partial index on opportunities).
 //   - candidate_profiles: needed by migration 0003 (ALTER TABLE DROP COLUMN IF EXISTS).
+//   - pipeline_variants: needed by migration 0019 (ALTER TABLE ADD COLUMN). In
+//     production this table is created by GORM AutoMigrate before migrations run.
 //
 // These are temporary stubs; production uses GORM AutoMigrate for the full
 // schemas. The IF NOT EXISTS guard makes every call idempotent.
@@ -201,6 +203,11 @@ func EnsureOpportunitiesStub(ctx context.Context, db *sql.DB) error {
 		);
 		CREATE TABLE IF NOT EXISTS candidate_profiles (
 			id TEXT PRIMARY KEY
+		);
+		CREATE TABLE IF NOT EXISTS pipeline_variants (
+			variant_id  VARCHAR(20) NOT NULL,
+			ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			PRIMARY KEY (variant_id, ingested_at)
 		);
 	`)
 	return err
