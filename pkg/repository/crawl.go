@@ -103,3 +103,36 @@ func (r *CrawlRepository) SaveRawPayload(ctx context.Context, payload *domain.Ra
 	}
 	return r.db(ctx, false).Create(payload).Error
 }
+
+// CrawlJobSummary is the per-row projection /admin/crawl_jobs returns.
+// Decoupled from domain.CrawlJob because the API shape carries a
+// computed `raw_payloads` count joined in via a correlated subquery.
+type CrawlJobSummary struct {
+	ID             string                `json:"id"`
+	IdempotencyKey string                `json:"idempotency_key"`
+	ScheduledAt    time.Time             `json:"scheduled_at"`
+	StartedAt      *time.Time            `json:"started_at,omitempty"`
+	FinishedAt     *time.Time            `json:"finished_at,omitempty"`
+	Status         domain.CrawlJobStatus `json:"status"`
+	JobsFound      int                   `json:"jobs_found"`
+	JobsStored     int                   `json:"jobs_stored"`
+	RawPayloads    int                   `json:"raw_payloads"`
+	ErrorCode      string                `json:"error_code,omitempty"`
+}
+
+// ListBySource returns the most-recent N crawl jobs for a source,
+// each with a count of raw_payloads it produced. Used by
+// GET /admin/crawl_jobs?source_id=...
+func (r *CrawlRepository) ListBySource(ctx context.Context, sourceID string, limit int) ([]CrawlJobSummary, error) {
+	rows := []CrawlJobSummary{}
+	err := r.db(ctx, true).Raw(`
+        SELECT cj.id, cj.idempotency_key, cj.scheduled_at, cj.started_at, cj.finished_at,
+               cj.status, cj.jobs_found, cj.jobs_stored, cj.error_code,
+               (SELECT count(*) FROM raw_payloads rp WHERE rp.crawl_job_id = cj.id) AS raw_payloads
+          FROM crawl_jobs cj
+         WHERE cj.source_id = ?
+         ORDER BY cj.scheduled_at DESC
+         LIMIT ?
+    `, sourceID, limit).Scan(&rows).Error
+	return rows, err
+}

@@ -563,6 +563,12 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
+	// Admin: recent crawl_jobs for a source, each with a count of the
+	// raw_payloads it produced. Triage view: "when did we last crawl
+	// source X, what happened, how many raw_payloads landed?"
+	adminMux.HandleFunc("GET /admin/crawl_jobs",
+		service.CrawlJobsAdminHandler(crawlRepo))
+
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 
 	// Register a named health checker that reports source state counts.
