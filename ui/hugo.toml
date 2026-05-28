@@ -7,8 +7,12 @@ title = "Stawi Opportunities"
   # Defaults point at the exposed Stawi cluster so `make ui-dev` works out of
   # the box against real data. For developers running the backend locally,
   # use `make ui-dev-local` (overrides apiURL/candidatesAPIURL to localhost).
-  # The gateway exposes the jobs service under a /jobs path prefix on the
-  # shared api.stawi.org host.
+  # Each backend gets one short path prefix on api.stawi.org (org-wide
+  # convention; see api-gateway-path-prefix-convention memory):
+  #   /jobs/*     → opportunities-api      (apiURL embeds the prefix)
+  #   /matching/* → opportunities-matching (callers prefix paths inline,
+  #                 since runtime.fetch is shared with @stawi/profile
+  #                 which targets /profile.v1.* directly).
   apiURL = "https://api.stawi.org/jobs"
   candidatesAPIURL = "https://api.stawi.org"
   contentOrigin = "https://opportunities-data.stawi.org"

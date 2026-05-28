@@ -168,6 +168,7 @@ updated_at        TIMESTAMPTZ
 ### Entry Points
 
 **Email channel:**
+
 ```
 Candidate emails CV to jobs@stawi.opportunities
   → Email provider webhook: POST /webhooks/inbound-email
@@ -178,6 +179,7 @@ Candidate emails CV to jobs@stawi.opportunities
 ```
 
 **Web channel:**
+
 ```
 Candidate authenticates → uploads CV file
   → Profile exists (authenticated)
@@ -215,6 +217,7 @@ Emit event: candidate.profile.created
 **Classification:** current_title, seniority, years_experience, primary_industry, role_categories
 
 **Skills (by signal strength):**
+
 - strong_skills: mentioned in multiple roles or with depth indicators ("led", "architected", "built")
 - working_skills: mentioned once or in passing
 - tools_frameworks: specific technologies
@@ -231,6 +234,7 @@ Emit event: candidate.profile.created
 ### Verification Email
 
 After extraction, send:
+
 ```
 "Hi {name}, here's what we understood from your CV:
 
@@ -256,6 +260,7 @@ Candidate replies with corrections → AI parses → updates profile → re-send
 **Stage 1: Hard Filters (SQL — eliminates ~90%)**
 
 Disqualify fundamentally incompatible jobs:
+
 - remote_preference: candidate "remote_only" → exclude onsite-only jobs
 - salary: job salary_max < candidate salary_min → exclude
 - seniority: allow ±1 level, exclude beyond (senior candidate → no intern jobs)
@@ -266,6 +271,7 @@ Narrows from 50K+ to ~2-5K jobs.
 **Stage 2: Embedding Similarity (vector — ranks by relevance)**
 
 Cosine similarity between candidate embedding and job embeddings on the filtered set. Captures semantic matches:
+
 - "Full-stack developer" ↔ "Software Engineer"
 - "Data analyst with Python" ↔ "ML Engineer"
 
@@ -287,11 +293,11 @@ Jobs with match_score > 0.6 are good matches.
 
 ### Match Triggers
 
-| Trigger | Action |
-|---|---|
-| New candidate profile created | Match against all active jobs |
-| New job crawled and stored | Match against all active candidates |
-| Candidate updates preferences | Re-match against all active jobs |
+| Trigger                       | Action                              |
+| ----------------------------- | ----------------------------------- |
+| New candidate profile created | Match against all active jobs       |
+| New job crawled and stored    | Match against all active candidates |
+| Candidate updates preferences | Re-match against all active jobs    |
 
 Each trigger emits a Frame event so matching runs asynchronously.
 
@@ -333,19 +339,19 @@ Until: hired, cancelled, or paused
 
 ### Conversion Triggers
 
-| Trigger | Message |
-|---|---|
-| 5 free matches sent | "Subscribe for unlimited + auto-apply" |
+| Trigger                         | Message                                       |
+| ------------------------------- | --------------------------------------------- |
+| 5 free matches sent             | "Subscribe for unlimited + auto-apply"        |
 | Exceptional match found (>0.85) | "95% fit found. Subscribe to apply instantly" |
-| Quarterly check-in | "{N} jobs matched since last visit" |
+| Quarterly check-in              | "{N} jobs matched since last visit"           |
 
 ### Subscription Tiers
 
-| Plan | Features |
-|---|---|
-| Free | 5 matches total, email only, self-apply |
-| Monthly | Unlimited matches, auto-apply, multi-channel, weekly digest |
-| Quarterly (20% off) | Same as monthly |
+| Plan                | Features                                                    |
+| ------------------- | ----------------------------------------------------------- |
+| Free                | 5 matches total, email only, self-apply                     |
+| Monthly             | Unlimited matches, auto-apply, multi-channel, weekly digest |
+| Quarterly (20% off) | Same as monthly                                             |
 
 ---
 

@@ -7,14 +7,9 @@
     "region": "europe",
     "crawl_interval_sec": 86400,
     "priority": "normal",
-    "kinds": [
-      "scholarship"
-    ],
+    "kinds": ["scholarship"],
     "required_attributes_by_kind": {
-      "scholarship": [
-        "deadline",
-        "field_of_study"
-      ]
+      "scholarship": ["deadline", "field_of_study"]
     }
   }
 ]

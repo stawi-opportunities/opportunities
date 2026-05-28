@@ -19,6 +19,7 @@ RUN go mod download
 COPY ./apps/crawler ./apps/crawler
 COPY ./pkg ./pkg
 COPY ./seeds ./seeds
+COPY ./definitions/trustage ./definitions/trustage
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
@@ -50,5 +51,6 @@ WORKDIR /
 COPY --from=builder /app/binary /crawler
 COPY --from=builder /app/apps/crawler/migrations /migrations
 COPY --from=builder /app/seeds /seeds
+COPY --from=builder /app/definitions/trustage /workflows
 
 ENTRYPOINT ["/crawler"]

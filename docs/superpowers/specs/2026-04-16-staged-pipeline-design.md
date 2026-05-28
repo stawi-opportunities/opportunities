@@ -8,6 +8,7 @@
 ## 1. Problem
 
 The current system does everything in one pass: crawl → dedupe → store. This causes:
+
 - Incomplete data (0% seniority, 0% skills, 0% industry across 4,000+ jobs)
 - AI enrichment either blocks crawling or gets skipped
 - Failed enrichment means data is permanently incomplete
@@ -29,6 +30,7 @@ Stage 4: CANONICAL → cluster, embed, score, ready for matching
 Connector fetches data. For each page:
 
 **Content extraction pipeline (before storing):**
+
 1. Fetch raw HTML
 2. Normalize encoding / decompress (handle gzip, charset detection)
 3. Extract main content using go-trafilatura or go-domdistiller (strips nav, ads, footers, sidebars)
@@ -39,12 +41,7 @@ Connector fetches data. For each page:
    - `clean_html` — extracted main content HTML (for future reprocessing with better extractors)
    - `markdown` — clean markdown (what AI and humans see, what Stage 2 normalizes from)
 
-**Dedup check:**
-7. Compute hard_key from extracted content
-8. Check **Valkey bloom filter**: `GETBIT bloom:seen:{source_id} {crc32(hard_key) % 2^20}`. If set → skip.
-9. If not in bloom → check `job_variants` table for `hard_key`. If exists → skip.
-10. If truly new → store variant with `stage = 'raw'`, set bloom bit.
-11. Emit: `variant.raw.stored`
+**Dedup check:** 7. Compute hard_key from extracted content 8. Check **Valkey bloom filter**: `GETBIT bloom:seen:{source_id} {crc32(hard_key) % 2^20}`. If set → skip. 9. If not in bloom → check `job_variants` table for `hard_key`. If exists → skip. 10. If truly new → store variant with `stage = 'raw'`, set bloom bit. 11. Emit: `variant.raw.stored`
 
 Crawler moves to next job immediately. No AI, no normalization.
 
@@ -53,6 +50,7 @@ Crawler moves to next job immediately. No AI, no normalization.
 ### Stage 1: DEDUP
 
 Event: `variant.raw.stored`
+
 1. Acquire advisory lock on hard_key
 2. Check `job_variants` for existing hard_key within same source
 3. If duplicate → update existing variant's `scraped_at`, done
@@ -64,6 +62,7 @@ Pure code, no AI.
 ### Stage 2: NORMALIZE
 
 Event: `variant.deduped`
+
 1. Load variant's **markdown** content (clean, focused, no HTML noise)
 2. Call Ollama with markdown + title + company — extract ALL intelligence fields:
    - seniority, skills (required + nice-to-have), tools_frameworks
@@ -82,6 +81,7 @@ If Ollama is down → event waits in NATS queue indefinitely, resumes when avail
 ### Stage 3: VALIDATE
 
 Event: `variant.normalized`
+
 1. Call Ollama with independent reviewer prompt
 2. AI returns: `{valid: bool, confidence: 0.0-1.0, issues: [...], recommendation: "accept"/"reject"/"flag"}`
 3. If valid (confidence >= 0.7) → `stage = 'validated'`, emit: `variant.validated`
@@ -94,6 +94,7 @@ If Ollama is down → event waits in queue, resumes when available.
 ### Stage 4: CANONICAL
 
 Event: `variant.validated`
+
 1. Acquire advisory lock on hard_key
 2. Find or create cluster (reuse existing if hard_key match exists)
 3. Build canonical job from validated variant
@@ -137,6 +138,7 @@ Trigger: `quality_flagged / (quality_validated + quality_flagged) > 0.5`
 ### Source Quality AI Review
 
 Event: `source.quality.review`
+
 1. Load last N validated + flagged variants from the source
 2. Call Ollama: assess source quality from samples
 3. AI returns: `continue` / `reduce_frequency` / `pause` / `disable` + reason
@@ -160,6 +162,7 @@ TTL:    None (persists until source disabled)
 Fallback when Valkey unavailable: skip bloom, go straight to DB check.
 
 Flow:
+
 1. Bloom says "seen" → skip immediately (fast path, 95%+ of re-crawls)
 2. Bloom says "not seen" → check DB for hard_key (accurate confirmation)
 3. DB says exists → skip (bloom false negative, rare)
@@ -183,11 +186,11 @@ discovered_urls    TEXT
 
 ### Storage Strategy
 
-| Field | Purpose | When populated |
-|---|---|---|
-| `raw_html` | Replay without recrawling | Stage 0, always |
-| `clean_html` | Reprocess with better extractors | Stage 0, HTML sources only |
-| `markdown` | AI normalization input, human readable | Stage 0, always |
+| Field         | Purpose                                | When populated             |
+| ------------- | -------------------------------------- | -------------------------- |
+| `raw_html`    | Replay without recrawling              | Stage 0, always            |
+| `clean_html`  | Reprocess with better extractors       | Stage 0, HTML sources only |
+| `markdown`    | AI normalization input, human readable | Stage 0, always            |
 | `description` | Legacy field, kept for backward compat | Stage 0 (connector output) |
 
 For JSON API connectors: `raw_html` stores the JSON response, `clean_html` is empty, `markdown` is generated from the description field.
@@ -231,14 +234,14 @@ MaxAge: 720h (30 days)
 
 ### Event Retry Policy
 
-| Event | Retry | On failure |
-|---|---|---|
-| `variant.raw.stored` | 3x then dead-letter | Code-only, DB failure is fatal |
-| `variant.deduped` | Infinite, exponential backoff | Waits for Ollama |
-| `variant.normalized` | Infinite, exponential backoff | Waits for Ollama |
-| `variant.validated` | 3x then dead-letter | Code-only (cluster + embed) |
-| `source.urls.discovered` | Infinite, exponential backoff | HTTP may fail |
-| `source.quality.review` | Infinite, exponential backoff | Waits for Ollama |
+| Event                    | Retry                         | On failure                     |
+| ------------------------ | ----------------------------- | ------------------------------ |
+| `variant.raw.stored`     | 3x then dead-letter           | Code-only, DB failure is fatal |
+| `variant.deduped`        | Infinite, exponential backoff | Waits for Ollama               |
+| `variant.normalized`     | Infinite, exponential backoff | Waits for Ollama               |
+| `variant.validated`      | 3x then dead-letter           | Code-only (cluster + embed)    |
+| `source.urls.discovered` | Infinite, exponential backoff | HTTP may fail                  |
+| `source.quality.review`  | Infinite, exponential backoff | Waits for Ollama               |
 
 AI stages never give up. Events wait in the NATS queue until Ollama is available.
 

@@ -28,22 +28,27 @@ export interface SiteConfig {
 }
 
 const DEFAULTS: SiteConfig = {
-  apiURL: "https://api.stawi.org/jobs",
-  candidatesAPIURL: "https://api.stawi.org",
-  contentOrigin: "https://opportunities-data.stawi.org",
-  oidcIssuer: "https://oauth2.stawi.org",
-  oidcClientID: "d7is2kspf2t7cl19qlpg",
-  oidcInstallationID: "d7gi6lkpf2t67dlsqrhg",
+  apiURL: 'https://api.stawi.org/jobs',
+  // Bare base URL — the matching service's /matching/* prefix is added
+  // inline by each candidate-API call site (see api/candidates.ts and
+  // Dashboard.tsx). Kept bare because the shared @stawi/profile widget
+  // also uses this runtime and calls /profile.v1.*. See
+  // api-gateway-path-prefix-convention memory for the org-wide rule.
+  candidatesAPIURL: 'https://api.stawi.org',
+  contentOrigin: 'https://opportunities-data.stawi.org',
+  oidcIssuer: 'https://oauth2.stawi.org',
+  oidcClientID: 'd7is2kspf2t7cl19qlpg',
+  oidcInstallationID: 'd7gi6lkpf2t67dlsqrhg',
   oidcRedirectURI:
-    typeof window !== "undefined"
+    typeof window !== 'undefined'
       ? `${window.location.origin}/auth/callback/`
-      : "http://localhost:5170/auth/callback/",
+      : 'http://localhost:5170/auth/callback/',
   // PostHog — empty default so initPostHog() short-circuits unless
   // HUGO_PARAMS_posthogApiKey is set at build time. Keys are public
   // (phc_...) and safe in hugo.toml. posthogHost falls back to PostHog
   // Cloud US in the runtime module when blank.
-  posthogApiKey: "",
-  posthogHost: "",
+  posthogApiKey: '',
+  posthogHost: '',
 };
 
 let cached: SiteConfig | null = null;
@@ -56,10 +61,8 @@ export function getConfig(): SiteConfig {
 }
 
 function loadFromMeta(): SiteConfig {
-  if (typeof document === "undefined") return DEFAULTS;
-  const el = document.querySelector<HTMLMetaElement>(
-    'meta[name="site-params"]',
-  );
+  if (typeof document === 'undefined') return DEFAULTS;
+  const el = document.querySelector<HTMLMetaElement>('meta[name="site-params"]');
   if (!el) return DEFAULTS;
   try {
     const parsed = JSON.parse(el.content) as Partial<SiteConfig>;
@@ -72,7 +75,7 @@ function loadFromMeta(): SiteConfig {
 function stripEmpty<T extends object>(obj: T): Partial<T> {
   const out: Partial<T> = {};
   for (const [k, v] of Object.entries(obj) as [keyof T, unknown][]) {
-    if (v !== "" && v != null) {
+    if (v !== '' && v != null) {
       out[k] = v as T[keyof T];
     }
   }

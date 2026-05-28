@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-26
 **Status:** Spec — awaiting user review before plan writing
-**Goal:** Refactor the platform's domain model from job-only to a generic *opportunity* model that supports jobs, scholarships, tenders, deals, funding opportunities, and arbitrary future kinds added by dropping a YAML file.
+**Goal:** Refactor the platform's domain model from job-only to a generic _opportunity_ model that supports jobs, scholarships, tenders, deals, funding opportunities, and arbitrary future kinds added by dropping a YAML file.
 
 ---
 
@@ -76,8 +76,9 @@ url_prefix: scholarships
 # Scholarships are often global, so anchor_country is NOT required here.
 universal_required: [title, description, issuing_entity]
 
-kind_required:      [deadline, field_of_study]
-kind_optional:      [degree_level, gpa_min, age_max, eligible_nationalities, study_location]
+kind_required: [deadline, field_of_study]
+kind_optional:
+  [degree_level, gpa_min, age_max, eligible_nationalities, study_location]
 categories: [STEM, Humanities, Arts, Business, Medicine, Law]
 search_facets: [field_of_study, degree_level]
 extraction_prompt: |
@@ -203,13 +204,13 @@ type VariantIngestedV1 struct {
 
 `pkg/domain/models.go:BuildSlug` dispatches on kind:
 
-| Kind | Pattern |
-|---|---|
-| `job` | `<title>-at-<issuing_entity>-<hash>` |
-| `scholarship` | `<title>-at-<issuing_entity>-<hash>` |
-| `tender` | `<title>-from-<issuing_entity>-<hash>` |
-| `deal` | `<title>-at-<issuing_entity>-<hash>` |
-| `funding` | `<title>-from-<issuing_entity>-<hash>` |
+| Kind          | Pattern                                |
+| ------------- | -------------------------------------- |
+| `job`         | `<title>-at-<issuing_entity>-<hash>`   |
+| `scholarship` | `<title>-at-<issuing_entity>-<hash>`   |
+| `tender`      | `<title>-from-<issuing_entity>-<hash>` |
+| `deal`        | `<title>-at-<issuing_entity>-<hash>`   |
+| `funding`     | `<title>-from-<issuing_entity>-<hash>` |
 
 The dispatch table is hardcoded for now; if it gets wider we move it into the YAML.
 
@@ -252,6 +253,7 @@ func Verify(opp *ExternalOpportunity, src *Source, reg *Registry) VerifyResult
 ```
 
 Verify checks, in order:
+
 1. `opp.Kind ∈ src.Kinds` (source contract)
 2. Universal required: `Spec.UniversalRequired` keys non-empty on the envelope
 3. Kind required: `Spec.KindRequired` keys present and non-empty in `Attributes`
@@ -266,14 +268,14 @@ A failed Verify routes the variant to a dead-letter Iceberg table (`opportunitie
 
 ## Pipeline changes
 
-| Concern | File | Change |
-|---|---|---|
-| Connector iface | `pkg/connectors/connector.go` | `CrawlIterator.Jobs()` → `Items()` returning `[]ExternalOpportunity`. Connectors that emit a single kind tag every record (`RemoteOK → "job"`); generic HTML/Sitemap connectors leave `Kind` empty for the extractor to classify. |
-| Extractor | `pkg/extraction/extractor.go` | Two stages: (a) `pickKind` — only when source declares >1 kind or zero kinds. Returns one of `Registry.Known()`. (b) `extract` — calls the LLM with `universalPromptPrefix + Spec.ExtractionPrompt`. Output JSON deserialized into `ExternalOpportunity` with `Attributes` populated from kind-specific keys. |
-| Normalize | `pkg/normalize/normalize.go` | `JobVariant` → `OpportunityVariant`. Kind-specific normalisation rules dispatch on `opp.Kind`. |
-| Verify | new: `pkg/opportunity/verify.go` | Replaces `pkg/quality/gate.go`. |
-| Publish | `pkg/publish/r2.go` | R2 path becomes `<URLPrefix>/<slug>.json`. URL prefix from `Registry.Resolve(opp.Kind).URLPrefix`. |
-| KV rebuild | `apps/worker/service/kv_rebuild.go` | Iterates `Registry.Known()` and lists each `<URLPrefix>/` prefix from R2 instead of hardcoded `jobs/`. |
+| Concern         | File                                | Change                                                                                                                                                                                                                                                                                                        |
+| --------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connector iface | `pkg/connectors/connector.go`       | `CrawlIterator.Jobs()` → `Items()` returning `[]ExternalOpportunity`. Connectors that emit a single kind tag every record (`RemoteOK → "job"`); generic HTML/Sitemap connectors leave `Kind` empty for the extractor to classify.                                                                             |
+| Extractor       | `pkg/extraction/extractor.go`       | Two stages: (a) `pickKind` — only when source declares >1 kind or zero kinds. Returns one of `Registry.Known()`. (b) `extract` — calls the LLM with `universalPromptPrefix + Spec.ExtractionPrompt`. Output JSON deserialized into `ExternalOpportunity` with `Attributes` populated from kind-specific keys. |
+| Normalize       | `pkg/normalize/normalize.go`        | `JobVariant` → `OpportunityVariant`. Kind-specific normalisation rules dispatch on `opp.Kind`.                                                                                                                                                                                                                |
+| Verify          | new: `pkg/opportunity/verify.go`    | Replaces `pkg/quality/gate.go`.                                                                                                                                                                                                                                                                               |
+| Publish         | `pkg/publish/r2.go`                 | R2 path becomes `<URLPrefix>/<slug>.json`. URL prefix from `Registry.Resolve(opp.Kind).URLPrefix`.                                                                                                                                                                                                            |
+| KV rebuild      | `apps/worker/service/kv_rebuild.go` | Iterates `Registry.Known()` and lists each `<URLPrefix>/` prefix from R2 instead of hardcoded `jobs/`.                                                                                                                                                                                                        |
 
 ### Geocoding
 
@@ -285,10 +287,10 @@ A new `pkg/geocode/` package wraps a bundled offline gazetteer (top ~10k cities)
 
 ### R2
 
-| Path | Was | Now |
-|---|---|---|
-| Canonical body | `opportunities-content/jobs/<slug>.json` | `opportunities-content/<URLPrefix>/<slug>.json` |
-| Translation | `opportunities-content/jobs/<slug>/<lang>.json` | `opportunities-content/<URLPrefix>/<slug>/<lang>.json` |
+| Path           | Was                                             | Now                                                    |
+| -------------- | ----------------------------------------------- | ------------------------------------------------------ |
+| Canonical body | `opportunities-content/jobs/<slug>.json`        | `opportunities-content/<URLPrefix>/<slug>.json`        |
+| Translation    | `opportunities-content/jobs/<slug>/<lang>.json` | `opportunities-content/<URLPrefix>/<slug>/<lang>.json` |
 
 ### Iceberg
 
@@ -508,15 +510,15 @@ The candidate dashboard surfaces a **tab per opted-in kind**. A user may have al
 
 ## UI changes
 
-| File | Change |
-|---|---|
-| `ui/content/jobs/` | Move per kind: `ui/content/jobs/`, `ui/content/scholarships/`, `ui/content/tenders/`, etc. The Hugo path is the same as the URL prefix. |
-| `ui/layouts/jobs/list.html` | Becomes `ui/layouts/<URLPrefix>/list.html` per kind, with a shared partial doing the universal envelope. |
-| `ui/layouts/partials/job-card.html` | Renamed `opportunity-card.html`. Conditionally renders kind-specific badges (employment_type for jobs, deadline for scholarships, budget for tenders). |
-| `ui/app/src/types/snapshot.ts` | `JobSnapshot` → `OpportunitySnapshot` with `kind` discriminator, `attributes` map, and `anchor_location` block. Type-narrowed accessors (`isJob(o)`, `isScholarship(o)`). |
-| `ui/app/src/types/search.ts` | `Facets` becomes `{ universal: {...}, byKind: { job: {...}, scholarship: {...}, ... } }`. The UI renders facet groups based on which kinds appear in the result set. |
-| `ui/app/src/components/JobDetail.tsx` | Splits into `OpportunityDetail.tsx` (router) + per-kind `JobBody.tsx`, `ScholarshipBody.tsx`, etc. |
-| Sitemap | One sitemap shard per kind (`/sitemaps/jobs.xml`, `/sitemaps/scholarships.xml`, ...). |
+| File                                  | Change                                                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui/content/jobs/`                    | Move per kind: `ui/content/jobs/`, `ui/content/scholarships/`, `ui/content/tenders/`, etc. The Hugo path is the same as the URL prefix.                                   |
+| `ui/layouts/jobs/list.html`           | Becomes `ui/layouts/<URLPrefix>/list.html` per kind, with a shared partial doing the universal envelope.                                                                  |
+| `ui/layouts/partials/job-card.html`   | Renamed `opportunity-card.html`. Conditionally renders kind-specific badges (employment_type for jobs, deadline for scholarships, budget for tenders).                    |
+| `ui/app/src/types/snapshot.ts`        | `JobSnapshot` → `OpportunitySnapshot` with `kind` discriminator, `attributes` map, and `anchor_location` block. Type-narrowed accessors (`isJob(o)`, `isScholarship(o)`). |
+| `ui/app/src/types/search.ts`          | `Facets` becomes `{ universal: {...}, byKind: { job: {...}, scholarship: {...}, ... } }`. The UI renders facet groups based on which kinds appear in the result set.      |
+| `ui/app/src/components/JobDetail.tsx` | Splits into `OpportunityDetail.tsx` (router) + per-kind `JobBody.tsx`, `ScholarshipBody.tsx`, etc.                                                                        |
+| Sitemap                               | One sitemap shard per kind (`/sitemaps/jobs.xml`, `/sitemaps/scholarships.xml`, ...).                                                                                     |
 
 ---
 

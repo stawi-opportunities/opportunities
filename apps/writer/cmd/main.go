@@ -38,8 +38,8 @@ func main() {
 
 	// Subcommand dispatch. The bootstrap-iceberg subcommand is invoked
 	// by the opportunities-iceberg-bootstrap Kubernetes Job on every
-	// FluxCD reconcile to register the Lakekeeper warehouse + create
-	// every namespace/table this platform persists to. Idempotent.
+	// FluxCD reconcile to enable R2 Data Catalog on the chronicle
+	// bucket + create every namespace/table. Idempotent.
 	if len(os.Args) > 1 && os.Args[1] == "bootstrap-iceberg" {
 		if err := runBootstrap(ctx); err != nil {
 			util.Log(ctx).WithError(err).Fatal("bootstrap-iceberg failed")
@@ -78,7 +78,7 @@ func main() {
 		util.Log(ctx).WithError(err).Warn("telemetry metrics init failed")
 	}
 
-	// Open the shared cluster Iceberg REST catalog (Lakekeeper).
+	// Open the Iceberg REST catalog (R2 Data Catalog).
 	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
 		Name:       cfg.IcebergCatalogName,
 		URI:        cfg.IcebergCatalogURI,

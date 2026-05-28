@@ -1,4 +1,4 @@
-import { getConfig } from "@/utils/config";
+import { getConfig } from '@/utils/config';
 
 // Shared HTTP helpers. Two axes of base URL exist:
 //   apiURL           = https://api.stawi.org/jobs (search / jobs)
@@ -7,8 +7,8 @@ import { getConfig } from "@/utils/config";
 
 /** Join a base URL (which may contain a path prefix) with a relative path. */
 function join(base: string, path: string): string {
-  const b = base.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : "/" + path;
+  const b = base.replace(/\/$/, '');
+  const p = path.startsWith('/') ? path : '/' + path;
   return b + p;
 }
 
@@ -22,11 +22,9 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiParams = Record<
-  string,
-  string | number | boolean | null | undefined
->;
+export type ApiParams = Record<string, string | number | boolean | null | undefined>;
 
+<<<<<<< HEAD
 /** Maximum number of retries for transient 5xx errors. */
 const MAX_RETRIES = 2;
 /** Base delay in ms — doubles on each retry (100 ms → 200 ms). */
@@ -39,11 +37,16 @@ export async function jobsApiGet<T>(
   path: string,
   params: ApiParams = {},
 ): Promise<T> {
+=======
+/** GET against the jobs API (api.stawi.org/jobs). */
+export async function jobsApiGet<T>(path: string, params: ApiParams = {}): Promise<T> {
+>>>>>>> upstream/main
   const url = new URL(join(getConfig().apiURL, path));
   for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === "") continue;
+    if (v === undefined || v === null || v === '') continue;
     url.searchParams.set(k, String(v));
   }
+<<<<<<< HEAD
 
   let lastError!: ApiError;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -58,6 +61,12 @@ export async function jobsApiGet<T>(
     lastError = new ApiError(res.status, `${path}: HTTP ${res.status}`, body);
     // Fail fast on client errors — retrying a 404 or 401 won't help.
     if (res.status < 500) throw lastError;
+=======
+  const res = await fetch(url.toString(), { credentials: 'omit' });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new ApiError(res.status, `${path}: HTTP ${res.status}`, body);
+>>>>>>> upstream/main
   }
   throw lastError;
 }

@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/coupang",
     "country": "KR",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ko",
     "priority": "normal",
     "region": "asia",
@@ -15,9 +13,7 @@
     "base_url": "https://jobs.lever.co/sendbird",
     "country": "KR",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ko",
     "priority": "normal",
     "region": "asia",

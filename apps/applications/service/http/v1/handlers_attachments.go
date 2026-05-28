@@ -45,7 +45,7 @@ func uploadAttachment(d *Deps) http.HandlerFunc {
 			ProblemJSON(w, http.StatusBadRequest, "bad_input", "file field required")
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		attID := d.newID()
 		r2Key := "applications/" + app.CandidateID + "/" + app.ApplicationID + "/" + attID + "-" + header.Filename

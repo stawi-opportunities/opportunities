@@ -1,14 +1,7 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import type { AuthRuntime, AuthState } from "@stawi/auth-runtime";
-import { authRuntime } from "@/auth/runtime";
-import { setAnalyticsUser } from "@/analytics/posthog";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { AuthRuntime, AuthState } from '@stawi/auth-runtime';
+import { authRuntime } from '@/auth/runtime';
+import { setAnalyticsUser } from '@/analytics/posthog';
 
 // Thin context around the module-level runtime singleton. Every React
 // island that's wrapped in <AuthProvider> gets the same instance, and
@@ -33,21 +26,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Thread identity into OpenObserve so RUM + logs are joinable
       // back to the profile_id. The 1.0 runtime doesn't expose a
       // synchronous getUser() — use getClaims() once authenticated.
-      if (next === "authenticated") {
+      if (next === 'authenticated') {
         runtime.getClaims().then(
           (claims) => {
-            const id = String(claims.sub ?? "");
+            const id = String(claims.sub ?? '');
             if (id) {
               setAnalyticsUser({
                 id,
-                name: String(claims.name ?? claims.preferred_username ?? ""),
-                email: String(claims.email ?? ""),
+                name: String(claims.name ?? claims.preferred_username ?? ''),
+                email: String(claims.email ?? ''),
               });
             }
           },
-          () => setAnalyticsUser(null),
+          () => setAnalyticsUser(null)
         );
-      } else if (next === "unauthenticated") {
+      } else if (next === 'unauthenticated') {
         setAnalyticsUser(null);
       }
     });
@@ -56,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // "initializing" on mount. prefetchDiscovery is cheap (single GET
     // to /.well-known/openid-configuration) and fires a state
     // transition so the listener above updates React.
-    if (runtime.getState() === "initializing") {
+    if (runtime.getState() === 'initializing') {
       runtime.prefetchDiscovery().catch(() => {
         // Discovery fetch failure surfaces via the normal auth-state
         // path — don't double-log.
@@ -73,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: () => runtime.ensureAuthenticated(),
       logout: () => runtime.logout(),
     }),
-    [state, runtime],
+    [state, runtime]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -81,6 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthCtx {
   const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
   return ctx;
 }

@@ -14,24 +14,24 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `pkg/domain/models.go` | Modify | Add `Slug` field to `CanonicalJob`, add `BuildSlug` + `Slugify` functions |
-| `pkg/pipeline/handlers/payloads.go` | Modify | Add `EventJobPublished` constant |
-| `pkg/pipeline/handlers/canonical.go` | Modify | Generate slug on first canonical creation |
-| `pkg/pipeline/handlers/publish.go` | Create | PublishHandler: subscribes to `job.ready`, renders markdown, uploads to R2 |
-| `pkg/publish/r2.go` | Create | R2Publisher: S3-compatible client for Cloudflare R2 |
-| `pkg/publish/markdown.go` | Create | RenderJobMarkdown: generates Hugo-compatible markdown with frontmatter |
-| `apps/crawler/config/config.go` | Modify | Add R2 config fields |
-| `apps/crawler/cmd/main.go` | Modify | Wire PublishHandler + R2Publisher |
-| `apps/sitegen/cmd/main.go` | Modify | Add `--r2-upload` backfill mode |
-| `apps/api/cmd/main.go` | Modify | Include `slug` in canonical job API responses |
-| `ui/hugo.toml` | Modify | Update baseURL, OIDC params for staging default |
-| `ui/scripts/sync-r2.sh` | Create | Pre-build script: syncs content from R2 to local dirs |
-| `ui/.gitignore` | Modify | Ignore synced content files |
-| `.github/workflows/ci.yaml` | Modify | Add Hugo build verification |
-| Service-auth migration (prod) | Create | `20260416_create_stawi_jobs_tenant.sql` |
-| Service-auth migration (staging) | Create | `20260416_create_stawi_jobs_test_tenant.sql` |
+| File                                 | Action | Responsibility                                                             |
+| ------------------------------------ | ------ | -------------------------------------------------------------------------- |
+| `pkg/domain/models.go`               | Modify | Add `Slug` field to `CanonicalJob`, add `BuildSlug` + `Slugify` functions  |
+| `pkg/pipeline/handlers/payloads.go`  | Modify | Add `EventJobPublished` constant                                           |
+| `pkg/pipeline/handlers/canonical.go` | Modify | Generate slug on first canonical creation                                  |
+| `pkg/pipeline/handlers/publish.go`   | Create | PublishHandler: subscribes to `job.ready`, renders markdown, uploads to R2 |
+| `pkg/publish/r2.go`                  | Create | R2Publisher: S3-compatible client for Cloudflare R2                        |
+| `pkg/publish/markdown.go`            | Create | RenderJobMarkdown: generates Hugo-compatible markdown with frontmatter     |
+| `apps/crawler/config/config.go`      | Modify | Add R2 config fields                                                       |
+| `apps/crawler/cmd/main.go`           | Modify | Wire PublishHandler + R2Publisher                                          |
+| `apps/sitegen/cmd/main.go`           | Modify | Add `--r2-upload` backfill mode                                            |
+| `apps/api/cmd/main.go`               | Modify | Include `slug` in canonical job API responses                              |
+| `ui/hugo.toml`                       | Modify | Update baseURL, OIDC params for staging default                            |
+| `ui/scripts/sync-r2.sh`              | Create | Pre-build script: syncs content from R2 to local dirs                      |
+| `ui/.gitignore`                      | Modify | Ignore synced content files                                                |
+| `.github/workflows/ci.yaml`          | Modify | Add Hugo build verification                                                |
+| Service-auth migration (prod)        | Create | `20260416_create_stawi_jobs_tenant.sql`                                    |
+| Service-auth migration (staging)     | Create | `20260416_create_stawi_jobs_test_tenant.sql`                               |
 
 ## Task Dependency Graph
 
@@ -48,6 +48,7 @@ Task 10 (Hugo config + sync script) — depends on Task 9
 ```
 
 **Parallel tracks:**
+
 - **Track A (Go pipeline):** Tasks 1→2→3→4→5→6→7
 - **Track B (OIDC):** Task 8 (independent)
 - **Track C (Deployment):** Tasks 9→10
@@ -57,6 +58,7 @@ Task 10 (Hugo config + sync script) — depends on Task 9
 ## Task 1: Add Slug to CanonicalJob Model
 
 **Files:**
+
 - Modify: `pkg/domain/models.go`
 
 - [ ] **Step 1: Add Slug field to CanonicalJob struct**
@@ -130,6 +132,7 @@ git commit -m "feat: add permanent Slug field to CanonicalJob with BuildSlug hel
 ## Task 2: Generate Slug in CanonicalHandler
 
 **Files:**
+
 - Modify: `pkg/pipeline/handlers/canonical.go`
 
 - [ ] **Step 1: Add slug generation after UpsertAndCluster**
@@ -172,6 +175,7 @@ git commit -m "feat: generate permanent slug on first canonical job creation"
 ## Task 3: R2Publisher — S3-Compatible Upload Client
 
 **Files:**
+
 - Create: `pkg/publish/r2.go`
 
 - [ ] **Step 1: Add aws-sdk-go-v2 dependencies**
@@ -308,6 +312,7 @@ git commit -m "feat: add R2Publisher for Cloudflare R2 S3-compatible uploads"
 ## Task 4: Markdown Renderer
 
 **Files:**
+
 - Create: `pkg/publish/markdown.go`
 
 - [ ] **Step 1: Create the markdown rendering function**
@@ -417,6 +422,7 @@ git commit -m "feat: add markdown renderer for Hugo job pages"
 ## Task 5: PublishHandler — Event-Driven R2 Upload
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/publish.go`
 - Modify: `pkg/pipeline/handlers/payloads.go`
 
@@ -587,6 +593,7 @@ git commit -m "feat: add PublishHandler for event-driven R2 job upload"
 ## Task 6: Wire PublishHandler in Crawler
 
 **Files:**
+
 - Modify: `apps/crawler/config/config.go`
 - Modify: `apps/crawler/cmd/main.go`
 
@@ -685,6 +692,7 @@ git commit -m "feat: wire PublishHandler with R2 in crawler pipeline"
 ## Task 7: Sitegen R2 Backfill Mode
 
 **Files:**
+
 - Modify: `apps/sitegen/cmd/main.go`
 
 - [ ] **Step 1: Read the existing sitegen file**
@@ -816,6 +824,7 @@ git commit -m "feat: add --r2-upload backfill mode to sitegen CLI"
 ## Task 8: OIDC Migrations in service-authentication
 
 **Files:**
+
 - Create: `/home/j/code/antinvestor/service-authentication/apps/tenancy/migrations/0001/20260416_create_stawi_jobs_tenant.sql`
 - Create: `/home/j/code/antinvestor/service-authentication/apps/tenancy/migrations/0001/20260416_create_stawi_jobs_test_tenant.sql`
 
@@ -824,6 +833,7 @@ git commit -m "feat: add --r2-upload backfill mode to sitegen CLI"
 We need 10 unique XIDs (KSUID-like 20-char strings). Use a simple Go snippet or just create deterministic ones. For this plan, use these pre-generated values:
 
 Production:
+
 - Tenant ID: `ctqj8k0hijjg0sj0b01g`
 - Partition ID: `ctqj8k0hijjg0sj0b020`
 - Client row ID: `ctqj8k0hijjg0sj0b030`
@@ -833,6 +843,7 @@ Production:
 - Role member: `ctqj8k0hijjg0sj0b042`
 
 Staging:
+
 - Tenant ID: `ctqj8k0hijjg0sj0b050`
 - Partition ID: `ctqj8k0hijjg0sj0b060`
 - Client row ID: `ctqj8k0hijjg0sj0b070`
@@ -1003,6 +1014,7 @@ git commit -m "feat: add Stawi Jobs tenant, partition, and OIDC client (prod + s
 ## Task 9: Hugo Config + R2 Sync Script
 
 **Files:**
+
 - Modify: `ui/hugo.toml`
 - Create: `ui/scripts/sync-r2.sh`
 - Modify: `ui/.gitignore`
@@ -1012,11 +1024,13 @@ git commit -m "feat: add Stawi Jobs tenant, partition, and OIDC client (prod + s
 In `ui/hugo.toml`, update these values:
 
 Change `baseURL`:
+
 ```toml
 baseURL = "https://jobs.stawi.org/"
 ```
 
 Update `[params]` to use staging OIDC client by default:
+
 ```toml
 [params]
   description = "Find remote jobs from top companies hiring worldwide. Browse 37,000+ positions in programming, design, marketing, and more."
@@ -1076,6 +1090,7 @@ echo "Sync complete. ${JOB_COUNT} job files ready for Hugo build."
 ```
 
 Make it executable:
+
 ```bash
 chmod +x ui/scripts/sync-r2.sh
 ```
@@ -1106,6 +1121,7 @@ git commit -m "feat: add R2 sync script and update Hugo config for jobs.stawi.or
 ## Task 10: API Slug Exposure + Final Wiring
 
 **Files:**
+
 - Modify: `apps/api/cmd/main.go`
 - Modify: `Makefile`
 
@@ -1139,10 +1155,12 @@ Note the `;` instead of `&&` after sync-r2.sh — the sync will skip gracefully 
 - [ ] **Step 4: Verify full build**
 
 Run:
+
 ```bash
 go build ./apps/... && go build ./pkg/...
 cd /home/j/code/stawi.opportunities/ui && hugo --minify
 ```
+
 Expected: both pass
 
 - [ ] **Step 5: Commit**

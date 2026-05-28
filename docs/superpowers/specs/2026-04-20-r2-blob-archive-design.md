@@ -87,6 +87,7 @@ sha256 of the decompressed body. Immutable. Shared: two canonicals that ingest
 the same source URL from the same source will share the same raw object.
 
 Metadata headers (for observability):
+
 - `x-amz-meta-http-status`: original upstream status
 - `x-amz-meta-fetched-at`: ISO 8601 timestamp of fetch
 - `x-amz-meta-source-id`: xid of source that fetched it (first observer)
@@ -182,9 +183,11 @@ for debugging).
 ### `raw_payloads`
 
 Drop:
+
 - `body bytea`
 
 Keep:
+
 - `content_hash varchar(64)` — join key into R2 `raw/{hash}.html.gz`
 - `storage_uri text` — full R2 URL (redundant with hash; kept as cache/convenience)
 - `http_status int`
@@ -192,16 +195,19 @@ Keep:
 - `crawl_job_id varchar(20)`
 
 Add:
+
 - `size_bytes bigint` — decompressed body size, useful for quota/cost tracking
 
 ### `job_variants`
 
 Drop:
+
 - `raw_html text`
 - `clean_html text`
 - `markdown text`
 
 Add:
+
 - `raw_content_hash varchar(64)` — points at `raw/{hash}.html.gz`
 
 Keep all other columns (ids, titles, extracted fields, stage, timestamps).
@@ -390,7 +396,7 @@ Check(ctx) →
 ```
 
 This is what the gate already does today; the refinement is that it now
-*works correctly* because DB pressure is no longer the coupling mechanism —
+_works correctly_ because DB pressure is no longer the coupling mechanism —
 NATS queue depth is the only signal we need.
 
 ## Retention & purge
@@ -461,7 +467,7 @@ pennies until GC'd.
 
 **Case 2: DB commit succeeds, R2 write fails.** DB thinks a blob exists but
 R2 doesn't have it. This is the worse case because it breaks reprocessing.
-Mitigation: archive writes happen *before* the DB write within each handler
+Mitigation: archive writes happen _before_ the DB write within each handler
 (fail fast — if R2 PUT fails, abort the transaction, let NATS redeliver).
 Since NATS delivery is at-least-once and our handlers are already idempotent,
 retries converge to a consistent state.
@@ -508,6 +514,7 @@ the R2 PUT in the same transaction keeps them consistent.
 
 Write a `make archive-verify` target that spot-checks 50 random canonical
 jobs by sampling their cluster directory and asserting:
+
 1. `canonical.json` exists and matches DB row
 2. Every variant in `manifest.json` has a `variants/{id}.json` file
 3. Every `raw_sha256` in variants has a `raw/{hash}.html.gz`

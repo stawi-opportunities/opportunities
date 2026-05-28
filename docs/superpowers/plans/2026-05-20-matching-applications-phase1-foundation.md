@@ -17,17 +17,20 @@
 ## File Structure
 
 **Migrations (new — `db/migrations/`):**
+
 - `0009_matching_applications_hypertables.sql` — the four hypertables (single migration since they share Timescale setup).
 - `0010_applications_oltp.sql` — `applications`, `application_notes`, `application_attachments`, `application_reminders`.
 - `0011_matching_indexes.sql` — `match_rules`, `candidate_match_indexes`, `extension_grants`.
 - `0012_opportunities_active_index.sql` — composite index for the fan-out filter.
 
 **Go packages (new):**
+
 - `pkg/matching/score.go` + `pkg/matching/score_test.go` — pure scoring function.
 - `pkg/applications/state.go` + `pkg/applications/state_test.go` — state-machine transition table + validator.
 - `pkg/applications/rules.go` + `pkg/applications/rules_test.go` — JSON Schema validation of the rules document.
 
 **Test scaffolding (additive):**
+
 - `tests/integration/testhelpers/postgres.go` — `PostgresContainer(t, ctx)` helper that boots `timescale/timescaledb-ha:pg16` (TimescaleDB + pgvector preinstalled) and applies every `db/migrations/*.sql` in order. Reused by Phase 2+ suites.
 - `tests/integration/migrations_test.go` — boots the container, asserts all hypertables, indexes, and policies are present after migrations run.
 
@@ -38,6 +41,7 @@ No files modified outside the additions above.
 ## Task 1: Add PostgresContainer test helper
 
 **Files:**
+
 - Create: `tests/integration/testhelpers/postgres.go`
 
 - [ ] **Step 1: Write the helper**
@@ -148,6 +152,7 @@ git commit -m "tests: add PostgresContainer testhelper (timescaledb-ha + auto-ap
 ## Task 2: Migration 0009 — Hypertables
 
 **Files:**
+
 - Create: `db/migrations/0009_matching_applications_hypertables.sql`
 
 - [ ] **Step 1: Write the migration**
@@ -297,6 +302,7 @@ git commit -m "migrations: 0009 hypertables for matching + applications events"
 ## Task 3: Migration 0010 — Applications OLTP
 
 **Files:**
+
 - Create: `db/migrations/0010_applications_oltp.sql`
 
 - [ ] **Step 1: Write the migration**
@@ -382,6 +388,7 @@ git commit -m "migrations: 0010 applications + notes + attachments + reminders"
 ## Task 4: Migration 0011 — Matching state + indexes + extension grants
 
 **Files:**
+
 - Create: `db/migrations/0011_matching_indexes.sql`
 
 - [ ] **Step 1: Write the migration**
@@ -448,6 +455,7 @@ git commit -m "migrations: 0011 match_rules + candidate_match_indexes + extensio
 ## Task 5: Migration 0012 — opportunities fan-out index
 
 **Files:**
+
 - Create: `db/migrations/0012_opportunities_active_index.sql`
 
 - [ ] **Step 1: Write the migration**
@@ -475,6 +483,7 @@ git commit -m "migrations: 0012 opportunities composite index for fan-out filter
 ## Task 6: Migrations smoke test
 
 **Files:**
+
 - Create: `tests/integration/migrations_test.go`
 
 - [ ] **Step 1: Write the failing test**
@@ -606,6 +615,7 @@ Run: `go test -tags integration -run TestMigrationsApplyCleanly -v ./tests/integ
 Expected: PASS. (All migrations land cleanly on a fresh container.)
 
 If the test FAILS:
+
 - Read the error carefully. Most likely a missing column the partial index references (e.g. `opportunities.hidden` or `opportunities.status` not present at this point in the migration history).
 - If the column is genuinely missing from earlier migrations, you've found a real schema bug — fix the earlier migration or move 0012's index into a column-checking conditional. Do NOT add the column inside 0012.
 
@@ -621,6 +631,7 @@ git commit -m "tests: integration smoke for new migrations (hypertables, policie
 ## Task 7: Scoring function — write the failing tests
 
 **Files:**
+
 - Create: `pkg/matching/score_test.go`
 
 - [ ] **Step 1: Write the test file**
@@ -802,6 +813,7 @@ git commit -m "test(matching): scoring function table tests (TDD red)"
 ## Task 8: Scoring function — implementation
 
 **Files:**
+
 - Create: `pkg/matching/score.go`
 
 - [ ] **Step 1: Write the implementation**
@@ -994,6 +1006,7 @@ git commit -m "feat(matching): deterministic scoring function (cosine + skills +
 ## Task 9: Application state machine — failing tests
 
 **Files:**
+
 - Create: `pkg/applications/state_test.go`
 
 - [ ] **Step 1: Write the test file**
@@ -1145,6 +1158,7 @@ git commit -m "test(applications): state machine table tests (TDD red)"
 ## Task 10: Application state machine — implementation
 
 **Files:**
+
 - Create: `pkg/applications/state.go`
 
 - [ ] **Step 1: Write the implementation**
@@ -1301,6 +1315,7 @@ git commit -m "feat(applications): state machine + transition validator"
 ## Task 11: Property test for state machine
 
 **Files:**
+
 - Create: `pkg/applications/state_property_test.go`
 
 - [ ] **Step 1: Add the rapid property test**
@@ -1382,6 +1397,7 @@ git commit -m "test(applications): property test for state-machine reachability"
 ## Task 12: Rules schema validator — failing tests
 
 **Files:**
+
 - Create: `pkg/applications/rules_test.go`
 
 - [ ] **Step 1: Write the test file**
@@ -1531,6 +1547,7 @@ git commit -m "test(applications): rules schema validator tests (TDD red)"
 ## Task 13: Rules schema validator — implementation
 
 **Files:**
+
 - Create: `pkg/applications/rules.go`
 
 - [ ] **Step 1: Write the implementation**
@@ -1689,6 +1706,7 @@ Run: `go test ./pkg/applications/... -run TestRules -v -race`
 Expected: PASS for every `TestRules_*` case.
 
 If `TestRules_RoundTrip` fails on equality:
+
 - Likely cause: `DefaultRules()` has fields with `omitempty` JSON tags that survive a round trip. Confirm `r.Countries == parsed.Countries` (both `nil` or both empty `[]string`). The fix is either (a) initialize defaults to non-nil empty slices in `DefaultRules`, or (b) compare with `require.Empty` instead of `require.Equal` for those fields. Pick the option that matches the spec's wire contract (the spec emits `omitempty`, so nil is correct → adjust the test).
 
 - [ ] **Step 3: Commit**
@@ -1703,6 +1721,7 @@ git commit -m "feat(applications): rules document schema + cross-field validator
 ## Task 14: Wire everything into the build
 
 **Files:**
+
 - Modify: `Makefile` (add `make test-integration` if absent; the existing target may already exist)
 - Verify: `go.sum` is consistent
 
@@ -1711,6 +1730,7 @@ git commit -m "feat(applications): rules document schema + cross-field validator
 Run: `grep -E '^(test|test-integration):' Makefile`
 
 Expected output (existing or similar):
+
 ```
 test:
 	go test ./...
@@ -1755,6 +1775,7 @@ git commit -m "build: make test-integration target + tidy after phase 1 deps"
 ## Task 15: Phase 1 wrap-up — verify and document
 
 **Files:**
+
 - Modify: `docs/superpowers/specs/2026-05-20-continuous-matching-and-applications-design.md` (mark Phase 1 done in §7)
 
 - [ ] **Step 1: Run the full local suite one more time**
@@ -1765,6 +1786,7 @@ Expected: PASS.
 - [ ] **Step 2: Confirm the deliverables**
 
 Verify these files exist with non-empty content:
+
 - `db/migrations/0009_matching_applications_hypertables.sql`
 - `db/migrations/0010_applications_oltp.sql`
 - `db/migrations/0011_matching_indexes.sql`

@@ -16,63 +16,63 @@
 
 ### Go Backend Changes
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `pkg/domain/candidate.go` | Modify | Add `ProfileID`, onboarding fields, billing fields; remove identity fields (`Name`, `Email`, `Phone`) |
-| `pkg/domain/models.go` | Modify | Add `SavedJob` model, `JobCategory` constants |
-| `pkg/repository/candidate.go` | Modify | Add `GetByProfileID`, update `Create`/`Update` to use `ProfileID` |
-| `pkg/repository/saved_job.go` | Create | `SavedJobRepository` with `Save`, `Delete`, `ListForProfile`, `Exists` |
-| `pkg/repository/job.go` | Modify | Add `GetCanonicalByID`, `ListActiveCanonical`, `CountByCategory` |
-| `apps/sitegen/cmd/main.go` | Create | CLI tool: reads Postgres, writes `ui/data/*.json` |
-| `apps/matching/config/config.go` | Modify | Add service-payment connection config |
-| `apps/matching/cmd/main.go` | Modify | Add `/me`, `/candidates/onboard`, `/billing/*`, `/jobs/{id}/save`, saved-jobs endpoints |
-| `apps/api/cmd/main.go` | Modify | Add `/categories`, `/stats`, `/jobs/{id}` endpoints |
+| File                             | Action | Responsibility                                                                                        |
+| -------------------------------- | ------ | ----------------------------------------------------------------------------------------------------- |
+| `pkg/domain/candidate.go`        | Modify | Add `ProfileID`, onboarding fields, billing fields; remove identity fields (`Name`, `Email`, `Phone`) |
+| `pkg/domain/models.go`           | Modify | Add `SavedJob` model, `JobCategory` constants                                                         |
+| `pkg/repository/candidate.go`    | Modify | Add `GetByProfileID`, update `Create`/`Update` to use `ProfileID`                                     |
+| `pkg/repository/saved_job.go`    | Create | `SavedJobRepository` with `Save`, `Delete`, `ListForProfile`, `Exists`                                |
+| `pkg/repository/job.go`          | Modify | Add `GetCanonicalByID`, `ListActiveCanonical`, `CountByCategory`                                      |
+| `apps/sitegen/cmd/main.go`       | Create | CLI tool: reads Postgres, writes `ui/data/*.json`                                                     |
+| `apps/matching/config/config.go` | Modify | Add service-payment connection config                                                                 |
+| `apps/matching/cmd/main.go`      | Modify | Add `/me`, `/candidates/onboard`, `/billing/*`, `/jobs/{id}/save`, saved-jobs endpoints               |
+| `apps/api/cmd/main.go`           | Modify | Add `/categories`, `/stats`, `/jobs/{id}` endpoints                                                   |
 
 ### Hugo UI
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `ui/hugo.toml` | Create | Site config, params (API URLs, OIDC config), Tailwind setup |
-| `ui/package.json` | Create | Tailwind, Alpine.js, Pagefind deps |
-| `ui/tailwind.config.js` | Create | Theme colors, font config |
-| `ui/postcss.config.js` | Create | Tailwind PostCSS pipeline |
-| `ui/assets/css/main.css` | Create | Tailwind directives + custom component classes |
-| `ui/assets/js/app.js` | Create | Alpine.js init, global auth store, API client |
-| `ui/assets/js/auth.js` | Create | OIDC PKCE flow (login, callback, token refresh) |
-| `ui/assets/js/onboarding.js` | Create | 3-step wizard state machine |
-| `ui/assets/js/dashboard.js` | Create | Dashboard views (matches, apps, profile, billing) |
-| `ui/assets/js/search.js` | Create | Search island (Pagefind + semantic API fallback) |
-| `ui/layouts/_default/baseof.html` | Create | Base template: html, head, nav, footer, Alpine init |
-| `ui/layouts/partials/head.html` | Create | Meta tags, OG, Tailwind CSS, Alpine.js |
-| `ui/layouts/partials/navbar.html` | Create | Top nav with search, auth state, dropdowns |
-| `ui/layouts/partials/footer.html` | Create | Footer links, copyright |
-| `ui/layouts/partials/job-card.html` | Create | Reusable job card component |
-| `ui/layouts/partials/skip-nav.html` | Create | Skip to content accessibility link |
-| `ui/layouts/partials/breadcrumbs.html` | Create | Breadcrumb navigation |
-| `ui/layouts/partials/auth-guard.html` | Create | Authenticated content wrapper |
-| `ui/layouts/index.html` | Create | Homepage layout |
-| `ui/layouts/jobs/list.html` | Create | Job listing with pagination |
-| `ui/layouts/jobs/single.html` | Create | Job detail page with JSON-LD |
-| `ui/layouts/categories/list.html` | Create | Category listing |
-| `ui/layouts/categories/single.html` | Create | Category job list |
-| `ui/layouts/onboarding/single.html` | Create | Wizard mount point |
-| `ui/layouts/dashboard/single.html` | Create | Dashboard SPA mount |
-| `ui/layouts/auth/single.html` | Create | Auth flow mount |
-| `ui/layouts/search/list.html` | Create | Full search page |
-| `ui/content/_index.md` | Create | Homepage frontmatter |
-| `ui/content/jobs/_content.gotmpl` | Create | Content adapter: jobs from data |
-| `ui/content/categories/_content.gotmpl` | Create | Content adapter: categories |
-| `ui/content/onboarding/_index.md` | Create | Wizard shell page |
-| `ui/content/dashboard/_index.md` | Create | Dashboard shell |
-| `ui/content/auth/login.md` | Create | Login shell |
-| `ui/content/auth/callback.md` | Create | Callback shell |
-| `ui/content/search/_index.md` | Create | Search page shell |
-| `ui/content/about.md` | Create | About page |
-| `ui/content/pricing.md` | Create | Pricing page |
-| `ui/content/terms.md` | Create | Terms of service |
-| `ui/content/privacy.md` | Create | Privacy policy |
-| `ui/data/testimonials.json` | Create | Curated testimonials |
-| `ui/static/images/` | Create | Logo, OG image |
+| File                                    | Action | Responsibility                                              |
+| --------------------------------------- | ------ | ----------------------------------------------------------- |
+| `ui/hugo.toml`                          | Create | Site config, params (API URLs, OIDC config), Tailwind setup |
+| `ui/package.json`                       | Create | Tailwind, Alpine.js, Pagefind deps                          |
+| `ui/tailwind.config.js`                 | Create | Theme colors, font config                                   |
+| `ui/postcss.config.js`                  | Create | Tailwind PostCSS pipeline                                   |
+| `ui/assets/css/main.css`                | Create | Tailwind directives + custom component classes              |
+| `ui/assets/js/app.js`                   | Create | Alpine.js init, global auth store, API client               |
+| `ui/assets/js/auth.js`                  | Create | OIDC PKCE flow (login, callback, token refresh)             |
+| `ui/assets/js/onboarding.js`            | Create | 3-step wizard state machine                                 |
+| `ui/assets/js/dashboard.js`             | Create | Dashboard views (matches, apps, profile, billing)           |
+| `ui/assets/js/search.js`                | Create | Search island (Pagefind + semantic API fallback)            |
+| `ui/layouts/_default/baseof.html`       | Create | Base template: html, head, nav, footer, Alpine init         |
+| `ui/layouts/partials/head.html`         | Create | Meta tags, OG, Tailwind CSS, Alpine.js                      |
+| `ui/layouts/partials/navbar.html`       | Create | Top nav with search, auth state, dropdowns                  |
+| `ui/layouts/partials/footer.html`       | Create | Footer links, copyright                                     |
+| `ui/layouts/partials/job-card.html`     | Create | Reusable job card component                                 |
+| `ui/layouts/partials/skip-nav.html`     | Create | Skip to content accessibility link                          |
+| `ui/layouts/partials/breadcrumbs.html`  | Create | Breadcrumb navigation                                       |
+| `ui/layouts/partials/auth-guard.html`   | Create | Authenticated content wrapper                               |
+| `ui/layouts/index.html`                 | Create | Homepage layout                                             |
+| `ui/layouts/jobs/list.html`             | Create | Job listing with pagination                                 |
+| `ui/layouts/jobs/single.html`           | Create | Job detail page with JSON-LD                                |
+| `ui/layouts/categories/list.html`       | Create | Category listing                                            |
+| `ui/layouts/categories/single.html`     | Create | Category job list                                           |
+| `ui/layouts/onboarding/single.html`     | Create | Wizard mount point                                          |
+| `ui/layouts/dashboard/single.html`      | Create | Dashboard SPA mount                                         |
+| `ui/layouts/auth/single.html`           | Create | Auth flow mount                                             |
+| `ui/layouts/search/list.html`           | Create | Full search page                                            |
+| `ui/content/_index.md`                  | Create | Homepage frontmatter                                        |
+| `ui/content/jobs/_content.gotmpl`       | Create | Content adapter: jobs from data                             |
+| `ui/content/categories/_content.gotmpl` | Create | Content adapter: categories                                 |
+| `ui/content/onboarding/_index.md`       | Create | Wizard shell page                                           |
+| `ui/content/dashboard/_index.md`        | Create | Dashboard shell                                             |
+| `ui/content/auth/login.md`              | Create | Login shell                                                 |
+| `ui/content/auth/callback.md`           | Create | Callback shell                                              |
+| `ui/content/search/_index.md`           | Create | Search page shell                                           |
+| `ui/content/about.md`                   | Create | About page                                                  |
+| `ui/content/pricing.md`                 | Create | Pricing page                                                |
+| `ui/content/terms.md`                   | Create | Terms of service                                            |
+| `ui/content/privacy.md`                 | Create | Privacy policy                                              |
+| `ui/data/testimonials.json`             | Create | Curated testimonials                                        |
+| `ui/static/images/`                     | Create | Logo, OG image                                              |
 
 ---
 
@@ -102,6 +102,7 @@ Task 16 done ──→ Task 17 (Accessibility audit + polish)
 ```
 
 **Parallel tracks:**
+
 - **Track A (Go backend):** Tasks 1→2→3→4→5
 - **Track B (Hugo UI):** Tasks 6→7→8→9→10
 - **Merge:** Task 11 (content adapters need both tracks)
@@ -113,6 +114,7 @@ Task 16 done ──→ Task 17 (Accessibility audit + polish)
 ## Task 1: Domain Model Updates
 
 **Files:**
+
 - Modify: `pkg/domain/candidate.go`
 - Modify: `pkg/domain/models.go`
 
@@ -309,6 +311,7 @@ service-profile at runtime."
 ## Task 2: Repository Updates
 
 **Files:**
+
 - Modify: `pkg/repository/candidate.go`
 - Create: `pkg/repository/saved_job.go`
 - Modify: `pkg/repository/job.go`
@@ -472,6 +475,7 @@ git commit -m "feat: add ProfileID lookup, SavedJobRepository, category counts"
 ## Task 3: Sitegen CLI
 
 **Files:**
+
 - Create: `apps/sitegen/cmd/main.go`
 
 - [ ] **Step 1: Create the sitegen CLI**
@@ -764,6 +768,7 @@ git commit -m "feat: add sitegen CLI for exporting job data to Hugo JSON"
 ## Task 4: API Service Extensions
 
 **Files:**
+
 - Modify: `apps/api/cmd/main.go`
 
 - [ ] **Step 1: Add /jobs/{id}, /categories, /stats endpoints**
@@ -848,6 +853,7 @@ git commit -m "feat: add /jobs/{id}, /categories, /stats API endpoints"
 ## Task 5: Candidates Service — New Endpoints
 
 **Files:**
+
 - Modify: `apps/matching/cmd/main.go`
 - Modify: `apps/matching/config/config.go`
 
@@ -1162,6 +1168,7 @@ CandidateProfile created on onboard, not on auth."
 ## Task 6: Hugo Project Scaffold
 
 **Files:**
+
 - Create: `ui/hugo.toml`
 - Create: `ui/package.json`
 - Create: `ui/tailwind.config.js`
@@ -1251,11 +1258,7 @@ Create `ui/tailwind.config.js`:
 ```js
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./layouts/**/*.html",
-    "./content/**/*.md",
-    "./assets/js/**/*.js",
-  ],
+  content: ["./layouts/**/*.html", "./content/**/*.md", "./assets/js/**/*.js"],
   theme: {
     extend: {
       colors: {
@@ -1290,10 +1293,7 @@ module.exports = {
       },
     },
   },
-  plugins: [
-    require("@tailwindcss/forms"),
-    require("@tailwindcss/typography"),
-  ],
+  plugins: [require("@tailwindcss/forms"), require("@tailwindcss/typography")],
 };
 ```
 
@@ -1415,6 +1415,7 @@ git commit -m "feat: scaffold Hugo project with Tailwind CSS and Alpine.js"
 ## Task 7: Base Layouts and Partials
 
 **Files:**
+
 - Create: `ui/layouts/_default/baseof.html`
 - Create: `ui/layouts/partials/head.html`
 - Create: `ui/layouts/partials/skip-nav.html`
@@ -1432,26 +1433,27 @@ Create `ui/layouts/_default/baseof.html`:
 ```html
 <!DOCTYPE html>
 <html lang="en" x-data="appRoot()" x-init="init()">
-<head>
-  {{ partial "head.html" . }}
-</head>
-<body class="min-h-screen flex flex-col bg-white">
-  {{ partial "skip-nav.html" . }}
-  {{ partial "navbar.html" . }}
+  <head>
+    {{ partial "head.html" . }}
+  </head>
+  <body class="min-h-screen flex flex-col bg-white">
+    {{ partial "skip-nav.html" . }} {{ partial "navbar.html" . }}
 
-  <main id="main-content" class="flex-1" role="main">
-    {{ block "main" . }}{{ end }}
-  </main>
+    <main id="main-content" class="flex-1" role="main">
+      {{ block "main" . }}{{ end }}
+    </main>
 
-  {{ partial "footer.html" . }}
-
-  {{ $appJS := resources.Get "js/app.js" | js.Build (dict "minify" hugo.IsProduction) }}
-  {{ $authJS := resources.Get "js/auth.js" | js.Build (dict "minify" hugo.IsProduction) }}
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
-  <script src="{{ $appJS.RelPermalink }}"></script>
-  <script src="{{ $authJS.RelPermalink }}"></script>
-  {{ block "scripts" . }}{{ end }}
-</body>
+    {{ partial "footer.html" . }} {{ $appJS := resources.Get "js/app.js" |
+    js.Build (dict "minify" hugo.IsProduction) }} {{ $authJS := resources.Get
+    "js/auth.js" | js.Build (dict "minify" hugo.IsProduction) }}
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"
+    ></script>
+    <script src="{{ $appJS.RelPermalink }}"></script>
+    <script src="{{ $authJS.RelPermalink }}"></script>
+    {{ block "scripts" . }}{{ end }}
+  </body>
 </html>
 ```
 
@@ -1499,8 +1501,10 @@ Create `ui/layouts/partials/head.html`:
 Create `ui/layouts/partials/skip-nav.html`:
 
 ```html
-<a href="#main-content"
-   class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-accent-500 focus:px-4 focus:py-2 focus:text-white focus:shadow-lg">
+<a
+  href="#main-content"
+  class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-accent-500 focus:px-4 focus:py-2 focus:text-white focus:shadow-lg"
+>
   Skip to main content
 </a>
 ```
@@ -1510,9 +1514,14 @@ Create `ui/layouts/partials/skip-nav.html`:
 Create `ui/layouts/partials/navbar.html`:
 
 ```html
-<header class="sticky top-0 z-40 border-b border-gray-200 bg-white" role="banner">
-  <nav class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
-       aria-label="Main navigation">
+<header
+  class="sticky top-0 z-40 border-b border-gray-200 bg-white"
+  role="banner"
+>
+  <nav
+    class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
+    aria-label="Main navigation"
+  >
     <!-- Logo -->
     <a href="/" class="flex items-center gap-2 text-xl font-bold text-navy-900">
       STAWI.JOBS
@@ -1522,25 +1531,42 @@ Create `ui/layouts/partials/navbar.html`:
     <div class="hidden items-center gap-6 md:flex">
       <!-- Find Jobs dropdown -->
       <div x-data="{ open: false }" class="relative">
-        <button @click="open = !open"
-                @keydown.escape="open = false"
-                :aria-expanded="open"
-                aria-haspopup="true"
-                class="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-navy-900">
+        <button
+          @click="open = !open"
+          @keydown.escape="open = false"
+          :aria-expanded="open"
+          aria-haspopup="true"
+          class="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-navy-900"
+        >
           Find Jobs
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </button>
-        <div x-show="open"
-             x-transition
-             @click.outside="open = false"
-             class="absolute left-0 top-full mt-2 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg"
-             role="menu">
+        <div
+          x-show="open"
+          x-transition
+          @click.outside="open = false"
+          class="absolute left-0 top-full mt-2 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg"
+          role="menu"
+        >
           {{ range .Site.Data.categories }}
-          <a href="/categories/{{ .slug }}/"
-             class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-             role="menuitem">
+          <a
+            href="/categories/{{ .slug }}/"
+            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            role="menuitem"
+          >
             {{ .name }}
             <span class="ml-1 text-xs text-gray-400">({{ .job_count }})</span>
           </a>
@@ -1548,8 +1574,16 @@ Create `ui/layouts/partials/navbar.html`:
         </div>
       </div>
 
-      <a href="/about/" class="text-sm font-medium text-gray-700 hover:text-navy-900">About</a>
-      <a href="/pricing/" class="text-sm font-medium text-gray-700 hover:text-navy-900">Pricing</a>
+      <a
+        href="/about/"
+        class="text-sm font-medium text-gray-700 hover:text-navy-900"
+        >About</a
+      >
+      <a
+        href="/pricing/"
+        class="text-sm font-medium text-gray-700 hover:text-navy-900"
+        >Pricing</a
+      >
     </div>
 
     <!-- Search + Auth -->
@@ -1558,13 +1592,25 @@ Create `ui/layouts/partials/navbar.html`:
       <div class="hidden sm:block" id="navbar-search"></div>
 
       <!-- Auth state -->
-      <div x-show="$store.auth.isAuthenticated" x-cloak class="flex items-center gap-3">
-        <a href="/dashboard/" class="text-sm font-medium text-gray-700 hover:text-navy-900">Dashboard</a>
-        <button @click="$store.auth.logout()"
-                class="text-sm text-gray-500 hover:text-gray-700">
+      <div
+        x-show="$store.auth.isAuthenticated"
+        x-cloak
+        class="flex items-center gap-3"
+      >
+        <a
+          href="/dashboard/"
+          class="text-sm font-medium text-gray-700 hover:text-navy-900"
+          >Dashboard</a
+        >
+        <button
+          @click="$store.auth.logout()"
+          class="text-sm text-gray-500 hover:text-gray-700"
+        >
           Sign Out
         </button>
-        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-navy-100 text-sm font-medium text-navy-700">
+        <div
+          class="flex h-8 w-8 items-center justify-center rounded-full bg-navy-100 text-sm font-medium text-navy-700"
+        >
           <span x-text="$store.auth.initials"></span>
         </div>
       </div>
@@ -1573,31 +1619,62 @@ Create `ui/layouts/partials/navbar.html`:
       </div>
 
       <!-- Mobile menu button -->
-      <button @click="mobileMenuOpen = !mobileMenuOpen"
-              class="md:hidden rounded-lg p-2 text-gray-500 hover:bg-gray-100"
-              :aria-expanded="mobileMenuOpen"
-              aria-label="Toggle navigation menu">
-        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      <button
+        @click="mobileMenuOpen = !mobileMenuOpen"
+        class="md:hidden rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+        :aria-expanded="mobileMenuOpen"
+        aria-label="Toggle navigation menu"
+      >
+        <svg
+          class="h-6 w-6"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 6h16M4 12h16M4 18h16"
+          />
         </svg>
       </button>
     </div>
   </nav>
 
   <!-- Mobile menu -->
-  <div x-show="mobileMenuOpen"
-       x-transition
-       @click.outside="mobileMenuOpen = false"
-       class="border-t border-gray-200 bg-white md:hidden"
-       role="navigation"
-       aria-label="Mobile navigation">
+  <div
+    x-show="mobileMenuOpen"
+    x-transition
+    @click.outside="mobileMenuOpen = false"
+    class="border-t border-gray-200 bg-white md:hidden"
+    role="navigation"
+    aria-label="Mobile navigation"
+  >
     <div class="space-y-1 px-4 py-3">
-      <a href="/jobs/" class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">All Jobs</a>
+      <a
+        href="/jobs/"
+        class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >All Jobs</a
+      >
       {{ range .Site.Data.categories }}
-      <a href="/categories/{{ .slug }}/" class="block rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">{{ .name }}</a>
+      <a
+        href="/categories/{{ .slug }}/"
+        class="block rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+        >{{ .name }}</a
+      >
       {{ end }}
-      <a href="/about/" class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">About</a>
-      <a href="/pricing/" class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Pricing</a>
+      <a
+        href="/about/"
+        class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >About</a
+      >
+      <a
+        href="/pricing/"
+        class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >Pricing</a
+      >
     </div>
   </div>
 </header>
@@ -1614,23 +1691,59 @@ Create `ui/layouts/partials/footer.html`:
       <div>
         <h3 class="text-sm font-semibold text-gray-900">For Job Seekers</h3>
         <ul class="mt-4 space-y-2" role="list">
-          <li><a href="/jobs/" class="text-sm text-gray-600 hover:text-navy-900">Browse Jobs</a></li>
-          <li><a href="/categories/" class="text-sm text-gray-600 hover:text-navy-900">Categories</a></li>
-          <li><a href="/search/" class="text-sm text-gray-600 hover:text-navy-900">Search</a></li>
-          <li><a href="/pricing/" class="text-sm text-gray-600 hover:text-navy-900">Pricing</a></li>
+          <li>
+            <a href="/jobs/" class="text-sm text-gray-600 hover:text-navy-900"
+              >Browse Jobs</a
+            >
+          </li>
+          <li>
+            <a
+              href="/categories/"
+              class="text-sm text-gray-600 hover:text-navy-900"
+              >Categories</a
+            >
+          </li>
+          <li>
+            <a href="/search/" class="text-sm text-gray-600 hover:text-navy-900"
+              >Search</a
+            >
+          </li>
+          <li>
+            <a
+              href="/pricing/"
+              class="text-sm text-gray-600 hover:text-navy-900"
+              >Pricing</a
+            >
+          </li>
         </ul>
       </div>
       <div>
         <h3 class="text-sm font-semibold text-gray-900">Company</h3>
         <ul class="mt-4 space-y-2" role="list">
-          <li><a href="/about/" class="text-sm text-gray-600 hover:text-navy-900">About</a></li>
-          <li><a href="/terms/" class="text-sm text-gray-600 hover:text-navy-900">Terms of Service</a></li>
-          <li><a href="/privacy/" class="text-sm text-gray-600 hover:text-navy-900">Privacy Policy</a></li>
+          <li>
+            <a href="/about/" class="text-sm text-gray-600 hover:text-navy-900"
+              >About</a
+            >
+          </li>
+          <li>
+            <a href="/terms/" class="text-sm text-gray-600 hover:text-navy-900"
+              >Terms of Service</a
+            >
+          </li>
+          <li>
+            <a
+              href="/privacy/"
+              class="text-sm text-gray-600 hover:text-navy-900"
+              >Privacy Policy</a
+            >
+          </li>
         </ul>
       </div>
     </div>
     <div class="mt-8 border-t border-gray-200 pt-8">
-      <p class="text-center text-sm text-gray-500">&copy; {{ now.Year }} Stawi.jobs. All rights reserved.</p>
+      <p class="text-center text-sm text-gray-500">
+        &copy; {{ now.Year }} Stawi.jobs. All rights reserved.
+      </p>
     </div>
   </div>
 </footer>
@@ -1642,7 +1755,10 @@ Create `ui/layouts/partials/breadcrumbs.html`:
 
 ```html
 {{ if not .IsHome }}
-<nav aria-label="Breadcrumb" class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+<nav
+  aria-label="Breadcrumb"
+  class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8"
+>
   <ol class="flex items-center gap-2 text-sm text-gray-500" role="list">
     <li><a href="/" class="hover:text-navy-900">Home</a></li>
     {{ range .Ancestors.Reverse }}
@@ -1668,9 +1784,15 @@ Create `ui/layouts/partials/auth-guard.html`:
 <div x-show="$store.auth.isAuthenticated" x-cloak>
   {{ block "guarded" . }}{{ end }}
 </div>
-<div x-show="!$store.auth.isAuthenticated" x-cloak class="mx-auto max-w-lg py-20 text-center">
+<div
+  x-show="!$store.auth.isAuthenticated"
+  x-cloak
+  class="mx-auto max-w-lg py-20 text-center"
+>
   <h2 class="text-2xl font-bold text-gray-900">Sign in to continue</h2>
-  <p class="mt-2 text-gray-600">You need to be signed in to access this page.</p>
+  <p class="mt-2 text-gray-600">
+    You need to be signed in to access this page.
+  </p>
   <a href="/auth/login/" class="btn-primary mt-6 inline-block">Sign In</a>
 </div>
 ```
@@ -1680,16 +1802,15 @@ Create `ui/layouts/partials/auth-guard.html`:
 Create `ui/layouts/_default/list.html`:
 
 ```html
-{{ define "main" }}
-{{ partial "breadcrumbs.html" . }}
+{{ define "main" }} {{ partial "breadcrumbs.html" . }}
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
   <h1 class="text-3xl font-bold text-gray-900">{{ .Title }}</h1>
-  {{ with .Content }}<div class="prose mt-4 max-w-none">{{ . }}</div>{{ end }}
-  {{ .Paginate .Pages }}
-  {{ range (.Paginator).Pages }}
-    <article class="mt-4">
-      <h2><a href="{{ .Permalink }}">{{ .Title }}</a></h2>
-    </article>
+  {{ with .Content }}
+  <div class="prose mt-4 max-w-none">{{ . }}</div>
+  {{ end }} {{ .Paginate .Pages }} {{ range (.Paginator).Pages }}
+  <article class="mt-4">
+    <h2><a href="{{ .Permalink }}">{{ .Title }}</a></h2>
+  </article>
   {{ end }}
 </div>
 {{ end }}
@@ -1698,13 +1819,10 @@ Create `ui/layouts/_default/list.html`:
 Create `ui/layouts/_default/single.html`:
 
 ```html
-{{ define "main" }}
-{{ partial "breadcrumbs.html" . }}
+{{ define "main" }} {{ partial "breadcrumbs.html" . }}
 <article class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
   <h1 class="text-3xl font-bold text-gray-900">{{ .Title }}</h1>
-  <div class="prose mt-6 max-w-none">
-    {{ .Content }}
-  </div>
+  <div class="prose mt-6 max-w-none">{{ .Content }}</div>
 </article>
 {{ end }}
 ```
@@ -1726,6 +1844,7 @@ git commit -m "feat: add base Hugo layouts with navbar, footer, accessibility"
 ## Task 8: Homepage
 
 **Files:**
+
 - Create: `ui/content/_index.md`
 - Create: `ui/layouts/index.html`
 - Create: `ui/data/testimonials.json`
@@ -1748,16 +1867,16 @@ Create `ui/data/categories.json`:
 
 ```json
 [
-  {"slug": "programming", "name": "Programming", "job_count": 12000},
-  {"slug": "design", "name": "Design", "job_count": 3500},
-  {"slug": "customer-support", "name": "Customer Support", "job_count": 2800},
-  {"slug": "marketing", "name": "Marketing", "job_count": 2200},
-  {"slug": "sales", "name": "Sales", "job_count": 1800},
-  {"slug": "devops", "name": "DevOps & Infrastructure", "job_count": 2500},
-  {"slug": "product", "name": "Product", "job_count": 1500},
-  {"slug": "data", "name": "Data Science & Analytics", "job_count": 3000},
-  {"slug": "management", "name": "Management & Executive", "job_count": 1200},
-  {"slug": "other", "name": "Other", "job_count": 6500}
+  { "slug": "programming", "name": "Programming", "job_count": 12000 },
+  { "slug": "design", "name": "Design", "job_count": 3500 },
+  { "slug": "customer-support", "name": "Customer Support", "job_count": 2800 },
+  { "slug": "marketing", "name": "Marketing", "job_count": 2200 },
+  { "slug": "sales", "name": "Sales", "job_count": 1800 },
+  { "slug": "devops", "name": "DevOps & Infrastructure", "job_count": 2500 },
+  { "slug": "product", "name": "Product", "job_count": 1500 },
+  { "slug": "data", "name": "Data Science & Analytics", "job_count": 3000 },
+  { "slug": "management", "name": "Management & Executive", "job_count": 1200 },
+  { "slug": "other", "name": "Other", "job_count": 6500 }
 ]
 ```
 
@@ -1807,23 +1926,37 @@ Create `ui/layouts/index.html`:
       Find Remote Jobs in Africa and Beyond
     </h1>
     <p class="mx-auto mt-6 max-w-2xl text-lg text-gray-300">
-      Browse {{ with .Site.Data.stats }}{{ .total_jobs | lang.FormatNumber 0 }}{{ end }}+ remote job listings from top companies hiring worldwide.
+      Browse {{ with .Site.Data.stats }}{{ .total_jobs | lang.FormatNumber 0
+      }}{{ end }}+ remote job listings from top companies hiring worldwide.
     </p>
-    <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-      <a href="/jobs/" class="btn-primary px-8 py-4 text-base">Browse All Jobs</a>
-      <a href="/onboarding/" class="btn-secondary border-white/20 bg-white/10 text-white hover:bg-white/20 px-8 py-4 text-base">
+    <div
+      class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row"
+    >
+      <a href="/jobs/" class="btn-primary px-8 py-4 text-base"
+        >Browse All Jobs</a
+      >
+      <a
+        href="/onboarding/"
+        class="btn-secondary border-white/20 bg-white/10 text-white hover:bg-white/20 px-8 py-4 text-base"
+      >
         Get Personalized Matches
       </a>
     </div>
     <!-- Trust stats -->
     <div class="mt-12 flex items-center justify-center gap-12 text-center">
       <div>
-        <div class="text-3xl font-bold">{{ with .Site.Data.stats }}{{ .total_jobs | lang.FormatNumber 0 }}+{{ end }}</div>
+        <div class="text-3xl font-bold">
+          {{ with .Site.Data.stats }}{{ .total_jobs | lang.FormatNumber 0 }}+{{
+          end }}
+        </div>
         <div class="mt-1 text-sm text-gray-400">Jobs Posted</div>
       </div>
       <div class="h-8 w-px bg-white/20" aria-hidden="true"></div>
       <div>
-        <div class="text-3xl font-bold">{{ with .Site.Data.stats }}{{ .total_companies | lang.FormatNumber 0 }}+{{ end }}</div>
+        <div class="text-3xl font-bold">
+          {{ with .Site.Data.stats }}{{ .total_companies | lang.FormatNumber 0
+          }}+{{ end }}
+        </div>
         <div class="mt-1 text-sm text-gray-400">Companies Hiring</div>
       </div>
     </div>
@@ -1833,13 +1966,22 @@ Create `ui/layouts/index.html`:
 <!-- Categories -->
 <section class="py-16" aria-labelledby="categories-heading">
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <h2 id="categories-heading" class="text-2xl font-bold text-gray-900">Browse by Category</h2>
-    <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <h2 id="categories-heading" class="text-2xl font-bold text-gray-900">
+      Browse by Category
+    </h2>
+    <div
+      class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+    >
       {{ range .Site.Data.categories }}
-      <a href="/categories/{{ .slug }}/" class="card flex items-center gap-4 p-4 hover:border-accent-300">
+      <a
+        href="/categories/{{ .slug }}/"
+        class="card flex items-center gap-4 p-4 hover:border-accent-300"
+      >
         <div>
           <h3 class="font-semibold text-gray-900">{{ .name }}</h3>
-          <p class="text-sm text-gray-500">{{ .job_count | lang.FormatNumber 0 }} jobs</p>
+          <p class="text-sm text-gray-500">
+            {{ .job_count | lang.FormatNumber 0 }} jobs
+          </p>
         </div>
       </a>
       {{ end }}
@@ -1850,7 +1992,10 @@ Create `ui/layouts/index.html`:
 <!-- Testimonials -->
 <section class="bg-gray-50 py-16" aria-labelledby="testimonials-heading">
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <h2 id="testimonials-heading" class="text-center text-2xl font-bold text-gray-900">
+    <h2
+      id="testimonials-heading"
+      class="text-center text-2xl font-bold text-gray-900"
+    >
       What Job Seekers Say
     </h2>
     <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -1870,22 +2015,50 @@ Create `ui/layouts/index.html`:
 <!-- How it works -->
 <section class="py-16" aria-labelledby="how-it-works-heading">
   <div class="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-    <h2 id="how-it-works-heading" class="text-2xl font-bold text-gray-900">How It Works</h2>
+    <h2 id="how-it-works-heading" class="text-2xl font-bold text-gray-900">
+      How It Works
+    </h2>
     <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3">
       <div>
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">1</div>
+        <div
+          class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold"
+          aria-hidden="true"
+        >
+          1
+        </div>
         <h3 class="mt-4 text-lg font-semibold text-gray-900">Browse Jobs</h3>
-        <p class="mt-2 text-gray-600">Search thousands of remote positions by category, location, or keyword.</p>
+        <p class="mt-2 text-gray-600">
+          Search thousands of remote positions by category, location, or
+          keyword.
+        </p>
       </div>
       <div>
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">2</div>
-        <h3 class="mt-4 text-lg font-semibold text-gray-900">Create Your Profile</h3>
-        <p class="mt-2 text-gray-600">Upload your CV and set preferences. Our AI matches you to the best opportunities.</p>
+        <div
+          class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold"
+          aria-hidden="true"
+        >
+          2
+        </div>
+        <h3 class="mt-4 text-lg font-semibold text-gray-900">
+          Create Your Profile
+        </h3>
+        <p class="mt-2 text-gray-600">
+          Upload your CV and set preferences. Our AI matches you to the best
+          opportunities.
+        </p>
       </div>
       <div>
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold" aria-hidden="true">3</div>
+        <div
+          class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-600 text-lg font-bold"
+          aria-hidden="true"
+        >
+          3
+        </div>
         <h3 class="mt-4 text-lg font-semibold text-gray-900">Get Hired</h3>
-        <p class="mt-2 text-gray-600">Apply directly or let our matching engine connect you with top employers.</p>
+        <p class="mt-2 text-gray-600">
+          Apply directly or let our matching engine connect you with top
+          employers.
+        </p>
       </div>
     </div>
   </div>
@@ -1910,6 +2083,7 @@ git commit -m "feat: add homepage with hero, categories, testimonials, trust sta
 ## Task 9: Job Card Partial and Job Pages
 
 **Files:**
+
 - Create: `ui/layouts/partials/job-card.html`
 - Create: `ui/layouts/jobs/list.html`
 - Create: `ui/layouts/jobs/single.html`
@@ -1996,42 +2170,16 @@ Create `ui/data/jobs.json` with 3-5 sample entries:
 Create `ui/content/jobs/_content.gotmpl`:
 
 ```html
-{{ range .Site.Data.jobs }}
-  {{ $content := dict
-    "mediaType" "text/markdown"
-    "value"     .description
-  }}
-  {{ $dates := dict }}
-  {{ with .posted_at }}
-    {{ $dates = dict "date" (time.AsTime .) "lastmod" (time.AsTime .) }}
-  {{ end }}
-  {{ $params := dict
-    "id"              .id
-    "company"         .company
-    "company_slug"    .company_slug
-    "category"        .category
-    "location_text"   .location_text
-    "remote_type"     .remote_type
-    "employment_type" .employment_type
-    "salary_min"      .salary_min
-    "salary_max"      .salary_max
-    "currency"        .currency
-    "seniority"       .seniority
-    "skills"          .skills
-    "excerpt"         .excerpt
-    "apply_url"       .apply_url
-    "quality_score"   .quality_score
-    "is_featured"     .is_featured
-  }}
-  {{ $.AddPage (dict
-    "path"    .slug
-    "title"   .title
-    "kind"    "page"
-    "content" $content
-    "dates"   $dates
-    "params"  $params
-  ) }}
-{{ end }}
+{{ range .Site.Data.jobs }} {{ $content := dict "mediaType" "text/markdown"
+"value" .description }} {{ $dates := dict }} {{ with .posted_at }} {{ $dates =
+dict "date" (time.AsTime .) "lastmod" (time.AsTime .) }} {{ end }} {{ $params :=
+dict "id" .id "company" .company "company_slug" .company_slug "category"
+.category "location_text" .location_text "remote_type" .remote_type
+"employment_type" .employment_type "salary_min" .salary_min "salary_max"
+.salary_max "currency" .currency "seniority" .seniority "skills" .skills
+"excerpt" .excerpt "apply_url" .apply_url "quality_score" .quality_score
+"is_featured" .is_featured }} {{ $.AddPage (dict "path" .slug "title" .title
+"kind" "page" "content" $content "dates" $dates "params" $params ) }} {{ end }}
 ```
 
 - [ ] **Step 3: Create job-card.html partial**
@@ -2107,44 +2255,50 @@ Create `ui/layouts/partials/job-card.html`:
 Create `ui/layouts/jobs/list.html`:
 
 ```html
-{{ define "main" }}
-{{ partial "breadcrumbs.html" . }}
+{{ define "main" }} {{ partial "breadcrumbs.html" . }}
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
   <div class="flex items-center justify-between">
     <h1 class="text-3xl font-bold text-gray-900">All Remote Jobs</h1>
-    <p class="text-sm text-gray-500">
-      {{ len .Pages }} jobs
-    </p>
+    <p class="text-sm text-gray-500">{{ len .Pages }} jobs</p>
   </div>
 
   <!-- Pagefind search mount -->
   <div id="job-search" class="mt-6"></div>
 
   <!-- Filters (Alpine.js enhanced) -->
-  <div x-data="{ activeFilter: 'all' }" class="mt-6 flex flex-wrap gap-2" role="group" aria-label="Filter jobs">
-    <button @click="activeFilter = 'all'"
-            :class="activeFilter === 'all' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
-            class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors">
+  <div
+    x-data="{ activeFilter: 'all' }"
+    class="mt-6 flex flex-wrap gap-2"
+    role="group"
+    aria-label="Filter jobs"
+  >
+    <button
+      @click="activeFilter = 'all'"
+      :class="activeFilter === 'all' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+      class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
+    >
       All
     </button>
-    <button @click="activeFilter = 'Full-Time'"
-            :class="activeFilter === 'Full-Time' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
-            class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors">
+    <button
+      @click="activeFilter = 'Full-Time'"
+      :class="activeFilter === 'Full-Time' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+      class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
+    >
       Full-Time
     </button>
-    <button @click="activeFilter = 'Contract'"
-            :class="activeFilter === 'Contract' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
-            class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors">
+    <button
+      @click="activeFilter = 'Contract'"
+      :class="activeFilter === 'Contract' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+      class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
+    >
       Contract
     </button>
   </div>
 
   <!-- Job list -->
   <div class="mt-6 space-y-4">
-    {{ $paginator := .Paginate .Pages }}
-    {{ range $paginator.Pages }}
-      {{ partial "job-card.html" . }}
-    {{ end }}
+    {{ $paginator := .Paginate .Pages }} {{ range $paginator.Pages }} {{ partial
+    "job-card.html" . }} {{ end }}
   </div>
 
   <!-- Pagination -->
@@ -2158,8 +2312,7 @@ Create `ui/layouts/jobs/list.html`:
 Create `ui/layouts/jobs/single.html`:
 
 ```html
-{{ define "main" }}
-{{ partial "breadcrumbs.html" . }}
+{{ define "main" }} {{ partial "breadcrumbs.html" . }}
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
   <div class="lg:grid lg:grid-cols-3 lg:gap-8">
     <!-- Main content -->
@@ -2168,15 +2321,18 @@ Create `ui/layouts/jobs/single.html`:
         <p class="text-sm font-medium text-gray-500">{{ .Params.company }}</p>
         <h1 class="mt-1 text-3xl font-bold text-gray-900">{{ .Title }}</h1>
         <div class="mt-3 flex flex-wrap items-center gap-3">
-          {{ with .Params.employment_type }}<span class="badge-type">{{ . }}</span>{{ end }}
-          {{ with .Params.seniority }}<span class="badge bg-gray-100 text-gray-600 capitalize">{{ . }}</span>{{ end }}
-          {{ if .Params.is_featured }}<span class="badge-featured">Featured</span>{{ end }}
+          {{ with .Params.employment_type }}<span class="badge-type"
+            >{{ . }}</span
+          >{{ end }} {{ with .Params.seniority }}<span
+            class="badge bg-gray-100 text-gray-600 capitalize"
+            >{{ . }}</span
+          >{{ end }} {{ if .Params.is_featured }}<span class="badge-featured"
+            >Featured</span
+          >{{ end }}
         </div>
       </header>
 
-      <div class="prose mt-8 max-w-none" data-pagefind-body>
-        {{ .Content }}
-      </div>
+      <div class="prose mt-8 max-w-none" data-pagefind-body>{{ .Content }}</div>
     </div>
 
     <!-- Sidebar -->
@@ -2184,21 +2340,27 @@ Create `ui/layouts/jobs/single.html`:
       <div class="card sticky top-20 p-6">
         <!-- Apply button -->
         {{ with .Params.apply_url }}
-        <a href="{{ . }}"
-           target="_blank"
-           rel="noopener noreferrer"
-           class="btn-primary w-full text-center">
+        <a
+          href="{{ . }}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-primary w-full text-center"
+        >
           Apply Now
-          <span class="sr-only">for {{ $.Title }} at {{ $.Params.company }}</span>
+          <span class="sr-only"
+            >for {{ $.Title }} at {{ $.Params.company }}</span
+          >
         </a>
         {{ end }}
 
         <!-- Save button (requires auth) -->
-        <button x-data="saveJob({{ .Params.id }})"
-                @click="toggle()"
-                :class="saved ? 'bg-accent-50 border-accent-300 text-accent-700' : ''"
-                class="btn-secondary mt-3 w-full"
-                :aria-pressed="saved">
+        <button
+          x-data="saveJob({{ .Params.id }})"
+          @click="toggle()"
+          :class="saved ? 'bg-accent-50 border-accent-300 text-accent-700' : ''"
+          class="btn-secondary mt-3 w-full"
+          :aria-pressed="saved"
+        >
           <span x-text="saved ? 'Saved' : 'Save Job'"></span>
         </button>
 
@@ -2208,39 +2370,40 @@ Create `ui/layouts/jobs/single.html`:
             <dt class="font-medium text-gray-500">Location</dt>
             <dd class="mt-1 text-gray-900">{{ . }}</dd>
           </div>
-          {{ end }}
-
-          {{ if and .Params.salary_min (gt .Params.salary_min 0.0) }}
+          {{ end }} {{ if and .Params.salary_min (gt .Params.salary_min 0.0) }}
           <div>
             <dt class="font-medium text-gray-500">Salary</dt>
             <dd class="mt-1 text-gray-900">
-              {{ .Params.currency }} {{ lang.FormatNumber 0 .Params.salary_min }}–{{ lang.FormatNumber 0 .Params.salary_max }}
+              {{ .Params.currency }} {{ lang.FormatNumber 0 .Params.salary_min
+              }}–{{ lang.FormatNumber 0 .Params.salary_max }}
             </dd>
           </div>
-          {{ end }}
-
-          {{ with .Params.remote_type }}
+          {{ end }} {{ with .Params.remote_type }}
           <div>
             <dt class="font-medium text-gray-500">Remote</dt>
-            <dd class="mt-1 text-gray-900 capitalize">{{ replace . "_" " " }}</dd>
+            <dd class="mt-1 text-gray-900 capitalize">
+              {{ replace . "_" " " }}
+            </dd>
           </div>
-          {{ end }}
-
-          {{ with .Params.skills }}
+          {{ end }} {{ with .Params.skills }}
           <div>
             <dt class="font-medium text-gray-500">Skills</dt>
             <dd class="mt-2 flex flex-wrap gap-1.5">
               {{ range . }}
-              <span class="inline-block rounded bg-navy-50 px-2 py-0.5 text-xs text-navy-700" data-pagefind-filter="skill">{{ . }}</span>
+              <span
+                class="inline-block rounded bg-navy-50 px-2 py-0.5 text-xs text-navy-700"
+                data-pagefind-filter="skill"
+                >{{ . }}</span
+              >
               {{ end }}
             </dd>
           </div>
-          {{ end }}
-
-          {{ if .Date }}
+          {{ end }} {{ if .Date }}
           <div>
             <dt class="font-medium text-gray-500">Posted</dt>
-            <dd class="mt-1 text-gray-900">{{ .Date | time.Format ":date_long" }}</dd>
+            <dd class="mt-1 text-gray-900">
+              {{ .Date | time.Format ":date_long" }}
+            </dd>
           </div>
           {{ end }}
         </dl>
@@ -2251,31 +2414,31 @@ Create `ui/layouts/jobs/single.html`:
 
 <!-- JSON-LD structured data for Google Jobs -->
 <script type="application/ld+json">
-{
-  "@context": "https://schema.org/",
-  "@type": "JobPosting",
-  "title": {{ .Title | jsonify }},
-  "description": {{ .Content | plainify | jsonify }},
-  "datePosted": "{{ with .Date }}{{ .Format "2006-01-02" }}{{ end }}",
-  "employmentType": {{ with .Params.employment_type }}{{ . | jsonify }}{{ else }}"FULL_TIME"{{ end }},
-  "hiringOrganization": {
-    "@type": "Organization",
-    "name": {{ .Params.company | jsonify }}
-  },
-  "jobLocationType": "TELECOMMUTE"
-  {{ if and .Params.salary_min (gt .Params.salary_min 0.0) }},
-  "baseSalary": {
-    "@type": "MonetaryAmount",
-    "currency": {{ .Params.currency | jsonify }},
-    "value": {
-      "@type": "QuantitativeValue",
-      "minValue": {{ .Params.salary_min }},
-      "maxValue": {{ .Params.salary_max }},
-      "unitText": "YEAR"
+  {
+    "@context": "https://schema.org/",
+    "@type": "JobPosting",
+    "title": {{ .Title | jsonify }},
+    "description": {{ .Content | plainify | jsonify }},
+    "datePosted": "{{ with .Date }}{{ .Format "2006-01-02" }}{{ end }}",
+    "employmentType": {{ with .Params.employment_type }}{{ . | jsonify }}{{ else }}"FULL_TIME"{{ end }},
+    "hiringOrganization": {
+      "@type": "Organization",
+      "name": {{ .Params.company | jsonify }}
+    },
+    "jobLocationType": "TELECOMMUTE"
+    {{ if and .Params.salary_min (gt .Params.salary_min 0.0) }},
+    "baseSalary": {
+      "@type": "MonetaryAmount",
+      "currency": {{ .Params.currency | jsonify }},
+      "value": {
+        "@type": "QuantitativeValue",
+        "minValue": {{ .Params.salary_min }},
+        "maxValue": {{ .Params.salary_max }},
+        "unitText": "YEAR"
+      }
     }
+    {{ end }}
   }
-  {{ end }}
-}
 </script>
 {{ end }}
 ```
@@ -2308,6 +2471,7 @@ git commit -m "feat: add job card, listing, detail pages with JSON-LD structured
 ## Task 10: Category Pages
 
 **Files:**
+
 - Create: `ui/content/categories/_content.gotmpl`
 - Create: `ui/content/categories/_index.md`
 - Create: `ui/layouts/categories/list.html`
@@ -2318,23 +2482,11 @@ git commit -m "feat: add job card, listing, detail pages with JSON-LD structured
 Create `ui/content/categories/_content.gotmpl`:
 
 ```html
-{{ range .Site.Data.categories }}
-  {{ $content := dict
-    "mediaType" "text/markdown"
-    "value"     (printf "Browse %d remote %s jobs." .job_count .name)
-  }}
-  {{ $params := dict
-    "job_count" .job_count
-    "slug"      .slug
-  }}
-  {{ $.AddPage (dict
-    "path"    .slug
-    "title"   .name
-    "kind"    "page"
-    "content" $content
-    "params"  $params
-  ) }}
-{{ end }}
+{{ range .Site.Data.categories }} {{ $content := dict "mediaType"
+"text/markdown" "value" (printf "Browse %d remote %s jobs." .job_count .name) }}
+{{ $params := dict "job_count" .job_count "slug" .slug }} {{ $.AddPage (dict
+"path" .slug "title" .name "kind" "page" "content" $content "params" $params )
+}} {{ end }}
 ```
 
 - [ ] **Step 2: Create category index**
@@ -2353,15 +2505,19 @@ description: "Browse remote jobs by category"
 Create `ui/layouts/categories/list.html`:
 
 ```html
-{{ define "main" }}
-{{ partial "breadcrumbs.html" . }}
+{{ define "main" }} {{ partial "breadcrumbs.html" . }}
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
   <h1 class="text-3xl font-bold text-gray-900">Job Categories</h1>
   <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {{ range .Pages }}
-    <a href="{{ .Permalink }}" class="card flex items-center justify-between p-6 hover:border-accent-300">
+    <a
+      href="{{ .Permalink }}"
+      class="card flex items-center justify-between p-6 hover:border-accent-300"
+    >
       <h2 class="text-lg font-semibold text-gray-900">{{ .Title }}</h2>
-      <span class="rounded-full bg-navy-50 px-3 py-1 text-sm font-medium text-navy-700">
+      <span
+        class="rounded-full bg-navy-50 px-3 py-1 text-sm font-medium text-navy-700"
+      >
         {{ .Params.job_count | lang.FormatNumber 0 }}
       </span>
     </a>
@@ -2376,26 +2532,28 @@ Create `ui/layouts/categories/list.html`:
 Create `ui/layouts/categories/single.html`:
 
 ```html
-{{ define "main" }}
-{{ partial "breadcrumbs.html" . }}
+{{ define "main" }} {{ partial "breadcrumbs.html" . }}
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
   <div class="flex items-center justify-between">
     <div>
       <h1 class="text-3xl font-bold text-gray-900">{{ .Title }} Jobs</h1>
-      <p class="mt-1 text-gray-500">{{ .Params.job_count | lang.FormatNumber 0 }} remote positions</p>
+      <p class="mt-1 text-gray-500">
+        {{ .Params.job_count | lang.FormatNumber 0 }} remote positions
+      </p>
     </div>
-    <a href="/categories/" class="text-sm text-accent-600 hover:text-accent-700">All Categories</a>
+    <a href="/categories/" class="text-sm text-accent-600 hover:text-accent-700"
+      >All Categories</a
+    >
   </div>
 
   <!-- Filtered jobs for this category -->
   <div class="mt-8 space-y-4">
-    {{ $category := .Params.slug }}
-    {{ $jobs := where (site.GetPage "/jobs").Pages ".Params.category" $category }}
-    {{ range $jobs }}
-      {{ partial "job-card.html" . }}
-    {{ end }}
-    {{ if eq (len $jobs) 0 }}
-    <p class="py-12 text-center text-gray-500">No jobs in this category yet. Check back soon.</p>
+    {{ $category := .Params.slug }} {{ $jobs := where (site.GetPage
+    "/jobs").Pages ".Params.category" $category }} {{ range $jobs }} {{ partial
+    "job-card.html" . }} {{ end }} {{ if eq (len $jobs) 0 }}
+    <p class="py-12 text-center text-gray-500">
+      No jobs in this category yet. Check back soon.
+    </p>
     {{ end }}
   </div>
 </div>
@@ -2419,6 +2577,7 @@ git commit -m "feat: add category pages with filtered job listings"
 ## Task 11: Static Content Pages
 
 **Files:**
+
 - Create: `ui/content/about.md`
 - Create: `ui/content/pricing.md`
 - Create: `ui/content/terms.md`
@@ -2587,6 +2746,7 @@ git commit -m "feat: add static content pages and SPA shell pages"
 ## Task 12: Alpine.js Core — App Init and Auth
 
 **Files:**
+
 - Create: `ui/assets/js/app.js`
 - Create: `ui/assets/js/auth.js`
 - Create: `ui/layouts/auth/single.html`
@@ -2707,7 +2867,7 @@ document.addEventListener("alpine:init", () => {
           if (resp.ok) {
             const data = await resp.json();
             this.saved = (data.saved || []).some(
-              (s) => s.canonical_job_id === this.jobId
+              (s) => s.canonical_job_id === this.jobId,
             );
           }
         } catch (e) {
@@ -2770,7 +2930,7 @@ document.addEventListener("alpine:init", () => {
           sessionStorage.setItem("oidc_state", state);
 
           const authURL = new URL(
-            config.oidcIssuer + "/protocol/openid-connect/auth"
+            config.oidcIssuer + "/protocol/openid-connect/auth",
           );
           authURL.searchParams.set("response_type", "code");
           authURL.searchParams.set("client_id", config.oidcClientID);
@@ -2827,8 +2987,7 @@ document.addEventListener("alpine:init", () => {
           }
 
           // Exchange code for tokens
-          const tokenURL =
-            config.oidcIssuer + "/protocol/openid-connect/token";
+          const tokenURL = config.oidcIssuer + "/protocol/openid-connect/token";
           const body = new URLSearchParams({
             grant_type: "authorization_code",
             client_id: config.oidcClientID,
@@ -2912,14 +3071,24 @@ Create `ui/layouts/auth/single.html`:
   {{ if eq .File.BaseFileName "login" }}
   <div x-data="oidcLogin()" class="w-full max-w-md text-center">
     <h1 class="text-3xl font-bold text-gray-900">Sign In</h1>
-    <p class="mt-2 text-gray-600">Sign in to access your personalized job matches and dashboard.</p>
+    <p class="mt-2 text-gray-600">
+      Sign in to access your personalized job matches and dashboard.
+    </p>
 
-    <div x-show="error" x-cloak class="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700" role="alert" x-text="error"></div>
+    <div
+      x-show="error"
+      x-cloak
+      class="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700"
+      role="alert"
+      x-text="error"
+    ></div>
 
-    <button @click="startLogin()"
-            :disabled="loading"
-            class="btn-primary mt-8 w-full"
-            :class="loading && 'opacity-50 cursor-wait'">
+    <button
+      @click="startLogin()"
+      :disabled="loading"
+      class="btn-primary mt-8 w-full"
+      :class="loading && 'opacity-50 cursor-wait'"
+    >
       <span x-show="!loading">Continue with Single Sign-On</span>
       <span x-show="loading" x-cloak>Redirecting...</span>
     </button>
@@ -2932,7 +3101,10 @@ Create `ui/layouts/auth/single.html`:
   {{ else if eq .File.BaseFileName "callback" }}
   <div x-data="oidcCallback()" class="w-full max-w-md text-center">
     <div x-show="loading" class="space-y-4">
-      <div class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent" aria-label="Loading"></div>
+      <div
+        class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent"
+        aria-label="Loading"
+      ></div>
       <p class="text-gray-600">Completing sign in...</p>
     </div>
 
@@ -2953,7 +3125,10 @@ In `ui/layouts/partials/head.html`, add before the CSS link:
 
 ```html
 <!-- Site params for JS -->
-<meta name="site-params" content='{{ dict "apiURL" .Site.Params.apiURL "candidatesAPIURL" .Site.Params.candidatesAPIURL "oidcIssuer" .Site.Params.oidcIssuer "oidcClientID" .Site.Params.oidcClientID "oidcRedirectURI" .Site.Params.oidcRedirectURI | jsonify }}'>
+<meta
+  name="site-params"
+  content='{{ dict "apiURL" .Site.Params.apiURL "candidatesAPIURL" .Site.Params.candidatesAPIURL "oidcIssuer" .Site.Params.oidcIssuer "oidcClientID" .Site.Params.oidcClientID "oidcRedirectURI" .Site.Params.oidcRedirectURI | jsonify }}'
+/>
 ```
 
 - [ ] **Step 5: Verify build**
@@ -2973,6 +3148,7 @@ git commit -m "feat: add Alpine.js core with OIDC PKCE auth flow and API client"
 ## Task 13: Search — Pagefind + Semantic
 
 **Files:**
+
 - Create: `ui/assets/js/search.js`
 - Create: `ui/layouts/search/list.html`
 
@@ -3029,13 +3205,14 @@ document.addEventListener("alpine:init", () => {
           const resp = await jobsApiFetch(
             "/search/semantic?q=" +
               encodeURIComponent(this.query) +
-              "&limit=20"
+              "&limit=20",
           );
           if (!resp.ok) throw new Error("Search failed");
           const data = await resp.json();
           this.semanticResults = data.results || [];
         } catch (e) {
-          this.semanticError = "Semantic search unavailable. Try keyword search.";
+          this.semanticError =
+            "Semantic search unavailable. Try keyword search.";
         } finally {
           this.semanticLoading = false;
         }
@@ -3068,28 +3245,37 @@ Create `ui/layouts/search/list.html`:
 
 ```html
 {{ define "main" }}
-<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
-     x-data="searchPage()"
-     role="search"
-     aria-label="Job search">
-
+<div
+  class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
+  x-data="searchPage()"
+  role="search"
+  aria-label="Job search"
+>
   <h1 class="text-3xl font-bold text-gray-900">Search Jobs</h1>
 
   <!-- Mode toggle -->
-  <div class="mt-6 flex items-center gap-4" role="tablist" aria-label="Search mode">
-    <button @click="switchMode('keyword')"
-            :class="mode === 'keyword' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
-            class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
-            role="tab"
-            :aria-selected="mode === 'keyword'">
+  <div
+    class="mt-6 flex items-center gap-4"
+    role="tablist"
+    aria-label="Search mode"
+  >
+    <button
+      @click="switchMode('keyword')"
+      :class="mode === 'keyword' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+      class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
+      role="tab"
+      :aria-selected="mode === 'keyword'"
+    >
       Keyword Search
     </button>
-    <button @click="switchMode('semantic')"
-            x-show="$store.auth.isAuthenticated && $store.auth.profile?.candidate?.subscription === 'paid'"
-            :class="mode === 'semantic' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
-            class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
-            role="tab"
-            :aria-selected="mode === 'semantic'">
+    <button
+      @click="switchMode('semantic')"
+      x-show="$store.auth.isAuthenticated && $store.auth.profile?.candidate?.subscription === 'paid'"
+      :class="mode === 'semantic' ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+      class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
+      role="tab"
+      :aria-selected="mode === 'semantic'"
+    >
       Best Fit
     </button>
   </div>
@@ -3097,51 +3283,76 @@ Create `ui/layouts/search/list.html`:
   <!-- Pagefind (keyword mode) -->
   <div x-show="mode === 'keyword'" class="mt-6">
     <div id="pagefind-search"></div>
-    <link href="/pagefind/pagefind-ui.css" rel="stylesheet">
+    <link href="/pagefind/pagefind-ui.css" rel="stylesheet" />
     <script src="/pagefind/pagefind-ui.js" defer></script>
   </div>
 
   <!-- Semantic search (best fit mode) -->
   <div x-show="mode === 'semantic'" x-cloak class="mt-6">
     <div class="flex gap-3">
-      <input type="text"
-             x-model="query"
-             @keydown.enter="searchSemantic()"
-             class="input-field flex-1"
-             placeholder="Describe your ideal job..."
-             aria-label="Semantic search query">
-      <button @click="searchSemantic()"
-              :disabled="semanticLoading"
-              class="btn-primary">
+      <input
+        type="text"
+        x-model="query"
+        @keydown.enter="searchSemantic()"
+        class="input-field flex-1"
+        placeholder="Describe your ideal job..."
+        aria-label="Semantic search query"
+      />
+      <button
+        @click="searchSemantic()"
+        :disabled="semanticLoading"
+        class="btn-primary"
+      >
         <span x-show="!semanticLoading">Search</span>
         <span x-show="semanticLoading" x-cloak>Searching...</span>
       </button>
     </div>
 
-    <div x-show="semanticError" x-cloak class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert" x-text="semanticError"></div>
+    <div
+      x-show="semanticError"
+      x-cloak
+      class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700"
+      role="alert"
+      x-text="semanticError"
+    ></div>
 
     <div class="mt-6 space-y-4" aria-live="polite">
-      <p x-show="semanticResults.length > 0" class="text-sm text-gray-500" x-text="semanticResults.length + ' jobs matched'"></p>
+      <p
+        x-show="semanticResults.length > 0"
+        class="text-sm text-gray-500"
+        x-text="semanticResults.length + ' jobs matched'"
+      ></p>
       <template x-for="job in semanticResults" :key="job.id">
         <article class="card p-4 sm:p-6">
           <a :href="'/jobs/' + job.id + '/'" class="block group">
-            <p class="text-sm font-medium text-gray-500" x-text="job.company"></p>
-            <h3 class="mt-1 text-lg font-semibold text-gray-900 group-hover:text-accent-600" x-text="job.title"></h3>
+            <p
+              class="text-sm font-medium text-gray-500"
+              x-text="job.company"
+            ></p>
+            <h3
+              class="mt-1 text-lg font-semibold text-gray-900 group-hover:text-accent-600"
+              x-text="job.title"
+            ></h3>
             <div class="mt-2 flex flex-wrap items-center gap-2">
               <span class="badge-type" x-text="job.employment_type"></span>
-              <span x-show="job.salary_min > 0" class="text-sm font-medium text-green-700" x-text="formatSalary(job)"></span>
+              <span
+                x-show="job.salary_min > 0"
+                class="text-sm font-medium text-green-700"
+                x-text="formatSalary(job)"
+              ></span>
             </div>
-            <p class="mt-2 text-sm text-gray-500" x-text="job.location_text"></p>
+            <p
+              class="mt-2 text-sm text-gray-500"
+              x-text="job.location_text"
+            ></p>
           </a>
         </article>
       </template>
     </div>
   </div>
 </div>
-{{ end }}
-
-{{ define "scripts" }}
-{{ $searchJS := resources.Get "js/search.js" | js.Build (dict "minify" hugo.IsProduction) }}
+{{ end }} {{ define "scripts" }} {{ $searchJS := resources.Get "js/search.js" |
+js.Build (dict "minify" hugo.IsProduction) }}
 <script src="{{ $searchJS.RelPermalink }}"></script>
 {{ end }}
 ```
@@ -3163,6 +3374,7 @@ git commit -m "feat: add search page with Pagefind keyword search and semantic b
 ## Task 14: Onboarding Wizard
 
 **Files:**
+
 - Create: `ui/assets/js/onboarding.js`
 - Create: `ui/layouts/onboarding/single.html`
 
@@ -3203,7 +3415,9 @@ document.addEventListener("alpine:init", () => {
       },
 
       get canProceedStep1() {
-        return this.targetJobTitle && this.experienceLevel && this.jobSearchStatus;
+        return (
+          this.targetJobTitle && this.experienceLevel && this.jobSearchStatus
+        );
       },
 
       get canProceedStep2() {
@@ -3213,7 +3427,9 @@ document.addEventListener("alpine:init", () => {
       nextStep() {
         if (this.step < 3) this.step++;
         this.$nextTick(() => {
-          document.getElementById("wizard-top")?.scrollIntoView({ behavior: "smooth" });
+          document
+            .getElementById("wizard-top")
+            ?.scrollIntoView({ behavior: "smooth" });
         });
       },
 
@@ -3276,11 +3492,19 @@ document.addEventListener("alpine:init", () => {
           formData.append("target_job_title", this.targetJobTitle);
           formData.append("experience_level", this.experienceLevel);
           formData.append("job_search_status", this.jobSearchStatus);
-          formData.append("preferred_regions", this.preferredRegions.join(", "));
-          formData.append("preferred_timezones", this.preferredTimezones.join(", "));
+          formData.append(
+            "preferred_regions",
+            this.preferredRegions.join(", "),
+          );
+          formData.append(
+            "preferred_timezones",
+            this.preferredTimezones.join(", "),
+          );
           formData.append("wants_ats_report", String(this.wantsATSReport));
-          if (this.usWorkAuth !== null) formData.append("us_work_auth", String(this.usWorkAuth));
-          if (this.needsSponsorship !== null) formData.append("needs_sponsorship", String(this.needsSponsorship));
+          if (this.usWorkAuth !== null)
+            formData.append("us_work_auth", String(this.usWorkAuth));
+          if (this.needsSponsorship !== null)
+            formData.append("needs_sponsorship", String(this.needsSponsorship));
 
           // Parse salary range
           const salaryMap = {
@@ -3323,7 +3547,9 @@ document.addEventListener("alpine:init", () => {
       async initiatePayment() {
         try {
           const endpoint =
-            this.paymentMethod === "mobile" ? "/billing/mobile-pay" : "/billing/checkout";
+            this.paymentMethod === "mobile"
+              ? "/billing/mobile-pay"
+              : "/billing/checkout";
           const resp = await apiFetch(endpoint, {
             method: "POST",
             body: JSON.stringify({ plan_id: "premium_monthly" }),
@@ -3360,19 +3586,46 @@ Create `ui/layouts/onboarding/single.html`:
 
 ```html
 {{ define "main" }}
-<div x-data="onboardingWizard()" id="wizard-top" class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+<div
+  x-data="onboardingWizard()"
+  id="wizard-top"
+  class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8"
+>
   <!-- Progress bar -->
   <div class="mb-8" aria-label="Onboarding progress">
-    <p class="text-sm font-semibold text-gray-900">STEP <span x-text="step"></span> OF 3</p>
-    <div class="mt-2 flex gap-1" role="progressbar" :aria-valuenow="step" aria-valuemin="1" aria-valuemax="3">
-      <div class="h-1.5 flex-1 rounded-full" :class="step >= 1 ? 'bg-accent-500' : 'bg-gray-200'"></div>
-      <div class="h-1.5 flex-1 rounded-full" :class="step >= 2 ? 'bg-accent-500' : 'bg-gray-200'"></div>
-      <div class="h-1.5 flex-1 rounded-full" :class="step >= 3 ? 'bg-accent-500' : 'bg-gray-200'"></div>
+    <p class="text-sm font-semibold text-gray-900">
+      STEP <span x-text="step"></span> OF 3
+    </p>
+    <div
+      class="mt-2 flex gap-1"
+      role="progressbar"
+      :aria-valuenow="step"
+      aria-valuemin="1"
+      aria-valuemax="3"
+    >
+      <div
+        class="h-1.5 flex-1 rounded-full"
+        :class="step >= 1 ? 'bg-accent-500' : 'bg-gray-200'"
+      ></div>
+      <div
+        class="h-1.5 flex-1 rounded-full"
+        :class="step >= 2 ? 'bg-accent-500' : 'bg-gray-200'"
+      ></div>
+      <div
+        class="h-1.5 flex-1 rounded-full"
+        :class="step >= 3 ? 'bg-accent-500' : 'bg-gray-200'"
+      ></div>
     </div>
   </div>
 
   <!-- Error banner -->
-  <div x-show="error" x-cloak class="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700" role="alert" x-text="error"></div>
+  <div
+    x-show="error"
+    x-cloak
+    class="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700"
+    role="alert"
+    x-text="error"
+  ></div>
 
   <div class="grid gap-8 lg:grid-cols-5">
     <!-- Left: Form -->
@@ -3380,39 +3633,81 @@ Create `ui/layouts/onboarding/single.html`:
       <!-- Step 1: About You -->
       <div x-show="step === 1">
         <h1 class="text-3xl font-bold text-gray-900">About you</h1>
-        <p class="mt-2 text-gray-600">Hi, <span x-text="userName"></span>. Tell us about yourself so companies know who you are.</p>
+        <p class="mt-2 text-gray-600">
+          Hi, <span x-text="userName"></span>. Tell us about yourself so
+          companies know who you are.
+        </p>
 
         <div class="mt-8 space-y-6">
           <!-- CV Upload -->
           <div>
-            <label class="block text-sm font-medium text-gray-700">Upload Your Resume/CV</label>
-            <div class="mt-2 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 px-6 py-8"
-                 @dragover.prevent
-                 @drop="handleFileDrop($event)"
-                 :class="cvFileName && 'border-accent-300 bg-accent-50'">
+            <label class="block text-sm font-medium text-gray-700"
+              >Upload Your Resume/CV</label
+            >
+            <div
+              class="mt-2 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 px-6 py-8"
+              @dragover.prevent
+              @drop="handleFileDrop($event)"
+              :class="cvFileName && 'border-accent-300 bg-accent-50'"
+            >
               <div class="text-center">
                 <p x-show="!cvFileName" class="text-sm text-gray-500">
                   Drag and drop your CV, or
-                  <label class="cursor-pointer text-accent-600 hover:text-accent-500">
+                  <label
+                    class="cursor-pointer text-accent-600 hover:text-accent-500"
+                  >
                     browse
-                    <input type="file" class="sr-only" accept=".pdf,.doc,.docx" @change="handleFileSelect($event)" aria-label="Upload CV file">
+                    <input
+                      type="file"
+                      class="sr-only"
+                      accept=".pdf,.doc,.docx"
+                      @change="handleFileSelect($event)"
+                      aria-label="Upload CV file"
+                    />
                   </label>
                 </p>
-                <p x-show="cvFileName" x-cloak class="text-sm font-medium text-accent-700" x-text="cvFileName"></p>
+                <p
+                  x-show="cvFileName"
+                  x-cloak
+                  class="text-sm font-medium text-accent-700"
+                  x-text="cvFileName"
+                ></p>
               </div>
             </div>
           </div>
 
           <!-- Target Job Title -->
           <div>
-            <label for="target-title" class="block text-sm font-medium text-gray-700">Target job title <span class="text-accent-500" aria-hidden="true">*</span></label>
-            <input type="text" id="target-title" x-model="targetJobTitle" class="input-field mt-1" placeholder="e.g. Senior Developer" aria-required="true">
+            <label
+              for="target-title"
+              class="block text-sm font-medium text-gray-700"
+              >Target job title
+              <span class="text-accent-500" aria-hidden="true">*</span></label
+            >
+            <input
+              type="text"
+              id="target-title"
+              x-model="targetJobTitle"
+              class="input-field mt-1"
+              placeholder="e.g. Senior Developer"
+              aria-required="true"
+            />
           </div>
 
           <!-- Experience Level -->
           <div>
-            <label for="exp-level" class="block text-sm font-medium text-gray-700">Experience Level <span class="text-accent-500" aria-hidden="true">*</span></label>
-            <select id="exp-level" x-model="experienceLevel" class="select-field mt-1" aria-required="true">
+            <label
+              for="exp-level"
+              class="block text-sm font-medium text-gray-700"
+              >Experience Level
+              <span class="text-accent-500" aria-hidden="true">*</span></label
+            >
+            <select
+              id="exp-level"
+              x-model="experienceLevel"
+              class="select-field mt-1"
+              aria-required="true"
+            >
               <option value="">Select...</option>
               <option value="entry">Entry Level (0-2 years)</option>
               <option value="junior">Junior (2-4 years)</option>
@@ -3425,8 +3720,18 @@ Create `ui/layouts/onboarding/single.html`:
 
           <!-- Job Status -->
           <div>
-            <label for="job-status" class="block text-sm font-medium text-gray-700">Job Status <span class="text-accent-500" aria-hidden="true">*</span></label>
-            <select id="job-status" x-model="jobSearchStatus" class="select-field mt-1" aria-required="true">
+            <label
+              for="job-status"
+              class="block text-sm font-medium text-gray-700"
+              >Job Status
+              <span class="text-accent-500" aria-hidden="true">*</span></label
+            >
+            <select
+              id="job-status"
+              x-model="jobSearchStatus"
+              class="select-field mt-1"
+              aria-required="true"
+            >
               <option value="">Select...</option>
               <option value="actively_looking">Actively Looking</option>
               <option value="open_to_offers">Open to Offers</option>
@@ -3436,8 +3741,16 @@ Create `ui/layouts/onboarding/single.html`:
 
           <!-- Salary Range -->
           <div>
-            <label for="salary-range" class="block text-sm font-medium text-gray-700">Preferred Salary Range</label>
-            <select id="salary-range" x-model="salaryRange" class="select-field mt-1">
+            <label
+              for="salary-range"
+              class="block text-sm font-medium text-gray-700"
+              >Preferred Salary Range</label
+            >
+            <select
+              id="salary-range"
+              x-model="salaryRange"
+              class="select-field mt-1"
+            >
               <option value="">Select...</option>
               <option value="30k-50k">$30,000–$50,000 USD</option>
               <option value="50k-75k">$50,000–$75,000 USD</option>
@@ -3448,32 +3761,53 @@ Create `ui/layouts/onboarding/single.html`:
 
           <!-- ATS Report -->
           <label class="flex items-center gap-3">
-            <input type="checkbox" x-model="wantsATSReport" class="h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500">
-            <span class="text-sm text-gray-700">Yes, please email me a free ATS score and resume report</span>
+            <input
+              type="checkbox"
+              x-model="wantsATSReport"
+              class="h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500"
+            />
+            <span class="text-sm text-gray-700"
+              >Yes, please email me a free ATS score and resume report</span
+            >
           </label>
         </div>
 
         <div class="mt-8 flex justify-end">
-          <button @click="nextStep()" :disabled="!canProceedStep1" class="btn-primary" :class="!canProceedStep1 && 'opacity-50 cursor-not-allowed'">Continue</button>
+          <button
+            @click="nextStep()"
+            :disabled="!canProceedStep1"
+            class="btn-primary"
+            :class="!canProceedStep1 && 'opacity-50 cursor-not-allowed'"
+          >
+            Continue
+          </button>
         </div>
       </div>
 
       <!-- Step 2: Curate Search -->
       <div x-show="step === 2" x-cloak>
         <h1 class="text-3xl font-bold text-gray-900">Curate your search</h1>
-        <p class="mt-2 text-gray-600">Select your preferences. You can always edit this later.</p>
+        <p class="mt-2 text-gray-600">
+          Select your preferences. You can always edit this later.
+        </p>
 
         <div class="mt-8 space-y-6">
           <!-- Regions -->
           <fieldset>
-            <legend class="block text-sm font-medium text-gray-700">Region(s) You're Able To Work In <span class="text-accent-500" aria-hidden="true">*</span></legend>
+            <legend class="block text-sm font-medium text-gray-700">
+              Region(s) You're Able To Work In
+              <span class="text-accent-500" aria-hidden="true">*</span>
+            </legend>
             <div class="mt-2 flex flex-wrap gap-2">
-              {{ $regions := slice "Anywhere in the World" "Africa" "Europe" "North America" "South America" "Asia" "Oceania" }}
-              {{ range $regions }}
-              <button @click="toggleRegion('{{ . }}')"
-                      :class="preferredRegions.includes('{{ . }}') ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
-                      class="rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
-                      :aria-pressed="preferredRegions.includes('{{ . }}')">
+              {{ $regions := slice "Anywhere in the World" "Africa" "Europe"
+              "North America" "South America" "Asia" "Oceania" }} {{ range
+              $regions }}
+              <button
+                @click="toggleRegion('{{ . }}')"
+                :class="preferredRegions.includes('{{ . }}') ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+                class="rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+                :aria-pressed="preferredRegions.includes('{{ . }}')"
+              >
                 {{ . }}
               </button>
               {{ end }}
@@ -3482,14 +3816,19 @@ Create `ui/layouts/onboarding/single.html`:
 
           <!-- Timezones -->
           <fieldset>
-            <legend class="block text-sm font-medium text-gray-700">Preferred Time Zones</legend>
+            <legend class="block text-sm font-medium text-gray-700">
+              Preferred Time Zones
+            </legend>
             <div class="mt-2 flex flex-wrap gap-2">
-              {{ $timezones := slice "EAT (UTC+3)" "WAT (UTC+1)" "CAT (UTC+2)" "SAST (UTC+2)" "GMT (UTC+0)" "CET (UTC+1)" "EST (UTC-5)" "PST (UTC-8)" }}
-              {{ range $timezones }}
-              <button @click="toggleTimezone('{{ . }}')"
-                      :class="preferredTimezones.includes('{{ . }}') ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
-                      class="rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
-                      :aria-pressed="preferredTimezones.includes('{{ . }}')">
+              {{ $timezones := slice "EAT (UTC+3)" "WAT (UTC+1)" "CAT (UTC+2)"
+              "SAST (UTC+2)" "GMT (UTC+0)" "CET (UTC+1)" "EST (UTC-5)" "PST
+              (UTC-8)" }} {{ range $timezones }}
+              <button
+                @click="toggleTimezone('{{ . }}')"
+                :class="preferredTimezones.includes('{{ . }}') ? 'bg-navy-900 text-white' : 'bg-gray-100 text-gray-700'"
+                class="rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+                :aria-pressed="preferredTimezones.includes('{{ . }}')"
+              >
                 {{ . }}
               </button>
               {{ end }}
@@ -3498,34 +3837,72 @@ Create `ui/layouts/onboarding/single.html`:
 
           <!-- Country -->
           <div>
-            <label for="country" class="block text-sm font-medium text-gray-700">Country <span class="text-accent-500" aria-hidden="true">*</span></label>
-            <input type="text" id="country" x-model="country" class="input-field mt-1" placeholder="e.g. Kenya" aria-required="true">
+            <label for="country" class="block text-sm font-medium text-gray-700"
+              >Country
+              <span class="text-accent-500" aria-hidden="true">*</span></label
+            >
+            <input
+              type="text"
+              id="country"
+              x-model="country"
+              class="input-field mt-1"
+              placeholder="e.g. Kenya"
+              aria-required="true"
+            />
           </div>
 
           <!-- Work Authorization -->
           <fieldset>
-            <legend class="block text-sm font-medium text-gray-700">Are you authorized to work in the US?</legend>
+            <legend class="block text-sm font-medium text-gray-700">
+              Are you authorized to work in the US?
+            </legend>
             <div class="mt-2 flex gap-6">
               <label class="flex items-center gap-2">
-                <input type="radio" x-model="usWorkAuth" value="true" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="us-auth">
+                <input
+                  type="radio"
+                  x-model="usWorkAuth"
+                  value="true"
+                  class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500"
+                  name="us-auth"
+                />
                 <span class="text-sm text-gray-700">Yes</span>
               </label>
               <label class="flex items-center gap-2">
-                <input type="radio" x-model="usWorkAuth" value="false" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="us-auth">
+                <input
+                  type="radio"
+                  x-model="usWorkAuth"
+                  value="false"
+                  class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500"
+                  name="us-auth"
+                />
                 <span class="text-sm text-gray-700">No</span>
               </label>
             </div>
           </fieldset>
 
           <fieldset x-show="usWorkAuth === 'false'" x-cloak>
-            <legend class="block text-sm font-medium text-gray-700">Will you require visa sponsorship?</legend>
+            <legend class="block text-sm font-medium text-gray-700">
+              Will you require visa sponsorship?
+            </legend>
             <div class="mt-2 flex gap-6">
               <label class="flex items-center gap-2">
-                <input type="radio" x-model="needsSponsorship" value="true" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="sponsorship">
+                <input
+                  type="radio"
+                  x-model="needsSponsorship"
+                  value="true"
+                  class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500"
+                  name="sponsorship"
+                />
                 <span class="text-sm text-gray-700">Yes</span>
               </label>
               <label class="flex items-center gap-2">
-                <input type="radio" x-model="needsSponsorship" value="false" class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500" name="sponsorship">
+                <input
+                  type="radio"
+                  x-model="needsSponsorship"
+                  value="false"
+                  class="h-4 w-4 border-gray-300 text-accent-500 focus:ring-accent-500"
+                  name="sponsorship"
+                />
                 <span class="text-sm text-gray-700">No</span>
               </label>
             </div>
@@ -3534,7 +3911,14 @@ Create `ui/layouts/onboarding/single.html`:
 
         <div class="mt-8 flex justify-between">
           <button @click="prevStep()" class="btn-secondary">Previous</button>
-          <button @click="nextStep()" :disabled="!canProceedStep2" class="btn-primary" :class="!canProceedStep2 && 'opacity-50 cursor-not-allowed'">Continue</button>
+          <button
+            @click="nextStep()"
+            :disabled="!canProceedStep2"
+            class="btn-primary"
+            :class="!canProceedStep2 && 'opacity-50 cursor-not-allowed'"
+          >
+            Continue
+          </button>
         </div>
       </div>
 
@@ -3546,23 +3930,74 @@ Create `ui/layouts/onboarding/single.html`:
         <!-- Plan card -->
         <div class="card mt-8 p-6">
           <p class="text-sm text-gray-500 line-through">$14.95/month</p>
-          <p class="text-3xl font-bold text-gray-900">$2.95<span class="text-base font-normal text-gray-500">/first month</span></p>
-          <p class="mt-2 text-sm text-accent-600">Unlock everything for just $2.95 for your first month, then $14.95/month.</p>
+          <p class="text-3xl font-bold text-gray-900">
+            $2.95<span class="text-base font-normal text-gray-500"
+              >/first month</span
+            >
+          </p>
+          <p class="mt-2 text-sm text-accent-600">
+            Unlock everything for just $2.95 for your first month, then
+            $14.95/month.
+          </p>
           <ul class="mt-4 space-y-2 text-sm text-gray-600">
             <li class="flex items-center gap-2">
-              <svg class="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              <svg
+                class="h-4 w-4 text-green-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clip-rule="evenodd"
+                />
+              </svg>
               AI-powered job matching
             </li>
             <li class="flex items-center gap-2">
-              <svg class="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              <svg
+                class="h-4 w-4 text-green-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clip-rule="evenodd"
+                />
+              </svg>
               Unlimited saved jobs
             </li>
             <li class="flex items-center gap-2">
-              <svg class="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              <svg
+                class="h-4 w-4 text-green-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clip-rule="evenodd"
+                />
+              </svg>
               ATS resume score report
             </li>
             <li class="flex items-center gap-2">
-              <svg class="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              <svg
+                class="h-4 w-4 text-green-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clip-rule="evenodd"
+                />
+              </svg>
               Priority job alerts
             </li>
           </ul>
@@ -3570,16 +4005,22 @@ Create `ui/layouts/onboarding/single.html`:
 
         <!-- Payment method -->
         <div class="mt-6">
-          <label class="block text-sm font-medium text-gray-700">Payment Method</label>
+          <label class="block text-sm font-medium text-gray-700"
+            >Payment Method</label
+          >
           <div class="mt-2 flex gap-4">
-            <button @click="paymentMethod = 'card'"
-                    :class="paymentMethod === 'card' ? 'border-accent-500 bg-accent-50' : 'border-gray-200'"
-                    class="card flex-1 px-4 py-3 text-center text-sm font-medium transition-colors">
+            <button
+              @click="paymentMethod = 'card'"
+              :class="paymentMethod === 'card' ? 'border-accent-500 bg-accent-50' : 'border-gray-200'"
+              class="card flex-1 px-4 py-3 text-center text-sm font-medium transition-colors"
+            >
               Card / International
             </button>
-            <button @click="paymentMethod = 'mobile'"
-                    :class="paymentMethod === 'mobile' ? 'border-accent-500 bg-accent-50' : 'border-gray-200'"
-                    class="card flex-1 px-4 py-3 text-center text-sm font-medium transition-colors">
+            <button
+              @click="paymentMethod = 'mobile'"
+              :class="paymentMethod === 'mobile' ? 'border-accent-500 bg-accent-50' : 'border-gray-200'"
+              class="card flex-1 px-4 py-3 text-center text-sm font-medium transition-colors"
+            >
               Mobile Money
             </button>
           </div>
@@ -3587,19 +4028,36 @@ Create `ui/layouts/onboarding/single.html`:
 
         <!-- Terms -->
         <label class="mt-6 flex items-start gap-3">
-          <input type="checkbox" x-model="agreeTerms" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500">
-          <span class="text-sm text-gray-600">I agree to the <a href="/terms/" class="text-accent-600 underline">Terms & Conditions</a> and the renewal terms above.</span>
+          <input
+            type="checkbox"
+            x-model="agreeTerms"
+            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500"
+          />
+          <span class="text-sm text-gray-600"
+            >I agree to the
+            <a href="/terms/" class="text-accent-600 underline"
+              >Terms & Conditions</a
+            >
+            and the renewal terms above.</span
+          >
         </label>
 
         <div class="mt-8 flex items-center justify-between">
           <div class="flex items-center gap-4">
             <button @click="prevStep()" class="btn-secondary">Previous</button>
-            <button @click="skipPayment()" class="text-sm text-gray-500 underline hover:text-gray-700">Skip for now</button>
+            <button
+              @click="skipPayment()"
+              class="text-sm text-gray-500 underline hover:text-gray-700"
+            >
+              Skip for now
+            </button>
           </div>
-          <button @click="submitOnboarding()"
-                  :disabled="!agreeTerms || loading"
-                  class="btn-primary"
-                  :class="(!agreeTerms || loading) && 'opacity-50 cursor-not-allowed'">
+          <button
+            @click="submitOnboarding()"
+            :disabled="!agreeTerms || loading"
+            class="btn-primary"
+            :class="(!agreeTerms || loading) && 'opacity-50 cursor-not-allowed'"
+          >
             <span x-show="!loading">Get Full Access</span>
             <span x-show="loading" x-cloak>Processing...</span>
           </button>
@@ -3611,7 +4069,9 @@ Create `ui/layouts/onboarding/single.html`:
     <div class="hidden lg:col-span-2 lg:block">
       <!-- Step 1: Stats -->
       <div x-show="step === 1" class="rounded-xl bg-gray-50 p-8 text-center">
-        <p class="text-lg font-semibold text-gray-900">Thousands of professionals hired and top companies posting jobs daily.</p>
+        <p class="text-lg font-semibold text-gray-900">
+          Thousands of professionals hired and top companies posting jobs daily.
+        </p>
         <div class="mt-8 flex justify-center gap-8">
           <div>
             <p class="text-sm text-gray-500">Trusted by jobseekers</p>
@@ -3625,12 +4085,23 @@ Create `ui/layouts/onboarding/single.html`:
       </div>
 
       <!-- Steps 2-3: Testimonial -->
-      <div x-show="step >= 2" x-cloak class="rounded-xl bg-navy-900 p-8 text-white">
-        <p class="text-lg font-semibold">Thousands of professionals hired and top companies posting jobs daily.</p>
+      <div
+        x-show="step >= 2"
+        x-cloak
+        class="rounded-xl bg-navy-900 p-8 text-white"
+      >
+        <p class="text-lg font-semibold">
+          Thousands of professionals hired and top companies posting jobs daily.
+        </p>
         <div class="mt-8 rounded-lg bg-white/10 p-6">
-          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Testimonial</p>
+          <p
+            class="text-xs font-semibold uppercase tracking-wider text-gray-400"
+          >
+            Testimonial
+          </p>
           <blockquote class="mt-3 text-sm text-gray-200">
-            "Stawi has been a great resource during my job hunt. I've discovered new companies and feel more confident about finding the right fit."
+            "Stawi has been a great resource during my job hunt. I've discovered
+            new companies and feel more confident about finding the right fit."
           </blockquote>
           <p class="mt-4 font-semibold">Diego Ardura</p>
           <p class="text-sm text-gray-400">Data Analyst</p>
@@ -3639,10 +4110,8 @@ Create `ui/layouts/onboarding/single.html`:
     </div>
   </div>
 </div>
-{{ end }}
-
-{{ define "scripts" }}
-{{ $onboardingJS := resources.Get "js/onboarding.js" | js.Build (dict "minify" hugo.IsProduction) }}
+{{ end }} {{ define "scripts" }} {{ $onboardingJS := resources.Get
+"js/onboarding.js" | js.Build (dict "minify" hugo.IsProduction) }}
 <script src="{{ $onboardingJS.RelPermalink }}"></script>
 {{ end }}
 ```
@@ -3664,6 +4133,7 @@ git commit -m "feat: add 3-step onboarding wizard with CV upload and payment sel
 ## Task 15: Dashboard
 
 **Files:**
+
 - Create: `ui/assets/js/dashboard.js`
 - Create: `ui/layouts/dashboard/single.html`
 
@@ -3698,7 +4168,7 @@ document.addEventListener("alpine:init", () => {
           const candidateId = this.profile?.id;
           if (!candidateId) return;
           const resp = await apiFetch(
-            "/candidates/matches?candidate_id=" + candidateId + "&limit=50"
+            "/candidates/matches?candidate_id=" + candidateId + "&limit=50",
           );
           if (resp.ok) {
             const data = await resp.json();
@@ -3763,33 +4233,48 @@ Create `ui/layouts/dashboard/single.html`:
 
 ```html
 {{ define "main" }}
-<div x-data="dashboardApp()" class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+<div
+  x-data="dashboardApp()"
+  class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
+>
   <div class="lg:grid lg:grid-cols-5 lg:gap-8">
     <!-- Sidebar -->
-    <nav class="lg:col-span-1" role="navigation" aria-label="Dashboard navigation">
+    <nav
+      class="lg:col-span-1"
+      role="navigation"
+      aria-label="Dashboard navigation"
+    >
       <div class="flex gap-2 overflow-x-auto lg:flex-col lg:gap-1">
-        <button @click="switchView('matches')"
-                :class="view === 'matches' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
-                :aria-current="view === 'matches' ? 'page' : false"
-                class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors">
+        <button
+          @click="switchView('matches')"
+          :class="view === 'matches' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
+          :aria-current="view === 'matches' ? 'page' : false"
+          class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors"
+        >
           Matches
         </button>
-        <button @click="switchView('saved')"
-                :class="view === 'saved' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
-                :aria-current="view === 'saved' ? 'page' : false"
-                class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors">
+        <button
+          @click="switchView('saved')"
+          :class="view === 'saved' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
+          :aria-current="view === 'saved' ? 'page' : false"
+          class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors"
+        >
           Saved Jobs
         </button>
-        <button @click="switchView('profile')"
-                :class="view === 'profile' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
-                :aria-current="view === 'profile' ? 'page' : false"
-                class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors">
+        <button
+          @click="switchView('profile')"
+          :class="view === 'profile' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
+          :aria-current="view === 'profile' ? 'page' : false"
+          class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors"
+        >
           Profile
         </button>
-        <button @click="switchView('billing')"
-                :class="view === 'billing' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
-                :aria-current="view === 'billing' ? 'page' : false"
-                class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors">
+        <button
+          @click="switchView('billing')"
+          :class="view === 'billing' ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-gray-600 hover:bg-gray-50'"
+          :aria-current="view === 'billing' ? 'page' : false"
+          class="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-left transition-colors"
+        >
           Billing
         </button>
       </div>
@@ -3797,37 +4282,67 @@ Create `ui/layouts/dashboard/single.html`:
 
     <!-- Main content -->
     <div class="mt-6 lg:col-span-4 lg:mt-0">
-      <div x-show="error" x-cloak class="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700" role="alert" x-text="error"></div>
+      <div
+        x-show="error"
+        x-cloak
+        class="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700"
+        role="alert"
+        x-text="error"
+      ></div>
 
       <!-- Loading -->
       <div x-show="loading" class="py-12 text-center">
-        <div class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent" aria-label="Loading"></div>
+        <div
+          class="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent"
+          aria-label="Loading"
+        ></div>
       </div>
 
       <!-- Matches view -->
       <div x-show="view === 'matches' && !loading" x-cloak>
         <h1 class="text-2xl font-bold text-gray-900">Your Job Matches</h1>
-        <p class="mt-1 text-sm text-gray-500" x-text="matches.length + ' matches found'"></p>
+        <p
+          class="mt-1 text-sm text-gray-500"
+          x-text="matches.length + ' matches found'"
+        ></p>
 
         <div class="mt-6 space-y-4" aria-live="polite">
           <template x-for="match in matches" :key="match.id">
             <article class="card p-4 sm:p-6">
               <div class="flex items-start justify-between">
                 <div class="min-w-0 flex-1">
-                  <h3 class="text-lg font-semibold text-gray-900" x-text="'Job #' + match.canonical_job_id"></h3>
+                  <h3
+                    class="text-lg font-semibold text-gray-900"
+                    x-text="'Job #' + match.canonical_job_id"
+                  ></h3>
                   <div class="mt-2 flex items-center gap-3">
-                    <span class="text-lg font-bold" :class="matchScoreColor(match.match_score)" x-text="formatScore(match.match_score)">
+                    <span
+                      class="text-lg font-bold"
+                      :class="matchScoreColor(match.match_score)"
+                      x-text="formatScore(match.match_score)"
+                    >
                     </span>
                     <span class="text-sm text-gray-500">match</span>
-                    <span class="badge" :class="statusBadgeClass(match.status)" x-text="match.status"></span>
+                    <span
+                      class="badge"
+                      :class="statusBadgeClass(match.status)"
+                      x-text="match.status"
+                    ></span>
                   </div>
                 </div>
-                <a :href="'/jobs/?id=' + match.canonical_job_id" class="btn-secondary text-sm">View Job</a>
+                <a
+                  :href="'/jobs/?id=' + match.canonical_job_id"
+                  class="btn-secondary text-sm"
+                  >View Job</a
+                >
               </div>
             </article>
           </template>
 
-          <p x-show="matches.length === 0" class="py-12 text-center text-gray-500">
+          <p
+            x-show="matches.length === 0"
+            class="py-12 text-center text-gray-500"
+          >
             No matches yet. We're finding the best jobs for your profile.
           </p>
         </div>
@@ -3840,12 +4355,21 @@ Create `ui/layouts/dashboard/single.html`:
           <template x-for="sj in savedJobs" :key="sj.id">
             <article class="card p-4">
               <div class="flex items-center justify-between">
-                <span class="text-sm text-gray-700">Job #<span x-text="sj.canonical_job_id"></span></span>
-                <a :href="'/jobs/?id=' + sj.canonical_job_id" class="text-sm text-accent-600 hover:text-accent-700">View</a>
+                <span class="text-sm text-gray-700"
+                  >Job #<span x-text="sj.canonical_job_id"></span
+                ></span>
+                <a
+                  :href="'/jobs/?id=' + sj.canonical_job_id"
+                  class="text-sm text-accent-600 hover:text-accent-700"
+                  >View</a
+                >
               </div>
             </article>
           </template>
-          <p x-show="savedJobs.length === 0" class="py-12 text-center text-gray-500">
+          <p
+            x-show="savedJobs.length === 0"
+            class="py-12 text-center text-gray-500"
+          >
             No saved jobs yet. Browse jobs and save the ones you like.
           </p>
         </div>
@@ -3862,22 +4386,36 @@ Create `ui/layouts/dashboard/single.html`:
             </div>
             <div class="flex justify-between">
               <dt class="font-medium text-gray-500">Status</dt>
-              <dd class="text-gray-900 capitalize" x-text="profile?.status || 'Unknown'"></dd>
+              <dd
+                class="text-gray-900 capitalize"
+                x-text="profile?.status || 'Unknown'"
+              ></dd>
             </div>
             <div class="flex justify-between">
               <dt class="font-medium text-gray-500">Subscription</dt>
-              <dd class="text-gray-900 capitalize" x-text="profile?.subscription || 'free'"></dd>
+              <dd
+                class="text-gray-900 capitalize"
+                x-text="profile?.subscription || 'free'"
+              ></dd>
             </div>
             <div class="flex justify-between">
               <dt class="font-medium text-gray-500">Target Role</dt>
-              <dd class="text-gray-900" x-text="profile?.target_job_title || 'Not set'"></dd>
+              <dd
+                class="text-gray-900"
+                x-text="profile?.target_job_title || 'Not set'"
+              ></dd>
             </div>
             <div class="flex justify-between">
               <dt class="font-medium text-gray-500">Experience</dt>
-              <dd class="text-gray-900 capitalize" x-text="profile?.experience_level || 'Not set'"></dd>
+              <dd
+                class="text-gray-900 capitalize"
+                x-text="profile?.experience_level || 'Not set'"
+              ></dd>
             </div>
           </dl>
-          <a href="/onboarding/" class="btn-secondary mt-6 inline-block text-sm">Edit Preferences</a>
+          <a href="/onboarding/" class="btn-secondary mt-6 inline-block text-sm"
+            >Edit Preferences</a
+          >
         </div>
       </div>
 
@@ -3887,20 +4425,29 @@ Create `ui/layouts/dashboard/single.html`:
         <div class="mt-6 card p-6">
           <div class="flex items-center justify-between">
             <div>
-              <p class="font-semibold text-gray-900" x-text="(profile?.subscription === 'paid' ? 'Premium' : 'Free') + ' Plan'"></p>
-              <p class="text-sm text-gray-500" x-text="profile?.subscription === 'paid' ? '$14.95/month' : 'Limited features'"></p>
+              <p
+                class="font-semibold text-gray-900"
+                x-text="(profile?.subscription === 'paid' ? 'Premium' : 'Free') + ' Plan'"
+              ></p>
+              <p
+                class="text-sm text-gray-500"
+                x-text="profile?.subscription === 'paid' ? '$14.95/month' : 'Limited features'"
+              ></p>
             </div>
-            <a x-show="profile?.subscription !== 'paid'" href="/pricing/" class="btn-primary text-sm">Upgrade</a>
+            <a
+              x-show="profile?.subscription !== 'paid'"
+              href="/pricing/"
+              class="btn-primary text-sm"
+              >Upgrade</a
+            >
           </div>
         </div>
       </div>
     </div>
   </div>
 </div>
-{{ end }}
-
-{{ define "scripts" }}
-{{ $dashboardJS := resources.Get "js/dashboard.js" | js.Build (dict "minify" hugo.IsProduction) }}
+{{ end }} {{ define "scripts" }} {{ $dashboardJS := resources.Get
+"js/dashboard.js" | js.Build (dict "minify" hugo.IsProduction) }}
 <script src="{{ $dashboardJS.RelPermalink }}"></script>
 {{ end }}
 ```
@@ -3922,6 +4469,7 @@ git commit -m "feat: add candidate dashboard with matches, saved jobs, profile, 
 ## Task 16: Build Pipeline and Makefile
 
 **Files:**
+
 - Modify: `Makefile`
 - Modify: `ui/.gitignore`
 - Modify: `.gitignore`
@@ -3980,6 +4528,7 @@ git commit -m "feat: add UI build pipeline to Makefile (sitegen, hugo, pagefind)
 ## Task 17: Accessibility Audit and Polish
 
 **Files:**
+
 - All layout files (review and fix)
 
 - [ ] **Step 1: Verify all pages have correct heading hierarchy**
@@ -3990,6 +4539,7 @@ Expected: Every page has exactly one `<h1>`, sequential nesting
 - [ ] **Step 2: Verify all interactive elements are keyboard-accessible**
 
 Manual check in browser:
+
 - Tab through navbar: logo → Find Jobs → About → Pricing → Search → Sign In
 - Tab through job cards: each card is focusable, Enter navigates
 - Tab through wizard: all form fields reachable, buttons work with Enter/Space
@@ -4003,6 +4553,7 @@ Check `main.css` has `prefers-reduced-motion: reduce` rules (already added in Ta
 
 Run: `cd ui && npx pagefind --site public --glob "jobs/**/*.html"`
 Then open the search page and verify:
+
 - Search input has `role="search"` wrapper
 - Results are announced via `aria-live`
 - Keyboard navigation through results works
@@ -4065,6 +4616,7 @@ Expected: Hugo dev server at http://localhost:1313
 - [ ] **Step 5: Verify pages load**
 
 Check in browser:
+
 - Homepage: http://localhost:1313/ — hero, categories, testimonials
 - Jobs: http://localhost:1313/jobs/ — job cards render
 - Job detail: http://localhost:1313/jobs/senior-go-developer-at-acme-corp-1/ — full detail + JSON-LD

@@ -10,8 +10,8 @@
 // can't cover: text search, filter combinations, logged-in preference
 // boosts, or a 404 (manifest not yet published for the user's shard).
 
-import { getConfig } from "@/utils/config";
-import type { FeedResponse } from "@/types/search";
+import { getConfig } from '@/utils/config';
+import type { FeedResponse } from '@/types/search';
 
 /** One entry in /feeds/index.json — lets the client probe staleness
  *  and verify a given country has a published manifest before hitting
@@ -35,8 +35,8 @@ export interface Manifest extends FeedResponse {
 }
 
 function manifestURL(path: string): string {
-  const origin = getConfig().contentOrigin.replace(/\/$/, "");
-  return `${origin}/${path.replace(/^\/+/, "")}`;
+  const origin = getConfig().contentOrigin.replace(/\/$/, '');
+  return `${origin}/${path.replace(/^\/+/, '')}`;
 }
 
 /**
@@ -47,15 +47,13 @@ function manifestURL(path: string): string {
  * string to fetch `/feeds/default.json`.
  */
 export async function fetchManifest(country: string): Promise<Manifest | null> {
-  const key = country
-    ? `feeds/${country.toLowerCase()}.json`
-    : "feeds/default.json";
+  const key = country ? `feeds/${country.toLowerCase()}.json` : 'feeds/default.json';
   try {
     const res = await fetch(manifestURL(key), {
       // No credentials — R2 is public, we don't want cookies forwarded.
-      credentials: "omit",
+      credentials: 'omit',
       // Respect the server's Cache-Control (max-age=60, s-maxage=300).
-      cache: "default",
+      cache: 'default',
     });
     if (!res.ok) return null;
     return (await res.json()) as Manifest;
@@ -70,9 +68,9 @@ export async function fetchManifest(country: string): Promise<Manifest | null> {
  */
 export async function fetchManifestIndex(): Promise<ManifestIndex | null> {
   try {
-    const res = await fetch(manifestURL("feeds/index.json"), {
-      credentials: "omit",
-      cache: "default",
+    const res = await fetch(manifestURL('feeds/index.json'), {
+      credentials: 'omit',
+      cache: 'default',
     });
     if (!res.ok) return null;
     return (await res.json()) as ManifestIndex;

@@ -27,6 +27,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
@@ -74,6 +75,11 @@ type CrawlRequestDeps struct {
 	// missing rows). Soft-fail throughout: a Postgres outage degrades
 	// observability but does not stall the chain.
 	VariantStore *variantstate.Store
+	// CrawlRepo writes the crawl_jobs + raw_payloads audit ledger.
+	// nil disables ledger writes (test paths). Errors propagate — a
+	// Postgres outage MUST fail the crawl, otherwise the ledger silently
+	// diverges from reality.
+	CrawlRepo *repository.CrawlRepository
 }
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
@@ -188,6 +194,38 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
+	// Audit ledger: open a crawl_jobs row. Idempotent on idempotency_key
+	// — Frame redeliveries of the same NATS msg reuse the same row via
+	// the unique (idempotency_key, scheduled_at) composite index.
+	crawlJob := &domain.CrawlJob{
+		SourceID:       src.ID,
+		ScheduledAt:    req.ScheduledAt,
+		Status:         domain.CrawlScheduled,
+		Attempt:        1,
+		IdempotencyKey: req.IdempotencyKey,
+	}
+	if crawlJob.IdempotencyKey == "" {
+		crawlJob.IdempotencyKey = fmt.Sprintf("%s:%s", src.ID, req.ScheduledAt.Format(time.RFC3339))
+	}
+	if crawlJob.ScheduledAt.IsZero() {
+		crawlJob.ScheduledAt = time.Now().UTC()
+	}
+
+	if h.deps.CrawlRepo != nil {
+		if err := h.deps.CrawlRepo.Create(ctx, crawlJob); err != nil {
+			// Likely a unique-constraint violation from a re-delivery.
+			// Fall back to the existing row so we don't double-insert.
+			if existing, lookupErr := h.deps.CrawlRepo.GetByIdempotencyKey(ctx, crawlJob.IdempotencyKey); lookupErr == nil && existing != nil {
+				crawlJob = existing
+			} else {
+				return fmt.Errorf("crawl.request: open crawl_jobs row: %w", err)
+			}
+		}
+		if err := h.deps.CrawlRepo.Start(ctx, crawlJob.ID); err != nil {
+			return fmt.Errorf("crawl.request: mark started: %w", err)
+		}
+	}
+
 	iter := conn.Crawl(ctx, *src)
 
 	var (
@@ -202,6 +240,32 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	for iter.Next(ctx) {
 		status = iter.HTTPStatus()
 		pageArchiveRef := resolveArchiveRef(ctx, h.deps.Archive, iter.Content())
+
+		// Audit-ledger: row per page. resolveArchiveRef already wrote the R2
+		// blob via archive.PutRaw (content-addressed by sha256); here we
+		// just record the metadata + queue-state row pointing at it.
+		var pageRawPayloadID string
+		if h.deps.CrawlRepo != nil && iter.Content() != nil && len(iter.Content().RawHTML) > 0 {
+			rawBody := []byte(iter.Content().RawHTML)
+			pageContentHash := sha256Hex(rawBody)
+			rp := &domain.RawPayload{
+				CrawlJobID:  crawlJob.ID,
+				SourceID:    src.ID,
+				SourceURL:   src.BaseURL,
+				StorageURI:  pageArchiveRef,
+				ContentHash: pageContentHash,
+				SizeBytes:   int64(len(rawBody)),
+				FetchedAt:   time.Now().UTC(),
+				HTTPStatus:  iter.HTTPStatus(),
+				Status:      domain.RawPayloadStatusPending,
+			}
+			if rawErr := h.deps.CrawlRepo.SaveRawPayload(ctx, rp); rawErr != nil {
+				log.WithError(rawErr).Warn("crawl.request: save raw_payload failed")
+			} else {
+				pageRawPayloadID = rp.ID
+			}
+		}
+
 		pageItems := iter.Items()
 
 		// Enrich URL-only stubs (sitemap + universal AI link
@@ -342,12 +406,16 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			// the rare case where Postgres replication lag puts the row
 			// behind the NATS delivery, but the canonical path is:
 			// crawler writes → crawler emits → worker reads.
+			rawIDPtr := stringPtrOrNil(pageRawPayloadID)
+			jobIDPtr := stringPtrOrNil(crawlJob.ID)
 			_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
 				VariantID:    eventPayload.VariantID,
 				SourceID:     eventPayload.SourceID,
 				HardKey:      eventPayload.HardKey,
 				Kind:         eventPayload.Kind,
 				CurrentStage: variantstate.StageIngested,
+				RawPayloadID: rawIDPtr,
+				CrawlJobID:   jobIDPtr,
 			})
 
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
@@ -395,6 +463,24 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		completed.ErrorMessage = iterErr.Error()
 	}
 	h.emitCompleted(ctx, completed)
+
+	if h.deps.CrawlRepo != nil {
+		finalStatus := domain.CrawlSucceeded
+		errorCode := ""
+		errorMessage := ""
+		if iterErr != nil {
+			finalStatus = domain.CrawlFailed
+			errorCode = "iterator_failed"
+			errorMessage = iterErr.Error()
+		}
+		if finErr := h.deps.CrawlRepo.Finish(
+			ctx, crawlJob.ID, finalStatus,
+			jobsFound, jobsEmitted,
+			errorCode, errorMessage,
+		); finErr != nil {
+			log.WithError(finErr).Warn("crawl.request: finish crawl_jobs failed")
+		}
+	}
 
 	log.WithField("found", jobsFound).
 		WithField("emitted", jobsEmitted).
@@ -463,6 +549,17 @@ func resolveArchiveRef(ctx context.Context, arch archive.Archive, page *content.
 func sha256Hex(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
+}
+
+// stringPtrOrNil returns a pointer to s, or nil when s is empty. Used
+// to keep RawPayloadID / CrawlJobID columns NULL on the variant ledger
+// row when the audit-write soft-failed (best-effort) or the deps
+// haven't wired the CrawlRepo (test paths).
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // publishRejected emits VariantRejectedV1 for a record that failed

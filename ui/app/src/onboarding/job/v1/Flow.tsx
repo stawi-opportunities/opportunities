@@ -6,13 +6,13 @@
 // apps/matching/business/match/job/matcher.go for what each field
 // means at scoring time.
 
-import { useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent } from 'react';
 import {
   LocationPicker,
   emptyLocationPreference,
   type LocationPreference,
-} from "@/onboarding/shared/LocationPicker";
-import { AmountRange } from "@/onboarding/shared/AmountRange";
+} from '@/onboarding/shared/LocationPicker';
+import { AmountRange } from '@/onboarding/shared/AmountRange';
 
 export interface JobPreferences {
   target_roles: string[];
@@ -30,11 +30,11 @@ const EMPTY: JobPreferences = {
   seniority_levels: [],
   salary_min: 0,
   salary_max: 0,
-  currency: "USD",
+  currency: 'USD',
   locations: emptyLocationPreference,
 };
 
-const EMPLOYMENT_TYPES = ["full-time", "part-time", "contract", "internship", "freelance"];
+const EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contract', 'internship', 'freelance'];
 
 export function Flow({
   initial,
@@ -56,12 +56,12 @@ export function Flow({
       <input
         type="text"
         placeholder="Target roles (comma-separated)"
-        value={p.target_roles.join(", ")}
+        value={p.target_roles.join(', ')}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           setP({
             ...p,
             target_roles: e.currentTarget.value
-              .split(",")
+              .split(',')
               .map((s) => s.trim())
               .filter(Boolean),
           })

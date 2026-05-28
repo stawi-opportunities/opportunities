@@ -22,19 +22,18 @@
 //   navy-900   #0c1226  (button text)
 //   rounded-md 6px
 
-import type { ProfileWidgetTokens } from "@stawi/profile";
+import type { ProfileWidgetTokens } from '@stawi/profile';
 
-const SITE_FONT_STACK =
-  `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+const SITE_FONT_STACK = `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
 
 export const profileWidgetTokens: ProfileWidgetTokens = {
-  colorPrimary:        "#45b739", // tw accent-400 (Get started green)
-  colorPrimaryHover:   "#86efac", // tw accent-300 (lighter hover, matches hero)
-  colorFocusRing:      "#45b739",
-  radius:              "6px",     // tw rounded-md
-  fontHeading:         SITE_FONT_STACK,
-  fontBody:            SITE_FONT_STACK,
-  fontWeightHeading:   600,       // tw font-semibold
+  colorPrimary: '#45b739', // tw accent-400 (Get started green)
+  colorPrimaryHover: '#86efac', // tw accent-300 (lighter hover, matches hero)
+  colorFocusRing: '#45b739',
+  radius: '6px', // tw rounded-md
+  fontHeading: SITE_FONT_STACK,
+  fontBody: SITE_FONT_STACK,
+  fontWeightHeading: 600, // tw font-semibold
 };
 
 // Shape + size overrides the tokens API doesn't cover. Navy-900 text

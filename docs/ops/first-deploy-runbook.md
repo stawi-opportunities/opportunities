@@ -44,6 +44,7 @@ chmod +x scripts/bootstrap/*.sh
 ```
 
 The bootstrap script runs:
+
 1. `seed-vault.sh` — writes the iceberg-catalog DSN and the single R2
    account token to Vault paths
    `stawi-opportunities/opportunities/common/{iceberg-catalog,r2-account}`.
@@ -70,6 +71,7 @@ flux reconcile kustomization opportunities --with-source
 ```
 
 Wait for all six pods to reach `Ready`:
+
 ```bash
 kubectl get pods -n opportunities -w
 ```
@@ -82,11 +84,13 @@ Expected: `api`, `writer`, `materializer`, `crawler`, `worker`, `candidates` —
 
 If Flux image automation is active it will update image tags automatically.
 Check current tags:
+
 ```bash
 kubectl get imagepolicies -n opportunities
 ```
 
 To pin to a specific SHA:
+
 ```bash
 # Edit the tag comment in the relevant HelmRelease, e.g.:
 #   tag: v6.3.0 # {"$imagepolicy": "opportunities:opportunities-api:tag"}

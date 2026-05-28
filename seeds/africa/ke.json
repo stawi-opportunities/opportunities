@@ -3,9 +3,7 @@
     "base_url": "https://www.brightermonday.co.ke",
     "country": "KE",
     "crawl_interval_sec": 3600,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "hot",
     "region": "africa",
     "source_type": "brightermonday"
@@ -14,9 +12,7 @@
     "base_url": "https://www.brightermonday.co.ke",
     "country": "KE",
     "crawl_interval_sec": 3600,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "hot",
     "region": "east_africa",
     "source_type": "sitemap"

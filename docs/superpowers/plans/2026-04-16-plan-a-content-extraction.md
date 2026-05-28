@@ -13,6 +13,7 @@
 ## File Structure
 
 ### New Files
+
 ```
 pkg/content/extract.go          ← main content extraction (trafilatura + markdown)
 pkg/content/extract_test.go     ← tests
@@ -21,6 +22,7 @@ pkg/bloom/filter_test.go        ← tests
 ```
 
 ### Modified Files
+
 ```
 pkg/domain/models.go            ← add stage, raw_html, clean_html, markdown, validation fields to JobVariant; quality window fields to Source
 pkg/connectors/httpx/client.go  ← add encoding normalization / decompression
@@ -32,6 +34,7 @@ go.mod                          ← add go-trafilatura, html-to-markdown
 ## Task 1: Content Extraction Package
 
 **Files:**
+
 - Create: `pkg/content/extract.go`
 - Create: `pkg/content/extract_test.go`
 
@@ -250,6 +253,7 @@ git commit -m "feat: add content extraction package (trafilatura + markdown conv
 ## Task 2: Data Model Changes
 
 **Files:**
+
 - Modify: `pkg/domain/models.go`
 
 - [ ] **Step 1: Add stage and content fields to JobVariant**
@@ -317,6 +321,7 @@ git commit -m "feat: add pipeline stage, content fields, and quality window to d
 ## Task 3: Bloom Filter Package
 
 **Files:**
+
 - Create: `pkg/bloom/filter.go`
 - Create: `pkg/bloom/filter_test.go`
 
@@ -481,6 +486,7 @@ git commit -m "feat: add bloom filter package with Valkey bitmap + DB fallback"
 ## Task 4: Repository Updates for Stage Tracking
 
 **Files:**
+
 - Modify: `pkg/repository/job.go`
 - Modify: `pkg/repository/source.go`
 
@@ -617,6 +623,7 @@ git commit -m "feat: add stage tracking and quality window repository methods"
 ## Task 5: Wire Content Extraction into Connectors
 
 **Files:**
+
 - Modify: `pkg/connectors/httpx/client.go`
 - Modify: `pkg/connectors/universal/universal.go`
 - Modify: `pkg/connectors/connector.go`
@@ -696,6 +703,7 @@ git commit -m "feat: wire content extraction into connector iterators"
 ## Task 6: Migration for Existing Data
 
 **Files:**
+
 - Modify: `apps/crawler/cmd/main.go`
 
 - [ ] **Step 1: Add stage column migration**

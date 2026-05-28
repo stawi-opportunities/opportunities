@@ -1,11 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.retention.expire",
-  "description": "Every 15 minutes: flip canonical_jobs.status from 'active' to 'expired' for rows past expires_at. Idempotent — the SQL is a conditional UPDATE, so running twice in the same minute is safe. DISABLED — target handler /admin/retention/expire is not yet implemented; scheduled for Phase 6.5+.",
-  "schedule": {
-    "cron": "15m",
-    "active": false
-  },
+  "description": "Every 15 minutes: flip canonical_jobs.status from 'active' to 'expired' for rows past expires_at. Idempotent \u2014 the SQL is a conditional UPDATE, so running twice in the same minute is safe. DISABLED \u2014 target handler /admin/retention/expire is not yet implemented; scheduled for Phase 6.5+.",
   "input": {},
   "timeout": "2m",
   "steps": [
@@ -23,10 +19,19 @@
         "input": {
           "url": "http://opportunities-crawler.product-opportunities.svc/admin/retention/expire",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         }
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.retention.expire.default",
+      "cron_expr": "*/15 * * * *",
+      "timezone": "UTC"
     }
   ]
 }

@@ -7,7 +7,7 @@
 **Recovery (5–15 min):**
 
 1. Confirm Valkey reachable: redis-cli -u $VALKEY_URL PING → PONG
-2. curl -XPOST $WORKER_URL/_admin/kv/rebuild
+2. curl -XPOST $WORKER_URL/\_admin/kv/rebuild
 3. Watch response for counters: {"rows":12345,"cluster_keys_set":12345,"files_scanned":48}
 4. Verify: redis-cli -u $VALKEY_URL GET cluster:<any_cluster_id> returns a JSON snapshot.
 

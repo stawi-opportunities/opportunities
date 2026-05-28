@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { feed, loadTierPage } from "@/api/search";
-import { fetchManifest } from "@/api/manifest";
+import { useEffect, useMemo, useRef } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { feed, loadTierPage } from '@/api/search';
+import { fetchManifest } from '@/api/manifest';
 import type {
   Facets,
   FeedParams,
@@ -9,13 +9,10 @@ import type {
   FeedTier,
   SearchResult,
   TierPageParams,
-} from "@/types/search";
-import { JobRow } from "./JobRow";
-import {
-  buildBoost,
-  countryLabel,
-  getVisitorLocale,
-} from "@/utils/locale";
+} from '@/types/search';
+import { JobRow } from './JobRow';
+import { buildBoost, countryLabel, getVisitorLocale } from '@/utils/locale';
+import { useI18n } from '@/i18n/I18nProvider';
 
 // Cascade is the tiered-feed view. Renders whatever sections the
 // server returned in order (preferred → local → regional → global),
@@ -41,7 +38,7 @@ export interface CascadeProps {
     remote_type?: string;
     employment_type?: string;
     seniority?: string;
-    sort?: FeedParams["sort"];
+    sort?: FeedParams['sort'];
   };
   /** Logged-in user's declared preferences. Empty arrays → no
    *  preferred tier, cascade begins with "local". */
@@ -89,12 +86,19 @@ export default function Cascade(props: CascadeProps) {
       tier_limit: tierLimit,
     };
     if (effectiveCountry) p.country = effectiveCountry;
-    if (effectiveLanguages.length) p.lang = effectiveLanguages.join(",");
-    const boost = buildBoost(preferredCountries.join(","), preferredLanguages.join(","));
-    if (boost.countries.length) p.boost_countries = boost.countries.join(",");
-    if (boost.languages.length) p.boost_languages = boost.languages.join(",");
+    if (effectiveLanguages.length) p.lang = effectiveLanguages.join(',');
+    const boost = buildBoost(preferredCountries.join(','), preferredLanguages.join(','));
+    if (boost.countries.length) p.boost_countries = boost.countries.join(',');
+    if (boost.languages.length) p.boost_languages = boost.languages.join(',');
     return p;
-  }, [filters, tierLimit, effectiveCountry, effectiveLanguages, preferredCountries, preferredLanguages]);
+  }, [
+    filters,
+    tierLimit,
+    effectiveCountry,
+    effectiveLanguages,
+    preferredCountries,
+    preferredLanguages,
+  ]);
 
   // canUseManifest: true when the request is vanilla enough to be
   // served from a pre-baked R2 manifest. Any filter, any boost, or
@@ -109,14 +113,14 @@ export default function Cascade(props: CascadeProps) {
       !feedParams.seniority &&
       !feedParams.boost_countries &&
       !feedParams.boost_languages &&
-      (!feedParams.sort || feedParams.sort === "recent")
+      (!feedParams.sort || feedParams.sort === 'recent')
     );
   }, [feedParams]);
 
   const q = useQuery<FeedResponse>({
     // The key includes canUseManifest so changing source (manifest ↔
     // live API) is a fresh fetch rather than stale-data reuse.
-    queryKey: ["feed", feedParams, canUseManifest ? "r2" : "api"],
+    queryKey: ['feed', feedParams, canUseManifest ? 'r2' : 'api'],
     queryFn: async () => {
       if (canUseManifest) {
         // Try R2 first. A null fallback kicks the API path.
@@ -177,7 +181,7 @@ function TierSection({
   effectiveCountry,
 }: {
   tier: FeedTier;
-  filters: NonNullable<CascadeProps["filters"]>;
+  filters: NonNullable<CascadeProps['filters']>;
   effectiveCountry: string;
 }) {
   const pageParams = useMemo<TierPageParams>(() => {
@@ -188,17 +192,17 @@ function TierSection({
       employment_type: filters.employment_type,
       seniority: filters.seniority,
       sort: filters.sort,
-      country: tier.country ?? "",
-      countries: tier.countries?.join(",") ?? "",
-      language: tier.language ?? "",
+      country: tier.country ?? '',
+      countries: tier.countries?.join(',') ?? '',
+      language: tier.language ?? '',
       limit: 25,
     };
   }, [tier, filters]);
 
   const infinite = useInfiniteQuery({
-    queryKey: ["feed-tier", tier.id, pageParams, tier.cursor],
+    queryKey: ['feed-tier', tier.id, pageParams, tier.cursor],
     enabled: false, // fetchNextPage() kicks this off; initial data seeded from parent.
-    initialPageParam: "" as string,
+    initialPageParam: '' as string,
     // `getNextPageParam` returns the cursor to fetch *next*, or
     // undefined to mean "no more". Pagination model: cursor points at
     // the posted_at/id pair of the last item in the previous page.
@@ -208,11 +212,10 @@ function TierSection({
     // the same as has_more=false on the client side too.
     getNextPageParam: (last: { cursor_next: string; has_more: boolean }) =>
       last.has_more && last.cursor_next ? last.cursor_next : undefined,
-    queryFn: ({ pageParam }) =>
-      loadTierPage({ ...pageParams, cursor: pageParam || undefined }),
+    queryFn: ({ pageParam }) => loadTierPage({ ...pageParams, cursor: pageParam || undefined }),
     initialData: {
       pages: [{ jobs: tier.jobs, cursor_next: tier.cursor, has_more: tier.has_more }],
-      pageParams: [""],
+      pageParams: [''],
     },
   });
 
@@ -246,10 +249,7 @@ function TierSection({
   return (
     <section aria-labelledby={`tier-${tier.id}`}>
       <header className="flex items-baseline justify-between border-b border-gray-200 pb-2">
-        <h2
-          id={`tier-${tier.id}`}
-          className="text-lg font-semibold text-navy-900"
-        >
+        <h2 id={`tier-${tier.id}`} className="text-lg font-semibold text-navy-900">
           {tier.label}
         </h2>
         <TierScopeNote tier={tier} effectiveCountry={effectiveCountry} />
@@ -271,29 +271,21 @@ function TierSection({
   );
 }
 
-function TierScopeNote({
-  tier,
-  effectiveCountry,
-}: {
-  tier: FeedTier;
-  effectiveCountry: string;
-}) {
-  // A short secondary label so the user knows exactly what filter
-  // this section represents — avoids "why is 'Local' showing Nigeria
-  // jobs?" when CF mis-geo's them.
+function TierScopeNote({ tier, effectiveCountry }: { tier: FeedTier; effectiveCountry: string }) {
+  const { t } = useI18n();
   const parts: string[] = [];
-  if (tier.id === "preferred") parts.push("Your preferences");
+  if (tier.id === 'preferred') parts.push(t('cascade.yourPreferences'));
   if (tier.country) parts.push(countryLabel(tier.country));
   if (tier.language) parts.push(tier.language.toUpperCase());
-  if (!parts.length && tier.id === "global") {
-    parts.push(effectiveCountry ? `Outside ${countryLabel(effectiveCountry)}` : "Worldwide");
+  if (!parts.length && tier.id === 'global') {
+    parts.push(
+      effectiveCountry
+        ? t('cascade.outside').replace('{country}', countryLabel(effectiveCountry))
+        : t('cascade.worldwide')
+    );
   }
   if (!parts.length) return null;
-  return (
-    <span className="text-xs uppercase tracking-wide text-gray-500">
-      {parts.join(" · ")}
-    </span>
-  );
+  return <span className="text-xs uppercase tracking-wide text-gray-500">{parts.join(' · ')}</span>;
 }
 
 // Invisible sentinel + small loading row. Stable IntersectionObserver
@@ -309,13 +301,7 @@ function TierScopeNote({
 // scroll. The stable-ref pattern below fires exactly once per
 // intersect transition, and React Query's fetchNextPage is itself a
 // no-op while already in-flight, so concurrent firings are safe.
-function InfiniteSentinel({
-  onVisible,
-  busy,
-}: {
-  onVisible: () => void;
-  busy: boolean;
-}) {
+function InfiniteSentinel({ onVisible, busy }: { onVisible: () => void; busy: boolean }) {
   const ref = useRef<HTMLDivElement | null>(null);
   // Keep latest callback + busy-flag in a ref so the observer
   // callback always sees fresh values without re-observation.
@@ -334,7 +320,7 @@ function InfiniteSentinel({
           }
         }
       },
-      { rootMargin: "600px 0px" },
+      { rootMargin: '600px 0px' }
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -343,9 +329,13 @@ function InfiniteSentinel({
   return (
     <div ref={ref} className="mt-4 flex items-center justify-center py-4" aria-hidden={!busy}>
       {busy ? (
-        <div className="flex items-center gap-2 text-sm text-gray-500" role="status" aria-live="polite">
+        <div
+          className="flex items-center gap-2 text-sm text-gray-500"
+          role="status"
+          aria-live="polite"
+        >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-navy-700" />
-          <span>Loading more…</span>
+          <LoadingMoreLabel />
         </div>
       ) : (
         // Sentinel retains height so the observer fires reliably even
@@ -354,6 +344,11 @@ function InfiniteSentinel({
       )}
     </div>
   );
+}
+
+function LoadingMoreLabel() {
+  const { t } = useI18n();
+  return <span>{t('cascade.loadingMore')}</span>;
 }
 
 function CascadeSkeleton() {

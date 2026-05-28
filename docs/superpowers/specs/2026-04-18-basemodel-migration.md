@@ -8,24 +8,24 @@ The golang-patterns skill enforces a mandatory rule: every model embeds `github.
 
 opportunities predates that rule. Every model under `pkg/domain/` uses plain GORM with `int64 autoIncrement` IDs:
 
-| File | Models with int64 IDs |
-|---|---|
-| `pkg/domain/candidate.go` | `CandidateProfile`, `MatchRecord`, `RerankCache` |
-| `pkg/domain/models.go` | `Source`, `CrawlJob`, `RawPayload`, `JobVariant`, `JobCluster`, `JobClusterMember`, `CanonicalJob`, `CrawlPageState`, `RejectedJob`, `SavedJob` |
-| `pkg/domain/snapshot.go` | (only wire contracts, no DB) |
+| File                      | Models with int64 IDs                                                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pkg/domain/candidate.go` | `CandidateProfile`, `MatchRecord`, `RerankCache`                                                                                                |
+| `pkg/domain/models.go`    | `Source`, `CrawlJob`, `RawPayload`, `JobVariant`, `JobCluster`, `JobClusterMember`, `CanonicalJob`, `CrawlPageState`, `RejectedJob`, `SavedJob` |
+| `pkg/domain/snapshot.go`  | (only wire contracts, no DB)                                                                                                                    |
 
 That's 13 models to convert — and because IDs change type, every repository, handler, and API-surface integer ID propagates through the change.
 
 ## Impact map
 
-| Layer | What changes |
-|---|---|
-| **Schema** | Drop `id bigserial PRIMARY KEY`, add `id varchar(50) PRIMARY KEY`. Every FK column (`source_id bigint`, `canonical_job_id bigint`, `cluster_id bigint`, etc.) migrates to `varchar(50)`. Backfill existing rows: generate XIDs for each PK, rewrite FKs. Requires a maintenance window because the change isn't reversible and the crawler can't run during the FK rewrite. |
-| **Repositories** | `GetByID(ctx, id int64)` becomes `GetByID(ctx, id string)`. Every `WHERE id = ?` clause stays the same, but the caller's type changes. ~50 call sites across 10 repository files. |
-| **Handlers** | Every `strconv.ParseInt(idStr, 10, 64)` → just take the path param as a string (XIDs are URL-safe). ~30 endpoints across the three apps. |
-| **Events** | Payloads like `VariantPayload{VariantID int64}` grow string variants. In-flight NATS messages are typed, so the switch is a one-shot cutover, not a gradual migration. |
-| **UI contract** | Frontend currently uses `job.id: number` in TypeScript types. `id` becomes `string`. Affects `JobSnapshot`, `SearchResult`, saved-jobs responses, match records. |
-| **R2 snapshots** | Slugs don't change (`jobs/{slug}.json`), so R2 is unaffected. |
+| Layer            | What changes                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Schema**       | Drop `id bigserial PRIMARY KEY`, add `id varchar(50) PRIMARY KEY`. Every FK column (`source_id bigint`, `canonical_job_id bigint`, `cluster_id bigint`, etc.) migrates to `varchar(50)`. Backfill existing rows: generate XIDs for each PK, rewrite FKs. Requires a maintenance window because the change isn't reversible and the crawler can't run during the FK rewrite. |
+| **Repositories** | `GetByID(ctx, id int64)` becomes `GetByID(ctx, id string)`. Every `WHERE id = ?` clause stays the same, but the caller's type changes. ~50 call sites across 10 repository files.                                                                                                                                                                                           |
+| **Handlers**     | Every `strconv.ParseInt(idStr, 10, 64)` → just take the path param as a string (XIDs are URL-safe). ~30 endpoints across the three apps.                                                                                                                                                                                                                                    |
+| **Events**       | Payloads like `VariantPayload{VariantID int64}` grow string variants. In-flight NATS messages are typed, so the switch is a one-shot cutover, not a gradual migration.                                                                                                                                                                                                      |
+| **UI contract**  | Frontend currently uses `job.id: number` in TypeScript types. `id` becomes `string`. Affects `JobSnapshot`, `SearchResult`, saved-jobs responses, match records.                                                                                                                                                                                                            |
+| **R2 snapshots** | Slugs don't change (`jobs/{slug}.json`), so R2 is unaffected.                                                                                                                                                                                                                                                                                                               |
 
 ## Proposed sequencing (5 PRs)
 
@@ -47,14 +47,14 @@ That's 13 models to convert — and because IDs change type, every repository, h
 
 ## Effort estimate
 
-| PR | Effort |
-|---|---|
-| PR 1 Foundation | 1 day |
-| PR 2 Backfill | 0.5 day (mostly waiting on migration) |
-| PR 3 Flip read path | 3-4 days (touches every app + UI) |
-| PR 4 Drop int64 | 0.5 day |
-| PR 5 Tenancy | 2 days (needs coordination with Thesa for tenant IDs) |
-| **Total** | **~8 days of focused work** |
+| PR                  | Effort                                                |
+| ------------------- | ----------------------------------------------------- |
+| PR 1 Foundation     | 1 day                                                 |
+| PR 2 Backfill       | 0.5 day (mostly waiting on migration)                 |
+| PR 3 Flip read path | 3-4 days (touches every app + UI)                     |
+| PR 4 Drop int64     | 0.5 day                                               |
+| PR 5 Tenancy        | 2 days (needs coordination with Thesa for tenant IDs) |
+| **Total**           | **~8 days of focused work**                           |
 
 ## Risks
 

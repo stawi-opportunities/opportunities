@@ -39,7 +39,7 @@ export interface SearchResponse {
   has_more: boolean;
   cursor_next: string;
   facets: Facets;
-  sort: "relevance" | "recent" | "quality" | "salary_high";
+  sort: 'relevance' | 'recent' | 'quality' | 'salary_high';
 }
 
 export interface SearchParams {
@@ -49,7 +49,7 @@ export interface SearchParams {
   employment_type?: string;
   seniority?: string;
   country?: string;
-  sort?: "relevance" | "recent" | "quality" | "salary_high";
+  sort?: 'relevance' | 'recent' | 'quality' | 'salary_high';
   limit?: number;
   offset?: number;
   cursor?: string;
@@ -77,7 +77,7 @@ export interface CategoryJobsResponse {
 }
 
 // Mirrors apps/api/cmd/tiered.go:tieredResponseTier.
-export type FeedTierID = "preferred" | "local" | "regional" | "global";
+export type FeedTierID = 'preferred' | 'local' | 'regional' | 'global';
 
 export interface FeedTier {
   id: FeedTierID;
@@ -102,7 +102,7 @@ export interface FeedResponse {
   context: FeedContext;
   tiers: FeedTier[];
   facets: Facets;
-  sort: "relevance" | "recent" | "quality" | "salary_high";
+  sort: 'relevance' | 'recent' | 'quality' | 'salary_high';
 }
 
 export interface FeedParams extends SearchParams {
@@ -127,7 +127,7 @@ export interface TierPageResponse {
 
 export interface TierPageParams extends SearchParams {
   country?: string;
-  countries?: string;          // comma-separated
+  countries?: string; // comma-separated
   language?: string;
-  exclude_countries?: string;  // comma-separated
+  exclude_countries?: string; // comma-separated
 }

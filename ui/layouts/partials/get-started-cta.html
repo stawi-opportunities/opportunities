@@ -4,19 +4,11 @@
   step. Hidden client-side for authenticated users by the React
   island at #mount-signup-cta (see ui/app/src/components/SignupCta.tsx).
 
-  The React island mounts into the empty <div#mount-signup-cta>
-  sentinel below; its component returns null but runs a useEffect
-  that flips the section above to display:none once auth state is
-  "authenticated". Keeping the mount element separate is essential —
-  React's createRoot() REPLACES the children of the host element
-  during hydration, so mounting directly into the content block
-  would wipe it.
-
-  The "Get started" anchor isn't a plain <a href> either — the
-  island attaches a click handler that triggers the widget's login
-  flow; on success the browser navigates to /onboarding/. With JS
-  disabled the <a href="/onboarding/"> fallback still works.
+  The React island mounts into mount-get-started-cta and replaces
+  the static HTML fallback below with a translated version. The
+  separate #mount-signup-cta sentinel handles auth-gated visibility.
 */}}
+<<<<<<< HEAD
 <section id="signup-cta-section" class="bg-accent-500 py-16">
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
     <div class="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-center">
@@ -33,4 +25,27 @@
 </section>
 {{/* Empty sentinel the React island mounts into. No visible content;
      side-effects target #signup-cta-section above. */}}
+=======
+<div id="mount-get-started-cta">
+  <section id="signup-cta-section" class="bg-white/90 py-20 shadow-sm ring-1 ring-gray-200">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 px-6 sm:flex-row sm:items-center sm:px-8 lg:px-12">
+      <div>
+        <h2 class="text-3xl font-bold text-navy-900 sm:text-4xl">
+          Two minutes to set up.
+        </h2>
+        <p class="mt-2 text-lg leading-relaxed text-gray-700">
+          Upload your CV, tell us what you want, we take it from there.
+        </p>
+      </div>
+      <a
+        href="/onboarding/"
+        data-signup-cta
+        class="btn-primary text-base px-7 py-3"
+      >
+        Get started
+      </a>
+    </div>
+  </section>
+</div>
+>>>>>>> upstream/main
 <div id="mount-signup-cta" hidden></div>

@@ -14,8 +14,10 @@ import (
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
+	"github.com/antinvestor/service-trustage/client/workflows"
 	crawlerconfig "github.com/stawi-opportunities/opportunities/apps/crawler/config"
 	"github.com/stawi-opportunities/opportunities/apps/crawler/service"
+	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/backpressure"
@@ -76,22 +78,25 @@ func main() {
 
 	// Handle database migration if configured (colony Helm chart sets
 	// DO_DATABASE_MIGRATE=true for the pre-install migration job).
-	// Pattern follows service-profile: migrate, then return immediately.
+	// Pattern follows service-trustage: pool.Migrate scans
+	// MIGRATION_PATH for *.sql files and applies any not yet recorded
+	// in the migrations tracking table, then GORM AutoMigrate keeps
+	// the two historically-GORM-managed tables (sources + raw_refs)
+	// in shape. FinalizeSchema applies pg_trgm + other extensions GORM
+	// cannot express. Returns immediately after migration completes.
 	if cfg.DoDatabaseMigrate() {
-		migrationDB := dbFn(ctx, false)
-		if err := migrationDB.AutoMigrate(
-			&domain.Source{},
-			&domain.CrawlJob{},
-			&domain.RawPayload{},
-			&domain.RawRef{},
-		); err != nil {
-			log.WithError(err).Fatal("auto-migrate failed")
+		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
+			log.WithError(err).Fatal("database migration failed")
 		}
-		// Postgres-specific schema bits GORM AutoMigrate can't express.
-		// Crawler runs the migration job on every Helm install, so
-		// putting it here keeps the finalize step in one place.
-		if err := repository.FinalizeSchema(migrationDB); err != nil {
-			log.WithError(err).Fatal("finalize schema failed")
+		// Sync Trustage workflow definitions from the mounted ConfigMap.
+		if cfg.TrustageURL != "" && cfg.TrustageWorkflowsDir != "" {
+			trustageCli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL)
+			if cliErr != nil {
+				log.WithError(cliErr).Fatal("trustage workflow client init failed")
+			}
+			if syncErr := workflows.SyncFromDir(ctx, trustageCli, cfg.TrustageWorkflowsDir); syncErr != nil {
+				log.WithError(syncErr).Fatal("trustage workflow sync failed")
+			}
 		}
 		log.Info("migration complete")
 		return
@@ -282,6 +287,12 @@ func main() {
 	// Verify failures).
 	variantStore := variantstate.NewStore(dbFn)
 
+	// crawl_jobs + raw_payloads audit ledger. Writes propagate errors
+	// (unlike VariantStore) — the ledger is the source of truth for
+	// what the pipeline ever attempted, so a Postgres outage MUST fail
+	// the crawl rather than silently diverge.
+	crawlRepo := repository.NewCrawlRepository(dbFn)
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:               svc,
 		Sources:           sourceRepo,
@@ -294,6 +305,7 @@ func main() {
 		EnrichConcurrency: cfg.EnrichConcurrency,
 		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
 		VariantStore:      variantStore,
+		CrawlRepo:         crawlRepo,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
@@ -540,6 +552,12 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
+
+	// Admin: recent crawl_jobs for a source, each with a count of the
+	// raw_payloads it produced. Triage view: "when did we last crawl
+	// source X, what happened, how many raw_payloads landed?"
+	adminMux.HandleFunc("GET /admin/crawl_jobs",
+		service.CrawlJobsAdminHandler(crawlRepo))
 
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 

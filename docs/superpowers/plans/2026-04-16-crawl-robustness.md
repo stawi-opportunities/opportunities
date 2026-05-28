@@ -49,6 +49,7 @@ pkg/connectors/findwork/findwork.go  ← API requires auth now
 ## Task 1: Relax Quality Gate
 
 **Files:**
+
 - Modify: `pkg/quality/gate.go`
 - Modify: `pkg/quality/gate_test.go`
 
@@ -59,6 +60,7 @@ Read both files to understand current implementation.
 - [ ] **Step 2: Update gate.go**
 
 Replace the `Check` function. New rules:
+
 - title: required, > 3 chars → `ErrMissingTitle`
 - description: required, > 50 chars → `ErrShortDescription`
 - apply_url: if empty, NO error (caller should set fallback before calling Check)
@@ -72,9 +74,10 @@ Add a new function `EnsureApplyURL(job *domain.ExternalJob, fallbackURL string)`
 - [ ] **Step 3: Update gate_test.go**
 
 Update tests:
+
 - `TestValidJobPasses` — still passes
 - `TestMissingTitle` — still fails
-- `TestShortDescription` — still fails  
+- `TestShortDescription` — still fails
 - Remove: `TestMissingCompany`, `TestMissingLocation`, `TestMissingApplyURL`, `TestInvalidApplyURL`
 - Add: `TestMissingCompanyPasses` — job with empty company should pass
 - Add: `TestMissingLocationPasses` — job with empty location should pass
@@ -88,6 +91,7 @@ Expected: All pass
 - [ ] **Step 5: Update pipeline worker to call EnsureApplyURL**
 
 In `pkg/pipeline/worker.go`, before calling `quality.Check(extJob)`, add:
+
 ```go
 quality.EnsureApplyURL(&extJob, extJob.SourceURL)
 if extJob.ApplyURL == "" {
@@ -113,6 +117,7 @@ git commit -m "fix: relax quality gate - only title and description required, ap
 ## Task 2: Fix Connector Bugs
 
 **Files:**
+
 - Modify: `pkg/connectors/himalayas/himalayas.go`
 - Modify: `pkg/connectors/jobicy/jobicy.go`
 - Create: `pkg/connectors/flexjson.go`
@@ -163,6 +168,7 @@ func (f FlexString) String() string { return string(f) }
 - [ ] **Step 2: Fix Himalayas connector**
 
 Read `pkg/connectors/himalayas/himalayas.go`. The API returns:
+
 - `excerpt` not `description`
 - `minSalary`/`maxSalary` not `salaryMin`/`salaryMax`
 - `employmentType` as string (not missing)
@@ -207,6 +213,7 @@ git commit -m "fix: fix Himalayas/Jobicy field mapping, remove dead Lever/FindWo
 ## Task 3: Source Health & Circuit Breaker
 
 **Files:**
+
 - Modify: `pkg/domain/models.go`
 - Modify: `pkg/repository/source.go`
 - Modify: `apps/crawler/cmd/main.go`
@@ -214,8 +221,10 @@ git commit -m "fix: fix Himalayas/Jobicy field mapping, remove dead Lever/FindWo
 - [ ] **Step 1: Update Source model**
 
 In `pkg/domain/models.go`:
+
 - Add `SourceDegraded SourceStatus = "degraded"` to the status constants
 - Add fields to `Source` struct:
+
   ```go
   ConsecutiveFailures int  `gorm:"not null;default:0" json:"consecutive_failures"`
   NeedsTuning         bool `gorm:"not null;default:false" json:"needs_tuning"`
@@ -249,19 +258,20 @@ func (r *SourceRepository) ListHealthReport(ctx context.Context) ([]domain.Sourc
 ```
 
 The `RecordFailure` method implements the state machine:
+
 ```go
 func (r *SourceRepository) RecordFailure(ctx context.Context, id int64, healthScore float64, consecutiveFailures int) error {
     updates := map[string]any{
         "health_score":         healthScore,
         "consecutive_failures": consecutiveFailures,
     }
-    
+
     if consecutiveFailures >= 5 {
         updates["status"] = domain.SourcePaused
     } else if consecutiveFailures >= 3 {
         updates["status"] = domain.SourceDegraded
     }
-    
+
     return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Updates(updates).Error
 }
 ```
@@ -269,6 +279,7 @@ func (r *SourceRepository) RecordFailure(ctx context.Context, id int64, healthSc
 - [ ] **Step 3: Update ListDue to respect source states**
 
 Modify `ListDue` in `pkg/repository/source.go`:
+
 - Only return sources with status `active` or `degraded`
 - For `degraded` sources, multiply the crawl interval by 6 in the query
 - Exclude `paused` and `disabled` sources entirely
@@ -303,6 +314,7 @@ if crawlErr != nil {
 - [ ] **Step 5: Add admin endpoints**
 
 Add to the crawler's HTTP mux:
+
 ```go
 POST /admin/sources/:id/pause   → sourceRepo.PauseSource(id)
 POST /admin/sources/:id/enable  → sourceRepo.EnableSource(id)
@@ -329,6 +341,7 @@ git commit -m "feat: add circuit breaker with smart decay, source health managem
 ## Task 4: Fix Dedupe Engine
 
 **Files:**
+
 - Modify: `pkg/dedupe/dedupe.go`
 - Modify: `pkg/repository/job.go`
 
@@ -416,6 +429,7 @@ Extract `buildCanonicalFromVariant` as a helper function to keep it clean.
 - [ ] **Step 3: Add FindClusterByVariantID to JobRepository**
 
 In `pkg/repository/job.go`:
+
 ```go
 func (r *JobRepository) FindClusterByVariantID(ctx context.Context, variantID int64) (*domain.JobCluster, error) {
     var member domain.JobClusterMember
@@ -451,6 +465,7 @@ git commit -m "fix: dedupe engine reuses existing clusters instead of always cre
 ## Task 5: Data Rebuild
 
 **Files:**
+
 - Modify: `pkg/repository/job.go`
 - Modify: `apps/crawler/cmd/main.go`
 
@@ -539,12 +554,14 @@ git commit -m "feat: add admin endpoint to rebuild canonical jobs from variants"
 ## Task 6: AI Connector Resilience + Timeouts
 
 **Files:**
+
 - Modify: `pkg/extraction/extractor.go`
 - Modify: `pkg/connectors/universal/universal.go`
 
 - [ ] **Step 1: Increase timeouts**
 
 In `pkg/extraction/extractor.go`:
+
 ```go
 const extractionTimeout = 10 * time.Minute  // was 120s — let AI finish on CPU
 const embeddingTimeout = 5 * time.Minute     // separate timeout for embeddings
@@ -565,6 +582,7 @@ if len(jobLinks) == 0 {
 ```
 
 Add `patternMatchLinks` function:
+
 ```go
 var commonJobPatterns = regexp.MustCompile(
     `href=["']([^"']*/(?:jobs?|listings?|vacancies|careers?|positions?)/[^"']+)["']`,
@@ -659,6 +677,7 @@ SELECT count(*) FROM job_clusters;
 - [ ] **Step 7: Monitor crawl cycle**
 
 Watch one full crawl cycle:
+
 - Sources with connection failures should start degrading
 - Himalayas should now produce accepted jobs (fixed field mapping)
 - Jobicy should work (fixed jobType)

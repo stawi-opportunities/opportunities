@@ -7,6 +7,7 @@
 **Architecture:** JSON on the wire (matches existing Frame handler conventions in `pkg/pipeline/handlers/payloads.go`); typed Go structs per event type with a `schema_version` field; in-process buffering in `apps/writer` keyed by `(partition_dt, partition_sec)`; flush on `{10k events | 64 MB | 30 s}`; R2 upload via the S3-compatible AWS SDK v2 setup already in `pkg/archive/r2.go`; ack-after-upload semantics so worker disposability holds.
 
 **Tech stack:**
+
 - Go 1.26, Frame (`github.com/pitabwire/frame`), `pitabwire/util` logging
 - `github.com/parquet-go/parquet-go` v0.25+ for Parquet writing from Go structs (new dep)
 - `github.com/aws/aws-sdk-go-v2/service/s3` (existing, via pkg/archive)
@@ -14,6 +15,7 @@
 - OTEL (`go.opentelemetry.io/otel`) for metrics (existing)
 
 **What's in this plan:**
+
 - `pkg/events/v1/` — event envelope + first event type (`VariantIngestedV1`)
 - `pkg/eventlog/` — buffer, Parquet writer, R2 uploader
 - `apps/writer/` — new service scaffold with Frame subscription and buffer/flush wiring
@@ -21,6 +23,7 @@
 - Dockerfile + Makefile wiring for the new app
 
 **What's NOT in this plan (future phases):**
+
 - Additional event types (canonicals, embeddings, translations, candidates) — Phase 2 adds them as the pipeline is built; for now we prove the pattern with one.
 - `apps/materializer`, Manticore, KV wrapper → Phase 2.
 - `apps/worker` pipeline stages → Phase 3.
@@ -29,6 +32,7 @@
 - Postgres table drops / cutover → Phase 6.
 
 **Subsequent plans (for context, to be written after Plan 1 completes):**
+
 - Plan 2: Read path — materializer, Manticore provisioning, API search cutover.
 - Plan 3: Worker pipeline — normalize, validate, dedup, canonical, embed, translate, publish.
 - Plan 4: Crawler refactor — event-emission, Trustage scheduler tick, opportunistic DiscoverSites.
@@ -41,37 +45,38 @@
 
 **Create:**
 
-| File | Responsibility |
-|---|---|
-| `pkg/events/v1/envelope.go` | `Envelope[P]` generic type, `NewEnvelope` helper, JSON marshal/unmarshal |
-| `pkg/events/v1/names.go` | Topic name constants (`jobs.variants.ingested.v1`, …) |
-| `pkg/events/v1/partitions.go` | `PartitionKey` + routing helpers — given an envelope, produce `(dt, sec)` |
-| `pkg/events/v1/jobs.go` | `VariantIngestedV1` payload struct (first event type; others in Phase 2) |
-| `pkg/events/v1/envelope_test.go` | Envelope round-trip + partition key tests |
-| `pkg/eventlog/r2.go` | Thin R2 client wrapper (lifted from `pkg/archive/r2.go` patterns) |
-| `pkg/eventlog/writer.go` | `Writer` — opens in-memory `parquet-go` buffer, writes typed rows, produces `[]byte` on flush |
-| `pkg/eventlog/uploader.go` | `Uploader` — uploads a buffer to R2 at the derived path, returns ETag |
-| `pkg/eventlog/writer_test.go` | Integration test: Parquet round-trip via MinIO testcontainer |
-| `apps/writer/config/config.go` | Env-backed `Config` (R2 creds, bucket, flush thresholds, topic list) |
-| `apps/writer/service/buffer.go` | In-memory buffer keyed by partition key, concurrent-safe, flush triggers |
-| `apps/writer/service/handler.go` | Frame event handler that enqueues an event into the buffer |
-| `apps/writer/service/service.go` | `Service` composition + `Run` loop + graceful shutdown |
-| `apps/writer/service/service_test.go` | End-to-end: publish event via in-memory Frame → verify file on MinIO |
-| `apps/writer/cmd/main.go` | Entrypoint — Frame bootstrap + `Service.Run` |
-| `apps/writer/Dockerfile` | Multi-stage build mirror of existing `apps/crawler/Dockerfile` |
+| File                                  | Responsibility                                                                                |
+| ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `pkg/events/v1/envelope.go`           | `Envelope[P]` generic type, `NewEnvelope` helper, JSON marshal/unmarshal                      |
+| `pkg/events/v1/names.go`              | Topic name constants (`jobs.variants.ingested.v1`, …)                                         |
+| `pkg/events/v1/partitions.go`         | `PartitionKey` + routing helpers — given an envelope, produce `(dt, sec)`                     |
+| `pkg/events/v1/jobs.go`               | `VariantIngestedV1` payload struct (first event type; others in Phase 2)                      |
+| `pkg/events/v1/envelope_test.go`      | Envelope round-trip + partition key tests                                                     |
+| `pkg/eventlog/r2.go`                  | Thin R2 client wrapper (lifted from `pkg/archive/r2.go` patterns)                             |
+| `pkg/eventlog/writer.go`              | `Writer` — opens in-memory `parquet-go` buffer, writes typed rows, produces `[]byte` on flush |
+| `pkg/eventlog/uploader.go`            | `Uploader` — uploads a buffer to R2 at the derived path, returns ETag                         |
+| `pkg/eventlog/writer_test.go`         | Integration test: Parquet round-trip via MinIO testcontainer                                  |
+| `apps/writer/config/config.go`        | Env-backed `Config` (R2 creds, bucket, flush thresholds, topic list)                          |
+| `apps/writer/service/buffer.go`       | In-memory buffer keyed by partition key, concurrent-safe, flush triggers                      |
+| `apps/writer/service/handler.go`      | Frame event handler that enqueues an event into the buffer                                    |
+| `apps/writer/service/service.go`      | `Service` composition + `Run` loop + graceful shutdown                                        |
+| `apps/writer/service/service_test.go` | End-to-end: publish event via in-memory Frame → verify file on MinIO                          |
+| `apps/writer/cmd/main.go`             | Entrypoint — Frame bootstrap + `Service.Run`                                                  |
+| `apps/writer/Dockerfile`              | Multi-stage build mirror of existing `apps/crawler/Dockerfile`                                |
 
 **Modify:**
 
-| File | Change |
-|---|---|
-| `go.mod` / `go.sum` | Add `github.com/parquet-go/parquet-go` |
-| `Makefile` | Add `writer` to `APP_DIRS`, add `run-writer` target |
+| File                | Change                                              |
+| ------------------- | --------------------------------------------------- |
+| `go.mod` / `go.sum` | Add `github.com/parquet-go/parquet-go`              |
+| `Makefile`          | Add `writer` to `APP_DIRS`, add `run-writer` target |
 
 ---
 
 ## Task 1: Add parquet-go dependency
 
 **Files:**
+
 - Modify: `go.mod`, `go.sum`
 
 - [ ] **Step 1: Add the dependency**
@@ -126,6 +131,7 @@ git commit -m "chore(deps): add parquet-go for event-log Parquet writing"
 ## Task 2: Event envelope type and JSON round-trip tests
 
 **Files:**
+
 - Create: `pkg/events/v1/envelope.go`
 - Create: `pkg/events/v1/envelope_test.go`
 
@@ -260,6 +266,7 @@ git commit -m "feat(events): add versioned event Envelope with xid + timestamp"
 ## Task 3: Topic name constants
 
 **Files:**
+
 - Create: `pkg/events/v1/names.go`
 
 - [ ] **Step 1: Implement the constants**
@@ -339,6 +346,7 @@ git commit -m "feat(events): declare topic names for Phase 1 event log"
 ## Task 4: Partition key routing
 
 **Files:**
+
 - Create: `pkg/events/v1/partitions.go`
 - Modify: `pkg/events/v1/envelope_test.go` (append partition test)
 
@@ -499,6 +507,7 @@ git commit -m "feat(events): partition key + R2 object path routing"
 ## Task 5: First event payload type — `VariantIngestedV1`
 
 **Files:**
+
 - Create: `pkg/events/v1/jobs.go`
 
 - [ ] **Step 1: Define the payload**
@@ -572,6 +581,7 @@ git commit -m "feat(events): add VariantIngestedV1 payload type"
 ## Task 6: R2 client construction for `pkg/eventlog`
 
 **Files:**
+
 - Create: `pkg/eventlog/r2.go`
 
 - [ ] **Step 1: Implement a focused R2 client**
@@ -689,7 +699,7 @@ func (r *byteReader) Read(p []byte) (int, error) {
 var errEOF = fmt.Errorf("EOF")
 ```
 
-Note on the `byteReader` — we don't use `bytes.Reader` because `s3.PutObject` internally calls `Seek` on the Body, and `bytes.Reader` *does* implement `Seek`. Replace the custom `byteReader` + `errEOF` with `bytes.NewReader` for simplicity:
+Note on the `byteReader` — we don't use `bytes.Reader` because `s3.PutObject` internally calls `Seek` on the Body, and `bytes.Reader` _does_ implement `Seek`. Replace the custom `byteReader` + `errEOF` with `bytes.NewReader` for simplicity:
 
 Simplified: replace the bottom of the file (from `func bytesReader` onward) with nothing, and change `Body: bytesReader(body)` to `Body: bytes.NewReader(body)`. Add `import "bytes"`.
 
@@ -779,6 +789,7 @@ git commit -m "feat(eventlog): R2 client + Uploader for Parquet files"
 ## Task 7: Parquet writer for typed event rows
 
 **Files:**
+
 - Create: `pkg/eventlog/writer.go`
 
 - [ ] **Step 1: Implement the writer**
@@ -856,6 +867,7 @@ git commit -m "feat(eventlog): WriteParquet / ReadParquet generic helpers"
 ## Task 8: Integration test — Parquet round-trip via MinIO testcontainer
 
 **Files:**
+
 - Create: `pkg/eventlog/writer_test.go`
 
 - [ ] **Step 1: Write the integration test**
@@ -996,6 +1008,7 @@ git commit -m "test(eventlog): Parquet round-trip via MinIO testcontainer"
 ## Task 9: Writer service — config struct
 
 **Files:**
+
 - Create: `apps/writer/config/config.go`
 
 - [ ] **Step 1: Implement the config**
@@ -1079,6 +1092,7 @@ git commit -m "feat(writer): env-backed Config with flush thresholds"
 ## Task 10: Writer buffer — per-partition batching
 
 **Files:**
+
 - Create: `apps/writer/service/buffer.go`
 - Create: `apps/writer/service/buffer_test.go`
 
@@ -1375,6 +1389,7 @@ git commit -m "feat(writer): per-partition buffer with size/count/time flush tri
 ## Task 11: Frame subscription handler that routes into the buffer
 
 **Files:**
+
 - Create: `apps/writer/service/handler.go`
 
 - [ ] **Step 1: Implement the handler**
@@ -1515,6 +1530,7 @@ git commit -m "feat(writer): Frame subscription handler that routes into the buf
 ## Task 12: Writer service — compose buffer, uploader, periodic flusher
 
 **Files:**
+
 - Create: `apps/writer/service/service.go`
 
 - [ ] **Step 1: Implement the service**
@@ -1683,6 +1699,7 @@ git commit -m "feat(writer): Service composition + periodic flusher + drain"
 ## Task 13: Writer entrypoint (`cmd/main.go`)
 
 **Files:**
+
 - Create: `apps/writer/cmd/main.go`
 
 - [ ] **Step 1: Implement main**
@@ -1777,6 +1794,7 @@ git commit -m "feat(writer): entrypoint wiring Frame + buffer + uploader + flush
 ## Task 14: End-to-end service test (emit via Frame → file on MinIO)
 
 **Files:**
+
 - Create: `apps/writer/service/service_test.go`
 
 - [ ] **Step 1: Write the test**
@@ -1918,6 +1936,7 @@ git commit -m "test(writer): end-to-end emit → Parquet → MinIO integration t
 ## Task 15: Dockerfile and Makefile wiring
 
 **Files:**
+
 - Create: `apps/writer/Dockerfile`
 - Modify: `Makefile`
 
@@ -2035,6 +2054,7 @@ git log --oneline origin/main..HEAD
 ```
 
 Expected:
+
 - Every test passes (Frame handler tests, buffer tests, Parquet round-trip, end-to-end MinIO test).
 - `bin/writer` is a working binary.
 - 15 commits, each with a descriptive message scoped to one task.

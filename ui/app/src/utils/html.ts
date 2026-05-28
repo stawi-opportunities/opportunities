@@ -8,7 +8,7 @@
  */
 export function mountSanitisedHTML(target: Element, html: string | undefined) {
   if (!html) return;
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  const doc = new DOMParser().parseFromString(html, 'text/html');
   const frag = document.createDocumentFragment();
   for (const child of Array.from(doc.body.childNodes)) frag.appendChild(child);
   target.appendChild(frag);

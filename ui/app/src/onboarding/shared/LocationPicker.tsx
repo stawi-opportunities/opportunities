@@ -6,7 +6,7 @@
 // the registry data already supports them, future revisions will add
 // a map picker.
 
-import type { ChangeEvent } from "react";
+import type { ChangeEvent } from 'react';
 
 export interface LocationPreference {
   countries: string[];
@@ -28,7 +28,7 @@ export const emptyLocationPreference: LocationPreference = {
 export function LocationPicker({
   value,
   onChange,
-  label = "Locations",
+  label = 'Locations',
 }: {
   value: LocationPreference;
   onChange: (next: LocationPreference) => void;
@@ -40,12 +40,12 @@ export function LocationPicker({
       <input
         type="text"
         placeholder="Countries (comma-separated ISO codes, e.g. KE, TZ, UG)"
-        value={value.countries.join(", ")}
+        value={value.countries.join(', ')}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           onChange({
             ...value,
             countries: e.currentTarget.value
-              .split(",")
+              .split(',')
               .map((s) => s.trim().toUpperCase())
               .filter(Boolean),
           })
@@ -55,12 +55,12 @@ export function LocationPicker({
       <input
         type="text"
         placeholder="Cities (comma-separated)"
-        value={value.cities.join(", ")}
+        value={value.cities.join(', ')}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           onChange({
             ...value,
             cities: e.currentTarget.value
-              .split(",")
+              .split(',')
               .map((s) => s.trim())
               .filter(Boolean),
           })

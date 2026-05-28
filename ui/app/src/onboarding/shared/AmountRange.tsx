@@ -3,7 +3,7 @@
 // min/max as numbers (0 = unset) and the currency as a free-form
 // 3-letter ISO 4217 string for now; the matcher normalises.
 
-import type { ChangeEvent, JSX } from "react";
+import type { ChangeEvent, JSX } from 'react';
 
 export function AmountRange({
   label,
@@ -29,7 +29,7 @@ export function AmountRange({
         <input
           type="number"
           placeholder="min"
-          value={amountMin || ""}
+          value={amountMin || ''}
           onChange={(e: ChangeEvent<HTMLInputElement>) =>
             onAmountMin(Number(e.currentTarget.value))
           }
@@ -38,7 +38,7 @@ export function AmountRange({
         <input
           type="number"
           placeholder="max"
-          value={amountMax || ""}
+          value={amountMax || ''}
           onChange={(e: ChangeEvent<HTMLInputElement>) =>
             onAmountMax(Number(e.currentTarget.value))
           }

@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/razorpaysoftwareprivatelimited",
     "country": "IN",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "en",
     "priority": "normal",
     "region": "asia",
@@ -15,9 +13,7 @@
     "base_url": "https://boards.greenhouse.io/swiggy",
     "country": "IN",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "en",
     "priority": "normal",
     "region": "asia",
@@ -27,9 +23,7 @@
     "base_url": "https://boards.greenhouse.io/zomato",
     "country": "IN",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "en",
     "priority": "normal",
     "region": "asia",
@@ -39,9 +33,7 @@
     "base_url": "https://jobs.lever.co/meesho",
     "country": "IN",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "en",
     "priority": "normal",
     "region": "asia",

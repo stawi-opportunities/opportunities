@@ -5,7 +5,7 @@
 // kinds the user isn't currently editing out of the initial bundle —
 // the dashboard tabs trigger one chunk fetch per tab activation.
 
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, Suspense, type ComponentType } from 'react';
 
 type FlowComponent = ComponentType<{
   // The Flow components have kind-specific prefs types; the router
@@ -16,16 +16,12 @@ type FlowComponent = ComponentType<{
 }>;
 
 const flows: Record<string, () => Promise<{ default: FlowComponent }>> = {
-  "job-onboarding-v1": () =>
-    import("./job/v1/Flow") as Promise<{ default: FlowComponent }>,
-  "scholarship-onboarding-v1": () =>
-    import("./scholarship/v1/Flow") as Promise<{ default: FlowComponent }>,
-  "tender-onboarding-v1": () =>
-    import("./tender/v1/Flow") as Promise<{ default: FlowComponent }>,
-  "deal-onboarding-v1": () =>
-    import("./deal/v1/Flow") as Promise<{ default: FlowComponent }>,
-  "funding-onboarding-v1": () =>
-    import("./funding/v1/Flow") as Promise<{ default: FlowComponent }>,
+  'job-onboarding-v1': () => import('./job/v1/Flow') as Promise<{ default: FlowComponent }>,
+  'scholarship-onboarding-v1': () =>
+    import('./scholarship/v1/Flow') as Promise<{ default: FlowComponent }>,
+  'tender-onboarding-v1': () => import('./tender/v1/Flow') as Promise<{ default: FlowComponent }>,
+  'deal-onboarding-v1': () => import('./deal/v1/Flow') as Promise<{ default: FlowComponent }>,
+  'funding-onboarding-v1': () => import('./funding/v1/Flow') as Promise<{ default: FlowComponent }>,
 };
 
 export function OnboardingRouter({
@@ -59,7 +55,7 @@ const lazyCache = new Map<string, ReturnType<typeof lazy<FlowComponent>>>();
 
 function getOrCreateLazy(
   flowId: string,
-  loader: () => Promise<{ default: FlowComponent }>,
+  loader: () => Promise<{ default: FlowComponent }>
 ): ReturnType<typeof lazy<FlowComponent>> {
   const hit = lazyCache.get(flowId);
   if (hit) return hit;

@@ -143,10 +143,10 @@ manually first via the catalog API and re-run).
 
 The bootstrap Job assumes three R2 buckets exist:
 
-| Bucket | Used by |
-|---|---|
-| `cluster-chronicle` | Lakekeeper warehouse data + metadata (Iceberg) |
-| `product-opportunities-content` | Public job/opportunity JSONs (slug-direct) |
+| Bucket                          | Used by                                            |
+| ------------------------------- | -------------------------------------------------- |
+| `cluster-chronicle`             | Lakekeeper warehouse data + metadata (Iceberg)     |
+| `product-opportunities-content` | Public job/opportunity JSONs (slug-direct)         |
 | `product-opportunities-archive` | Private raw HTTP bodies + per-cluster JSON bundles |
 
 Each bucket keeps its own Cloudflare R2 bucket-level access policy
@@ -162,7 +162,7 @@ secret/stawi-opportunities/opportunities/common/r2-account
 
 with properties `r2_account_id`, `r2_access_key_id`,
 `r2_secret_access_key`, `r2_endpoint` (and optional
-`r2_deploy_hook_url` for the public Hugo site). Bucket *names* are
+`r2_deploy_hook_url` for the public Hugo site). Bucket _names_ are
 **not** stored in Vault — they're static config baked into each
 HelmRelease as `R2_CONTENT_BUCKET=product-opportunities-content`,
 `R2_ARCHIVE_BUCKET=product-opportunities-archive`, and
@@ -225,6 +225,7 @@ kubectl -n queue-system get streams svc-opportunities-matching
 ```
 
 Expected:
+
 - ConfigMap `opportunity-kinds` mounted (5 keys: deal.yaml, funding.yaml, job.yaml, scholarship.yaml, tender.yaml).
 - Stream `svc_opportunities_matching` created with subjects `svc.opportunities.matching.>`.
 - All HelmReleases reach Ready.

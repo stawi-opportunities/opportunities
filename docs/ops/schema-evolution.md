@@ -4,13 +4,13 @@
 
 ## Files to update for any schema change
 
-| File | Purpose |
-|------|---------|
-| `pkg/events/v1/<domain>.go` | Go struct with `parquet:"..."` tags |
-| `definitions/iceberg/_schemas.py` | Iceberg `NestedField` declarations (used by create_tables.py) |
+| File                                 | Purpose                                                          |
+| ------------------------------------ | ---------------------------------------------------------------- |
+| `pkg/events/v1/<domain>.go`          | Go struct with `parquet:"..."` tags                              |
+| `definitions/iceberg/_schemas.py`    | Iceberg `NestedField` declarations (used by create_tables.py)    |
 | `pkg/icebergclient/arrow_schemas.go` | Arrow `schema.Field` declarations (used by writer Parquet flush) |
-| `pkg/icebergclient/arrow_build.go` | Arrow record builder assignments |
-| Tests in `pkg/events/v1/*_test.go` | Round-trip envelope encode/decode |
+| `pkg/icebergclient/arrow_build.go`   | Arrow record builder assignments                                 |
+| Tests in `pkg/events/v1/*_test.go`   | Round-trip envelope encode/decode                                |
 
 Missing any one of these four causes a schema mismatch that will produce silent data loss or a panic in the writer.
 
@@ -44,6 +44,7 @@ This is the most common case. New consumers can read it immediately; old consume
 ### Worked example — adding `industry_v2` to `CanonicalUpsertedV1`
 
 **`pkg/events/v1/canonicals.go`**:
+
 ```go
 // existing field after Category:
 Category     string `json:"category"     parquet:"category,optional"`
@@ -52,12 +53,14 @@ IndustryV2   string `json:"industry_v2"  parquet:"industry_v2,optional"`
 ```
 
 **`definitions/iceberg/_schemas.py`** (inside `CANONICALS_UPSERTED = Schema(...)`):
+
 ```python
 # existing: _opt(22, "category", StringType()),
 _opt(23, "industry_v2", StringType()),   # <-- new; use next available ID
 ```
 
 **`pkg/icebergclient/arrow_schemas.go`** (CanonicalsUpsertedSchema):
+
 ```go
 // existing:
 {Name: "category", Type: arrow.BinaryTypes.String, Nullable: true},
@@ -66,11 +69,13 @@ _opt(23, "industry_v2", StringType()),   # <-- new; use next available ID
 ```
 
 **`pkg/icebergclient/arrow_build.go`** (buildCanonicalsUpserted):
+
 ```go
 appendStringOpt(b, ev.IndustryV2)
 ```
 
 **ALTER TABLE** (run once per environment):
+
 ```bash
 python scripts/bootstrap/alter-iceberg-schema.py \
     --table jobs.canonicals_upserted \
@@ -126,16 +131,17 @@ Never immediately drop. Removing a field that readers still query causes read pa
 
 Iceberg supports **compatible widening** without data migration:
 
-| From | To | Safe? |
-|------|----|-------|
-| `int` | `long` | Yes |
-| `float` | `double` | Yes |
-| `decimal(p,s)` | `decimal(p2,s)` where p2 > p | Yes |
-| Any other change | Any | **No** — requires table replace |
+| From             | To                           | Safe?                           |
+| ---------------- | ---------------------------- | ------------------------------- |
+| `int`            | `long`                       | Yes                             |
+| `float`          | `double`                     | Yes                             |
+| `decimal(p,s)`   | `decimal(p2,s)` where p2 > p | Yes                             |
+| Any other change | Any                          | **No** — requires table replace |
 
 For incompatible changes, use the table-replace path from Case 2 Strategy A.
 
 To widen a type:
+
 ```python
 table.update_schema().update_column_type("field_name", LongType()).commit()
 ```

@@ -4,10 +4,10 @@ Gate: `//go:build integration` — not run by `go test ./...` by default.
 
 ## What's covered
 
-| Test | Containers | What it verifies |
-|------|-----------|-----------------|
-| `TestMaterializerManticoreE2E` | Manticore | canonical event → searchindex.Client.Replace → idx_opportunities_rt row present |
-| `TestMaterializerManticoreSchemaIdempotent` | Manticore | Apply called twice → no error |
+| Test                                        | Containers | What it verifies                                                                |
+| ------------------------------------------- | ---------- | ------------------------------------------------------------------------------- |
+| `TestMaterializerManticoreE2E`              | Manticore  | canonical event → searchindex.Client.Replace → idx_opportunities_rt row present |
+| `TestMaterializerManticoreSchemaIdempotent` | Manticore  | Apply called twice → no error                                                   |
 
 ## What's not yet covered (TODO)
 
@@ -43,23 +43,23 @@ go test -tags integration -run=none ./tests/integration/...
 
 ## Known failure modes
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `cannot start container` | Docker not running | Start Docker |
-| `image not found locally` | manticoresearch image not pulled | `docker pull manticoresearch/manticore:6.2.0` |
-| `deadline exceeded` during startup | Slow image pull on first run | Increase timeout in `testhelpers/containers.go` |
-| `table already exists` error | Schema already applied in this container | Safe to ignore — `Apply` handles it |
-| `connection refused` to Manticore | Container not healthy yet | The test uses `require.Eventually` — extend the timeout |
+| Symptom                            | Cause                                    | Fix                                                     |
+| ---------------------------------- | ---------------------------------------- | ------------------------------------------------------- |
+| `cannot start container`           | Docker not running                       | Start Docker                                            |
+| `image not found locally`          | manticoresearch image not pulled         | `docker pull manticoresearch/manticore:6.2.0`           |
+| `deadline exceeded` during startup | Slow image pull on first run             | Increase timeout in `testhelpers/containers.go`         |
+| `table already exists` error       | Schema already applied in this container | Safe to ignore — `Apply` handles it                     |
+| `connection refused` to Manticore  | Container not healthy yet                | The test uses `require.Eventually` — extend the timeout |
 
 ## Container images
 
-| Service | Image | Port |
-|---------|-------|------|
+| Service   | Image                             | Port                 |
+| --------- | --------------------------------- | -------------------- |
 | Manticore | `manticoresearch/manticore:6.2.0` | 9308 (HTTP JSON API) |
-| MinIO | `minio/minio:latest` | 9000 |
-| NATS | `nats:2.10-alpine` | 4222 |
-| Valkey | `valkey/valkey:7.2-alpine` | 6379 |
-| Postgres | `postgres:16-alpine` | 5432 |
+| MinIO     | `minio/minio:latest`              | 9000                 |
+| NATS      | `nats:2.10-alpine`                | 4222                 |
+| Valkey    | `valkey/valkey:7.2-alpine`        | 6379                 |
+| Postgres  | `postgres:16-alpine`              | 5432                 |
 
 All containers are started and stopped per test via `t.Cleanup`.
 
@@ -71,6 +71,7 @@ initial skeleton — it covers the critical schema + write path without requirin
 a full NATS JetStream stream configuration.
 
 To extend to a full Frame→handler test:
+
 1. Add a `NATSContainer` helper (already in `testhelpers/containers.go`)
 2. Create the `svc_opportunities_events` JetStream stream in the test setup
 3. Use `frame.NewServiceWithContext` with the NATS container URL as `EVENTS_QUEUE_URL`

@@ -2,7 +2,7 @@
 // deal matcher. Categories drive topical relevance; countries scope
 // availability (some deals are geo-fenced).
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 
 export interface DealPreferences {
   interest_categories: string[];
@@ -14,7 +14,7 @@ const EMPTY: DealPreferences = {
   countries: [],
 };
 
-const CATEGORIES = ["Software", "Hardware", "Travel", "Education", "Subscriptions"];
+const CATEGORIES = ['Software', 'Hardware', 'Travel', 'Education', 'Subscriptions'];
 
 export function Flow({
   initial,
@@ -58,12 +58,12 @@ export function Flow({
       <input
         className="input-field"
         placeholder="Countries (comma-separated ISO codes)"
-        value={p.countries.join(", ")}
+        value={p.countries.join(', ')}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           setP({
             ...p,
             countries: e.currentTarget.value
-              .split(",")
+              .split(',')
               .map((s) => s.trim().toUpperCase())
               .filter(Boolean),
           })

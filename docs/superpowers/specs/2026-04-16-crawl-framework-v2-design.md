@@ -58,11 +58,11 @@
 
 ### Pod Allocation (5 pods)
 
-| Pod | Services | Purpose |
-|---|---|---|
-| crawler-1, crawler-2, crawler-3 | Worker | Crawling (the bottleneck) |
-| scheduler-1 | Scheduler + Discovery + Dedupe runner | Control loop |
-| api-1 | Search API + Ops Control Plane | HTTP APIs |
+| Pod                             | Services                              | Purpose                   |
+| ------------------------------- | ------------------------------------- | ------------------------- |
+| crawler-1, crawler-2, crawler-3 | Worker                                | Crawling (the bottleneck) |
+| scheduler-1                     | Scheduler + Discovery + Dedupe runner | Control loop              |
+| api-1                           | Search API + Ops Control Plane        | HTTP APIs                 |
 
 ---
 
@@ -153,39 +153,39 @@ source.CrawlCursor = iter.Cursor()
 
 ### Tier 1 — Free JSON APIs (new, structured data)
 
-| Connector | Endpoint | Volume | Regions |
-|---|---|---|---|
-| `remoteok` | `remoteok.com/api` | ~5K | Global remote |
-| `arbeitnow` | `arbeitnow.com/api/job-board-api` | ~10K | EU-heavy |
-| `jobicy` | `jobicy.com/api/v2/remote-jobs` | ~2K | Global remote |
-| `themuse` | `themuse.com/api/public/jobs` | ~10K | US/EU |
-| `himalayas` | `himalayas.app/jobs/api` | ~3K | Global remote |
-| `findwork` | `findwork.dev/api/jobs` | ~5K | Global |
+| Connector   | Endpoint                          | Volume | Regions       |
+| ----------- | --------------------------------- | ------ | ------------- |
+| `remoteok`  | `remoteok.com/api`                | ~5K    | Global remote |
+| `arbeitnow` | `arbeitnow.com/api/job-board-api` | ~10K   | EU-heavy      |
+| `jobicy`    | `jobicy.com/api/v2/remote-jobs`   | ~2K    | Global remote |
+| `themuse`   | `themuse.com/api/public/jobs`     | ~10K   | US/EU         |
+| `himalayas` | `himalayas.app/jobs/api`          | ~3K    | Global remote |
+| `findwork`  | `findwork.dev/api/jobs`           | ~5K    | Global        |
 
 ### Tier 2 — African Board Connectors (new, HTML parsing)
 
-| Connector | Coverage | Volume | Strategy |
-|---|---|---|---|
-| `brightermonday` | Kenya, Uganda, Tanzania | ~20K+ | Listing pages → detail pages |
-| `jobberman` | Nigeria, Ghana | ~30K+ | Listing pages → detail pages |
-| `myjobmag` | 15+ African countries | ~50K+ | Country subdomains → listings |
-| `njorku` | Pan-African (30+ countries) | ~100K+ | Aggregator listings |
-| `careers24` | South Africa | ~20K+ | Listing pages → detail pages |
-| `pnet` | South Africa | ~30K+ | Listing pages → detail pages |
+| Connector        | Coverage                    | Volume | Strategy                      |
+| ---------------- | --------------------------- | ------ | ----------------------------- |
+| `brightermonday` | Kenya, Uganda, Tanzania     | ~20K+  | Listing pages → detail pages  |
+| `jobberman`      | Nigeria, Ghana              | ~30K+  | Listing pages → detail pages  |
+| `myjobmag`       | 15+ African countries       | ~50K+  | Country subdomains → listings |
+| `njorku`         | Pan-African (30+ countries) | ~100K+ | Aggregator listings           |
+| `careers24`      | South Africa                | ~20K+  | Listing pages → detail pages  |
+| `pnet`           | South Africa                | ~30K+  | Listing pages → detail pages  |
 
 ### Tier 3 — Existing Connectors (refactored)
 
-| Connector | Change |
-|---|---|
-| `greenhouse` | Refactor to iterator, seed with global company boards |
-| `lever` | Refactor to iterator, seed with global company boards |
-| `workday` | Refactor to iterator, already global |
-| `smartrecruiters` | Keep both API and page variants, refactor to iterator |
-| `smartrecruiterspage` | Refactor to iterator |
-| `schemaorg` | Refactor to iterator, improve robustness |
-| `sitemap` | Refactor to iterator, must follow with detail fetch for quality |
-| `hostedboards` | Refactor to iterator, needs detail fetch |
-| `generichtml` | Refactor to iterator, last-resort fallback |
+| Connector             | Change                                                          |
+| --------------------- | --------------------------------------------------------------- |
+| `greenhouse`          | Refactor to iterator, seed with global company boards           |
+| `lever`               | Refactor to iterator, seed with global company boards           |
+| `workday`             | Refactor to iterator, already global                            |
+| `smartrecruiters`     | Keep both API and page variants, refactor to iterator           |
+| `smartrecruiterspage` | Refactor to iterator                                            |
+| `schemaorg`           | Refactor to iterator, improve robustness                        |
+| `sitemap`             | Refactor to iterator, must follow with detail fetch for quality |
+| `hostedboards`        | Refactor to iterator, needs detail fetch                        |
+| `generichtml`         | Refactor to iterator, last-resort fallback                      |
 
 ### Removed (require paid API keys)
 
@@ -317,12 +317,12 @@ For chronologically-ordered listing crawlers: if a full page of jobs all match e
 
 Stored as JSONB in `sources.crawl_cursor`. Connector-specific:
 
-| Connector type | Cursor content |
-|---|---|
-| Paginated API | `{"last_page": 42, "last_seen_id": "abc123"}` |
-| Listing crawler | `{"last_page": 15, "last_job_url": "..."}` |
-| RSS feed | `{"etag": "W/xyz", "last_modified": "..."}` |
-| Single-page API | `{"content_hash": "sha256..."}` |
+| Connector type  | Cursor content                                |
+| --------------- | --------------------------------------------- |
+| Paginated API   | `{"last_page": 42, "last_seen_id": "abc123"}` |
+| Listing crawler | `{"last_page": 15, "last_job_url": "..."}`    |
+| RSS feed        | `{"etag": "W/xyz", "last_modified": "..."}`   |
+| Single-page API | `{"content_hash": "sha256..."}`               |
 
 ---
 
@@ -332,17 +332,18 @@ Stored as JSONB in `sources.crawl_cursor`. Connector-specific:
 
 Every job must have ALL of:
 
-| Field | Validation |
-|---|---|
-| `title` | Non-empty, > 3 characters |
-| `company` | Non-empty, > 1 character |
-| `location_text` | Non-empty |
-| `description` | Non-empty, > 50 characters |
-| `apply_url` | Non-empty, valid URL (starts with http:// or https://) |
+| Field           | Validation                                             |
+| --------------- | ------------------------------------------------------ |
+| `title`         | Non-empty, > 3 characters                              |
+| `company`       | Non-empty, > 1 character                               |
+| `location_text` | Non-empty                                              |
+| `description`   | Non-empty, > 50 characters                             |
+| `apply_url`     | Non-empty, valid URL (starts with http:// or https://) |
 
 ### Rejection Tracking
 
 Rejected jobs go to `rejected_jobs` table with:
+
 - `reason`: which field failed (e.g., "missing_title", "short_description", "invalid_apply_url")
 - `raw_data`: JSONB snapshot of the ExternalJob for debugging
 
@@ -367,14 +368,14 @@ On top of existing `ExternalToVariant()`:
 
 ### Connector Failure Responses
 
-| Failure | Detection | Response |
-|---|---|---|
-| Site down (5xx) | HTTP status | Retry 3x with backoff, then skip, health_score -= 0.2 |
-| Rate limited (429) | HTTP status | Back off per Retry-After or exponential, pause source |
-| Blocked (403/captcha) | HTTP 403 or captcha markers | Skip source, status = 'blocked', health_score = 0.0 |
-| Timeout | Context deadline | Retry once, then skip. Log page progress for resume |
-| Malformed response | Parse error | Log with payload sample, skip page, continue |
-| Empty results | 0 jobs from previously-active source | Keep existing jobs. Log warning. |
+| Failure               | Detection                            | Response                                              |
+| --------------------- | ------------------------------------ | ----------------------------------------------------- |
+| Site down (5xx)       | HTTP status                          | Retry 3x with backoff, then skip, health_score -= 0.2 |
+| Rate limited (429)    | HTTP status                          | Back off per Retry-After or exponential, pause source |
+| Blocked (403/captcha) | HTTP 403 or captcha markers          | Skip source, status = 'blocked', health_score = 0.0   |
+| Timeout               | Context deadline                     | Retry once, then skip. Log page progress for resume   |
+| Malformed response    | Parse error                          | Log with payload sample, skip page, continue          |
+| Empty results         | 0 jobs from previously-active source | Keep existing jobs. Log warning.                      |
 
 ### Health Score
 
@@ -403,6 +404,7 @@ Scheduler prioritizes by health_score. Degraded sources get longer intervals.
 ### Backpressure
 
 Natural throttling via semaphore + batch buffer. When Postgres slows:
+
 - Buffer fills, flush takes longer
 - Semaphore slots stay occupied
 - Fewer NATS messages consumed
@@ -413,16 +415,16 @@ Natural throttling via semaphore + batch buffer. When Postgres slows:
 
 ## 12. Frame Integration
 
-| Concern | Current | Proposed |
-|---|---|---|
-| Database | Raw `pgxpool` | Frame database abstraction |
-| Cache / Rate limiting | None | Frame rate limiter + shared cache backend |
-| HTTP server | Manual `chi` setup | Frame HTTP service |
-| Logging | `slog` manual | `util.Log(ctx)` |
-| Telemetry | Manual OTel init | Frame built-in OTel |
-| Config | Custom env loader | Frame config |
-| Lifecycle | Manual signal handling | Frame service lifecycle |
-| Queue | Redis `LPUSH/BRPOP` | NATS JetStream (use Frame's queue abstraction if it wraps NATS; otherwise direct `nats.go` client) |
+| Concern               | Current                | Proposed                                                                                           |
+| --------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| Database              | Raw `pgxpool`          | Frame database abstraction                                                                         |
+| Cache / Rate limiting | None                   | Frame rate limiter + shared cache backend                                                          |
+| HTTP server           | Manual `chi` setup     | Frame HTTP service                                                                                 |
+| Logging               | `slog` manual          | `util.Log(ctx)`                                                                                    |
+| Telemetry             | Manual OTel init       | Frame built-in OTel                                                                                |
+| Config                | Custom env loader      | Frame config                                                                                       |
+| Lifecycle             | Manual signal handling | Frame service lifecycle                                                                            |
+| Queue                 | Redis `LPUSH/BRPOP`    | NATS JetStream (use Frame's queue abstraction if it wraps NATS; otherwise direct `nats.go` client) |
 
 ---
 
@@ -461,17 +463,18 @@ manifests/namespaces/opportunities/
 
 ### Service → Pod Mapping
 
-| HelmRelease | cmd/ binary | Replicas | Purpose |
-|---|---|---|---|
-| opportunities-crawler | `worker` | 3 | Crawl workers (the bottleneck) |
-| opportunities-scheduler | `scheduler` | 1 | Scheduler + discovery + dedupe runner |
-| opportunities-api | `search-api` | 1 | Search API + ops control plane |
+| HelmRelease             | cmd/ binary  | Replicas | Purpose                               |
+| ----------------------- | ------------ | -------- | ------------------------------------- |
+| opportunities-crawler   | `worker`     | 3        | Crawl workers (the bottleneck)        |
+| opportunities-scheduler | `scheduler`  | 1        | Scheduler + discovery + dedupe runner |
+| opportunities-api       | `search-api` | 1        | Search API + ops control plane        |
 
 ### Colony Chart Configuration
 
 All three services use the `colony` chart v1.10.3 from the antinvestor HelmRepository.
 
 **Shared configuration across all services:**
+
 - Image: `ghcr.io/opportunities/opportunities:<tag>` (single image, different entrypoint per service)
 - Database: `pooler-rw.datastore.svc:5432/opportunities` (read-write), `pooler-ro.datastore.svc:5432/opportunities` (read-only)
 - NATS: `nats://core-queue-headless.queue-system.svc.cluster.local:4222`
@@ -481,17 +484,20 @@ All three services use the `colony` chart v1.10.3 from the antinvestor HelmRepos
 - Security context: non-root, drop all capabilities, seccomp RuntimeDefault
 
 **Crawler-specific:**
+
 - Replicas: 3 (autoscaling disabled — fixed at 3 to stay within 5-pod budget)
 - Resources: 200m CPU / 512Mi memory requests
 - NATS consumer: queue group on `svc.opportunities.crawl.>` subjects
 - Env: `WORKER_CONCURRENCY=4` (4 per pod x 3 pods = 12 total)
 
 **Scheduler-specific:**
+
 - Replicas: 1 (no autoscaling — singleton)
 - Resources: 50m CPU / 128Mi memory requests
 - NATS publisher: publishes to `svc.opportunities.crawl.>` and `svc.opportunities.dedupe.>`
 
 **API-specific:**
+
 - Replicas: 1 (autoscaling 1-2)
 - Resources: 50m CPU / 128Mi memory requests
 - Gateway: enabled, HTTPRoute on configured hostnames
@@ -537,11 +543,11 @@ subscribe:
 
 All secrets via Vault + ExternalSecrets:
 
-| Secret | Vault path | Used by |
-|---|---|---|
+| Secret                       | Vault path                                   | Used by      |
+| ---------------------------- | -------------------------------------------- | ------------ |
 | db-credentials-opportunities | `antinvestor/opportunities/crawler/database` | All services |
-| ghcr-auth | `antinvestor/_shared/registry/ghcr-stawi` | Image pull |
-| NATS user creds | Generated by nauth.io operator | All services |
+| ghcr-auth                    | `antinvestor/_shared/registry/ghcr-stawi`    | Image pull   |
+| NATS user creds              | Generated by nauth.io operator               | All services |
 
 ### Image Automation (FluxCD)
 
@@ -640,6 +646,7 @@ ENTRYPOINT ["/crawler"]
 ```
 
 Key standards from service-profile:
+
 - Cross-compilation support via `TARGETOS`/`TARGETARCH`
 - `cgr.dev/chainguard/static:latest` base image (not distroless)
 - Non-root user `65532:65532`
@@ -680,15 +687,15 @@ docs
 
 ### Structured Log Events
 
-| Event | Key fields |
-|---|---|
-| `crawl_started` | source_id, source_type, country |
-| `page_fetched` | source_id, page_key, http_status, skipped |
-| `quality_rejected` | source_id, reason, external_job_id |
-| `batch_flushed` | variant_count, duration_ms |
+| Event                  | Key fields                                 |
+| ---------------------- | ------------------------------------------ |
+| `crawl_started`        | source_id, source_type, country            |
+| `page_fetched`         | source_id, page_key, http_status, skipped  |
+| `quality_rejected`     | source_id, reason, external_job_id         |
+| `batch_flushed`        | variant_count, duration_ms                 |
 | `crawl_batch_complete` | jobs_fetched, accepted, rejected, duration |
-| `dedupe_complete` | variants_processed, clusters_created |
-| `schedule_tick` | sources_due, sources_scheduled |
+| `dedupe_complete`      | variants_processed, clusters_created       |
+| `schedule_tick`        | sources_due, sources_scheduled             |
 
 ### Health Endpoint
 

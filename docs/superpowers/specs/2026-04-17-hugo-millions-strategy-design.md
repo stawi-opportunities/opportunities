@@ -63,7 +63,7 @@ The design deliberately avoids: sharded Hugo builds, content adapters against re
 
 - Hugo never sees a job file. `ui/content/jobs/` is deleted.
 - R2 is the only authoritative public read path for a single job.
-- Postgres is source of truth *and* the search backend.
+- Postgres is source of truth _and_ the search backend.
 - Publish handler is the single writer that keeps PG row, R2 snapshot, and CF cache aligned.
 - Facet counts on `/search` and `/categories/*` accept up to 5-min staleness; result rows and `/jobs/<slug>` are near-real-time (≤ 5 min edge TTL).
 
@@ -123,8 +123,10 @@ Cache-Control: public, max-age=60, s-maxage=300
   },
   "employment": { "type": "full_time", "seniority": "senior" },
   "compensation": {
-    "min": 80000, "max": 120000,
-    "currency": "USD", "period": "year"
+    "min": 80000,
+    "max": 120000,
+    "currency": "USD",
+    "period": "year"
   },
   "skills": {
     "required": ["Go", "PostgreSQL"],
@@ -184,13 +186,13 @@ func (h *PublishHandler) Handle(ctx context.Context, evt JobReadyEvent) error {
 
 **Postgres schema additions (on `jobs`):**
 
-| Column | Type | Purpose |
-|---|---|---|
-| `published_at` | `timestamptz` NULL | Non-null ⇒ visible + has R2 snapshot |
-| `r2_version`   | `int` NOT NULL default 0 | Monotonic per-slug version; bumped every publish |
+| Column         | Type                        | Purpose                                               |
+| -------------- | --------------------------- | ----------------------------------------------------- |
+| `published_at` | `timestamptz` NULL          | Non-null ⇒ visible + has R2 snapshot                  |
+| `r2_version`   | `int` NOT NULL default 0    | Monotonic per-slug version; bumped every publish      |
 | `search_tsv`   | `tsvector` GENERATED STORED | Weighted: title=A, company=B, skills=C, description=D |
-| `status`       | `text` NOT NULL | `active` / `expired` / `deleted` |
-| `expires_at`   | `timestamptz` | 4-month TTL from `posted_at` |
+| `status`       | `text` NOT NULL             | `active` / `expired` / `deleted`                      |
+| `expires_at`   | `timestamptz`               | 4-month TTL from `posted_at`                          |
 
 Partial indexes:
 
@@ -216,12 +218,12 @@ func (h *PublishHandler) unpublish(ctx context.Context, job *CanonicalJob) error
 
 **Failure modes:**
 
-| Failure | User impact | Recovery |
-|---|---|---|
-| R2 PUT fails | Job stays unsearchable | Pipeline retries with backoff |
-| PG mark fails | Orphan snapshot in R2 briefly | Retry; idempotent |
-| Cache purge fails | Edge stale up to s-maxage | Accept; optional retry queue |
-| Poison event | Single slug fails repeatedly | DLQ after N retries; alert with slug |
+| Failure           | User impact                   | Recovery                             |
+| ----------------- | ----------------------------- | ------------------------------------ |
+| R2 PUT fails      | Job stays unsearchable        | Pipeline retries with backoff        |
+| PG mark fails     | Orphan snapshot in R2 briefly | Retry; idempotent                    |
+| Cache purge fails | Edge stale up to s-maxage     | Accept; optional retry queue         |
+| Poison event      | Single slug fails repeatedly  | DLQ after N retries; alert with slug |
 
 ## Hugo app shell
 
@@ -315,12 +317,18 @@ Vanilla JS + Tailwind. Route-specific code loaded via dynamic `import()`. ~20 KB
 **CORS on `job-repo.stawi.org`:**
 
 ```json
-[{
-  "AllowedOrigins": ["https://jobs.stawi.org", "http://localhost:1313", "http://localhost:8082"],
-  "AllowedMethods": ["GET", "HEAD"],
-  "AllowedHeaders": ["*"],
-  "MaxAgeSeconds": 86400
-}]
+[
+  {
+    "AllowedOrigins": [
+      "https://jobs.stawi.org",
+      "http://localhost:1313",
+      "http://localhost:8082"
+    ],
+    "AllowedMethods": ["GET", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "MaxAgeSeconds": 86400
+  }
+]
 ```
 
 No credentials, no cookies.
@@ -335,13 +343,13 @@ No credentials, no cookies.
 
 **Endpoints on the existing `search-api` service.**
 
-| Endpoint | Purpose | Edge cache |
-|---|---|---|
-| `GET /api/search?q=…&category=…&remote=…&sort=…&cursor=…` | main search | none |
-| `GET /api/categories` | list categories with counts | 60s |
-| `GET /api/categories/<slug>/jobs?cursor=…` | category feed | 30s |
-| `GET /api/jobs/latest?limit=20` | home feed / featured | 30s |
-| `GET /api/stats/summary` | home counters | 300s |
+| Endpoint                                                  | Purpose                     | Edge cache |
+| --------------------------------------------------------- | --------------------------- | ---------- |
+| `GET /api/search?q=…&category=…&remote=…&sort=…&cursor=…` | main search                 | none       |
+| `GET /api/categories`                                     | list categories with counts | 60s        |
+| `GET /api/categories/<slug>/jobs?cursor=…`                | category feed               | 30s        |
+| `GET /api/jobs/latest?limit=20`                           | home feed / featured        | 30s        |
+| `GET /api/stats/summary`                                  | home counters               | 300s       |
 
 All responses denormalized enough for list rendering — no R2 follow-up needed.
 
@@ -426,13 +434,13 @@ CREATE UNIQUE INDEX ON mv_job_facets(dim, key);
 
 **Performance targets:**
 
-| Query | p99 |
-|---|---|
+| Query         | p99    |
+| ------------- | ------ |
 | FTS w/ filter | < 50ms |
-| Recency feed | < 10ms |
+| Recency feed  | < 10ms |
 | Category feed | < 10ms |
-| Facet MV read | < 5ms |
-| Home stats | < 5ms |
+| Facet MV read | < 5ms  |
+| Home stats    | < 5ms  |
 
 **Rate limiting:** per-IP limit on `/api/search` at the CF edge (e.g., 60 req/min).
 
@@ -496,11 +504,11 @@ Three signals. One SLO per user-visible path. Alerts only on SLO burn.
 
 **Traces.** One root span per operation; children on each boundary:
 
-| Root | Children |
-|---|---|
-| `publish.handle` | `snapshot.build`, `r2.put`, `pg.mark_published`, `cdn.purge` |
-| `search.api` | `pg.fts_query`, `pg.facets_read` |
-| `retention.stage1` | `pg.expire_batch` |
+| Root               | Children                                                     |
+| ------------------ | ------------------------------------------------------------ |
+| `publish.handle`   | `snapshot.build`, `r2.put`, `pg.mark_published`, `cdn.purge` |
+| `search.api`       | `pg.fts_query`, `pg.facets_read`                             |
+| `retention.stage1` | `pg.expire_batch`                                            |
 | `retention.stage2` | `pg.select_candidates`, `r2.delete_batch`, `pg.mark_deleted` |
 
 Attributes: `job.slug`, `job.id`, `r2_version`, `job.category`, `bytes.in/out`, `status.code`. Use `pkg/telemetry`.
@@ -534,13 +542,13 @@ retention_backlog_days                               gauge
 
 **SLOs.**
 
-| Path | Indicator | Objective |
-|---|---|---|
-| Publish | `publish_end_to_end_ms` | p95 < 3s, p99 < 10s |
-| Search API | `search_latency_ms` | p95 < 80ms, p99 < 200ms |
-| Job detail | R2 GET latency (CF RUM) | p95 < 200ms hit / < 600ms miss |
-| Freshness | time since `published_at` vs served | ≤ `s-maxage` + 30s |
-| Retention lag | `retention_backlog_days` | < 1 day |
+| Path          | Indicator                           | Objective                      |
+| ------------- | ----------------------------------- | ------------------------------ |
+| Publish       | `publish_end_to_end_ms`             | p95 < 3s, p99 < 10s            |
+| Search API    | `search_latency_ms`                 | p95 < 80ms, p99 < 200ms        |
+| Job detail    | R2 GET latency (CF RUM)             | p95 < 200ms hit / < 600ms miss |
+| Freshness     | time since `published_at` vs served | ≤ `s-maxage` + 30s             |
+| Retention lag | `retention_backlog_days`            | < 1 day                        |
 
 **Alerts.**
 
@@ -574,15 +582,18 @@ Greenfield build. No dual-write, no backfill, no gradual cutover. Delete the old
 ### What to build
 
 **Infra:**
+
 - `job-repo.stawi.org` as its own CF zone bound to the R2 bucket (separate from `jobs.stawi.org` so cache operations don't cross-affect).
 - Public R2 bucket `opportunities-content` with CORS for `jobs.stawi.org` + local dev.
 
 **Postgres:**
+
 - Add columns: `status`, `expires_at`, `r2_version`, `search_tsv` (GENERATED STORED), `published_at` if missing.
 - Partial indexes on `status='active'` for FTS, recency, category, skills.
 - `mv_job_facets` materialized view with unique index on `(dim, key)`.
 
 **Go:**
+
 - `pkg/publish/snapshot.go` — `BuildSnapshot(*CanonicalJob) JobSnapshot`, pure function, golden-file tests.
 - Evolve `PublishHandler` to: PUT `jobs/<slug>.json` → UPDATE PG (`published_at`, `r2_version`) → best-effort CF purge.
 - `search-api` endpoints: `/api/search`, `/api/categories`, `/api/categories/<slug>/jobs`, `/api/jobs/latest`, `/api/stats/summary` — all Postgres-backed.
@@ -590,6 +601,7 @@ Greenfield build. No dual-write, no backfill, no gradual cutover. Delete the old
 - Admin endpoint `POST /admin/republish` for future bulk regenerations.
 
 **Hugo shell:**
+
 - `ui/static/_redirects` with catch-alls for `/jobs/*`, `/categories/*`, `/companies/*`.
 - `ui/assets/js/`: `main.js` dispatcher, `api.js`, route modules (`job-detail.js`, `search.js`, `category.js`, `dashboard.js`), components (`user-state.js`, `skeleton.js`, `toast.js`), `auth.js`.
 - Layouts converted to hydration skeletons: server-side HTML is the chrome, client fills in data.

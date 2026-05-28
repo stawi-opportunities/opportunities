@@ -12,9 +12,9 @@
 // per-callsite branching, matching the OpenObserve / GA4 shape this
 // module replaced.
 
-import posthog from "posthog-js";
+import posthog from 'posthog-js';
 
-import { getConfig } from "@/utils/config";
+import { getConfig } from '@/utils/config';
 
 let initialised = false;
 
@@ -24,16 +24,16 @@ let initialised = false;
  */
 export function initPostHog(): boolean {
   if (initialised) return true;
-  if (typeof window === "undefined") return false;
+  if (typeof window === 'undefined') return false;
   const { posthogApiKey, posthogHost } = getConfig();
   if (!posthogApiKey) {
-    if (typeof console !== "undefined") {
-      console.debug("[posthog] disabled: missing posthogApiKey");
+    if (typeof console !== 'undefined') {
+      console.debug('[posthog] disabled: missing posthogApiKey');
     }
     return false;
   }
   posthog.init(posthogApiKey, {
-    api_host: posthogHost || "https://us.i.posthog.com",
+    api_host: posthogHost || 'https://us.i.posthog.com',
     // Autocapture covers pageviews + clicks + form submits across every
     // React island without per-component instrumentation. The custom
     // `capture` events below are layered on top for funnel queries.
@@ -65,12 +65,14 @@ export function initPostHog(): boolean {
  * setAnalyticsUser signature so AuthProvider didn't need a code
  * change beyond the import path.
  */
-export function setAnalyticsUser(user: {
-  id: string;
-  name?: string;
-  email?: string;
-  plan?: string;
-} | null): void {
+export function setAnalyticsUser(
+  user: {
+    id: string;
+    name?: string;
+    email?: string;
+    plan?: string;
+  } | null
+): void {
   if (!initialised) return;
   if (!user || !user.id) {
     // reset() detaches the distinct_id from the device and starts a
@@ -118,7 +120,7 @@ export interface JobViewAttrs {
 
 export function trackJobView(attrs: JobViewAttrs): void {
   if (!initialised) return;
-  posthog.capture("job_view", { ...attrs });
+  posthog.capture('job_view', { ...attrs });
 }
 
 export interface JobViewEngagedAttrs {
@@ -130,7 +132,7 @@ export interface JobViewEngagedAttrs {
 
 export function trackJobViewEngaged(attrs: JobViewEngagedAttrs): void {
   if (!initialised) return;
-  posthog.capture("job_view_engaged", { ...attrs });
+  posthog.capture('job_view_engaged', { ...attrs });
 }
 
 export interface ApplyClickAttrs {
@@ -143,5 +145,5 @@ export interface ApplyClickAttrs {
 
 export function trackApplyClick(attrs: ApplyClickAttrs): void {
   if (!initialised) return;
-  posthog.capture("apply_click", { ...attrs });
+  posthog.capture('apply_click', { ...attrs });
 }

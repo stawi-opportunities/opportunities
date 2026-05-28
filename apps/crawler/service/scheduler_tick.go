@@ -92,13 +92,21 @@ func SchedulerTickHandler(svc *frame.Service, lister SourceLister, admit Admitte
 			return
 		}
 
+		// tickMinute is the partition key for the idempotency contract:
+		// every source admitted in this sweep gets the same minute-
+		// truncated timestamp, so concurrent ticks (or NATS redeliveries)
+		// collide on (source_id, tick_minute) and the crawl handler
+		// reuses the existing crawl_jobs row instead of inserting a dup.
+		tickMinute := now.UTC().Truncate(time.Minute).Format(time.RFC3339)
 		for i := 0; i < granted && i < len(sources); i++ {
 			src := sources[i]
 			env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
-				RequestID: xid.New().String(),
-				SourceID:  src.ID,
-				Mode:      "auto",
-				Attempt:   1,
+				RequestID:      xid.New().String(),
+				SourceID:       src.ID,
+				IdempotencyKey: fmt.Sprintf("%s:%s", src.ID, tickMinute),
+				ScheduledAt:    now,
+				Mode:           "auto",
+				Attempt:        1,
 			})
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicCrawlRequests, env); emitErr != nil {
 				log.WithError(emitErr).WithField("source_id", src.ID).Warn("scheduler/tick: emit failed")

@@ -71,7 +71,7 @@ BILLING_RECIPIENT_PROFILE_ID: <profile id of the stawi.opportunities merchant in
 # Polar.sh — one product per tier created in polar.sh dashboard.
 # See https://docs.polar.sh/api/products
 POLAR_PRODUCT_STARTER: prod_xxx
-POLAR_PRODUCT_PRO:     prod_yyy
+POLAR_PRODUCT_PRO: prod_yyy
 POLAR_PRODUCT_MANAGED: prod_zzz
 
 # Public site used for redirect URLs.

@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/mercari",
     "country": "JP",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ja",
     "priority": "normal",
     "region": "asia",
@@ -15,9 +13,7 @@
     "base_url": "https://boards.greenhouse.io/smartnews",
     "country": "JP",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ja",
     "priority": "normal",
     "region": "asia",
@@ -27,9 +23,7 @@
     "base_url": "https://jobs.lever.co/line-corp",
     "country": "JP",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ja",
     "priority": "normal",
     "region": "asia",

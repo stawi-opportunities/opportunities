@@ -1,11 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.r2.reconcile",
-  "description": "Daily at 04:30 UTC: walks clusters/* in the archive bucket and deletes any cluster directory whose cluster_id has no canonical_jobs row. Backstop for the purge sweeper's DeleteRaw partial-failure window and for archive-succeeded-but-DB-failed writes. DISABLED — target handler queries canonical_jobs which is dropped in Phase 6; will be re-enabled in v1.1 once the Parquet-backed retention compactor is implemented.",
-  "schedule": {
-    "cron": "30 4 * * *",
-    "active": false
-  },
+  "description": "Daily at 04:30 UTC: walks clusters/* in the archive bucket and deletes any cluster directory whose cluster_id has no canonical_jobs row. Backstop for the purge sweeper's DeleteRaw partial-failure window and for archive-succeeded-but-DB-failed writes. DISABLED \u2014 target handler queries canonical_jobs which is dropped in Phase 6; will be re-enabled in v1.1 once the Parquet-backed retention compactor is implemented.",
   "input": {},
   "timeout": "15m",
   "steps": [
@@ -23,10 +19,19 @@
         "input": {
           "url": "http://opportunities-crawler.product-opportunities.svc/admin/r2/reconcile",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         }
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.r2.reconcile.default",
+      "cron_expr": "30 4 * * *",
+      "timezone": "UTC"
     }
   ]
 }

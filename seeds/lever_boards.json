@@ -3,9 +3,7 @@
     "base_url": "https://jobs.lever.co/netflix",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "generic_html"
@@ -14,9 +12,7 @@
     "base_url": "https://jobs.lever.co/twilio",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "generic_html"
@@ -25,9 +21,7 @@
     "base_url": "https://jobs.lever.co/datadog",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "generic_html"

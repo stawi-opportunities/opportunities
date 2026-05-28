@@ -51,16 +51,16 @@ Postgres ──→ apps/sitegen ──→ ui/data/*.json
 
 ## Technology Stack
 
-| Layer | Technology | Rationale |
-|-------|-----------|-----------|
-| Static site generator | Hugo (latest, 0.147+) | Go-native, fast builds, content adapters |
-| CSS | Tailwind CSS via Hugo Pipes | Utility-first, purged in production, accessible defaults |
-| SPA islands | Alpine.js 3.x | Lightweight (15KB), no build step, declarative |
-| Client-side search | Pagefind | WASM-based, indexes post-build, ~100KB for 37K pages |
-| Semantic search | Go API `/search/semantic` | Embedding-based re-ranking for "best fit" |
-| Auth | OIDC (PKCE) → external IdP | Stateless, Frame JWT middleware already wired |
-| Payments | antinvestor/service-payment | Polar.sh (cards), M-PESA/MTN/Airtel (mobile money) |
-| Hosting | Cloudflare Pages or k8s nginx | Static files + API proxy |
+| Layer                 | Technology                    | Rationale                                                |
+| --------------------- | ----------------------------- | -------------------------------------------------------- |
+| Static site generator | Hugo (latest, 0.147+)         | Go-native, fast builds, content adapters                 |
+| CSS                   | Tailwind CSS via Hugo Pipes   | Utility-first, purged in production, accessible defaults |
+| SPA islands           | Alpine.js 3.x                 | Lightweight (15KB), no build step, declarative           |
+| Client-side search    | Pagefind                      | WASM-based, indexes post-build, ~100KB for 37K pages     |
+| Semantic search       | Go API `/search/semantic`     | Embedding-based re-ranking for "best fit"                |
+| Auth                  | OIDC (PKCE) → external IdP    | Stateless, Frame JWT middleware already wired            |
+| Payments              | antinvestor/service-payment   | Polar.sh (cards), M-PESA/MTN/Airtel (mobile money)       |
+| Hosting               | Cloudflare Pages or k8s nginx | Static files + API proxy                                 |
 
 ## Content Generation: `apps/sitegen`
 
@@ -68,12 +68,12 @@ A new Go CLI that bridges the database to Hugo's data layer.
 
 ### What It Produces
 
-| Output File | Content | Hugo Consumption |
-|-------------|---------|-----------------|
-| `ui/data/jobs.json` | All active canonical jobs (id, title, company, location, salary, skills, category, posted_at, apply_url, description excerpt) | Content adapter `_content.gotmpl` |
-| `ui/data/categories.json` | Category slugs, names, job counts, subcategories | Content adapter for category pages |
-| `ui/data/stats.json` | Total jobs, total companies, jobs posted this week | Homepage hero stats |
-| `ui/data/companies.json` | Unique companies with job counts, logos | Company listing/trust bar |
+| Output File               | Content                                                                                                                       | Hugo Consumption                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `ui/data/jobs.json`       | All active canonical jobs (id, title, company, location, salary, skills, category, posted_at, apply_url, description excerpt) | Content adapter `_content.gotmpl`  |
+| `ui/data/categories.json` | Category slugs, names, job counts, subcategories                                                                              | Content adapter for category pages |
+| `ui/data/stats.json`      | Total jobs, total companies, jobs posted this week                                                                            | Homepage hero stats                |
+| `ui/data/companies.json`  | Unique companies with job counts, logos                                                                                       | Company listing/trust bar          |
 
 ### When It Runs
 
@@ -115,24 +115,25 @@ A new Go CLI that bridges the database to Hugo's data layer.
 
 Map from existing domain fields to display categories:
 
-| Category Slug | Derived From |
-|--------------|-------------|
-| `programming` | roles contains "developer", "engineer", "programmer"; industry = "technology" |
-| `design` | roles contains "designer", "ux", "ui" |
-| `customer-support` | roles contains "support", "customer success" |
-| `marketing` | roles contains "marketing", "growth", "seo" |
-| `sales` | roles contains "sales", "account executive", "business development" |
-| `devops` | roles contains "devops", "sre", "infrastructure" |
-| `product` | roles contains "product manager", "product owner" |
-| `data` | roles contains "data scientist", "data engineer", "analyst" |
-| `management` | roles contains "manager", "director", "vp", "head of" |
-| `other` | fallback |
+| Category Slug      | Derived From                                                                  |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `programming`      | roles contains "developer", "engineer", "programmer"; industry = "technology" |
+| `design`           | roles contains "designer", "ux", "ui"                                         |
+| `customer-support` | roles contains "support", "customer success"                                  |
+| `marketing`        | roles contains "marketing", "growth", "seo"                                   |
+| `sales`            | roles contains "sales", "account executive", "business development"           |
+| `devops`           | roles contains "devops", "sre", "infrastructure"                              |
+| `product`          | roles contains "product manager", "product owner"                             |
+| `data`             | roles contains "data scientist", "data engineer", "analyst"                   |
+| `management`       | roles contains "manager", "director", "vp", "head of"                         |
+| `other`            | fallback                                                                      |
 
 ## Page Inventory
 
 ### Static Pages (Hugo-rendered)
 
 #### Homepage (`/`)
+
 - **Hero section**: "Find Remote Jobs in Africa and Beyond" headline, live stats from `data/stats.json` (37K+ jobs, X companies), primary CTA "Browse Jobs"
 - **Category grid**: Cards for each category with job count, linked to category page
 - **Recent featured jobs**: Top 10 by quality score, rendered as job cards
@@ -141,6 +142,7 @@ Map from existing domain fields to display categories:
 - **Testimonials section**: Static testimonial cards (manually curated in `data/testimonials.json`)
 
 #### Job Listing (`/jobs/`)
+
 - Paginated list of all jobs, 20 per page
 - Sort: newest first (default), by salary, by quality score
 - Client-side filters via Alpine.js: employment type, remote type, salary range, posted date
@@ -148,6 +150,7 @@ Map from existing domain fields to display categories:
 - Pagefind search bar at top
 
 #### Job Detail (`/jobs/{slug}/`)
+
 - Full job description (markdown rendered to HTML)
 - Sidebar: company info, salary range, location, employment type, skills tags, seniority badge
 - "Apply Now" button (links to external apply URL)
@@ -156,12 +159,14 @@ Map from existing domain fields to display categories:
 - Structured data (JSON-LD `JobPosting` schema for Google Jobs)
 
 #### Category Page (`/categories/{slug}/`)
+
 - Category header with description and job count
 - Subcategory quick-filter pills
 - Job card list filtered to category
 - Same card format as `/jobs/`
 
 #### Static Content Pages
+
 - `/about/` — About stawi.opportunities
 - `/pricing/` — Subscription plans
 - `/terms/` — Terms of service
@@ -170,6 +175,7 @@ Map from existing domain fields to display categories:
 ### SPA Islands (Alpine.js in Hugo shells)
 
 #### Search Island (navbar + `/search/`)
+
 - **Navbar search**: Pagefind-powered instant search dropdown with keyboard navigation
 - **Full search page** (`/search/`): Pagefind for keyword search; logged-in users see a "Best Fit" toggle that switches to `/search/semantic` API with their profile embedding for personalized ranking
 - Pagefind filters: category, employment type, location, salary range (via `data-pagefind-filter` attributes on job templates)
@@ -177,9 +183,11 @@ Map from existing domain fields to display categories:
 - Accessible: ARIA live region announces result count, full keyboard navigation
 
 #### Onboarding Wizard (`/onboarding/`)
+
 Three-step wizard matching the WWR screenshots:
 
 **Step 1 — About You**
+
 - Greeting: "Hi, {name}" (name from `/me` → service-profile, read-only)
 - CV upload (drag-and-drop + file picker, max 10MB, PDF/DOCX)
 - Target job title (text input with autocomplete from categories)
@@ -190,6 +198,7 @@ Three-step wizard matching the WWR screenshots:
 - Right panel: Stats ("Thousands of professionals hired..."), trust metrics
 
 **Step 2 — Curate Your Search**
+
 - Regions (multi-select with search: "Anywhere in the World", Africa, Europe, etc.)
 - Preferred time zones (multi-select with search: UTC offsets with names)
 - Country (select with flag icons)
@@ -199,6 +208,7 @@ Three-step wizard matching the WWR screenshots:
 - Right panel: Hero image + testimonial carousel (auto-rotating, pause on hover)
 
 **Step 3 — Subscription**
+
 - Plan display: pricing card showing introductory offer
 - Payment method selection:
   - Card/International → initiates Polar.sh checkout (via service-payment `CreatePaymentLink`)
@@ -208,6 +218,7 @@ Three-step wizard matching the WWR screenshots:
 - Right panel: same testimonial carousel
 
 **Data flow:**
+
 ```
 Prerequisites: User must be OIDC-authenticated before reaching /onboarding/
   → ProfileID available from JWT claims
@@ -230,9 +241,11 @@ Step 3 "Get Full Access" click →
 **Identity note:** The onboarding form does NOT ask for name or email — these already exist in service-profile from the OIDC registration. Step 1 shows the user's name (fetched from `/me`) as read-only context. The form only collects job-seeking domain data: CV, target title, experience, salary preferences, etc.
 
 #### Dashboard (`/dashboard/`)
+
 Requires authentication. Full SPA experience within the Hugo shell.
 
 **Sidebar navigation:**
+
 - Matches (default view)
 - Applications
 - Saved Jobs
@@ -240,33 +253,39 @@ Requires authentication. Full SPA experience within the Hugo shell.
 - Subscription & Billing
 
 **Matches view:**
+
 - Feed of matched jobs sorted by match score (from `GET /candidates/matches`)
 - Each match card shows: job title, company, match score (percentage), key matching skills highlighted, salary, "View Job" and "Apply" buttons
 - Match status badges: New, Viewed, Applied
 - Infinite scroll pagination
 
 **Applications view:**
+
 - List of jobs applied to (from `CandidateApplication` table)
 - Status tracking: Pending, Submitted, Interviewing, Offer, Rejected
 - Timeline view per application
 
 **Saved Jobs view:**
+
 - Bookmarked jobs (stored via API, new endpoint needed)
 - Quick apply / remove actions
 
 **Profile & Preferences view:**
+
 - Edit all fields from onboarding steps 1 & 2
 - Re-upload CV
 - Communication preferences (email, WhatsApp, Telegram, SMS toggles)
 - Delete account
 
 **Subscription & Billing view:**
+
 - Current plan and status
 - Payment history (from service-payment `SearchInvoices`)
 - Upgrade/downgrade/cancel actions
 - Add/change payment method
 
 #### Auth Pages (`/auth/login/`, `/auth/callback/`)
+
 OIDC Authorization Code + PKCE flow:
 
 ```
@@ -333,11 +352,11 @@ OAUTH2_WELL_KNOWN_JWK=https://idp.example.com/.well-known/jwks.json
 
 JWT `roles` claim determines access:
 
-| Role | Access |
-|------|--------|
-| `jobseeker` | Dashboard, matches, applications, preferences, search |
-| `employer` | ATS, job posting, applicant review (future sub-project) |
-| `admin` | All of above + data browser + analytics (future sub-project) |
+| Role        | Access                                                       |
+| ----------- | ------------------------------------------------------------ |
+| `jobseeker` | Dashboard, matches, applications, preferences, search        |
+| `employer`  | ATS, job posting, applicant review (future sub-project)      |
+| `admin`     | All of above + data browser + analytics (future sub-project) |
 
 ### Auth Guard Pattern
 
@@ -356,9 +375,9 @@ Hugo partial `partials/auth-guard.html` wraps protected content:
 
 ### Subscription Plans
 
-| Plan | Price | Features |
-|------|-------|----------|
-| Free | $0 | Browse jobs, basic search, 5 saved jobs |
+| Plan    | Price                                           | Features                                                                         |
+| ------- | ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| Free    | $0                                              | Browse jobs, basic search, 5 saved jobs                                          |
 | Premium | $2.95 first month, then $14.95/month (12-month) | Full search, unlimited saves, AI match scores, priority alerts, ATS resume score |
 
 ### Integration Flow
@@ -367,16 +386,17 @@ stawi.opportunities integrates with service-payment via ConnectRPC (buf.build-ge
 
 **New endpoints on candidates service:**
 
-| Endpoint | Maps To | Purpose |
-|----------|---------|---------|
-| `POST /billing/subscribe` | `BillingService.CreateSubscription` | Start a subscription for a candidate |
-| `POST /billing/checkout` | `PaymentService.CreatePaymentLink` | Generate Polar.sh checkout URL for card payments |
-| `POST /billing/mobile-pay` | `PaymentService.InitiatePrompt` | Trigger M-PESA/MTN/Airtel STK push |
-| `GET /billing/subscription` | `BillingService.GetSubscription` | Current subscription status |
-| `GET /billing/invoices` | `BillingService.SearchInvoices` | Payment history |
-| `POST /billing/cancel` | `BillingService.CancelSubscription` | Cancel subscription |
+| Endpoint                    | Maps To                             | Purpose                                          |
+| --------------------------- | ----------------------------------- | ------------------------------------------------ |
+| `POST /billing/subscribe`   | `BillingService.CreateSubscription` | Start a subscription for a candidate             |
+| `POST /billing/checkout`    | `PaymentService.CreatePaymentLink`  | Generate Polar.sh checkout URL for card payments |
+| `POST /billing/mobile-pay`  | `PaymentService.InitiatePrompt`     | Trigger M-PESA/MTN/Airtel STK push               |
+| `GET /billing/subscription` | `BillingService.GetSubscription`    | Current subscription status                      |
+| `GET /billing/invoices`     | `BillingService.SearchInvoices`     | Payment history                                  |
+| `POST /billing/cancel`      | `BillingService.CancelSubscription` | Cancel subscription                              |
 
 **Webhook handler** (new endpoint on candidates service):
+
 - `POST /webhooks/payment` — receives payment confirmations from service-payment
 - Updates `CandidateProfile.Subscription` field to `paid`/`cancelled`
 - Records payment timestamp
@@ -384,12 +404,14 @@ stawi.opportunities integrates with service-payment via ConnectRPC (buf.build-ge
 ### Payment UX
 
 **Card/International users:**
+
 1. Click "Pay with Card" → `POST /billing/checkout` → returns Polar.sh checkout URL
 2. Redirect to Polar.sh hosted checkout (handles card entry, 3DS, tax)
 3. Polar.sh redirects back to `/onboarding/?payment=success`
 4. Webhook confirms → subscription activated
 
 **Mobile Money users (East Africa):**
+
 1. Select provider (M-PESA, MTN, Airtel) and enter phone number
 2. Click "Pay" → `POST /billing/mobile-pay` → triggers STK push
 3. User confirms on their phone
@@ -451,18 +473,21 @@ Build step: `npx pagefind --site public --glob "jobs/**/*.html"`
 ### Component-Specific A11y
 
 **Job Cards:**
+
 - Card is a link (entire card clickable)
 - Company logo has descriptive `alt` text
 - Badge text (Featured, New) uses `aria-label` not just color
 - Salary and location are read by screen readers in logical order
 
 **Search:**
+
 - Pagefind UI has built-in ARIA: `role="search"`, `aria-live="polite"` for results
 - Custom result count announcement: "X jobs found for [query]"
 - Filter changes announced via `aria-live`
 - Keyboard: `/` focuses search, `Escape` clears, arrow keys navigate results
 
 **Onboarding Wizard:**
+
 - Progress bar: `role="progressbar"` with `aria-valuenow`, `aria-valuemin`, `aria-valuemax`
 - Step indicator: "Step X of 3" announced on navigation
 - Form validation: `aria-invalid="true"` + `aria-describedby` linking to error messages
@@ -471,17 +496,20 @@ Build step: `npx pagefind --site public --glob "jobs/**/*.html"`
 - Multi-select (regions, timezones): `role="listbox"` with `aria-multiselectable`
 
 **Dashboard:**
+
 - Sidebar: `role="navigation"` with `aria-current="page"` on active item
 - Match cards: match score is not color-only (includes percentage text)
 - Infinite scroll: "Load more" button as fallback; `aria-live` announces new items
 - Status badges use text labels, not icons alone
 
 **Auth:**
+
 - Login button has `aria-label="Sign in with [provider]"`
 - Loading states announced via `aria-live="assertive"`
 - Error states use `role="alert"`
 
 **Mobile / Touch:**
+
 - Minimum 44x44px touch targets
 - No hover-only interactions
 - Swipe gestures have button alternatives
@@ -635,6 +663,7 @@ Domain models contain only domain-specific data. Identity (name, avatar, contact
 ### Changes to `CandidateProfile`
 
 **Remove identity fields** that now come from service-profile:
+
 - Remove `Email` as unique key (replaced by `ProfileID`)
 - Remove `Name`, `Phone` (come from service-profile)
 - Keep `CVRawText`, `CVUrl` (domain-specific, not identity)
@@ -665,6 +694,7 @@ PlanID         string `gorm:"type:varchar(100)" json:"plan_id"`
 ```
 
 **Fields that remain unchanged** (these are domain data, not identity):
+
 - `CVUrl`, `CVRawText` — CV storage
 - `CurrentTitle`, `Seniority`, `YearsExperience` — AI-extracted profile
 - `Skills`, `StrongSkills`, `WorkingSkills`, `ToolsFrameworks` — competencies
@@ -672,7 +702,7 @@ PlanID         string `gorm:"type:varchar(100)" json:"plan_id"`
 - `SalaryMin`, `SalaryMax`, `Currency` — compensation
 - `Subscription`, `AutoApply` — feature flags
 - `Embedding`, `MatchesSent`, `LastMatchedAt` — matching metadata
-- `CommEmail`, `CommWhatsapp`, `CommTelegram`, `CommSMS` — delivery channel *preferences* (not the actual contact details)
+- `CommEmail`, `CommWhatsapp`, `CommTelegram`, `CommSMS` — delivery channel _preferences_ (not the actual contact details)
 
 ### New: `SavedJob`
 

@@ -1,5 +1,5 @@
-import { createAuthRuntime, type AuthRuntime } from "@stawi/auth-runtime";
-import { getConfig } from "@/utils/config";
+import { createAuthRuntime, type AuthRuntime } from '@stawi/auth-runtime';
+import { getConfig } from '@/utils/config';
 
 // Module-level singleton. @stawi/auth-runtime 1.0+ doesn't manage a
 // global instance itself (unlike 0.2.x), so callers share state by
@@ -17,7 +17,7 @@ export function authRuntime(): AuthRuntime {
     idpBaseUrl: cfg.oidcIssuer,
     apiBaseUrl: cfg.candidatesAPIURL,
     redirectUri: cfg.oidcRedirectURI,
-    scopes: ["openid", "profile", "offline_access"],
+    scopes: ['openid', 'profile', 'offline_access'],
     skipFedCM: true,
   });
   return instance;

@@ -107,6 +107,13 @@ type Variant struct {
 	CanonicalID     *string        `gorm:"column:canonical_id"`
 	Slug            *string        `gorm:"column:slug"`
 	RawContentHash  *string        `gorm:"column:raw_content_hash"`
+	// RawPayloadID + CrawlJobID forward-link a variant row to the
+	// audit ledger written by the crawler (raw_payloads / crawl_jobs).
+	// Both nullable because (a) the rejected-variant path writes a row
+	// before either link is meaningful, and (b) tests construct
+	// variants without a backing crawl.
+	RawPayloadID    *string        `gorm:"column:raw_payload_id"`
+	CrawlJobID      *string        `gorm:"column:crawl_job_id"`
 	StageAt         time.Time      `gorm:"column:stage_at;not null;default:now()"`
 	Attempts        map[string]any `gorm:"column:attempts;type:jsonb;serializer:json"`
 	LastError       *string        `gorm:"column:last_error"`
@@ -344,6 +351,9 @@ type Opportunity struct {
 	Currency      *string        `gorm:"column:currency"`
 	AmountMin     *float64       `gorm:"column:amount_min"`
 	AmountMax     *float64       `gorm:"column:amount_max"`
+	EmploymentType *string       `gorm:"column:employment_type"`
+	Seniority      *string       `gorm:"column:seniority"`
+	GeoScope       *string       `gorm:"column:geo_scope"`
 	Status        string         `gorm:"column:status;not null;default:active"`
 	FirstSeenAt   time.Time      `gorm:"column:first_seen_at;not null;default:now()"`
 	LastSeenAt    time.Time      `gorm:"column:last_seen_at;not null;default:now()"`
@@ -404,6 +414,7 @@ func (s *Store) UpsertOpportunity(ctx context.Context, o Opportunity) error {
                 country, region, city,
                 remote, apply_url, posted_at, deadline,
                 currency, amount_min, amount_max,
+                employment_type, seniority, geo_scope,
                 status, first_seen_at, last_seen_at,
                 attributes, quality_score, hidden, hidden_reason
             ) VALUES (
@@ -413,36 +424,41 @@ func (s *Store) UpsertOpportunity(ctx context.Context, o Opportunity) error {
                 ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
+                ?, ?, ?,
                 COALESCE(?::jsonb, '{}'::jsonb), ?, ?, ?
             )
             ON CONFLICT (canonical_id) DO UPDATE SET
-                slug           = COALESCE(NULLIF(EXCLUDED.slug,''),           opportunities.slug),
-                kind           = COALESCE(NULLIF(EXCLUDED.kind,''),           opportunities.kind),
-                source_id      = COALESCE(NULLIF(EXCLUDED.source_id,''),      opportunities.source_id),
-                title          = COALESCE(NULLIF(EXCLUDED.title,''),          opportunities.title),
-                description    = COALESCE(NULLIF(EXCLUDED.description,''),    opportunities.description),
-                issuing_entity = COALESCE(NULLIF(EXCLUDED.issuing_entity,''), opportunities.issuing_entity),
-                country        = COALESCE(NULLIF(EXCLUDED.country,''),        opportunities.country),
-                region         = COALESCE(NULLIF(EXCLUDED.region,''),         opportunities.region),
-                city           = COALESCE(NULLIF(EXCLUDED.city,''),           opportunities.city),
-                remote         = COALESCE(EXCLUDED.remote,                    opportunities.remote),
-                apply_url      = COALESCE(NULLIF(EXCLUDED.apply_url,''),      opportunities.apply_url),
-                posted_at      = COALESCE(EXCLUDED.posted_at,                 opportunities.posted_at),
-                deadline       = COALESCE(EXCLUDED.deadline,                  opportunities.deadline),
-                currency       = COALESCE(NULLIF(EXCLUDED.currency,''),       opportunities.currency),
-                amount_min     = GREATEST(COALESCE(EXCLUDED.amount_min, 0),   COALESCE(opportunities.amount_min, 0)),
-                amount_max     = GREATEST(COALESCE(EXCLUDED.amount_max, 0),   COALESCE(opportunities.amount_max, 0)),
-                status         = COALESCE(NULLIF(EXCLUDED.status,''),         opportunities.status),
-                last_seen_at   = GREATEST(EXCLUDED.last_seen_at,              opportunities.last_seen_at),
-                attributes     = opportunities.attributes || COALESCE(EXCLUDED.attributes, '{}'::jsonb),
-                quality_score  = COALESCE(EXCLUDED.quality_score,             opportunities.quality_score),
-                updated_at     = now()
+                slug            = COALESCE(NULLIF(EXCLUDED.slug,''),            opportunities.slug),
+                kind            = COALESCE(NULLIF(EXCLUDED.kind,''),            opportunities.kind),
+                source_id       = COALESCE(NULLIF(EXCLUDED.source_id,''),       opportunities.source_id),
+                title           = COALESCE(NULLIF(EXCLUDED.title,''),           opportunities.title),
+                description     = COALESCE(NULLIF(EXCLUDED.description,''),     opportunities.description),
+                issuing_entity  = COALESCE(NULLIF(EXCLUDED.issuing_entity,''),  opportunities.issuing_entity),
+                country         = COALESCE(NULLIF(EXCLUDED.country,''),         opportunities.country),
+                region          = COALESCE(NULLIF(EXCLUDED.region,''),          opportunities.region),
+                city            = COALESCE(NULLIF(EXCLUDED.city,''),            opportunities.city),
+                remote          = COALESCE(EXCLUDED.remote,                     opportunities.remote),
+                apply_url       = COALESCE(NULLIF(EXCLUDED.apply_url,''),       opportunities.apply_url),
+                posted_at       = COALESCE(EXCLUDED.posted_at,                  opportunities.posted_at),
+                deadline        = COALESCE(EXCLUDED.deadline,                   opportunities.deadline),
+                currency        = COALESCE(NULLIF(EXCLUDED.currency,''),        opportunities.currency),
+                amount_min      = GREATEST(COALESCE(EXCLUDED.amount_min, 0),    COALESCE(opportunities.amount_min, 0)),
+                amount_max      = GREATEST(COALESCE(EXCLUDED.amount_max, 0),    COALESCE(opportunities.amount_max, 0)),
+                employment_type = COALESCE(NULLIF(EXCLUDED.employment_type,''), opportunities.employment_type),
+                seniority       = COALESCE(NULLIF(EXCLUDED.seniority,''),       opportunities.seniority),
+                geo_scope       = COALESCE(NULLIF(EXCLUDED.geo_scope,''),       opportunities.geo_scope),
+                status          = COALESCE(NULLIF(EXCLUDED.status,''),          opportunities.status),
+                last_seen_at    = GREATEST(EXCLUDED.last_seen_at,               opportunities.last_seen_at),
+                attributes      = opportunities.attributes || COALESCE(EXCLUDED.attributes, '{}'::jsonb),
+                quality_score   = COALESCE(EXCLUDED.quality_score,              opportunities.quality_score),
+                updated_at      = now()
         `,
 			o.CanonicalID, o.Slug, o.Kind, nullStr(o.SourceID),
 			o.Title, nullStr(o.Description), nullStr(o.IssuingEntity),
 			nullStr(o.Country), nullStr(o.Region), nullStr(o.City),
 			o.Remote, nullStr(o.ApplyURL), o.PostedAt, o.Deadline,
 			nullStr(o.Currency), o.AmountMin, o.AmountMax,
+			nullStr(o.EmploymentType), nullStr(o.Seniority), nullStr(o.GeoScope),
 			o.Status, o.FirstSeenAt, o.LastSeenAt,
 			attrsJSON, o.QualityScore, o.Hidden, nullStr(o.HiddenReason),
 		).Error

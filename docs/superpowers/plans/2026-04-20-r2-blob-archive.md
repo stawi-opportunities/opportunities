@@ -15,6 +15,7 @@
 ## File Structure
 
 ### Created
+
 - `pkg/archive/keys.go` — pure string helpers (`RawKey`, `ClusterDir`, `CanonicalKey`, `VariantKey`, `ManifestKey`).
 - `pkg/archive/keys_test.go` — unit tests for key helpers.
 - `pkg/archive/archive.go` — `Archive` interface + typed payloads (`CanonicalSnapshot`, `VariantBlob`, `Manifest`) + `ErrNotFound`.
@@ -28,6 +29,7 @@
 - `scripts/archive-verify.sh` — QA script invoked by `make archive-verify`.
 
 ### Modified
+
 - `pkg/domain/models.go` — drop `RawPayload.Body`; add `RawPayload.SizeBytes`. Drop `JobVariant.{RawHTML, CleanHTML, Markdown}`; add `JobVariant.RawContentHash`. Add `CanonicalJob.DeletedAt`, `CanonicalJob.R2PurgedAt`. Add new model `RawRef`.
 - `apps/crawler/cmd/main.go` — hash body, `archive.HasRaw` + `archive.PutRaw`, drop `Body: body` from `RawPayload` create; AutoMigrate `RawRef`; wire `Archive` config.
 - `apps/crawler/config/config.go` — add `ArchiveR2*` env fields for the separate archive bucket.
@@ -43,6 +45,7 @@
 ## Task 1: Archive key helpers (pure strings)
 
 **Files:**
+
 - Create: `pkg/archive/keys.go`
 - Create: `pkg/archive/keys_test.go`
 
@@ -155,6 +158,7 @@ git commit -m "feat(archive): add R2 key layout helpers"
 ## Task 2: Archive interface + typed payloads
 
 **Files:**
+
 - Create: `pkg/archive/archive.go`
 
 - [ ] **Step 1: Write the interface + types**
@@ -297,6 +301,7 @@ git commit -m "feat(archive): define Archive interface + typed payloads"
 ## Task 3: In-memory FakeArchive for downstream tests
 
 **Files:**
+
 - Create: `pkg/archive/testing.go`
 - Create: `pkg/archive/fake_test.go`
 
@@ -548,6 +553,7 @@ git commit -m "feat(archive): add in-memory FakeArchive for tests"
 ## Task 4: R2Archive production implementation
 
 **Files:**
+
 - Create: `pkg/archive/r2.go`
 
 - [ ] **Step 1: Implement R2Archive**
@@ -809,6 +815,7 @@ git commit -m "feat(archive): implement R2Archive backed by aws-sdk-go-v2 S3 cli
 ## Task 5: Domain model updates — drop blob columns, add hash pointers
 
 **Files:**
+
 - Modify: `pkg/domain/models.go`
 
 - [ ] **Step 1: Update `RawPayload` — drop Body, add SizeBytes**
@@ -846,6 +853,7 @@ Find the block (currently contains `RawHTML`, `CleanHTML`, `Markdown`) and repla
 ```
 
 Delete these fields:
+
 ```go
 	RawHTML         string  `gorm:"type:text" json:"-"`
 	CleanHTML       string  `gorm:"type:text" json:"-"`
@@ -907,6 +915,7 @@ git commit -m "feat(domain): move blobs to R2 — drop Body/RawHTML/CleanHTML/Ma
 ## Task 6: `RawRefRepository` with ref-count helpers
 
 **Files:**
+
 - Create: `pkg/repository/raw_ref.go`
 - Create: `pkg/repository/raw_ref_test.go`
 
@@ -1101,6 +1110,7 @@ git commit -m "feat(repo): add RawRefRepository with ref-count GC helpers"
 ## Task 7: Wire archive config + AutoMigrate new models
 
 **Files:**
+
 - Modify: `apps/crawler/config/config.go`
 - Modify: `apps/crawler/cmd/main.go` (AutoMigrate list + archive construction)
 - Modify: `apps/api/cmd/main.go` (AutoMigrate list)
@@ -1196,6 +1206,7 @@ git commit -m "feat(config): wire archive R2 bucket + AutoMigrate RawRef"
 ## Task 8: Crawler writes raw body to archive, drops Body from DB
 
 **Files:**
+
 - Modify: `apps/crawler/cmd/main.go`
 
 - [ ] **Step 1: Rewrite the body-storage path**
@@ -1287,6 +1298,7 @@ git commit -m "feat(crawler): write raw body to R2 archive; store only content_h
 ## Task 9: Normalize handler — write variant.json + manifest to archive
 
 **Files:**
+
 - Modify: `pkg/pipeline/handlers/normalize.go`
 - Create: `pkg/pipeline/handlers/normalize_test.go`
 
@@ -1447,13 +1459,14 @@ git add pkg/pipeline/handlers/normalize.go
 git commit -m "feat(normalize): read raw from archive, persist processed variant blob to R2"
 ```
 
-*Note:* JobVariant currently has no `ClusterID` column. The canonical handler assigns it. See Task 10 Step 4.
+_Note:_ JobVariant currently has no `ClusterID` column. The canonical handler assigns it. See Task 10 Step 4.
 
 ---
 
 ## Task 10: Canonical handler — write canonical.json + manifest + raw_refs
 
 **Files:**
+
 - Modify: `pkg/pipeline/handlers/canonical.go`
 - Modify: `pkg/domain/models.go` (add `JobVariant.ClusterID`)
 
@@ -1643,6 +1656,7 @@ git commit -m "feat(canonical): write canonical.json + manifest + raw_refs to ar
 ## Task 11: Purge sweeper — status='deleted' → physical R2 teardown
 
 **Files:**
+
 - Create: `apps/crawler/cmd/r2_purge.go`
 - Modify: `apps/crawler/cmd/main.go` (register cron + admin endpoint)
 
@@ -1780,11 +1794,13 @@ git commit -m "feat(crawler): add R2 purge sweeper for status='deleted' canonica
 ## Task 12: Status-flip hook to stamp `deleted_status_at`
 
 **Files:**
+
 - Modify: `pkg/repository/job.go`
 
 - [ ] **Step 1: Find every place that flips status to 'deleted'**
 
 Run:
+
 ```
 grep -rn '"deleted"' apps/ pkg/ --include="*.go" | grep -iE "status.*deleted|deleted.*status"
 ```
@@ -1826,6 +1842,7 @@ git commit -m "feat(retention): stamp deleted_status_at on status flips for R2 p
 ## Task 13: Integration test against minio via testcontainers
 
 **Files:**
+
 - Create: `pkg/archive/r2_test.go`
 
 - [ ] **Step 1: Write the integration test**
@@ -1972,6 +1989,7 @@ git commit -m "test(archive): add integration test against minio via testcontain
 ## Task 14: `make archive-verify` QA script
 
 **Files:**
+
 - Create: `scripts/archive-verify.sh`
 - Modify: `Makefile`
 
@@ -2091,6 +2109,7 @@ git commit -m "feat(qa): add archive-verify script to catch DB ↔ R2 drift"
 ## Task 15: Backpressure — confirm gate is queue-depth-based
 
 **Files:**
+
 - Modify: `pkg/backpressure/` (only if current gate still references DB state)
 
 - [ ] **Step 1: Read current gate implementation**
@@ -2152,6 +2171,7 @@ git commit -m "feat(backpressure): lock in NATS-queue-depth signal (post-archive
 ## Task 16: Reconciliation — orphan cluster dir cleanup
 
 **Files:**
+
 - Create: `apps/crawler/cmd/r2_reconcile.go`
 - Modify: `apps/crawler/cmd/main.go`
 
@@ -2279,6 +2299,7 @@ func (a *R2Archive) Client() *s3.Client { return a.client }
 ```
 
 Then in main:
+
 ```go
 reconcileOrphans(r.Context(), arch.(*archive.R2Archive).Client(), cfg.ArchiveR2Bucket, dbFn, arch)
 ```
@@ -2299,6 +2320,7 @@ git commit -m "feat(crawler): nightly reconciliation — delete orphan cluster d
 ## Task 17: Trustage workflow definitions for new cron endpoints
 
 **Files:**
+
 - Create: `definitions/trustage/r2-purge.json`
 - Create: `definitions/trustage/r2-reconcile.json`
 
@@ -2316,7 +2338,7 @@ git commit -m "feat(crawler): nightly reconciliation — delete orphan cluster d
       "method": "POST",
       "url": "http://opportunities-crawler.opportunities.svc:8080/admin/r2/purge?grace_days=7&limit=500",
       "timeout_seconds": 120,
-      "retry_policy": {"max_attempts": 2, "backoff_seconds": 60}
+      "retry_policy": { "max_attempts": 2, "backoff_seconds": 60 }
     }
   ]
 }
@@ -2336,7 +2358,7 @@ git commit -m "feat(crawler): nightly reconciliation — delete orphan cluster d
       "method": "POST",
       "url": "http://opportunities-crawler.opportunities.svc:8080/admin/r2/reconcile",
       "timeout_seconds": 300,
-      "retry_policy": {"max_attempts": 2, "backoff_seconds": 120}
+      "retry_policy": { "max_attempts": 2, "backoff_seconds": 120 }
     }
   ]
 }
@@ -2354,6 +2376,7 @@ git commit -m "feat(trustage): schedule R2 purge + reconcile crons"
 ## Task 18: Deployment — provision bucket + secrets
 
 **Files:**
+
 - Modify: `deploy/` Helm values / Kustomize overlays / Vault paths (specific files depend on your GitOps layout — find them with `grep -rn R2_BUCKET deploy/`).
 
 - [ ] **Step 1: Create the bucket**
@@ -2361,12 +2384,14 @@ git commit -m "feat(trustage): schedule R2 purge + reconcile crons"
 In Cloudflare dashboard (or via wrangler CLI): create `opportunities-archive` as a private bucket (no public access, no custom domain).
 
 Configure the R2 lifecycle rule:
+
 - Transition to IA storage class after 30 days.
 - NO deletion rule.
 
 - [ ] **Step 2: Mint new access keys**
 
 Create a read-write API token scoped ONLY to `opportunities-archive`. Store four values in Vault under `antinvestor/opportunities/common/archive-r2/`:
+
 - `account_id`
 - `access_key_id`
 - `secret_access_key`
@@ -2395,6 +2420,7 @@ git push
 ## Self-Review Summary
 
 **Spec coverage:**
+
 - ✅ Archive interface + private bucket — Tasks 2, 4, 7, 18.
 - ✅ Co-located cluster bundles (`clusters/{id}/...`) — Tasks 1 (keys), 9–10.
 - ✅ Content-hash dedup (`raw/{sha256}`) — Tasks 4, 8.

@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/backmarket",
     "country": "FR",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "fr",
     "priority": "normal",
     "region": "europe",
@@ -15,9 +13,7 @@
     "base_url": "https://boards.greenhouse.io/alan",
     "country": "FR",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "fr",
     "priority": "normal",
     "region": "europe",
@@ -27,9 +23,7 @@
     "base_url": "https://boards.greenhouse.io/qonto",
     "country": "FR",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "fr",
     "priority": "normal",
     "region": "europe",
@@ -39,9 +33,7 @@
     "base_url": "https://jobs.lever.co/payfit",
     "country": "FR",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "fr",
     "priority": "normal",
     "region": "europe",

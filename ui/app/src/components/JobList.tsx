@@ -1,7 +1,15 @@
+<<<<<<< HEAD
 import { useMemo, useState } from "react";
 import Cascade from "./Cascade";
 import { useCandidateProfile } from "@/hooks/useCandidateProfile";
 import type { FeedParams } from "@/types/search";
+=======
+import { useMemo } from 'react';
+import Cascade from './Cascade';
+import { useAuth } from '@/providers/AuthProvider';
+import { useQuery } from '@tanstack/react-query';
+import { fetchCandidate } from '@/api/candidates';
+>>>>>>> upstream/main
 
 type FilterChip = { label: string; key: "remote_type" | "employment_type" | "seniority"; value: string };
 
@@ -16,6 +24,7 @@ const CHIPS: FilterChip[] = [
 
 /** /jobs/ — tiered discovery feed with quick-filter chips. */
 export default function JobList() {
+<<<<<<< HEAD
   const { preferredCountries, preferredLanguages } = useCandidateProfile();
   const [active, setActive] = useState<Partial<Record<FilterChip["key"], string>>>({});
 
@@ -34,11 +43,34 @@ export default function JobList() {
   const filters = useMemo<FeedParams>(
     () => ({ sort: "recent", ...active }),
     [active],
+=======
+  const auth = useAuth();
+  const authed = auth.state === 'authenticated';
+
+  // Pull the candidate profile only if authenticated — its country /
+  // language preferences drive the "preferred" tier. One lightweight
+  // request that queries the candidates service's /me/profile.
+  const profile = useQuery({
+    queryKey: ['candidate-profile'],
+    queryFn: fetchCandidate,
+    enabled: authed,
+    staleTime: 5 * 60_000,
+  });
+
+  const preferredCountries = useMemo(
+    () => splitCSV(profile.data?.preferred_countries),
+    [profile.data?.preferred_countries]
+  );
+  const preferredLanguages = useMemo(
+    () => splitCSV(profile.data?.languages),
+    [profile.data?.languages]
+>>>>>>> upstream/main
   );
 
   const hasFilters = Object.keys(active).length > 0;
 
   return (
+<<<<<<< HEAD
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
         {/* Main column */}
@@ -183,6 +215,19 @@ export default function JobList() {
           </div>
         </aside>
       </div>
+=======
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <h1 className="text-3xl font-bold">All jobs</h1>
+      <p className="mt-2 text-gray-600">
+        Most relevant first, based on your location and language.
+      </p>
+      <Cascade
+        filters={{ sort: 'recent' }}
+        preferredCountries={preferredCountries}
+        preferredLanguages={preferredLanguages}
+        tierLimit={25}
+      />
+>>>>>>> upstream/main
     </div>
   );
 }

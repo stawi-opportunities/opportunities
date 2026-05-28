@@ -15,6 +15,7 @@
 ## File Structure
 
 ### New Files
+
 ```
 pkg/pipeline/handlers/dedup.go          ← DedupHandler: variant.raw.stored → variant.deduped
 pkg/pipeline/handlers/normalize.go      ← NormalizeHandler: variant.deduped → variant.normalized
@@ -26,12 +27,14 @@ pkg/pipeline/handlers/payloads.go       ← shared event payloads and constants
 ```
 
 ### Modified Files
+
 ```
 apps/crawler/cmd/main.go                ← rewrite processSource to emit events, register handlers
 apps/crawler/service/events/            ← remove old embedding.go and enrichment.go (replaced)
 ```
 
 ### Deleted Files
+
 ```
 apps/crawler/service/events/embedding.go    ← replaced by canonical handler
 apps/crawler/service/events/enrichment.go   ← replaced by normalize handler
@@ -42,6 +45,7 @@ apps/crawler/service/events/enrichment.go   ← replaced by normalize handler
 ## Task 1: Event Payloads & Constants
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/payloads.go`
 
 - [ ] **Step 1: Create shared payloads**
@@ -98,6 +102,7 @@ git commit -m "feat: add pipeline event payloads and constants"
 ## Task 2: DedupHandler
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/dedup.go`
 
 - [ ] **Step 1: Create handler**
@@ -121,6 +126,7 @@ type DedupHandler struct {
 Implement Name/PayloadType/Validate/Execute following the Frame event handler pattern (see `apps/crawler/service/events/embedding.go` for the pattern).
 
 Execute logic:
+
 1. Load variant by ID
 2. If variant.Stage != "raw", skip (already processed)
 3. Acquire advisory lock on hard_key (using `advisoryLockKey` from fnv hash)
@@ -143,6 +149,7 @@ git commit -m "feat: add DedupHandler for stage raw→deduped"
 ## Task 3: NormalizeHandler
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/normalize.go`
 
 - [ ] **Step 1: Create handler**
@@ -153,6 +160,7 @@ Read `pkg/extraction/extractor.go` for `Extract` method and `JobFields` struct.
 Read `pkg/pipeline/worker.go` for `mergeExtractedFields` pattern.
 
 Execute logic:
+
 1. Load variant by ID
 2. If variant.Stage != "deduped", skip
 3. Get content to analyze: use `variant.Markdown` if available, fall back to `variant.Description`
@@ -177,6 +185,7 @@ git commit -m "feat: add NormalizeHandler for stage deduped→normalized with AI
 ## Task 4: ValidateHandler
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/validate.go`
 
 - [ ] **Step 1: Create handler**
@@ -184,6 +193,7 @@ git commit -m "feat: add NormalizeHandler for stage deduped→normalized with AI
 The ValidateHandler receives `variant.normalized`, calls Ollama with a reviewer prompt to independently validate the extracted data, and either advances to `validated` or marks as `flagged`.
 
 Execute logic:
+
 1. Load variant by ID
 2. If variant.Stage != "normalized", skip
 3. Build validation prompt: "Review this job data for completeness and correctness: title={}, company={}, seniority={}, skills={}, ..."
@@ -199,6 +209,7 @@ Execute logic:
    - Check GetQualityRate — if > 0.5 → emit `source.quality.review`
 
 Create a separate `validationPrompt` constant for the reviewer prompt. The prompt must instruct the AI to evaluate:
+
 - Are title and description present and meaningful?
 - Does seniority match the description?
 - Are skills relevant to the role?
@@ -218,6 +229,7 @@ git commit -m "feat: add ValidateHandler for stage normalized→validated with A
 ## Task 5: CanonicalHandler
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/canonical.go`
 
 - [ ] **Step 1: Create handler**
@@ -228,6 +240,7 @@ Read `pkg/dedupe/dedupe.go` for `UpsertAndCluster`.
 Read `pkg/scoring/scorer.go` for `Score`.
 
 Execute logic:
+
 1. Load variant by ID
 2. If variant.Stage != "validated", skip
 3. Call `dedupeEngine.UpsertAndCluster(ctx, variant)` — this handles cluster creation with advisory locks
@@ -252,6 +265,7 @@ git commit -m "feat: add CanonicalHandler for stage validated→ready with embed
 ## Task 6: SourceExpansionHandler
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/source_expand.go`
 
 - [ ] **Step 1: Create handler**
@@ -261,6 +275,7 @@ The SourceExpansionHandler receives `source.urls.discovered`, follows redirect c
 Read `pkg/connectors/httpx/client.go` for HTTP client.
 
 Execute logic:
+
 1. Parse SourceURLsPayload — list of discovered URLs
 2. For each URL:
    a. Follow redirect chain: send HTTP HEAD requests, follow Location headers, max 10 hops
@@ -284,6 +299,7 @@ git commit -m "feat: add SourceExpansionHandler for discovering new job sites"
 ## Task 7: SourceQualityHandler
 
 **Files:**
+
 - Create: `pkg/pipeline/handlers/source_quality.go`
 
 - [ ] **Step 1: Create handler**
@@ -291,6 +307,7 @@ git commit -m "feat: add SourceExpansionHandler for discovering new job sites"
 The SourceQualityHandler receives `source.quality.review`, loads recent validated+flagged samples, asks AI to assess source quality, and applies the recommendation.
 
 Execute logic:
+
 1. Load source by ID
 2. Load last 20 validated variants + last 20 flagged variants from this source
 3. Build prompt: "Based on these job samples from {source_url}, assess the quality of this source..."
@@ -314,6 +331,7 @@ git commit -m "feat: add SourceQualityHandler for AI-driven source assessment"
 ## Task 8: Rewrite Crawler to Use Pipeline Events
 
 **Files:**
+
 - Modify: `apps/crawler/cmd/main.go`
 - Delete: `apps/crawler/service/events/embedding.go`
 - Delete: `apps/crawler/service/events/enrichment.go`
@@ -328,6 +346,7 @@ In main.go, replace the existing event handler registration:
 ```
 
 Register all 6 handlers:
+
 ```go
 svc.Init(ctx, frame.WithRegisterEvents(
     handlers.NewDedupHandler(jobRepo, svc),
@@ -366,6 +385,7 @@ defer bloomFilter.Close()
 ```
 
 Add `ValkeyAddr string` to the crawler config:
+
 ```go
 ValkeyAddr string `env:"VALKEY_ADDR" envDefault:""`
 ```
@@ -396,6 +416,7 @@ svc.AddPreStartMethod(func(preCtx context.Context, _ *frame.Service) {
 ```
 
 With helper:
+
 ```go
 func stageToEvent(stage string) string {
     switch stage {
@@ -437,6 +458,7 @@ git commit -m "feat: replace inline pipeline with staged event handlers, bloom f
 - Task 8 must be last
 
 **After Plan B completes:** The crawler will process jobs through the full pipeline:
+
 ```
 Crawl (fast) → Dedup (code) → Normalize (AI) → Validate (AI) → Canonical (embed+score) → Ready
 ```

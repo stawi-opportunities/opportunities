@@ -14,14 +14,14 @@
 
 ## Antinvestor Service Integration Map
 
-| Need | Service | Client Package | Key Methods |
-|---|---|---|---|
-| Magic link auth | service-authentication | `authenticationv1connect` | `GetLoginEvent` |
-| Candidate identity | service-profile | `profilev1connect` | `Create`, `GetByContact`, `CreateContact`, `CreateContactVerification`, `CheckVerification` |
-| Match emails, verification | service-notification | `notificationv1connect` | `Send`, `TemplateSave` |
-| CV file storage | service-files | `filesv1connect` | `UploadContent`, `GetSignedDownloadUrl` |
-| Subscription payments | service-payment | `paymentv1connect` | `CreatePaymentLink`, `Status` |
-| Tracked apply/view links | redirect service | `redirectv1connect` | `CreateLink`, `GetLinkStats` |
+| Need                       | Service                | Client Package            | Key Methods                                                                                 |
+| -------------------------- | ---------------------- | ------------------------- | ------------------------------------------------------------------------------------------- |
+| Magic link auth            | service-authentication | `authenticationv1connect` | `GetLoginEvent`                                                                             |
+| Candidate identity         | service-profile        | `profilev1connect`        | `Create`, `GetByContact`, `CreateContact`, `CreateContactVerification`, `CheckVerification` |
+| Match emails, verification | service-notification   | `notificationv1connect`   | `Send`, `TemplateSave`                                                                      |
+| CV file storage            | service-files          | `filesv1connect`          | `UploadContent`, `GetSignedDownloadUrl`                                                     |
+| Subscription payments      | service-payment        | `paymentv1connect`        | `CreatePaymentLink`, `Status`                                                               |
+| Tracked apply/view links   | redirect service       | `redirectv1connect`       | `CreateLink`, `GetLinkStats`                                                                |
 
 All clients instantiated via `connection.NewServiceClient()` from `github.com/antinvestor/common/connection`.
 
@@ -50,11 +50,13 @@ apps/matching/Dockerfile                         ← Docker image
 ## Task 1: Domain Models
 
 **Files:**
+
 - Create: `pkg/domain/candidate.go`
 
 - [ ] **Step 1: Create candidate models**
 
 Create `pkg/domain/candidate.go` with:
+
 - `CandidateProfile` struct with GORM tags (all fields from spec Section 3)
 - `CandidateMatch` struct with GORM tags and `UNIQUE(candidate_id, canonical_job_id)`
 - `CandidateApplication` struct (schema only for future auto-apply)
@@ -75,6 +77,7 @@ git commit -m "feat: add candidate profile, match, and application domain models
 ## Task 2: Repositories
 
 **Files:**
+
 - Create: `pkg/repository/candidate.go`
 - Create: `pkg/repository/match.go`
 - Modify: `pkg/repository/job.go` (add `FilterForCandidate`)
@@ -82,6 +85,7 @@ git commit -m "feat: add candidate profile, match, and application domain models
 - [ ] **Step 1: Create candidate repository**
 
 `pkg/repository/candidate.go` with methods:
+
 - `Create`, `GetByID`, `GetByEmail`, `Update`, `UpdateStatus`
 - `UpdateEmbedding`, `IncrementMatchesSent`
 - `ListActive(limit)`, `ListAll(limit, offset)`, `Count`
@@ -91,6 +95,7 @@ Constructor: `NewCandidateRepository(db func(ctx, bool) *gorm.DB)`
 - [ ] **Step 2: Create match repository**
 
 `pkg/repository/match.go` with methods:
+
 - `Upsert` (ON CONFLICT candidate_id, canonical_job_id)
 - `UpsertBatch` (CreateInBatches 100)
 - `ListForCandidate(candidateID, limit)`, `ListUnsent(candidateID, limit)`
@@ -99,9 +104,11 @@ Constructor: `NewCandidateRepository(db func(ctx, bool) *gorm.DB)`
 - [ ] **Step 3: Add FilterForCandidate to job repository**
 
 Add to `pkg/repository/job.go`:
+
 ```go
 func (r *JobRepository) FilterForCandidate(ctx, candidate *domain.CandidateProfile, limit int) ([]*domain.CanonicalJob, error)
 ```
+
 Hard filters: remote_preference, salary floor, preferred_countries. Returns jobs ordered by quality_score DESC.
 
 - [ ] **Step 4: Verify build, commit**
@@ -117,6 +124,7 @@ git commit -m "feat: add candidate and match repositories with job filtering"
 ## Task 3: CV Extraction
 
 **Files:**
+
 - Create: `pkg/extraction/cv.go`
 
 - [ ] **Step 1: Add dependencies**
@@ -129,6 +137,7 @@ go get github.com/nguyenthenguyen/docx@latest
 - [ ] **Step 2: Create CV extraction module**
 
 `pkg/extraction/cv.go` with:
+
 - `CVFields` struct (name, email, phone, current_title, seniority, years_experience, strong_skills, working_skills, tools_frameworks, certifications, preferred_roles, languages, education, work_history, preferences)
 - `WorkHistoryEntry` struct (company, title, start_date, end_date, summary)
 - `ExtractTextFromPDF(data []byte) (string, error)` — uses `ledongthuc/pdf`
@@ -151,12 +160,14 @@ git commit -m "feat: add CV text extraction (PDF/DOCX) and AI profile extraction
 ## Task 4: Matching Algorithm
 
 **Files:**
+
 - Create: `pkg/matching/scorer.go`
 - Create: `pkg/matching/matcher.go`
 
 - [ ] **Step 1: Create match scorer**
 
 `pkg/matching/scorer.go` with pure functions:
+
 - `ComputeMatchScore(skillsOverlap, embeddingSimilarity, qualityScore, salaryFit, recency, seniorityFit) float64` — weighted composite (0.35/0.25/0.15/0.10/0.10/0.05)
 - `SkillsOverlap(candidateSkills, jobRequiredSkills string) float64` — Jaccard similarity on comma-separated strings
 - `SalaryFit(candidateMin, candidateMax, jobMin, jobMax float64) float64` — overlap check with gap decay
@@ -166,6 +177,7 @@ git commit -m "feat: add CV text extraction (PDF/DOCX) and AI profile extraction
 - [ ] **Step 2: Create matcher**
 
 `pkg/matching/matcher.go` with:
+
 - `Matcher` struct holding jobRepo, matchRepo, candidateRepo
 - `MatchCandidateToJobs(ctx, candidate) (int, error)` — Stage 1 (SQL filter) → Stage 2 (embedding cosine) → Stage 3 (composite score) → store matches where score >= 0.6
 - `MatchJobToCandidates(ctx, job) (int, error)` — same pipeline, reversed: one job against all active candidates
@@ -185,6 +197,7 @@ git commit -m "feat: add three-stage matching algorithm with composite scoring"
 ## Task 5: Antinvestor Service Clients
 
 **Files:**
+
 - Create: `apps/matching/service/clients.go`
 
 - [ ] **Step 1: Add antinvestor/common dependency**
@@ -229,6 +242,7 @@ func NewServiceClients(ctx context.Context, cfg *config.CandidatesConfig) (*Serv
 Read the exact `connection.NewServiceClient` signature from `/home/j/code/antinvestor/common/connection/` and the usage pattern from `/home/j/code/antinvestor/service-profile/apps/default/cmd/main.go` to get this right.
 
 The config needs service endpoint fields:
+
 ```go
 NotificationServiceURI string `env:"NOTIFICATION_SERVICE_URI" envDefault:""`
 FileServiceURI         string `env:"FILE_SERVICE_URI" envDefault:""`
@@ -250,17 +264,20 @@ git commit -m "feat: add antinvestor service client setup (notification, files, 
 ## Task 6: Event Handlers
 
 **Files:**
+
 - Create: `apps/matching/service/events/profile_created.go`
 - Create: `apps/matching/service/events/embedding.go`
 
 - [ ] **Step 1: Create profile created handler**
 
 `apps/matching/service/events/profile_created.go`:
+
 - Event name: `candidate.profile.created`
 - Payload: `{CandidateID int64}`
 - Execute: loads candidate → runs `matcher.MatchCandidateToJobs` → sends verification email via notification service
 
 The verification email uses `notificationv1connect.Send()`:
+
 ```
 Subject: "Your stawi.opportunities profile is ready"
 Body: "Hi {name}, here's what we understood from your CV: ..."
@@ -271,6 +288,7 @@ Uses redirect service to create tracked links in the email (e.g., "View profile"
 - [ ] **Step 2: Create candidate embedding handler**
 
 `apps/matching/service/events/embedding.go`:
+
 - Event name: `candidate.embedding.needed`
 - Payload: `{CandidateID int64, Text string}`
 - Execute: calls `extractor.Embed(ctx, text)` → stores via `candidateRepo.UpdateEmbedding`
@@ -290,6 +308,7 @@ git commit -m "feat: add candidate event handlers with notification and redirect
 ## Task 7: HTTP Handlers + Main
 
 **Files:**
+
 - Create: `apps/matching/service/handlers.go`
 - Create: `apps/matching/cmd/main.go`
 - Create: `apps/matching/config/config.go`
@@ -297,6 +316,7 @@ git commit -m "feat: add candidate event handlers with notification and redirect
 - [ ] **Step 1: Create config**
 
 `apps/matching/config/config.go`:
+
 ```go
 type CandidatesConfig struct {
     fconfig.ConfigurationDefault
@@ -315,34 +335,37 @@ type CandidatesConfig struct {
 
 `apps/matching/service/handlers.go` with functions returning `http.HandlerFunc`:
 
-| Route | Handler | Service Integration |
-|---|---|---|
-| `POST /candidates/register` | `registerHandler` | Files service (CV upload), Ollama (extraction), emit profile.created event |
-| `GET /candidates/profile` | `getProfileHandler` | Profile service (identity lookup) |
-| `PUT /candidates/profile` | `updateProfileHandler` | Update preferences, emit profile.updated event |
-| `POST /candidates/cv` | `uploadCVHandler` | Files service (store CV), Ollama (re-extract) |
-| `GET /candidates/matches` | `listMatchesHandler` | Redirect service (create tracked apply links) |
-| `POST /candidates/matches/:id/view` | `viewMatchHandler` | Redirect service (track view) |
-| `POST /candidates/subscribe` | `subscribeHandler` | Payment service (create payment link) |
-| `DELETE /candidates/subscribe` | `unsubscribeHandler` | Update subscription tier |
-| `POST /webhooks/inbound-email` | `inboundEmailHandler` | Files (store attachment), Ollama (extract), emit events |
-| `GET /admin/candidates` | `listCandidatesHandler` | Direct DB query |
-| `POST /admin/match/run` | `forceMatchHandler` | Run matcher for all active candidates |
+| Route                               | Handler                 | Service Integration                                                        |
+| ----------------------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `POST /candidates/register`         | `registerHandler`       | Files service (CV upload), Ollama (extraction), emit profile.created event |
+| `GET /candidates/profile`           | `getProfileHandler`     | Profile service (identity lookup)                                          |
+| `PUT /candidates/profile`           | `updateProfileHandler`  | Update preferences, emit profile.updated event                             |
+| `POST /candidates/cv`               | `uploadCVHandler`       | Files service (store CV), Ollama (re-extract)                              |
+| `GET /candidates/matches`           | `listMatchesHandler`    | Redirect service (create tracked apply links)                              |
+| `POST /candidates/matches/:id/view` | `viewMatchHandler`      | Redirect service (track view)                                              |
+| `POST /candidates/subscribe`        | `subscribeHandler`      | Payment service (create payment link)                                      |
+| `DELETE /candidates/subscribe`      | `unsubscribeHandler`    | Update subscription tier                                                   |
+| `POST /webhooks/inbound-email`      | `inboundEmailHandler`   | Files (store attachment), Ollama (extract), emit events                    |
+| `GET /admin/candidates`             | `listCandidatesHandler` | Direct DB query                                                            |
+| `POST /admin/match/run`             | `forceMatchHandler`     | Run matcher for all active candidates                                      |
 
 Key integration patterns:
 
 **CV Upload** → Files service:
+
 ```go
 filesClient.UploadContent(ctx, stream) // stream the CV file
 // Store the returned file ID as cv_url
 ```
 
 **Match Email** → Notification service:
+
 ```go
 notificationClient.Send(ctx, &notificationv1.SendRequest{...})
 ```
 
 **Tracked Apply Link** → Redirect service:
+
 ```go
 redirectClient.CreateLink(ctx, &redirectv1.CreateLinkRequest{
     Data: &redirectv1.Link{
@@ -355,6 +378,7 @@ redirectClient.CreateLink(ctx, &redirectv1.CreateLinkRequest{
 ```
 
 **Subscription** → Payment service:
+
 ```go
 paymentClient.CreatePaymentLink(ctx, &paymentv1.CreatePaymentLinkRequest{...})
 // Redirect candidate to payment page
@@ -363,6 +387,7 @@ paymentClient.CreatePaymentLink(ctx, &paymentv1.CreatePaymentLinkRequest{...})
 - [ ] **Step 3: Create main.go**
 
 `apps/matching/cmd/main.go`:
+
 - Load config via `fconfig.FromEnv[CandidatesConfig]()`
 - Create Frame service with `frame.WithConfig`, `frame.WithDatastore`
 - Get DB pool, create repositories
@@ -396,12 +421,14 @@ git commit -m "feat: add candidates app with Frame service, HTTP API, and antinv
 ## Task 8: Dockerfile + K8s Deployment
 
 **Files:**
+
 - Create: `apps/matching/Dockerfile`
 - Create: k8s manifests in deployments repo
 
 - [ ] **Step 1: Create Dockerfile**
 
 Same pattern as crawler Dockerfile:
+
 - `golang:1.26` builder, `cgr.dev/chainguard/static` final
 - COPY `./apps/matching` and `./pkg`
 - Build `./apps/matching/cmd/main.go`
@@ -410,6 +437,7 @@ Same pattern as crawler Dockerfile:
 - [ ] **Step 2: Create k8s manifests**
 
 In `antinvestor/deployments/manifests/namespaces/opportunities/candidates/`:
+
 - `kustomization.yaml`
 - `opportunities-candidates.yaml` — HelmRelease, 1 replica, 100m/256Mi, same DB credentials
 - Env vars: DATABASE_URL, OLLAMA_URL, OLLAMA_MODEL, NOTIFICATION_SERVICE_URI, FILE_SERVICE_URI, PAYMENT_SERVICE_URI, PROFILE_SERVICE_URI, REDIRECT_SERVICE_URI
@@ -441,14 +469,17 @@ git push origin main
 ## Execution Notes
 
 **Sequential dependencies:**
+
 - Task 1 → Task 2 → Task 3 → Task 4 → Task 5 → Task 6 → Task 7 → Task 8
 
 **Parallelizable:**
+
 - Tasks 1+3 (domain models + CV extraction) can run in parallel
 - Tasks 2+4 (repositories + matching) can run in parallel after 1+3
 - Task 5 (service clients) can run in parallel with Task 4
 
 **Critical integration points:**
+
 - Task 5 requires the correct `antinvestor/common` import paths — read the actual source
 - Task 6 requires understanding the notification service's `Send` method signature
 - Task 7 requires the redirect service's `CreateLink` method for tracked URLs

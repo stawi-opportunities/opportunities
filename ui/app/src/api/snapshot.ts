@@ -1,5 +1,5 @@
-import { getConfig } from "@/utils/config";
-import type { OpportunityKind, OpportunitySnapshot } from "@/types/snapshot";
+import { getConfig } from '@/utils/config';
+import type { OpportunityKind, OpportunitySnapshot } from '@/types/snapshot';
 
 /**
  * GET opportunities-data.stawi.org/<prefix>/<slug>.json. Returns null on 404.
@@ -19,13 +19,13 @@ import type { OpportunityKind, OpportunitySnapshot } from "@/types/snapshot";
 export async function fetchSnapshot(
   slug: string,
   lang?: string,
-  prefix: string = "jobs",
+  prefix: string = 'jobs'
 ): Promise<OpportunitySnapshot | null> {
   const origin = getConfig().contentOrigin;
   const base = `${origin}/${prefix}/${encodeURIComponent(slug)}`;
 
-  if (lang && lang !== "en") {
-    const res = await fetch(`${base}.${lang}.json`, { credentials: "omit" });
+  if (lang && lang !== 'en') {
+    const res = await fetch(`${base}.${lang}.json`, { credentials: 'omit' });
     if (res.ok) return coerce(await res.json());
     if (res.status !== 404) {
       throw new Error(`snapshot ${slug}.${lang}: HTTP ${res.status}`);
@@ -33,7 +33,7 @@ export async function fetchSnapshot(
     // fallthrough to the source-language snapshot
   }
 
-  const res = await fetch(`${base}.json`, { credentials: "omit" });
+  const res = await fetch(`${base}.json`, { credentials: 'omit' });
   if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(`snapshot ${slug}: HTTP ${res.status}`);
@@ -50,17 +50,17 @@ function coerce(raw: unknown): OpportunitySnapshot {
   const o = (raw ?? {}) as Record<string, unknown>;
 
   // New shape: has `kind` at the top level.
-  if (typeof o.kind === "string") {
+  if (typeof o.kind === 'string') {
     return o as unknown as OpportunitySnapshot;
   }
 
   // Legacy shape: derive issuing_entity from company.name, default kind to "job".
   const company = (o.company ?? {}) as Record<string, unknown>;
-  const issuingEntity = typeof company.name === "string" ? (company.name as string) : "";
+  const issuingEntity = typeof company.name === 'string' ? (company.name as string) : '';
 
   return {
     ...(o as object),
-    kind: "job" as OpportunityKind,
+    kind: 'job' as OpportunityKind,
     issuing_entity: issuingEntity,
   } as OpportunitySnapshot;
 }

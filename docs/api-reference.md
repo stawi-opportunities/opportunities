@@ -28,13 +28,13 @@ Comprehensive reference for every HTTP, Connect RPC, NATS, and OpenObserve surfa
 
 ## Services overview
 
-| Service | Port | Public host | Image |
-|---|---|---|---|
-| opportunities-api | `:8082` | `api.stawi.org/jobs` | `ghcr.io/stawi-opportunities/opportunities-api` |
-| opportunities-candidates | `:8080` | `api.stawi.org` | `ghcr.io/stawi-opportunities/opportunities-candidates` |
-| opportunities-crawler | `:8080` | cluster-internal | `ghcr.io/stawi-opportunities/opportunities-crawler` |
-| redirect (service-files) | `:8080` | `r.stawi.org` | `ghcr.io/antinvestor/service-files-redirect` |
-| opportunities.stawi.org | — | CF Pages | static Hugo + Preact islands (jobs.stawi.org CNAMEs to this) |
+| Service                  | Port    | Public host          | Image                                                        |
+| ------------------------ | ------- | -------------------- | ------------------------------------------------------------ |
+| opportunities-api        | `:8082` | `api.stawi.org/jobs` | `ghcr.io/stawi-opportunities/opportunities-api`              |
+| opportunities-candidates | `:8080` | `api.stawi.org`      | `ghcr.io/stawi-opportunities/opportunities-candidates`       |
+| opportunities-crawler    | `:8080` | cluster-internal     | `ghcr.io/stawi-opportunities/opportunities-crawler`          |
+| redirect (service-files) | `:8080` | `r.stawi.org`        | `ghcr.io/antinvestor/service-files-redirect`                 |
+| opportunities.stawi.org  | —       | CF Pages             | static Hugo + Preact islands (jobs.stawi.org CNAMEs to this) |
 
 Public traffic enters through the Envoy Gateway on `api.stawi.org` (Connect-auth middleware attaches JWT claims). Internal service-to-service calls go through cluster DNS (`*.opportunities.svc`). Admin endpoints are reachable only from inside the cluster.
 
@@ -56,18 +56,18 @@ Full-text + facet search over canonical jobs. The workhorse.
 
 Query parameters:
 
-| Param | Type | Default | Notes |
-|---|---|---|---|
-| `q` | string | `""` | Free-text query. When empty, sort defaults to `recent`; when set, `relevance`. |
-| `category` | string | `""` | Category slug (`programming`, `design`, `data`, etc.). |
-| `remote_type` | string | `""` | `remote`, `hybrid`, `onsite`. |
-| `employment_type` | string | `""` | `full_time`, `contract`, `part_time`. |
-| `seniority` | string | `""` | `junior`, `mid`, `senior`, `staff`. |
-| `country` | string | `""` | ISO 3166-1 alpha-2 (`KE`, `NG`, `US`). |
-| `sort` | string | computed | `relevance` / `recent` / `quality` / `salary_high`. |
-| `limit` | int | `20` | 1–100. |
-| `cursor` | string | `""` | Opaque keyset cursor returned by the previous page. Empty-query pagination only. |
-| `offset` | int | `0` | Text-search pagination. |
+| Param             | Type   | Default  | Notes                                                                            |
+| ----------------- | ------ | -------- | -------------------------------------------------------------------------------- |
+| `q`               | string | `""`     | Free-text query. When empty, sort defaults to `recent`; when set, `relevance`.   |
+| `category`        | string | `""`     | Category slug (`programming`, `design`, `data`, etc.).                           |
+| `remote_type`     | string | `""`     | `remote`, `hybrid`, `onsite`.                                                    |
+| `employment_type` | string | `""`     | `full_time`, `contract`, `part_time`.                                            |
+| `seniority`       | string | `""`     | `junior`, `mid`, `senior`, `staff`.                                              |
+| `country`         | string | `""`     | ISO 3166-1 alpha-2 (`KE`, `NG`, `US`).                                           |
+| `sort`            | string | computed | `relevance` / `recent` / `quality` / `salary_high`.                              |
+| `limit`           | int    | `20`     | 1–100.                                                                           |
+| `cursor`          | string | `""`     | Opaque keyset cursor returned by the previous page. Empty-query pagination only. |
+| `offset`          | int    | `0`      | Text-search pagination.                                                          |
 
 Response body:
 
@@ -170,6 +170,7 @@ The browser fires this via `navigator.sendBeacon` on `JobDetail` mount. It serve
 3. **No liveness probe**: destination URL liveness lives entirely in the redirect service now.
 
 Request:
+
 - Method: `POST`
 - Path: `/jobs/{slug}/view`
 - Body: empty (text/plain; sendBeacon-friendly)
@@ -218,14 +219,14 @@ Re-emits publish for every canonical row matching `status` (default `active`). D
 
 Publishes canonical jobs to R2 for Hugo site generation. Useful for initial site bootstrap or recovering from a wiped R2 bucket. All query params optional:
 
-| Param | Type | Default | Notes |
-|---|---|---|---|
-| `from_id` | int64 | `0` | Starting canonical job ID. |
-| `to_id` | int64 | `0` | End bound (0 = no cap). |
-| `since` | RFC3339 | — | Alternative to IDs: only jobs posted after this. |
-| `batch_size` | int | `500` | Rows per DB page. |
-| `min_quality` | float | `50` | Quality floor. |
-| `trigger_deploy` | bool | `false` | On completion, POST to the CF Pages deploy hook. |
+| Param            | Type    | Default | Notes                                            |
+| ---------------- | ------- | ------- | ------------------------------------------------ |
+| `from_id`        | int64   | `0`     | Starting canonical job ID.                       |
+| `to_id`          | int64   | `0`     | End bound (0 = no cap).                          |
+| `since`          | RFC3339 | —       | Alternative to IDs: only jobs posted after this. |
+| `batch_size`     | int     | `500`   | Rows per DB page.                                |
+| `min_quality`    | float   | `50`    | Quality floor.                                   |
+| `trigger_deploy` | bool    | `false` | On completion, POST to the CF Pages deploy hook. |
 
 Response `202 Accepted`, job runs asynchronously.
 
@@ -260,14 +261,14 @@ operator →  │ pending +    │── verify ──► verifying ────
 
 List sources. Query params (all optional):
 
-| Param | Type | Notes |
-|---|---|---|
-| `status` | string | One of `pending`, `verifying`, `verified`, `rejected`, `active`, `degraded`, `paused`, `blocked`, `disabled` |
-| `kind` | string | Filter by declared opportunity kind (e.g. `job`, `scholarship`) |
-| `type` | string | Source type / connector (e.g. `remoteok`, `greenhouse`) |
-| `country` | string | ISO 3166-1 alpha-2 |
-| `limit` | int | 1–500, default 50 |
-| `offset` | int | default 0 |
+| Param     | Type   | Notes                                                                                                        |
+| --------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| `status`  | string | One of `pending`, `verifying`, `verified`, `rejected`, `active`, `degraded`, `paused`, `blocked`, `disabled` |
+| `kind`    | string | Filter by declared opportunity kind (e.g. `job`, `scholarship`)                                              |
+| `type`    | string | Source type / connector (e.g. `remoteok`, `greenhouse`)                                                      |
+| `country` | string | ISO 3166-1 alpha-2                                                                                           |
+| `limit`   | int    | 1–500, default 50                                                                                            |
+| `offset`  | int    | default 0                                                                                                    |
 
 Response: `{ "sources": [...], "total": int, "limit": int, "offset": int }`. Returns `400 invalid_status` if `status` is not a known value.
 
@@ -297,6 +298,7 @@ Create a source manually. Request body:
 Required: `type`, `base_url`. `kinds` defaults to `["job"]`. `auto_approve` defaults to `true` (operator-trusted). Response: `201 Created` with the full source row, `Status="pending"`.
 
 Errors:
+
 - `400 missing_field` — `type` or `base_url` empty
 - `400 unknown_kind` — declared kind not in registry
 - `400 blocked_url` — host is on the platform blocklist
@@ -324,15 +326,15 @@ Run source-level verification synchronously. Returns the `VerificationReport` di
 
 Verification probes:
 
-| Check | Hard / soft | Details |
-|---|---|---|
-| `url_valid` | hard | scheme http/https, host non-empty |
-| `blocklist_clean` | hard | host not on platform blocklist |
-| `kinds_known` | hard | every declared kind resolves in the registry |
-| `reachable` | hard | HEAD (falls back to GET on 405/501); 2xx/3xx counts as reachable |
-| `robots_allowed` | hard | parses target's `/robots.txt`; permissive on errors |
-| `sample_extracted` | soft | best-effort connector + extractor fetch of first record |
-| `sample_verify_pass` | soft | runs `opportunity.Verify` on the first record |
+| Check                | Hard / soft | Details                                                          |
+| -------------------- | ----------- | ---------------------------------------------------------------- |
+| `url_valid`          | hard        | scheme http/https, host non-empty                                |
+| `blocklist_clean`    | hard        | host not on platform blocklist                                   |
+| `kinds_known`        | hard        | every declared kind resolves in the registry                     |
+| `reachable`          | hard        | HEAD (falls back to GET on 405/501); 2xx/3xx counts as reachable |
+| `robots_allowed`     | hard        | parses target's `/robots.txt`; permissive on errors              |
+| `sample_extracted`   | soft        | best-effort connector + extractor fetch of first record          |
+| `sample_verify_pass` | soft        | runs `opportunity.Verify` on the first record                    |
 
 Soft checks contribute to the report but do NOT flip `OverallPass`. Operators decide via `auto_approve` whether the absence of an LLM-driven sample blocks promotion.
 
@@ -397,10 +399,10 @@ Request body:
 }
 ```
 
-| Field | Type | Notes |
-|---|---|---|
-| `reason` | string | One of `scam`, `expired`, `duplicate`, `spam`, `other`. |
-| `description` | string | Free-text, ≤ 1000 chars. Optional. |
+| Field         | Type   | Notes                                                   |
+| ------------- | ------ | ------------------------------------------------------- |
+| `reason`      | string | One of `scam`, `expired`, `duplicate`, `spam`, `other`. |
+| `description` | string | Free-text, ≤ 1000 chars. Optional.                      |
 
 Response `201 Created`:
 
@@ -417,6 +419,7 @@ Response `201 Created`:
 `auto_actioned` is `true` when this flag pushed the slug's unresolved scam count over the threshold and the auto-flag event was emitted.
 
 Errors:
+
 - `401 unauthorized` — missing or malformed JWT.
 - `400 invalid_reason` — reason not in the controlled vocabulary.
 - `400 description_too_long` — description > 1000 chars.
@@ -476,9 +479,7 @@ Most-flagged opportunities by unresolved flag count. Useful for operator triage.
 
 ```json
 {
-  "results": [
-    { "opportunity_slug": "...", "kind": "job", "flag_count": 5 }
-  ],
+  "results": [{ "opportunity_slug": "...", "kind": "job", "flag_count": 5 }],
   "count": 1
 }
 ```
@@ -527,6 +528,7 @@ CRUD on the candidate's own profile. PUT accepts a JSON patch of any field liste
 **Unauthenticated** — accepts a multipart form with the CV file (`cv`), email, name, phone. Extracts text, runs `ExtractCV` via Groq to populate profile fields, uploads the CV to the Files service, creates the candidate row, and **kicks off a background CV Strength Report**.
 
 Request: `multipart/form-data` with:
+
 - `cv` (file): PDF, DOCX, or TXT
 - `email` (string)
 - `name` (string)
@@ -577,6 +579,7 @@ Two endpoints — one cached read, one force-rescore — plus an auto-trigger on
 Returns the cached report for the calling profile. Fast path — no LLM call. When the stored CV text hash differs from the last-scored hash, the handler fires a background rescore so the next request serves fresh data.
 
 Response headers:
+
 - `Content-Type: application/json`
 - `X-CV-Report-Stale: true|false` — `true` means a background rescore was triggered
 
@@ -637,15 +640,16 @@ Response body: `CVStrengthReport` JSON.
 
 **Scoring weights** (sum to 100):
 
-| Dimension | Weight | What it measures |
-|---|---|---|
-| ATS | 20% | Missing standard sections, length sanity, table-layout penalty |
-| Keywords | 20% | Hit rate against role-family canonical keyword list (+ synonyms) |
-| Impact | 25% | Per-bullet: numbers, units, strong verbs, outcome language, weak-verb penalty |
-| RoleFit | 20% | Cosine similarity of CV embedding vs family reference paragraph |
-| Clarity | 15% | Buzzword density, passive voice, sentence length, "responsible for" penalty |
+| Dimension | Weight | What it measures                                                              |
+| --------- | ------ | ----------------------------------------------------------------------------- |
+| ATS       | 20%    | Missing standard sections, length sanity, table-layout penalty                |
+| Keywords  | 20%    | Hit rate against role-family canonical keyword list (+ synonyms)              |
+| Impact    | 25%    | Per-bullet: numbers, units, strong verbs, outcome language, weak-verb penalty |
+| RoleFit   | 20%    | Cosine similarity of CV embedding vs family reference paragraph               |
+| Clarity   | 15%    | Buzzword density, passive voice, sentence length, "responsible for" penalty   |
 
 Auto-triggered on:
+
 1. `POST /candidates/register` (after CV upload)
 2. `POST /candidates/onboard` (after target role change)
 3. `POST /webhooks/inbound-email` (after email-attached CV)
@@ -669,6 +673,7 @@ Called by the redirect service when a /r/{slug} link's destination probe fails. 
 ```
 
 Behaviour:
+
 1. Parse `affiliate_id` — if it doesn't match `^canonical_job_(\d+)$` return `204 No Content` (forward-compatible for other domains).
 2. `MarkExpiredIfActive(canonical_job_id)` — idempotent `WHERE status='active'` update.
 3. On `rows_affected=1`, fan out `job_expired` notifications via the NotificationService to every profile that bookmarked the job.
@@ -733,6 +738,7 @@ Returns source IDs currently due for a crawl (`next_crawl_at <= NOW`). Used by T
 Fire a `crawl.request` NATS message for a single source.
 
 Body:
+
 ```json
 { "source_id": 42, "attempt": 1 }
 ```
@@ -786,6 +792,7 @@ Resolve a tracked link. Happy path:
 5. 302 redirect to the destination URL with `Cache-Control: no-store`.
 
 On repeated probe failures (404/410 terminal, or 3 consecutive 5xx), the handler:
+
 - Flips `LinkState = EXPIRED`.
 - Invalidates the link cache so the next hit sees the dead-link page.
 - POSTs to every URL in `LINK_EXPIRED_WEBHOOKS` (opportunities-candidates consumes this).
@@ -795,15 +802,15 @@ On repeated probe failures (404/410 terminal, or 3 consecutive 5xx), the handler
 
 Authenticated via OIDC interceptors — only internal service accounts.
 
-| RPC | Purpose |
-|---|---|
-| `CreateLink` | Mint a new tracked link. opportunities-crawler calls this at publish time with `affiliate_id = "canonical_job_<id>"`. |
-| `GetLink` | Fetch link metadata by ID. |
-| `UpdateLink` | Change state (ACTIVE / PAUSED / EXPIRED / DELETED), destination URL, or metadata. |
-| `DeleteLink` | Soft-delete; historical clicks remain queryable. |
-| `ListLinks` | Search by affiliate_id, campaign, or state. Streaming response. |
-| `GetLinkStats` | Aggregate click counts: total, unique, by country/device/browser, per-day histogram. |
-| `ListClicks` | Click-level detail for an affiliate. Streaming response. |
+| RPC            | Purpose                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `CreateLink`   | Mint a new tracked link. opportunities-crawler calls this at publish time with `affiliate_id = "canonical_job_<id>"`. |
+| `GetLink`      | Fetch link metadata by ID.                                                                                            |
+| `UpdateLink`   | Change state (ACTIVE / PAUSED / EXPIRED / DELETED), destination URL, or metadata.                                     |
+| `DeleteLink`   | Soft-delete; historical clicks remain queryable.                                                                      |
+| `ListLinks`    | Search by affiliate_id, campaign, or state. Streaming response.                                                       |
+| `GetLinkStats` | Aggregate click counts: total, unique, by country/device/browser, per-day histogram.                                  |
+| `ListClicks`   | Click-level detail for an affiliate. Streaming response.                                                              |
 
 Full proto: `service-files/proto/redirect/redirect/v1/redirect.proto`.
 
@@ -875,26 +882,26 @@ JetStream subjects the internal pipeline uses. All payloads are JSON.
 
 Subject: `svc.opportunities.events.>`. Retention: workqueue (exactly-once). MaxAge: 24h.
 
-| Event | Payload | Emitter → Consumer |
-|---|---|---|
-| `crawl.request` | `{source_id, attempt}` | api admin (Trustage) → crawler |
-| `variant.raw.stored` | `{variant_id, source_id}` | crawler fetch → dedup |
-| `variant.deduped` | `{variant_id, source_id}` | dedup → normalize |
-| `variant.normalized` | `{variant_id, source_id}` | normalize → validate |
-| `variant.validated` | `{variant_id, source_id}` | validate → canonical |
-| `source.urls.discovered` | `{source_id, urls[]}` | normalize (HTML sources) → source-expansion |
-| `source.quality.review` | `{source_id}` | source-quality → admin alerts |
-| `job.ready` | `{canonical_job_id}` | canonical → publish |
-| `job.published` | `{canonical_job_id, slug, source_lang, r2_version}` | publish → translate |
+| Event                    | Payload                                             | Emitter → Consumer                          |
+| ------------------------ | --------------------------------------------------- | ------------------------------------------- |
+| `crawl.request`          | `{source_id, attempt}`                              | api admin (Trustage) → crawler              |
+| `variant.raw.stored`     | `{variant_id, source_id}`                           | crawler fetch → dedup                       |
+| `variant.deduped`        | `{variant_id, source_id}`                           | dedup → normalize                           |
+| `variant.normalized`     | `{variant_id, source_id}`                           | normalize → validate                        |
+| `variant.validated`      | `{variant_id, source_id}`                           | validate → canonical                        |
+| `source.urls.discovered` | `{source_id, urls[]}`                               | normalize (HTML sources) → source-expansion |
+| `source.quality.review`  | `{source_id}`                                       | source-quality → admin alerts               |
+| `job.ready`              | `{canonical_job_id}`                                | canonical → publish                         |
+| `job.published`          | `{canonical_job_id, slug, source_lang, r2_version}` | publish → translate                         |
 
 ### Stream `svc_opportunities_candidates`
 
 Subject: `svc.opportunities.candidates.>`. Retention: workqueue. MaxAge: 24h.
 
-| Event | Payload | Purpose |
-|---|---|---|
-| `candidate.profile.created` | `{candidate_id}` | Fan-out trigger after registration. |
-| `candidate.embedding` | `{candidate_id, text}` | Async embedding generation for matching. |
+| Event                       | Payload                | Purpose                                  |
+| --------------------------- | ---------------------- | ---------------------------------------- |
+| `candidate.profile.created` | `{candidate_id}`       | Fan-out trigger after registration.      |
+| `candidate.embedding`       | `{candidate_id, text}` | Async embedding generation for matching. |
 
 ### Stream `svc_files_redirect` (service-files)
 
@@ -963,12 +970,12 @@ Written directly from the browser via the `@openobserve/browser-rum` + `@openobs
 
 Workflow definitions in `definitions/trustage/*.json`. Each JSON file carries a top-level `schedule` block consumed by Trustage's cron scheduler (pending Trustage schedule-seeding support).
 
-| File | Cron | Calls |
-|---|---|---|
-| `source-crawl-sweep.json` | `1m` | `POST /admin/crawl/dispatch-due` |
-| `retention-expire.json` | `15m` | `POST /admin/retention/expire` |
-| `retention-mv-refresh.json` | `5m` | `POST /admin/retention/mv-refresh` |
-| `retention-stage2.json` | `24h` | `POST /admin/retention/stage2` |
+| File                        | Cron  | Calls                              |
+| --------------------------- | ----- | ---------------------------------- |
+| `source-crawl-sweep.json`   | `1m`  | `POST /admin/crawl/dispatch-due`   |
+| `retention-expire.json`     | `15m` | `POST /admin/retention/expire`     |
+| `retention-mv-refresh.json` | `5m`  | `POST /admin/retention/mv-refresh` |
+| `retention-stage2.json`     | `24h` | `POST /admin/retention/stage2`     |
 
 See `definitions/trustage/README.md` for the per-source-vs-sweep design trade-off and the dispatch-due vs enumeration patterns.
 
@@ -985,6 +992,7 @@ Every authenticated endpoint expects an RS256-signed JWT in `Authorization: Bear
 - Issuer: `https://oauth2.stawi.org`
 
 Key claims:
+
 - `sub`: the profile ID (matches `profile_profiles.id` in the profile service)
 - `aud`: `opportunities_candidates` or `opportunities_crawler` depending on service
 - `iss`: `https://oauth2.stawi.org`
@@ -1015,32 +1023,32 @@ The following don't require auth:
 
 Standard HTTP semantics across all endpoints:
 
-| Code | When |
-|---|---|
-| `200 OK` | Success with body. |
-| `201 Created` | New resource created. |
-| `202 Accepted` | Accepted for async processing. |
-| `204 No Content` | Success, no body (view beacon, link-expired signal, delete). |
-| `400 Bad Request` | Input validation failed. Body has `{"error": "..."}`. |
-| `401 Unauthorized` | Missing or invalid JWT. |
-| `403 Forbidden` | Authenticated but not permitted. |
-| `404 Not Found` | Resource doesn't exist (or not `status='active'`). |
-| `410 Gone` | The dead-link page from redirect service. |
-| `500 Internal Server Error` | Unexpected, includes message in body. |
-| `503 Service Unavailable` | Downstream dependency (R2, events bus) isn't configured. |
+| Code                        | When                                                         |
+| --------------------------- | ------------------------------------------------------------ |
+| `200 OK`                    | Success with body.                                           |
+| `201 Created`               | New resource created.                                        |
+| `202 Accepted`              | Accepted for async processing.                               |
+| `204 No Content`            | Success, no body (view beacon, link-expired signal, delete). |
+| `400 Bad Request`           | Input validation failed. Body has `{"error": "..."}`.        |
+| `401 Unauthorized`          | Missing or invalid JWT.                                      |
+| `403 Forbidden`             | Authenticated but not permitted.                             |
+| `404 Not Found`             | Resource doesn't exist (or not `status='active'`).           |
+| `410 Gone`                  | The dead-link page from redirect service.                    |
+| `500 Internal Server Error` | Unexpected, includes message in body.                        |
+| `503 Service Unavailable`   | Downstream dependency (R2, events bus) isn't configured.     |
 
 ### Connect RPC
 
 Services expose Connect errors (mapped from gRPC codes):
 
-| Code | When |
-|---|---|
-| `CodeInvalidArgument` | Validation failure. |
-| `CodeUnauthenticated` | Missing/invalid JWT. |
+| Code                   | When                              |
+| ---------------------- | --------------------------------- |
+| `CodeInvalidArgument`  | Validation failure.               |
+| `CodeUnauthenticated`  | Missing/invalid JWT.              |
 | `CodePermissionDenied` | Authenticated but not authorized. |
-| `CodeNotFound` | Resource missing. |
-| `CodeAlreadyExists` | Creating a duplicate. |
-| `CodeInternal` | Unexpected server error. |
+| `CodeNotFound`         | Resource missing.                 |
+| `CodeAlreadyExists`    | Creating a duplicate.             |
+| `CodeInternal`         | Unexpected server error.          |
 
 ---
 
@@ -1121,8 +1129,8 @@ kubectl run curl -n opportunities --image=curlimages/curl --rm -it --restart=Nev
 
 ```js
 navigator.sendBeacon(
-  'https://api.stawi.org/jobs/senior-backend-engineer-at-acme-a1b2c3/view',
-  new Blob([''], { type: 'text/plain' })
+  "https://api.stawi.org/jobs/senior-backend-engineer-at-acme-a1b2c3/view",
+  new Blob([""], { type: "text/plain" }),
 );
 ```
 
@@ -1130,12 +1138,12 @@ navigator.sendBeacon(
 
 ## Changelog
 
-| Version | Date | Highlights |
-|---|---|---|
-| v4.3.5 | 2026-04-18 | Structured logging across bootstraps, regression test suite expansion |
-| v4.3.4 | 2026-04-18 | Trustage-driven dispatch, CV Strength Report, multilingual + RUM + redirect webhooks |
-| v4.3.3 | 2026-04-17 | OIDC migration to `@stawi/auth-runtime`, UX polish |
-| v4.3.2 | 2026-04-17 | Frontend audit fixes |
-| v4.3.1 | 2026-04-17 | Hugo PostCSS pipeline + R2 deploy hook |
+| Version | Date       | Highlights                                                                           |
+| ------- | ---------- | ------------------------------------------------------------------------------------ |
+| v4.3.5  | 2026-04-18 | Structured logging across bootstraps, regression test suite expansion                |
+| v4.3.4  | 2026-04-18 | Trustage-driven dispatch, CV Strength Report, multilingual + RUM + redirect webhooks |
+| v4.3.3  | 2026-04-17 | OIDC migration to `@stawi/auth-runtime`, UX polish                                   |
+| v4.3.2  | 2026-04-17 | Frontend audit fixes                                                                 |
+| v4.3.1  | 2026-04-17 | Hugo PostCSS pipeline + R2 deploy hook                                               |
 
 Full history: `git log v4.3.5 --format='%h %s'`.

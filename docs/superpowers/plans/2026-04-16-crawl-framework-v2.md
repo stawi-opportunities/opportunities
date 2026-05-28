@@ -13,6 +13,7 @@
 ## File Structure
 
 ### Project Root Changes
+
 ```
 stawi.opportunities/
 ├── apps/
@@ -133,6 +134,7 @@ stawi.opportunities/
 ```
 
 ### Deployment Repo (antinvestor/deployments)
+
 ```
 manifests/namespaces/opportunities/
 ├── namespace.yaml
@@ -165,6 +167,7 @@ manifests/namespaces/opportunities/
 ## Task 1: Project Restructure — Move from cmd/ to apps/pkg/
 
 **Files:**
+
 - Create: `pkg/domain/models.go`
 - Create: `apps/crawler/cmd/main.go` (placeholder)
 - Create: `apps/scheduler/cmd/main.go` (placeholder)
@@ -481,6 +484,7 @@ git commit -m "feat: restructure project to apps/pkg layout with updated domain 
 ## Task 2: Database Migrations (GORM-based)
 
 **Files:**
+
 - Create: `apps/crawler/migrations/0001_init_up.sql`
 
 Frame uses file-based SQL migrations. The crawler service owns all database migrations since it's the primary writer.
@@ -645,6 +649,7 @@ git commit -m "feat: add database migration for crawl framework v2"
 ## Task 3: Repository Layer (Frame Datastore Pattern)
 
 **Files:**
+
 - Create: `pkg/repository/source.go`
 - Create: `pkg/repository/crawl.go`
 - Create: `pkg/repository/job.go`
@@ -1017,6 +1022,7 @@ git commit -m "feat: add repository layer using GORM for all domain entities"
 ## Task 4: Quality Gate
 
 **Files:**
+
 - Create: `pkg/quality/gate.go`
 - Create: `pkg/quality/gate_test.go`
 
@@ -1177,6 +1183,7 @@ git commit -m "feat: add quality gate with required field validation"
 ## Task 5: Connector Interface + HTTP Client + Registry
 
 **Files:**
+
 - Create: `pkg/connectors/connector.go`
 - Create: `pkg/connectors/httpx/client.go`
 
@@ -1364,6 +1371,7 @@ git commit -m "feat: add iterator-based connector interface, registry, and HTTP 
 ## Task 6: Normalization Enhancements
 
 **Files:**
+
 - Create: `pkg/normalize/normalize.go`
 - Create: `pkg/normalize/normalize_test.go`
 
@@ -1612,6 +1620,7 @@ git commit -m "feat: add normalization with company cleanup and region detection
 ## Task 7: Dedupe Engine
 
 **Files:**
+
 - Create: `pkg/dedupe/dedupe.go`
 - Create: `pkg/dedupe/dedupe_test.go`
 
@@ -1710,6 +1719,7 @@ git commit -m "feat: add hard-key dedupe engine with cluster management"
 ## Task 8: Seed Files + Loader
 
 **Files:**
+
 - Create: `seeds/apis.json`
 - Create: `seeds/africa/ke.json`
 - Create: `seeds/africa/ng.json`
@@ -1730,12 +1740,54 @@ Create `seeds/apis.json`:
 
 ```json
 [
-  {"source_type": "remoteok", "base_url": "https://remoteok.com", "country": "", "region": "", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "arbeitnow", "base_url": "https://arbeitnow.com", "country": "", "region": "europe", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "jobicy", "base_url": "https://jobicy.com", "country": "", "region": "", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "themuse", "base_url": "https://www.themuse.com", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "himalayas", "base_url": "https://himalayas.app", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "findwork", "base_url": "https://findwork.dev", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "normal"}
+  {
+    "source_type": "remoteok",
+    "base_url": "https://remoteok.com",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  },
+  {
+    "source_type": "arbeitnow",
+    "base_url": "https://arbeitnow.com",
+    "country": "",
+    "region": "europe",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  },
+  {
+    "source_type": "jobicy",
+    "base_url": "https://jobicy.com",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  },
+  {
+    "source_type": "themuse",
+    "base_url": "https://www.themuse.com",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  },
+  {
+    "source_type": "himalayas",
+    "base_url": "https://himalayas.app",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  },
+  {
+    "source_type": "findwork",
+    "base_url": "https://findwork.dev",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1743,7 +1795,14 @@ Create `seeds/africa/ke.json`:
 
 ```json
 [
-  {"source_type": "brightermonday", "base_url": "https://www.brightermonday.co.ke", "country": "KE", "region": "east_africa", "crawl_interval_sec": 3600, "priority": "hot"}
+  {
+    "source_type": "brightermonday",
+    "base_url": "https://www.brightermonday.co.ke",
+    "country": "KE",
+    "region": "east_africa",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  }
 ]
 ```
 
@@ -1751,8 +1810,22 @@ Create `seeds/africa/ng.json`:
 
 ```json
 [
-  {"source_type": "jobberman", "base_url": "https://www.jobberman.com", "country": "NG", "region": "west_africa", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.com", "country": "NG", "region": "west_africa", "crawl_interval_sec": 3600, "priority": "hot"}
+  {
+    "source_type": "jobberman",
+    "base_url": "https://www.jobberman.com",
+    "country": "NG",
+    "region": "west_africa",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  },
+  {
+    "source_type": "myjobmag",
+    "base_url": "https://www.myjobmag.com",
+    "country": "NG",
+    "region": "west_africa",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  }
 ]
 ```
 
@@ -1760,8 +1833,22 @@ Create `seeds/africa/za.json`:
 
 ```json
 [
-  {"source_type": "careers24", "base_url": "https://www.careers24.com", "country": "ZA", "region": "southern_africa", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "pnet", "base_url": "https://www.pnet.co.za", "country": "ZA", "region": "southern_africa", "crawl_interval_sec": 3600, "priority": "hot"}
+  {
+    "source_type": "careers24",
+    "base_url": "https://www.careers24.com",
+    "country": "ZA",
+    "region": "southern_africa",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  },
+  {
+    "source_type": "pnet",
+    "base_url": "https://www.pnet.co.za",
+    "country": "ZA",
+    "region": "southern_africa",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  }
 ]
 ```
 
@@ -1769,7 +1856,14 @@ Create `seeds/africa/gh.json`:
 
 ```json
 [
-  {"source_type": "jobberman", "base_url": "https://www.jobberman.com.gh", "country": "GH", "region": "west_africa", "crawl_interval_sec": 7200, "priority": "normal"}
+  {
+    "source_type": "jobberman",
+    "base_url": "https://www.jobberman.com.gh",
+    "country": "GH",
+    "region": "west_africa",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1777,7 +1871,14 @@ Create `seeds/africa/ug.json`:
 
 ```json
 [
-  {"source_type": "brightermonday", "base_url": "https://www.brightermonday.co.ug", "country": "UG", "region": "east_africa", "crawl_interval_sec": 7200, "priority": "normal"}
+  {
+    "source_type": "brightermonday",
+    "base_url": "https://www.brightermonday.co.ug",
+    "country": "UG",
+    "region": "east_africa",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1785,10 +1886,38 @@ Create `seeds/africa/pan-african.json`:
 
 ```json
 [
-  {"source_type": "njorku", "base_url": "https://www.njorku.com", "country": "", "region": "", "crawl_interval_sec": 3600, "priority": "hot"},
-  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.co.ke", "country": "KE", "region": "east_africa", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.co.za", "country": "ZA", "region": "southern_africa", "crawl_interval_sec": 7200, "priority": "normal"},
-  {"source_type": "myjobmag", "base_url": "https://www.myjobmag.com.gh", "country": "GH", "region": "west_africa", "crawl_interval_sec": 7200, "priority": "normal"}
+  {
+    "source_type": "njorku",
+    "base_url": "https://www.njorku.com",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 3600,
+    "priority": "hot"
+  },
+  {
+    "source_type": "myjobmag",
+    "base_url": "https://www.myjobmag.co.ke",
+    "country": "KE",
+    "region": "east_africa",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  },
+  {
+    "source_type": "myjobmag",
+    "base_url": "https://www.myjobmag.co.za",
+    "country": "ZA",
+    "region": "southern_africa",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  },
+  {
+    "source_type": "myjobmag",
+    "base_url": "https://www.myjobmag.com.gh",
+    "country": "GH",
+    "region": "west_africa",
+    "crawl_interval_sec": 7200,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1796,8 +1925,22 @@ Create `seeds/europe/uk.json`:
 
 ```json
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/deliveroo", "country": "GB", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/revolut", "country": "GB", "region": "europe", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/deliveroo",
+    "country": "GB",
+    "region": "europe",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "lever",
+    "base_url": "https://jobs.lever.co/revolut",
+    "country": "GB",
+    "region": "europe",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1805,8 +1948,22 @@ Create `seeds/oceania/au.json`:
 
 ```json
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/canva", "country": "AU", "region": "oceania", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/atlassian", "country": "AU", "region": "oceania", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/canva",
+    "country": "AU",
+    "region": "oceania",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/atlassian",
+    "country": "AU",
+    "region": "oceania",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1814,16 +1971,86 @@ Create `seeds/greenhouse_boards.json`:
 
 ```json
 [
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/stripe", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/airbnb", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/doordash", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/cloudflare", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/twitch", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/figma", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/reddit", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/andela", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "hot"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/shopify", "country": "CA", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "greenhouse", "base_url": "https://boards.greenhouse.io/gitlab", "country": "", "region": "", "crawl_interval_sec": 7200, "priority": "hot"}
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/stripe",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/airbnb",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/doordash",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/cloudflare",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/twitch",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/figma",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/reddit",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/andela",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 7200,
+    "priority": "hot"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/shopify",
+    "country": "CA",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "greenhouse",
+    "base_url": "https://boards.greenhouse.io/gitlab",
+    "country": "",
+    "region": "",
+    "crawl_interval_sec": 7200,
+    "priority": "hot"
+  }
 ]
 ```
 
@@ -1831,9 +2058,30 @@ Create `seeds/lever_boards.json`:
 
 ```json
 [
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/netflix", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/twilio", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"},
-  {"source_type": "lever", "base_url": "https://jobs.lever.co/datadog", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "source_type": "lever",
+    "base_url": "https://jobs.lever.co/netflix",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "lever",
+    "base_url": "https://jobs.lever.co/twilio",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  },
+  {
+    "source_type": "lever",
+    "base_url": "https://jobs.lever.co/datadog",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1841,7 +2089,14 @@ Create `seeds/workday_sites.json`:
 
 ```json
 [
-  {"source_type": "workday", "base_url": "https://wd3.myworkdaysite.com/recruiting/microsoft", "country": "US", "region": "americas", "crawl_interval_sec": 14400, "priority": "normal"}
+  {
+    "source_type": "workday",
+    "base_url": "https://wd3.myworkdaysite.com/recruiting/microsoft",
+    "country": "US",
+    "region": "americas",
+    "crawl_interval_sec": 14400,
+    "priority": "normal"
+  }
 ]
 ```
 
@@ -1926,6 +2181,7 @@ git commit -m "feat: add seed files for global sources and seed loader"
 ## Task 9: Free JSON API Connectors (6 connectors)
 
 **Files:**
+
 - Create: `pkg/connectors/remoteok/remoteok.go`
 - Create: `pkg/connectors/arbeitnow/arbeitnow.go`
 - Create: `pkg/connectors/jobicy/jobicy.go`
@@ -2541,6 +2797,7 @@ git commit -m "feat: add 6 free JSON API connectors (remoteok, arbeitnow, jobicy
 ## Task 10: African Board Connectors (6 connectors)
 
 **Files:**
+
 - Create: `pkg/connectors/brightermonday/brightermonday.go`
 - Create: `pkg/connectors/jobberman/jobberman.go`
 - Create: `pkg/connectors/myjobmag/myjobmag.go`
@@ -2723,6 +2980,7 @@ These follow the same pattern as BrighterMonday — HTML listing pages with deta
 **PNet** (`pkg/connectors/pnet/pnet.go`): List URL `{baseURL}/jobs?page={n}`.
 
 Each connector must:
+
 1. Follow the same `Connector` + `CrawlIterator` interface
 2. Use `httpx.Client` for HTTP requests
 3. Parse job links from listing pages via regex
@@ -2747,6 +3005,7 @@ git commit -m "feat: add 6 African board connectors (brightermonday, jobberman, 
 ## Task 11: Refactor Existing Connectors to Iterator Interface
 
 **Files:**
+
 - Create: `pkg/connectors/greenhouse/greenhouse.go`
 - Create: `pkg/connectors/lever/lever.go`
 - Create: `pkg/connectors/workday/workday.go`
@@ -2841,6 +3100,7 @@ git commit -m "feat: port existing connectors to iterator interface"
 ## Task 12: Worker Pipeline
 
 **Files:**
+
 - Create: `pkg/pipeline/worker.go`
 - Create: `pkg/pipeline/batch.go`
 
@@ -3087,6 +3347,7 @@ git commit -m "feat: add worker pipeline with batch buffer and quality gate inte
 ## Task 13: App Configs + Frame Service Setup
 
 **Files:**
+
 - Create: `apps/crawler/config/config.go`
 - Create: `apps/scheduler/config/config.go`
 - Create: `apps/api/config/config.go`
@@ -3392,6 +3653,7 @@ git commit -m "feat: add Frame-based service configs and main.go for crawler, sc
 ## Task 14: Update go.mod Dependencies
 
 **Files:**
+
 - Modify: `go.mod`
 
 - [ ] **Step 1: Add Frame and GORM dependencies**
@@ -3422,6 +3684,7 @@ git commit -m "deps: add frame, gorm, natspubsub dependencies"
 ## Task 15: Dockerfiles + .dockerignore
 
 **Files:**
+
 - Create: `apps/crawler/Dockerfile`
 - Create: `apps/scheduler/Dockerfile`
 - Create: `apps/api/Dockerfile`
@@ -3606,6 +3869,7 @@ git commit -m "feat: add opportunities namespace with crawler, scheduler, api se
 ## Task 17: Remove Old Code
 
 **Files:**
+
 - Delete: `cmd/` directory
 - Delete: `internal/` directory
 - Delete: `api/` directory (empty)
@@ -3719,6 +3983,7 @@ kubectl exec -n datastore pod/hub-1 -- psql -U opportunities -d stawi_jobs -c "S
 - [ ] **Step 7: Monitor and fix issues**
 
 Watch logs for:
+
 - Connector parsing failures — adjust regex selectors
 - Quality gate rejections — check which fields are missing
 - Rate limiting (429s) — adjust per-domain rate limits

@@ -11,14 +11,14 @@ The system has 35 sources but only 7 produce jobs. 28 sources produce nothing or
 
 ### Current State
 
-| Category | Count |
-|---|---|
-| Sources producing jobs | 7 |
-| Sources producing nothing | 21 |
-| Sources flooding rejects | 7 |
-| Canonical jobs (inflated) | 45,032 |
-| Actual job variants | 3,855 |
-| Total rejects | ~74,000 |
+| Category                  | Count   |
+| ------------------------- | ------- |
+| Sources producing jobs    | 7       |
+| Sources producing nothing | 21      |
+| Sources flooding rejects  | 7       |
+| Canonical jobs (inflated) | 45,032  |
+| Actual job variants       | 3,855   |
+| Total rejects             | ~74,000 |
 
 ---
 
@@ -47,12 +47,12 @@ Rationale: a site being down is different from our code being wrong. Punishing a
 
 ### Crawl interval by state
 
-| State | Interval |
-|---|---|
-| active | Source's configured interval |
-| degraded | 6x configured interval |
-| paused | Try once after 24hr, then once after 7 days |
-| disabled | Never. Re-enable via admin API only. |
+| State    | Interval                                    |
+| -------- | ------------------------------------------- |
+| active   | Source's configured interval                |
+| degraded | 6x configured interval                      |
+| paused   | Try once after 24hr, then once after 7 days |
+| disabled | Never. Re-enable via admin API only.        |
 
 ### Health score computation
 
@@ -82,13 +82,13 @@ All 5 fields required: title, company, location, description, apply_url. Rejects
 
 ### Revised
 
-| Field | Rule | On missing |
-|---|---|---|
-| title | Required, > 3 chars | Reject |
-| description | Required, > 50 chars | Reject |
-| apply_url | If empty, fall back to source page URL | Never reject |
-| company | Optional | Accept, store empty |
-| location | Optional | Accept, store empty |
+| Field       | Rule                                   | On missing          |
+| ----------- | -------------------------------------- | ------------------- |
+| title       | Required, > 3 chars                    | Reject              |
+| description | Required, > 50 chars                   | Reject              |
+| apply_url   | If empty, fall back to source page URL | Never reject        |
+| company     | Optional                               | Accept, store empty |
+| location    | Optional                               | Accept, store empty |
 
 Only title and description cause rejection. Apply URL always has a fallback (the page URL the job was crawled from). Company and location are best-effort — AI fills them when possible, but missing values don't block storage.
 
@@ -99,11 +99,13 @@ Only title and description cause rejection. Apply URL always has a fallback (the
 ### Two categories
 
 **JSON API connectors** (direct parsing, no AI):
+
 - Greenhouse, Lever, Workday, SmartRecruiters, RemoteOK, Arbeitnow, Jobicy, TheMuse, Himalayas, FindWork
 - Parse structured JSON responses directly — fast, reliable
 - Make parsers **tolerant of field type changes**: handle string-or-array, int-or-string gracefully instead of crashing on unexpected types
 
 **Universal AI connector** (everything else):
+
 - All HTML board sources: BrighterMonday, Jobberman, MyJobMag, Njorku, Careers24, PNet, Schema.org, and any new source
 - AI discovers links on listing pages, AI extracts fields from detail pages
 - Resilient: if AI link discovery returns nothing, fall back to simple href pattern matching for common URL patterns (`/jobs/`, `/listings/`, `/vacancies/`, `/careers/`, `/job/`, `/position/`)
@@ -117,14 +119,14 @@ Only title and description cause rejection. Apply URL always has a fallback (the
 
 ### Specific connector bugs to fix
 
-| Connector | Bug | Fix |
-|---|---|---|
-| Himalayas | `jobType` is array, struct expects string | Handle both types |
-| Jobicy | Same `jobType` array issue | Handle both types |
-| Lever | 0 variants from all boards | Debug API response format |
-| Greenhouse (5 boards) | 0 variants (deliveroo, doordash, andela, shopify, canva) | Verify API paths |
-| Workday | 0 variants | Debug API path |
-| FindWork | 0 variants | Debug response format |
+| Connector             | Bug                                                      | Fix                       |
+| --------------------- | -------------------------------------------------------- | ------------------------- |
+| Himalayas             | `jobType` is array, struct expects string                | Handle both types         |
+| Jobicy                | Same `jobType` array issue                               | Handle both types         |
+| Lever                 | 0 variants from all boards                               | Debug API response format |
+| Greenhouse (5 boards) | 0 variants (deliveroo, doordash, andela, shopify, canva) | Verify API paths          |
+| Workday               | 0 variants                                               | Debug API path            |
+| FindWork              | 0 variants                                               | Debug response format     |
 
 ### JSON parser resilience pattern
 
@@ -154,6 +156,7 @@ type Job struct {
 ### Fix
 
 Correct logic:
+
 1. Upsert variant
 2. Look up existing variant by hard_key
 3. If match found with existing cluster → add new variant to that cluster, update canonical with latest data
@@ -162,6 +165,7 @@ Correct logic:
 ### Data Rebuild
 
 After fixing dedupe:
+
 1. Truncate `canonical_jobs`, `job_clusters`, `job_cluster_members`
 2. Iterate all `job_variants` ordered by `scraped_at ASC`
 3. Run each through fixed `UpsertAndCluster`
@@ -196,9 +200,9 @@ Available via admin endpoint: `POST /admin/rebuild-canonicals`
     "duration_sec": 45
   },
   "connector_quality": {
-    "greenhouse": {"accept_rate": 1.0, "sources": 10},
-    "arbeitnow": {"accept_rate": 1.0, "sources": 1},
-    "myjobmag": {"accept_rate": 0.0, "needs_tuning": true, "sources": 4}
+    "greenhouse": { "accept_rate": 1.0, "sources": 10 },
+    "arbeitnow": { "accept_rate": 1.0, "sources": 1 },
+    "myjobmag": { "accept_rate": 0.0, "needs_tuning": true, "sources": 4 }
   }
 }
 ```

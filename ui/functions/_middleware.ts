@@ -23,12 +23,22 @@ interface Env {}
 // list we don't redirect; they get the generic landing page and the
 // server-side feed infers their location from CF-IPCountry anyway.
 const SHARDS = new Set([
-  "KE", "UG", "TZ", "RW", "ET",
-  "NG", "GH",
+  "KE",
+  "UG",
+  "TZ",
+  "RW",
+  "ET",
+  "NG",
+  "GH",
   "ZA",
-  "EG", "MA",
-  "US", "GB", "DE",
-  "IN", "PH", "BR",
+  "EG",
+  "MA",
+  "US",
+  "GB",
+  "DE",
+  "IN",
+  "PH",
+  "BR",
 ]);
 
 const GEO_COOKIE = "stawi_geo_v1";
@@ -71,7 +81,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // locale-aware UI can read it without its own IP lookup.
   const response = await next();
   const country = request.headers.get("cf-ipcountry") ?? "";
-  if (country && response.headers.get("content-type")?.startsWith("text/html")) {
+  if (
+    country &&
+    response.headers.get("content-type")?.startsWith("text/html")
+  ) {
     // Clone so we can mutate headers (immutable by default).
     const mutable = new Response(response.body, response);
     mutable.headers.set("x-stawi-country", country.toUpperCase());

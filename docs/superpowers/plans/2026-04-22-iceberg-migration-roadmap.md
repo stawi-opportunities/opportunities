@@ -22,11 +22,11 @@ Stawi Jobs uses a hybrid storage model:
 
 **Tables NOT in Iceberg:**
 
-| Data | Storage |
-|---|---|
-| Canonical job body | `s3://opportunities-content/jobs/<slug>.json` |
-| Job translations | `s3://opportunities-content/jobs/<slug>/<lang>.json` |
-| Canonical expiry events | Frame event only — no persistent table |
+| Data                    | Storage                                              |
+| ----------------------- | ---------------------------------------------------- |
+| Canonical job body      | `s3://opportunities-content/jobs/<slug>.json`        |
+| Job translations        | `s3://opportunities-content/jobs/<slug>/<lang>.json` |
+| Canonical expiry events | Frame event only — no persistent table               |
 
 ---
 
@@ -139,23 +139,23 @@ Canonical job body, translations, and expiry events are NOT in Iceberg — see �
 
 ### 4.1 Jobs namespace (5 tables)
 
-| Table | Partition | Sort order after compaction |
-|---|---|---|
-| `jobs.variants` | `days(occurred_at), bucket(16, source_id)` | `posted_at` |
-| `jobs.embeddings` | `bucket(16, canonical_id)` | — |
-| `jobs.published` | `days(occurred_at)` | `published_at` |
-| `jobs.crawl_page_completed` | `days(occurred_at), bucket(16, source_id)` | `source_id` |
-| `jobs.sources_discovered` | `days(occurred_at)` | — |
+| Table                       | Partition                                  | Sort order after compaction |
+| --------------------------- | ------------------------------------------ | --------------------------- |
+| `jobs.variants`             | `days(occurred_at), bucket(16, source_id)` | `posted_at`                 |
+| `jobs.embeddings`           | `bucket(16, canonical_id)`                 | —                           |
+| `jobs.published`            | `days(occurred_at)`                        | `published_at`              |
+| `jobs.crawl_page_completed` | `days(occurred_at), bucket(16, source_id)` | `source_id`                 |
+| `jobs.sources_discovered`   | `days(occurred_at)`                        | —                           |
 
 ### 4.2 Candidates namespace (6 tables)
 
-| Table | Partition | Sort order |
-|---|---|---|
-| `candidates.cv_uploaded` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
-| `candidates.cv_extracted` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
-| `candidates.cv_improved` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)` |
-| `candidates.preferences` | `bucket(16, candidate_id)` | `candidate_id` |
-| `candidates.embeddings` | `bucket(16, candidate_id)` | `candidate_id` |
+| Table                      | Partition                                     | Sort order                       |
+| -------------------------- | --------------------------------------------- | -------------------------------- |
+| `candidates.cv_uploaded`   | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)`     |
+| `candidates.cv_extracted`  | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)`     |
+| `candidates.cv_improved`   | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, cv_version)`     |
+| `candidates.preferences`   | `bucket(16, candidate_id)`                    | `candidate_id`                   |
+| `candidates.embeddings`    | `bucket(16, candidate_id)`                    | `candidate_id`                   |
 | `candidates.matches_ready` | `days(occurred_at), bucket(16, candidate_id)` | `(candidate_id, match_batch_id)` |
 
 ### 4.3 Z-ordering
@@ -166,13 +166,13 @@ Applied during nightly compaction to the sort-key columns above. Pays off most o
 
 ## 5. Tooling stack
 
-| Piece | Pick | Notes |
-|---|---|---|
-| Go writer library | `github.com/apache/iceberg-go` | Pin to a version with write support. If current version's writes are shaky at spike time, fall back to Python sidecar |
-| Python maintenance | `pyiceberg >= 0.8` | Runs as a single `CronJob`, 512Mi memory |
-| Catalog backend | JDBC on existing `opportunities` Postgres | Four catalog tables via migration `0004_iceberg_catalog.sql` |
-| Ad-hoc query | DuckDB with `iceberg` extension | Zero-infra analytics |
-| Reader library (materializer, candidatestore, backfill) | `iceberg-go` | Same version as writer |
+| Piece                                                   | Pick                                      | Notes                                                                                                                 |
+| ------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Go writer library                                       | `github.com/apache/iceberg-go`            | Pin to a version with write support. If current version's writes are shaky at spike time, fall back to Python sidecar |
+| Python maintenance                                      | `pyiceberg >= 0.8`                        | Runs as a single `CronJob`, 512Mi memory                                                                              |
+| Catalog backend                                         | JDBC on existing `opportunities` Postgres | Four catalog tables via migration `0004_iceberg_catalog.sql`                                                          |
+| Ad-hoc query                                            | DuckDB with `iceberg` extension           | Zero-infra analytics                                                                                                  |
+| Reader library (materializer, candidatestore, backfill) | `iceberg-go`                              | Same version as writer                                                                                                |
 
 ---
 
@@ -181,6 +181,7 @@ Applied during nightly compaction to the sort-key columns above. Pays off most o
 ### 6.0 Prerequisites (day 0)
 
 Applies before any code lands:
+
 - Phase 6's Postgres cutover migration (`0003_cutover_drop_legacy.sql`) can either merge cleanly with the new iceberg migration or ship first. Pick one order; doesn't matter which.
 - R2 bucket `opportunities-log` exists (same bucket Phase 6 targets).
 - Vault path for `r2-log-credentials-opportunities` seeded.
@@ -198,11 +199,13 @@ Outcome = go/no-go one-pager. If `iceberg-go` writes are stable enough: proceed 
 ### 6.2 Catalog + tables (week 1)
 
 **Create:**
+
 - `db/migrations/0004_iceberg_catalog.sql` — the 4 Iceberg catalog tables
 - `definitions/iceberg/create_namespaces.py` — creates `jobs` and `candidates` namespaces
 - `definitions/iceberg/create_tables.py` — creates all 11 tables listed in §4 with their partition specs, sort orders, and schemas derived from `pkg/events/v1/*.go`
 
 **Deploy:**
+
 - Apply `0004_iceberg_catalog.sql` via the existing migration runner
 - Run `create_namespaces.py` + `create_tables.py` once (one-shot Job)
 
@@ -211,6 +214,7 @@ Outcome = go/no-go one-pager. If `iceberg-go` writes are stable enough: proceed 
 ### 6.3 Writer with catalog commits (week 2)
 
 **Modify `apps/writer/service/`:**
+
 - Remove `compact.go`, `compact_admin.go`, and their tests. Trust git — they're preserved in `main` history.
 - Add `iceberg_commit.go` with one helper:
 
@@ -232,16 +236,19 @@ func (s *Service) commitToCatalog(ctx context.Context, table string, parquetKey 
 - Delete the two Trustage triggers `compact-hourly.json` and `compact-daily.json`. They are never enabled.
 
 **Modify `apps/writer/cmd/main.go`:**
+
 - Wire a catalog client at startup. JDBC URL from env.
 - Drop the compactor construction + mux routes for `/_admin/compact/*`.
 
 **Build + test:**
+
 - Unit tests for `commitToCatalog` with a catalog stub.
 - Integration test (behind `//go:build integration`): real JDBC catalog + MinIO, write a batch, scan it back.
 
 ### 6.4 Maintenance CronJob (week 3)
 
 **Create:**
+
 - `apps/iceberg-ops/` — new tiny Python app with one main script
 - `apps/iceberg-ops/Dockerfile` — `python:3.12-slim` + `pyiceberg[sql]` + `psycopg2`
 - `apps/iceberg-ops/main.py` — the nightly rewrite + expire for the 11 append-only Iceberg tables
@@ -250,6 +257,7 @@ func (s *Service) commitToCatalog(ctx context.Context, table string, parquetKey 
 - Add `iceberg-ops/` to the top-level `opportunities/kustomization.yaml`
 
 **Deploy:**
+
 - Build the image in the existing release workflow (add `apps/iceberg-ops` to the matrix)
 - Apply the manifest; first run happens at 02:00 UTC next day
 
@@ -262,6 +270,7 @@ Consumer lag monitoring: `nats_jetstream_consumer_num_pending{consumer=~"materia
 ### 6.6 Reader refactor (week 4)
 
 **Modify:**
+
 - `pkg/candidatestore/reader.go` — scan `candidates.embeddings` + `candidates.preferences` via iceberg-go filters (latest-per-candidate using `ORDER BY occurred_at DESC LIMIT 1`)
 - `pkg/candidatestore/stale_reader.go` — scan `candidates.cv_extracted` filtered by `occurred_at < cutoff`
 - `apps/api/cmd/backfill_parquet.go` — scan `jobs.variants` or `jobs.published` for Hugo backfill; canonical detail comes from R2 JSON files directly
@@ -276,6 +285,7 @@ Method signatures stay the same. Callers don't change.
 - Cutover runbook (`docs/ops/cutover-runbook.md`) updated: "step 2.3 — nightly compact cron, not hourly compact cron." No other procedural changes; the data path is greenfield so the "drop tables + lift banner" sequence is identical.
 
 **Decommissioning:**
+
 - `apps/writer/service/compact.go` already deleted in §6.3.
 - `pkg/repository/materializer_watermark.go` deleted in §6.5.
 - Trustage triggers `compact-hourly.json` + `compact-daily.json` deleted.
@@ -285,30 +295,30 @@ Method signatures stay the same. Callers don't change.
 
 ## 7. Risks + mitigations
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| `iceberg-go` write support flaky at release time | Writer crashloops in prod | Spike (§6.1) is the go/no-go gate. Python sidecar fallback if needed |
-| Catalog is now a single point of failure for writes | Writer blocks on Postgres outage | Same HA posture as the existing Postgres instance. Add retry-with-backoff on the commit path; fail-open is NOT correct here — dropping the commit loses the file from the catalog |
-| First nightly CronJob fails silently | Small-file accumulation, eventually degraded read perf | CronJob posts a success marker to Prometheus; alert if no success in 36 hours |
-| Schema evolution surprise: Phase 6 payload struct added a field; Iceberg table didn't know | Writer commit fails with schema mismatch | Include the Iceberg table DDL in the same review as any payload struct change. Add a CI check: `pyiceberg table schema` matches the Go struct's parquet tags |
-| pyiceberg MERGE support immature | `_current` tables don't get rebuilt | If MERGE isn't available at the pyiceberg version in use, fall back to "delete all, insert latest" inside a single transaction — atomic via Iceberg's snapshot isolation |
-| R2 object lifecycle mismatch | Orphaned files after `expire_snapshots` | `expire_snapshots` retains files referenced by retained snapshots. Set retention to 14 days initially; tune down once stable |
+| Risk                                                                                       | Impact                                                 | Mitigation                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `iceberg-go` write support flaky at release time                                           | Writer crashloops in prod                              | Spike (§6.1) is the go/no-go gate. Python sidecar fallback if needed                                                                                                              |
+| Catalog is now a single point of failure for writes                                        | Writer blocks on Postgres outage                       | Same HA posture as the existing Postgres instance. Add retry-with-backoff on the commit path; fail-open is NOT correct here — dropping the commit loses the file from the catalog |
+| First nightly CronJob fails silently                                                       | Small-file accumulation, eventually degraded read perf | CronJob posts a success marker to Prometheus; alert if no success in 36 hours                                                                                                     |
+| Schema evolution surprise: Phase 6 payload struct added a field; Iceberg table didn't know | Writer commit fails with schema mismatch               | Include the Iceberg table DDL in the same review as any payload struct change. Add a CI check: `pyiceberg table schema` matches the Go struct's parquet tags                      |
+| pyiceberg MERGE support immature                                                           | `_current` tables don't get rebuilt                    | If MERGE isn't available at the pyiceberg version in use, fall back to "delete all, insert latest" inside a single transaction — atomic via Iceberg's snapshot isolation          |
+| R2 object lifecycle mismatch                                                               | Orphaned files after `expire_snapshots`                | `expire_snapshots` retains files referenced by retained snapshots. Set retention to 14 days initially; tune down once stable                                                      |
 
 ---
 
 ## 8. Cost model
 
-| Resource | Phase 6 | v6.0.0 | Delta |
-|---|---|---|---|
-| Writer pod | 1× 500m/1.5Gi | 1× 500m/1.5Gi | 0 |
-| Compactor code (in writer) | hourly ticks | deleted | **−** |
-| Maintenance CronJob | — | nightly 200m/512Mi for ~5 min | +negligible |
-| Materializer pod | 1× 200m/512Mi | 1× 200m/512Mi | 0 |
-| Trustage triggers (compact) | 2 | 0 | **−2** |
-| R2 storage | Parquet | Parquet + ~0.1% Iceberg metadata | +negligible |
-| Postgres size | 4 tables (sources, candidate_profiles, crawl_jobs, raw_payloads) | + 4 catalog tables | +few MB |
-| Custom Go LOC | ~2000 LOC compactor/watermark/bucket-prefix | ~800 LOC Iceberg wrappers | **−~1200 LOC** |
-| Python LOC | 0 | ~200 LOC in apps/iceberg-ops | +200 |
+| Resource                    | Phase 6                                                          | v6.0.0                           | Delta          |
+| --------------------------- | ---------------------------------------------------------------- | -------------------------------- | -------------- |
+| Writer pod                  | 1× 500m/1.5Gi                                                    | 1× 500m/1.5Gi                    | 0              |
+| Compactor code (in writer)  | hourly ticks                                                     | deleted                          | **−**          |
+| Maintenance CronJob         | —                                                                | nightly 200m/512Mi for ~5 min    | +negligible    |
+| Materializer pod            | 1× 200m/512Mi                                                    | 1× 200m/512Mi                    | 0              |
+| Trustage triggers (compact) | 2                                                                | 0                                | **−2**         |
+| R2 storage                  | Parquet                                                          | Parquet + ~0.1% Iceberg metadata | +negligible    |
+| Postgres size               | 4 tables (sources, candidate_profiles, crawl_jobs, raw_payloads) | + 4 catalog tables               | +few MB        |
+| Custom Go LOC               | ~2000 LOC compactor/watermark/bucket-prefix                      | ~800 LOC Iceberg wrappers        | **−~1200 LOC** |
+| Python LOC                  | 0                                                                | ~200 LOC in apps/iceberg-ops     | +200           |
 
 Net: infrastructure flat, operational surface down, code complexity down.
 

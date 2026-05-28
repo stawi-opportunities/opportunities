@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // ErrProfileNotFound surfaces when no candidate_profile row exists.
@@ -54,10 +56,10 @@ SELECT COALESCE(current_title,''),
        COALESCE(seniority,''),
        COALESCE(experience_level,''),
        COALESCE(years_experience,0),
-       COALESCE(skills,''),
-       COALESCE(strong_skills,''),
-       COALESCE(working_skills,''),
-       COALESCE(tools_frameworks,''),
+       COALESCE(skills,           ARRAY[]::text[]),
+       COALESCE(strong_skills,    ARRAY[]::text[]),
+       COALESCE(working_skills,   ARRAY[]::text[]),
+       COALESCE(tools_frameworks, ARRAY[]::text[]),
        COALESCE(certifications,''),
        COALESCE(preferred_roles,''),
        COALESCE(industries,''),
@@ -77,10 +79,6 @@ SELECT COALESCE(current_title,''),
 `
 	var (
 		pf            ProfileFields
-		skillsRaw     string
-		strongRaw     string
-		workingRaw    string
-		toolsRaw      string
 		certsRaw      string
 		preferredRaw  string
 		industriesRaw string
@@ -94,7 +92,11 @@ SELECT COALESCE(current_title,''),
 	err := db.QueryRowContext(ctx, q, candidateID).Scan(
 		&pf.CurrentTitle, &pf.TargetJobTitle, &pf.Seniority, &pf.ExperienceLevel,
 		&pf.YearsExperience,
-		&skillsRaw, &strongRaw, &workingRaw, &toolsRaw, &certsRaw,
+		pq.Array(&pf.Skills),
+		pq.Array(&pf.StrongSkills),
+		pq.Array(&pf.WorkingSkills),
+		pq.Array(&pf.ToolsFrameworks),
+		&certsRaw,
 		&preferredRaw, &industriesRaw, &pf.Education,
 		&languagesRaw, &pf.Bio,
 		&locationsRaw, &countriesRaw, &pf.RemotePref,
@@ -108,10 +110,6 @@ SELECT COALESCE(current_title,''),
 		return nil, "", fmt.Errorf("candidatestore: profile-fields: %w", err)
 	}
 	pf.CandidateID = candidateID
-	pf.Skills = splitCSV(skillsRaw)
-	pf.StrongSkills = splitCSV(strongRaw)
-	pf.WorkingSkills = splitCSV(workingRaw)
-	pf.ToolsFrameworks = splitCSV(toolsRaw)
 	pf.Certifications = splitCSV(certsRaw)
 	pf.PreferredRoles = splitCSV(preferredRaw)
 	pf.Industries = splitCSV(industriesRaw)

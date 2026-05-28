@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
-import { mount, type MountHandle } from "@stawi/profile";
-import { getConfig } from "@/utils/config";
-import { authRuntime } from "@/auth/runtime";
-import { profileWidgetTokens, profileWidgetCSS } from "@/theme/profile-widget";
+import { useEffect, useRef } from 'react';
+import { mount, type MountHandle } from '@stawi/profile';
+import { getConfig } from '@/utils/config';
+import { authRuntime } from '@/auth/runtime';
+import { profileWidgetTokens, profileWidgetCSS } from '@/theme/profile-widget';
 
 /**
  * Mounts @stawi/profile 1.x with stawi.opportunities visual tokens.
@@ -28,16 +28,18 @@ export function StawiAuth() {
         clientId: cfg.oidcClientID,
         idpBaseUrl: cfg.oidcIssuer,
         apiBaseUrl: cfg.candidatesAPIURL,
-        theme: "light",
+        theme: 'light',
         tokens: profileWidgetTokens,
         css: profileWidgetCSS,
-        onLogout: () => { window.location.href = "/"; },
+        onLogout: () => {
+          window.location.href = '/';
+        },
         onError: (err) => {
-          console.error("[stawi/profile] onError:", err);
+          console.error('[stawi/profile] onError:', err);
         },
       });
     } catch (err) {
-      console.error("[stawi/profile] mount failed:", err);
+      console.error('[stawi/profile] mount failed:', err);
     }
 
     return () => {
