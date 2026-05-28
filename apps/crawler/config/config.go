@@ -102,10 +102,10 @@ type CrawlerConfig struct {
 	RedirectServiceURI    string `env:"REDIRECT_SERVICE_URI" envDefault:""`
 	RedirectPublicBaseURL string `env:"REDIRECT_PUBLIC_BASE_URL" envDefault:""`
 
-	// Trustage workflow loader — syncs definitions from a mounted
-	// directory into Trustage during the migration Job.
+	// Trustage workflow loader — syncs definitions baked into the image
+	// at /workflows into Trustage during the migration Job.
 	TrustageURL          string `env:"TRUSTAGE_URL" envDefault:""`
-	TrustageWorkflowsDir string `env:"TRUSTAGE_WORKFLOWS_DIR" envDefault:""`
+	TrustageWorkflowsDir string `env:"TRUSTAGE_WORKFLOWS_DIR" envDefault:"/workflows"`
 
 	// Analytics (OpenObserve) — shared across every opportunities service.
 	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`
