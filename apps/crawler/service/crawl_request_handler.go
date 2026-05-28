@@ -464,6 +464,24 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	}
 	h.emitCompleted(ctx, completed)
 
+	if h.deps.CrawlRepo != nil {
+		finalStatus := domain.CrawlSucceeded
+		errorCode := ""
+		errorMessage := ""
+		if iterErr != nil {
+			finalStatus = domain.CrawlFailed
+			errorCode = "iterator_failed"
+			errorMessage = iterErr.Error()
+		}
+		if finErr := h.deps.CrawlRepo.Finish(
+			ctx, crawlJob.ID, finalStatus,
+			jobsFound, jobsEmitted,
+			errorCode, errorMessage,
+		); finErr != nil {
+			log.WithError(finErr).Warn("crawl.request: finish crawl_jobs failed")
+		}
+	}
+
 	log.WithField("found", jobsFound).
 		WithField("emitted", jobsEmitted).
 		WithField("rejected", jobsRejected).
