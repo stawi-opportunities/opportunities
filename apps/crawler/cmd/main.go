@@ -81,10 +81,13 @@ func main() {
 	// Pattern follows service-profile: migrate, then return immediately.
 	if cfg.DoDatabaseMigrate() {
 		migrationDB := dbFn(ctx, false)
+		// CrawlJob and RawPayload are TimescaleDB hypertables — the SQL
+		// migrations (0019) own their schema, same pattern as
+		// pipeline_variants. Including them in AutoMigrate creates a
+		// plain-PK shadow table that 0019's DROP TABLE then has to
+		// reclaim. Exclude.
 		if err := migrationDB.AutoMigrate(
 			&domain.Source{},
-			&domain.CrawlJob{},
-			&domain.RawPayload{},
 			&domain.RawRef{},
 		); err != nil {
 			log.WithError(err).Fatal("auto-migrate failed")
