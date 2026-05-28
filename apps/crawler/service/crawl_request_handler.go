@@ -325,7 +325,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 					jobsRejected++
 					reason := rejectionReason(res)
 					telemetry.RecordVerifyRejection(kind, reason)
-					if rerr := h.publishRejected(ctx, src.ID, kind, extJob, res); rerr != nil {
+					if rerr := h.publishRejected(ctx, src.ID, kind, extJob, res, crawlJob.ID, pageRawPayloadID); rerr != nil {
 						log.WithError(rerr).Warn("crawl.request: publishRejected failed")
 					}
 					continue
@@ -566,7 +566,11 @@ func stringPtrOrNil(s string) *string {
 // opportunity.Verify. The writer subscribes to the matching topic and
 // appends a row to opportunities.variants_rejected so the rejection is
 // durable and operator-inspectable.
-func (h *CrawlRequestHandler) publishRejected(ctx context.Context, sourceID, kind string, opp domain.ExternalOpportunity, res opportunity.VerifyResult) error {
+func (h *CrawlRequestHandler) publishRejected(
+	ctx context.Context, sourceID, kind string,
+	opp domain.ExternalOpportunity, res opportunity.VerifyResult,
+	crawlJobID, rawPayloadID string,
+) error {
 	reasons := append([]string(nil), res.Missing...)
 	if res.Mismatch != "" {
 		reasons = append(reasons, res.Mismatch)
@@ -575,12 +579,14 @@ func (h *CrawlRequestHandler) publishRejected(ctx context.Context, sourceID, kin
 		reasons = []string{"verify_failed"}
 	}
 	rej := eventsv1.VariantRejectedV1{
-		VariantID:  xid.New().String(),
-		SourceID:   sourceID,
-		Kind:       kind,
-		Title:      opp.Title,
-		Reasons:    reasons,
-		RejectedAt: time.Now().UTC(),
+		VariantID:    xid.New().String(),
+		SourceID:     sourceID,
+		Kind:         kind,
+		Title:        opp.Title,
+		Reasons:      reasons,
+		RawPayloadID: rawPayloadID,
+		CrawlJobID:   crawlJobID,
+		RejectedAt:   time.Now().UTC(),
 	}
 	// Ledger row at terminal stage 'rejected' — never enters the
 	// normal chain so AdvanceStage wouldn't find a prior row. We
