@@ -138,6 +138,14 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	}
 	req := env.Payload
 
+	// Reparse short-circuit: when RawPayloadID is set, the request was
+	// issued by the /admin/raw_payloads/{id}/reparse (or
+	// /admin/sources/{id}/reparse) endpoint. Skip the connector
+	// iterator entirely and re-run extraction on the stored HTML.
+	if req.RawPayloadID != "" {
+		return h.reparse(ctx, req)
+	}
+
 	log := util.Log(ctx).
 		WithField("request_id", req.RequestID).
 		WithField("source_id", req.SourceID)
@@ -761,4 +769,181 @@ func mergeStubFields(dst, src *domain.ExternalOpportunity) {
 			}
 		}
 	}
+}
+
+// reparse re-runs extraction on a previously-fetched HTML page,
+// bypassing the connector iterator. Used by the
+// /admin/raw_payloads/{id}/reparse and /admin/sources/{id}/reparse
+// endpoints after operators edit extraction prompts or kind specs.
+//
+// Always best-effort: storage misses, expired retention, source-not-
+// found, extraction errors, and verify rejections all log + return nil
+// rather than triggering Frame redelivery. The audit columns
+// (raw_payloads.reparse_count + last_reparsed_at) are bumped on every
+// invocation regardless of outcome so operators can see how often a
+// given payload has been re-tried.
+func (h *CrawlRequestHandler) reparse(ctx context.Context, req eventsv1.CrawlRequestV1) error {
+	log := util.Log(ctx).
+		WithField("raw_payload_id", req.RawPayloadID).
+		WithField("source_id", req.SourceID)
+	if h.deps.CrawlRepo == nil {
+		return errors.New("reparse: CrawlRepo unwired")
+	}
+
+	rp, err := h.deps.CrawlRepo.GetRawPayload(ctx, req.RawPayloadID)
+	if err != nil {
+		return fmt.Errorf("reparse: GetRawPayload: %w", err)
+	}
+	if rp == nil {
+		log.Warn("reparse: raw_payload not found (retention expired or wrong id)")
+		return nil // not a NATS-level failure
+	}
+
+	src, err := h.deps.Sources.GetByID(ctx, rp.SourceID)
+	if err != nil {
+		return fmt.Errorf("reparse: source lookup: %w", err)
+	}
+	if src == nil {
+		log.Warn("reparse: source not found")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+	if len(src.Kinds) == 0 {
+		src.Kinds = []string{"job"}
+	}
+
+	body, err := h.deps.Archive.GetRaw(ctx, rp.ContentHash)
+	if err != nil {
+		log.WithError(err).Warn("reparse: archive.GetRaw failed")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+
+	bodyStr := string(body)
+	if ext, _ := content.ExtractFromHTML(bodyStr); ext != nil && ext.Markdown != "" {
+		bodyStr = ext.Markdown
+	}
+
+	if h.deps.Extractor == nil {
+		log.Warn("reparse: Extractor unwired; nothing to re-run")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+	extracted, err := h.deps.Extractor.Extract(ctx, bodyStr, src.Kinds, src.ExtractionPromptExtension)
+	if err != nil {
+		log.WithError(err).Warn("reparse: extraction failed")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+	if extracted == nil {
+		log.Info("reparse: extractor returned nothing")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+
+	// Re-attach source identity + URL hints — Extract returns a fresh
+	// record without the SourceID/SourceURL fields populated.
+	extJob := *extracted
+	extJob.SourceID = src.ID
+	if extJob.SourceURL == "" {
+		extJob.SourceURL = rp.SourceURL
+	}
+	ensureApplyURL(&extJob, rp.SourceURL)
+	ensureApplyURL(&extJob, src.BaseURL)
+
+	kind := extJob.Kind
+	if kind == "" && len(src.Kinds) > 0 {
+		kind = src.Kinds[0]
+		extJob.Kind = kind
+	}
+	if src.Country != "" {
+		if extJob.AnchorLocation == nil {
+			extJob.AnchorLocation = &domain.Location{Country: src.Country}
+		} else if extJob.AnchorLocation.Country == "" {
+			extJob.AnchorLocation.Country = src.Country
+		}
+	}
+
+	// Verify — if still rejected, emit the rejection event with the
+	// raw_payload back-reference; the operator can iterate.
+	if h.deps.Kinds != nil {
+		if res := opportunity.Verify(&extJob, src, h.deps.Kinds); !res.OK {
+			log.WithField("reasons", res.Missing).Info("reparse: still rejected after re-extraction")
+			_ = h.publishRejected(ctx, src.ID, kind, extJob, res, "", rp.ID)
+			_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+			return nil
+		}
+	}
+
+	// Emit a fresh variants.ingested.v1 — the rest of the pipeline
+	// (normalize → validate → cluster → canonical → publish) handles
+	// it identically to a fresh crawl.
+	now := time.Now().UTC()
+	var variant normalize.JobVariant
+	if h.deps.Normalizer != nil {
+		variant = h.deps.Normalizer.Normalize(&extJob, src.ID, src.Country, string(src.Type), src.Language, now)
+	} else {
+		variant = normalize.ExternalToVariant(extJob, src.ID, src.Country, string(src.Type), src.Language, now)
+	}
+	if kind == "" {
+		kind = "job"
+	}
+	attrs := maps.Clone(extJob.Attributes)
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+	attrs["description"] = variant.Description
+	attrs["apply_url"] = variant.ApplyURL
+	attrs["language"] = variant.Language
+	attrs["remote_type"] = variant.RemoteType
+	attrs["employment_type"] = variant.EmploymentType
+	attrs["location_text"] = variant.LocationText
+	attrs["content_hash"] = variant.ContentHash
+	attrs["raw_archive_ref"] = rp.StorageURI
+	attrs["reparsed_from"] = rp.ID
+	if variant.PostedAt != nil {
+		attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
+	}
+
+	eventPayload := eventsv1.VariantIngestedV1{
+		VariantID:     xid.New().String(),
+		SourceID:      src.ID,
+		ExternalID:    variant.ExternalJobID,
+		HardKey:       variant.HardKey,
+		Kind:          kind,
+		Stage:         string(domain.StageRaw),
+		Title:         variant.Title,
+		IssuingEntity: variant.Company,
+		AnchorCountry: variant.Country,
+		Remote:        variant.RemoteType == "remote",
+		Currency:      variant.Currency,
+		AmountMin:     variant.SalaryMin,
+		AmountMax:     variant.SalaryMax,
+		Attributes:    attrs,
+		ScrapedAt:     now,
+	}
+
+	rawIDPtr := &rp.ID
+	if h.deps.VariantStore != nil {
+		_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
+			VariantID:    eventPayload.VariantID,
+			SourceID:     eventPayload.SourceID,
+			HardKey:      eventPayload.HardKey,
+			Kind:         eventPayload.Kind,
+			CurrentStage: variantstate.StageIngested,
+			RawPayloadID: rawIDPtr,
+		})
+	}
+
+	if evtMgr := h.deps.Svc.EventsManager(); evtMgr != nil {
+		if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
+			eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload),
+		); emitErr != nil {
+			log.WithError(emitErr).Warn("reparse: emit variant failed")
+		}
+	}
+
+	_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+	log.WithField("variant_id", eventPayload.VariantID).Info("reparse: re-emitted variant")
+	return nil
 }

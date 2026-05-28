@@ -175,6 +175,7 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	// from R2 for rejection drill-down. Wired only when R2 creds + the
 	// archive bucket name are present; otherwise the endpoint stays
 	// disabled and the rest of the admin surface keeps working.
+	crawlRepo := repository.NewCrawlRepository(pool.DB)
 	if cfg.R2AccountID != "" && cfg.R2ArchiveBucket != "" {
 		arch := archive.NewR2Archive(archive.R2Config{
 			AccountID:       cfg.R2AccountID,
@@ -182,12 +183,18 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 			SecretAccessKey: cfg.R2SecretAccessKey,
 			Bucket:          cfg.R2ArchiveBucket,
 		})
-		crawlRepo := repository.NewCrawlRepository(pool.DB)
 		registerRawPayloadAdmin(mux, crawlRepo, arch)
 		log.Info("source admin: /admin/raw_payloads/{id}/body wired")
 	} else {
 		log.Warn("source admin: R2 not configured; /admin/raw_payloads/{id}/body disabled")
 	}
+
+	// /admin/raw_payloads/{id}/reparse + /admin/sources/{id}/reparse —
+	// publish a CrawlRequestV1 with RawPayloadID set so the crawler
+	// re-runs extraction on stored HTML. Available even without R2
+	// configured (the crawler-side handler does the storage probe).
+	registerReparseAdmin(mux, crawlRepo, frameEmitter{svc: svc})
+	log.Info("source admin: /admin/raw_payloads/{id}/reparse + /admin/sources/{id}/reparse wired")
 
 	// /admin/definitions/* — pluggable-definitions CRUD over R2. Reuses
 	// the loader main.go already started so this surface, the per-replica
