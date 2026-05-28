@@ -240,6 +240,32 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	for iter.Next(ctx) {
 		status = iter.HTTPStatus()
 		pageArchiveRef := resolveArchiveRef(ctx, h.deps.Archive, iter.Content())
+
+		// Audit-ledger: row per page. resolveArchiveRef already wrote the R2
+		// blob via archive.PutRaw (content-addressed by sha256); here we
+		// just record the metadata + queue-state row pointing at it.
+		var pageRawPayloadID string
+		if h.deps.CrawlRepo != nil && iter.Content() != nil && len(iter.Content().RawHTML) > 0 {
+			rawBody := []byte(iter.Content().RawHTML)
+			pageContentHash := sha256Hex(rawBody)
+			rp := &domain.RawPayload{
+				CrawlJobID:  crawlJob.ID,
+				SourceID:    src.ID,
+				SourceURL:   src.BaseURL,
+				StorageURI:  pageArchiveRef,
+				ContentHash: pageContentHash,
+				SizeBytes:   int64(len(rawBody)),
+				FetchedAt:   time.Now().UTC(),
+				HTTPStatus:  iter.HTTPStatus(),
+				Status:      domain.RawPayloadStatusPending,
+			}
+			if rawErr := h.deps.CrawlRepo.SaveRawPayload(ctx, rp); rawErr != nil {
+				log.WithError(rawErr).Warn("crawl.request: save raw_payload failed")
+			} else {
+				pageRawPayloadID = rp.ID
+			}
+		}
+
 		pageItems := iter.Items()
 
 		// Enrich URL-only stubs (sitemap + universal AI link
@@ -380,12 +406,16 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			// the rare case where Postgres replication lag puts the row
 			// behind the NATS delivery, but the canonical path is:
 			// crawler writes → crawler emits → worker reads.
+			rawIDPtr := stringPtrOrNil(pageRawPayloadID)
+			jobIDPtr := stringPtrOrNil(crawlJob.ID)
 			_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
 				VariantID:    eventPayload.VariantID,
 				SourceID:     eventPayload.SourceID,
 				HardKey:      eventPayload.HardKey,
 				Kind:         eventPayload.Kind,
 				CurrentStage: variantstate.StageIngested,
+				RawPayloadID: rawIDPtr,
+				CrawlJobID:   jobIDPtr,
 			})
 
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
@@ -501,6 +531,17 @@ func resolveArchiveRef(ctx context.Context, arch archive.Archive, page *content.
 func sha256Hex(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
+}
+
+// stringPtrOrNil returns a pointer to s, or nil when s is empty. Used
+// to keep RawPayloadID / CrawlJobID columns NULL on the variant ledger
+// row when the audit-write soft-failed (best-effort) or the deps
+// haven't wired the CrawlRepo (test paths).
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // publishRejected emits VariantRejectedV1 for a record that failed
