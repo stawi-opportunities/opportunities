@@ -151,3 +151,32 @@ func (r *CrawlRepository) ListBySource(ctx context.Context, sourceID string, lim
     `, sourceID, limit).Scan(&rows).Error
 	return rows, err
 }
+
+// ListRawPayloadsBySource returns up to `limit` recently-fetched
+// raw_payloads for a source. Used by the reparse admin endpoint
+// to enqueue a batch.
+func (r *CrawlRepository) ListRawPayloadsBySource(ctx context.Context, sourceID string, since time.Duration, limit int) ([]domain.RawPayload, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 1000
+	}
+	cutoff := time.Now().Add(-since)
+	var rows []domain.RawPayload
+	err := r.db(ctx, true).
+		Where("source_id = ? AND fetched_at >= ?", sourceID, cutoff).
+		Order("fetched_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	return rows, err
+}
+
+// IncrementReparseCount bumps reparse_count + sets last_reparsed_at.
+// Called by the crawler's reparse handler after a re-extraction completes.
+func (r *CrawlRepository) IncrementReparseCount(ctx context.Context, id string) error {
+	return r.db(ctx, false).
+		Table("raw_payloads").
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"reparse_count":    gorm.Expr("reparse_count + 1"),
+			"last_reparsed_at": time.Now().UTC(),
+		}).Error
+}

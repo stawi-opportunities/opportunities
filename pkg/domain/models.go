@@ -181,6 +181,11 @@ type Source struct {
 	// source is always visible without trawling audit logs.
 	LastStoppedAt *time.Time `json:"last_stopped_at,omitempty"`
 	LastStoppedBy string     `gorm:"type:varchar(64)" json:"last_stopped_by,omitempty"`
+
+	// ExtractionPromptExtension is appended verbatim to the kind-level
+	// extraction prompt for this source. Empty for sources that don't
+	// need customization. Operator-editable via PUT /admin/sources/{id}.
+	ExtractionPromptExtension string `gorm:"type:text;not null;default:''" json:"extraction_prompt_extension"`
 }
 
 func (Source) TableName() string { return "sources" }
@@ -246,6 +251,9 @@ type RawPayload struct {
 	AttemptCount int              `gorm:"column:attempt_count;not null;default:0" json:"attempt_count"`
 	NextRetryAt  *time.Time       `gorm:"column:next_retry_at" json:"next_retry_at,omitempty"`
 	LastError    string           `gorm:"column:last_error;type:text" json:"last_error,omitempty"`
+
+	ReparseCount   int        `gorm:"column:reparse_count;not null;default:0" json:"reparse_count"`
+	LastReparsedAt *time.Time `gorm:"column:last_reparsed_at" json:"last_reparsed_at,omitempty"`
 }
 
 func (RawPayload) TableName() string { return "raw_payloads" }
