@@ -155,7 +155,12 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	mux.HandleFunc("GET /admin/sources", requireAdmin(a.handleList))
 	mux.HandleFunc("POST /admin/sources", requireAdmin(a.handleCreate))
 
-	log.Info("source admin: endpoints registered under /admin/sources")
+	// /admin/trace/* shares the same database pool + source repo for
+	// the source-lookup leg, so we wire it here rather than duplicating
+	// the frame-datastore boot in main.go.
+	registerTraceAdmin(mux, repository.NewTraceRepository(pool.DB), repo)
+
+	log.Info("source admin: endpoints registered under /admin/sources, /admin/trace")
 }
 
 // buildAdminConnectorRegistry returns a connectors.Registry suitable for
