@@ -314,6 +314,12 @@ func main() {
 	// the crawl rather than silently diverge.
 	crawlRepo := repository.NewCrawlRepository(dbFn)
 
+	// Iterator checkpoint store — feeds the resume path on the next
+	// NATS redelivery after a crash. Soft-fail throughout: a Postgres
+	// outage degrades resumption to "always start fresh" rather than
+	// stalling the crawl.
+	checkpointRepo := repository.NewCheckpointRepository(dbFn)
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:               svc,
 		Sources:           sourceRepo,
@@ -327,6 +333,7 @@ func main() {
 		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
 		VariantStore:      variantStore,
 		CrawlRepo:         crawlRepo,
+		CheckpointRepo:    checkpointRepo,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)

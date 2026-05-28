@@ -80,6 +80,13 @@ type CrawlRequestDeps struct {
 	// Postgres outage MUST fail the crawl, otherwise the ledger silently
 	// diverges from reality.
 	CrawlRepo *repository.CrawlRepository
+	// CheckpointRepo persists per-source iterator state so a crawler
+	// that crashes mid-iteration resumes from the last successful page
+	// on the next NATS redelivery. nil disables checkpointing — the
+	// connector is invoked via plain Crawl (no resume) and no rows
+	// are written. Best-effort throughout: a Postgres outage degrades
+	// resumption to "always start fresh" rather than stalling the crawl.
+	CheckpointRepo *repository.CheckpointRepository
 }
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
@@ -234,7 +241,35 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		}
 	}
 
-	iter := conn.Crawl(ctx, *src)
+	// Resume from a prior checkpoint when the connector supports it.
+	// Stale checkpoints (>StaleAfter, default 6h) are discarded: the
+	// source's listing-page state has likely shifted and we'd skip
+	// fresh records. Soft-fail on the lookup — a Postgres outage
+	// degrades resumption to "always start fresh" rather than stalling
+	// the crawl.
+	var iter connectors.CrawlIterator
+	var prevCheckpoint *connectors.CheckpointState
+	if h.deps.CheckpointRepo != nil {
+		cp, stale, cpErr := h.deps.CheckpointRepo.Get(ctx, src.ID, string(conn.Type()))
+		switch {
+		case cpErr != nil:
+			log.WithError(cpErr).Warn("crawl.request: checkpoint Get failed")
+		case cp != nil && !stale:
+			prevCheckpoint = &connectors.CheckpointState{
+				Cursor:  cp.Cursor,
+				PageIdx: cp.PageIdx,
+				LastURL: cp.LastURL,
+			}
+			log.WithField("page_idx", cp.PageIdx).Info("crawl.request: resuming from checkpoint")
+		case cp != nil && stale:
+			log.WithField("source_id", src.ID).Debug("crawl.request: discarding stale checkpoint")
+		}
+	}
+	if resumable, ok := conn.(connectors.ResumableConnector); ok && prevCheckpoint != nil {
+		iter = resumable.CrawlResume(ctx, *src, prevCheckpoint)
+	} else {
+		iter = conn.Crawl(ctx, *src)
+	}
 
 	var (
 		jobsFound    int
@@ -442,6 +477,24 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			lastCursor = string(cur)
 		}
 
+		// Persist checkpoint per page when the iterator participates.
+		// Soft-fail — if Postgres is down we lose resume capability
+		// but the crawl itself keeps going. The clear at end-of-iter
+		// also soft-fails so a stuck row doesn't block fresh crawls
+		// (operator can DELETE /admin/checkpoints/{src}/{type}).
+		if h.deps.CheckpointRepo != nil {
+			if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
+				if cp := cpi.Checkpoint(); cp != nil {
+					if putErr := h.deps.CheckpointRepo.Put(
+						ctx, src.ID, string(conn.Type()),
+						cp.Cursor, cp.PageIdx, cp.LastURL,
+					); putErr != nil {
+						log.WithError(putErr).Warn("crawl.request: checkpoint Put failed")
+					}
+				}
+			}
+		}
+
 		// Opportunistic DiscoverSites — sampled so we don't triple the
 		// AI bill. Operates on the last page's raw HTML (iter.Content
 		// is already parsed; use RawPayload for the unprocessed bytes).
@@ -454,6 +507,19 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	if e := iter.Err(); e != nil {
 		iterErr = e
 		log.WithError(e).Warn("crawl.request: iterator failed")
+	}
+
+	// Clear the checkpoint on clean completion — next scheduled crawl
+	// starts fresh rather than re-emitting "we already saw page N".
+	// Iterator errors leave the row in place so the next redelivery
+	// resumes from where we crashed. Best-effort: a delete failure is
+	// not worth failing the surrounding crawl.
+	if iterErr == nil && h.deps.CheckpointRepo != nil {
+		if _, ok := iter.(connectors.CheckpointableIterator); ok {
+			if clrErr := h.deps.CheckpointRepo.Clear(ctx, src.ID, string(conn.Type())); clrErr != nil {
+				log.WithError(clrErr).Warn("crawl.request: checkpoint Clear failed")
+			}
+		}
 	}
 
 	completed := eventsv1.CrawlPageCompletedV1{
