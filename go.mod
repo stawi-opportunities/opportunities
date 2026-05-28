@@ -6,14 +6,14 @@ toolchain go1.26.2
 
 require (
 	buf.build/gen/go/antinvestor/billing/connectrpc/go v1.19.2-20260420185150-0ab112d6883a.1
-	buf.build/gen/go/antinvestor/files/connectrpc/go v1.19.2-20260511135453-ad06fa76a0de.1
+	buf.build/gen/go/antinvestor/files/connectrpc/go v1.20.0-20260511135453-ad06fa76a0de.1
 	buf.build/gen/go/antinvestor/notification/connectrpc/go v1.19.2-20260420185629-7892d788a2b9.1
 	buf.build/gen/go/antinvestor/payment/connectrpc/go v1.19.2-20260420185150-8c84a85babd3.1
 	buf.build/gen/go/antinvestor/profile/connectrpc/go v1.19.2-20260415203305-aa11e5e50dc9.1
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
 	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc
 	github.com/antinvestor/common v1.5.0
-	github.com/antinvestor/service-trustage v0.3.51
+	github.com/antinvestor/service-trustage v0.3.52
 	github.com/apache/arrow-go/v18 v18.5.2
 	github.com/apache/iceberg-go v0.5.0
 	github.com/aws/aws-sdk-go-v2 v1.41.6
@@ -40,8 +40,8 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/minio v0.42.0
 	github.com/yuin/goldmark v1.8.2
-	go.opentelemetry.io/otel v1.43.0
-	go.opentelemetry.io/otel/metric v1.43.0
+	go.opentelemetry.io/otel v1.44.0
+	go.opentelemetry.io/otel/metric v1.44.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
@@ -269,7 +269,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/sdk/log v0.19.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
-	go.opentelemetry.io/otel/trace v1.43.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
