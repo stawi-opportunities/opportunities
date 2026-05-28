@@ -2,6 +2,8 @@ package domain
 
 import (
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // CandidateStatus tracks the lifecycle state of a candidate profile.
@@ -45,17 +47,24 @@ type CandidateProfile struct {
 	AutoApply    bool             `gorm:"not null;default:false" json:"auto_apply"`
 
 	// CV storage
-	CVUrl     string `gorm:"type:text" json:"cv_url"`
-	CVRawText string `gorm:"type:text" json:"-"`
+	CVUrl string `gorm:"type:text" json:"cv_url"`
+	// CV durable storage — raw text lives in R2 at
+	// candidates/{candidate_id}/cv-raw.txt.gz. The row carries the
+	// pointer + sha256 for change-detection. Both empty until the
+	// CV-upload path is rewired through R2 (follow-up; the columns
+	// are pre-created so the next iteration can land without
+	// another migration).
+	CVStorageURI  string `gorm:"type:text" json:"-"`
+	CVContentHash string `gorm:"type:varchar(64)" json:"-"`
 
 	// AI-extracted profile fields
-	CurrentTitle    string `gorm:"type:text" json:"current_title"`
-	Seniority       string `gorm:"type:varchar(30)" json:"seniority"`
-	YearsExperience int    `gorm:"type:int" json:"years_experience"`
-	Skills          string `gorm:"type:text" json:"skills"`
-	StrongSkills    string `gorm:"type:text" json:"strong_skills"`
-	WorkingSkills   string `gorm:"type:text" json:"working_skills"`
-	ToolsFrameworks string `gorm:"type:text" json:"tools_frameworks"`
+	CurrentTitle    string         `gorm:"type:text" json:"current_title"`
+	Seniority       string         `gorm:"type:varchar(30)" json:"seniority"`
+	YearsExperience int            `gorm:"type:int" json:"years_experience"`
+	Skills          pq.StringArray `gorm:"type:text[]" json:"skills"`
+	StrongSkills    pq.StringArray `gorm:"type:text[]" json:"strong_skills"`
+	WorkingSkills   pq.StringArray `gorm:"type:text[]" json:"working_skills"`
+	ToolsFrameworks pq.StringArray `gorm:"type:text[]" json:"tools_frameworks"`
 	Certifications  string `gorm:"type:text" json:"certifications"`
 	PreferredRoles  string `gorm:"type:text" json:"preferred_roles"`
 	Industries      string `gorm:"type:text" json:"industries"`
