@@ -46,8 +46,8 @@ type traceAdminHandler struct {
 func registerTraceAdmin(mux *http.ServeMux, trace *repository.TraceRepository, sources sourceLookup) {
 	h := traceAdminHandler{trace: trace, sources: sources}
 	mux.HandleFunc("GET /admin/trace/sources/{id}", requireAdmin(h.SourceTrace))
-	// /admin/trace/variants/{id} + /admin/trace/opportunities/{slug}
-	// land in the next commit.
+	mux.HandleFunc("GET /admin/trace/variants/{id}", requireAdmin(h.VariantTrace))
+	mux.HandleFunc("GET /admin/trace/opportunities/{slug}", requireAdmin(h.OpportunityTrace))
 }
 
 // SourceTrace handles GET /admin/trace/sources/{id}?since=24h&limit=50.
@@ -103,6 +103,62 @@ func (h traceAdminHandler) SourceTrace(w http.ResponseWriter, r *http.Request) {
 		},
 		"summary":       summary,
 		"recent_crawls": recents,
+	})
+}
+
+// VariantTrace handles GET /admin/trace/variants/{id}.
+//
+// Returns the full join (source + crawl_job + raw_payload + canonical
+// slug) for a single variant_id. 404 when the variant isn't in
+// pipeline_variants — most commonly because retention expired (7d) or
+// the variant_id is a typo. The handler stamps body_url on the
+// raw_payload sub-object so the UI can deep-link to
+// /admin/raw_payloads/{id}/body without a second lookup.
+func (h traceAdminHandler) VariantTrace(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "bad_request", "variant id required")
+		return
+	}
+	tl, err := h.trace.VariantTimeline(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if tl == nil {
+		writeError(w, http.StatusNotFound, "not_found",
+			"variant not in pipeline_variants (retention may have elapsed)")
+		return
+	}
+	if tl.RawPayload != nil && tl.RawPayload.ID != "" {
+		tl.RawPayload.BodyURL = "/admin/raw_payloads/" + tl.RawPayload.ID + "/body"
+	}
+	writeJSON(w, http.StatusOK, tl)
+}
+
+// OpportunityTrace handles GET /admin/trace/opportunities/{slug}.
+//
+// Returns every pipeline_variants row joined to the canonical
+// (via opportunities.slug). The empty-result case is NOT 404 — an
+// empty list is meaningful (canonical exists, no variants currently
+// in the 7d retention window).
+func (h traceAdminHandler) OpportunityTrace(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	slug := r.PathValue("slug")
+	if slug == "" {
+		writeError(w, http.StatusBadRequest, "bad_request", "slug required")
+		return
+	}
+	variants, err := h.trace.OpportunityVariants(ctx, slug)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"slug":          slug,
+		"variant_count": len(variants),
+		"variants":      variants,
 	})
 }
 
