@@ -34,6 +34,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
@@ -61,13 +62,32 @@ func main() {
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 	log := util.Log(ctx)
 
-	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
-	// later phases consult the registry on the publish/index paths.
-	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	// Load the opportunity-kinds registry. Prefer the R2-backed
+	// definitions loader (admin can edit kind YAMLs in the cluster);
+	// fall back to the on-disk ConfigMap when R2 isn't configured so
+	// dev/OSS deploys keep working.
+	loader, err := definitions.NewR2LoaderFromEnv(ctx)
 	if err != nil {
-		log.WithError(err).Fatal("opportunity registry: load failed")
+		log.WithError(err).Fatal("definitions: env config failed")
 	}
-	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+	var reg *opportunity.Registry
+	if loader != nil {
+		if err := loader.Start(ctx); err != nil {
+			log.WithError(err).Fatal("definitions: loader start failed")
+		}
+		reg, err = opportunity.LoadFromDefinitions(ctx, loader)
+		if err != nil {
+			log.WithError(err).Fatal("definitions: registry load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from R2 definitions")
+	} else {
+		log.Warn("definitions: R2 not configured; falling back to OpportunityKindsDir")
+		reg, err = opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+		if err != nil {
+			log.WithError(err).Fatal("opportunity registry: load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
+	}
 
 	// Matcher registry: per-kind preference scorers. Phase 7.5 only
 	// constructs + logs; Phase 7.6/7.7 will route the candidates/match
@@ -496,6 +516,26 @@ func main() {
 		}
 		meV1.Mount(mux, extDeps, authMW)
 		log.Info("matching: /api/me/* routes enabled")
+	}
+
+	// definitions.changed.v1 broadcast — invalidates the loader cache
+	// and live-rebuilds the kind registry on admin edits. Registered as
+	// a separate Init pass so it doesn't tangle with the flag-gated CV
+	// subscriber wiring above.
+	if loader != nil {
+		rebuild := func(ctx context.Context) error {
+			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
+			if err != nil {
+				return err
+			}
+			reg.Replace(fresh)
+			return nil
+		}
+		svc.Init(ctx, frame.WithRegisterEvents(definitions.NewBroadcastConsumer(loader, rebuild)))
+		if mgr := svc.EventsManager(); mgr != nil {
+			mgr.SetStrict(false)
+		}
+		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
 
 	svc.Init(ctx, frame.WithHTTPHandler(mux))

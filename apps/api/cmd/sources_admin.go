@@ -96,7 +96,12 @@ type sourcesAdmin struct {
 //
 // Failures during init are surfaced as warnings so the api keeps
 // serving public traffic even when the admin surface is misconfigured.
-func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry) {
+// registerSourcesAdmin signature gained an optional loader so main.go can
+// pass the shared *definitions.R2Loader rather than this function spinning
+// up its own (which would double-poll R2 and ignore broadcast events).
+// nil means R2 isn't configured — the /admin/definitions/* block stays
+// disabled in that case.
+func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader) {
 	log := util.Log(ctx)
 
 	fc, err := fconfig.FromEnv[fconfig.ConfigurationDefault]()
@@ -184,29 +189,20 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 		log.Warn("source admin: R2 not configured; /admin/raw_payloads/{id}/body disabled")
 	}
 
-	// /admin/definitions/* — pluggable-definitions CRUD over R2. Wired
-	// only when R2 credentials + the content bucket name are present;
-	// otherwise admin keeps the source surface available and surfaces a
-	// warning. Uses the same R2 credentials as the archive bucket but
-	// points at the content bucket where the definitions/{type}/*.yaml
-	// keys live.
-	if cfg.R2AccountID != "" && cfg.R2ContentBucket != "" {
+	// /admin/definitions/* — pluggable-definitions CRUD over R2. Reuses
+	// the loader main.go already started so this surface, the per-replica
+	// in-memory cache, and the broadcast subscriber all share one cache
+	// (avoids double-polling R2 and ignoring NATS events). The S3 client
+	// used for PutObject / DeleteObject is constructed here on the same
+	// credentials.
+	if loader != nil && cfg.R2AccountID != "" && cfg.R2ContentBucket != "" {
 		s3Client := awss3.New(awss3.Options{
 			Region:       "auto",
 			Credentials:  awscreds.NewStaticCredentialsProvider(cfg.R2AccessKeyID, cfg.R2SecretAccessKey, ""),
 			BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.R2AccountID)),
 		})
-		loader := definitions.NewR2Loader(definitions.R2Config{
-			Client: s3Client,
-			Bucket: cfg.R2ContentBucket,
-			Prefix: "definitions",
-		})
-		if err := loader.Start(ctx); err != nil {
-			log.WithError(err).Warn("source admin: definitions loader start failed; /admin/definitions/* disabled")
-		} else {
-			registerDefinitionsAdmin(mux, loader, s3Client, cfg.R2ContentBucket, "definitions", frameEmitter{svc: svc})
-			log.Info("source admin: /admin/definitions/* wired")
-		}
+		registerDefinitionsAdmin(mux, loader, s3Client, cfg.R2ContentBucket, "definitions", frameEmitter{svc: svc})
+		log.Info("source admin: /admin/definitions/* wired (shared loader)")
 	} else {
 		log.Warn("source admin: R2 not configured; /admin/definitions/* disabled")
 	}

@@ -23,6 +23,8 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/counters"
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
@@ -95,13 +97,32 @@ func main() {
 		log.WithError(err).Fatal("api: parse config failed")
 	}
 
-	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
-	// later phases consult the registry on the publish/index paths.
-	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	// Load the opportunity-kinds registry. Prefer the R2-backed
+	// definitions loader (admin can edit kind YAMLs in the cluster);
+	// fall back to the on-disk ConfigMap when R2 isn't configured so
+	// dev/OSS deploys keep working.
+	loader, err := definitions.NewR2LoaderFromEnv(ctx)
 	if err != nil {
-		log.WithError(err).Fatal("opportunity registry: load failed")
+		log.WithError(err).Fatal("definitions: env config failed")
 	}
-	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+	var reg *opportunity.Registry
+	if loader != nil {
+		if err := loader.Start(ctx); err != nil {
+			log.WithError(err).Fatal("definitions: loader start failed")
+		}
+		reg, err = opportunity.LoadFromDefinitions(ctx, loader)
+		if err != nil {
+			log.WithError(err).Fatal("definitions: registry load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from R2 definitions")
+	} else {
+		log.Warn("definitions: R2 not configured; falling back to OpportunityKindsDir")
+		reg, err = opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+		if err != nil {
+			log.WithError(err).Fatal("opportunity registry: load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
+	}
 
 	// Frame service — pulls in DatastoreManager which gives us the
 	// CNPG pool the rest of the platform uses. We bring the api under
@@ -114,6 +135,26 @@ func main() {
 		frame.WithDatastore(),
 	)
 	defer svc.Stop(ctx)
+
+	// Subscribe to definitions.changed.v1 broadcasts so this replica
+	// picks up admin edits within seconds (vs. the 5-min refresh tick).
+	// On kind events the rebuild callback live-swaps the registry —
+	// readers see either old or new state, never a half-built map.
+	if loader != nil {
+		rebuild := func(ctx context.Context) error {
+			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
+			if err != nil {
+				return err
+			}
+			reg.Replace(fresh)
+			return nil
+		}
+		svc.Init(ctx, frame.WithRegisterEvents(definitions.NewBroadcastConsumer(loader, rebuild)))
+		if mgr := svc.EventsManager(); mgr != nil {
+			mgr.SetStrict(false)
+		}
+		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
+	}
 
 	// Postgres backend — opportunities table populated by worker.canonical
 	// + materializer admin handlers. Manticore path retired in Phase 6.
@@ -192,7 +233,7 @@ func main() {
 	// own Postgres connection, so wiring them together keeps the
 	// "should the api own a DB?" decision a single env var.
 	if cfg.SourceAdminEnabled {
-		registerSourcesAdmin(ctx, mux, &cfg, reg)
+		registerSourcesAdmin(ctx, mux, &cfg, reg, loader)
 		registerFlagsAdmin(ctx, mux, jm)
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/events"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/backpressure"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
@@ -58,13 +60,32 @@ func main() {
 
 	log := util.Log(ctx)
 
-	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
-	// later phases consult the registry on the publish/index paths.
-	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	// Load the opportunity-kinds registry. Prefer the R2-backed
+	// definitions loader (admin can edit kind YAMLs in the cluster);
+	// fall back to the on-disk ConfigMap when R2 isn't configured so
+	// dev/OSS deploys keep working.
+	loader, err := definitions.NewR2LoaderFromEnv(ctx)
 	if err != nil {
-		log.WithError(err).Fatal("opportunity registry: load failed")
+		log.WithError(err).Fatal("definitions: env config failed")
 	}
-	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+	var reg *opportunity.Registry
+	if loader != nil {
+		if err := loader.Start(ctx); err != nil {
+			log.WithError(err).Fatal("definitions: loader start failed")
+		}
+		reg, err = opportunity.LoadFromDefinitions(ctx, loader)
+		if err != nil {
+			log.WithError(err).Fatal("definitions: registry load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from R2 definitions")
+	} else {
+		log.Warn("definitions: R2 not configured; falling back to OpportunityKindsDir")
+		reg, err = opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+		if err != nil {
+			log.WithError(err).Fatal("opportunity registry: load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
+	}
 
 	// Initialize pipeline telemetry metrics. Frame has already configured the
 	// global OTel provider, so this registers our custom instruments into it.
@@ -316,7 +337,24 @@ func main() {
 	// per-topic NoopHandler block that used to live here and prevents
 	// the "permanent NATS retry storm" wedge from a bare strict-mode
 	// catch-all.
-	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
+	//
+	// definitions.changed.v1 — invalidates the loader cache and live-
+	// rebuilds the kind registry so admin edits propagate within
+	// seconds (vs. the 5-min refresh tick).
+	handlers := []events.EventI{crawlReqH, pageDoneH, srcDiscH}
+	if loader != nil {
+		rebuild := func(ctx context.Context) error {
+			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
+			if err != nil {
+				return err
+			}
+			reg.Replace(fresh)
+			return nil
+		}
+		handlers = append(handlers, definitions.NewBroadcastConsumer(loader, rebuild))
+		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
+	}
+	svc.Init(ctx, frame.WithRegisterEvents(handlers...))
 	if mgr := svc.EventsManager(); mgr != nil {
 		mgr.SetStrict(false)
 	}
