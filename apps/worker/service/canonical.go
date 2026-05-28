@@ -291,26 +291,41 @@ func snapshotToOpportunity(s kv.ClusterSnapshot, hardKey string) variantstate.Op
 	if status == "" {
 		status = "active"
 	}
+	// Hot-field promotion: lift three filter-hot attribute keys to
+	// top-level pointer fields. The original attrs map keeps the values
+	// so the API still echoes them on read.
+	extractAttrString := func(key string) *string {
+		if v, ok := attrs[key].(string); ok && v != "" {
+			return &v
+		}
+		return nil
+	}
+	employmentType := extractAttrString("employment_type")
+	seniority := extractAttrString("seniority")
+	geoScope := extractAttrString("geo_scope")
 	return variantstate.Opportunity{
-		CanonicalID:   s.CanonicalID,
-		Slug:          s.Slug,
-		Kind:          s.Kind,
-		SourceID:      ptrIfNonEmpty(srcID),
-		Title:         s.Title,
-		Description:   ptrIfNonEmpty(desc),
-		IssuingEntity: ptrIfNonEmpty(iss),
-		Country:       ptrIfNonEmpty(country),
-		Remote:        &remote,
-		ApplyURL:      ptrIfNonEmpty(apply),
-		PostedAt:      pPostedAt,
-		Currency:      ptrIfNonEmpty(currency),
-		AmountMin:     ptrIfNonZero(amin),
-		AmountMax:     ptrIfNonZero(amax),
-		Status:        status,
-		FirstSeenAt:   pFirst,
-		LastSeenAt:    pLast,
-		Attributes:    attrs,
-		QualityScore:  ptrIfNonZero(qs),
+		CanonicalID:    s.CanonicalID,
+		Slug:           s.Slug,
+		Kind:           s.Kind,
+		SourceID:       ptrIfNonEmpty(srcID),
+		Title:          s.Title,
+		Description:    ptrIfNonEmpty(desc),
+		IssuingEntity:  ptrIfNonEmpty(iss),
+		Country:        ptrIfNonEmpty(country),
+		Remote:         &remote,
+		ApplyURL:       ptrIfNonEmpty(apply),
+		PostedAt:       pPostedAt,
+		Currency:       ptrIfNonEmpty(currency),
+		AmountMin:      ptrIfNonZero(amin),
+		AmountMax:      ptrIfNonZero(amax),
+		EmploymentType: employmentType,
+		Seniority:      seniority,
+		GeoScope:       geoScope,
+		Status:         status,
+		FirstSeenAt:    pFirst,
+		LastSeenAt:     pLast,
+		Attributes:     attrs,
+		QualityScore:   ptrIfNonZero(qs),
 	}
 }
 

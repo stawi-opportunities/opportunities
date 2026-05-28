@@ -364,9 +364,9 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 	}{
 		{"kind", "kind", "kind"},
 		{"country", "country", "country"},
-		{"geo_scope", "attributes->>'geo_scope'", "geo_scope"},
-		{"employment_type", "attributes->>'employment_type'", "employment_type"},
-		{"seniority", "attributes->>'seniority'", "seniority"},
+		{"geo_scope", "geo_scope", "geo_scope"},
+		{"employment_type", "employment_type", "employment_type"},
+		{"seniority", "seniority", "seniority"},
 	}
 	_ = families
 	out := map[string]map[string]int{}
@@ -376,9 +376,9 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 	}{
 		{"kind", "kind"},
 		{"country", "country"},
-		{"geo_scope", "attributes->>'geo_scope'"},
-		{"employment_type", "attributes->>'employment_type'"},
-		{"seniority", "attributes->>'seniority'"},
+		{"geo_scope", "geo_scope"},
+		{"employment_type", "employment_type"},
+		{"seniority", "seniority"},
 	} {
 		q := `SELECT ` + f.expr + ` AS bucket, count(*)
 		      FROM opportunities
@@ -664,8 +664,11 @@ func translateEquals(col string, val any, pidx int) (string, any, bool) {
 	switch col {
 	case "kind", "country", "region", "city", "currency":
 		return quoteSafeCol(col) + " = $" + intToStr(pidx), val, true
-	case "geo_scope", "employment_type", "seniority", "field_of_study", "degree_level":
-		// Per-kind sparse facets live under attributes JSONB.
+	case "geo_scope", "employment_type", "seniority":
+		// Promoted to top-level columns (migration 20260528_lean_plan2).
+		return col + " = $" + intToStr(pidx), val, true
+	case "field_of_study", "degree_level":
+		// Still under attributes JSONB.
 		return "attributes->>'" + col + "' = $" + intToStr(pidx), val, true
 	case "categories":
 		// Manticore stored categories as int64; Postgres carries them
