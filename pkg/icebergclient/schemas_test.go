@@ -43,7 +43,7 @@ func TestAllSchemasConstruct(t *testing.T) {
 	}
 	want := map[string]expectation{
 		"opportunities/variants":             {ident: "opportunities/variants", expectFields: 22, mustHaveCol: "kind"},
-		"opportunities/variants_rejected":    {ident: "opportunities/variants_rejected", expectFields: 6, mustHaveCol: "rejected_at"},
+		"opportunities/variants_rejected":    {ident: "opportunities/variants_rejected", expectFields: 8, mustHaveCol: "rejected_at", mustHaveExtra: []string{"raw_payload_id", "crawl_job_id"}},
 		"opportunities/embeddings":           {ident: "opportunities/embeddings", expectFields: 4, mustHaveCol: "vector"},
 		"opportunities/published":            {ident: "opportunities/published", expectFields: 22, mustHaveCol: "stage"},
 		"opportunities/crawl_page_completed": {ident: "opportunities/crawl_page_completed", expectFields: 12, mustHaveCol: "request_id", mustHaveExtra: []string{"event_id", "occurred_at"}},

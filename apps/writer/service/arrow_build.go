@@ -568,7 +568,9 @@ func BuildVariantRejectedRecord(pool memory.Allocator, raws []json.RawMessage) (
 		b.Field(2).(*array.StringBuilder).Append(p.Kind)
 		b.Field(3).(*array.StringBuilder).Append(p.Title)
 		b.Field(4).(*array.StringBuilder).Append(string(reasonsJSON))
-		appendTS(b.Field(5).(*array.TimestampBuilder), p.RejectedAt)
+		appendOptStr(b.Field(5).(*array.StringBuilder), p.RawPayloadID)
+		appendOptStr(b.Field(6).(*array.StringBuilder), p.CrawlJobID)
+		appendTS(b.Field(7).(*array.TimestampBuilder), p.RejectedAt)
 	}
 
 	rec := b.NewRecordBatch()

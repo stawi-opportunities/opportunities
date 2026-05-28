@@ -107,7 +107,12 @@ func SchemaVariantsRejected() *iceberg.Schema {
 		req(3, "kind", iceberg.StringType{}),
 		req(4, "title", iceberg.StringType{}),
 		req(5, "reasons", iceberg.StringType{}), // JSON array
-		req(6, "rejected_at", iceberg.TimestampType{}),
+		// raw_payload_id + crawl_job_id forward-link a rejection
+		// to the crawler audit ledger. Optional so existing rows
+		// stay readable.
+		opt(6, "raw_payload_id", iceberg.StringType{}),
+		opt(7, "crawl_job_id", iceberg.StringType{}),
+		req(8, "rejected_at", iceberg.TimestampType{}),
 	)
 }
 
