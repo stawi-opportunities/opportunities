@@ -30,6 +30,7 @@ import (
 	frameclient "github.com/pitabwire/frame/client"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/security"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
@@ -638,18 +639,44 @@ func (a *sourcesAdmin) handleStart(w http.ResponseWriter, r *http.Request) {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────
 
-// requireAdmin gates a handler behind a Bearer token. The middleware
-// does not verify the signature — gateway-side SecurityManager handles
-// that — but it ensures every admin call carries some token so audit
-// logs can attribute actions. Returns 401 on missing token.
+// requireAdmin gates the handler on (a) presence of a Bearer token and
+// (b) the 'admin' role in the JWT claims. Frame's security middleware
+// extracts claims upstream into the context via security.ClaimsToContext.
+//
+// On unauth (no Bearer, or upstream rejected the token leaving claims
+// unset): 401. On forbidden (authenticated but not admin): 403.
+//
+// The JS client (@stawi/auth-runtime) exposes getRoles() that parses
+// the same JWT shape, so the UI self-gates symmetrically — but this
+// middleware IS the security boundary.
 func requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "missing Bearer token")
 			return
 		}
+		claims := security.ClaimsFromContext(r.Context())
+		if claims == nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid Bearer token")
+			return
+		}
+		if !containsRole(claims.GetRoles(), "admin") {
+			writeError(w, http.StatusForbidden, "forbidden", "admin role required")
+			return
+		}
 		h(w, r)
 	}
+}
+
+// containsRole returns true if want is in roles. Case-sensitive
+// because role names in Hydra are canonical.
+func containsRole(roles []string, want string) bool {
+	for _, r := range roles {
+		if r == want {
+			return true
+		}
+	}
+	return false
 }
 
 // errorEnvelope is the shape every admin error response follows. Plays

@@ -363,7 +363,7 @@ func TestFlags_AdminList_FiltersByReason(t *testing.T) {
 		OpportunitySlug: "b", Reason: domain.FlagSpam, SubmittedBy: "u2",
 	}
 	req := httptest.NewRequest("GET", "/admin/flags?reason=scam", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -381,7 +381,7 @@ func TestFlags_AdminList_FiltersByReason(t *testing.T) {
 func TestFlags_AdminGet_NotFound(t *testing.T) {
 	_, _, _, _, _, mux := flagsTestHarness(t)
 	req := httptest.NewRequest("GET", "/admin/flags/missing", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
@@ -397,7 +397,7 @@ func TestFlags_AdminResolve_Ignore(t *testing.T) {
 	}
 	body := `{"action":"ignore","note":"false alarm"}`
 	req := httptest.NewRequest("POST", "/admin/flags/f1/resolve", bytes.NewReader([]byte(body)))
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -427,7 +427,7 @@ func TestFlags_AdminResolve_BanSource(t *testing.T) {
 	}
 	body := `{"action":"ban_source","source_id":"src-1"}`
 	req := httptest.NewRequest("POST", "/admin/flags/f1/resolve", bytes.NewReader([]byte(body)))
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -459,7 +459,7 @@ func TestFlags_TopFlagged(t *testing.T) {
 		OpportunitySlug: "b", OpportunityKind: "job", Reason: domain.FlagSpam, SubmittedBy: "u3",
 	}
 	req := httptest.NewRequest("GET", "/admin/opportunities/top-flagged", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
