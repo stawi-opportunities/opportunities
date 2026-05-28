@@ -42,6 +42,39 @@ type ConnectorSpec struct {
 	Headers    map[string]string         `yaml:"headers,omitempty"`
 	DelayMS    int                       `yaml:"delay_ms,omitempty"`
 	TimeoutMS  int                       `yaml:"timeout_ms,omitempty"`
+
+	// Sitemap carries options that only apply to the sitemap impl.
+	// Other types must leave it unset. Inlined into the top-level YAML
+	// via an explicit `sitemap:` key so a single ConnectorSpec stays
+	// readable without exploding into per-type sub-shapes.
+	Sitemap *SitemapOptions `yaml:"sitemap,omitempty"`
+}
+
+// SitemapOptions carries sitemap-specific knobs. The sitemap impl is
+// the sole consumer; ParseSpec does not enforce these fields.
+type SitemapOptions struct {
+	// IncludePatterns gates URLs by substring match. A URL must contain
+	// at least one pattern to be emitted; prefix a pattern with "re:"
+	// to treat it as a regular expression.
+	IncludePatterns []string `yaml:"include_patterns,omitempty"`
+
+	// ExcludePatterns drops URLs that contain any matching substring
+	// (regex with "re:" prefix is supported, same as include).
+	ExcludePatterns []string `yaml:"exclude_patterns,omitempty"`
+
+	// FollowIndex enables recursion into <sitemapindex> entries.
+	FollowIndex bool `yaml:"follow_index,omitempty"`
+
+	// DetailFetch, when true, fetches each candidate URL and runs the
+	// detail_fallback_type impl over the body to extract structured
+	// data (JobPosting JSON-LD by default). When false, candidate URLs
+	// are emitted as URL-only stubs so the LLM-extraction pipeline can
+	// take over later.
+	DetailFetch bool `yaml:"detail_fetch,omitempty"`
+
+	// DetailFallbackType names the impl used for detail-fetch parsing.
+	// Defaults to "schemaorgjsonld" when unset.
+	DetailFallbackType string `yaml:"detail_fallback_type,omitempty"`
 }
 
 // Pagination drives how the iterator walks pages.

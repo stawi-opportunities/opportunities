@@ -42,7 +42,7 @@ func (impl) Crawl(ctx context.Context, src domain.Source, client *httpx.Client, 
 		return connectors.NewSinglePageIterator(nil, body, status, nil)
 	}
 
-	postings := extractJobPostings(body)
+	postings := ExtractJobPostings(body)
 	items := make([]domain.ExternalOpportunity, 0, len(postings))
 	for _, raw := range postings {
 		opp, mapErr := MapJobPosting(raw)
@@ -97,11 +97,12 @@ func (it *iter) Cursor() json.RawMessage { return nil }
 // directly from the JSON-LD JobPosting blocks.
 func (it *iter) Content() *content.Extracted { return nil }
 
-// extractJobPostings walks every <script type="application/ld+json">
+// ExtractJobPostings walks every <script type="application/ld+json">
 // block in an HTML body, JSON-parses each, and recursively collects
 // JobPosting entries. JobPostings buried in @graph arrays are
-// discovered too.
-func extractJobPostings(html []byte) []json.RawMessage {
+// discovered too. Exported so the sitemap connector can reuse it as
+// its default detail-fetch fallback.
+func ExtractJobPostings(html []byte) []json.RawMessage {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(html)))
 	if err != nil {
 		return nil
