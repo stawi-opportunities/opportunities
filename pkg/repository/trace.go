@@ -335,3 +335,41 @@ func strValue(p *string) string {
 	}
 	return *p
 }
+
+// DayDigest is the per-source rollup for a single calendar day. Populated
+// by TraceRepository.DayDigest for the Postgres path; the api handler
+// fills the same shape from Iceberg when the date is older than the
+// pipeline_variants 7d retention. RejectionReasons is left empty by the
+// Postgres path because variants_rejected isn't persisted to Postgres —
+// the Iceberg branch fills it.
+type DayDigest struct {
+	CrawlJobs         int64            `json:"crawl_jobs"`
+	VariantsEmitted   int64            `json:"variants_emitted"`
+	VariantsRejected  int64            `json:"variants_rejected"`
+	VariantsPublished int64            `json:"variants_published"`
+	RejectionReasons  map[string]int64 `json:"rejection_reasons"`
+}
+
+// DayDigest returns the crawl/emit/publish counts for a source between
+// [start, end). Used by the admin /admin/trace/seeds/{id}/digest
+// endpoint for the recent-date (Postgres) path.
+func (r *TraceRepository) DayDigest(ctx context.Context, sourceID string, start, end time.Time) (*DayDigest, error) {
+	s := DayDigest{RejectionReasons: map[string]int64{}}
+	err := r.db(ctx, true).Raw(`
+		SELECT
+		  (SELECT count(*) FROM crawl_jobs WHERE source_id = ? AND scheduled_at >= ? AND scheduled_at < ?) AS crawl_jobs,
+		  (SELECT count(*) FROM pipeline_variants WHERE source_id = ? AND ingested_at >= ? AND ingested_at < ?) AS variants_emitted,
+		  (SELECT count(*) FROM pipeline_variants WHERE source_id = ? AND ingested_at >= ? AND ingested_at < ? AND current_stage = 'published') AS variants_published,
+		  0::bigint AS variants_rejected
+	`, sourceID, start, end,
+		sourceID, start, end,
+		sourceID, start, end,
+	).Row().Scan(&s.CrawlJobs, &s.VariantsEmitted, &s.VariantsPublished, &s.VariantsRejected)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &s, nil
+		}
+		return nil, fmt.Errorf("DayDigest: %w", err)
+	}
+	return &s, nil
+}

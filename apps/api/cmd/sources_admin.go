@@ -179,7 +179,9 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	} else {
 		log.WithError(err).Warn("source admin: iceberg catalog init failed; historic queries disabled")
 	}
-	registerTraceAdmin(mux, repository.NewTraceRepository(pool.DB), repo, iceCat)
+	traceRepo := repository.NewTraceRepository(pool.DB)
+	registerTraceAdmin(mux, traceRepo, repo, iceCat)
+	registerDigestAdmin(mux, traceRepo, iceCat)
 
 	// /admin/raw_payloads/{id}/body — operator pulls the original HTML
 	// from R2 for rejection drill-down. Wired only when R2 creds + the
