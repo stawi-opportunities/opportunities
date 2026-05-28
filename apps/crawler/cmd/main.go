@@ -184,7 +184,7 @@ func main() {
 	}
 
 	// Connector registry.
-	registry := service.BuildRegistry(httpClient, extractor)
+	registry := service.BuildRegistry(ctx, httpClient, extractor, loader)
 
 	// Archive R2 client + raw_ref repository. Same R2 account token
 	// as the public content bucket — Cloudflare R2 IAM scopes the
