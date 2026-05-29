@@ -7,7 +7,7 @@ WORKDIR /ui
 COPY ui/admin/package.json ui/admin/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY ui/admin/ ./
-RUN npm run build
+RUN npm run build:embed
 
 # === Go builder ===
 FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
