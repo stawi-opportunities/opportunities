@@ -1094,6 +1094,10 @@ func (h *CrawlRequestHandler) enqueueFrontier(
 			skipped++
 			continue
 		}
+		// Canonicalize before enqueue so the stored canonical_url and
+		// its dedup hash are the normalized form. Enqueue canonicalizes
+		// again defensively; doing it here keeps host derivation consistent.
+		u = frontier.CanonicalizeURL(u)
 		host := frontier.HostOf(u)
 		if host == "" {
 			skipped++

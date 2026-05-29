@@ -110,9 +110,12 @@ func Schema() []any {
 	return []any{&row{}, &hostStateRow{}}
 }
 
-// hashCanonical is the dedup key. sha256 over the lowercased
-// canonical URL — the migration enforces uniqueness so a race
-// between two Enqueue calls always lands at most one row.
+// hashCanonical is the dedup key. sha256 over the canonicalized URL
+// (lower-cased scheme+host, tracking params stripped, query sorted,
+// fragment + trailing slash removed) so URLs that differ only by those
+// cosmetic facets dedup to a single frontier row. The migration enforces
+// uniqueness so a race between two Enqueue calls always lands at most
+// one row. Callers must pass the already-canonicalized URL.
 func hashCanonical(canonical string) string {
 	sum := sha256.Sum256([]byte(canonical))
 	return hex.EncodeToString(sum[:])
@@ -147,7 +150,9 @@ func (f *PostgresFrontier) Enqueue(ctx context.Context, urls []URL) ([]EnqueueRe
 
 	db := f.db(ctx, false)
 	for _, u := range urls {
-		canonical := u.CanonicalURL
+		// Canonicalize so the stored canonical_url and its dedup hash
+		// are the normalized form regardless of what the caller passed.
+		canonical := CanonicalizeURL(u.CanonicalURL)
 		host := u.Host
 		if host == "" {
 			host = HostOf(canonical)
@@ -308,9 +313,13 @@ FOR UPDATE OF f SKIP LOCKED
 `
 
 // staleLeaseSeconds is the in_flight lease: a claim older than this is
-// treated as abandoned (worker crashed) and reclaimed. 10m > worst-case
-// fetch (20s) + inference (5m), so live work is never reclaimed.
-const staleLeaseSeconds = 600
+// treated as abandoned (worker crashed) and reclaimed. It must be safely
+// greater than the worker's per-URL deadline (6m: httpx retries capped at
+// ~90s + ~5m inference + overhead) so a live-but-slow worker always
+// finishes before its claim is reclaimed — reclaiming a live claim would
+// double-process the URL. 15m gives comfortable margin over the 6m
+// per-URL deadline: per-URL-deadline (6m) < lease (15m).
+const staleLeaseSeconds = 900
 
 // reclaimStaleSQL recovers work abandoned by a crashed/redeployed
 // worker. A claim is a lease: the worker sets state='in_flight' +
@@ -350,9 +359,9 @@ func (f *PostgresFrontier) Dequeue(ctx context.Context, n int, workerID string) 
 
 	// Reclaim leases abandoned by crashed/redeployed workers before
 	// claiming new work — otherwise a stuck in_flight row + its
-	// concurrency_now increment deadlock the host. Lease is 10m:
-	// comfortably longer than the worst-case fetch (20s) + inference
-	// (5m) so we never reclaim a URL a live worker is still handling.
+	// concurrency_now increment deadlock the host. Lease is 15m:
+	// comfortably longer than the worker's 6m per-URL deadline so we
+	// never reclaim a URL a live worker is still handling.
 	if err := f.db(ctx, false).
 		Session(&gorm.Session{PrepareStmt: false}).
 		Exec(reclaimStaleSQL, staleLeaseSeconds).Error; err != nil {

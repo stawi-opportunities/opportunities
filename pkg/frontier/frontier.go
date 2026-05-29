@@ -117,3 +117,52 @@ func HostOf(raw string) string {
 	h := u.Hostname() // strips port
 	return strings.ToLower(h)
 }
+
+// trackingParams are query parameters that don't change which resource a
+// URL points at — analytics/referral tags. Stripping them keeps the
+// dedup key stable across the same listing shared via different campaigns.
+var trackingParams = map[string]struct{}{
+	"fbclid": {}, "gclid": {}, "ref": {}, "source": {},
+}
+
+// CanonicalizeURL normalizes a URL for stable dedup + storage:
+//   - lower-cases scheme and host
+//   - drops the fragment
+//   - removes tracking query params (utm_*, fbclid, gclid, ref, source)
+//   - sorts remaining query params
+//   - strips a trailing slash on the path (but leaves root "/")
+//
+// On parse error it returns the raw string unchanged so a weird-but-valid
+// URL is never dropped — the caller still enqueues it, just un-normalized.
+func CanonicalizeURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	u.Fragment = ""
+	u.RawFragment = ""
+
+	if q := u.Query(); len(q) > 0 {
+		for k := range q {
+			lk := strings.ToLower(k)
+			if _, drop := trackingParams[lk]; drop || strings.HasPrefix(lk, "utm_") {
+				q.Del(k)
+			}
+		}
+		// url.Values.Encode sorts by key, giving a stable ordering.
+		u.RawQuery = q.Encode()
+	}
+
+	if u.Path != "/" {
+		u.Path = strings.TrimSuffix(u.Path, "/")
+	}
+
+	return u.String()
+}
