@@ -120,11 +120,29 @@ func (h *Handler) Tick(ctx context.Context) {
 	}
 }
 
+// drainMaxBatches and drainBudget bound a single drain call. The loop
+// holds h.mu for its whole duration (taken in Execute/Tick), so an
+// unbounded for{} would starve concurrent wake-ups and heartbeat ticks
+// while a busy queue keeps yielding batches. Bounding by both a batch
+// count and a wall-clock budget lets the loop return so other wake-ups
+// can re-enter and re-acquire the lock. Correctness is unaffected: each
+// batch is claimed under SELECT ... FOR UPDATE SKIP LOCKED, so returning
+// early never double-claims — the next drain just picks up where this
+// one left off.
+const (
+	drainMaxBatches = 20
+	drainBudget     = 2 * time.Minute
+)
+
 func (h *Handler) drain(ctx context.Context) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	for {
+	deadline := time.Now().Add(drainBudget)
+	for batches := 0; batches < drainMaxBatches; batches++ {
+		if time.Now().After(deadline) {
+			return nil
+		}
 		urls, err := h.deps.Frontier.Dequeue(ctx, h.deps.DequeueBatch, h.workerID)
 		if err != nil {
 			return fmt.Errorf("frontier dequeue: %w", err)
@@ -136,6 +154,7 @@ func (h *Handler) drain(ctx context.Context) error {
 			h.runOne(ctx, u)
 		}
 	}
+	return nil
 }
 
 // runOne fetches the URL, archives the raw HTML, runs extraction,
@@ -143,6 +162,13 @@ func (h *Handler) drain(ctx context.Context) error {
 // transport / status error the worker calls Fail with the configured
 // retry budget so the URL backs off and retries.
 func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
+	// Per-URL deadline so fetch+archive+extract+emit can never hang
+	// indefinitely. Must stay below the frontier reclaim lease
+	// (staleLeaseSeconds = 15m) so a slow-but-live worker finishes
+	// before its claim is reclaimed and double-processed.
+	ctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+	defer cancel()
+
 	log := util.Log(ctx).
 		WithField("url_id", u.URLID).
 		WithField("canonical_url", u.CanonicalURL).
@@ -189,8 +215,16 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		return
 	}
 	if src == nil {
-		log.Warn("frontier-worker: source not found; parking URL")
-		_ = h.deps.Frontier.Complete(ctx, u.URLID) // not retryable; treat as done
+		// GetByID reads the replica (readOnly). A nil source here may
+		// just be replica lag behind a freshly-created source, so retry
+		// rather than Complete — Complete would permanently drop a valid
+		// URL. The retry budget bounds how long we wait for the replica
+		// to catch up before the row lands in 'failed'.
+		notFoundErr := fmt.Errorf("source %s not found (possible replica lag)", u.SourceID)
+		log.Warn("frontier-worker: source not found; retrying")
+		if failErr := h.deps.Frontier.Fail(ctx, u.URLID, notFoundErr, h.deps.MaxAttempts); failErr != nil {
+			log.WithError(failErr).Warn("frontier-worker: Fail failed")
+		}
 		return
 	}
 
@@ -258,6 +292,7 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		}}
 	}
 
+	var emitErr error
 	for i := range items {
 		opp := items[i]
 		opp.SourceURL = u.CanonicalURL
@@ -349,13 +384,25 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		evtMgr := h.deps.Svc.EventsManager()
 		if evtMgr == nil {
 			log.Warn("frontier-worker: events manager unavailable; skipping emit")
+			emitErr = fmt.Errorf("events manager unavailable")
 			continue
 		}
 		env := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload)
-		if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested, env); emitErr != nil {
-			log.WithError(emitErr).Warn("frontier-worker: emit variant failed")
+		if err := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested, env); err != nil {
+			log.WithError(err).Warn("frontier-worker: emit variant failed")
+			emitErr = err
 			continue
 		}
+	}
+
+	// If any required emit failed, the variant never reached the
+	// pipeline. Fail (retryable) instead of Complete so we don't
+	// silently lose the URL — only Complete when every emit succeeded.
+	if emitErr != nil {
+		if failErr := h.deps.Frontier.Fail(ctx, u.URLID, emitErr, h.deps.MaxAttempts); failErr != nil {
+			log.WithError(failErr).Warn("frontier-worker: Fail failed")
+		}
+		return
 	}
 
 	if err := h.deps.Frontier.Complete(ctx, u.URLID); err != nil {
