@@ -17,6 +17,11 @@ const (
 	backoffFactor  = 2.0
 	maxBackoff     = 30 * time.Second
 	jitterFraction = 0.3 // ±30 % of computed backoff
+
+	// overallBudget caps the whole retry sequence when the caller's
+	// ctx carries no deadline. Without it, 5 attempts × per-attempt
+	// client timeout + backoff can approach ~220s, hanging the worker.
+	overallBudget = 90 * time.Second
 )
 
 // HTTPDoer is the minimal http.Client surface this package exercises.
@@ -59,12 +64,26 @@ func NewClientFromDoer(doer HTTPDoer, userAgent string) *Client {
 // backoff with jitter between attempts. The raw response body, HTTP status
 // code, and any error are returned.
 func (c *Client) Get(ctx context.Context, url string, headers map[string]string) ([]byte, int, error) {
+	// Bound the whole retry sequence. If the caller already set a
+	// deadline we respect it; otherwise impose overallBudget so the
+	// 5-attempt loop can't run unboundedly (~220s worst case).
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, overallBudget)
+		defer cancel()
+	}
+
 	var (
 		lastStatus int
 		lastErr    error
 	)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Abort the retry loop as soon as the overall budget / caller
+		// ctx is exhausted, rather than starting another attempt.
+		if err := ctx.Err(); err != nil {
+			return nil, lastStatus, err
+		}
 		if attempt > 0 {
 			wait := computeBackoff(attempt)
 			select {
