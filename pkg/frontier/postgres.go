@@ -44,6 +44,13 @@ type PostgresFrontier struct {
 	// BackoffBase is the first retry delay (2^0 * base). Default
 	// 30s. Tests can shrink it to keep the suite snappy.
 	BackoffBase time.Duration
+
+	// OnEnqueue, if set, is called once per newly-inserted URL
+	// after the row commits. Frame events are wired by the caller
+	// (apps/crawler, apps/frontier-worker) so pkg/frontier stays
+	// transport-agnostic. Errors are logged by the caller; the
+	// frontier doesn't retry the emit.
+	OnEnqueue func(ctx context.Context, u URL)
 }
 
 // NewPostgresFrontier wires a Frontier against the supplied GORM
@@ -231,6 +238,22 @@ func (f *PostgresFrontier) Enqueue(ctx context.Context, urls []URL) ([]EnqueueRe
 			URLID:    persistedID,
 			Inserted: inserted,
 		})
+
+		// Wake-up signal — only for net-new rows. Re-enqueues of an
+		// existing canonical URL just bump priority; emitting on
+		// those would flood the worker with no-op nudges.
+		if inserted && f.OnEnqueue != nil {
+			f.OnEnqueue(ctx, URL{
+				URLID:        persistedID,
+				CanonicalURL: canonical,
+				Host:         host,
+				SourceID:     u.SourceID,
+				Priority:     u.Priority,
+				State:        StatePending,
+				EnqueuedAt:   time.Now().UTC(),
+				Metadata:     metadata,
+			})
+		}
 	}
 	return results, firstErr
 }
