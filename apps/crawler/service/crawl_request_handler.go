@@ -800,7 +800,12 @@ func (h *CrawlRequestHandler) enrichStubs(ctx context.Context, items []domain.Ex
 		go func(idx int) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			h.enrichOne(ctx, &items[idx], src)
+			// Per-stub deadline so one slow detail page (fetch +
+			// inference) can't pin wg.Wait() — and the whole crawl
+			// handler — for minutes. 6m matches the inference ceiling.
+			stubCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+			defer cancel()
+			h.enrichOne(stubCtx, &items[idx], src)
 		}(i)
 	}
 	wg.Wait()
