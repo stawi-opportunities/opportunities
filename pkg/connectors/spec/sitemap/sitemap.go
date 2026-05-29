@@ -85,7 +85,13 @@ func (impl) Crawl(ctx context.Context, src domain.Source, client *httpx.Client, 
 	}
 
 	items := make([]domain.ExternalOpportunity, 0, len(filtered))
-	if opts.DetailFetch {
+	// Frontier-enabled sources short-circuit the detail fetch
+	// entirely: the connector's job in D2 is URL discovery, and
+	// the per-URL fetch + extract happens in apps/frontier-worker
+	// under per-host politeness. The legacy path (FrontierEnabled
+	// = false) keeps the existing detail-fetch behaviour intact so
+	// sources that haven't opted in see zero change in output.
+	if opts.DetailFetch && !src.FrontierEnabled {
 		fallback := opts.DetailFallbackType
 		if fallback == "" {
 			fallback = string(spec.TypeSchemaOrgJSONLD)
