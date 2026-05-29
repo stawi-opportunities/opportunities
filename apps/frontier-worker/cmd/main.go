@@ -117,6 +117,15 @@ func main() {
 			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
 			"", "",
 		)
+		// Dedicated inference client with a generous timeout. The fetch
+		// client (httpDoer) is intentionally short (HTTP_TIMEOUT_SEC=20s)
+		// for pulling job pages, but the shared llama fleet queues
+		// requests internally well beyond its parallel slots — a 20s
+		// deadline cancels LLM calls that would have answered in 60-180s
+		// (observed: "context deadline exceeded ... awaiting headers").
+		// Mirrors apps/crawler's HTTP_CLIENT_TIMEOUT=5m. Reusing httpDoer
+		// here was the bug.
+		inferenceDoer := &http.Client{Timeout: 5 * time.Minute}
 		extractor = extraction.New(extraction.Config{
 			BaseURL:          infBase,
 			APIKey:           infKey,
@@ -125,7 +134,7 @@ func main() {
 			EmbeddingAPIKey:  embKey,
 			EmbeddingModel:   embModel,
 			Registry:         reg,
-			HTTPClient:       httpDoer,
+			HTTPClient:       inferenceDoer,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
