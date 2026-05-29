@@ -133,6 +133,16 @@ type Source struct {
 	LastSeenAt       *time.Time     `json:"last_seen_at"`
 	NextCrawlAt      time.Time      `gorm:"index" json:"next_crawl_at"`
 
+	// Adaptive recrawl score (0.0–1.0). 1.0 means "crawl at
+	// MinIntervalMinutes"; 0.0 means "crawl at MaxIntervalMinutes".
+	// Recomputed every scheduler tick from the crawl_signals
+	// materialized view; persisted alongside the derived NextCrawlAt.
+	// Default 0.5 (neutral) keeps a freshly-onboarded source at the
+	// geometric midpoint until enough signals accrue.
+	Score              float64 `gorm:"column:score;not null;default:0.5"               json:"score"`
+	MinIntervalMinutes int     `gorm:"column:min_interval_minutes;not null;default:15" json:"min_interval_minutes"`
+	MaxIntervalMinutes int     `gorm:"column:max_interval_minutes;not null;default:10080" json:"max_interval_minutes"`
+
 	// Reachability probe run before every enqueue. Sources that fail
 	// repeatedly get their NextCrawlAt pushed out with backoff rather
 	// than being dispatched into a pipeline that will just 404.
