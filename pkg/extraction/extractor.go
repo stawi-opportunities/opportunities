@@ -259,7 +259,14 @@ func (e *Extractor) pickKind(ctx context.Context, html string, sourceKinds []str
 	}
 	classifierPrompt := fmt.Sprintf(`Classify the document as one of: %s.
 Output ONLY the classification string.`, strings.Join(sourceKinds, ", "))
-	out, err := e.llm.Complete(ctx, classifierPrompt+"\n\n"+html)
+	// Truncate before classifying. The main Extract path caps its
+	// document at maxContentChars, but this classifier path sent the
+	// full untruncated html — a large page overflows the model context
+	// ("request exceeds the available context size"), failing every
+	// extraction for any source with >1 kind. The kind is almost always
+	// determinable from the top of the document, so truncation is safe.
+	doc := truncateText(html, maxContentChars)
+	out, err := e.llm.Complete(ctx, classifierPrompt+"\n\n"+doc)
 	if err != nil {
 		return "", fmt.Errorf("extraction classify: %w", err)
 	}
