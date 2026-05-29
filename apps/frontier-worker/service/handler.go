@@ -21,6 +21,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/content"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
@@ -225,7 +226,18 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		if len(kinds) == 0 {
 			kinds = []string{"job"}
 		}
-		extracted, exErr := h.deps.Extractor.Extract(ctx, string(body), kinds, src.ExtractionPromptExtension)
+		// Convert raw HTML to clean markdown before extraction — the
+		// extractor sends its document straight to the LLM with no
+		// stripping, so a 500 KB listing page is ~150 K tokens and
+		// blows past the model context window (observed: "request
+		// (152253 tokens) exceeds the available context size (4096
+		// tokens)"). Mirrors apps/crawler enrichOne, which runs the
+		// same content.ExtractFromHTML pass before Extract.
+		docText := string(body)
+		if ext, _ := content.ExtractFromHTML(docText); ext != nil && ext.Markdown != "" {
+			docText = ext.Markdown
+		}
+		extracted, exErr := h.deps.Extractor.Extract(ctx, docText, kinds, src.ExtractionPromptExtension)
 		if exErr != nil {
 			log.WithError(exErr).Warn("frontier-worker: extractor failed")
 			if failErr := h.deps.Frontier.Fail(ctx, u.URLID, exErr, h.deps.MaxAttempts); failErr != nil {

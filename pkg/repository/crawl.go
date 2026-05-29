@@ -101,7 +101,15 @@ func (r *CrawlRepository) SaveRawPayload(ctx context.Context, payload *domain.Ra
 	if payload.FetchedAt.IsZero() {
 		payload.FetchedAt = time.Now().UTC()
 	}
-	return r.db(ctx, false).Create(payload).Error
+	// PrepareStmt disabled: under pgbouncer transaction pooling the
+	// cached INSERT statement collides across pooled backends
+	// (SQLSTATE 08P01 "prepared statement name is already in use"),
+	// which the frontier-worker hit hammering this path per URL. The
+	// once-per-payload INSERT gains nothing from prepare-caching.
+	// Same per-call override pattern as SourceRepository.RefreshSignals.
+	return r.db(ctx, false).
+		Session(&gorm.Session{PrepareStmt: false}).
+		Create(payload).Error
 }
 
 // GetRawPayload returns the raw_payloads row matching id, or
