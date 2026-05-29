@@ -307,6 +307,36 @@ LIMIT  1
 FOR UPDATE OF f SKIP LOCKED
 `
 
+// staleLeaseSeconds is the in_flight lease: a claim older than this is
+// treated as abandoned (worker crashed) and reclaimed. 10m > worst-case
+// fetch (20s) + inference (5m), so live work is never reclaimed.
+const staleLeaseSeconds = 600
+
+// reclaimStaleSQL recovers work abandoned by a crashed/redeployed
+// worker. A claim is a lease: the worker sets state='in_flight' +
+// claimed_at and bumps host_state.concurrency_now. If the pod dies
+// before Complete/Fail (e.g. a rolling redeploy mid-fetch), the row
+// stays in_flight forever AND concurrency_now stays incremented —
+// which, at concurrency_max=1, permanently deadlocks every future
+// Dequeue for that host. This resets such rows to pending and
+// decrements each host's counter by the number reclaimed, all in one
+// statement (a data-modifying CTE feeding the host_state UPDATE).
+const reclaimStaleSQL = `
+WITH reclaimed AS (
+    UPDATE url_frontier
+       SET state = 'pending', claimed_by = NULL, claimed_at = NULL
+     WHERE state = 'in_flight'
+       AND claimed_at < now() - make_interval(secs => ?)
+    RETURNING host
+), counts AS (
+    SELECT host, count(*) AS n FROM reclaimed GROUP BY host
+)
+UPDATE host_state h
+   SET concurrency_now = GREATEST(h.concurrency_now - c.n, 0)
+  FROM counts c
+ WHERE h.host = c.host
+`
+
 // Dequeue runs the FOR UPDATE SKIP LOCKED claim + the in-txn
 // state-flip in one transaction. Returns the URLs claimed.
 //
@@ -317,6 +347,17 @@ func (f *PostgresFrontier) Dequeue(ctx context.Context, n int, workerID string) 
 		return nil, nil
 	}
 	out := make([]URL, 0, n)
+
+	// Reclaim leases abandoned by crashed/redeployed workers before
+	// claiming new work — otherwise a stuck in_flight row + its
+	// concurrency_now increment deadlock the host. Lease is 10m:
+	// comfortably longer than the worst-case fetch (20s) + inference
+	// (5m) so we never reclaim a URL a live worker is still handling.
+	if err := f.db(ctx, false).
+		Session(&gorm.Session{PrepareStmt: false}).
+		Exec(reclaimStaleSQL, staleLeaseSeconds).Error; err != nil {
+		return nil, fmt.Errorf("frontier reclaim stale: %w", err)
+	}
 
 	err := f.db(ctx, false).
 		Session(&gorm.Session{PrepareStmt: false}).
