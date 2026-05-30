@@ -223,7 +223,17 @@ func main() {
 	//     backpressure is independent.
 	//   - definitions.changed.v1 broadcast — invalidates the loader
 	//     cache and live-rebuilds the kind registry on admin edits.
-	pipelineHandlers := service.EventHandlers()
+	// Select this process's handlers by stage group. Each group runs as
+	// its own Deployment with its own EVENTS_QUEUE_URL (→ own durable
+	// consumer + ack_pending), so a slow/failing stage can't starve the
+	// others. STAGE_GROUP=all preserves the single-deployment monolith.
+	pipelineHandlers := service.HandlersForGroup(cfg.StageGroup)
+
+	// The definitions broadcast consumer must run in EVERY group: each
+	// group's registry needs live-rebuild on admin edits. It's a
+	// broadcast (fanout) subscriber, not a work-queue handler, so
+	// registering it in all groups is correct (each maintains its own
+	// in-memory registry).
 	if loader != nil {
 		rebuild := func(ctx context.Context) error {
 			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
@@ -236,14 +246,37 @@ func main() {
 		pipelineHandlers = append([]events.EventI(pipelineHandlers), definitions.NewBroadcastConsumer(loader, rebuild))
 		util.Log(ctx).WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
-	svc.Init(ctx,
+
+	initOpts := []frame.Option{
 		frame.WithRegisterEvents(pipelineHandlers...),
-		frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
-		frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
-		frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
-		frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
 		frame.WithHTTPHandler(adminMux),
-	)
+	}
+
+	// embed + translate are subject-queue workers owned by the publish
+	// group (CanonicalHandler enqueues to them; only publish drains them).
+	// Register their publisher+subscriber pair only there. The "all"
+	// monolith keeps them too so legacy installs are unchanged.
+	if cfg.StageGroup == "publish" || cfg.StageGroup == "all" {
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
+		)
+	}
+
+	// CanonicalHandler runs in "core" but PUBLISHES to the embed/translate
+	// subjects (which the publish group drains). A publisher must be
+	// registered in the process that emits. So core also needs the two
+	// publishers (without the subscribers).
+	if cfg.StageGroup == "core" {
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
+		)
+	}
+
+	svc.Init(ctx, initOpts...)
 
 	// The worker consumes svc.opportunities.events.> (catch-all) but
 	// only acts on the variants/canonical chain. Loose mode lets Frame
@@ -259,9 +292,14 @@ func main() {
 	// emit, transient R2/TEI outage). Tied to a context cancelled when the
 	// service stops so it shuts down cleanly. No-op when no datastore is
 	// wired.
-	reaperCtx, stopReaper := context.WithCancel(ctx)
-	defer stopReaper()
-	go workersvc.NewReaper(svc, variantStore).Run(reaperCtx)
+	// One reaper, in the core group only — three reapers would triple
+	// re-emit every stuck row. core is always running, so this is a safe
+	// single owner. (STAGE_GROUP=all also runs it for the monolith.)
+	if cfg.StageGroup == "core" || cfg.StageGroup == "all" {
+		reaperCtx, stopReaper := context.WithCancel(ctx)
+		defer stopReaper()
+		go workersvc.NewReaper(svc, variantStore).Run(reaperCtx)
+	}
 
 	if err := svc.Run(ctx, ""); err != nil {
 		util.Log(ctx).WithError(err).Fatal("worker: frame.Run failed")
