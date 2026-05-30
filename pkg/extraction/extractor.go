@@ -502,7 +502,11 @@ const maxEmbedChars = 2000
 // configured so callers can skip storing the vector without treating the
 // pipeline step as failed.
 func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
-	embedCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	// 30s cap (was 5m): a hung or overloaded TEI call must not occupy a
+	// queue slot for minutes and starve embedding throughput. A genuinely
+	// slow embed will time out and (per EmbedHandler) be retried with
+	// backoff rather than block the worker.
+	embedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	text = truncateText(text, maxEmbedChars)
 	return e.embed(embedCtx, text)

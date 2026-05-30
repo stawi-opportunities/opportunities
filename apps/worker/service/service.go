@@ -102,12 +102,12 @@ func (s *Service) EventHandlers() []events.EventI {
 // EmbedWorker returns the queue subscriber for SubjectWorkerEmbed.
 // The caller registers it via frame.WithRegisterSubscriber.
 func (s *Service) EmbedWorker() queue.SubscribeWorker {
-	return NewEmbedHandler(s.svc, s.extractor)
+	return NewEmbedHandler(s.svc, s.extractor, s.variantStore)
 }
 
 // TranslateWorker returns the queue subscriber for SubjectWorkerTranslate.
 func (s *Service) TranslateWorker() queue.SubscribeWorker {
-	return NewTranslateHandler(s.svc, s.extractor, s.translationLangs)
+	return NewTranslateHandler(s.svc, s.extractor, s.translationLangs, s.variantStore)
 }
 
 // Handlers is retained for backwards compatibility with existing
