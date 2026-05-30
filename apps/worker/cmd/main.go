@@ -254,6 +254,15 @@ func main() {
 		mgr.SetStrict(false)
 	}
 
+	// Stuck-variant reaper. Runs in its own goroutine and periodically
+	// re-drives variants wedged mid-chain (NATS max-deliver drop, failed
+	// emit, transient R2/TEI outage). Tied to a context cancelled when the
+	// service stops so it shuts down cleanly. No-op when no datastore is
+	// wired.
+	reaperCtx, stopReaper := context.WithCancel(ctx)
+	defer stopReaper()
+	go workersvc.NewReaper(svc, variantStore).Run(reaperCtx)
+
 	if err := svc.Run(ctx, ""); err != nil {
 		util.Log(ctx).WithError(err).Fatal("worker: frame.Run failed")
 	}
