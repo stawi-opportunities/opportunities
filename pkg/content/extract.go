@@ -1,6 +1,7 @@
 package content
 
 import (
+	"html"
 	"regexp"
 	"strings"
 
@@ -87,6 +88,29 @@ func htmlToMarkdownOrStrip(htmlContent string) string {
 	}
 
 	return md
+}
+
+// ToCleanText converts a description fragment that may be raw HTML, or
+// entity-escaped HTML, into clean Markdown suitable for both human display
+// and the search snippet. ATS APIs (greenhouse j.Content), feeds, and
+// JSON-LD descriptions arrive as HTML — sometimes DOUBLE-encoded, e.g.
+// "&lt;div class=&quot;content-intro&quot;&gt;" — and were previously stored
+// verbatim, so the UI showed literal tags / entities.
+//
+// Steps: (1) HTML-unescape so double-encoded markup becomes real tags
+// ("&lt;div&gt;" -> "<div>"); (2) if the result still contains tags, convert
+// to Markdown (falling back to a plain-text strip on failure); (3) input that
+// is already plain text passes through untouched. Idempotent: re-running on
+// already-clean Markdown leaves it unchanged.
+func ToCleanText(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	decoded := html.UnescapeString(s)
+	if !strings.Contains(decoded, "<") {
+		return strings.TrimSpace(decoded)
+	}
+	return strings.TrimSpace(htmlToMarkdownOrStrip(decoded))
 }
 
 // stripToText removes all HTML tags and collapses whitespace, providing a plain

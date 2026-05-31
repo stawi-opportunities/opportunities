@@ -4,10 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/RadhiFadlillah/whatlanggo"
+	"github.com/stawi-opportunities/opportunities/pkg/content"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 )
@@ -192,13 +194,23 @@ func normalizeCompany(name string) string {
 	return strings.Join(strings.Fields(name), " ")
 }
 
-// sanitizeDescription removes null bytes and collapses runs of whitespace
-// (spaces, tabs, newlines) into single spaces, then trims.
+var hspaceRe = regexp.MustCompile(`[ \t]+`)
+var blankLinesRe = regexp.MustCompile(`\n{3,}`)
+
+// sanitizeDescription removes null bytes and tidies whitespace while
+// PRESERVING line structure — descriptions are now clean Markdown (see
+// content.ToCleanText) whose paragraph + list breaks carry meaning, so we
+// must not flatten newlines into spaces. Collapses horizontal whitespace,
+// caps blank-line runs at one, strips trailing spaces per line, and trims.
 func sanitizeDescription(s string) string {
-	// Remove null bytes
 	s = strings.ReplaceAll(s, "\x00", "")
-	// Collapse whitespace runs to a single space
-	return strings.Join(strings.Fields(s), " ")
+	s = hspaceRe.ReplaceAllString(s, " ")
+	s = blankLinesRe.ReplaceAllString(s, "\n\n")
+	lines := strings.Split(s, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " ")
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 // contentHash computes a SHA-256 hex digest over the canonical identity fields.
@@ -227,12 +239,16 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 	title := strings.TrimSpace(ext.Title)
 	company := strings.TrimSpace(ext.IssuingEntity)
 	location := strings.TrimSpace(ext.LocationText)
-	description := strings.TrimSpace(ext.Description)
+	// Descriptions arrive from connectors as raw or entity-escaped HTML
+	// (greenhouse j.Content, JSON-LD description, feeds). Convert to clean
+	// Markdown here — the single point every variant passes through — so we
+	// don't store literal "<div>" / "&lt;div&gt;" markup the UI can't render.
+	description := content.ToCleanText(ext.Description)
 	applyURL := strings.TrimSpace(ext.ApplyURL)
 	sourceURL := strings.TrimSpace(ext.SourceURL)
 	externalID := strings.TrimSpace(ext.ExternalID)
 
-	// 2. Sanitize description.
+	// 2. Sanitize description (null bytes + whitespace collapse).
 	description = sanitizeDescription(description)
 
 	// 3. Normalize company name.
