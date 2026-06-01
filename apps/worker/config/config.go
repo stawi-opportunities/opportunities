@@ -118,6 +118,16 @@ type Config struct {
 	// in-memory driver so local dev / tests work without NATS.
 	WorkerEmbedQueueURL     string `env:"WORKER_EMBED_QUEUE_URL"     envDefault:"mem://svc.opportunities.worker.embed.v1"`
 	WorkerTranslateQueueURL string `env:"WORKER_TRANSLATE_QUEUE_URL" envDefault:"mem://svc.opportunities.worker.translate.v1"`
+
+	// StageGroup selects which pipeline handlers this process registers,
+	// so the worker can run as independently-scaling consumer groups:
+	//   "core"     — normalize, dedup (cluster), canonical
+	//   "validate" — validate (llama-bound, fail-open)
+	//   "publish"  — publish (R2) + embed + translate
+	//   "all"      — every handler on one consumer (legacy monolith; the
+	//                default keeps existing single-deployment installs and
+	//                the integration tests working unchanged).
+	StageGroup string `env:"STAGE_GROUP" envDefault:"all"`
 }
 
 // Load parses env → Config.

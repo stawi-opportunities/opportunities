@@ -186,13 +186,31 @@ func HasVisibleContent(rawHTML string) bool {
 // it can produce. A single entry skips the classifier; an empty slice
 // means "any registered kind"; more than one calls the classifier and
 // validates its output against the allowed set.
-func (e *Extractor) Extract(ctx context.Context, html string, sourceKinds []string) (*domain.ExternalOpportunity, error) {
+//
+// sourceExtension is the per-source ExtractionPromptExtension. When
+// non-empty, it's appended after the kind prompt as additional
+// instructions for that one source — operator-edited guidance that
+// doesn't justify changing the shared kind template. Pass "" when no
+// extension applies.
+func (e *Extractor) Extract(ctx context.Context, html string, sourceKinds []string, sourceExtension string) (*domain.ExternalOpportunity, error) {
 	kind, err := e.pickKind(ctx, html, sourceKinds)
 	if err != nil {
 		return nil, err
 	}
 	prompt := e.buildPrompt(kind)
-	raw, err := e.llm.Complete(ctx, prompt+"\n\nDocument:\n"+html)
+	if sourceExtension != "" {
+		prompt += "\n\nAdditional instructions for THIS source:\n" + sourceExtension
+	}
+	// Cap the document at maxContentChars before the LLM call. Without
+	// this, a large listing/detail page (even after HTML→markdown
+	// cleanup upstream) overflows the model's context window —
+	// observed live: "request (232984 tokens) exceeds the available
+	// context size (4096 tokens)". The classify + embed paths already
+	// truncate to this bound; the main document path silently did not.
+	// A job posting's salient fields live near the top, so truncation
+	// costs little extraction quality and guarantees the request fits.
+	doc := truncateText(html, maxContentChars)
+	raw, err := e.llm.Complete(ctx, prompt+"\n\nDocument:\n"+doc)
 	if err != nil {
 		return nil, fmt.Errorf("extraction: %w", err)
 	}
@@ -241,7 +259,14 @@ func (e *Extractor) pickKind(ctx context.Context, html string, sourceKinds []str
 	}
 	classifierPrompt := fmt.Sprintf(`Classify the document as one of: %s.
 Output ONLY the classification string.`, strings.Join(sourceKinds, ", "))
-	out, err := e.llm.Complete(ctx, classifierPrompt+"\n\n"+html)
+	// Truncate before classifying. The main Extract path caps its
+	// document at maxContentChars, but this classifier path sent the
+	// full untruncated html — a large page overflows the model context
+	// ("request exceeds the available context size"), failing every
+	// extraction for any source with >1 kind. The kind is almost always
+	// determinable from the top of the document, so truncation is safe.
+	doc := truncateText(html, maxContentChars)
+	out, err := e.llm.Complete(ctx, classifierPrompt+"\n\n"+doc)
 	if err != nil {
 		return "", fmt.Errorf("extraction classify: %w", err)
 	}
@@ -477,7 +502,11 @@ const maxEmbedChars = 2000
 // configured so callers can skip storing the vector without treating the
 // pipeline step as failed.
 func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
-	embedCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	// 30s cap (was 5m): a hung or overloaded TEI call must not occupy a
+	// queue slot for minutes and starve embedding throughput. A genuinely
+	// slow embed will time out and (per EmbedHandler) be retried with
+	// backoff rather than block the worker.
+	embedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	text = truncateText(text, maxEmbedChars)
 	return e.embed(embedCtx, text)

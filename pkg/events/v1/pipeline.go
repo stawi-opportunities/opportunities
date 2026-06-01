@@ -69,12 +69,18 @@ type VariantClusteredV1 struct {
 // append-only path so operators can inspect rejection rates per
 // (kind, source, reason) without a re-crawl.
 type VariantRejectedV1 struct {
-	VariantID  string    `json:"variant_id"`
-	SourceID   string    `json:"source_id"`
-	Kind       string    `json:"kind"`
-	Title      string    `json:"title"`
-	Reasons    []string  `json:"reasons"`
-	RejectedAt time.Time `json:"rejected_at"`
+	VariantID string   `json:"variant_id"`
+	SourceID  string   `json:"source_id"`
+	Kind      string   `json:"kind"`
+	Title     string   `json:"title"`
+	Reasons   []string `json:"reasons"`
+	// RawPayloadID + CrawlJobID forward-link a rejection to the
+	// crawler audit ledger so /admin/trace can render a "see the
+	// HTML" button on rejected variants. Optional because rows
+	// emitted before this field landed have NULL here in Iceberg.
+	RawPayloadID string    `json:"raw_payload_id,omitempty"`
+	CrawlJobID   string    `json:"crawl_job_id,omitempty"`
+	RejectedAt   time.Time `json:"rejected_at"`
 }
 
 // TranslationV1 — emitted by the translate handler once an opportunity

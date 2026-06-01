@@ -16,14 +16,19 @@ import (
 //     materializer subscribes to it to hide rows from search; the
 //     authoritative record of the underlying user flag lives in
 //     opportunity_flags (Postgres).
+//   - TopicDefinitionsChanged: pure control-plane signal — every Loader
+//     subscribes to call Invalidate on the matching cache entry. The
+//     authoritative state of every definition lives in R2 already, so
+//     persisting the change event to Iceberg adds no audit value.
 //
 // The writer ACKs these events without writing an Iceberg record so that the
 // materializer's Frame subscriber receives them without writer interference.
 var noIcebergPersistence = map[string]bool{
-	eventsv1.TopicCanonicalsUpserted:    true,
-	eventsv1.TopicCanonicalsExpired:     true,
-	eventsv1.TopicTranslations:          true,
+	eventsv1.TopicCanonicalsUpserted:     true,
+	eventsv1.TopicCanonicalsExpired:      true,
+	eventsv1.TopicTranslations:           true,
 	eventsv1.TopicOpportunityAutoFlagged: true,
+	eventsv1.TopicDefinitionsChanged:     true,
 }
 
 // TestAllTopicsHaveDispatch verifies that every topic returned by

@@ -70,8 +70,8 @@ Six phases, each operator-visible on its own:
 |---|---|---|
 | **L1** | B — source/variant/opportunity trace endpoints + basic admin page | 4-5 days |
 | **L2** | B — rejection drill-down (raw_payload_id on event + R2 body fetch endpoint) | 1-2 days |
-| **L3** | A — `pkg/definitions` R2 loader + refresh + NATS broadcast + admin endpoints | 4-5 days |
-| **L4** | A — spec-driven `htmllisting` + `jsonfeed` connectors | 3-4 days |
+| **L3** | A — `pkg/definitions` R2 loader + refresh + NATS broadcast + admin endpoints + per-source extraction_prompt_extension | 5-6 days |
+| **L4** | A — six spec-driven connectors (`htmllisting`, `jsonfeed`, `rssfeed`, `sitemap`, `schemaorgjsonld`, `xmlfeed`) | 5-7 days |
 | **L5** | B — Iceberg query path for historic (>7 d) trace; seed digest | 2-3 days |
 | **L6** | UI polish — admin sub-app pages for all the above | 2-3 days |
 
@@ -185,56 +185,111 @@ Bad uploads return 400 with the validation error inline.
 
 #### A.5 Spec-driven connectors
 
-**`pkg/connectors/htmllisting`** — declarative HTML listing scraper.
+The goal: cover **every public-feed format job boards routinely expose**, so adding a new source = drop a YAML in R2, no Go change. Six spec types, all sharing a common base in `pkg/connectors/spec`:
 
-Spec format (YAML, lives at `definitions/connectors/{name}.yaml`):
+| Type | Format | Typical job-board examples |
+|---|---|---|
+| `htmllisting` | HTML page + CSS selectors | Boards without an API; most listing pages |
+| `jsonfeed` | JSON URL + JSONPath | REST APIs, JSON Feed (jsonfeed.org), Greenhouse-style boards |
+| `rssfeed` | RSS 2.0 / Atom | WordPress careers pages, Workable, AngelList, many ATS providers |
+| `sitemap` | `sitemap.xml` (W3C) | Most large boards expose one; the existing `sitemapcrawler` becomes a special case of this |
+| `schemaorgjsonld` | HTML → embedded `<script type="application/ld+json">` JobPosting | Google-for-Jobs-compliant pages — increasingly the norm |
+| `xmlfeed` | Arbitrary XML + XPath | Indeed XML, Aggregator-style feeds |
 
-```yaml
-type: htmllisting
-list_url: https://example.com/jobs?page={page}
-pagination:
-  kind: page                 # page | offset | cursor | none
-  start: 1
-  step: 1
-  max: 50
-  stop_on_empty: true
-item_selector: ".job-item"
-fields:
-  title: ".title::text"
-  apply_url: "a.apply::attr(href)"
-  description: ".description::html"
-  posted_at:
-    selector: ".posted::text"
-    parse_as: relative_time   # supported: relative_time | iso | epoch
-delay_ms: 250                  # politeness throttle
-```
+All six share:
 
-Implementation: a `Connector` (per the existing `pkg/connectors/connector.go` interface) whose `Crawl` returns an iterator that walks pages and applies the selectors. Reuses `pkg/connectors/httpx.Client` for HTTP, `goquery` for CSS selectors (already a transitive dep).
+- A `Connector` impl in `pkg/connectors/spec` whose `Crawl(ctx, src)` dispatches based on `spec.type`.
+- A common `Pagination` block (kind: page / offset / cursor / next-link / none) reused across all six.
+- The same `fields:` map shape — the underlying extractor (CSS / JSONPath / Atom field / XPath / JSON-LD key) is per-type but the YAML keys are consistent.
+- Politeness throttle (`delay_ms`) and per-page timeout (`timeout_ms`) shared.
+- Registration under a single placeholder type `spec`; the loader picks the concrete impl from `spec.type`.
 
-**`pkg/connectors/jsonfeed`** — declarative JSON feed scraper.
-
-Spec format:
+Spec examples (one per format):
 
 ```yaml
-type: jsonfeed
-list_url: https://api.example.com/jobs?cursor={cursor}
-pagination:
-  kind: cursor
-  cursor_path: meta.next_cursor
-  initial_cursor: ""
-items_path: data
+# RSS — Workable careers feed
+type: rssfeed
+list_url: https://apply.workable.com/api/v1/widget/accounts/example/feed
 fields:
-  title:       jobs[*].title
-  apply_url:   jobs[*].apply_url
-  description: jobs[*].description.markdown
-  posted_at:   jobs[*].published_at
+  title: title
+  apply_url: link
+  description: description
+  posted_at: pubDate
+
+# Sitemap — declarative version of pkg/connectors/sitemapcrawler
+type: sitemap
+list_url: https://example.com/sitemap.xml
+include_patterns: ["/jobs/", "/careers/"]
+exclude_patterns: ["/jobs/archive/"]
+follow_index: true                 # follow nested <sitemapindex> entries
+detail_fetch: true                 # GET each candidate URL and run schemaorgjsonld on the body
+detail_fallback_type: schemaorgjsonld
+
+# Schema.org JobPosting JSON-LD
+type: schemaorgjsonld
+list_url: https://example.com/jobs/{slug}
+# When list_url has a {slug}, sitemap or htmllisting feeds the slug
+# stream; otherwise list_url is hit directly and JSON-LD blocks
+# returned in-document are emitted as items.
+
+# Generic XML — Indeed XML feed
+type: xmlfeed
+list_url: https://feed.example.com/jobs.xml
+item_xpath: //source/job
+fields:
+  title: title/text()
+  apply_url: url/text()
+  description: description/text()
+  posted_at: date/text()
 ```
 
-Implementation: walks JSONPath expressions via `github.com/PaesslerAG/jsonpath` or similar (small new dep).
+Implementation notes:
 
-Both connectors register themselves under a placeholder type name (`spec`) and dispatch internally based on the `type:` field of the loaded spec. The connector registry rebuilds on `definitions.changed.v1` for type=connector.
+- `htmllisting` + `schemaorgjsonld` share `goquery` for HTML parsing (already a transitive dep).
+- `rssfeed` + `xmlfeed` share `github.com/mmcdole/gofeed` for Atom/RSS 2.0 + raw XML; gofeed is well-maintained and covers ~all real-world RSS quirks.
+- `sitemap` reuses `pkg/connectors/sitemapcrawler` parsing internals (refactor to expose them publicly) — that connector becomes a Go thunk that dispatches a `sitemap`-typed spec, ensuring no regression on the existing 13 sources.
+- `jsonfeed` uses `github.com/PaesslerAG/jsonpath` (small dep, ~300 LoC).
 
-#### A.6 Wiring
+Registration: the connector registry rebuilds on `opportunities.definitions.changed.v1` for `type=connector`. Loading errors (malformed spec, unknown `spec.type`) are logged WARN and don't crash the crawler — the offending connector is dropped from the registry; its sources will fall back to whatever existing connector handles `source.type` (or fail Verify with an actionable error).
+
+**Migration of existing connectors:** the 13 Go connectors stay in place. We don't rewrite them as specs — they handle ATS-specific OAuth flows or per-vendor quirks that don't fit the declarative model. The new spec connectors are for the **long tail** of HTML/RSS/sitemap pages that don't justify hand-written Go.
+
+#### A.6 Per-source prompt extensions
+
+The kind-level extraction prompt (in `definitions/opportunity-kinds/{kind}.yaml`) is one template for all sources of that kind. But sources have quirks: Brightermonday encodes city names in a sidebar widget, Workday wraps salary in a `data-` attribute, Naukri lists multiple openings per page that need a "pick the first" instruction. Today the only escape hatch is editing the shared kind prompt — which affects every source of that kind.
+
+**Solution:** add a per-source string appended to the kind prompt at extract time.
+
+**Schema:**
+
+```sql
+ALTER TABLE sources
+    ADD COLUMN IF NOT EXISTS extraction_prompt_extension TEXT NOT NULL DEFAULT '';
+```
+
+(Migration added to `apps/crawler/migrations/0001/` in Plan B.)
+
+**Storage path:** edit-via-admin lands in the `sources` row directly; the source-seed YAML format also grows an optional `extraction_prompt_extension` field so seeds-from-git can pre-populate it. On seed upsert, repo content overwrites if changed (operator can edit in admin UI; next git sync overwrites unless back-ported — same contract as definitions).
+
+**Wiring:** `pkg/extraction.Extractor.Extract(ctx, body, kinds, sourceExtension)` learns an optional last parameter. When non-empty, it's appended after the kind prompt:
+
+```
+{universal prefix}
+
+{kind extraction_prompt}
+
+{source-specific extension, prefixed with: "Additional instructions for THIS source:"}
+
+{body}
+```
+
+The crawler's `enrichOne` reads `src.ExtractionPromptExtension` from the looked-up source and passes it through. The crawler-side queue / Plan-2 enricher worker does the same.
+
+**Admin endpoints:** the existing `PUT /admin/sources/{id}` accepts `extraction_prompt_extension` in its body (currently the sources_admin.go handler takes a struct with `RequiredAttributesByKind` etc.; this is one more field). Edit triggers no rebuild — the next crawl reads the column. No NATS broadcast needed (the field is per-row and read from the database on each crawl.request).
+
+**UI surface:** the admin UI's source page gets a textarea labelled "Extraction prompt extension" with a preview that shows the rendered combined prompt (kind base + extension). Length cap: 4 KB (a sentence or two of guidance, not a rewrite).
+
+#### A.7 Wiring
 
 `apps/crawler/service/setup.go` (`BuildRegistry`) gets a final loop:
 

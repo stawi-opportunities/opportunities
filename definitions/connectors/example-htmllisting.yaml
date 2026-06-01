@@ -1,0 +1,11 @@
+# Example spec — operators copy this as a starting point.
+# Not auto-uploaded to R2; upload via PUT /admin/definitions/connector/{name}
+# or run cmd/seed-definitions with --type=connector --prefix=definitions/connector.
+type: htmllisting
+list_url: https://example.com/careers
+item_selector: ".job-listing"
+fields:
+  title: ".job-title::text"
+  apply_url: "a.apply-link::attr(href)"
+  description: ".job-description::html"
+delay_ms: 500

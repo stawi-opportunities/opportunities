@@ -133,6 +133,16 @@ type Source struct {
 	LastSeenAt       *time.Time     `json:"last_seen_at"`
 	NextCrawlAt      time.Time      `gorm:"index" json:"next_crawl_at"`
 
+	// Adaptive recrawl score (0.0–1.0). 1.0 means "crawl at
+	// MinIntervalMinutes"; 0.0 means "crawl at MaxIntervalMinutes".
+	// Recomputed every scheduler tick from the crawl_signals
+	// materialized view; persisted alongside the derived NextCrawlAt.
+	// Default 0.5 (neutral) keeps a freshly-onboarded source at the
+	// geometric midpoint until enough signals accrue.
+	Score              float64 `gorm:"column:score;not null;default:0.5"               json:"score"`
+	MinIntervalMinutes int     `gorm:"column:min_interval_minutes;not null;default:15" json:"min_interval_minutes"`
+	MaxIntervalMinutes int     `gorm:"column:max_interval_minutes;not null;default:10080" json:"max_interval_minutes"`
+
 	// Reachability probe run before every enqueue. Sources that fail
 	// repeatedly get their NextCrawlAt pushed out with backoff rather
 	// than being dispatched into a pipeline that will just 404.
@@ -181,6 +191,19 @@ type Source struct {
 	// source is always visible without trawling audit logs.
 	LastStoppedAt *time.Time `json:"last_stopped_at,omitempty"`
 	LastStoppedBy string     `gorm:"type:varchar(64)" json:"last_stopped_by,omitempty"`
+
+	// ExtractionPromptExtension is appended verbatim to the kind-level
+	// extraction prompt for this source. Empty for sources that don't
+	// need customization. Operator-editable via PUT /admin/sources/{id}.
+	ExtractionPromptExtension string `gorm:"type:text;not null;default:''" json:"extraction_prompt_extension"`
+
+	// FrontierEnabled opts a source into the URL-frontier path (D2).
+	// false (default) keeps the legacy per-source iterator behaviour;
+	// true routes discovery output through pkg/frontier so the
+	// frontier-worker fans out per-URL fetch + extract under shared
+	// per-host politeness windows. Operator-toggled via PUT
+	// /admin/sources/{id}.
+	FrontierEnabled bool `gorm:"not null;default:false" json:"frontier_enabled"`
 }
 
 func (Source) TableName() string { return "sources" }
@@ -246,6 +269,9 @@ type RawPayload struct {
 	AttemptCount int              `gorm:"column:attempt_count;not null;default:0" json:"attempt_count"`
 	NextRetryAt  *time.Time       `gorm:"column:next_retry_at" json:"next_retry_at,omitempty"`
 	LastError    string           `gorm:"column:last_error;type:text" json:"last_error,omitempty"`
+
+	ReparseCount   int        `gorm:"column:reparse_count;not null;default:0" json:"reparse_count"`
+	LastReparsedAt *time.Time `gorm:"column:last_reparsed_at" json:"last_reparsed_at,omitempty"`
 }
 
 func (RawPayload) TableName() string { return "raw_payloads" }

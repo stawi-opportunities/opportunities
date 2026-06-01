@@ -83,6 +83,15 @@ const (
 	StageManticore   = "manticore" // legacy; remove once Manticore decommissioned
 	StageFlagged     = "flagged"
 	StageRejected    = "rejected"
+	// StageEmbed is a side-channel stage label used only by the embed
+	// queue worker's attempts ledger. It is NOT a current_stage value —
+	// embedding runs off the canonical fan-out and never advances
+	// current_stage — it just namespaces the attempts/last_error columns
+	// so a stuck embed is visible and boundable.
+	StageEmbed = "embed"
+	// StageTranslate is the analogous side-channel label for the translate
+	// queue worker's attempts ledger; not a current_stage value.
+	StageTranslate = "translate"
 )
 
 // Variant maps to the pipeline_variants row.
@@ -310,6 +319,128 @@ func (s *Store) RecordError(ctx context.Context, variantID, stage string, e erro
             WHERE  variant_id = ?
         `, msg, stage, stage, variantID).Error
 	return s.soft(ctx, err, "record_error", variantID, stage)
+}
+
+// RecordErrorByCanonical records an error against every variant in a
+// canonical cluster, bumping each row's per-stage attempts counter.
+// Used by PublishHandler, which consumes the many-to-one CanonicalUpsertedV1
+// fan-in and therefore has no single variant_id to key on. Same soft-fail
+// + jsonb attempts-increment semantics as RecordError.
+func (s *Store) RecordErrorByCanonical(ctx context.Context, canonicalID, stage string, e error) error {
+	if s == nil || s.db == nil || e == nil || canonicalID == "" {
+		return nil
+	}
+	msg := e.Error()
+	if len(msg) > 2000 {
+		msg = msg[:2000]
+	}
+	err := s.db(ctx, false).
+		Exec(`
+            UPDATE pipeline_variants
+            SET    last_error = ?,
+                   attempts   = jsonb_set(
+                       attempts,
+                       ARRAY[?]::text[],
+                       to_jsonb((COALESCE(NULLIF(attempts->>?, '')::int, 0) + 1)),
+                       true),
+                   updated_at = now()
+            WHERE  canonical_id = ?
+        `, msg, stage, stage, canonicalID).Error
+	return s.soft(ctx, err, "record_error_by_canonical", "", canonicalID)
+}
+
+// AttemptCount returns the recorded number of attempts for a given
+// (variant, stage) pair from the attempts jsonb map, or 0 when the row
+// or key is absent. Used by handlers that bound redelivery (e.g. embed)
+// so an external-I/O failure can't redeliver forever on a stream with no
+// max-deliver cap. Soft-fails to 0 on Postgres error so a DB outage never
+// forces a premature drop.
+func (s *Store) AttemptCount(ctx context.Context, variantID, stage string) (int, error) {
+	if s == nil || s.db == nil || variantID == "" {
+		return 0, nil
+	}
+	var row struct {
+		N int
+	}
+	err := s.db(ctx, true).
+		Table("pipeline_variants").
+		Select("COALESCE(NULLIF(attempts->>?, '')::int, 0) AS n", stage).
+		Where("variant_id = ?", variantID).
+		Limit(1).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
+		util.Log(ctx).WithError(err).
+			WithField("variant_id", variantID).
+			WithField("stage", stage).
+			Warn("variantstate: AttemptCount failed; treating as 0")
+		return 0, nil
+	}
+	return row.N, nil
+}
+
+// AttemptCountByCanonical returns the MAX recorded attempts for a stage
+// across every variant in a canonical cluster, or 0 when the cluster or
+// key is absent. Canonical-keyed sibling of AttemptCount for the embed
+// stage, which consumes the many-to-one CanonicalUpsertedV1 fan-in and so
+// has no single variant_id. Soft-fails to 0 on Postgres error.
+func (s *Store) AttemptCountByCanonical(ctx context.Context, canonicalID, stage string) (int, error) {
+	if s == nil || s.db == nil || canonicalID == "" {
+		return 0, nil
+	}
+	var row struct {
+		N int
+	}
+	err := s.db(ctx, true).
+		Table("pipeline_variants").
+		Select("COALESCE(MAX(COALESCE(NULLIF(attempts->>?, '')::int, 0)), 0) AS n", stage).
+		Where("canonical_id = ?", canonicalID).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
+		util.Log(ctx).WithError(err).
+			WithField("canonical_id", canonicalID).
+			WithField("stage", stage).
+			Warn("variantstate: AttemptCountByCanonical failed; treating as 0")
+		return 0, nil
+	}
+	return row.N, nil
+}
+
+// ListStuck returns variants whose stage_at is older than the cutoff and
+// whose current_stage is not in excludeStages — i.e. rows wedged mid-chain
+// (a dropped NATS redelivery, a failed emit, an R2 outage). The reaper
+// uses this to re-drive the appropriate stage event. Bounded by limit and
+// ordered oldest-first so the most-stuck rows recover first.
+//
+// Read-only and soft-failing: a Postgres error returns (nil, nil) so a
+// sweep is skipped rather than crashing the reaper goroutine.
+func (s *Store) ListStuck(ctx context.Context, olderThan time.Duration, excludeStages []string, limit int) ([]Variant, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	cutoff := time.Now().UTC().Add(-olderThan)
+	q := s.db(ctx, true).
+		Table("pipeline_variants").
+		Where("stage_at < ?", cutoff)
+	if len(excludeStages) > 0 {
+		q = q.Where("current_stage NOT IN ?", excludeStages)
+	}
+	var rows []Variant
+	err := q.Order("stage_at ASC").Limit(limit).Find(&rows).Error
+	if err != nil {
+		util.Log(ctx).WithError(err).
+			Warn("variantstate: ListStuck failed; skipping sweep")
+		return nil, nil
+	}
+	return rows, nil
 }
 
 func (s *Store) soft(ctx context.Context, err error, op, variantID, stage string) error {

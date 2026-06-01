@@ -7,12 +7,14 @@
 // onboarding a new careers page, or rejecting a flaky source.
 //
 // All endpoints are namespaced under /admin/sources and gated by a
-// thin Bearer-token middleware that records the calling profile id on
-// the request context. The middleware is intentionally permissive: a
-// gateway-side SecurityManager already verifies signatures, so this
-// only checks "is there a token?" and surfaces the sub claim for
-// audit logs. Production deployments front the api with the same
-// Hydra JWT validation the crawler's admin endpoints get.
+// Bearer-token middleware that gates handlers on the JWT having the
+// 'admin' role. A gateway-side SecurityManager already verifies
+// signatures and writes the claims into the context, so this middleware
+// reads security.ClaimsFromContext, checks GetRoles() for 'admin', and
+// returns 401 (no Bearer / no claims) or 403 (no admin role) otherwise.
+// The JS auth-runtime exposes getRoles() that parses the same JWT
+// shape, so the React app self-gates symmetrically — but requireAdmin
+// IS the security boundary; the UI check is defense-in-depth.
 package main
 
 import (
@@ -30,10 +32,18 @@ import (
 	frameclient "github.com/pitabwire/frame/client"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/security"
 	"github.com/pitabwire/util"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awscreds "github.com/aws/aws-sdk-go-v2/credentials"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
+	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/greenhouse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
@@ -44,6 +54,8 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/freshness"
+	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/sourceverify"
@@ -66,6 +78,12 @@ type sourceAdminRepo interface {
 	Reject(ctx context.Context, id, reason string) error
 	ListWithFilters(ctx context.Context, f repository.ListFilter) ([]*domain.Source, int64, error)
 	ListByStatuses(ctx context.Context, statuses []domain.SourceStatus, limit int) ([]*domain.Source, error)
+
+	// Adaptive recrawl surface (Plan D3). Used by the rescore handler
+	// to force-recompute a source's score without waiting for the next
+	// scheduler tick.
+	LoadSignals(ctx context.Context) (map[string]freshness.SourceSignals, error)
+	UpdateScoreAndNextCrawl(ctx context.Context, sourceID string, score float64, nextCrawlAt time.Time) error
 }
 
 // adminVerifier is the narrow slice of sourceverify.Dispatcher used by
@@ -87,7 +105,12 @@ type sourcesAdmin struct {
 //
 // Failures during init are surfaced as warnings so the api keeps
 // serving public traffic even when the admin surface is misconfigured.
-func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry) {
+// registerSourcesAdmin signature gained an optional loader so main.go can
+// pass the shared *definitions.R2Loader rather than this function spinning
+// up its own (which would double-poll R2 and ignore broadcast events).
+// nil means R2 isn't configured — the /admin/definitions/* block stays
+// disabled in that case.
+func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader) {
 	log := util.Log(ctx)
 
 	fc, err := fconfig.FromEnv[fconfig.ConfigurationDefault]()
@@ -146,13 +169,88 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	mux.HandleFunc("POST /admin/sources/{id}/resume", requireAdmin(a.handleResume))
 	mux.HandleFunc("POST /admin/sources/{id}/stop", requireAdmin(a.handleStop))
 	mux.HandleFunc("POST /admin/sources/{id}/start", requireAdmin(a.handleStart))
+	mux.HandleFunc("POST /admin/sources/{id}/rescore", requireAdmin(a.handleRescore))
 	mux.HandleFunc("GET /admin/sources/{id}", requireAdmin(a.handleGet))
 	mux.HandleFunc("PUT /admin/sources/{id}", requireAdmin(a.handleUpdate))
 	mux.HandleFunc("DELETE /admin/sources/{id}", requireAdmin(a.handleDelete))
 	mux.HandleFunc("GET /admin/sources", requireAdmin(a.handleList))
 	mux.HandleFunc("POST /admin/sources", requireAdmin(a.handleCreate))
 
-	log.Info("source admin: endpoints registered under /admin/sources")
+	// /admin/trace/* shares the same database pool + source repo for
+	// the source-lookup leg, so we wire it here rather than duplicating
+	// the frame-datastore boot in main.go. The Iceberg catalog is
+	// optional — when ICEBERG_CATALOG_URI isn't set the handler skips
+	// the historic layer and serves Postgres-only summaries.
+	var iceCat *icebergclient.Catalog
+	if cat, err := icebergclient.NewCatalogFromEnv(ctx); err == nil {
+		iceCat = cat
+		log.Info("source admin: iceberg catalog wired for historic trace queries")
+	} else {
+		log.WithError(err).Warn("source admin: iceberg catalog init failed; historic queries disabled")
+	}
+	traceRepo := repository.NewTraceRepository(pool.DB)
+	registerTraceAdmin(mux, traceRepo, repo, iceCat)
+	registerDigestAdmin(mux, traceRepo, iceCat)
+
+	// /admin/checkpoints — operator can inspect resume state per
+	// source and force-clear a stuck checkpoint when a listing has
+	// shifted and the source keeps resuming from a no-longer-fresh
+	// page. Same database pool as the rest of the admin surface.
+	checkpointRepo := repository.NewCheckpointRepository(pool.DB)
+	registerCheckpointAdmin(mux, checkpointRepo)
+	log.Info("source admin: /admin/checkpoints (GET/DELETE) wired")
+
+	// /admin/frontier — operator surface for the D2 URL frontier.
+	// Reuses the same Postgres pool. Read + requeue + delete only;
+	// the worker side (enqueue / dequeue) is its own service.
+	frontierRepo := frontier.NewAdminRepository(pool.DB)
+	registerFrontierAdmin(mux, frontierRepo)
+	log.Info("source admin: /admin/frontier wired")
+
+	// /admin/raw_payloads/{id}/body — operator pulls the original HTML
+	// from R2 for rejection drill-down. Wired only when R2 creds + the
+	// archive bucket name are present; otherwise the endpoint stays
+	// disabled and the rest of the admin surface keeps working.
+	crawlRepo := repository.NewCrawlRepository(pool.DB)
+	if cfg.R2AccountID != "" && cfg.R2ArchiveBucket != "" {
+		arch := archive.NewR2Archive(archive.R2Config{
+			AccountID:       cfg.R2AccountID,
+			AccessKeyID:     cfg.R2AccessKeyID,
+			SecretAccessKey: cfg.R2SecretAccessKey,
+			Bucket:          cfg.R2ArchiveBucket,
+		})
+		registerRawPayloadAdmin(mux, crawlRepo, arch)
+		log.Info("source admin: /admin/raw_payloads/{id}/body wired")
+	} else {
+		log.Warn("source admin: R2 not configured; /admin/raw_payloads/{id}/body disabled")
+	}
+
+	// /admin/raw_payloads/{id}/reparse + /admin/sources/{id}/reparse —
+	// publish a CrawlRequestV1 with RawPayloadID set so the crawler
+	// re-runs extraction on stored HTML. Available even without R2
+	// configured (the crawler-side handler does the storage probe).
+	registerReparseAdmin(mux, crawlRepo, frameEmitter{svc: svc})
+	log.Info("source admin: /admin/raw_payloads/{id}/reparse + /admin/sources/{id}/reparse wired")
+
+	// /admin/definitions/* — pluggable-definitions CRUD over R2. Reuses
+	// the loader main.go already started so this surface, the per-replica
+	// in-memory cache, and the broadcast subscriber all share one cache
+	// (avoids double-polling R2 and ignoring NATS events). The S3 client
+	// used for PutObject / DeleteObject is constructed here on the same
+	// credentials.
+	if loader != nil && cfg.R2AccountID != "" && cfg.R2ContentBucket != "" {
+		s3Client := awss3.New(awss3.Options{
+			Region:       "auto",
+			Credentials:  awscreds.NewStaticCredentialsProvider(cfg.R2AccessKeyID, cfg.R2SecretAccessKey, ""),
+			BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.R2AccountID)),
+		})
+		registerDefinitionsAdmin(mux, loader, s3Client, cfg.R2ContentBucket, "definitions", frameEmitter{svc: svc})
+		log.Info("source admin: /admin/definitions/* wired (shared loader)")
+	} else {
+		log.Warn("source admin: R2 not configured; /admin/definitions/* disabled")
+	}
+
+	log.Info("source admin: endpoints registered under /admin/sources, /admin/trace, /admin/definitions")
 }
 
 // buildAdminConnectorRegistry returns a connectors.Registry suitable for
@@ -334,14 +432,20 @@ func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
 // Status is intentionally NOT here — lifecycle transitions go through
 // the dedicated endpoints (verify/approve/reject/pause/resume).
 type updateSourceRequest struct {
-	Name                     *string              `json:"name"`
-	Country                  *string              `json:"country"`
-	Language                 *string              `json:"language"`
-	Priority                 *domain.Priority     `json:"priority"`
-	CrawlIntervalSec         *int                 `json:"crawl_interval_sec"`
-	Kinds                    *[]string            `json:"kinds"`
-	RequiredAttributesByKind *map[string][]string `json:"required_attributes_by_kind"`
-	AutoApprove              *bool                `json:"auto_approve"`
+	Name                      *string              `json:"name"`
+	Country                   *string              `json:"country"`
+	Language                  *string              `json:"language"`
+	Priority                  *domain.Priority     `json:"priority"`
+	CrawlIntervalSec          *int                 `json:"crawl_interval_sec"`
+	Kinds                     *[]string            `json:"kinds"`
+	RequiredAttributesByKind  *map[string][]string `json:"required_attributes_by_kind"`
+	AutoApprove               *bool                `json:"auto_approve"`
+	ExtractionPromptExtension *string              `json:"extraction_prompt_extension"`
+	// FrontierEnabled is the D2 opt-in flag — flips the source's
+	// crawl path to the URL-frontier model. Default (unset) leaves
+	// the existing value alone; legacy direct-extract sources
+	// stay on the legacy path until the operator explicitly opts in.
+	FrontierEnabled *bool `json:"frontier_enabled"`
 }
 
 func (a *sourcesAdmin) handleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -399,6 +503,16 @@ func (a *sourcesAdmin) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AutoApprove != nil {
 		updates["auto_approve"] = *req.AutoApprove
+	}
+	if req.ExtractionPromptExtension != nil {
+		if len(*req.ExtractionPromptExtension) > 4096 {
+			writeError(w, http.StatusBadRequest, "bad_request", "extraction_prompt_extension exceeds 4096 bytes")
+			return
+		}
+		updates["extraction_prompt_extension"] = *req.ExtractionPromptExtension
+	}
+	if req.FrontierEnabled != nil {
+		updates["frontier_enabled"] = *req.FrontierEnabled
 	}
 	if len(updates) == 0 {
 		writeError(w, http.StatusBadRequest, "no_fields", "request had no editable fields")
@@ -634,22 +748,103 @@ func (a *sourcesAdmin) handleStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceActive})
 }
 
+// handleRescore force-recomputes a single source's freshness score +
+// next_crawl_at without waiting for the next scheduler tick. The
+// signals come from the crawl_signals materialized view; if the view
+// has no row for this source yet (e.g. brand new source pre-first-
+// refresh) we return 404 so the operator knows to wait one tick or
+// trigger a verification crawl first.
+//
+// Tier is hard-coded to 2 (neutral) until Source.Tier ships — see
+// Plan B2 follow-up.
+func (a *sourcesAdmin) handleRescore(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, err := a.repo.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load_failed", err.Error())
+		return
+	}
+	if src == nil {
+		writeError(w, http.StatusNotFound, "not_found", "source not found")
+		return
+	}
+	signals, err := a.repo.LoadSignals(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load_signals_failed", err.Error())
+		return
+	}
+	sig, ok := signals[id]
+	if !ok {
+		writeError(w, http.StatusNotFound, "no_signals",
+			"source has no crawl_signals row yet — wait for the next refresh or trigger a crawl first")
+		return
+	}
+	now := time.Now().UTC()
+	score := freshness.Score(sig, 2, now)
+	minMin := src.MinIntervalMinutes
+	if minMin <= 0 {
+		minMin = 15
+	}
+	maxMin := src.MaxIntervalMinutes
+	if maxMin <= 0 {
+		maxMin = 10080
+	}
+	next := freshness.NextCrawlAt(score, now, minMin, maxMin)
+	if err := a.repo.UpdateScoreAndNextCrawl(r.Context(), id, score, next); err != nil {
+		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	logAction(r, "rescore", id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":            true,
+		"id":            id,
+		"score":         score,
+		"next_crawl_at": next,
+	})
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────
 
-// requireAdmin gates a handler behind a Bearer token. The middleware
-// does not verify the signature — gateway-side SecurityManager handles
-// that — but it ensures every admin call carries some token so audit
-// logs can attribute actions. Returns 401 on missing token.
+// requireAdmin gates the handler on (a) presence of a Bearer token and
+// (b) the 'admin' role in the JWT claims. Frame's security middleware
+// extracts claims upstream into the context via security.ClaimsToContext.
+//
+// On unauth (no Bearer, or upstream rejected the token leaving claims
+// unset): 401. On forbidden (authenticated but not admin): 403.
+//
+// The JS client (@stawi/auth-runtime) exposes getRoles() that parses
+// the same JWT shape, so the UI self-gates symmetrically — but this
+// middleware IS the security boundary.
 func requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "missing Bearer token")
 			return
 		}
+		claims := security.ClaimsFromContext(r.Context())
+		if claims == nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid Bearer token")
+			return
+		}
+		if !containsRole(claims.GetRoles(), "admin") {
+			writeError(w, http.StatusForbidden, "forbidden", "admin role required")
+			return
+		}
 		h(w, r)
 	}
+}
+
+// containsRole returns true if want is in roles. Case-sensitive
+// because role names in Hydra are canonical.
+func containsRole(roles []string, want string) bool {
+	for _, r := range roles {
+		if r == want {
+			return true
+		}
+	}
+	return false
 }
 
 // errorEnvelope is the shape every admin error response follows. Plays

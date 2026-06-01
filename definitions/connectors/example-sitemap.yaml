@@ -1,0 +1,10 @@
+# Walk a sitemap and pull JSON-LD from each job detail page.
+type: sitemap
+list_url: https://example.com/sitemap.xml
+sitemap:
+  include_patterns: ["/jobs/", "/careers/"]
+  exclude_patterns: ["/jobs/archive/"]
+  follow_index: true
+  detail_fetch: true
+  detail_fallback_type: schemaorgjsonld
+fields: {}

@@ -3,12 +3,14 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/freshness"
 )
 
 // SourceRepository wraps GORM operations for the Source entity.
@@ -429,6 +431,74 @@ func (r *SourceRepository) ResetQualityWindowAll(ctx context.Context) (int64, er
 			"quality_flagged":      0,
 		})
 	return res.RowsAffected, res.Error
+}
+
+// RefreshSignals triggers REFRESH MATERIALIZED VIEW CONCURRENTLY
+// crawl_signals via the plpgsql wrapper. ~50ms typical; safe to
+// call every scheduler tick because CONCURRENTLY never blocks reads.
+// The unique index on crawl_signals(source_id) is what makes
+// CONCURRENTLY viable — see migration _0071.
+//
+// PrepareStmt is disabled for this call because pgbouncer in
+// transaction-pooling mode collides on the cached statement name
+// across pooled connections (SQLSTATE 08P01). REFRESH MATERIALIZED
+// VIEW doesn't benefit from prepare-caching anyway, so the per-call
+// session override is free.
+func (r *SourceRepository) RefreshSignals(ctx context.Context) error {
+	return r.db(ctx, false).
+		Session(&gorm.Session{PrepareStmt: false}).
+		Exec("SELECT refresh_crawl_signals()").Error
+}
+
+// LoadSignals returns the latest rolling 7d signals for every source.
+// Source IDs not present in crawl_signals return zero values.
+// Returns a map keyed by source_id so callers can match against the
+// in-memory source cache in O(1) per source.
+func (r *SourceRepository) LoadSignals(ctx context.Context) (map[string]freshness.SourceSignals, error) {
+	type signalRow struct {
+		SourceID         string     `gorm:"column:source_id"`
+		Crawls7d         int        `gorm:"column:crawls_7d"`
+		Variants7d       int        `gorm:"column:variants_7d"`
+		Accepted7d       int        `gorm:"column:accepted_7d"`
+		Rejected7d       int        `gorm:"column:rejected_7d"`
+		LastNewVariantAt *time.Time `gorm:"column:last_new_variant_at"`
+	}
+	var rows []signalRow
+	// PrepareStmt disabled — same pgbouncer collision as RefreshSignals.
+	// Per-call session override; the bulk scan doesn't benefit from
+	// prepare-caching anyway.
+	err := r.db(ctx, true).
+		Session(&gorm.Session{PrepareStmt: false}).
+		Raw(`SELECT source_id, crawls_7d, variants_7d, accepted_7d, rejected_7d, last_new_variant_at
+             FROM crawl_signals`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("load signals: %w", err)
+	}
+	out := make(map[string]freshness.SourceSignals, len(rows))
+	for _, rw := range rows {
+		out[rw.SourceID] = freshness.SourceSignals{
+			Crawls7d:         rw.Crawls7d,
+			Variants7d:       rw.Variants7d,
+			Accepted7d:       rw.Accepted7d,
+			Rejected7d:       rw.Rejected7d,
+			LastNewVariantAt: rw.LastNewVariantAt,
+		}
+	}
+	return out, nil
+}
+
+// UpdateScoreAndNextCrawl persists the freshly computed score +
+// next_crawl_at. Single-row UPDATE keyed by source_id. Called by the
+// scheduler tick (every source with signals) and by the operator
+// rescore endpoint.
+func (r *SourceRepository) UpdateScoreAndNextCrawl(ctx context.Context, sourceID string, score float64, nextCrawlAt time.Time) error {
+	return r.db(ctx, false).
+		Model(&domain.Source{}).
+		Where("id = ?", sourceID).
+		Updates(map[string]any{
+			"score":         score,
+			"next_crawl_at": nextCrawlAt,
+		}).Error
 }
 
 // DecayHealth nudges health_score toward 1.0 by step, clamped at 1.0.

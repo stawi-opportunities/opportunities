@@ -186,7 +186,7 @@ func TestExtract_SingleKindSkipsClassifier(t *testing.T) {
 		t.Fatalf("load registry: %v", err)
 	}
 	e := &Extractor{llm: llm, registry: reg}
-	opp, err := e.Extract(context.Background(), "<html/>", []string{"job"})
+	opp, err := e.Extract(context.Background(), "<html/>", []string{"job"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestExtract_MultiKindClassifies(t *testing.T) {
 		t.Fatalf("load registry: %v", err)
 	}
 	e := &Extractor{llm: llm, registry: reg}
-	opp, err := e.Extract(context.Background(), "<html/>", []string{"job", "scholarship"})
+	opp, err := e.Extract(context.Background(), "<html/>", []string{"job", "scholarship"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

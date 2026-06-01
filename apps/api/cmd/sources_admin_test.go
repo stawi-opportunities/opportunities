@@ -11,15 +11,18 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/pitabwire/frame/security"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/freshness"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
 // fakeSourceRepo is an in-memory sourceAdminRepo for handler tests.
 type fakeSourceRepo struct {
-	rows map[string]*domain.Source
+	rows    map[string]*domain.Source
+	signals map[string]freshness.SourceSignals
 }
 
 func newFakeSourceRepo() *fakeSourceRepo { return &fakeSourceRepo{rows: map[string]*domain.Source{}} }
@@ -81,6 +84,9 @@ func (f *fakeSourceRepo) Update(_ context.Context, id string, fields map[string]
 	}
 	if v, ok := fields["auto_approve"].(bool); ok {
 		s.AutoApprove = v
+	}
+	if v, ok := fields["extraction_prompt_extension"].(string); ok {
+		s.ExtractionPromptExtension = v
 	}
 	return nil
 }
@@ -172,6 +178,25 @@ func (f *fakeSourceRepo) ListWithFilters(_ context.Context, fl repository.ListFi
 		out = append(out, s)
 	}
 	return out, int64(len(out)), nil
+}
+
+// LoadSignals + UpdateScoreAndNextCrawl satisfy the AdaptiveScorer
+// slice of sourceAdminRepo. Tests that exercise the rescore handler
+// override these fields via the test helper; the defaults return
+// "no signals" so unrelated tests aren't accidentally coupled.
+func (f *fakeSourceRepo) LoadSignals(_ context.Context) (map[string]freshness.SourceSignals, error) {
+	if f.signals != nil {
+		return f.signals, nil
+	}
+	return map[string]freshness.SourceSignals{}, nil
+}
+
+func (f *fakeSourceRepo) UpdateScoreAndNextCrawl(_ context.Context, id string, score float64, nextCrawlAt time.Time) error {
+	if s, ok := f.rows[id]; ok {
+		s.Score = score
+		s.NextCrawlAt = nextCrawlAt
+	}
+	return nil
 }
 
 func (f *fakeSourceRepo) ListByStatuses(_ context.Context, statuses []domain.SourceStatus, _ int) ([]*domain.Source, error) {
@@ -268,6 +293,16 @@ func authHeader() string {
 	return "Bearer fake.jwt.token"
 }
 
+// setAdminAuth attaches an admin Bearer header AND admin-role claims
+// to the request context, matching what Frame's security middleware
+// would do upstream in production. Required by requireAdmin, which
+// gates on both the header and the 'admin' role in claims.
+func setAdminAuth(req *http.Request) {
+	req.Header.Set("Authorization", authHeader())
+	claims := &security.AuthenticationClaims{Roles: []string{"admin"}}
+	*req = *req.WithContext(claims.ClaimsToContext(req.Context()))
+}
+
 func TestSourcesAdmin_RequireAdmin(t *testing.T) {
 	_, _, _, mux := adminTestHarness(t)
 	req := httptest.NewRequest("GET", "/admin/sources", nil)
@@ -288,7 +323,7 @@ func TestSourcesAdmin_CreateAndGet(t *testing.T) {
 	}
 	raw, _ := json.Marshal(body)
 	req := httptest.NewRequest("POST", "/admin/sources", bytes.NewReader(raw))
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
@@ -312,7 +347,7 @@ func TestSourcesAdmin_CreateAndGet(t *testing.T) {
 
 	// GET it back.
 	getReq := httptest.NewRequest("GET", "/admin/sources/"+created.ID, nil)
-	getReq.Header.Set("Authorization", authHeader())
+	setAdminAuth(getReq)
 	rr2 := httptest.NewRecorder()
 	mux.ServeHTTP(rr2, getReq)
 	if rr2.Code != http.StatusOK {
@@ -330,7 +365,7 @@ func TestSourcesAdmin_CreateRejectsUnknownKind(t *testing.T) {
 	}
 	raw, _ := json.Marshal(body)
 	req := httptest.NewRequest("POST", "/admin/sources", bytes.NewReader(raw))
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -349,7 +384,7 @@ func TestSourcesAdmin_CreateRejectsBlockedURL(t *testing.T) {
 	}
 	raw, _ := json.Marshal(body)
 	req := httptest.NewRequest("POST", "/admin/sources", bytes.NewReader(raw))
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -360,7 +395,7 @@ func TestSourcesAdmin_CreateRejectsBlockedURL(t *testing.T) {
 func TestSourcesAdmin_GetNotFound(t *testing.T) {
 	_, _, _, mux := adminTestHarness(t)
 	req := httptest.NewRequest("GET", "/admin/sources/nope", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
@@ -378,7 +413,7 @@ func TestSourcesAdmin_Verify(t *testing.T) {
 		Kinds:     pq.StringArray{"job"},
 	}
 	req := httptest.NewRequest("POST", "/admin/sources/s1/verify", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -396,7 +431,7 @@ func TestSourcesAdmin_ApproveRequiresVerified(t *testing.T) {
 		Status:    domain.SourcePending, // not verified yet
 	}
 	req := httptest.NewRequest("POST", "/admin/sources/s1/approve", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusConflict {
@@ -411,7 +446,7 @@ func TestSourcesAdmin_ApproveTransitionsToActive(t *testing.T) {
 		Status:    domain.SourceVerified,
 	}
 	req := httptest.NewRequest("POST", "/admin/sources/s1/approve", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -429,7 +464,7 @@ func TestSourcesAdmin_Reject(t *testing.T) {
 		Status:    domain.SourceVerifying,
 	}
 	req := httptest.NewRequest("POST", "/admin/sources/s1/reject?reason=bad+robots", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -450,7 +485,7 @@ func TestSourcesAdmin_PauseAndResume(t *testing.T) {
 		Status:    domain.SourceActive,
 	}
 	pause := httptest.NewRequest("POST", "/admin/sources/s1/pause", nil)
-	pause.Header.Set("Authorization", authHeader())
+	setAdminAuth(pause)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, pause)
 	if rr.Code != http.StatusOK {
@@ -461,7 +496,7 @@ func TestSourcesAdmin_PauseAndResume(t *testing.T) {
 	}
 
 	resume := httptest.NewRequest("POST", "/admin/sources/s1/resume", nil)
-	resume.Header.Set("Authorization", authHeader())
+	setAdminAuth(resume)
 	rr2 := httptest.NewRecorder()
 	mux.ServeHTTP(rr2, resume)
 	if rr2.Code != http.StatusOK {
@@ -480,7 +515,7 @@ func TestSourcesAdmin_StopAndStart(t *testing.T) {
 	}
 
 	stop := httptest.NewRequest("POST", "/admin/sources/s1/stop", nil)
-	stop.Header.Set("Authorization", authHeader())
+	setAdminAuth(stop)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, stop)
 	if rr.Code != http.StatusOK {
@@ -498,7 +533,7 @@ func TestSourcesAdmin_StopAndStart(t *testing.T) {
 
 	// Second stop should 409.
 	stop2 := httptest.NewRequest("POST", "/admin/sources/s1/stop", nil)
-	stop2.Header.Set("Authorization", authHeader())
+	setAdminAuth(stop2)
 	rr2 := httptest.NewRecorder()
 	mux.ServeHTTP(rr2, stop2)
 	if rr2.Code != http.StatusConflict {
@@ -506,7 +541,7 @@ func TestSourcesAdmin_StopAndStart(t *testing.T) {
 	}
 
 	start := httptest.NewRequest("POST", "/admin/sources/s1/start", nil)
-	start.Header.Set("Authorization", authHeader())
+	setAdminAuth(start)
 	rr3 := httptest.NewRecorder()
 	mux.ServeHTTP(rr3, start)
 	if rr3.Code != http.StatusOK {
@@ -524,7 +559,7 @@ func TestSourcesAdmin_StartRequiresDisabled(t *testing.T) {
 		Status:    domain.SourceActive, // not stopped
 	}
 	req := httptest.NewRequest("POST", "/admin/sources/s1/start", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusConflict {
@@ -535,7 +570,7 @@ func TestSourcesAdmin_StartRequiresDisabled(t *testing.T) {
 func TestSourcesAdmin_StopNotFound(t *testing.T) {
 	_, _, _, mux := adminTestHarness(t)
 	req := httptest.NewRequest("POST", "/admin/sources/missing/stop", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
@@ -549,7 +584,7 @@ func TestSourcesAdmin_DeleteSoftAndHard(t *testing.T) {
 	repo.rows["s2"] = &domain.Source{BaseModel: domain.BaseModel{ID: "s2"}, Status: domain.SourceActive}
 
 	soft := httptest.NewRequest("DELETE", "/admin/sources/s1", nil)
-	soft.Header.Set("Authorization", authHeader())
+	setAdminAuth(soft)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, soft)
 	if rr.Code != http.StatusOK {
@@ -560,7 +595,7 @@ func TestSourcesAdmin_DeleteSoftAndHard(t *testing.T) {
 	}
 
 	hard := httptest.NewRequest("DELETE", "/admin/sources/s2?hard=true", nil)
-	hard.Header.Set("Authorization", authHeader())
+	setAdminAuth(hard)
 	rr2 := httptest.NewRecorder()
 	mux.ServeHTTP(rr2, hard)
 	if rr2.Code != http.StatusOK {
@@ -577,7 +612,7 @@ func TestSourcesAdmin_ListWithFilters(t *testing.T) {
 	repo.rows["b"] = &domain.Source{BaseModel: domain.BaseModel{ID: "b"}, Status: domain.SourcePending, Kinds: pq.StringArray{"job"}}
 
 	req := httptest.NewRequest("GET", "/admin/sources?status=pending", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -600,7 +635,7 @@ func TestSourcesAdmin_ListDiscovered(t *testing.T) {
 	repo.rows["c"] = &domain.Source{BaseModel: domain.BaseModel{ID: "c"}, Status: domain.SourceVerified}
 
 	req := httptest.NewRequest("GET", "/admin/sources/discovered", nil)
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -623,10 +658,63 @@ func TestSourcesAdmin_UpdateValidates(t *testing.T) {
 	body := map[string]any{"crawl_interval_sec": 30} // below 60s minimum
 	raw, _ := json.Marshal(body)
 	req := httptest.NewRequest("PUT", "/admin/sources/s1", bytes.NewReader(raw))
-	req.Header.Set("Authorization", authHeader())
+	setAdminAuth(req)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestSourcesAdmin_Update_ExtractionPromptExtension(t *testing.T) {
+	_, repo, _, mux := adminTestHarness(t)
+	repo.rows["src-prompt-1"] = &domain.Source{
+		BaseModel: domain.BaseModel{ID: "src-prompt-1"},
+		Type:      domain.SourceType("greenhouse"),
+		BaseURL:   "https://x",
+		Country:   "US",
+		Status:    domain.SourceActive,
+	}
+
+	body := map[string]any{
+		"extraction_prompt_extension": "Look for salary in data-salary attribute.",
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest("PUT", "/admin/sources/src-prompt-1", bytes.NewReader(raw))
+	setAdminAuth(req)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK && rr.Code != http.StatusNoContent {
+		t.Fatalf("status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	got := repo.rows["src-prompt-1"]
+	if got.ExtractionPromptExtension != "Look for salary in data-salary attribute." {
+		t.Fatalf("extension not persisted: %q", got.ExtractionPromptExtension)
+	}
+}
+
+func TestSourcesAdmin_Update_ExtensionTooLong(t *testing.T) {
+	_, repo, _, mux := adminTestHarness(t)
+	repo.rows["src-prompt-2"] = &domain.Source{
+		BaseModel: domain.BaseModel{ID: "src-prompt-2"},
+		Type:      domain.SourceType("greenhouse"),
+		BaseURL:   "https://x",
+		Country:   "US",
+		Status:    domain.SourceActive,
+	}
+	big := make([]byte, 4097)
+	for i := range big {
+		big[i] = 'x'
+	}
+	body := map[string]any{"extraction_prompt_extension": string(big)}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest("PUT", "/admin/sources/src-prompt-2", bytes.NewReader(raw))
+	setAdminAuth(req)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d; want 400 (>4KB extension)", rr.Code)
 	}
 }

@@ -45,6 +45,13 @@ type CrawlRequestV1 struct {
 	// empty is used by the not-yet-wired detail fan-out path.
 	URL string `json:"url,omitempty" parquet:"url,optional"`
 
+	// RawPayloadID, when non-empty, switches the crawl handler from
+	// connector-iterator mode to reparse mode: fetch the stored HTML
+	// from R2 by content_hash and re-run extraction. Used by the
+	// /admin/raw_payloads/{id}/reparse endpoint after operators edit
+	// extraction prompts or connector specs.
+	RawPayloadID string `json:"raw_payload_id,omitempty" parquet:"raw_payload_id,optional"`
+
 	// Cursor is the opaque pagination token emitted by the connector
 	// on a prior page. Empty on first request for a source.
 	Cursor string `json:"cursor,omitempty" parquet:"cursor,optional"`

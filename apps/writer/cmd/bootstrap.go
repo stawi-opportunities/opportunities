@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	frameclient "github.com/pitabwire/frame/client"
 	"github.com/pitabwire/util"
@@ -220,8 +221,10 @@ func ensureNamespaces(ctx context.Context, cat catalog.Catalog) error {
 }
 
 // ensureTables iterates AllTableSchemas and CreateTable's each entry.
-// "Already exists" errors are tolerated. A 2-second pause between calls
-// avoids tripping R2 Data Catalog's write rate limit (~10 writes/min).
+// "Already exists" errors are tolerated and trigger a schema-reconcile
+// pass that additively adds any missing optional columns. A 2-second
+// pause between calls avoids tripping R2 Data Catalog's write rate
+// limit (~10 writes/min).
 func ensureTables(ctx context.Context, cat catalog.Catalog) error {
 	log := util.Log(ctx)
 	schemas := icebergclient.AllTableSchemas()
@@ -231,10 +234,16 @@ func ensureTables(ctx context.Context, cat catalog.Catalog) error {
 		case err == nil:
 			log.WithField("table", ts.Identifier).Info("bootstrap: table created")
 		case errors.Is(err, catalog.ErrTableAlreadyExists):
-			log.WithField("table", ts.Identifier).Debug("bootstrap: table already exists")
+			log.WithField("table", ts.Identifier).Debug("bootstrap: table already exists; reconciling schema")
+			if rcErr := reconcileTableSchema(ctx, cat, ts); rcErr != nil {
+				log.WithError(rcErr).WithField("table", ts.Identifier).Warn("bootstrap: schema reconcile failed; manual ALTER may be required")
+			}
 		default:
 			if isAlreadyExistsErr(err) {
-				log.WithField("table", ts.Identifier).Debug("bootstrap: table already exists (string match)")
+				log.WithField("table", ts.Identifier).Debug("bootstrap: table already exists (string match); reconciling schema")
+				if rcErr := reconcileTableSchema(ctx, cat, ts); rcErr != nil {
+					log.WithError(rcErr).WithField("table", ts.Identifier).Warn("bootstrap: schema reconcile failed; manual ALTER may be required")
+				}
 			} else if isRateLimitErr(err) {
 				log.WithField("table", ts.Identifier).Warn("bootstrap: rate limited, backing off 30s")
 				select {
@@ -256,6 +265,59 @@ func ensureTables(ctx context.Context, cat catalog.Catalog) error {
 			time.Sleep(2 * time.Second)
 		}
 	}
+	return nil
+}
+
+// reconcileTableSchema loads an existing Iceberg table and adds any
+// columns present in the target schema but absent from the live schema.
+// Only additive — never drops or renames. Optional columns are added
+// with nil default; required columns are an error since we can't
+// backfill rows that pre-date the column.
+//
+// Called when CreateTable returns "already exists": the table is
+// present but may be behind the writer's current Arrow record shape
+// (e.g. PA-S3 added raw_payload_id + crawl_job_id to variants_rejected
+// without an in-place migration).
+//
+// Rate-limit-aware: a single Transaction.Commit is one R2 Data Catalog
+// write, so all missing columns are added in one batch.
+func reconcileTableSchema(ctx context.Context, cat catalog.Catalog, ts icebergclient.TableSchema) error {
+	log := util.Log(ctx)
+	tbl, err := cat.LoadTable(ctx, ts.Identifier)
+	if err != nil {
+		return fmt.Errorf("reconcile: load %v: %w", ts.Identifier, err)
+	}
+	cur := tbl.Schema()
+	target := ts.Schema()
+
+	var missing []iceberg.NestedField
+	for _, f := range target.Fields() {
+		if _, ok := cur.FindFieldByName(f.Name); !ok {
+			missing = append(missing, f)
+		}
+	}
+	if len(missing) == 0 {
+		log.WithField("table", ts.Identifier).Debug("reconcile: schema up to date")
+		return nil
+	}
+
+	// One transaction = one R2 write. Add all missing columns at once.
+	txn := tbl.NewTransaction()
+	upd := txn.UpdateSchema(true, false) // case-sensitive, no incompatible changes
+	for _, f := range missing {
+		if f.Required {
+			return fmt.Errorf("reconcile %v: cannot add required column %q without backfill", ts.Identifier, f.Name)
+		}
+		upd = upd.AddColumn([]string{f.Name}, f.Type, f.Doc, false, nil)
+		log.WithField("table", ts.Identifier).WithField("column", f.Name).Info("reconcile: adding missing column")
+	}
+	if err := upd.Commit(); err != nil {
+		return fmt.Errorf("reconcile %v: UpdateSchema commit: %w", ts.Identifier, err)
+	}
+	if _, err := txn.Commit(ctx); err != nil {
+		return fmt.Errorf("reconcile %v: transaction commit: %w", ts.Identifier, err)
+	}
+	log.WithField("table", ts.Identifier).WithField("added", len(missing)).Info("reconcile: schema evolved")
 	return nil
 }
 

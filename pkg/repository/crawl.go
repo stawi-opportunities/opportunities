@@ -101,7 +101,30 @@ func (r *CrawlRepository) SaveRawPayload(ctx context.Context, payload *domain.Ra
 	if payload.FetchedAt.IsZero() {
 		payload.FetchedAt = time.Now().UTC()
 	}
-	return r.db(ctx, false).Create(payload).Error
+	// PrepareStmt disabled: under pgbouncer transaction pooling the
+	// cached INSERT statement collides across pooled backends
+	// (SQLSTATE 08P01 "prepared statement name is already in use"),
+	// which the frontier-worker hit hammering this path per URL. The
+	// once-per-payload INSERT gains nothing from prepare-caching.
+	// Same per-call override pattern as SourceRepository.RefreshSignals.
+	return r.db(ctx, false).
+		Session(&gorm.Session{PrepareStmt: false}).
+		Create(payload).Error
+}
+
+// GetRawPayload returns the raw_payloads row matching id, or
+// (nil, nil) when not found (expired by retention or never written).
+// Used by /admin/raw_payloads/{id}/body.
+func (r *CrawlRepository) GetRawPayload(ctx context.Context, id string) (*domain.RawPayload, error) {
+	var rp domain.RawPayload
+	err := r.db(ctx, true).Where("id = ?", id).First(&rp).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &rp, nil
 }
 
 // CrawlJobSummary is the per-row projection /admin/crawl_jobs returns.
@@ -135,4 +158,33 @@ func (r *CrawlRepository) ListBySource(ctx context.Context, sourceID string, lim
          LIMIT ?
     `, sourceID, limit).Scan(&rows).Error
 	return rows, err
+}
+
+// ListRawPayloadsBySource returns up to `limit` recently-fetched
+// raw_payloads for a source. Used by the reparse admin endpoint
+// to enqueue a batch.
+func (r *CrawlRepository) ListRawPayloadsBySource(ctx context.Context, sourceID string, since time.Duration, limit int) ([]domain.RawPayload, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 1000
+	}
+	cutoff := time.Now().Add(-since)
+	var rows []domain.RawPayload
+	err := r.db(ctx, true).
+		Where("source_id = ? AND fetched_at >= ?", sourceID, cutoff).
+		Order("fetched_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	return rows, err
+}
+
+// IncrementReparseCount bumps reparse_count + sets last_reparsed_at.
+// Called by the crawler's reparse handler after a re-extraction completes.
+func (r *CrawlRepository) IncrementReparseCount(ctx context.Context, id string) error {
+	return r.db(ctx, false).
+		Table("raw_payloads").
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"reparse_count":    gorm.Expr("reparse_count + 1"),
+			"last_reparsed_at": time.Now().UTC(),
+		}).Error
 }

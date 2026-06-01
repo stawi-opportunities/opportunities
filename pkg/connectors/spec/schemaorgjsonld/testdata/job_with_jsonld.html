@@ -1,0 +1,43 @@
+<!doctype html>
+<html><body>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org/",
+  "@type": "JobPosting",
+  "title": "Senior Engineer",
+  "description": "Build awesome things",
+  "datePosted": "2026-05-28",
+  "validThrough": "2026-06-28",
+  "employmentType": "FULL_TIME",
+  "hiringOrganization": { "@type": "Organization", "name": "Acme Inc" },
+  "jobLocation": {
+    "@type": "Place",
+    "address": {
+      "@type": "PostalAddress",
+      "addressCountry": "US",
+      "addressLocality": "San Francisco"
+    }
+  },
+  "baseSalary": {
+    "@type": "MonetaryAmount",
+    "currency": "USD",
+    "value": { "@type": "QuantitativeValue", "minValue": 150000, "maxValue": 200000 }
+  },
+  "applicantLocationRequirements": "US",
+  "url": "https://acme.example.com/jobs/senior-engineer"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org/",
+  "@graph": [
+    {
+      "@type": "JobPosting",
+      "title": "Product Manager",
+      "hiringOrganization": "Acme Inc",
+      "url": "https://acme.example.com/jobs/pm"
+    }
+  ]
+}
+</script>
+</body></html>

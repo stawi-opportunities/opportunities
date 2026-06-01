@@ -54,7 +54,7 @@ func TestDAAD_ExtractAndVerify(t *testing.T) {
 	})
 	ext.SetLLM(fakeLLM{})
 
-	opp, err := ext.Extract(context.Background(), detailHTML, []string{"scholarship"})
+	opp, err := ext.Extract(context.Background(), detailHTML, []string{"scholarship"}, "")
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}

@@ -124,5 +124,6 @@ func AllTopics() []string {
 		TopicCandidatePreferencesUpdated,
 		TopicCandidateMatchesReady,
 		TopicOpportunityAutoFlagged,
+		TopicDefinitionsChanged,
 	}
 }

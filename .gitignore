@@ -8,8 +8,11 @@ bin/
 
 # Stray Go build outputs when `go build ./...` is run from repo root
 # (Go names the binary after the last path segment — here `cmd` — which
-# collides with apps/*/cmd dirs).
+# collides with apps/*/cmd dirs). Negation re-allows the cmd/ directory
+# that now hosts top-level binaries (cmd/seed-definitions etc).
 /cmd
+!/cmd/
+/seed-definitions
 
 # Bootstrap secrets — NEVER commit these
 scripts/bootstrap/vault-seeds.env

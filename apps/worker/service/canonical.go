@@ -174,6 +174,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	// handler — it's a fast R2 write, not external LLM I/O, so it
 	// stays on the events bus.
 	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv); err != nil {
+		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageClustered, fmt.Errorf("canonical: emit upserted: %w", err))
 		return err
 	}
 	slug := merged.Slug
@@ -186,6 +187,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	// envelope; only the transport differs.
 	body, err := json.Marshal(outEnv)
 	if err != nil {
+		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageCanonical, fmt.Errorf("canonical: marshal: %w", err))
 		return fmt.Errorf("canonical: marshal: %w", err)
 	}
 	qm := h.svc.QueueManager()

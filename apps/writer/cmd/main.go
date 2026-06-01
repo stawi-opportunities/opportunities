@@ -24,6 +24,7 @@ import (
 	// credentials flow continues to work.
 	_ "github.com/apache/iceberg-go/io/gocloud"
 
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -59,13 +60,32 @@ func main() {
 	ctx, svc := frame.NewServiceWithContext(ctx, opts...)
 	defer svc.Stop(ctx)
 
-	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
-	// later phases consult the registry on the publish/index paths.
-	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	// Load the opportunity-kinds registry. Prefer the R2-backed
+	// definitions loader (admin can edit kind YAMLs in the cluster);
+	// fall back to the on-disk ConfigMap when R2 isn't configured so
+	// dev/OSS deploys keep working.
+	loader, err := definitions.NewR2LoaderFromEnv(ctx)
 	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
+		util.Log(ctx).WithError(err).Fatal("definitions: env config failed")
 	}
-	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+	var reg *opportunity.Registry
+	if loader != nil {
+		if err := loader.Start(ctx); err != nil {
+			util.Log(ctx).WithError(err).Fatal("definitions: loader start failed")
+		}
+		reg, err = opportunity.LoadFromDefinitions(ctx, loader)
+		if err != nil {
+			util.Log(ctx).WithError(err).Fatal("definitions: registry load failed")
+		}
+		util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded from R2 definitions")
+	} else {
+		util.Log(ctx).Warn("definitions: R2 not configured; falling back to OpportunityKindsDir")
+		reg, err = opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+		if err != nil {
+			util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
+		}
+		util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
+	}
 
 	// Initialize pipeline + Iceberg telemetry instruments. Without this,
 	// every commit-retry path in the writer hits a nil-Counter and SIGSEGVs
@@ -98,6 +118,23 @@ func main() {
 	wService := writersvc.NewService(svc, buffer, cat, cfg.FlushMaxInterval)
 	if err := wService.RegisterSubscriptions(eventsv1.AllTopics()); err != nil {
 		util.Log(ctx).WithError(err).Fatal("writer: register subscriptions failed")
+	}
+
+	// definitions.changed.v1 broadcast — invalidates the loader cache
+	// and live-rebuilds the kind registry on admin edits.
+	if loader != nil {
+		rebuild := func(ctx context.Context) error {
+			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
+			if err != nil {
+				return err
+			}
+			reg.Replace(fresh)
+			return nil
+		}
+		if mgr := svc.EventsManager(); mgr != nil {
+			mgr.Add(definitions.NewBroadcastConsumer(loader, rebuild))
+			util.Log(ctx).WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
+		}
 	}
 
 	go func() {

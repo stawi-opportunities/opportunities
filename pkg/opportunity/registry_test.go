@@ -1,9 +1,12 @@
 package opportunity
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 )
 
 func writeYAML(t *testing.T, dir, name, body string) {
@@ -97,5 +100,53 @@ func TestRegistry_ResolveFallback(t *testing.T) {
 	}
 	if got.URLPrefix != "unknown" {
 		t.Errorf("Resolve fallback URLPrefix=%q, want %q", got.URLPrefix, "unknown")
+	}
+}
+
+func TestLoadFromDefinitions_UsesLoader(t *testing.T) {
+	loader := definitions.NewMemoryLoader()
+	loader.Put(definitions.TypeKind, "job", []byte(`
+kind: job
+display_name: Job
+issuing_entity_label: Company
+amount_kind: salary
+url_prefix: jobs
+universal_required: [title, description, issuing_entity, apply_url]
+kind_required: []
+kind_optional: []
+categories: []
+search_facets: []
+extraction_prompt: extract jobs
+`))
+	reg, err := LoadFromDefinitions(context.Background(), loader)
+	if err != nil {
+		t.Fatalf("LoadFromDefinitions: %v", err)
+	}
+	if _, ok := reg.Lookup("job"); !ok {
+		t.Fatal("job kind not in registry")
+	}
+}
+
+func TestRegistry_Replace_SwapsContents(t *testing.T) {
+	old := NewRegistry()
+	if err := old.register(Spec{
+		Kind: "old", DisplayName: "Old", IssuingEntityLabel: "X", URLPrefix: "old",
+	}); err != nil {
+		t.Fatalf("register old: %v", err)
+	}
+
+	fresh := NewRegistry()
+	if err := fresh.register(Spec{
+		Kind: "fresh", DisplayName: "Fresh", IssuingEntityLabel: "X", URLPrefix: "fresh",
+	}); err != nil {
+		t.Fatalf("register fresh: %v", err)
+	}
+
+	old.Replace(fresh)
+	if _, ok := old.Lookup("fresh"); !ok {
+		t.Fatal("after Replace, fresh kind missing")
+	}
+	if _, ok := old.Lookup("old"); ok {
+		t.Fatal("after Replace, old kind still present")
 	}
 }
