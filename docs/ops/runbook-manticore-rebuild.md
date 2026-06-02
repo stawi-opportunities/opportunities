@@ -12,7 +12,7 @@
 4. Reset materializer watermarks: redis-cli SET mat:watermark:canonicals "" (and other partitions).
 5. kubectl rollout restart deploy/materializer
 6. kubectl logs -f deploy/materializer | grep "manticore upsert" — expect ≥500 upserts/min for the first hour.
-7. Check row count every 10 min: curl -s $MANTICORE_URL/sql?mode=raw -d "query=SELECT COUNT(*) FROM idx_opportunities_rt"
+7. Check row count every 10 min: curl -s $MANTICORE_URL/sql?mode=raw -d "query=SELECT COUNT(\*) FROM idx_opportunities_rt"
 8. Lift 503 when count exceeds launch threshold (50k).
 
 **Success signal:** /api/v2/search?q=engineer returns ≥10 hits.

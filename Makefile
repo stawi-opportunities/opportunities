@@ -58,8 +58,9 @@ infra-down:
 # shell pages and picks up that manifest via site.Data.app_manifest.
 
 ui-deps:
-	cd ui && npm install --no-audit --no-fund
-	cd ui/app && npm install --no-audit --no-fund
+	cd ui       && npm install --no-audit --no-fund
+	cd ui/app   && npm install --no-audit --no-fund
+	cd ui/admin && npm install --no-audit --no-fund
 
 # Downloads pinned Hugo extended to bin/hugo (Linux x86_64). Both the CF
 # Pages build env and the maintainer's workstation are linux-amd64 today, so
@@ -77,17 +78,20 @@ $(HUGO_BIN):
 # Two npm installs: ui/ hosts PostCSS+Tailwind (Hugo's css.PostCSS pipe shells
 # out to `npx postcss`); ui/app/ hosts the React app itself.
 ui-build: $(HUGO_BIN)
-	cd ui     && npm ci --prefer-offline --no-audit --no-fund
-	cd ui/app && npm ci --prefer-offline --no-audit --no-fund
-	cd ui/app && npm run build
-	cd ui     && $(HUGO_BIN) --minify
+	cd ui       && npm ci --prefer-offline --no-audit --no-fund
+	cd ui/app   && npm ci --prefer-offline --no-audit --no-fund
+	cd ui/admin && npm ci --prefer-offline --no-audit --no-fund
+	cd ui/app   && npm run build
+	cd ui/admin && npm run build
+	cd ui       && $(HUGO_BIN) --minify
 
 # Vite on :5173 + Hugo on :5170 concurrently. ^C stops both. OIDC env vars
 # swap in the Development partition client so local sign-in doesn't hit the
 # production realm.
 ui-dev:
 	@trap 'kill 0' EXIT INT TERM; \
-		(cd ui/app && npm run dev) & \
+		(cd ui/app   && npm run dev) & \
+		(cd ui/admin && npm run dev) & \
 		HUGO_PARAMS_oidcClientID=opportunities-web-dev \
 		HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqrhg \
 		HUGO_PARAMS_oidcRedirectURI=http://localhost:5170/auth/callback/ \

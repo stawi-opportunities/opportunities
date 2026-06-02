@@ -2,26 +2,23 @@
 // mapped falls back to title-case slug (e.g. "media_production" → "Media
 // Production").
 const CATEGORY_LABELS: Record<string, string> = {
-  programming: "Programming",
-  design: "Design",
-  customer_support: "Customer Support",
-  marketing: "Marketing",
-  sales: "Sales",
-  devops: "DevOps & Infrastructure",
-  product: "Product",
-  data: "Data Science & Analytics",
-  data_science: "Data Science & Analytics",
-  management: "Management & Executive",
-  other: "Other",
+  programming: 'Programming',
+  design: 'Design',
+  customer_support: 'Customer Support',
+  marketing: 'Marketing',
+  sales: 'Sales',
+  devops: 'DevOps & Infrastructure',
+  product: 'Product',
+  data: 'Data Science & Analytics',
+  data_science: 'Data Science & Analytics',
+  management: 'Management & Executive',
+  other: 'Other',
 };
 
 export function categoryLabel(key?: string | null): string {
-  if (!key) return "Uncategorised";
+  if (!key) return 'Uncategorised';
   return (
-    CATEGORY_LABELS[key] ??
-    key
-      .replace(/[-_]+/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase())
+    CATEGORY_LABELS[key] ?? key.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
 
@@ -29,11 +26,11 @@ export function fmtMoney(
   min: number | undefined,
   max: number | undefined,
   currency: string | undefined,
-  period: string | undefined = "year",
+  period: string | undefined = 'year'
 ): string {
-  if (!min && !max) return "";
-  const c = currency || "USD";
-  const per = period ? `/${period}` : "";
+  if (!min && !max) return '';
+  const c = currency || 'USD';
+  const per = period ? `/${period}` : '';
   if (min && max && min !== max) {
     return `${c} ${min.toLocaleString()}–${max.toLocaleString()}${per}`;
   }
@@ -47,12 +44,12 @@ export function isoInPast(iso?: string | null): boolean {
 
 /** Relative posted-at label: "3 days ago", "just now". */
 export function timeAgo(iso?: string | null): string {
-  if (!iso) return "";
+  if (!iso) return '';
   const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
+  if (Number.isNaN(then)) return '';
   const diff = Math.max(0, Date.now() - then);
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
+  if (mins < 1) return 'just now';
   if (mins < 60) return `${mins} min ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;

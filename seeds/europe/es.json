@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/glovoapp",
     "country": "ES",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "es",
     "priority": "normal",
     "region": "europe",
@@ -15,9 +13,7 @@
     "base_url": "https://boards.greenhouse.io/typeform",
     "country": "ES",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "es",
     "priority": "normal",
     "region": "europe",
@@ -27,9 +23,7 @@
     "base_url": "https://jobs.lever.co/factorialhr",
     "country": "ES",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "es",
     "priority": "normal",
     "region": "europe",

@@ -55,9 +55,10 @@ permissions needed.
    - `SavedJobRepository.ListProfileIDsByCanonicalJob(id)` (new method)
    - For each profile id, call `NotificationService.Send` with a
      `job_expired` template carrying `{job_title, company_name,
-     job_slug, search_url}`
+job_slug, search_url}`
 
 3. **New repo method**:
+
    ```go
    func (r *SavedJobRepository) ListProfileIDsByCanonicalJob(
        ctx context.Context, canonicalJobID int64,

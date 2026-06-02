@@ -25,8 +25,10 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
@@ -74,6 +76,28 @@ type CrawlRequestDeps struct {
 	// missing rows). Soft-fail throughout: a Postgres outage degrades
 	// observability but does not stall the chain.
 	VariantStore *variantstate.Store
+	// CrawlRepo writes the crawl_jobs + raw_payloads audit ledger.
+	// nil disables ledger writes (test paths). Errors propagate — a
+	// Postgres outage MUST fail the crawl, otherwise the ledger silently
+	// diverges from reality.
+	CrawlRepo *repository.CrawlRepository
+	// CheckpointRepo persists per-source iterator state so a crawler
+	// that crashes mid-iteration resumes from the last successful page
+	// on the next NATS redelivery. nil disables checkpointing — the
+	// connector is invoked via plain Crawl (no resume) and no rows
+	// are written. Best-effort throughout: a Postgres outage degrades
+	// resumption to "always start fresh" rather than stalling the crawl.
+	CheckpointRepo *repository.CheckpointRepository
+
+	// Frontier wires the D2 URL-frontier path. When non-nil AND the
+	// source has FrontierEnabled=true, the crawl handler enqueues
+	// discovered URLs into the frontier instead of running the
+	// extract+emit pipeline in-line. The frontier-worker then handles
+	// the per-URL fetch + extract under per-host politeness.
+	//
+	// nil disables the path entirely — every source falls back to
+	// the legacy direct-extract behaviour regardless of the flag.
+	Frontier frontier.Frontier
 }
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
@@ -132,6 +156,14 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	}
 	req := env.Payload
 
+	// Reparse short-circuit: when RawPayloadID is set, the request was
+	// issued by the /admin/raw_payloads/{id}/reparse (or
+	// /admin/sources/{id}/reparse) endpoint. Skip the connector
+	// iterator entirely and re-run extraction on the stored HTML.
+	if req.RawPayloadID != "" {
+		return h.reparse(ctx, req)
+	}
+
 	log := util.Log(ctx).
 		WithField("request_id", req.RequestID).
 		WithField("source_id", req.SourceID)
@@ -188,7 +220,67 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
-	iter := conn.Crawl(ctx, *src)
+	// Audit ledger: open a crawl_jobs row. Idempotent on idempotency_key
+	// — Frame redeliveries of the same NATS msg reuse the same row via
+	// the unique (idempotency_key, scheduled_at) composite index.
+	crawlJob := &domain.CrawlJob{
+		SourceID:       src.ID,
+		ScheduledAt:    req.ScheduledAt,
+		Status:         domain.CrawlScheduled,
+		Attempt:        1,
+		IdempotencyKey: req.IdempotencyKey,
+	}
+	if crawlJob.IdempotencyKey == "" {
+		crawlJob.IdempotencyKey = fmt.Sprintf("%s:%s", src.ID, req.ScheduledAt.Format(time.RFC3339))
+	}
+	if crawlJob.ScheduledAt.IsZero() {
+		crawlJob.ScheduledAt = time.Now().UTC()
+	}
+
+	if h.deps.CrawlRepo != nil {
+		if err := h.deps.CrawlRepo.Create(ctx, crawlJob); err != nil {
+			// Likely a unique-constraint violation from a re-delivery.
+			// Fall back to the existing row so we don't double-insert.
+			if existing, lookupErr := h.deps.CrawlRepo.GetByIdempotencyKey(ctx, crawlJob.IdempotencyKey); lookupErr == nil && existing != nil {
+				crawlJob = existing
+			} else {
+				return fmt.Errorf("crawl.request: open crawl_jobs row: %w", err)
+			}
+		}
+		if err := h.deps.CrawlRepo.Start(ctx, crawlJob.ID); err != nil {
+			return fmt.Errorf("crawl.request: mark started: %w", err)
+		}
+	}
+
+	// Resume from a prior checkpoint when the connector supports it.
+	// Stale checkpoints (>StaleAfter, default 6h) are discarded: the
+	// source's listing-page state has likely shifted and we'd skip
+	// fresh records. Soft-fail on the lookup — a Postgres outage
+	// degrades resumption to "always start fresh" rather than stalling
+	// the crawl.
+	var iter connectors.CrawlIterator
+	var prevCheckpoint *connectors.CheckpointState
+	if h.deps.CheckpointRepo != nil {
+		cp, stale, cpErr := h.deps.CheckpointRepo.Get(ctx, src.ID, string(conn.Type()))
+		switch {
+		case cpErr != nil:
+			log.WithError(cpErr).Warn("crawl.request: checkpoint Get failed")
+		case cp != nil && !stale:
+			prevCheckpoint = &connectors.CheckpointState{
+				Cursor:  cp.Cursor,
+				PageIdx: cp.PageIdx,
+				LastURL: cp.LastURL,
+			}
+			log.WithField("page_idx", cp.PageIdx).Info("crawl.request: resuming from checkpoint")
+		case cp != nil && stale:
+			log.WithField("source_id", src.ID).Debug("crawl.request: discarding stale checkpoint")
+		}
+	}
+	if resumable, ok := conn.(connectors.ResumableConnector); ok && prevCheckpoint != nil {
+		iter = resumable.CrawlResume(ctx, *src, prevCheckpoint)
+	} else {
+		iter = conn.Crawl(ctx, *src)
+	}
 
 	var (
 		jobsFound    int
@@ -202,7 +294,68 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	for iter.Next(ctx) {
 		status = iter.HTTPStatus()
 		pageArchiveRef := resolveArchiveRef(ctx, h.deps.Archive, iter.Content())
+
+		// Audit-ledger: row per page. resolveArchiveRef already wrote the R2
+		// blob via archive.PutRaw (content-addressed by sha256); here we
+		// just record the metadata + queue-state row pointing at it.
+		var pageRawPayloadID string
+		if h.deps.CrawlRepo != nil && iter.Content() != nil && len(iter.Content().RawHTML) > 0 {
+			rawBody := []byte(iter.Content().RawHTML)
+			pageContentHash := sha256Hex(rawBody)
+			rp := &domain.RawPayload{
+				CrawlJobID:  crawlJob.ID,
+				SourceID:    src.ID,
+				SourceURL:   src.BaseURL,
+				StorageURI:  pageArchiveRef,
+				ContentHash: pageContentHash,
+				SizeBytes:   int64(len(rawBody)),
+				FetchedAt:   time.Now().UTC(),
+				HTTPStatus:  iter.HTTPStatus(),
+				Status:      domain.RawPayloadStatusPending,
+			}
+			if rawErr := h.deps.CrawlRepo.SaveRawPayload(ctx, rp); rawErr != nil {
+				log.WithError(rawErr).Warn("crawl.request: save raw_payload failed")
+			} else {
+				pageRawPayloadID = rp.ID
+			}
+		}
+
 		pageItems := iter.Items()
+
+		// D2 — frontier branch. When the source has opted into the
+		// URL-frontier path (FrontierEnabled=true) AND the handler
+		// has a frontier wired, the iterator's items are treated as
+		// URL discoveries: enqueue them and short-circuit the
+		// per-URL fetch + extract + emit chain. The frontier-worker
+		// takes ownership from here under per-host politeness.
+		//
+		// Sources with FrontierEnabled=false (every source by
+		// default) flow through the legacy direct-extract path
+		// below — zero change in behaviour.
+		if src.FrontierEnabled && h.deps.Frontier != nil {
+			enqueued, skipped := h.enqueueFrontier(ctx, src, pageItems)
+			jobsFound += enqueued + skipped
+			jobsEmitted += enqueued
+			jobsRejected += skipped
+			// Cursor + checkpoint still propagate so the iterator
+			// resumes across redeliveries.
+			if cur := iter.Cursor(); cur != nil {
+				lastCursor = string(cur)
+			}
+			if h.deps.CheckpointRepo != nil {
+				if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
+					if cp := cpi.Checkpoint(); cp != nil {
+						if putErr := h.deps.CheckpointRepo.Put(
+							ctx, src.ID, string(conn.Type()),
+							cp.Cursor, cp.PageIdx, cp.LastURL,
+						); putErr != nil {
+							log.WithError(putErr).Warn("crawl.request: checkpoint Put failed (frontier path)")
+						}
+					}
+				}
+			}
+			continue
+		}
 
 		// Enrich URL-only stubs (sitemap + universal AI link
 		// discovery) by fetching each detail page and running the
@@ -261,7 +414,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 					jobsRejected++
 					reason := rejectionReason(res)
 					telemetry.RecordVerifyRejection(kind, reason)
-					if rerr := h.publishRejected(ctx, src.ID, kind, extJob, res); rerr != nil {
+					if rerr := h.publishRejected(ctx, src.ID, kind, extJob, res, crawlJob.ID, pageRawPayloadID); rerr != nil {
 						log.WithError(rerr).Warn("crawl.request: publishRejected failed")
 					}
 					continue
@@ -342,12 +495,16 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			// the rare case where Postgres replication lag puts the row
 			// behind the NATS delivery, but the canonical path is:
 			// crawler writes → crawler emits → worker reads.
+			rawIDPtr := stringPtrOrNil(pageRawPayloadID)
+			jobIDPtr := stringPtrOrNil(crawlJob.ID)
 			_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
 				VariantID:    eventPayload.VariantID,
 				SourceID:     eventPayload.SourceID,
 				HardKey:      eventPayload.HardKey,
 				Kind:         eventPayload.Kind,
 				CurrentStage: variantstate.StageIngested,
+				RawPayloadID: rawIDPtr,
+				CrawlJobID:   jobIDPtr,
 			})
 
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
@@ -366,6 +523,24 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			lastCursor = string(cur)
 		}
 
+		// Persist checkpoint per page when the iterator participates.
+		// Soft-fail — if Postgres is down we lose resume capability
+		// but the crawl itself keeps going. The clear at end-of-iter
+		// also soft-fails so a stuck row doesn't block fresh crawls
+		// (operator can DELETE /admin/checkpoints/{src}/{type}).
+		if h.deps.CheckpointRepo != nil {
+			if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
+				if cp := cpi.Checkpoint(); cp != nil {
+					if putErr := h.deps.CheckpointRepo.Put(
+						ctx, src.ID, string(conn.Type()),
+						cp.Cursor, cp.PageIdx, cp.LastURL,
+					); putErr != nil {
+						log.WithError(putErr).Warn("crawl.request: checkpoint Put failed")
+					}
+				}
+			}
+		}
+
 		// Opportunistic DiscoverSites — sampled so we don't triple the
 		// AI bill. Operates on the last page's raw HTML (iter.Content
 		// is already parsed; use RawPayload for the unprocessed bytes).
@@ -378,6 +553,19 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	if e := iter.Err(); e != nil {
 		iterErr = e
 		log.WithError(e).Warn("crawl.request: iterator failed")
+	}
+
+	// Clear the checkpoint on clean completion — next scheduled crawl
+	// starts fresh rather than re-emitting "we already saw page N".
+	// Iterator errors leave the row in place so the next redelivery
+	// resumes from where we crashed. Best-effort: a delete failure is
+	// not worth failing the surrounding crawl.
+	if iterErr == nil && h.deps.CheckpointRepo != nil {
+		if _, ok := iter.(connectors.CheckpointableIterator); ok {
+			if clrErr := h.deps.CheckpointRepo.Clear(ctx, src.ID, string(conn.Type())); clrErr != nil {
+				log.WithError(clrErr).Warn("crawl.request: checkpoint Clear failed")
+			}
+		}
 	}
 
 	completed := eventsv1.CrawlPageCompletedV1{
@@ -395,6 +583,24 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		completed.ErrorMessage = iterErr.Error()
 	}
 	h.emitCompleted(ctx, completed)
+
+	if h.deps.CrawlRepo != nil {
+		finalStatus := domain.CrawlSucceeded
+		errorCode := ""
+		errorMessage := ""
+		if iterErr != nil {
+			finalStatus = domain.CrawlFailed
+			errorCode = "iterator_failed"
+			errorMessage = iterErr.Error()
+		}
+		if finErr := h.deps.CrawlRepo.Finish(
+			ctx, crawlJob.ID, finalStatus,
+			jobsFound, jobsEmitted,
+			errorCode, errorMessage,
+		); finErr != nil {
+			log.WithError(finErr).Warn("crawl.request: finish crawl_jobs failed")
+		}
+	}
 
 	log.WithField("found", jobsFound).
 		WithField("emitted", jobsEmitted).
@@ -465,11 +671,26 @@ func sha256Hex(body []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// stringPtrOrNil returns a pointer to s, or nil when s is empty. Used
+// to keep RawPayloadID / CrawlJobID columns NULL on the variant ledger
+// row when the audit-write soft-failed (best-effort) or the deps
+// haven't wired the CrawlRepo (test paths).
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 // publishRejected emits VariantRejectedV1 for a record that failed
 // opportunity.Verify. The writer subscribes to the matching topic and
 // appends a row to opportunities.variants_rejected so the rejection is
 // durable and operator-inspectable.
-func (h *CrawlRequestHandler) publishRejected(ctx context.Context, sourceID, kind string, opp domain.ExternalOpportunity, res opportunity.VerifyResult) error {
+func (h *CrawlRequestHandler) publishRejected(
+	ctx context.Context, sourceID, kind string,
+	opp domain.ExternalOpportunity, res opportunity.VerifyResult,
+	crawlJobID, rawPayloadID string,
+) error {
 	reasons := append([]string(nil), res.Missing...)
 	if res.Mismatch != "" {
 		reasons = append(reasons, res.Mismatch)
@@ -478,12 +699,14 @@ func (h *CrawlRequestHandler) publishRejected(ctx context.Context, sourceID, kin
 		reasons = []string{"verify_failed"}
 	}
 	rej := eventsv1.VariantRejectedV1{
-		VariantID:  xid.New().String(),
-		SourceID:   sourceID,
-		Kind:       kind,
-		Title:      opp.Title,
-		Reasons:    reasons,
-		RejectedAt: time.Now().UTC(),
+		VariantID:    xid.New().String(),
+		SourceID:     sourceID,
+		Kind:         kind,
+		Title:        opp.Title,
+		Reasons:      reasons,
+		RawPayloadID: rawPayloadID,
+		CrawlJobID:   crawlJobID,
+		RejectedAt:   time.Now().UTC(),
 	}
 	// Ledger row at terminal stage 'rejected' — never enters the
 	// normal chain so AdvanceStage wouldn't find a prior row. We
@@ -577,7 +800,12 @@ func (h *CrawlRequestHandler) enrichStubs(ctx context.Context, items []domain.Ex
 		go func(idx int) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			h.enrichOne(ctx, &items[idx], src)
+			// Per-stub deadline so one slow detail page (fetch +
+			// inference) can't pin wg.Wait() — and the whole crawl
+			// handler — for minutes. 6m matches the inference ceiling.
+			stubCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+			defer cancel()
+			h.enrichOne(stubCtx, &items[idx], src)
 		}(i)
 	}
 	wg.Wait()
@@ -602,7 +830,7 @@ func (h *CrawlRequestHandler) enrichOne(ctx context.Context, opp *domain.Externa
 		body = ext.Markdown
 	}
 
-	extracted, err := h.deps.Extractor.Extract(ctx, body, src.Kinds)
+	extracted, err := h.deps.Extractor.Extract(ctx, body, src.Kinds, src.ExtractionPromptExtension)
 	if err != nil || extracted == nil {
 		if err != nil {
 			util.Log(ctx).WithError(err).WithField("url", opp.ApplyURL).Debug("enrich: LLM extract failed")
@@ -658,4 +886,253 @@ func mergeStubFields(dst, src *domain.ExternalOpportunity) {
 			}
 		}
 	}
+}
+
+// reparse re-runs extraction on a previously-fetched HTML page,
+// bypassing the connector iterator. Used by the
+// /admin/raw_payloads/{id}/reparse and /admin/sources/{id}/reparse
+// endpoints after operators edit extraction prompts or kind specs.
+//
+// Always best-effort: storage misses, expired retention, source-not-
+// found, extraction errors, and verify rejections all log + return nil
+// rather than triggering Frame redelivery. The audit columns
+// (raw_payloads.reparse_count + last_reparsed_at) are bumped on every
+// invocation regardless of outcome so operators can see how often a
+// given payload has been re-tried.
+func (h *CrawlRequestHandler) reparse(ctx context.Context, req eventsv1.CrawlRequestV1) error {
+	log := util.Log(ctx).
+		WithField("raw_payload_id", req.RawPayloadID).
+		WithField("source_id", req.SourceID)
+	if h.deps.CrawlRepo == nil {
+		return errors.New("reparse: CrawlRepo unwired")
+	}
+
+	rp, err := h.deps.CrawlRepo.GetRawPayload(ctx, req.RawPayloadID)
+	if err != nil {
+		return fmt.Errorf("reparse: GetRawPayload: %w", err)
+	}
+	if rp == nil {
+		log.Warn("reparse: raw_payload not found (retention expired or wrong id)")
+		return nil // not a NATS-level failure
+	}
+
+	src, err := h.deps.Sources.GetByID(ctx, rp.SourceID)
+	if err != nil {
+		return fmt.Errorf("reparse: source lookup: %w", err)
+	}
+	if src == nil {
+		log.Warn("reparse: source not found")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+	if len(src.Kinds) == 0 {
+		src.Kinds = []string{"job"}
+	}
+
+	body, err := h.deps.Archive.GetRaw(ctx, rp.ContentHash)
+	if err != nil {
+		log.WithError(err).Warn("reparse: archive.GetRaw failed")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+
+	bodyStr := string(body)
+	if ext, _ := content.ExtractFromHTML(bodyStr); ext != nil && ext.Markdown != "" {
+		bodyStr = ext.Markdown
+	}
+
+	if h.deps.Extractor == nil {
+		log.Warn("reparse: Extractor unwired; nothing to re-run")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+	extracted, err := h.deps.Extractor.Extract(ctx, bodyStr, src.Kinds, src.ExtractionPromptExtension)
+	if err != nil {
+		log.WithError(err).Warn("reparse: extraction failed")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+	if extracted == nil {
+		log.Info("reparse: extractor returned nothing")
+		_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+		return nil
+	}
+
+	// Re-attach source identity + URL hints — Extract returns a fresh
+	// record without the SourceID/SourceURL fields populated.
+	extJob := *extracted
+	extJob.SourceID = src.ID
+	if extJob.SourceURL == "" {
+		extJob.SourceURL = rp.SourceURL
+	}
+	ensureApplyURL(&extJob, rp.SourceURL)
+	ensureApplyURL(&extJob, src.BaseURL)
+
+	kind := extJob.Kind
+	if kind == "" && len(src.Kinds) > 0 {
+		kind = src.Kinds[0]
+		extJob.Kind = kind
+	}
+	if src.Country != "" {
+		if extJob.AnchorLocation == nil {
+			extJob.AnchorLocation = &domain.Location{Country: src.Country}
+		} else if extJob.AnchorLocation.Country == "" {
+			extJob.AnchorLocation.Country = src.Country
+		}
+	}
+
+	// Verify — if still rejected, emit the rejection event with the
+	// raw_payload back-reference; the operator can iterate.
+	if h.deps.Kinds != nil {
+		if res := opportunity.Verify(&extJob, src, h.deps.Kinds); !res.OK {
+			log.WithField("reasons", res.Missing).Info("reparse: still rejected after re-extraction")
+			_ = h.publishRejected(ctx, src.ID, kind, extJob, res, "", rp.ID)
+			_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+			return nil
+		}
+	}
+
+	// Emit a fresh variants.ingested.v1 — the rest of the pipeline
+	// (normalize → validate → cluster → canonical → publish) handles
+	// it identically to a fresh crawl.
+	now := time.Now().UTC()
+	var variant normalize.JobVariant
+	if h.deps.Normalizer != nil {
+		variant = h.deps.Normalizer.Normalize(&extJob, src.ID, src.Country, string(src.Type), src.Language, now)
+	} else {
+		variant = normalize.ExternalToVariant(extJob, src.ID, src.Country, string(src.Type), src.Language, now)
+	}
+	if kind == "" {
+		kind = "job"
+	}
+	attrs := maps.Clone(extJob.Attributes)
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+	attrs["description"] = variant.Description
+	attrs["apply_url"] = variant.ApplyURL
+	attrs["language"] = variant.Language
+	attrs["remote_type"] = variant.RemoteType
+	attrs["employment_type"] = variant.EmploymentType
+	attrs["location_text"] = variant.LocationText
+	attrs["content_hash"] = variant.ContentHash
+	attrs["raw_archive_ref"] = rp.StorageURI
+	attrs["reparsed_from"] = rp.ID
+	if variant.PostedAt != nil {
+		attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
+	}
+
+	eventPayload := eventsv1.VariantIngestedV1{
+		VariantID:     xid.New().String(),
+		SourceID:      src.ID,
+		ExternalID:    variant.ExternalJobID,
+		HardKey:       variant.HardKey,
+		Kind:          kind,
+		Stage:         string(domain.StageRaw),
+		Title:         variant.Title,
+		IssuingEntity: variant.Company,
+		AnchorCountry: variant.Country,
+		Remote:        variant.RemoteType == "remote",
+		Currency:      variant.Currency,
+		AmountMin:     variant.SalaryMin,
+		AmountMax:     variant.SalaryMax,
+		Attributes:    attrs,
+		ScrapedAt:     now,
+	}
+
+	rawIDPtr := &rp.ID
+	if h.deps.VariantStore != nil {
+		_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
+			VariantID:    eventPayload.VariantID,
+			SourceID:     eventPayload.SourceID,
+			HardKey:      eventPayload.HardKey,
+			Kind:         eventPayload.Kind,
+			CurrentStage: variantstate.StageIngested,
+			RawPayloadID: rawIDPtr,
+		})
+	}
+
+	if evtMgr := h.deps.Svc.EventsManager(); evtMgr != nil {
+		if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
+			eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload),
+		); emitErr != nil {
+			log.WithError(emitErr).Warn("reparse: emit variant failed")
+		}
+	}
+
+	_ = h.deps.CrawlRepo.IncrementReparseCount(ctx, rp.ID)
+	log.WithField("variant_id", eventPayload.VariantID).Info("reparse: re-emitted variant")
+	return nil
+}
+
+// enqueueFrontier walks the iterator's items and enqueues each
+// SourceURL into the URL frontier. Discovery-mode equivalent of
+// the variant-emit loop: instead of running enrichStubs + Verify
+// + emit, we hand the URL off to apps/frontier-worker which does
+// all of that per-URL under per-host politeness.
+//
+// Returns (enqueued, skipped) so the caller can fold them into
+// the page-completed counters (jobs_emitted + jobs_rejected).
+// Skipped covers items with no SourceURL (the discovery output
+// is meaningless without a URL to fetch) and any per-row Enqueue
+// errors. The whole batch never fails — a transient Postgres
+// error is logged and the page moves on; the next crawl tick
+// will re-enqueue. Duplicates are silently deduped by the
+// canonical_url_hash unique index in pkg/frontier.
+func (h *CrawlRequestHandler) enqueueFrontier(
+	ctx context.Context,
+	src *domain.Source,
+	items []domain.ExternalOpportunity,
+) (enqueued, skipped int) {
+	if h.deps.Frontier == nil || len(items) == 0 {
+		return 0, len(items)
+	}
+	log := util.Log(ctx).WithField("source_id", src.ID)
+
+	batch := make([]frontier.URL, 0, len(items))
+	for i := range items {
+		u := items[i].SourceURL
+		if u == "" {
+			u = items[i].ApplyURL
+		}
+		if u == "" {
+			skipped++
+			continue
+		}
+		// Canonicalize before enqueue so the stored canonical_url and
+		// its dedup hash are the normalized form. Enqueue canonicalizes
+		// again defensively; doing it here keeps host derivation consistent.
+		u = frontier.CanonicalizeURL(u)
+		host := frontier.HostOf(u)
+		if host == "" {
+			skipped++
+			continue
+		}
+		// Priority: source.score is in [0..1] already; treat 0.7
+		// weight on source-level signal + 0.3 weight on a
+		// neutral URL signal (no per-URL signals available yet).
+		// The frontier-worker re-reads the URL on Dequeue so the
+		// snapshot priority isn't load-bearing — it just steers
+		// fairness across hosts.
+		priority := src.Score*0.7 + 0.5*0.3
+		batch = append(batch, frontier.URL{
+			CanonicalURL: u,
+			Host:         host,
+			SourceID:     src.ID,
+			Priority:     priority,
+		})
+	}
+	if len(batch) == 0 {
+		return 0, skipped
+	}
+	results, err := h.deps.Frontier.Enqueue(ctx, batch)
+	if err != nil {
+		log.WithError(err).Warn("crawl.request: frontier enqueue had per-row errors")
+	}
+	enqueued = len(results)
+	skipped += len(batch) - len(results)
+	log.WithField("enqueued", enqueued).
+		WithField("skipped", skipped).
+		Info("crawl.request: enqueued URLs into frontier")
+	return enqueued, skipped
 }

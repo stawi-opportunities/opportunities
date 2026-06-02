@@ -2,10 +2,6 @@
   "version": "1.0",
   "name": "opportunities.retention.mv_refresh",
   "description": "Every 5 minutes: refresh mv_job_facets CONCURRENTLY. Postgres serialises concurrent REFRESH calls, so duplicate fires from overlapping retries can't break anything.",
-  "schedule": {
-    "cron": "5m",
-    "active": true
-  },
   "input": {},
   "timeout": "3m",
   "steps": [
@@ -23,10 +19,19 @@
         "input": {
           "url": "http://opportunities-crawler.product-opportunities.svc/admin/retention/mv-refresh",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         }
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.retention.mv_refresh.default",
+      "cron_expr": "*/5 * * * *",
+      "timezone": "UTC"
     }
   ]
 }

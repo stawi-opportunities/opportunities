@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/kueski",
     "country": "MX",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "es",
     "priority": "normal",
     "region": "latam",
@@ -15,9 +13,7 @@
     "base_url": "https://jobs.lever.co/kavak",
     "country": "MX",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "es",
     "priority": "normal",
     "region": "latam",
@@ -27,9 +23,7 @@
     "base_url": "https://jobs.lever.co/clip",
     "country": "MX",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "es",
     "priority": "normal",
     "region": "latam",

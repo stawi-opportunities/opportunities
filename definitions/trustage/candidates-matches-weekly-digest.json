@@ -2,10 +2,6 @@
   "version": "1.0",
   "name": "opportunities.candidates.matches.weekly-digest",
   "description": "Every Monday 09:00 UTC: run the match pipeline for every active candidate and emit candidates.matches.ready.v1 per candidate. A downstream notification service delivers the digest by email.",
-  "schedule": {
-    "cron": "0 9 * * 1",
-    "active": true
-  },
   "input": {},
   "config": {},
   "timeout": "30m",
@@ -28,11 +24,20 @@
         "input": {
           "url": "http://opportunities-candidates.product-opportunities.svc/_admin/matches/weekly_digest",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         },
         "output_var": "digest_result"
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.candidates.matches.weekly-digest.default",
+      "cron_expr": "0 9 * * 1",
+      "timezone": "UTC"
     }
   ]
 }

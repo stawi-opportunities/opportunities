@@ -5,12 +5,12 @@
 // level, fields of study, applicant nationality (eligibility filter),
 // minimum GPA, target country, and how soon the deadline must fall.
 
-import { useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent } from 'react';
 import {
   LocationPicker,
   emptyLocationPreference,
   type LocationPreference,
-} from "@/onboarding/shared/LocationPicker";
+} from '@/onboarding/shared/LocationPicker';
 
 export interface ScholarshipPreferences {
   degree_levels: string[];
@@ -24,13 +24,13 @@ export interface ScholarshipPreferences {
 const EMPTY: ScholarshipPreferences = {
   degree_levels: [],
   fields_of_study: [],
-  nationality: "",
+  nationality: '',
   gpa_min: 0,
   locations: emptyLocationPreference,
   deadline_within_days: 90,
 };
 
-const DEGREE_LEVELS = ["undergraduate", "masters", "doctoral", "postdoc"];
+const DEGREE_LEVELS = ['undergraduate', 'masters', 'doctoral', 'postdoc'];
 
 export function Flow({
   initial,
@@ -76,12 +76,12 @@ export function Flow({
       <input
         type="text"
         placeholder="Fields of study (comma-separated)"
-        value={p.fields_of_study.join(", ")}
+        value={p.fields_of_study.join(', ')}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           setP({
             ...p,
             fields_of_study: e.currentTarget.value
-              .split(",")
+              .split(',')
               .map((s) => s.trim())
               .filter(Boolean),
           })
@@ -101,7 +101,7 @@ export function Flow({
       <input
         type="number"
         placeholder="Minimum GPA"
-        value={p.gpa_min || ""}
+        value={p.gpa_min || ''}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           setP({ ...p, gpa_min: Number(e.currentTarget.value) })
         }
@@ -121,7 +121,7 @@ export function Flow({
         </span>
         <input
           type="number"
-          value={p.deadline_within_days || ""}
+          value={p.deadline_within_days || ''}
           onChange={(e: ChangeEvent<HTMLInputElement>) =>
             setP({ ...p, deadline_within_days: Number(e.currentTarget.value) })
           }

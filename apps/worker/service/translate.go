@@ -14,6 +14,7 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
+	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // TranslateHandler is a Frame Queue subscriber on
@@ -29,11 +30,12 @@ type TranslateHandler struct {
 	svc       *frame.Service
 	extractor *extraction.Extractor
 	langs     []string
+	store     *variantstate.Store // nil-safe; soft-fails on Postgres outage
 }
 
 // NewTranslateHandler ...
-func NewTranslateHandler(svc *frame.Service, ex *extraction.Extractor, langs []string) *TranslateHandler {
-	return &TranslateHandler{svc: svc, extractor: ex, langs: langs}
+func NewTranslateHandler(svc *frame.Service, ex *extraction.Extractor, langs []string, store *variantstate.Store) *TranslateHandler {
+	return &TranslateHandler{svc: svc, extractor: ex, langs: langs, store: store}
 }
 
 // Handle implements queue.SubscribeWorker.
@@ -63,10 +65,12 @@ func (h *TranslateHandler) Handle(ctx context.Context, _ map[string]string, payl
 				WithField("lang", lang).
 				WithField("reason", reason).
 				Warn("translate: provider failed, skipping")
+			_ = h.store.RecordErrorByCanonical(ctx, c.OpportunityID, variantstate.StageTranslate, fmt.Errorf("translate[%s]: %w", lang, err))
 			continue
 		}
 		outEnv := eventsv1.NewEnvelope(eventsv1.TopicTranslations, tr)
 		if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicTranslations, outEnv); err != nil {
+			_ = h.store.RecordErrorByCanonical(ctx, c.OpportunityID, variantstate.StageTranslate, fmt.Errorf("translate: emit: %w", err))
 			return err
 		}
 	}

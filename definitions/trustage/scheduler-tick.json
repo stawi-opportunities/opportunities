@@ -2,10 +2,6 @@
   "version": "1.0",
   "name": "opportunities.scheduler.tick",
   "description": "Every 30 s: ask the opportunities crawler to admit due sources through the backpressure gate and emit one crawl.requests.v1 per admitted source. Replaces source-crawl-sweep.json now that the crawler consumes v1 topics.",
-  "schedule": {
-    "cron": "30s",
-    "active": true
-  },
   "input": {},
   "config": {},
   "timeout": "2m",
@@ -28,11 +24,20 @@
         "input": {
           "url": "http://opportunities-crawler.product-opportunities.svc/admin/scheduler/tick",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         },
         "output_var": "tick_result"
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.scheduler.tick.default",
+      "cron_expr": "* * * * *",
+      "timezone": "UTC"
     }
   ]
 }

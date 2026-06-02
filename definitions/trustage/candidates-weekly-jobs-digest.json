@@ -2,10 +2,6 @@
   "version": "1.0",
   "name": "opportunities.candidates.weekly-jobs-digest",
   "description": "Every Monday 08:00 UTC: emit one candidates.weekly_jobs_digest.v1 event per logged-in candidate who has not finished checkout. Each event carries the top-10 freshest jobs filtered by the candidate's country + opted-in kinds plus headline analytics for the past 7 days. The notification service consumes the topic and sends the re-engagement email.",
-  "schedule": {
-    "cron": "0 8 * * 1",
-    "active": true
-  },
   "input": {},
   "config": {},
   "timeout": "15m",
@@ -28,11 +24,20 @@
         "input": {
           "url": "http://opportunities-candidates.product-opportunities.svc/_admin/candidates/weekly_jobs_digest",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         },
         "output_var": "digest_result"
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.candidates.weekly-jobs-digest.default",
+      "cron_expr": "0 8 * * 1",
+      "timezone": "UTC"
     }
   ]
 }

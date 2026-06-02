@@ -7,6 +7,7 @@
 **Architecture:** Materializer is a disposable pod; it polls R2 every 15 s for new Parquet objects in tracked partition prefixes, downloads each one, decodes with `pkg/eventlog.ReadParquet`, and issues `REPLACE INTO` against Manticore's RT index using the event's `canonical_id` as the primary key (idempotent upsert). Watermark per partition prefix is stored in a tiny Postgres table so restarts resume cleanly. Manticore `idx_opportunities_rt` matches the design doc schema (FTS + attributes + HNSW vector attribute). The API gains `/api/v2/search` next to the existing `/api/search` so Phase 6's cutover is a routing flip, not a rewrite.
 
 **Tech stack:**
+
 - Go 1.26, Frame (`github.com/pitabwire/frame`), `pitabwire/util` logging
 - Manticore Search 6.x (Docker image `manticoresearch/manticore:6.3.2` or later) via its **HTTP JSON API** on port 9308 — no MySQL driver, stdlib `net/http` only
 - `github.com/parquet-go/parquet-go` (existing, from Phase 1)
@@ -15,6 +16,7 @@
 - Postgres via GORM for watermark table (existing)
 
 **What's in this plan:**
+
 - Extend `pkg/events/v1/` with `CanonicalUpsertedV1` and `EmbeddingV1` payload types
 - Extend `apps/writer/service/service.go` `uploadBatch` encoder switch to cover the new event types
 - `pkg/searchindex/` — Manticore client wrapper + DDL + schema provisioning helper
@@ -26,6 +28,7 @@
 - Integration tests: publish canonical → writer → R2 → materializer → Manticore → API v2 search returns result
 
 **What's NOT in this plan:**
+
 - Compaction / `canonicals_current/` rebuild — Phase 6 ops
 - KV integration — Phase 3 (dedup + rerank cache)
 - Candidate Manticore index (`idx_candidates_rt`) — v1.1
@@ -38,40 +41,41 @@
 
 **Create:**
 
-| File | Responsibility |
-|---|---|
-| `pkg/events/v1/canonicals.go` | `CanonicalUpsertedV1`, `EmbeddingV1` payload structs |
-| `pkg/eventlog/reader.go` | R2 list + download + Parquet decode helpers used by materializer |
-| `pkg/searchindex/manticore.go` | MySQL-protocol client wrapper (connect, exec DDL, REPLACE INTO, SELECT) |
-| `pkg/searchindex/schema.go` | `idx_opportunities_rt` DDL + `Apply(db)` function |
-| `pkg/searchindex/schema_test.go` | Idempotent DDL apply test |
-| `db/migrations/0002_materializer_watermark.sql` | `materializer_watermarks` table |
-| `pkg/repository/materializer_watermark.go` | `WatermarkRepository` with `Get/Set` |
-| `apps/materializer/config/config.go` | Env-backed config (R2, Manticore URL, Postgres DSN, poll interval) |
-| `apps/materializer/service/indexer.go` | Per-collection upsert — translates Parquet rows → Manticore `REPLACE` statements |
-| `apps/materializer/service/service.go` | Poll loop: list new files → download → decode → indexer.Apply → advance watermark |
-| `apps/materializer/service/service_test.go` | End-to-end: seed R2 with a canonical Parquet → wait for poll → assert Manticore has it |
-| `apps/materializer/cmd/main.go` | Entrypoint |
-| `apps/materializer/Dockerfile` | Multi-stage build mirror of `apps/writer/Dockerfile` |
-| `apps/api/cmd/search_v2.go` | `GET /api/v2/search` handler backed by Manticore |
-| `apps/api/cmd/search_v2_test.go` | HTTP-level test using a Manticore testcontainer |
+| File                                            | Responsibility                                                                         |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `pkg/events/v1/canonicals.go`                   | `CanonicalUpsertedV1`, `EmbeddingV1` payload structs                                   |
+| `pkg/eventlog/reader.go`                        | R2 list + download + Parquet decode helpers used by materializer                       |
+| `pkg/searchindex/manticore.go`                  | MySQL-protocol client wrapper (connect, exec DDL, REPLACE INTO, SELECT)                |
+| `pkg/searchindex/schema.go`                     | `idx_opportunities_rt` DDL + `Apply(db)` function                                      |
+| `pkg/searchindex/schema_test.go`                | Idempotent DDL apply test                                                              |
+| `db/migrations/0002_materializer_watermark.sql` | `materializer_watermarks` table                                                        |
+| `pkg/repository/materializer_watermark.go`      | `WatermarkRepository` with `Get/Set`                                                   |
+| `apps/materializer/config/config.go`            | Env-backed config (R2, Manticore URL, Postgres DSN, poll interval)                     |
+| `apps/materializer/service/indexer.go`          | Per-collection upsert — translates Parquet rows → Manticore `REPLACE` statements       |
+| `apps/materializer/service/service.go`          | Poll loop: list new files → download → decode → indexer.Apply → advance watermark      |
+| `apps/materializer/service/service_test.go`     | End-to-end: seed R2 with a canonical Parquet → wait for poll → assert Manticore has it |
+| `apps/materializer/cmd/main.go`                 | Entrypoint                                                                             |
+| `apps/materializer/Dockerfile`                  | Multi-stage build mirror of `apps/writer/Dockerfile`                                   |
+| `apps/api/cmd/search_v2.go`                     | `GET /api/v2/search` handler backed by Manticore                                       |
+| `apps/api/cmd/search_v2_test.go`                | HTTP-level test using a Manticore testcontainer                                        |
 
 **Modify:**
 
-| File | Change |
-|---|---|
+| File                             | Change                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------ |
 | `apps/writer/service/service.go` | Extend `uploadBatch` switch to cover `TopicCanonicalsUpserted` and `TopicEmbeddings` |
 | `apps/writer/service/handler.go` | Already covers the new topics via `extractHint` (cluster_id / canonical_id); confirm |
-| `apps/api/cmd/main.go` | Register `/api/v2/search` route + wire Manticore client |
-| `Makefile` | Add `apps/materializer` to `APP_DIRS`, add `run-materializer` target |
-| `deploy/docker-compose.yml` | Add Manticore service |
-| `go.mod` / `go.sum` | No new deps — Manticore client uses stdlib `net/http` |
+| `apps/api/cmd/main.go`           | Register `/api/v2/search` route + wire Manticore client                              |
+| `Makefile`                       | Add `apps/materializer` to `APP_DIRS`, add `run-materializer` target                 |
+| `deploy/docker-compose.yml`      | Add Manticore service                                                                |
+| `go.mod` / `go.sum`              | No new deps — Manticore client uses stdlib `net/http`                                |
 
 ---
 
 ## Task 1: Add new event payload types
 
 **Files:**
+
 - Create: `pkg/events/v1/canonicals.go`
 - Modify: `pkg/events/v1/envelope_test.go` (one new test)
 
@@ -212,6 +216,7 @@ git commit -m "feat(events): add CanonicalUpsertedV1 + EmbeddingV1 payload types
 ## Task 2: Extend writer encoder to cover new event types
 
 **Files:**
+
 - Modify: `apps/writer/service/service.go:uploadBatch` switch
 
 - [ ] **Step 1: Add cases to the switch**
@@ -272,6 +277,7 @@ No commit for this task — it's a decision. Task 4 implements the HTTP client d
 ## Task 4: Manticore HTTP client wrapper
 
 **Files:**
+
 - Create: `pkg/searchindex/manticore.go`
 
 - [ ] **Step 1: Implement the HTTP client**
@@ -458,6 +464,7 @@ git commit -m "feat(searchindex): Manticore HTTP client (no MySQL driver)"
 ## Task 5: Manticore `idx_opportunities_rt` schema + idempotent apply
 
 **Files:**
+
 - Create: `pkg/searchindex/schema.go`
 - Create: `pkg/searchindex/schema_test.go`
 
@@ -602,6 +609,7 @@ git commit -m "feat(searchindex): idx_opportunities_rt DDL + idempotent Apply"
 ## Task 6: Add Manticore to docker-compose
 
 **Files:**
+
 - Modify: `deploy/docker-compose.yml`
 
 - [ ] **Step 1: Add the service**
@@ -609,16 +617,16 @@ git commit -m "feat(searchindex): idx_opportunities_rt DDL + idempotent Apply"
 Open `deploy/docker-compose.yml`. Add the following service (preserving any existing formatting conventions in the file):
 
 ```yaml
-  manticore:
-    image: manticoresearch/manticore:6.3.2
-    restart: unless-stopped
-    ports:
-      - "9306:9306"   # MySQL SQL protocol
-      - "9308:9308"   # HTTP / JSON API
-    environment:
-      - EXTRA=1
-    volumes:
-      - manticore-data:/var/lib/manticore
+manticore:
+  image: manticoresearch/manticore:6.3.2
+  restart: unless-stopped
+  ports:
+    - "9306:9306" # MySQL SQL protocol
+    - "9308:9308" # HTTP / JSON API
+  environment:
+    - EXTRA=1
+  volumes:
+    - manticore-data:/var/lib/manticore
 ```
 
 And add `manticore-data:` under the top-level `volumes:` key (create that section if it doesn't exist).
@@ -643,6 +651,7 @@ git commit -m "chore(deploy): add Manticore service for local dev"
 ## Task 7: Watermark Postgres table
 
 **Files:**
+
 - Create: `db/migrations/0002_materializer_watermark.sql`
 
 - [ ] **Step 1: Write the migration**
@@ -678,6 +687,7 @@ git commit -m "feat(db): migration for materializer_watermarks table"
 ## Task 8: Watermark repository
 
 **Files:**
+
 - Create: `pkg/repository/materializer_watermark.go`
 
 - [ ] **Step 1: Implement the repository**
@@ -763,6 +773,7 @@ git commit -m "feat(repository): WatermarkRepository for materializer progress"
 ## Task 9: R2 reader helpers for the materializer
 
 **Files:**
+
 - Create: `pkg/eventlog/reader.go`
 
 - [ ] **Step 1: Implement the reader**
@@ -852,6 +863,7 @@ git commit -m "feat(eventlog): R2 reader for materializer list + download"
 ## Task 10: Materializer config
 
 **Files:**
+
 - Create: `apps/materializer/config/config.go`
 - Prereq: `mkdir -p apps/materializer/config apps/materializer/cmd apps/materializer/service`
 
@@ -931,6 +943,7 @@ git commit -m "feat(materializer): env-backed Config with poll + prefix settings
 ## Task 11: Indexer — translate Parquet rows to Manticore upserts
 
 **Files:**
+
 - Create: `apps/materializer/service/indexer.go`
 
 - [ ] **Step 1: Implement**
@@ -1062,6 +1075,7 @@ git commit -m "feat(materializer): Indexer upserts canonicals + embeddings into 
 ## Task 12: Materializer service — poll loop
 
 **Files:**
+
 - Create: `apps/materializer/service/service.go`
 
 - [ ] **Step 1: Implement the poll loop**
@@ -1209,6 +1223,7 @@ git commit -m "feat(materializer): poll loop — R2 → Parquet → Manticore"
 ## Task 13: Materializer entrypoint
 
 **Files:**
+
 - Create: `apps/materializer/cmd/main.go`
 
 - [ ] **Step 1: Implement**
@@ -1316,6 +1331,7 @@ git commit -m "feat(materializer): entrypoint wiring R2 + Manticore + watermarks
 ## Task 14: Materializer end-to-end test
 
 **Files:**
+
 - Create: `apps/materializer/service/service_test.go`
 
 - [ ] **Step 1: Write the test**
@@ -1481,6 +1497,7 @@ func startManticoreForMat(t *testing.T, ctx context.Context) (string, func()) {
 ```
 
 Additional imports for this file:
+
 ```go
 import (
     "fmt"
@@ -1509,6 +1526,7 @@ git commit -m "test(materializer): end-to-end publish → R2 → poll → Mantic
 ## Task 15: `GET /api/v2/search` handler on `apps/api`
 
 **Files:**
+
 - Create: `apps/api/cmd/search_v2.go`
 - Modify: `apps/api/cmd/main.go` (register route + wire Manticore client)
 
@@ -1687,6 +1705,7 @@ git commit -m "feat(api): add /api/v2/search backed by Manticore"
 ## Task 16: API v2 search integration test
 
 **Files:**
+
 - Create: `apps/api/cmd/search_v2_test.go`
 
 - [ ] **Step 1: Write the test**
@@ -1820,6 +1839,7 @@ git commit -m "test(api): /api/v2/search handler against live Manticore"
 ## Task 17: Dockerfile + Makefile for materializer
 
 **Files:**
+
 - Create: `apps/materializer/Dockerfile`
 - Modify: `Makefile`
 
@@ -1873,11 +1893,13 @@ git log --oneline main..HEAD
 ```
 
 Expected:
+
 - Every test passes (envelope round-trip, Manticore schema apply, materializer E2E, API v2 handler).
 - `apps/materializer` binary builds.
 - 17 commits on this branch, one per task.
 
 At this point, an operator can:
+
 1. Start local stack with `docker compose -f deploy/docker-compose.yml up -d` (now includes Manticore).
 2. Run `make run-writer` and `make run-materializer` in two terminals.
 3. Publish a synthetic `CanonicalUpsertedV1` envelope via a small test emitter or a unit test, and observe it appear in `GET /api/v2/search?q=…`.

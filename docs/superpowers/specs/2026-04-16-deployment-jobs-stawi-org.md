@@ -33,6 +33,7 @@ Crawl Pipeline
 ### Design Principle
 
 A slug is the job's permanent public identity. It must be:
+
 - **Unique** across all jobs, forever
 - **Stable** — never changes once assigned, even if the title or company is edited
 - **Human-readable** — contains the job title and company for SEO
@@ -45,6 +46,7 @@ A slug is the job's permanent public identity. It must be:
 ```
 
 Examples:
+
 - `senior-go-developer-at-acme-corp-a3f7b2`
 - `product-designer-at-safari-tech-e91c4d`
 - `data-engineer-at-finflow-8b2e1a`
@@ -142,7 +144,7 @@ Subscribes to `job.ready` event. Registered in the crawler alongside the other h
      quality_score: 88.5
      is_featured: true
    ---
-   
+
    Full job description in markdown...
 6. Upload to R2: PutObject("jobs/{slug}.md", markdownBytes)
 ```
@@ -188,6 +190,7 @@ The PublishHandler does NOT trigger the deploy hook on every job. Instead:
 ### Unpublish Flow
 
 When a job becomes inactive (`IsActive = false`), the PublishHandler should delete the markdown file from R2:
+
 - Subscribe to a new `job.deactivated` event (emitted when a job is marked inactive during recrawl)
 - Call `r2Publisher.DeleteJob(ctx, job.Slug)`
 
@@ -250,6 +253,7 @@ INSERT INTO clients (
 #### `20260416_create_stawi_jobs_test_tenant.sql` (Staging)
 
 Same structure with:
+
 - `environment: 'staging'`
 - Different XIDs
 - `domain: 'jobs-dev.stawi.org'`
@@ -268,6 +272,7 @@ Update `ui/hugo.toml` to use the staging OIDC client by default:
 ```
 
 CF Pages environment variables override these for production:
+
 - `HUGO_PARAMS_oidcIssuer=https://auth.antinvestor.com/realms/opportunities`
 - `HUGO_PARAMS_oidcClientID=opportunities-web`
 - `HUGO_PARAMS_oidcRedirectURI=https://jobs.stawi.org/auth/callback/`
@@ -284,13 +289,13 @@ CF Pages environment variables override these for production:
 
 ### Environment Variables (CF Pages Dashboard)
 
-| Variable | Production | Preview |
-|----------|-----------|---------|
-| `HUGO_VERSION` | `0.147.0` | `0.147.0` |
-| `AWS_ACCESS_KEY_ID` | R2 key | R2 key |
-| `AWS_SECRET_ACCESS_KEY` | R2 secret | R2 secret |
-| `R2_ACCOUNT_ID` | CF account ID | CF account ID |
-| `R2_BUCKET` | `opportunities-content` | `opportunities-content` |
+| Variable                | Production              | Preview                 |
+| ----------------------- | ----------------------- | ----------------------- |
+| `HUGO_VERSION`          | `0.147.0`               | `0.147.0`               |
+| `AWS_ACCESS_KEY_ID`     | R2 key                  | R2 key                  |
+| `AWS_SECRET_ACCESS_KEY` | R2 secret               | R2 secret               |
+| `R2_ACCOUNT_ID`         | CF account ID           | CF account ID           |
+| `R2_BUCKET`             | `opportunities-content` | `opportunities-content` |
 
 OIDC params are passed via `HUGO_PARAMS_*` env vars which Hugo reads automatically.
 
@@ -339,7 +344,7 @@ name: Deploy to Cloudflare Pages
 on:
   push:
     branches: [main]
-    paths: ['ui/**']
+    paths: ["ui/**"]
   workflow_dispatch:
 
 jobs:
@@ -357,6 +362,7 @@ In practice, CF Pages GitHub integration handles deployment automatically on pus
 ## 5. Sitegen CLI — Backfill Mode
 
 The `sitegen` CLI remains useful for:
+
 - **Initial backfill**: Upload all 37K existing jobs to R2 before the event-driven flow takes over
 - **Regenration**: If slug format changes or we need to republish everything
 
@@ -377,6 +383,7 @@ Usage: sitegen [flags]
 ```
 
 When `--r2-upload` is set, sitegen:
+
 1. Queries jobs in batches of 500
 2. For each batch: generates markdown, uploads to R2 via S3 PutObject
 3. After all batches: uploads stats.json + categories.json to R2
@@ -389,7 +396,7 @@ Job pages use the slug as their URL path. Since content files are named `{slug}.
 Update `ui/layouts/jobs/single.html` — the JSON-LD and all internal links use the slug-based permalink:
 
 ```html
-<link rel="canonical" href="{{ .Permalink }}">
+<link rel="canonical" href="{{ .Permalink }}" />
 <!-- .Permalink will be /jobs/{slug}/ -->
 ```
 
@@ -400,6 +407,7 @@ The dashboard and search results that link to jobs by ID need a mapping. Since t
 ## Summary of Changes
 
 ### In stawi.opportunities repo:
+
 1. Add `Slug` field to `CanonicalJob` model
 2. Add `BuildSlug` and `Slugify` functions to `pkg/domain/models.go`
 3. Update `CanonicalHandler` to generate slug on first creation
@@ -412,10 +420,12 @@ The dashboard and search results that link to jobs by ID need a mapping. Since t
 10. Add `Slug` to API response for canonical jobs
 
 ### In service-authentication repo:
+
 11. Create `20260416_create_stawi_jobs_tenant.sql` (production)
 12. Create `20260416_create_stawi_jobs_test_tenant.sql` (staging)
 
 ### In Cloudflare Dashboard:
+
 13. Create R2 bucket `opportunities-content`
 14. Create R2 API token with read/write access
 15. Create CF Pages project linked to GitHub

@@ -7,6 +7,7 @@
 **Architecture:** One `apps/worker` binary with 7 internal Frame event subscriptions. Dedup and cluster snapshots use **Frame's built-in cache framework** (`github.com/pitabwire/frame/cache`) — no custom Redis wrapper. Frame exposes typed `cache.Cache[K, V]` generics backed by pluggable `RawCache` implementations (Valkey, Redis, in-memory, JetStream KV); we use Valkey in production (`frame/cache/valkey`) and in-memory for tests (`frame.WithInMemoryCache`). AI goes through the existing `extraction.Extractor`. Publishing reuses `pkg/publish`. All output is pub/sub events — no Postgres reads or writes for the jobs domain.
 
 **Tech stack:**
+
 - Go 1.26, Frame (`github.com/pitabwire/frame`), `pitabwire/util` logging
 - **Frame's cache framework** (`github.com/pitabwire/frame/cache` + `cache/valkey` backend) for dedup + cluster snapshot storage
 - `pkg/extraction.Extractor` (existing) for LLM chat + embed
@@ -15,6 +16,7 @@
 - Testcontainers for in-memory Frame pub/sub + MinIO
 
 **What's in this plan:**
+
 - Six new event payload types: `VariantNormalizedV1`, `VariantValidatedV1`, `VariantFlaggedV1`, `VariantClusteredV1`, `TranslationV1`, `PublishedV1`
 - Writer encoder switch extended to cover all six new topics
 - `pkg/kv` — small Redis wrapper with dedup + cluster key helpers
@@ -22,6 +24,7 @@
 - End-to-end pipeline test: emit one `VariantIngestedV1` → assert `CanonicalUpsertedV1` + `EmbeddingV1` + `TranslationV1` + `PublishedV1` events fire
 
 **What's NOT in this plan:**
+
 - Crawler refactor (Phase 4) — existing `apps/crawler` keeps emitting legacy `variant.raw.stored` events; the new worker doesn't touch those.
 - Candidates refactor (Phase 5).
 - Greenfield cutover (Phase 6) — the legacy `pkg/pipeline/handlers/*` stay alongside the new worker until the cutover drops them.
@@ -33,36 +36,37 @@
 
 **Create:**
 
-| File | Responsibility |
-|---|---|
-| `pkg/events/v1/pipeline.go` | Six new payload structs with json + parquet tags |
-| `pkg/kv/snapshot.go` | `ClusterSnapshot` struct — the typed value stored in Frame's cluster cache. No custom client; Frame cache handles transport. |
-| `apps/worker/config/config.go` | env-backed config (Redis URL, R2 publish bucket, LLM backends, translation langs) |
-| `apps/worker/service/normalize.go` | Normalize subscription handler |
-| `apps/worker/service/validate.go` | Validate subscription handler (LLM, fail-open) |
-| `apps/worker/service/dedup.go` | Dedup subscription handler |
-| `apps/worker/service/canonical.go` | Canonical merge handler |
-| `apps/worker/service/embed.go` | Embed subscription handler |
-| `apps/worker/service/translate.go` | Translate subscription handler |
-| `apps/worker/service/publish.go` | Publish subscription handler |
-| `apps/worker/service/service.go` | `Service` — registers all 7 handlers |
-| `apps/worker/service/service_test.go` | End-to-end pipeline test (in-memory pubsub) |
-| `apps/worker/cmd/main.go` | Entrypoint |
-| `apps/worker/Dockerfile` | Multi-stage build (mirror of apps/materializer) |
+| File                                  | Responsibility                                                                                                               |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `pkg/events/v1/pipeline.go`           | Six new payload structs with json + parquet tags                                                                             |
+| `pkg/kv/snapshot.go`                  | `ClusterSnapshot` struct — the typed value stored in Frame's cluster cache. No custom client; Frame cache handles transport. |
+| `apps/worker/config/config.go`        | env-backed config (Redis URL, R2 publish bucket, LLM backends, translation langs)                                            |
+| `apps/worker/service/normalize.go`    | Normalize subscription handler                                                                                               |
+| `apps/worker/service/validate.go`     | Validate subscription handler (LLM, fail-open)                                                                               |
+| `apps/worker/service/dedup.go`        | Dedup subscription handler                                                                                                   |
+| `apps/worker/service/canonical.go`    | Canonical merge handler                                                                                                      |
+| `apps/worker/service/embed.go`        | Embed subscription handler                                                                                                   |
+| `apps/worker/service/translate.go`    | Translate subscription handler                                                                                               |
+| `apps/worker/service/publish.go`      | Publish subscription handler                                                                                                 |
+| `apps/worker/service/service.go`      | `Service` — registers all 7 handlers                                                                                         |
+| `apps/worker/service/service_test.go` | End-to-end pipeline test (in-memory pubsub)                                                                                  |
+| `apps/worker/cmd/main.go`             | Entrypoint                                                                                                                   |
+| `apps/worker/Dockerfile`              | Multi-stage build (mirror of apps/materializer)                                                                              |
 
 **Modify:**
 
-| File | Change |
-|---|---|
-| `apps/writer/service/service.go` | Extend `uploadBatch` switch to cover all 6 new topics |
+| File                             | Change                                                     |
+| -------------------------------- | ---------------------------------------------------------- |
+| `apps/writer/service/service.go` | Extend `uploadBatch` switch to cover all 6 new topics      |
 | `pkg/events/v1/envelope_test.go` | Add one round-trip test per new event type (6 short tests) |
-| `Makefile` | Add `apps/worker` to `APP_DIRS`, add `run-worker` target |
+| `Makefile`                       | Add `apps/worker` to `APP_DIRS`, add `run-worker` target   |
 
 ---
 
 ## Task 1: New event payload types
 
 **Files:**
+
 - Create: `pkg/events/v1/pipeline.go`
 - Modify: `pkg/events/v1/envelope_test.go`
 
@@ -277,6 +281,7 @@ git commit -m "feat(events): add pipeline payload types (normalized/validated/fl
 ## Task 2: Extend writer encoder
 
 **Files:**
+
 - Modify: `apps/writer/service/service.go`
 
 - [ ] **Step 1: Add cases to the encoder switch**
@@ -326,6 +331,7 @@ git commit -m "feat(writer): encode all Phase 3 pipeline event types"
 ## Task 3: `pkg/kv` — `ClusterSnapshot` type (Frame cache handles transport)
 
 **Files:**
+
 - Create: `pkg/kv/snapshot.go`
 
 Frame already provides a production-grade cache framework (`github.com/pitabwire/frame/cache`) with `Cache[K, V]` generics, `RawCache` backends (Valkey, Redis, in-memory, JetStream KV), and lifecycle management wired into `frame.Service`. Rather than build a custom Redis wrapper, we register a Valkey-backed raw cache with the Frame service via `frame.WithCache("worker", valkey.New(...))` and call `cache.GetCache[K, V](svc.CacheManager(), "worker", keyFunc)` to get typed accessors in handlers.
@@ -438,6 +444,7 @@ For tests (Task 13) use `frame.WithInMemoryCache("worker")` instead — no conta
 ## Task 4: `apps/worker` config
 
 **Files:**
+
 - Create: `apps/worker/config/config.go`
 - Prereq: `mkdir -p apps/worker/config apps/worker/cmd apps/worker/service`
 
@@ -519,6 +526,7 @@ git commit -m "feat(worker): env-backed Config with Redis + AI + publish setting
 ## Task 5: Normalize handler
 
 **Files:**
+
 - Create: `apps/worker/service/normalize.go`
 
 - [ ] **Step 1: Implement**
@@ -651,6 +659,7 @@ git commit -m "feat(worker): normalize handler — deterministic variant cleanup
 ## Task 6: Validate handler (LLM, fail-open)
 
 **Files:**
+
 - Create: `apps/worker/service/validate.go`
 
 - [ ] **Step 1: Implement**
@@ -836,6 +845,7 @@ git commit -m "feat(worker): validate handler — LLM review with fail-open on e
 ## Task 7: Dedup handler
 
 **Files:**
+
 - Create: `apps/worker/service/dedup.go`
 
 - [ ] **Step 1: Implement**
@@ -944,6 +954,7 @@ git commit -m "feat(worker): dedup handler — KV-backed hard_key lookup"
 ## Task 8: Canonical merge handler
 
 **Files:**
+
 - Create: `apps/worker/service/canonical.go`
 
 - [ ] **Step 1: Implement**
@@ -1122,6 +1133,7 @@ git commit -m "feat(worker): canonical merge handler — cluster snapshot upsert
 ## Task 9: Embed handler
 
 **Files:**
+
 - Create: `apps/worker/service/embed.go`
 
 - [ ] **Step 1: Implement**
@@ -1226,6 +1238,7 @@ git commit -m "feat(worker): embed handler — canonical → vector event"
 ## Task 10: Translate handler
 
 **Files:**
+
 - Create: `apps/worker/service/translate.go`
 
 - [ ] **Step 1: Implement**
@@ -1353,6 +1366,7 @@ git commit -m "feat(worker): translate handler — per-language canonical transl
 ## Task 11: Publish handler
 
 **Files:**
+
 - Create: `apps/worker/service/publish.go`
 
 The existing `pkg/publish` package handles R2 snapshot writes. Reuse it directly.
@@ -1467,6 +1481,7 @@ git commit -m "feat(worker): publish handler — canonical JSON snapshot to R2"
 ## Task 12: Worker service composition + entrypoint
 
 **Files:**
+
 - Create: `apps/worker/service/service.go`
 - Create: `apps/worker/cmd/main.go`
 
@@ -1668,6 +1683,7 @@ git commit -m "feat(worker): service composition + entrypoint wiring all 7 handl
 ## Task 13: End-to-end pipeline test
 
 **Files:**
+
 - Create: `apps/worker/service/service_test.go`
 
 - [ ] **Step 1: Write the test**
@@ -1850,6 +1866,7 @@ git commit -m "test(worker): end-to-end pipeline — emit ingest → collect dow
 ## Task 14: Dockerfile + Makefile
 
 **Files:**
+
 - Create: `apps/worker/Dockerfile`
 - Modify: `Makefile`
 
@@ -1860,6 +1877,7 @@ Copy `apps/materializer/Dockerfile` to `apps/worker/Dockerfile`, substituting `m
 - [ ] **Step 2: Makefile**
 
 Edit `Makefile`:
+
 - Append `apps/worker` to `APP_DIRS`
 - Add target (with real tab):
   ```
@@ -1892,6 +1910,7 @@ git log --oneline main..HEAD
 ```
 
 Expected:
+
 - All tests pass (including two new testcontainer-backed tests in pkg/kv and apps/worker).
 - Binaries build cleanly.
 - 14 commits on this branch.

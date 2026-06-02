@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/canva",
     "country": "AU",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "oceania",
     "source_type": "greenhouse"
@@ -14,9 +12,7 @@
     "base_url": "https://boards.greenhouse.io/atlassian",
     "country": "AU",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "oceania",
     "source_type": "greenhouse"

@@ -33,22 +33,22 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
 
 ## 3. Decisions log
 
-| ID | Decision | Rationale |
-|---|---|---|
-| **B** | Postgres only for non-jobs + control plane (sources registry, candidates identity, billing, auth, saved_jobs) | Hot-path isolation without displacing everything |
-| **M2** | Parquet on R2 = source of truth; Manticore = rebuildable derived view | Aligns with agent-economy monetization (firehose + bulk dataset as products) |
-| **D2** | Valkey/Redis KV for dedup + bloom filter | Sub-ms hard_key lookups; crawl path survives Manticore outages |
-| **L2** | Variants + canonicals as separate Parquet partitions; variants retain `stage` | Maps 1:1 to existing pipeline handlers; full provenance |
-| **W2-disposable** | Single consumer group, per-partition-key buffering, ack-after-upload, any-writer-any-partition | Zero state of record on writer pods |
-| **F2** | 15–30 s writer flush, 15 s materializer poll, ~30–60 s serving freshness | Manticore strictly derivable from R2 |
-| **C3 + S1** | Greenfield cut-over; full-stack v1 | Fastest path, cleanest invariants |
-| **Candidates Parquet-first** | CV + improvements + preferences + embeddings → Parquet partitions; Manticore candidate index deferred | CV history becomes a product feature for free |
-| **Job-seeker-only v1** | Recruiter surfaces (incl. `idx_candidates_rt`) → v1.1 | Scope discipline; no data migration later |
-| **Never-drop + never-LLM-skip** | `pkg/backpressure` gate + per-stage HPAs + LLM rate limiters | Ensures quality is never silently degraded under load |
-| **AI fail-open on errors, retry-forever on overload** | Handler degrades gracefully on provider error; handler holds + retries on rate limit | Preserves validator semantics, prevents silent skipping |
-| **Trustage for all scheduling** | Cadenced work fires Trustage triggers that call idempotent admin endpoints | Reuses platform service; no in-process cron; no `scheduled_*` tables |
-| **Profile via external service** | `candidates` row = `{id, profile_id, status, subscription, …}`; Profile service owns identity | Matches existing `CandidateProfile.ProfileID` pattern |
-| **Six services, not fourteen** | `crawler`, `worker`, `writer`, `materializer`, `candidates`, `api`. Pipeline stages live as internal subscriptions inside `apps/worker`; CV lifecycle inside `apps/matching`. | Minimize ops overhead; scale inside the pod via goroutine pools, not via separate deployments. Stages remain pub/sub-decoupled so one stage's slowness doesn't block others even though they share a process. |
+| ID                                                    | Decision                                                                                                                                                                      | Rationale                                                                                                                                                                                                     |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B**                                                 | Postgres only for non-jobs + control plane (sources registry, candidates identity, billing, auth, saved_jobs)                                                                 | Hot-path isolation without displacing everything                                                                                                                                                              |
+| **M2**                                                | Parquet on R2 = source of truth; Manticore = rebuildable derived view                                                                                                         | Aligns with agent-economy monetization (firehose + bulk dataset as products)                                                                                                                                  |
+| **D2**                                                | Valkey/Redis KV for dedup + bloom filter                                                                                                                                      | Sub-ms hard_key lookups; crawl path survives Manticore outages                                                                                                                                                |
+| **L2**                                                | Variants + canonicals as separate Parquet partitions; variants retain `stage`                                                                                                 | Maps 1:1 to existing pipeline handlers; full provenance                                                                                                                                                       |
+| **W2-disposable**                                     | Single consumer group, per-partition-key buffering, ack-after-upload, any-writer-any-partition                                                                                | Zero state of record on writer pods                                                                                                                                                                           |
+| **F2**                                                | 15–30 s writer flush, 15 s materializer poll, ~30–60 s serving freshness                                                                                                      | Manticore strictly derivable from R2                                                                                                                                                                          |
+| **C3 + S1**                                           | Greenfield cut-over; full-stack v1                                                                                                                                            | Fastest path, cleanest invariants                                                                                                                                                                             |
+| **Candidates Parquet-first**                          | CV + improvements + preferences + embeddings → Parquet partitions; Manticore candidate index deferred                                                                         | CV history becomes a product feature for free                                                                                                                                                                 |
+| **Job-seeker-only v1**                                | Recruiter surfaces (incl. `idx_candidates_rt`) → v1.1                                                                                                                         | Scope discipline; no data migration later                                                                                                                                                                     |
+| **Never-drop + never-LLM-skip**                       | `pkg/backpressure` gate + per-stage HPAs + LLM rate limiters                                                                                                                  | Ensures quality is never silently degraded under load                                                                                                                                                         |
+| **AI fail-open on errors, retry-forever on overload** | Handler degrades gracefully on provider error; handler holds + retries on rate limit                                                                                          | Preserves validator semantics, prevents silent skipping                                                                                                                                                       |
+| **Trustage for all scheduling**                       | Cadenced work fires Trustage triggers that call idempotent admin endpoints                                                                                                    | Reuses platform service; no in-process cron; no `scheduled_*` tables                                                                                                                                          |
+| **Profile via external service**                      | `candidates` row = `{id, profile_id, status, subscription, …}`; Profile service owns identity                                                                                 | Matches existing `CandidateProfile.ProfileID` pattern                                                                                                                                                         |
+| **Six services, not fourteen**                        | `crawler`, `worker`, `writer`, `materializer`, `candidates`, `api`. Pipeline stages live as internal subscriptions inside `apps/worker`; CV lifecycle inside `apps/matching`. | Minimize ops overhead; scale inside the pod via goroutine pools, not via separate deployments. Stages remain pub/sub-decoupled so one stage's slowness doesn't block others even though they share a process. |
 
 ## 4. Architecture
 
@@ -184,19 +184,19 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
 
 **Six services. Each is a single binary with potentially multiple pub/sub subscriptions and/or admin HTTP endpoints inside one process. Splitting further would add ops overhead (deployment, monitoring, alerting) without scaling benefit.** All services are disposable (no local state of record) and autoscale on appropriate lag/load signals.
 
-| Service | Exists today? | Responsibilities | Inputs | Outputs | AI? |
-|---|---|---|---|---|---|
-| `apps/crawler` | yes (extended) | Fetch pages, archive raw bytes to R2, AI extract (`Extract`, `DiscoverLinks`, opportunistic `DiscoverSites` via sampling); consume `crawl.requests.v1`; self-consume `crawl.page.completed.v1` to update `sources` (cursor, health, quality); Trustage admin endpoints (scheduler tick, retention, purge, reconcile, health decay) | `crawl.requests.v1`, `crawl.page.completed.v1` | `jobs.variants.ingested.v1`, `crawl.page.completed.v1`, continuation `crawl.requests.v1`, `sources.discovered.v1` | chat (Extract, DiscoverLinks, DiscoverSites) |
-| `apps/worker` | **new** | Single binary running all pipeline stages as independent internal subscriptions: normalize (deterministic) → validate (AI, fail-open) → dedup (KV + bloom) → canonical merge → (embed, translate, publish — parallel consumers of `canonicals.upserted`). Per-stage goroutine pools with per-backend rate limiters. | `jobs.variants.ingested.v1`, `jobs.variants.normalized.v1`, `jobs.variants.validated.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1` | `jobs.variants.normalized.v1`, `jobs.variants.validated.v1` or `.flagged.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1`, `jobs.embeddings.v1`, `jobs.translations.v1`, `jobs.published.v1` (+ R2 publish write) | chat (validate, translate), embed (job embeddings) |
-| `apps/writer` | **new** | Subscribes to every event topic. Buffers in-memory keyed by `(partition_dt, partition_sec)`. Flushes to R2 Parquet on `{10k events | 64 MB | 30 s}`. Acks only after R2 ETag confirms. Trustage admin endpoints for compaction. | all `*.v1` topics | R2 Parquet files | no |
-| `apps/materializer` | **new** | Polls R2 every 15 s for new Parquet files in tracked partitions. Upserts to Manticore `idx_opportunities_rt`. Watermark in KV. | R2 Parquet diffs | Manticore upserts | no |
-| `apps/matching` | yes (extended) | CV upload HTTP endpoint (synchronous extract + archive), consume candidates.cv.* topics internally for improve/embed/score, match endpoint for "jobs for me", Trustage admin endpoints (`matches.weekly_digest`, `cv.stale_nudge`). One binary owning the full candidate lifecycle. | HTTP (upload, match), `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1` | `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1`, `candidates.preferences.updated.v1`, `candidates.embeddings.v1`, `candidates.matches.ready.v1` | chat (ExtractCV, rewrites), embed (CV embeddings), scorer |
-| `apps/api` | yes (modified) | Job-seeker HTTP: search, browse, detail, facets, saved jobs, read-my-matches. All reads from Manticore + KV. Synchronous rerank on paid-tier requests. | HTTP | Manticore queries, KV reads, rerank calls | rerank (paid tier only, KV-cached) |
+| Service             | Exists today?  | Responsibilities                                                                                                                                                                                                                                                                                                                   | Inputs                                                                                                                                                | Outputs                                                                                                                                                                                                                           | AI?                                                       |
+| ------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------- | --- |
+| `apps/crawler`      | yes (extended) | Fetch pages, archive raw bytes to R2, AI extract (`Extract`, `DiscoverLinks`, opportunistic `DiscoverSites` via sampling); consume `crawl.requests.v1`; self-consume `crawl.page.completed.v1` to update `sources` (cursor, health, quality); Trustage admin endpoints (scheduler tick, retention, purge, reconcile, health decay) | `crawl.requests.v1`, `crawl.page.completed.v1`                                                                                                        | `jobs.variants.ingested.v1`, `crawl.page.completed.v1`, continuation `crawl.requests.v1`, `sources.discovered.v1`                                                                                                                 | chat (Extract, DiscoverLinks, DiscoverSites)              |
+| `apps/worker`       | **new**        | Single binary running all pipeline stages as independent internal subscriptions: normalize (deterministic) → validate (AI, fail-open) → dedup (KV + bloom) → canonical merge → (embed, translate, publish — parallel consumers of `canonicals.upserted`). Per-stage goroutine pools with per-backend rate limiters.                | `jobs.variants.ingested.v1`, `jobs.variants.normalized.v1`, `jobs.variants.validated.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1` | `jobs.variants.normalized.v1`, `jobs.variants.validated.v1` or `.flagged.v1`, `jobs.variants.clustered.v1`, `jobs.canonicals.upserted.v1`, `jobs.embeddings.v1`, `jobs.translations.v1`, `jobs.published.v1` (+ R2 publish write) | chat (validate, translate), embed (job embeddings)        |
+| `apps/writer`       | **new**        | Subscribes to every event topic. Buffers in-memory keyed by `(partition_dt, partition_sec)`. Flushes to R2 Parquet on `{10k events                                                                                                                                                                                                 | 64 MB                                                                                                                                                 | 30 s}`. Acks only after R2 ETag confirms. Trustage admin endpoints for compaction.                                                                                                                                                | all `*.v1` topics                                         | R2 Parquet files | no  |
+| `apps/materializer` | **new**        | Polls R2 every 15 s for new Parquet files in tracked partitions. Upserts to Manticore `idx_opportunities_rt`. Watermark in KV.                                                                                                                                                                                                     | R2 Parquet diffs                                                                                                                                      | Manticore upserts                                                                                                                                                                                                                 | no                                                        |
+| `apps/matching`     | yes (extended) | CV upload HTTP endpoint (synchronous extract + archive), consume candidates.cv.\* topics internally for improve/embed/score, match endpoint for "jobs for me", Trustage admin endpoints (`matches.weekly_digest`, `cv.stale_nudge`). One binary owning the full candidate lifecycle.                                               | HTTP (upload, match), `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1`                                          | `candidates.cv.uploaded.v1`, `candidates.cv.extracted.v1`, `candidates.cv.improved.v1`, `candidates.preferences.updated.v1`, `candidates.embeddings.v1`, `candidates.matches.ready.v1`                                            | chat (ExtractCV, rewrites), embed (CV embeddings), scorer |
+| `apps/api`          | yes (modified) | Job-seeker HTTP: search, browse, detail, facets, saved jobs, read-my-matches. All reads from Manticore + KV. Synchronous rerank on paid-tier requests.                                                                                                                                                                             | HTTP                                                                                                                                                  | Manticore queries, KV reads, rerank calls                                                                                                                                                                                         | rerank (paid tier only, KV-cached)                        |
 
 **Why consolidate into `apps/worker` instead of 7 separate services:**
 
 - All stages operate on the same variant/canonical lifecycle and share the same dependencies (Extractor, KV client, Frame pub/sub client, metric labels, bloom filter handle).
-- Each stage is independently scaled *within* the pod via goroutine pool size + per-backend rate limiter, not by separate HPAs.
+- Each stage is independently scaled _within_ the pod via goroutine pool size + per-backend rate limiter, not by separate HPAs.
 - The HPA scales the single `apps/worker` pod on combined pub/sub lag across its subscriptions. If validate is the bottleneck, its input topic lag grows, HPA kicks up more pods; other stages in the same pod get idle capacity at no extra cost.
 - Ops overhead: 1 deployment, 1 HPA config, 1 dashboard, 1 alert group instead of 7.
 - Stages remain decoupled via pub/sub topics (each stage has its own consumer group), so a validator slowdown never directly blocks normalize — they're separate consumers inside one process.
@@ -204,33 +204,33 @@ This is a **greenfield** change. Existing Postgres jobs data is dropped; the pla
 
 **Trustage-fired admin endpoints** (no long-running cron, no `scheduled_*` tables):
 
-| Trigger | Cadence | Pod (admin endpoint) | Work |
-|---|---|---|---|
-| `scheduler.tick` | every 30 s | `apps/crawler` | `SourceRepo.ListDue` → `backpressure.Gate.Admit` → emit `crawl.requests.v1` |
-| `compact.hourly` | hourly | `apps/writer` | merge small Parquet files in today's partitions |
-| `compact.daily` | daily 02:00 UTC | `apps/writer` | rebuild `*_current/` partitions from the day's log |
-| `retention.expire` | every 15 min | `apps/crawler` (existing) | flip canonicals past `expires_at` — emits `jobs.canonicals.expired.v1` |
-| `retention.purge_r2` | nightly | `apps/crawler` (existing) | purge R2 publish snapshots past grace window |
-| `retention.reconcile` | nightly | `apps/crawler` (existing) | reconcile R2 archive vs event log |
-| `sources.quality_window_reset` | weekly | `apps/crawler` | reset quality counters |
-| `sources.health_decay` | hourly | `apps/crawler` | gentle decay of `health_score` toward 1.0 |
-| `matches.weekly_digest` | weekly per-candidate (Trustage per-entity schedule) | `apps/matching` | run matching pipeline, emit `candidates.matches.ready.v1` for delivery service |
-| `cv.stale_nudge` | Trustage follow-up after N days idle | `apps/matching` | emit nudge event for notification service |
+| Trigger                        | Cadence                                             | Pod (admin endpoint)      | Work                                                                           |
+| ------------------------------ | --------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------ |
+| `scheduler.tick`               | every 30 s                                          | `apps/crawler`            | `SourceRepo.ListDue` → `backpressure.Gate.Admit` → emit `crawl.requests.v1`    |
+| `compact.hourly`               | hourly                                              | `apps/writer`             | merge small Parquet files in today's partitions                                |
+| `compact.daily`                | daily 02:00 UTC                                     | `apps/writer`             | rebuild `*_current/` partitions from the day's log                             |
+| `retention.expire`             | every 15 min                                        | `apps/crawler` (existing) | flip canonicals past `expires_at` — emits `jobs.canonicals.expired.v1`         |
+| `retention.purge_r2`           | nightly                                             | `apps/crawler` (existing) | purge R2 publish snapshots past grace window                                   |
+| `retention.reconcile`          | nightly                                             | `apps/crawler` (existing) | reconcile R2 archive vs event log                                              |
+| `sources.quality_window_reset` | weekly                                              | `apps/crawler`            | reset quality counters                                                         |
+| `sources.health_decay`         | hourly                                              | `apps/crawler`            | gentle decay of `health_score` toward 1.0                                      |
+| `matches.weekly_digest`        | weekly per-candidate (Trustage per-entity schedule) | `apps/matching`           | run matching pipeline, emit `candidates.matches.ready.v1` for delivery service |
+| `cv.stale_nudge`               | Trustage follow-up after N days idle                | `apps/matching`           | emit nudge event for notification service                                      |
 
 Trigger definitions live in `definitions/trustage/*.json` alongside the existing `retention-*.json`. Every admin endpoint is idempotent.
 
 ### 4.3 Managed infrastructure
 
-| Component | Role |
-|---|---|
-| Cloudflare R2 | Parquet log (source of truth) + raw page archive + publish snapshots |
-| Valkey / Redis | dedup KV, bloom filters, rerank cache |
-| Manticore Search | FTS + attribute filtering + HNSW vector search (`idx_opportunities_rt` in v1) |
-| Frame pub/sub | event transport, durable, at-least-once |
-| PostgreSQL | control-plane (sources), identity ref (candidates), billing, auth, saved_jobs |
-| Profile service (external) | candidate identity, auth, email, MFA |
-| Trustage (external) | scheduled triggers, follow-up workflows |
-| TEI chat / TEI embed / TEI rerank | AI inference backends (each independently scaled) |
+| Component                         | Role                                                                          |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| Cloudflare R2                     | Parquet log (source of truth) + raw page archive + publish snapshots          |
+| Valkey / Redis                    | dedup KV, bloom filters, rerank cache                                         |
+| Manticore Search                  | FTS + attribute filtering + HNSW vector search (`idx_opportunities_rt` in v1) |
+| Frame pub/sub                     | event transport, durable, at-least-once                                       |
+| PostgreSQL                        | control-plane (sources), identity ref (candidates), billing, auth, saved_jobs |
+| Profile service (external)        | candidate identity, auth, email, MFA                                          |
+| Trustage (external)               | scheduled triggers, follow-up workflows                                       |
+| TEI chat / TEI embed / TEI rerank | AI inference backends (each independently scaled)                             |
 
 ## 5. Data model
 
@@ -259,31 +259,31 @@ All partitions live under a single R2 bucket, e.g. `r2://opportunities-log/`.
 
 **Jobs partitions:**
 
-| Path | Columns (abbreviated) | Compaction |
-|---|---|---|
-| `variants/dt=YYYY-MM-DD/src=<source_id>/<uuid>.parquet` | variant_id, source_id, external_job_id, hard_key, stage, title, company, location_text, country, language, remote_type, employment_type, salary_min/max, currency, description (≤500 words), apply_url, posted_at, scraped_at, content_hash, raw_archive_ref, extended JobFields (urgency_level, funnel_complexity, company_size, funding_stage, required_skills[], nice_to_have_skills[], tools_frameworks[], geo_restrictions, timezone_req, application_type, ats_platform, role_scope, team_size, reports_to), validation_score, validation_notes, validation_recommendation, model_version_extract, model_version_validate, occurred_at | hourly within day; daily roll-up |
-| `canonicals/dt=YYYY-MM-DD/<uuid>.parquet` | canonical_id, cluster_id, slug, title, company, description, country, language, remote_type, employment_type, salary_*, seniority, skills[], roles[], required_skills[], benefits[], category, quality_score, posted_at, first_seen_at, last_seen_at, expires_at, status, redirect_link_id, redirect_slug, translated_langs[], published_at, merge_source_variant_ids[], model_versions{}, occurred_at | hourly |
-| `canonicals_current/cc=<cluster_id_prefix_2hex>/<file>.parquet` | Latest canonical per cluster_id, rebuilt daily by compactor | daily rebuild |
-| `embeddings/dt=/<uuid>.parquet` | canonical_id, vector float[DIM], model_version, occurred_at | hourly |
-| `embeddings_current/cc=<cluster_id_prefix_2hex>/<file>.parquet` | Latest embedding per canonical_id | daily rebuild |
-| `translations/dt=/lang=/<uuid>.parquet` | canonical_id, lang, title_tr, description_tr, model_version, occurred_at | daily |
-| `translations_current/cc=/lang=/<file>.parquet` | Latest per (canonical_id, lang) | daily rebuild |
-| `match_decisions/dt=/<uuid>.parquet` | candidate_id, canonical_id, stage2_score, stage3_score, rerank_model_version, decided_at | none (audit) |
-| `jobs_expired/dt=/<uuid>.parquet` | canonical_id, expired_at | none (audit) |
-| `jobs_published/dt=/<uuid>.parquet` | canonical_id, slug, r2_version, published_at | none (audit) |
+| Path                                                            | Columns (abbreviated)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Compaction                       |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `variants/dt=YYYY-MM-DD/src=<source_id>/<uuid>.parquet`         | variant_id, source_id, external_job_id, hard_key, stage, title, company, location_text, country, language, remote_type, employment_type, salary_min/max, currency, description (≤500 words), apply_url, posted_at, scraped_at, content_hash, raw_archive_ref, extended JobFields (urgency_level, funnel_complexity, company_size, funding_stage, required_skills[], nice_to_have_skills[], tools_frameworks[], geo_restrictions, timezone_req, application_type, ats_platform, role_scope, team_size, reports_to), validation_score, validation_notes, validation_recommendation, model_version_extract, model_version_validate, occurred_at | hourly within day; daily roll-up |
+| `canonicals/dt=YYYY-MM-DD/<uuid>.parquet`                       | canonical*id, cluster_id, slug, title, company, description, country, language, remote_type, employment_type, salary*\*, seniority, skills[], roles[], required_skills[], benefits[], category, quality_score, posted_at, first_seen_at, last_seen_at, expires_at, status, redirect_link_id, redirect_slug, translated_langs[], published_at, merge_source_variant_ids[], model_versions{}, occurred_at                                                                                                                                                                                                                                      | hourly                           |
+| `canonicals_current/cc=<cluster_id_prefix_2hex>/<file>.parquet` | Latest canonical per cluster_id, rebuilt daily by compactor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | daily rebuild                    |
+| `embeddings/dt=/<uuid>.parquet`                                 | canonical_id, vector float[DIM], model_version, occurred_at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | hourly                           |
+| `embeddings_current/cc=<cluster_id_prefix_2hex>/<file>.parquet` | Latest embedding per canonical_id                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | daily rebuild                    |
+| `translations/dt=/lang=/<uuid>.parquet`                         | canonical_id, lang, title_tr, description_tr, model_version, occurred_at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | daily                            |
+| `translations_current/cc=/lang=/<file>.parquet`                 | Latest per (canonical_id, lang)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | daily rebuild                    |
+| `match_decisions/dt=/<uuid>.parquet`                            | candidate_id, canonical_id, stage2_score, stage3_score, rerank_model_version, decided_at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | none (audit)                     |
+| `jobs_expired/dt=/<uuid>.parquet`                               | canonical_id, expired_at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | none (audit)                     |
+| `jobs_published/dt=/<uuid>.parquet`                             | canonical_id, slug, r2_version, published_at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | none (audit)                     |
 
 **Candidates partitions:**
 
-| Path | Columns | Compaction |
-|---|---|---|
-| `candidates_cv/dt=/cnd=<cnd_prefix_2hex>/<uuid>.parquet` | candidate_id, cv_version (int), raw_archive_ref (R2 pointer to PDF/DOCX), CVFields (name, email, phone, location, current_title, bio, seniority, years_experience, primary_industry, strong_skills[], working_skills[], tools_frameworks[], certifications[], preferred_roles[], languages[], education, work_history[], preferred_locations[], remote_preference, salary_min/max, currency), score_components (ats, keywords, impact, role_fit, clarity, overall), model_versions{extract, score}, occurred_at | hourly |
-| `candidates_cv_current/cnd=<cnd_prefix_2hex>/<file>.parquet` | Latest CV version per candidate_id | daily rebuild |
-| `candidates_improvements/dt=/cnd=<cnd_prefix_2hex>/<uuid>.parquet` | candidate_id, cv_version, fix_batch[] ({fix_id, title, impact, category, why, auto_applicable, rewrite}), model_version, occurred_at | hourly |
-| `candidates_preferences/dt=/<uuid>.parquet` | candidate_id, remote_preference, salary_min/max, currency, preferred_locations[], excluded_companies[], target_roles[], languages[], availability, occurred_at | daily |
-| `candidates_preferences_current/cnd=<cnd_prefix_2hex>/<file>.parquet` | Latest preferences per candidate_id | daily rebuild |
-| `candidates_embeddings/dt=/<uuid>.parquet` | candidate_id, cv_version, vector float[DIM], model_version, occurred_at | daily |
-| `candidates_embeddings_current/cnd=<cnd_prefix_2hex>/<file>.parquet` | Latest embedding per candidate_id | daily rebuild |
-| `candidates_matches_ready/dt=/<uuid>.parquet` | candidate_id, match_batch_id, matches[] ({canonical_id, match_score, rerank_score?}), occurred_at | weekly |
+| Path                                                                  | Columns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Compaction    |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `candidates_cv/dt=/cnd=<cnd_prefix_2hex>/<uuid>.parquet`              | candidate_id, cv_version (int), raw_archive_ref (R2 pointer to PDF/DOCX), CVFields (name, email, phone, location, current_title, bio, seniority, years_experience, primary_industry, strong_skills[], working_skills[], tools_frameworks[], certifications[], preferred_roles[], languages[], education, work_history[], preferred_locations[], remote_preference, salary_min/max, currency), score_components (ats, keywords, impact, role_fit, clarity, overall), model_versions{extract, score}, occurred_at | hourly        |
+| `candidates_cv_current/cnd=<cnd_prefix_2hex>/<file>.parquet`          | Latest CV version per candidate_id                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | daily rebuild |
+| `candidates_improvements/dt=/cnd=<cnd_prefix_2hex>/<uuid>.parquet`    | candidate_id, cv_version, fix_batch[] ({fix_id, title, impact, category, why, auto_applicable, rewrite}), model_version, occurred_at                                                                                                                                                                                                                                                                                                                                                                            | hourly        |
+| `candidates_preferences/dt=/<uuid>.parquet`                           | candidate_id, remote_preference, salary_min/max, currency, preferred_locations[], excluded_companies[], target_roles[], languages[], availability, occurred_at                                                                                                                                                                                                                                                                                                                                                  | daily         |
+| `candidates_preferences_current/cnd=<cnd_prefix_2hex>/<file>.parquet` | Latest preferences per candidate_id                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | daily rebuild |
+| `candidates_embeddings/dt=/<uuid>.parquet`                            | candidate_id, cv_version, vector float[DIM], model_version, occurred_at                                                                                                                                                                                                                                                                                                                                                                                                                                         | daily         |
+| `candidates_embeddings_current/cnd=<cnd_prefix_2hex>/<file>.parquet`  | Latest embedding per candidate_id                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | daily rebuild |
+| `candidates_matches_ready/dt=/<uuid>.parquet`                         | candidate_id, match_batch_id, matches[] ({canonical_id, match_score, rerank_score?}), occurred_at                                                                                                                                                                                                                                                                                                                                                                                                               | weekly        |
 
 ### 5.3 Manticore — `idx_opportunities_rt` (v1)
 
@@ -337,14 +337,14 @@ CREATE TABLE idx_opportunities_rt (
 
 ### 5.4 KV (Valkey) schema
 
-| Key pattern | Value | TTL | Rebuildable from |
-|---|---|---|---|
-| `dedup:{hard_key}` | cluster_id (20-byte xid) | none | `canonicals_current/` + `variants/` |
-| `cluster:{cluster_id}` | msgpack'd compact canonical snapshot (fields needed for merge) | none, evicted on retire | `canonicals_current/` |
-| `rerank:{model_v}:{query_hash}:{filter_hash}` | `[canonical_id, …]` | 24h | cache-only; regenerated by reranker |
-| `bloom:dedup:{shard_hex}` | counting bloom bits for hard_keys | none | `canonicals_current/` |
-| `match_rate:{candidate_id}` | rate-limit counter for "my matches" | 1h | ephemeral |
-| `cv_ratelimit:{profile_id}` | rate-limit for CV upload frequency | 1h | ephemeral |
+| Key pattern                                   | Value                                                          | TTL                     | Rebuildable from                    |
+| --------------------------------------------- | -------------------------------------------------------------- | ----------------------- | ----------------------------------- |
+| `dedup:{hard_key}`                            | cluster_id (20-byte xid)                                       | none                    | `canonicals_current/` + `variants/` |
+| `cluster:{cluster_id}`                        | msgpack'd compact canonical snapshot (fields needed for merge) | none, evicted on retire | `canonicals_current/`               |
+| `rerank:{model_v}:{query_hash}:{filter_hash}` | `[canonical_id, …]`                                            | 24h                     | cache-only; regenerated by reranker |
+| `bloom:dedup:{shard_hex}`                     | counting bloom bits for hard_keys                              | none                    | `canonicals_current/`               |
+| `match_rate:{candidate_id}`                   | rate-limit counter for "my matches"                            | 1h                      | ephemeral                           |
+| `cv_ratelimit:{profile_id}`                   | rate-limit for CV upload frequency                             | 1h                      | ephemeral                           |
 
 All KV keys are derived state. Cold start procedure (§9.4) rebuilds `dedup:*`, `cluster:*`, `bloom:dedup:*` from `canonicals_current/`.
 
@@ -352,13 +352,13 @@ All KV keys are derived state. Cold start procedure (§9.4) rebuilds `dedup:*`, 
 
 **Tables that stay:**
 
-| Table | Columns (summary) | Why |
-|---|---|---|
-| `sources` | id, type, base_url, name, country, language, status, priority, crawl_interval_sec, next_crawl_at, last_seen_at, health_score, consecutive_failures, config (opaque cursor), quality_window_*, needs_tuning | Control plane — Trustage-fired scheduler reads `ListDue`; not on user hot path |
-| `candidates` | id, profile_id, status, subscription, created_at, updated_at | Identity ref only; Profile service owns auth/email/PII |
-| `subscriptions`, `entitlements` | billing state | `pkg/billing` owns this |
-| `saved_jobs` | candidate_id, canonical_id, saved_at | Small FK table; fine on Postgres |
-| `crawl_jobs` (optional) | run history | Ops audit only |
+| Table                           | Columns (summary)                                                                                                                                                                                           | Why                                                                            |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `sources`                       | id, type, base*url, name, country, language, status, priority, crawl_interval_sec, next_crawl_at, last_seen_at, health_score, consecutive_failures, config (opaque cursor), quality_window*\*, needs_tuning | Control plane — Trustage-fired scheduler reads `ListDue`; not on user hot path |
+| `candidates`                    | id, profile_id, status, subscription, created_at, updated_at                                                                                                                                                | Identity ref only; Profile service owns auth/email/PII                         |
+| `subscriptions`, `entitlements` | billing state                                                                                                                                                                                               | `pkg/billing` owns this                                                        |
+| `saved_jobs`                    | candidate_id, canonical_id, saved_at                                                                                                                                                                        | Small FK table; fine on Postgres                                               |
+| `crawl_jobs` (optional)         | run history                                                                                                                                                                                                 | Ops audit only                                                                 |
 
 **Tables dropped in greenfield:**
 
@@ -381,7 +381,7 @@ All KV keys are derived state. Cold start procedure (§9.4) rebuilds `dedup:*`, 
 6. Inside `apps/worker` — the **validate** subscription consumes `jobs.variants.normalized.v1` → calls `extractor.Prompt(validationPrompt, reviewInput)` → parses `{valid, confidence, issues, recommendation}`:
    - If `valid && confidence >= 0.7`: emit `jobs.variants.validated.v1`.
    - Else: emit `jobs.variants.flagged.v1` (audit sink).
-   - On LLM *error* (network, 5xx): **fail-open** — emit `validated` with `validation_score=0.5`, `validation_notes="LLM unavailable: …"`. (On LLM *rate-limit / 429*: hold, retry with backoff. Do not fail-open for overload.)
+   - On LLM _error_ (network, 5xx): **fail-open** — emit `validated` with `validation_score=0.5`, `validation_notes="LLM unavailable: …"`. (On LLM _rate-limit / 429_: hold, retry with backoff. Do not fail-open for overload.)
 7. Inside `apps/worker` — the **dedup** subscription consumes `jobs.variants.validated.v1`:
    1. Compute `hard_key` (deterministic from source_id + external_job_id).
    2. Check bloom `bloom:dedup:{shard}` — if absent, this is new; `KV SET dedup:{hard_key} := new_cluster_id`; update bloom; emit `jobs.variants.clustered.v1` with `cluster_id`.
@@ -411,7 +411,7 @@ All candidate-side work lives in `apps/matching` — one binary, multiple intern
 3. Inside `apps/matching` — the **cv-extract** subscription consumes `candidates.cv.uploaded.v1` → calls `extractor.ExtractCV(ctx, text)` → `CVFields`. Runs `cv.Scorer.Score` (role-fit component uses `extractor.Embed` internally). Emits `candidates.cv.extracted.v1` with `CVFields` + `score_components`.
 4. Inside `apps/matching` — the **cv-improve** subscription consumes `candidates.cv.extracted.v1` → runs deterministic `fixes.detectPriorityFixes` + LLM `AttachRewrites`. Emits `candidates.cv.improved.v1`.
 5. Inside `apps/matching` — the **cv-embed** subscription consumes both `candidates.cv.extracted.v1` and `candidates.cv.improved.v1` → calls `extractor.Embed(ctx, cv_text)` → emits `candidates.embeddings.v1`.
-6. `apps/writer` persists all four event types to their respective Parquet partitions. `apps/materializer` at v1 does *not* index candidate data into Manticore (deferred to v1.1).
+6. `apps/writer` persists all four event types to their respective Parquet partitions. `apps/materializer` at v1 does _not_ index candidate data into Manticore (deferred to v1.1).
 7. When the user (or Trustage `matches.weekly_digest`) requests matches, `apps/matching` match endpoint:
    1. Reads the candidate's embedding + preferences from R2 `candidates_*_current/` partitions directly (or via a small KV cache).
    2. Queries `idx_opportunities_rt` with hard filters (remote_preference, salary floor, preferred_locations) + KNN on candidate embedding → top 200.
@@ -488,20 +488,20 @@ Each resolved independently via `ResolveInference / ResolveEmbedding / ResolveRe
 
 ### 7.2 Call-site catalog
 
-| Site | Service | Purpose | Synchronous? | Fail-mode |
-|---|---|---|---|---|
-| `DiscoverLinks` | `apps/crawler` | Listing HTML → detail URLs | Yes, per listing page | sitemap-first fallback (already in `universal.Connector`) |
-| `Extract` | `apps/crawler` | Detail HTML → `JobFields` | Yes | drop variant |
-| `DiscoverSites` | `apps/crawler` (sampled) | Page → new job boards | Async | drop |
-| `Prompt(validationPrompt)` | `apps/worker` (validate sub) | Variant → accept/flag | Async | **fail-open @ 0.5 on error**; retry on overload |
-| `Prompt(translatePrompt)` | `apps/worker` (translate sub) | Canonical → target lang | Async, per (job, lang) | skip language |
-| `Embed` (jobs) | `apps/worker` (embed sub) | Canonical → vector | Async | skip vector (search degrades to BM25) |
-| `ExtractCV` | `apps/matching` | CV text → `CVFields` | Sync (user-facing upload) | error to user |
-| `Scorer.Score` (role-fit uses `Embed`) | `apps/matching` | CV score component | Sync | degrade role-fit to neutral 60 |
-| `Prompt(rewritePrompt)` | `apps/matching` (cv-improve sub) | CV bullet rewrites | Async | skip rewrites, keep deterministic fixes |
-| `Embed` (CV) | `apps/matching` (cv-embed sub) | CV text → vector | Async | skip vector |
-| `Rerank` (API) | `apps/api` | Top-200 job reorder | Sync (paid tier) | un-reranked fallback |
-| `Rerank` (matches) | `apps/matching` | Stage 3 per-match reorder | Sync (per match run) | retrieval-order fallback |
+| Site                                   | Service                          | Purpose                    | Synchronous?              | Fail-mode                                                 |
+| -------------------------------------- | -------------------------------- | -------------------------- | ------------------------- | --------------------------------------------------------- |
+| `DiscoverLinks`                        | `apps/crawler`                   | Listing HTML → detail URLs | Yes, per listing page     | sitemap-first fallback (already in `universal.Connector`) |
+| `Extract`                              | `apps/crawler`                   | Detail HTML → `JobFields`  | Yes                       | drop variant                                              |
+| `DiscoverSites`                        | `apps/crawler` (sampled)         | Page → new job boards      | Async                     | drop                                                      |
+| `Prompt(validationPrompt)`             | `apps/worker` (validate sub)     | Variant → accept/flag      | Async                     | **fail-open @ 0.5 on error**; retry on overload           |
+| `Prompt(translatePrompt)`              | `apps/worker` (translate sub)    | Canonical → target lang    | Async, per (job, lang)    | skip language                                             |
+| `Embed` (jobs)                         | `apps/worker` (embed sub)        | Canonical → vector         | Async                     | skip vector (search degrades to BM25)                     |
+| `ExtractCV`                            | `apps/matching`                  | CV text → `CVFields`       | Sync (user-facing upload) | error to user                                             |
+| `Scorer.Score` (role-fit uses `Embed`) | `apps/matching`                  | CV score component         | Sync                      | degrade role-fit to neutral 60                            |
+| `Prompt(rewritePrompt)`                | `apps/matching` (cv-improve sub) | CV bullet rewrites         | Async                     | skip rewrites, keep deterministic fixes                   |
+| `Embed` (CV)                           | `apps/matching` (cv-embed sub)   | CV text → vector           | Async                     | skip vector                                               |
+| `Rerank` (API)                         | `apps/api`                       | Top-200 job reorder        | Sync (paid tier)          | un-reranked fallback                                      |
+| `Rerank` (matches)                     | `apps/matching`                  | Stage 3 per-match reorder  | Sync (per match run)      | retrieval-order fallback                                  |
 
 ### 7.3 Model versioning
 
@@ -518,11 +518,11 @@ Every event payload that derives from an AI call carries `model_version` fields.
 - Each `Extractor` call is metered per-backend by an in-client token bucket. Configured from `INFERENCE_RATE_QPS / EMBEDDING_RATE_QPS / RERANK_RATE_QPS` env vars.
 - Handlers holding on rate limit do **not** ack the event. Pub/sub redelivery handles retries with exponential backoff (Frame config).
 - There is **no** "skip LLM on rate limit" branch anywhere. Rate limit means "slower," not "lossy."
-- Fail-open applies only to real *errors* (provider outage, 5xx). It does not apply to 429s; those retry.
+- Fail-open applies only to real _errors_ (provider outage, 5xx). It does not apply to 429s; those retry.
 
 ### 7.5 HPA caps tied to AI capacity
 
-Each service has one HPA. `apps/worker` scales on its aggregate input-topic lag; the cap is derived from the *most constrained* backend the worker uses at peak:
+Each service has one HPA. `apps/worker` scales on its aggregate input-topic lag; the cap is derived from the _most constrained_ backend the worker uses at peak:
 
 ```
 # apps/worker — one HPA, cap chosen from its busiest AI consumer
@@ -637,6 +637,7 @@ Recovery: API returns 503 `Retry-After`; ops runs "Manticore rebuild from zero":
 Effect: dedup misses → every variant looks new → cluster explosion → serving sees duplicates briefly.
 
 Recovery: boot a new KV replica, run a rebuild job on an admin endpoint (`POST /_admin/kv/rebuild`):
+
 1. Scan `canonicals_current/` partition.
 2. For each row: `SET dedup:{hard_key} := cluster_id`; `SET cluster:{cluster_id} := snapshot`; update bloom.
 3. Emit a "dedup:rebuilt" event so compaction knows to re-merge duplicate clusters created during the outage window.
@@ -725,15 +726,15 @@ Recovery: Trustage returns → tick resumes. A long outage means compaction back
 
 ### 11.3 Post-cut verification
 
-| Check | Tool |
-|---|---|
-| Search returns results for 20 common queries | k6 / curl |
-| Facets populate for category/country/remote_type | API fixture |
+| Check                                                                    | Tool             |
+| ------------------------------------------------------------------------ | ---------------- |
+| Search returns results for 20 common queries                             | k6 / curl        |
+| Facets populate for category/country/remote_type                         | API fixture      |
 | CV upload round-trips (upload → extracted event → score report endpoint) | integration test |
-| Match-for-candidate endpoint returns top-20 within 500 ms p95 | load test |
-| Backpressure gate engages under synthetic burst | chaos test |
-| Manticore rebuild-from-R2 procedure rehearsed | chaos test |
-| KV rebuild-from-R2 admin endpoint rehearsed | chaos test |
+| Match-for-candidate endpoint returns top-20 within 500 ms p95            | load test        |
+| Backpressure gate engages under synthetic burst                          | chaos test       |
+| Manticore rebuild-from-R2 procedure rehearsed                            | chaos test       |
+| KV rebuild-from-R2 admin endpoint rehearsed                              | chaos test       |
 
 ### 11.4 v1.1 follow-up (deferred from v1)
 

@@ -11,18 +11,23 @@ import (
 	"github.com/pitabwire/frame"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/events"
 	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
+	"github.com/antinvestor/service-trustage/client/workflows"
 	crawlerconfig "github.com/stawi-opportunities/opportunities/apps/crawler/config"
 	"github.com/stawi-opportunities/opportunities/apps/crawler/service"
+	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/backpressure"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -56,13 +61,32 @@ func main() {
 
 	log := util.Log(ctx)
 
-	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
-	// later phases consult the registry on the publish/index paths.
-	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	// Load the opportunity-kinds registry. Prefer the R2-backed
+	// definitions loader (admin can edit kind YAMLs in the cluster);
+	// fall back to the on-disk ConfigMap when R2 isn't configured so
+	// dev/OSS deploys keep working.
+	loader, err := definitions.NewR2LoaderFromEnv(ctx)
 	if err != nil {
-		log.WithError(err).Fatal("opportunity registry: load failed")
+		log.WithError(err).Fatal("definitions: env config failed")
 	}
-	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+	var reg *opportunity.Registry
+	if loader != nil {
+		if err := loader.Start(ctx); err != nil {
+			log.WithError(err).Fatal("definitions: loader start failed")
+		}
+		reg, err = opportunity.LoadFromDefinitions(ctx, loader)
+		if err != nil {
+			log.WithError(err).Fatal("definitions: registry load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from R2 definitions")
+	} else {
+		log.Warn("definitions: R2 not configured; falling back to OpportunityKindsDir")
+		reg, err = opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+		if err != nil {
+			log.WithError(err).Fatal("opportunity registry: load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
+	}
 
 	// Initialize pipeline telemetry metrics. Frame has already configured the
 	// global OTel provider, so this registers our custom instruments into it.
@@ -76,22 +100,25 @@ func main() {
 
 	// Handle database migration if configured (colony Helm chart sets
 	// DO_DATABASE_MIGRATE=true for the pre-install migration job).
-	// Pattern follows service-profile: migrate, then return immediately.
+	// Pattern follows service-trustage: pool.Migrate scans
+	// MIGRATION_PATH for *.sql files and applies any not yet recorded
+	// in the migrations tracking table, then GORM AutoMigrate keeps
+	// the two historically-GORM-managed tables (sources + raw_refs)
+	// in shape. FinalizeSchema applies pg_trgm + other extensions GORM
+	// cannot express. Returns immediately after migration completes.
 	if cfg.DoDatabaseMigrate() {
-		migrationDB := dbFn(ctx, false)
-		if err := migrationDB.AutoMigrate(
-			&domain.Source{},
-			&domain.CrawlJob{},
-			&domain.RawPayload{},
-			&domain.RawRef{},
-		); err != nil {
-			log.WithError(err).Fatal("auto-migrate failed")
+		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
+			log.WithError(err).Fatal("database migration failed")
 		}
-		// Postgres-specific schema bits GORM AutoMigrate can't express.
-		// Crawler runs the migration job on every Helm install, so
-		// putting it here keeps the finalize step in one place.
-		if err := repository.FinalizeSchema(migrationDB); err != nil {
-			log.WithError(err).Fatal("finalize schema failed")
+		// Sync Trustage workflow definitions from the mounted ConfigMap.
+		if cfg.TrustageURL != "" && cfg.TrustageWorkflowsDir != "" {
+			trustageCli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL)
+			if cliErr != nil {
+				log.WithError(cliErr).Fatal("trustage workflow client init failed")
+			}
+			if syncErr := workflows.SyncFromDir(ctx, trustageCli, cfg.TrustageWorkflowsDir); syncErr != nil {
+				log.WithError(syncErr).Fatal("trustage workflow sync failed")
+			}
 		}
 		log.Info("migration complete")
 		return
@@ -158,7 +185,7 @@ func main() {
 	}
 
 	// Connector registry.
-	registry := service.BuildRegistry(httpClient, extractor)
+	registry := service.BuildRegistry(ctx, httpClient, extractor, loader)
 
 	// Archive R2 client + raw_ref repository. Same R2 account token
 	// as the public content bucket — Cloudflare R2 IAM scopes the
@@ -282,6 +309,43 @@ func main() {
 	// Verify failures).
 	variantStore := variantstate.NewStore(dbFn)
 
+	// crawl_jobs + raw_payloads audit ledger. Writes propagate errors
+	// (unlike VariantStore) — the ledger is the source of truth for
+	// what the pipeline ever attempted, so a Postgres outage MUST fail
+	// the crawl rather than silently diverge.
+	crawlRepo := repository.NewCrawlRepository(dbFn)
+
+	// Iterator checkpoint store — feeds the resume path on the next
+	// NATS redelivery after a crash. Soft-fail throughout: a Postgres
+	// outage degrades resumption to "always start fresh" rather than
+	// stalling the crawl.
+	checkpointRepo := repository.NewCheckpointRepository(dbFn)
+
+	// URL frontier (D2) — discovered URLs from frontier-enabled
+	// sources land here; apps/frontier-worker pulls + fetches them.
+	// OnEnqueue wires the wake-up event so workers don't idle when
+	// new URLs land. Best-effort emit — a missed event still drains
+	// via the worker's heartbeat ticker.
+	urlFrontier := frontier.NewPostgresFrontier(dbFn)
+	urlFrontier.OnEnqueue = func(emitCtx context.Context, u frontier.URL) {
+		evtMgr := svc.EventsManager()
+		if evtMgr == nil {
+			return
+		}
+		env := eventsv1.NewEnvelope(eventsv1.TopicURLEnqueued, eventsv1.URLEnqueuedV1{
+			URLID:        u.URLID,
+			CanonicalURL: u.CanonicalURL,
+			Host:         u.Host,
+			SourceID:     u.SourceID,
+			Priority:     u.Priority,
+			DiscoveredAt: u.EnqueuedAt,
+		})
+		if err := evtMgr.Emit(emitCtx, eventsv1.TopicURLEnqueued, env); err != nil {
+			util.Log(emitCtx).WithError(err).WithField("url_id", u.URLID).
+				Warn("crawler: frontier enqueue wake-up emit failed")
+		}
+	}
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:               svc,
 		Sources:           sourceRepo,
@@ -294,6 +358,9 @@ func main() {
 		EnrichConcurrency: cfg.EnrichConcurrency,
 		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
 		VariantStore:      variantStore,
+		CrawlRepo:         crawlRepo,
+		CheckpointRepo:    checkpointRepo,
+		Frontier:          urlFrontier,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
@@ -304,7 +371,24 @@ func main() {
 	// per-topic NoopHandler block that used to live here and prevents
 	// the "permanent NATS retry storm" wedge from a bare strict-mode
 	// catch-all.
-	svc.Init(ctx, frame.WithRegisterEvents(crawlReqH, pageDoneH, srcDiscH))
+	//
+	// definitions.changed.v1 — invalidates the loader cache and live-
+	// rebuilds the kind registry so admin edits propagate within
+	// seconds (vs. the 5-min refresh tick).
+	handlers := []events.EventI{crawlReqH, pageDoneH, srcDiscH}
+	if loader != nil {
+		rebuild := func(ctx context.Context) error {
+			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
+			if err != nil {
+				return err
+			}
+			reg.Replace(fresh)
+			return nil
+		}
+		handlers = append(handlers, definitions.NewBroadcastConsumer(loader, rebuild))
+		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
+	}
+	svc.Init(ctx, frame.WithRegisterEvents(handlers...))
 	if mgr := svc.EventsManager(); mgr != nil {
 		mgr.SetStrict(false)
 	}
@@ -540,6 +624,12 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
+
+	// Admin: recent crawl_jobs for a source, each with a count of the
+	// raw_payloads it produced. Triage view: "when did we last crawl
+	// source X, what happened, how many raw_payloads landed?"
+	adminMux.HandleFunc("GET /admin/crawl_jobs",
+		service.CrawlJobsAdminHandler(crawlRepo))
 
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
 

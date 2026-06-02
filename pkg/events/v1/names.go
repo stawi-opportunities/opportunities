@@ -153,5 +153,6 @@ func AllTopics() []string {
 		TopicSessionCaptured,
 		TopicSessionRequired,
 		TopicSessionExpired,
+		TopicDefinitionsChanged,
 	}
 }

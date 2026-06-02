@@ -55,9 +55,9 @@
 
 - [ ] curl -XPOST $CRAWLER_URL/admin/scheduler/tick
 - [ ] Wait 5 min. Run manual compact:
-  - curl -XPOST $WRITER_URL/_admin/compact
+  - curl -XPOST $WRITER_URL/\_admin/compact
 - [ ] Run expire-snapshots if needed:
-  - curl -XPOST $WRITER_URL/_admin/expire-snapshots
+  - curl -XPOST $WRITER_URL/\_admin/expire-snapshots
 - [ ] Apply the new Trustage triggers:
   - trustage deploy definitions/trustage/writer-compact.json
   - trustage deploy definitions/trustage/writer-expire-snapshots.json
@@ -65,6 +65,7 @@
 ### 2.4 Fill checkpoint (1–3 hours)
 
 Wait for idx_opportunities_rt row count to cross launch threshold (default 50k):
+
 - [ ] Poll: curl -s $API_URL/healthz | jq .total_jobs
 - [ ] Tail writer flushes: kubectl logs -f -l app=writer | grep "parquet flushed"
 - [ ] Tail materializer upserts: kubectl logs -f -l app=materializer | grep "manticore upsert"
@@ -72,7 +73,8 @@ Wait for idx_opportunities_rt row count to cross launch threshold (default 50k):
 
 ### 2.5 Flip the site to v2 endpoints
 
-The api binary mounts /api/v2/* and legacy /api/* shim paths route to v2. No additional flip needed — the Phase 6 deploy in Step 2.2 already made them live.
+The api binary mounts /api/v2/_ and legacy /api/_ shim paths route to v2. No additional flip needed — the Phase 6 deploy in Step 2.2 already made them live.
+
 - [ ] Exercise: search, category page, detail page, country filter, remote filter — all return data.
 
 ### 2.6 Drop legacy Postgres tables (POINT OF NO RETURN)
@@ -108,6 +110,7 @@ actual cgroup memory limit at runtime via `pkg/memconfig`. There are no
 hardcoded memory ceilings in the application code.
 
 **Operator rules:**
+
 - `requests.memory` = minimum for reliable startup. Do not lower.
 - `limits.memory` = advisory ceiling. The system shrinks batch sizes
   automatically when the limit is reduced — it never OOMs.
@@ -118,13 +121,13 @@ hardcoded memory ceilings in the application code.
 
 **What each subsystem uses:**
 
-| Service     | Subsystem        | Budget | Notes                              |
-|-------------|------------------|--------|------------------------------------|
-| writer      | writer-buffer    | 30%    | global cap across all partitions   |
-| writer      | compact          | 50%    | parallelism = budget / 1.5 GiB     |
-| worker      | kv-rebuild       | 30%    | bounded map + Lua CAS flush        |
-| candidates  | stale-reader     | 20%    | bounded map + heap retract         |
-| materializer| materializer-bulk| 10%    | Manticore NDJSON batch size        |
+| Service      | Subsystem         | Budget | Notes                            |
+| ------------ | ----------------- | ------ | -------------------------------- |
+| writer       | writer-buffer     | 30%    | global cap across all partitions |
+| writer       | compact           | 50%    | parallelism = budget / 1.5 GiB   |
+| worker       | kv-rebuild        | 30%    | bounded map + Lua CAS flush      |
+| candidates   | stale-reader      | 20%    | bounded map + heap retract       |
+| materializer | materializer-bulk | 10%    | Manticore NDJSON batch size      |
 
 See `manifests/namespaces/opportunities/common/RESOURCE_SCALING.md` for
 the full per-service breakdown.

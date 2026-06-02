@@ -12,12 +12,14 @@ import (
 	cachevalkey "github.com/pitabwire/frame/cache/valkey"
 	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/util"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
@@ -100,13 +102,32 @@ func main() {
 		util.Log(ctx).Warn("worker: no datastore pool — pipeline_variants writes disabled")
 	}
 
-	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
-	// later phases consult the registry on the publish/index paths.
-	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	// Load the opportunity-kinds registry. Prefer the R2-backed
+	// definitions loader (admin can edit kind YAMLs in the cluster);
+	// fall back to the on-disk ConfigMap when R2 isn't configured so
+	// dev/OSS deploys keep working.
+	loader, err := definitions.NewR2LoaderFromEnv(ctx)
 	if err != nil {
-		util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
+		util.Log(ctx).WithError(err).Fatal("definitions: env config failed")
 	}
-	util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+	var reg *opportunity.Registry
+	if loader != nil {
+		if err := loader.Start(ctx); err != nil {
+			util.Log(ctx).WithError(err).Fatal("definitions: loader start failed")
+		}
+		reg, err = opportunity.LoadFromDefinitions(ctx, loader)
+		if err != nil {
+			util.Log(ctx).WithError(err).Fatal("definitions: registry load failed")
+		}
+		util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded from R2 definitions")
+	} else {
+		util.Log(ctx).Warn("definitions: R2 not configured; falling back to OpportunityKindsDir")
+		reg, err = opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+		if err != nil {
+			util.Log(ctx).WithError(err).Fatal("opportunity registry: load failed")
+		}
+		util.Log(ctx).WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
+	}
 
 	// Initialize pipeline + Iceberg telemetry instruments. The Record*
 	// helpers used by embed/translate paths are nil-safe (they drop the
@@ -200,14 +221,62 @@ func main() {
 	//   - Frame Queue for external-LLM stages (embed, translate). Each
 	//     gets its own subject + durable consumer so per-stage
 	//     backpressure is independent.
-	svc.Init(ctx,
-		frame.WithRegisterEvents(service.EventHandlers()...),
-		frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
-		frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
-		frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
-		frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
+	//   - definitions.changed.v1 broadcast — invalidates the loader
+	//     cache and live-rebuilds the kind registry on admin edits.
+	// Select this process's handlers by stage group. Each group runs as
+	// its own Deployment with its own EVENTS_QUEUE_URL (→ own durable
+	// consumer + ack_pending), so a slow/failing stage can't starve the
+	// others. STAGE_GROUP=all preserves the single-deployment monolith.
+	pipelineHandlers := service.HandlersForGroup(cfg.StageGroup)
+
+	// The definitions broadcast consumer must run in EVERY group: each
+	// group's registry needs live-rebuild on admin edits. It's a
+	// broadcast (fanout) subscriber, not a work-queue handler, so
+	// registering it in all groups is correct (each maintains its own
+	// in-memory registry).
+	if loader != nil {
+		rebuild := func(ctx context.Context) error {
+			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
+			if err != nil {
+				return err
+			}
+			reg.Replace(fresh)
+			return nil
+		}
+		pipelineHandlers = append([]events.EventI(pipelineHandlers), definitions.NewBroadcastConsumer(loader, rebuild))
+		util.Log(ctx).WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
+	}
+
+	initOpts := []frame.Option{
+		frame.WithRegisterEvents(pipelineHandlers...),
 		frame.WithHTTPHandler(adminMux),
-	)
+	}
+
+	// embed + translate are subject-queue workers owned by the publish
+	// group (CanonicalHandler enqueues to them; only publish drains them).
+	// Register their publisher+subscriber pair only there. The "all"
+	// monolith keeps them too so legacy installs are unchanged.
+	if cfg.StageGroup == "publish" || cfg.StageGroup == "all" {
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
+		)
+	}
+
+	// CanonicalHandler runs in "core" but PUBLISHES to the embed/translate
+	// subjects (which the publish group drains). A publisher must be
+	// registered in the process that emits. So core also needs the two
+	// publishers (without the subscribers).
+	if cfg.StageGroup == "core" {
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
+		)
+	}
+
+	svc.Init(ctx, initOpts...)
 
 	// The worker consumes svc.opportunities.events.> (catch-all) but
 	// only acts on the variants/canonical chain. Loose mode lets Frame
@@ -216,6 +285,20 @@ func main() {
 	// service.EventHandlers().
 	if mgr := svc.EventsManager(); mgr != nil {
 		mgr.SetStrict(false)
+	}
+
+	// Stuck-variant reaper. Runs in its own goroutine and periodically
+	// re-drives variants wedged mid-chain (NATS max-deliver drop, failed
+	// emit, transient R2/TEI outage). Tied to a context cancelled when the
+	// service stops so it shuts down cleanly. No-op when no datastore is
+	// wired.
+	// One reaper, in the core group only — three reapers would triple
+	// re-emit every stuck row. core is always running, so this is a safe
+	// single owner. (STAGE_GROUP=all also runs it for the monolith.)
+	if cfg.StageGroup == "core" || cfg.StageGroup == "all" {
+		reaperCtx, stopReaper := context.WithCancel(ctx)
+		defer stopReaper()
+		go workersvc.NewReaper(svc, variantStore).Run(reaperCtx)
 	}
 
 	if err := svc.Run(ctx, ""); err != nil {

@@ -109,13 +109,20 @@ VARIANTS = Schema(
 
 # opportunities.variants_rejected — Verify-stage sink for variants that
 # fail Spec-required-attribute checks. Audit trail; never republished.
+#
+# raw_payload_id + crawl_job_id forward-link a rejection to the crawler
+# audit ledger so /admin/trace can render a "see the HTML" button on
+# rejected variants. Optional so rows emitted before this field landed
+# stay readable.
 VARIANTS_REJECTED = Schema(
-    NestedField(1, "variant_id",  StringType(),    required=True),
-    NestedField(2, "source_id",   StringType(),    required=True),
-    NestedField(3, "kind",        StringType(),    required=True),
-    NestedField(4, "title",       StringType(),    required=True),
-    NestedField(5, "reasons",     StringType(),    required=True),  # JSON array
-    NestedField(6, "rejected_at", TimestampType(), required=True),
+    NestedField(1, "variant_id",     StringType(),    required=True),
+    NestedField(2, "source_id",      StringType(),    required=True),
+    NestedField(3, "kind",           StringType(),    required=True),
+    NestedField(4, "title",          StringType(),    required=True),
+    NestedField(5, "reasons",        StringType(),    required=True),  # JSON array
+    NestedField(6, "raw_payload_id", StringType(),    required=False),
+    NestedField(7, "crawl_job_id",   StringType(),    required=False),
+    NestedField(8, "rejected_at",    TimestampType(), required=True),
 )
 
 # opportunities.canonicals and opportunities.canonicals_expired schemas removed from Iceberg.

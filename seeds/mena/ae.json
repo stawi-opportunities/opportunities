@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/talabat",
     "country": "AE",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ar",
     "priority": "normal",
     "region": "mena",
@@ -15,9 +13,7 @@
     "base_url": "https://jobs.lever.co/careem",
     "country": "AE",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ar",
     "priority": "normal",
     "region": "mena",
@@ -27,9 +23,7 @@
     "base_url": "https://boards.greenhouse.io/property-finder",
     "country": "AE",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ar",
     "priority": "normal",
     "region": "mena",

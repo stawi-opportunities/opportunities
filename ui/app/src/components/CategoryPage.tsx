@@ -1,10 +1,12 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { categoryJobs } from "@/api/search";
-import { JobRow } from "./JobRow";
-import { categoryLabel } from "@/utils/format";
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { categoryJobs } from '@/api/search';
+import { JobRow } from './JobRow';
+import { categoryLabel } from '@/utils/format';
+import { useI18n } from '@/i18n/I18nProvider';
 
 export default function CategoryPage() {
+  const { t } = useI18n();
   const slug = (() => {
     const m = window.location.pathname.match(/^\/categories\/([^/]+)\/?$/);
     return m ? decodeURIComponent(m[1]!) : null;
@@ -12,40 +14,45 @@ export default function CategoryPage() {
   const [cursor, setCursor] = useState<string | undefined>();
 
   const q = useQuery({
-    queryKey: ["category-jobs", slug, cursor],
+    queryKey: ['category-jobs', slug, cursor],
     queryFn: () => categoryJobs(slug!, { cursor, limit: 25 }),
     enabled: !!slug,
     staleTime: 30_000,
   });
 
-  if (!slug) return <NotFound />;
+  if (!slug) return <NotFound t={t} />;
   const title = categoryLabel(slug);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
       <nav aria-label="Breadcrumb" className="text-sm text-gray-500">
-        <a href="/" className="hover:text-gray-700">Home</a>
+        <a href="/" className="hover:text-gray-700">
+          {t('common.home')}
+        </a>
         <span className="mx-1.5">/</span>
-        <a href="/categories/" className="hover:text-gray-700">Categories</a>
+        <a href="/categories/" className="hover:text-gray-700">
+          {t('common.categories')}
+        </a>
         <span className="mx-1.5">/</span>
         <span className="text-gray-700">{title}</span>
       </nav>
-      <h1 className="mt-3 text-3xl font-bold text-gray-900">{title} jobs</h1>
+      <h1 className="mt-3 text-3xl font-bold text-gray-900">
+        {title} {t('common.jobs')}
+      </h1>
       <p className="mt-2 text-gray-600">
-        Latest roles in {title.toLowerCase()} — filtered by category and sorted
-        by recency.
+        {t('category.latestRoles').replace('{category}', title.toLowerCase())}
       </p>
 
       {q.isLoading && <SkeletonList />}
       {q.isError && (
         <div className="mt-8 rounded-md bg-red-50 p-4 text-sm text-red-700" role="alert">
-          We couldn't load this category.{" "}
+          {t('error.categoryLoad')}{' '}
           <button
             type="button"
             onClick={() => q.refetch()}
             className="font-medium underline hover:text-red-800"
           >
-            Retry
+            {t('cta.retry')}
           </button>
         </div>
       )}
@@ -58,13 +65,13 @@ export default function CategoryPage() {
             {q.data.results.length === 0 && (
               <li className="px-4 py-10 text-center">
                 <p className="text-sm text-gray-700">
-                  No {title.toLowerCase()} roles are open right now.
+                  {t('category.noRolesOpen').replace('{category}', title.toLowerCase())}
                 </p>
                 <a
                   href="/jobs/"
                   className="mt-3 inline-block text-sm font-medium text-navy-700 hover:text-navy-900"
                 >
-                  Browse all jobs →
+                  {t('category.browseAllJobs')}
                 </a>
               </li>
             )}
@@ -77,7 +84,7 @@ export default function CategoryPage() {
                 className="rounded-md border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60"
                 onClick={() => setCursor(q.data.cursor_next)}
               >
-                {q.isFetching ? "Loading…" : "Load more"}
+                {q.isFetching ? t('common.loading') : t('cta.loadMore')}
               </button>
             </div>
           )}
@@ -97,18 +104,16 @@ function SkeletonList() {
   );
 }
 
-function NotFound() {
+function NotFound({ t }: { t: (k: import('@/i18n/strings').StringKey) => string }) {
   return (
     <div className="mx-auto max-w-md py-16 text-center">
-      <h1 className="text-2xl font-semibold text-gray-900">Category not found</h1>
-      <p className="mt-2 text-gray-600">
-        That category doesn't exist (yet).
-      </p>
+      <h1 className="text-2xl font-semibold text-gray-900">{t('category.notFound')}</h1>
+      <p className="mt-2 text-gray-600">{t('category.notFoundMessage')}</p>
       <a
         href="/categories/"
         className="mt-6 inline-block rounded-md bg-navy-900 px-5 py-2 text-sm font-medium text-white hover:bg-navy-800"
       >
-        Back to all categories
+        {t('category.backToAll')}
       </a>
     </div>
   );

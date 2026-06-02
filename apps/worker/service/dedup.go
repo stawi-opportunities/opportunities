@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -126,6 +127,7 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		}
 		outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out)
 		if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv); err != nil {
+			_ = h.store.RecordError(ctx, val.VariantID, variantstate.StageClustered, fmt.Errorf("dedup: emit clustered: %w", err))
 			return err
 		}
 		_ = h.store.AdvanceStage(ctx, val.VariantID,
@@ -200,6 +202,7 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 	}
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out)
 	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv); err != nil {
+		_ = h.store.RecordError(ctx, val.VariantID, variantstate.StageClustered, fmt.Errorf("dedup: emit clustered: %w", err))
 		return err
 	}
 	_ = h.store.AdvanceStage(ctx, val.VariantID,

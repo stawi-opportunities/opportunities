@@ -28,44 +28,44 @@
 
 **New files this plan creates:**
 
-| File | Responsibility |
-|---|---|
-| `db/migrations/0013_candidate_matches_oltp.sql` | Rename legacy `candidate_matches` → `…_legacy`; create new shape. |
-| `pkg/matching/match.go` | `Match` struct + `MatchStatus` enum + `IsTerminalStatus`. |
-| `pkg/matching/store.go` | `Store` repo: `UpsertMatch`, `UpsertMatches`, `GetByPair`, `ListByCandidate`. |
-| `pkg/matching/store_test.go` | TDD red/green for Store (uses testcontainers). |
-| `pkg/matching/events_log.go` | `WriteMatchEvent`, `WriteMatchRunEvent`. |
-| `pkg/matching/events_log_test.go` | TDD red/green for event writers. |
-| `pkg/matching/index_store.go` | `IndexStore` repo for `candidate_match_indexes`. |
-| `pkg/matching/index_store_test.go` | TDD red/green for index store. |
-| `pkg/matching/knn.go` | `FanOutKNN` (one opp → top-N candidates) + `ReverseKNN` (one candidate → top-N opps). |
-| `pkg/matching/knn_test.go` | TDD red/green for KNN queries. |
-| `pkg/matching/rerank.go` | `Reranker` interface + `NoopReranker` + `PooledReranker`. |
-| `pkg/matching/rerank_test.go` | TDD red/green for reranker pool + fallback. |
-| `pkg/matching/fanout.go` | Path A orchestrator (pure). |
-| `pkg/matching/fanout_test.go` | TDD red/green for Path A. |
-| `pkg/matching/gapfill.go` | Path B orchestrator (pure). |
-| `pkg/matching/gapfill_test.go` | TDD red/green for Path B. |
-| `pkg/matching/candidate_change.go` | Path C orchestrator (pure) + `Debouncer` interface. |
-| `pkg/matching/candidate_change_test.go` | TDD red/green for Path C. |
-| `pkg/matching/metrics.go` | Prometheus metric definitions per spec §5.2. |
-| `apps/matching/service/matching/v1/dlq.go` | `DLQGuard` helper (5-redelivery → deadletter publish). |
-| `apps/matching/service/matching/v1/dlq_test.go` | TDD red/green for DLQ guard. |
-| `apps/matching/service/matching/v1/fanout_consumer.go` | JetStream consumer wiring Path A to `TopicCanonicalsUpserted`. |
-| `apps/matching/service/matching/v1/fanout_consumer_test.go` | Unit test with fake EventsManager. |
-| `apps/matching/service/matching/v1/candidate_change_consumer.go` | JetStream consumer wiring Path C. |
-| `apps/matching/service/matching/v1/candidate_change_consumer_test.go` | Unit test with fake EventsManager. |
-| `tests/integration/matching_pipeline_test.go` | `MatchingPipelineSuite` covering A/B/C + idempotency + overflow + DLQ. |
+| File                                                                  | Responsibility                                                                        |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `db/migrations/0013_candidate_matches_oltp.sql`                       | Rename legacy `candidate_matches` → `…_legacy`; create new shape.                     |
+| `pkg/matching/match.go`                                               | `Match` struct + `MatchStatus` enum + `IsTerminalStatus`.                             |
+| `pkg/matching/store.go`                                               | `Store` repo: `UpsertMatch`, `UpsertMatches`, `GetByPair`, `ListByCandidate`.         |
+| `pkg/matching/store_test.go`                                          | TDD red/green for Store (uses testcontainers).                                        |
+| `pkg/matching/events_log.go`                                          | `WriteMatchEvent`, `WriteMatchRunEvent`.                                              |
+| `pkg/matching/events_log_test.go`                                     | TDD red/green for event writers.                                                      |
+| `pkg/matching/index_store.go`                                         | `IndexStore` repo for `candidate_match_indexes`.                                      |
+| `pkg/matching/index_store_test.go`                                    | TDD red/green for index store.                                                        |
+| `pkg/matching/knn.go`                                                 | `FanOutKNN` (one opp → top-N candidates) + `ReverseKNN` (one candidate → top-N opps). |
+| `pkg/matching/knn_test.go`                                            | TDD red/green for KNN queries.                                                        |
+| `pkg/matching/rerank.go`                                              | `Reranker` interface + `NoopReranker` + `PooledReranker`.                             |
+| `pkg/matching/rerank_test.go`                                         | TDD red/green for reranker pool + fallback.                                           |
+| `pkg/matching/fanout.go`                                              | Path A orchestrator (pure).                                                           |
+| `pkg/matching/fanout_test.go`                                         | TDD red/green for Path A.                                                             |
+| `pkg/matching/gapfill.go`                                             | Path B orchestrator (pure).                                                           |
+| `pkg/matching/gapfill_test.go`                                        | TDD red/green for Path B.                                                             |
+| `pkg/matching/candidate_change.go`                                    | Path C orchestrator (pure) + `Debouncer` interface.                                   |
+| `pkg/matching/candidate_change_test.go`                               | TDD red/green for Path C.                                                             |
+| `pkg/matching/metrics.go`                                             | Prometheus metric definitions per spec §5.2.                                          |
+| `apps/matching/service/matching/v1/dlq.go`                            | `DLQGuard` helper (5-redelivery → deadletter publish).                                |
+| `apps/matching/service/matching/v1/dlq_test.go`                       | TDD red/green for DLQ guard.                                                          |
+| `apps/matching/service/matching/v1/fanout_consumer.go`                | JetStream consumer wiring Path A to `TopicCanonicalsUpserted`.                        |
+| `apps/matching/service/matching/v1/fanout_consumer_test.go`           | Unit test with fake EventsManager.                                                    |
+| `apps/matching/service/matching/v1/candidate_change_consumer.go`      | JetStream consumer wiring Path C.                                                     |
+| `apps/matching/service/matching/v1/candidate_change_consumer_test.go` | Unit test with fake EventsManager.                                                    |
+| `tests/integration/matching_pipeline_test.go`                         | `MatchingPipelineSuite` covering A/B/C + idempotency + overflow + DLQ.                |
 
 **Modified files:**
 
-| File | Change |
-|---|---|
-| `pkg/pgsearch/search.go:237-247` | Fix staticcheck S1016 (struct literal → conversion). Unblocks PR #2 CI lint. |
-| `pkg/domain/candidate.go:143` | `CandidateMatch.TableName()` returns `"candidate_matches_legacy"`. |
-| `pkg/events/v1/names.go` | Add `SubjectMatchingDeadletter = "svc.opportunities.matching.deadletter"`. |
-| `apps/matching/cmd/main.go` | Register the two new subscribers behind `MATCHING_FANOUT_ENABLED` / `MATCHING_CANDIDATE_CHANGE_ENABLED` env flags. |
-| `docs/superpowers/specs/2026-05-20-continuous-matching-and-applications-design.md` | §8 progress log: mark Phase 2 complete. |
+| File                                                                               | Change                                                                                                             |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `pkg/pgsearch/search.go:237-247`                                                   | Fix staticcheck S1016 (struct literal → conversion). Unblocks PR #2 CI lint.                                       |
+| `pkg/domain/candidate.go:143`                                                      | `CandidateMatch.TableName()` returns `"candidate_matches_legacy"`.                                                 |
+| `pkg/events/v1/names.go`                                                           | Add `SubjectMatchingDeadletter = "svc.opportunities.matching.deadletter"`.                                         |
+| `apps/matching/cmd/main.go`                                                        | Register the two new subscribers behind `MATCHING_FANOUT_ENABLED` / `MATCHING_CANDIDATE_CHANGE_ENABLED` env flags. |
+| `docs/superpowers/specs/2026-05-20-continuous-matching-and-applications-design.md` | §8 progress log: mark Phase 2 complete.                                                                            |
 
 ---
 
@@ -76,6 +76,7 @@
 This is a CI-unblocker for PR #2. The lint rule wants a type conversion when the field set of two structs matches exactly.
 
 **Files:**
+
 - Modify: `pkg/pgsearch/search.go:220-249`
 
 - [ ] **Step 1: Read the offending range**
@@ -87,6 +88,7 @@ sed -n '220,250p' pkg/pgsearch/search.go
 - [ ] **Step 2: Edit lines 235-247 — replace struct literal with conversion**
 
 Before:
+
 ```go
 out := make([]Hit, 0, len(rows))
 for _, r := range rows {
@@ -105,6 +107,7 @@ return out, nil
 ```
 
 After:
+
 ```go
 out := make([]Hit, 0, len(rows))
 for _, r := range rows {
@@ -145,6 +148,7 @@ git commit -m "fix(pgsearch): drop redundant struct literal (staticcheck S1016)"
 Per spec §2.2. Renames the legacy GORM-managed table out of the way (data preserved, lookups via the legacy struct keep working under the new name) and creates the new shape with the spec's enum and constraints.
 
 **Files:**
+
 - Create: `db/migrations/0013_candidate_matches_oltp.sql`
 
 - [ ] **Step 1: Write the migration**
@@ -269,16 +273,19 @@ git commit -m "feat(db): migration 0013 — new candidate_matches OLTP table (re
 The GORM struct keeps writing to the renamed legacy table; nothing else changes for legacy callers.
 
 **Files:**
+
 - Modify: `pkg/domain/candidate.go:143`
 
 - [ ] **Step 1: Edit the TableName method**
 
 Replace:
+
 ```go
 func (CandidateMatch) TableName() string { return "candidate_matches" }
 ```
 
 with:
+
 ```go
 // TableName binds the legacy GORM struct to the renamed table. Migration
 // 0013 renamed the GORM-managed table to `candidate_matches_legacy`;
@@ -319,6 +326,7 @@ git commit -m "refactor(domain): point legacy CandidateMatch struct at candidate
 Pure value types. No DB, no I/O.
 
 **Files:**
+
 - Create: `pkg/matching/match.go`
 - Test: `pkg/matching/match_test.go`
 
@@ -452,6 +460,7 @@ git commit -m "feat(matching): Match value type + MatchStatus enum"
 Owns `candidate_matches` writes. UPSERT enforces the score-monotonic + status-`new`-only update invariants from spec §3.5.
 
 **Files:**
+
 - Create: `pkg/matching/store.go`
 - Test: `pkg/matching/store_test.go` (testcontainers, integration build tag)
 
@@ -981,6 +990,7 @@ git commit -m "feat(matching): candidate_matches Store with monotonic-score + te
 The feed endpoint in Phase 4 needs cursor-based pagination over the candidate's rows.
 
 **Files:**
+
 - Modify: `pkg/matching/store.go` (append)
 - Modify: `pkg/matching/store_test.go` (append)
 
@@ -1216,6 +1226,7 @@ git commit -m "feat(matching): Store.ListByCandidate with stable cursor paginati
 Spec §2.1 hypertables `candidate_match_events` + `match_run_events`. Writers are append-only — no UPDATE path.
 
 **Files:**
+
 - Create: `pkg/matching/events_log.go`
 - Test: `pkg/matching/events_log_test.go`
 
@@ -1453,6 +1464,7 @@ git commit -m "feat(matching): append-only writers for candidate_match_events + 
 Path A fan-out reads from this table to discover eligible candidates per opportunity. Path C reads + writes it when the candidate's CV or rules change. Embedding is `vector(1536)` — we serialize via the textual `[a,b,c]` form.
 
 **Files:**
+
 - Create: `pkg/matching/index_store.go`
 - Test: `pkg/matching/index_store_test.go`
 
@@ -1688,6 +1700,7 @@ git commit -m "feat(matching): IndexStore for candidate_match_indexes (UPSERT + 
 Two flavors: `FanOutKNN` (one opportunity vector → top-N candidates from `candidate_match_indexes`) and `ReverseKNN` (one candidate vector → top-N opportunities from `opportunities`). Both push as much filtering down to SQL as possible.
 
 **Files:**
+
 - Create: `pkg/matching/knn.go`
 - Test: `pkg/matching/knn_test.go`
 
@@ -2008,6 +2021,7 @@ git commit -m "feat(matching): FanOutKNN + ReverseKNN against pgvector"
 Interface + noop + bounded pool. Reranker may be unavailable (config off, network error, pool full); the orchestrators degrade gracefully per spec §3.7.
 
 **Files:**
+
 - Create: `pkg/matching/rerank.go`
 - Test: `pkg/matching/rerank_test.go`
 
@@ -2199,6 +2213,7 @@ git commit -m "feat(matching): Reranker interface with noop + bounded-pool fallb
 Pure function: given an opportunity + dependency interfaces, run the spec §3.1 pipeline. No goroutines, no JetStream, no `time.Now()` (caller passes `now`). The JetStream consumer in Task 14 wraps it.
 
 **Files:**
+
 - Create: `pkg/matching/fanout.go`
 - Test: `pkg/matching/fanout_test.go`
 
@@ -2580,6 +2595,7 @@ git commit -m "feat(matching): Path A fan-out orchestrator (pure)"
 Pure function called by the HTTP handler in Phase 4. Same shape as Path A but starts from a candidate, does a `ReverseKNN`, and upserts only `status='new'` rows (existing rows are preserved by the conflict guard).
 
 **Files:**
+
 - Create: `pkg/matching/gapfill.go`
 - Test: `pkg/matching/gapfill_test.go`
 
@@ -2842,6 +2858,7 @@ git commit -m "feat(matching): Path B gap-filler orchestrator (pure)"
 Candidate-side rematch on rule / embedding change. Same shape as gap-fill but: (a) `Since` is computed as "all-time" or last-rematch boundary, (b) wrapped in a `Debouncer` that rejects requests within N minutes.
 
 **Files:**
+
 - Create: `pkg/matching/candidate_change.go`
 - Test: `pkg/matching/candidate_change_test.go`
 
@@ -3008,6 +3025,7 @@ git commit -m "feat(matching): Path C candidate-change orchestrator with debounc
 Per spec §5.2. Register lazily — Frame's `util.Metrics` is per-service; the registration sites in the consumers (Tasks 16, 17) actually wire them.
 
 **Files:**
+
 - Create: `pkg/matching/metrics.go`
 
 - [ ] **Step 1: Implement**
@@ -3090,6 +3108,7 @@ git commit -m "feat(matching): Prometheus metric definitions for the matching pi
 Subject from spec §3.7: `svc.opportunities.matching.deadletter`. Helper counts redeliveries (via JetStream message metadata) and, at threshold, publishes the original payload + envelope to the DLQ subject, then acks the original message to stop the redelivery loop.
 
 **Files:**
+
 - Modify: `pkg/events/v1/names.go` (add subject constant)
 - Create: `apps/matching/service/matching/v1/dlq.go`
 - Create: `apps/matching/service/matching/v1/dlq_test.go`
@@ -3255,6 +3274,7 @@ git commit -m "feat(matching): DLQGuard helper + SubjectMatchingDeadletter const
 Implements Frame's `queue.SubscribeWorker` for `TopicCanonicalsUpserted`. Decodes the envelope, loads the opportunity's embedding via `variantstate.Store` (or a slimmer query — see step 1), calls `matching.FanOut`, wraps with `DLQGuard`. **No tests-against-real-NATS** here — that's the integration suite in Task 18. Unit test uses a fake events manager.
 
 **Files:**
+
 - Create: `apps/matching/service/matching/v1/fanout_consumer.go`
 - Create: `apps/matching/service/matching/v1/fanout_consumer_test.go`
 
@@ -3521,6 +3541,7 @@ git commit -m "feat(matching): fan-out JetStream consumer wiring Path A to Topic
 Mirrors Task 16 for `TopicCandidatePreferencesUpdated` and `TopicCandidateEmbedding`. Uses `RunCandidateChange` + the same DLQ guard.
 
 **Files:**
+
 - Create: `apps/matching/service/matching/v1/candidate_change_consumer.go`
 - Create: `apps/matching/service/matching/v1/candidate_change_consumer_test.go`
 
@@ -3682,6 +3703,7 @@ git commit -m "feat(matching): candidate-change consumer wiring Path C to prefs/
 Wire the consumers into the running binary, behind feature flags so rollout is reversible per spec §5.5.
 
 **Files:**
+
 - Modify: `apps/matching/cmd/main.go`
 - Modify: `apps/matching/cmd/config.go` (or wherever env vars live — find with `grep -n 'cfg\.' apps/matching/cmd/main.go | head`)
 
@@ -3866,6 +3888,7 @@ git commit -m "feat(matching): wire fan-out + candidate-change consumers behind 
 Validates the invariants that pure-package tests can't: idempotency replay, terminal protection across paths, score-monotonic in real SQL, daily-cap behaviour for Path A, gap-fill merges with fan-out output without dupes.
 
 **Files:**
+
 - Create: `tests/integration/matching_pipeline_test.go`
 
 - [ ] **Step 1: Skeleton**
@@ -4120,6 +4143,7 @@ git commit -m "test(integration): MatchingPipelineSuite (A/B happy paths, idempo
 ### Task 20: Update the spec progress log
 
 **Files:**
+
 - Modify: `docs/superpowers/specs/2026-05-20-continuous-matching-and-applications-design.md` (§8 progress log)
 
 - [ ] **Step 1: Append**

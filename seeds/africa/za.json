@@ -3,9 +3,7 @@
     "base_url": "https://www.careers24.com",
     "country": "ZA",
     "crawl_interval_sec": 3600,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "hot",
     "region": "africa",
     "source_type": "careers24"
@@ -14,9 +12,7 @@
     "base_url": "https://www.pnet.co.za",
     "country": "ZA",
     "crawl_interval_sec": 3600,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "hot",
     "region": "africa",
     "source_type": "pnet"

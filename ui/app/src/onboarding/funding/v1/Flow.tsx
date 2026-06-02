@@ -4,13 +4,13 @@
 // for vector / lexical matching against the call's eligibility),
 // requested amount range, and geographic scope.
 
-import { useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent } from 'react';
 import {
   LocationPicker,
   emptyLocationPreference,
   type LocationPreference,
-} from "@/onboarding/shared/LocationPicker";
-import { AmountRange } from "@/onboarding/shared/AmountRange";
+} from '@/onboarding/shared/LocationPicker';
+import { AmountRange } from '@/onboarding/shared/AmountRange';
 
 export interface FundingPreferences {
   organisation_type: string;
@@ -22,12 +22,12 @@ export interface FundingPreferences {
 }
 
 const EMPTY: FundingPreferences = {
-  organisation_type: "nonprofit",
+  organisation_type: 'nonprofit',
   focus_areas: [],
   geographic_scope: emptyLocationPreference,
   funding_amount_needed_min: 0,
   funding_amount_needed_max: 0,
-  currency: "USD",
+  currency: 'USD',
 };
 
 export function Flow({
@@ -64,12 +64,12 @@ export function Flow({
       <input
         className="input-field"
         placeholder="Focus areas (comma-separated, e.g. Climate, Education)"
-        value={p.focus_areas.join(", ")}
+        value={p.focus_areas.join(', ')}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           setP({
             ...p,
             focus_areas: e.currentTarget.value
-              .split(",")
+              .split(',')
               .map((s) => s.trim())
               .filter(Boolean),
           })

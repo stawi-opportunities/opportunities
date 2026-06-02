@@ -23,6 +23,8 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/counters"
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
@@ -67,6 +69,23 @@ type apiConfig struct {
 	// endpoint. Empty disables the counters surface — the analytics
 	// log path keeps working unchanged.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
+
+	// R2* config powers /admin/raw_payloads/{id}/body — the operator
+	// drill-down that streams the original archived HTML from R2. The
+	// same credentials secret is mounted on the crawler/worker pods;
+	// the api just needs read access on the raw/* prefix inside the
+	// archive bucket (where crawler.PutRaw stores the gzipped HTML).
+	// All fields are optional — when AccountID or ArchiveBucket is
+	// empty the endpoint is not wired and the rest of the admin
+	// surface keeps working unchanged. R2Endpoint mirrors the
+	// crawler/worker config for parity, even though pkg/archive
+	// derives the endpoint URL from R2AccountID.
+	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
+	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
+	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
+	R2Endpoint        string `env:"R2_ENDPOINT" envDefault:""`
+	R2ContentBucket   string `env:"R2_CONTENT_BUCKET" envDefault:"product-opportunities-content"`
+	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
 }
 
 func main() {
@@ -78,13 +97,32 @@ func main() {
 		log.WithError(err).Fatal("api: parse config failed")
 	}
 
-	// Load the opportunity-kinds registry at boot. Phase 1 only loads + logs;
-	// later phases consult the registry on the publish/index paths.
-	reg, err := opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+	// Load the opportunity-kinds registry. Prefer the R2-backed
+	// definitions loader (admin can edit kind YAMLs in the cluster);
+	// fall back to the on-disk ConfigMap when R2 isn't configured so
+	// dev/OSS deploys keep working.
+	loader, err := definitions.NewR2LoaderFromEnv(ctx)
 	if err != nil {
-		log.WithError(err).Fatal("opportunity registry: load failed")
+		log.WithError(err).Fatal("definitions: env config failed")
 	}
-	log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded")
+	var reg *opportunity.Registry
+	if loader != nil {
+		if err := loader.Start(ctx); err != nil {
+			log.WithError(err).Fatal("definitions: loader start failed")
+		}
+		reg, err = opportunity.LoadFromDefinitions(ctx, loader)
+		if err != nil {
+			log.WithError(err).Fatal("definitions: registry load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from R2 definitions")
+	} else {
+		log.Warn("definitions: R2 not configured; falling back to OpportunityKindsDir")
+		reg, err = opportunity.LoadFromDir(cfg.OpportunityKindsDir)
+		if err != nil {
+			log.WithError(err).Fatal("opportunity registry: load failed")
+		}
+		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
+	}
 
 	// Frame service — pulls in DatastoreManager which gives us the
 	// CNPG pool the rest of the platform uses. We bring the api under
@@ -97,6 +135,26 @@ func main() {
 		frame.WithDatastore(),
 	)
 	defer svc.Stop(ctx)
+
+	// Subscribe to definitions.changed.v1 broadcasts so this replica
+	// picks up admin edits within seconds (vs. the 5-min refresh tick).
+	// On kind events the rebuild callback live-swaps the registry —
+	// readers see either old or new state, never a half-built map.
+	if loader != nil {
+		rebuild := func(ctx context.Context) error {
+			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
+			if err != nil {
+				return err
+			}
+			reg.Replace(fresh)
+			return nil
+		}
+		svc.Init(ctx, frame.WithRegisterEvents(definitions.NewBroadcastConsumer(loader, rebuild)))
+		if mgr := svc.EventsManager(); mgr != nil {
+			mgr.SetStrict(false)
+		}
+		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
+	}
 
 	// Postgres backend — opportunities table populated by worker.canonical
 	// + materializer admin handlers. Manticore path retired in Phase 6.
@@ -175,7 +233,7 @@ func main() {
 	// own Postgres connection, so wiring them together keeps the
 	// "should the api own a DB?" decision a single env var.
 	if cfg.SourceAdminEnabled {
-		registerSourcesAdmin(ctx, mux, &cfg, reg)
+		registerSourcesAdmin(ctx, mux, &cfg, reg, loader)
 		registerFlagsAdmin(ctx, mux, jm)
 	}
 

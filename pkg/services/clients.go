@@ -11,6 +11,7 @@ import (
 	"buf.build/gen/go/antinvestor/profile/connectrpc/go/profile/v1/profilev1connect"
 	apis "github.com/antinvestor/common"
 	"github.com/antinvestor/common/connection"
+	"github.com/antinvestor/service-trustage/gen/go/workflow/v1/workflowv1connect"
 	"github.com/pitabwire/util"
 )
 
@@ -127,4 +128,18 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	}
 
 	return clients, firstErr
+}
+
+// NewTrustageWorkflowClient dials the Trustage workflow service using the
+// standard antinvestor OAuth2 machinery. Returns a Connect RPC client ready
+// for workflow sync operations.
+func NewTrustageWorkflowClient(
+	ctx context.Context,
+	cfg any,
+	trustageURL string,
+) (workflowv1connect.WorkflowServiceClient, error) {
+	return connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
+		Endpoint:  trustageURL,
+		Audiences: []string{"service_trustage"},
+	}, workflowv1connect.NewWorkflowServiceClient)
 }

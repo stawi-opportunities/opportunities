@@ -3,6 +3,7 @@
 Production-oriented job ingestion stack in Go for high-coverage global job discovery.
 
 ## Services
+
 - `source-discovery`: manages and seeds source registry
 - `scheduler`: schedules due sources and publishes crawl requests
 - `worker`: executes source connectors, normalize -> dedupe -> index flow
@@ -11,6 +12,7 @@ Production-oriented job ingestion stack in Go for high-coverage global job disco
 - `ops-control-plane`: source inventory and health endpoints
 
 ## Quick start
+
 1. `cp .env.example .env` and export variables.
 2. `make infra-up`
 3. `make deps`
@@ -23,12 +25,15 @@ Production-oriented job ingestion stack in Go for high-coverage global job disco
    - `make run-ops`
 
 ## API
+
 - Search: `GET /search?q=backend&limit=20`
 - Ops sources: `GET /sources?limit=100`
 - Health: `GET /healthz`
 
 ## Connectors
+
 Implemented connectors (4 APIs + 8 crawlers):
+
 - Adzuna, SerpApi, USAJOBS, SmartRecruiters API
 - Greenhouse, Lever, Workday, SmartRecruiters page crawler
 - Schema.org JobPosting crawler

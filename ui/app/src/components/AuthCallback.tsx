@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { AuthError } from "@stawi/auth-runtime";
-import { authRuntime } from "@/auth/runtime";
+import { useEffect, useState } from 'react';
+import { AuthError } from '@stawi/auth-runtime';
+import { authRuntime } from '@/auth/runtime';
+import { fetchMeSubscription } from '@/api/candidates';
 
 /**
  * /auth/callback/ — landing page for the OIDC full-page redirect.
@@ -21,22 +22,32 @@ export default function AuthCallback() {
     let cancelled = false;
     const rt = authRuntime();
     rt.completeRedirect()
-      .then(() => {
+      .then(async () => {
         if (cancelled) return;
-        window.location.assign("/dashboard/");
+        // Single gate: payment status decides where the user lands.
+        // fetchMeSubscription's try/catch fallback returns
+        // {status: "none", ...} on any failure, so a wedged
+        // matching service degrades to "send the user to
+        // onboarding" — the safer default for an inactive-or-unknown
+        // subscription. See the paid-flow-routing spec.
+        const sub = await fetchMeSubscription();
+        const target = sub.status === 'active' ? '/dashboard/' : '/onboarding/';
+        window.location.assign(target);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const code = err instanceof AuthError ? err.code : "unknown";
+        const code = err instanceof AuthError ? err.code : 'unknown';
         const message =
-          code === "OAUTH_REDIRECT_STORAGE_MISSING"
-            ? "Your sign-in session expired before it could complete. Please sign in again."
-            : code === "OAUTH_STATE_MISMATCH"
+          code === 'OAUTH_REDIRECT_STORAGE_MISSING'
+            ? 'Your sign-in session expired before it could complete. Please sign in again.'
+            : code === 'OAUTH_STATE_MISMATCH'
               ? "The sign-in response didn't match our request. Please sign in again."
               : "We couldn't complete sign-in. Please try again.";
         setError(message);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (error) {

@@ -4,7 +4,7 @@
 // company name, registration country, and a comma-separated list of
 // capabilities the matcher uses to score notice descriptions.
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 
 export interface TenderPreferences {
   company_name: string;
@@ -13,8 +13,8 @@ export interface TenderPreferences {
 }
 
 const EMPTY: TenderPreferences = {
-  company_name: "",
-  registration_country: "",
+  company_name: '',
+  registration_country: '',
   capabilities: [],
 };
 
@@ -53,12 +53,12 @@ export function Flow({
       <input
         className="input-field"
         placeholder="Capabilities (comma-separated)"
-        value={p.capabilities.join(", ")}
+        value={p.capabilities.join(', ')}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           setP({
             ...p,
             capabilities: e.currentTarget.value
-              .split(",")
+              .split(',')
               .map((s) => s.trim())
               .filter(Boolean),
           })

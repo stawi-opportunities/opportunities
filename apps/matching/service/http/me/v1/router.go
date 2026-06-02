@@ -7,14 +7,19 @@ import (
 )
 
 // Mount registers every Phase-4 extension-facing route under /api/me/*.
-// Mutating routes are wrapped in Idempotency.
-func Mount(mux *http.ServeMux, deps *Deps) {
+// Mutating routes are wrapped in Idempotency. The `auth` wrapper is
+// supplied by the caller so production can layer JWT verification
+// (httpmw.NewCandidateAuth(authenticator)) while tests can pass the
+// header-only httpmw.CandidateAuth.
+func Mount(mux *http.ServeMux, deps *Deps, auth func(http.Handler) http.Handler) {
 	idem := func(group string, h http.Handler) http.Handler {
 		return httpmw.Idempotency(httpmw.IdempotencyConfig{
 			Store: deps.IdempotencyStore, RouteGroup: group,
 		}, h)
 	}
-	auth := httpmw.CandidateAuth
+	if auth == nil {
+		auth = httpmw.CandidateAuth
+	}
 
 	mux.Handle("GET /api/me", auth(meHandler(deps)))
 

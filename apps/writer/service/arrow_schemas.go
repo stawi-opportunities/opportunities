@@ -95,6 +95,12 @@ var ArrowSchemaVariantsRejected = arrow.NewSchema([]arrow.Field{
 	_req("kind", arrow.BinaryTypes.String),
 	_req("title", arrow.BinaryTypes.String),
 	_req("reasons", arrow.BinaryTypes.String), // JSON array
+	// raw_payload_id + crawl_job_id forward-link a rejected variant
+	// to the crawler audit ledger so /admin/trace can render a
+	// "see the HTML" button. Optional because rows emitted before
+	// this column landed will have NULL here.
+	_opt("raw_payload_id", arrow.BinaryTypes.String),
+	_opt("crawl_job_id", arrow.BinaryTypes.String),
 	_req("rejected_at", _tsNaiveType),
 }, nil)
 

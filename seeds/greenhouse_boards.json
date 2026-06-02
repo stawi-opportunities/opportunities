@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/stripe",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -14,9 +12,7 @@
     "base_url": "https://boards.greenhouse.io/airbnb",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -25,9 +21,7 @@
     "base_url": "https://boards.greenhouse.io/doordash",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -36,9 +30,7 @@
     "base_url": "https://boards.greenhouse.io/cloudflare",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -47,9 +39,7 @@
     "base_url": "https://boards.greenhouse.io/twitch",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -58,9 +48,7 @@
     "base_url": "https://boards.greenhouse.io/figma",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -69,9 +57,7 @@
     "base_url": "https://boards.greenhouse.io/reddit",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -80,9 +66,7 @@
     "base_url": "https://boards.greenhouse.io/andela",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -91,9 +75,7 @@
     "base_url": "https://boards.greenhouse.io/shopify",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"
@@ -102,9 +84,7 @@
     "base_url": "https://boards.greenhouse.io/gitlab",
     "country": "",
     "crawl_interval_sec": 7200,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "priority": "normal",
     "region": "",
     "source_type": "greenhouse"

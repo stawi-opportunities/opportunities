@@ -14,6 +14,7 @@ The scheduler moves from `/admin/crawl/dispatch-due` to `/admin/scheduler/tick`.
 Legacy handlers (`pkg/pipeline/handlers/*`) and their `variant.raw.stored`/`source.urls.discovered`/`source.quality.review` topics remain in the repo untouched through this plan so Phase 5 (candidates) and Phase 6 (cutover) can delete them in one shot. After Plan 4 the crawler binary **no longer registers** the legacy handlers at startup — the worker binary from Phase 3 is the sole consumer of the v1 variant topic.
 
 **Tech stack:**
+
 - Go 1.26, Frame (`github.com/pitabwire/frame`), `pitabwire/util` logging
 - Existing `pkg/extraction.Extractor` (Extract, DiscoverLinks, DiscoverSites)
 - Existing `pkg/connectors` registry + `pkg/archive` R2 archive + `pkg/bloom` filter + `pkg/normalize`
@@ -22,6 +23,7 @@ Legacy handlers (`pkg/pipeline/handlers/*`) and their `variant.raw.stored`/`sour
 - `apps/writer` (Phase 1) — encoder switch extended for two new collections
 
 **What's in this plan:**
+
 - Three new event payload types: `CrawlRequestV1`, `CrawlPageCompletedV1`, `SourceDiscoveredV1` (in `pkg/events/v1/crawl.go`)
 - Writer `extractHint` + `uploadBatch` extensions to persist the two durable crawl/source topics (crawl.requests is control-plane and **not** persisted)
 - Partition-key routing: secondary label for `sources_discovered` collection
@@ -35,6 +37,7 @@ Legacy handlers (`pkg/pipeline/handlers/*`) and their `variant.raw.stored`/`sour
 - Integration test: POST `/admin/scheduler/tick` → assert variant events fire via an injected fake connector
 
 **What's NOT in this plan (deferred):**
+
 - Per-page fan-out (listing → detail URL fan-out via `crawl.requests.v1`). The connector interface is iterator-based today; splitting into a listing/detail pair is a deeper refactor. Plan 4 keeps the per-source iterator but emits every extracted variant as `jobs.variants.ingested.v1`. The per-page model is a Phase 6 follow-up.
 - Full `Admit` policy with per-topic drain-time ceilings + HPA-ceiling awareness. Plan 4 ships a minimal wrapper that returns `want` when the existing hysteresis gate is open and `0` when paused. Phase 6 extends this.
 - Deleting the legacy `pkg/pipeline/handlers/*` files, the `variant.raw.stored`/`source.urls.discovered`/`source.quality.review` topic constants, or the Postgres `job_variants` / `job_clusters` / `canonical_jobs` tables. Those deletions land together in Phase 6 cutover.
@@ -48,34 +51,34 @@ Legacy handlers (`pkg/pipeline/handlers/*`) and their `variant.raw.stored`/`sour
 
 **Create:**
 
-| File | Responsibility |
-|---|---|
-| `pkg/events/v1/crawl.go` | `CrawlRequestV1`, `CrawlPageCompletedV1`, `SourceDiscoveredV1` payload structs |
-| `apps/crawler/service/crawl_request_handler.go` | Frame handler for `crawl.requests.v1` — fetch, archive, extract, emit variants |
-| `apps/crawler/service/page_completed_handler.go` | Frame handler for `crawl.page.completed.v1` (self-consumed) — source cursor/health |
-| `apps/crawler/service/source_discovered_handler.go` | Frame handler for `sources.discovered.v1` (self-consumed) — new-source upsert |
-| `apps/crawler/service/scheduler_tick.go` | `/admin/scheduler/tick` HTTP handler factory |
+| File                                                 | Responsibility                                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `pkg/events/v1/crawl.go`                             | `CrawlRequestV1`, `CrawlPageCompletedV1`, `SourceDiscoveredV1` payload structs                 |
+| `apps/crawler/service/crawl_request_handler.go`      | Frame handler for `crawl.requests.v1` — fetch, archive, extract, emit variants                 |
+| `apps/crawler/service/page_completed_handler.go`     | Frame handler for `crawl.page.completed.v1` (self-consumed) — source cursor/health             |
+| `apps/crawler/service/source_discovered_handler.go`  | Frame handler for `sources.discovered.v1` (self-consumed) — new-source upsert                  |
+| `apps/crawler/service/scheduler_tick.go`             | `/admin/scheduler/tick` HTTP handler factory                                                   |
 | `apps/crawler/service/crawl_request_handler_test.go` | Unit tests for the crawl-request handler with a fake connector + fake archive + fake extractor |
-| `apps/crawler/service/scheduler_tick_test.go` | Unit tests for `/admin/scheduler/tick` (admit, defer, emit) |
-| `apps/crawler/service/e2e_test.go` | End-to-end: seed one source, POST tick, assert variant events + page-completed event fire |
-| `definitions/trustage/scheduler-tick.json` | Trustage trigger firing `/admin/scheduler/tick` every 30 s |
+| `apps/crawler/service/scheduler_tick_test.go`        | Unit tests for `/admin/scheduler/tick` (admit, defer, emit)                                    |
+| `apps/crawler/service/e2e_test.go`                   | End-to-end: seed one source, POST tick, assert variant events + page-completed event fire      |
+| `definitions/trustage/scheduler-tick.json`           | Trustage trigger firing `/admin/scheduler/tick` every 30 s                                     |
 
 **Modify:**
 
-| File | Change |
-|---|---|
-| `pkg/events/v1/envelope_test.go` | Three new round-trip tests (one per payload type) |
-| `pkg/events/v1/partitions.go` | Add `sources_discovered` label mapping + sources_discovered secondary routing |
-| `apps/writer/service/handler.go` | Extend `extractHint` with `TopicCrawlPageCompleted` + `TopicSourcesDiscovered` + `TopicCrawlRequests` cases |
-| `apps/writer/service/service.go` | Extend `uploadBatch` to encode `TopicCrawlPageCompleted` + `TopicSourcesDiscovered` (crawl.requests stays non-persisted) |
-| `pkg/backpressure/gate.go` | Add `Admit(ctx, topic, want) (granted, wait)` method |
-| `pkg/backpressure/gate_test.go` | Table-driven tests covering Admit's paused/open branches |
-| `apps/crawler/cmd/main.go` | Drop legacy `pipelineHandlers` registration + legacy `crawlDependencies` + `/admin/crawl/dispatch` + `/admin/crawl/dispatch-due`. Wire three new Frame handlers and register `/admin/scheduler/tick`. |
+| File                             | Change                                                                                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pkg/events/v1/envelope_test.go` | Three new round-trip tests (one per payload type)                                                                                                                                                     |
+| `pkg/events/v1/partitions.go`    | Add `sources_discovered` label mapping + sources_discovered secondary routing                                                                                                                         |
+| `apps/writer/service/handler.go` | Extend `extractHint` with `TopicCrawlPageCompleted` + `TopicSourcesDiscovered` + `TopicCrawlRequests` cases                                                                                           |
+| `apps/writer/service/service.go` | Extend `uploadBatch` to encode `TopicCrawlPageCompleted` + `TopicSourcesDiscovered` (crawl.requests stays non-persisted)                                                                              |
+| `pkg/backpressure/gate.go`       | Add `Admit(ctx, topic, want) (granted, wait)` method                                                                                                                                                  |
+| `pkg/backpressure/gate_test.go`  | Table-driven tests covering Admit's paused/open branches                                                                                                                                              |
+| `apps/crawler/cmd/main.go`       | Drop legacy `pipelineHandlers` registration + legacy `crawlDependencies` + `/admin/crawl/dispatch` + `/admin/crawl/dispatch-due`. Wire three new Frame handlers and register `/admin/scheduler/tick`. |
 
 **Delete:**
 
-| File | Why |
-|---|---|
+| File                                           | Why                               |
+| ---------------------------------------------- | --------------------------------- |
 | `definitions/trustage/source-crawl-sweep.json` | Replaced by `scheduler-tick.json` |
 
 ---
@@ -83,6 +86,7 @@ Legacy handlers (`pkg/pipeline/handlers/*`) and their `variant.raw.stored`/`sour
 ## Task 1: Add three new event payload types
 
 **Files:**
+
 - Create: `pkg/events/v1/crawl.go`
 - Modify: `pkg/events/v1/envelope_test.go`
 
@@ -284,6 +288,7 @@ git commit -m "feat(events): add crawl request/completed + source discovered pay
 ## Task 2: Extend partition routing for `sources_discovered`
 
 **Files:**
+
 - Modify: `pkg/events/v1/partitions.go`
 - Modify: `pkg/events/v1/envelope_test.go`
 
@@ -320,7 +325,7 @@ Expected: first test FAILs with `Secondary="_all"` (default bucket); second test
 
 - [ ] **Step 3: Update `partitionSecondary`**
 
-Edit `pkg/events/v1/partitions.go`. In `partitionSecondary`, extend the first `case` so it covers `TopicSourcesDiscovered` too (the hint is the *origin* source_id, same shape as variants/crawl_page_completed):
+Edit `pkg/events/v1/partitions.go`. In `partitionSecondary`, extend the first `case` so it covers `TopicSourcesDiscovered` too (the hint is the _origin_ source_id, same shape as variants/crawl_page_completed):
 
 ```go
 func partitionSecondary(eventType, hint string) string {
@@ -381,6 +386,7 @@ git commit -m "feat(events): route sources_discovered by source_id like variants
 ## Task 3: Writer encoder + hint extraction for the two new persisted topics
 
 **Files:**
+
 - Modify: `apps/writer/service/handler.go`
 - Modify: `apps/writer/service/service.go`
 
@@ -444,6 +450,7 @@ git commit -m "feat(writer): encode crawl_page_completed + sources_discovered Pa
 ## Task 4: Add `Gate.Admit` for topic-aware admission
 
 **Files:**
+
 - Modify: `pkg/backpressure/gate.go`
 - Modify: `pkg/backpressure/gate_test.go`
 
@@ -597,6 +604,7 @@ git commit -m "feat(backpressure): add Admit(topic, want) wrapping hysteresis ga
 ## Task 5: `/admin/scheduler/tick` handler
 
 **Files:**
+
 - Create: `apps/crawler/service/scheduler_tick.go`
 - Create: `apps/crawler/service/scheduler_tick_test.go`
 
@@ -987,6 +995,7 @@ git commit -m "feat(crawler): /admin/scheduler/tick emits crawl.requests.v1 unde
 ## Task 6: Crawl-request handler (fetch + archive + extract + emit)
 
 **Files:**
+
 - Create: `apps/crawler/service/crawl_request_handler.go`
 - Create: `apps/crawler/service/crawl_request_handler_test.go`
 
@@ -1649,6 +1658,7 @@ git commit -m "feat(crawler): crawl.requests.v1 handler — archive, extract, em
 ## Task 7: Page-completed self-consumer — advance source cursor + health
 
 **Files:**
+
 - Create: `apps/crawler/service/page_completed_handler.go`
 
 This handler replaces the inline `sourceRepo.RecordSuccess` / `RecordFailure` / `UpdateNextCrawl` calls that used to run inside `processSource`. It runs in the same binary as the producer; Frame delivers the event via a separate consumer group so a slow page-completed update doesn't back-pressure the crawl path itself.
@@ -1925,6 +1935,7 @@ git commit -m "feat(crawler): page-completed self-consumer advances source curso
 ## Task 8: Source-discovered self-consumer — upsert new sources
 
 **Files:**
+
 - Create: `apps/crawler/service/source_discovered_handler.go`
 - Create: `apps/crawler/service/source_discovered_handler_test.go`
 
@@ -2216,6 +2227,7 @@ git commit -m "feat(crawler): sources.discovered.v1 self-consumer — upsert new
 ## Task 9: Refactor `apps/crawler/cmd/main.go`
 
 **Files:**
+
 - Modify: `apps/crawler/cmd/main.go`
 
 The entrypoint currently registers **seven** legacy handlers (dedup, normalize, validate, canonical, source-expansion, source-quality, publish, translate) plus the legacy `crawlDependencies` that subscribes to `handlers.EventCrawlRequest` and writes variants to Postgres. After this task the entrypoint registers only the three new v1 handlers and exposes the new `/admin/scheduler/tick` endpoint. The legacy admin endpoints `/admin/crawl/dispatch` and `/admin/crawl/dispatch-due` go away; `/admin/crawl/status` stays because dashboards read it.
@@ -2241,10 +2253,12 @@ After deletion, `main.go` should end (before the health-checker struct) at the a
 - [ ] **Step 3: Drop the legacy admin endpoints**
 
 Delete the handler registrations for:
+
 - `POST /admin/crawl/dispatch`
 - `POST /admin/crawl/dispatch-due`
 
 Keep:
+
 - `GET  /admin/sources/due` (used by dashboards + Plan 4's new tick reads the repo directly so this endpoint is purely operator-facing)
 - `GET  /admin/crawl/status`
 - `POST /admin/sources/pause|enable`
@@ -2347,6 +2361,7 @@ git commit -m "refactor(crawler): wire v1 event handlers; drop legacy pipeline d
 ## Task 10: New Trustage trigger `scheduler-tick.json`
 
 **Files:**
+
 - Create: `definitions/trustage/scheduler-tick.json`
 - Delete: `definitions/trustage/source-crawl-sweep.json`
 
@@ -2423,6 +2438,7 @@ git commit -m "feat(trustage): scheduler-tick.json replaces source-crawl-sweep.j
 ## Task 11: End-to-end crawler test
 
 **Files:**
+
 - Create: `apps/crawler/service/e2e_test.go`
 
 - [ ] **Step 1: Write the test**
@@ -2654,6 +2670,7 @@ git commit -m "test(crawler): end-to-end tick → crawl.requests → variants + 
 ## Task 12: Full build + sanity sweep
 
 **Files:**
+
 - None (verification only)
 
 - [ ] **Step 1: Build the whole module**
@@ -2708,6 +2725,7 @@ git log --oneline main..HEAD
 ```
 
 Expected:
+
 - Every test passes (new handler unit tests + end-to-end crawler test + pre-existing Phase 1–3 tests + legacy `pkg/pipeline/handlers` tests).
 - 11 commits on this branch, one per task (Task 12 is verification-only).
 - `bin/crawler` is a working binary that, once deployed:

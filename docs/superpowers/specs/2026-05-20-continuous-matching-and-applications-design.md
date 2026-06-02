@@ -69,27 +69,27 @@ Rule applied throughout: **append-only / audit / analytics → TimescaleDB hyper
 
 ### 2.1 Hypertables (new)
 
-| Table | Partition col | PK | Retention | Compression | Purpose |
-|---|---|---|---|---|---|
-| `candidate_match_events` | `occurred_at` | `(event_id, occurred_at)` | 365d | >7d | Append-only log of every match generated, viewed, dismissed. Powers analytics, "why was this matched" forensics, time-bucket dashboards. |
-| `application_events` | `occurred_at` | `(event_id, occurred_at)` | indefinite | >14d | Canonical audit log for application lifecycle (state transitions, extension submission attempts, recruiter responses recorded by user). Drives `applications` current-state via projection. |
-| `engagement_events` | `occurred_at` | `(event_id, occurred_at)` | 180d | >7d | Beacon traffic: view, click, dismiss, apply. Replaces the current Valkey-counter + OpenObserve dual-write pattern. 24h counters served via continuous aggregate. |
-| `match_run_events` | `started_at` | `(run_id, started_at)` | 90d | >7d | Per-run telemetry: triggered_by (fan-out / gap-filler / rules-changed), candidates_scanned, latency, errors. Operational only. |
+| Table                    | Partition col | PK                        | Retention  | Compression | Purpose                                                                                                                                                                                     |
+| ------------------------ | ------------- | ------------------------- | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `candidate_match_events` | `occurred_at` | `(event_id, occurred_at)` | 365d       | >7d         | Append-only log of every match generated, viewed, dismissed. Powers analytics, "why was this matched" forensics, time-bucket dashboards.                                                    |
+| `application_events`     | `occurred_at` | `(event_id, occurred_at)` | indefinite | >14d        | Canonical audit log for application lifecycle (state transitions, extension submission attempts, recruiter responses recorded by user). Drives `applications` current-state via projection. |
+| `engagement_events`      | `occurred_at` | `(event_id, occurred_at)` | 180d       | >7d         | Beacon traffic: view, click, dismiss, apply. Replaces the current Valkey-counter + OpenObserve dual-write pattern. 24h counters served via continuous aggregate.                            |
+| `match_run_events`       | `started_at`  | `(run_id, started_at)`    | 90d        | >7d         | Per-run telemetry: triggered_by (fan-out / gap-filler / rules-changed), candidates_scanned, latency, errors. Operational only.                                                              |
 
 Each hypertable gets a continuous aggregate (`CREATE MATERIALIZED VIEW … WITH (timescaledb.continuous)`) where rollups matter — e.g. `engagement_events_hourly` for the 24h apply/view counters that today live in Valkey.
 
 ### 2.2 Regular tables (new)
 
-| Table | PK | Purpose |
-|---|---|---|
-| `candidate_matches` | `match_id` | Current state of every match surfaced to a candidate. UNIQUE on `(candidate_id, opportunity_id)`. Mutable: `status` (new/viewed/dismissed/applying/applied/overflow), `score`, `rerank_score`, `viewed_at`, `applied_at`, `last_event_id`. |
-| `applications` | `application_id` | Current state of every application. UNIQUE on `(candidate_id, opportunity_id)`. Mutable: `status`, `current_stage`, `metadata` (JSONB), `submitted_at`, `last_event_id`. |
-| `application_notes` | `note_id` | User-authored notes, many-to-one under `application_id`. |
-| `application_attachments` | `attachment_id` | Pointer to R2 object: `r2_key`, `content_type`, `bytes`. Many-to-one under `application_id`. |
-| `application_reminders` | `reminder_id` | `(application_id, due_at, status)`. Active rows only; completed reminders fire an `application_events` row and get archived. |
-| `match_rules` | `candidate_id` (1:1) | The user's autonomy rules. JSONB blob (schema below). |
-| `candidate_match_indexes` | `candidate_id` | Materialized vector + filter bag for fan-out lookups: `embedding` (pgvector `vector(1536)`), `min_score`, `daily_cap`, `countries[]`, `kinds[]`, `enabled`. Rebuilt on CV or rules change. HNSW index. |
-| `extension_grants` | `grant_id` | One row per browser-extension install issued to a candidate. Carries `candidate_id`, `extension_install_id` (claim asserted in JWT), `user_agent`, `issued_at`, `revoked_at`. Supports per-install revocation without nuking the user's web session. |
+| Table                     | PK                   | Purpose                                                                                                                                                                                                                                              |
+| ------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `candidate_matches`       | `match_id`           | Current state of every match surfaced to a candidate. UNIQUE on `(candidate_id, opportunity_id)`. Mutable: `status` (new/viewed/dismissed/applying/applied/overflow), `score`, `rerank_score`, `viewed_at`, `applied_at`, `last_event_id`.           |
+| `applications`            | `application_id`     | Current state of every application. UNIQUE on `(candidate_id, opportunity_id)`. Mutable: `status`, `current_stage`, `metadata` (JSONB), `submitted_at`, `last_event_id`.                                                                             |
+| `application_notes`       | `note_id`            | User-authored notes, many-to-one under `application_id`.                                                                                                                                                                                             |
+| `application_attachments` | `attachment_id`      | Pointer to R2 object: `r2_key`, `content_type`, `bytes`. Many-to-one under `application_id`.                                                                                                                                                         |
+| `application_reminders`   | `reminder_id`        | `(application_id, due_at, status)`. Active rows only; completed reminders fire an `application_events` row and get archived.                                                                                                                         |
+| `match_rules`             | `candidate_id` (1:1) | The user's autonomy rules. JSONB blob (schema below).                                                                                                                                                                                                |
+| `candidate_match_indexes` | `candidate_id`       | Materialized vector + filter bag for fan-out lookups: `embedding` (pgvector `vector(1536)`), `min_score`, `daily_cap`, `countries[]`, `kinds[]`, `enabled`. Rebuilt on CV or rules change. HNSW index.                                               |
+| `extension_grants`        | `grant_id`           | One row per browser-extension install issued to a candidate. Carries `candidate_id`, `extension_install_id` (claim asserted in JWT), `user_agent`, `issued_at`, `revoked_at`. Supports per-install revocation without nuking the user's web session. |
 
 ### 2.3 Schema deltas
 
@@ -227,13 +227,13 @@ Lives in `pkg/matching/score.go`. Same function called from every path. Weights 
 
 ### 3.7 Failure handling
 
-| Failure | Behavior |
-|---|---|
-| KNN query timeout | Ack event, log to `match_run_events` with `status='timeout'`, alert on rate. Opportunity reattempted via Path B. |
-| Reranker down | Skip rerank, use retrieval score, log `reranker_status='skipped'`. |
-| DB primary failover | JetStream redelivery + idempotency invariants. |
-| Poison-pill event | After 5 redeliveries, DLQ `svc.opportunities.matching.deadletter`. Admin replay endpoint. |
-| Corrupt candidate embedding | Worker logs + skips; nightly healing job. |
+| Failure                     | Behavior                                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| KNN query timeout           | Ack event, log to `match_run_events` with `status='timeout'`, alert on rate. Opportunity reattempted via Path B. |
+| Reranker down               | Skip rerank, use retrieval score, log `reranker_status='skipped'`.                                               |
+| DB primary failover         | JetStream redelivery + idempotency invariants.                                                                   |
+| Poison-pill event           | After 5 redeliveries, DLQ `svc.opportunities.matching.deadletter`. Admin replay endpoint.                        |
+| Corrupt candidate embedding | Worker logs + skips; nightly healing job.                                                                        |
 
 ---
 
@@ -250,39 +250,39 @@ Lives in `pkg/matching/score.go`. Same function called from every path. Weights 
 
 ### 4.2 Read endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/me` | Candidate profile bag (id, display name, subscription tier, opt-in state). Cacheable 60s. |
-| GET | `/api/me/matches` | Primary extension endpoint. Paginated match feed. Query: `since=<event_id>`, `kind=`, `status=` (default `new,viewed,applying`), `limit=` (default 50, max 200). |
-| GET | `/api/me/matches/{match_id}` | Single match with full opportunity body + scoring breakdown. |
-| GET | `/api/me/rules` | Canonical autonomy rule document. |
-| GET | `/api/me/applications` | Paginated current-state list. Filters: `status`, `kind`, `from`, `to`, `sort` (`-submitted_at` default). |
-| GET | `/api/me/applications/{application_id}` | Detail with notes + attachments + last 10 events embedded. |
-| GET | `/api/me/applications/{application_id}/events` | Full audit history, paginated by event_id. |
-| GET | `/api/me/reminders` | Active reminders sorted by `due_at`. |
-| GET | `/api/me/profile-fields` | Structured CV/profile data for the extension to autofill ATS forms. Versioned with `ETag`. |
-| GET | `/api/me/attachments/{attachment_id}` | Pre-signed R2 download URL (15min TTL, single-use). |
+| Method | Path                                           | Purpose                                                                                                                                                          |
+| ------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/me`                                      | Candidate profile bag (id, display name, subscription tier, opt-in state). Cacheable 60s.                                                                        |
+| GET    | `/api/me/matches`                              | Primary extension endpoint. Paginated match feed. Query: `since=<event_id>`, `kind=`, `status=` (default `new,viewed,applying`), `limit=` (default 50, max 200). |
+| GET    | `/api/me/matches/{match_id}`                   | Single match with full opportunity body + scoring breakdown.                                                                                                     |
+| GET    | `/api/me/rules`                                | Canonical autonomy rule document.                                                                                                                                |
+| GET    | `/api/me/applications`                         | Paginated current-state list. Filters: `status`, `kind`, `from`, `to`, `sort` (`-submitted_at` default).                                                         |
+| GET    | `/api/me/applications/{application_id}`        | Detail with notes + attachments + last 10 events embedded.                                                                                                       |
+| GET    | `/api/me/applications/{application_id}/events` | Full audit history, paginated by event_id.                                                                                                                       |
+| GET    | `/api/me/reminders`                            | Active reminders sorted by `due_at`.                                                                                                                             |
+| GET    | `/api/me/profile-fields`                       | Structured CV/profile data for the extension to autofill ATS forms. Versioned with `ETag`.                                                                       |
+| GET    | `/api/me/attachments/{attachment_id}`          | Pre-signed R2 download URL (15min TTL, single-use).                                                                                                              |
 
 ### 4.3 Write endpoints
 
 All require `Idempotency-Key`. Server enforces `(candidate_id, idempotency_key)` uniqueness.
 
-| Method | Path | Purpose |
-|---|---|---|
-| PUT | `/api/me/rules` | Replace autonomy rule document. Triggers Path C, debounced. |
-| POST | `/api/me/matches/{match_id}/dismiss` | Mark dismissed. Writes `candidate_match_events` `kind=dismissed`. Row preserved. |
-| POST | `/api/me/matches/{match_id}/view` | Beacon for "user looked at this match." Writes `engagement_events` + updates `viewed_at`. 204. |
-| POST | `/api/me/applications` | Extension declares an application. Body `{match_id, status?, metadata?}`. Idempotent on `(candidate_id, opportunity_id)`. Creates `applications` row, transitions `candidate_matches.status='applying'`. |
-| PATCH | `/api/me/applications/{application_id}` | Update `status`, `current_stage`, `metadata`. State machine validated. Writes `application_events`. |
-| POST | `/api/me/applications/{application_id}/events` | Append an event (`submission_attempted`, `submission_succeeded`, `submission_failed`, `recruiter_replied`, etc.). Validated against allowed-set; applies state transition if applicable. |
-| POST | `/api/me/applications/{application_id}/notes` | Add free-text note. |
-| PATCH | `/api/me/applications/{application_id}/notes/{note_id}` | Edit a note. Append `kind=note_edited` event (no destructive update). |
-| DELETE | `/api/me/applications/{application_id}/notes/{note_id}` | Soft-delete. |
-| POST | `/api/me/applications/{application_id}/attachments` | Multipart upload (max 25MiB). Server PUTs to R2, writes attachment row + event. |
-| DELETE | `/api/me/applications/{application_id}/attachments/{attachment_id}` | Soft-delete. R2 object retained 30d. |
-| POST | `/api/me/applications/{application_id}/reminders` | Body `{due_at, note?}`. |
-| PATCH | `/api/me/applications/{application_id}/reminders/{reminder_id}` | Snooze (`due_at`) or ack (`status='done'`). |
-| DELETE | `/api/me/applications/{application_id}/reminders/{reminder_id}` | Soft-delete. |
+| Method | Path                                                                | Purpose                                                                                                                                                                                                  |
+| ------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PUT    | `/api/me/rules`                                                     | Replace autonomy rule document. Triggers Path C, debounced.                                                                                                                                              |
+| POST   | `/api/me/matches/{match_id}/dismiss`                                | Mark dismissed. Writes `candidate_match_events` `kind=dismissed`. Row preserved.                                                                                                                         |
+| POST   | `/api/me/matches/{match_id}/view`                                   | Beacon for "user looked at this match." Writes `engagement_events` + updates `viewed_at`. 204.                                                                                                           |
+| POST   | `/api/me/applications`                                              | Extension declares an application. Body `{match_id, status?, metadata?}`. Idempotent on `(candidate_id, opportunity_id)`. Creates `applications` row, transitions `candidate_matches.status='applying'`. |
+| PATCH  | `/api/me/applications/{application_id}`                             | Update `status`, `current_stage`, `metadata`. State machine validated. Writes `application_events`.                                                                                                      |
+| POST   | `/api/me/applications/{application_id}/events`                      | Append an event (`submission_attempted`, `submission_succeeded`, `submission_failed`, `recruiter_replied`, etc.). Validated against allowed-set; applies state transition if applicable.                 |
+| POST   | `/api/me/applications/{application_id}/notes`                       | Add free-text note.                                                                                                                                                                                      |
+| PATCH  | `/api/me/applications/{application_id}/notes/{note_id}`             | Edit a note. Append `kind=note_edited` event (no destructive update).                                                                                                                                    |
+| DELETE | `/api/me/applications/{application_id}/notes/{note_id}`             | Soft-delete.                                                                                                                                                                                             |
+| POST   | `/api/me/applications/{application_id}/attachments`                 | Multipart upload (max 25MiB). Server PUTs to R2, writes attachment row + event.                                                                                                                          |
+| DELETE | `/api/me/applications/{application_id}/attachments/{attachment_id}` | Soft-delete. R2 object retained 30d.                                                                                                                                                                     |
+| POST   | `/api/me/applications/{application_id}/reminders`                   | Body `{due_at, note?}`.                                                                                                                                                                                  |
+| PATCH  | `/api/me/applications/{application_id}/reminders/{reminder_id}`     | Snooze (`due_at`) or ack (`status='done'`).                                                                                                                                                              |
+| DELETE | `/api/me/applications/{application_id}/reminders/{reminder_id}`     | Soft-delete.                                                                                                                                                                                             |
 
 ### 4.4 Application state machine
 
@@ -304,13 +304,13 @@ OIDC bearer via `@stawi/auth-runtime`. The extension performs the same OIDC flow
 
 ### 4.6 Admin endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/admin/matching/rebuild-index` | Recompute `candidate_match_indexes`. |
-| POST | `/api/admin/matching/replay` | Re-emit `CanonicalUpsertedV1` for a canonical_id. |
-| GET | `/api/admin/matching/dlq` | Inspect matching DLQ. |
-| GET | `/api/admin/applications/{id}` | Read any application (support tools). |
-| POST | `/api/admin/dlq/replay` | Replay specific message from a DLQ. |
+| Method | Path                                | Purpose                                           |
+| ------ | ----------------------------------- | ------------------------------------------------- |
+| POST   | `/api/admin/matching/rebuild-index` | Recompute `candidate_match_indexes`.              |
+| POST   | `/api/admin/matching/replay`        | Re-emit `CanonicalUpsertedV1` for a canonical_id. |
+| GET    | `/api/admin/matching/dlq`           | Inspect matching DLQ.                             |
+| GET    | `/api/admin/applications/{id}`      | Read any application (support tools).             |
+| POST   | `/api/admin/dlq/replay`             | Replay specific message from a DLQ.               |
 
 Admin routes gated by an `admin` claim, not the user RBAC.
 
@@ -322,13 +322,13 @@ Admin routes gated by an `admin` claim, not the user RBAC.
 
 All errors classify into one of five buckets via `pkg/errors/category.go`:
 
-| Category | Definition | Behavior |
-|---|---|---|
-| `transient` | Network blip, DB timeout, transient lock | JetStream redelivery backoff (1s → 5s → 30s → 5m → 30m, max 5); HTTP 503 with `Retry-After`. |
-| `dependency` | External service unavailable (R2, OIDC issuer) | Circuit breaker (`pkg/util/circuit`); degraded best-effort response. |
-| `invalid_input` | Bad request shape, schema or state-transition violation | 400 / 409 with `problem+json`. Never retried. |
-| `not_found` | Missing entity | 404 with entity kind. |
-| `internal` | Logic bug, invariant violation | ERROR log with full context, `app_errors_total{kind="internal"}` increment, page on rate breach. DLQ after redelivery exhaustion. |
+| Category        | Definition                                              | Behavior                                                                                                                          |
+| --------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `transient`     | Network blip, DB timeout, transient lock                | JetStream redelivery backoff (1s → 5s → 30s → 5m → 30m, max 5); HTTP 503 with `Retry-After`.                                      |
+| `dependency`    | External service unavailable (R2, OIDC issuer)          | Circuit breaker (`pkg/util/circuit`); degraded best-effort response.                                                              |
+| `invalid_input` | Bad request shape, schema or state-transition violation | 400 / 409 with `problem+json`. Never retried.                                                                                     |
+| `not_found`     | Missing entity                                          | 404 with entity kind.                                                                                                             |
+| `internal`      | Logic bug, invariant violation                          | ERROR log with full context, `app_errors_total{kind="internal"}` increment, page on rate breach. DLQ after redelivery exhaustion. |
 
 Boundary validation only — internal helpers trust their inputs. Idempotency is the recovery mechanism for any partial failure.
 
@@ -338,28 +338,28 @@ Boundary validation only — internal helpers trust their inputs. Idempotency is
 
 **Metrics (Prometheus via Frame's `util.Metrics`).**
 
-| Metric | Type | Labels |
-|---|---|---|
-| `matches_written_total` | counter | `path`, `kind`, `status` |
-| `match_score_bucket` | histogram | `path`, `kind` |
-| `match_latency_seconds` | histogram | `path`, `phase` (retrieval / score / rerank / write) |
-| `applications_state_transitions_total` | counter | `from`, `to`, `kind` |
-| `applications_open` | gauge | `status`, `kind` (refreshed from continuous aggregate) |
-| `extension_requests_total` | counter | `route_group`, `status_code` |
-| `extension_idempotency_replay_total` | counter | `route_group` |
-| `dlq_depth` | gauge | `subject` |
-| `reranker_pool_in_use` | gauge | — |
-| `candidate_match_indexes_stale_total` | counter | `cause` |
+| Metric                                 | Type      | Labels                                                 |
+| -------------------------------------- | --------- | ------------------------------------------------------ |
+| `matches_written_total`                | counter   | `path`, `kind`, `status`                               |
+| `match_score_bucket`                   | histogram | `path`, `kind`                                         |
+| `match_latency_seconds`                | histogram | `path`, `phase` (retrieval / score / rerank / write)   |
+| `applications_state_transitions_total` | counter   | `from`, `to`, `kind`                                   |
+| `applications_open`                    | gauge     | `status`, `kind` (refreshed from continuous aggregate) |
+| `extension_requests_total`             | counter   | `route_group`, `status_code`                           |
+| `extension_idempotency_replay_total`   | counter   | `route_group`                                          |
+| `dlq_depth`                            | gauge     | `subject`                                              |
+| `reranker_pool_in_use`                 | gauge     | —                                                      |
+| `candidate_match_indexes_stale_total`  | counter   | `cause`                                                |
 
 **Logging.** Structured JSON via `util.Log(ctx)`. INFO for state transitions, WARN for transient failures, ERROR for internal/DLQ. Hot-path logging sampled at 0.1% via the existing sampler. PII fields rejected at compile time via `pkg/util/loglint`.
 
 **Dashboards (Grafana, in `deployments/observability`).**
 
-- *Matching health*: fan-out lag, write rate per path, score distribution, reranker pool, DLQ.
-- *Applications funnel*: created → submitted → response → outcome conversion rates, sliced by kind/country.
-- *Extension health*: requests/sec, p95 latency, idempotency replays, 4xx/5xx ratio per route group.
-- *Per-candidate hotspot*: top 50 candidates by `matches_today` + `applications_today`.
-- *Hypertable health*: chunk count, compression ratio, retention lag.
+- _Matching health_: fan-out lag, write rate per path, score distribution, reranker pool, DLQ.
+- _Applications funnel_: created → submitted → response → outcome conversion rates, sliced by kind/country.
+- _Extension health_: requests/sec, p95 latency, idempotency replays, 4xx/5xx ratio per route group.
+- _Per-candidate hotspot_: top 50 candidates by `matches_today` + `applications_today`.
+- _Hypertable health_: chunk count, compression ratio, retention lag.
 
 **Alerts (pageable).**
 
@@ -391,6 +391,7 @@ All suites pass with `-race`. CI gate.
 Simulating: 100K opportunities/day, 50K active candidates polling every 5min, 10K rule changes/day, 5K application writes/day.
 
 Targets:
+
 - Fan-out p95 < 1s
 - `GET /api/me/matches` p95 < 300ms
 - DB CPU < 60% on a 4-core primary
@@ -425,6 +426,7 @@ Deploy fan-out workers behind `MATCHING_FANOUT_ENABLED=false`. Dry-run mode (`MA
 One-shot migration projects legacy rows into the new table (status, score, timestamps preserved). Drop legacy schema after a 30-day quiet window.
 
 **Step 5 — API rename `/api/v2/*` → `/api/*` and delete legacy.**
+
 - Add new routes; keep v2 routes live and 308-redirecting to the new path for two deploys (≤ a week).
 - UI cut over in the same PR.
 - After the window: **delete** `apps/api/cmd/endpoints_v2.go`, `apps/api/cmd/endpoints_v2_test.go`, `tests/integration/cutover_e2e_test.go`. Rename handler funcs to drop `v2` prefix.
@@ -433,25 +435,25 @@ One-shot migration projects legacy rows into the new table (status, score, times
 
 Pre-launch, nothing requires backwards compatibility. The following are removed as part of this work:
 
-| Item | Why | Step |
-|---|---|---|
-| `apps/api/cmd/endpoints_v2.go` | v2 prefix was a manticore-cutover artifact. Renamed → `endpoints.go`, prefix dropped. | Step 5 |
-| `apps/api/cmd/endpoints_v2_test.go` | Same as above; renamed → `endpoints_test.go`. | Step 5 |
-| `tests/integration/cutover_e2e_test.go` | Existed only to validate the manticore→postgres cutover (`bc76828`, `141d3b8`). Cutover complete; test purpose served. **Delete.** | Step 5 |
-| Weekly digest sweep (`apps/matching/service/admin/v1/matches_weekly.go`) | Subsumed by continuous fan-out + gap-filler. **Delete after Step 3 stable.** | Step 3 |
+| Item                                                                                                | Why                                                                                                                                                                    | Step   |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `apps/api/cmd/endpoints_v2.go`                                                                      | v2 prefix was a manticore-cutover artifact. Renamed → `endpoints.go`, prefix dropped.                                                                                  | Step 5 |
+| `apps/api/cmd/endpoints_v2_test.go`                                                                 | Same as above; renamed → `endpoints_test.go`.                                                                                                                          | Step 5 |
+| `tests/integration/cutover_e2e_test.go`                                                             | Existed only to validate the manticore→postgres cutover (`bc76828`, `141d3b8`). Cutover complete; test purpose served. **Delete.**                                     | Step 5 |
+| Weekly digest sweep (`apps/matching/service/admin/v1/matches_weekly.go`)                            | Subsumed by continuous fan-out + gap-filler. **Delete after Step 3 stable.**                                                                                           | Step 3 |
 | Manticore search backend (`SEARCH_BACKEND=manticore` branch in `pkg/search` and related connectors) | Postgres default since `141d3b8`. Rollback window passed. **Delete fully** including env flag, connectors, and admin endpoints that only lit up on the legacy backend. | Step 5 |
-| Legacy `candidate_matches` table | Superseded by the new schema. Migration projects rows; drop after 30-day quiet window. | Step 4 |
-| `candidate_profiles.embedding` column | Moved to `candidate_match_indexes`. Drop after Step 3 stable. | Step 3 |
+| Legacy `candidate_matches` table                                                                    | Superseded by the new schema. Migration projects rows; drop after 30-day quiet window.                                                                                 | Step 4 |
+| `candidate_profiles.embedding` column                                                               | Moved to `candidate_match_indexes`. Drop after Step 3 stable.                                                                                                          | Step 3 |
 
 ### 5.7 Capacity & rollback
 
-| Resource | Headroom plan |
-|---|---|
-| Postgres primary | Add read replica before Step 3 (gap-filler reads + dashboards offloaded). |
-| pgvector HNSW | Pre-built on `candidate_match_indexes`; one-shot rebuild job; staleness alarm. |
-| JetStream | New consumers on existing stream; no new stream needed. |
-| Workers | Single deployment, horizontal autoscale on consumer lag. |
-| R2 | Attachments share existing content bucket under `applications/{candidate_id}/{application_id}/…`. |
+| Resource         | Headroom plan                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| Postgres primary | Add read replica before Step 3 (gap-filler reads + dashboards offloaded).                         |
+| pgvector HNSW    | Pre-built on `candidate_match_indexes`; one-shot rebuild job; staleness alarm.                    |
+| JetStream        | New consumers on existing stream; no new stream needed.                                           |
+| Workers          | Single deployment, horizontal autoscale on consumer lag.                                          |
+| R2               | Attachments share existing content bucket under `applications/{candidate_id}/{application_id}/…`. |
 
 **Rollback.** Each step has a flag (`MATCHING_FANOUT_ENABLED`, `APPLICATIONS_ENABLED`, `API_LEGACY_V2_ENABLED`). Flipping any flag back is single-deploy. Step 4 (table rename) requires manual revert of the migration; the 30-day quiet window is specifically to keep that recoverable.
 
@@ -490,24 +492,24 @@ None as of writing — every decision has a chosen option recorded in the releva
   OLTP `candidate_matches` (legacy GORM-managed table renamed to
   `candidate_matches_legacy`). `pkg/matching` gains the data-access
   layer (`Store`, `EventLog`, `IndexStore`, `KNN`) with monotonic-score
-  + terminal-protected `ON CONFLICT … WHERE status='new'` UPSERT,
-  cursor-paginated reads, and append-only event writers. Three pure
-  orchestrators — `FanOut` (Path A), `GapFill` (Path B),
-  `RunCandidateChange` (Path C) — share the deterministic scoring
-  function and write through the same event log. JetStream consumers
-  in `apps/matching/service/matching/v1` subscribe Path A to
-  `TopicCanonicalsUpserted` and Path C to
-  `TopicCandidatePreferencesUpdated` + `TopicCandidateEmbedding`,
-  guarded by `MATCHING_FANOUT_ENABLED` /
-  `MATCHING_CANDIDATE_CHANGE_ENABLED` env flags. Reranker is bounded
-  + best-effort with retrieval-score fallback (`NoopReranker` default,
-  `PooledReranker` when `MATCHING_RERANKER_ENABLED=true`). `DLQGuard`
-  publishes to `svc.opportunities.matching.deadletter` after 5
-  redeliveries via the Frame `QueueManager`. Prometheus collectors
-  defined per §5.2. In-memory `MemoryDebouncer` ships as the Path-C
-  TTL gate (Valkey-backed replacement in Phase 5). Integration
-  coverage in `MatchingPipelineSuite`: Path A happy path, idempotent
-  replay, terminal-state immunity, Path B merging without duplicates.
+  - terminal-protected `ON CONFLICT … WHERE status='new'` UPSERT,
+    cursor-paginated reads, and append-only event writers. Three pure
+    orchestrators — `FanOut` (Path A), `GapFill` (Path B),
+    `RunCandidateChange` (Path C) — share the deterministic scoring
+    function and write through the same event log. JetStream consumers
+    in `apps/matching/service/matching/v1` subscribe Path A to
+    `TopicCanonicalsUpserted` and Path C to
+    `TopicCandidatePreferencesUpdated` + `TopicCandidateEmbedding`,
+    guarded by `MATCHING_FANOUT_ENABLED` /
+    `MATCHING_CANDIDATE_CHANGE_ENABLED` env flags. Reranker is bounded
+  - best-effort with retrieval-score fallback (`NoopReranker` default,
+    `PooledReranker` when `MATCHING_RERANKER_ENABLED=true`). `DLQGuard`
+    publishes to `svc.opportunities.matching.deadletter` after 5
+    redeliveries via the Frame `QueueManager`. Prometheus collectors
+    defined per §5.2. In-memory `MemoryDebouncer` ships as the Path-C
+    TTL gate (Valkey-backed replacement in Phase 5). Integration
+    coverage in `MatchingPipelineSuite`: Path A happy path, idempotent
+    replay, terminal-state immunity, Path B merging without duplicates.
 
 - **Phase 3 (applications service) — done.** New `apps/applications`
   binary (frame service + `http.NewServeMux`) flag-gated by
@@ -578,7 +580,7 @@ None as of writing — every decision has a chosen option recorded in the releva
   and emit `EventKindOverflow` instead of `EventKindGenerated`,
   matching spec §3.1 step 9. Two production adapters replace the
   Phase-3/Phase-4 in-memory placeholders: `pkg/applications/
-  blob_store_r2.go` (Cloudflare R2 over the S3-compatible API,
+blob_store_r2.go` (Cloudflare R2 over the S3-compatible API,
   pre-signed GET URLs with 15-minute TTL per spec §5.4) and
   `pkg/matching/debounce_valkey.go` (Frame `cache/valkey` raw cache
   with TTL — uses `Exists`+`Set` fallback until Frame exposes

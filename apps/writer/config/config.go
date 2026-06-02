@@ -26,18 +26,23 @@ type Config struct {
 	R2Endpoint        string `env:"R2_ENDPOINT" envDefault:""`
 	R2UsePathStyle    bool   `env:"R2_PATH_STYLE" envDefault:"false"`
 
-	// Iceberg catalog — Lakekeeper REST endpoint. Lakekeeper owns the
-	// metadata DB and storage credentials; this binary only speaks REST.
+	// Iceberg catalog — Cloudflare R2 Data Catalog REST endpoint.
+	// R2 Data Catalog is a managed Iceberg REST catalog built into the
+	// R2 bucket; no separate catalog service to run.
 	//
-	//   ICEBERG_CATALOG_URI   e.g. http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog
-	//   ICEBERG_CATALOG_NAME  local catalog handle, e.g. "stawi"
-	//   ICEBERG_WAREHOUSE     logical warehouse registered in Lakekeeper, e.g. "product-opportunities"
-	//   ICEBERG_CATALOG_TOKEN optional pre-obtained bearer; leave unset when
-	//                         the cluster Lakekeeper runs with auth disabled.
+	//   ICEBERG_CATALOG_URI   the catalog URI returned by `wrangler r2 bucket catalog enable`
+	//   ICEBERG_CATALOG_NAME  local catalog handle for iceberg-go logs
+	//   ICEBERG_WAREHOUSE     warehouse name returned alongside the catalog URI
+	//   ICEBERG_CATALOG_TOKEN Cloudflare API token with R2 Data Catalog + R2 Storage permissions
 	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI,required"`
 	IcebergCatalogName  string `env:"ICEBERG_CATALOG_NAME"  envDefault:"stawi"`
-	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:"product-opportunities"`
+	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:""`
 	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`
+
+	// Cloudflare API token used by bootstrap to enable R2 Data Catalog
+	// on the bucket. Same token can serve as ICEBERG_CATALOG_TOKEN if
+	// it has both R2 Data Catalog and R2 Storage permissions.
+	CloudflareAPIToken string `env:"CLOUDFLARE_API_TOKEN" envDefault:""`
 
 	// R2 region used when signing requests to the object store.
 	R2Region string `env:"R2_REGION" envDefault:"auto"`

@@ -1,11 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.r2.purge",
-  "description": "Daily at 04:00 UTC: physical R2 teardown of canonicals stuck in status='deleted' past the 7-day grace window. Drops raw_refs rows, GCs orphaned raw/{hash}.html.gz blobs whose ref count hit zero, deletes cluster bundles, stamps r2_purged_at for idempotency. DISABLED — target handler queries canonical_jobs which is dropped in Phase 6; will be re-enabled in v1.1 once the Parquet-backed retention compactor is implemented.",
-  "schedule": {
-    "cron": "0 4 * * *",
-    "active": false
-  },
+  "description": "Daily at 04:00 UTC: physical R2 teardown of canonicals stuck in status='deleted' past the 7-day grace window. Drops raw_refs rows, GCs orphaned raw/{hash}.html.gz blobs whose ref count hit zero, deletes cluster bundles, stamps r2_purged_at for idempotency. DISABLED \u2014 target handler queries canonical_jobs which is dropped in Phase 6; will be re-enabled in v1.1 once the Parquet-backed retention compactor is implemented.",
   "input": {},
   "timeout": "10m",
   "steps": [
@@ -23,10 +19,19 @@
         "input": {
           "url": "http://opportunities-crawler.product-opportunities.svc/admin/r2/purge?grace_days=7&limit=500",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         }
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.r2.purge.default",
+      "cron_expr": "0 4 * * *",
+      "timezone": "UTC"
     }
   ]
 }

@@ -9,6 +9,7 @@
 Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEventName`) and the legacy `apps/matching/service/events/` handlers stay in the repo untouched — Phase 6 cutover deletes them alongside the Postgres column drops.
 
 **Tech stack:**
+
 - Go 1.26, Frame (`github.com/pitabwire/frame` v1.94.1), `pitabwire/util` logging
 - Existing `pkg/extraction.Extractor` — `ExtractTextFromPDF`, `ExtractTextFromDOCX`, `ExtractCV`, `Embed`, `Prompt`, `Rerank`
 - Existing `pkg/cv` — `Scorer`, `detectPriorityFixes`, `AttachRewrites` (via `LLMPrompter` interface)
@@ -20,6 +21,7 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 - OTEL (`go.opentelemetry.io/otel`) for metrics (existing)
 
 **What's in this plan:**
+
 - Six new event payload types (`pkg/events/v1/candidates.go`) + six topic constants (`pkg/events/v1/names.go`) + partition routing for eight candidate Parquet collections.
 - Writer encoder + hint extraction extensions for all six candidate topics.
 - `pkg/candidatestore` — reads latest candidate embedding + preferences from R2 `*_current/` partitions, with a small Valkey cache; writes nothing.
@@ -36,6 +38,7 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 - End-to-end test: POST `/candidates/cv/upload` → subscriptions fire → assert six-stage event trail → POST `/candidates/preferences` → GET `/candidates/match` returns top-N matches.
 
 **What's NOT in this plan (deferred to Phase 6 cutover):**
+
 - Deleting legacy `apps/matching/service/events/{embedding.go,profile_created.go}` files.
 - Deleting legacy HTTP handlers from the current `main.go` — they are removed from the new `main.go` but the old file is simply overwritten; any referenced helpers used only by those handlers fall out with the rewrite.
 - Dropping the CV/preferences/embedding columns on Postgres `candidates` table. The new code never reads or writes those columns, but the schema change happens in the Phase 6 cutover SQL.
@@ -47,25 +50,26 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 
 **What's intentionally deleted (aggressive option chosen by human):**
 
-| Endpoint | Replacement |
-|---|---|
-| `POST /candidates/register` | External Profile service (spec §4.3) |
-| `POST /webhooks/inbound-email` | Out of scope for v1 — email-upload pathway deferred |
-| `POST /webhooks/billing` | Separate billing app (Phase 6) |
-| `GET /billing/plans` | Separate billing app |
-| `GET /billing/checkout/status` | Separate billing app |
-| `GET /me`, `GET /me/subscription` | Profile service owns identity; subscription query moves to billing app |
-| `GET /candidates/:id`, `GET /candidates` (list) | Recruiter surfaces → v1.1 |
-| `PATCH /candidates/:id` | Profile service |
-| `GET /candidates/:id/score`, `POST /candidates/:id/rescore` | Dropped — CV is event-sourced; score component lives in `CVExtractedV1.score_components` on the event log |
-| `GET /matches`, `GET /matches/:id` | Replaced by `GET /candidates/match` (on-demand match; persisted via `MatchesReadyV1` event) |
-| `POST /force-match/:id` | Dropped — match endpoint is idempotent on-demand |
-| `POST /candidates/:id/saved-jobs`, `DELETE …`, `GET …/saved-jobs` | Move to `apps/api` (Phase 6) |
-| `POST /internal/link-expired` | Becomes a consumer of `jobs.canonicals.expired.v1` if still needed (Phase 6) |
-| `POST /candidates/onboard` | Subsumed by `POST /candidates/preferences` |
-| Legacy events `candidate.profile.created`, `candidate.embedding.ready` | Replaced by `CVUploadedV1` / `CVExtractedV1` / `CVEmbeddingV1` etc. |
+| Endpoint                                                               | Replacement                                                                                               |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `POST /candidates/register`                                            | External Profile service (spec §4.3)                                                                      |
+| `POST /webhooks/inbound-email`                                         | Out of scope for v1 — email-upload pathway deferred                                                       |
+| `POST /webhooks/billing`                                               | Separate billing app (Phase 6)                                                                            |
+| `GET /billing/plans`                                                   | Separate billing app                                                                                      |
+| `GET /billing/checkout/status`                                         | Separate billing app                                                                                      |
+| `GET /me`, `GET /me/subscription`                                      | Profile service owns identity; subscription query moves to billing app                                    |
+| `GET /candidates/:id`, `GET /candidates` (list)                        | Recruiter surfaces → v1.1                                                                                 |
+| `PATCH /candidates/:id`                                                | Profile service                                                                                           |
+| `GET /candidates/:id/score`, `POST /candidates/:id/rescore`            | Dropped — CV is event-sourced; score component lives in `CVExtractedV1.score_components` on the event log |
+| `GET /matches`, `GET /matches/:id`                                     | Replaced by `GET /candidates/match` (on-demand match; persisted via `MatchesReadyV1` event)               |
+| `POST /force-match/:id`                                                | Dropped — match endpoint is idempotent on-demand                                                          |
+| `POST /candidates/:id/saved-jobs`, `DELETE …`, `GET …/saved-jobs`      | Move to `apps/api` (Phase 6)                                                                              |
+| `POST /internal/link-expired`                                          | Becomes a consumer of `jobs.canonicals.expired.v1` if still needed (Phase 6)                              |
+| `POST /candidates/onboard`                                             | Subsumed by `POST /candidates/preferences`                                                                |
+| Legacy events `candidate.profile.created`, `candidate.embedding.ready` | Replaced by `CVUploadedV1` / `CVExtractedV1` / `CVEmbeddingV1` etc.                                       |
 
 **Subsequent plans (after this one):**
+
 - Plan 6: Greenfield cutover + ops. Drops legacy Postgres columns on `candidates`, deletes legacy handler files, moves billing to a new app, moves saved-jobs to apps/api, wires link-expired as a canonical-expired consumer (or deletes it).
 
 ---
@@ -74,44 +78,44 @@ Legacy candidate event types (`ProfileCreatedEventName`, `CandidateEmbeddingEven
 
 **Create:**
 
-| File | Responsibility |
-|---|---|
-| `pkg/events/v1/candidates.go` | Six payload structs (`CVUploadedV1`, `CVExtractedV1`, `CVImprovedV1`, `CandidateEmbeddingV1`, `PreferencesUpdatedV1`, `MatchesReadyV1`) with `json` + `parquet` tags |
-| `pkg/candidatestore/reader.go` | `Reader` — reads latest embedding + preferences from R2 `candidates_embeddings_current/` and `candidates_preferences_current/` via `pkg/eventlog`. Optional Valkey cache. No writes. |
-| `pkg/candidatestore/reader_test.go` | Integration test with MinIO + seeded Parquet files |
-| `apps/matching/service/http/v1/upload.go` | `POST /candidates/cv/upload` handler — multipart/form upload, archive raw bytes, extract text, emit `CVUploadedV1` |
-| `apps/matching/service/http/v1/upload_test.go` | httptest-driven unit test |
-| `apps/matching/service/http/v1/preferences.go` | `POST /candidates/preferences` handler — validates body, emits `PreferencesUpdatedV1` |
-| `apps/matching/service/http/v1/preferences_test.go` | httptest-driven unit test |
-| `apps/matching/service/http/v1/match.go` | `GET /candidates/match` handler — loads embedding + prefs, queries Manticore KNN+filter, in-Go composite scoring, optional rerank, emits `MatchesReadyV1` |
-| `apps/matching/service/http/v1/match_test.go` | Unit test with fakes for `candidatestore.Reader` and `searchindex.Client` |
-| `apps/matching/service/events/v1/cv_extract.go` | Frame handler — consumes `candidates.cv.uploaded.v1`, loads archived file, runs `ExtractCV`, runs `cv.Scorer`, emits `CVExtractedV1` |
-| `apps/matching/service/events/v1/cv_extract_test.go` | Unit test with fake extractor + fake scorer |
-| `apps/matching/service/events/v1/cv_improve.go` | Frame handler — consumes `candidates.cv.extracted.v1`, runs `cv.detectPriorityFixes` + `AttachRewrites`, emits `CVImprovedV1` |
-| `apps/matching/service/events/v1/cv_improve_test.go` | Unit test |
-| `apps/matching/service/events/v1/cv_embed.go` | Frame handler — consumes either `candidates.cv.extracted.v1` or `candidates.cv.improved.v1`, runs `extractor.Embed`, emits `CandidateEmbeddingV1` |
-| `apps/matching/service/events/v1/cv_embed_test.go` | Unit test |
-| `apps/matching/service/admin/v1/matches_weekly.go` | `POST /_admin/matches/weekly_digest` — iterates active candidates, fires match per-candidate, emits `MatchesReadyV1` |
-| `apps/matching/service/admin/v1/matches_weekly_test.go` | Unit test |
-| `apps/matching/service/admin/v1/cv_stale_nudge.go` | `POST /_admin/cv/stale_nudge` — finds candidates idle > 60 days, emits `candidates.cv.stale_nudge.v1` (out-of-band event for the external notification service) |
-| `apps/matching/service/admin/v1/cv_stale_nudge_test.go` | Unit test |
-| `apps/matching/service/e2e_test.go` | End-to-end: upload CV → extract → improve → embed → preferences → match → assert trail |
-| `definitions/trustage/candidates-matches-weekly-digest.json` | Weekly cron calling `/_admin/matches/weekly_digest` |
-| `definitions/trustage/candidates-cv-stale-nudge.json` | Daily cron calling `/_admin/cv/stale_nudge` |
+| File                                                         | Responsibility                                                                                                                                                                       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pkg/events/v1/candidates.go`                                | Six payload structs (`CVUploadedV1`, `CVExtractedV1`, `CVImprovedV1`, `CandidateEmbeddingV1`, `PreferencesUpdatedV1`, `MatchesReadyV1`) with `json` + `parquet` tags                 |
+| `pkg/candidatestore/reader.go`                               | `Reader` — reads latest embedding + preferences from R2 `candidates_embeddings_current/` and `candidates_preferences_current/` via `pkg/eventlog`. Optional Valkey cache. No writes. |
+| `pkg/candidatestore/reader_test.go`                          | Integration test with MinIO + seeded Parquet files                                                                                                                                   |
+| `apps/matching/service/http/v1/upload.go`                    | `POST /candidates/cv/upload` handler — multipart/form upload, archive raw bytes, extract text, emit `CVUploadedV1`                                                                   |
+| `apps/matching/service/http/v1/upload_test.go`               | httptest-driven unit test                                                                                                                                                            |
+| `apps/matching/service/http/v1/preferences.go`               | `POST /candidates/preferences` handler — validates body, emits `PreferencesUpdatedV1`                                                                                                |
+| `apps/matching/service/http/v1/preferences_test.go`          | httptest-driven unit test                                                                                                                                                            |
+| `apps/matching/service/http/v1/match.go`                     | `GET /candidates/match` handler — loads embedding + prefs, queries Manticore KNN+filter, in-Go composite scoring, optional rerank, emits `MatchesReadyV1`                            |
+| `apps/matching/service/http/v1/match_test.go`                | Unit test with fakes for `candidatestore.Reader` and `searchindex.Client`                                                                                                            |
+| `apps/matching/service/events/v1/cv_extract.go`              | Frame handler — consumes `candidates.cv.uploaded.v1`, loads archived file, runs `ExtractCV`, runs `cv.Scorer`, emits `CVExtractedV1`                                                 |
+| `apps/matching/service/events/v1/cv_extract_test.go`         | Unit test with fake extractor + fake scorer                                                                                                                                          |
+| `apps/matching/service/events/v1/cv_improve.go`              | Frame handler — consumes `candidates.cv.extracted.v1`, runs `cv.detectPriorityFixes` + `AttachRewrites`, emits `CVImprovedV1`                                                        |
+| `apps/matching/service/events/v1/cv_improve_test.go`         | Unit test                                                                                                                                                                            |
+| `apps/matching/service/events/v1/cv_embed.go`                | Frame handler — consumes either `candidates.cv.extracted.v1` or `candidates.cv.improved.v1`, runs `extractor.Embed`, emits `CandidateEmbeddingV1`                                    |
+| `apps/matching/service/events/v1/cv_embed_test.go`           | Unit test                                                                                                                                                                            |
+| `apps/matching/service/admin/v1/matches_weekly.go`           | `POST /_admin/matches/weekly_digest` — iterates active candidates, fires match per-candidate, emits `MatchesReadyV1`                                                                 |
+| `apps/matching/service/admin/v1/matches_weekly_test.go`      | Unit test                                                                                                                                                                            |
+| `apps/matching/service/admin/v1/cv_stale_nudge.go`           | `POST /_admin/cv/stale_nudge` — finds candidates idle > 60 days, emits `candidates.cv.stale_nudge.v1` (out-of-band event for the external notification service)                      |
+| `apps/matching/service/admin/v1/cv_stale_nudge_test.go`      | Unit test                                                                                                                                                                            |
+| `apps/matching/service/e2e_test.go`                          | End-to-end: upload CV → extract → improve → embed → preferences → match → assert trail                                                                                               |
+| `definitions/trustage/candidates-matches-weekly-digest.json` | Weekly cron calling `/_admin/matches/weekly_digest`                                                                                                                                  |
+| `definitions/trustage/candidates-cv-stale-nudge.json`        | Daily cron calling `/_admin/cv/stale_nudge`                                                                                                                                          |
 
 **Modify:**
 
-| File | Change |
-|---|---|
-| `pkg/events/v1/names.go` | Add six new topic constants (`TopicCVUploaded`, `TopicCVExtracted`, `TopicCVImproved`, `TopicCandidateEmbedding`, `TopicCandidatePreferencesUpdated`, `TopicCandidateMatchesReady`) plus `TopicCandidateCVStaleNudge`; extend `AllTopics()` with the ones the writer persists |
-| `pkg/events/v1/envelope_test.go` | Six round-trip tests (one per payload type) |
-| `pkg/events/v1/partitions.go` | Add partition routing for seven candidate collections (`candidates_cv`, `candidates_cv_current`, `candidates_improvements`, `candidates_preferences`, `candidates_preferences_current`, `candidates_embeddings`, `candidates_embeddings_current`, `candidates_matches_ready`) — all use `cnd=<candidate_id_prefix_2hex>` secondary |
-| `pkg/events/v1/partitions_test.go` (actually envelope_test.go per repo convention) | Two new partition tests |
-| `apps/writer/service/handler.go` | Extend `extractHint` with six new cases all keyed on `payload.candidate_id` |
-| `apps/writer/service/service.go` | Extend `uploadBatch` with six new encoder cases |
-| `apps/writer/service/buffer.go` | Extend `collectionForTopic` with mappings for the six candidate topics (matches.ready is its own collection even though it shares the cnd axis) |
-| `apps/matching/cmd/main.go` | Rewritten from scratch — drops ~1,200 lines of legacy wiring, wires the three HTTP handlers, three event subscriptions, two admin endpoints, health |
-| `apps/matching/config/config.go` | Add `R2ArchiveBucket`, `R2EventLogBucket`, `ManticoreURL`, `ValkeyAddr` env vars; drop `BillingBaseURL`, `NotificationBaseURL`, `ProfileServiceURL` if they were only used by removed handlers (trim as needed) |
+| File                                                                               | Change                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pkg/events/v1/names.go`                                                           | Add six new topic constants (`TopicCVUploaded`, `TopicCVExtracted`, `TopicCVImproved`, `TopicCandidateEmbedding`, `TopicCandidatePreferencesUpdated`, `TopicCandidateMatchesReady`) plus `TopicCandidateCVStaleNudge`; extend `AllTopics()` with the ones the writer persists                                                      |
+| `pkg/events/v1/envelope_test.go`                                                   | Six round-trip tests (one per payload type)                                                                                                                                                                                                                                                                                        |
+| `pkg/events/v1/partitions.go`                                                      | Add partition routing for seven candidate collections (`candidates_cv`, `candidates_cv_current`, `candidates_improvements`, `candidates_preferences`, `candidates_preferences_current`, `candidates_embeddings`, `candidates_embeddings_current`, `candidates_matches_ready`) — all use `cnd=<candidate_id_prefix_2hex>` secondary |
+| `pkg/events/v1/partitions_test.go` (actually envelope_test.go per repo convention) | Two new partition tests                                                                                                                                                                                                                                                                                                            |
+| `apps/writer/service/handler.go`                                                   | Extend `extractHint` with six new cases all keyed on `payload.candidate_id`                                                                                                                                                                                                                                                        |
+| `apps/writer/service/service.go`                                                   | Extend `uploadBatch` with six new encoder cases                                                                                                                                                                                                                                                                                    |
+| `apps/writer/service/buffer.go`                                                    | Extend `collectionForTopic` with mappings for the six candidate topics (matches.ready is its own collection even though it shares the cnd axis)                                                                                                                                                                                    |
+| `apps/matching/cmd/main.go`                                                        | Rewritten from scratch — drops ~1,200 lines of legacy wiring, wires the three HTTP handlers, three event subscriptions, two admin endpoints, health                                                                                                                                                                                |
+| `apps/matching/config/config.go`                                                   | Add `R2ArchiveBucket`, `R2EventLogBucket`, `ManticoreURL`, `ValkeyAddr` env vars; drop `BillingBaseURL`, `NotificationBaseURL`, `ProfileServiceURL` if they were only used by removed handlers (trim as needed)                                                                                                                    |
 
 **Delete (via main.go rewrite):**
 
@@ -126,6 +130,7 @@ The old `apps/matching/cmd/main.go` has ~25 HTTP handlers (registerHandler, inbo
 ## Task 1: Add six candidate event payload types
 
 **Files:**
+
 - Create: `pkg/events/v1/candidates.go`
 - Modify: `pkg/events/v1/envelope_test.go`
 
@@ -481,6 +486,7 @@ git commit -m "feat(events): add six candidate lifecycle payload types + topics"
 ## Task 2: Partition routing for candidate collections
 
 **Files:**
+
 - Modify: `pkg/events/v1/partitions.go`
 - Modify: `pkg/events/v1/envelope_test.go`
 
@@ -596,6 +602,7 @@ git commit -m "feat(events): partition candidate collections by cnd=<id_prefix_2
 ## Task 3: Writer encoder + hint extraction for candidate topics
 
 **Files:**
+
 - Modify: `apps/writer/service/handler.go`
 - Modify: `apps/writer/service/service.go`
 - Modify: `apps/writer/service/buffer.go`
@@ -715,6 +722,7 @@ git commit -m "feat(writer): encode candidate lifecycle Parquet partitions"
 ## Task 4: `pkg/candidatestore.Reader` — load latest embedding + preferences from R2
 
 **Files:**
+
 - Create: `pkg/candidatestore/reader.go`
 - Create: `pkg/candidatestore/reader_test.go`
 
@@ -1037,6 +1045,7 @@ git commit -m "feat(candidatestore): R2 reader for latest embedding + preference
 ## Task 5: CV upload HTTP handler — archive + extract + emit
 
 **Files:**
+
 - Create: `apps/matching/service/http/v1/upload.go`
 - Create: `apps/matching/service/http/v1/upload_test.go`
 
@@ -1376,6 +1385,7 @@ git commit -m "feat(candidates): POST /candidates/cv/upload emits CVUploadedV1"
 ## Task 6: Preferences HTTP handler
 
 **Files:**
+
 - Create: `apps/matching/service/http/v1/preferences.go`
 - Create: `apps/matching/service/http/v1/preferences_test.go`
 
@@ -1593,6 +1603,7 @@ git commit -m "feat(candidates): POST /candidates/preferences emits PreferencesU
 ## Task 7: `cv-extract` subscription handler
 
 **Files:**
+
 - Create: `apps/matching/service/events/v1/cv_extract.go`
 - Create: `apps/matching/service/events/v1/cv_extract_test.go`
 
@@ -1886,6 +1897,7 @@ git commit -m "feat(candidates): cv-extract subscription emits CVExtractedV1"
 ## Task 8: `cv-improve` subscription handler
 
 **Files:**
+
 - Create: `apps/matching/service/events/v1/cv_improve.go`
 - Create: `apps/matching/service/events/v1/cv_improve_test.go`
 
@@ -2125,6 +2137,7 @@ git commit -m "feat(candidates): cv-improve subscription emits CVImprovedV1"
 ## Task 9: `cv-embed` subscription handler
 
 **Files:**
+
 - Create: `apps/matching/service/events/v1/cv_embed.go`
 - Create: `apps/matching/service/events/v1/cv_embed_test.go`
 
@@ -2398,10 +2411,12 @@ git commit -m "feat(candidates): cv-embed subscription emits CandidateEmbeddingV
 ## Task 10: Match HTTP handler
 
 **Files:**
+
 - Create: `apps/matching/service/http/v1/match.go`
 - Create: `apps/matching/service/http/v1/match_test.go`
 
 The match handler is the most logic-heavy endpoint in the phase. It:
+
 1. Resolves `candidate_id` from query parameter (trusted — auth upstream).
 2. Loads the latest embedding + preferences via `candidatestore.Reader`.
 3. Builds a Manticore query combining KNN on `embedding` + hard filters (`remote_type`, `salary_min` floor, `country` ∈ preferred_locations).
@@ -2757,6 +2772,7 @@ git commit -m "feat(candidates): GET /candidates/match — Manticore KNN + emit 
 ## Task 11: Trustage admin endpoints
 
 **Files:**
+
 - Create: `apps/matching/service/admin/v1/matches_weekly.go`
 - Create: `apps/matching/service/admin/v1/matches_weekly_test.go`
 - Create: `apps/matching/service/admin/v1/cv_stale_nudge.go`
@@ -3131,6 +3147,7 @@ git commit -m "feat(candidates): Trustage admin endpoints — matches weekly dig
 ## Task 12: End-to-end candidates test
 
 **Files:**
+
 - Create: `apps/matching/service/e2e_test.go`
 
 Exercises the full Phase 5 loop in one test:
@@ -3142,7 +3159,7 @@ Exercises the full Phase 5 loop in one test:
 5. POST `/candidates/preferences` → emits `PreferencesUpdatedV1`.
 6. Collectors on all five topics verify the events fired.
 
-Because Frame's registry is one-handler-per-topic, the test can't simultaneously register a production handler AND a collector on the same topic without a fanout wrapper. For CV-extract, CV-improve, CV-embed, the production handlers are what we want to run; we add collectors only on the *output* topics (CVExtractedV1, CVImprovedV1, CandidateEmbeddingV1, PreferencesUpdatedV1, MatchesReadyV1) using fanout wrappers like Task 11 of Phase 4 did.
+Because Frame's registry is one-handler-per-topic, the test can't simultaneously register a production handler AND a collector on the same topic without a fanout wrapper. For CV-extract, CV-improve, CV-embed, the production handlers are what we want to run; we add collectors only on the _output_ topics (CVExtractedV1, CVImprovedV1, CandidateEmbeddingV1, PreferencesUpdatedV1, MatchesReadyV1) using fanout wrappers like Task 11 of Phase 4 did.
 
 - [ ] **Step 1: Write the test**
 
@@ -3387,6 +3404,7 @@ git commit -m "test(candidates): end-to-end upload → extract → improve → e
 ## Task 13: SearchIndex adapter over `pkg/searchindex.Client`
 
 **Files:**
+
 - Create: `apps/matching/service/http/v1/search_adapter.go`
 - Create: `apps/matching/service/http/v1/search_adapter_test.go`
 
@@ -3634,6 +3652,7 @@ git commit -m "feat(candidates): Manticore KNN+filter adapter for match endpoint
 ## Task 14: CandidateLister adapter over `repository.CandidateRepository`
 
 **Files:**
+
 - Create: `apps/matching/service/admin/v1/candidate_lister.go`
 - Create: `apps/matching/service/admin/v1/candidate_lister_test.go`
 
@@ -3753,6 +3772,7 @@ git commit -m "feat(candidates): CandidateLister adapter on repository.ListActiv
 ## Task 15: `MatchService` — extract match pipeline from the HTTP handler
 
 **Files:**
+
 - Modify: `apps/matching/service/http/v1/match.go`
 - Create: `apps/matching/service/http/v1/match_service.go`
 - Create: `apps/matching/service/http/v1/match_service_test.go`
@@ -3999,6 +4019,7 @@ git commit -m "refactor(candidates): extract MatchService so cron and HTTP share
 ## Task 16: Wire `MatchRunner` on the new `MatchService`
 
 **Files:**
+
 - Create: `apps/matching/service/admin/v1/match_runner.go`
 - Create: `apps/matching/service/admin/v1/match_runner_test.go`
 
@@ -4214,6 +4235,7 @@ git commit -m "feat(candidates): ServiceMatchRunner — cron wraps MatchService 
 ## Task 17: StaleLister over `repository.CandidateRepository`
 
 **Files:**
+
 - Create: `apps/matching/service/admin/v1/stale_lister.go`
 - Create: `apps/matching/service/admin/v1/stale_lister_test.go`
 - Modify: `pkg/repository/candidate.go` — add `ListInactiveSince(ctx, cutoff, limit) ([]*domain.CandidateProfile, error)`
@@ -4371,6 +4393,7 @@ git commit -m "feat(candidates): StaleLister via repository.ListInactiveSince"
 ## Task 18: Rewrite `apps/matching/cmd/main.go`
 
 **Files:**
+
 - Modify: `apps/matching/cmd/main.go` (complete rewrite)
 - Modify: `apps/matching/config/config.go` (trim unused env vars)
 - Delete: `apps/matching/cmd/billing.go`
@@ -4380,21 +4403,24 @@ This task drops roughly 1,200 lines from `main.go`: every legacy HTTP handler (r
 The new `main.go` wires:
 
 **HTTP endpoints:**
+
 - `GET /healthz` — minimal health check.
 - `POST /candidates/cv/upload` — `UploadHandler`.
 - `POST /candidates/preferences` — `PreferencesHandler`.
 - `GET /candidates/match` — `MatchHandler` (backed by `MatchService` + `ManticoreSearch`).
 
 **Trustage admin endpoints:**
+
 - `POST /_admin/matches/weekly_digest` — `MatchesWeeklyHandler` (backed by `RepoCandidateLister` + `ServiceMatchRunner`).
 - `POST /_admin/cv/stale_nudge` — `CVStaleNudgeHandler` (backed by `RepoStaleLister`).
 
 **Internal event subscriptions (Frame):**
+
 - `CVExtractHandler` on `candidates.cv.uploaded.v1`.
 - `CVImproveHandler` on `candidates.cv.extracted.v1`.
 - `CVEmbedHandler` on `candidates.cv.extracted.v1`.
 
-(Production is affected by the one-handler-per-topic constraint — in production, only *one* subscriber on `candidates.cv.extracted.v1` can survive in the Frame registry. This means either `CVImproveHandler` or `CVEmbedHandler` must yield. Per spec §6.2, they are supposed to run in parallel. The real fix is to give them distinct subscription names via a wrapping concept — Frame's current API doesn't support this cleanly, which is why the e2e test uses a fanout wrapper. Task 18 introduces a tiny in-file `parallelFanout` type that wraps both production handlers and registers once under the topic, dispatching to both on each event. This is an explicit v1 workaround documented in a comment.)
+(Production is affected by the one-handler-per-topic constraint — in production, only _one_ subscriber on `candidates.cv.extracted.v1` can survive in the Frame registry. This means either `CVImproveHandler` or `CVEmbedHandler` must yield. Per spec §6.2, they are supposed to run in parallel. The real fix is to give them distinct subscription names via a wrapping concept — Frame's current API doesn't support this cleanly, which is why the e2e test uses a fanout wrapper. Task 18 introduces a tiny in-file `parallelFanout` type that wraps both production handlers and registers once under the topic, dispatching to both on each event. This is an explicit v1 workaround documented in a comment.)
 
 **All production adapters (Tasks 13–17) are wired — no `nil` placeholders in the mux.**
 
@@ -4757,6 +4783,7 @@ git commit -m "refactor(candidates): rewrite main.go — drop legacy handlers, w
 ## Task 19: Trustage trigger definitions
 
 **Files:**
+
 - Create: `definitions/trustage/candidates-matches-weekly-digest.json`
 - Create: `definitions/trustage/candidates-cv-stale-nudge.json`
 
@@ -4869,6 +4896,7 @@ git commit -m "feat(trustage): candidate weekly-digest + CV stale-nudge triggers
 ## Task 20: Full build + sanity sweep
 
 **Files:**
+
 - None (verification only)
 
 - [ ] **Step 1: Build the whole module**
@@ -4917,11 +4945,13 @@ git log --oneline d60ce4c..HEAD
 ```
 
 Expected:
+
 - All tests pass.
 - ~19 commits on this branch (one per task except Task 20).
 - Six new v1 event payload types, three HTTP endpoints (upload, preferences, match), two Trustage admin endpoints (matches weekly digest, CV stale nudge), three internal event subscriptions (cv-extract, cv-improve, cv-embed), four production adapters (Manticore search, candidate lister, match runner, stale lister), one end-to-end test.
 
 At this point, an operator can:
+
 1. Deploy `apps/matching`.
 2. Configure the two Trustage triggers in the cluster.
 3. POST a PDF resume to `/candidates/cv/upload`, observe the full event trail (uploaded → extracted → improved + embedding) in the writer's Parquet output on R2.

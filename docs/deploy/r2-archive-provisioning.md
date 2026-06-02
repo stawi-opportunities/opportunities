@@ -76,7 +76,7 @@ r2_deploy_hook_url    = <optional CF Pages deploy hook URL>
 Use the `vault-secret` skill (kubectl exec into `vault-openbao-0` with
 a freshly-minted `external-secrets` SA token; `bao` CLI, not `vault`).
 
-Bucket *names* are NOT stored in Vault — they're plain config in each
+Bucket _names_ are NOT stored in Vault — they're plain config in each
 HelmRelease (`R2_CONTENT_BUCKET`, `R2_ARCHIVE_BUCKET`,
 `R2_CHRONICLE_BUCKET`).
 

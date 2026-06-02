@@ -13,6 +13,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/freshness"
 )
 
 // SourceLister is the narrow slice of *repository.SourceRepository the
@@ -22,6 +23,73 @@ import (
 type SourceLister interface {
 	ListDue(ctx context.Context, now time.Time, limit int) ([]*domain.Source, error)
 	UpdateNextCrawl(ctx context.Context, id string, next, verified time.Time, health float64) error
+}
+
+// AdaptiveScorer is the optional interface — when a SourceLister also
+// satisfies this, the tick handler refreshes the crawl_signals
+// materialized view and recomputes per-source scores before listing
+// due rows. Concrete *repository.SourceRepository implements it; test
+// fakes can omit it and the tick handler degrades gracefully (legacy
+// fixed-interval scheduling continues to work).
+type AdaptiveScorer interface {
+	RefreshSignals(ctx context.Context) error
+	LoadSignals(ctx context.Context) (map[string]freshness.SourceSignals, error)
+	ListAll(ctx context.Context) ([]*domain.Source, error)
+	UpdateScoreAndNextCrawl(ctx context.Context, sourceID string, score float64, nextCrawlAt time.Time) error
+}
+
+// recomputeScores refreshes the crawl_signals view, recomputes the
+// freshness score for every source with signals, and persists the
+// derived next_crawl_at. Best-effort: any failure logs a warning and
+// returns — the legacy ListDue path still fires on the existing
+// next_crawl_at so the tick degrades to "stale signals" rather than
+// "skipped tick". Tier is hard-coded to 2 (neutral) until the
+// Source.Tier column lands; see plan note for Plan B2.
+func recomputeScores(ctx context.Context, scorer AdaptiveScorer, now time.Time) {
+	log := util.Log(ctx)
+	if err := scorer.RefreshSignals(ctx); err != nil {
+		log.WithError(err).Warn("scheduler/tick: REFRESH crawl_signals failed; using stale signals")
+		// Continue — LoadSignals reads the prior refresh's snapshot.
+	}
+	signals, err := scorer.LoadSignals(ctx)
+	if err != nil {
+		log.WithError(err).Warn("scheduler/tick: LoadSignals failed; skipping score recompute")
+		return
+	}
+	if len(signals) == 0 {
+		return
+	}
+	sources, err := scorer.ListAll(ctx)
+	if err != nil {
+		log.WithError(err).Warn("scheduler/tick: ListAll failed; skipping score recompute")
+		return
+	}
+	updated := 0
+	for _, src := range sources {
+		sig, ok := signals[src.ID]
+		if !ok {
+			continue // source has no signals row yet
+		}
+		// Tier is not yet on the Source struct; pass neutral (2) so
+		// the freshness package's tier nudge is a no-op. Plan B2 will
+		// surface a real tier and the call site flips to src.Tier.
+		score := freshness.Score(sig, 2, now)
+		minMin := src.MinIntervalMinutes
+		if minMin <= 0 {
+			minMin = 15
+		}
+		maxMin := src.MaxIntervalMinutes
+		if maxMin <= 0 {
+			maxMin = 10080
+		}
+		next := freshness.NextCrawlAt(score, now, minMin, maxMin)
+		if upErr := scorer.UpdateScoreAndNextCrawl(ctx, src.ID, score, next); upErr != nil {
+			log.WithError(upErr).WithField("source_id", src.ID).Warn("scheduler/tick: score update failed")
+			continue
+		}
+		updated++
+	}
+	log.WithField("scored", updated).WithField("considered", len(sources)).Debug("scheduler/tick: scores recomputed")
 }
 
 // Admitter is the slice of *backpressure.Gate the handler needs.
@@ -68,6 +136,17 @@ func SchedulerTickHandler(svc *frame.Service, lister SourceLister, admit Admitte
 		log := util.Log(ctx)
 		now := time.Now().UTC()
 
+		// Adaptive recrawl (Plan D3): if the SourceLister also supports
+		// the AdaptiveScorer surface, refresh signals + recompute scores
+		// before listing due rows. The view refresh is CONCURRENT, the
+		// score recompute is best-effort, and any failure logs a warning
+		// rather than aborting the tick — the legacy fixed-interval path
+		// still works because ListDue keys on next_crawl_at which is
+		// pre-seeded by the backfill migration.
+		if scorer, ok := lister.(AdaptiveScorer); ok {
+			recomputeScores(ctx, scorer, now)
+		}
+
 		sources, err := lister.ListDue(ctx, now, 500)
 		if err != nil {
 			log.WithError(err).Error("scheduler/tick: ListDue failed")
@@ -92,13 +171,21 @@ func SchedulerTickHandler(svc *frame.Service, lister SourceLister, admit Admitte
 			return
 		}
 
+		// tickMinute is the partition key for the idempotency contract:
+		// every source admitted in this sweep gets the same minute-
+		// truncated timestamp, so concurrent ticks (or NATS redeliveries)
+		// collide on (source_id, tick_minute) and the crawl handler
+		// reuses the existing crawl_jobs row instead of inserting a dup.
+		tickMinute := now.UTC().Truncate(time.Minute).Format(time.RFC3339)
 		for i := 0; i < granted && i < len(sources); i++ {
 			src := sources[i]
 			env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
-				RequestID: xid.New().String(),
-				SourceID:  src.ID,
-				Mode:      "auto",
-				Attempt:   1,
+				RequestID:      xid.New().String(),
+				SourceID:       src.ID,
+				IdempotencyKey: fmt.Sprintf("%s:%s", src.ID, tickMinute),
+				ScheduledAt:    now,
+				Mode:           "auto",
+				Attempt:        1,
 			})
 			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicCrawlRequests, env); emitErr != nil {
 				log.WithError(emitErr).WithField("source_id", src.ID).Warn("scheduler/tick: emit failed")

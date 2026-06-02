@@ -133,6 +133,16 @@ type Source struct {
 	LastSeenAt       *time.Time     `json:"last_seen_at"`
 	NextCrawlAt      time.Time      `gorm:"index" json:"next_crawl_at"`
 
+	// Adaptive recrawl score (0.0–1.0). 1.0 means "crawl at
+	// MinIntervalMinutes"; 0.0 means "crawl at MaxIntervalMinutes".
+	// Recomputed every scheduler tick from the crawl_signals
+	// materialized view; persisted alongside the derived NextCrawlAt.
+	// Default 0.5 (neutral) keeps a freshly-onboarded source at the
+	// geometric midpoint until enough signals accrue.
+	Score              float64 `gorm:"column:score;not null;default:0.5"               json:"score"`
+	MinIntervalMinutes int     `gorm:"column:min_interval_minutes;not null;default:15" json:"min_interval_minutes"`
+	MaxIntervalMinutes int     `gorm:"column:max_interval_minutes;not null;default:10080" json:"max_interval_minutes"`
+
 	// Reachability probe run before every enqueue. Sources that fail
 	// repeatedly get their NextCrawlAt pushed out with backoff rather
 	// than being dispatched into a pipeline that will just 404.
@@ -181,39 +191,87 @@ type Source struct {
 	// source is always visible without trawling audit logs.
 	LastStoppedAt *time.Time `json:"last_stopped_at,omitempty"`
 	LastStoppedBy string     `gorm:"type:varchar(64)" json:"last_stopped_by,omitempty"`
+
+	// ExtractionPromptExtension is appended verbatim to the kind-level
+	// extraction prompt for this source. Empty for sources that don't
+	// need customization. Operator-editable via PUT /admin/sources/{id}.
+	ExtractionPromptExtension string `gorm:"type:text;not null;default:''" json:"extraction_prompt_extension"`
+
+	// FrontierEnabled opts a source into the URL-frontier path (D2).
+	// false (default) keeps the legacy per-source iterator behaviour;
+	// true routes discovery output through pkg/frontier so the
+	// frontier-worker fans out per-URL fetch + extract under shared
+	// per-host politeness windows. Operator-toggled via PUT
+	// /admin/sources/{id}.
+	FrontierEnabled bool `gorm:"not null;default:false" json:"frontier_enabled"`
 }
 
 func (Source) TableName() string { return "sources" }
 
 // CrawlJob records a single crawl execution against a source.
+//
+// Hypertable partitioned by scheduled_at (see migration 0019). PK is
+// (id, scheduled_at). Idempotency is enforced by a composite UNIQUE
+// INDEX on (idempotency_key, scheduled_at) defined in the migration.
 type CrawlJob struct {
-	BaseModel
-	SourceID       string         `gorm:"type:varchar(20);not null;index" json:"source_id"`
-	ScheduledAt    time.Time      `gorm:"not null" json:"scheduled_at"`
-	StartedAt      *time.Time     `json:"started_at"`
-	FinishedAt     *time.Time     `json:"finished_at"`
-	Status         CrawlJobStatus `gorm:"type:varchar(20);not null;default:'scheduled'" json:"status"`
-	Attempt        int            `gorm:"not null;default:1" json:"attempt"`
-	IdempotencyKey string         `gorm:"type:varchar(255);uniqueIndex" json:"idempotency_key"`
-	ErrorCode      string         `gorm:"type:text" json:"error_code"`
-	ErrorMessage   string         `gorm:"type:text" json:"error_message"`
-	JobsFound      int            `gorm:"not null;default:0" json:"jobs_found"`
-	JobsStored     int            `gorm:"not null;default:0" json:"jobs_stored"`
+	ID             string         `gorm:"primaryKey;column:id;type:varchar(20)" json:"id"`
+	ScheduledAt    time.Time      `gorm:"primaryKey;column:scheduled_at;not null" json:"scheduled_at"`
+	CreatedAt      time.Time      `gorm:"column:created_at;not null;default:now()" json:"created_at"`
+	UpdatedAt      time.Time      `gorm:"column:updated_at;not null;default:now()" json:"updated_at"`
+	DeletedAt      *time.Time     `gorm:"column:deleted_at" json:"deleted_at,omitempty"`
+	SourceID       string         `gorm:"column:source_id;type:varchar(20);not null" json:"source_id"`
+	StartedAt      *time.Time     `gorm:"column:started_at" json:"started_at"`
+	FinishedAt     *time.Time     `gorm:"column:finished_at" json:"finished_at"`
+	Status         CrawlJobStatus `gorm:"column:status;type:varchar(20);not null;default:'scheduled'" json:"status"`
+	Attempt        int            `gorm:"column:attempt;not null;default:1" json:"attempt"`
+	IdempotencyKey string         `gorm:"column:idempotency_key;type:varchar(255)" json:"idempotency_key"`
+	ErrorCode      string         `gorm:"column:error_code;type:text" json:"error_code"`
+	ErrorMessage   string         `gorm:"column:error_message;type:text" json:"error_message"`
+	JobsFound      int            `gorm:"column:jobs_found;not null;default:0" json:"jobs_found"`
+	JobsStored     int            `gorm:"column:jobs_stored;not null;default:0" json:"jobs_stored"`
 }
 
 func (CrawlJob) TableName() string { return "crawl_jobs" }
 
+// RawPayloadStatus is the queue-state lifecycle for raw_payloads.
+type RawPayloadStatus string
+
+const (
+	RawPayloadStatusPending   RawPayloadStatus = "pending"
+	RawPayloadStatusEnriching RawPayloadStatus = "enriching"
+	RawPayloadStatusEnriched  RawPayloadStatus = "enriched"
+	RawPayloadStatusFailed    RawPayloadStatus = "failed"
+	RawPayloadStatusSkipped   RawPayloadStatus = "skipped"
+)
+
 // RawPayload is the metadata row for every HTTP fetch the crawler
 // makes. The actual response body lives in R2 at raw/{content_hash}.html.gz
-// — this row just records the fetch event and points to it.
+// via pkg/archive — this row records the fetch event, points to the
+// blob, and drives the enricher queue.
+//
+// Hypertable partitioned by fetched_at (see migration 0019). PK is
+// (id, fetched_at) — matches the variantstate.Variant pattern at
+// pkg/variantstate/store.go:100-115.
 type RawPayload struct {
-	BaseModel
-	CrawlJobID  string    `gorm:"type:varchar(20);not null;index" json:"crawl_job_id"`
-	StorageURI  string    `gorm:"type:text" json:"storage_uri"`
-	ContentHash string    `gorm:"type:varchar(64);index" json:"content_hash"`
-	SizeBytes   int64     `gorm:"not null;default:0" json:"size_bytes"`
-	FetchedAt   time.Time `gorm:"not null" json:"fetched_at"`
-	HTTPStatus  int       `gorm:"not null" json:"http_status"`
+	ID           string           `gorm:"primaryKey;column:id;type:varchar(20)" json:"id"`
+	FetchedAt    time.Time        `gorm:"primaryKey;column:fetched_at;not null" json:"fetched_at"`
+	CreatedAt    time.Time        `gorm:"column:created_at;not null;default:now()" json:"created_at"`
+	UpdatedAt    time.Time        `gorm:"column:updated_at;not null;default:now()" json:"updated_at"`
+	DeletedAt    *time.Time       `gorm:"column:deleted_at" json:"deleted_at,omitempty"`
+	CrawlJobID   string           `gorm:"column:crawl_job_id;type:varchar(20);not null" json:"crawl_job_id"`
+	SourceID     string           `gorm:"column:source_id;type:varchar(20)" json:"source_id,omitempty"`
+	SourceURL    string           `gorm:"column:source_url;type:text" json:"source_url,omitempty"`
+	StorageURI   string           `gorm:"column:storage_uri;type:text" json:"storage_uri"`
+	ContentHash  string           `gorm:"column:content_hash;type:varchar(64)" json:"content_hash"`
+	SizeBytes    int64            `gorm:"column:size_bytes;not null;default:0" json:"size_bytes"`
+	HTTPStatus   int              `gorm:"column:http_status;not null" json:"http_status"`
+	Status       RawPayloadStatus `gorm:"column:status;type:text;not null;default:'pending'" json:"status"`
+	AttemptCount int              `gorm:"column:attempt_count;not null;default:0" json:"attempt_count"`
+	NextRetryAt  *time.Time       `gorm:"column:next_retry_at" json:"next_retry_at,omitempty"`
+	LastError    string           `gorm:"column:last_error;type:text" json:"last_error,omitempty"`
+
+	ReparseCount   int        `gorm:"column:reparse_count;not null;default:0" json:"reparse_count"`
+	LastReparsedAt *time.Time `gorm:"column:last_reparsed_at" json:"last_reparsed_at,omitempty"`
 }
 
 func (RawPayload) TableName() string { return "raw_payloads" }

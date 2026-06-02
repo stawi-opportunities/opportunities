@@ -15,6 +15,7 @@
 - One consolidated SQL migration (`db/migrations/0003_cutover_drop_legacy.sql`) drops `canonical_jobs`, `job_variants`, `job_clusters`, `job_cluster_members`, `crawl_page_state`, `rerank_cache`, `mv_job_facets`, `saved_jobs`, plus the CV/preferences/embedding columns on `candidates`. Domain model + AutoMigrate lists in `apps/crawler/cmd/main.go` and `apps/api/cmd/main.go` update to match.
 
 **Tech stack:**
+
 - Go 1.26, Frame (`github.com/pitabwire/frame` v1.94.1), `pitabwire/util` logging
 - Existing `pkg/searchindex.Client` (Manticore HTTP), `pkg/eventlog` (R2 list/get/put/Parquet), `pkg/archive` (raw R2)
 - Existing `pkg/events/v1/` envelope + partition-key helpers
@@ -24,6 +25,7 @@
 - `testcontainers-go` for MinIO + Manticore + Valkey + Postgres integration tests (existing convention)
 
 **What's in this plan:**
+
 - Hourly + daily Parquet compaction on `apps/writer` with real dedup-by-`event_id`, real `*_current/` rebuild, and real partition-prefix scans.
 - Four new Trustage trigger JSONs: `compact-hourly.json`, `compact-daily.json`, `sources-quality-window-reset.json`, `sources-health-decay.json`.
 - Full `backpressure.Gate.Admit` policy with per-topic drain-time thresholds + HPA-ceiling awareness. Wait hint becomes drain-time-aware.
@@ -36,6 +38,7 @@
 - End-to-end smoke test + k6 scripts for §11.3 post-cut verification.
 
 **What's NOT in this plan (deferred to v1.1):**
+
 - `idx_candidates_rt` Manticore index + recruiter-side candidate search (spec §2 Non-goals).
 - Per-page connector fan-out (listing → detail URL pair via `crawl.requests.v1`). Current iterator-based connectors keep working; the refactor is orthogonal.
 - Rerank pre-warmer Trustage trigger (spec §12.3).
@@ -50,86 +53,87 @@
 
 **Create:**
 
-| File | Responsibility |
-|---|---|
-| `apps/writer/service/compact.go` | `Compactor` struct + `CompactHourly` + `CompactDaily` methods — dedup-by-event_id, `*_current/` rebuild |
-| `apps/writer/service/compact_test.go` | Unit tests with MinIO + seeded Parquet |
-| `apps/writer/service/compact_admin.go` | `CompactHourlyHandler` + `CompactDailyHandler` — HTTP adapters |
-| `apps/writer/service/compact_admin_test.go` | httptest-driven test |
-| `apps/worker/service/kv_rebuild.go` | `KVRebuilder` struct + `Run` method — `canonicals_current/` scan → KV repopulate |
-| `apps/worker/service/kv_rebuild_test.go` | Unit test with testcontainers MinIO + Valkey |
-| `apps/worker/service/kv_rebuild_admin.go` | `KVRebuildHandler` HTTP adapter |
-| `pkg/candidatestore/stale_reader.go` | `StaleReader` struct + `ListStale(asOf, cutoff)` — scans `candidates_cv_current/` for `occurred_at < cutoff` |
-| `pkg/candidatestore/stale_reader_test.go` | MinIO-backed integration test |
-| `apps/api/cmd/manticore_client.go` | Typed helpers over `pkg/searchindex.Client` — GetByID, Count, Facets, Top, Latest |
-| `apps/api/cmd/manticore_client_test.go` | Unit test against a stub HTTP server |
-| `apps/api/cmd/endpoints_v2.go` | New `/api/v2/*` handlers (search, jobs/{id}, top, latest, categories, stats) and the rewritten `/api/feed` + `/api/feed/tier` |
-| `apps/api/cmd/endpoints_v2_test.go` | httptest-driven unit tests per endpoint |
-| `apps/api/cmd/backfill_parquet.go` | Hugo-snapshot publisher that sources from R2 `canonicals_current/` Parquet |
-| `apps/api/cmd/backfill_parquet_test.go` | Unit test with fake R2 + fake publisher |
-| `definitions/trustage/compact-hourly.json` | Hourly compaction trigger |
-| `definitions/trustage/compact-daily.json` | Nightly compaction trigger |
-| `definitions/trustage/sources-quality-window-reset.json` | Weekly quality-window reset |
-| `definitions/trustage/sources-health-decay.json` | Hourly health-decay |
-| `db/migrations/0003_cutover_drop_legacy.sql` | Drop legacy tables + candidate columns + saved_jobs |
-| `docs/ops/cutover-runbook.md` | Pre-cut / cut / post-cut / rollback runbooks |
-| `docs/ops/runbook-manticore-rebuild.md` | Manticore-from-zero rebuild |
-| `docs/ops/runbook-kv-rebuild.md` | Valkey rebuild-from-R2 |
-| `docs/ops/runbook-writer-backlog.md` | Writer pub/sub backlog response |
-| `tests/k6/smoke_post_cut.js` | k6 script for §11.3 search + facets checks |
-| `tests/integration/cutover_e2e_test.go` | End-to-end crawl → search smoke |
+| File                                                     | Responsibility                                                                                                                |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `apps/writer/service/compact.go`                         | `Compactor` struct + `CompactHourly` + `CompactDaily` methods — dedup-by-event_id, `*_current/` rebuild                       |
+| `apps/writer/service/compact_test.go`                    | Unit tests with MinIO + seeded Parquet                                                                                        |
+| `apps/writer/service/compact_admin.go`                   | `CompactHourlyHandler` + `CompactDailyHandler` — HTTP adapters                                                                |
+| `apps/writer/service/compact_admin_test.go`              | httptest-driven test                                                                                                          |
+| `apps/worker/service/kv_rebuild.go`                      | `KVRebuilder` struct + `Run` method — `canonicals_current/` scan → KV repopulate                                              |
+| `apps/worker/service/kv_rebuild_test.go`                 | Unit test with testcontainers MinIO + Valkey                                                                                  |
+| `apps/worker/service/kv_rebuild_admin.go`                | `KVRebuildHandler` HTTP adapter                                                                                               |
+| `pkg/candidatestore/stale_reader.go`                     | `StaleReader` struct + `ListStale(asOf, cutoff)` — scans `candidates_cv_current/` for `occurred_at < cutoff`                  |
+| `pkg/candidatestore/stale_reader_test.go`                | MinIO-backed integration test                                                                                                 |
+| `apps/api/cmd/manticore_client.go`                       | Typed helpers over `pkg/searchindex.Client` — GetByID, Count, Facets, Top, Latest                                             |
+| `apps/api/cmd/manticore_client_test.go`                  | Unit test against a stub HTTP server                                                                                          |
+| `apps/api/cmd/endpoints_v2.go`                           | New `/api/v2/*` handlers (search, jobs/{id}, top, latest, categories, stats) and the rewritten `/api/feed` + `/api/feed/tier` |
+| `apps/api/cmd/endpoints_v2_test.go`                      | httptest-driven unit tests per endpoint                                                                                       |
+| `apps/api/cmd/backfill_parquet.go`                       | Hugo-snapshot publisher that sources from R2 `canonicals_current/` Parquet                                                    |
+| `apps/api/cmd/backfill_parquet_test.go`                  | Unit test with fake R2 + fake publisher                                                                                       |
+| `definitions/trustage/compact-hourly.json`               | Hourly compaction trigger                                                                                                     |
+| `definitions/trustage/compact-daily.json`                | Nightly compaction trigger                                                                                                    |
+| `definitions/trustage/sources-quality-window-reset.json` | Weekly quality-window reset                                                                                                   |
+| `definitions/trustage/sources-health-decay.json`         | Hourly health-decay                                                                                                           |
+| `db/migrations/0003_cutover_drop_legacy.sql`             | Drop legacy tables + candidate columns + saved_jobs                                                                           |
+| `docs/ops/cutover-runbook.md`                            | Pre-cut / cut / post-cut / rollback runbooks                                                                                  |
+| `docs/ops/runbook-manticore-rebuild.md`                  | Manticore-from-zero rebuild                                                                                                   |
+| `docs/ops/runbook-kv-rebuild.md`                         | Valkey rebuild-from-R2                                                                                                        |
+| `docs/ops/runbook-writer-backlog.md`                     | Writer pub/sub backlog response                                                                                               |
+| `tests/k6/smoke_post_cut.js`                             | k6 script for §11.3 search + facets checks                                                                                    |
+| `tests/integration/cutover_e2e_test.go`                  | End-to-end crawl → search smoke                                                                                               |
 
 **Modify:**
 
-| File | Change |
-|---|---|
-| `pkg/backpressure/gate.go` | Replace `Admit` stub with full policy: per-topic drain-time thresholds + HPA-ceiling awareness. Add `UpdateLag` + `Config` methods from spec §8.3 |
-| `pkg/backpressure/gate_test.go` | New tests for drain-time admit + per-topic config + HPA-ceiling behaviour |
-| `apps/matching/service/admin/v1/stale_lister.go` | Use `candidatestore.StaleReader` instead of `repository.CandidateRepository.ListInactiveSince` |
-| `apps/matching/service/admin/v1/stale_lister_test.go` | Rewrite test against `StaleReader` fake |
-| `apps/matching/cmd/main.go` | Wire `candidatestore.StaleReader` into `CVStaleNudgeDeps` (replaces `RepoStaleLister`) |
-| `apps/writer/cmd/main.go` | Wire the compactor + mount the two admin endpoints |
-| `apps/worker/cmd/main.go` | Wire the KV rebuilder + mount the admin endpoint |
-| `apps/worker/service/embed.go:1204` | Surface `ModelVersion` from `Extractor` into `EmbeddingV1` |
-| `apps/worker/service/publish.go:1442` | Plumb real `R2Version` into `PublishedV1` |
-| `apps/api/cmd/main.go` | Delete every Postgres-backed read endpoint; wire the new Manticore client + v2 endpoints; simplify AutoMigrate list |
-| `apps/api/cmd/search_v2.go` | Expanded filter set (salary, sort, cursor, facets) — merged into `endpoints_v2.go` and deleted here |
-| `apps/api/cmd/country_backfill.go` | DELETE — dead code (country is computed by the worker normalize stage) |
-| `apps/api/cmd/manifest.go`, `tiered.go` | DELETE — rewritten in `endpoints_v2.go` backed by Manticore |
-| `apps/crawler/cmd/main.go` | Remove dropped models from `AutoMigrate` list |
-| `pkg/repository/candidate.go` | Remove `UpdateEmbedding` + related dead methods; align with trimmed schema |
-| `pkg/domain/models.go` | Remove `JobVariant`, `JobCluster`, `JobClusterMember`, `CanonicalJob`, `CrawlPageState`, `RejectedJob`, `SavedJob` types; trim CV/preferences/embedding fields from `CandidateProfile` |
+| File                                                  | Change                                                                                                                                                                                 |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pkg/backpressure/gate.go`                            | Replace `Admit` stub with full policy: per-topic drain-time thresholds + HPA-ceiling awareness. Add `UpdateLag` + `Config` methods from spec §8.3                                      |
+| `pkg/backpressure/gate_test.go`                       | New tests for drain-time admit + per-topic config + HPA-ceiling behaviour                                                                                                              |
+| `apps/matching/service/admin/v1/stale_lister.go`      | Use `candidatestore.StaleReader` instead of `repository.CandidateRepository.ListInactiveSince`                                                                                         |
+| `apps/matching/service/admin/v1/stale_lister_test.go` | Rewrite test against `StaleReader` fake                                                                                                                                                |
+| `apps/matching/cmd/main.go`                           | Wire `candidatestore.StaleReader` into `CVStaleNudgeDeps` (replaces `RepoStaleLister`)                                                                                                 |
+| `apps/writer/cmd/main.go`                             | Wire the compactor + mount the two admin endpoints                                                                                                                                     |
+| `apps/worker/cmd/main.go`                             | Wire the KV rebuilder + mount the admin endpoint                                                                                                                                       |
+| `apps/worker/service/embed.go:1204`                   | Surface `ModelVersion` from `Extractor` into `EmbeddingV1`                                                                                                                             |
+| `apps/worker/service/publish.go:1442`                 | Plumb real `R2Version` into `PublishedV1`                                                                                                                                              |
+| `apps/api/cmd/main.go`                                | Delete every Postgres-backed read endpoint; wire the new Manticore client + v2 endpoints; simplify AutoMigrate list                                                                    |
+| `apps/api/cmd/search_v2.go`                           | Expanded filter set (salary, sort, cursor, facets) — merged into `endpoints_v2.go` and deleted here                                                                                    |
+| `apps/api/cmd/country_backfill.go`                    | DELETE — dead code (country is computed by the worker normalize stage)                                                                                                                 |
+| `apps/api/cmd/manifest.go`, `tiered.go`               | DELETE — rewritten in `endpoints_v2.go` backed by Manticore                                                                                                                            |
+| `apps/crawler/cmd/main.go`                            | Remove dropped models from `AutoMigrate` list                                                                                                                                          |
+| `pkg/repository/candidate.go`                         | Remove `UpdateEmbedding` + related dead methods; align with trimmed schema                                                                                                             |
+| `pkg/domain/models.go`                                | Remove `JobVariant`, `JobCluster`, `JobClusterMember`, `CanonicalJob`, `CrawlPageState`, `RejectedJob`, `SavedJob` types; trim CV/preferences/embedding fields from `CandidateProfile` |
 
 **Delete:**
 
-| File | Reason |
-|---|---|
-| `apps/matching/service/events/embedding.go` | Legacy — Phase 5 replaced |
-| `apps/matching/service/events/profile_created.go` | Legacy — Phase 5 replaced |
-| `pkg/pipeline/handlers/canonical.go` | Legacy worker pipeline — Phase 3 replaced |
-| `pkg/pipeline/handlers/dedup.go` | Legacy — Phase 3 replaced |
-| `pkg/pipeline/handlers/normalize.go` | Legacy — Phase 3 replaced |
-| `pkg/pipeline/handlers/payloads.go` | Legacy topic constants + payload types — superseded by `pkg/events/v1/` |
-| `pkg/pipeline/handlers/payloads_test.go` | Legacy test |
-| `pkg/pipeline/handlers/publish.go` | Legacy — Phase 3 replaced |
-| `pkg/pipeline/handlers/source_expand.go` | Legacy |
-| `pkg/pipeline/handlers/source_quality.go` | Legacy |
-| `pkg/pipeline/handlers/translate.go` | Legacy — Phase 3 replaced |
-| `pkg/pipeline/handlers/validate.go` | Legacy — Phase 3 replaced |
-| `pkg/billing/billing_test.go` + `client.go` + `geo.go` + `plan.go` + `route.go` | Zero importers post-Phase-5 |
-| `pkg/repository/facets.go` | Reads `mv_job_facets`, dropped by SQL migration |
-| `pkg/repository/rerank_cache.go` | Reads `rerank_cache`, dropped |
-| `pkg/repository/saved_job.go` | Reads `saved_jobs`, dropped (user chose drop the feature) |
-| `pkg/repository/rejected.go` | Reads a dead table |
-| `pkg/repository/retention.go` | Operates on `canonical_jobs`, dropped |
-| `pkg/repository/job.go` | Reads `canonical_jobs`, `job_variants`, dropped |
-| `pkg/repository/match.go` | Reads legacy match tables if any (verify + delete) |
+| File                                                                            | Reason                                                                  |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `apps/matching/service/events/embedding.go`                                     | Legacy — Phase 5 replaced                                               |
+| `apps/matching/service/events/profile_created.go`                               | Legacy — Phase 5 replaced                                               |
+| `pkg/pipeline/handlers/canonical.go`                                            | Legacy worker pipeline — Phase 3 replaced                               |
+| `pkg/pipeline/handlers/dedup.go`                                                | Legacy — Phase 3 replaced                                               |
+| `pkg/pipeline/handlers/normalize.go`                                            | Legacy — Phase 3 replaced                                               |
+| `pkg/pipeline/handlers/payloads.go`                                             | Legacy topic constants + payload types — superseded by `pkg/events/v1/` |
+| `pkg/pipeline/handlers/payloads_test.go`                                        | Legacy test                                                             |
+| `pkg/pipeline/handlers/publish.go`                                              | Legacy — Phase 3 replaced                                               |
+| `pkg/pipeline/handlers/source_expand.go`                                        | Legacy                                                                  |
+| `pkg/pipeline/handlers/source_quality.go`                                       | Legacy                                                                  |
+| `pkg/pipeline/handlers/translate.go`                                            | Legacy — Phase 3 replaced                                               |
+| `pkg/pipeline/handlers/validate.go`                                             | Legacy — Phase 3 replaced                                               |
+| `pkg/billing/billing_test.go` + `client.go` + `geo.go` + `plan.go` + `route.go` | Zero importers post-Phase-5                                             |
+| `pkg/repository/facets.go`                                                      | Reads `mv_job_facets`, dropped by SQL migration                         |
+| `pkg/repository/rerank_cache.go`                                                | Reads `rerank_cache`, dropped                                           |
+| `pkg/repository/saved_job.go`                                                   | Reads `saved_jobs`, dropped (user chose drop the feature)               |
+| `pkg/repository/rejected.go`                                                    | Reads a dead table                                                      |
+| `pkg/repository/retention.go`                                                   | Operates on `canonical_jobs`, dropped                                   |
+| `pkg/repository/job.go`                                                         | Reads `canonical_jobs`, `job_variants`, dropped                         |
+| `pkg/repository/match.go`                                                       | Reads legacy match tables if any (verify + delete)                      |
 
 ---
 
 ## Task 1: Hourly compaction — merge small Parquet files per day-partition with event_id dedup
 
 **Files:**
+
 - Create: `apps/writer/service/compact.go`
 - Create: `apps/writer/service/compact_test.go`
 
@@ -554,6 +558,7 @@ git commit -m "feat(writer): hourly Parquet compaction with event_id dedup"
 ## Task 2: Daily compaction — rebuild `*_current/` partitions
 
 **Files:**
+
 - Modify: `apps/writer/service/compact.go` (add `CompactDaily`)
 - Modify: `apps/writer/service/compact_test.go`
 
@@ -561,14 +566,14 @@ git commit -m "feat(writer): hourly Parquet compaction with event_id dedup"
 
 Business-key schemas per spec §5.2:
 
-| Raw collection | Current collection | Business key | Bucket prefix |
-|---|---|---|---|
-| `canonicals/` | `canonicals_current/` | `cluster_id` | `cc=<cluster_id[:2]>` |
-| `embeddings/` | `embeddings_current/` | `canonical_id` | `cc=<cluster_id[:2]>` (from canonical) |
-| `translations/` | `translations_current/` | `(canonical_id, lang)` | `cc=<cluster_id[:2]>/lang=<lang>` |
-| `candidates_cv/` | `candidates_cv_current/` | `candidate_id` | `cnd=<candidate_id[:2]>` |
-| `candidates_embeddings/` | `candidates_embeddings_current/` | `candidate_id` | `cnd=<candidate_id[:2]>` |
-| `candidates_preferences/` | `candidates_preferences_current/` | `candidate_id` | `cnd=<candidate_id[:2]>` |
+| Raw collection            | Current collection                | Business key           | Bucket prefix                          |
+| ------------------------- | --------------------------------- | ---------------------- | -------------------------------------- |
+| `canonicals/`             | `canonicals_current/`             | `cluster_id`           | `cc=<cluster_id[:2]>`                  |
+| `embeddings/`             | `embeddings_current/`             | `canonical_id`         | `cc=<cluster_id[:2]>` (from canonical) |
+| `translations/`           | `translations_current/`           | `(canonical_id, lang)` | `cc=<cluster_id[:2]>/lang=<lang>`      |
+| `candidates_cv/`          | `candidates_cv_current/`          | `candidate_id`         | `cnd=<candidate_id[:2]>`               |
+| `candidates_embeddings/`  | `candidates_embeddings_current/`  | `candidate_id`         | `cnd=<candidate_id[:2]>`               |
+| `candidates_preferences/` | `candidates_preferences_current/` | `candidate_id`         | `cnd=<candidate_id[:2]>`               |
 
 Raw partitions for append-only audit collections (`variants/`, `published/`, `jobs_expired/`, `match_decisions/`, `candidates_improvements/`, `candidates_matches_ready/`) have no `*_current/` counterpart — they're audit streams. The daily compactor skips them.
 
@@ -891,6 +896,7 @@ git commit -m "feat(writer): daily *_current/ rebuild from raw Parquet partition
 ## Task 3: Compaction HTTP admin endpoints + wire into `apps/writer`
 
 **Files:**
+
 - Create: `apps/writer/service/compact_admin.go`
 - Create: `apps/writer/service/compact_admin_test.go`
 - Modify: `apps/writer/cmd/main.go`
@@ -1155,6 +1161,7 @@ git commit -m "feat(writer): compact hourly/daily admin endpoints"
 ## Task 4: Trustage trigger definitions for compaction + source maintenance
 
 **Files:**
+
 - Create: `definitions/trustage/compact-hourly.json`
 - Create: `definitions/trustage/compact-daily.json`
 - Create: `definitions/trustage/sources-quality-window-reset.json`
@@ -1181,66 +1188,166 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
   "timeout": "15m",
   "on_error": { "action": "abort" },
   "steps": [
-    { "id": "variants",                "type": "call", "name": "compact variants",                "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "variants" } },
-        "output_var": "r_variants" } },
-    { "id": "canonicals",              "type": "call", "name": "compact canonicals",              "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "canonicals" } },
-        "output_var": "r_canonicals" } },
-    { "id": "embeddings",              "type": "call", "name": "compact embeddings",              "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "embeddings" } },
-        "output_var": "r_embeddings" } },
-    { "id": "translations",            "type": "call", "name": "compact translations",            "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "translations" } },
-        "output_var": "r_translations" } },
-    { "id": "published",               "type": "call", "name": "compact published",               "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "published" } },
-        "output_var": "r_published" } },
-    { "id": "crawl_page_completed",    "type": "call", "name": "compact crawl_page_completed",    "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "crawl_page_completed" } },
-        "output_var": "r_crawl_page" } },
-    { "id": "candidates_cv",           "type": "call", "name": "compact candidates_cv",           "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "candidates_cv" } },
-        "output_var": "r_cv" } },
-    { "id": "candidates_improvements", "type": "call", "name": "compact candidates_improvements", "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "candidates_improvements" } },
-        "output_var": "r_improvements" } },
-    { "id": "candidates_preferences",  "type": "call", "name": "compact candidates_preferences",  "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "candidates_preferences" } },
-        "output_var": "r_prefs" } },
-    { "id": "candidates_embeddings",   "type": "call", "name": "compact candidates_embeddings",   "timeout": "5m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "candidates_embeddings" } },
-        "output_var": "r_cv_emb" } }
+    {
+      "id": "variants",
+      "type": "call",
+      "name": "compact variants",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "variants" }
+        },
+        "output_var": "r_variants"
+      }
+    },
+    {
+      "id": "canonicals",
+      "type": "call",
+      "name": "compact canonicals",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "canonicals" }
+        },
+        "output_var": "r_canonicals"
+      }
+    },
+    {
+      "id": "embeddings",
+      "type": "call",
+      "name": "compact embeddings",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "embeddings" }
+        },
+        "output_var": "r_embeddings"
+      }
+    },
+    {
+      "id": "translations",
+      "type": "call",
+      "name": "compact translations",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "translations" }
+        },
+        "output_var": "r_translations"
+      }
+    },
+    {
+      "id": "published",
+      "type": "call",
+      "name": "compact published",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "published" }
+        },
+        "output_var": "r_published"
+      }
+    },
+    {
+      "id": "crawl_page_completed",
+      "type": "call",
+      "name": "compact crawl_page_completed",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "crawl_page_completed" }
+        },
+        "output_var": "r_crawl_page"
+      }
+    },
+    {
+      "id": "candidates_cv",
+      "type": "call",
+      "name": "compact candidates_cv",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "candidates_cv" }
+        },
+        "output_var": "r_cv"
+      }
+    },
+    {
+      "id": "candidates_improvements",
+      "type": "call",
+      "name": "compact candidates_improvements",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "candidates_improvements" }
+        },
+        "output_var": "r_improvements"
+      }
+    },
+    {
+      "id": "candidates_preferences",
+      "type": "call",
+      "name": "compact candidates_preferences",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "candidates_preferences" }
+        },
+        "output_var": "r_prefs"
+      }
+    },
+    {
+      "id": "candidates_embeddings",
+      "type": "call",
+      "name": "compact candidates_embeddings",
+      "timeout": "5m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/hourly",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "candidates_embeddings" }
+        },
+        "output_var": "r_cv_emb"
+      }
+    }
   ]
 }
 ```
@@ -1258,42 +1365,102 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
   "timeout": "2h",
   "on_error": { "action": "abort" },
   "steps": [
-    { "id": "canonicals",             "type": "call", "name": "rebuild canonicals_current",             "timeout": "30m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "canonicals" } },
-        "output_var": "r_canonicals" } },
-    { "id": "embeddings",             "type": "call", "name": "rebuild embeddings_current",             "timeout": "30m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "embeddings" } },
-        "output_var": "r_embeddings" } },
-    { "id": "translations",           "type": "call", "name": "rebuild translations_current",           "timeout": "30m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "translations" } },
-        "output_var": "r_translations" } },
-    { "id": "candidates_cv",          "type": "call", "name": "rebuild candidates_cv_current",          "timeout": "30m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "candidates_cv" } },
-        "output_var": "r_cv" } },
-    { "id": "candidates_embeddings",  "type": "call", "name": "rebuild candidates_embeddings_current",  "timeout": "30m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "candidates_embeddings" } },
-        "output_var": "r_cv_emb" } },
-    { "id": "candidates_preferences", "type": "call", "name": "rebuild candidates_preferences_current", "timeout": "30m",
-      "call": { "action": "http.request",
-        "input": { "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
-                   "method": "POST", "headers": { "Content-Type": "application/json" },
-                   "body": { "collection": "candidates_preferences" } },
-        "output_var": "r_prefs" } }
+    {
+      "id": "canonicals",
+      "type": "call",
+      "name": "rebuild canonicals_current",
+      "timeout": "30m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "canonicals" }
+        },
+        "output_var": "r_canonicals"
+      }
+    },
+    {
+      "id": "embeddings",
+      "type": "call",
+      "name": "rebuild embeddings_current",
+      "timeout": "30m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "embeddings" }
+        },
+        "output_var": "r_embeddings"
+      }
+    },
+    {
+      "id": "translations",
+      "type": "call",
+      "name": "rebuild translations_current",
+      "timeout": "30m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "translations" }
+        },
+        "output_var": "r_translations"
+      }
+    },
+    {
+      "id": "candidates_cv",
+      "type": "call",
+      "name": "rebuild candidates_cv_current",
+      "timeout": "30m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "candidates_cv" }
+        },
+        "output_var": "r_cv"
+      }
+    },
+    {
+      "id": "candidates_embeddings",
+      "type": "call",
+      "name": "rebuild candidates_embeddings_current",
+      "timeout": "30m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "candidates_embeddings" }
+        },
+        "output_var": "r_cv_emb"
+      }
+    },
+    {
+      "id": "candidates_preferences",
+      "type": "call",
+      "name": "rebuild candidates_preferences_current",
+      "timeout": "30m",
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-writer.opportunities.svc/_admin/compact/daily",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": { "collection": "candidates_preferences" }
+        },
+        "output_var": "r_prefs"
+      }
+    }
   ]
 }
 ```
@@ -1316,7 +1483,11 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
       "type": "call",
       "name": "reset quality window",
       "timeout": "3m",
-      "retry": { "max_attempts": 3, "backoff_strategy": "exponential", "initial_backoff": "30s" },
+      "retry": {
+        "max_attempts": 3,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "30s"
+      },
       "call": {
         "action": "http.request",
         "input": {
@@ -1350,7 +1521,11 @@ For this plan we assume the admin endpoints on `apps/crawler` already exist as `
       "type": "call",
       "name": "health decay pass",
       "timeout": "5m",
-      "retry": { "max_attempts": 3, "backoff_strategy": "exponential", "initial_backoff": "30s" },
+      "retry": {
+        "max_attempts": 3,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "30s"
+      },
       "call": {
         "action": "http.request",
         "input": {
@@ -1467,6 +1642,7 @@ git commit -m "feat(ops): trustage triggers for compaction + source quality/heal
 ## Task 5: Full `backpressure.Gate` policy — drain-time + HPA-ceiling awareness
 
 **Files:**
+
 - Modify: `pkg/backpressure/gate.go`
 - Modify: `pkg/backpressure/gate_test.go`
 
@@ -1814,6 +1990,7 @@ git commit -m "feat(backpressure): per-topic drain-time admit policy + HPA-ceili
 ## Task 6: KV rebuild admin endpoint on `apps/worker`
 
 **Files:**
+
 - Create: `apps/worker/service/kv_rebuild.go`
 - Create: `apps/worker/service/kv_rebuild_test.go`
 - Create: `apps/worker/service/kv_rebuild_admin.go`
@@ -2137,6 +2314,7 @@ git commit -m "feat(worker): KV rebuild admin endpoint from canonicals_current P
 ## Task 7: `candidatestore.StaleReader` — R2-backed stale-candidate listing
 
 **Files:**
+
 - Create: `pkg/candidatestore/stale_reader.go`
 - Create: `pkg/candidatestore/stale_reader_test.go`
 - Modify: `apps/matching/service/admin/v1/stale_lister.go`
@@ -2436,6 +2614,7 @@ git commit -m "feat(candidates): R2-backed StaleReader replaces updated_at proxy
 ## Task 8: Manticore client helpers for `apps/api`
 
 **Files:**
+
 - Create: `apps/api/cmd/manticore_client.go`
 - Create: `apps/api/cmd/manticore_client_test.go`
 
@@ -2720,20 +2899,21 @@ git commit -m "feat(api): Manticore client helpers (GetByID, Count, Facets, Top,
 ## Task 9: New Manticore-backed `/api/v2/*` endpoints
 
 **Files:**
+
 - Create: `apps/api/cmd/endpoints_v2.go`
 - Create: `apps/api/cmd/endpoints_v2_test.go`
 
 Replaces legacy Postgres-reading endpoints with Manticore-backed equivalents:
 
-| Legacy (deletes Task 12) | New (this task) | Backing call |
-|---|---|---|
-| `GET /search`, `GET /api/search` | `GET /api/v2/search` (expanded below) | Manticore `idx_opportunities_rt` |
-| `GET /jobs/{id}` | `GET /api/v2/jobs/{id}` | `jobsManticore.GetByID` |
-| `GET /jobs/top` | `GET /api/v2/jobs/top` | `jobsManticore.Top` |
-| `GET /api/jobs/latest` | `GET /api/v2/jobs/latest` | `jobsManticore.Latest` |
-| `GET /categories`, `GET /api/categories` | `GET /api/v2/categories` | `jobsManticore.Facets` (category bucket) |
-| `GET /stats`, `GET /api/stats/summary` | `GET /api/v2/stats` | `jobsManticore.Count` + `jobsManticore.Facets` |
-| `GET /api/categories/{slug}/jobs` | merged into `GET /api/v2/search?category=<slug>` | `jobsManticore` via search |
+| Legacy (deletes Task 12)                 | New (this task)                                  | Backing call                                   |
+| ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| `GET /search`, `GET /api/search`         | `GET /api/v2/search` (expanded below)            | Manticore `idx_opportunities_rt`               |
+| `GET /jobs/{id}`                         | `GET /api/v2/jobs/{id}`                          | `jobsManticore.GetByID`                        |
+| `GET /jobs/top`                          | `GET /api/v2/jobs/top`                           | `jobsManticore.Top`                            |
+| `GET /api/jobs/latest`                   | `GET /api/v2/jobs/latest`                        | `jobsManticore.Latest`                         |
+| `GET /categories`, `GET /api/categories` | `GET /api/v2/categories`                         | `jobsManticore.Facets` (category bucket)       |
+| `GET /stats`, `GET /api/stats/summary`   | `GET /api/v2/stats`                              | `jobsManticore.Count` + `jobsManticore.Facets` |
+| `GET /api/categories/{slug}/jobs`        | merged into `GET /api/v2/search?category=<slug>` | `jobsManticore` via search                     |
 
 The expanded `/api/v2/search` adds salary range, sort, cursor, and facets to the Phase 2 minimal version. Phase 2's `search_v2.go` becomes legacy; this task supersedes it.
 
@@ -3099,6 +3279,7 @@ git commit -m "feat(api): Manticore-backed /api/v2/{search,jobs,top,latest,categ
 ## Task 10: Port `/api/feed` + `/api/feed/tier` to Manticore
 
 **Files:**
+
 - Modify: `apps/api/cmd/endpoints_v2.go`
 - Modify: `apps/api/cmd/endpoints_v2_test.go`
 
@@ -3270,6 +3451,7 @@ git commit -m "feat(api): Manticore-backed /api/v2/feed with local+global tiers"
 ## Task 11: Rewrite `/admin/backfill` (Hugo publish) to source from R2 Parquet
 
 **Files:**
+
 - Create: `apps/api/cmd/backfill_parquet.go`
 - Create: `apps/api/cmd/backfill_parquet_test.go`
 
@@ -3537,6 +3719,7 @@ git commit -m "feat(api): /admin/backfill sources Hugo snapshots from R2 Parquet
 ## Task 12: Rewrite `apps/api/cmd/main.go` — delete legacy Postgres endpoints, wire v2
 
 **Files:**
+
 - Modify: `apps/api/cmd/main.go`
 - Delete: `apps/api/cmd/search_v2.go` (folded into `endpoints_v2.go`)
 - Delete: `apps/api/cmd/country_backfill.go`
@@ -3889,6 +4072,7 @@ git commit -m "refactor(api): rewrite main.go — Manticore-only reads, delete P
 ## Task 13: Delete legacy candidate handler files + plumb model versions
 
 **Files:**
+
 - Delete: `apps/matching/service/events/embedding.go`
 - Delete: `apps/matching/service/events/profile_created.go`
 - Delete any `_test.go` sibling files for the above.
@@ -3898,6 +4082,7 @@ git commit -m "refactor(api): rewrite main.go — Manticore-only reads, delete P
 Phase 5 left the two legacy handler files in place (the new `main.go` just didn't register them). Now they delete cleanly — no callers remain.
 
 Also fix the two Phase 3 inline-TODOs:
+
 1. `apps/worker/service/embed.go` line ~1204 — `EmbeddingV1.ModelVersion` is passed as empty string; pull from the extractor.
 2. `apps/worker/service/publish.go` line ~1442 — `PublishedV1.R2Version` is hardcoded to `1`; plumb actual version.
 
@@ -3998,6 +4183,7 @@ git commit -m "refactor(candidates): drop legacy handler files; surface model+R2
 ## Task 14: Delete `pkg/pipeline/handlers/*` (legacy worker pipeline)
 
 **Files:**
+
 - Delete: `pkg/pipeline/handlers/canonical.go`
 - Delete: `pkg/pipeline/handlers/dedup.go`
 - Delete: `pkg/pipeline/handlers/normalize.go`
@@ -4052,6 +4238,7 @@ git commit -m "refactor(pipeline): delete legacy pkg/pipeline/handlers; worker i
 ## Task 15: Delete orphan packages + dead repository files + dead domain types
 
 **Files:**
+
 - Delete: `pkg/billing/` (entire directory — zero importers post-Phase-5)
 - Delete: `pkg/repository/facets.go` + `facets_test.go` (if present)
 - Delete: `pkg/repository/rerank_cache.go` + tests
@@ -4115,6 +4302,7 @@ If `pkg/repository/job.go` still has active users (e.g., `apps/crawler` uses it 
 - [ ] **Step 4: Trim `pkg/domain/models.go`**
 
 Open `pkg/domain/models.go`. Remove (or comment the removal of) the Postgres-backed types for dropped tables:
+
 - `JobVariant`, `JobCluster`, `JobClusterMember`, `CanonicalJob`
 - `CrawlPageState`, `RejectedJob`, `SavedJob`
 - `RerankCache` / `MVJobFacet` / related materialised-view types (if present)
@@ -4161,6 +4349,7 @@ git commit -m "refactor(pkg): delete orphan packages (billing, dead repository a
 ## Task 16: Postgres cutover migration — drop legacy tables + candidate columns
 
 **Files:**
+
 - Create: `db/migrations/0003_cutover_drop_legacy.sql`
 - Modify: `pkg/repository/schema.go` — if `FinalizeSchema` references any dropped objects
 
@@ -4271,6 +4460,7 @@ git commit -m "feat(db): cutover migration — drop legacy job tables + candidat
 ## Task 17: Cutover runbook
 
 **Files:**
+
 - Create: `docs/ops/cutover-runbook.md`
 
 A prescriptive runbook the on-call operator follows the day of cutover. Each step is atomic, rollback-aware, and has an explicit success signal. Written as a checklist so the operator can paste progress into an incident channel.
@@ -4295,22 +4485,22 @@ prior deployment restores the legacy Postgres read path.
   - [ ] R2 bucket `opportunities-log` exists, writer key has `PutObject` + `ListObjectsV2`
   - [ ] TEI chat / embed / rerank endpoints answer `/health`
 - [ ] Trustage workflows deployed: `scheduler-tick`, `compact-hourly`,
-  `compact-daily`, `sources-quality-window-reset`, `sources-health-decay`,
-  `candidates-matches-weekly-digest`, `candidates-cv-stale-nudge`.
+      `compact-daily`, `sources-quality-window-reset`, `sources-health-decay`,
+      `candidates-matches-weekly-digest`, `candidates-cv-stale-nudge`.
 - [ ] Backpressure gate default policies set via env:
-  `BACKPRESSURE_MAX_DRAIN=15m`, `BACKPRESSURE_HARD_CEILING=45m`.
+      `BACKPRESSURE_MAX_DRAIN=15m`, `BACKPRESSURE_HARD_CEILING=45m`.
 - [ ] `idx_opportunities_rt` schema provisioned (Phase 2 migration). Verify:
-  `curl -s $MANTICORE_URL/sql?mode=raw -d "query=SHOW TABLES"`
+      `curl -s $MANTICORE_URL/sql?mode=raw -d "query=SHOW TABLES"`
 - [ ] All six app images (`crawler`, `worker`, `writer`, `materializer`,
-  `candidates`, `api`) built at the Phase 6 SHA, pushed, and deployed to
-  the staging namespace for a smoke pass.
+      `candidates`, `api`) built at the Phase 6 SHA, pushed, and deployed to
+      the staging namespace for a smoke pass.
 
 ## 1. Staging smoke (T-1 day)
 
 - [ ] Deploy Phase 6 images to staging.
 - [ ] Seed 3 live sources into `sources`.
 - [ ] Trigger `scheduler-tick` once manually:
-  `kubectl -n stage exec deploy/trustage -- trustage run opportunities.scheduler.tick`
+      `kubectl -n stage exec deploy/trustage -- trustage run opportunities.scheduler.tick`
 - [ ] Wait 60 s. Assert a variant event landed in R2 under `variants/dt=<today>/`.
 - [ ] Wait 60 s. Assert a canonical landed in `canonicals/dt=<today>/`.
 - [ ] Call `GET /api/v2/search?q=engineer` on staging api — expect non-empty hits.
@@ -4324,37 +4514,37 @@ prior deployment restores the legacy Postgres read path.
 - [ ] Post `#stawi-ops`: "Starting greenfield cutover in 15 min".
 - [ ] Pin the ops runbook in the channel.
 - [ ] Pause Trustage workflows that are still pointed at the legacy crawler:
-  `source-crawl-sweep.json` (should already be inactive per Phase 4) and
-  `feeds-rebuild.json` (legacy feed rebuild).
+      `source-crawl-sweep.json` (should already be inactive per Phase 4) and
+      `feeds-rebuild.json` (legacy feed rebuild).
 - [ ] Take a manual backup of the prod database (belt-and-braces):
-  `pg_dump --schema-only --no-owner $DATABASE_URL > /tmp/pre-cutover.sql`
+      `pg_dump --schema-only --no-owner $DATABASE_URL > /tmp/pre-cutover.sql`
 
 ### 2.2 Deploy the Phase 6 apps (30 min)
 
 - [ ] `kubectl apply` the Phase 6 image tags for all six apps.
 - [ ] Watch rollouts. Each pod should become `Ready`.
 - [ ] Immediately verify writer + materializer + worker subscriptions:
-  `kubectl -n prod logs -l app=writer --tail=50` — expect
-  "writer: events manager ready" and at least one "parquet flushed" log
-  within 2 min (existing in-flight events flush).
+      `kubectl -n prod logs -l app=writer --tail=50` — expect
+      "writer: events manager ready" and at least one "parquet flushed" log
+      within 2 min (existing in-flight events flush).
 - [ ] Verify `apps/api` `/healthz` returns `ok` with `total_jobs > 0`.
-  Note: at this moment the total reflects the Postgres path if the
-  legacy tables are still around. The number will move once Manticore
-  fills.
+      Note: at this moment the total reflects the Postgres path if the
+      legacy tables are still around. The number will move once Manticore
+      fills.
 
 ### 2.3 Trigger initial scheduler + compact cycle
 
 - [ ] Fire `scheduler-tick` manually once to confirm admit/emit works
-  with the live Phase 6 gate.
-  `curl -XPOST $CRAWLER_URL/admin/scheduler/tick`
+      with the live Phase 6 gate.
+      `curl -XPOST $CRAWLER_URL/admin/scheduler/tick`
 - [ ] Wait 5 min. Run `compact-hourly` manually against a sampled
-  collection:
-  `curl -XPOST $WRITER_URL/_admin/compact/hourly -d '{"collection":"variants"}'`
-  Expect `rows_after > 0` in the response body.
+      collection:
+      `curl -XPOST $WRITER_URL/_admin/compact/hourly -d '{"collection":"variants"}'`
+      Expect `rows_after > 0` in the response body.
 - [ ] Run `compact-daily` against `canonicals` once Manticore has ingested
-  enough to write `canonicals_current/`:
-  `curl -XPOST $WRITER_URL/_admin/compact/daily -d '{"collection":"canonicals"}'`
-  Expect `buckets > 0`.
+      enough to write `canonicals_current/`:
+      `curl -XPOST $WRITER_URL/_admin/compact/daily -d '{"collection":"canonicals"}'`
+      Expect `buckets > 0`.
 
 ### 2.4 Fill checkpoint (1–3 hours, variable)
 
@@ -4374,11 +4564,11 @@ redirect v1 → v2 (Task 12). No additional flip is needed at the API —
 the Phase 6 deploy in Step 2.2 already made them live.
 
 - [ ] Confirm the Cloudflare route for `stawi.opportunities/api/*` points at
-  the new api (unchanged — `/api/v2/*` is the new path, and the `/api/*`
-  legacy paths share the same pod).
+      the new api (unchanged — `/api/v2/*` is the new path, and the `/api/*`
+      legacy paths share the same pod).
 - [ ] Hit the site from a browser, exercise: search, category page,
-  detail page, filter by country, filter by remote. All should return
-  data.
+      detail page, filter by country, filter by remote. All should return
+      data.
 
 ### 2.6 Drop legacy Postgres tables
 
@@ -4387,8 +4577,8 @@ the `pre-cutover.sql` dump.
 
 - [ ] `psql "$DATABASE_URL" -f db/migrations/0003_cutover_drop_legacy.sql`
 - [ ] Run the migration twice to verify idempotency:
-  `psql "$DATABASE_URL" -f db/migrations/0003_cutover_drop_legacy.sql`
-  Expected: no errors on the second run.
+      `psql "$DATABASE_URL" -f db/migrations/0003_cutover_drop_legacy.sql`
+      Expected: no errors on the second run.
 
 ### 2.7 Close out
 
@@ -4429,6 +4619,7 @@ git commit -m "docs(ops): cutover runbook"
 ## Task 18: Rebuild runbooks — Manticore-from-zero, KV-from-R2, writer backlog
 
 **Files:**
+
 - Create: `docs/ops/runbook-manticore-rebuild.md`
 - Create: `docs/ops/runbook-kv-rebuild.md`
 - Create: `docs/ops/runbook-writer-backlog.md`
@@ -4483,11 +4674,13 @@ duplicate canonicals appearing in search.
 2. Call the admin endpoint:
    `curl -XPOST $WORKER_URL/_admin/kv/rebuild`
 3. Watch the response — it returns counters:
-   ```
-   {"rows":12345,"dedup_keys_set":12345,"cluster_keys_set":12345,"files_scanned":48}
-   ```
+```
+
+{"rows":12345,"dedup_keys_set":12345,"cluster_keys_set":12345,"files_scanned":48}
+
+```
 4. Verify a random key:
-   `redis-cli -u $VALKEY_URL GET dedup:<any hard_key>` → returns a cluster_id.
+`redis-cli -u $VALKEY_URL GET dedup:<any hard_key>` → returns a cluster_id.
 
 **Success signal:** Writer logs stop emitting "dedup:miss on hard_key" at
 high rate; canonical upsert rate on `jobs.canonicals.upserted.v1` returns
@@ -4540,6 +4733,7 @@ git commit -m "docs(ops): rebuild runbooks for Manticore / KV / writer-backlog"
 ## Task 19: Post-cut verification — E2E smoke test + k6 script
 
 **Files:**
+
 - Create: `tests/integration/cutover_e2e_test.go`
 - Create: `tests/k6/smoke_post_cut.js`
 
@@ -4620,84 +4814,117 @@ The helpers (`bringUpEnvironment`, `startApps`, `seedSource`, `apps.*`) already 
 
 ```javascript
 // tests/k6/smoke_post_cut.js
-import http from 'k6/http';
-import { check, sleep } from 'k6';
-import { Trend } from 'k6/metrics';
+import http from "k6/http";
+import { check, sleep } from "k6";
+import { Trend } from "k6/metrics";
 
-const BASE = __ENV.API_URL || 'https://stawi.opportunities';
+const BASE = __ENV.API_URL || "https://stawi.opportunities";
 
 const queries = [
-    'engineer', 'designer', 'sales', 'remote', 'kenya',
-    'python', 'go', 'product manager', 'data scientist',
-    'marketing', 'customer success', 'devops', 'intern',
-    'senior', 'junior', 'lead', 'manager', 'analyst',
-    'nurse', 'teacher',
+  "engineer",
+  "designer",
+  "sales",
+  "remote",
+  "kenya",
+  "python",
+  "go",
+  "product manager",
+  "data scientist",
+  "marketing",
+  "customer success",
+  "devops",
+  "intern",
+  "senior",
+  "junior",
+  "lead",
+  "manager",
+  "analyst",
+  "nurse",
+  "teacher",
 ];
 
-const searchLatency = new Trend('search_latency');
-const detailLatency = new Trend('detail_latency');
+const searchLatency = new Trend("search_latency");
+const detailLatency = new Trend("detail_latency");
 
 export const options = {
-    scenarios: {
-        search: {
-            executor: 'constant-vus',
-            vus: 5, duration: '2m',
-            exec: 'smokeSearch',
-        },
-        detail: {
-            executor: 'constant-vus',
-            vus: 2, duration: '2m',
-            exec: 'smokeDetail',
-            startTime: '30s',
-        },
+  scenarios: {
+    search: {
+      executor: "constant-vus",
+      vus: 5,
+      duration: "2m",
+      exec: "smokeSearch",
     },
-    thresholds: {
-        'search_latency': ['p(95) < 500'],
-        'detail_latency': ['p(95) < 300'],
-        'http_req_failed': ['rate < 0.01'],
+    detail: {
+      executor: "constant-vus",
+      vus: 2,
+      duration: "2m",
+      exec: "smokeDetail",
+      startTime: "30s",
     },
+  },
+  thresholds: {
+    search_latency: ["p(95) < 500"],
+    detail_latency: ["p(95) < 300"],
+    http_req_failed: ["rate < 0.01"],
+  },
 };
 
 export function smokeSearch() {
-    const q = queries[Math.floor(Math.random() * queries.length)];
-    const res = http.get(`${BASE}/api/v2/search?q=${encodeURIComponent(q)}&limit=20`);
-    check(res, {
-        '200 OK': (r) => r.status === 200,
-        'has results': (r) => {
-            try { return JSON.parse(r.body).results.length > 0; } catch (e) { return false; }
-        },
-        'has facets': (r) => {
-            try { return Object.keys(JSON.parse(r.body).facets || {}).length > 0; } catch (e) { return false; }
-        },
-    });
-    searchLatency.add(res.timings.duration);
-    sleep(0.2);
+  const q = queries[Math.floor(Math.random() * queries.length)];
+  const res = http.get(
+    `${BASE}/api/v2/search?q=${encodeURIComponent(q)}&limit=20`,
+  );
+  check(res, {
+    "200 OK": (r) => r.status === 200,
+    "has results": (r) => {
+      try {
+        return JSON.parse(r.body).results.length > 0;
+      } catch (e) {
+        return false;
+      }
+    },
+    "has facets": (r) => {
+      try {
+        return Object.keys(JSON.parse(r.body).facets || {}).length > 0;
+      } catch (e) {
+        return false;
+      }
+    },
+  });
+  searchLatency.add(res.timings.duration);
+  sleep(0.2);
 }
 
 export function smokeDetail() {
-    // Seed a few slugs known to be live — populate from the repo or
-    // derive from a /api/v2/jobs/latest call at setup.
-    const seedSlugs = (__ENV.DETAIL_SLUGS || '').split(',').filter(Boolean);
-    if (seedSlugs.length === 0) {
-        const res = http.get(`${BASE}/api/v2/jobs/latest?limit=5`);
-        if (res.status === 200) {
-            try {
-                const results = JSON.parse(res.body).results || [];
-                results.forEach((r) => seedSlugs.push(r.slug));
-            } catch (e) { /* skip */ }
-        }
+  // Seed a few slugs known to be live — populate from the repo or
+  // derive from a /api/v2/jobs/latest call at setup.
+  const seedSlugs = (__ENV.DETAIL_SLUGS || "").split(",").filter(Boolean);
+  if (seedSlugs.length === 0) {
+    const res = http.get(`${BASE}/api/v2/jobs/latest?limit=5`);
+    if (res.status === 200) {
+      try {
+        const results = JSON.parse(res.body).results || [];
+        results.forEach((r) => seedSlugs.push(r.slug));
+      } catch (e) {
+        /* skip */
+      }
     }
-    if (seedSlugs.length === 0) return;
-    const slug = seedSlugs[Math.floor(Math.random() * seedSlugs.length)];
-    const res = http.get(`${BASE}/api/v2/jobs/${slug}`);
-    check(res, {
-        '200 OK': (r) => r.status === 200,
-        'has title': (r) => {
-            try { return !!JSON.parse(r.body).title; } catch (e) { return false; }
-        },
-    });
-    detailLatency.add(res.timings.duration);
-    sleep(0.5);
+  }
+  if (seedSlugs.length === 0) return;
+  const slug = seedSlugs[Math.floor(Math.random() * seedSlugs.length)];
+  const res = http.get(`${BASE}/api/v2/jobs/${slug}`);
+  check(res, {
+    "200 OK": (r) => r.status === 200,
+    "has title": (r) => {
+      try {
+        return !!JSON.parse(r.body).title;
+      } catch (e) {
+        return false;
+      }
+    },
+  });
+  detailLatency.add(res.timings.duration);
+  sleep(0.5);
 }
 ```
 
@@ -4750,6 +4977,7 @@ DATABASE_URL="$DATABASE_URL" DO_DATABASE_MIGRATE=true go run ./apps/matching/cmd
 ```
 
 After this plan ships, the platform is fully greenfield:
+
 - Search, browse, detail, categories, stats — all from Manticore.
 - CV lifecycle — event-sourced in R2 Parquet, read via `candidatestore`.
 - Crawler + worker pipeline — Parquet-first, Postgres only for source metadata.

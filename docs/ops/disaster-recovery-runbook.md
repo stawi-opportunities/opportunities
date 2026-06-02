@@ -11,21 +11,22 @@
 
 ## Quick reference — RTO / RPO table
 
-| Scenario | Detection signal | RTO estimate | RPO (data loss) |
-|----------|-----------------|--------------|-----------------|
-| Manticore index wiped | Search returns 503 / 0 results | 60–120 min | 0 (rebuilds from R2) |
-| Valkey KV lost | Duplicate canonicals; dedup:miss spike | 5–15 min | 0 (rebuilds from R2) |
-| Postgres catalog loss | Writer + materializer crash on startup | 30–90 min | Events since last WAL backup |
-| R2 log bucket deleted | Writer flush errors; Iceberg scan fails | 1–4 hours | All Parquet data |
-| R2 content bucket deleted | /api/v2/jobs/<slug> returns 404 | Hours–days | All canonical JSON |
-| Full cluster loss | Everything down | 3–6 hours | Same as above |
-| Iceberg data corruption | Wrong query results; snapshot errors | 30 min | 0 (time travel) |
+| Scenario                  | Detection signal                        | RTO estimate | RPO (data loss)              |
+| ------------------------- | --------------------------------------- | ------------ | ---------------------------- |
+| Manticore index wiped     | Search returns 503 / 0 results          | 60–120 min   | 0 (rebuilds from R2)         |
+| Valkey KV lost            | Duplicate canonicals; dedup:miss spike  | 5–15 min     | 0 (rebuilds from R2)         |
+| Postgres catalog loss     | Writer + materializer crash on startup  | 30–90 min    | Events since last WAL backup |
+| R2 log bucket deleted     | Writer flush errors; Iceberg scan fails | 1–4 hours    | All Parquet data             |
+| R2 content bucket deleted | /api/v2/jobs/<slug> returns 404         | Hours–days   | All canonical JSON           |
+| Full cluster loss         | Everything down                         | 3–6 hours    | Same as above                |
+| Iceberg data corruption   | Wrong query results; snapshot errors    | 30 min       | 0 (time travel)              |
 
 ---
 
 ## Scenario 1 — Manticore index wiped
 
 **Symptoms:**
+
 - `GET /api/v2/search?q=engineer` returns 503 or empty hits
 - `kubectl logs -l app=opportunities-materializer` shows `table not found` errors
 - `SELECT COUNT(*) FROM idx_opportunities_rt` returns 0 or error
@@ -69,6 +70,7 @@ watch -n 30 'kubectl -n opportunities exec -i svc/manticore -- \
 ## Scenario 2 — Valkey KV lost
 
 **Symptoms:**
+
 - Writer logs flooded with `dedup:miss` at high rate
 - Duplicate canonical IDs appearing in search results
 - `redis-cli -u $VALKEY_URL PING` returns `Connection refused` or times out
@@ -103,11 +105,13 @@ canonical upsert rate returns to normal within 10 minutes.
 ## Scenario 3 — Total Postgres loss (catalog + sources)
 
 **Symptoms:**
+
 - Writer fails on startup: `failed to load Iceberg catalog`
 - Crawler fails on startup: `database connection refused`
 - All `ExternalSecret` objects for `db-credentials-opportunities` show `SecretSyncedError`
 
 **Detection commands:**
+
 ```bash
 kubectl get pods -n opportunities | grep -v Running
 kubectl describe externalsecret db-credentials-opportunities -n opportunities
@@ -156,6 +160,7 @@ This is the most severe recoverable scenario. All Parquet event-log files are st
 here, as is the Iceberg metadata tree.
 
 **Symptoms:**
+
 - Writer flush errors: `NoSuchBucket` or `AccessDenied`
 - Iceberg catalog returns `table metadata not found`
 - `aws s3 ls s3://cluster-chronicle/` returns `NoSuchBucket`
@@ -190,6 +195,7 @@ NATS retains 24 hours of events — the writer will replay those.
 Events older than 24 hours are permanently lost unless a separate backup exists.
 
 **Mitigation (prevent future loss):**
+
 - Enable Cloudflare R2 Object Lock or versioning on `cluster-chronicle`
 - Configure cross-bucket replication to a second R2 bucket as a backup
 - Consider periodic Iceberg snapshot exports to a separate storage account
@@ -205,6 +211,7 @@ The content bucket stores canonical JSON files at `s3://product-opportunities-co
 These are the source of truth for `/api/v2/jobs/<slug>` detail pages.
 
 **Symptoms:**
+
 - `/api/v2/jobs/<slug>` returns 404 for all slugs
 - `aws s3 ls s3://product-opportunities-content/jobs/` returns `NoSuchBucket`
 
@@ -261,6 +268,7 @@ The crawlers will re-discover sources and re-ingest data within 24–48 hours.
 ## Scenario 8 — Iceberg data corruption (partial, revertible)
 
 **Symptoms:**
+
 - Writer returns `EqualityDelete conflict` or `ManifestEntryConflict`
 - Query results show duplicate or stale rows
 - `pyiceberg table history` shows an unexpected snapshot
@@ -295,6 +303,7 @@ print("Rolled back to snapshot", target_snapshot_id)
 ```
 
 **Time travel read (non-destructive verify before rollback):**
+
 ```python
 # Read the table as it was at a specific time
 from datetime import datetime, timezone

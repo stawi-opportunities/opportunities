@@ -174,6 +174,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	// handler — it's a fast R2 write, not external LLM I/O, so it
 	// stays on the events bus.
 	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv); err != nil {
+		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageClustered, fmt.Errorf("canonical: emit upserted: %w", err))
 		return err
 	}
 	slug := merged.Slug
@@ -186,6 +187,7 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	// envelope; only the transport differs.
 	body, err := json.Marshal(outEnv)
 	if err != nil {
+		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageCanonical, fmt.Errorf("canonical: marshal: %w", err))
 		return fmt.Errorf("canonical: marshal: %w", err)
 	}
 	qm := h.svc.QueueManager()
@@ -291,26 +293,41 @@ func snapshotToOpportunity(s kv.ClusterSnapshot, hardKey string) variantstate.Op
 	if status == "" {
 		status = "active"
 	}
+	// Hot-field promotion: lift three filter-hot attribute keys to
+	// top-level pointer fields. The original attrs map keeps the values
+	// so the API still echoes them on read.
+	extractAttrString := func(key string) *string {
+		if v, ok := attrs[key].(string); ok && v != "" {
+			return &v
+		}
+		return nil
+	}
+	employmentType := extractAttrString("employment_type")
+	seniority := extractAttrString("seniority")
+	geoScope := extractAttrString("geo_scope")
 	return variantstate.Opportunity{
-		CanonicalID:   s.CanonicalID,
-		Slug:          s.Slug,
-		Kind:          s.Kind,
-		SourceID:      ptrIfNonEmpty(srcID),
-		Title:         s.Title,
-		Description:   ptrIfNonEmpty(desc),
-		IssuingEntity: ptrIfNonEmpty(iss),
-		Country:       ptrIfNonEmpty(country),
-		Remote:        &remote,
-		ApplyURL:      ptrIfNonEmpty(apply),
-		PostedAt:      pPostedAt,
-		Currency:      ptrIfNonEmpty(currency),
-		AmountMin:     ptrIfNonZero(amin),
-		AmountMax:     ptrIfNonZero(amax),
-		Status:        status,
-		FirstSeenAt:   pFirst,
-		LastSeenAt:    pLast,
-		Attributes:    attrs,
-		QualityScore:  ptrIfNonZero(qs),
+		CanonicalID:    s.CanonicalID,
+		Slug:           s.Slug,
+		Kind:           s.Kind,
+		SourceID:       ptrIfNonEmpty(srcID),
+		Title:          s.Title,
+		Description:    ptrIfNonEmpty(desc),
+		IssuingEntity:  ptrIfNonEmpty(iss),
+		Country:        ptrIfNonEmpty(country),
+		Remote:         &remote,
+		ApplyURL:       ptrIfNonEmpty(apply),
+		PostedAt:       pPostedAt,
+		Currency:       ptrIfNonEmpty(currency),
+		AmountMin:      ptrIfNonZero(amin),
+		AmountMax:      ptrIfNonZero(amax),
+		EmploymentType: employmentType,
+		Seniority:      seniority,
+		GeoScope:       geoScope,
+		Status:         status,
+		FirstSeenAt:    pFirst,
+		LastSeenAt:     pLast,
+		Attributes:     attrs,
+		QualityScore:   ptrIfNonZero(qs),
 	}
 }
 

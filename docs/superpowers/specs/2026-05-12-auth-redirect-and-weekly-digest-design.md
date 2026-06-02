@@ -58,8 +58,14 @@ bumps the dependency and updates `/auth/callback/`.
 - Add `src/oauth-redirect.ts` with two functions:
 
   ```ts
-  export function startRedirect(cfg: ResolvedConfig, core: WorkerCore): Promise<never>;
-  export function completeRedirect(cfg: ResolvedConfig, core: WorkerCore): Promise<{ returnTo: string }>;
+  export function startRedirect(
+    cfg: ResolvedConfig,
+    core: WorkerCore,
+  ): Promise<never>;
+  export function completeRedirect(
+    cfg: ResolvedConfig,
+    core: WorkerCore,
+  ): Promise<{ returnTo: string }>;
   ```
 
   `startRedirect` calls `core.prepareAuth()` → stashes
@@ -99,7 +105,7 @@ bumps the dependency and updates `/auth/callback/`.
   `@stawi/profile` to `^1.1.0`. Re-run `npm install`.
 - `ui/app/src/components/AuthCallback.tsx`: on mount, call
   `completeAuthCallback({ idpBaseUrl, clientId, installationId,
-  apiBaseUrl, redirectUri })`; on success
+apiBaseUrl, redirectUri })`; on success
   `window.location.assign("/dashboard/")`; on
   `OAUTH_REDIRECT_STORAGE_MISSING` show a "couldn't complete sign in"
   panel with a retry link back to `/`.
@@ -111,12 +117,12 @@ bumps the dependency and updates `/auth/callback/`.
 
 ### Failure modes
 
-| Failure | Detection | Behaviour |
-|--|--|--|
+| Failure                                                            | Detection                       | Behaviour                                                                  |
+| ------------------------------------------------------------------ | ------------------------------- | -------------------------------------------------------------------------- |
 | `sessionStorage` cleared by the user between redirect and callback | `completeRedirect` reads `null` | Throw `OAUTH_REDIRECT_STORAGE_MISSING`; `AuthCallback` renders retry panel |
-| `state` returned by IdP ≠ stashed state | `core.completeAuth` rejects | Throw `OAUTH_STATE_MISMATCH`; same retry panel |
-| Network error during token exchange | `core.completeAuth` rejects | Surface error; retry panel with the message |
-| User hits browser-back from the IdP | URL has no `?code` | `completeRedirect` rejects with `OAUTH_FAILED`; retry panel |
+| `state` returned by IdP ≠ stashed state                            | `core.completeAuth` rejects     | Throw `OAUTH_STATE_MISMATCH`; same retry panel                             |
+| Network error during token exchange                                | `core.completeAuth` rejects     | Surface error; retry panel with the message                                |
+| User hits browser-back from the IdP                                | URL has no `?code`              | `completeRedirect` rejects with `OAUTH_FAILED`; retry panel                |
 
 ### Testing
 
@@ -197,6 +203,7 @@ turn out false we move on.
 ### Testing
 
 For each gap fixed:
+
 - Unit test against the relevant handler.
 - One manual round-trip on staging.
 
@@ -316,12 +323,12 @@ Following the existing `matches_weekly` + `cv_stale_nudge` patterns:
 
 ### Failure modes
 
-| Failure | Behaviour |
-|--|--|
-| `ListUnpaid` returns 0 rows | Handler returns `{ok:true,emitted:0}`; Trustage logs a success |
+| Failure                                          | Behaviour                                                                                                         |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `ListUnpaid` returns 0 rows                      | Handler returns `{ok:true,emitted:0}`; Trustage logs a success                                                    |
 | Manticore unavailable for the global stats query | Skip the stats block; emit envelopes with `stats: {}`; downstream renders the email without the analytics section |
-| Per-candidate new-jobs query fails | Log+skip that candidate; continue the sweep |
-| Event emit fails | Increment `Failed`; same as the matches-weekly handler |
+| Per-candidate new-jobs query fails               | Log+skip that candidate; continue the sweep                                                                       |
+| Event emit fails                                 | Increment `Failed`; same as the matches-weekly handler                                                            |
 
 ### Testing
 
@@ -342,12 +349,12 @@ Following the existing `matches_weekly` + `cv_stale_nudge` patterns:
 
 ## Sequencing
 
-| Phase | PR | Depends on |
-|--|--|--|
-| 1 | widgets.js `auth-runtime@1.1.0` + `profile@1.1.0` | — |
-| 1 | stawi.jobs bump + AuthCallback rewrite | widgets.js publish |
-| 2 | Audit findings + targeted fixes | none (can run in parallel with Phase 1) |
-| 3 | matching: handler + repo + topic + Trustage workflow | none (can run in parallel with Phase 1) |
+| Phase | PR                                                   | Depends on                              |
+| ----- | ---------------------------------------------------- | --------------------------------------- |
+| 1     | widgets.js `auth-runtime@1.1.0` + `profile@1.1.0`    | —                                       |
+| 1     | stawi.jobs bump + AuthCallback rewrite               | widgets.js publish                      |
+| 2     | Audit findings + targeted fixes                      | none (can run in parallel with Phase 1) |
+| 3     | matching: handler + repo + topic + Trustage workflow | none (can run in parallel with Phase 1) |
 
 Phases 2 and 3 can land before Phase 1 lands — they don't touch
 auth.
@@ -355,6 +362,7 @@ auth.
 ## Verification
 
 End of all three phases:
+
 - Sign-in from incognito in Chrome / Firefox / Safari with popup
   blocker maxed: no popup, full-page redirect, lands on
   `/dashboard/`.

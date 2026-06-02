@@ -3,9 +3,7 @@
     "base_url": "https://boards.greenhouse.io/unifonic",
     "country": "SA",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ar",
     "priority": "normal",
     "region": "mena",
@@ -15,9 +13,7 @@
     "base_url": "https://jobs.lever.co/tamara",
     "country": "SA",
     "crawl_interval_sec": 14400,
-    "kinds": [
-      "job"
-    ],
+    "kinds": ["job"],
     "language": "ar",
     "priority": "normal",
     "region": "mena",

@@ -1,6 +1,6 @@
-import { StrictMode, type ComponentType, Suspense } from "react";
-import { createRoot } from "react-dom/client";
-import { AppProviders } from "@/providers/AppProviders";
+import { StrictMode, type ComponentType, Suspense } from 'react';
+import { createRoot } from 'react-dom/client';
+import { AppProviders } from '@/providers/AppProviders';
 
 // Every island is a [id → component] pair. Only the components whose mount
 // target exists on the page get rendered. Components are lazy-imported so
@@ -12,24 +12,27 @@ type Island = {
 };
 
 const islands: Island[] = [
-  { id: "mount-nav",            component: () => import("@/components/Nav") },
+  { id: 'mount-nav', component: () => import('@/components/Nav') },
+  { id: 'mount-home-redirect', component: () => import('@/components/HomeRedirect') },
   // All five opportunity kinds share the same React island; the kind is
   // derived from window.location.pathname inside OpportunityDetail.
-  { id: "mount-job-detail",         component: () => import("@/components/OpportunityDetail") },
-  { id: "mount-scholarship-detail", component: () => import("@/components/OpportunityDetail") },
-  { id: "mount-tender-detail",      component: () => import("@/components/OpportunityDetail") },
-  { id: "mount-deal-detail",        component: () => import("@/components/OpportunityDetail") },
-  { id: "mount-funding-detail",     component: () => import("@/components/OpportunityDetail") },
-  { id: "mount-search",         component: () => import("@/components/Search") },
-  { id: "mount-job-list",       component: () => import("@/components/JobList") },
-  { id: "mount-locale-shard",   component: () => import("@/components/LocaleShard") },
-  { id: "mount-signup-cta",     component: () => import("@/components/SignupCta") },
-  { id: "mount-category-index", component: () => import("@/components/CategoryIndex") },
-  { id: "mount-category-page",  component: () => import("@/components/CategoryPage") },
-  { id: "mount-dashboard",      component: () => import("@/pages/Dashboard") },
-  { id: "mount-onboarding",     component: () => import("@/pages/Onboarding") },
-  { id: "mount-connected",      component: () => import("@/pages/ConnectedAccounts") },
-  { id: "mount-auth-callback",  component: () => import("@/components/AuthCallback") },
+  { id: 'mount-job-detail', component: () => import('@/components/OpportunityDetail') },
+  { id: 'mount-scholarship-detail', component: () => import('@/components/OpportunityDetail') },
+  { id: 'mount-tender-detail', component: () => import('@/components/OpportunityDetail') },
+  { id: 'mount-deal-detail', component: () => import('@/components/OpportunityDetail') },
+  { id: 'mount-funding-detail', component: () => import('@/components/OpportunityDetail') },
+  { id: 'mount-search', component: () => import('@/components/Search') },
+  { id: 'mount-job-list', component: () => import('@/components/JobList') },
+  { id: 'mount-locale-shard', component: () => import('@/components/LocaleShard') },
+  { id: 'mount-signup-cta', component: () => import('@/components/SignupCta') },
+  { id: 'mount-category-index', component: () => import('@/components/CategoryIndex') },
+  { id: 'mount-category-page', component: () => import('@/components/CategoryPage') },
+  { id: 'mount-dashboard', component: () => import('@/pages/Dashboard') },
+  { id: 'mount-onboarding', component: () => import('@/pages/Onboarding') },
+  { id: 'mount-connected', component: () => import('@/pages/ConnectedAccounts') },
+  { id: 'mount-auth-callback', component: () => import('@/components/AuthCallback') },
+  { id: 'mount-footer', component: () => import('@/components/Footer') },
+  { id: 'mount-get-started-cta', component: () => import('@/components/GetStartedCta') },
 ];
 
 async function hydrate(island: Island, el: HTMLElement) {
@@ -42,7 +45,7 @@ async function hydrate(island: Island, el: HTMLElement) {
           <Component />
         </Suspense>
       </AppProviders>
-    </StrictMode>,
+    </StrictMode>
   );
 }
 
@@ -53,8 +56,8 @@ function boot() {
   }
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
 } else {
   boot();
 }

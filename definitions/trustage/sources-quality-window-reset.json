@@ -1,11 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.sources.quality-window-reset",
-  "description": "Weekly on Monday at 03:00 UTC — zeros the rolling quality-window counters (quality_validated, quality_flagged) on every active source so the next window starts fresh.",
-  "schedule": {
-    "cron": "0 3 * * 1",
-    "active": true
-  },
+  "description": "Weekly on Monday at 03:00 UTC \u2014 zeros the rolling quality-window counters (quality_validated, quality_flagged) on every active source so the next window starts fresh.",
   "input": {},
   "config": {},
   "timeout": "5m",
@@ -28,10 +24,19 @@
         "input": {
           "url": "http://opportunities-crawler.product-opportunities.svc/admin/sources/quality-reset",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         }
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.sources.quality-window-reset.default",
+      "cron_expr": "0 3 * * 1",
+      "timezone": "UTC"
     }
   ]
 }

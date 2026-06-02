@@ -1,0 +1,6 @@
+# Pull JobPosting structured data straight from a single careers
+# page that exposes it. Sitemap or htmllisting feeds the URL stream
+# into this connector via the universal source-type registration.
+type: schemaorgjsonld
+list_url: https://example.com/jobs/senior-engineer
+fields: {}  # JSON-LD JobPosting carries all the fields

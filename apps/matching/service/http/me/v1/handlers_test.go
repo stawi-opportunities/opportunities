@@ -35,14 +35,15 @@ func setupExtensionEnv(t *testing.T) (*http.ServeMux, *sql.DB, context.Context) 
 			subscription VARCHAR(20) NOT NULL DEFAULT 'free',
 			auto_apply BOOLEAN NOT NULL DEFAULT false,
 			cv_url TEXT,
-			cv_raw_text TEXT,
+			cv_storage_uri TEXT,
+			cv_content_hash VARCHAR(64),
 			current_title TEXT,
 			seniority VARCHAR(30),
 			years_experience INTEGER,
-			skills TEXT,
-			strong_skills TEXT,
-			working_skills TEXT,
-			tools_frameworks TEXT,
+			skills text[],
+			strong_skills text[],
+			working_skills text[],
+			tools_frameworks text[],
 			certifications TEXT,
 			preferred_roles TEXT,
 			industries TEXT,
@@ -89,7 +90,7 @@ func setupExtensionEnv(t *testing.T) (*http.ServeMux, *sql.DB, context.Context) 
 		Weights:          matching.DefaultWeights(),
 		Debouncer:        matching.NewMemoryDebouncer(),
 		IdempotencyStore: applications.NewIdempotencyStore(db, time.Hour),
-	})
+	}, nil)
 	return mux, db, ctx
 }
 
@@ -222,7 +223,7 @@ func TestRulesGetDefaultThenPut(t *testing.T) {
 func TestProfileFieldsWithETag(t *testing.T) {
 	mux, db, ctx := setupExtensionEnv(t)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO candidate_profiles (id, current_title, skills) VALUES ('u_pf', 'SWE', 'go,postgres')
+		`INSERT INTO candidate_profiles (id, current_title, skills) VALUES ('u_pf', 'SWE', ARRAY['go','postgres']::text[])
 		   ON CONFLICT DO NOTHING`)
 	require.NoError(t, err)
 

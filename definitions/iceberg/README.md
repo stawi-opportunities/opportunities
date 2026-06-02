@@ -24,12 +24,12 @@ None of them are executed by any deployment path.
 
 The bootstrap process assumes three Cloudflare R2 buckets exist:
 
-| Bucket | Purpose |
-|---|---|
-| `cluster-chronicle` | Lakekeeper warehouse (Iceberg data + metadata) |
-| `product-opportunities-content` | Public job/opportunity slug-direct JSONs |
-| `product-opportunities-archive` | Private raw bodies + JSON bundles |
+| Bucket                          | Purpose                                        |
+| ------------------------------- | ---------------------------------------------- |
+| `cluster-chronicle`             | Lakekeeper warehouse (Iceberg data + metadata) |
+| `product-opportunities-content` | Public job/opportunity slug-direct JSONs       |
+| `product-opportunities-archive` | Private raw bodies + JSON bundles              |
 
 The Vault paths under `stawi-opportunities/opportunities/common/` keep
-their original names; the bucket *values* inside those secrets are the
+their original names; the bucket _values_ inside those secrets are the
 new names above.

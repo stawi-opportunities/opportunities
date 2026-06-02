@@ -26,9 +26,31 @@ type CrawlRequestV1 struct {
 
 	SourceID string `json:"source_id" parquet:"source_id"`
 
+	// IdempotencyKey is the (source_id, tick_minute) tuple the
+	// scheduler stamps so the crawl handler can dedupe NATS
+	// at-least-once redeliveries: redeliveries carry the same key
+	// and reuse the same crawl_jobs row instead of inserting a
+	// duplicate. Empty key means the handler derives one from
+	// SourceID + ScheduledAt at row-open time.
+	IdempotencyKey string `json:"idempotency_key,omitempty" parquet:"idempotency_key,optional"`
+
+	// ScheduledAt is the tick time the scheduler intended this
+	// request for. Carried explicitly so the audit row's
+	// scheduled_at column reflects the planned tick, not whatever
+	// `now()` happens to be at handler dispatch (which can drift
+	// under NATS lag or redelivery).
+	ScheduledAt time.Time `json:"scheduled_at,omitempty" parquet:"scheduled_at,optional"`
+
 	// URL is optional. Empty means "start at source.base_url". Non-
 	// empty is used by the not-yet-wired detail fan-out path.
 	URL string `json:"url,omitempty" parquet:"url,optional"`
+
+	// RawPayloadID, when non-empty, switches the crawl handler from
+	// connector-iterator mode to reparse mode: fetch the stored HTML
+	// from R2 by content_hash and re-run extraction. Used by the
+	// /admin/raw_payloads/{id}/reparse endpoint after operators edit
+	// extraction prompts or connector specs.
+	RawPayloadID string `json:"raw_payload_id,omitempty" parquet:"raw_payload_id,optional"`
 
 	// Cursor is the opaque pagination token emitted by the connector
 	// on a prior page. Empty on first request for a source.

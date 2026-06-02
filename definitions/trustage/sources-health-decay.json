@@ -1,11 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.sources.health-decay",
-  "description": "Every hour at :15 — nudges every active source's health_score toward 1.0 by a small step (0.05). Allows sources that were degraded by transient failures to self-recover without manual intervention.",
-  "schedule": {
-    "cron": "15 * * * *",
-    "active": true
-  },
+  "description": "Every hour at :15 \u2014 nudges every active source's health_score toward 1.0 by a small step (0.05). Allows sources that were degraded by transient failures to self-recover without manual intervention.",
   "input": {},
   "config": {},
   "timeout": "10m",
@@ -28,10 +24,19 @@
         "input": {
           "url": "http://opportunities-crawler.product-opportunities.svc/admin/sources/health-decay",
           "method": "POST",
-          "headers": { "Content-Type": "application/json" },
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body": {}
         }
       }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.sources.health-decay.default",
+      "cron_expr": "15 * * * *",
+      "timezone": "UTC"
     }
   ]
 }

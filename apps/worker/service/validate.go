@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -153,6 +154,7 @@ func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
 	var result validationResult
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		util.Log(ctx).WithError(err).Warn("validate: unparseable LLM output, flagging")
+		_ = h.store.RecordError(ctx, n.VariantID, variantstate.StageValidated, fmt.Errorf("validate: unparseable LLM output: %w", err))
 		return h.emitFlagged(ctx, n, "unparseable", 0, "")
 	}
 
@@ -186,6 +188,7 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 	_ = model
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsValidated, out)
 	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsValidated, env); err != nil {
+		_ = h.store.RecordError(ctx, n.VariantID, variantstate.StageValidated, fmt.Errorf("validate: emit validated: %w", err))
 		return err
 	}
 	_ = h.store.AdvanceStage(ctx, n.VariantID,
@@ -206,6 +209,7 @@ func (h *ValidateHandler) emitFlagged(ctx context.Context, n eventsv1.VariantNor
 	}
 	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsFlagged, out)
 	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsFlagged, env); err != nil {
+		_ = h.store.RecordError(ctx, n.VariantID, variantstate.StageValidated, fmt.Errorf("validate: emit flagged: %w", err))
 		return err
 	}
 	_ = h.store.AdvanceStage(ctx, n.VariantID,
