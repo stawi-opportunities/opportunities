@@ -461,9 +461,10 @@ func (s *Store) soft(ctx context.Context, err error, op, variantID, stage string
 // with embedding / hidden flags in Phase 5.
 //
 // Note: embedding is intentionally not modelled here — pgvector's
-// `vector(1024)` type doesn't roundtrip cleanly through GORM's default
-// driver. The embed-write path will use a raw Exec when it lands; for
-// the canonical UPSERT we don't touch the column.
+// `vector(1024)` type (intfloat/multilingual-e5-large; see EMBEDDING_DIM
+// and VerifyEmbeddingDim) doesn't roundtrip cleanly through GORM's
+// default driver. UpdateEmbedding uses a raw Exec instead; for the
+// canonical UPSERT we don't touch the column.
 type Opportunity struct {
 	CanonicalID   string         `gorm:"primaryKey;column:canonical_id"`
 	Slug          string         `gorm:"column:slug;not null"`
@@ -594,6 +595,56 @@ func (s *Store) UpsertOpportunity(ctx context.Context, o Opportunity) error {
 			attrsJSON, o.QualityScore, o.Hidden, nullStr(o.HiddenReason),
 		).Error
 	return s.soft(ctx, err, "upsert_opportunity", "", o.CanonicalID)
+}
+
+// EmbeddingDim returns the declared dimension of opportunities.embedding
+// (the vector(N) typmod), or 0 when the table/column is absent (fresh
+// environment or test stub). pgvector stores the dimension in atttypmod
+// as N+4.
+func (s *Store) EmbeddingDim(ctx context.Context) (int, error) {
+	if s == nil || s.db == nil {
+		return 0, nil
+	}
+	var dim int
+	err := s.db(ctx, true).Raw(`
+		SELECT COALESCE(a.atttypmod - 4, 0)
+		FROM pg_attribute a
+		JOIN pg_class c ON c.oid = a.attrelid
+		WHERE c.relname = 'opportunities'
+		  AND a.attname = 'embedding'
+		  AND NOT a.attisdropped`).Scan(&dim).Error
+	if err != nil {
+		return 0, fmt.Errorf("read embedding dim: %w", err)
+	}
+	return dim, nil
+}
+
+// VerifyEmbeddingDim fails when the live opportunities.embedding column
+// dimension differs from want (the configured EMBEDDING_DIM, which must
+// equal the deployed model's native output dimension — 384 for
+// multilingual-e5-small, 1024 for e5-large/bge-m3). A mismatch makes
+// pgvector reject every embedding write, which UpdateEmbedding then
+// soft-fails — silently dropping 100% of embeddings (the failure mode
+// that left all opportunities NULL). Callers treat this as fatal at boot
+// so the misconfiguration surfaces immediately instead of as an empty
+// search index discovered days later.
+//
+// Returns nil when the column is absent (dim 0) so fresh installs and
+// tests that haven't run the schema migration aren't blocked.
+func (s *Store) VerifyEmbeddingDim(ctx context.Context, want int) error {
+	got, err := s.EmbeddingDim(ctx)
+	if err != nil {
+		return err
+	}
+	if got == 0 || got == want {
+		return nil
+	}
+	return fmt.Errorf(
+		"embedding dimension mismatch: opportunities.embedding is vector(%d) but EMBEDDING_DIM=%d "+
+			"(the deployed model must emit that many dimensions); "+
+			"every embedding write would be rejected by pgvector and silently dropped. "+
+			"Align the schema (run the embedding-dim migration) or set EMBEDDING_DIM/EMBEDDING_MODEL to match",
+		got, want)
 }
 
 // UpdateEmbedding writes the per-canonical embedding vector into the

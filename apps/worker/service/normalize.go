@@ -120,9 +120,13 @@ func normalize(in eventsv1.VariantIngestedV1) eventsv1.VariantNormalizedV1 {
 	loc, _ := attrs["location_text"].(string)
 	rt, _ := attrs["remote_type"].(string)
 	attrs["remote_type"] = inferRemoteType(rt, loc)
-	if s, ok := attrs["description"].(string); ok {
-		attrs["description"] = strings.TrimSpace(s)
-	}
+	// Description is attribute-borne (no universal-envelope field) and is
+	// the richest signal for the embedding + the job detail page. Always
+	// set the key — even to "" — so every downstream stage (canonical
+	// merge, embed) can read it without a fragile presence check that
+	// silently degrades to an empty vector input when the key is missing.
+	desc, _ := attrs["description"].(string)
+	attrs["description"] = strings.TrimSpace(desc)
 	if s, ok := attrs["apply_url"].(string); ok {
 		attrs["apply_url"] = strings.TrimSpace(s)
 	}

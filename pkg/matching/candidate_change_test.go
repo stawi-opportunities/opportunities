@@ -41,7 +41,7 @@ func TestRunCandidateChange_AllowedRunsGapFill(t *testing.T) {
 	res, err := matching.RunCandidateChange(context.Background(),
 		matching.CandidateChange{
 			CandidateID: "u",
-			Embedding:   unitVec(1536, 0),
+			Embedding:   unitVec(1024, 0),
 			MinScore:    0.3,
 		},
 		matching.CandidateChangeDeps{
