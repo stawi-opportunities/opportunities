@@ -1,12 +1,9 @@
-<<<<<<< HEAD
 import { useState, useRef, useEffect } from "react";
 import { StawiAuth } from "./StawiAuth";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-=======
 import { StawiAuth } from './StawiAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useI18n } from '@/i18n/I18nProvider';
->>>>>>> upstream/main
 
 const browseItems = [
   { href: "/jobs/",         emoji: "💼", label: "Jobs",         sub: "Full-time, remote & more" },
@@ -43,7 +40,6 @@ function BrowseDropdown() {
         aria-haspopup="true"
         className="flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
       >
-<<<<<<< HEAD
         Browse
         <svg
           className={`h-4 w-4 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
@@ -128,7 +124,6 @@ export default function Nav() {
           <a href="/pricing/"    className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900">Pricing</a>
           <a href="/about/"      className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900">About</a>
         </nav>
-=======
         <a href="/" className="flex items-center" aria-label="Stawi — Growing together">
           <img
             src="/images/logo.svg"
@@ -141,7 +136,6 @@ export default function Nav() {
         <a href="/search/" className="text-lg font-semibold text-navy-900 hover:text-accent-600">
           {t('nav.jobs')}
         </a>
->>>>>>> upstream/main
 
         {/* Right side */}
         <div className="flex items-center gap-2">

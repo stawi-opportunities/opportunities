@@ -1,15 +1,12 @@
-<<<<<<< HEAD
 import { useEffect, useMemo } from "react";
 import Cascade from "./Cascade";
 import { useCandidateProfile } from "@/hooks/useCandidateProfile";
-=======
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Cascade from './Cascade';
 import { useAuth } from '@/providers/AuthProvider';
 import { fetchCandidate } from '@/api/candidates';
 import { useI18n } from '@/i18n/I18nProvider';
->>>>>>> upstream/main
 
 export default function LocaleShard() {
   const mount = useMemo(() => document.getElementById('mount-locale-shard'), []);
@@ -36,9 +33,7 @@ export default function LocaleShard() {
     };
   }, [country, languages]);
 
-<<<<<<< HEAD
   const { preferredCountries, preferredLanguages } = useCandidateProfile();
-=======
   const auth = useAuth();
   const profile = useQuery({
     queryKey: ['candidate-profile'],
@@ -54,7 +49,6 @@ export default function LocaleShard() {
     () => splitCSV(profile.data?.languages),
     [profile.data?.languages]
   );
->>>>>>> upstream/main
 
   return (
     <ShardStatusBanner country={country} languages={languages}>

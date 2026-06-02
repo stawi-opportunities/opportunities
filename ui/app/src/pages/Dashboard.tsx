@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ﻿import { useEffect, useRef } from "react";
 import { mount as mountProfile, type MountHandle } from "@stawi/profile";
 import { authRuntime } from "@/auth/runtime";
@@ -16,7 +15,6 @@ import { BillingPanel } from "@/components/dashboard/BillingPanel";
 import { PreferencesPanel } from "@/components/dashboard/PreferencesPanel";
 import { CompletePaymentPanel } from "@/components/dashboard/CompletePaymentPanel";
 import { PendingCheckoutPoller } from "@/components/dashboard/PendingCheckoutPoller";
-=======
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { mount as mountProfile, type MountHandle } from '@stawi/profile';
@@ -43,21 +41,17 @@ const PREFERENCE_KINDS: ReadonlyArray<{
   { kind: 'deal', flow: 'deal-onboarding-v1', labelKey: 'kind.deal' },
   { kind: 'funding', flow: 'funding-onboarding-v1', labelKey: 'kind.funding' },
 ];
->>>>>>> upstream/main
 
 export default function Dashboard() {
   const { state, login } = useAuth();
 
-<<<<<<< HEAD
   const subQ = useSubscription();
-=======
   const subQ = useQuery({
     queryKey: ['me-subscription'],
     queryFn: fetchMeSubscription,
     enabled: state === 'authenticated',
     staleTime: 60_000,
   });
->>>>>>> upstream/main
 
   useEffect(() => {
     if (state !== 'authenticated') return;
@@ -100,8 +94,6 @@ export default function Dashboard() {
   );
 }
 
-<<<<<<< HEAD
-=======
 function DashboardHeader({ plan, active }: { plan: PlanId | null; active: boolean }) {
   const { t } = useI18n();
   const label = plan && active ? planById(plan).name : t('dash.setupIncomplete');
@@ -505,7 +497,6 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
->>>>>>> upstream/main
 function ProfileMount() {
   const hostRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {

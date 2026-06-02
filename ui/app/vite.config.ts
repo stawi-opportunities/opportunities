@@ -66,7 +66,6 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     strictPort: true,
     cors: true,
-<<<<<<< HEAD
     origin: "http://localhost:5173",
     // Proxy API requests to the production backend so the browser never
     // makes a cross-origin fetch — CORS is bypassed entirely in dev.
@@ -86,8 +85,6 @@ export default defineConfig(({ command }) => ({
         rewrite: (path: string) => path.replace(/^\/candidates-api/, ""),
       },
     },
-=======
     origin: 'http://localhost:5173',
->>>>>>> upstream/main
   },
 }));

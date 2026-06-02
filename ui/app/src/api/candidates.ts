@@ -1,11 +1,9 @@
-<<<<<<< HEAD
 // Re-export barrel — all symbols live in focused modules.
 // Importing from "@/api/candidates" continues to work for all
 // existing callers; new code should import from the specific module.
 export * from "./profile";
 export * from "./billing";
 export * from "./flags";
-=======
 import type { PlanId } from '@/utils/plans';
 import { authRuntime } from '@/auth/runtime';
 
@@ -333,4 +331,3 @@ function getCandidatesOrigin(): string {
   }
   return 'https://api.stawi.org';
 }
->>>>>>> upstream/main

@@ -56,7 +56,6 @@ export default function CategoryIndex() {
   const cats = q.data?.categories ?? [];
 
   return (
-<<<<<<< HEAD
     <div className="bg-white">
       {/* Page header */}
       <div className="border-b border-gray-100 bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
@@ -66,7 +65,6 @@ export default function CategoryIndex() {
             Discover opportunities across jobs, scholarships, tenders, deals and funding — all in one place.
           </p>
           <div className="mt-6 flex justify-center">
-=======
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
       <h1 className="text-3xl font-bold">{t('category.browseByCategory')}</h1>
       {q.isLoading ? (
@@ -80,24 +78,20 @@ export default function CategoryIndex() {
       ) : (
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           {cats.map((c) => (
->>>>>>> upstream/main
             <a
               href="/search/"
               className="inline-flex items-center gap-2 rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800"
             >
-<<<<<<< HEAD
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35" />
               </svg>
               Advanced search
-=======
               <div className="font-semibold capitalize text-gray-900">
                 {c.key || t('category.uncategorised')}
               </div>
               <div className="text-sm text-gray-500">
                 {c.count.toLocaleString()} {t('common.jobs')}
               </div>
->>>>>>> upstream/main
             </a>
           </div>
         </div>

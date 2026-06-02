@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ﻿import { useEffect, useState, type ReactNode } from "react";
 import type { Facets } from "@/types/search";
 import { useCandidateProfile } from "@/hooks/useCandidateProfile";
@@ -15,7 +14,6 @@ import { SearchForm } from "./search/SearchForm";
  */
 export default function Search() {
   const [params, setParams] = useSearchURLParams();
-=======
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { categoryLabel } from '@/utils/format';
@@ -28,13 +26,10 @@ import Cascade from './Cascade';
 export default function Search() {
   const { t } = useI18n();
   const [params, setParams] = useState<SearchParams>(() => readParamsFromURL());
->>>>>>> upstream/main
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [facets, setFacets] = useState<Facets | undefined>();
 
-<<<<<<< HEAD
   const { preferredCountries, preferredLanguages } = useCandidateProfile();
-=======
   const auth = useAuth();
   const profile = useQuery({
     queryKey: ['candidate-profile'],
@@ -50,7 +45,6 @@ export default function Search() {
     () => splitCSV(profile.data?.languages),
     [profile.data?.languages]
   );
->>>>>>> upstream/main
 
   const hasActiveFilters = Boolean(
     params.category ||
@@ -108,13 +102,10 @@ export default function Search() {
           </svg>
           {t('search.filters')}
           {hasActiveFilters && (
-<<<<<<< HEAD
             <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">
               â€¢
             </span>
-=======
             <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">•</span>
->>>>>>> upstream/main
           )}
         </button>
         {hasActiveFilters && (
@@ -194,8 +185,6 @@ export default function Search() {
   );
 }
 
-<<<<<<< HEAD
-=======
 function FiltersPanel({
   params,
   setParams,
@@ -276,7 +265,6 @@ function FiltersPanel({
   );
 }
 
->>>>>>> upstream/main
 function MobileDrawer({
   children,
   onClose,
@@ -336,8 +324,6 @@ function MobileDrawer({
     </div>
   );
 }
-<<<<<<< HEAD
-=======
 
 function SearchForm({
   value,
@@ -536,4 +522,3 @@ function writeParamsToURL(params: SearchParams) {
   }
   window.history.replaceState({}, '', url.toString());
 }
->>>>>>> upstream/main

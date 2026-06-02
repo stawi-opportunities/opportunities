@@ -10,7 +10,6 @@ export default function SignupCta() {
     ctaMount.style.display = state === 'authenticated' ? 'none' : '';
   }, [state]);
 
-<<<<<<< HEAD
     // Authenticated visitors see nothing — one fewer "please sign up"
     // reminder on every page they visit while logged in.
     if (state === "authenticated") {
@@ -41,7 +40,5 @@ export default function SignupCta() {
 
   // This island's entire job is DOM side-effects on the Hugo-rendered
   // block above; nothing new to render here.
-=======
->>>>>>> upstream/main
   return null;
 }

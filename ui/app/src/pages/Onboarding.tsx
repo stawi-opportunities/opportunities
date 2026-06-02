@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { useEffect, useId, useMemo, useState } from "react";
 import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
@@ -6,7 +5,6 @@ import { useAuth } from "@/providers/AuthProvider";
 import { submitOnboarding, uploadCV } from "@/api/profile";
 import { createCheckout } from "@/api/billing";
 import { PLANS, planById, type PlanId } from "@/utils/plans";
-=======
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useForm, type SubmitHandler, type UseFormReturn } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
@@ -24,7 +22,6 @@ import {
 import { PLANS, planById, type PlanId } from '@/utils/plans';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
->>>>>>> upstream/main
 
 type FormValues = Omit<z.infer<typeof Step1Schema>, 'cv'> & { cv?: File } & z.infer<
     typeof Step2Schema
