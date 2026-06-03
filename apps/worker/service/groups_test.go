@@ -9,9 +9,12 @@ import (
 // The five pipeline topics every variant must traverse. embed/translate
 // are subject-queue workers (not events-manager handlers) and are wired
 // separately, so they are intentionally absent here.
+// TopicVariantsNormalized is intentionally absent: as of the Events→Queue
+// migration hop 1 the validate stage consumes it from a dedicated Frame
+// Queue subject (SubjectPipelineNormalized) via ValidateWorker(), not from
+// the events bus — so no events group handles it.
 var allPipelineTopics = []string{
 	eventsv1.TopicVariantsIngested,
-	eventsv1.TopicVariantsNormalized,
 	eventsv1.TopicVariantsValidated,
 	eventsv1.TopicVariantsClustered,
 	eventsv1.TopicCanonicalsUpserted,

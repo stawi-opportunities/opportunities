@@ -6,6 +6,7 @@ import (
 	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/queue"
 
+	"github.com/stawi-opportunities/opportunities/pkg/eventqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -90,9 +91,11 @@ func NewService(
 // any event whose Name() isn't a registered handler below, so the
 // previous per-topic NoopHandler block is no longer needed.
 func (s *Service) EventHandlers() []events.EventI {
+	// Validate is intentionally NOT here: as of Events→Queue migration hop 1
+	// it runs as a Frame Queue subscriber (ValidateWorker, registered in
+	// main.go for the "validate" and "all" groups), not an events handler.
 	return []events.EventI{
 		NewNormalizeHandler(s.svc, s.variantStore),
-		NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM, s.variantStore),
 		NewDedupHandlerWithBackend(s.svc, s.dedupCache, s.clusterCache, s.dedupSkipCache, s.variantStore, s.dedupReadBackend),
 		NewCanonicalHandler(s.svc, s.clusterCache, s.variantStore),
 		NewPublishHandler(s.svc, s.publisher, s.registry, s.variantStore),
@@ -108,6 +111,17 @@ func (s *Service) EmbedWorker() queue.SubscribeWorker {
 // TranslateWorker returns the queue subscriber for SubjectWorkerTranslate.
 func (s *Service) TranslateWorker() queue.SubscribeWorker {
 	return NewTranslateHandler(s.svc, s.extractor, s.translationLangs, s.variantStore)
+}
+
+// ValidateWorker returns the queue subscriber for SubjectPipelineNormalized
+// (Events→Queue migration, hop 1). It wraps the existing ValidateHandler so
+// the validate stage consumes VariantNormalizedV1 from its own durable Queue
+// subject instead of the shared events bus — no more catch-all cross-talk.
+// The handler logic is unchanged; only the transport differs.
+func (s *Service) ValidateWorker() queue.SubscribeWorker {
+	return eventqueue.AsQueueWorker(
+		NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM, s.variantStore),
+	)
 }
 
 // Handlers is retained for backwards compatibility with existing

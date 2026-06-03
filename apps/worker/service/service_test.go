@@ -98,12 +98,22 @@ func TestWorkerPipelineE2E(t *testing.T) {
 	// extractor/publisher its embed/translate/publish stages are no-ops.
 	colCanonical := &collector{topic: eventsv1.TopicCanonicalsUpserted}
 	svc.EventsManager().Add(colCanonical)
+	// Production runs the events manager in loose mode; the transitional
+	// events emit of normalized.v1 (for the writer's archival) has no
+	// consumer in this worker-only test, so ack-skip it like production.
+	svc.EventsManager().SetStrict(false)
 
-	// Register the four pipeline handlers via WithRegisterEvents so they
-	// are added during the pre-start phase (after eventsManager is wired
-	// to the live queue). handlers[:4] = normalize, validate, dedup, canonical.
+	// Events→Queue migration hop 1: the validate stage consumes
+	// VariantNormalizedV1 from a dedicated Frame Queue subject, not the
+	// events bus. So normalize/dedup/canonical stay on events; validate is
+	// a queue subscriber. handlers = [normalize, validate, dedup, canonical, …].
 	handlers := wsvc.Handlers()
-	svc.Init(ctx, frame.WithRegisterEvents(handlers[:4]...))
+	pipeURL := "mem://" + eventsv1.SubjectPipelineNormalized
+	svc.Init(ctx,
+		frame.WithRegisterEvents(handlers[0], handlers[1], handlers[2]), // normalize, dedup, canonical
+		frame.WithRegisterPublisher(eventsv1.SubjectPipelineNormalized, pipeURL),
+		frame.WithRegisterSubscriber(eventsv1.SubjectPipelineNormalized, pipeURL, wsvc.ValidateWorker()),
+	)
 
 	// Start Frame's run-loop in the background. The pre-start phase
 	// executes here, registering all four pipeline handlers. The
@@ -230,9 +240,16 @@ func TestPipeline_ScholarshipPropagatesAttributes(t *testing.T) {
 
 	colCanonical := &collector{topic: eventsv1.TopicCanonicalsUpserted}
 	svc.EventsManager().Add(colCanonical)
+	svc.EventsManager().SetStrict(false)
 
+	// Events→Queue migration hop 1: validate consumes from its Queue subject.
 	handlers := wsvc.Handlers()
-	svc.Init(ctx, frame.WithRegisterEvents(handlers[:4]...))
+	pipeURL := "mem://" + eventsv1.SubjectPipelineNormalized
+	svc.Init(ctx,
+		frame.WithRegisterEvents(handlers[0], handlers[1], handlers[2]), // normalize, dedup, canonical
+		frame.WithRegisterPublisher(eventsv1.SubjectPipelineNormalized, pipeURL),
+		frame.WithRegisterSubscriber(eventsv1.SubjectPipelineNormalized, pipeURL, wsvc.ValidateWorker()),
+	)
 
 	go func() { _ = svc.Run(ctx, "") }()
 	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)

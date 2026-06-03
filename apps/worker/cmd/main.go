@@ -276,6 +276,23 @@ func main() {
 		)
 	}
 
+	// Events→Queue migration hop 1: the validate stage consumes
+	// VariantNormalizedV1 from its own durable Queue subject. NormalizeHandler
+	// (core group) is the producer, so core registers the publisher; the
+	// validate group registers the subscriber. "all" keeps both for the
+	// single-deployment monolith.
+	if cfg.StageGroup == "core" || cfg.StageGroup == "all" {
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(eventsv1.SubjectPipelineNormalized, cfg.PipelineNormalizedQueueURL),
+		)
+	}
+	if cfg.StageGroup == "validate" || cfg.StageGroup == "all" {
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(eventsv1.SubjectPipelineNormalized, cfg.PipelineNormalizedQueueURL),
+			frame.WithRegisterSubscriber(eventsv1.SubjectPipelineNormalized, cfg.PipelineNormalizedQueueURL, service.ValidateWorker()),
+		)
+	}
+
 	svc.Init(ctx, initOpts...)
 
 	// The worker consumes svc.opportunities.events.> (catch-all) but

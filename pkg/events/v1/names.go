@@ -88,6 +88,23 @@ const (
 	SubjectWorkerEmbed     = "svc.opportunities.worker.embed.v1"
 	SubjectWorkerTranslate = "svc.opportunities.worker.translate.v1"
 
+	// Inter-service pipeline hops. The crawler→normalize→validate→dedup→
+	// canonical→publish chain (and the canonical fan-out to materializer/
+	// matching/writer) is durable cross-service work and belongs on Frame
+	// Queue per the async decision tree — one dedicated subject per hop on
+	// the svc_opportunities_pipeline stream, each consumer a durable
+	// subscriber on only the subject it handles. This replaces routing the
+	// chain over the shared Frame Events bus (header-routed on one subject,
+	// so every stage group received every event and loose-mode-acked the
+	// rest — the catch-all cross-talk + shared backlog). The payload on
+	// each is the same Envelope[...] as the equivalent Topic* event.
+	// Migrated incrementally, one hop per release (see pkg/eventqueue).
+	SubjectPipelineNormalized = "svc.opportunities.pipeline.normalized.v1"
+	SubjectPipelineValidated  = "svc.opportunities.pipeline.validated.v1"
+	SubjectPipelineClustered  = "svc.opportunities.pipeline.clustered.v1"
+	SubjectPipelineCanonical  = "svc.opportunities.pipeline.canonical.v1"
+	SubjectPipelinePublished  = "svc.opportunities.pipeline.published.v1"
+
 	// SubjectMatchingDeadletter receives matching events that exceeded the
 	// redelivery budget. Admin /api/admin/dlq/replay re-publishes them.
 	SubjectMatchingDeadletter = "svc.opportunities.matching.deadletter"

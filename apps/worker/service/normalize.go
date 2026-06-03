@@ -76,8 +76,22 @@ func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
 	t1 := time.Now()
 	out := normalize(env.Payload)
 	t2 := time.Now()
+	// Hop 1 of the Events→Queue migration. PRIMARY (chain): hand
+	// VariantNormalizedV1 to the validate stage over a dedicated, durable
+	// Frame Queue subject — a per-consumer durable subscriber, no shared-bus
+	// cross-talk. TRANSITIONAL: still Emit on the events bus so the writer's
+	// Iceberg archival (events-based until its own cutover) keeps receiving
+	// normalized; that Emit (and the resulting normalized.v1 catch-all noise)
+	// goes away in the final writer-cutover hop. The ledger advance gates on
+	// the queue publish (the load-bearing path).
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsNormalized, out)
-	err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsNormalized, outEnv)
+	body, err := json.Marshal(outEnv)
+	if err == nil {
+		err = h.svc.QueueManager().Publish(ctx, eventsv1.SubjectPipelineNormalized, body)
+	}
+	if emitErr := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsNormalized, outEnv); emitErr != nil {
+		util.Log(ctx).WithError(emitErr).Warn("normalize: transitional events emit failed; queue path is authoritative")
+	}
 	t3 := time.Now()
 
 	// Ledger advance — only on successful emit. CAS guards against

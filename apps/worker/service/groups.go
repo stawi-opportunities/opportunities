@@ -33,9 +33,12 @@ func (s *Service) HandlersForGroup(group string) []eventI {
 			NewCanonicalHandler(s.svc, s.clusterCache, s.variantStore),
 		}
 	case "validate":
-		return []eventI{
-			NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM, s.variantStore),
-		}
+		// Hop 1 of the Events→Queue migration: the validate stage now
+		// consumes VariantNormalizedV1 from its dedicated Frame Queue
+		// subject (SubjectPipelineNormalized) via ValidateWorker(), wired
+		// in main.go with frame.WithRegisterSubscriber — NOT from the
+		// shared events bus. So it registers no events handler here.
+		return nil
 	case "publish":
 		return []eventI{
 			NewPublishHandler(s.svc, s.publisher, s.registry, s.variantStore),

@@ -119,6 +119,13 @@ type Config struct {
 	WorkerEmbedQueueURL     string `env:"WORKER_EMBED_QUEUE_URL"     envDefault:"mem://svc.opportunities.worker.embed.v1"`
 	WorkerTranslateQueueURL string `env:"WORKER_TRANSLATE_QUEUE_URL" envDefault:"mem://svc.opportunities.worker.translate.v1"`
 
+	// Inter-service pipeline-hop queue subjects (Events→Queue migration,
+	// one hop per release). The core group registers the PUBLISHER for the
+	// next hop it emits; the consuming group registers the SUBSCRIBER. Hop
+	// 1: normalize (core) publishes VariantNormalizedV1 here, validate
+	// subscribes. Empty default uses the in-memory driver for local/tests.
+	PipelineNormalizedQueueURL string `env:"PIPELINE_NORMALIZED_QUEUE_URL" envDefault:"mem://svc.opportunities.pipeline.normalized.v1"`
+
 	// StageGroup selects which pipeline handlers this process registers,
 	// so the worker can run as independently-scaling consumer groups:
 	//   "core"     — normalize, dedup (cluster), canonical
