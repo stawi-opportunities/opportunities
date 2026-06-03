@@ -9,7 +9,6 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/pitabwire/frame"
-	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/frametests"
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
@@ -68,6 +67,38 @@ func (c *envCollector[P]) Execute(_ context.Context, payload any) error {
 	c.mu.Unlock()
 	return nil
 }
+
+// Handle implements queue.SubscribeWorker so the collector can tap a Frame
+// Queue subject. The crawler now Publishes VariantIngestedV1 to the ingested
+// pipeline queue (service-profile idiom) instead of Emit-ing it on the events
+// bus, so variant assertions subscribe via this path.
+func (c *envCollector[P]) Handle(_ context.Context, _ map[string]string, payload []byte) error {
+	var env eventsv1.Envelope[P]
+	if err := json.Unmarshal(payload, &env); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.got = append(c.got, env)
+	c.mu.Unlock()
+	return nil
+}
+
+// testIngestedQueue is the in-memory ingested-pipeline queue Name used by the
+// crawler tests. Matches apps/worker's qIngested so the wiring is identical.
+const testIngestedQueue = "pipeline_ingested"
+
+// wireIngestedQueue registers the in-memory ingested Frame Queue and taps it
+// with col, returning the queue Name to set on CrawlRequestDeps.IngestedQueue.
+// Call before svc.Run so the publisher + subscriber are live when Execute
+// publishes.
+func wireIngestedQueue(ctx context.Context, svc *frame.Service, col *envCollector[eventsv1.VariantIngestedV1]) string {
+	uri := "mem://" + testIngestedQueue
+	svc.Init(ctx,
+		frame.WithRegisterPublisher(testIngestedQueue, uri),
+		frame.WithRegisterSubscriber(testIngestedQueue, uri, col),
+	)
+	return testIngestedQueue
+}
 func (c *envCollector[P]) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -94,13 +125,14 @@ func TestCrawlRequestHandlerEmitsVariantAndPageCompleted(t *testing.T) {
 
 	variantCol := &envCollector[eventsv1.VariantIngestedV1]{topic: eventsv1.TopicVariantsIngested}
 	pageCol := &envCollector[eventsv1.CrawlPageCompletedV1]{topic: eventsv1.TopicCrawlPageCompleted}
-	for _, c := range []events.EventI{variantCol, pageCol} {
-		svc.EventsManager().Add(c)
-	}
+	// page-completed still flows on the events bus; variants now flow on the
+	// ingested Frame Queue.
+	svc.EventsManager().Add(pageCol)
+	ingestedQ := wireIngestedQueue(ctx, svc, variantCol)
 
 	// Start Frame so subscriptions are live before Execute runs.
 	go func() { _ = svc.Run(ctx, "") }()
-	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, ingestedQ, 2*time.Second)
 
 	reg := connectors.NewRegistry()
 	reg.Register(&fakeConnector{
@@ -135,6 +167,7 @@ func TestCrawlRequestHandlerEmitsVariantAndPageCompleted(t *testing.T) {
 		Archive:        archive.NewFakeArchive(),
 		Extractor:      nil, // nil extractor → no AI enrichment, deterministic path
 		DiscoverSample: 0,   // disable sampling in this test
+		IngestedQueue:  ingestedQ,
 	})
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
@@ -250,12 +283,11 @@ func TestCrawlRequestHandler_ForwardsKindSpecificAttributes(t *testing.T) {
 
 	variantCol := &envCollector[eventsv1.VariantIngestedV1]{topic: eventsv1.TopicVariantsIngested}
 	pageCol := &envCollector[eventsv1.CrawlPageCompletedV1]{topic: eventsv1.TopicCrawlPageCompleted}
-	for _, c := range []events.EventI{variantCol, pageCol} {
-		svc.EventsManager().Add(c)
-	}
+	svc.EventsManager().Add(pageCol)
+	ingestedQ := wireIngestedQueue(ctx, svc, variantCol)
 
 	go func() { _ = svc.Run(ctx, "") }()
-	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, ingestedQ, 2*time.Second)
 
 	reg, err := opportunity.LoadFromDir("../../../definitions/opportunity-kinds")
 	if err != nil {
@@ -302,6 +334,7 @@ func TestCrawlRequestHandler_ForwardsKindSpecificAttributes(t *testing.T) {
 		Kinds:          reg,
 		Archive:        archive.NewFakeArchive(),
 		DiscoverSample: 0,
+		IngestedQueue:  ingestedQ,
 	})
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
@@ -356,12 +389,11 @@ func TestCrawlRequestHandler_EmptyKindsDefaultsToJob(t *testing.T) {
 
 	variantCol := &envCollector[eventsv1.VariantIngestedV1]{topic: eventsv1.TopicVariantsIngested}
 	pageCol := &envCollector[eventsv1.CrawlPageCompletedV1]{topic: eventsv1.TopicCrawlPageCompleted}
-	for _, c := range []events.EventI{variantCol, pageCol} {
-		svc.EventsManager().Add(c)
-	}
+	svc.EventsManager().Add(pageCol)
+	ingestedQ := wireIngestedQueue(ctx, svc, variantCol)
 
 	go func() { _ = svc.Run(ctx, "") }()
-	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, ingestedQ, 2*time.Second)
 
 	reg, err := opportunity.LoadFromDir("../../../definitions/opportunity-kinds")
 	if err != nil {
@@ -408,6 +440,7 @@ func TestCrawlRequestHandler_EmptyKindsDefaultsToJob(t *testing.T) {
 		Kinds:          reg,
 		Archive:        archive.NewFakeArchive(),
 		DiscoverSample: 0,
+		IngestedQueue:  ingestedQ,
 	})
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{

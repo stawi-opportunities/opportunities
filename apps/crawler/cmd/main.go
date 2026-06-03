@@ -348,6 +348,7 @@ func main() {
 
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:               svc,
+		IngestedQueue:     cfg.QueuePipelineIngestedName,
 		Sources:           sourceRepo,
 		Registry:          registry,
 		Kinds:             reg,
@@ -388,7 +389,11 @@ func main() {
 		handlers = append(handlers, definitions.NewBroadcastConsumer(loader, rebuild))
 		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
-	svc.Init(ctx, frame.WithRegisterEvents(handlers...))
+	svc.Init(ctx,
+		frame.WithRegisterEvents(handlers...),
+		// Pipeline head: publish VariantIngestedV1 to the opportunity chain.
+		frame.WithRegisterPublisher(cfg.QueuePipelineIngestedName, cfg.QueuePipelineIngested),
+	)
 	if mgr := svc.EventsManager(); mgr != nil {
 		mgr.SetStrict(false)
 	}

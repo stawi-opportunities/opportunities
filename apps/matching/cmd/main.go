@@ -311,9 +311,14 @@ func main() {
 				// Phase 5: daily-cap enforcement via the continuous aggregate.
 				DailyCap: matching.NewPGDailyCapQuery(sqlDB),
 			})
+			// Subscribe to the worker's canonical pipeline queue (same subject
+			// the worker publishes CanonicalUpsertedV1 to). Frame derives a
+			// matching-service-specific consumer_durable_name, so the worker's
+			// publish stage and the writer sink each keep their own cursor —
+			// this is a true fan-out, not a steal.
 			svc.Init(ctx,
-				frame.WithRegisterSubscriber(fanout.Name(), fanout.Name(), fanout))
-			log.Info("matching: fan-out (Path A) enabled")
+				frame.WithRegisterSubscriber(cfg.QueuePipelineCanonicalName, cfg.QueuePipelineCanonical, fanout))
+			log.WithField("queue", cfg.QueuePipelineCanonicalName).Info("matching: fan-out (Path A) enabled")
 		}
 
 		if cfg.MatchingCandidateChangeEnabled {

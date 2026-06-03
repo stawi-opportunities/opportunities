@@ -34,9 +34,12 @@ import (
 
 // Deps bundles the collaborators the frontier-worker needs.
 type Deps struct {
-	Svc          *frame.Service
-	Frontier     frontier.Frontier
-	Sources      *repository.SourceRepository
+	Svc *frame.Service
+	// IngestedQueue is the Frame Queue Name to publish VariantIngestedV1 to
+	// (the worker's normalize stage subscribes).
+	IngestedQueue string
+	Frontier      frontier.Frontier
+	Sources       *repository.SourceRepository
 	Kinds        *opportunity.Registry
 	Archive      archive.Archive
 	Extractor    *extraction.Extractor
@@ -381,15 +384,14 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 			})
 		}
 
-		evtMgr := h.deps.Svc.EventsManager()
-		if evtMgr == nil {
-			log.Warn("frontier-worker: events manager unavailable; skipping emit")
-			emitErr = fmt.Errorf("events manager unavailable")
+		body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))
+		if mErr != nil {
+			log.WithError(mErr).Warn("frontier-worker: marshal variant failed")
+			emitErr = mErr
 			continue
 		}
-		env := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload)
-		if err := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested, env); err != nil {
-			log.WithError(err).Warn("frontier-worker: emit variant failed")
+		if err := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); err != nil {
+			log.WithError(err).Warn("frontier-worker: publish variant failed")
 			emitErr = err
 			continue
 		}

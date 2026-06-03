@@ -10,10 +10,54 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/queue"
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
+
+// PipelineQueueTopics are the opportunity-pipeline stage topics the writer
+// archives to Iceberg. Each now flows on its own dedicated Frame Queue
+// (service-profile idiom); the writer is a fan-out durable consumer of each
+// (own consumer_durable_name, parallel to the in-pipeline consumer). They are
+// registered via QueueWorker in main.go, NOT via RegisterSubscriptions.
+func PipelineQueueTopics() []string {
+	return []string{
+		eventsv1.TopicVariantsIngested,
+		eventsv1.TopicVariantsNormalized,
+		eventsv1.TopicVariantsValidated,
+		eventsv1.TopicVariantsFlagged,
+		eventsv1.TopicVariantsClustered,
+		eventsv1.TopicEmbeddings,
+		eventsv1.TopicPublished,
+	}
+}
+
+// EventBusTopics are the topics the writer still consumes from the shared
+// Frame Events stream: crawl/source observability, variant-rejection, and the
+// candidate-side lifecycle. These are emitted by their producers via
+// EventsManager().Emit (not the pipeline queues), so the writer keeps an
+// events-manager subscription for them.
+//
+// Topics intentionally NOT here: the pipeline-stage topics (see
+// PipelineQueueTopics — moved to Frame Queue) and the canonical/translation
+// topics (TopicCanonicalsUpserted/Expired, TopicTranslations) which the writer
+// never persisted to Iceberg — their bodies live R2-slug-direct, so the writer
+// simply stops subscribing to them rather than no-op-acking on the bus.
+func EventBusTopics() []string {
+	return []string{
+		eventsv1.TopicVariantsRejected,
+		eventsv1.TopicCrawlPageCompleted,
+		eventsv1.TopicSourcesDiscovered,
+		eventsv1.TopicCVUploaded,
+		eventsv1.TopicCVExtracted,
+		eventsv1.TopicCVImproved,
+		eventsv1.TopicCandidateEmbedding,
+		eventsv1.TopicCandidatePreferencesUpdated,
+		eventsv1.TopicCandidateMatchesReady,
+		eventsv1.TopicOpportunityAutoFlagged,
+	}
+}
 
 // Service is apps/writer's composition root.
 type Service struct {
@@ -65,6 +109,15 @@ func (s *Service) RegisterSubscriptions(topics []string) error {
 		mgr.Add(h)
 	}
 	return nil
+}
+
+// QueueWorker returns a WriterHandler bound to topic for registration as a
+// Frame Queue durable consumer (queue.SubscribeWorker). Used for the
+// pipeline-stage topics in PipelineQueueTopics — each on its own dedicated
+// queue. The returned worker funnels into the same buffer the events-bus
+// handlers use, so the flusher path is identical.
+func (s *Service) QueueWorker(topic string) queue.SubscribeWorker {
+	return NewWriterHandler(topic, s.buffer)
 }
 
 // RunFlusher drives the time-based flush path. Size/count-based

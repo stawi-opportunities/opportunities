@@ -15,20 +15,6 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/kv"
 )
 
-// collectorTest is a minimal in-memory event handler used to keep
-// the in-memory queue alive while a unit-under-test emits.
-type collectorTest struct {
-	topic string
-}
-
-func (c *collectorTest) Name() string { return c.topic }
-func (c *collectorTest) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-func (c *collectorTest) Validate(_ context.Context, _ any) error  { return nil }
-func (c *collectorTest) Execute(_ context.Context, _ any) error   { return nil }
-
 // TestNormalize_PreservesAttributes verifies that the per-kind
 // Attributes map flows through the normalize stage with well-known
 // string fields trimmed/lowercased and the universal envelope
@@ -103,18 +89,14 @@ func TestDedup_StoresAttributesInSnapshot(t *testing.T) {
 		t.Fatal("cluster cache not wired")
 	}
 
-	// Init wires the events publisher so dedup's Emit downstream
-	// to TopicVariantsClustered does not fail with
-	// "publisher is not initialized". We register a no-op subscriber
-	// for the clustered topic so the in-memory queue accepts the
-	// publish.
-	colClustered := &collectorTest{topic: eventsv1.TopicVariantsClustered}
-	svc.EventsManager().Add(colClustered)
-	svc.Init(ctx)
+	// dedup publishes VariantClusteredV1 to its downstream Frame Queue;
+	// register that queue's publisher so the in-memory driver accepts it.
+	const clusteredQueue = "pipeline_clustered"
+	svc.Init(ctx, frame.WithRegisterPublisher(clusteredQueue, "mem://"+clusteredQueue))
 	go func() { _ = svc.Run(ctx, "") }()
-	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsClustered, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, clusteredQueue, 2*time.Second)
 
-	h := NewDedupHandlerWithCluster(svc, dedupCache, clusterCache)
+	h := NewDedupHandlerWithCluster(svc, dedupCache, clusterCache, clusteredQueue)
 
 	val := eventsv1.VariantValidatedV1{
 		VariantID:   "v1",
@@ -132,10 +114,8 @@ func TestDedup_StoresAttributesInSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal envelope: %v", err)
 	}
-	rm := json.RawMessage(raw)
-
-	if err := h.Execute(ctx, &rm); err != nil {
-		t.Fatalf("dedup execute: %v", err)
+	if err := h.Handle(ctx, nil, raw); err != nil {
+		t.Fatalf("dedup handle: %v", err)
 	}
 
 	clusterID, hit, err := dedupCache.Get(ctx, val.HardKey)

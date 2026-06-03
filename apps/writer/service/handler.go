@@ -52,13 +52,34 @@ func (h *WriterHandler) Validate(_ context.Context, payload any) error {
 // In Phase 1 we accept at-least-once with an in-process buffer; the
 // flusher promotes acks to ack-after-upload in Phase 2 when durable
 // flush tracking lands.
+//
+// Execute is the Frame Events entry point (used for the observability /
+// candidate-side topics still on the shared events bus). The pipeline-stage
+// topics arrive on dedicated Frame Queues via Handle below — both funnel
+// into the same buffer.
 func (h *WriterHandler) Execute(ctx context.Context, payload any) error {
 	raw, ok := payload.(*json.RawMessage)
 	if !ok || raw == nil {
 		return errors.New("writer: wrong payload type")
 	}
-	hint := extractHint(*raw, h.topic)
-	if _, err := h.buffer.Add(json.RawMessage(*raw), hint); err != nil {
+	return h.enqueue(*raw)
+}
+
+// Handle is the Frame Queue entry point (queue.SubscribeWorker). The
+// pipeline stages publish their stage event to a dedicated queue; the
+// writer is a fan-out durable consumer of each (its own
+// consumer_durable_name, parallel to the in-pipeline consumer). The raw
+// envelope bytes land straight in the buffer — same path as Execute.
+func (h *WriterHandler) Handle(_ context.Context, _ map[string]string, payload []byte) error {
+	if len(payload) == 0 {
+		return errors.New("writer: empty queue payload")
+	}
+	return h.enqueue(json.RawMessage(payload))
+}
+
+func (h *WriterHandler) enqueue(raw json.RawMessage) error {
+	hint := extractHint(raw, h.topic)
+	if _, err := h.buffer.Add(raw, hint); err != nil {
 		return fmt.Errorf("writer: buffer.Add: %w", err)
 	}
 	return nil

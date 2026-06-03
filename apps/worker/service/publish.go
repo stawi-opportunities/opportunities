@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/queue"
 	"github.com/pitabwire/util"
 	"golang.org/x/sync/singleflight"
 
@@ -36,41 +36,24 @@ type PublishHandler struct {
 	// distinct jobs still publish fully in parallel; only duplicate
 	// same-key work (which is pure waste) is serialized.
 	flight singleflight.Group
+
+	next string // Queue Name for PublishedV1 (consumed by the writer/archival)
 }
 
-// NewPublishHandler ...
-func NewPublishHandler(svc *frame.Service, p *publish.R2Publisher, reg *opportunity.Registry, store *variantstate.Store) *PublishHandler {
-	return &PublishHandler{svc: svc, publisher: p, registry: reg, store: store}
+// NewPublishHandler binds the handler. next is the published Queue Name.
+func NewPublishHandler(svc *frame.Service, p *publish.R2Publisher, reg *opportunity.Registry, store *variantstate.Store, next string) *PublishHandler {
+	return &PublishHandler{svc: svc, publisher: p, registry: reg, store: store, next: next}
 }
 
-// Name returns the topic this handler consumes (canonical upserts).
-// It is not registered directly — the CanonicalFanout in service.go
-// calls Execute on each sub-handler under one registry entry.
-func (h *PublishHandler) Name() string { return eventsv1.TopicCanonicalsUpserted }
+var _ queue.SubscribeWorker = (*PublishHandler)(nil)
 
-// PayloadType ...
-func (h *PublishHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate ...
-func (h *PublishHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("publish: empty payload")
-	}
-	return nil
-}
-
-// Execute writes the snapshot and emits PublishedV1.
-func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
+// Handle writes the R2 snapshot and publishes PublishedV1.
+func (h *PublishHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	if h.publisher == nil {
 		return nil // publisher not configured — skip
 	}
-	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[eventsv1.CanonicalUpsertedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return err
 	}
 	c := env.Payload
@@ -113,13 +96,14 @@ func (h *PublishHandler) Execute(ctx context.Context, payload any) error {
 			R2Version:     int(time.Now().Unix()),
 			PublishedAt:   time.Now().UTC(),
 		}
-		outEnv := eventsv1.NewEnvelope(eventsv1.TopicPublished, out)
-		if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicPublished, outEnv); err != nil {
-			// Emit failed but the snapshot is up; log and still advance the
-			// ledger so we don't re-drive a successful upload.
-			util.Log(ctx).WithError(err).
-				WithField("canonical_id", c.OpportunityID).
-				Warn("publish: emit PublishedV1 failed after successful upload")
+		if body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicPublished, out)); mErr == nil {
+			if pErr := h.svc.QueueManager().Publish(ctx, h.next, body, nil); pErr != nil {
+				// Snapshot is up; log and still advance the ledger so we don't
+				// re-drive a successful upload.
+				util.Log(ctx).WithError(pErr).
+					WithField("canonical_id", c.OpportunityID).
+					Warn("publish: publish PublishedV1 failed after successful upload")
+			}
 		}
 		// Bulk-advance every variant in this canonical from `canonical`
 		// → `published`. CanonicalUpsertedV1 is a many-to-one fan-in

@@ -42,9 +42,13 @@ type SourceGetter interface {
 // CrawlRequestDeps bundles the handler's collaborators so construction
 // stays one-shot and tests can inject fakes without ceremony.
 type CrawlRequestDeps struct {
-	Svc        *frame.Service
-	Sources    SourceGetter
-	Registry   *connectors.Registry
+	Svc *frame.Service
+	// IngestedQueue is the Frame Queue Name the crawler publishes
+	// VariantIngestedV1 to — the head of the opportunity pipeline chain
+	// (consumed by the worker's normalize stage).
+	IngestedQueue string
+	Sources       SourceGetter
+	Registry      *connectors.Registry
 	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
 	Archive    archive.Archive
 	Extractor  *extraction.Extractor // nil → skip AI enrichment
@@ -507,10 +511,13 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				CrawlJobID:   jobIDPtr,
 			})
 
-			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
-				eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload),
-			); emitErr != nil {
-				log.WithError(emitErr).Warn("crawl.request: emit variant failed")
+			body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))
+			if mErr != nil {
+				log.WithError(mErr).Warn("crawl.request: marshal variant failed")
+				continue
+			}
+			if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
+				log.WithError(pErr).Warn("crawl.request: publish variant failed")
 				continue
 			}
 			jobsEmitted++
@@ -1052,11 +1059,9 @@ func (h *CrawlRequestHandler) reparse(ctx context.Context, req eventsv1.CrawlReq
 		})
 	}
 
-	if evtMgr := h.deps.Svc.EventsManager(); evtMgr != nil {
-		if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
-			eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload),
-		); emitErr != nil {
-			log.WithError(emitErr).Warn("reparse: emit variant failed")
+	if body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload)); mErr == nil {
+		if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
+			log.WithError(pErr).Warn("reparse: publish variant failed")
 		}
 	}
 

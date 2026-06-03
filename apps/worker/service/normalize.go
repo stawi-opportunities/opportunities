@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/queue"
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -27,76 +27,47 @@ import (
 type NormalizeHandler struct {
 	svc   *frame.Service
 	store *variantstate.Store // nil-safe; soft-fails on Postgres outage
+	next  string              // Frame Queue Name to publish VariantNormalizedV1 to
 }
 
-// NewNormalizeHandler binds a handler to the Frame service for
-// re-emitting events.
-func NewNormalizeHandler(svc *frame.Service, store *variantstate.Store) *NormalizeHandler {
-	return &NormalizeHandler{svc: svc, store: store}
+// NewNormalizeHandler binds the handler. next is the Queue Name of the
+// downstream (normalized) queue this stage publishes to.
+func NewNormalizeHandler(svc *frame.Service, store *variantstate.Store, next string) *NormalizeHandler {
+	return &NormalizeHandler{svc: svc, store: store, next: next}
 }
 
-// Name is the topic this handler consumes.
-func (h *NormalizeHandler) Name() string { return eventsv1.TopicVariantsIngested }
+var _ queue.SubscribeWorker = (*NormalizeHandler)(nil)
 
-// PayloadType returns a pointer for Frame's JSON deserializer. We
-// unwrap the full envelope ourselves.
-func (h *NormalizeHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate accepts any non-empty JSON payload — type-check is done
-// in Execute against the envelope.
-func (h *NormalizeHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("normalize: empty or wrong payload")
-	}
-	return nil
-}
-
-// Execute parses the envelope, normalizes, and emits.
-func (h *NormalizeHandler) Execute(ctx context.Context, payload any) error {
+// Handle consumes a VariantIngestedV1 envelope, normalizes it, and
+// publishes VariantNormalizedV1 to the next pipeline queue. Returning a
+// non-nil error makes Frame redeliver (durable retry).
+func (h *NormalizeHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	t0 := time.Now()
-	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[eventsv1.VariantIngestedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		util.Log(ctx).WithError(err).Warn("normalize: unmarshal failed")
 		return err
 	}
 
-	// (Defensive ledger upsert removed.) The worker reads pooler-rw so
-	// there's no replication lag between the crawler's commit and the
-	// worker's AdvanceStage. With the TimescaleDB hypertable PK now
-	// being composite (variant_id, ingested_at), a defensive INSERT
-	// with a fresh ingested_at would create a second row for the same
-	// variant_id rather than no-op'ing — so the safer move is to let
-	// AdvanceStage fall through as a no-op when the row is genuinely
-	// absent.
-	t1 := time.Now()
 	out := normalize(env.Payload)
-	t2 := time.Now()
-	outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsNormalized, out)
-	err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsNormalized, outEnv)
-	t3 := time.Now()
-
-	// Ledger advance — only on successful emit. CAS guards against
-	// double-advance on redelivery.
-	if err == nil {
-		_ = h.store.AdvanceStage(ctx, env.Payload.VariantID,
-			variantstate.StageIngested, variantstate.StageNormalized,
-			nil, nil)
+	body, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsNormalized, out))
+	if err != nil {
+		return err
 	}
+	if err := h.svc.QueueManager().Publish(ctx, h.next, body, nil); err != nil {
+		return err
+	}
+
+	// Ledger advance — only after a successful publish. CAS guards against
+	// double-advance on redelivery.
+	_ = h.store.AdvanceStage(ctx, env.Payload.VariantID,
+		variantstate.StageIngested, variantstate.StageNormalized, nil, nil)
 
 	util.Log(ctx).
 		WithField("variant_id", env.Payload.VariantID).
-		WithField("payload_bytes", len(*raw)).
-		WithField("unmarshal_ms", t1.Sub(t0).Milliseconds()).
-		WithField("normalize_ms", t2.Sub(t1).Milliseconds()).
-		WithField("emit_ms", t3.Sub(t2).Milliseconds()).
-		WithField("total_ms", t3.Sub(t0).Milliseconds()).
+		WithField("total_ms", time.Since(t0).Milliseconds()).
 		Info("normalize: done")
-	return err
+	return nil
 }
 
 // normalize applies deterministic field cleanup against the universal

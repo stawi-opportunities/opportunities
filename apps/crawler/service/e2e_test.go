@@ -187,9 +187,10 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	})
 
 	// variantCol observes variants ingested. envCollector is defined in
-	// crawl_request_handler_test.go (same package).
+	// crawl_request_handler_test.go (same package). Variants now flow on the
+	// ingested Frame Queue (service-profile idiom), not the events bus.
 	variantCol := &envCollector[eventsv1.VariantIngestedV1]{topic: eventsv1.TopicVariantsIngested}
-	svc.EventsManager().Add(variantCol)
+	ingestedQ := wireIngestedQueue(ctx, svc, variantCol)
 
 	// pageCol + the real PageCompletedHandler share one fanout registration
 	// because Frame's event registry is a map[name]EventI — one entry per
@@ -202,6 +203,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	// and the in-memory fake archive.
 	reqH := NewCrawlRequestHandler(CrawlRequestDeps{
 		Svc: svc, Sources: repo, Registry: reg, Archive: archive.NewFakeArchive(),
+		IngestedQueue: ingestedQ,
 	})
 	discH := NewSourceDiscoveredHandler(repo, nil)
 	for _, c := range []events.EventI{reqH, fanout, discH} {

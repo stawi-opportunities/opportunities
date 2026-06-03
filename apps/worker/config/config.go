@@ -119,6 +119,33 @@ type Config struct {
 	WorkerEmbedQueueURL     string `env:"WORKER_EMBED_QUEUE_URL"     envDefault:"mem://svc.opportunities.worker.embed.v1"`
 	WorkerTranslateQueueURL string `env:"WORKER_TRANSLATE_QUEUE_URL" envDefault:"mem://svc.opportunities.worker.translate.v1"`
 
+	// Pipeline queues — the linear opportunity chain runs on Frame Queue
+	// (service-profile idiom: one Name+URI pair per queue; each stage is a
+	// native queue.SubscribeWorker that consumes its input queue and
+	// qMan.Publish-es to the next by Name). No shared events bus, no
+	// catch-all. Each consuming process sets its own URI (same subject,
+	// distinct consumer_durable_name); mem:// is the local/test default.
+	QueuePipelineIngested       string `env:"QUEUE_PIPELINE_INGESTED_URI"       envDefault:"mem://pipeline_ingested"`
+	QueuePipelineIngestedName   string `env:"QUEUE_PIPELINE_INGESTED_NAME"      envDefault:"pipeline_ingested"`
+	QueuePipelineNormalized     string `env:"QUEUE_PIPELINE_NORMALIZED_URI"     envDefault:"mem://pipeline_normalized"`
+	QueuePipelineNormalizedName string `env:"QUEUE_PIPELINE_NORMALIZED_NAME"    envDefault:"pipeline_normalized"`
+	QueuePipelineValidated      string `env:"QUEUE_PIPELINE_VALIDATED_URI"      envDefault:"mem://pipeline_validated"`
+	QueuePipelineValidatedName  string `env:"QUEUE_PIPELINE_VALIDATED_NAME"     envDefault:"pipeline_validated"`
+	QueuePipelineClustered      string `env:"QUEUE_PIPELINE_CLUSTERED_URI"      envDefault:"mem://pipeline_clustered"`
+	QueuePipelineClusteredName  string `env:"QUEUE_PIPELINE_CLUSTERED_NAME"     envDefault:"pipeline_clustered"`
+	QueuePipelineCanonical      string `env:"QUEUE_PIPELINE_CANONICAL_URI"      envDefault:"mem://pipeline_canonical"`
+	QueuePipelineCanonicalName  string `env:"QUEUE_PIPELINE_CANONICAL_NAME"     envDefault:"pipeline_canonical"`
+	QueuePipelinePublished      string `env:"QUEUE_PIPELINE_PUBLISHED_URI"      envDefault:"mem://pipeline_published"`
+	QueuePipelinePublishedName  string `env:"QUEUE_PIPELINE_PUBLISHED_NAME"     envDefault:"pipeline_published"`
+	QueuePipelineFlagged        string `env:"QUEUE_PIPELINE_FLAGGED_URI"        envDefault:"mem://pipeline_flagged"`
+	QueuePipelineFlaggedName    string `env:"QUEUE_PIPELINE_FLAGGED_NAME"       envDefault:"pipeline_flagged"`
+	// Derived outputs the embed/translate stages publish (consumed by the
+	// materializer + writer sinks).
+	QueuePipelineEmbeddings       string `env:"QUEUE_PIPELINE_EMBEDDINGS_URI"     envDefault:"mem://pipeline_embeddings"`
+	QueuePipelineEmbeddingsName   string `env:"QUEUE_PIPELINE_EMBEDDINGS_NAME"    envDefault:"pipeline_embeddings"`
+	QueuePipelineTranslations     string `env:"QUEUE_PIPELINE_TRANSLATIONS_URI"   envDefault:"mem://pipeline_translations"`
+	QueuePipelineTranslationsName string `env:"QUEUE_PIPELINE_TRANSLATIONS_NAME"  envDefault:"pipeline_translations"`
+
 	// StageGroup selects which pipeline handlers this process registers,
 	// so the worker can run as independently-scaling consumer groups:
 	//   "core"     — normalize, dedup (cluster), canonical

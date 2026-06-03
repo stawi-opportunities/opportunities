@@ -97,6 +97,17 @@ func main() {
 		util.Log(ctx).WithError(err).Fatal("materializer: register subscriptions failed")
 	}
 
+	// Embeddings arrive on a dedicated Frame Queue (service-profile idiom):
+	// the worker's embed stage publishes EmbeddingV1 to pipeline_embeddings,
+	// and the materializer is its durable consumer (own consumer_durable_name
+	// on the same subject). This is the one pipeline output the materializer
+	// writes — it lands the vector into opportunities.embedding. The admin-
+	// plane handlers (source-stopped/auto-flagged/canonical-expired) stay on
+	// the low-volume events bus via RegisterSubscriptions above.
+	svc.Init(ctx,
+		frame.WithRegisterSubscriber(cfg.QueuePipelineEmbeddingsName, cfg.QueuePipelineEmbeddings, service.EmbeddingWorker()),
+	)
+
 	// definitions.changed.v1 broadcast — invalidates the loader cache
 	// and live-rebuilds the kind registry on admin edits.
 	if loader != nil {
