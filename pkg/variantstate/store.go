@@ -599,15 +599,19 @@ func (s *Store) UpsertOpportunity(ctx context.Context, o Opportunity) error {
 
 // EmbeddingDim returns the declared dimension of opportunities.embedding
 // (the vector(N) typmod), or 0 when the table/column is absent (fresh
-// environment or test stub). pgvector stores the dimension in atttypmod
-// as N+4.
+// environment or test stub) OR declared without a fixed dimension (plain
+// `vector`, atttypmod -1). Unlike varchar (whose atttypmod is length+4),
+// pgvector stores the dimension N directly in atttypmod — verified live:
+// a vector(1024) column reports atttypmod=1024. An earlier `- 4` here was a
+// varchar-convention copy/paste that made the boot guard read 1024 as 1020
+// and crash-loop the materializer against a perfectly valid schema.
 func (s *Store) EmbeddingDim(ctx context.Context) (int, error) {
 	if s == nil || s.db == nil {
 		return 0, nil
 	}
 	var dim int
 	err := s.db(ctx, true).Raw(`
-		SELECT COALESCE(a.atttypmod - 4, 0)
+		SELECT COALESCE(NULLIF(a.atttypmod, -1), 0)
 		FROM pg_attribute a
 		JOIN pg_class c ON c.oid = a.attrelid
 		WHERE c.relname = 'opportunities'
