@@ -20,6 +20,13 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
+// admitterFunc is a minimal Admitter for tests (grants/denies inline).
+type admitterFunc func(ctx context.Context, topic string, want int) (int, time.Duration)
+
+func (f admitterFunc) Admit(ctx context.Context, topic string, want int) (int, time.Duration) {
+	return f(ctx, topic, want)
+}
+
 // fakeCrawlerRepo implements every narrow interface the Phase 4 crawler
 // handlers use (SourceLister, SourceGetter, SourceHealthRepo, SourceUpserter)
 // in a single fake so the e2e test can wire one repo into every handler.
@@ -214,19 +221,22 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	go func() { _ = svc.Run(ctx, "") }()
 	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCrawlRequests, 2*time.Second)
 
-	// Hit the tick endpoint; the admitter grants everything.
+	// Hit the per-source crawl endpoint for src_e2e; the admitter grants all.
 	admit := admitterFunc(func(_ context.Context, _ string, want int) (int, time.Duration) {
 		return want, 0
 	})
-	handler := SchedulerTickHandler(svc, repo, admit)
+	handler := SourceCrawlHandler(svc, repo, admit)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/admin/scheduler/tick", nil)
+	req := httptest.NewRequest(http.MethodPost, "/admin/sources/src_e2e/crawl", nil)
+	req.SetPathValue("id", "src_e2e")
 	handler(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("tick status=%d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("crawl status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var resp schedulerTickResponse
+	var resp struct {
+		Dispatched int `json:"dispatched"`
+	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 	if resp.Dispatched != 1 {
 		t.Fatalf("dispatched=%d, want 1", resp.Dispatched)

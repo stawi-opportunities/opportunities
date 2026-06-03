@@ -463,6 +463,13 @@ func main() {
 				return
 			}
 			service.ReconcileSourceSchedules(rctx, scheduleClient, all, cfg.CrawlBaseURL)
+			// Retire the legacy central scheduler tick: per-source schedules are
+			// now the single dispatch path. Idempotent — no-op once archived.
+			if err := service.ArchiveWorkflowByName(rctx, scheduleClient, service.LegacyCentralTickWorkflow); err != nil {
+				log.WithError(err).Warn("source-schedules: archive legacy central tick failed")
+			} else {
+				log.WithField("workflow", service.LegacyCentralTickWorkflow).Info("source-schedules: legacy central tick archived")
+			}
 		}()
 	}
 
@@ -619,10 +626,6 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"count": len(ids), "ids": ids})
 	})
-
-	// Trustage fires this every 30 s; see definitions/trustage/scheduler-tick.json.
-	adminMux.HandleFunc("POST /admin/scheduler/tick",
-		service.SchedulerTickHandler(svc, sourceRepo, bpGate))
 
 	// Per-source crawl: each source's own Trustage schedule POSTs here at the
 	// source's cadence. Emits exactly one crawl.requests.v1 for {id}, gated by
