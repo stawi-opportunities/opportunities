@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/pitabwire/util"
@@ -127,37 +128,83 @@ func buildSourceCrawlDSL(s *domain.Source, crawlBaseURL string) (*structpb.Struc
 	return structpb.NewStruct(m)
 }
 
-// EnsureSourceSchedule creates + activates the per-source crawl workflow in
-// Trustage if it isn't already active. Idempotent.
+// EnsureSourceSchedule makes the per-source crawl workflow exist and be active
+// in Trustage. Idempotent AND concurrency-safe: multiple crawler replicas can
+// run this for the same source at once (boot reconcile) — the create/activate
+// races converge because we (a) look up the workflow by name across ALL
+// statuses, (b) just (re)activate one that already exists, and (c) treat a
+// create that loses the unique-name race as "already exists" and activate the
+// winner instead of erroring.
 func EnsureSourceSchedule(ctx context.Context, client WorkflowClient, s *domain.Source, crawlBaseURL string) error {
 	name := workflowName(s.ID)
-	listResp, err := client.ListWorkflows(ctx, connect.NewRequest(&workflowv1.ListWorkflowsRequest{
-		Name:   name,
-		Status: workflowv1.WorkflowStatus_WORKFLOW_STATUS_ACTIVE,
-	}))
+
+	id, active, err := findWorkflow(ctx, client, name)
 	if err != nil {
-		return fmt.Errorf("schedules: list %s: %w", name, err)
+		return err
 	}
-	for _, it := range listResp.Msg.GetItems() {
-		if it.GetName() == name && it.GetStatus() == workflowv1.WorkflowStatus_WORKFLOW_STATUS_ACTIVE {
-			return nil // already scheduled
-		}
+	if active {
+		return nil // already scheduled
 	}
+	if id != "" {
+		return activate(ctx, client, name, id) // exists but draft/archived → activate
+	}
+
 	dsl, err := buildSourceCrawlDSL(s, crawlBaseURL)
 	if err != nil {
 		return fmt.Errorf("schedules: build dsl %s: %w", name, err)
 	}
 	createResp, err := client.CreateWorkflow(ctx, connect.NewRequest(&workflowv1.CreateWorkflowRequest{Dsl: dsl}))
 	if err != nil {
-		if isAlreadyExistsErr(err) {
+		if !isAlreadyExistsErr(err) {
+			return fmt.Errorf("schedules: create %s: %w", name, err)
+		}
+		// Lost the create race to another replica; activate the winner.
+		id, active, lerr := findWorkflow(ctx, client, name)
+		if lerr != nil {
+			return lerr
+		}
+		if active || id == "" {
 			return nil
 		}
-		return fmt.Errorf("schedules: create %s: %w", name, err)
+		return activate(ctx, client, name, id)
 	}
-	if _, err := client.ActivateWorkflow(ctx, connect.NewRequest(&workflowv1.ActivateWorkflowRequest{
-		Id: createResp.Msg.GetWorkflow().GetId(),
-	})); err != nil {
-		return fmt.Errorf("schedules: activate %s: %w", name, err)
+	return activate(ctx, client, name, createResp.Msg.GetWorkflow().GetId())
+}
+
+// findWorkflow looks up a workflow by exact name across all statuses. Returns
+// the id of a usable (non-archived) one and whether it is already active.
+func findWorkflow(ctx context.Context, client WorkflowClient, name string) (id string, active bool, err error) {
+	resp, err := client.ListWorkflows(ctx, connect.NewRequest(&workflowv1.ListWorkflowsRequest{Name: name}))
+	if err != nil {
+		return "", false, fmt.Errorf("schedules: list %s: %w", name, err)
+	}
+	for _, it := range resp.Msg.GetItems() {
+		if it.GetName() != name {
+			continue
+		}
+		switch it.GetStatus() {
+		case workflowv1.WorkflowStatus_WORKFLOW_STATUS_ACTIVE:
+			return it.GetId(), true, nil
+		case workflowv1.WorkflowStatus_WORKFLOW_STATUS_ARCHIVED:
+			continue // can't reactivate an archived def; a fresh create handles it
+		default:
+			id = it.GetId() // draft/unspecified → activatable
+		}
+	}
+	return id, false, nil
+}
+
+// activate flips a workflow active, tolerating the not-found race (a concurrent
+// reconcile may have just (re)created it under a new id).
+func activate(ctx context.Context, client WorkflowClient, name, id string) error {
+	if id == "" {
+		return nil
+	}
+	if _, err := client.ActivateWorkflow(ctx, connect.NewRequest(&workflowv1.ActivateWorkflowRequest{Id: id})); err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return nil
+		}
+		return fmt.Errorf("schedules: activate %s (id=%s): %w", name, id, err)
 	}
 	return nil
 }
@@ -216,5 +263,13 @@ func isAlreadyExistsErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	return connect.CodeOf(err) == connect.CodeAlreadyExists
+	if connect.CodeOf(err) == connect.CodeAlreadyExists {
+		return true
+	}
+	// Trustage surfaces the unique-name collision as an internal error carrying
+	// the Postgres unique-violation text rather than CodeAlreadyExists.
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "23505")
 }
