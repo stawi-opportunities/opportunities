@@ -13,21 +13,30 @@
 -- so it stays small. claimed_at lets the pump use FOR UPDATE SKIP LOCKED across
 -- replicas and re-claim rows orphaned by a pump crash (claimed_at older than a
 -- timeout). Idempotent: safe to re-run.
-CREATE TABLE IF NOT EXISTS crawl_inbox (
-    variant_id  text PRIMARY KEY,
-    source_id   text NOT NULL,
-    payload     jsonb NOT NULL,          -- the VariantIngestedV1 envelope, verbatim
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    claimed_at  timestamptz              -- NULL = unclaimed; set when a pump claims it
-);
+-- NOTE: wrapped in a single DO block ON PURPOSE. The frame migration runner
+-- execs each .sql file as ONE prepared statement over the extended protocol
+-- (against the direct primary — the pooler breaks the session advisory lock),
+-- so a file with multiple top-level statements fails with SQLSTATE 42601
+-- ("cannot insert multiple commands into a prepared statement"). A DO block is
+-- a single statement; the DDL inside still runs (and is idempotent).
+DO $$
+BEGIN
+    CREATE TABLE IF NOT EXISTS crawl_inbox (
+        variant_id  text PRIMARY KEY,
+        source_id   text NOT NULL,
+        payload     jsonb NOT NULL,          -- the VariantIngestedV1 envelope, verbatim
+        created_at  timestamptz NOT NULL DEFAULT now(),
+        claimed_at  timestamptz              -- NULL = unclaimed; set when a pump claims it
+    );
 
--- Pump claim order: oldest unclaimed first. Partial index keeps it tiny (only
--- the in-flight buffer, not the whole history).
-CREATE INDEX IF NOT EXISTS idx_crawl_inbox_unclaimed
-    ON crawl_inbox (created_at)
-    WHERE claimed_at IS NULL;
+    -- Pump claim order: oldest unclaimed first. Partial index keeps it tiny
+    -- (only the in-flight buffer, not the whole history).
+    CREATE INDEX IF NOT EXISTS idx_crawl_inbox_unclaimed
+        ON crawl_inbox (created_at)
+        WHERE claimed_at IS NULL;
 
--- Re-claim sweep: find rows whose claim went stale (pump died mid-batch).
-CREATE INDEX IF NOT EXISTS idx_crawl_inbox_claimed
-    ON crawl_inbox (claimed_at)
-    WHERE claimed_at IS NOT NULL;
+    -- Re-claim sweep: find rows whose claim went stale (pump died mid-batch).
+    CREATE INDEX IF NOT EXISTS idx_crawl_inbox_claimed
+        ON crawl_inbox (claimed_at)
+        WHERE claimed_at IS NOT NULL;
+END $$;
