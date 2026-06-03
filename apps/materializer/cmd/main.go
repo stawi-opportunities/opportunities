@@ -52,6 +52,15 @@ func main() {
 	store := variantstate.NewStore(pool.DB)
 	util.Log(ctx).Info("materializer: opportunities store wired")
 
+	// Fail loudly if the schema's vector dimension and the configured
+	// embedding model disagree. Without this guard a mismatch makes
+	// pgvector reject every UpdateEmbedding, which soft-fails per row —
+	// silently leaving the whole corpus unembedded and search empty.
+	if err := store.VerifyEmbeddingDim(ctx, cfg.EmbeddingDim); err != nil {
+		util.Log(ctx).WithError(err).Fatal("materializer: embedding dimension guard failed")
+	}
+	util.Log(ctx).WithField("embedding_dim", cfg.EmbeddingDim).Info("materializer: embedding dimension verified")
+
 	// Load the opportunity-kinds registry. Prefer the R2-backed
 	// definitions loader; fall back to the on-disk ConfigMap when R2
 	// isn't configured (materializer's deploy doesn't ship R2 creds

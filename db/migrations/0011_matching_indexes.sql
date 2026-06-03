@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS match_rules (
 
 CREATE TABLE IF NOT EXISTS candidate_match_indexes (
     candidate_id     TEXT        PRIMARY KEY,
-    embedding        vector(1536) NOT NULL,
+    embedding        vector(1024) NOT NULL,
     min_score        DOUBLE PRECISION NOT NULL DEFAULT 0.5,
     daily_cap        INTEGER     NOT NULL DEFAULT 25,
     weekly_cap       INTEGER     NOT NULL DEFAULT 100,

@@ -17,7 +17,7 @@ func TestIndexStore_UpsertAndGet(t *testing.T) {
 	floor := 30000
 	err := s.Upsert(ctx, matching.CandidateIndex{
 		CandidateID:    "c1",
-		Embedding:      unitVec(1536, 0),
+		Embedding:      unitVec(1024, 0),
 		MinScore:       0.62,
 		DailyCap:       25,
 		WeeklyCap:      100,
@@ -32,7 +32,7 @@ func TestIndexStore_UpsertAndGet(t *testing.T) {
 	got, err := s.Get(ctx, "c1")
 	require.NoError(t, err)
 	require.Equal(t, "c1", got.CandidateID)
-	require.Equal(t, 1536, len(got.Embedding))
+	require.Equal(t, 1024, len(got.Embedding))
 	require.InDelta(t, 0.62, got.MinScore, 1e-9)
 	require.ElementsMatch(t, []string{"job", "scholarship"}, got.Kinds)
 }

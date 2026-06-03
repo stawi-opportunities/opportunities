@@ -66,7 +66,7 @@ func TestFanOut_FiltersBelowMinScore(t *testing.T) {
 		OpportunityID: "o-1",
 		Kind:          "job",
 		Country:       "KE",
-		Embedding:     unitVec(1536, 0),
+		Embedding:     unitVec(1024, 0),
 		FirstSeenAt:   time.Now(),
 	}, matching.FanOutDeps{
 		KNN: knn, Store: store, EventLog: el,
@@ -89,7 +89,7 @@ func TestFanOut_RerankerSkippedReportsStatus(t *testing.T) {
 	}}
 	res, err := matching.FanOut(context.Background(), matching.FanOutInput{
 		CanonicalID: "c-2", OpportunityID: "o-2", Kind: "job",
-		Embedding: unitVec(1536, 0), FirstSeenAt: time.Now(),
+		Embedding: unitVec(1024, 0), FirstSeenAt: time.Now(),
 	}, matching.FanOutDeps{
 		KNN: knn, Store: &fakeStore{}, EventLog: &fakeEventLog{},
 		Reranker: matching.NoopReranker{},
