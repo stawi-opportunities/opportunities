@@ -11,6 +11,7 @@ import (
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 // Embedder abstracts extraction.Extractor.Embed.
@@ -58,6 +59,10 @@ func (h *CVEmbedHandler) Handle(ctx context.Context, _ map[string]string, payloa
 		log.Warn("cv-embed: empty composed text; skipping")
 		return nil
 	}
+	// e5 "query: " prefix — the candidate CV is the search side. Indexed
+	// opportunities carry "passage: " (see extraction.EmbedInput); both
+	// must be present for the asymmetric model to score the pair correctly.
+	text = extraction.EmbedQueryPrefix + text
 
 	vec, err := h.deps.Embedder.Embed(ctx, text)
 	if err != nil {

@@ -496,6 +496,32 @@ func stripAllTags(s string) string {
 
 const maxEmbedChars = 2000
 
+// e5 retrieval prefixes. The intfloat/multilingual-e5-* models are trained
+// with asymmetric "query: " / "passage: " instructions. We index the
+// corpus items (opportunities) as passages and embed the search side
+// (candidate CVs, see apps/matching .../cv_embed.go) as queries. Cosine
+// similarity is symmetric, so a single stored vector per item is correct
+// in BOTH match directions: reverse-KNN (candidate query → opportunity
+// passages) and forward fan-out (opportunity → candidate-query passages)
+// both rank by cos(query_candidate, passage_opportunity).
+const (
+	EmbedPassagePrefix = "passage: "
+	EmbedQueryPrefix   = "query: "
+)
+
+// EmbedInput builds the canonical passage text fed to the embedding model
+// from an opportunity's salient fields. Centralised so the live embed
+// handler (apps/worker/service/embed.go) and the offline backfill
+// (cmd/embed-backfill) produce byte-identical inputs — and therefore
+// directly comparable vectors — for the same row. The "passage: " prefix
+// is part of the input the model was trained on; it must be present
+// consistently for every indexed opportunity. Truncation to the model's
+// token window (TEI --auto-truncate enforces the 512-token cap
+// server-side) happens inside Embed.
+func EmbedInput(title, issuingEntity, description string) string {
+	return EmbedPassagePrefix + strings.Join([]string{title, issuingEntity, description}, " · ")
+}
+
 // Embed generates an embedding vector for the given text via the OpenAI-
 // compatible /v1/embeddings endpoint. Input text is truncated to 2000
 // characters. Returns (nil, nil) — silently — when embeddings aren't

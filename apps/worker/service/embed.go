@@ -120,7 +120,7 @@ func (h *EmbedHandler) Handle(ctx context.Context, _ map[string]string, payload 
 	}
 
 	desc, _ := c.Attributes["description"].(string)
-	text := strings.Join([]string{c.Title, c.IssuingEntity, desc}, " · ")
+	text := extraction.EmbedInput(c.Title, c.IssuingEntity, desc)
 	vec, err := h.extractor.Embed(ctx, text)
 	if err != nil {
 		reason := classifyEmbedFailure(err)

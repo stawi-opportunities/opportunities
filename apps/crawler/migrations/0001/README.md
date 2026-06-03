@@ -127,7 +127,7 @@ CREATE TABLE opportunities (
   first_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_seen_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   attributes       JSONB NOT NULL DEFAULT '{}'::jsonb,
-  embedding        vector(1024),
+  embedding        vector(1024),  -- intfloat/multilingual-e5-large; see migration 20260602_0110
   quality_score    NUMERIC,
   hidden           BOOLEAN NOT NULL DEFAULT false,
   hidden_reason    TEXT,
