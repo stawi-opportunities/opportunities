@@ -51,27 +51,26 @@ func jitter(sourceID string, n int) int {
 	return int(h.Sum32() % uint32(n))
 }
 
+// MinCrawlIntervalHours floors how often ANY source is crawled. Job boards
+// don't change minute-to-minute, and a single crawl of a paginated board emits
+// hundreds–thousands of variants; crawling every 1–4h overwhelmed the pipeline.
+// 12h (twice daily) keeps freshness reasonable while bounding the load: 90
+// sources × 2/day ≈ 180 crawls/day, spread by per-source jitter.
+const MinCrawlIntervalHours = 12
+
 // cronForInterval derives a cron expression from a source's crawl interval,
-// jittered per source. Fixed cadence (no adaptive scoring): a source configured
-// to recrawl every N hours fires every N hours at a stable per-source minute.
+// jittered per source and floored at MinCrawlIntervalHours. Fixed cadence (no
+// adaptive scoring).
 func cronForInterval(crawlIntervalSec int, sourceID string) string {
 	if crawlIntervalSec <= 0 {
 		crawlIntervalSec = 3600
 	}
 	minute := jitter(sourceID, 60)
 	hours := crawlIntervalSec / 3600
+	if hours < MinCrawlIntervalHours {
+		hours = MinCrawlIntervalHours // floor — never crawl a source faster than this
+	}
 	switch {
-	case hours < 1:
-		// Sub-hourly: run every `step` minutes (clamped to [15, 30] so we
-		// never hammer a source faster than the platform floor).
-		step := crawlIntervalSec / 60
-		if step < 15 {
-			step = 15
-		}
-		if step > 30 {
-			step = 30
-		}
-		return fmt.Sprintf("*/%d * * * *", step)
 	case hours >= 24:
 		// Daily (or coarser): one fire per day at a jittered hour:minute.
 		return fmt.Sprintf("%d %d * * *", minute, jitter(sourceID, 24))
@@ -137,16 +136,30 @@ func buildSourceCrawlDSL(s *domain.Source, crawlBaseURL string) (*structpb.Struc
 // winner instead of erroring.
 func EnsureSourceSchedule(ctx context.Context, client WorkflowClient, s *domain.Source, crawlBaseURL string) error {
 	name := workflowName(s.ID)
+	desiredCron := cronForInterval(s.CrawlIntervalSec, s.ID)
 
-	id, active, err := findWorkflow(ctx, client, name)
+	id, active, cron, err := findWorkflow(ctx, client, name)
 	if err != nil {
 		return err
 	}
 	if active {
-		return nil // already scheduled
-	}
-	if id != "" {
-		return activate(ctx, client, name, id) // exists but draft/archived → activate
+		if cron == desiredCron {
+			return nil // already scheduled at the right cadence
+		}
+		// Cadence changed (e.g. the MinCrawlIntervalHours floor): Trustage has
+		// no UpdateWorkflow, so archive the stale-cron workflow and recreate.
+		if aerr := ArchiveWorkflowByName(ctx, client, name); aerr != nil {
+			return aerr
+		}
+		id = "" // fall through to create
+	} else if id != "" {
+		if cron == desiredCron {
+			return activate(ctx, client, name, id) // draft at the right cadence → activate
+		}
+		if aerr := ArchiveWorkflowByName(ctx, client, name); aerr != nil {
+			return aerr
+		}
+		id = ""
 	}
 
 	dsl, err := buildSourceCrawlDSL(s, crawlBaseURL)
@@ -159,7 +172,7 @@ func EnsureSourceSchedule(ctx context.Context, client WorkflowClient, s *domain.
 			return fmt.Errorf("schedules: create %s: %w", name, err)
 		}
 		// Lost the create race to another replica; activate the winner.
-		id, active, lerr := findWorkflow(ctx, client, name)
+		id, active, _, lerr := findWorkflow(ctx, client, name)
 		if lerr != nil {
 			return lerr
 		}
@@ -172,11 +185,12 @@ func EnsureSourceSchedule(ctx context.Context, client WorkflowClient, s *domain.
 }
 
 // findWorkflow looks up a workflow by exact name across all statuses. Returns
-// the id of a usable (non-archived) one and whether it is already active.
-func findWorkflow(ctx context.Context, client WorkflowClient, name string) (id string, active bool, err error) {
+// the id of a usable (non-archived) one, whether it is already active, and the
+// cron of its first schedule (for cadence-drift detection).
+func findWorkflow(ctx context.Context, client WorkflowClient, name string) (id string, active bool, cron string, err error) {
 	resp, err := client.ListWorkflows(ctx, connect.NewRequest(&workflowv1.ListWorkflowsRequest{Name: name}))
 	if err != nil {
-		return "", false, fmt.Errorf("schedules: list %s: %w", name, err)
+		return "", false, "", fmt.Errorf("schedules: list %s: %w", name, err)
 	}
 	for _, it := range resp.Msg.GetItems() {
 		if it.GetName() != name {
@@ -184,14 +198,30 @@ func findWorkflow(ctx context.Context, client WorkflowClient, name string) (id s
 		}
 		switch it.GetStatus() {
 		case workflowv1.WorkflowStatus_WORKFLOW_STATUS_ACTIVE:
-			return it.GetId(), true, nil
+			return it.GetId(), true, cronFromDSL(it.GetDsl()), nil
 		case workflowv1.WorkflowStatus_WORKFLOW_STATUS_ARCHIVED:
 			continue // can't reactivate an archived def; a fresh create handles it
 		default:
-			id = it.GetId() // draft/unspecified → activatable
+			id, cron = it.GetId(), cronFromDSL(it.GetDsl()) // draft/unspecified → activatable
 		}
 	}
-	return id, false, nil
+	return id, false, cron, nil
+}
+
+// cronFromDSL extracts schedules[0].cron_expr from a workflow DSL, or "".
+func cronFromDSL(dsl *structpb.Struct) string {
+	if dsl == nil {
+		return ""
+	}
+	sched := dsl.GetFields()["schedules"].GetListValue()
+	if sched == nil || len(sched.GetValues()) == 0 {
+		return ""
+	}
+	first := sched.GetValues()[0].GetStructValue()
+	if first == nil {
+		return ""
+	}
+	return first.GetFields()["cron_expr"].GetStringValue()
 }
 
 // activate flips a workflow active, tolerating the not-found race (a concurrent

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/structpb"
 	workflowv1 "github.com/antinvestor/service-trustage/gen/go/workflow/v1"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -15,6 +16,7 @@ import (
 // a canned set of "existing" active workflows keyed by name.
 type fakeWorkflowClient struct {
 	existing map[string]string // name -> id (active)
+	crons    map[string]string // name -> existing cron (for drift tests; "" → drift)
 	created  []string          // workflow names created
 	archived []string          // workflow ids archived
 }
@@ -23,8 +25,12 @@ func (f *fakeWorkflowClient) ListWorkflows(_ context.Context, req *connect.Reque
 	name := req.Msg.GetName()
 	items := []*workflowv1.WorkflowDefinition{}
 	if id, ok := f.existing[name]; ok {
+		dsl, _ := structpb.NewStruct(map[string]any{
+			"name":      name,
+			"schedules": []any{map[string]any{"cron_expr": f.crons[name]}},
+		})
 		items = append(items, &workflowv1.WorkflowDefinition{
-			Id: id, Name: name, Status: workflowv1.WorkflowStatus_WORKFLOW_STATUS_ACTIVE,
+			Id: id, Name: name, Status: workflowv1.WorkflowStatus_WORKFLOW_STATUS_ACTIVE, Dsl: dsl,
 		})
 	}
 	return connect.NewResponse(&workflowv1.ListWorkflowsResponse{Items: items}), nil
@@ -58,10 +64,11 @@ func TestCronForInterval(t *testing.T) {
 		intervalSec int
 		wantHasEvery string
 	}{
-		{3600, "*/1"},   // hourly
-		{14400, "*/4"},  // every 4h
+		{3600, "*/12"},  // 1h → floored to 12h
+		{14400, "*/12"}, // 4h → floored to 12h
+		{43200, "*/12"}, // 12h
 		{86400, ""},     // daily — "m h * * *"
-		{1800, "*/30"},  // 30m
+		{1800, "*/12"},  // 30m → floored to 12h
 	}
 	for _, c := range cases {
 		got := cronForInterval(c.intervalSec, "src-"+string(rune(c.intervalSec)))
@@ -85,12 +92,30 @@ func TestEnsureSourceSchedule_CreatesWhenAbsent(t *testing.T) {
 }
 
 func TestEnsureSourceSchedule_SkipsWhenPresent(t *testing.T) {
-	f := &fakeWorkflowClient{existing: map[string]string{workflowName("s1"): "wf_s1"}}
+	name := workflowName("s1")
+	f := &fakeWorkflowClient{
+		existing: map[string]string{name: "wf_s1"},
+		crons:    map[string]string{name: cronForInterval(3600, "s1")}, // matching cadence
+	}
 	if err := EnsureSourceSchedule(context.Background(), f, src("s1", domain.SourceActive, 3600), "http://crawler"); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
-	if len(f.created) != 0 {
-		t.Fatalf("expected no create (already active), got %v", f.created)
+	if len(f.created) != 0 || len(f.archived) != 0 {
+		t.Fatalf("expected no-op (cron matches), got created=%v archived=%v", f.created, f.archived)
+	}
+}
+
+func TestEnsureSourceSchedule_RecreatesOnCadenceDrift(t *testing.T) {
+	name := workflowName("s1")
+	f := &fakeWorkflowClient{
+		existing: map[string]string{name: "wf_s1"},
+		crons:    map[string]string{name: "5 */1 * * *"}, // stale 1h cron (pre-floor)
+	}
+	if err := EnsureSourceSchedule(context.Background(), f, src("s1", domain.SourceActive, 3600), "http://crawler"); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if len(f.archived) != 1 || len(f.created) != 1 {
+		t.Fatalf("expected archive+recreate on drift, got created=%v archived=%v", f.created, f.archived)
 	}
 }
 
