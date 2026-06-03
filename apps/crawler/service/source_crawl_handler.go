@@ -21,6 +21,13 @@ type SourceCrawlGetter interface {
 	GetByID(ctx context.Context, id string) (*domain.Source, error)
 }
 
+// Admitter is the backpressure-gate slice the crawl dispatch needs: given a
+// topic and a desired count, it returns how many are admitted and a wait hint.
+// Satisfied by *backpressure.Gate.
+type Admitter interface {
+	Admit(ctx context.Context, topic string, want int) (int, time.Duration)
+}
+
 // SourceCrawlHandler returns POST /admin/sources/{id}/crawl: emit exactly one
 // crawl.requests.v1 for the given source. This is the per-source counterpart to
 // the central scheduler tick — each source's own Trustage schedule fires this

@@ -212,7 +212,13 @@ func activate(ctx context.Context, client WorkflowClient, name, id string) error
 // RemoveSourceSchedule archives every active per-source crawl workflow for the
 // source so Trustage stops firing it. Idempotent (no-op when none exist).
 func RemoveSourceSchedule(ctx context.Context, client WorkflowClient, sourceID string) error {
-	name := workflowName(sourceID)
+	return ArchiveWorkflowByName(ctx, client, workflowName(sourceID))
+}
+
+// ArchiveWorkflowByName archives every non-archived workflow with the exact
+// name so Trustage stops firing it. Idempotent. Used both to remove a source's
+// schedule and to retire the legacy central scheduler tick.
+func ArchiveWorkflowByName(ctx context.Context, client WorkflowClient, name string) error {
 	listResp, err := client.ListWorkflows(ctx, connect.NewRequest(&workflowv1.ListWorkflowsRequest{Name: name}))
 	if err != nil {
 		return fmt.Errorf("schedules: list %s: %w", name, err)
@@ -229,6 +235,11 @@ func RemoveSourceSchedule(ctx context.Context, client WorkflowClient, sourceID s
 	}
 	return nil
 }
+
+// LegacyCentralTickWorkflow is the workflow name of the retired central
+// scheduler tick. The crawler archives it on boot when per-source scheduling is
+// enabled so the two don't double-dispatch.
+const LegacyCentralTickWorkflow = "opportunities.scheduler.tick"
 
 // ReconcileSourceSchedules drives every source's Trustage schedule to match its
 // status: active/degraded sources get a live schedule, everything else is
