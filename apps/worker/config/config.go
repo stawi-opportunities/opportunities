@@ -139,6 +139,12 @@ type Config struct {
 	QueuePipelinePublishedName  string `env:"QUEUE_PIPELINE_PUBLISHED_NAME"     envDefault:"pipeline_published"`
 	QueuePipelineFlagged        string `env:"QUEUE_PIPELINE_FLAGGED_URI"        envDefault:"mem://pipeline_flagged"`
 	QueuePipelineFlaggedName    string `env:"QUEUE_PIPELINE_FLAGGED_NAME"       envDefault:"pipeline_flagged"`
+	// Derived outputs the embed/translate stages publish (consumed by the
+	// materializer + writer sinks).
+	QueuePipelineEmbeddings       string `env:"QUEUE_PIPELINE_EMBEDDINGS_URI"     envDefault:"mem://pipeline_embeddings"`
+	QueuePipelineEmbeddingsName   string `env:"QUEUE_PIPELINE_EMBEDDINGS_NAME"    envDefault:"pipeline_embeddings"`
+	QueuePipelineTranslations     string `env:"QUEUE_PIPELINE_TRANSLATIONS_URI"   envDefault:"mem://pipeline_translations"`
+	QueuePipelineTranslationsName string `env:"QUEUE_PIPELINE_TRANSLATIONS_NAME"  envDefault:"pipeline_translations"`
 
 	// StageGroup selects which pipeline handlers this process registers,
 	// so the worker can run as independently-scaling consumer groups:

@@ -14,6 +14,12 @@ type CrawlerConfig struct {
 	BatchSize         int    `env:"BATCH_SIZE" envDefault:"500"`
 	BatchFlushSec     int    `env:"BATCH_FLUSH_SEC" envDefault:"10"`
 	SeedsDir          string `env:"SEEDS_DIR" envDefault:"/seeds"`
+
+	// Pipeline head queue: the crawler publishes VariantIngestedV1 here (the
+	// worker's normalize stage subscribes). Name+URI per the service-profile
+	// idiom; must match the worker's ingested queue.
+	QueuePipelineIngested     string `env:"QUEUE_PIPELINE_INGESTED_URI"  envDefault:"mem://pipeline_ingested"`
+	QueuePipelineIngestedName string `env:"QUEUE_PIPELINE_INGESTED_NAME" envDefault:"pipeline_ingested"`
 	UserAgent         string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
 	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 

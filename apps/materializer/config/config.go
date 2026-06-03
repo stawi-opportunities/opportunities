@@ -23,6 +23,12 @@ type Config struct {
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 
+	// Embeddings Frame Queue (consumed to write opportunities.embedding).
+	// Name+URI pair per the service-profile idiom; must match the worker's
+	// embeddings queue (distinct consumer_durable_name on the same subject).
+	QueuePipelineEmbeddings     string `env:"QUEUE_PIPELINE_EMBEDDINGS_URI"  envDefault:"mem://pipeline_embeddings"`
+	QueuePipelineEmbeddingsName string `env:"QUEUE_PIPELINE_EMBEDDINGS_NAME" envDefault:"pipeline_embeddings"`
+
 	// EmbeddingDim is the native output dimension of the deployed embedding
 	// model. It MUST equal the opportunities.embedding vector(N) dimension;
 	// the materializer verifies this at boot and refuses to start on a

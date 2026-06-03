@@ -70,6 +70,15 @@ type CandidatesConfig struct {
 	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
 	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
 
+	// Canonical pipeline queue (service-profile idiom). The worker's canonical
+	// stage publishes CanonicalUpsertedV1 to this subject; matching's Path-A
+	// fan-out is one of its durable consumers (own consumer_durable_name on the
+	// same subject as the worker's publish stage + the writer sink). Name+URI
+	// must match the worker's QUEUE_PIPELINE_CANONICAL_* so the fan-out actually
+	// sees canonicals; mem:// is the local/test default.
+	QueuePipelineCanonical     string `env:"QUEUE_PIPELINE_CANONICAL_URI"  envDefault:"mem://pipeline_canonical"`
+	QueuePipelineCanonicalName string `env:"QUEUE_PIPELINE_CANONICAL_NAME" envDefault:"pipeline_canonical"`
+
 	// PlansURL is embedded into the weekly-jobs-digest event so the
 	// notification service's email template doesn't have to assume the
 	// host. Defaults to production; preview deploys override via env.

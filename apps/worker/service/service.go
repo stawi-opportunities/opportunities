@@ -78,13 +78,14 @@ func NewService(
 	}
 }
 
-// EmbedWorker returns the queue subscriber for SubjectWorkerEmbed.
-// The caller registers it via frame.WithRegisterSubscriber.
-func (s *Service) EmbedWorker() queue.SubscribeWorker {
-	return NewEmbedHandler(s.svc, s.extractor, s.variantStore)
+// EmbedWorker returns the SubjectWorkerEmbed subscriber. outQueue is the
+// embeddings Queue Name it publishes EmbeddingV1 to.
+func (s *Service) EmbedWorker(outQueue string) queue.SubscribeWorker {
+	return NewEmbedHandler(s.svc, s.extractor, s.variantStore, outQueue)
 }
 
-// TranslateWorker returns the queue subscriber for SubjectWorkerTranslate.
-func (s *Service) TranslateWorker() queue.SubscribeWorker {
-	return NewTranslateHandler(s.svc, s.extractor, s.translationLangs, s.variantStore)
+// TranslateWorker returns the SubjectWorkerTranslate subscriber. outQueue is
+// the translations Queue Name it publishes TranslationV1 to.
+func (s *Service) TranslateWorker(outQueue string) queue.SubscribeWorker {
+	return NewTranslateHandler(s.svc, s.extractor, s.translationLangs, s.variantStore, outQueue)
 }

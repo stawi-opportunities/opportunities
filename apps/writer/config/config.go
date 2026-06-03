@@ -99,6 +99,27 @@ type Config struct {
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
+
+	// Pipeline-stage Frame Queues (service-profile idiom). The writer is a
+	// fan-out durable consumer of each — own consumer_durable_name on the same
+	// subject the in-pipeline consumer (worker / next stage) drains. Name+URI
+	// must match the worker's QUEUE_PIPELINE_* so the writer sees every stage
+	// event for Iceberg archival; mem:// is the local/test default. One pair
+	// per topic in service.PipelineQueueTopics().
+	QueuePipelineIngested       string `env:"QUEUE_PIPELINE_INGESTED_URI"     envDefault:"mem://pipeline_ingested"`
+	QueuePipelineIngestedName   string `env:"QUEUE_PIPELINE_INGESTED_NAME"    envDefault:"pipeline_ingested"`
+	QueuePipelineNormalized     string `env:"QUEUE_PIPELINE_NORMALIZED_URI"   envDefault:"mem://pipeline_normalized"`
+	QueuePipelineNormalizedName string `env:"QUEUE_PIPELINE_NORMALIZED_NAME"  envDefault:"pipeline_normalized"`
+	QueuePipelineValidated      string `env:"QUEUE_PIPELINE_VALIDATED_URI"    envDefault:"mem://pipeline_validated"`
+	QueuePipelineValidatedName  string `env:"QUEUE_PIPELINE_VALIDATED_NAME"   envDefault:"pipeline_validated"`
+	QueuePipelineFlagged        string `env:"QUEUE_PIPELINE_FLAGGED_URI"      envDefault:"mem://pipeline_flagged"`
+	QueuePipelineFlaggedName    string `env:"QUEUE_PIPELINE_FLAGGED_NAME"     envDefault:"pipeline_flagged"`
+	QueuePipelineClustered      string `env:"QUEUE_PIPELINE_CLUSTERED_URI"    envDefault:"mem://pipeline_clustered"`
+	QueuePipelineClusteredName  string `env:"QUEUE_PIPELINE_CLUSTERED_NAME"   envDefault:"pipeline_clustered"`
+	QueuePipelineEmbeddings     string `env:"QUEUE_PIPELINE_EMBEDDINGS_URI"   envDefault:"mem://pipeline_embeddings"`
+	QueuePipelineEmbeddingsName string `env:"QUEUE_PIPELINE_EMBEDDINGS_NAME"  envDefault:"pipeline_embeddings"`
+	QueuePipelinePublished      string `env:"QUEUE_PIPELINE_PUBLISHED_URI"    envDefault:"mem://pipeline_published"`
+	QueuePipelinePublishedName  string `env:"QUEUE_PIPELINE_PUBLISHED_NAME"   envDefault:"pipeline_published"`
 }
 
 // Load reads the Config from environment variables.

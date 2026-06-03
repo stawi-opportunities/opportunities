@@ -153,8 +153,9 @@ func main() {
 	})
 
 	handler := frontiersvc.NewHandler(frontiersvc.Deps{
-		Svc:          svc,
-		Frontier:     pf,
+		Svc:           svc,
+		IngestedQueue: cfg.QueuePipelineIngestedName,
+		Frontier:      pf,
 		Sources:      sourceRepo,
 		Kinds:        reg,
 		Archive:      arch,
@@ -185,7 +186,10 @@ func main() {
 		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
 
-	svc.Init(ctx, frame.WithRegisterEvents(handlers...))
+	svc.Init(ctx,
+		frame.WithRegisterEvents(handlers...),
+		frame.WithRegisterPublisher(cfg.QueuePipelineIngestedName, cfg.QueuePipelineIngested),
+	)
 
 	// Loose mode — the worker subscribes to the catch-all
 	// svc.opportunities.events.> but only acts on URL-enqueued.

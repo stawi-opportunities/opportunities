@@ -19,6 +19,12 @@ type Config struct {
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY,required"`
 	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
 
+	// Pipeline head queue: the frontier-worker publishes VariantIngestedV1
+	// here (the worker's normalize stage subscribes). Must match the
+	// worker/crawler ingested queue.
+	QueuePipelineIngested     string `env:"QUEUE_PIPELINE_INGESTED_URI"  envDefault:"mem://pipeline_ingested"`
+	QueuePipelineIngestedName string `env:"QUEUE_PIPELINE_INGESTED_NAME" envDefault:"pipeline_ingested"`
+
 	// AI extractor. Optional — when unset the worker skips the LLM
 	// pass and forwards the URL stub with whatever metadata the
 	// connector supplied. Same env knobs as apps/crawler so the

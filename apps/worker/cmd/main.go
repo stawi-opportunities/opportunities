@@ -275,6 +275,8 @@ func main() {
 	if g == "publish" || all {
 		initOpts = append(initOpts,
 			frame.WithRegisterPublisher(cfg.QueuePipelinePublishedName, cfg.QueuePipelinePublished),
+			frame.WithRegisterPublisher(cfg.QueuePipelineEmbeddingsName, cfg.QueuePipelineEmbeddings),
+			frame.WithRegisterPublisher(cfg.QueuePipelineTranslationsName, cfg.QueuePipelineTranslations),
 			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
 		)
@@ -295,8 +297,8 @@ func main() {
 	if g == "publish" || all {
 		initOpts = append(initOpts,
 			frame.WithRegisterSubscriber(cfg.QueuePipelineCanonicalName, cfg.QueuePipelineCanonical, service.PublishWorker(cfg.QueuePipelinePublishedName)),
-			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
-			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker(cfg.QueuePipelineEmbeddingsName)),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker(cfg.QueuePipelineTranslationsName)),
 		)
 	}
 
