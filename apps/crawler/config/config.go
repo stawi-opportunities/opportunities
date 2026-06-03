@@ -113,6 +113,19 @@ type CrawlerConfig struct {
 	TrustageURL          string `env:"TRUSTAGE_URL" envDefault:""`
 	TrustageWorkflowsDir string `env:"TRUSTAGE_WORKFLOWS_DIR" envDefault:"/workflows"`
 
+	// CrawlBaseURL is the in-cluster URL Trustage uses to reach THIS crawler's
+	// admin API for per-source crawl schedules (POST {base}/admin/sources/{id}/crawl).
+	// Must be resolvable from the operations namespace where Trustage runs.
+	CrawlBaseURL string `env:"CRAWL_BASE_URL" envDefault:"http://opportunities-crawler.product-opportunities.svc"`
+
+	// SourceSchedulesEnabled gates the per-source Trustage schedule sync (the
+	// new model that replaces the central scheduler tick). When true and a
+	// TrustageURL is configured, source add/enable creates a per-source
+	// schedule and disable/stop archives it; a reconcile pass heals drift.
+	// Defaults off so the rollout can enable it explicitly alongside the still-
+	// running central tick (the two are idempotent via the crawl minute key).
+	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"false"`
+
 	// Analytics (OpenObserve) — shared across every opportunities service.
 	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`
 	AnalyticsOrg      string `env:"ANALYTICS_ORG" envDefault:"default"`

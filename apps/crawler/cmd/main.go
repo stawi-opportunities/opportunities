@@ -415,6 +415,57 @@ func main() {
 		log.Warn("no SecurityManager configured — admin endpoints are UNPROTECTED")
 	}
 
+	// Per-source Trustage schedule sync (the model that replaces the central
+	// scheduler tick). When enabled + a TrustageURL is set, source add/enable
+	// creates a per-source crawl schedule and pause/stop archives it; a
+	// reconcile pass + POST /admin/sources/schedules/reconcile heal drift.
+	var scheduleClient service.WorkflowClient
+	if cfg.SourceSchedulesEnabled && cfg.TrustageURL != "" {
+		if cli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL); cliErr != nil {
+			log.WithError(cliErr).Error("source-schedules: trustage client init failed; per-source schedules disabled")
+		} else {
+			scheduleClient = cli
+			log.Info("source-schedules: per-source Trustage scheduling enabled")
+		}
+	}
+	// ensureSchedule / removeSchedule are nil-safe no-ops when scheduling is
+	// off, so the admin handlers can call them unconditionally.
+	ensureSchedule := func(ctx context.Context, id string) {
+		if scheduleClient == nil {
+			return
+		}
+		src, err := sourceRepo.GetByID(ctx, id)
+		if err != nil || src == nil {
+			return
+		}
+		if err := service.EnsureSourceSchedule(ctx, scheduleClient, src, cfg.CrawlBaseURL); err != nil {
+			log.WithError(err).WithField("source_id", id).Warn("source-schedules: ensure failed")
+		}
+	}
+	removeSchedule := func(ctx context.Context, id string) {
+		if scheduleClient == nil {
+			return
+		}
+		if err := service.RemoveSourceSchedule(ctx, scheduleClient, id); err != nil {
+			log.WithError(err).WithField("source_id", id).Warn("source-schedules: remove failed")
+		}
+	}
+	// Boot reconcile: drive every source's schedule to match its status. Runs
+	// detached so a slow/unavailable Trustage never blocks crawler startup.
+	if scheduleClient != nil {
+		go func() {
+			bgCtx := context.WithoutCancel(ctx)
+			rctx, cancel := context.WithTimeout(bgCtx, 5*time.Minute)
+			defer cancel()
+			all, err := sourceRepo.ListAll(rctx)
+			if err != nil {
+				log.WithError(err).Warn("source-schedules: boot reconcile ListAll failed")
+				return
+			}
+			service.ReconcileSourceSchedules(rctx, scheduleClient, all, cfg.CrawlBaseURL)
+		}()
+	}
+
 	// Admin: pause a source  (?id=N)
 	adminMux.HandleFunc("/admin/sources/pause", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -430,6 +481,7 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
 			return
 		}
+		removeSchedule(r.Context(), id)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "paused"})
 	})
@@ -449,6 +501,7 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
 			return
 		}
+		ensureSchedule(r.Context(), id)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
 	})
@@ -490,6 +543,7 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, stopErr.Error()), http.StatusInternalServerError)
 			return
 		}
+		removeSchedule(r.Context(), id)
 
 		// Emit the cascade-delete event. Best-effort; the source is
 		// already marked disabled so missing the emit only delays
@@ -569,6 +623,17 @@ func main() {
 	// Trustage fires this every 30 s; see definitions/trustage/scheduler-tick.json.
 	adminMux.HandleFunc("POST /admin/scheduler/tick",
 		service.SchedulerTickHandler(svc, sourceRepo, bpGate))
+
+	// Per-source crawl: each source's own Trustage schedule POSTs here at the
+	// source's cadence. Emits exactly one crawl.requests.v1 for {id}, gated by
+	// backpressure (429 + Retry-After when the pipeline is saturated).
+	adminMux.HandleFunc("POST /admin/sources/{id}/crawl",
+		service.SourceCrawlHandler(svc, sourceRepo, bpGate))
+
+	// Schedule reconcile backstop: Trustage fires this periodically to heal
+	// drift between sources.status and the per-source Trustage schedules.
+	adminMux.HandleFunc("POST /admin/sources/schedules/reconcile",
+		service.ScheduleReconcileHandler(sourceRepo, scheduleClient, cfg.CrawlBaseURL))
 
 	// Admin: bulk reset quality-window counters on all active sources.
 	// Trustage fires this weekly; see definitions/trustage/sources-quality-window-reset.json.
