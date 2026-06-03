@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/pitabwire/frame"
@@ -130,6 +131,10 @@ type schedulerTickResponse struct {
 // Trustage-configured cadence is 30 s and the UpdateNextCrawl adds the
 // source's CrawlIntervalSec (typically 60–7200 s), a second tick 30 s
 // later will see no rows in ListDue for the same set of sources.
+// recomputeInFlight serializes the out-of-band score refresh so overlapping
+// scheduler ticks don't launch concurrent materialized-view refreshes.
+var recomputeInFlight sync.Mutex
+
 func SchedulerTickHandler(svc *frame.Service, lister SourceLister, admit Admitter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -149,7 +154,25 @@ func SchedulerTickHandler(svc *frame.Service, lister SourceLister, admit Admitte
 		// still works because ListDue keys on next_crawl_at which is
 		// pre-seeded by the backfill migration.
 		if scorer, ok := lister.(AdaptiveScorer); ok {
-			recomputeScores(ctx, scorer, now)
+			// Refresh scores OUT OF BAND. recomputeScores does a CONCURRENT
+			// materialized-view refresh plus a per-source UPDATE for every
+			// source — tens of seconds of work. Running it inline on the
+			// request context meant a slow refresh got the context canceled
+			// by Trustage's HTTP timeout BEFORE ListDue/dispatch ran, so the
+			// tick recomputed scores but emitted zero crawl requests and the
+			// pipeline saw no input. Scores feed observability only; they do
+			// not gate ListDue or admission. Detach from the request context
+			// (request completion must not cancel it) and TryLock so
+			// overlapping ticks don't launch concurrent refreshes.
+			if recomputeInFlight.TryLock() {
+				bgCtx := context.WithoutCancel(ctx)
+				go func() {
+					defer recomputeInFlight.Unlock()
+					rctx, cancel := context.WithTimeout(bgCtx, 90*time.Second)
+					defer cancel()
+					recomputeScores(rctx, scorer, time.Now().UTC())
+				}()
+			}
 		}
 
 		sources, err := lister.ListDue(ctx, now, 500)
