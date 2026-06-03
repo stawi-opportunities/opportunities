@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
+	"github.com/pitabwire/frame/queue"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -31,37 +31,22 @@ type CanonicalHandler struct {
 	svc   *frame.Service
 	cache cache.Cache[string, kv.ClusterSnapshot]
 	store *variantstate.Store // nil-safe; soft-fails on Postgres outage
+	next  string              // Queue Name for CanonicalUpsertedV1 (consumed by publish + sinks)
 }
 
-// NewCanonicalHandler binds the handler. store is the pipeline_variants
-// ledger writer used to mark the variant as canonical with its slug.
-func NewCanonicalHandler(svc *frame.Service, c cache.Cache[string, kv.ClusterSnapshot], store *variantstate.Store) *CanonicalHandler {
-	return &CanonicalHandler{svc: svc, cache: c, store: store}
+// NewCanonicalHandler binds the handler. next is the canonical Queue Name
+// the publish stage (and the materializer/matching/writer sinks) consume.
+func NewCanonicalHandler(svc *frame.Service, c cache.Cache[string, kv.ClusterSnapshot], store *variantstate.Store, next string) *CanonicalHandler {
+	return &CanonicalHandler{svc: svc, cache: c, store: store, next: next}
 }
 
-// Name ...
-func (h *CanonicalHandler) Name() string { return eventsv1.TopicVariantsClustered }
+var _ queue.SubscribeWorker = (*CanonicalHandler)(nil)
 
-// PayloadType ...
-func (h *CanonicalHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate ...
-func (h *CanonicalHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("canonical: empty payload")
-	}
-	return nil
-}
-
-// Execute merges and emits.
-func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
+// Handle merges a VariantClusteredV1 into the cluster snapshot and
+// publishes CanonicalUpsertedV1, then fans out to embed/translate.
+func (h *CanonicalHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	var env eventsv1.Envelope[eventsv1.VariantClusteredV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return err
 	}
 	in := env.Payload
@@ -170,26 +155,23 @@ func (h *CanonicalHandler) Execute(ctx context.Context, payload any) error {
 	_ = h.store.UpsertOpportunity(ctx, oppRow)
 
 	outEnv := eventsv1.NewEnvelope(eventsv1.TopicCanonicalsUpserted, out)
-	// Emit the canonical-upserted event for the (in-process) publish
-	// handler — it's a fast R2 write, not external LLM I/O, so it
-	// stays on the events bus.
-	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicCanonicalsUpserted, outEnv); err != nil {
-		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageClustered, fmt.Errorf("canonical: emit upserted: %w", err))
+	body, err := json.Marshal(outEnv)
+	if err != nil {
+		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageCanonical, fmt.Errorf("canonical: marshal: %w", err))
+		return err
+	}
+	// Publish CanonicalUpsertedV1 to its queue. The publish stage (and the
+	// materializer/matching/writer sinks) are durable consumers of it.
+	if err := h.svc.QueueManager().Publish(ctx, h.next, body, nil); err != nil {
+		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageClustered, fmt.Errorf("canonical: publish upserted: %w", err))
 		return err
 	}
 	slug := merged.Slug
 	_ = h.store.AdvanceStage(ctx, in.VariantID,
 		variantstate.StageClustered, variantstate.StageCanonical,
 		&merged.CanonicalID, &slug)
-	// Also publish to the durable Queue subjects for embed + translate.
-	// Both are external LLM calls (TEI + Groq) that need retry-with-
-	// backoff per the Frame async decision tree. The body is the same
-	// envelope; only the transport differs.
-	body, err := json.Marshal(outEnv)
-	if err != nil {
-		_ = h.store.RecordError(ctx, in.VariantID, variantstate.StageCanonical, fmt.Errorf("canonical: marshal: %w", err))
-		return fmt.Errorf("canonical: marshal: %w", err)
-	}
+	// Fan out to the durable embed + translate queues (external LLM calls
+	// that need their own retry/backoff per the Frame async decision tree).
 	qm := h.svc.QueueManager()
 	if pubErr := qm.Publish(ctx, eventsv1.SubjectWorkerEmbed, body); pubErr != nil {
 		// A queue publish failure mustn't block the rest of the

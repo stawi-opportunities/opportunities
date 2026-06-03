@@ -227,13 +227,10 @@ func main() {
 	// its own Deployment with its own EVENTS_QUEUE_URL (→ own durable
 	// consumer + ack_pending), so a slow/failing stage can't starve the
 	// others. STAGE_GROUP=all preserves the single-deployment monolith.
-	pipelineHandlers := service.HandlersForGroup(cfg.StageGroup)
-
-	// The definitions broadcast consumer must run in EVERY group: each
-	// group's registry needs live-rebuild on admin edits. It's a
-	// broadcast (fanout) subscriber, not a work-queue handler, so
-	// registering it in all groups is correct (each maintains its own
-	// in-memory registry).
+	// The definitions.changed broadcast stays an events-manager consumer
+	// (a fanout, not a work queue) so every group live-rebuilds its
+	// registry on admin edits. The pipeline itself runs on Frame Queue.
+	var eventHandlers []events.EventI
 	if loader != nil {
 		rebuild := func(ctx context.Context) error {
 			fresh, err := opportunity.LoadFromDefinitions(ctx, loader)
@@ -243,36 +240,63 @@ func main() {
 			reg.Replace(fresh)
 			return nil
 		}
-		pipelineHandlers = append([]events.EventI(pipelineHandlers), definitions.NewBroadcastConsumer(loader, rebuild))
+		eventHandlers = append(eventHandlers, definitions.NewBroadcastConsumer(loader, rebuild))
 		util.Log(ctx).WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
 
 	initOpts := []frame.Option{
-		frame.WithRegisterEvents(pipelineHandlers...),
+		frame.WithRegisterEvents(eventHandlers...),
 		frame.WithHTTPHandler(adminMux),
 	}
 
-	// embed + translate are subject-queue workers owned by the publish
-	// group (CanonicalHandler enqueues to them; only publish drains them).
-	// Register their publisher+subscriber pair only there. The "all"
-	// monolith keeps them too so legacy installs are unchanged.
-	if cfg.StageGroup == "publish" || cfg.StageGroup == "all" {
+	// The opportunity pipeline is a linear Frame Queue chain (service-profile
+	// idiom): each stage in this STAGE_GROUP is a native SubscribeWorker that
+	// consumes its one upstream queue and publishes the next by Name. No
+	// events bus, no catch-all. Publishers are registered before subscribers
+	// (the mem:// driver, used by tests/monolith, needs the topic to exist).
+	g := cfg.StageGroup
+	all := g == "all"
+	// --- publishers ---
+	if g == "core" || all {
 		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(cfg.QueuePipelineNormalizedName, cfg.QueuePipelineNormalized),
+			frame.WithRegisterPublisher(cfg.QueuePipelineClusteredName, cfg.QueuePipelineClustered),
+			frame.WithRegisterPublisher(cfg.QueuePipelineCanonicalName, cfg.QueuePipelineCanonical),
 			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
-			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
-			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
 		)
 	}
-
-	// CanonicalHandler runs in "core" but PUBLISHES to the embed/translate
-	// subjects (which the publish group drains). A publisher must be
-	// registered in the process that emits. So core also needs the two
-	// publishers (without the subscribers).
-	if cfg.StageGroup == "core" {
+	if g == "validate" || all {
 		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(cfg.QueuePipelineValidatedName, cfg.QueuePipelineValidated),
+			frame.WithRegisterPublisher(cfg.QueuePipelineFlaggedName, cfg.QueuePipelineFlagged),
+		)
+	}
+	if g == "publish" || all {
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(cfg.QueuePipelinePublishedName, cfg.QueuePipelinePublished),
 			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL),
+		)
+	}
+	// --- subscribers ---
+	if g == "core" || all {
+		initOpts = append(initOpts,
+			frame.WithRegisterSubscriber(cfg.QueuePipelineIngestedName, cfg.QueuePipelineIngested, service.NormalizeWorker(cfg.QueuePipelineNormalizedName)),
+			frame.WithRegisterSubscriber(cfg.QueuePipelineValidatedName, cfg.QueuePipelineValidated, service.DedupWorker(cfg.QueuePipelineClusteredName)),
+			frame.WithRegisterSubscriber(cfg.QueuePipelineClusteredName, cfg.QueuePipelineClustered, service.CanonicalWorker(cfg.QueuePipelineCanonicalName)),
+		)
+	}
+	if g == "validate" || all {
+		initOpts = append(initOpts,
+			frame.WithRegisterSubscriber(cfg.QueuePipelineNormalizedName, cfg.QueuePipelineNormalized, service.ValidateWorker(cfg.QueuePipelineValidatedName, cfg.QueuePipelineFlaggedName)),
+		)
+	}
+	if g == "publish" || all {
+		initOpts = append(initOpts,
+			frame.WithRegisterSubscriber(cfg.QueuePipelineCanonicalName, cfg.QueuePipelineCanonical, service.PublishWorker(cfg.QueuePipelinePublishedName)),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, service.EmbedWorker()),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerTranslate, cfg.WorkerTranslateQueueURL, service.TranslateWorker()),
 		)
 	}
 

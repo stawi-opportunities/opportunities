@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
+	"github.com/pitabwire/frame/queue"
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
@@ -45,33 +45,26 @@ type DedupHandler struct {
 	//   "postgres-only"    — Postgres only, no Valkey reads or writes (4c)
 	// Any other value, including "", is treated as "valkey".
 	readBackend string
-}
-
-// NewDedupHandler binds the handler. clusterCache may be nil in
-// tests that exercise dedup in isolation; when present, dedup
-// merges the inbound Attributes into the cluster snapshot so the
-// canonical-merge handler always reads a populated map.
-func NewDedupHandler(svc *frame.Service, c cache.Cache[string, string]) *DedupHandler {
-	return &DedupHandler{svc: svc, cache: c}
+	next        string // Queue Name for VariantClusteredV1
 }
 
 // NewDedupHandlerWithCluster wires both the dedup cache and the
 // cluster-snapshot cache so dedup can persist Attributes ahead of
-// canonical merge.
-func NewDedupHandlerWithCluster(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot]) *DedupHandler {
-	return &DedupHandler{svc: svc, cache: c, clusterCache: cs}
+// canonical merge. next is the downstream (clustered) Queue Name.
+func NewDedupHandlerWithCluster(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], next string) *DedupHandler {
+	return &DedupHandler{svc: svc, cache: c, clusterCache: cs, next: next}
 }
 
 // NewDedupHandlerWithSkip returns a handler with cache bypass toggled,
 // defaulting to the Valkey-primary read order. Retained for tests that
 // don't exercise the Postgres-cutover flag.
-func NewDedupHandlerWithSkip(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], skipCache bool, store *variantstate.Store) *DedupHandler {
-	return NewDedupHandlerWithBackend(svc, c, cs, skipCache, store, "valkey")
+func NewDedupHandlerWithSkip(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], skipCache bool, store *variantstate.Store, next string) *DedupHandler {
+	return NewDedupHandlerWithBackend(svc, c, cs, skipCache, store, "valkey", next)
 }
 
-// NewDedupHandlerWithBackend wires the read-order cutover flag. See
-// DedupHandler.readBackend for the legal values.
-func NewDedupHandlerWithBackend(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], skipCache bool, store *variantstate.Store, readBackend string) *DedupHandler {
+// NewDedupHandlerWithBackend wires the read-order cutover flag and the
+// downstream (clustered) Queue Name. See DedupHandler.readBackend.
+func NewDedupHandlerWithBackend(svc *frame.Service, c cache.Cache[string, string], cs cache.Cache[string, kv.ClusterSnapshot], skipCache bool, store *variantstate.Store, readBackend, next string) *DedupHandler {
 	return &DedupHandler{
 		svc:          svc,
 		cache:        c,
@@ -79,32 +72,16 @@ func NewDedupHandlerWithBackend(svc *frame.Service, c cache.Cache[string, string
 		skipCache:    skipCache,
 		store:        store,
 		readBackend:  readBackend,
+		next:         next,
 	}
 }
 
-// Name ...
-func (h *DedupHandler) Name() string { return eventsv1.TopicVariantsValidated }
+var _ queue.SubscribeWorker = (*DedupHandler)(nil)
 
-// PayloadType ...
-func (h *DedupHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate ...
-func (h *DedupHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("dedup: empty payload")
-	}
-	return nil
-}
-
-// Execute dedups and emits.
-func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
+// Handle dedups a VariantValidatedV1 and publishes VariantClusteredV1.
+func (h *DedupHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	var env eventsv1.Envelope[eventsv1.VariantValidatedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return err
 	}
 	val := env.Payload
@@ -125,9 +102,12 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 			ClusteredAt:   time.Now().UTC(),
 			Attributes:    val.Attributes,
 		}
-		outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out)
-		if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv); err != nil {
-			_ = h.store.RecordError(ctx, val.VariantID, variantstate.StageClustered, fmt.Errorf("dedup: emit clustered: %w", err))
+		body, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out))
+		if err != nil {
+			return err
+		}
+		if err := h.svc.QueueManager().Publish(ctx, h.next, body, nil); err != nil {
+			_ = h.store.RecordError(ctx, val.VariantID, variantstate.StageClustered, fmt.Errorf("dedup: publish clustered: %w", err))
 			return err
 		}
 		_ = h.store.AdvanceStage(ctx, val.VariantID,
@@ -200,9 +180,12 @@ func (h *DedupHandler) Execute(ctx context.Context, payload any) error {
 		ClusteredAt:   time.Now().UTC(),
 		Attributes:    val.Attributes,
 	}
-	outEnv := eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out)
-	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsClustered, outEnv); err != nil {
-		_ = h.store.RecordError(ctx, val.VariantID, variantstate.StageClustered, fmt.Errorf("dedup: emit clustered: %w", err))
+	body, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsClustered, out))
+	if err != nil {
+		return err
+	}
+	if err := h.svc.QueueManager().Publish(ctx, h.next, body, nil); err != nil {
+		_ = h.store.RecordError(ctx, val.VariantID, variantstate.StageClustered, fmt.Errorf("dedup: publish clustered: %w", err))
 		return err
 	}
 	_ = h.store.AdvanceStage(ctx, val.VariantID,

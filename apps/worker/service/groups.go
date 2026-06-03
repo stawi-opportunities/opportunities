@@ -1,48 +1,39 @@
 package service
 
 import (
-	"github.com/pitabwire/frame/events"
+	"github.com/pitabwire/frame/queue"
 )
 
-// eventI aliases Frame's event handler interface so this file (and the
-// group test) doesn't repeat the import path.
-type eventI = events.EventI
+// Per-stage Frame Queue workers. Each pipeline stage is a native
+// queue.SubscribeWorker that consumes its one upstream queue and publishes
+// to the next by Name (service-profile idiom). main.go registers the
+// subscriber/publisher pairs for the stages in its STAGE_GROUP, passing the
+// downstream queue Names from config. No events bus, no catch-all.
 
-// HandlersForGroup returns the events-manager handlers this worker
-// process should register for the given STAGE_GROUP. Splitting the
-// pipeline across groups gives each its own durable consumer
-// (independent ack_pending + scaling) so a slow/failing stage can't
-// back-pressure the others. embed/translate are subject-queue
-// subscribers wired in main.go (see EmbedWorker/TranslateWorker), not
-// events-manager handlers, so they are not returned here.
-//
-// Mapping (keep in sync with the deployment manifests):
-//   core     → normalize, dedup (cluster), canonical   (CPU/Valkey/PG, scales high)
-//   validate → validate                                (llama-bound, fail-open, capped)
-//   publish  → publish                                 (R2; embed/translate wired alongside)
-//   all      → every handler on one consumer           (legacy monolith / tests)
-//
-// Each branch reuses the same constructors as EventHandlers so handler
-// construction stays DRY (single source of truth for the deps).
-func (s *Service) HandlersForGroup(group string) []eventI {
-	switch group {
-	case "core":
-		return []eventI{
-			NewNormalizeHandler(s.svc, s.variantStore),
-			NewDedupHandlerWithBackend(s.svc, s.dedupCache, s.clusterCache, s.dedupSkipCache, s.variantStore, s.dedupReadBackend),
-			NewCanonicalHandler(s.svc, s.clusterCache, s.variantStore),
-		}
-	case "validate":
-		return []eventI{
-			NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM, s.variantStore),
-		}
-	case "publish":
-		return []eventI{
-			NewPublishHandler(s.svc, s.publisher, s.registry, s.variantStore),
-		}
-	case "all":
-		return s.EventHandlers()
-	default:
-		return nil
-	}
+// NormalizeWorker consumes ingested and publishes VariantNormalizedV1 to
+// the next (normalized) queue.
+func (s *Service) NormalizeWorker(next string) queue.SubscribeWorker {
+	return NewNormalizeHandler(s.svc, s.variantStore, next)
+}
+
+// ValidateWorker consumes normalized and publishes VariantValidatedV1
+// (or VariantFlaggedV1) to the given queues.
+func (s *Service) ValidateWorker(nextValidated, nextFlagged string) queue.SubscribeWorker {
+	return NewValidateHandlerWithSkip(s.svc, s.extractor, s.validationSkipLLM, s.variantStore, nextValidated, nextFlagged)
+}
+
+// DedupWorker consumes validated and publishes VariantClusteredV1.
+func (s *Service) DedupWorker(next string) queue.SubscribeWorker {
+	return NewDedupHandlerWithBackend(s.svc, s.dedupCache, s.clusterCache, s.dedupSkipCache, s.variantStore, s.dedupReadBackend, next)
+}
+
+// CanonicalWorker consumes clustered and publishes CanonicalUpsertedV1
+// (and fans out to the embed/translate queues).
+func (s *Service) CanonicalWorker(next string) queue.SubscribeWorker {
+	return NewCanonicalHandler(s.svc, s.clusterCache, s.variantStore, next)
+}
+
+// PublishWorker consumes canonical and publishes PublishedV1.
+func (s *Service) PublishWorker(next string) queue.SubscribeWorker {
+	return NewPublishHandler(s.svc, s.publisher, s.registry, s.variantStore, next)
 }
