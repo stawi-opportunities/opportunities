@@ -74,16 +74,21 @@ func recomputeScores(ctx context.Context, scorer AdaptiveScorer, now time.Time) 
 		// the freshness package's tier nudge is a no-op. Plan B2 will
 		// surface a real tier and the call site flips to src.Tier.
 		score := freshness.Score(sig, 2, now)
-		minMin := src.MinIntervalMinutes
-		if minMin <= 0 {
-			minMin = 15
-		}
-		maxMin := src.MaxIntervalMinutes
-		if maxMin <= 0 {
-			maxMin = 10080
-		}
-		next := freshness.NextCrawlAt(score, now, minMin, maxMin)
-		if upErr := scorer.UpdateScoreAndNextCrawl(ctx, src.ID, score, next); upErr != nil {
+		// Update the freshness SCORE only — do NOT recompute next_crawl_at
+		// here. next_crawl_at is owned by the dispatch path (which stamps
+		// now+CrawlIntervalSec right after emitting a crawl request) and the
+		// page-completed path (after a crawl finishes) — both anchored to a
+		// real crawl event, so a source legitimately becomes due once its
+		// interval elapses since the last crawl.
+		//
+		// The previous code reset next_crawl_at to freshness.NextCrawlAt(
+		// score, now, ...) = now+interval on EVERY tick. The tick fires every
+		// minute but the minimum interval is 15 min, so the value perpetually
+		// receded into the future and ListDue(now) never saw a due source —
+		// the whole pipeline silently starved of input from the moment this
+		// recompute shipped (commit 4b6183c, 2026-05-29). Preserve the
+		// source's existing next_crawl_at; only the score changes per tick.
+		if upErr := scorer.UpdateScoreAndNextCrawl(ctx, src.ID, score, src.NextCrawlAt); upErr != nil {
 			log.WithError(upErr).WithField("source_id", src.ID).Warn("scheduler/tick: score update failed")
 			continue
 		}
