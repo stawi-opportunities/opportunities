@@ -313,15 +313,21 @@ func main() {
 		mgr.SetStrict(false)
 	}
 
-	// Stuck-variant reaper. Runs in its own goroutine and periodically
-	// re-drives variants wedged mid-chain (NATS max-deliver drop, failed
-	// emit, transient R2/TEI outage). Tied to a context cancelled when the
-	// service stops so it shuts down cleanly. No-op when no datastore is
-	// wired.
-	// One reaper, in the core group only — three reapers would triple
-	// re-emit every stuck row. core is always running, so this is a safe
-	// single owner. (STAGE_GROUP=all also runs it for the monolith.)
-	if cfg.StageGroup == "core" || cfg.StageGroup == "all" {
+	// Stuck-variant reaper. DISABLED by default (REAPER_ENABLED=false).
+	//
+	// The reaper predates the Frame Queue migration: it re-drives "stuck"
+	// variants by EventsManager().Emit-ing the stage event on the shared events
+	// bus — which no pipeline stage consumes anymore (every stage is a durable
+	// queue subscriber now). So its re-drives are no-ops, yet it re-finds the
+	// same rows every tick and burns CPU. Worse, its "stuck" heuristic
+	// (stage_at older than 10 min) misfires under backlog: a variant legitimately
+	// waiting in a queue behind a slow stage is NOT lost, so re-driving it (even
+	// to the queue) would just duplicate it. The durable queues already self-heal
+	// via JetStream redelivery of un-acked messages, so the reaper is redundant.
+	// It caused a worker-core CPU storm that starved normalize under a crawl
+	// burst. Gated off; re-enable only with a queue-aware, backlog-tolerant
+	// rewrite.
+	if cfg.ReaperEnabled && (cfg.StageGroup == "core" || cfg.StageGroup == "all") {
 		reaperCtx, stopReaper := context.WithCancel(ctx)
 		defer stopReaper()
 		go workersvc.NewReaper(svc, variantStore).Run(reaperCtx)

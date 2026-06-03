@@ -155,6 +155,15 @@ type Config struct {
 	//                default keeps existing single-deployment installs and
 	//                the integration tests working unchanged).
 	StageGroup string `env:"STAGE_GROUP" envDefault:"all"`
+
+	// ReaperEnabled gates the stuck-variant reaper. Default false: the reaper
+	// predates the Frame Queue migration and re-drives via the now-unconsumed
+	// events bus, and its time-based "stuck" heuristic misfires under queue
+	// backlog (re-driving variants that are merely waiting behind a slow stage),
+	// which caused a worker-core CPU storm. The durable queues self-heal via
+	// JetStream redelivery, so it is redundant. Re-enable only with a
+	// queue-aware, backlog-tolerant rewrite.
+	ReaperEnabled bool `env:"REAPER_ENABLED" envDefault:"false"`
 }
 
 // Load parses env → Config.
