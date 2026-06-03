@@ -1,18 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { categoryLabel } from '@/utils/format';
-import { fetchCandidate } from '@/api/candidates';
-import type { FacetEntry, Facets, SearchParams } from '@/types/search';
-import { useAuth } from '@/providers/AuthProvider';
-import { useI18n } from '@/i18n/I18nProvider';
-import Cascade from './Cascade';
+import { useEffect, useState, type ReactNode } from "react";
+import type { Facets, SearchParams, FacetEntry } from "@/types/search";
+import { useAuth } from "@/providers/AuthProvider";
+import { useI18n } from "@/i18n/I18nProvider";
+import { useQuery } from "@tanstack/react-query";
+import { fetchCandidate } from "@/api/candidates";
+import { categoryLabel } from "@/utils/format";
+import { useMemo } from "react";
+import Cascade from "./Cascade";
 
+/**
+ * /search/ — query + filters + facets + pagination. Reads initial state
+ * from the URL so deep links are shareable; writes back on changes via
+ * history.replaceState so the back button stays predictable without full
+ * navigations.
+ */
 export default function Search() {
   const { t } = useI18n();
   const [params, setParams] = useState<SearchParams>(() => readParamsFromURL());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [facets, setFacets] = useState<Facets | undefined>();
-  useEffect(() => writeParamsToURL(params), [params]);
 
   const auth = useAuth();
   const profile = useQuery({
@@ -21,6 +27,7 @@ export default function Search() {
     enabled: auth.state === 'authenticated',
     staleTime: 5 * 60_000,
   });
+
   const preferredCountries = useMemo(
     () => splitCSV(profile.data?.preferred_countries),
     [profile.data?.preferred_countries]
@@ -251,7 +258,7 @@ function MobileDrawer({
   onClose,
   t,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClose: () => void;
   t: (k: import('@/i18n/strings').StringKey) => string;
 }) {

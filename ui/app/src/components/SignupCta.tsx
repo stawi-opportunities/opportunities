@@ -10,5 +10,7 @@ export default function SignupCta() {
     ctaMount.style.display = state === 'authenticated' ? 'none' : '';
   }, [state]);
 
+  // This island's entire job is DOM side-effects on the Hugo-rendered
+  // block above; nothing new to render here.
   return null;
 }

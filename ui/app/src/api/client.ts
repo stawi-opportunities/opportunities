@@ -24,17 +24,37 @@ export class ApiError extends Error {
 
 export type ApiParams = Record<string, string | number | boolean | null | undefined>;
 
-/** GET against the jobs API (api.stawi.org/jobs). */
-export async function jobsApiGet<T>(path: string, params: ApiParams = {}): Promise<T> {
+/** Maximum number of retries for transient 5xx errors. */
+const MAX_RETRIES = 2;
+/** Base delay in ms — doubles on each retry (100 ms → 200 ms). */
+const RETRY_BASE_MS = 100;
+
+/** GET against the jobs API (api.stawi.org/jobs). Retries up to
+ *  MAX_RETRIES times on 5xx with exponential back-off; fails fast on
+ *  4xx so callers surface not-found / auth errors immediately. */
+export async function jobsApiGet<T>(
+  path: string,
+  params: ApiParams = {},
+): Promise<T> {
   const url = new URL(join(getConfig().apiURL, path));
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null || v === '') continue;
     url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url.toString(), { credentials: 'omit' });
-  if (!res.ok) {
+
+  let lastError!: ApiError;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, RETRY_BASE_MS * 2 ** (attempt - 1)),
+      );
+    }
+    const res = await fetch(url.toString(), { credentials: 'omit' });
+    if (res.ok) return (await res.json()) as T;
     const body = await res.text().catch(() => '');
-    throw new ApiError(res.status, `${path}: HTTP ${res.status}`, body);
+    lastError = new ApiError(res.status, `${path}: HTTP ${res.status}`, body);
+    // Fail fast on client errors — retrying a 404 or 401 won't help.
+    if (res.status < 500) throw lastError;
   }
-  return (await res.json()) as T;
+  throw lastError;
 }
