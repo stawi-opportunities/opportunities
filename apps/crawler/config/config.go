@@ -118,6 +118,16 @@ type CrawlerConfig struct {
 	// Must be resolvable from the operations namespace where Trustage runs.
 	CrawlBaseURL string `env:"CRAWL_BASE_URL" envDefault:"http://opportunities-crawler.product-opportunities.svc"`
 
+	// CrawlInboxEnabled buffers crawled variants in the crawl_inbox Postgres
+	// table instead of publishing straight to pl_ingested; a rate-limited pump
+	// drains the inbox onto the queue only while pl_ingested is below
+	// CrawlInboxPumpHighWater. Decouples a crawl burst (a paginated board emits
+	// hundreds–thousands of variants at once) from JetStream, which blocks on an
+	// fsync ack per publish. Default off for a safe rollout.
+	CrawlInboxEnabled       bool `env:"CRAWL_INBOX_ENABLED" envDefault:"false"`
+	CrawlInboxPumpHighWater int  `env:"CRAWL_INBOX_PUMP_HIGH_WATER" envDefault:"5000"`
+	CrawlInboxPumpBatch     int  `env:"CRAWL_INBOX_PUMP_BATCH" envDefault:"500"`
+
 	// SourceSchedulesEnabled gates the per-source Trustage schedule sync (the
 	// new model that replaces the central scheduler tick). When true and a
 	// TrustageURL is configured, source add/enable creates a per-source

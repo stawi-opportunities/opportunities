@@ -18,11 +18,11 @@ import (
 	"github.com/antinvestor/service-trustage/client/workflows"
 	crawlerconfig "github.com/stawi-opportunities/opportunities/apps/crawler/config"
 	"github.com/stawi-opportunities/opportunities/apps/crawler/service"
-	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/backpressure"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/crawlinbox"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -33,6 +33,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
+	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
@@ -346,9 +347,17 @@ func main() {
 		}
 	}
 
+	// crawl_inbox buffer + pump (decouples crawl bursts from JetStream).
+	var inboxStore *crawlinbox.Store
+	if cfg.CrawlInboxEnabled {
+		inboxStore = crawlinbox.NewStore(dbFn)
+		log.Info("crawl-inbox: enabled — crawled variants buffered in Postgres, drained to pl_ingested by the pump")
+	}
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:               svc,
 		IngestedQueue:     cfg.QueuePipelineIngestedName,
+		Inbox:             inboxStore,
 		Sources:           sourceRepo,
 		Registry:          registry,
 		Kinds:             reg,
@@ -365,6 +374,42 @@ func main() {
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
+
+	// Inbox pump: drain crawl_inbox → pl_ingested, but only while the queue has
+	// headroom — so JetStream holds just the working set and the DB absorbs the
+	// burst. Replicas claim disjoint batches via FOR UPDATE SKIP LOCKED.
+	if inboxStore != nil {
+		go func() {
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if st, err := bpGate.Check(ctx); err == nil && st.Pending >= cfg.CrawlInboxPumpHighWater {
+						continue // queue full enough — let the pipeline drain first
+					}
+					rows, err := inboxStore.ClaimBatch(ctx, cfg.CrawlInboxPumpBatch, 5*time.Minute)
+					if err != nil {
+						log.WithError(err).Warn("crawl-inbox pump: claim failed")
+						continue
+					}
+					done := make([]string, 0, len(rows))
+					for _, r := range rows {
+						if pErr := svc.QueueManager().Publish(ctx, cfg.QueuePipelineIngestedName, r.Payload, nil); pErr != nil {
+							log.WithError(pErr).Warn("crawl-inbox pump: publish failed; row stays claimed for re-drive")
+							continue
+						}
+						done = append(done, r.VariantID)
+					}
+					if dErr := inboxStore.Delete(ctx, done); dErr != nil {
+						log.WithError(dErr).Warn("crawl-inbox pump: delete drained rows failed")
+					}
+				}
+			}
+		}()
+	}
 
 	// The crawler subscribes to svc.opportunities.events.> (catch-all)
 	// but only handles three topics. Frame v1.97.3 loose-mode acks-and-

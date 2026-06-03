@@ -22,6 +22,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/crawlinbox"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
@@ -47,8 +48,14 @@ type CrawlRequestDeps struct {
 	// VariantIngestedV1 to — the head of the opportunity pipeline chain
 	// (consumed by the worker's normalize stage).
 	IngestedQueue string
-	Sources       SourceGetter
-	Registry      *connectors.Registry
+	// Inbox, when non-nil, buffers crawled variants into the crawl_inbox
+	// Postgres table instead of publishing straight to IngestedQueue. A
+	// rate-limited pump (see cmd/main.go) drains the inbox onto pl_ingested,
+	// so a crawl burst lands in the DB rather than slamming JetStream. nil →
+	// legacy direct-publish.
+	Inbox      *crawlinbox.Store
+	Sources    SourceGetter
+	Registry   *connectors.Registry
 	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
 	Archive    archive.Archive
 	Extractor  *extraction.Extractor // nil → skip AI enrichment
@@ -516,7 +523,12 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				log.WithError(mErr).Warn("crawl.request: marshal variant failed")
 				continue
 			}
-			if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
+			if h.deps.Inbox != nil {
+				if iErr := h.deps.Inbox.Insert(ctx, eventPayload.VariantID, eventPayload.SourceID, body); iErr != nil {
+					log.WithError(iErr).Warn("crawl.request: inbox insert failed")
+					continue
+				}
+			} else if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
 				log.WithError(pErr).Warn("crawl.request: publish variant failed")
 				continue
 			}
@@ -1060,7 +1072,11 @@ func (h *CrawlRequestHandler) reparse(ctx context.Context, req eventsv1.CrawlReq
 	}
 
 	if body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload)); mErr == nil {
-		if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
+		if h.deps.Inbox != nil {
+			if iErr := h.deps.Inbox.Insert(ctx, eventPayload.VariantID, eventPayload.SourceID, body); iErr != nil {
+				log.WithError(iErr).Warn("reparse: inbox insert failed")
+			}
+		} else if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
 			log.WithError(pErr).Warn("reparse: publish variant failed")
 		}
 	}
