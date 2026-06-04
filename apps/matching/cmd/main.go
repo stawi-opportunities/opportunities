@@ -334,42 +334,29 @@ func main() {
 		}
 
 		if cfg.MatchingCandidateChangeEnabled {
-			debounceTTL := time.Duration(cfg.MatchingDebounceTTLSeconds) * time.Second
 			candText := matchingv1.NewSQLCandidateText(sqlDB)
-			for _, topic := range []string{
-				eventsv1.TopicCandidatePreferencesUpdated,
-				eventsv1.TopicCandidateEmbedding,
-			} {
-				cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
-					IndexStore: matchIdx,
-					KNN:        matchKNN,
-					Store:      matchStore,
-					EventLog:   matchEvents,
-					Reranker:   rerank,
-					Weights:    matching.DefaultWeights(),
-					Debouncer:  deb,
-					DLQ:        dlq,
-					Topic:      topic,
-					CandText:   candText,
-				})
-				_ = debounceTTL // TTL carried per-candidate via CandidateChange.DebounceTTL in Phase 5
-				svc.Init(ctx,
-					frame.WithRegisterSubscriber(cc.Name(), cc.Name(), cc))
-			}
-
-			// Auto-populate candidate_match_indexes from embedding events.
-			// DISTINCT durable name so it fans out alongside (does not steal
-			// from) the CandidateChangeConsumer on TopicCandidateEmbedding.
-			const embeddingIndexerName = "matching-candidate-embedding-indexer"
-			indexer := matchingv1.NewCandidateEmbeddingIndexer(matchingv1.CandidateEmbeddingIndexerDeps{
+			// Path C: a CV embedding change drives gap-fill + cross-encoder
+			// rerank. CandidateEmbeddingV1 is emitted via EventsManager().Emit,
+			// so this is registered as an events.EventI via WithRegisterEvents
+			// (NOT a queue subscriber with a bare-topic URI — that crashed on
+			// boot). The consumer also folds in the candidate_match_indexes
+			// upsert. Preference changes stay on the PreferenceMatchHandler
+			// (events.EventI for TopicCandidatePreferencesUpdated) — distinct
+			// event name, so both coexist on the events bus.
+			cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
 				IndexStore: matchIdx,
+				KNN:        matchKNN,
+				Store:      matchStore,
+				EventLog:   matchEvents,
+				Reranker:   rerank,
+				Weights:    matching.DefaultWeights(),
+				Debouncer:  deb,
 				DLQ:        dlq,
-				Name:       embeddingIndexerName,
+				Topic:      eventsv1.TopicCandidateEmbedding,
+				CandText:   candText,
 			})
-			svc.Init(ctx,
-				frame.WithRegisterSubscriber(embeddingIndexerName, eventsv1.TopicCandidateEmbedding, indexer))
-
-			log.Info("matching: candidate-change (Path C) enabled")
+			svc.Init(ctx, frame.WithRegisterEvents(cc))
+			log.Info("matching: candidate-change (Path C) enabled — embedding events → gap-fill + rerank")
 		}
 	}
 

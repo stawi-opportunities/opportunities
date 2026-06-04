@@ -27,11 +27,16 @@ type sqlCandidateText struct{ db *sql.DB }
 // NewSQLCandidateText constructs a candidateTextLookup backed by db.
 func NewSQLCandidateText(db *sql.DB) candidateTextLookup { return &sqlCandidateText{db: db} }
 
+// candidateTextSQL reads the rerank query fields. strong_skills is a
+// text[] (array_to_string); preferred_roles is a TEXT column that stores an
+// array-literal string (e.g. '{"Backend Engineer","Platform Engineer"}'), so
+// translate() strips the braces/quotes rather than array_to_string (which
+// would error on a non-array type).
 const candidateTextSQL = `
 SELECT COALESCE(current_title,''),
        COALESCE(seniority,''),
        COALESCE(array_to_string(strong_skills, ', '),''),
-       COALESCE(array_to_string(preferred_roles, ', '),''),
+       COALESCE(translate(preferred_roles, '{}"', ''),''),
        COALESCE(bio,'')
 FROM candidate_profiles
 WHERE id = $1
@@ -95,11 +100,41 @@ func NewCandidateChangeConsumer(d CandidateChangeConsumerDeps) *CandidateChangeC
 	return &CandidateChangeConsumer{deps: d}
 }
 
-// Name implements queue.SubscribeWorker.
+// Name implements events.EventI / queue.SubscribeWorker — the event-type the
+// EventsManager routes to this handler (TopicCandidateEmbedding).
 func (c *CandidateChangeConsumer) Name() string { return c.deps.Topic }
 
-// Handle implements queue.SubscribeWorker. Frame surfaces JetStream
-// metadata (including redelivery count) via the headers map.
+// PayloadType implements events.EventI. CandidateEmbeddingV1 is emitted via
+// EventsManager().Emit, so Frame JSON-decodes into *json.RawMessage (mirrors
+// PreferenceMatchHandler).
+func (c *CandidateChangeConsumer) PayloadType() any {
+	var raw json.RawMessage
+	return &raw
+}
+
+// Validate implements events.EventI.
+func (c *CandidateChangeConsumer) Validate(_ context.Context, payload any) error {
+	raw, ok := payload.(*json.RawMessage)
+	if !ok || raw == nil || len(*raw) == 0 {
+		return errors.New("candidate_change: empty payload")
+	}
+	return nil
+}
+
+// Execute implements events.EventI: routes the raw event bytes through the
+// same Path-C logic. The events-queue subscriber handles redelivery, so this
+// path does not wrap the DLQ guard (unlike the legacy queue Handle below).
+func (c *CandidateChangeConsumer) Execute(ctx context.Context, payload any) error {
+	raw, ok := payload.(*json.RawMessage)
+	if !ok || raw == nil {
+		return errors.New("candidate_change: invalid payload type")
+	}
+	return c.handleOnce(ctx, []byte(*raw))
+}
+
+// Handle implements queue.SubscribeWorker (legacy queue path; retained for
+// callers that still drive this via a durable queue). Frame surfaces
+// JetStream metadata (including redelivery count) via the headers map.
 func (c *CandidateChangeConsumer) Handle(ctx context.Context, headers map[string]string, payload []byte) error {
 	redelivery := parseRedeliveryHeader(headers)
 	return c.deps.DLQ.Run(ctx, redelivery, payload, func() error {
@@ -116,6 +151,35 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	change := matching.CandidateChange{
 		CandidateID: candidateID,
 		TriggeredBy: triggeredBy,
+	}
+
+	// Auto-populate / refresh candidate_match_indexes from the embedding event
+	// (folds in what the standalone indexer did) so the index always has a
+	// current vector for fan-out + future preference-change passes. Preserve
+	// any existing prefs; default a brand-new row.
+	if len(vector) > 0 {
+		ci := matching.CandidateIndex{
+			CandidateID: candidateID,
+			Embedding:   vector,
+			MinScore:    0.5,
+			DailyCap:    25,
+			WeeklyCap:   100,
+			Kinds:       []string{"job"},
+			Enabled:     true,
+		}
+		if existing, gErr := c.deps.IndexStore.Get(ctx, candidateID); gErr == nil && existing != nil {
+			ci.MinScore = existing.MinScore
+			ci.DailyCap = existing.DailyCap
+			ci.WeeklyCap = existing.WeeklyCap
+			ci.Kinds = existing.Kinds
+			ci.Countries = existing.Countries
+			ci.SalaryFloorUSD = existing.SalaryFloorUSD
+			ci.RemoteOnly = existing.RemoteOnly
+		}
+		if uErr := c.deps.IndexStore.Upsert(ctx, ci); uErr != nil {
+			util.Log(ctx).WithError(uErr).WithField("candidate_id", candidateID).
+				Warn("candidate_change: index upsert failed (non-fatal)")
+		}
 	}
 
 	idx, err := c.deps.IndexStore.Get(ctx, candidateID)
