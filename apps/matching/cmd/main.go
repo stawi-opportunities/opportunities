@@ -174,7 +174,13 @@ func main() {
 			RerankModel:         cfg.RerankModel,
 			RerankDialect:       cfg.RerankDialect,
 			Registry:            reg,
-			HTTPClient:          svc.HTTPClientManager().Client(ctx),
+			// Plain stdlib client: the inference/embedding/rerank back-end is
+			// an external API (SiliconFlow) authenticated with its own API key
+			// via the Authorization header. Frame's HTTPClientManager attaches
+			// an OAuth Bearer for our Hydra audience, which CLOBBERS that header
+			// → SiliconFlow returns 401 "Invalid token" (the rerank symptom).
+			// Mirror apps/crawler. Timeout 0: per-call context deadlines apply.
+			HTTPClient: &http.Client{},
 		})
 		log.WithField("url", infBase).Info("AI extraction enabled")
 	}
