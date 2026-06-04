@@ -109,7 +109,7 @@ type OppHit struct {
 }
 
 const reverseKNNSQL = `
-SELECT id,
+SELECT canonical_id,
        embedding <=> $1::vector AS distance,
        COALESCE(kind, '')    AS kind,
        COALESCE(country, '') AS country,
