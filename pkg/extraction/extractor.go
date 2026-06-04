@@ -64,10 +64,20 @@ type Extractor struct {
 	embeddingBaseURL string
 	embeddingAPIKey  string
 	embeddingModel   string
+	// embeddingDimensions, when >0, is sent as the OpenAI "dimensions"
+	// field so MRL-capable models (e.g. SiliconFlow Qwen3-Embedding) emit
+	// a fixed-width vector matching the pgvector column. 0 = omit (the
+	// model's native width, e.g. e5-large's 1024).
+	embeddingDimensions int
 
 	rerankBaseURL string
 	rerankAPIKey  string
 	rerankModel   string
+	// rerankDialect selects the rerank wire format. "" / "tei" = TEI's
+	// POST /rerank with {query,texts} → [{index,score}]. "openai" /
+	// "siliconflow" = POST /v1/rerank with {model,query,documents} →
+	// {results:[{index,relevance_score}]}.
+	rerankDialect string
 
 	client HTTPDoer
 
@@ -92,14 +102,16 @@ func New(cfg Config) *Extractor {
 		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),
 		apiKey:           cfg.APIKey,
 		model:            cfg.Model,
-		embeddingBaseURL: strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
-		embeddingAPIKey:  cfg.EmbeddingAPIKey,
-		embeddingModel:   cfg.EmbeddingModel,
-		rerankBaseURL:    strings.TrimRight(cfg.RerankBaseURL, "/"),
-		rerankAPIKey:     cfg.RerankAPIKey,
-		rerankModel:      cfg.RerankModel,
-		client:           hc,
-		registry:         cfg.Registry,
+		embeddingBaseURL:    strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
+		embeddingAPIKey:     cfg.EmbeddingAPIKey,
+		embeddingModel:      cfg.EmbeddingModel,
+		embeddingDimensions: cfg.EmbeddingDimensions,
+		rerankBaseURL:       strings.TrimRight(cfg.RerankBaseURL, "/"),
+		rerankAPIKey:        cfg.RerankAPIKey,
+		rerankModel:         cfg.RerankModel,
+		rerankDialect:       strings.ToLower(strings.TrimSpace(cfg.RerankDialect)),
+		client:              hc,
+		registry:            cfg.Registry,
 	}
 	e.llm = chatLLM{e: e}
 	return e

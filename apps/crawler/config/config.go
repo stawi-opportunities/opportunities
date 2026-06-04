@@ -46,6 +46,9 @@ type CrawlerConfig struct {
 	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel   string `env:"EMBEDDING_MODEL" envDefault:""`
+	// EmbeddingDimensions pins the embeddings API "dimensions" field for
+	// Matryoshka models (Qwen3-Embedding); 0 omits it. Must equal EMBEDDING_DIM.
+	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
 
 	// Reranker — carried for consistency with the other apps. Crawler
 	// doesn't currently rerank, but having the knobs in one config struct
@@ -53,6 +56,8 @@ type CrawlerConfig struct {
 	RerankBaseURL     string `env:"RERANK_BASE_URL" envDefault:""`
 	RerankAPIKey      string `env:"RERANK_API_KEY" envDefault:""`
 	RerankModel       string `env:"RERANK_MODEL" envDefault:""`
+	// RerankDialect: "tei" (default) or "openai"/"siliconflow" for /v1/rerank.
+	RerankDialect     string `env:"RERANK_DIALECT" envDefault:""`
 	ValkeyAddr string `env:"VALKEY_ADDR" envDefault:""`
 
 	// Cloudflare R2 — one account token authorised on all three

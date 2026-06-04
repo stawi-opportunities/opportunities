@@ -35,6 +35,9 @@ type Config struct {
 	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL"`
 	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY"`
 	EmbeddingModel   string `env:"EMBEDDING_MODEL"`
+	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
+	// 0 omits it. Must equal EMBEDDING_DIM.
+	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
 
 	// OpportunityKindsDir is the on-disk fallback when R2-backed
 	// definitions aren't configured. Mirrors apps/crawler.

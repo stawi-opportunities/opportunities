@@ -145,11 +145,12 @@ func main() {
 			BaseURL:          cfg.InferenceBaseURL,
 			APIKey:           cfg.InferenceAPIKey,
 			Model:            cfg.InferenceModel,
-			EmbeddingBaseURL: cfg.EmbeddingBaseURL,
-			EmbeddingAPIKey:  cfg.EmbeddingAPIKey,
-			EmbeddingModel:   cfg.EmbeddingModel,
-			Registry:         reg,
-			HTTPClient:       svc.HTTPClientManager().Client(ctx),
+			EmbeddingBaseURL:    cfg.EmbeddingBaseURL,
+			EmbeddingAPIKey:     cfg.EmbeddingAPIKey,
+			EmbeddingModel:      cfg.EmbeddingModel,
+			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			Registry:            reg,
+			HTTPClient:          svc.HTTPClientManager().Client(ctx),
 		})
 	}
 

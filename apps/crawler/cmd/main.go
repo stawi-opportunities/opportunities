@@ -168,13 +168,15 @@ func main() {
 			BaseURL:          infBase,
 			APIKey:           infKey,
 			Model:            infModel,
-			EmbeddingBaseURL: embBase,
-			EmbeddingAPIKey:  embKey,
-			EmbeddingModel:   embModel,
-			RerankBaseURL:    cfg.RerankBaseURL,
-			RerankAPIKey:     cfg.RerankAPIKey,
-			RerankModel:      cfg.RerankModel,
-			Registry:         reg,
+			EmbeddingBaseURL:    embBase,
+			EmbeddingAPIKey:     embKey,
+			EmbeddingModel:      embModel,
+			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			RerankBaseURL:       cfg.RerankBaseURL,
+			RerankAPIKey:        cfg.RerankAPIKey,
+			RerankModel:         cfg.RerankModel,
+			RerankDialect:       cfg.RerankDialect,
+			Registry:            reg,
 			// Plain stdlib client: the inference back-end is an external
 			// API (Groq, OpenAI, Cloudflare AI Gateway) that authenticates
 			// with INFERENCE_API_KEY directly, not Hydra-issued JWTs.

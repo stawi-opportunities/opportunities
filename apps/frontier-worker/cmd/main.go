@@ -130,11 +130,12 @@ func main() {
 			BaseURL:          infBase,
 			APIKey:           infKey,
 			Model:            infModel,
-			EmbeddingBaseURL: embBase,
-			EmbeddingAPIKey:  embKey,
-			EmbeddingModel:   embModel,
-			Registry:         reg,
-			HTTPClient:       inferenceDoer,
+			EmbeddingBaseURL:    embBase,
+			EmbeddingAPIKey:     embKey,
+			EmbeddingModel:      embModel,
+			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			Registry:            reg,
+			HTTPClient:          inferenceDoer,
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}

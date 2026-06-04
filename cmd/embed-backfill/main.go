@@ -64,14 +64,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "EMBEDDING_BASE_URL is required")
 		os.Exit(2)
 	}
+	// Pin output width to the pgvector column for Matryoshka models
+	// (Qwen3-Embedding) so the backfill writes column-compatible vectors.
+	embedDims, _ := strconv.Atoi(os.Getenv("EMBEDDING_DIMENSIONS"))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	ex := extraction.New(extraction.Config{
-		EmbeddingBaseURL: embedURL,
-		EmbeddingAPIKey:  os.Getenv("EMBEDDING_API_KEY"),
-		EmbeddingModel:   embedModel,
+		EmbeddingBaseURL:    embedURL,
+		EmbeddingAPIKey:     os.Getenv("EMBEDDING_API_KEY"),
+		EmbeddingModel:      embedModel,
+		EmbeddingDimensions: embedDims,
 	})
 
 	if *stdio {
