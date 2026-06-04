@@ -17,6 +17,7 @@ import (
 	"github.com/pitabwire/frame/security"
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	candidatesconfig "github.com/stawi-opportunities/opportunities/apps/matching/config"
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
@@ -174,13 +175,16 @@ func main() {
 			RerankModel:         cfg.RerankModel,
 			RerankDialect:       cfg.RerankDialect,
 			Registry:            reg,
-			// Plain stdlib client: the inference/embedding/rerank back-end is
-			// an external API (SiliconFlow) authenticated with its own API key
-			// via the Authorization header. Frame's HTTPClientManager attaches
-			// an OAuth Bearer for our Hydra audience, which CLOBBERS that header
-			// → SiliconFlow returns 401 "Invalid token" (the rerank symptom).
-			// Mirror apps/crawler. Timeout 0: per-call context deadlines apply.
-			HTTPClient: &http.Client{},
+			// External inference (SiliconFlow) authenticates with its own API
+			// key via the Authorization header. Frame's HTTPClientManager
+			// auto-attaches an OAuth Bearer (resolved from this service's OAuth
+			// config in ctx) to EVERY client it hands out — and v1.97.6 has no
+			// per-call skip — which CLOBBERS the SF key → 401 "Invalid token".
+			// So we keep the manager's observability (OTEL client spans +
+			// connection pooling) but WITHOUT the bearer, via an otelhttp
+			// transport over the stdlib default transport. Per-call context
+			// deadlines (PooledReranker, Embed/Prompt) bound each request.
+			HTTPClient: &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
 		})
 		log.WithField("url", infBase).Info("AI extraction enabled")
 	}
