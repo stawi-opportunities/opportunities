@@ -83,6 +83,7 @@ ui-build: $(HUGO_BIN)
 	cd ui/admin && npm ci --prefer-offline --no-audit --no-fund
 	cd ui/app   && npm run build
 	cd ui/admin && npm run build
+	cd ui       && npm run css:build
 	cd ui       && $(HUGO_BIN) --minify
 
 # Vite on :5173 + Hugo on :5170 concurrently. ^C stops both. OIDC env vars
