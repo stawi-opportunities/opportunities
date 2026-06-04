@@ -549,7 +549,8 @@ func main() {
 		// on the NopGateway. Log and continue rather than fail boot.
 		log.WithError(clientsErr).Warn("billing: service client init reported an error; checkout may be degraded")
 	}
-	if clients != nil && clients.Payment != nil {
+	billingEnabled := clients != nil && clients.Payment != nil
+	if billingEnabled {
 		billingGateway = billing.NewPaymentGateway(clients.Payment)
 		log.WithField("uri", cfg.BillingServiceURI).Info("billing: payment gateway enabled")
 	} else {
@@ -571,6 +572,13 @@ func main() {
 		}
 	}
 
+	// Security: when real payments are enabled the webhook (which flips
+	// subscriptions to paid) MUST be authenticated. Refuse to boot rather
+	// than expose a forgeable, unauthenticated activation endpoint.
+	if billingEnabled && cfg.BillingWebhookSecret == "" {
+		log.Fatal("billing: payment gateway enabled but BILLING_WEBHOOK_SECRET is empty — refusing to start (the activation webhook would be unauthenticated)")
+	}
+
 	mux.HandleFunc("GET /billing/plans", httpv1.PlansHandler())
 	mux.Handle("POST /billing/checkout", authMW(
 		httpv1.CheckoutHandler(httpv1.CheckoutDeps{
@@ -578,19 +586,31 @@ func main() {
 			Store:   checkoutStore,
 		}),
 	))
-	mux.Handle("GET /billing/checkout/status", authMW(
-		httpv1.CheckoutStatusHandler(httpv1.CheckoutStatusDeps{
-			Gateway:   billingGateway,
-			Store:     checkoutStore,
+	// Status enforces ownership via the stored checkout, so it requires the
+	// store; without it the handler 503s — don't register it at all.
+	if checkoutStore != nil {
+		mux.Handle("GET /billing/checkout/status", authMW(
+			httpv1.CheckoutStatusHandler(httpv1.CheckoutStatusDeps{
+				Gateway:   billingGateway,
+				Store:     checkoutStore,
+				Activator: billingActivator,
+			}),
+		))
+	} else {
+		log.Warn("billing/checkout/status: checkout store unavailable; route not registered")
+	}
+	// Webhook carries no candidate JWT (the provider can't); it is gated
+	// SOLELY by the mandatory HMAC signature, so register it only when the
+	// secret is configured (and we fail boot above if billing is live without
+	// one).
+	if cfg.BillingWebhookSecret != "" {
+		mux.HandleFunc("POST /billing/webhook", httpv1.WebhookHandler(httpv1.WebhookDeps{
 			Activator: billingActivator,
-		}),
-	))
-	// Webhook is unauthenticated (the provider carries no candidate JWT);
-	// it verifies the optional HMAC signature instead.
-	mux.HandleFunc("POST /billing/webhook", httpv1.WebhookHandler(httpv1.WebhookDeps{
-		Activator: billingActivator,
-		Secret:    cfg.BillingWebhookSecret,
-	}))
+			Secret:    cfg.BillingWebhookSecret,
+		}))
+	} else {
+		log.Warn("billing/webhook: BILLING_WEBHOOK_SECRET unset; webhook route not registered")
+	}
 	// Trustage-driven reconciler sweep — the safety net behind the webhook.
 	if checkoutStore != nil && billingActivator != nil {
 		billingReconciler := billing.NewReconciler(checkoutStore, billingGateway, billingActivator, cfg.BillingReconcileBatch)

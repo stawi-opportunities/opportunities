@@ -2,6 +2,9 @@ package v1_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -133,23 +136,18 @@ func TestCheckoutStatusHandler_RequiresPromptID(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "missing_prompt_id")
 }
 
-func TestCheckoutStatusHandler_NoStoreServesGatewayStatus(t *testing.T) {
+func TestCheckoutStatusHandler_NoStoreIs503(t *testing.T) {
 	t.Parallel()
-	// With no Store wired, ownership can't be enforced but the poll still
-	// works — the gateway is the source of truth.
+	// Without a Store the handler cannot enforce ownership, so it must refuse
+	// rather than poll the gateway by a guessable prompt_id — otherwise any
+	// candidate could read another's checkout (IDOR).
 	gw := &stubGateway{statusResult: billing.StatusResult{Status: billing.StatusPaid, SubscriptionID: "sub-1"}}
 	h := httpmw.CandidateAuth(v1.CheckoutStatusHandler(v1.CheckoutStatusDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, candReq(t, http.MethodGet, "/billing/checkout/status?prompt_id=chk_1", "cand_1", ""))
 
-	require.Equal(t, http.StatusOK, rec.Code)
-	var resp struct {
-		Status         string `json:"status"`
-		SubscriptionID string `json:"subscription_id"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "paid", resp.Status)
-	require.Equal(t, "sub-1", resp.SubscriptionID)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "status_unavailable")
 }
 
 // --- POST /billing/webhook ---------------------------------------------
@@ -166,13 +164,28 @@ func TestWebhookHandler_RejectsBadSignature(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "invalid_signature")
 }
 
-func TestWebhookHandler_NoSecretAccepts(t *testing.T) {
+func TestWebhookHandler_NoSecretRefuses(t *testing.T) {
 	t.Parallel()
-	// No activator + no secret: a well-formed payload returns 200 (the
-	// activator path is exercised in the billing package tests).
+	// A webhook with no configured secret cannot authenticate the caller and
+	// must fail closed — it activates paid subscriptions, so it must never
+	// process an unsigned request.
 	h := v1.WebhookHandler(v1.WebhookDeps{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/billing/webhook", strings.NewReader(`{"prompt_id":"x","status":"SUCCESSFUL"}`))
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Contains(t, rec.Body.String(), "webhook_not_configured")
+}
+
+func TestWebhookHandler_ValidSignatureAccepts(t *testing.T) {
+	t.Parallel()
+	const secret = "topsecret"
+	body := `{"prompt_id":"x","status":"SUCCESSFUL"}`
+	h := v1.WebhookHandler(v1.WebhookDeps{Secret: secret})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/billing/webhook", strings.NewReader(body))
+	req.Header.Set("X-Payment-Signature", "sha256="+webhookSig(secret, body))
 	h.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -181,11 +194,21 @@ func TestWebhookHandler_NoSecretAccepts(t *testing.T) {
 
 func TestWebhookHandler_MissingPromptIDIs400(t *testing.T) {
 	t.Parallel()
-	h := v1.WebhookHandler(v1.WebhookDeps{})
+	const secret = "topsecret"
+	body := `{"status":"SUCCESSFUL"}`
+	h := v1.WebhookHandler(v1.WebhookDeps{Secret: secret})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/billing/webhook", strings.NewReader(`{"status":"SUCCESSFUL"}`))
+	req := httptest.NewRequest(http.MethodPost, "/billing/webhook", strings.NewReader(body))
+	req.Header.Set("X-Payment-Signature", "sha256="+webhookSig(secret, body))
 	h.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "missing_prompt_id")
+}
+
+// webhookSig computes the HMAC-SHA256 hex digest the webhook verifies.
+func webhookSig(secret, body string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(body))
+	return hex.EncodeToString(mac.Sum(nil))
 }

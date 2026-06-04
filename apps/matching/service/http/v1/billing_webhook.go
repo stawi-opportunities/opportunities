@@ -18,9 +18,11 @@ import (
 // WebhookDeps bundles what the payment webhook needs.
 type WebhookDeps struct {
 	Activator *billing.Activator
-	// Secret, when non-empty, enables HMAC-SHA256 verification of the
-	// X-Payment-Signature header over the raw request body. Empty disables
-	// verification (dev/test) — production sets BILLING_WEBHOOK_SECRET.
+	// Secret is the HMAC-SHA256 key for verifying the X-Payment-Signature
+	// header over the raw request body. It is MANDATORY: a webhook that can
+	// activate paid subscriptions must never fail open. If empty, the
+	// handler refuses every request (500) — and main.go declines to register
+	// the route at all (and fails boot when billing is otherwise enabled).
 	Secret string
 }
 
@@ -61,7 +63,15 @@ func WebhookHandler(deps WebhookDeps) http.HandlerFunc {
 			httpmw.ProblemJSON(w, http.StatusBadRequest, "body_read_failed", "could not read request body")
 			return
 		}
-		if deps.Secret != "" && !validSignature(deps.Secret, r.Header.Get("X-Payment-Signature"), body) {
+		// Fail closed: without a configured secret we cannot authenticate the
+		// caller, and this endpoint flips subscriptions to paid — never serve
+		// it unauthenticated.
+		if deps.Secret == "" {
+			log.Error("billing/webhook: BILLING_WEBHOOK_SECRET not configured; refusing request")
+			httpmw.ProblemJSON(w, http.StatusInternalServerError, "webhook_not_configured", "webhook is not configured")
+			return
+		}
+		if !validSignature(deps.Secret, r.Header.Get("X-Payment-Signature"), body) {
 			log.Warn("billing/webhook: signature verification failed")
 			httpmw.ProblemJSON(w, http.StatusUnauthorized, "invalid_signature", "signature verification failed")
 			return

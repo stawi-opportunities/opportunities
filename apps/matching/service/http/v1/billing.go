@@ -228,6 +228,16 @@ func CheckoutStatusHandler(deps CheckoutStatusDeps) http.HandlerFunc {
 			return
 		}
 
+		// Ownership is enforced via the stored checkout below, so the store is
+		// REQUIRED: without it we'd poll the provider by a guessable prompt_id
+		// with no owner check, leaking another candidate's checkout (IDOR).
+		// Refuse rather than fall through. main.go also declines to register
+		// this route when the store is unavailable.
+		if deps.Store == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "status_unavailable", "checkout store not configured")
+			return
+		}
+
 		// Resolve the stored checkout to enforce ownership + provide a
 		// fallback status if the gateway is unavailable.
 		var stored billing.Checkout
