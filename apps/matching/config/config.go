@@ -108,6 +108,11 @@ type CandidatesConfig struct {
 	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
 	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
 	MatchingDebounceTTLSeconds     int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
+	// PooledReranker bounds: a cloud cross-encoder over RERANK_TOP_K docs
+	// takes seconds, so the per-call timeout must be generous (the old
+	// hardcoded 1s timed out → reranker silently fell back to bi-encoder).
+	MatchingRerankerTimeoutSeconds int `env:"MATCHING_RERANKER_TIMEOUT_SECONDS" envDefault:"30"`
+	MatchingRerankerConcurrency    int `env:"MATCHING_RERANKER_CONCURRENCY"     envDefault:"8"`
 	// Phase-4 extension-facing /api/me/* routes (spec §5.5).
 	MatchingExtensionEnabled bool `env:"MATCHING_EXTENSION_ENABLED" envDefault:"false"`
 }

@@ -300,13 +300,16 @@ func main() {
 			// Drive the real cross-encoder when an extractor (with a rerank
 			// backend) is configured; otherwise fall back to the pooled noop
 			// so the rest of the wiring behaves identically.
+			rerankTimeout := time.Duration(cfg.MatchingRerankerTimeoutSeconds) * time.Second
+			rerankConc := cfg.MatchingRerankerConcurrency
 			if extractor != nil && extractor.RerankerVersion() != "" {
 				rerank = matching.NewPooledReranker(
-					matching.NewExtractorReranker(extractor, cfg.RerankTopK), 8, time.Second)
+					matching.NewExtractorReranker(extractor, cfg.RerankTopK), rerankConc, rerankTimeout)
 				log.WithField("model", extractor.RerankerVersion()).
+					WithField("timeout", rerankTimeout).
 					Info("matching: cross-encoder reranker enabled")
 			} else {
-				rerank = matching.NewPooledReranker(matching.NoopReranker{}, 8, time.Second)
+				rerank = matching.NewPooledReranker(matching.NoopReranker{}, rerankConc, rerankTimeout)
 				log.Warn("matching: reranker enabled but no rerank backend configured — using no-op")
 			}
 		}
