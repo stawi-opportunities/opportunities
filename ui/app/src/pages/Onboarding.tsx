@@ -1,10 +1,3 @@
-import { useEffect, useId, useMemo, useState } from "react";
-import { useForm, type SubmitHandler, type UseFormReturn } from "react-hook-form";
-import { z } from "zod";
-import { useAuth } from "@/providers/AuthProvider";
-import { submitOnboarding, uploadCV } from "@/api/profile";
-import { createCheckout } from "@/api/billing";
-import { PLANS, planById, type PlanId } from "@/utils/plans";
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useForm, type SubmitHandler, type UseFormReturn } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';

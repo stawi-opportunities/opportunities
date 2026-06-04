@@ -1,10 +1,3 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { fetchSnapshot } from "@/api/snapshot";
-import { pingJobView, pingApply } from "@/api/views";
-import { categoryLabel, isoInPast, timeAgo } from "@/utils/format";
-import { useI18n } from "@/i18n/I18nProvider";
-import type { StringKey } from "@/i18n/strings";
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSnapshot } from '@/api/snapshot';
@@ -233,7 +226,6 @@ function ApplyLink({
               mountedAtRef.current
           ),
         });
-        pingApply(snap.slug);
       }}
       className={className}
     >

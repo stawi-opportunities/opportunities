@@ -1,20 +1,3 @@
-﻿import { useEffect, useRef } from "react";
-import { mount as mountProfile, type MountHandle } from "@stawi/profile";
-import { authRuntime } from "@/auth/runtime";
-import { profileWidgetTokens, profileWidgetCSS } from "@/theme/profile-widget";
-import { useAuth } from "@/providers/AuthProvider";
-import { getConfig } from "@/utils/config";
-import { useSubscription } from "@/hooks/useSubscription";
-import { normalizePlan } from "@/utils/plans";
-import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
-import { AgentCard } from "@/components/dashboard/AgentCard";
-import { MatchesPanel } from "@/components/dashboard/MatchesPanel";
-import { SavedJobsPanel } from "@/components/dashboard/SavedJobsPanel";
-import { ApplicationsPanel } from "@/components/dashboard/ApplicationsPanel";
-import { BillingPanel } from "@/components/dashboard/BillingPanel";
-import { PreferencesPanel } from "@/components/dashboard/PreferencesPanel";
-import { CompletePaymentPanel } from "@/components/dashboard/CompletePaymentPanel";
-import { PendingCheckoutPoller } from "@/components/dashboard/PendingCheckoutPoller";
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { mount as mountProfile, type MountHandle } from '@stawi/profile';
@@ -45,7 +28,6 @@ const PREFERENCE_KINDS: ReadonlyArray<{
 export default function Dashboard() {
   const { state, login } = useAuth();
 
-  const subQ = useSubscription();
   const subQ = useQuery({
     queryKey: ['me-subscription'],
     queryFn: fetchMeSubscription,
