@@ -10,6 +10,7 @@ require (
 	buf.build/gen/go/antinvestor/notification/connectrpc/go v1.19.2-20260420185629-7892d788a2b9.1
 	buf.build/gen/go/antinvestor/payment/connectrpc/go v1.19.2-20260420185150-8c84a85babd3.1
 	buf.build/gen/go/antinvestor/profile/connectrpc/go v1.19.2-20260415203305-aa11e5e50dc9.1
+	connectrpc.com/connect v1.20.0
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
 	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/PuerkitoBio/goquery v1.12.0
@@ -45,9 +46,11 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/minio v0.42.0
 	github.com/yuin/goldmark v1.8.2
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/metric v1.44.0
 	golang.org/x/sync v0.20.0
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
@@ -74,7 +77,6 @@ require (
 	cloud.google.com/go/iam v1.9.0 // indirect
 	cloud.google.com/go/monitoring v1.27.0 // indirect
 	cloud.google.com/go/storage v1.60.0 // indirect
-	connectrpc.com/connect v1.20.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
@@ -257,7 +259,6 @@ require (
 	go.opentelemetry.io/contrib/detectors/gcp v1.42.0 // indirect
 	go.opentelemetry.io/contrib/exporters/autoexport v0.68.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0 // indirect
 	go.opentelemetry.io/contrib/propagators/autoprop v0.68.0 // indirect
 	go.opentelemetry.io/contrib/propagators/aws v1.43.0 // indirect
 	go.opentelemetry.io/contrib/propagators/b3 v1.43.0 // indirect
@@ -301,7 +302,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260511170946-3700d4141b60 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260511170946-3700d4141b60 // indirect
 	google.golang.org/grpc v1.81.1 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/libc v1.68.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
