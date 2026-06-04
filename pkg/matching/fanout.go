@@ -53,6 +53,9 @@ type FanOutInput struct {
 	Embedding     []float32
 	FirstSeenAt   time.Time
 	Skills        []string
+	// QueryText is the opportunity-side text (title + description) used as
+	// the cross-encoder query. Empty disables reranking for this run.
+	QueryText string
 }
 
 // FanOutResult summarises a single fan-out execution.
@@ -161,9 +164,9 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 	// 3. Reranker (best-effort).
 	rerankIn := make([]RerankItem, len(scoredHits))
 	for i, s := range scoredHits {
-		rerankIn[i] = RerankItem{ID: s.hit.CandidateID, Score: s.score.Total}
+		rerankIn[i] = RerankItem{ID: s.hit.CandidateID, Text: s.hit.Text, Score: s.score.Total}
 	}
-	rerankOut, used, _ := deps.Reranker.Rerank(ctx, rerankIn)
+	rerankOut, used, _ := deps.Reranker.Rerank(ctx, in.QueryText, rerankIn)
 	rerankByID := map[string]float64{}
 	if used {
 		for _, r := range rerankOut {

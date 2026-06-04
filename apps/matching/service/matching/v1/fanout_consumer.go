@@ -31,6 +31,9 @@ type FanOutConsumerDeps struct {
 // consumer so the integration test can stub it without touching variantstate.
 type OppEmbeddingQuery interface {
 	GetEmbedding(ctx context.Context, opportunityID string) ([]float32, error)
+	// GetText returns the opportunity's title + truncated description, used
+	// as the cross-encoder query. Empty (not an error) when unavailable.
+	GetText(ctx context.Context, opportunityID string) (string, error)
 }
 
 // FanOutConsumer wires Path A to TopicCanonicalsUpserted.
@@ -84,6 +87,16 @@ func (c *FanOutConsumer) handleOnce(ctx context.Context, payload []byte) error {
 		skills = cats
 	}
 
+	// QueryText drives the cross-encoder reranker. Best-effort: a fetch
+	// failure logs and degrades the reranker to a no-op rather than failing
+	// the whole fan-out.
+	queryText, err := c.deps.OppEmbedQ.GetText(ctx, body.OpportunityID)
+	if err != nil {
+		util.Log(ctx).WithError(err).WithField("opportunity_id", body.OpportunityID).
+			Warn("fanout: opp text fetch failed; reranker degrades to no-op")
+		queryText = ""
+	}
+
 	_, err = matching.FanOut(ctx, matching.FanOutInput{
 		CanonicalID:   body.HardKey,
 		OpportunityID: body.OpportunityID,
@@ -93,6 +106,7 @@ func (c *FanOutConsumer) handleOnce(ctx context.Context, payload []byte) error {
 		Embedding:     embedding,
 		FirstSeenAt:   body.UpsertedAt,
 		Skills:        skills,
+		QueryText:     queryText,
 	}, matching.FanOutDeps{
 		KNN:      c.deps.KNN,
 		Store:    c.deps.Store,
@@ -144,4 +158,21 @@ func (q *SQLOppEmbeddingQuery) GetEmbedding(ctx context.Context, opportunityID s
 		return nil, nil
 	}
 	return matching.ParseVectorLiteral(text), nil
+}
+
+// GetText returns the opportunity's title + truncated description for use
+// as the cross-encoder query. Returns "" (not an error) when no row exists.
+func (q *SQLOppEmbeddingQuery) GetText(ctx context.Context, opportunityID string) (string, error) {
+	var text string
+	err := q.db.QueryRowContext(ctx,
+		`SELECT COALESCE(title,'') || ' ' || left(COALESCE(attributes->>'description',''), 1500)
+		 FROM opportunities WHERE id = $1`, opportunityID).
+		Scan(&text)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return text, nil
 }
