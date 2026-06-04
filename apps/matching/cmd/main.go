@@ -335,6 +335,7 @@ func main() {
 
 		if cfg.MatchingCandidateChangeEnabled {
 			debounceTTL := time.Duration(cfg.MatchingDebounceTTLSeconds) * time.Second
+			candText := matchingv1.NewSQLCandidateText(sqlDB)
 			for _, topic := range []string{
 				eventsv1.TopicCandidatePreferencesUpdated,
 				eventsv1.TopicCandidateEmbedding,
@@ -349,11 +350,25 @@ func main() {
 					Debouncer:  deb,
 					DLQ:        dlq,
 					Topic:      topic,
+					CandText:   candText,
 				})
 				_ = debounceTTL // TTL carried per-candidate via CandidateChange.DebounceTTL in Phase 5
 				svc.Init(ctx,
 					frame.WithRegisterSubscriber(cc.Name(), cc.Name(), cc))
 			}
+
+			// Auto-populate candidate_match_indexes from embedding events.
+			// DISTINCT durable name so it fans out alongside (does not steal
+			// from) the CandidateChangeConsumer on TopicCandidateEmbedding.
+			const embeddingIndexerName = "matching-candidate-embedding-indexer"
+			indexer := matchingv1.NewCandidateEmbeddingIndexer(matchingv1.CandidateEmbeddingIndexerDeps{
+				IndexStore: matchIdx,
+				DLQ:        dlq,
+				Name:       embeddingIndexerName,
+			})
+			svc.Init(ctx,
+				frame.WithRegisterSubscriber(embeddingIndexerName, eventsv1.TopicCandidateEmbedding, indexer))
+
 			log.Info("matching: candidate-change (Path C) enabled")
 		}
 	}
