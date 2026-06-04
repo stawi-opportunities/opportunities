@@ -19,3 +19,6 @@ scripts/bootstrap/vault-seeds.env
 .claude/
 
 bin/
+/node_modules/
+ui/static/app/
+ui/static/admin-app/
