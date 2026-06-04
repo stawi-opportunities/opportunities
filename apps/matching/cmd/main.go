@@ -169,6 +169,10 @@ func main() {
 			EmbeddingAPIKey:     embKey,
 			EmbeddingModel:      embModel,
 			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			RerankBaseURL:       cfg.RerankBaseURL,
+			RerankAPIKey:        cfg.RerankAPIKey,
+			RerankModel:         cfg.RerankModel,
+			RerankDialect:       cfg.RerankDialect,
 			Registry:            reg,
 			HTTPClient:          svc.HTTPClientManager().Client(ctx),
 		})
@@ -290,11 +294,18 @@ func main() {
 
 		var rerank matching.Reranker = matching.NoopReranker{}
 		if cfg.MatchingRerankerEnabled {
-			// Upstream reranker client is Phase 5. Until then, wrap the noop
-			// in the pool so the rest of the wiring behaves identically.
-			// TODO(phase-5): drive concurrency + timeout from
-			// cfg.MatchingRerankerConcurrency / cfg.MatchingRerankerTimeoutSeconds.
-			rerank = matching.NewPooledReranker(matching.NoopReranker{}, 8, time.Second)
+			// Drive the real cross-encoder when an extractor (with a rerank
+			// backend) is configured; otherwise fall back to the pooled noop
+			// so the rest of the wiring behaves identically.
+			if extractor != nil && extractor.RerankerVersion() != "" {
+				rerank = matching.NewPooledReranker(
+					matching.NewExtractorReranker(extractor, cfg.RerankTopK), 8, time.Second)
+				log.WithField("model", extractor.RerankerVersion()).
+					Info("matching: cross-encoder reranker enabled")
+			} else {
+				rerank = matching.NewPooledReranker(matching.NoopReranker{}, 8, time.Second)
+				log.Warn("matching: reranker enabled but no rerank backend configured — using no-op")
+			}
 		}
 
 		dlqPub := &queuePublisherAdapter{svc: svc}
