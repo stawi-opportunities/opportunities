@@ -15,9 +15,9 @@ import (
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/frame/security"
+	frameclient "github.com/pitabwire/frame/client"
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	candidatesconfig "github.com/stawi-opportunities/opportunities/apps/matching/config"
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
@@ -176,15 +176,13 @@ func main() {
 			RerankDialect:       cfg.RerankDialect,
 			Registry:            reg,
 			// External inference (SiliconFlow) authenticates with its own API
-			// key via the Authorization header. Frame's HTTPClientManager
-			// auto-attaches an OAuth Bearer (resolved from this service's OAuth
-			// config in ctx) to EVERY client it hands out — and v1.97.6 has no
-			// per-call skip — which CLOBBERS the SF key → 401 "Invalid token".
-			// So we keep the manager's observability (OTEL client spans +
-			// connection pooling) but WITHOUT the bearer, via an otelhttp
-			// transport over the stdlib default transport. Per-call context
-			// deadlines (PooledReranker, Embed/Prompt) bound each request.
-			HTTPClient: &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
+			// key in the Authorization header. The manager normally auto-attaches
+			// this service's OAuth bearer, which would clobber that header → SF
+			// 401. client.WithHTTPNoAuth() (frame v1.97.8+) hands us the full
+			// manager client — OTEL spans, retry, connection pooling — but with
+			// NO bearer, so the SF key survives. Per-call context deadlines
+			// (PooledReranker, Embed/Prompt) bound each request.
+			HTTPClient: svc.HTTPClientManager().Client(ctx, frameclient.WithHTTPNoAuth()),
 		})
 		log.WithField("url", infBase).Info("AI extraction enabled")
 	}
