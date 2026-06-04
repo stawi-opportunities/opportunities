@@ -5,6 +5,8 @@ import { AppProviders } from '@/providers/AppProviders';
 // Every island is a [id → component] pair. Only the components whose mount
 // target exists on the page get rendered. Components are lazy-imported so
 // a page that only uses <Nav> doesn't pay for <Onboarding>'s form library.
+// Each island id corresponds to a `mount-*` element emitted by the Hugo
+// templates (see ui/layouts), e.g. #mount-home-redirect on the homepage.
 
 type Island = {
   id: string;
