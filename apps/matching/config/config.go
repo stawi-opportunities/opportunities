@@ -84,6 +84,12 @@ type CandidatesConfig struct {
 	QueuePipelineCanonical     string `env:"QUEUE_PIPELINE_CANONICAL_URI"  envDefault:"mem://pipeline_canonical"`
 	QueuePipelineCanonicalName string `env:"QUEUE_PIPELINE_CANONICAL_NAME" envDefault:"pipeline_canonical"`
 
+	// Candidate-embedding queue: cv-embed publishes CandidateEmbeddingV1 here;
+	// the candidate-change consumer drains it for gap-fill + rerank. Dedicated
+	// durable queue (not the shared events bus) so the flow is isolated + robust.
+	CandidateEmbeddingQueueURI  string `env:"CANDIDATE_EMBEDDING_QUEUE_URI"  envDefault:"mem://candidate_embedding"`
+	CandidateEmbeddingQueueName string `env:"CANDIDATE_EMBEDDING_QUEUE_NAME" envDefault:"candidate_embedding"`
+
 	// PlansURL is embedded into the weekly-jobs-digest event so the
 	// notification service's email template doesn't have to assume the
 	// host. Defaults to production; preview deploys override via env.

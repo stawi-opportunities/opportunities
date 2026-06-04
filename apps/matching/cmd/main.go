@@ -227,9 +227,10 @@ func main() {
 			ModelVersion: cfg.InferenceModel,
 		})
 		embedH := eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
-			Svc:          svc,
-			Embedder:     embedderAdapter{extractor},
-			ModelVersion: cfg.EmbeddingModel,
+			Svc:                         svc,
+			Embedder:                    embedderAdapter{extractor},
+			ModelVersion:                cfg.EmbeddingModel,
+			CandidateEmbeddingQueueName: cfg.CandidateEmbeddingQueueName,
 		})
 		// Wire the cv-pipeline as durable queue subscribers. The upload
 		// HTTP handler publishes onto SubjectCVExtract; cv-extract fans
@@ -239,6 +240,7 @@ func main() {
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL),
+			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL, embedH),
@@ -254,6 +256,7 @@ func main() {
 		// later replay) — explicitly degraded mode.
 		svc.Init(ctx,
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
+			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterEvents(prefMatchH),
 		)
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
@@ -336,13 +339,13 @@ func main() {
 		if cfg.MatchingCandidateChangeEnabled {
 			candText := matchingv1.NewSQLCandidateText(sqlDB)
 			// Path C: a CV embedding change drives gap-fill + cross-encoder
-			// rerank. CandidateEmbeddingV1 is emitted via EventsManager().Emit,
-			// so this is registered as an events.EventI via WithRegisterEvents
-			// (NOT a queue subscriber with a bare-topic URI — that crashed on
-			// boot). The consumer also folds in the candidate_match_indexes
-			// upsert. Preference changes stay on the PreferenceMatchHandler
-			// (events.EventI for TopicCandidatePreferencesUpdated) — distinct
-			// event name, so both coexist on the events bus.
+			// rerank. cv-embed publishes CandidateEmbeddingV1 onto the dedicated
+			// durable candidate-embedding queue; this consumer drains it as a
+			// queue.SubscribeWorker (per the async decision tree: durable + slow
+			// work → Frame Queue, not the shared events bus). The consumer also
+			// folds in the candidate_match_indexes upsert. Preference changes
+			// stay on the PreferenceMatchHandler (events.EventI) — a separate
+			// flow on the events bus.
 			cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
 				IndexStore: matchIdx,
 				KNN:        matchKNN,
@@ -355,8 +358,8 @@ func main() {
 				Topic:      eventsv1.TopicCandidateEmbedding,
 				CandText:   candText,
 			})
-			svc.Init(ctx, frame.WithRegisterEvents(cc))
-			log.Info("matching: candidate-change (Path C) enabled — embedding events → gap-fill + rerank")
+			svc.Init(ctx, frame.WithRegisterSubscriber(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI, cc))
+			log.Info("matching: candidate-change (Path C) enabled — embedding queue → gap-fill + rerank")
 		}
 	}
 

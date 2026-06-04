@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,47 +24,34 @@ func (f *fakeEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
 	return f.vec, f.err
 }
 
-type embedCollector struct {
-	mu  sync.Mutex
-	got []eventsv1.Envelope[eventsv1.CandidateEmbeddingV1]
-}
-
-func (c *embedCollector) Name() string     { return eventsv1.TopicCandidateEmbedding }
-func (c *embedCollector) PayloadType() any { var raw json.RawMessage; return &raw }
-func (c *embedCollector) Validate(context.Context, any) error { return nil }
-func (c *embedCollector) Execute(_ context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
-	var env eventsv1.Envelope[eventsv1.CandidateEmbeddingV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
-		return err
-	}
-	c.mu.Lock()
-	c.got = append(c.got, env)
-	c.mu.Unlock()
-	return nil
-}
-func (c *embedCollector) Len() int { c.mu.Lock(); defer c.mu.Unlock(); return len(c.got) }
-
 func TestCVEmbedHandlerEmitsEmbedding(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// cv-embed publishes CandidateEmbeddingV1 onto a dedicated durable
+	// queue (not the events bus). Drain it with a queuePayloadCollector
+	// over an in-memory subject — mirrors the live wiring in cmd/main.go.
+	const queueName = eventsv1.TopicCandidateEmbedding
+	const queueURL = "mem://candidate-embedding-test"
+
+	col := &queuePayloadCollector{}
 	ctx, svc := frame.NewServiceWithContext(ctx,
 		frame.WithName("cv-embed-test"),
 		frametests.WithNoopDriver(),
+		frame.WithRegisterPublisher(queueName, queueURL),
+		frame.WithRegisterSubscriber(queueName, queueURL, col),
 	)
 	defer svc.Stop(ctx)
 
-	col := &embedCollector{}
-	svc.EventsManager().Add(col)
-
 	h := NewCVEmbedHandler(CVEmbedDeps{
-		Svc:          svc,
-		Embedder:     &fakeEmbedder{vec: []float32{0.1, 0.2, 0.3}},
-		ModelVersion: "embed-v1",
+		Svc:                         svc,
+		Embedder:                    &fakeEmbedder{vec: []float32{0.1, 0.2, 0.3}},
+		ModelVersion:                "embed-v1",
+		CandidateEmbeddingQueueName: queueName,
 	})
 
 	go func() { _ = svc.Run(ctx, "") }()
-	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCandidateEmbedding, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, queueName, 2*time.Second)
 
 	inEnv := eventsv1.NewEnvelope(eventsv1.TopicCVExtracted, eventsv1.CVExtractedV1{
 		CandidateID: "cnd_1", CVVersion: 1, Bio: "seasoned backend engineer in Nairobi",
@@ -86,9 +72,17 @@ func TestCVEmbedHandlerEmitsEmbedding(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if col.Len() != 1 {
-		t.Fatalf("emitted=%d, want 1", col.Len())
+		t.Fatalf("published=%d, want 1", col.Len())
 	}
-	p := col.got[0].Payload
+
+	col.mu.Lock()
+	payload := col.got[0]
+	col.mu.Unlock()
+	var env eventsv1.Envelope[eventsv1.CandidateEmbeddingV1]
+	if err := json.Unmarshal(payload, &env); err != nil {
+		t.Fatalf("decode embed payload: %v", err)
+	}
+	p := env.Payload
 	if p.CandidateID != "cnd_1" || len(p.Vector) != 3 {
 		t.Fatalf("bad payload: %+v", p)
 	}

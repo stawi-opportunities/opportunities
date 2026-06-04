@@ -100,41 +100,13 @@ func NewCandidateChangeConsumer(d CandidateChangeConsumerDeps) *CandidateChangeC
 	return &CandidateChangeConsumer{deps: d}
 }
 
-// Name implements events.EventI / queue.SubscribeWorker — the event-type the
-// EventsManager routes to this handler (TopicCandidateEmbedding).
+// Name implements queue.SubscribeWorker — the queue subject this consumer
+// drains (TopicCandidateEmbedding).
 func (c *CandidateChangeConsumer) Name() string { return c.deps.Topic }
 
-// PayloadType implements events.EventI. CandidateEmbeddingV1 is emitted via
-// EventsManager().Emit, so Frame JSON-decodes into *json.RawMessage (mirrors
-// PreferenceMatchHandler).
-func (c *CandidateChangeConsumer) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate implements events.EventI.
-func (c *CandidateChangeConsumer) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("candidate_change: empty payload")
-	}
-	return nil
-}
-
-// Execute implements events.EventI: routes the raw event bytes through the
-// same Path-C logic. The events-queue subscriber handles redelivery, so this
-// path does not wrap the DLQ guard (unlike the legacy queue Handle below).
-func (c *CandidateChangeConsumer) Execute(ctx context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil {
-		return errors.New("candidate_change: invalid payload type")
-	}
-	return c.handleOnce(ctx, []byte(*raw))
-}
-
-// Handle implements queue.SubscribeWorker (legacy queue path; retained for
-// callers that still drive this via a durable queue). Frame surfaces
-// JetStream metadata (including redelivery count) via the headers map.
+// Handle implements queue.SubscribeWorker: drains the dedicated candidate-
+// embedding queue. Frame surfaces JetStream metadata (including redelivery
+// count) via the headers map.
 func (c *CandidateChangeConsumer) Handle(ctx context.Context, headers map[string]string, payload []byte) error {
 	redelivery := parseRedeliveryHeader(headers)
 	return c.deps.DLQ.Run(ctx, redelivery, payload, func() error {
