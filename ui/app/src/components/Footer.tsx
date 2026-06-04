@@ -7,27 +7,7 @@ export default function Footer() {
   return (
     <footer className="mt-auto border-t border-gray-200 bg-gray-50" role="contentinfo">
       <div className="mx-auto max-w-7xl px-6 py-14 sm:px-8 lg:px-12">
-        <div className="grid grid-cols-2 gap-10 sm:grid-cols-3">
-          <div>
-            <h3 className="text-base font-semibold text-navy-900">{t('footer.jobSeekers')}</h3>
-            <ul className="mt-4 space-y-3" role="list">
-              <li>
-                <a href="/jobs/" className="text-base text-gray-700 hover:text-navy-900">
-                  {t('footer.browseJobs')}
-                </a>
-              </li>
-              <li>
-                <a href="/categories/" className="text-base text-gray-700 hover:text-navy-900">
-                  {t('footer.categories')}
-                </a>
-              </li>
-              <li>
-                <a href="/search/" className="text-base text-gray-700 hover:text-navy-900">
-                  {t('footer.advancedSearch')}
-                </a>
-              </li>
-            </ul>
-          </div>
+        <div className="grid grid-cols-2 gap-10">
           <div>
             <h3 className="text-base font-semibold text-navy-900">{t('footer.company')}</h3>
             <ul className="mt-4 space-y-3" role="list">

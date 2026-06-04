@@ -1,277 +1,30 @@
 {{ define "main" }}
+{{/* Authenticated visitors are redirected to /dashboard/ by the
+     HomeRedirect island; anonymous visitors see the hero below and a
+     single primary path: start onboarding (which signs them in). The
+     page is intentionally minimal — one screen, one action. */}}
 <div id="mount-home-redirect"></div>
-<section class="bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 text-white">
-  <div class="mx-auto max-w-6xl px-6 py-24 sm:px-8 sm:py-28 lg:px-12 lg:py-32">
+
+<section
+  class="flex min-h-[85vh] items-center bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 text-white"
+>
+  <div class="mx-auto w-full max-w-5xl px-6 py-24 sm:px-8 lg:px-12">
     <div class="max-w-3xl">
-      <h1 class="text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
+      <h1
+        class="text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl"
+      >
         Your next job, found for you.
       </h1>
-      <p class="mt-6 max-w-2xl text-xl leading-relaxed text-gray-200 sm:text-2xl">
-        Tell us what you want, upload your CV, and we bring matching
-        roles to your inbox. Let us do the searching so you can focus
-        on the conversation.
+      <p class="mt-6 max-w-xl text-xl leading-relaxed text-gray-200 sm:text-2xl">
+        Tell us what you want and upload your CV — we bring matching roles
+        straight to your inbox.
       </p>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <span class="rounded-full bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/10">
-          Fully curated roles matched to your experience
-        </span>
-        <span class="rounded-full bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/10">
-          CV upload makes matching instant
-        </span>
-      </div>
       <div class="mt-10">
-        <a
-          href="/onboarding/"
-          class="btn-primary shadow-lg shadow-accent-500/20"
-        >
+        <a href="/onboarding/" class="btn-primary shadow-lg shadow-accent-500/20">
           Get started
         </a>
       </div>
-      <p class="mt-8 text-base text-gray-300">
-        Prefer to look yourself?
-        <a href="/jobs/" class="font-medium text-white underline underline-offset-4 hover:text-accent-300">
-          Search jobs
-        </a>
-      </p>
     </div>
   </div>
 </section>
-
-<!-- Who we're for. Five industries alternating image/text, text/image.
-     Copy is deliberately specific — which roles we place, for whom —
-     so a visitor understands the product reaches their vertical. -->
-<section class="bg-white py-20 sm:py-24">
-  <div class="mx-auto max-w-6xl px-6 sm:px-8 lg:px-12">
-    <header class="max-w-2xl">
-      <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-        Every industry
-      </p>
-      <h2 class="mt-3 text-4xl font-bold tracking-tight text-navy-900 sm:text-5xl">
-        Roles across the work you actually do.
-      </h2>
-      <p class="mt-4 text-lg leading-relaxed text-gray-700">
-        Healthcare, aviation, hospitality, technology, personal care — we
-        match against the CV you upload, whatever industry it's from.
-      </p>
-    </header>
-
-    <!-- Healthcare — image left, text right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=1200&q=75"
-          alt="A doctor outside her practice"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="1200"
-          height="900"
-        />
-      </figure>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Healthcare
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Clinical, care, and allied health.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          From care assistants and community nurses to consultant
-          surgeons and hospital administrators — we match by speciality,
-          clinical setting, and shift pattern. Strong demand right now in
-          mental health, community care, and clinical research.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse healthcare roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
-
-    <!-- Computer networks & technology — text left, image right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <div class="lg:order-2">
-        <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-          <img
-            src="https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=1200&q=75"
-            alt="Network and systems engineers at their workstation"
-            loading="lazy"
-            class="absolute inset-0 h-full w-full object-cover"
-            width="1200"
-            height="900"
-          />
-        </figure>
-      </div>
-      <div class="lg:order-1">
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Computer networks &amp; technology
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Engineering from the wire to the cloud.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Network engineers, systems admins, security analysts, cloud
-          architects, SRE and DevOps. On-site, hybrid, and remote roles
-          from ISPs, banks, telcos, and SaaS companies. We read your
-          stack, seniority, and clearance before we suggest a single
-          role.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse technology roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
-
-    <!-- Aviation — image left, text right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=1200&q=75"
-          alt="A passenger aircraft at the gate"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="1200"
-          height="900"
-        />
-      </figure>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Aviation
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Flight deck, cabin, and ground.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Pilots, cabin crew, ground operations, aircraft maintenance,
-          and dispatch. Airlines hire on specific rotations and
-          seniority bands — we know the cycles and surface roles when
-          they open, not when they're about to expire.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse aviation roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
-
-    <!-- Hospitality — text left, image right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <div class="lg:order-2">
-        <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-          <img
-            src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=75"
-            alt="A modern hotel suite"
-            loading="lazy"
-            class="absolute inset-0 h-full w-full object-cover"
-            width="1200"
-            height="900"
-          />
-        </figure>
-      </div>
-      <div class="lg:order-1">
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Hospitality
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Hotels, F&amp;B, and venues.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Front-of-house, housekeeping, chefs, food and beverage, duty
-          managers, and GMs. Boutique hotels to international chains,
-          seasonal and permanent, local contracts and expat packages —
-          filtered by region, property type, and the cuisine or brand
-          you've worked with before.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse hospitality roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
-
-    <!-- Salon & personal care — image left, text right -->
-    <article class="mt-20 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-      <figure class="relative aspect-[4/3] overflow-hidden rounded-md bg-gray-100">
-        <img
-          src="https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1200&q=75"
-          alt="A hair stylist at work in a salon"
-          loading="lazy"
-          class="absolute inset-0 h-full w-full object-cover"
-          width="1200"
-          height="900"
-        />
-      </figure>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Salon &amp; personal care
-        </p>
-        <h3 class="mt-3 text-3xl font-bold text-navy-900 sm:text-4xl">
-          Stylists, therapists, and spa professionals.
-        </h3>
-        <p class="mt-4 text-lg leading-relaxed text-gray-700">
-          Hair stylists, barbers, nail technicians, beauty therapists,
-          and spa managers. Salaried, booth-rent, and commission
-          arrangements across chains, boutique salons, and wellness
-          centres — matched by discipline, clientele, and schedule.
-        </p>
-        <a href="/categories/" class="mt-5 inline-flex items-center text-base font-semibold text-navy-900 hover:text-accent-600">
-          Browse personal-care roles
-          <span aria-hidden="true" class="ml-1">→</span>
-        </a>
-      </div>
-    </article>
-  </div>
-</section>
-
-<!-- What we do. Three short paragraphs, no icons, no coloured blocks.
-     Generous type size so no one has to squint. -->
-<section class="border-t border-gray-200 bg-white py-24">
-  <div class="mx-auto max-w-6xl px-6 sm:px-8 lg:px-12">
-    <div class="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Curated
-        </p>
-        <h3 class="mt-3 text-2xl font-bold text-navy-900">
-          Real jobs, checked daily
-        </h3>
-        <p class="mt-3 text-lg leading-relaxed text-gray-700">
-          Every listing is reviewed for a real employer, a real role,
-          and a fresh posting date. No recycled titles, no ghost
-          postings.
-        </p>
-      </div>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          Matched
-        </p>
-        <h3 class="mt-3 text-2xl font-bold text-navy-900">
-          Roles picked for your CV
-        </h3>
-        <p class="mt-3 text-lg leading-relaxed text-gray-700">
-          We read your résumé, understand your seniority and salary
-          range, and surface roles you'd realistically land — not every
-          open requisition on the internet.
-        </p>
-      </div>
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">
-          With you
-        </p>
-        <h3 class="mt-3 text-2xl font-bold text-navy-900">
-          A recruiter when you want one
-        </h3>
-        <p class="mt-3 text-lg leading-relaxed text-gray-700">
-          On our top tier, a dedicated recruiter runs the search,
-          handles applications, and coaches you through negotiations.
-          A real person, not a newsletter.
-        </p>
-      </div>
-    </div>
-  </div>
-</section>
-
-{{/* "Two minutes to set up" moved to partials/get-started-cta.html
-     so every page shows the CTA above the footer for anonymous
-     visitors, not just the homepage. */}}
 {{ end }}

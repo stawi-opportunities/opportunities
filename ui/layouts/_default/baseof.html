@@ -11,7 +11,9 @@
     {{ block "main" . }}{{ end }}
   </main>
 
-  {{ partial "get-started-cta.html" . }}
+  {{/* The homepage already leads with its own hero CTA, so skip the global
+       get-started banner there to keep it a clean single screen. */}}
+  {{ if not .IsHome }}{{ partial "get-started-cta.html" . }}{{ end }}
   {{ partial "footer.html" . }}
   {{ block "scripts" . }}{{ end }}
 </body>
