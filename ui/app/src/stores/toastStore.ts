@@ -1,6 +1,6 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
-export type ToastVariant = "success" | "error" | "info" | "warning";
+export type ToastVariant = 'success' | 'error' | 'info' | 'warning';
 
 export interface Toast {
   id: string;
@@ -16,13 +16,9 @@ interface ToastState {
 
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
-  push: (message, variant = "info") =>
+  push: (message, variant = 'info') =>
     set((s) => ({
-      toasts: [
-        ...s.toasts,
-        { id: crypto.randomUUID(), message, variant },
-      ],
+      toasts: [...s.toasts, { id: crypto.randomUUID(), message, variant }],
     })),
-  dismiss: (id) =>
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));

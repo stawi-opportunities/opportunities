@@ -5,7 +5,7 @@ import {
   type JobViewAttrs,
   type JobViewEngagedAttrs,
   type ApplyClickAttrs,
-} from "@/analytics/posthog";
+} from '@/analytics/posthog';
 
 /**
  * Stable hook that surfaces the PostHog event helpers.

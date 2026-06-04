@@ -44,7 +44,9 @@ export function JobRow({ result }: { result: SearchResult }) {
           {result.remote_type && <span>· {remoteLabel(result.remote_type)}</span>}
           {money && <span className="text-gray-800">· {money}</span>}
           {(result.views_24h ?? 0) > 0 && (
-            <span className="text-gray-400">· {result.views_24h} view{result.views_24h !== 1 ? "s" : ""}</span>
+            <span className="text-gray-400">
+              · {result.views_24h} view{result.views_24h !== 1 ? 's' : ''}
+            </span>
           )}
           {(result.applies_24h ?? 0) > 0 && (
             <span className="text-emerald-700">· {result.applies_24h} applied</span>

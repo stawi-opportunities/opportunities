@@ -1,21 +1,21 @@
-import { useEffect, useState } from "react";
-import type { SearchParams } from "@/types/search";
+import { useEffect, useState } from 'react';
+import type { SearchParams } from '@/types/search';
 
 // The keys we persist to / read from the URL query string.
 // Numeric params (limit, offset, cursor) are intentionally omitted —
 // they're runtime-only pagination state, not shareable filter state.
 const URL_KEYS = [
-  "q",
-  "category",
-  "remote_type",
-  "employment_type",
-  "seniority",
-  "country",
-  "sort",
+  'q',
+  'category',
+  'remote_type',
+  'employment_type',
+  'seniority',
+  'country',
+  'sort',
 ] as const satisfies ReadonlyArray<keyof SearchParams>;
 
 function readFromURL(): SearchParams {
-  if (typeof window === "undefined") return {};
+  if (typeof window === 'undefined') return {};
   const p = new URL(window.location.href).searchParams;
   const out: SearchParams = {};
   for (const k of URL_KEYS) {
@@ -32,7 +32,7 @@ function writeToURL(params: SearchParams): void {
     if (v) url.searchParams.set(k, String(v));
     else url.searchParams.delete(k);
   }
-  window.history.replaceState({}, "", url.toString());
+  window.history.replaceState({}, '', url.toString());
 }
 
 /**
@@ -45,10 +45,7 @@ function writeToURL(params: SearchParams): void {
  *
  * Returns `[params, setParams]` — the same tuple shape as `useState`.
  */
-export function useSearchURLParams(): [
-  SearchParams,
-  (next: SearchParams) => void,
-] {
+export function useSearchURLParams(): [SearchParams, (next: SearchParams) => void] {
   const [params, setParamsState] = useState<SearchParams>(() => readFromURL());
 
   useEffect(() => {

@@ -1,5 +1,5 @@
-import type { PlanId } from "@/utils/plans";
-import { authRuntime } from "@/auth/runtime";
+import type { PlanId } from '@/utils/plans';
+import { authRuntime } from '@/auth/runtime';
 
 // Profile & onboarding API calls — all auth'd via @stawi/auth-runtime.
 // The runtime owns the JWT; every call uses runtime.fetch() or
@@ -36,11 +36,11 @@ export interface OnboardingPayload {
  * because the v1 runtime can't send multipart-with-text-fields).
  */
 export async function submitOnboarding(
-  payload: OnboardingPayload,
+  payload: OnboardingPayload
 ): Promise<{ id: string; profile_id: string }> {
-  return authRuntime().fetch("/candidates/onboard", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  return authRuntime().fetch('/candidates/onboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 }
@@ -51,7 +51,7 @@ export async function submitOnboarding(
  * response carries the updated candidate row.
  */
 export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: number }> {
-  return authRuntime().upload("/me/cv", file);
+  return authRuntime().upload('/me/cv', file);
 }
 
 // ── Candidate profile ─────────────────────────────────────────────
@@ -75,7 +75,7 @@ export interface CandidateSummary {
  */
 export async function fetchCandidate(): Promise<CandidateSummary | null> {
   try {
-    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>("/me");
+    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>('/me');
     return body.candidate ?? null;
   } catch {
     return null;
@@ -86,7 +86,7 @@ export async function fetchCandidate(): Promise<CandidateSummary | null> {
 
 export interface MeSubscription {
   plan: string | null;
-  status: "none" | "active" | "past_due" | "cancelled";
+  status: 'none' | 'active' | 'past_due' | 'cancelled';
   renews_at?: string;
   agent?: { name: string; email: string } | null;
   queued_matches: number;
@@ -101,13 +101,13 @@ export interface MeSubscription {
 export async function fetchMeSubscription(): Promise<MeSubscription> {
   const fallback: MeSubscription = {
     plan: null,
-    status: "none",
+    status: 'none',
     queued_matches: 0,
     delivered_this_week: 0,
     agent: null,
   };
   try {
-    const body = await authRuntime().fetch<MeSubscription>("/me/subscription");
+    const body = await authRuntime().fetch<MeSubscription>('/me/subscription');
     return { ...fallback, ...body };
   } catch {
     return fallback;

@@ -1,7 +1,7 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { fetchMeSubscription, type MeSubscription } from "@/api/profile";
-import { useAuth } from "@/providers/AuthProvider";
-import { QUERY_KEYS } from "@/constants/queryKeys";
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { fetchMeSubscription, type MeSubscription } from '@/api/profile';
+import { useAuth } from '@/providers/AuthProvider';
+import { QUERY_KEYS } from '@/constants/queryKeys';
 
 /**
  * Fetches the authenticated candidate's subscription status.
@@ -20,7 +20,7 @@ export function useSubscription(): UseQueryResult<MeSubscription> {
   return useQuery({
     queryKey: QUERY_KEYS.SUBSCRIPTION,
     queryFn: fetchMeSubscription,
-    enabled: state === "authenticated",
+    enabled: state === 'authenticated',
     staleTime: 60_000,
   });
 }

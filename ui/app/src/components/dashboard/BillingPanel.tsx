@@ -1,18 +1,12 @@
-import { planById, type PlanId } from "@/utils/plans";
-import { Panel } from "./Panel";
+import { planById, type PlanId } from '@/utils/plans';
+import { Panel } from './Panel';
 
-export function BillingPanel({
-  plan,
-  renewsAt,
-}: {
-  plan: PlanId;
-  renewsAt?: string;
-}) {
+export function BillingPanel({ plan, renewsAt }: { plan: PlanId; renewsAt?: string }) {
   const info = planById(plan);
   return (
     <Panel title="Billing">
       <p className="text-sm text-gray-700">
-        <span className="font-medium">{info.name}</span> · ${info.price}/month ·{" "}
+        <span className="font-medium">{info.name}</span> · ${info.price}/month ·{' '}
         <span className="text-emerald-700">Active</span>
       </p>
       {renewsAt && (

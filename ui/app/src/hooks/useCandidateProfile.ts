@@ -1,8 +1,8 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { fetchCandidate, type CandidateSummary } from "@/api/profile";
-import { useAuth } from "@/providers/AuthProvider";
-import { QUERY_KEYS } from "@/constants/queryKeys";
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { fetchCandidate, type CandidateSummary } from '@/api/profile';
+import { useAuth } from '@/providers/AuthProvider';
+import { QUERY_KEYS } from '@/constants/queryKeys';
 
 // Splits a comma-or-semicolon-separated string into a trimmed,
 // non-empty string array. Kept here so every caller of this hook
@@ -38,18 +38,18 @@ export function useCandidateProfile(): CandidateProfileResult {
   const query = useQuery({
     queryKey: QUERY_KEYS.CANDIDATE_PROFILE,
     queryFn: fetchCandidate,
-    enabled: state === "authenticated",
+    enabled: state === 'authenticated',
     staleTime: 5 * 60_000,
   });
 
   const preferredCountries = useMemo(
     () => splitCSV(query.data?.preferred_countries),
-    [query.data?.preferred_countries],
+    [query.data?.preferred_countries]
   );
 
   const preferredLanguages = useMemo(
     () => splitCSV(query.data?.languages),
-    [query.data?.languages],
+    [query.data?.languages]
   );
 
   return {

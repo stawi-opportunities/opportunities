@@ -1,5 +1,5 @@
-import { planById, type PlanId } from "@/utils/plans";
-import { Panel } from "./Panel";
+import { planById, type PlanId } from '@/utils/plans';
+import { Panel } from './Panel';
 
 export function MatchesPanel({
   plan,
@@ -15,13 +15,12 @@ export function MatchesPanel({
   delivered: number | null;
   subQueryError: boolean;
 }) {
-  if (plan === "managed") {
+  if (plan === 'managed') {
     return (
       <Panel title="Matches">
         <p className="text-sm text-gray-600">
-          Your agent hand-picks roles that pass their screen before they
-          reach you. Expect curated matches in your inbox and a weekly
-          summary on your 1:1 call.
+          Your agent hand-picks roles that pass their screen before they reach you. Expect curated
+          matches in your inbox and a weekly summary on your 1:1 call.
         </p>
       </Panel>
     );
@@ -33,9 +32,12 @@ export function MatchesPanel({
     return (
       <Panel title="Matches">
         <p className="text-sm text-amber-700">
-          We couldn't load your latest match numbers. Refresh in a few
-          seconds — if this keeps happening, drop us a line at{" "}
-          <a href="mailto:jobs@stawi.org" className="underline">jobs@stawi.org</a>.
+          We couldn't load your latest match numbers. Refresh in a few seconds — if this keeps
+          happening, drop us a line at{' '}
+          <a href="mailto:jobs@stawi.org" className="underline">
+            jobs@stawi.org
+          </a>
+          .
         </p>
       </Panel>
     );
@@ -54,15 +56,13 @@ export function MatchesPanel({
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-            In your queue
-          </p>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">In your queue</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{queued}</p>
         </div>
       </div>
-      {plan === "starter" && (
+      {plan === 'starter' && (
         <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-          Want 5× the matches and priority placement in the queue?{" "}
+          Want 5× the matches and priority placement in the queue?{' '}
           <a href="/pricing/" className="font-medium text-accent-600 hover:text-accent-700">
             Upgrade to Pro →
           </a>

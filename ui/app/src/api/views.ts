@@ -47,20 +47,20 @@ export function pingJobView(slug: string): void {
  * throws; prefers sendBeacon so the request survives page navigation.
  */
 export function pingApply(slug: string): void {
-  if (!slug || typeof window === "undefined") return;
+  if (!slug || typeof window === 'undefined') return;
   const url = `${getConfig().apiURL}/opportunities/${encodeURIComponent(slug)}/apply`;
   try {
-    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-      const blob = new Blob([""], { type: "text/plain" });
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([''], { type: 'text/plain' });
       const ok = navigator.sendBeacon(url, blob);
       if (ok) return;
     }
     void fetch(url, {
-      method: "POST",
+      method: 'POST',
       keepalive: true,
-      credentials: "include",
-      headers: { "Content-Type": "text/plain" },
-      body: "",
+      credentials: 'include',
+      headers: { 'Content-Type': 'text/plain' },
+      body: '',
     }).catch(() => {});
   } catch {
     // Never let telemetry crash the page.

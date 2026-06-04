@@ -1,5 +1,5 @@
-import type { PlanId } from "@/utils/plans";
-import { authRuntime } from "@/auth/runtime";
+import type { PlanId } from '@/utils/plans';
+import { authRuntime } from '@/auth/runtime';
 
 // Billing API calls. Two payment routes exist depending on the
 // user's geography: Polar.sh (card / international) and mobile money
@@ -19,7 +19,7 @@ export interface BillingPlan {
   usd_cents: number;
 }
 
-export type BillingRoute = "POLAR" | "M-PESA" | "AIRTEL" | "MTN";
+export type BillingRoute = 'POLAR' | 'M-PESA' | 'AIRTEL' | 'MTN';
 
 export interface BillingPlansResponse {
   country: string;
@@ -33,14 +33,14 @@ export interface BillingPlansResponse {
  */
 export async function fetchBillingPlans(): Promise<BillingPlansResponse> {
   const base = getCandidatesOrigin();
-  const res = await fetch(`${base}/billing/plans`, { credentials: "omit" });
+  const res = await fetch(`${base}/billing/plans`, { credentials: 'omit' });
   if (!res.ok) throw new Error(`fetchBillingPlans: HTTP ${res.status}`);
   return (await res.json()) as BillingPlansResponse;
 }
 
 // ── Checkout ──────────────────────────────────────────────────────
 
-export type CheckoutStatus = "redirect" | "pending" | "paid" | "failed";
+export type CheckoutStatus = 'redirect' | 'pending' | 'paid' | 'failed';
 
 export interface CheckoutResponse {
   status: CheckoutStatus;
@@ -64,14 +64,14 @@ export interface CheckoutCreateInput {
 
 /** POST /billing/checkout — auth'd. */
 export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
-  return authRuntime().fetch("/billing/checkout", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  return authRuntime().fetch('/billing/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      plan_id:    input.plan_id,
-      email:      input.email ?? "",
-      phone:      input.phone ?? "",
-      route_hint: input.route_hint ?? "",
+      plan_id: input.plan_id,
+      email: input.email ?? '',
+      phone: input.phone ?? '',
+      route_hint: input.route_hint ?? '',
     }),
   });
 }
@@ -85,9 +85,7 @@ export interface CheckoutStatusResponse {
 
 /** GET /billing/checkout/status?prompt_id=… — auth'd long-poll. */
 export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
-  return authRuntime().fetch(
-    `/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`,
-  );
+  return authRuntime().fetch(`/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`);
 }
 
 // ── Internal helper ───────────────────────────────────────────────
@@ -99,16 +97,16 @@ export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStat
  */
 export function getCandidatesOrigin(): string {
   const el =
-    typeof document !== "undefined"
+    typeof document !== 'undefined'
       ? document.querySelector<HTMLMetaElement>('meta[name="site-params"]')
       : null;
   if (el) {
     try {
       const d = JSON.parse(el.content) as { candidatesAPIURL?: string };
-      if (d.candidatesAPIURL) return d.candidatesAPIURL.replace(/\/$/, "");
+      if (d.candidatesAPIURL) return d.candidatesAPIURL.replace(/\/$/, '');
     } catch {
       /* fall through */
     }
   }
-  return "https://api.stawi.org";
+  return 'https://api.stawi.org';
 }

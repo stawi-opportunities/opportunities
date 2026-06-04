@@ -5,21 +5,21 @@
 
 export const QUERY_KEYS = {
   // Candidate profile (/me)
-  CANDIDATE_PROFILE: ["candidate-profile"] as const,
+  CANDIDATE_PROFILE: ['candidate-profile'] as const,
 
   // Subscription status (/me/subscription)
-  SUBSCRIPTION: ["me-subscription"] as const,
+  SUBSCRIPTION: ['me-subscription'] as const,
 
   // Public job search (/api/search)
-  SEARCH: (params: Record<string, unknown>) => ["search", params] as const,
+  SEARCH: (params: Record<string, unknown>) => ['search', params] as const,
 
   // Tiered discovery feed (/api/feed)
-  FEED: (params: Record<string, unknown>) => ["feed", params] as const,
+  FEED: (params: Record<string, unknown>) => ['feed', params] as const,
 
   // Per-job snapshot (R2 fetch)
   SNAPSHOT: (prefix: string, slug: string, lang: string) =>
-    ["snapshot", prefix, slug, lang] as const,
+    ['snapshot', prefix, slug, lang] as const,
 
   // Billing plans (/billing/plans)
-  BILLING_PLANS: ["billing-plans"] as const,
+  BILLING_PLANS: ['billing-plans'] as const,
 } as const;

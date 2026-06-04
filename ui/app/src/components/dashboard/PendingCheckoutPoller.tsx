@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { pollCheckoutStatus } from "@/api/billing";
-import { QUERY_KEYS } from "@/constants/queryKeys";
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { pollCheckoutStatus } from '@/api/billing';
+import { QUERY_KEYS } from '@/constants/queryKeys';
 
-const PENDING_PROMPT_KEY = "stawi.billing.pending_prompt_id";
+const PENDING_PROMPT_KEY = 'stawi.billing.pending_prompt_id';
 
 /**
  * Recovers a mid-flight checkout. When createCheckout returns
@@ -24,24 +24,32 @@ const PENDING_PROMPT_KEY = "stawi.billing.pending_prompt_id";
  */
 export function PendingCheckoutPoller() {
   const qc = useQueryClient();
-  const [state, setState] = useState<"idle" | "polling" | "paid" | "failed">("idle");
+  const [state, setState] = useState<'idle' | 'polling' | 'paid' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlPromptId = params.get("prompt_id");
+    const urlPromptId = params.get('prompt_id');
     const stashed = (() => {
-      try { return localStorage.getItem(PENDING_PROMPT_KEY); } catch { return null; }
+      try {
+        return localStorage.getItem(PENDING_PROMPT_KEY);
+      } catch {
+        return null;
+      }
     })();
     const promptId = urlPromptId ?? stashed;
     if (!promptId) return;
 
     if (urlPromptId && urlPromptId !== stashed) {
-      try { localStorage.setItem(PENDING_PROMPT_KEY, urlPromptId); } catch { /* private mode */ }
+      try {
+        localStorage.setItem(PENDING_PROMPT_KEY, urlPromptId);
+      } catch {
+        /* private mode */
+      }
     }
 
     let cancelled = false;
-    setState("polling");
+    setState('polling');
     const start = Date.now();
     const MAX_MS = 3 * 60 * 1000;
     const INTERVAL_MS = 4_000;
@@ -51,24 +59,32 @@ export function PendingCheckoutPoller() {
       try {
         const res = await pollCheckoutStatus(promptId);
         if (cancelled) return;
-        if (res.status === "paid") {
-          try { localStorage.removeItem(PENDING_PROMPT_KEY); } catch { /* ignore */ }
+        if (res.status === 'paid') {
+          try {
+            localStorage.removeItem(PENDING_PROMPT_KEY);
+          } catch {
+            /* ignore */
+          }
           await qc.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTION });
-          setState("paid");
+          setState('paid');
           const u = new URL(window.location.href);
-          u.searchParams.delete("prompt_id");
-          u.searchParams.set("billing", "success");
-          window.history.replaceState(null, "", u.toString());
+          u.searchParams.delete('prompt_id');
+          u.searchParams.set('billing', 'success');
+          window.history.replaceState(null, '', u.toString());
           return;
         }
-        if (res.status === "failed") {
-          try { localStorage.removeItem(PENDING_PROMPT_KEY); } catch { /* ignore */ }
+        if (res.status === 'failed') {
+          try {
+            localStorage.removeItem(PENDING_PROMPT_KEY);
+          } catch {
+            /* ignore */
+          }
           setError(res.error || "Payment didn't complete.");
-          setState("failed");
+          setState('failed');
           const u = new URL(window.location.href);
-          u.searchParams.delete("prompt_id");
-          u.searchParams.set("billing", "failed");
-          window.history.replaceState(null, "", u.toString());
+          u.searchParams.delete('prompt_id');
+          u.searchParams.set('billing', 'failed');
+          window.history.replaceState(null, '', u.toString());
           return;
         }
       } catch {
@@ -76,24 +92,26 @@ export function PendingCheckoutPoller() {
       }
       if (Date.now() - start > MAX_MS) {
         setError("We're still waiting for your payment provider. Try again from below.");
-        setState("failed");
+        setState('failed');
         return;
       }
       setTimeout(tick, INTERVAL_MS);
     };
     void tick();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [qc]);
 
-  if (state === "idle") return null;
-  if (state === "paid") {
+  if (state === 'idle') return null;
+  if (state === 'paid') {
     return (
       <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
         Payment received — your subscription is now active.
       </div>
     );
   }
-  if (state === "failed") {
+  if (state === 'failed') {
     return (
       <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
         {error ?? "Payment didn't complete."} You can retry below.
@@ -107,7 +125,8 @@ export function PendingCheckoutPoller() {
       aria-live="polite"
     >
       <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-      Waiting for your payment provider to confirm — this usually takes under a minute. You can leave this tab open; we'll update it automatically.
+      Waiting for your payment provider to confirm — this usually takes under a minute. You can
+      leave this tab open; we'll update it automatically.
     </div>
   );
 }

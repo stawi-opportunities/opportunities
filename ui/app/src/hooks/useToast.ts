@@ -1,4 +1,4 @@
-import { useToastStore, type ToastVariant } from "@/stores/toastStore";
+import { useToastStore, type ToastVariant } from '@/stores/toastStore';
 
 /**
  * Push a toast notification from any component.
