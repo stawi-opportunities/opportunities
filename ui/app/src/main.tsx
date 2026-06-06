@@ -1,23 +1,17 @@
-import { StrictMode, type ComponentType, Suspense } from 'react';
-import { createRoot } from 'react-dom/client';
-import { AppProviders } from '@/providers/AppProviders';
-
-// Every island is a [id → component] pair. Only the components whose mount
-// target exists on the page get rendered. Components are lazy-imported so
-// a page that only uses <Nav> doesn't pay for <Onboarding>'s form library.
-// Each island id corresponds to a `mount-*` element emitted by the Hugo
-// templates (see ui/layouts), e.g. #mount-home-redirect on the homepage.
+import { StrictMode, type ComponentType, Suspense } from "react";
+import { createRoot } from "react-dom/client";
+import { AppProviders } from "@/providers/AppProviders";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 
 type Island = {
   id: string;
-  component: () => Promise<{ default: ComponentType<unknown> }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  component: () => Promise<{ default: ComponentType<any> }>;
 };
 
 const islands: Island[] = [
   { id: 'mount-nav', component: () => import('@/components/Nav') },
   { id: 'mount-home-redirect', component: () => import('@/components/HomeRedirect') },
-  // All five opportunity kinds share the same React island; the kind is
-  // derived from window.location.pathname inside OpportunityDetail.
   { id: 'mount-job-detail', component: () => import('@/components/OpportunityDetail') },
   { id: 'mount-scholarship-detail', component: () => import('@/components/OpportunityDetail') },
   { id: 'mount-tender-detail', component: () => import('@/components/OpportunityDetail') },
@@ -42,9 +36,11 @@ async function hydrate(island: Island, el: HTMLElement) {
   createRoot(el).render(
     <StrictMode>
       <AppProviders>
-        <Suspense fallback={null}>
-          <Component />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <Component />
+          </Suspense>
+        </ErrorBoundary>
       </AppProviders>
     </StrictMode>
   );

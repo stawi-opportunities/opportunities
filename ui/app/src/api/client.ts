@@ -18,6 +18,10 @@ export class ApiError extends Error {
 
 export type ApiParams = Record<string, string | number | boolean | null | undefined>;
 
+<<<<<<< HEAD
+=======
+/** Maximum number of retries for transient 5xx errors. */
+>>>>>>> 3f870c1 (feat: UI updates — auth flow, SignupCta, Nav, Search, Onboarding, and layout partials)
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 100;
 
@@ -30,6 +34,10 @@ export async function jobsApiGet<T>(
     if (v === undefined || v === null || v === '') continue;
     url.searchParams.set(k, String(v));
   }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3f870c1 (feat: UI updates — auth flow, SignupCta, Nav, Search, Onboarding, and layout partials)
   let lastError!: ApiError;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (attempt > 0) {

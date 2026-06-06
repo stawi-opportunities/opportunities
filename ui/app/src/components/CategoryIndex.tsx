@@ -62,7 +62,14 @@ export default function CategoryIndex() {
             Discover opportunities across jobs, scholarships, tenders, deals and funding — all in one place.
           </p>
           <div className="mt-6 flex justify-center">
+<<<<<<< HEAD
             <a href="/search/" className="inline-flex items-center gap-2 rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800">
+=======
+            <a
+              href="/search/"
+              className="inline-flex items-center gap-2 rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800"
+            >
+>>>>>>> 3f870c1 (feat: UI updates — auth flow, SignupCta, Nav, Search, Onboarding, and layout partials)
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35" />
               </svg>
