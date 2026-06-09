@@ -95,3 +95,63 @@ func TestEvaluateList_JSONLDArray(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Go", "SQL"}, got)
 }
+
+func TestEvaluate_MicrodataContentAttr(t *testing.T) {
+	html := `<html><body><span itemprop="addressCountry" content="KE">Kenya</span></body></html>`
+	pc, err := NewPageContext("https://x.io", html, nil)
+	require.NoError(t, err)
+	got, err := Evaluate(FieldExtractor{From: []string{"microdata"}, Microdata: "addressCountry"}, pc)
+	require.NoError(t, err)
+	assert.Equal(t, "KE", got) // content attr wins over visible text
+}
+
+func TestEvaluate_MicrodataTextFallback(t *testing.T) {
+	html := `<html><body><h1 itemprop="title">Hello</h1></body></html>`
+	pc, err := NewPageContext("https://x.io", html, nil)
+	require.NoError(t, err)
+	got, err := Evaluate(FieldExtractor{From: []string{"microdata"}, Microdata: "title"}, pc)
+	require.NoError(t, err)
+	assert.Equal(t, "Hello", got)
+}
+
+func TestEvaluate_NextDataScalar(t *testing.T) {
+	html := `<html><head><script id="__NEXT_DATA__" type="application/json">{"props":{"title":"From Next"}}</script></head><body></body></html>`
+	pc, err := NewPageContext("https://x.io", html, nil)
+	require.NoError(t, err)
+	got, err := Evaluate(FieldExtractor{From: []string{"next_data"}, JSONPath: "$.props.title"}, pc)
+	require.NoError(t, err)
+	assert.Equal(t, "From Next", got)
+}
+
+func TestEvaluate_FloatScalarNoTrailingZero(t *testing.T) {
+	html := `<html><head><script type="application/ld+json">{"baseSalary":2026}</script></head><body></body></html>`
+	pc, err := NewPageContext("https://x.io", html, nil)
+	require.NoError(t, err)
+	got, err := Evaluate(FieldExtractor{From: []string{"json_ld"}, JSONPath: "$.baseSalary"}, pc)
+	require.NoError(t, err)
+	assert.Equal(t, "2026", got) // not "2026.0"
+}
+
+func TestEvaluate_TransformErrorPropagates(t *testing.T) {
+	html := `<html><head><script type="application/ld+json">{"deadline":"not a date"}</script></head><body></body></html>`
+	pc, err := NewPageContext("https://x.io", html, nil)
+	require.NoError(t, err)
+	_, err = Evaluate(FieldExtractor{From: []string{"json_ld"}, JSONPath: "$.deadline", Transform: []string{"parse_date"}}, pc)
+	require.Error(t, err)
+}
+
+func TestEvaluateList_NextDataArray(t *testing.T) {
+	html := `<html><head><script id="__NEXT_DATA__" type="application/json">{"tags":["a","b"]}</script></head><body></body></html>`
+	pc, err := NewPageContext("https://x.io", html, nil)
+	require.NoError(t, err)
+	got, err := EvaluateList(FieldExtractor{From: []string{"next_data"}, JSONPath: "$.tags"}, pc)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, got)
+}
+
+func TestEvaluateList_UnsupportedSourceErrors(t *testing.T) {
+	pc, err := NewPageContext("https://x.io", "<html><body></body></html>", nil)
+	require.NoError(t, err)
+	_, err = EvaluateList(FieldExtractor{From: []string{"const"}, Const: "x"}, pc)
+	require.Error(t, err)
+}

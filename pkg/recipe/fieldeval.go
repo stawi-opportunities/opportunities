@@ -66,6 +66,8 @@ func EvaluateList(fx FieldExtractor, pc *PageContext) ([]string, error) {
 			if list := jsonPathList(fx.JSONPath, pc.Record); len(list) > 0 {
 				return list, nil
 			}
+		default:
+			return nil, fmt.Errorf("EvaluateList: source %q is not supported for list fields", src)
 		}
 	}
 	return nil, nil
