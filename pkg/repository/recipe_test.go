@@ -24,14 +24,17 @@ func setupRecipeDB(t *testing.T) (*gorm.DB, context.Context) {
 	testhelpers.ApplyMigrationsDir(t, ctx, sqlDB, "../../db/migrations")
 	g, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
 	require.NoError(t, err)
-	// In production GORM AutoMigrate owns the `sources` schema; the SQL
-	// migrations only ship deltas. The 0001 init migration creates a legacy
-	// `sources` shape (BIGSERIAL id, no deleted_at) the current domain.Source
-	// model can't write to, so drop it and rebuild via AutoMigrate — the same
-	// pattern setupTraceAdminDB uses. The source_recipes table from migration
-	// 0021 is untouched; AutoMigrate re-adds sources.extraction_recipe.
+	// Production owns the crawler-managed tables (sources, source_recipes) via
+	// GORM AutoMigrate, not SQL — mirror that here. The 0001 init migration
+	// creates a legacy `sources` shape (BIGSERIAL id, no deleted_at) the current
+	// domain.Source model can't write to, so drop and rebuild via AutoMigrate.
+	// AutoMigrate also re-adds sources.extraction_recipe and builds the
+	// source_recipes table from repository.SourceRecipe; FinalizeSchema adds the
+	// one-active-per-source partial unique index — the same path as Migrate().
 	require.NoError(t, g.Exec(`DROP TABLE IF EXISTS sources CASCADE`).Error)
-	require.NoError(t, g.AutoMigrate(&domain.Source{}))
+	require.NoError(t, g.Exec(`DROP TABLE IF EXISTS source_recipes CASCADE`).Error)
+	require.NoError(t, g.AutoMigrate(&domain.Source{}, &repository.SourceRecipe{}))
+	require.NoError(t, repository.FinalizeSchema(g))
 	return g, ctx
 }
 
