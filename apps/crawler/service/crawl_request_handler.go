@@ -21,6 +21,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/recipeconn"
 	"github.com/stawi-opportunities/opportunities/pkg/content"
 	"github.com/stawi-opportunities/opportunities/pkg/crawlinbox"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -29,6 +30,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
@@ -109,6 +111,11 @@ type CrawlRequestDeps struct {
 	// nil disables the path entirely — every source falls back to
 	// the legacy direct-extract behaviour regardless of the flag.
 	Frontier frontier.Frontier
+
+	// RecipeRepo, when set, supplies per-source extraction recipes. A source
+	// with an active recipe crawls via the deterministic recipe Executor
+	// instead of its registered connector.
+	RecipeRepo *repository.RecipeRepository
 }
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
@@ -219,16 +226,39 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
-	conn, ok := h.deps.Registry.Get(src.Type)
-	if !ok {
-		h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
-			RequestID: req.RequestID,
-			SourceID:  req.SourceID,
-			URL:       src.BaseURL,
-			ErrorCode: "connector_not_registered",
-		})
-		log.WithField("source_type", src.Type).Warn("crawl.request: no connector")
-		return nil
+	// Recipe path: a source with an active extraction recipe crawls via
+	// the deterministic recipe Executor rather than its registered
+	// connector. When this fires, conn stays nil and the connector-
+	// resolution + checkpoint-resume block below is skipped — the
+	// ConnectorIterator is neither Checkpointable nor Resumable, so no
+	// checkpoint rows are written or read.
+	var iter connectors.CrawlIterator
+	usedRecipe := false
+	if h.deps.RecipeRepo != nil {
+		rec, rErr := h.deps.RecipeRepo.Active(ctx, src.ID)
+		if rErr != nil {
+			log.WithError(rErr).Warn("crawl.request: recipe lookup failed; using connector")
+		} else if rec != nil {
+			iter = recipeconn.NewConnectorIterator(
+				recipe.NewExecutor(rec, recipe.NewHTTPFetcher(h.deps.PageFetcher)), *src)
+			usedRecipe = true
+		}
+	}
+
+	var conn connectors.Connector
+	if !usedRecipe {
+		var ok bool
+		conn, ok = h.deps.Registry.Get(src.Type)
+		if !ok {
+			h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
+				RequestID: req.RequestID,
+				SourceID:  req.SourceID,
+				URL:       src.BaseURL,
+				ErrorCode: "connector_not_registered",
+			})
+			log.WithField("source_type", src.Type).Warn("crawl.request: no connector")
+			return nil
+		}
 	}
 
 	// Audit ledger: open a crawl_jobs row. Idempotent on idempotency_key
@@ -269,28 +299,29 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	// fresh records. Soft-fail on the lookup — a Postgres outage
 	// degrades resumption to "always start fresh" rather than stalling
 	// the crawl.
-	var iter connectors.CrawlIterator
-	var prevCheckpoint *connectors.CheckpointState
-	if h.deps.CheckpointRepo != nil {
-		cp, stale, cpErr := h.deps.CheckpointRepo.Get(ctx, src.ID, string(conn.Type()))
-		switch {
-		case cpErr != nil:
-			log.WithError(cpErr).Warn("crawl.request: checkpoint Get failed")
-		case cp != nil && !stale:
-			prevCheckpoint = &connectors.CheckpointState{
-				Cursor:  cp.Cursor,
-				PageIdx: cp.PageIdx,
-				LastURL: cp.LastURL,
+	if !usedRecipe {
+		var prevCheckpoint *connectors.CheckpointState
+		if h.deps.CheckpointRepo != nil {
+			cp, stale, cpErr := h.deps.CheckpointRepo.Get(ctx, src.ID, string(conn.Type()))
+			switch {
+			case cpErr != nil:
+				log.WithError(cpErr).Warn("crawl.request: checkpoint Get failed")
+			case cp != nil && !stale:
+				prevCheckpoint = &connectors.CheckpointState{
+					Cursor:  cp.Cursor,
+					PageIdx: cp.PageIdx,
+					LastURL: cp.LastURL,
+				}
+				log.WithField("page_idx", cp.PageIdx).Info("crawl.request: resuming from checkpoint")
+			case cp != nil && stale:
+				log.WithField("source_id", src.ID).Debug("crawl.request: discarding stale checkpoint")
 			}
-			log.WithField("page_idx", cp.PageIdx).Info("crawl.request: resuming from checkpoint")
-		case cp != nil && stale:
-			log.WithField("source_id", src.ID).Debug("crawl.request: discarding stale checkpoint")
 		}
-	}
-	if resumable, ok := conn.(connectors.ResumableConnector); ok && prevCheckpoint != nil {
-		iter = resumable.CrawlResume(ctx, *src, prevCheckpoint)
-	} else {
-		iter = conn.Crawl(ctx, *src)
+		if resumable, ok := conn.(connectors.ResumableConnector); ok && prevCheckpoint != nil {
+			iter = resumable.CrawlResume(ctx, *src, prevCheckpoint)
+		} else {
+			iter = conn.Crawl(ctx, *src)
+		}
 	}
 
 	var (
@@ -353,7 +384,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			if cur := iter.Cursor(); cur != nil {
 				lastCursor = string(cur)
 			}
-			if h.deps.CheckpointRepo != nil {
+			if h.deps.CheckpointRepo != nil && conn != nil {
 				if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
 					if cp := cpi.Checkpoint(); cp != nil {
 						if putErr := h.deps.CheckpointRepo.Put(
@@ -547,7 +578,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		// but the crawl itself keeps going. The clear at end-of-iter
 		// also soft-fails so a stuck row doesn't block fresh crawls
 		// (operator can DELETE /admin/checkpoints/{src}/{type}).
-		if h.deps.CheckpointRepo != nil {
+		if h.deps.CheckpointRepo != nil && conn != nil {
 			if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
 				if cp := cpi.Checkpoint(); cp != nil {
 					if putErr := h.deps.CheckpointRepo.Put(
@@ -579,7 +610,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	// Iterator errors leave the row in place so the next redelivery
 	// resumes from where we crashed. Best-effort: a delete failure is
 	// not worth failing the surrounding crawl.
-	if iterErr == nil && h.deps.CheckpointRepo != nil {
+	if iterErr == nil && h.deps.CheckpointRepo != nil && conn != nil {
 		if _, ok := iter.(connectors.CheckpointableIterator); ok {
 			if clrErr := h.deps.CheckpointRepo.Clear(ctx, src.ID, string(conn.Type())); clrErr != nil {
 				log.WithError(clrErr).Warn("crawl.request: checkpoint Clear failed")
