@@ -100,3 +100,58 @@ func drain(t *testing.T, e *Executor, src domain.Source) ([]domain.ExternalOppor
 		st = next
 	}
 }
+
+func TestExecutor_Crawl_APICursor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Query().Get("cur") {
+		case "":
+			_, _ = w.Write([]byte(`{"next":"c2","jobs":[{"title":"A","description":"A description long enough to pass the fifty character minimum gate ok.","company":"X","apply":"https://x.io/a","country":"KE"}]}`))
+		case "c2":
+			_, _ = w.Write([]byte(`{"next":"","jobs":[{"title":"B","description":"Another description that also clears the fifty character minimum gate ok.","company":"Y","apply":"https://x.io/b","country":"KE"}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"jobs":[]}`))
+		}
+	}))
+	defer srv.Close()
+
+	rec := func(p string) FieldExtractor { return FieldExtractor{From: []string{"record"}, JSONPath: p} }
+	r := &Recipe{Acquisition: "api", Kind: KindRule{Mode: "source_default"},
+		List: ListRule{Mode: "api", Endpoint: "/api/jobs", ItemsPath: "$.jobs",
+			Pagination: Pagination{Mode: "cursor", Param: "cur", MaxPages: 10, Cursor: FieldExtractor{From: []string{"record"}, JSONPath: "$.next"}}},
+		Detail: DetailRule{RecordSource: "record", Title: rec("$.title"), Description: rec("$.description"),
+			IssuingEntity: rec("$.company"), ApplyURL: rec("$.apply"), AnchorCountry: rec("$.country")}}
+	src := jobSource()
+	src.BaseURL = srv.URL
+	e := NewExecutor(r, httptestFetcher{client: srv.Client()})
+
+	all, err := drain(t, e, src)
+	require.NoError(t, err)
+	require.Len(t, all, 2)
+	assert.Equal(t, "A", all[0].Title)
+	assert.Equal(t, "B", all[1].Title)
+}
+
+func TestExecutor_Crawl_APICursor_StopsOnRepeat(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"next":"same","jobs":[{"title":"A","description":"A description long enough to pass the fifty character minimum gate ok.","company":"X","apply":"https://x.io/a","country":"KE"}]}`))
+	}))
+	defer srv.Close()
+
+	rec := func(p string) FieldExtractor { return FieldExtractor{From: []string{"record"}, JSONPath: p} }
+	r := &Recipe{Acquisition: "api", Kind: KindRule{Mode: "source_default"},
+		List: ListRule{Mode: "api", Endpoint: "/api/jobs", ItemsPath: "$.jobs",
+			Pagination: Pagination{Mode: "cursor", Param: "cur", MaxPages: 50, Cursor: FieldExtractor{From: []string{"record"}, JSONPath: "$.next"}}},
+		Detail: DetailRule{RecordSource: "record", Title: rec("$.title"), Description: rec("$.description"),
+			IssuingEntity: rec("$.company"), ApplyURL: rec("$.apply"), AnchorCountry: rec("$.country")}}
+	src := jobSource()
+	src.BaseURL = srv.URL
+	e := NewExecutor(r, httptestFetcher{client: srv.Client()})
+
+	_, err := drain(t, e, src)
+	require.NoError(t, err)
+	assert.Equal(t, 2, calls) // stops once the cursor repeats, not at MaxPages
+}

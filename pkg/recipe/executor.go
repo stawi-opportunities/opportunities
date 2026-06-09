@@ -91,7 +91,7 @@ func (e *Executor) htmlPage(ctx context.Context, src domain.Source, listURL stri
 		}
 		body, st, ferr := e.fetcher.Get(ctx, du)
 		if ferr != nil {
-			return items, raw, status, listPC, ferr
+			continue // skip a detail page we can't fetch; keep crawling
 		}
 		if st < 200 || st >= 300 {
 			continue
@@ -132,8 +132,9 @@ func (e *Executor) collectDetailURLs(listPC *PageContext, listURL string) []stri
 	return urls
 }
 
-// sameHost reports whether target shares base's host (SSRF guard). A target
-// that fails to parse, or a base without a host, is treated as not-same-host.
+// sameHost reports whether target shares base's host AND uses an http(s)
+// scheme (SSRF guard). A target that fails to parse, has a non-http scheme, or
+// a base without a host, is treated as not-same-host.
 func sameHost(base, target string) bool {
 	b, err := url.Parse(base)
 	if err != nil || b.Host == "" {
@@ -141,6 +142,9 @@ func sameHost(base, target string) bool {
 	}
 	t, err := url.Parse(target)
 	if err != nil {
+		return false
+	}
+	if t.Scheme != "http" && t.Scheme != "https" {
 		return false
 	}
 	return strings.EqualFold(b.Host, t.Host)
@@ -196,7 +200,8 @@ func (e *Executor) apiPaged(ctx context.Context, src domain.Source, st PageState
 		if !p.Cursor.empty() && root != nil {
 			cur = jsonPathScalar(p.Cursor.JSONPath, root)
 		}
-		if cur == "" || len(items) == 0 || pg >= maxPages {
+		// Stop on: no cursor, no progress (cursor didn't advance), empty page, or cap.
+		if cur == "" || cur == st.cursor || len(items) == 0 || pg >= maxPages {
 			return items, raw, status, PageState{}, true, nil
 		}
 		return items, raw, status, PageState{page: pg + 1, cursor: cur}, false, nil
