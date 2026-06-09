@@ -45,7 +45,7 @@ func (h headeredClient) Get(ctx context.Context, url string, _ map[string]string
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var b []byte
 	tmp := make([]byte, 2048)
 	for {

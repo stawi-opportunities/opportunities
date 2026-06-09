@@ -55,9 +55,7 @@ func NewPageContext(pageURL, html string, record map[string]any) (*PageContext, 
 	// JSON-LD: every <script type="application/ld+json">. Objects are kept;
 	// arrays and @graph wrappers are flattened to their object members.
 	doc.Find(`script[type="application/ld+json"]`).Each(func(_ int, s *goquery.Selection) {
-		for _, obj := range parseJSONLDBlock(s.Text()) {
-			pc.JSONLD = append(pc.JSONLD, obj)
-		}
+		pc.JSONLD = append(pc.JSONLD, parseJSONLDBlock(s.Text())...)
 	})
 
 	// __NEXT_DATA__ / __NUXT__-style state blob. Prefer the precise Next.js

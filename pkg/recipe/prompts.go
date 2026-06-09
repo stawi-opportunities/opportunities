@@ -52,7 +52,7 @@ func (g *Generator) buildGenerationPrompt(src domain.Source, samples []SamplePag
 	b.WriteString("\n\nTarget opportunity kind(s) for THIS source and their field schemas:\n")
 	for _, k := range []string(src.Kinds) {
 		spec := g.reg.Resolve(k)
-		b.WriteString(fmt.Sprintf("\n--- kind=%s ---\n", k))
+		fmt.Fprintf(&b, "\n--- kind=%s ---\n", k)
 		if spec.ExtractionPrompt != "" {
 			b.WriteString(spec.ExtractionPrompt)
 			b.WriteString("\n")
@@ -67,7 +67,7 @@ func (g *Generator) buildGenerationPrompt(src domain.Source, samples []SamplePag
 
 	b.WriteString("\nSample pages from this source:\n")
 	for i, s := range samples {
-		b.WriteString(fmt.Sprintf("\n=== SAMPLE %d: %s ===\n", i+1, s.URL))
+		fmt.Fprintf(&b, "\n=== SAMPLE %d: %s ===\n", i+1, s.URL)
 		b.WriteString(truncate(s.HTML, g.sampleChars))
 		b.WriteString("\n")
 	}
