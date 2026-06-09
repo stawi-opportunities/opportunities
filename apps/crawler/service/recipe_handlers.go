@@ -22,6 +22,11 @@ type SourceByID interface {
 	GetByID(ctx context.Context, id string) (*domain.Source, error)
 }
 
+// SourceFlagger marks a source for operator review (repository.SourceRepository satisfies it).
+type SourceFlagger interface {
+	FlagNeedsTuning(ctx context.Context, id string, needsTuning bool) error
+}
+
 // RecipeHandlerDeps wires the generate/regenerate handlers.
 type RecipeHandlerDeps struct {
 	Sources       SourceByID
@@ -29,9 +34,9 @@ type RecipeHandlerDeps struct {
 	Generator     *recipe.Generator
 	Registry      *opportunity.Registry
 	Fetcher       recipe.Fetcher
+	Flagger       SourceFlagger
 	Model         string
 	PassThreshold float64
-	SampleCount   int
 }
 
 // RecipeGenerateHandler handles recipe.generate.v1: synthesize, validate, activate.
@@ -77,8 +82,13 @@ func (h *RecipeGenerateHandler) generate(ctx context.Context, sourceID string, s
 	report := recipe.ValidateRecipe(rec, *src, samples, h.deps.Registry)
 	if report.PassRate < h.deps.PassThreshold {
 		log.WithField("source", sourceID).WithField("pass_rate", report.PassRate).
-			Warn("recipe.generate: below pass threshold; not activating")
-		return fmt.Errorf("recipe.generate: pass rate %.2f < %.2f", report.PassRate, h.deps.PassThreshold)
+			Warn("recipe.generate: below pass threshold; flagging for operator review")
+		if h.deps.Flagger != nil {
+			if ferr := h.deps.Flagger.FlagNeedsTuning(ctx, sourceID, true); ferr != nil {
+				log.WithError(ferr).Warn("recipe.generate: flag needs_tuning failed")
+			}
+		}
+		return nil // ack: regenerating from the same samples won't help; operator reviews
 	}
 	if err := h.deps.Recipes.Activate(ctx, sourceID, rec, report.PassRate, h.deps.Model, report); err != nil {
 		return fmt.Errorf("recipe.generate: activate: %w", err)

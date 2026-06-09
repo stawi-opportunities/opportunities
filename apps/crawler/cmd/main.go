@@ -383,6 +383,8 @@ func main() {
 	// recipe.regenerate.v1 so the generator re-synthesises off fresh pages.
 	// Only wired when recipe generation is enabled.
 	if cfg.RecipeEnabled {
+		pageDoneH.RegenRejectRate = cfg.RecipeRegenRejectRate
+		pageDoneH.RegenMinPages = cfg.RecipeRegenMinPages
 		pageDoneH.EmitRegenerate = func(emitCtx context.Context, sourceID, reason string) {
 			evtMgr := svc.EventsManager()
 			if evtMgr == nil {
@@ -466,8 +468,8 @@ func main() {
 		recipeGen := recipe.NewGenerator(extractor, recipe.NewHTTPFetcher(httpClient), reg, cfg.RecipeMaxGenAttempts)
 		recipeDeps := service.RecipeHandlerDeps{
 			Sources: sourceRepo, Recipes: recipeRepo, Generator: recipeGen, Registry: reg,
-			Fetcher: recipe.NewHTTPFetcher(httpClient), Model: cfg.InferenceModel,
-			PassThreshold: cfg.RecipePassThreshold, SampleCount: cfg.RecipeSampleCount,
+			Fetcher: recipe.NewHTTPFetcher(httpClient), Flagger: sourceRepo, Model: cfg.InferenceModel,
+			PassThreshold: cfg.RecipePassThreshold,
 		}
 		handlers = append(handlers,
 			service.NewRecipeGenerateHandler(recipeDeps),

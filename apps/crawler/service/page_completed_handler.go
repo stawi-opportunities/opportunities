@@ -33,11 +33,18 @@ type SourceHealthRepo interface {
 type PageCompletedHandler struct {
 	repo SourceHealthRepo
 
-	// EmitRegenerate, when non-nil, is invoked from the high-reject-rate
-	// branch to trigger a recipe regeneration for drift recovery. Only
-	// called for recipe-driven sources (ExtractionRecipe set). nil disables
-	// the drift trigger entirely (e.g. when RECIPE_ENABLED is off).
+	// EmitRegenerate, when non-nil, is invoked to trigger a recipe
+	// regeneration for drift recovery. Only called for recipe-driven
+	// sources (ExtractionRecipe set). nil disables the drift trigger
+	// entirely (e.g. when RECIPE_ENABLED is off).
 	EmitRegenerate func(ctx context.Context, sourceID, reason string)
+
+	// RegenRejectRate / RegenMinPages gate the regenerate trigger
+	// independently of the (hardcoded 0.8) needs_tuning flag. A
+	// regenerate is emitted only when JobsFound >= RegenMinPages and
+	// rejectRate >= RegenRejectRate. Zero RegenRejectRate disables it.
+	RegenRejectRate float64
+	RegenMinPages   int
 }
 
 // NewPageCompletedHandler wires the handler.
@@ -119,12 +126,6 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 		if err := h.repo.UpdateNextCrawl(ctx, src.ID, next, now, src.HealthScore); err != nil {
 			log.WithError(err).Warn("page-completed: UpdateNextCrawl failed (tuning path)")
 		}
-		// Drift recovery: if this is a recipe-driven source, kick off a
-		// regeneration rather than waiting for an operator to clear the
-		// needs_tuning flag manually. No-op when the trigger is unwired.
-		if h.EmitRegenerate != nil && src.ExtractionRecipe != "" && src.ExtractionRecipe != "{}" {
-			h.EmitRegenerate(ctx, src.ID, "drift: high reject rate")
-		}
 
 	default:
 		newHealth := src.HealthScore + 0.1
@@ -142,6 +143,15 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 		if err := h.repo.UpdateNextCrawl(ctx, src.ID, next, now, newHealth); err != nil {
 			log.WithError(err).Warn("page-completed: UpdateNextCrawl failed (success path)")
 		}
+	}
+
+	// Drift recovery: independently of the needs_tuning flag (fixed 0.8),
+	// emit a recipe regeneration once the configurable reject-rate drift
+	// thresholds are crossed for a recipe-driven source. No-op when the
+	// trigger is unwired or RegenRejectRate is zero (disabled).
+	if h.EmitRegenerate != nil && h.RegenRejectRate > 0 && p.JobsFound >= h.RegenMinPages &&
+		rejectRate >= h.RegenRejectRate && src.ExtractionRecipe != "" && src.ExtractionRecipe != "{}" {
+		h.EmitRegenerate(ctx, src.ID, fmt.Sprintf("reject_rate=%.2f", rejectRate))
 	}
 
 	return nil

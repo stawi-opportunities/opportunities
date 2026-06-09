@@ -80,7 +80,7 @@ func TestRecipeGenerateHandler_GeneratesValidatesActivates(t *testing.T) {
 	gen := recipe.NewGenerator(fakeGenLLM{reply: recipeJSON}, fetcher, reg, 3)
 	h := NewRecipeGenerateHandler(RecipeHandlerDeps{
 		Sources: fakeSourceByID{src: src}, Recipes: store, Generator: gen, Registry: reg,
-		Fetcher: fetcher, PassThreshold: 0.8, SampleCount: 2,
+		Fetcher: fetcher, PassThreshold: 0.8,
 	})
 
 	env := eventsv1.NewEnvelope(eventsv1.TopicRecipeGenerate, eventsv1.RecipeGenerateV1{SourceID: "s1", SampleURLs: []string{srv.URL}})
@@ -91,4 +91,41 @@ func TestRecipeGenerateHandler_GeneratesValidatesActivates(t *testing.T) {
 	require.NotNil(t, store.activated)
 	assert.Equal(t, "structured_data", store.activated.Acquisition)
 	assert.GreaterOrEqual(t, store.passRate, 0.8)
+}
+
+type fakeFlagger struct{ flagged bool }
+
+func (f *fakeFlagger) FlagNeedsTuning(_ context.Context, _ string, v bool) error {
+	f.flagged = v
+	return nil
+}
+
+func TestRecipeGenerateHandler_BelowThresholdFlagsAndAcks(t *testing.T) {
+	// Sample page has NO structured data, so the recipe extracts nothing → pass-rate 0.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><body>no structured data</body></html>`))
+	}))
+	defer srv.Close()
+	reg, err := opportunity.LoadFromDir("../../../definitions/opportunity-kinds")
+	if err != nil {
+		t.Skipf("kinds: %v", err)
+	}
+	recipeJSON := `{"acquisition":"structured_data","kind":{"mode":"source_default"},"list":{"mode":"selector","item_selector":".c","link":{"from":["selector"],"selector":"a","attr":"href"},"pagination":{"mode":"none"}},"detail":{"record_source":"json_ld","title":{"from":["json_ld"],"json_path":"$.title"},"description":{"from":["json_ld"],"json_path":"$.description"},"issuing_entity":{"from":["json_ld"],"json_path":"$.c"},"apply_url":{"from":["json_ld"],"json_path":"$.u"},"anchor_country":{"from":["json_ld"],"json_path":"$.k"}}}`
+	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "KE"}
+	src.ID = "s2"
+	src.Kinds = []string{"job"}
+	store := &fakeRecipeStore{}
+	flagger := &fakeFlagger{}
+	fetcher := recipe.NewHTTPFetcher(headeredClient{c: srv.Client()})
+	gen := recipe.NewGenerator(fakeGenLLM{reply: recipeJSON}, fetcher, reg, 3)
+	h := NewRecipeGenerateHandler(RecipeHandlerDeps{
+		Sources: fakeSourceByID{src: src}, Recipes: store, Generator: gen, Registry: reg,
+		Fetcher: fetcher, Flagger: flagger, PassThreshold: 0.8,
+	})
+	env := eventsv1.NewEnvelope(eventsv1.TopicRecipeGenerate, eventsv1.RecipeGenerateV1{SourceID: "s2", SampleURLs: []string{srv.URL}})
+	body, _ := json.Marshal(env)
+	raw := json.RawMessage(body)
+	require.NoError(t, h.Execute(context.Background(), &raw)) // ACKs (no error)
+	assert.Nil(t, store.activated)                            // did not activate
+	assert.True(t, flagger.flagged)                           // flagged for operator
 }

@@ -145,7 +145,7 @@ type CrawlerConfig struct {
 	// the feature ships dormant (RECIPE_ENABLED=false) and is enabled
 	// per-deploy. See docs/superpowers/specs/2026-06-09-ai-generated-extraction-recipes-design.md §5H.
 	RecipeEnabled          bool    `env:"RECIPE_ENABLED"            envDefault:"false"`
-	RecipeSampleCount      int     `env:"RECIPE_SAMPLE_COUNT"       envDefault:"4"`
+	RecipeSampleCount      int     `env:"RECIPE_SAMPLE_COUNT"       envDefault:"4"` // reserved for Plan 5 backfill sampling
 	RecipePassThreshold    float64 `env:"RECIPE_PASS_THRESHOLD"     envDefault:"0.8"`
 	RecipeMaxGenAttempts   int     `env:"RECIPE_MAX_GEN_ATTEMPTS"   envDefault:"3"`
 	RecipeRegenRejectRate  float64 `env:"RECIPE_REGEN_REJECT_RATE"  envDefault:"0.5"`
