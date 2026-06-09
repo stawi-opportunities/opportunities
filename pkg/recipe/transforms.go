@@ -20,8 +20,14 @@ type transformFn func(string, transformCtx) (string, error)
 
 var wsRe = regexp.MustCompile(`\s+`)
 var moneyStripRe = regexp.MustCompile(`[^0-9.\-]`)
+var moneyValidRe = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 
 // dateLayouts are tried in order by parse_date. Output is always RFC3339 (UTC).
+//
+// NOTE: slash-formatted dates are interpreted DAY-first ("02/01/2006" before
+// "01/02/2006"), so "01/02/2026" parses as 1 Feb 2026, not 2 Jan. This is a
+// deliberate default; making it locale/recipe-configurable is a follow-up
+// (the recipe's source typically knows its locale).
 var dateLayouts = []string{
 	time.RFC3339, "2006-01-02T15:04:05", "2006-01-02",
 	"02/01/2006", "01/02/2006", "January 2, 2006", "Jan 2, 2006", "2 January 2006",
@@ -41,21 +47,26 @@ var transformRegistry = map[string]transformFn{
 		return strings.TrimSpace(wsRe.ReplaceAllString(doc.Text(), " ")), nil
 	},
 	"absolute_url": func(s string, tc transformCtx) (string, error) {
-		if s == "" || tc.BaseURL == "" {
+		trimmed := strings.TrimSpace(s)
+		if trimmed == "" || tc.BaseURL == "" {
 			return s, nil
 		}
 		base, err := url.Parse(tc.BaseURL)
 		if err != nil {
 			return s, nil
 		}
-		ref, err := url.Parse(strings.TrimSpace(s))
+		ref, err := url.Parse(trimmed)
 		if err != nil {
 			return s, nil
 		}
 		return base.ResolveReference(ref).String(), nil
 	},
 	"parse_money": func(s string, _ transformCtx) (string, error) {
-		return moneyStripRe.ReplaceAllString(s, ""), nil
+		stripped := moneyStripRe.ReplaceAllString(s, "")
+		if !moneyValidRe.MatchString(stripped) {
+			return "", fmt.Errorf("parse_money: cannot parse %q as a number", s)
+		}
+		return stripped, nil
 	},
 	"parse_date": func(s string, _ transformCtx) (string, error) {
 		s = strings.TrimSpace(s)

@@ -27,6 +27,11 @@ func TestApplyTransforms(t *testing.T) {
 		{name: "parse_date iso", in: "2026-06-09T10:00:00Z", names: []string{"parse_date"}, want: "2026-06-09T10:00:00Z"},
 		{name: "parse_date ymd", in: "2026-06-09", names: []string{"parse_date"}, want: "2026-06-09T00:00:00Z"},
 		{name: "unknown transform errors", in: "x", names: []string{"nope"}, wantErr: true},
+		{name: "parse_date slash is day-first", in: "01/02/2026", names: []string{"parse_date"}, want: "2026-02-01T00:00:00Z"},
+		{name: "parse_date unparseable errors", in: "not a date", names: []string{"parse_date"}, wantErr: true},
+		{name: "parse_money multi-dot errors", in: "1.2.3", names: []string{"parse_money"}, wantErr: true},
+		{name: "parse_money stray minus errors", in: "5-3", names: []string{"parse_money"}, wantErr: true},
+		{name: "absolute_url whitespace passes through", in: "   ", names: []string{"absolute_url"}, base: "https://x.io/list", want: "   "},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
