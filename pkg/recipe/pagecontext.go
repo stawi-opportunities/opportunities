@@ -60,15 +60,26 @@ func NewPageContext(pageURL, html string, record map[string]any) (*PageContext, 
 		}
 	})
 
-	// __NEXT_DATA__ / __NUXT__-style state blob (first parseable wins).
-	doc.Find(`script[type="application/json"]`).EachWithBreak(func(_ int, s *goquery.Selection) bool {
+	// __NEXT_DATA__ / __NUXT__-style state blob. Prefer the precise Next.js
+	// id; fall back to the first parseable application/json for other
+	// frameworks. This avoids grabbing an unrelated json blob (breadcrumb,
+	// config) that happens to appear first.
+	if s := doc.Find(`script#__NEXT_DATA__`).First(); s.Length() > 0 {
 		var m map[string]any
 		if err := json.Unmarshal([]byte(strings.TrimSpace(s.Text())), &m); err == nil && len(m) > 0 {
 			pc.NextData = m
-			return false
 		}
-		return true
-	})
+	}
+	if pc.NextData == nil {
+		doc.Find(`script[type="application/json"]`).EachWithBreak(func(_ int, s *goquery.Selection) bool {
+			var m map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(s.Text())), &m); err == nil && len(m) > 0 {
+				pc.NextData = m
+				return false
+			}
+			return true
+		})
+	}
 
 	return pc, nil
 }
@@ -95,6 +106,7 @@ func flattenJSONLD(raw any) []map[string]any {
 			for _, item := range g {
 				out = append(out, flattenJSONLD(item)...)
 			}
+			return out // members are the useful objects; drop the @graph wrapper
 		}
 		out = append(out, v)
 	case []any:
