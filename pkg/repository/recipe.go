@@ -4,25 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
-	"github.com/rs/xid"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/recipe"
 	"gorm.io/gorm"
 )
 
-// SourceRecipe is one row of the source_recipes history table.
+// SourceRecipe is one row of the source_recipes history table. It embeds
+// domain.BaseModel like every other persisted model (xid PK + timestamps +
+// soft-delete, id auto-assigned in BeforeCreate). The struct drives the schema
+// via GORM AutoMigrate (see repository.Migrate); the partial unique index
+// enforcing one active recipe per source is added in FinalizeSchema (GORM tags
+// can't express a WHERE-filtered index).
 type SourceRecipe struct {
-	ID               string          `gorm:"column:id;primaryKey"`
-	SourceID         string          `gorm:"column:source_id"`
-	Version          int             `gorm:"column:version"`
-	Recipe           json.RawMessage `gorm:"column:recipe;type:jsonb"`
-	Status           string          `gorm:"column:status"`
-	PassRate         float64         `gorm:"column:pass_rate"`
-	Model            string          `gorm:"column:model"`
+	domain.BaseModel
+	SourceID         string          `gorm:"column:source_id;type:varchar(20);not null;index:idx_source_recipes_source,priority:1"`
+	Version          int             `gorm:"column:version;not null;index:idx_source_recipes_source,priority:2,sort:desc"`
+	Recipe           json.RawMessage `gorm:"column:recipe;type:jsonb;not null"`
+	Status           string          `gorm:"column:status;type:varchar(16);not null;default:active"`
+	PassRate         float64         `gorm:"column:pass_rate;not null;default:0"`
+	Model            string          `gorm:"column:model;type:varchar(128);not null;default:''"`
 	ValidationReport json.RawMessage `gorm:"column:validation_report;type:jsonb"`
-	CreatedAt        time.Time       `gorm:"column:created_at"`
 }
 
 func (SourceRecipe) TableName() string { return "source_recipes" }
@@ -97,10 +99,11 @@ func (r *RecipeRepository) Activate(ctx context.Context, sourceID string, rec *r
 			Update("status", "superseded").Error; err != nil {
 			return err
 		}
+		// BaseModel.BeforeCreate assigns the xid; GORM sets created_at/updated_at.
 		row := &SourceRecipe{
-			ID: xid.New().String(), SourceID: sourceID, Version: next,
+			SourceID: sourceID, Version: next,
 			Recipe: recJSON, Status: "active", PassRate: passRate, Model: model,
-			ValidationReport: reportJSON, CreatedAt: time.Now().UTC(),
+			ValidationReport: reportJSON,
 		}
 		if err := tx.Create(row).Error; err != nil {
 			return err
