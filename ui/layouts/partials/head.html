@@ -34,7 +34,7 @@
       Cascade falls back to inference. */}}
 {{ if .Params.country }}
 {{ $cc := upper .Params.country }}
-{{ $shard := index (where .Site.Data.locale_shards.shards "country" $cc) 0 }}
+{{ $shard := index (where hugo.Data.locale_shards.shards "country" $cc) 0 }}
 {{ $langs := cond (ne $shard nil) $shard.languages (slice "en") }}
 <meta name="visitor-locale" content='{{ dict "country" $cc "languages" $langs | jsonify }}'>
 {{ end }}

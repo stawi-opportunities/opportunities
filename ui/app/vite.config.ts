@@ -57,6 +57,14 @@ export default defineConfig(({ command }) => ({
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
+        // Split large, stable vendors out of the entry chunk so the main
+        // bundle stays under Vite's 500 kB warning threshold and these
+        // rarely-changing libs cache independently across deploys.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react/jsx-runtime'],
+          'react-query': ['@tanstack/react-query'],
+          analytics: ['posthog-js'],
+        },
       },
     },
   },

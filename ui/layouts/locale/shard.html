@@ -1,6 +1,6 @@
 {{ define "main" }}
 {{ $cc := upper (.Params.country | default "") }}
-{{ $shard := index (where .Site.Data.locale_shards.shards "country" $cc) 0 }}
+{{ $shard := index (where hugo.Data.locale_shards.shards "country" $cc) 0 }}
 {{ $name := cond (ne $shard nil) $shard.name $cc }}
 {{ $langs := cond (ne $shard nil) $shard.languages (slice "en") }}
 
