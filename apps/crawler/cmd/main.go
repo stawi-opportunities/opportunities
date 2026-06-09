@@ -31,6 +31,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
@@ -377,6 +378,25 @@ func main() {
 		RecipeRepo:        recipeRepo,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
+	// Drift-triggered recipe regeneration: when a recipe-driven source's
+	// reject rate crosses the threshold, the page-completed handler emits
+	// recipe.regenerate.v1 so the generator re-synthesises off fresh pages.
+	// Only wired when recipe generation is enabled.
+	if cfg.RecipeEnabled {
+		pageDoneH.RegenRejectRate = cfg.RecipeRegenRejectRate
+		pageDoneH.RegenMinPages = cfg.RecipeRegenMinPages
+		pageDoneH.EmitRegenerate = func(emitCtx context.Context, sourceID, reason string) {
+			evtMgr := svc.EventsManager()
+			if evtMgr == nil {
+				return
+			}
+			env := eventsv1.NewEnvelope(eventsv1.TopicRecipeRegenerate, eventsv1.RecipeRegenerateV1{SourceID: sourceID})
+			if err := evtMgr.Emit(emitCtx, eventsv1.TopicRecipeRegenerate, env); err != nil {
+				util.Log(emitCtx).WithError(err).WithField("source_id", sourceID).
+					WithField("reason", reason).Warn("recipe: drift regenerate emit failed")
+			}
+		}
+	}
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
 
 	// Inbox pump: drain crawl_inbox → pl_ingested, but only while the queue has
@@ -437,6 +457,26 @@ func main() {
 		}
 		handlers = append(handlers, definitions.NewBroadcastConsumer(loader, rebuild))
 		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
+	}
+
+	// Recipe generate/regenerate handlers. Only wired when RECIPE_ENABLED
+	// and an AI extractor is configured — the Generator needs an LLM seam
+	// (extractor.Complete) to synthesise recipes. The two handlers consume
+	// recipe.generate.v1 / recipe.regenerate.v1 and run the
+	// Generator → Validator → Store pipeline, activating on a pass-rate gate.
+	if cfg.RecipeEnabled && extractor != nil {
+		recipeGen := recipe.NewGenerator(extractor, recipe.NewHTTPFetcher(httpClient), reg, cfg.RecipeMaxGenAttempts)
+		recipeDeps := service.RecipeHandlerDeps{
+			Sources: sourceRepo, Recipes: recipeRepo, Generator: recipeGen, Registry: reg,
+			Fetcher: recipe.NewHTTPFetcher(httpClient), Flagger: sourceRepo, Model: cfg.InferenceModel,
+			PassThreshold: cfg.RecipePassThreshold,
+		}
+		handlers = append(handlers,
+			service.NewRecipeGenerateHandler(recipeDeps),
+			service.NewRecipeRegenerateHandler(recipeDeps),
+		)
+		log.WithField("topics", []string{eventsv1.TopicRecipeGenerate, eventsv1.TopicRecipeRegenerate}).
+			Info("recipe: generate/regenerate handlers wired")
 	}
 	svc.Init(ctx,
 		frame.WithRegisterEvents(handlers...),

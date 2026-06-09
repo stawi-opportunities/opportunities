@@ -29,6 +29,13 @@ const (
 	// Source discovery.
 	TopicSourcesDiscovered = "sources.discovered.v1"
 
+	// Recipe lifecycle. Emitted by the crawler's generate/regenerate
+	// handlers; consumed by RecipeGenerateHandler / RecipeRegenerateHandler.
+	// recipe.generate.v1  — synthesise a recipe for a source (onboarding or manual trigger).
+	// recipe.regenerate.v1 — drift detected; regenerate and atomically swap when the new recipe passes the gate.
+	TopicRecipeGenerate   = "recipe.generate.v1"
+	TopicRecipeRegenerate = "recipe.regenerate.v1"
+
 	// Operator-driven kill switch. Emitted by the crawler when an admin
 	// calls /admin/sources/stop. The materializer subscribes and
 	// removes every Manticore document carrying the matching source_id;
@@ -48,7 +55,7 @@ const (
 	TopicCVImproved                  = "candidates.cv.improved.v1"
 	TopicCandidateEmbedding          = "candidates.embeddings.v1"
 	TopicCandidatePreferencesUpdated = "candidates.preferences.updated.v1"
-	TopicCandidateMatchesReady = "candidates.matches.ready.v1"
+	TopicCandidateMatchesReady       = "candidates.matches.ready.v1"
 	// TopicCandidateCVStaleNudge is a notification-only event. The
 	// external notification service consumes it to send nudge emails;
 	// the writer does NOT persist it to Parquet, so it is intentionally

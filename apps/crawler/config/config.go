@@ -20,8 +20,8 @@ type CrawlerConfig struct {
 	// idiom; must match the worker's ingested queue.
 	QueuePipelineIngested     string `env:"QUEUE_PIPELINE_INGESTED_URI"  envDefault:"mem://pipeline_ingested"`
 	QueuePipelineIngestedName string `env:"QUEUE_PIPELINE_INGESTED_NAME" envDefault:"pipeline_ingested"`
-	UserAgent         string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
-	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
+	UserAgent                 string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
+	HTTPTimeoutSec            int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
 	// EnrichConcurrency caps the parallel fetch+LLM-extract calls
 	// per crawler page for URL-only stubs (sitemap + universal
@@ -53,12 +53,12 @@ type CrawlerConfig struct {
 	// Reranker — carried for consistency with the other apps. Crawler
 	// doesn't currently rerank, but having the knobs in one config struct
 	// keeps copy-paste safe.
-	RerankBaseURL     string `env:"RERANK_BASE_URL" envDefault:""`
-	RerankAPIKey      string `env:"RERANK_API_KEY" envDefault:""`
-	RerankModel       string `env:"RERANK_MODEL" envDefault:""`
+	RerankBaseURL string `env:"RERANK_BASE_URL" envDefault:""`
+	RerankAPIKey  string `env:"RERANK_API_KEY" envDefault:""`
+	RerankModel   string `env:"RERANK_MODEL" envDefault:""`
 	// RerankDialect: "tei" (default) or "openai"/"siliconflow" for /v1/rerank.
-	RerankDialect     string `env:"RERANK_DIALECT" envDefault:""`
-	ValkeyAddr string `env:"VALKEY_ADDR" envDefault:""`
+	RerankDialect string `env:"RERANK_DIALECT" envDefault:""`
+	ValkeyAddr    string `env:"VALKEY_ADDR" envDefault:""`
 
 	// Cloudflare R2 — one account token authorised on all three
 	// product-opportunities buckets. Bucket names live in the static
@@ -140,6 +140,17 @@ type CrawlerConfig struct {
 	// Defaults off so the rollout can enable it explicitly alongside the still-
 	// running central tick (the two are idempotent via the crawl minute key).
 	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"false"`
+
+	// Recipe generation knobs. All default to off / conservative values so
+	// the feature ships dormant (RECIPE_ENABLED=false) and is enabled
+	// per-deploy. See docs/superpowers/specs/2026-06-09-ai-generated-extraction-recipes-design.md §5H.
+	RecipeEnabled          bool    `env:"RECIPE_ENABLED"            envDefault:"false"`
+	RecipeSampleCount      int     `env:"RECIPE_SAMPLE_COUNT"       envDefault:"4"` // reserved for Plan 5 backfill sampling
+	RecipePassThreshold    float64 `env:"RECIPE_PASS_THRESHOLD"     envDefault:"0.8"`
+	RecipeMaxGenAttempts   int     `env:"RECIPE_MAX_GEN_ATTEMPTS"   envDefault:"3"`
+	RecipeRegenRejectRate  float64 `env:"RECIPE_REGEN_REJECT_RATE"  envDefault:"0.5"`
+	RecipeRegenMinPages    int     `env:"RECIPE_REGEN_MIN_PAGES"    envDefault:"20"`
+	RecipeMaxRegenFailures int     `env:"RECIPE_MAX_REGEN_FAILURES" envDefault:"3"`
 
 	// Analytics (OpenObserve) — shared across every opportunities service.
 	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`

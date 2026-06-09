@@ -99,9 +99,9 @@ func New(cfg Config) *Extractor {
 		hc = &http.Client{Timeout: extractionTimeout}
 	}
 	e := &Extractor{
-		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:           cfg.APIKey,
-		model:            cfg.Model,
+		baseURL:             strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:              cfg.APIKey,
+		model:               cfg.Model,
 		embeddingBaseURL:    strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
 		embeddingAPIKey:     cfg.EmbeddingAPIKey,
 		embeddingModel:      cfg.EmbeddingModel,
@@ -548,6 +548,18 @@ func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
 	defer cancel()
 	text = truncateText(text, maxEmbedChars)
 	return e.embed(embedCtx, text)
+}
+
+// Complete sends prompt directly to the chat completions endpoint and returns
+// the model's raw text response. It is the low-level escape hatch used by the
+// recipe Generator (pkg/recipe) which assembles its own structured prompts and
+// needs the response as a plain string before JSON-parsing the recipe.
+//
+// Unlike Prompt, Complete does not prepend any system/user split and does not
+// assume the reply is JSON (expectJSON=true keeps json_object mode so the
+// model's output is valid JSON when the caller asks for a recipe).
+func (e *Extractor) Complete(ctx context.Context, prompt string) (string, error) {
+	return e.chat(ctx, prompt, true)
 }
 
 // Prompt sends an arbitrary system + user content pair to the LLM and
