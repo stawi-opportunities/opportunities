@@ -27,6 +27,14 @@ type SourceFlagger interface {
 	FlagNeedsTuning(ctx context.Context, id string, needsTuning bool) error
 }
 
+// SampleURLProvider yields recently-crawled page URLs for a source — real,
+// known-fetchable samples for recipe generation. repository.RecipeRepository
+// satisfies it (raw_payloads-backed). Far more reliable than the bare BaseURL,
+// which often redirects or 403s a non-connector request.
+type SampleURLProvider interface {
+	RecentURLs(ctx context.Context, sourceID string, limit int) ([]string, error)
+}
+
 // RecipeHandlerDeps wires the generate/regenerate handlers.
 type RecipeHandlerDeps struct {
 	Sources       SourceByID
@@ -35,6 +43,8 @@ type RecipeHandlerDeps struct {
 	Registry      *opportunity.Registry
 	Fetcher       recipe.Fetcher
 	Flagger       SourceFlagger
+	Samples       SampleURLProvider
+	SampleCount   int
 	Model         string
 	PassThreshold float64
 }
@@ -72,22 +82,25 @@ func (h *RecipeGenerateHandler) generate(ctx context.Context, sourceID string, s
 		return fmt.Errorf("recipe.generate: source %s: %w", sourceID, err)
 	}
 	if len(sampleURLs) == 0 {
-		sampleURLs = []string{src.BaseURL}
+		sampleURLs = h.deriveSampleURLs(ctx, src)
 	}
 	rec, samples, err := h.deps.Generator.Generate(ctx, *src, sampleURLs)
 	if err != nil {
-		log.WithError(err).WithField("source", sourceID).Warn("recipe.generate: synthesis failed")
-		return err
+		// Persistent failure (samples unfetchable, or the repair loop exhausted)
+		// — flag for operator review and ACK. Returning the error would make
+		// Frame redeliver this event indefinitely (re-fetching + re-calling the
+		// LLM each time); flagging needs_tuning also makes the backfill cron skip
+		// the source until an operator clears it.
+		log.WithError(err).WithField("source", sourceID).
+			Warn("recipe.generate: synthesis failed; flagging for operator review")
+		h.flagForTuning(ctx, sourceID)
+		return nil
 	}
 	report := recipe.ValidateRecipe(rec, *src, samples, h.deps.Registry)
 	if report.PassRate < h.deps.PassThreshold {
 		log.WithField("source", sourceID).WithField("pass_rate", report.PassRate).
 			Warn("recipe.generate: below pass threshold; flagging for operator review")
-		if h.deps.Flagger != nil {
-			if ferr := h.deps.Flagger.FlagNeedsTuning(ctx, sourceID, true); ferr != nil {
-				log.WithError(ferr).Warn("recipe.generate: flag needs_tuning failed")
-			}
-		}
+		h.flagForTuning(ctx, sourceID)
 		return nil // ack: regenerating from the same samples won't help; operator reviews
 	}
 	if err := h.deps.Recipes.Activate(ctx, sourceID, rec, report.PassRate, h.deps.Model, report); err != nil {
@@ -95,6 +108,36 @@ func (h *RecipeGenerateHandler) generate(ctx context.Context, sourceID string, s
 	}
 	log.WithField("source", sourceID).WithField("pass_rate", report.PassRate).Info("recipe.generate: activated")
 	return nil
+}
+
+// deriveSampleURLs picks the URLs to learn a recipe from: the source's most
+// recently-crawled pages (real detail/listing URLs the crawler already fetched
+// successfully), falling back to the BaseURL when none are recorded yet.
+func (h *RecipeGenerateHandler) deriveSampleURLs(ctx context.Context, src *domain.Source) []string {
+	n := h.deps.SampleCount
+	if n <= 0 {
+		n = 4
+	}
+	if h.deps.Samples != nil {
+		if urls, err := h.deps.Samples.RecentURLs(ctx, src.ID, n); err == nil && len(urls) > 0 {
+			return urls
+		} else if err != nil {
+			util.Log(ctx).WithError(err).WithField("source", src.ID).
+				Warn("recipe.generate: sample URL lookup failed; using base URL")
+		}
+	}
+	return []string{src.BaseURL}
+}
+
+// flagForTuning marks a source for operator review (best-effort).
+func (h *RecipeGenerateHandler) flagForTuning(ctx context.Context, sourceID string) {
+	if h.deps.Flagger == nil {
+		return
+	}
+	if err := h.deps.Flagger.FlagNeedsTuning(ctx, sourceID, true); err != nil {
+		util.Log(ctx).WithError(err).WithField("source", sourceID).
+			Warn("recipe.generate: flag needs_tuning failed")
+	}
 }
 
 // RecipeRegenerateHandler handles recipe.regenerate.v1 by re-running generation.

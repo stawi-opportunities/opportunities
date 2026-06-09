@@ -137,3 +137,39 @@ func (r *RecipeRepository) History(ctx context.Context, sourceID string) ([]Sour
 	err := r.db(ctx, true).Where("source_id = ?", sourceID).Order("version DESC").Find(&rows).Error
 	return rows, err
 }
+
+// RecentURLs returns up to `limit` distinct, recently-crawled page URLs for a
+// source (newest first) from the raw_payloads crawl-archive ledger. These are
+// real URLs the crawler already fetched successfully, so they seed recipe
+// generation far more reliably than a bare BaseURL request. Returns an empty
+// slice (not an error) when the source has no archived pages yet.
+func (r *RecipeRepository) RecentURLs(ctx context.Context, sourceID string, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = 4
+	}
+	var rows []string
+	// Over-fetch then de-dup in Go: DISTINCT + ORDER BY a non-selected column is
+	// invalid in Postgres, and raw_payloads is a fetched_at-partitioned
+	// hypertable so a recency-ordered LIMIT is cheap.
+	if err := r.db(ctx, true).
+		Table("raw_payloads").
+		Where("source_id = ? AND source_url <> ''", sourceID).
+		Order("fetched_at DESC").
+		Limit(limit*8).
+		Pluck("source_url", &rows).Error; err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(rows))
+	out := make([]string, 0, limit)
+	for _, u := range rows {
+		if seen[u] {
+			continue
+		}
+		seen[u] = true
+		out = append(out, u)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}

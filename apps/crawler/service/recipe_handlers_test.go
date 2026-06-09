@@ -129,3 +129,33 @@ func TestRecipeGenerateHandler_BelowThresholdFlagsAndAcks(t *testing.T) {
 	assert.Nil(t, store.activated)                            // did not activate
 	assert.True(t, flagger.flagged)                           // flagged for operator
 }
+
+func TestRecipeGenerateHandler_SynthesisFailureFlagsAndAcks(t *testing.T) {
+	// Sample URL returns 500 → Generator yields "no fetchable samples" → the
+	// handler must flag needs_tuning and ACK (no error → no Frame redelivery).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	reg, err := opportunity.LoadFromDir("../../../definitions/opportunity-kinds")
+	if err != nil {
+		t.Skipf("kinds: %v", err)
+	}
+	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "KE"}
+	src.ID = "s3"
+	src.Kinds = []string{"job"}
+	store := &fakeRecipeStore{}
+	flagger := &fakeFlagger{}
+	fetcher := recipe.NewHTTPFetcher(headeredClient{c: srv.Client()})
+	gen := recipe.NewGenerator(fakeGenLLM{reply: "{}"}, fetcher, reg, 3)
+	h := NewRecipeGenerateHandler(RecipeHandlerDeps{
+		Sources: fakeSourceByID{src: src}, Recipes: store, Generator: gen, Registry: reg,
+		Fetcher: fetcher, Flagger: flagger, PassThreshold: 0.8,
+	})
+	env := eventsv1.NewEnvelope(eventsv1.TopicRecipeGenerate, eventsv1.RecipeGenerateV1{SourceID: "s3", SampleURLs: []string{srv.URL}})
+	body, _ := json.Marshal(env)
+	raw := json.RawMessage(body)
+	require.NoError(t, h.Execute(context.Background(), &raw)) // ACK, no redelivery
+	assert.Nil(t, store.activated)
+	assert.True(t, flagger.flagged)
+}

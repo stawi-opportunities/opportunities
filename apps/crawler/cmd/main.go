@@ -469,7 +469,8 @@ func main() {
 		recipeGen := recipe.NewGenerator(extractor, recipe.NewHTTPFetcher(httpClient), reg, cfg.RecipeMaxGenAttempts)
 		recipeDeps := service.RecipeHandlerDeps{
 			Sources: sourceRepo, Recipes: recipeRepo, Generator: recipeGen, Registry: reg,
-			Fetcher: recipe.NewHTTPFetcher(httpClient), Flagger: sourceRepo, Model: cfg.InferenceModel,
+			Fetcher: recipe.NewHTTPFetcher(httpClient), Flagger: sourceRepo,
+			Samples: recipeRepo, SampleCount: cfg.RecipeSampleCount, Model: cfg.InferenceModel,
 			PassThreshold: cfg.RecipePassThreshold,
 		}
 		handlers = append(handlers,
