@@ -21,7 +21,7 @@ export function latestJobs(limit = 20): Promise<LatestJobsResponse> {
 }
 
 export function statsSummary(): Promise<StatsSummary> {
-  return jobsApiGet<StatsSummary>('/api/stats/summary');
+  return jobsApiGet<StatsSummary>('/api/stats');
 }
 
 export function listCategories(): Promise<CategoryListResponse> {

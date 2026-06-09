@@ -59,10 +59,11 @@ export interface LatestJobsResponse {
   results: SearchResult[];
 }
 
+// Mirrors GET /api/stats (apps/api/cmd/endpoints.go jobStatsHandler).
 export interface StatsSummary {
   total_jobs: number;
   total_companies: number;
-  active_sources: number;
+  countries: number;
 }
 
 export interface CategoryListResponse {
