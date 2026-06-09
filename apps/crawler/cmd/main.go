@@ -165,9 +165,9 @@ func main() {
 			cfg.OllamaURL, cfg.OllamaModel,
 		)
 		extractor = extraction.New(extraction.Config{
-			BaseURL:          infBase,
-			APIKey:           infKey,
-			Model:            infModel,
+			BaseURL:             infBase,
+			APIKey:              infKey,
+			Model:               infModel,
 			EmbeddingBaseURL:    embBase,
 			EmbeddingAPIKey:     embKey,
 			EmbeddingModel:      embModel,
@@ -323,6 +323,7 @@ func main() {
 	// outage degrades resumption to "always start fresh" rather than
 	// stalling the crawl.
 	checkpointRepo := repository.NewCheckpointRepository(dbFn)
+	recipeRepo := repository.NewRecipeRepository(dbFn)
 
 	// URL frontier (D2) — discovered URLs from frontier-enabled
 	// sources land here; apps/frontier-worker pulls + fetches them.
@@ -373,6 +374,7 @@ func main() {
 		CrawlRepo:         crawlRepo,
 		CheckpointRepo:    checkpointRepo,
 		Frontier:          urlFrontier,
+		RecipeRepo:        recipeRepo,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
