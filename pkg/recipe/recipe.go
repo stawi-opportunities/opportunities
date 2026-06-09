@@ -190,10 +190,3 @@ func (r *Recipe) Validate() error {
 
 	return errors.Join(errs...)
 }
-
-// TEMP (removed in Task 2 once transforms.go exists): allow recipe.go to
-// compile before the transform registry lands. Tests in Task 1 use no
-// transforms except "absolute_url".
-func transformExists(name string) bool {
-	return name == "absolute_url"
-}
