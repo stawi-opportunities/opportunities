@@ -62,7 +62,7 @@ func TestSourceDiscoveredUpsertsNewURL(t *testing.T) {
 	if saved == nil {
 		t.Fatalf("expected upsert to record under base URL key")
 	}
-	if saved.Status != domain.SourcePending {
+	if saved.Status != domain.SourcePending { //nolint:staticcheck // SA5011 false positive: saved is guarded by the t.Fatalf nil-check above
 		t.Errorf("Status=%q want %q", saved.Status, domain.SourcePending)
 	}
 	if saved.AutoApprove {

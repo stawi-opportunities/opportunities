@@ -69,7 +69,7 @@ func TestCheckpoint_RoundTrip(t *testing.T) {
 	if cp == nil {
 		t.Fatal("Checkpoint returned nil")
 	}
-	if cp.PageIdx != 4 {
+	if cp.PageIdx != 4 { //nolint:staticcheck // SA5011 false positive: cp is guarded by the t.Fatal nil-check above
 		t.Fatalf("PageIdx = %d; want 4", cp.PageIdx)
 	}
 	if cp.LastURL != "https://example/foo" {

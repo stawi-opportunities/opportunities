@@ -203,7 +203,7 @@ fields:
 	if pm == nil {
 		t.Fatal("Product Manager not found")
 	}
-	if senior.AnchorLocation == nil || senior.AnchorLocation.Country != "US" {
+	if senior.AnchorLocation == nil || senior.AnchorLocation.Country != "US" { //nolint:staticcheck // SA5011 false positive: senior is guarded by the t.Fatal nil-check above
 		t.Errorf("Senior AnchorLocation = %+v", senior.AnchorLocation)
 	}
 	if senior.Currency != "USD" {
