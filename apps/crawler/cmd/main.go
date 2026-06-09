@@ -376,6 +376,7 @@ func main() {
 		CheckpointRepo:    checkpointRepo,
 		Frontier:          urlFrontier,
 		RecipeRepo:        recipeRepo,
+		RecipeEnabled:     cfg.RecipeEnabled,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	// Drift-triggered recipe regeneration: when a recipe-driven source's

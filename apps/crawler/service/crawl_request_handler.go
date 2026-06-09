@@ -116,6 +116,17 @@ type CrawlRequestDeps struct {
 	// with an active recipe crawls via the deterministic recipe Executor
 	// instead of its registered connector.
 	RecipeRepo *repository.RecipeRepository
+
+	// RecipeEnabled gates the recipe path globally. When false, sources keep
+	// crawling via their registered connector even if they have a recipe — the
+	// rollout kill-switch (RECIPE_ENABLED).
+	RecipeEnabled bool
+}
+
+// useRecipePath reports whether a crawl should use the deterministic recipe
+// Executor: only when the engine is globally enabled and the source has one.
+func useRecipePath(enabled bool, rec *recipe.Recipe) bool {
+	return enabled && rec != nil
 }
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
@@ -234,11 +245,11 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	// checkpoint rows are written or read.
 	var iter connectors.CrawlIterator
 	usedRecipe := false
-	if h.deps.RecipeRepo != nil {
+	if h.deps.RecipeEnabled && h.deps.RecipeRepo != nil {
 		rec, rErr := h.deps.RecipeRepo.Active(ctx, src.ID)
 		if rErr != nil {
 			log.WithError(rErr).Warn("crawl.request: recipe lookup failed; using connector")
-		} else if rec != nil {
+		} else if useRecipePath(h.deps.RecipeEnabled, rec) {
 			iter = recipeconn.NewConnectorIterator(
 				recipe.NewExecutor(rec, recipe.NewHTTPFetcher(h.deps.PageFetcher)), *src)
 			usedRecipe = true
