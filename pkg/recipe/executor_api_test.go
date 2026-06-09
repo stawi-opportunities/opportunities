@@ -21,7 +21,7 @@ func (f httptestFetcher) Get(ctx context.Context, url string) ([]byte, int, erro
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	buf := make([]byte, 0, 4096)
 	tmp := make([]byte, 4096)
 	for {
