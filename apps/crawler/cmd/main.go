@@ -150,7 +150,26 @@ func main() {
 	httpDoer := &http.Client{
 		Timeout: time.Duration(cfg.HTTPTimeoutSec) * time.Second,
 	}
-	httpClient := httpx.NewClientFromDoer(httpDoer, cfg.UserAgent)
+	// Unblocker fallback: route blocked requests (WAF/anti-bot 403s on HTML job
+	// boards) through a residential-unblocker proxy, while requests that succeed
+	// directly (most JSON APIs) stay off the paid path.
+	var doer httpx.HTTPDoer = httpDoer
+	if cfg.UnblockerProxyURL != "" {
+		unblocker, insecure, perr := httpx.NewProxyDoer(
+			cfg.UnblockerProxyURL, cfg.UnblockerCACert,
+			time.Duration(cfg.UnblockerTimeoutSec)*time.Second)
+		if perr != nil {
+			log.WithError(perr).Warn("unblocker fallback disabled: invalid UNBLOCKER_PROXY_URL")
+		} else {
+			doer = httpx.NewFallbackDoer(httpDoer, unblocker)
+			if insecure {
+				log.Warn("unblocker fallback enabled WITHOUT a pinned CA — proxy TLS is not verified; set UNBLOCKER_CA_CERT")
+			} else {
+				log.Info("unblocker fallback enabled (CA-pinned) for blocked requests")
+			}
+		}
+	}
+	httpClient := httpx.NewClientFromDoer(doer, cfg.UserAgent)
 
 	// AI extractor — OpenAI-compatible back-end. Reads INFERENCE_* first,
 	// falls back to the legacy OLLAMA_* vars during the Cloudflare AI

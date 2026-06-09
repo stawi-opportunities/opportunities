@@ -23,6 +23,17 @@ type CrawlerConfig struct {
 	UserAgent                 string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
 	HTTPTimeoutSec            int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
+	// Unblocker fallback: when a direct fetch is blocked (403/429/451/503 or a
+	// transport error), the request is retried through this proxy — a Bright
+	// Data Web Unlocker / Oxylabs / similar endpoint, e.g.
+	// http://brd-customer-<id>-zone-<zone>:<pass>@brd.superproxy.io:33335
+	// Empty disables the fallback (direct-only, current behaviour). Pin the
+	// provider's CA via UnblockerCACert to verify the proxy's re-signed TLS;
+	// without it, verification on the proxy transport is skipped.
+	UnblockerProxyURL   string `env:"UNBLOCKER_PROXY_URL"`
+	UnblockerCACert     string `env:"UNBLOCKER_CA_CERT"`
+	UnblockerTimeoutSec int    `env:"UNBLOCKER_TIMEOUT_SEC" envDefault:"60"`
+
 	// EnrichConcurrency caps the parallel fetch+LLM-extract calls
 	// per crawler page for URL-only stubs (sitemap + universal
 	// AI-link-discovery iterators). 0 disables enrichment entirely
