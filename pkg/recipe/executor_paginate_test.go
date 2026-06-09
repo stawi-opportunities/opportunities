@@ -69,7 +69,7 @@ func TestExecutor_Crawl_HTMLNextLink(t *testing.T) {
 		Acquisition: "selectors",
 		Kind:        KindRule{Mode: "source_default"},
 		List: ListRule{Mode: "selector", ItemSelector: "div.card",
-			Link:       FieldExtractor{From: []string{"selector"}, Selector: "a.lnk", Attr: "href", Transform: []string{"absolute_url"}},
+			Link: FieldExtractor{From: []string{"selector"}, Selector: "a.lnk", Attr: "href", Transform: []string{"absolute_url"}},
 			Pagination: Pagination{Mode: "next_link", MaxPages: 5,
 				Next: FieldExtractor{From: []string{"selector"}, Selector: "a[rel=next]", Attr: "href", Transform: []string{"absolute_url"}}}},
 		Detail: DetailRule{RecordSource: "json_ld", Title: jl("$.title"), Description: jl("$.description"),

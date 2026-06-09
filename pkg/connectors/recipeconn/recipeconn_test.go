@@ -44,7 +44,9 @@ func TestIterator_DrivesExecutorLikeThePipeline(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	rec := func(p string) recipe.FieldExtractor { return recipe.FieldExtractor{From: []string{"record"}, JSONPath: p} }
+	rec := func(p string) recipe.FieldExtractor {
+		return recipe.FieldExtractor{From: []string{"record"}, JSONPath: p}
+	}
 	r := &recipe.Recipe{
 		Acquisition: "api",
 		Kind:        recipe.KindRule{Mode: "source_default"},
