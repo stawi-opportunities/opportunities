@@ -26,6 +26,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Thread identity into OpenObserve so RUM + logs are joinable
       // back to the profile_id. The 1.0 runtime doesn't expose a
       // synchronous getUser() — use getClaims() once authenticated.
+      // Synchronous hint read by the homepage's inline script to hide the
+      // marketing hero before paint for returning users (avoids a flash
+      // before HomeRedirect navigates to /dashboard/). Kept in localStorage
+      // because the auth runtime persists its session in IndexedDB, which
+      // can't be read synchronously during initial HTML parse.
+      try {
+        if (next === 'authenticated') localStorage.setItem('stawi.authed', '1');
+        else if (next === 'unauthenticated') localStorage.removeItem('stawi.authed');
+      } catch {
+        // private mode / storage blocked — hero just shows normally
+      }
+
       if (next === 'authenticated') {
         runtime.getClaims().then(
           (claims) => {

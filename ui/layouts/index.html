@@ -6,6 +6,7 @@
 <div id="mount-home-redirect"></div>
 
 <section
+  id="home-hero"
   class="flex min-h-[85vh] items-center bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 text-white"
 >
   <div class="mx-auto w-full max-w-5xl px-6 py-24 sm:px-8 lg:px-12">
@@ -27,4 +28,19 @@
     </div>
   </div>
 </section>
+<script>
+  // Synchronously hide the hero for visitors who were authenticated last
+  // session, so returning users don't flash the marketing hero before the
+  // HomeRedirect island moves them to /dashboard/. Runs during parse,
+  // before paint. The 'stawi.authed' hint is set/cleared by AuthProvider;
+  // if it's stale (session already gone), HomeRedirect reveals the hero
+  // once auth resolves to unauthenticated.
+  try {
+    if (localStorage.getItem('stawi.authed') === '1') {
+      document.getElementById('home-hero').style.display = 'none';
+    }
+  } catch (e) {
+    /* private mode / storage blocked — fall through and show the hero */
+  }
+</script>
 {{ end }}
