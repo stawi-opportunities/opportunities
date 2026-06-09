@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useForm, type SubmitHandler, type UseFormReturn } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -172,8 +172,23 @@ export default function Onboarding() {
     mode: 'onBlur',
   });
 
+  // The nav's profile widget (logout button) is present on every page,
+  // including this one. When a user signs out here, the runtime flips to
+  // 'unauthenticated' — and naively kicking off login() on that transition
+  // would bounce them straight back to the IdP login screen instead of
+  // logging them out. So distinguish a *fresh* anonymous visit (start the
+  // sign-in funnel) from a session that ended while on this page — logout
+  // or token wipe — which should land on the public homepage.
+  const wasAuthenticated = useRef(false);
   useEffect(() => {
-    if (state === 'unauthenticated') {
+    if (state === 'authenticated') {
+      wasAuthenticated.current = true;
+      return;
+    }
+    if (state !== 'unauthenticated') return;
+    if (wasAuthenticated.current) {
+      window.location.replace('/');
+    } else {
       void login();
     }
   }, [state, login]);
