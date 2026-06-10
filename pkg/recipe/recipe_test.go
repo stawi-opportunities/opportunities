@@ -86,3 +86,19 @@ func TestRecipeJSON_OmitsEmptyExtractors(t *testing.T) {
 	assert.NotContains(t, s, `"cursor":{}`)
 	assert.NotContains(t, s, `"company_logo_url":{}`)
 }
+
+func TestTransformList_TolerantUnmarshal(t *testing.T) {
+	var fx FieldExtractor
+	// array of strings (canonical)
+	require.NoError(t, json.Unmarshal([]byte(`{"transform":["trim","lower"]}`), &fx))
+	assert.Equal(t, TransformList{"trim", "lower"}, fx.Transform)
+	// bare string
+	require.NoError(t, json.Unmarshal([]byte(`{"transform":"trim"}`), &fx))
+	assert.Equal(t, TransformList{"trim"}, fx.Transform)
+	// object (the prod failure shape) — dropped, not fatal
+	require.NoError(t, json.Unmarshal([]byte(`{"transform":{"contains":"Remote"}}`), &fx))
+	assert.Empty(t, fx.Transform)
+	// mixed array — strings kept, junk dropped
+	require.NoError(t, json.Unmarshal([]byte(`{"transform":["trim",{"x":1},5]}`), &fx))
+	assert.Equal(t, TransformList{"trim"}, fx.Transform)
+}

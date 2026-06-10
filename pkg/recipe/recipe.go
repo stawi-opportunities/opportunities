@@ -4,6 +4,7 @@
 package recipe
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -22,15 +23,43 @@ var validFromSources = map[string]bool{
 // tried in order; the first source that yields a non-empty value wins. The
 // resolved value is then piped through Transform.
 type FieldExtractor struct {
-	From      []string `json:"from,omitempty"`
-	JSONPath  string   `json:"json_path,omitempty"`
-	Microdata string   `json:"microdata,omitempty"`
-	Selector  string   `json:"selector,omitempty"`
-	Attr      string   `json:"attr,omitempty"`
-	Meta      string   `json:"meta,omitempty"`
-	Const     string   `json:"const,omitempty"`
-	Transform []string `json:"transform,omitempty"`
-	Required  bool     `json:"required,omitempty"`
+	From      []string      `json:"from,omitempty"`
+	JSONPath  string        `json:"json_path,omitempty"`
+	Microdata string        `json:"microdata,omitempty"`
+	Selector  string        `json:"selector,omitempty"`
+	Attr      string        `json:"attr,omitempty"`
+	Meta      string        `json:"meta,omitempty"`
+	Const     string        `json:"const,omitempty"`
+	Transform TransformList `json:"transform,omitempty"`
+	Required  bool          `json:"required,omitempty"`
+}
+
+// TransformList is a []string that unmarshals tolerantly: LLMs sometimes emit a
+// bare string instead of an array, or stuff objects/numbers into the list.
+// Accept strings (bare or in an array), drop everything else — Normalize() and
+// the pass-rate gate handle semantic correctness.
+type TransformList []string
+
+func (t *TransformList) UnmarshalJSON(b []byte) error {
+	var one string
+	if err := json.Unmarshal(b, &one); err == nil {
+		*t = TransformList{one}
+		return nil
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		*t = nil // not a string or array (object/number/null) — drop, don't fail the recipe
+		return nil
+	}
+	out := make(TransformList, 0, len(raw))
+	for _, r := range raw {
+		var s string
+		if err := json.Unmarshal(r, &s); err == nil {
+			out = append(out, s)
+		}
+	}
+	*t = out
+	return nil
 }
 
 // empty reports whether the extractor specifies no way to produce a value.
