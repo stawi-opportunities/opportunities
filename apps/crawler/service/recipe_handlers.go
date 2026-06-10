@@ -132,7 +132,20 @@ func (h *RecipeGenerateHandler) deriveSampleURLs(ctx context.Context, src *domai
 			return urls
 		} else if err != nil {
 			util.Log(ctx).WithError(err).WithField("source", src.ID).
-				Warn("recipe.generate: sample URL lookup failed; using base URL")
+				Warn("recipe.generate: sample URL lookup failed")
+		}
+	}
+	// No recorded crawl history: discover detail pages off the listing.
+	// Validation dry-runs DETAIL extraction per sample, so a bare listing
+	// page (BaseURL) can never pass the gate — it produced pass_rate=0.
+	if h.deps.Fetcher != nil {
+		if urls, err := recipe.DiscoverDetailURLs(ctx, h.deps.Fetcher, src.BaseURL, n); err == nil && len(urls) > 0 {
+			util.Log(ctx).WithField("source", src.ID).WithField("samples", len(urls)).
+				Info("recipe.generate: sampled detail pages from listing")
+			return urls
+		} else if err != nil {
+			util.Log(ctx).WithError(err).WithField("source", src.ID).
+				Warn("recipe.generate: detail-link discovery failed; using base URL")
 		}
 	}
 	return []string{src.BaseURL}
