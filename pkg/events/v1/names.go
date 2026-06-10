@@ -29,6 +29,17 @@ const (
 	// Source discovery.
 	TopicSourcesDiscovered = "sources.discovered.v1"
 
+	// Source scheduling control plane. Emitted by the api's source
+	// lifecycle mutations (approve/pause/resume/stop/start/delete/create/
+	// interval-edit) and by the crawler's own admin pause/enable/stop
+	// handlers. The crawler's SourceSchedulingHandler consumes it and
+	// drives the per-source Trustage schedule to match the source's live
+	// status (ensure when active, archive otherwise). Like
+	// TopicCrawlRequests / TopicSourcesStopped this is a control-plane
+	// event the writer does NOT persist, so it is intentionally absent
+	// from AllTopics() below.
+	TopicSourceSchedulingChanged = "sources.scheduling.changed.v1"
+
 	// Recipe lifecycle. Emitted by the crawler's generate/regenerate
 	// handlers; consumed by RecipeGenerateHandler / RecipeRegenerateHandler.
 	// recipe.generate.v1  — synthesise a recipe for a source (onboarding or manual trigger).
