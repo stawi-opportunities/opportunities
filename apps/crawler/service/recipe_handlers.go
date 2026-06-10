@@ -120,16 +120,22 @@ func (h *RecipeGenerateHandler) generate(ctx context.Context, sourceID string, s
 }
 
 // deriveSampleURLs picks the URLs to learn a recipe from: the source's most
-// recently-crawled pages (real detail/listing URLs the crawler already fetched
-// successfully), falling back to the BaseURL when none are recorded yet.
+// recently-crawled DETAIL pages, falling back to discovering detail links off
+// the listing, then to the BaseURL as a last resort. Listing-equivalent URLs
+// (the BaseURL itself / the site root) are filtered out of recorded history —
+// the crawler archives listing fetches into raw_payloads, and validation
+// dry-runs DETAIL extraction, so a listing sample can never pass the gate.
 func (h *RecipeGenerateHandler) deriveSampleURLs(ctx context.Context, src *domain.Source) []string {
 	n := h.deps.SampleCount
 	if n <= 0 {
 		n = 4
 	}
 	if h.deps.Samples != nil {
-		if urls, err := h.deps.Samples.RecentURLs(ctx, src.ID, n); err == nil && len(urls) > 0 {
-			return urls
+		if urls, err := h.deps.Samples.RecentURLs(ctx, src.ID, n); err == nil {
+			urls = dropListingURLs(urls, src.BaseURL)
+			if len(urls) > 0 {
+				return urls
+			}
 		} else if err != nil {
 			util.Log(ctx).WithError(err).WithField("source", src.ID).
 				Warn("recipe.generate: sample URL lookup failed")
@@ -149,6 +155,21 @@ func (h *RecipeGenerateHandler) deriveSampleURLs(ctx context.Context, src *domai
 		}
 	}
 	return []string{src.BaseURL}
+}
+
+// dropListingURLs filters out the source's own listing from recorded sample
+// URLs: the BaseURL itself (any trailing slash) and bare site roots.
+func dropListingURLs(urls []string, baseURL string) []string {
+	base := strings.TrimSuffix(strings.TrimSpace(baseURL), "/")
+	out := urls[:0]
+	for _, u := range urls {
+		t := strings.TrimSuffix(strings.TrimSpace(u), "/")
+		if t == "" || strings.EqualFold(t, base) {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
 }
 
 // isRateLimited reports whether a generation error is a transient provider
