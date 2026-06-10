@@ -30,7 +30,7 @@ func TestBackfillRecipes_QueuesOnlyRecipelessTargetedSources(t *testing.T) {
 		return nil
 	}
 
-	n, err := BackfillRecipes(context.Background(), sources, targets, emit)
+	n, err := BackfillRecipes(context.Background(), sources, targets, 0, emit)
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
 	assert.ElementsMatch(t, []string{"a", "d"}, queued)
@@ -40,7 +40,25 @@ func TestBackfillRecipes_EmitErrorStopsAndReports(t *testing.T) {
 	sources := []domain.Source{mkSource("a", "brightermonday", "{}")}
 	targets := map[domain.SourceType]bool{"brightermonday": true}
 	emit := func(_ context.Context, _ string) error { return assert.AnError }
-	n, err := BackfillRecipes(context.Background(), sources, targets, emit)
+	n, err := BackfillRecipes(context.Background(), sources, targets, 0, emit)
 	require.Error(t, err)
 	assert.Equal(t, 0, n)
+}
+
+func TestBackfillRecipes_MaxQueueCapsEligibleNotScanned(t *testing.T) {
+	// Cap applies to QUEUED sources (post-filter): with maxQueue=2 and an
+	// ineligible source first, the two eligible ones still both queue.
+	sources := []domain.Source{
+		mkSource("x", "greenhouse", "{}"), // not a target — skipped, doesn't consume the cap
+		mkSource("a", "brightermonday", "{}"),
+		mkSource("b", "jobberman", "{}"),
+		mkSource("c", "brightermonday", "{}"), // over the cap — not queued
+	}
+	targets := map[domain.SourceType]bool{"brightermonday": true, "jobberman": true}
+	var queued []string
+	emit := func(_ context.Context, id string) error { queued = append(queued, id); return nil }
+	n, err := BackfillRecipes(context.Background(), sources, targets, 2, emit)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	assert.Equal(t, []string{"a", "b"}, queued)
 }

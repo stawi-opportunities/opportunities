@@ -42,11 +42,10 @@ func RecipeBackfillHandler(deps RecipeBackfillDeps) http.HandlerFunc {
 			return
 		}
 
-		limit := deps.Limit
-		if limit <= 0 {
-			limit = 1000
-		}
-		srcs, err := deps.Sources.ListByStatuses(ctx, []domain.SourceStatus{domain.SourceActive, domain.SourceDegraded}, limit)
+		// List broadly; deps.Limit caps how many get QUEUED (in BackfillRecipes),
+		// not how many are listed — a small list limit would return arbitrary
+		// (often recipe-ineligible) sources and queue nothing forever.
+		srcs, err := deps.Sources.ListByStatuses(ctx, []domain.SourceStatus{domain.SourceActive, domain.SourceDegraded}, 1000)
 		if err != nil {
 			util.Log(ctx).WithError(err).Error("recipe-backfill: list sources failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -65,7 +64,7 @@ func RecipeBackfillHandler(deps RecipeBackfillDeps) http.HandlerFunc {
 			eligible = append(eligible, *s)
 		}
 
-		queued, err := BackfillRecipes(ctx, eligible, deps.Targets, deps.Emit)
+		queued, err := BackfillRecipes(ctx, eligible, deps.Targets, deps.Limit, deps.Emit)
 		if err != nil {
 			util.Log(ctx).WithError(err).WithField("queued", queued).Error("recipe-backfill: emit failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)

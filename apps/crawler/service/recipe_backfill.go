@@ -12,11 +12,13 @@ func hasRecipe(s domain.Source) bool {
 	return s.ExtractionRecipe != "" && s.ExtractionRecipe != "{}"
 }
 
-// BackfillRecipes queues recipe generation (via emit) for every source whose
-// type is in `targets` and which lacks a recipe. It is the one-off that moves
-// existing per-page-LLM ("universal") sources onto generated recipes. Returns
-// the count queued; stops and returns the error if emit fails.
-func BackfillRecipes(ctx context.Context, sources []domain.Source, targets map[domain.SourceType]bool, emit func(ctx context.Context, sourceID string) error) (int, error) {
+// BackfillRecipes queues recipe generation (via emit) for sources whose type is
+// in `targets` and which lack a recipe, stopping after maxQueue emits
+// (maxQueue <= 0 means unlimited). The cap is applied to QUEUED sources — after
+// the target/has-recipe filters — so a small cap paces generation under an
+// inference rate limit without starving on ineligible sources. Returns the
+// count queued; stops and returns the error if emit fails.
+func BackfillRecipes(ctx context.Context, sources []domain.Source, targets map[domain.SourceType]bool, maxQueue int, emit func(ctx context.Context, sourceID string) error) (int, error) {
 	queued := 0
 	for _, s := range sources {
 		if !targets[s.Type] || hasRecipe(s) {
@@ -26,6 +28,9 @@ func BackfillRecipes(ctx context.Context, sources []domain.Source, targets map[d
 			return queued, fmt.Errorf("backfill: emit %s: %w", s.ID, err)
 		}
 		queued++
+		if maxQueue > 0 && queued >= maxQueue {
+			break
+		}
 	}
 	return queued, nil
 }
