@@ -205,3 +205,4 @@ CREATE TRIGGER opportunities_set_updated_at
 -- ===========================================================================
 GRANT SELECT, INSERT, UPDATE, DELETE ON pipeline_variants TO opportunities;
 GRANT SELECT, INSERT, UPDATE, DELETE ON opportunities      TO opportunities;
+- frame v1.98+ executes each migration file as ONE prepared statement: a file must contain a SINGLE SQL command (wrap multi-step migrations in one DO $$ block with EXECUTEs). Multi-command files fail with SQLSTATE 42601.
