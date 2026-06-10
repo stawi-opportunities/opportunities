@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { writeFileSync, mkdirSync } from 'fs';
 
-// Writes a tiny manifest consumed by Hugo's head.html so the layout can
-// reference the hashed bundle filenames emitted by rollup.
 function hugoManifestPlugin() {
   return {
     name: 'hugo-manifest',
@@ -13,10 +11,6 @@ function hugoManifestPlugin() {
       bundle: Record<string, { type: string; isEntry?: boolean; fileName: string }>
     ) {
       const manifest: Record<string, string> = {};
-      // Vite emits to ui/static/app/assets/<file>, which Hugo then copies
-      // into ui/public/app/assets/<file> and serves at /app/assets/<file>.
-      // We record the /app/-prefixed path so head.html can drop it directly
-      // into a <script src="/…"> tag without extra logic.
       for (const [fileName, chunk] of Object.entries(bundle)) {
         if (chunk.type === 'chunk' && chunk.isEntry) {
           manifest['main.js'] = 'app/' + fileName;
@@ -34,11 +28,6 @@ function hugoManifestPlugin() {
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), hugoManifestPlugin()],
-  // Production builds emit under /app/ because Hugo copies static/app/
-  // to public/app/. In dev mode the Hugo template loads directly from
-  // the Vite dev server origin, so no base prefix is needed — keeping
-  // base at "/" avoids the mismatch where head.html requests
-  // /src/main.tsx but Vite serves /app/src/main.tsx.
   base: command === 'build' ? '/app/' : '/',
   resolve: {
     alias: {
@@ -46,7 +35,6 @@ export default defineConfig(({ command }) => ({
     },
   },
   build: {
-    // Emit into Hugo's static/ tree so the build output is served verbatim.
     outDir: resolve(__dirname, '../static/app'),
     emptyOutDir: true,
     manifest: false,
@@ -69,16 +57,10 @@ export default defineConfig(({ command }) => ({
     },
   },
   server: {
-    // Hugo dev server lives on 5170; Vite on 5173. head.html detects
-    // hugo.IsServer and points <script> at the Vite dev server directly.
     port: 5173,
     strictPort: true,
     cors: true,
-    origin: 'http://localhost:5173',
-    // Proxy API requests to the production backend so the browser never
-    // makes a cross-origin fetch — CORS is bypassed entirely in dev.
-    // Start Hugo with HUGO_PARAMS_apiURL=http://localhost:5173/jobs-api
-    // and HUGO_PARAMS_candidatesAPIURL=http://localhost:5173/candidates-api.
+    origin: "http://localhost:5173",
     proxy: {
       '/jobs-api': {
         target: 'https://api.stawi.org',
@@ -93,6 +75,5 @@ export default defineConfig(({ command }) => ({
         rewrite: (path: string) => path.replace(/^\/candidates-api/, ''),
       },
     },
-    origin: 'http://localhost:5173',
   },
 }));

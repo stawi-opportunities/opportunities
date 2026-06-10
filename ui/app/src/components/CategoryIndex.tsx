@@ -63,7 +63,7 @@ export default function CategoryIndex() {
             one place.
           </p>
           <div className="mt-6 flex justify-center">
-            <a
+            
               href="/search/"
               className="inline-flex items-center gap-2 rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800"
             >
@@ -90,7 +90,7 @@ export default function CategoryIndex() {
           </p>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {OPPORTUNITY_TYPES.map(({ href, emoji, label, description, color, badge }) => (
-              <a
+              
                 key={href}
                 href={href}
                 className={`group flex flex-col rounded-xl border p-5 transition-all duration-150 ${color}`}
@@ -135,7 +135,7 @@ export default function CategoryIndex() {
             <p className="mt-1 text-sm text-gray-500">Refine your search by sector or field.</p>
             <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
               {cats.map((c) => (
-                <a
+                
                   key={c.key}
                   href={`/categories/${encodeURIComponent(c.key)}/`}
                   className="group flex flex-col justify-between rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-navy-300 hover:shadow-sm"

@@ -11,7 +11,7 @@ export default function SignupCta() {
   }, [state]);
 
   useEffect(() => {
-    const section = document.getElementById('mount-get-started-cta');
+    const section = document.getElementById('signup-cta-section');
     if (!section) return;
 
     // Authenticated visitors see nothing — one fewer "please sign up"
@@ -32,8 +32,6 @@ export default function SignupCta() {
         await login();
         window.location.href = '/onboarding/';
       } catch {
-        // Auth widget not configured or user dismissed — fall back to
-        // direct navigation so the button never silently does nothing.
         window.location.href = href;
       }
     };
@@ -42,7 +40,5 @@ export default function SignupCta() {
     return () => btn.removeEventListener('click', onClick);
   }, [state, login]);
 
-  // This island's entire job is DOM side-effects on the Hugo-rendered
-  // block above; nothing new to render here.
   return null;
 }

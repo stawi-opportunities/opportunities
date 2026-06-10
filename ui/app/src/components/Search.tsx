@@ -1,17 +1,24 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import type { Facets } from '@/types/search';
-import { useCandidateProfile } from '@/hooks/useCandidateProfile';
-import { useSearchURLParams } from '@/hooks/useSearchURLParams';
-import { useI18n } from '@/i18n/I18nProvider';
-import Cascade from './Cascade';
-import { FiltersPanel } from './search/FiltersPanel';
-import { SearchForm } from './search/SearchForm';
+﻿import { useEffect, useState, type ReactNode } from "react";
+import type { Facets } from "@/types/search";
+import { useCandidateProfile } from "@/hooks/useCandidateProfile";
+import { useSearchURLParams } from "@/hooks/useSearchURLParams";
+import Cascade from "./Cascade";
+import { FiltersPanel } from "./search/FiltersPanel";
+import { SearchForm } from "./search/SearchForm";
+import { useI18n } from "@/i18n/I18nProvider";
 
+/**
+ * /search/ â€” query + filters + facets + pagination. Reads initial state
+ * from the URL so deep links are shareable; writes back on changes via
+ * history.replaceState so the back button stays predictable without full
+ * navigations.
+ */
 export default function Search() {
   const { t } = useI18n();
   const [params, setParams] = useSearchURLParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [facets, setFacets] = useState<Facets | undefined>();
+
   const { preferredCountries, preferredLanguages } = useCandidateProfile();
 
   const hasActiveFilters = Boolean(
@@ -33,6 +40,7 @@ export default function Search() {
         <h1 className="sr-only">{t('search.searchJobs')}</h1>
         <SearchForm value={params} onChange={(next) => setParams(next)} />
       </header>
+
       <div className="flex items-center justify-between border-b border-gray-200 pb-3 md:hidden">
         <button
           type="button"
@@ -55,7 +63,9 @@ export default function Search() {
           </svg>
           {t('search.filters')}
           {hasActiveFilters && (
-            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">•</span>
+            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">
+              â€¢
+            </span>
           )}
         </button>
         {hasActiveFilters && (
@@ -68,6 +78,7 @@ export default function Search() {
           </button>
         )}
       </div>
+
       <div className="grid gap-8 md:grid-cols-[260px_1fr]">
         <aside className="hidden md:block">
           <FiltersPanel
@@ -78,6 +89,7 @@ export default function Search() {
             onClear={clearAll}
           />
         </aside>
+
         <section>
           <Cascade
             filters={{
@@ -95,6 +107,7 @@ export default function Search() {
           />
         </section>
       </div>
+
       {filtersOpen && (
         <MobileDrawer onClose={() => setFiltersOpen(false)} t={t}>
           <FiltersPanel

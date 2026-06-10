@@ -1,46 +1,92 @@
 {{ define "main" }}
-{{/* Authenticated visitors are redirected to /dashboard/ by the
-     HomeRedirect island; anonymous visitors see the hero below and a
-     single primary path: start onboarding (which signs them in). The
-     page is intentionally minimal — one screen, one action. */}}
-<div id="mount-home-redirect"></div>
 
-<section
-  id="home-hero"
-  class="flex min-h-[85vh] items-center bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 text-white"
->
-  <div class="mx-auto w-full max-w-5xl px-6 py-24 sm:px-8 lg:px-12">
-    <div class="max-w-3xl">
-      <h1
-        class="text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl"
-      >
-        Your next job, found for you.
-      </h1>
-      <p class="mt-6 max-w-xl text-xl leading-relaxed text-gray-200 sm:text-2xl">
-        Tell us what you want and upload your CV — we bring matching roles
-        straight to your inbox.
-      </p>
-      <div class="mt-10">
-        <a href="/onboarding/" class="btn-primary shadow-lg shadow-accent-500/20">
-          Get started
-        </a>
+{{/* ═══════════════════════════════════════════════════════
+     HERO — cinematic dark, animated orbs, inline search
+     ═══════════════════════════════════════════════════════ */}}
+<section class="relative min-h-screen overflow-hidden bg-[#060b18] text-white flex items-center">
+
+  {{/* Animated gradient orbs */}}
+  <div class="pointer-events-none absolute inset-0" aria-hidden="true">
+    <div class="animate-orb absolute -left-32 top-[-10%] h-[640px] w-[640px] rounded-full bg-[#219c3f]/20 blur-[130px]"></div>
+    <div class="animate-orb-slow absolute right-[-5%] top-[20%] h-[480px] w-[480px] rounded-full bg-indigo-600/15 blur-[110px]"></div>
+    <div class="animate-orb absolute bottom-[-8%] left-[45%] h-[500px] w-[500px] rounded-full bg-[#0c1226]/80 blur-[90px]"></div>
+    {{/* Subtle dot grid */}}
+    <div class="absolute inset-0 opacity-[0.07]"
+      style="background-image:radial-gradient(circle,rgba(255,255,255,0.6) 1px,transparent 1px);background-size:40px 40px"></div>
+  </div>
+
+  <div class="relative z-10 mx-auto w-full max-w-7xl px-4 py-28 sm:px-6 sm:py-32 lg:px-8 lg:py-40">
+    <div class="grid items-center gap-12 lg:grid-cols-[1fr_420px]">
+
+      {{/* ── Left copy ── */}}
+      <div class="max-w-2xl">
+        {{/* Eyebrow badge */}}
+        <div class="animate-fade-up mb-7 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-sm text-gray-300 backdrop-blur-sm">
+          <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#45b739] opacity-70"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-[#45b739]"></span>
+          </span>
+          AI-powered &bull; 5 opportunity types &bull; 120+ countries
+        </div>
+
+        {{/* Headline */}}
+        <h1 class="animate-fade-up animation-delay-100 text-5xl font-extrabold leading-[1.07] tracking-tight sm:text-6xl xl:text-[4.5rem]">
+          Your next big<br>
+          <span class="gradient-text">opportunity,</span><br>
+          found for&nbsp;you.
+        </h1>
+
+        {{/* Subheadline */}}
+        <p class="animate-fade-up animation-delay-200 mt-6 text-lg leading-relaxed text-gray-400 sm:text-xl">
+          Jobs, scholarships, tenders, funding and deals &mdash; curated by AI,
+          matched to your profile, delivered in one feed.
+        </p>
+
+        {{/* Search bar */}}
+        <form action="/search/" method="GET" class="animate-fade-up animation-delay-300 mt-10">
+          <div class="flex overflow-hidden rounded-xl border border-white/15 bg-white/5 backdrop-blur-sm focus-within:border-[#219c3f]/60 focus-within:ring-2 focus-within:ring-[#219c3f]/20 transition-all">
+            <div class="flex items-center pl-4 text-gray-400">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+              </svg>
+            </div>
+            <input type="search" name="q"
+              placeholder="Search jobs, scholarships, tenders&hellip;"
+              class="flex-1 bg-transparent py-4 pl-3 pr-4 text-white placeholder-gray-500 focus:outline-none text-base"/>
+            <button type="submit"
+              class="m-1.5 rounded-lg bg-[#219c3f] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#45b739] focus:outline-none focus:ring-2 focus:ring-[#219c3f]/50">
+              Search
+            </button>
+          </div>
+        </form>
+
+        {{/* Quick browse pills */}}
+        <div class="animate-fade-up animation-delay-400 mt-5 flex flex-wrap items-center gap-2">
+          <span class="text-xs text-gray-600">Browse:</span>
+          <a href="/jobs/"         class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">💼 Jobs</a>
+          <a href="/scholarships/" class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">🎓 Scholarships</a>
+          <a href="/tenders/"      class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">📋 Tenders</a>
+          <a href="/deals/"        class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">🏷️ Deals</a>
+          <a href="/funding/"      class="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-gray-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white">💰 Funding</a>
+        </div>
+
+        {{/* Trust badges */}}
+        <ul class="animate-fade-up animation-delay-500 mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-500">
+          <li class="flex items-center gap-1.5">
+            <svg class="h-4 w-4 text-[#45b739]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            Free for seekers
+          </li>
+          <li class="flex items-center gap-1.5">
+            <svg class="h-4 w-4 text-[#45b739]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            No recruiter spam
+          </li>
+          <li class="flex items-center gap-1.5">
+            <svg class="h-4 w-4 text-[#45b739]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            Verified daily
+          </li>
+        </ul>
       </div>
     </div>
   </div>
 </section>
-<script>
-  // Synchronously hide the hero for visitors who were authenticated last
-  // session, so returning users don't flash the marketing hero before the
-  // HomeRedirect island moves them to /dashboard/. Runs during parse,
-  // before paint. The 'stawi.authed' hint is set/cleared by AuthProvider;
-  // if it's stale (session already gone), HomeRedirect reveals the hero
-  // once auth resolves to unauthenticated.
-  try {
-    if (localStorage.getItem('stawi.authed') === '1') {
-      document.getElementById('home-hero').style.display = 'none';
-    }
-  } catch (e) {
-    /* private mode / storage blocked — fall through and show the hero */
-  }
-</script>
 {{ end }}
