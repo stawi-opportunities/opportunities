@@ -1,3 +1,6 @@
+-- NOTE: this file is applied only by the INTEGRATION TEST env (db/migrations
+-- is not the deployed path). Production promotion happens in-place via
+-- apps/crawler/migrations/0001/20260610_0130_timescale_append_only.sql.
 -- 0019: crawl_jobs + raw_payloads as TimescaleDB hypertables, matching
 -- the pattern in 0009_matching_applications_hypertables.sql.
 --
