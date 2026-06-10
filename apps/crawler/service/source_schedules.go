@@ -266,11 +266,6 @@ func ArchiveWorkflowByName(ctx context.Context, client WorkflowClient, name stri
 	return nil
 }
 
-// LegacyCentralTickWorkflow is the workflow name of the retired central
-// scheduler tick. The crawler archives it on boot when per-source scheduling is
-// enabled so the two don't double-dispatch.
-const LegacyCentralTickWorkflow = "opportunities.scheduler.tick"
-
 // ReconcileSourceSchedules drives every source's Trustage schedule to match its
 // status: active/degraded sources get a live schedule, everything else is
 // archived. Source-status-driven so add/enable creates and disable/stop/remove

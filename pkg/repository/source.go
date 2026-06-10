@@ -433,23 +433,6 @@ func (r *SourceRepository) ResetQualityWindowAll(ctx context.Context) (int64, er
 	return res.RowsAffected, res.Error
 }
 
-// RefreshSignals triggers REFRESH MATERIALIZED VIEW CONCURRENTLY
-// crawl_signals via the plpgsql wrapper. ~50ms typical; safe to
-// call every scheduler tick because CONCURRENTLY never blocks reads.
-// The unique index on crawl_signals(source_id) is what makes
-// CONCURRENTLY viable — see migration _0071.
-//
-// PrepareStmt is disabled for this call because pgbouncer in
-// transaction-pooling mode collides on the cached statement name
-// across pooled connections (SQLSTATE 08P01). REFRESH MATERIALIZED
-// VIEW doesn't benefit from prepare-caching anyway, so the per-call
-// session override is free.
-func (r *SourceRepository) RefreshSignals(ctx context.Context) error {
-	return r.db(ctx, false).
-		Session(&gorm.Session{PrepareStmt: false}).
-		Exec("SELECT refresh_crawl_signals()").Error
-}
-
 // LoadSignals returns the latest rolling 7d signals for every source.
 // Source IDs not present in crawl_signals return zero values.
 // Returns a map keyed by source_id so callers can match against the
@@ -464,7 +447,7 @@ func (r *SourceRepository) LoadSignals(ctx context.Context) (map[string]freshnes
 		LastNewVariantAt *time.Time `gorm:"column:last_new_variant_at"`
 	}
 	var rows []signalRow
-	// PrepareStmt disabled — same pgbouncer collision as RefreshSignals.
+	// PrepareStmt disabled — pgbouncer collides on the cached statement name (08P01).
 	// Per-call session override; the bulk scan doesn't benefit from
 	// prepare-caching anyway.
 	err := r.db(ctx, true).

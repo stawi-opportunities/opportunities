@@ -577,13 +577,6 @@ func main() {
 				return
 			}
 			service.ReconcileSourceSchedules(rctx, scheduleClient, all, cfg.CrawlBaseURL)
-			// Retire the legacy central scheduler tick: per-source schedules are
-			// now the single dispatch path. Idempotent — no-op once archived.
-			if err := service.ArchiveWorkflowByName(rctx, scheduleClient, service.LegacyCentralTickWorkflow); err != nil {
-				log.WithError(err).Warn("source-schedules: archive legacy central tick failed")
-			} else {
-				log.WithField("workflow", service.LegacyCentralTickWorkflow).Info("source-schedules: legacy central tick archived")
-			}
 		}()
 	}
 
