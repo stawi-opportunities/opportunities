@@ -60,6 +60,9 @@ func (g *Generator) Generate(ctx context.Context, src domain.Source, sampleURLs 
 			prompt = g.repairPrompt(prompt, perr.Error())
 			continue
 		}
+		// Absorb cosmetic LLM noise (omitted pagination mode, hallucinated
+		// transform names) so the repair loop is spent on real structure.
+		rec.Normalize()
 		if verr := rec.Validate(); verr != nil {
 			lastErr = verr
 			prompt = g.repairPrompt(prompt, verr.Error())
