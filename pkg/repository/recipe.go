@@ -141,25 +141,31 @@ func (r *RecipeRepository) History(ctx context.Context, sourceID string) ([]Sour
 	return rows, err
 }
 
-// RecentURLs returns up to `limit` distinct, recently-crawled page URLs for a
-// source (newest first) from the raw_payloads crawl-archive ledger. These are
-// real URLs the crawler already fetched successfully, so they seed recipe
-// generation far more reliably than a bare BaseURL request. Returns an empty
-// slice (not an error) when the source has no archived pages yet.
+// RecentURLs returns up to `limit` distinct, recently-crawled detail-page URLs
+// for a source (newest first) — real, known-fetchable pages that seed recipe
+// generation far better than a bare BaseURL. It unions two sources of truth:
+// raw_payloads (the crawler's fetch ledger, used by archiving connectors) and
+// opportunities.apply_url (detail URLs of jobs already materialised by the
+// per-page path, which is how the universal HTML boards surface their URLs).
+// Returns an empty slice (not an error) when the source has crawled nothing yet.
 func (r *RecipeRepository) RecentURLs(ctx context.Context, sourceID string, limit int) ([]string, error) {
 	if limit <= 0 {
 		limit = 4
 	}
 	var rows []string
-	// Over-fetch then de-dup in Go: DISTINCT + ORDER BY a non-selected column is
-	// invalid in Postgres, and raw_payloads is a fetched_at-partitioned
-	// hypertable so a recency-ordered LIMIT is cheap.
-	if err := r.db(ctx, true).
-		Table("raw_payloads").
-		Where("source_id = ? AND source_url <> ''", sourceID).
-		Order("fetched_at DESC").
-		Limit(limit*8).
-		Pluck("source_url", &rows).Error; err != nil {
+	// Over-fetch then de-dup in Go (DISTINCT + ORDER BY a non-selected column is
+	// invalid in Postgres). Both tables are recency-indexed so the LIMIT is cheap.
+	const q = `
+		SELECT url FROM (
+			SELECT source_url AS url, fetched_at AS ts FROM raw_payloads
+				WHERE source_id = ? AND source_url <> ''
+			UNION ALL
+			SELECT apply_url AS url, last_seen_at AS ts FROM opportunities
+				WHERE source_id = ? AND apply_url IS NOT NULL AND apply_url <> ''
+		) u
+		ORDER BY ts DESC
+		LIMIT ?`
+	if err := r.db(ctx, true).Raw(q, sourceID, sourceID, limit*8).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	seen := make(map[string]bool, len(rows))
