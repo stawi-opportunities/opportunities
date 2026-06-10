@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/pitabwire/util"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -86,6 +87,14 @@ func (h *RecipeGenerateHandler) generate(ctx context.Context, sourceID string, s
 	}
 	rec, samples, err := h.deps.Generator.Generate(ctx, *src, sampleURLs)
 	if err != nil {
+		// Transient provider rate limit: NOT a property of the source. Don't
+		// flag it (a busy minute would drain the whole queue into needs_tuning);
+		// ACK and let a later backfill tick retry it naturally.
+		if isRateLimited(err) {
+			log.WithError(err).WithField("source", sourceID).
+				Warn("recipe.generate: rate-limited; leaving source queued for a later tick")
+			return nil
+		}
 		// Persistent failure (samples unfetchable, or the repair loop exhausted)
 		// — flag for operator review and ACK. Returning the error would make
 		// Frame redeliver this event indefinitely (re-fetching + re-calling the
@@ -127,6 +136,17 @@ func (h *RecipeGenerateHandler) deriveSampleURLs(ctx context.Context, src *domai
 		}
 	}
 	return []string{src.BaseURL}
+}
+
+// isRateLimited reports whether a generation error is a transient provider
+// rate limit (the extraction client's retry exhaustion wraps the 429 text).
+func isRateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "status 429") || strings.Contains(msg, "rate-limited") ||
+		strings.Contains(msg, "rate limiting")
 }
 
 // flagForTuning marks a source for operator review (best-effort).

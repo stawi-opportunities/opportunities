@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,9 +34,12 @@ func (f fakeSourceByID) GetByID(_ context.Context, _ string) (*domain.Source, er
 	return &s, nil
 }
 
-type fakeGenLLM struct{ reply string }
+type fakeGenLLM struct {
+	reply string
+	err   error
+}
 
-func (f fakeGenLLM) Complete(_ context.Context, _ string) (string, error) { return f.reply, nil }
+func (f fakeGenLLM) Complete(_ context.Context, _ string) (string, error) { return f.reply, f.err }
 
 type headeredClient struct{ c *http.Client }
 
@@ -158,4 +162,34 @@ func TestRecipeGenerateHandler_SynthesisFailureFlagsAndAcks(t *testing.T) {
 	require.NoError(t, h.Execute(context.Background(), &raw)) // ACK, no redelivery
 	assert.Nil(t, store.activated)
 	assert.True(t, flagger.flagged)
+}
+
+func TestRecipeGenerateHandler_RateLimitDoesNotFlag(t *testing.T) {
+	// A 429-style failure must NOT flag needs_tuning — the source stays queued
+	// for a later tick instead of draining into quarantine.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<html><body>job page</body></html>"))
+	}))
+	defer srv.Close()
+	reg, err := opportunity.LoadFromDir("../../../definitions/opportunity-kinds")
+	if err != nil {
+		t.Skipf("kinds: %v", err)
+	}
+	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "KE"}
+	src.ID = "s4"
+	src.Kinds = []string{"job"}
+	store := &fakeRecipeStore{}
+	flagger := &fakeFlagger{}
+	fetcher := recipe.NewHTTPFetcher(headeredClient{c: srv.Client()})
+	gen := recipe.NewGenerator(fakeGenLLM{err: fmt.Errorf("chat: rate-limited after 4 attempts: chat: status 429: TPM limit reached")}, fetcher, reg, 3)
+	h := NewRecipeGenerateHandler(RecipeHandlerDeps{
+		Sources: fakeSourceByID{src: src}, Recipes: store, Generator: gen, Registry: reg,
+		Fetcher: fetcher, Flagger: flagger, PassThreshold: 0.8,
+	})
+	env := eventsv1.NewEnvelope(eventsv1.TopicRecipeGenerate, eventsv1.RecipeGenerateV1{SourceID: "s4", SampleURLs: []string{srv.URL}})
+	body, _ := json.Marshal(env)
+	raw := json.RawMessage(body)
+	require.NoError(t, h.Execute(context.Background(), &raw))
+	assert.Nil(t, store.activated)
+	assert.False(t, flagger.flagged, "rate-limited source must stay queued, not flagged")
 }
