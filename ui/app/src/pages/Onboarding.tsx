@@ -1,20 +1,19 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useForm, type SubmitHandler, type UseFormReturn } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/providers/AuthProvider';
-import {
-  submitOnboarding,
-  uploadCV,
-  createCheckout,
-  fetchOnboardingDraft,
-  saveOnboardingDraft,
-  fetchMeSubscription,
-  type OnboardingDraftFields,
-} from '@/api/candidates';
+import { submitOnboarding, uploadCV } from '@/api/profile';
+import { createCheckout } from '@/api/billing';
 import { PLANS, planById, type PlanId } from '@/utils/plans';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
+import {
+  fetchMeSubscription,
+  fetchOnboardingDraft,
+  saveOnboardingDraft,
+  type OnboardingDraftFields,
+} from '@/api/candidates';
 
 type FormValues = Omit<z.infer<typeof Step1Schema>, 'cv'> & { cv?: File } & z.infer<
     typeof Step2Schema
@@ -172,23 +171,8 @@ export default function Onboarding() {
     mode: 'onBlur',
   });
 
-  // The nav's profile widget (logout button) is present on every page,
-  // including this one. When a user signs out here, the runtime flips to
-  // 'unauthenticated' — and naively kicking off login() on that transition
-  // would bounce them straight back to the IdP login screen instead of
-  // logging them out. So distinguish a *fresh* anonymous visit (start the
-  // sign-in funnel) from a session that ended while on this page — logout
-  // or token wipe — which should land on the public homepage.
-  const wasAuthenticated = useRef(false);
   useEffect(() => {
-    if (state === 'authenticated') {
-      wasAuthenticated.current = true;
-      return;
-    }
-    if (state !== 'unauthenticated') return;
-    if (wasAuthenticated.current) {
-      window.location.replace('/');
-    } else {
+    if (state === 'unauthenticated') {
       void login();
     }
   }, [state, login]);
@@ -335,7 +319,7 @@ export default function Onboarding() {
   const selectedPlan = form.watch('plan');
   const finishLabel =
     step === 3
-      ? `${t('onboard.continueToPayment')} · $${planById(selectedPlan).price}${t('dash.perMonth')}`
+      ? `${t('onboard.continueToPayment')} ┬╖ $${planById(selectedPlan).price}${t('dash.perMonth')}`
       : t('onboard.continue');
 
   return (
@@ -398,7 +382,7 @@ function Progress({ step, t }: { step: 1 | 2 | 3; t: T }) {
       aria-valuenow={step}
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {t('onboard.step')} {step} {t('onboard.of')} 3 · {t(STEP_LABEL_KEYS[step - 1]!)}
+        {t('onboard.step')} {step} {t('onboard.of')} 3 ┬╖ {t(STEP_LABEL_KEYS[step - 1]!)}
       </p>
       <ol className="mt-3 grid grid-cols-3 gap-2" aria-hidden>
         {STEP_LABEL_KEYS.map((key, i) => {
@@ -448,7 +432,7 @@ function Step1Form({ form, t }: FormProps) {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-gray-900">{cv.name}</p>
                   <p className="text-xs text-gray-500">
-                    {(cv.size / 1024).toFixed(1)} KB · {t('onboard.readyToUpload')}
+                    {(cv.size / 1024).toFixed(1)} KB ┬╖ {t('onboard.readyToUpload')}
                   </p>
                 </div>
                 <button
