@@ -85,7 +85,12 @@ func TestTimescaleAppendOnlyMigration(t *testing.T) {
 	_, err = db.ExecContext(ctx, `UPDATE crawl_jobs SET status='succeeded' WHERE id='j1'`)
 	assert.NoError(t, err, "crawl_jobs stays mutable by design")
 
-	// Idempotency: the boot migration job re-runs this on every deploy.
-	_, err = db.ExecContext(ctx, string(sqlBytes))
+	// Idempotency + frame v1.98 constraint: the migrator executes each file as
+	// ONE prepared statement (multi-command files fail with SQLSTATE 42601).
+	// Prepare-then-exec proves the file is a single command AND a no-op re-run.
+	stmt, err := db.PrepareContext(ctx, string(sqlBytes))
+	require.NoError(t, err, "file must be preparable as a single statement (frame v1.98 migrator)")
+	_, err = stmt.ExecContext(ctx)
 	assert.NoError(t, err, "second apply must be a no-op")
+	_ = stmt.Close()
 }
