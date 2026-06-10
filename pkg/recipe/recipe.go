@@ -34,6 +34,28 @@ type FieldExtractor struct {
 	Required  bool          `json:"required,omitempty"`
 }
 
+// UnmarshalJSON accepts the canonical object form AND the bare-string shorthand
+// LLMs sometimes emit where an extractor belongs (e.g. "pagination": {"next":
+// "a.next"}). A bare string is read as a CSS-selector extractor — the most
+// plausible meaning — and the pass-rate gate remains the quality arbiter.
+// Any other non-object shape yields an empty extractor rather than a parse
+// failure that burns the repair loop.
+func (fx *FieldExtractor) UnmarshalJSON(b []byte) error {
+	type plain FieldExtractor // no methods: avoids recursing into this func
+	var p plain
+	if err := json.Unmarshal(b, &p); err == nil {
+		*fx = FieldExtractor(p)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil && s != "" {
+		*fx = FieldExtractor{From: []string{"selector"}, Selector: s}
+		return nil
+	}
+	*fx = FieldExtractor{}
+	return nil
+}
+
 // TransformList is a []string that unmarshals tolerantly: LLMs sometimes emit a
 // bare string instead of an array, or stuff objects/numbers into the list.
 // Accept strings (bare or in an array), drop everything else — Normalize() and
