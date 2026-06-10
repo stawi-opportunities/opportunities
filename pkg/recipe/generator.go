@@ -14,11 +14,12 @@ import (
 // using the LLM once (with a bounded repair loop). It is the ONLY AI consumer;
 // the resulting recipe runs LLM-free thereafter.
 type Generator struct {
-	llm         LLM
-	fetcher     Fetcher
-	reg         *opportunity.Registry
-	maxAttempts int
-	sampleChars int
+	llm           LLM
+	fetcher       Fetcher
+	reg           *opportunity.Registry
+	maxAttempts   int
+	sampleChars   int
+	passThreshold float64
 }
 
 // NewGenerator builds a Generator. maxAttempts bounds the parse/validate repair
@@ -27,7 +28,27 @@ func NewGenerator(llm LLM, f Fetcher, reg *opportunity.Registry, maxAttempts int
 	if maxAttempts < 1 {
 		maxAttempts = 1
 	}
-	return &Generator{llm: llm, fetcher: f, reg: reg, maxAttempts: maxAttempts, sampleChars: 6000}
+	return &Generator{llm: llm, fetcher: f, reg: reg, maxAttempts: maxAttempts, sampleChars: 6000, passThreshold: 0.8}
+}
+
+// SetPassThreshold overrides the in-loop quality gate (a fraction of samples
+// the recipe must extract successfully before Generate accepts it).
+func (g *Generator) SetPassThreshold(t float64) {
+	if t > 0 && t <= 1 {
+		g.passThreshold = t
+	}
+}
+
+// missSummary renders a validation report's failures for the repair prompt.
+func missSummary(rep ValidationReport) string {
+	var b strings.Builder
+	for _, s := range rep.PerSample {
+		if s.OK {
+			continue
+		}
+		fmt.Fprintf(&b, "page %s extracted empty for fields %v; ", s.URL, s.Missing)
+	}
+	return strings.TrimSuffix(b.String(), "; ")
 }
 
 // Generate fetches the sample URLs, asks the LLM to synthesize a recipe, and
@@ -66,6 +87,17 @@ func (g *Generator) Generate(ctx context.Context, src domain.Source, sampleURLs 
 		if verr := rec.Validate(); verr != nil {
 			lastErr = verr
 			prompt = g.repairPrompt(prompt, verr.Error())
+			continue
+		}
+		// Quality feedback loop: dry-run the recipe over the samples and, when
+		// it extracts below the pass threshold, tell the LLM exactly which
+		// fields came back empty on which pages so the next attempt fixes the
+		// extractors instead of regenerating blind.
+		rep := ValidateRecipe(rec, src, samples, g.reg)
+		if rep.PassRate < g.passThreshold {
+			lastErr = fmt.Errorf("recipe extracted below pass threshold (%.2f < %.2f): %s",
+				rep.PassRate, g.passThreshold, missSummary(rep))
+			prompt = g.repairPrompt(prompt, lastErr.Error())
 			continue
 		}
 		return rec, samples, nil

@@ -78,6 +78,10 @@ func resolveRaw(src string, fx FieldExtractor, pc *PageContext) (string, error) 
 	switch src {
 	case "const":
 		return fx.Const, nil
+	case "page_url":
+		// The detail page's own URL — the canonical apply_url on boards whose
+		// detail page IS the application entry point.
+		return pc.URL, nil
 	case "meta":
 		return pc.Meta[fx.Meta], nil
 	case "selector":

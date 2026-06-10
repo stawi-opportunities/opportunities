@@ -15,7 +15,7 @@ import (
 // order callers typically list them (structured data first, selectors last).
 var validFromSources = map[string]bool{
 	"json_ld": true, "next_data": true, "microdata": true,
-	"selector": true, "meta": true, "record": true, "const": true,
+	"selector": true, "meta": true, "record": true, "const": true, "page_url": true,
 }
 
 // FieldExtractor describes how to pull ONE value from a page or record. From is
