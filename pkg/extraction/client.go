@@ -139,9 +139,11 @@ func (e *Extractor) chat(ctx context.Context, prompt string, expectJSON bool) (s
 		"model":    e.model,
 		"messages": []map[string]string{{"role": "user", "content": prompt}},
 		"stream":   false,
-		// Enough for the 50-field JobFields extraction without provider
-		// defaults (~256) cutting us off.
-		"max_tokens": 4096,
+		// Headroom for the largest JSON outputs: a full extraction recipe maps
+		// rules for ~50 fields (selectors + transforms + fallbacks) and overran
+		// 4096, truncating the JSON ("unexpected end of JSON input"). 8192 fits
+		// recipes and ordinary extractions still stop early.
+		"max_tokens": 8192,
 	}
 	if expectJSON {
 		body["response_format"] = map[string]string{"type": "json_object"}
