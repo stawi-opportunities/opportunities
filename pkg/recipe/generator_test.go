@@ -48,7 +48,7 @@ func genSource() domain.Source {
 
 func TestGenerator_ProducesValidRecipe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`<html><head><script type="application/ld+json">{"title":"x"}</script></head><body></body></html>`))
+		_, _ = w.Write([]byte(`<html><head><script type="application/ld+json">{"title":"Engineer","description":"We are hiring an engineer to design, build and operate distributed crawling systems across our African job boards platform.","hiringOrganization":{"name":"Acme"},"url":"https://x.io/job/1","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body></body></html>`))
 	}))
 	defer srv.Close()
 
@@ -67,7 +67,7 @@ func TestGenerator_ProducesValidRecipe(t *testing.T) {
 
 func TestGenerator_RepairsAfterInvalidThenValid(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`<html><body></body></html>`))
+		_, _ = w.Write([]byte(`<html><head><script type="application/ld+json">{"title":"Engineer","description":"We are hiring an engineer to design, build and operate distributed crawling systems across our African job boards platform.","hiringOrganization":{"name":"Acme"},"url":"https://x.io/job/1","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body></body></html>`))
 	}))
 	defer srv.Close()
 

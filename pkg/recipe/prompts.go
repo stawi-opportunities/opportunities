@@ -30,15 +30,16 @@ A recipe has this shape:
 }
 
 An <extractor> resolves ONE value by trying sources in order (first non-empty wins):
-{"from":["json_ld","next_data","microdata","selector","meta","record","const"],
+{"from":["json_ld","next_data","microdata","selector","meta","record","const","page_url"],
  "json_path":"$.x",      // for json_ld/next_data/record
  "microdata":"itemprop", "selector":".css", "attr":"href",
- "meta":"og:image", "const":"literal",
+ "meta":"og:image", "const":"literal",   // "page_url" yields the detail page's own URL
  "transform":["trim","lower","collapse_ws","html_to_text","absolute_url","parse_money","parse_date"]}
 
 Rules:
 - PREFER structured data: if pages embed schema.org JSON-LD (JobPosting etc.) or __NEXT_DATA__, map json_path; use CSS selectors only when needed.
 - title, description, issuing_entity, apply_url, anchor_country are REQUIRED — always provide an extractor.
+- apply_url: when no explicit apply link exists, the detail page itself is the application entry point — use {"from":["page_url"]} (often as the last fallback source).
 - Dates: add "parse_date" transform. Money fields: "parse_money". Relative links: "absolute_url".
 - Find the listing/detail structure: item_selector picks each card on the listing; link extracts each card's detail URL.
 - Output VALID JSON that parses into the schema above.`

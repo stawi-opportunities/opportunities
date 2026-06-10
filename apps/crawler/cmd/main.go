@@ -489,6 +489,7 @@ func main() {
 	// Generator → Validator → Store pipeline, activating on a pass-rate gate.
 	if cfg.RecipeEnabled && extractor != nil {
 		recipeGen := recipe.NewGenerator(extractor, recipe.NewHTTPFetcher(httpClient), reg, cfg.RecipeMaxGenAttempts)
+		recipeGen.SetPassThreshold(cfg.RecipePassThreshold)
 		recipeDeps := service.RecipeHandlerDeps{
 			Sources: sourceRepo, Recipes: recipeRepo, Generator: recipeGen, Registry: reg,
 			Fetcher: recipe.NewHTTPFetcher(httpClient), Flagger: sourceRepo,
