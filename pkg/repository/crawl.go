@@ -106,7 +106,7 @@ func (r *CrawlRepository) SaveRawPayload(ctx context.Context, payload *domain.Ra
 	// (SQLSTATE 08P01 "prepared statement name is already in use"),
 	// which the frontier-worker hit hammering this path per URL. The
 	// once-per-payload INSERT gains nothing from prepare-caching.
-	// Same per-call override pattern as SourceRepository.RefreshSignals.
+	// Same per-call PrepareStmt override pattern as SourceRepository.LoadSignals.
 	return r.db(ctx, false).
 		Session(&gorm.Session{PrepareStmt: false}).
 		Create(payload).Error
