@@ -886,7 +886,20 @@ func (h *CrawlRequestHandler) enrichOne(ctx context.Context, opp *domain.Externa
 		return
 	}
 
-	body := string(raw)
+	rawHTML := string(raw)
+	// Company logo: capture the detail page's og:image (best-effort, only when
+	// structured data hasn't already supplied one). Flows to the company record
+	// via attributes.company_logo.
+	if logo := content.OGImage(rawHTML); logo != "" {
+		if opp.Attributes == nil {
+			opp.Attributes = map[string]any{}
+		}
+		if _, has := opp.Attributes["company_logo"]; !has {
+			opp.Attributes["company_logo"] = logo
+		}
+	}
+
+	body := rawHTML
 	if ext, _ := content.ExtractFromHTML(body); ext != nil && ext.Markdown != "" {
 		body = ext.Markdown
 	}

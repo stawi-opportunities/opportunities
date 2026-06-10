@@ -17,6 +17,44 @@ type Extracted struct {
 	Markdown  string // clean markdown suitable for AI and humans
 }
 
+var metaTagRe = regexp.MustCompile(`(?is)<meta\s[^>]*>`)
+var contentAttrRe = regexp.MustCompile(`(?is)content\s*=\s*["']([^"']+)["']`)
+
+// OGImage returns the page's Open Graph image (og:image / og:image:secure_url),
+// falling back to twitter:image — typically the company/share image on a job or
+// company page, used as a company-logo fallback when structured data has none.
+// Returns "" when absent. Tolerant of attribute order and quote style; only
+// http(s) URLs are accepted.
+func OGImage(rawHTML string) string {
+	if rawHTML == "" {
+		return ""
+	}
+	var twitter string
+	for _, tag := range metaTagRe.FindAllString(rawHTML, -1) {
+		lt := strings.ToLower(tag)
+		isOG := strings.Contains(lt, "og:image")
+		isTwitter := strings.Contains(lt, "twitter:image")
+		if !isOG && !isTwitter {
+			continue
+		}
+		m := contentAttrRe.FindStringSubmatch(tag)
+		if len(m) != 2 {
+			continue
+		}
+		u := strings.TrimSpace(html.UnescapeString(m[1]))
+		if !strings.HasPrefix(strings.ToLower(u), "http") {
+			continue
+		}
+		if isOG {
+			return u // prefer og:image
+		}
+		if twitter == "" {
+			twitter = u
+		}
+	}
+	return twitter
+}
+
 // ExtractFromHTML takes raw HTML from an HTTP response, uses go-trafilatura to
 // extract the main content, converts it to Markdown, and returns all three forms.
 func ExtractFromHTML(rawHTML string) (*Extracted, error) {
