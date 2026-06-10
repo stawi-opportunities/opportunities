@@ -42,8 +42,6 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
-	"github.com/stawi-opportunities/opportunities/pkg/definitions"
-	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/greenhouse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
@@ -53,9 +51,11 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
+	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/freshness"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
+	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/sourceverify"
@@ -92,11 +92,29 @@ type adminVerifier interface {
 	VerifyAndPersist(ctx context.Context, sourceID string) (*domain.VerificationReport, error)
 }
 
+// schedulingEmitFn emits sources.scheduling.changed.v1 for a source id.
+// Best-effort: implementations log on failure and never return an error so
+// a transient event-bus outage can't fail an admin request. nil is safe —
+// the handlers guard before calling.
+type schedulingEmitFn func(ctx context.Context, sourceID string)
+
 // sourcesAdmin bundles the dependencies the admin handlers need.
 type sourcesAdmin struct {
 	repo       sourceAdminRepo
 	dispatcher adminVerifier
 	registry   *opportunity.Registry
+	// emitScheduling signals the crawler to (re)sync a source's per-source
+	// Trustage crawl schedule after a lifecycle mutation. nil when scheduling
+	// events aren't wired (events plugin unavailable).
+	emitScheduling schedulingEmitFn
+}
+
+// notifyScheduling fires the scheduling-changed event for a source, if wired.
+func (a *sourcesAdmin) notifyScheduling(ctx context.Context, sourceID string) {
+	if a.emitScheduling == nil {
+		return
+	}
+	a.emitScheduling(ctx, sourceID)
 }
 
 // registerSourcesAdmin opens the database via Frame, builds the verifier
@@ -110,7 +128,7 @@ type sourcesAdmin struct {
 // up its own (which would double-poll R2 and ignore broadcast events).
 // nil means R2 isn't configured — the /admin/definitions/* block stays
 // disabled in that case.
-func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader) {
+func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader, emitScheduling schedulingEmitFn) {
 	log := util.Log(ctx)
 
 	fc, err := fconfig.FromEnv[fconfig.ConfigurationDefault]()
@@ -155,9 +173,10 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 
 	_ = verifier // retained for future direct invocation; dispatcher wraps it for now.
 	a := &sourcesAdmin{
-		repo:       repo,
-		dispatcher: dispatcher,
-		registry:   reg,
+		repo:           repo,
+		dispatcher:     dispatcher,
+		registry:       reg,
+		emitScheduling: emitScheduling,
 	}
 
 	// Order matters: more specific patterns first.
@@ -423,6 +442,12 @@ func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
 	}
+	// Operator-created sources land in SourcePending, but guard on live status
+	// in case a future path creates one already active — only then does the
+	// crawler need to ensure a schedule. Pending sources have no schedule yet.
+	if src.Status == domain.SourceActive || src.Status == domain.SourceDegraded {
+		a.notifyScheduling(r.Context(), src.ID)
+	}
 	logAction(r, "create", src.ID)
 
 	writeJSON(w, http.StatusCreated, src)
@@ -523,6 +548,13 @@ func (a *sourcesAdmin) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}
+	// A crawl_interval_sec edit changes the source's cron cadence, so the
+	// crawler must re-sync the per-source schedule (archive + recreate at the
+	// new cadence). The handler re-derives ensure/archive from live status, so
+	// this is a no-op for inactive sources.
+	if req.CrawlIntervalSec != nil {
+		a.notifyScheduling(r.Context(), id)
+	}
 	logAction(r, "update", id)
 
 	updated, _ := a.repo.GetByID(r.Context(), id)
@@ -554,6 +586,9 @@ func (a *sourcesAdmin) handleDelete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Hard delete or soft disable: the source is gone/inactive → crawler
+	// archives any per-source schedule (handler tolerates a now-missing source).
+	a.notifyScheduling(r.Context(), id)
 	logAction(r, "delete", id)
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "hard": hard})
@@ -606,6 +641,7 @@ func (a *sourcesAdmin) handleApprove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "approve_failed", err.Error())
 		return
 	}
+	a.notifyScheduling(r.Context(), id) // now active → crawler ensures schedule
 	logAction(r, "approve", id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceActive})
 }
@@ -665,6 +701,7 @@ func (a *sourcesAdmin) handlePause(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "pause_failed", err.Error())
 		return
 	}
+	a.notifyScheduling(r.Context(), id) // now paused → crawler archives schedule
 	logAction(r, "pause", id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourcePaused})
 }
@@ -684,6 +721,7 @@ func (a *sourcesAdmin) handleResume(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "resume_failed", err.Error())
 		return
 	}
+	a.notifyScheduling(r.Context(), id) // now active → crawler ensures schedule
 	logAction(r, "resume", id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceActive})
 }
@@ -717,6 +755,7 @@ func (a *sourcesAdmin) handleStop(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "stop_failed", err.Error())
 		return
 	}
+	a.notifyScheduling(r.Context(), id) // now disabled → crawler archives schedule
 	logAction(r, "stop", id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceDisabled})
 }
@@ -744,6 +783,7 @@ func (a *sourcesAdmin) handleStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "start_failed", err.Error())
 		return
 	}
+	a.notifyScheduling(r.Context(), id) // now active → crawler ensures schedule
 	logAction(r, "start", id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": domain.SourceActive})
 }

@@ -40,10 +40,10 @@ type apiConfig struct {
 	// DatabaseURL is the CNPG pooler-rw connection string.
 	DatabaseURL string `env:"DATABASE_URL" envDefault:""`
 
-	AnalyticsBaseURL  string  `env:"ANALYTICS_BASE_URL"   envDefault:""`
-	AnalyticsOrg      string  `env:"ANALYTICS_ORG"        envDefault:"default"`
-	AnalyticsUsername string  `env:"ANALYTICS_USERNAME"   envDefault:""`
-	AnalyticsPassword string  `env:"ANALYTICS_PASSWORD"   envDefault:""`
+	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL"   envDefault:""`
+	AnalyticsOrg      string `env:"ANALYTICS_ORG"        envDefault:"default"`
+	AnalyticsUsername string `env:"ANALYTICS_USERNAME"   envDefault:""`
+	AnalyticsPassword string `env:"ANALYTICS_PASSWORD"   envDefault:""`
 
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
@@ -233,7 +233,29 @@ func main() {
 	// own Postgres connection, so wiring them together keeps the
 	// "should the api own a DB?" decision a single env var.
 	if cfg.SourceAdminEnabled {
-		registerSourcesAdmin(ctx, mux, &cfg, reg, loader)
+		// Source lifecycle mutations emit sources.scheduling.changed.v1 so the
+		// crawler creates/archives the per-source Trustage crawl schedule. The
+		// api otherwise registers no events surface, so wire the events plugin
+		// here (this registers the shared events-queue publisher Emit targets,
+		// mirroring how crawler/worker register publishers) and thread a
+		// best-effort emit function into the source-admin handlers.
+		svc.Init(ctx, frame.WithRegisterEvents())
+		if mgr := svc.EventsManager(); mgr != nil {
+			mgr.SetStrict(false)
+		}
+		emitSchedulingChanged := func(emitCtx context.Context, sourceID string) {
+			mgr := svc.EventsManager()
+			if mgr == nil {
+				return
+			}
+			env := eventsv1.NewEnvelope(eventsv1.TopicSourceSchedulingChanged,
+				eventsv1.SourceSchedulingChangedV1{SourceID: sourceID})
+			if err := mgr.Emit(emitCtx, eventsv1.TopicSourceSchedulingChanged, env); err != nil {
+				util.Log(emitCtx).WithError(err).WithField("source_id", sourceID).
+					Warn("source admin: scheduling-changed emit failed")
+			}
+		}
+		registerSourcesAdmin(ctx, mux, &cfg, reg, loader, emitSchedulingChanged)
 		registerFlagsAdmin(ctx, mux, jm)
 	}
 

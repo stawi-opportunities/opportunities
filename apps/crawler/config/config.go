@@ -30,11 +30,6 @@ type CrawlerConfig struct {
 	// every real extraction ("Client.Timeout exceeded while awaiting headers").
 	InferenceTimeoutSec int `env:"INFERENCE_TIMEOUT_SEC" envDefault:"120"`
 
-	// CrawlTickBatch caps how many due sources the central crawl tick
-	// (POST /admin/sources/crawl-due, fired by source-crawl-tick.json) dispatches
-	// per run. Backpressure stops the batch early when the pipeline saturates.
-	CrawlTickBatch int `env:"CRAWL_TICK_BATCH" envDefault:"25"`
-
 	// RecipeBackfillLimit caps how many recipe-less sources the backfill cron
 	// enqueues for generation per run. Each generation makes several LLM calls,
 	// so enqueuing all sources at once bursts past a shared inference tier's
@@ -164,13 +159,14 @@ type CrawlerConfig struct {
 	CrawlInboxPumpHighWater int  `env:"CRAWL_INBOX_PUMP_HIGH_WATER" envDefault:"5000"`
 	CrawlInboxPumpBatch     int  `env:"CRAWL_INBOX_PUMP_BATCH" envDefault:"500"`
 
-	// SourceSchedulesEnabled gates the per-source Trustage schedule sync (the
-	// new model that replaces the central scheduler tick). When true and a
-	// TrustageURL is configured, source add/enable creates a per-source
-	// schedule and disable/stop archives it; a reconcile pass heals drift.
-	// Defaults off so the rollout can enable it explicitly alongside the still-
-	// running central tick (the two are idempotent via the crawl minute key).
-	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"false"`
+	// SourceSchedulesEnabled gates the per-source Trustage schedule sync — the
+	// fully-dynamic, event-driven crawl scheduling model. When true and a
+	// TrustageURL is configured, source lifecycle mutations emit
+	// sources.scheduling.changed.v1 and the crawler creates/archives a
+	// per-source Trustage schedule to match the source's live status; a boot
+	// reconcile + reconcile backstop heal drift. Defaults on — this is the only
+	// crawl driver (the legacy central cron tick has been retired).
+	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"true"`
 
 	// Recipe generation knobs. All default to off / conservative values so
 	// the feature ships dormant (RECIPE_ENABLED=false) and is enabled

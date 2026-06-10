@@ -503,6 +503,31 @@ func main() {
 		log.WithField("topics", []string{eventsv1.TopicRecipeGenerate, eventsv1.TopicRecipeRegenerate}).
 			Info("recipe: generate/regenerate handlers wired")
 	}
+	// Per-source Trustage schedule sync (the model that replaces the central
+	// scheduler tick). When enabled + a TrustageURL is set, source lifecycle
+	// mutations emit sources.scheduling.changed.v1 and the
+	// SourceSchedulingHandler creates/archives the per-source crawl schedule to
+	// match the source's live status; a boot reconcile + the
+	// POST /admin/sources/schedules/reconcile backstop heal drift.
+	var scheduleClient service.WorkflowClient
+	if cfg.SourceSchedulesEnabled && cfg.TrustageURL != "" {
+		if cli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL); cliErr != nil {
+			log.WithError(cliErr).Error("source-schedules: trustage client init failed; per-source schedules disabled")
+		} else {
+			scheduleClient = cli
+			log.Info("source-schedules: per-source Trustage scheduling enabled")
+		}
+	}
+	// The scheduling handler is the consumer side of the event the admin
+	// handlers emit: it re-derives the desired schedule from the source's live
+	// status. Only wired when scheduling is on (scheduleClient != nil).
+	if scheduleClient != nil {
+		handlers = append(handlers,
+			service.NewSourceSchedulingHandler(scheduleClient, sourceRepo, cfg.CrawlBaseURL))
+		log.WithField("topic", eventsv1.TopicSourceSchedulingChanged).
+			Info("source-schedules: scheduling-changed handler wired")
+	}
+
 	svc.Init(ctx,
 		frame.WithRegisterEvents(handlers...),
 		// Pipeline head: publish VariantIngestedV1 to the opportunity chain.
@@ -529,41 +554,28 @@ func main() {
 		log.Warn("no SecurityManager configured — admin endpoints are UNPROTECTED")
 	}
 
-	// Per-source Trustage schedule sync (the model that replaces the central
-	// scheduler tick). When enabled + a TrustageURL is set, source add/enable
-	// creates a per-source crawl schedule and pause/stop archives it; a
-	// reconcile pass + POST /admin/sources/schedules/reconcile heal drift.
-	var scheduleClient service.WorkflowClient
-	if cfg.SourceSchedulesEnabled && cfg.TrustageURL != "" {
-		if cli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL); cliErr != nil {
-			log.WithError(cliErr).Error("source-schedules: trustage client init failed; per-source schedules disabled")
-		} else {
-			scheduleClient = cli
-			log.Info("source-schedules: per-source Trustage scheduling enabled")
-		}
-	}
 	// ensureSchedule / removeSchedule are nil-safe no-ops when scheduling is
-	// off, so the admin handlers can call them unconditionally.
-	ensureSchedule := func(ctx context.Context, id string) {
+	// off, so the admin handlers can call them unconditionally. Both now EMIT
+	// sources.scheduling.changed.v1 rather than touching Trustage inline — the
+	// SourceSchedulingHandler (registered below) re-derives the desired state
+	// from the source's live status and does the ensure/archive. This keeps the
+	// schedule sync idempotent and order-independent across replicas.
+	emitSchedulingChanged := func(ctx context.Context, id string) {
 		if scheduleClient == nil {
 			return
 		}
-		src, err := sourceRepo.GetByID(ctx, id)
-		if err != nil || src == nil {
+		evtMgr := svc.EventsManager()
+		if evtMgr == nil {
 			return
 		}
-		if err := service.EnsureSourceSchedule(ctx, scheduleClient, src, cfg.CrawlBaseURL); err != nil {
-			log.WithError(err).WithField("source_id", id).Warn("source-schedules: ensure failed")
+		env := eventsv1.NewEnvelope(eventsv1.TopicSourceSchedulingChanged,
+			eventsv1.SourceSchedulingChangedV1{SourceID: id})
+		if err := evtMgr.Emit(ctx, eventsv1.TopicSourceSchedulingChanged, env); err != nil {
+			log.WithError(err).WithField("source_id", id).Warn("source-schedules: scheduling-changed emit failed")
 		}
 	}
-	removeSchedule := func(ctx context.Context, id string) {
-		if scheduleClient == nil {
-			return
-		}
-		if err := service.RemoveSourceSchedule(ctx, scheduleClient, id); err != nil {
-			log.WithError(err).WithField("source_id", id).Warn("source-schedules: remove failed")
-		}
-	}
+	ensureSchedule := emitSchedulingChanged
+	removeSchedule := emitSchedulingChanged
 	// Boot reconcile: drive every source's schedule to match its status. Runs
 	// detached so a slow/unavailable Trustage never blocks crawler startup.
 	if scheduleClient != nil {
@@ -571,6 +583,14 @@ func main() {
 			bgCtx := context.WithoutCancel(ctx)
 			rctx, cancel := context.WithTimeout(bgCtx, 5*time.Minute)
 			defer cancel()
+			// One-time retirement of the legacy static-cron sweep
+			// (definitions/trustage/source-crawl-tick.json). It has been
+			// replaced by per-source schedules; archive it so Trustage stops
+			// firing POST /admin/sources/crawl-due (which no longer exists).
+			// Idempotent + best-effort.
+			if aerr := service.ArchiveWorkflowByName(rctx, scheduleClient, "opportunities.source.crawl-tick"); aerr != nil {
+				log.WithError(aerr).Warn("source-schedules: archive legacy crawl-tick workflow failed")
+			}
 			all, err := sourceRepo.ListAll(rctx)
 			if err != nil {
 				log.WithError(err).Warn("source-schedules: boot reconcile ListAll failed")
@@ -739,13 +759,6 @@ func main() {
 	// backpressure (429 + Retry-After when the pipeline is saturated).
 	adminMux.HandleFunc("POST /admin/sources/{id}/crawl",
 		service.SourceCrawlHandler(svc, sourceRepo, bpGate))
-
-	// Central crawl driver: a single static Trustage cron
-	// (definitions/trustage/source-crawl-tick.json) POSTs this every 15 min to
-	// dispatch due sources, backpressure-gated. Reliable replacement for the
-	// per-source dynamic workflows.
-	adminMux.HandleFunc("POST /admin/sources/crawl-due",
-		service.CrawlDueHandler(svc, sourceRepo, sourceRepo, bpGate, cfg.CrawlTickBatch))
 
 	// Schedule reconcile backstop: Trustage fires this periodically to heal
 	// drift between sources.status and the per-source Trustage schedules.
