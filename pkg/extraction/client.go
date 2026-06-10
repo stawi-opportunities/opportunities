@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
@@ -152,37 +154,78 @@ func (e *Extractor) chat(ctx context.Context, prompt string, expectJSON bool) (s
 	if err != nil {
 		return "", fmt.Errorf("chat: marshal: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/v1/chat/completions", bytes.NewReader(raw))
-	if err != nil {
-		return "", fmt.Errorf("chat: new request: %w", err)
+	// Retry 429 (provider rate limit) and 5xx with backoff: under bursty load a
+	// shared inference tier RPM/TPM-limits us, and failing the whole extraction
+	// on the first 429 drops the job. Self-pacing lets calls through.
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, rerr := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/v1/chat/completions", bytes.NewReader(raw))
+		if rerr != nil {
+			return "", fmt.Errorf("chat: new request: %w", rerr)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if e.apiKey != "" {
+			req.Header.Set("Authorization", "Bearer "+e.apiKey)
+		}
+		resp, derr := e.client.Do(req)
+		if derr != nil {
+			return "", fmt.Errorf("chat: request: %w", derr)
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			ra := resp.Header.Get("Retry-After")
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("chat: status %d: %s", resp.StatusCode, string(b))
+			if attempt == maxAttempts {
+				break
+			}
+			if werr := backoffWait(ctx, attempt, ra); werr != nil {
+				return "", werr
+			}
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+			_ = resp.Body.Close()
+			return "", fmt.Errorf("chat: status %d: %s", resp.StatusCode, string(b))
+		}
+
+		var out struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		derr = json.NewDecoder(resp.Body).Decode(&out)
+		_ = resp.Body.Close()
+		if derr != nil {
+			return "", fmt.Errorf("chat: decode: %w", derr)
+		}
+		if len(out.Choices) == 0 {
+			return "", fmt.Errorf("chat: empty choices")
+		}
+		return extractJSONPayload(out.Choices[0].Message.Content), nil
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if e.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	return "", fmt.Errorf("chat: rate-limited after %d attempts: %w", maxAttempts, lastErr)
+}
+
+// backoffWait sleeps before a chat retry: the provider's Retry-After when
+// present (capped 60s), else exponential (2,4,8s capped 30s). Returns ctx.Err()
+// if the context is cancelled while waiting.
+func backoffWait(ctx context.Context, attempt int, retryAfter string) error {
+	wait := min(time.Duration(1<<uint(attempt))*time.Second, 30*time.Second)
+	if secs, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && secs > 0 {
+		wait = min(time.Duration(secs)*time.Second, 60*time.Second)
 	}
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("chat: request: %w", err)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(wait):
+		return nil
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return "", fmt.Errorf("chat: status %d: %s", resp.StatusCode, string(b))
-	}
-	var out struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("chat: decode: %w", err)
-	}
-	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("chat: empty choices")
-	}
-	return extractJSONPayload(out.Choices[0].Message.Content), nil
 }
 
 // extractJSONPayload returns the most likely JSON payload from a model
