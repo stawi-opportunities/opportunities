@@ -4,7 +4,7 @@ import { listCategories } from '@/api/search';
 const OPPORTUNITY_TYPES = [
   {
     href: '/jobs/',
-    emoji: '💼',
+    emoji: '≡ƒÆ╝',
     label: 'Jobs',
     description: 'Full-time, part-time, remote & contract roles across every industry.',
     color: 'bg-blue-50 border-blue-100 hover:border-blue-300 hover:bg-blue-50/80',
@@ -12,7 +12,7 @@ const OPPORTUNITY_TYPES = [
   },
   {
     href: '/scholarships/',
-    emoji: '🎓',
+    emoji: '≡ƒÄô',
     label: 'Scholarships',
     description: 'Grants, bursaries and fellowships for students and researchers.',
     color: 'bg-green-50 border-green-100 hover:border-green-300 hover:bg-green-50/80',
@@ -20,7 +20,7 @@ const OPPORTUNITY_TYPES = [
   },
   {
     href: '/tenders/',
-    emoji: '📋',
+    emoji: '≡ƒôï',
     label: 'Tenders',
     description: 'Government and private sector RFPs, bids and procurement notices.',
     color: 'bg-orange-50 border-orange-100 hover:border-orange-300 hover:bg-orange-50/80',
@@ -28,7 +28,7 @@ const OPPORTUNITY_TYPES = [
   },
   {
     href: '/deals/',
-    emoji: '🏷️',
+    emoji: '≡ƒÅ╖∩╕Å',
     label: 'Deals',
     description: 'Curated discounts, offers and partnerships for professionals.',
     color: 'bg-pink-50 border-pink-100 hover:border-pink-300 hover:bg-pink-50/80',
@@ -36,7 +36,7 @@ const OPPORTUNITY_TYPES = [
   },
   {
     href: '/funding/',
-    emoji: '💰',
+    emoji: '≡ƒÆ░',
     label: 'Funding',
     description: 'Grants, venture capital and investor opportunities for ventures.',
     color: 'bg-purple-50 border-purple-100 hover:border-purple-300 hover:bg-purple-50/80',
@@ -55,11 +55,12 @@ export default function CategoryIndex() {
 
   return (
     <div className="bg-white">
+      {/* Page header */}
       <div className="border-b border-gray-100 bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl text-center">
           <h1 className="text-4xl font-bold tracking-tight text-gray-900">Browse by category</h1>
           <p className="mt-3 text-lg text-gray-500">
-            Discover opportunities across jobs, scholarships, tenders, deals and funding — all in
+            Discover opportunities across jobs, scholarships, tenders, deals and funding ΓÇö all in
             one place.
           </p>
           <div className="mt-6 flex justify-center">
@@ -82,7 +83,9 @@ export default function CategoryIndex() {
           </div>
         </div>
       </div>
+
       <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+        {/* Opportunity types ΓÇö always shown */}
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Opportunity types</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -119,6 +122,8 @@ export default function CategoryIndex() {
             ))}
           </div>
         </div>
+
+        {/* Industry/keyword categories from API ΓÇö only shown when data exists */}
         {q.isLoading && (
           <div className="mt-14">
             <div className="h-5 w-40 animate-pulse rounded bg-gray-100" />
@@ -129,6 +134,7 @@ export default function CategoryIndex() {
             </div>
           </div>
         )}
+
         {!q.isLoading && cats.length > 0 && (
           <div className="mt-14">
             <h2 className="text-xl font-semibold text-gray-900">Browse by industry</h2>

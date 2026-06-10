@@ -11,10 +11,10 @@ export default function SignupCta() {
   }, [state]);
 
   useEffect(() => {
-    const section = document.getElementById('mount-get-started-cta');
+    const section = document.getElementById('signup-cta-section');
     if (!section) return;
 
-    // Authenticated visitors see nothing — one fewer "please sign up"
+    // Authenticated visitors see nothing ΓÇö one fewer "please sign up"
     // reminder on every page they visit while logged in.
     if (state === 'authenticated') {
       section.style.display = 'none';
@@ -32,7 +32,7 @@ export default function SignupCta() {
         await login();
         window.location.href = '/onboarding/';
       } catch {
-        // Auth widget not configured or user dismissed — fall back to
+        // Auth widget not configured or user dismissed ΓÇö fall back to
         // direct navigation so the button never silently does nothing.
         window.location.href = href;
       }
