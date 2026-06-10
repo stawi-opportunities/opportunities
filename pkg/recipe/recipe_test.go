@@ -102,3 +102,19 @@ func TestTransformList_TolerantUnmarshal(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(`{"transform":["trim",{"x":1},5]}`), &fx))
 	assert.Equal(t, TransformList{"trim"}, fx.Transform)
 }
+
+func TestFieldExtractor_TolerantUnmarshal(t *testing.T) {
+	var p Pagination
+	// the exact prod failure: bare string where an extractor object belongs
+	require.NoError(t, json.Unmarshal([]byte(`{"mode":"next_link","next":"a.next"}`), &p))
+	assert.Equal(t, []string{"selector"}, p.Next.From)
+	assert.Equal(t, "a.next", p.Next.Selector)
+	// canonical object form still works
+	var fx FieldExtractor
+	require.NoError(t, json.Unmarshal([]byte(`{"from":["json_ld"],"json_path":"$.title"}`), &fx))
+	assert.Equal(t, []string{"json_ld"}, fx.From)
+	// junk shape -> empty, not a parse failure
+	require.NoError(t, json.Unmarshal([]byte(`{"next":42}`), &struct {
+		Next FieldExtractor `json:"next"`
+	}{}))
+}
