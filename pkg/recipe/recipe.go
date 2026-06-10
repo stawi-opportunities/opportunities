@@ -119,6 +119,46 @@ func (d DetailRule) requiredEnvelopeFields() map[string]FieldExtractor {
 	}
 }
 
+// Normalize absorbs harmless LLM-output noise before Validate: an omitted
+// pagination mode means "none", and transforms that don't exist in the registry
+// are dropped (small models hallucinate names like "contains"; extraction
+// without them still runs, and the pass-rate gate remains the real quality
+// arbiter). This keeps the bounded repair loop for genuine structural errors
+// instead of burning attempts on cosmetic ones.
+func (r *Recipe) Normalize() {
+	if r.List.Pagination.Mode == "" {
+		r.List.Pagination.Mode = "none"
+	}
+	clean := func(fx *FieldExtractor) {
+		if len(fx.Transform) == 0 {
+			return
+		}
+		kept := fx.Transform[:0]
+		for _, tn := range fx.Transform {
+			if transformExists(tn) {
+				kept = append(kept, tn)
+			}
+		}
+		fx.Transform = kept
+	}
+	clean(&r.List.Link)
+	clean(&r.List.Pagination.Cursor)
+	clean(&r.List.Pagination.Next)
+	for _, fx := range []*FieldExtractor{
+		&r.Detail.Title, &r.Detail.Description, &r.Detail.IssuingEntity,
+		&r.Detail.ApplyURL, &r.Detail.LocationText, &r.Detail.AnchorCountry,
+		&r.Detail.Remote, &r.Detail.PostedAt, &r.Detail.Deadline,
+		&r.Detail.AmountMin, &r.Detail.AmountMax, &r.Detail.Currency,
+		&r.Detail.Categories, &r.Detail.CompanyLogoURL, &r.Detail.CompanyProfile,
+	} {
+		clean(fx)
+	}
+	for name, fx := range r.Detail.Attributes {
+		clean(&fx)
+		r.Detail.Attributes[name] = fx
+	}
+}
+
 // Validate checks a recipe's structural integrity: enum fields, that every
 // required envelope field has an extractor, and that every FieldExtractor uses
 // known From sources, known transforms, and parseable selectors. It does NOT
