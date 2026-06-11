@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -46,16 +47,23 @@ func genSource() domain.Source {
 	return s
 }
 
+// detailAndListingHTML satisfies BOTH gates: the JSON-LD detail payload
+// for the pass-rate gate, and a `.card a` listing item for the
+// list-rule probe.
+const detailAndListingHTML = `<html><head><script type="application/ld+json">{"title":"Engineer","description":"We are hiring an engineer to design, build and operate distributed crawling systems across our African job boards platform.","hiringOrganization":{"name":"Acme"},"url":"https://x.io/job/1","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body><div class="card"><a href="/job/1">Engineer</a></div></body></html>`
+
 func TestGenerator_ProducesValidRecipe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`<html><head><script type="application/ld+json">{"title":"Engineer","description":"We are hiring an engineer to design, build and operate distributed crawling systems across our African job boards platform.","hiringOrganization":{"name":"Acme"},"url":"https://x.io/job/1","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body></body></html>`))
+		_, _ = w.Write([]byte(detailAndListingHTML))
 	}))
 	defer srv.Close()
 
 	llm := &fakeLLM{replies: []string{"```json\n" + validRecipeJSON + "\n```"}}
 	g := NewGenerator(llm, httptestFetcher{client: srv.Client()}, minimalRegistry(t), 3)
 
-	rec, samples, err := g.Generate(context.Background(), genSource(), []string{srv.URL})
+	src := genSource()
+	src.BaseURL = srv.URL // list probe fetches the recipe's listing for real
+	rec, samples, err := g.Generate(context.Background(), src, []string{srv.URL})
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	assert.Equal(t, "structured_data", rec.Acquisition)
@@ -67,7 +75,7 @@ func TestGenerator_ProducesValidRecipe(t *testing.T) {
 
 func TestGenerator_RepairsAfterInvalidThenValid(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`<html><head><script type="application/ld+json">{"title":"Engineer","description":"We are hiring an engineer to design, build and operate distributed crawling systems across our African job boards platform.","hiringOrganization":{"name":"Acme"},"url":"https://x.io/job/1","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body></body></html>`))
+		_, _ = w.Write([]byte(detailAndListingHTML))
 	}))
 	defer srv.Close()
 
@@ -76,10 +84,41 @@ func TestGenerator_RepairsAfterInvalidThenValid(t *testing.T) {
 	llm := &fakeLLM{replies: []string{bad, validRecipeJSON}}
 	g := NewGenerator(llm, httptestFetcher{client: srv.Client()}, minimalRegistry(t), 3)
 
-	rec, _, err := g.Generate(context.Background(), genSource(), []string{srv.URL})
+	src := genSource()
+	src.BaseURL = srv.URL
+	rec, _, err := g.Generate(context.Background(), src, []string{srv.URL})
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	assert.Equal(t, 2, llm.calls) // repaired on the second attempt
+}
+
+// TestGenerator_RejectsHallucinatedListSelector reproduces the production
+// incident: a recipe whose DETAIL extractors score a perfect pass rate but
+// whose item_selector matches nothing on the live listing. The list-rule
+// gate must bounce it back to the LLM; the corrected second attempt
+// activates.
+func TestGenerator_RejectsHallucinatedListSelector(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(detailAndListingHTML))
+	}))
+	defer srv.Close()
+
+	// Same recipe but with a list selector that matches nothing (.job-listing
+	// — the literal hallucination from the myjobmag.com incident).
+	broken := strings.Replace(validRecipeJSON, `"item_selector":".card"`, `"item_selector":".job-listing"`, 1)
+	llm := &fakeLLM{replies: []string{broken, validRecipeJSON}}
+	g := NewGenerator(llm, httptestFetcher{client: srv.Client()}, minimalRegistry(t), 3)
+
+	src := genSource()
+	src.BaseURL = srv.URL
+	rec, _, err := g.Generate(context.Background(), src, []string{srv.URL})
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	assert.Equal(t, 2, llm.calls, "broken list selector must trigger a repair attempt")
+	assert.Equal(t, ".card", rec.List.ItemSelector)
+	// The repair prompt must name the failing selector so the LLM fixes it
+	// rather than regenerating blind.
+	assert.Contains(t, llm.lastPrompt, ".job-listing")
 }
 
 func TestGenerator_FailsAfterMaxAttempts(t *testing.T) {

@@ -170,6 +170,50 @@ func (e *Executor) Page(ctx context.Context, src domain.Source, st PageState) (i
 	}
 }
 
+// ListProbe executes ONLY the recipe's list rule against the live source
+// and reports how many items/detail links it finds — no detail-page
+// fetches, no field extraction. This is the activation gate's defense
+// against hallucinated list selectors: detail validation alone can score
+// 1.00 while item_selector matches nothing (both first production
+// recipes shipped that way and would have zero-yielded their boards).
+func (e *Executor) ListProbe(ctx context.Context, src domain.Source) (int, error) {
+	if e.recipe.Acquisition == "api" {
+		pageURL, err := e.apiURL(src, 1, "")
+		if err != nil {
+			return 0, err
+		}
+		items, _, _, _, err := e.apiPage(ctx, src, pageURL)
+		if err != nil {
+			return 0, err
+		}
+		return len(items), nil
+	}
+
+	listURL, err := e.htmlListURL(src, 1)
+	if err != nil {
+		return 0, err
+	}
+	raw, status, err := e.fetcher.Get(ctx, listURL)
+	if err != nil {
+		return 0, err
+	}
+	if status < 200 || status >= 300 {
+		return 0, fmt.Errorf("listing %s returned status %d", listURL, status)
+	}
+	pc, err := NewPageContext(listURL, string(raw), nil)
+	if err != nil {
+		return 0, err
+	}
+	urls := e.collectDetailURLs(pc, listURL)
+	n := 0
+	for _, u := range urls {
+		if sameHost(src.BaseURL, u) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (e *Executor) apiPaged(ctx context.Context, src domain.Source, st PageState) ([]domain.ExternalOpportunity, []byte, int, PageState, bool, error) {
 	pg := st.page
 	if pg == 0 {

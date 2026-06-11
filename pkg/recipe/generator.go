@@ -100,6 +100,20 @@ func (g *Generator) Generate(ctx context.Context, src domain.Source, sampleURLs 
 			prompt = g.repairPrompt(prompt, lastErr.Error())
 			continue
 		}
+		// List-rule gate. The pass-rate gate above validates DETAIL
+		// extraction against samples found by pattern discovery — it never
+		// exercises the recipe's own list selectors, so a hallucinated
+		// item_selector scores 1.00 and then zero-yields every crawl (both
+		// first production recipes shipped exactly that way). Probe the
+		// live listing with the recipe's list rule and demand items.
+		n, lerr := NewExecutor(rec, g.fetcher).ListProbe(ctx, src)
+		if lerr != nil || n == 0 {
+			lastErr = fmt.Errorf(
+				"recipe list rule found no items on %s (item_selector %q / link selector %q matched nothing; err=%v) — fix list.item_selector and list.link to match the listing markup",
+				src.BaseURL, rec.List.ItemSelector, rec.List.Link.Selector, lerr)
+			prompt = g.repairPrompt(prompt, lastErr.Error())
+			continue
+		}
 		return rec, samples, nil
 	}
 	return nil, samples, fmt.Errorf("recipe generation failed after %d attempts: %w", g.maxAttempts, lastErr)
