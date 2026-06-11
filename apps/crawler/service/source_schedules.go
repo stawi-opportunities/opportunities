@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -61,6 +62,12 @@ const MinCrawlIntervalHours = 12
 // cronForInterval derives a cron expression from a source's crawl interval,
 // jittered per source and floored at MinCrawlIntervalHours. Fixed cadence (no
 // adaptive scoring).
+//
+// The hour PHASE is jittered per source, not just the minute. `M */12 * * *`
+// fires every source in hours 0 and 12 UTC — with ~90 sources that put the
+// whole fleet inside two one-hour windows, and a closed backpressure gate
+// during either window cost every source its full interval (the 2026-06-11
+// outage). An explicit per-source hour list spreads the fleet across the day.
 func cronForInterval(crawlIntervalSec int, sourceID string) string {
 	if crawlIntervalSec <= 0 {
 		crawlIntervalSec = 3600
@@ -70,14 +77,19 @@ func cronForInterval(crawlIntervalSec int, sourceID string) string {
 	if hours < MinCrawlIntervalHours {
 		hours = MinCrawlIntervalHours // floor — never crawl a source faster than this
 	}
-	switch {
-	case hours >= 24:
+	if hours >= 24 {
 		// Daily (or coarser): one fire per day at a jittered hour:minute.
 		return fmt.Sprintf("%d %d * * *", minute, jitter(sourceID, 24))
-	default:
-		// Every `hours` hours at a jittered minute.
-		return fmt.Sprintf("%d */%d * * *", minute, hours)
 	}
+	// Every `hours` hours, phase-shifted per source: e.g. hours=12 with
+	// phase=7 → "M 7,19 * * *". The ":hour" salt decorrelates the phase
+	// from the minute jitter (same FNV hash mod different bases).
+	phase := jitter(sourceID+":hour", hours)
+	hourList := make([]string, 0, 24/hours+1)
+	for h := phase; h < 24; h += hours {
+		hourList = append(hourList, strconv.Itoa(h))
+	}
+	return fmt.Sprintf("%d %s * * *", minute, strings.Join(hourList, ","))
 }
 
 // buildSourceCrawlDSL builds the Trustage workflow definition (DSL) for a

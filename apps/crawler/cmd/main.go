@@ -766,6 +766,26 @@ func main() {
 	adminMux.HandleFunc("POST /admin/sources/schedules/reconcile",
 		service.ScheduleReconcileHandler(sourceRepo, scheduleClient, cfg.CrawlBaseURL))
 
+	// Overdue catch-up sweep: dispatches sources at least an hour past due —
+	// the ticks the per-source schedules lost to a closed backpressure gate,
+	// a never-activated workflow, or Trustage downtime. Static-synced cron;
+	// see definitions/trustage/source-crawl-overdue.json.
+	adminMux.HandleFunc("POST /admin/sources/crawl-overdue",
+		service.CrawlOverdueHandler(svc, sourceRepo, sourceRepo, bpGate, cfg.CrawlOverdueBatch))
+
+	// Crawl-pipeline liveness watchdog: ERROR-logs (and reports) when sources
+	// are due but nothing has crawled in hours. Static-synced cron; see
+	// definitions/trustage/crawl-watchdog.json.
+	watchdog := service.CrawlWatchdogHandler(crawlRepo, sourceRepo)
+	adminMux.HandleFunc("GET /admin/crawl/watchdog", watchdog)
+	adminMux.HandleFunc("POST /admin/crawl/watchdog", watchdog)
+
+	// Stale-job retention sweep: hides opportunities that vanished from a
+	// source's feed (and restores any that came back). Trustage fires this
+	// every 15 min; see definitions/trustage/retention-expire.json.
+	adminMux.HandleFunc("POST /admin/retention/expire",
+		service.RetentionExpireHandler(variantStore))
+
 	// Admin: bulk reset quality-window counters on all active sources.
 	// Trustage fires this weekly; see definitions/trustage/sources-quality-window-reset.json.
 	adminMux.HandleFunc("POST /admin/sources/quality-reset",

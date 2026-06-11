@@ -110,6 +110,15 @@ func (r *fakeCrawlerRepo) FlagNeedsTuning(_ context.Context, id string, flag boo
 	return nil
 }
 
+func (r *fakeCrawlerRepo) SetStatus(_ context.Context, id string, status domain.SourceStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if s, ok := r.rows[id]; ok {
+		s.Status = status
+	}
+	return nil
+}
+
 func (r *fakeCrawlerRepo) Upsert(_ context.Context, src *domain.Source) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

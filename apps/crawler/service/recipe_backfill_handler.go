@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/pitabwire/util"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -13,6 +14,12 @@ import (
 type SourceLister interface {
 	ListByStatuses(ctx context.Context, statuses []domain.SourceStatus, limit int) ([]*domain.Source, error)
 }
+
+// NeedsTuningTTL is the cooldown after which a needs_tuning flag stops
+// excluding a source from recipe backfill. Without it, a source whose
+// recipe generation failed once was skipped until a human noticed and
+// cleared the flag — i.e. usually forever.
+const NeedsTuningTTL = 7 * 24 * time.Hour
 
 // RecipeBackfillDeps wires the cron-driven recipe-backfill endpoint.
 type RecipeBackfillDeps struct {
@@ -55,10 +62,16 @@ func RecipeBackfillHandler(deps RecipeBackfillDeps) http.HandlerFunc {
 		// Skip sources flagged for operator tuning (a prior failed generation, or a
 		// struggling source) so the cron doesn't re-enqueue them every tick — that
 		// would re-fire inference indefinitely. An operator clearing needs_tuning
-		// re-admits them on the next tick.
+		// re-admits them immediately; otherwise the flag expires after
+		// NeedsTuningTTL so a forgotten source isn't excluded forever (a failed
+		// retry re-raises the flag and restarts the cooldown).
+		now := time.Now().UTC()
 		eligible := make([]domain.Source, 0, len(srcs))
 		for _, s := range srcs {
-			if s == nil || s.NeedsTuning {
+			if s == nil {
+				continue
+			}
+			if s.NeedsTuning && s.NeedsTuningAt != nil && now.Sub(*s.NeedsTuningAt) < NeedsTuningTTL {
 				continue
 			}
 			eligible = append(eligible, *s)

@@ -38,6 +38,13 @@ type CrawlerConfig struct {
 	// inference. The cron fires every 15 min, so N here ≈ N recipes per 15 min.
 	RecipeBackfillLimit int `env:"RECIPE_BACKFILL_LIMIT" envDefault:"25"`
 
+	// CrawlOverdueBatch caps how many overdue sources the catch-up sweep
+	// (POST /admin/sources/crawl-overdue) dispatches per tick. The sweep
+	// only sees sources ≥1h past due — ticks the per-source schedules
+	// already lost — so the batch mostly matters when recovering from an
+	// outage, where it paces the backlog through the backpressure gate.
+	CrawlOverdueBatch int `env:"CRAWL_OVERDUE_BATCH" envDefault:"25"`
+
 	// Unblocker fallback: when a direct fetch is blocked (403/429/451/503 or a
 	// transport error), the request is retried through this proxy — a Bright
 	// Data Web Unlocker / Oxylabs / similar endpoint, e.g.

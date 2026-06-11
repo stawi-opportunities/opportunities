@@ -760,6 +760,61 @@ func (s *Store) ExpireCanonical(ctx context.Context, canonicalID string, at time
 	return s.soft(ctx, err, "expire_canonical", "", canonicalID)
 }
 
+// RetentionStaleReason is the hidden_reason stamped by HideStale, and
+// the selector RestoreReseen uses to undo it. Only sweep-hidden rows are
+// ever auto-restored — operator hides (source_stopped, auto_flagged)
+// stay put.
+const RetentionStaleReason = "retention_stale"
+
+// HideStale hides opportunities that have vanished from their source's
+// feed: not re-seen for max(3×crawl_interval, minAge) even though the
+// source itself HAS crawled successfully since (the sources.last_seen_at
+// guard — during a crawl outage every job's last_seen_at freezes, and
+// without the guard the sweep would mass-hide the whole table). Rows
+// with no source_id can't be attributed to a feed and are left alone.
+// Returns the number of rows hidden. Unlike the soft-fail writers this
+// returns errors — the retention cron must see failures.
+func (s *Store) HideStale(ctx context.Context, minAge time.Duration) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, nil
+	}
+	res := s.db(ctx, false).Exec(`
+        UPDATE opportunities o
+        SET    hidden = true, hidden_reason = ?, updated_at = now()
+        FROM   sources s
+        WHERE  o.source_id = s.id
+          AND  o.hidden = false
+          AND  s.status IN ('active', 'degraded')
+          AND  o.last_seen_at < now() - GREATEST(
+                   make_interval(secs => 3 * s.crawl_interval_sec),
+                   ?::interval)
+          AND  s.last_seen_at IS NOT NULL
+          AND  s.last_seen_at > o.last_seen_at + make_interval(secs => s.crawl_interval_sec)
+    `, RetentionStaleReason, fmt.Sprintf("%d seconds", int(minAge.Seconds())))
+	return res.RowsAffected, res.Error
+}
+
+// RestoreReseen un-hides sweep-hidden opportunities that reappeared in a
+// later crawl. The canonical UPSERT keeps bumping last_seen_at on hidden
+// rows but deliberately never touches hidden/hidden_reason, so without
+// this pass a job that briefly vanished would stay hidden forever.
+// Returns the number of rows restored.
+func (s *Store) RestoreReseen(ctx context.Context) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, nil
+	}
+	res := s.db(ctx, false).Exec(`
+        UPDATE opportunities o
+        SET    hidden = false, hidden_reason = NULL, updated_at = now()
+        FROM   sources s
+        WHERE  o.source_id = s.id
+          AND  o.hidden = true
+          AND  o.hidden_reason = ?
+          AND  o.last_seen_at > now() - make_interval(secs => 2 * s.crawl_interval_sec)
+    `, RetentionStaleReason)
+	return res.RowsAffected, res.Error
+}
+
 // vectorLiteral renders a []float32 as pgvector's text input format
 // `[v1,v2,…]`. Avoids the GORM driver's lack of a native pgvector
 // serializer.

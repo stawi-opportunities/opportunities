@@ -568,10 +568,12 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			if h.deps.Inbox != nil {
 				if iErr := h.deps.Inbox.Insert(ctx, eventPayload.VariantID, eventPayload.SourceID, body); iErr != nil {
 					log.WithError(iErr).Warn("crawl.request: inbox insert failed")
+					telemetry.RecordCrawlSilentLoss("inbox_insert_drop")
 					continue
 				}
 			} else if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
 				log.WithError(pErr).Warn("crawl.request: publish variant failed")
+				telemetry.RecordCrawlSilentLoss("variant_publish_drop")
 				continue
 			}
 			jobsEmitted++
@@ -644,6 +646,12 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		completed.ErrorMessage = iterErr.Error()
 	}
 	h.emitCompleted(ctx, completed)
+
+	if iterErr != nil {
+		telemetry.RecordCrawlCompletion("failure")
+	} else {
+		telemetry.RecordCrawlCompletion("success")
+	}
 
 	if h.deps.CrawlRepo != nil {
 		finalStatus := domain.CrawlSucceeded
@@ -722,6 +730,9 @@ func resolveArchiveRef(ctx context.Context, arch archive.Archive, page *content.
 		if putHash, _, putErr := arch.PutRaw(ctx, body); putErr == nil {
 			return archive.RawKey(putHash)
 		}
+		// Variants emitted without a ref can never be reparsed — count it
+		// so a dead archive shows up as a trend, not a debug-log mystery.
+		telemetry.RecordCrawlSilentLoss("archive_ref_missing")
 		return ""
 	}
 	return archive.RawKey(hash)

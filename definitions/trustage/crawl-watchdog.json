@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "name": "opportunities.crawl.watchdog",
+  "description": "Hourly: probe the crawl pipeline's liveness. The crawler reports stalled (and ERROR-logs for log-based alerting) when sources are due but no crawl_jobs row has been opened in hours — the silent-outage signature of 2026-06-03 and 2026-06-11. Read-only; always safe to fire.",
+  "input": {},
+  "config": {},
+  "timeout": "2m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "watchdog",
+      "type": "call",
+      "name": "Check crawl pipeline liveness",
+      "timeout": "60s",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/crawl/watchdog",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {}
+        },
+        "output_var": "watchdog_result"
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.crawl.watchdog.default",
+      "cron_expr": "30 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

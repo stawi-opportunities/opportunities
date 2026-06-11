@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/types/known/structpb"
 	workflowv1 "github.com/antinvestor/service-trustage/gen/go/workflow/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
@@ -62,22 +64,56 @@ func src(id string, status domain.SourceStatus, intervalSec int) *domain.Source 
 func TestCronForInterval(t *testing.T) {
 	cases := []struct {
 		intervalSec int
-		wantHasEvery string
+		wantFires   int // expected number of hour entries in the hour field
 	}{
-		{3600, "*/12"},  // 1h → floored to 12h
-		{14400, "*/12"}, // 4h → floored to 12h
-		{43200, "*/12"}, // 12h
-		{86400, ""},     // daily — "m h * * *"
-		{1800, "*/12"},  // 30m → floored to 12h
+		{3600, 2},  // 1h → floored to 12h → two fires/day
+		{14400, 2}, // 4h → floored to 12h
+		{43200, 2}, // 12h
+		{86400, 1}, // daily — "m h * * *"
+		{1800, 2},  // 30m → floored to 12h
 	}
 	for _, c := range cases {
 		got := cronForInterval(c.intervalSec, "src-"+string(rune(c.intervalSec)))
-		if c.wantHasEvery != "" && !strings.Contains(got, c.wantHasEvery) {
-			t.Errorf("interval %d → cron %q, want containing %q", c.intervalSec, got, c.wantHasEvery)
+		fields := strings.Fields(got)
+		if len(fields) != 5 {
+			t.Fatalf("interval %d → cron %q is not a 5-field cron", c.intervalSec, got)
 		}
-		if len(strings.Fields(got)) != 5 {
-			t.Errorf("interval %d → cron %q is not a 5-field cron", c.intervalSec, got)
+		hours := strings.Split(fields[1], ",")
+		if len(hours) != c.wantFires {
+			t.Errorf("interval %d → cron %q, want %d hour entries, got %d", c.intervalSec, got, c.wantFires, len(hours))
 		}
+		for _, h := range hours {
+			n, err := strconv.Atoi(h)
+			if err != nil || n < 0 || n > 23 {
+				t.Errorf("interval %d → cron %q has invalid hour %q", c.intervalSec, got, h)
+			}
+		}
+	}
+}
+
+// TestCronForInterval_SpreadsHourPhase guards against the thundering herd:
+// a fleet of 12h-interval sources must NOT all fire in the same two hours
+// (the pre-fix "M */12 * * *" put ~90 sources inside hours 0 and 12 UTC,
+// so one closed-gate window cost every source its full interval).
+func TestCronForInterval_SpreadsHourPhase(t *testing.T) {
+	firstHours := map[string]bool{}
+	for i := 0; i < 60; i++ {
+		got := cronForInterval(43200, fmt.Sprintf("source-%d", i))
+		hourField := strings.Fields(got)[1]
+		firstHours[strings.Split(hourField, ",")[0]] = true
+		// Consecutive fires must be exactly 12h apart so the effective
+		// interval is preserved.
+		hours := strings.Split(hourField, ",")
+		if len(hours) == 2 {
+			a, _ := strconv.Atoi(hours[0])
+			b, _ := strconv.Atoi(hours[1])
+			if b-a != 12 {
+				t.Errorf("cron %q: fires %d and %d are not 12h apart", got, a, b)
+			}
+		}
+	}
+	if len(firstHours) < 8 {
+		t.Errorf("60 sources spread across only %d distinct phase hours; want >= 8", len(firstHours))
 	}
 }
 
