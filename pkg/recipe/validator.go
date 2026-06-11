@@ -10,6 +10,10 @@ type SampleResult struct {
 	URL     string   `json:"url"`
 	OK      bool     `json:"ok"`
 	Missing []string `json:"missing,omitempty"`
+	// Error carries a page-context or extraction failure. Without it a
+	// build error reported as OK=false with NO missing fields — an
+	// uninterpretable verdict for both operators and the repair loop.
+	Error string `json:"error,omitempty"`
 }
 
 // ValidationReport summarizes a recipe dry-run over sample pages. It mirrors the
@@ -31,12 +35,14 @@ func ValidateRecipe(rec *Recipe, src domain.Source, samples []SamplePage, reg *o
 	for _, s := range samples {
 		res := SampleResult{URL: s.URL}
 		pc, err := NewPageContext(s.URL, s.HTML, nil)
-		if err == nil {
-			if opp, berr := buildOpportunity(pc, src, rec); berr == nil {
-				v := opportunity.Verify(&opp, &src, reg)
-				res.OK = v.OK
-				res.Missing = v.Missing
-			}
+		if err != nil {
+			res.Error = err.Error()
+		} else if opp, berr := buildOpportunity(pc, src, rec); berr != nil {
+			res.Error = berr.Error()
+		} else {
+			v := opportunity.Verify(&opp, &src, reg)
+			res.OK = v.OK
+			res.Missing = v.Missing
 		}
 		if res.OK {
 			rep.Passed++

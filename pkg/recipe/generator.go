@@ -46,6 +46,10 @@ func missSummary(rep ValidationReport) string {
 		if s.OK {
 			continue
 		}
+		if s.Error != "" {
+			fmt.Fprintf(&b, "page %s failed extraction: %s; ", s.URL, s.Error)
+			continue
+		}
 		fmt.Fprintf(&b, "page %s extracted empty for fields %v; ", s.URL, s.Missing)
 	}
 	return strings.TrimSuffix(b.String(), "; ")
