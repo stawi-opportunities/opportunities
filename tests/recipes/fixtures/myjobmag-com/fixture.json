@@ -1,0 +1,11 @@
+{
+ "source": {
+  "type": "myjobmag",
+  "base_url": "https://www.myjobmag.com",
+  "country": "NG",
+  "language": "en",
+  "status": "active",
+  "kinds": ["job"]
+ },
+ "sample_urls": ["https://www.myjobmag.com/job/field-sales-executive-friska-farms-limited","https://www.myjobmag.com/job/primary-3-teacher-chessington-schools","https://www.myjobmag.com/job/primary-school-class-teacher-rainbow-educational-services-limited-3"]
+}

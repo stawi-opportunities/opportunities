@@ -1,0 +1,17 @@
+{
+ "source": {
+  "type": "generic_html",
+  "base_url": "https://example-board.test",
+  "country": "KE",
+  "language": "en",
+  "status": "active",
+  "kinds": [
+   "job"
+  ]
+ },
+ "sample_urls": [
+  "https://example-board.test/job/1",
+  "https://example-board.test/job/2"
+ ],
+ "synthetic": true
+}
