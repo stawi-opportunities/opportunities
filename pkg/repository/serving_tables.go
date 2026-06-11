@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -60,9 +61,45 @@ func EnsureServingTables(ctx context.Context, db *gorm.DB) error {
 		if err != nil {
 			return fmt.Errorf("ensure serving tables: read %q: %w", name, err)
 		}
-		if err := db.WithContext(ctx).Exec(string(sql)).Error; err != nil {
-			return fmt.Errorf("ensure serving tables: exec %q: %w", name, err)
+		// Each Exec runs as a prepared statement, which cannot carry multiple
+		// commands ("cannot insert multiple commands into a prepared statement",
+		// 42601). These DDL files hold several CREATE statements each, so split
+		// and run them one at a time. (Without this, EnsureServingTables fails on
+		// every migrate regardless of DB state — it kept the matching deploy
+		// stuck for 26 versions.)
+		for _, stmt := range splitSQLStatements(string(sql)) {
+			if execErr := db.WithContext(ctx).Exec(stmt).Error; execErr != nil {
+				return fmt.Errorf("ensure serving tables: exec %q: %w", name, execErr)
+			}
 		}
 	}
 	return nil
+}
+
+// splitSQLStatements splits a plain DDL document into individual statements on
+// semicolon boundaries, dropping full-line "--" comments and blank lines. It is
+// intentionally line-oriented: the serving_ddl files contain only CREATE
+// TABLE/INDEX statements — no dollar-quoted bodies, DO blocks, functions, or
+// string-literal semicolons — so a statement always ends at a line whose
+// trimmed text ends in ";". Needed because each Exec is one prepared statement
+// and cannot carry multiple commands.
+func splitSQLStatements(s string) []string {
+	var out []string
+	var b strings.Builder
+	for _, line := range strings.Split(s, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+		if strings.HasSuffix(trimmed, ";") {
+			out = append(out, strings.TrimSpace(b.String()))
+			b.Reset()
+		}
+	}
+	if rem := strings.TrimSpace(b.String()); rem != "" {
+		out = append(out, rem)
+	}
+	return out
 }
