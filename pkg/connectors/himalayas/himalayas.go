@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
@@ -14,7 +15,8 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
-const baseURL = "https://himalayas.app/jobs/api"
+// baseURL is a var so tests can point the connector at a stub server.
+var baseURL = "https://himalayas.app/jobs/api"
 
 // Connector fetches jobs from the Himalayas remote jobs API.
 type Connector struct {
@@ -48,27 +50,44 @@ type iterator struct {
 }
 
 type himalayasJob struct {
-	ID                   interface{}            `json:"id"`
-	Title                string                 `json:"title"`
-	CompanyName          string                 `json:"companyName"`
-	LocationRestrictions connectors.FlexString  `json:"locationRestrictions"`
-	Excerpt              string                 `json:"excerpt"`
-	ApplicationLink      string                 `json:"applicationLink"`
-	ExternalURL          string                 `json:"externalUrl"`
-	Currency             string                 `json:"currency"`
-	MinSalary            float64                `json:"minSalary"`
-	MaxSalary            float64                `json:"maxSalary"`
-	EmploymentType       string                 `json:"employmentType"`
-	Seniority            connectors.FlexString  `json:"seniority"`
+	ID                   interface{}           `json:"id"`
+	Title                string                `json:"title"`
+	CompanyName          string                `json:"companyName"`
+	LocationRestrictions connectors.FlexString `json:"locationRestrictions"`
+	Excerpt              string                `json:"excerpt"`
+	ApplicationLink      string                `json:"applicationLink"`
+	ExternalURL          string                `json:"externalUrl"`
+	Currency             string                `json:"currency"`
+	MinSalary            float64               `json:"minSalary"`
+	MaxSalary            float64               `json:"maxSalary"`
+	EmploymentType       string                `json:"employmentType"`
+	Seniority            connectors.FlexString `json:"seniority"`
 }
 
 type himalayasResponse struct {
 	Jobs []himalayasJob `json:"jobs"`
 }
 
+// pageDelay paces the pagination loop. The board is deep (1700+ pages
+// at limit=50) and an undelayed loop trips the API's rate limiter
+// partway through: every prod crawl ended in "all 5 attempts failed:
+// retryable HTTP status 429" after storing tens of thousands of jobs,
+// marking an overwhelmingly-successful crawl as failed.
+var pageDelay = 400 * time.Millisecond
+
 func (it *iterator) Next(ctx context.Context) bool {
 	if it.done || it.err != nil {
 		return false
+	}
+
+	if it.page > 1 {
+		select {
+		case <-ctx.Done():
+			it.err = ctx.Err()
+			it.done = true
+			return false
+		case <-time.After(pageDelay):
+		}
 	}
 
 	url := fmt.Sprintf("%s?page=%d&limit=50", baseURL, it.page)
@@ -78,6 +97,14 @@ func (it *iterator) Next(ctx context.Context) bool {
 	it.raw = raw
 	it.httpStatus = status
 
+	// A 429 that persists through httpx's retry budget DEEP into
+	// pagination means "you have enough for today", not "the source is
+	// broken" — end the crawl cleanly and let the next scheduled run
+	// pick up fresh postings. Only page 1 treats it as a real failure.
+	if it.page > 1 && (status == 429 || (err != nil && strings.Contains(err.Error(), "status 429"))) {
+		it.done = true
+		return false
+	}
 	if err != nil {
 		it.err = err
 		it.done = true
@@ -140,9 +167,9 @@ func (it *iterator) Next(ctx context.Context) bool {
 	return true
 }
 
-func (it *iterator) Items() []domain.ExternalOpportunity   { return it.jobs }
-func (it *iterator) RawPayload() []byte            { return it.raw }
-func (it *iterator) HTTPStatus() int               { return it.httpStatus }
-func (it *iterator) Err() error                    { return it.err }
-func (it *iterator) Cursor() json.RawMessage       { return nil }
-func (it *iterator) Content() *content.Extracted   { return nil }
+func (it *iterator) Items() []domain.ExternalOpportunity { return it.jobs }
+func (it *iterator) RawPayload() []byte                  { return it.raw }
+func (it *iterator) HTTPStatus() int                     { return it.httpStatus }
+func (it *iterator) Err() error                          { return it.err }
+func (it *iterator) Cursor() json.RawMessage             { return nil }
+func (it *iterator) Content() *content.Extracted         { return nil }

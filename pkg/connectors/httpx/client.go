@@ -131,13 +131,21 @@ func (c *Client) doGet(ctx context.Context, url string, headers map[string]strin
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB max
+	// 32MB cap. Single-page ATS APIs return the whole board in one JSON
+	// response — boards.greenhouse.io/coupang measures 14.5MB with
+	// content=true — and a cap below the payload size silently truncates
+	// the body, surfacing as "unexpected end of JSON input" decode
+	// failures that look like a connector bug instead of a size limit.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}
 
 	return body, resp.StatusCode, nil
 }
+
+// maxBodyBytes bounds a single response body read.
+const maxBodyBytes = 32 * 1024 * 1024
 
 // Verify checks whether url is reachable without downloading the body. It
 // tries HEAD first and falls back to a GET with a Range: bytes=0-0 header for

@@ -19,6 +19,9 @@ type Connector struct{ client *httpx.Client }
 // New creates a Greenhouse Connector using the provided HTTP client.
 func New(client *httpx.Client) *Connector { return &Connector{client: client} }
 
+// apiBaseURL is a var so tests can point the connector at a stub server.
+var apiBaseURL = "https://boards-api.greenhouse.io"
+
 // Type returns the SourceType this connector handles.
 func (c *Connector) Type() domain.SourceType { return domain.SourceGreenhouse }
 
@@ -54,7 +57,7 @@ func (c *Connector) CrawlResume(ctx context.Context, src domain.Source, cp *conn
 
 func (c *Connector) crawlFrom(ctx context.Context, src domain.Source, startPage int, lastURL string) connectors.CrawlIterator {
 	company := strings.Trim(strings.TrimPrefix(src.BaseURL, "https://boards.greenhouse.io/"), "/")
-	u := fmt.Sprintf("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true", company)
+	u := fmt.Sprintf("%s/v1/boards/%s/jobs?content=true", apiBaseURL, company)
 
 	// Resume past page 1 on a single-page API: nothing to fetch. Emit
 	// an iterator that immediately reports consumed=true so the
@@ -66,6 +69,16 @@ func (c *Connector) crawlFrom(ctx context.Context, src domain.Source, startPage 
 	body, status, err := c.client.Get(ctx, u, nil)
 	if err != nil {
 		return &iter{src: src, page: startPage, raw: body, httpStatus: status, err: err, lastURL: u}
+	}
+	// A non-200 here is a dead/renamed board token, not an empty board:
+	// the API 404s with an error body that unmarshals into zero jobs, so
+	// without this guard a company leaving Greenhouse shows up as weeks
+	// of "successful" zero-yield crawls (19 of 90 prod sources, found in
+	// the 2026-06-11 source audit). Fail loudly so health decay + the
+	// degraded transition make the dead board visible.
+	if status != 200 {
+		return &iter{src: src, page: startPage, raw: body, httpStatus: status,
+			err: fmt.Errorf("greenhouse board %q: status %d (board removed or renamed?)", company, status), lastURL: u}
 	}
 
 	var payload struct {
