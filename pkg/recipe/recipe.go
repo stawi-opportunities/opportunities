@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/andybalholm/cascadia"
@@ -171,16 +172,43 @@ func (d DetailRule) requiredEnvelopeFields() map[string]FieldExtractor {
 }
 
 // Normalize absorbs harmless LLM-output noise before Validate: an omitted
-// pagination mode means "none", and transforms that don't exist in the registry
+// pagination mode means "none", transforms that don't exist in the registry
 // are dropped (small models hallucinate names like "contains"; extraction
 // without them still runs, and the pass-rate gate remains the real quality
-// arbiter). This keeps the bounded repair loop for genuine structural errors
-// instead of burning attempts on cosmetic ones.
+// arbiter), and common From-source aliases are coerced onto the canonical
+// names ("html"→selector, "og:title"→meta). This keeps the bounded repair
+// loop for genuine structural errors instead of burning attempts on
+// cosmetic ones.
 func (r *Recipe) Normalize() {
 	if r.List.Pagination.Mode == "" {
 		r.List.Pagination.Mode = "none"
 	}
 	clean := func(fx *FieldExtractor) {
+		// Coerce From aliases the LLMs reliably produce despite the prompt
+		// whitelisting canonical names. Unknown sources are dropped (the
+		// remaining sources still run; required-field emptiness is caught
+		// by Validate / the pass-rate gate).
+		if len(fx.From) > 0 {
+			kept := fx.From[:0]
+			for _, src := range fx.From {
+				switch {
+				case validFromSources[src]:
+					kept = append(kept, src)
+				case src == "html" || src == "css" || src == "dom":
+					kept = append(kept, "selector")
+				case strings.HasPrefix(src, "og:") || strings.HasPrefix(src, "twitter:"):
+					if fx.Meta == "" {
+						fx.Meta = src
+					}
+					kept = append(kept, "meta")
+				case src == "json" || src == "jsonld" || src == "json-ld":
+					kept = append(kept, "json_ld")
+				case src == "url":
+					kept = append(kept, "page_url")
+				}
+			}
+			fx.From = kept
+		}
 		if len(fx.Transform) == 0 {
 			return
 		}

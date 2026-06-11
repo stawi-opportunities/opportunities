@@ -91,7 +91,23 @@ func parseJSONLDBlock(body string) []map[string]any {
 	}
 	var raw any
 	if err := json.Unmarshal([]byte(body), &raw); err != nil {
-		return nil
+		// Real-world JSON-LD routinely embeds RAW control characters
+		// (unescaped newlines/tabs inside description strings — myjobmag
+		// serves them on every posting), which strict JSON rejects,
+		// silently zeroing every json_ld extractor for the page. Retry
+		// with control characters replaced by spaces: insignificant
+		// outside strings, and inside strings the author meant
+		// whitespace. Valid JSON is unaffected (its escapes are \-quoted
+		// sequences, not raw bytes).
+		cleaned := strings.Map(func(r rune) rune {
+			if r < 0x20 {
+				return ' '
+			}
+			return r
+		}, body)
+		if err := json.Unmarshal([]byte(cleaned), &raw); err != nil {
+			return nil
+		}
 	}
 	return flattenJSONLD(raw)
 }

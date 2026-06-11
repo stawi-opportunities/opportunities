@@ -118,3 +118,40 @@ func TestFieldExtractor_TolerantUnmarshal(t *testing.T) {
 		Next FieldExtractor `json:"next"`
 	}{}))
 }
+
+// TestNormalizeCoercesFromAliases: LLMs emit From-source aliases despite
+// the prompt whitelisting canonical names; Normalize maps them instead of
+// burning repair attempts on cosmetic drift.
+func TestNormalizeCoercesFromAliases(t *testing.T) {
+	r := Recipe{
+		Acquisition: "structured_data",
+		Kind:        KindRule{Mode: "source_default"},
+		List:        ListRule{Mode: "selector", ItemSelector: ".c", Pagination: Pagination{Mode: "none"}},
+		Detail: DetailRule{
+			Title:         FieldExtractor{From: []string{"og:title"}},
+			Description:   FieldExtractor{From: []string{"html"}, Selector: ".desc"},
+			IssuingEntity: FieldExtractor{From: []string{"jsonld"}, JSONPath: "$.org"},
+			ApplyURL:      FieldExtractor{From: []string{"url"}},
+			AnchorCountry: FieldExtractor{From: []string{"bogus", "const"}, Const: "KE"},
+		},
+	}
+	r.Normalize()
+	if got := r.Detail.Title.From[0]; got != "meta" || r.Detail.Title.Meta != "og:title" {
+		t.Fatalf("og:title coercion: from=%v meta=%q", r.Detail.Title.From, r.Detail.Title.Meta)
+	}
+	if got := r.Detail.Description.From[0]; got != "selector" {
+		t.Fatalf("html coercion: %v", r.Detail.Description.From)
+	}
+	if got := r.Detail.IssuingEntity.From[0]; got != "json_ld" {
+		t.Fatalf("jsonld coercion: %v", r.Detail.IssuingEntity.From)
+	}
+	if got := r.Detail.ApplyURL.From[0]; got != "page_url" {
+		t.Fatalf("url coercion: %v", r.Detail.ApplyURL.From)
+	}
+	if got := r.Detail.AnchorCountry.From; len(got) != 1 || got[0] != "const" {
+		t.Fatalf("bogus source must be dropped, valid kept: %v", got)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("normalized recipe must validate: %v", err)
+	}
+}

@@ -119,3 +119,22 @@ func TestNewPageContext_MetaWithoutNameOrProperty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, pc.Meta)
 }
+
+// TestJSONLDWithRawControlChars: real boards (myjobmag et al.) embed raw
+// newlines/tabs inside JSON-LD strings; strict parsing rejected the block
+// and silently zeroed every json_ld extractor on the page.
+func TestJSONLDWithRawControlChars(t *testing.T) {
+	html := "<html><head><script type=\"application/ld+json\">" +
+		"{\"@type\":\"JobPosting\",\"title\":\"Line\nBreak Engineer\",\"description\":\"first\nsecond\tline\"}" +
+		"</script></head><body></body></html>"
+	pc, err := NewPageContext("https://x.io/job/1", html, nil)
+	if err != nil {
+		t.Fatalf("page context: %v", err)
+	}
+	if len(pc.JSONLD) != 1 {
+		t.Fatalf("JSONLD blocks=%d, want 1 (control chars must be tolerated)", len(pc.JSONLD))
+	}
+	if got := pc.JSONLD[0]["title"]; got != "Line Break Engineer" {
+		t.Fatalf("title=%q", got)
+	}
+}
