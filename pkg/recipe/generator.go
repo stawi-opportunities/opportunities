@@ -55,6 +55,17 @@ func missSummary(rep ValidationReport) string {
 // repairs it (bounded) until it parses and structurally validates. It returns
 // the recipe plus the fetched samples (for the Validator's pass-rate gate).
 func (g *Generator) Generate(ctx context.Context, src domain.Source, sampleURLs []string) (*Recipe, []SamplePage, error) {
+	return g.GenerateFrom(ctx, src, "", sampleURLs)
+}
+
+// GenerateFrom is Generate with an explicit listing location: listingRef is
+// resolved against src.BaseURL ("" means the base itself) and becomes the
+// recipe's list.endpoint. The listing page's HTML is included in the
+// synthesis prompt — without it the LLM has nothing to derive
+// list.item_selector / list.link / pagination from and reliably
+// hallucinates them (both first production recipes shipped with selectors
+// that matched nothing).
+func (g *Generator) GenerateFrom(ctx context.Context, src domain.Source, listingRef string, sampleURLs []string) (*Recipe, []SamplePage, error) {
 	var samples []SamplePage
 	for _, u := range sampleURLs {
 		body, status, err := g.fetcher.Get(ctx, u)
@@ -67,7 +78,18 @@ func (g *Generator) Generate(ctx context.Context, src domain.Source, sampleURLs 
 		return nil, nil, fmt.Errorf("recipe generation: no fetchable samples among %d URLs", len(sampleURLs))
 	}
 
-	prompt := g.buildGenerationPrompt(src, samples)
+	// Fetch the listing page for the prompt. Best-effort: generation can
+	// still proceed without it (the list-rule gate below will catch a
+	// selector the LLM could not ground), but with it the model sees the
+	// actual listing markup.
+	listing := SamplePage{}
+	if u, uerr := resolveURL(src.BaseURL, listingRef); uerr == nil {
+		if body, status, ferr := g.fetcher.Get(ctx, u.String()); ferr == nil && status >= 200 && status < 300 {
+			listing = SamplePage{URL: u.String(), HTML: string(body)}
+		}
+	}
+
+	prompt := g.buildGenerationPrompt(src, listing, samples)
 	var lastErr error
 	for attempt := 0; attempt < g.maxAttempts; attempt++ {
 		raw, err := g.llm.Complete(ctx, prompt)
@@ -99,6 +121,13 @@ func (g *Generator) Generate(ctx context.Context, src domain.Source, sampleURLs 
 				rep.PassRate, g.passThreshold, missSummary(rep))
 			prompt = g.repairPrompt(prompt, lastErr.Error())
 			continue
+		}
+		// Pin the listing location when the caller supplied one: the
+		// executor resolves list.endpoint against BaseURL, so this makes
+		// the activated recipe crawl the exact listing the prompt showed
+		// and the probe below validates.
+		if listingRef != "" {
+			rec.List.Endpoint = listingRef
 		}
 		// List-rule gate. The pass-rate gate above validates DETAIL
 		// extraction against samples found by pattern discovery — it never

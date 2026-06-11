@@ -45,8 +45,11 @@ Rules:
 - Output VALID JSON that parses into the schema above.`
 
 // buildGenerationPrompt assembles the synthesis prompt: instructions + target
-// kind schema(s) + sample pages (truncated, structured-data preserved).
-func (g *Generator) buildGenerationPrompt(src domain.Source, samples []SamplePage) string {
+// kind schema(s) + the LISTING page + detail sample pages (truncated,
+// structured-data preserved). The listing section exists because
+// list.item_selector / list.link / pagination can only be derived from the
+// listing markup — detail samples alone forced the LLM to invent them.
+func (g *Generator) buildGenerationPrompt(src domain.Source, listing SamplePage, samples []SamplePage) string {
 	var b strings.Builder
 	b.WriteString(recipeSynthInstructions)
 
@@ -66,7 +69,14 @@ func (g *Generator) buildGenerationPrompt(src domain.Source, samples []SamplePag
 		}
 	}
 
-	b.WriteString("\nSample pages from this source:\n")
+	if listing.HTML != "" {
+		fmt.Fprintf(&b, "\n=== LISTING PAGE: %s ===\n", listing.URL)
+		b.WriteString("Derive list.item_selector, list.link and list.pagination from THIS page's markup — the repeated job-card elements below are what the executor will iterate:\n")
+		b.WriteString(truncate(listing.HTML, g.sampleChars))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\nDetail sample pages from this source:\n")
 	for i, s := range samples {
 		fmt.Fprintf(&b, "\n=== SAMPLE %d: %s ===\n", i+1, s.URL)
 		b.WriteString(truncate(s.HTML, g.sampleChars))
