@@ -369,6 +369,10 @@ type createSourceRequest struct {
 	Kinds                    []string            `json:"kinds"`
 	RequiredAttributesByKind map[string][]string `json:"required_attributes_by_kind"`
 	AutoApprove              *bool               `json:"auto_approve"`
+	// ListingPath is the definite jobs-listing location relative to
+	// base_url ("" = base_url itself). Recipe generation learns the list
+	// rule from this exact page — it is never guessed.
+	ListingPath string `json:"listing_path"`
 }
 
 func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
@@ -434,6 +438,7 @@ func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Kinds:                    req.Kinds,
 		RequiredAttributesByKind: req.RequiredAttributesByKind,
 		AutoApprove:              autoApprove,
+		ListingPath:              req.ListingPath,
 	}
 	if src.RequiredAttributesByKind == nil {
 		src.RequiredAttributesByKind = map[string][]string{}
@@ -466,6 +471,7 @@ type updateSourceRequest struct {
 	RequiredAttributesByKind  *map[string][]string `json:"required_attributes_by_kind"`
 	AutoApprove               *bool                `json:"auto_approve"`
 	ExtractionPromptExtension *string              `json:"extraction_prompt_extension"`
+	ListingPath               *string              `json:"listing_path"`
 	// FrontierEnabled is the D2 opt-in flag — flips the source's
 	// crawl path to the URL-frontier model. Default (unset) leaves
 	// the existing value alone; legacy direct-extract sources
@@ -525,6 +531,9 @@ func (a *sourcesAdmin) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.RequiredAttributesByKind != nil {
 		updates["required_attributes_by_kind"] = *req.RequiredAttributesByKind
+	}
+	if req.ListingPath != nil {
+		updates["listing_path"] = *req.ListingPath
 	}
 	if req.AutoApprove != nil {
 		updates["auto_approve"] = *req.AutoApprove

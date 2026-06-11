@@ -46,7 +46,7 @@ func main() {
 	attempts := flag.Int("attempts", 3, "LLM repair attempts")
 	kindsDir := flag.String("kinds-dir", "definitions/opportunity-kinds", "kind definitions dir")
 	out := flag.String("out", "", "write the accepted recipe JSON here")
-	listing := flag.String("listing", "auto", "listing path relative to base-url ('auto' probes common paths, '' uses the base)")
+	listing := flag.String("listing", "", "DEFINITE listing path relative to base-url ('' = the base URL is the listing); mirrors sources.listing_path")
 	flag.Parse()
 
 	if *baseURL == "" {
@@ -87,28 +87,13 @@ func main() {
 		Kinds:    strings.Split(*kinds, ","),
 	}
 
-	// Find the real jobs LISTING: the source base_url is often a homepage
-	// whose "job-ish" links are advice articles, not postings. Probe the
-	// base plus common listing paths and keep the one yielding the most
-	// detail links. -listing overrides the probe.
+	// The listing location is a DEFINITE per-source fact (-listing,
+	// mirroring sources.listing_path in prod) — never guessed. "" means
+	// the base URL itself is the listing.
 	listingRef := *listing
-	if listingRef == "auto" {
-		listingRef = ""
-		best := 0
-		for _, cand := range []string{"", "/jobs", "/vacancies", "/jobs/search", "/job-vacancies", "/en/jobs", "/search/jobs"} {
-			u, uerr := url.JoinPath(*baseURL, cand)
-			if uerr != nil {
-				continue
-			}
-			found, _ := recipe.DiscoverDetailURLs(ctx, fetcher, u, 10)
-			if len(found) > best {
-				best, listingRef = len(found), cand
-			}
-		}
-		fmt.Printf("listing: base%s (%d detail links)\n", listingRef, best)
-	}
 	listingURL, err := url.JoinPath(*baseURL, listingRef)
 	fatal(err, "resolve listing URL")
+	fmt.Printf("listing: %s\n", listingURL)
 
 	sampleURLs, derr := recipe.DiscoverDetailURLs(ctx, fetcher, listingURL, *sampleN)
 	if derr != nil || len(sampleURLs) == 0 {
