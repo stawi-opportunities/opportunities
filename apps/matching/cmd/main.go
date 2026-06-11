@@ -107,32 +107,21 @@ func main() {
 	dbFn := pool.DB
 
 	// Handle database migration if configured (colony Helm chart sets
-	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). Runs
-	// AutoMigrate on every model this service reads/writes, then exits.
-	// Without this branch the matching binary kept starting the full
-	// service inside the migration Job and never returning, which the
-	// Helm controller flagged as InProgress and the upgrade rolled back
-	// (the production HR was looping on this — migration-21, -22, ...).
+	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). pool.Migrate
+	// AutoMigrates the models AND applies the SQL migration files under
+	// migrations/0001 (the raw-SQL OLTP serving tables — applications,
+	// application_notes/attachments/reminders, idempotency_keys,
+	// candidate_saved_jobs, candidate_checkouts — that AutoMigrate doesn't own),
+	// then exits. Without this branch the matching binary kept starting the full
+	// service inside the migration Job and never returning, which the Helm
+	// controller flagged as InProgress and the upgrade rolled back.
 	if cfg.DoDatabaseMigrate() {
-		migrationDB := dbFn(ctx, false)
-		if err := migrationDB.AutoMigrate(
+		if err := pool.Migrate(ctx, cfg.GetDatabaseMigrationPath(),
 			&domain.CandidateProfile{},
 			&domain.CandidateApplication{},
 			&domain.OpportunityFlag{},
 		); err != nil {
-			log.WithError(err).Fatal("auto-migrate failed")
-		}
-		if err := repository.FinalizeSchema(migrationDB); err != nil {
-			log.WithError(err).Fatal("finalize schema failed")
-		}
-		// Create the raw-SQL OLTP serving tables (applications,
-		// application_notes/attachments/reminders, idempotency_keys,
-		// candidate_saved_jobs, candidate_checkouts). AutoMigrate doesn't
-		// own these — they were historically applied to prod by hand — so a
-		// fresh DB would be missing them and break the tracking feed, apply,
-		// save, and billing flows. Idempotent (all IF NOT EXISTS).
-		if err := repository.EnsureServingTables(ctx, migrationDB); err != nil {
-			log.WithError(err).Fatal("ensure serving tables failed")
+			log.WithError(err).Fatal("migrate failed")
 		}
 		log.Info("migration complete")
 		return

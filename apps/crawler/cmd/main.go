@@ -106,8 +106,9 @@ func main() {
 	// MIGRATION_PATH for *.sql files and applies any not yet recorded
 	// in the migrations tracking table, then GORM AutoMigrate keeps
 	// the two historically-GORM-managed tables (sources + raw_refs)
-	// in shape. FinalizeSchema applies pg_trgm + other extensions GORM
-	// cannot express. Returns immediately after migration completes.
+	// in shape. Postgres-specific bits GORM can't express (pg_trgm,
+	// partial indexes) are migration files too. Returns immediately
+	// after migration completes.
 	if cfg.DoDatabaseMigrate() {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")

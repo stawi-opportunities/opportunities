@@ -26,9 +26,10 @@ import (
 // place by 20260610_0130_timescale_append_only.sql, which also enforces
 // append-only on the pure event ledgers at the database level).
 //
-// FinalizeSchema runs after pool.Migrate to apply Postgres-specific
-// extras (pg_trgm extension, the partial unique index on
-// source_recipes) that GORM AutoMigrate can't express.
+// pool.Migrate AutoMigrates the models and applies the SQL files under
+// migrations/0001 — including the Postgres-specific bits GORM can't express
+// (pg_trgm extension, the partial unique index on source_recipes), which live
+// as migration files rather than a Go helper.
 func Migrate(ctx context.Context, dbManager datastore.Manager, migrationsDirPath string) error {
 	dbPool := dbManager.GetPool(ctx, datastore.DefaultPoolName)
 	return migratePool(ctx, dbPool, migrationsDirPath)
@@ -45,12 +46,6 @@ func migratePool(ctx context.Context, dbPool pool.Pool, migrationsDirPath string
 		&domain.Company{},
 	); err != nil {
 		return fmt.Errorf("pool migrate: %w", err)
-	}
-
-	// Postgres-specific schema bits GORM AutoMigrate can't express
-	// (e.g. pg_trgm extension). Idempotent and safe to re-run.
-	if err := FinalizeSchema(dbPool.DB(ctx, false)); err != nil {
-		return fmt.Errorf("finalize schema: %w", err)
 	}
 
 	return nil
