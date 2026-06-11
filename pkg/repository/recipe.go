@@ -14,8 +14,9 @@ import (
 // domain.BaseModel like every other persisted model (xid PK + timestamps +
 // soft-delete, id auto-assigned in BeforeCreate). The struct drives the schema
 // via GORM AutoMigrate (see repository.Migrate); the partial unique index
-// enforcing one active recipe per source is added in FinalizeSchema (GORM tags
-// can't express a WHERE-filtered index).
+// enforcing one active recipe per source is migration
+// 20260611_0133_source_recipes_active_uniq (GORM tags can't express a
+// WHERE-filtered index).
 type SourceRecipe struct {
 	domain.BaseModel
 	SourceID         string          `gorm:"column:source_id;type:varchar(20);not null;index:idx_source_recipes_source,priority:1"`
