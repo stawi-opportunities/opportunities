@@ -3,44 +3,44 @@ import { listCategories } from '@/api/search';
 
 const OPPORTUNITY_TYPES = [
   {
-    href: '/jobs/',
-    emoji: '≡ƒÆ╝',
-    label: 'Jobs',
-    description: 'Full-time, part-time, remote & contract roles across every industry.',
-    color: 'bg-blue-50 border-blue-100 hover:border-blue-300 hover:bg-blue-50/80',
-    badge: 'bg-blue-100 text-blue-700',
+    href: "/jobs/",
+    emoji: "≡ƒÆ╝",
+    label: "Jobs",
+    description: "Full-time, part-time, remote & contract roles across every industry.",
+    color: "bg-blue-50 border-blue-100 hover:border-blue-300 hover:bg-blue-50/80",
+    badge: "bg-blue-100 text-blue-700",
   },
   {
-    href: '/scholarships/',
-    emoji: '≡ƒÄô',
-    label: 'Scholarships',
-    description: 'Grants, bursaries and fellowships for students and researchers.',
-    color: 'bg-green-50 border-green-100 hover:border-green-300 hover:bg-green-50/80',
-    badge: 'bg-green-100 text-green-700',
+    href: "/scholarships/",
+    emoji: "≡ƒÄô",
+    label: "Scholarships",
+    description: "Grants, bursaries and fellowships for students and researchers.",
+    color: "bg-green-50 border-green-100 hover:border-green-300 hover:bg-green-50/80",
+    badge: "bg-green-100 text-green-700",
   },
   {
-    href: '/tenders/',
-    emoji: '≡ƒôï',
-    label: 'Tenders',
-    description: 'Government and private sector RFPs, bids and procurement notices.',
-    color: 'bg-orange-50 border-orange-100 hover:border-orange-300 hover:bg-orange-50/80',
-    badge: 'bg-orange-100 text-orange-700',
+    href: "/tenders/",
+    emoji: "≡ƒôï",
+    label: "Tenders",
+    description: "Government and private sector RFPs, bids and procurement notices.",
+    color: "bg-orange-50 border-orange-100 hover:border-orange-300 hover:bg-orange-50/80",
+    badge: "bg-orange-100 text-orange-700",
   },
   {
-    href: '/deals/',
-    emoji: '≡ƒÅ╖∩╕Å',
-    label: 'Deals',
-    description: 'Curated discounts, offers and partnerships for professionals.',
-    color: 'bg-pink-50 border-pink-100 hover:border-pink-300 hover:bg-pink-50/80',
-    badge: 'bg-pink-100 text-pink-700',
+    href: "/deals/",
+    emoji: "≡ƒÅ╖∩╕Å",
+    label: "Deals",
+    description: "Curated discounts, offers and partnerships for professionals.",
+    color: "bg-pink-50 border-pink-100 hover:border-pink-300 hover:bg-pink-50/80",
+    badge: "bg-pink-100 text-pink-700",
   },
   {
-    href: '/funding/',
-    emoji: '≡ƒÆ░',
-    label: 'Funding',
-    description: 'Grants, venture capital and investor opportunities for ventures.',
-    color: 'bg-purple-50 border-purple-100 hover:border-purple-300 hover:bg-purple-50/80',
-    badge: 'bg-purple-100 text-purple-700',
+    href: "/funding/",
+    emoji: "≡ƒÆ░",
+    label: "Funding",
+    description: "Grants, venture capital and investor opportunities for ventures.",
+    color: "bg-purple-50 border-purple-100 hover:border-purple-300 hover:bg-purple-50/80",
+    badge: "bg-purple-100 text-purple-700",
   },
 ] as const;
 
@@ -60,23 +60,15 @@ export default function CategoryIndex() {
         <div className="mx-auto max-w-5xl text-center">
           <h1 className="text-4xl font-bold tracking-tight text-gray-900">Browse by category</h1>
           <p className="mt-3 text-lg text-gray-500">
-            Discover opportunities across jobs, scholarships, tenders, deals and funding ΓÇö all in
-            one place.
+            Discover opportunities across jobs, scholarships, tenders, deals and funding ΓÇö all in one place.
           </p>
           <div className="mt-6 flex justify-center">
             <a
               href="/search/"
               className="inline-flex items-center gap-2 rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-navy-800"
             >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35" />
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35" />
               </svg>
               Advanced search
             </a>
@@ -85,12 +77,11 @@ export default function CategoryIndex() {
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+
         {/* Opportunity types ΓÇö always shown */}
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Opportunity types</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Choose the kind of opportunity you are looking for.
-          </p>
+          <p className="mt-1 text-sm text-gray-500">Choose the kind of opportunity you are looking for.</p>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {OPPORTUNITY_TYPES.map(({ href, emoji, label, description, color, badge }) => (
               <a
@@ -99,9 +90,7 @@ export default function CategoryIndex() {
                 className={`group flex flex-col rounded-xl border p-5 transition-all duration-150 ${color}`}
               >
                 <div className="flex items-center gap-3">
-                  <span
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${badge}`}
-                  >
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${badge}`}>
                     {emoji}
                   </span>
                   <span className="text-base font-semibold text-gray-900 group-hover:text-navy-900">
@@ -109,10 +98,7 @@ export default function CategoryIndex() {
                   </span>
                   <svg
                     className="ml-auto h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-navy-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
+                    fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
                   </svg>
@@ -147,16 +133,17 @@ export default function CategoryIndex() {
                   className="group flex flex-col justify-between rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-navy-300 hover:shadow-sm"
                 >
                   <div className="font-medium capitalize text-gray-900 group-hover:text-navy-900">
-                    {c.key || 'Uncategorised'}
+                    {c.key || "Uncategorised"}
                   </div>
                   <div className="mt-1 text-xs text-gray-400">
-                    {c.count.toLocaleString()} {c.count === 1 ? 'opportunity' : 'opportunities'}
+                    {c.count.toLocaleString()} {c.count === 1 ? "opportunity" : "opportunities"}
                   </div>
                 </a>
               ))}
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
