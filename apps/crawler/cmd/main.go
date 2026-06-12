@@ -347,11 +347,11 @@ func main() {
 	// the crawl rather than silently diverge.
 	crawlRepo := repository.NewCrawlRepository(dbFn)
 
-	// Iterator checkpoint store — feeds the resume path on the next
-	// NATS redelivery after a crash. Soft-fail throughout: a Postgres
-	// outage degrades resumption to "always start fresh" rather than
-	// stalling the crawl.
-	checkpointRepo := repository.NewCheckpointRepository(dbFn)
+	// crawl_runs state machine — the durable per-source resume state behind
+	// bounded-slice crawling. Drives single-flight, the per-slice lease, and
+	// the cursor that lets a millions-of-jobs board resume instead of
+	// restarting. Supersedes the old crawl_checkpoints store.
+	crawlRunRepo := repository.NewCrawlRunRepository(dbFn)
 	recipeRepo := repository.NewRecipeRepository(dbFn)
 
 	// URL frontier (D2) — discovered URLs from frontier-enabled
@@ -387,24 +387,29 @@ func main() {
 	}
 
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
-		Svc:               svc,
-		IngestedQueue:     cfg.QueuePipelineIngestedName,
-		Inbox:             inboxStore,
-		Sources:           sourceRepo,
-		Registry:          registry,
-		Kinds:             reg,
-		Archive:           arch,
-		Extractor:         extractor,
-		Normalizer:        normalizer,
-		PageFetcher:       httpClient,
-		EnrichConcurrency: cfg.EnrichConcurrency,
-		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
-		VariantStore:      variantStore,
-		CrawlRepo:         crawlRepo,
-		CheckpointRepo:    checkpointRepo,
-		Frontier:          urlFrontier,
-		RecipeRepo:        recipeRepo,
-		RecipeEnabled:     cfg.RecipeEnabled,
+		Svc:                 svc,
+		IngestedQueue:       cfg.QueuePipelineIngestedName,
+		Inbox:               inboxStore,
+		Sources:             sourceRepo,
+		Registry:            registry,
+		Kinds:               reg,
+		Archive:             arch,
+		Extractor:           extractor,
+		Normalizer:          normalizer,
+		PageFetcher:         httpClient,
+		EnrichConcurrency:   cfg.EnrichConcurrency,
+		DiscoverSample:      0.05, // roughly 1-in-20 pages get DiscoverSites
+		VariantStore:        variantStore,
+		CrawlRepo:           crawlRepo,
+		RunRepo:             crawlRunRepo,
+		Admitter:            bpGate,
+		SliceMaxPages:       cfg.CrawlSliceMaxPages,
+		SliceMaxSeconds:     cfg.CrawlSliceMaxSeconds,
+		RunLeaseTTLSec:      cfg.CrawlRunLeaseTTLSec,
+		RunStuckMaxAttempts: cfg.CrawlRunStuckMaxAttempts,
+		Frontier:            urlFrontier,
+		RecipeRepo:          recipeRepo,
+		RecipeEnabled:       cfg.RecipeEnabled,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
 	// Drift-triggered recipe regeneration: when a recipe-driven source's
@@ -783,6 +788,13 @@ func main() {
 	// definitions/trustage/crawl-watchdog.json.
 	watchdog := service.CrawlWatchdogHandler(crawlRepo, sourceRepo)
 	adminMux.HandleFunc("GET /admin/crawl/watchdog", watchdog)
+
+	// Resumable-run watchdog: re-drives crawl_runs whose lease lapsed (crashed
+	// owner, lost/deferred continuation) and fails runs past the stuck ceiling.
+	// Static-synced cron; see definitions/trustage/crawl-runs-sweep.json.
+	adminMux.HandleFunc("POST /admin/crawl/runs/sweep",
+		service.CrawlRunWatchdogHandler(svc, crawlRunRepo, bpGate,
+			cfg.CrawlRunWatchdogBatch, cfg.CrawlRunStuckMaxAttempts, cfg.CrawlRunLeaseTTLSec))
 	adminMux.HandleFunc("POST /admin/crawl/watchdog", watchdog)
 
 	// Stale-job retention sweep: hides opportunities that vanished from a

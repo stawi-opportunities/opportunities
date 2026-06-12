@@ -44,6 +44,7 @@ func migratePool(ctx context.Context, dbPool pool.Pool, migrationsDirPath string
 		&domain.RawRef{},
 		&SourceRecipe{},
 		&domain.Company{},
+		&domain.CrawlRun{},
 	); err != nil {
 		return fmt.Errorf("pool migrate: %w", err)
 	}
