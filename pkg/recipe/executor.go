@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PaesslerAG/jsonpath"
 	"github.com/PuerkitoBio/goquery"
@@ -467,16 +468,30 @@ func (e *Executor) apiPaged(ctx context.Context, src domain.Source, st PageState
 		return items, raw, status, PageState{page: pg + 1}, done, nil
 	}
 
+	p := e.recipe.List.Pagination
+	// Politeness pacing between pages of a deep paginated API.
+	if pg > 1 && p.DelayMs > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, nil, 0, PageState{}, true, ctx.Err()
+		case <-time.After(time.Duration(p.DelayMs) * time.Millisecond):
+		}
+	}
+
 	pageURL, err := e.apiURL(src, pg, st.cursor)
 	if err != nil {
 		return nil, nil, 0, PageState{}, true, err
 	}
 	items, raw, status, root, err := e.apiPage(ctx, src, pageURL, "")
 	if err != nil {
+		// A 429 deep into pagination means "enough for now" — end cleanly
+		// (we already have the earlier pages). Only page 1 is a real fail.
+		if pg > 1 && status == 429 {
+			return nil, raw, status, PageState{}, true, nil
+		}
 		return nil, raw, status, PageState{}, true, err
 	}
 
-	p := e.recipe.List.Pagination
 	maxPages := p.MaxPages
 	if maxPages <= 0 {
 		maxPages = 1

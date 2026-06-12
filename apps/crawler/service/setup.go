@@ -6,12 +6,7 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/greenhouse"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/jobicy"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/remoteok"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/spec"
@@ -25,7 +20,6 @@ import (
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/schemaorgjsonld"
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/sitemap"
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/xmlfeed"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/universal"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
@@ -34,7 +28,7 @@ import (
 )
 
 // BuildRegistry creates a connector Registry with all available connectors
-// registered: the hand-coded ones (greenhouse, workday, etc.) plus any
+// registered: the hand-coded ones (workday, smartrecruiters) plus any
 // declarative spec-driven connectors loaded from R2 via the
 // definitions service.
 //
@@ -47,15 +41,11 @@ import (
 func BuildRegistry(ctx context.Context, client *httpx.Client, extractor *extraction.Extractor, loader *definitions.R2Loader) *connectors.Registry {
 	reg := connectors.NewRegistry()
 
-	// Free JSON API connectors (no httpx.Client dependency).
-	reg.Register(remoteok.New())
-	reg.Register(arbeitnow.New())
-	reg.Register(jobicy.New())
-	reg.Register(themuse.New())
-	reg.Register(himalayas.New())
-
-	// ATS / structured-data connectors (require httpx.Client).
-	reg.Register(greenhouse.New(client))
+	// ATS / structured-data connectors (require httpx.Client). The free JSON
+	// API boards (remoteok, arbeitnow, jobicy, themuse, himalayas) and the
+	// Greenhouse multi-tenant board are now generic `api` recipes — see
+	// docs/ops/crawl-framework.md. workday/smartrecruiters remain hand-coded
+	// pending migration.
 	reg.Register(workday.New(client))
 	reg.Register(smartrecruiters.New(client))
 

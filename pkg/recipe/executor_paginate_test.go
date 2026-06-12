@@ -101,6 +101,65 @@ func drain(t *testing.T, e *Executor, src domain.Source) ([]domain.ExternalOppor
 	}
 }
 
+// TestExecutor_Crawl_API429MidPaginationStopsCleanly verifies that a 429
+// returned deep into a paginated api crawl ends the crawl with the pages
+// already gathered (no error), while a 429 on page 1 still surfaces as a
+// failure. This is the politeness/back-off path used by deep boards
+// (himalayas: 1700+ pages) alongside pagination.delay_ms.
+func TestExecutor_Crawl_API429MidPaginationStopsCleanly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Query().Get("page") {
+		case "", "1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"jobs":[{"title":"A","description":"A description long enough to pass the fifty character minimum gate.","company":"X","apply":"https://x.io/a","country":"KE"}]}`))
+		default:
+			w.WriteHeader(http.StatusTooManyRequests)
+		}
+	}))
+	defer srv.Close()
+
+	rec := func(p string) FieldExtractor { return FieldExtractor{From: []string{"record"}, JSONPath: p} }
+	r := &Recipe{
+		Acquisition: "api",
+		Kind:        KindRule{Mode: "source_default"},
+		List: ListRule{Mode: "api", Endpoint: "/api/jobs", ItemsPath: "$.jobs",
+			Pagination: Pagination{Mode: "page_param", Param: "page", MaxPages: 50, DelayMs: 1}},
+		Detail: DetailRule{RecordSource: "record", Title: rec("$.title"), Description: rec("$.description"),
+			IssuingEntity: rec("$.company"), ApplyURL: rec("$.apply"), AnchorCountry: rec("$.country")},
+	}
+	src := jobSource()
+	src.BaseURL = srv.URL
+	e := NewExecutor(r, httptestFetcher{client: srv.Client()})
+
+	all, err := drain(t, e, src)
+	require.NoError(t, err) // page-2 429 ends the crawl cleanly, not as an error
+	require.Len(t, all, 1)
+	assert.Equal(t, "A", all[0].Title)
+}
+
+func TestExecutor_Crawl_API429OnFirstPageFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	rec := func(p string) FieldExtractor { return FieldExtractor{From: []string{"record"}, JSONPath: p} }
+	r := &Recipe{
+		Acquisition: "api",
+		Kind:        KindRule{Mode: "source_default"},
+		List: ListRule{Mode: "api", Endpoint: "/api/jobs", ItemsPath: "$.jobs",
+			Pagination: Pagination{Mode: "page_param", Param: "page", MaxPages: 5}},
+		Detail: DetailRule{RecordSource: "record", Title: rec("$.title"), Description: rec("$.description"),
+			IssuingEntity: rec("$.company"), ApplyURL: rec("$.apply"), AnchorCountry: rec("$.country")},
+	}
+	src := jobSource()
+	src.BaseURL = srv.URL
+	e := NewExecutor(r, httptestFetcher{client: srv.Client()})
+
+	_, err := drain(t, e, src)
+	require.Error(t, err) // a 429 on page 1 is a real failure, not "enough for now"
+}
+
 func TestExecutor_Crawl_APICursor(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

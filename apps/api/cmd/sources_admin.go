@@ -41,15 +41,9 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/greenhouse"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/jobicy"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/remoteok"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -280,12 +274,6 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 // report and approve manually).
 func buildAdminConnectorRegistry(client *httpx.Client) *connectors.Registry {
 	reg := connectors.NewRegistry()
-	reg.Register(remoteok.New())
-	reg.Register(arbeitnow.New())
-	reg.Register(jobicy.New())
-	reg.Register(themuse.New())
-	reg.Register(himalayas.New())
-	reg.Register(greenhouse.New(client))
 	reg.Register(workday.New(client))
 	reg.Register(smartrecruiters.New(client))
 	reg.Register(sitemapcrawler.New(client))

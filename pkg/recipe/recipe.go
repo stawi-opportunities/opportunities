@@ -104,6 +104,11 @@ type Pagination struct {
 	Cursor   FieldExtractor `json:"cursor,omitzero"`
 	Next     FieldExtractor `json:"next,omitzero"`
 	MaxPages int            `json:"max_pages,omitempty"`
+	// DelayMs paces a paginated api crawl (politeness). Deep APIs
+	// (himalayas: 1700+ pages) rate-limit an undelayed loop; this sleeps
+	// between pages. A 429 deep into pagination is then treated as "you
+	// have enough for now" and ends the crawl cleanly rather than failing.
+	DelayMs int `json:"delay_ms,omitempty"`
 }
 
 type ListRule struct {

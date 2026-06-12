@@ -206,8 +206,11 @@ cron and the activation pass-rate threshold.
   recipe config — never hardcode one site's fields.
 - A new transform or `From` source in the vocabulary (§2).
 
-**Deprecated**: the per-source hand-coded connectors
-(`pkg/connectors/{greenhouse,workday,remoteok,jobicy,themuse,arbeitnow,
-himalayas,smartrecruiters}`) predate this framework. They are all JSON APIs and
-should migrate to `acquisition:"api"` recipes (as Lever already did). New
-sources must not add to this list.
+**Deprecated**: the per-source hand-coded connectors predate this framework.
+`greenhouse`, `remoteok`, `jobicy`, `themuse`, `arbeitnow`, `himalayas` and
+`lever` have all been migrated to `acquisition:"api"` recipes and their Go
+packages deleted — Greenhouse is now the single multi-tenant "all boards"
+source. Only `pkg/connectors/{workday,smartrecruiters}` remain: Workday is a
+POST-bodied API the engine can't yet express (a real new extraction category —
+see §6) and its only source is dead; SmartRecruiters has no live source to
+verify a recipe against. New sources must not add to this list.
