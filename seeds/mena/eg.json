@@ -3,17 +3,9 @@
     "base_url": "https://wuzzuf.net",
     "country": "EG",
     "crawl_interval_sec": 3600,
-    "kinds": ["job"],
-    "language": "en",
-    "priority": "hot",
-    "region": "north_africa",
-    "source_type": "generic_html"
-  },
-  {
-    "base_url": "https://www.jobzella.com",
-    "country": "EG",
-    "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "kinds": [
+      "job"
+    ],
     "language": "en",
     "priority": "hot",
     "region": "north_africa",
@@ -23,7 +15,9 @@
     "base_url": "https://forasna.com",
     "country": "EG",
     "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "kinds": [
+      "job"
+    ],
     "language": "ar",
     "priority": "hot",
     "region": "north_africa",
