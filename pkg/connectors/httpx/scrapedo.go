@@ -84,6 +84,18 @@ type UnblockerConfig struct {
 // as the scrape.do API client; the proxy backend builds its own.
 func NewUnblocker(c UnblockerConfig, base HTTPDoer) (doer HTTPDoer, desc string, insecure bool, err error) {
 	switch {
+	case isBrightDataURL(c.ProxyURL):
+		// Bright Data Web Unlocker API — strongest backend (Akamai/enterprise
+		// anti-bot); takes precedence over scrape.do when configured.
+		apiKey, zone, country, perr := parseBrightDataURL(c.ProxyURL)
+		if perr != nil {
+			return nil, "", false, perr
+		}
+		desc := "brightdata-unlocker zone=" + zone
+		if country != "" {
+			desc += " country=" + country
+		}
+		return NewBrightDataDoer(apiKey, zone, country, base, c.Timeout), desc, false, nil
 	case c.ScrapeDoToken != "":
 		opts := ""
 		if c.ScrapeDoRender {

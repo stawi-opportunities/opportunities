@@ -80,18 +80,20 @@ func main() {
 	// (fine for sites that don't block).
 	var client *httpx.Client
 	httpDoer := &http.Client{Timeout: 30 * time.Second}
-	if tok := os.Getenv("SCRAPEDO_TOKEN"); tok != "" {
-		unblocker, desc, _, uerr := httpx.NewUnblocker(httpx.UnblockerConfig{
-			ScrapeDoToken:  tok,
-			ScrapeDoRender: os.Getenv("SCRAPEDO_RENDER") == "true",
-			ScrapeDoSuper:  os.Getenv("SCRAPEDO_SUPER") == "true",
-			Timeout:        60 * time.Second,
-		}, httpDoer)
-		if uerr != nil {
-			fmt.Fprintf(os.Stderr, "warn: scrape.do disabled: %v\n", uerr)
+	ucfg := httpx.UnblockerConfig{
+		ScrapeDoToken:  os.Getenv("SCRAPEDO_TOKEN"),
+		ScrapeDoRender: os.Getenv("SCRAPEDO_RENDER") == "true",
+		ScrapeDoSuper:  os.Getenv("SCRAPEDO_SUPER") == "true",
+		ProxyURL:       os.Getenv("UNBLOCKER_PROXY_URL"), // e.g. brightdata-api://<token>@<zone>
+		Timeout:        60 * time.Second,
+	}
+	if ucfg.ScrapeDoToken != "" || ucfg.ProxyURL != "" {
+		unblocker, desc, _, uerr := httpx.NewUnblocker(ucfg, httpDoer)
+		if uerr != nil || unblocker == nil {
+			fmt.Fprintf(os.Stderr, "warn: unblocker disabled: %v\n", uerr)
 			client = httpx.NewClient(20*time.Second, "opportunities-recipe-verify/1.0")
 		} else {
-			fmt.Fprintf(os.Stderr, "note: scrape.do unblocker fallback enabled (%s)\n", desc)
+			fmt.Fprintf(os.Stderr, "note: unblocker fallback enabled (%s)\n", desc)
 			client = httpx.NewClientFromDoer(httpx.NewFallbackDoer(httpDoer, unblocker), "opportunities-recipe-verify/1.0")
 		}
 	} else {
