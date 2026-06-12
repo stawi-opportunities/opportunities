@@ -109,7 +109,62 @@ func parseJSONLDBlock(body string) []map[string]any {
 			return nil
 		}
 	}
-	return flattenJSONLD(raw)
+	nodes := flattenJSONLD(raw)
+	resolveGraphRefs(nodes)
+	return nodes
+}
+
+// resolveGraphRefs replaces {"@id": ref} property values with the actual
+// node carrying that @id, when both live in the same JSON-LD block. This
+// is how schema.org commonly models relationships: a JobPosting's
+// hiringOrganization is a bare {"@id": "…"} reference and the company
+// name lives in a sibling Organization node (BrighterMonday, and many
+// ATS-generated pages, do exactly this). Without resolution,
+// $.hiringOrganization.name returns nothing. One level deep — enough for
+// the envelope fields — and self-references are skipped to avoid cycles.
+func resolveGraphRefs(nodes []map[string]any) {
+	index := make(map[string]map[string]any, len(nodes))
+	for _, n := range nodes {
+		if id, ok := n["@id"].(string); ok && id != "" {
+			index[id] = n
+		}
+	}
+	if len(index) == 0 {
+		return
+	}
+	deref := func(v any, parent map[string]any) any {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return v
+		}
+		id, ok := m["@id"].(string)
+		if !ok || id == "" {
+			return v
+		}
+		target, ok := index[id]
+		if !ok || sameNode(target, parent) {
+			return v
+		}
+		return target
+	}
+	for _, n := range nodes {
+		for k, v := range n {
+			switch val := v.(type) {
+			case map[string]any:
+				n[k] = deref(val, n)
+			case []any:
+				for i, item := range val {
+					val[i] = deref(item, n)
+				}
+			}
+		}
+	}
+}
+
+func sameNode(a, b map[string]any) bool {
+	ai, _ := a["@id"].(string)
+	bi, _ := b["@id"].(string)
+	return ai != "" && ai == bi
 }
 
 func flattenJSONLD(raw any) []map[string]any {

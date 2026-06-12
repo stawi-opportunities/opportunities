@@ -138,3 +138,23 @@ func TestJSONLDWithRawControlChars(t *testing.T) {
 		t.Fatalf("title=%q", got)
 	}
 }
+
+// TestJSONLDGraphRefResolution: a JobPosting whose hiringOrganization is
+// a bare @id reference resolves to the sibling Organization node's name
+// (BrighterMonday's exact pattern), so $.hiringOrganization.name works.
+func TestJSONLDGraphRefResolution(t *testing.T) {
+	html := `<html><head><script type="application/ld+json">
+	{"@context":"https://schema.org","@graph":[
+	 {"@type":"JobPosting","title":"Truck Driver","hiringOrganization":{"@id":"https://x/#/org/agency-1"}},
+	 {"@type":"Organization","@id":"https://x/#/org/agency-1","name":"Top Choice Surveillance Limited"}
+	]}</script></head><body></body></html>`
+	pc, err := NewPageContext("https://x/listings/truck", html, nil)
+	if err != nil {
+		t.Fatalf("page context: %v", err)
+	}
+	fx := FieldExtractor{From: []string{"json_ld"}, JSONPath: "$.hiringOrganization.name"}
+	got, _ := Evaluate(fx, pc)
+	if got != "Top Choice Surveillance Limited" {
+		t.Fatalf("hiringOrganization.name = %q; want resolved company name", got)
+	}
+}

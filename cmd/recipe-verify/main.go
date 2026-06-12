@@ -77,10 +77,20 @@ func main() {
 	fetcher := recipe.NewHTTPFetcher(client)
 
 	fmt.Printf("\n── 2. activation gate (detail extraction vs live pages) ──\n")
-	sampleURLs, err := recipe.DiscoverDetailURLs(ctx, fetcher, *baseURL, *sampleN)
+	// Samples come from the recipe's OWN list rule, so the pages validated
+	// are exactly the ones the recipe will crawl — not advice/category
+	// pages a generic pattern matcher surfaces. Fall back to generic
+	// discovery only if the list rule yields nothing.
+	sampleURLs, err := recipe.NewExecutor(&rec, fetcher).ListDetailURLs(ctx, src)
 	if err != nil || len(sampleURLs) == 0 {
-		fmt.Printf("WARN: detail-link discovery failed (%v); validating against base URL only\n", err)
-		sampleURLs = []string{*baseURL}
+		fmt.Printf("note: list rule yielded no detail URLs (%v); falling back to generic discovery\n", err)
+		sampleURLs, err = recipe.DiscoverDetailURLs(ctx, fetcher, *baseURL, *sampleN)
+		if err != nil || len(sampleURLs) == 0 {
+			sampleURLs = []string{*baseURL}
+		}
+	}
+	if len(sampleURLs) > *sampleN {
+		sampleURLs = sampleURLs[:*sampleN]
 	}
 	var samples []recipe.SamplePage
 	for _, u := range sampleURLs {

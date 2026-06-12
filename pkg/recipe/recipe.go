@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/andybalholm/cascadia"
+	"github.com/antchfx/xpath"
 )
 
 // validFromSources are the data planes a FieldExtractor may read from, in the
 // order callers typically list them (structured data first, selectors last).
 var validFromSources = map[string]bool{
 	"json_ld": true, "next_data": true, "microdata": true,
-	"selector": true, "meta": true, "record": true, "const": true, "page_url": true,
+	"selector": true, "xpath": true, "meta": true, "record": true, "const": true, "page_url": true,
 }
 
 // FieldExtractor describes how to pull ONE value from a page or record. From is
@@ -28,6 +29,7 @@ type FieldExtractor struct {
 	JSONPath  string        `json:"json_path,omitempty"`
 	Microdata string        `json:"microdata,omitempty"`
 	Selector  string        `json:"selector,omitempty"`
+	XPath     string        `json:"xpath,omitempty"`
 	Attr      string        `json:"attr,omitempty"`
 	Meta      string        `json:"meta,omitempty"`
 	Const     string        `json:"const,omitempty"`
@@ -112,7 +114,15 @@ type ListRule struct {
 	ItemsPath    string            `json:"items_path,omitempty"`
 	ItemSelector string            `json:"item_selector,omitempty"`
 	Link         FieldExtractor    `json:"link,omitzero"`
-	Pagination   Pagination        `json:"pagination"`
+	// LinkPattern is the REUSABLE link-discovery primitive: a substring
+	// every job-detail URL contains (e.g. "/listings/", "/job/", "/jobs/").
+	// When set, the engine harvests every same-host anchor whose resolved
+	// href contains it — no per-site CSS card selectors. The URL path that
+	// defines "a job" is a far more stable contract than presentation
+	// classes (data-cy, tailwind), so this is preferred over
+	// ItemSelector+Link for HTML boards.
+	LinkPattern string     `json:"link_pattern,omitempty"`
+	Pagination  Pagination `json:"pagination"`
 }
 
 type DetailRule struct {
@@ -284,6 +294,11 @@ func (r *Recipe) Validate() error {
 		if fx.Selector != "" {
 			if _, err := cascadia.Compile(fx.Selector); err != nil {
 				errs = append(errs, fmt.Errorf("%s: invalid selector %q: %w", label, fx.Selector, err))
+			}
+		}
+		if fx.XPath != "" {
+			if _, err := xpath.Compile(fx.XPath); err != nil {
+				errs = append(errs, fmt.Errorf("%s: invalid xpath %q: %w", label, fx.XPath, err))
 			}
 		}
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/PaesslerAG/jsonpath"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/antchfx/htmlquery"
 )
 
 // Evaluate resolves a single string value from a FieldExtractor against a
@@ -97,6 +98,8 @@ func resolveRaw(src string, fx FieldExtractor, pc *PageContext) (string, error) 
 			return strings.TrimSpace(v), nil
 		}
 		return strings.TrimSpace(sel.Text()), nil
+	case "xpath":
+		return xpathScalar(pc, fx.XPath, fx.Attr), nil
 	case "microdata":
 		if pc.HTML == nil || fx.Microdata == "" {
 			return "", nil
@@ -123,6 +126,30 @@ func resolveRaw(src string, fx FieldExtractor, pc *PageContext) (string, error) 
 	default:
 		return "", fmt.Errorf("unknown From source %q", src)
 	}
+}
+
+// xpathScalar evaluates an XPath expression against the page DOM and
+// returns the first match. With attr set, it reads that attribute off
+// the matched element; otherwise it returns the node's inner text (so
+// expressions ending in text() or @attr also work). A malformed
+// expression yields "" rather than erroring — the pass-rate gate is the
+// quality arbiter, and a recipe shouldn't crash the crawl on a typo.
+func xpathScalar(pc *PageContext, expr, attr string) string {
+	if pc == nil || pc.HTML == nil || expr == "" {
+		return ""
+	}
+	root := pc.HTML.Get(0)
+	if root == nil {
+		return ""
+	}
+	node, err := htmlquery.Query(root, expr)
+	if err != nil || node == nil {
+		return ""
+	}
+	if attr != "" {
+		return strings.TrimSpace(htmlquery.SelectAttr(node, attr))
+	}
+	return strings.TrimSpace(htmlquery.InnerText(node))
 }
 
 // jsonPathScalar evaluates path against root and renders a scalar result. A
