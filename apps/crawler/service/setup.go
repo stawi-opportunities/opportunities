@@ -11,6 +11,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/jobicy"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/lever"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/remoteok"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
@@ -56,6 +57,7 @@ func BuildRegistry(ctx context.Context, client *httpx.Client, extractor *extract
 
 	// ATS / structured-data connectors (require httpx.Client).
 	reg.Register(greenhouse.New(client))
+	reg.Register(lever.New(client))
 	reg.Register(workday.New(client))
 	reg.Register(smartrecruiters.New(client))
 
