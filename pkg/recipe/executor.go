@@ -39,12 +39,25 @@ func NewExecutor(r *Recipe, f Fetcher) *Executor {
 	return &Executor{recipe: r, fetcher: f}
 }
 
+// fetch GETs url, applying the recipe's custom list.headers when the fetcher
+// supports them (HeaderedFetcher). Used for every list + detail fetch so an
+// API or site that gates on an auth/JWT/app-id header (e.g. ethiojobs'
+// x-custom-header) works through the recipe. Falls back to plain Get.
+func (e *Executor) fetch(ctx context.Context, url string) ([]byte, int, error) {
+	if h := e.recipe.List.Headers; len(h) > 0 {
+		if hf, ok := e.fetcher.(HeaderedFetcher); ok {
+			return hf.GetH(ctx, url, h)
+		}
+	}
+	return e.fetcher.Get(ctx, url)
+}
+
 // apiPage fetches one api-mode page from pageURL, parses the records under
 // List.ItemsPath, and builds an opportunity per record. It returns the page's
 // items, the raw body, the HTTP status, the root JSON (for cursor pagination),
 // and any error.
 func (e *Executor) apiPage(ctx context.Context, src domain.Source, pageURL, tenant string) (items []domain.ExternalOpportunity, raw []byte, status int, root any, err error) {
-	raw, status, err = e.fetcher.Get(ctx, pageURL)
+	raw, status, err = e.fetch(ctx, pageURL)
 	if err != nil {
 		return nil, raw, status, nil, err
 	}
@@ -87,7 +100,7 @@ func (e *Executor) apiPage(ctx context.Context, src domain.Source, pageURL, tena
 // It returns the items, the listing's raw body, its HTTP status, the listing
 // PageContext (for next-link pagination), and any error.
 func (e *Executor) htmlPage(ctx context.Context, src domain.Source, listURL string) (items []domain.ExternalOpportunity, raw []byte, status int, listPC *PageContext, err error) {
-	raw, status, err = e.fetcher.Get(ctx, listURL)
+	raw, status, err = e.fetch(ctx, listURL)
 	if err != nil {
 		return nil, raw, status, nil, err
 	}
@@ -105,7 +118,7 @@ func (e *Executor) htmlPage(ctx context.Context, src domain.Source, listURL stri
 		if !sameHost(src.BaseURL, du) {
 			continue
 		}
-		body, st, ferr := e.fetcher.Get(ctx, du)
+		body, st, ferr := e.fetch(ctx, du)
 		if ferr != nil {
 			skipped++
 			telemetry.RecordCrawlSilentLoss("detail_fetch_skip")
@@ -259,7 +272,7 @@ func (e *Executor) sitemapPaged(ctx context.Context, src domain.Source, st PageS
 
 	var items []domain.ExternalOpportunity
 	for _, u := range e.sitemapURLs[start:end] {
-		body, status, ferr := e.fetcher.Get(ctx, u)
+		body, status, ferr := e.fetch(ctx, u)
 		if ferr != nil || status < 200 || status >= 300 {
 			continue
 		}
@@ -326,7 +339,7 @@ func (e *Executor) sitemapRoots(ctx context.Context, src domain.Source) []string
 	// Discover from robots.txt.
 	var roots []string
 	if u, err := resolveURL(src.BaseURL, "/robots.txt"); err == nil {
-		if body, status, ferr := e.fetcher.Get(ctx, u.String()); ferr == nil && status == 200 {
+		if body, status, ferr := e.fetch(ctx, u.String()); ferr == nil && status == 200 {
 			for _, line := range strings.Split(string(body), "\n") {
 				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "sitemap:") {
 					roots = append(roots, strings.TrimSpace(line[strings.Index(line, ":")+1:]))
@@ -344,7 +357,7 @@ func (e *Executor) sitemapRoots(ctx context.Context, src domain.Source) []string
 
 // fetchLocs fetches a sitemap (gunzipping .gz) and returns its <loc> values.
 func (e *Executor) fetchLocs(ctx context.Context, sitemapURL string) []string {
-	body, status, err := e.fetcher.Get(ctx, sitemapURL)
+	body, status, err := e.fetch(ctx, sitemapURL)
 	if err != nil || status != 200 || len(body) == 0 {
 		return nil
 	}
@@ -420,7 +433,7 @@ func (e *Executor) ListDetailURLs(ctx context.Context, src domain.Source) ([]str
 	if err != nil {
 		return nil, err
 	}
-	raw, status, err := e.fetcher.Get(ctx, listURL)
+	raw, status, err := e.fetch(ctx, listURL)
 	if err != nil {
 		return nil, err
 	}

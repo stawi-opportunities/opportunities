@@ -17,3 +17,10 @@ func NewHTTPFetcher(g HeaderedGetter) *HTTPFetcher { return &HTTPFetcher{g: g} }
 func (f *HTTPFetcher) Get(ctx context.Context, url string) ([]byte, int, error) {
 	return f.g.Get(ctx, url, nil)
 }
+
+// GetH fetches with custom request headers. It satisfies the optional
+// HeaderedFetcher interface the Executor uses when a recipe declares
+// list.headers (e.g. an API auth/JWT/app-id header).
+func (f *HTTPFetcher) GetH(ctx context.Context, url string, headers map[string]string) ([]byte, int, error) {
+	return f.g.Get(ctx, url, headers)
+}
