@@ -49,6 +49,17 @@ type CrawlerConfig struct {
 	UnblockerCACert     string `env:"UNBLOCKER_CA_CERT"`
 	UnblockerTimeoutSec int    `env:"UNBLOCKER_TIMEOUT_SEC" envDefault:"60"`
 
+	// scrape.do unblocker (API mode). Takes precedence over the generic
+	// proxy above. Render runs a headless browser (JS/Cloudflare
+	// challenges); Super uses the residential pool (harder IP blocks);
+	// both cost more credits, so default off — plain mode already
+	// unblocks Cloudflare boards like libyanjobs. GeoCode pins egress
+	// country (e.g. "us"). Empty token disables.
+	ScrapeDoToken   string `env:"SCRAPEDO_TOKEN"`
+	ScrapeDoRender  bool   `env:"SCRAPEDO_RENDER" envDefault:"false"`
+	ScrapeDoSuper   bool   `env:"SCRAPEDO_SUPER" envDefault:"false"`
+	ScrapeDoGeoCode string `env:"SCRAPEDO_GEOCODE"`
+
 	// EnrichConcurrency caps the parallel fetch+LLM-extract calls
 	// per crawler page for URL-only stubs (sitemap + universal
 	// AI-link-discovery iterators). 0 disables enrichment entirely
