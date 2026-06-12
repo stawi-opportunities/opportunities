@@ -25,14 +25,18 @@ var validFromSources = map[string]bool{
 // tried in order; the first source that yields a non-empty value wins. The
 // resolved value is then piped through Transform.
 type FieldExtractor struct {
-	From      []string      `json:"from,omitempty"`
-	JSONPath  string        `json:"json_path,omitempty"`
-	Microdata string        `json:"microdata,omitempty"`
-	Selector  string        `json:"selector,omitempty"`
-	XPath     string        `json:"xpath,omitempty"`
-	Attr      string        `json:"attr,omitempty"`
-	Meta      string        `json:"meta,omitempty"`
-	Const     string        `json:"const,omitempty"`
+	From      []string `json:"from,omitempty"`
+	JSONPath  string   `json:"json_path,omitempty"`
+	Microdata string   `json:"microdata,omitempty"`
+	Selector  string   `json:"selector,omitempty"`
+	XPath     string   `json:"xpath,omitempty"`
+	Attr      string   `json:"attr,omitempty"`
+	Meta      string   `json:"meta,omitempty"`
+	Const     string   `json:"const,omitempty"`
+	// Prefix is prepended to a non-empty resolved value before transforms.
+	// Builds a URL from an id/slug an API returns bare (e.g. apply_url from
+	// "$.slug" + prefix "https://site/job/"), where no field carries the full URL.
+	Prefix    string        `json:"prefix,omitempty"`
 	Transform TransformList `json:"transform,omitempty"`
 	Required  bool          `json:"required,omitempty"`
 }
@@ -112,10 +116,15 @@ type Pagination struct {
 }
 
 type ListRule struct {
-	Mode         string            `json:"mode"`
-	Endpoint     string            `json:"endpoint,omitempty"`
-	Method       string            `json:"method,omitempty"`
-	Params       map[string]string `json:"params,omitempty"`
+	Mode     string            `json:"mode"`
+	Endpoint string            `json:"endpoint,omitempty"`
+	Method   string            `json:"method,omitempty"`
+	Params   map[string]string `json:"params,omitempty"`
+	// Headers are custom request headers applied to every fetch (list + detail
+	// pages). Needed by APIs that gate on an auth/JWT/app-id header (e.g.
+	// ethiojobs' x-custom-header). Sent verbatim; the production HTTP fetcher
+	// forwards them, test fetchers ignore them.
+	Headers      map[string]string `json:"headers,omitempty"`
 	ItemsPath    string            `json:"items_path,omitempty"`
 	ItemSelector string            `json:"item_selector,omitempty"`
 	Link         FieldExtractor    `json:"link,omitzero"`

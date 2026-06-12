@@ -23,6 +23,9 @@ func Evaluate(fx FieldExtractor, pc *PageContext) (string, error) {
 		if raw == "" {
 			continue
 		}
+		if fx.Prefix != "" {
+			raw = fx.Prefix + raw
+		}
 		out, err := applyTransforms(raw, fx.Transform, transformCtx{BaseURL: pc.URL})
 		if err != nil {
 			return "", err
