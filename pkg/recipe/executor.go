@@ -42,7 +42,7 @@ func NewExecutor(r *Recipe, f Fetcher) *Executor {
 // List.ItemsPath, and builds an opportunity per record. It returns the page's
 // items, the raw body, the HTTP status, the root JSON (for cursor pagination),
 // and any error.
-func (e *Executor) apiPage(ctx context.Context, src domain.Source, pageURL string) (items []domain.ExternalOpportunity, raw []byte, status int, root any, err error) {
+func (e *Executor) apiPage(ctx context.Context, src domain.Source, pageURL, tenant string) (items []domain.ExternalOpportunity, raw []byte, status int, root any, err error) {
 	raw, status, err = e.fetcher.Get(ctx, pageURL)
 	if err != nil {
 		return nil, raw, status, nil, err
@@ -70,6 +70,7 @@ func (e *Executor) apiPage(ctx context.Context, src domain.Source, pageURL strin
 		if perr != nil {
 			return nil, raw, status, root, perr
 		}
+		pc.Tenant = tenant // current board token, for {"from":["tenant"]}
 		opp, berr := buildOpportunity(pc, src, e.recipe)
 		if berr != nil {
 			return nil, raw, status, root, berr
@@ -376,11 +377,21 @@ func isSitemapURL(u string) bool {
 // recipes shipped that way and would have zero-yielded their boards).
 func (e *Executor) ListProbe(ctx context.Context, src domain.Source) (int, error) {
 	if e.recipe.Acquisition == "api" {
-		pageURL, err := e.apiURL(src, 1, "")
-		if err != nil {
-			return 0, err
+		// Probe the first tenant for a multi-tenant source, else the single endpoint.
+		pageURL, tenant := "", ""
+		if t := e.recipe.List.Tenants; len(t) > 0 {
+			tenant = t[0]
+			pageURL = strings.ReplaceAll(e.recipe.List.Endpoint, "{tenant}", tenant)
+			if u, uerr := resolveURL(src.BaseURL, pageURL); uerr == nil {
+				pageURL = u.String()
+			}
+		} else {
+			var err error
+			if pageURL, err = e.apiURL(src, 1, ""); err != nil {
+				return 0, err
+			}
 		}
-		items, _, _, _, err := e.apiPage(ctx, src, pageURL)
+		items, _, _, _, err := e.apiPage(ctx, src, pageURL, tenant)
 		if err != nil {
 			return 0, err
 		}
@@ -433,11 +444,34 @@ func (e *Executor) apiPaged(ctx context.Context, src domain.Source, st PageState
 	if pg == 0 {
 		pg = 1
 	}
+
+	// Multi-tenant: one page == one tenant. Crawl every board token in
+	// turn, skipping dead ones (a 404 board doesn't fail the whole
+	// platform source), until the tenant list is exhausted.
+	if tenants := e.recipe.List.Tenants; len(tenants) > 0 {
+		if pg > len(tenants) {
+			return nil, nil, 200, PageState{}, true, nil
+		}
+		tenant := tenants[pg-1]
+		pageURL := strings.ReplaceAll(e.recipe.List.Endpoint, "{tenant}", tenant)
+		if u, uerr := resolveURL(src.BaseURL, pageURL); uerr == nil {
+			pageURL = u.String()
+		}
+		items, raw, status, _, perr := e.apiPage(ctx, src, pageURL, tenant)
+		done := pg >= len(tenants)
+		if perr != nil {
+			util.Log(ctx).WithError(perr).WithField("tenant", tenant).
+				Warn("recipe.api: tenant failed; skipping")
+			return nil, raw, status, PageState{page: pg + 1}, done, nil
+		}
+		return items, raw, status, PageState{page: pg + 1}, done, nil
+	}
+
 	pageURL, err := e.apiURL(src, pg, st.cursor)
 	if err != nil {
 		return nil, nil, 0, PageState{}, true, err
 	}
-	items, raw, status, root, err := e.apiPage(ctx, src, pageURL)
+	items, raw, status, root, err := e.apiPage(ctx, src, pageURL, "")
 	if err != nil {
 		return nil, raw, status, PageState{}, true, err
 	}

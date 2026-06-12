@@ -62,7 +62,7 @@ func TestExecutor_APIPage(t *testing.T) {
 	src := jobSource()
 	src.BaseURL = srv.URL
 
-	items, raw, status, _, err := e.apiPage(context.Background(), src, srv.URL+"/api/jobs")
+	items, raw, status, _, err := e.apiPage(context.Background(), src, srv.URL+"/api/jobs", "")
 	require.NoError(t, err)
 	assert.Equal(t, 200, status)
 	assert.NotEmpty(t, raw)

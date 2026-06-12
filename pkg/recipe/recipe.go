@@ -18,7 +18,7 @@ import (
 // order callers typically list them (structured data first, selectors last).
 var validFromSources = map[string]bool{
 	"json_ld": true, "next_data": true, "microdata": true,
-	"selector": true, "xpath": true, "meta": true, "record": true, "const": true, "page_url": true,
+	"selector": true, "xpath": true, "meta": true, "record": true, "const": true, "page_url": true, "tenant": true,
 }
 
 // FieldExtractor describes how to pull ONE value from a page or record. From is
@@ -121,8 +121,14 @@ type ListRule struct {
 	// defines "a job" is a far more stable contract than presentation
 	// classes (data-cy, tailwind), so this is preferred over
 	// ItemSelector+Link for HTML boards.
-	LinkPattern string     `json:"link_pattern,omitempty"`
-	Pagination  Pagination `json:"pagination"`
+	LinkPattern string `json:"link_pattern,omitempty"`
+	// Tenants collapses a multi-tenant ATS platform (Greenhouse, Lever)
+	// into ONE source: list every board token here and put "{tenant}" in
+	// the api endpoint. The engine crawls each tenant in one pass
+	// (skipping dead boards), so 36 Greenhouse boards become a single
+	// source row whose tenant list is data, not code. api mode only.
+	Tenants    []string   `json:"tenants,omitempty"`
+	Pagination Pagination `json:"pagination"`
 }
 
 type DetailRule struct {
@@ -169,15 +175,19 @@ var validListMode = map[string]bool{"api": true, "sitemap": true, "structured_da
 var validPaginationMode = map[string]bool{"none": true, "page_param": true, "cursor": true, "next_link": true}
 var validKindMode = map[string]bool{"source_default": true, "fixed": true, "by_path": true}
 
-// requiredEnvelopeFields are the universal fields opportunity.Verify() demands;
-// every recipe must specify how to extract each.
+// requiredEnvelopeFields are the fields EVERY opportunity kind requires
+// (job.yaml universal_required = title/description/issuing_entity/apply_url).
+// anchor_country is NOT here: the job kind does not require it, and many
+// structured feeds (Greenhouse, Lever) carry free-text location that the
+// downstream normalizer geocodes into a country — so demanding a
+// country extractor at recipe time is stricter than runtime Verify.
+// anchor_country is still validated when present (the optional check list).
 func (d DetailRule) requiredEnvelopeFields() map[string]FieldExtractor {
 	return map[string]FieldExtractor{
 		"title":          d.Title,
 		"description":    d.Description,
 		"issuing_entity": d.IssuingEntity,
 		"apply_url":      d.ApplyURL,
-		"anchor_country": d.AnchorCountry,
 	}
 }
 
@@ -310,6 +320,7 @@ func (r *Recipe) Validate() error {
 	for name, fx := range r.Detail.requiredEnvelopeFields() {
 		check("detail."+name, fx)
 	}
+	check("detail.anchor_country", r.Detail.AnchorCountry)
 	check("detail.location_text", r.Detail.LocationText)
 	check("detail.remote", r.Detail.Remote)
 	check("detail.posted_at", r.Detail.PostedAt)

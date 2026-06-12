@@ -16,6 +16,7 @@ type PageContext struct {
 	NextData map[string]any
 	Meta     map[string]string
 	Record   map[string]any
+	Tenant   string // current multi-tenant board token (api mode)
 }
 
 // NewPageContext parses html (may be empty for api mode) and harvests JSON-LD,
