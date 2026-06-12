@@ -17,6 +17,7 @@ require (
 	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc
+	github.com/andybalholm/brotli v1.2.1
 	github.com/andybalholm/cascadia v1.3.3
 	github.com/antchfx/xmlquery v1.5.1
 	github.com/antinvestor/common v1.5.0
@@ -92,7 +93,6 @@ require (
 	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/PaesslerAG/gval v1.0.0 // indirect
-	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/antchfx/xpath v1.3.6 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apache/thrift v0.23.0 // indirect
