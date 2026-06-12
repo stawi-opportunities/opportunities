@@ -76,6 +76,38 @@ func main() {
 	client := httpx.NewClient(20*time.Second, "opportunities-recipe-verify/1.0")
 	fetcher := recipe.NewHTTPFetcher(client)
 
+	// API mode extracts inline from the JSON response — there are no
+	// separate detail pages, so skip the detail-sample gate and verify
+	// straight from the live API call (stage 3) + opportunity.Verify.
+	if rec.Acquisition == "api" {
+		fmt.Printf("\n── 2. api extraction (live JSON → Verify) ──\n")
+		ex := recipe.NewExecutor(&rec, fetcher)
+		items, _, status, _, done, perr := ex.Page(ctx, src, recipe.PageState{})
+		if perr != nil {
+			fmt.Printf("FAIL: api page 1: %v (status=%d)\n", perr, status)
+			os.Exit(1)
+		}
+		verified := 0
+		for i := range items {
+			if v := opportunity.Verify(&items[i], &src, reg); v.OK {
+				verified++
+			}
+		}
+		fmt.Printf("OK   page 1: %d items, %d pass Verify, status=%d, more_pages=%v\n", len(items), verified, status, !done)
+		for i, it := range items {
+			if i >= 3 {
+				break
+			}
+			fmt.Printf("     • %q @ %q → %s\n", trunc(it.Title, 50), trunc(it.IssuingEntity, 30), trunc(it.ApplyURL, 70))
+		}
+		if len(items) == 0 || verified == 0 {
+			fmt.Println("\nVERDICT: NOT VERIFIED")
+			os.Exit(1)
+		}
+		fmt.Println("\nVERDICT: VERIFIED — api recipe returns items that pass opportunity.Verify")
+		return
+	}
+
 	fmt.Printf("\n── 2. activation gate (detail extraction vs live pages) ──\n")
 	// Samples come from the recipe's OWN list rule, so the pages validated
 	// are exactly the ones the recipe will crawl — not advice/category
