@@ -205,13 +205,13 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	registerTraceAdmin(mux, traceRepo, repo, iceCat)
 	registerDigestAdmin(mux, traceRepo, iceCat)
 
-	// /admin/checkpoints — operator can inspect resume state per
-	// source and force-clear a stuck checkpoint when a listing has
-	// shifted and the source keeps resuming from a no-longer-fresh
-	// page. Same database pool as the rest of the admin surface.
-	checkpointRepo := repository.NewCheckpointRepository(pool.DB)
-	registerCheckpointAdmin(mux, checkpointRepo)
-	log.Info("source admin: /admin/checkpoints (GET/DELETE) wired")
+	// /admin/crawl-runs — operator can inspect the crawl_runs state machine
+	// per source and reset a wedged run (failing it frees the source's
+	// single-flight slot so the next tick starts fresh). Same database pool as
+	// the rest of the admin surface.
+	crawlRunRepo := repository.NewCrawlRunRepository(pool.DB)
+	registerCrawlRunAdmin(mux, crawlRunRepo)
+	log.Info("source admin: /admin/crawl-runs (GET list, POST reset) wired")
 
 	// /admin/frontier — operator surface for the D2 URL frontier.
 	// Reuses the same Postgres pool. Read + requeue + delete only;

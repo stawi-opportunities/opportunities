@@ -25,11 +25,40 @@ type ConnectorIterator struct {
 	err    error
 }
 
-var _ connectors.CrawlIterator = (*ConnectorIterator)(nil)
+var (
+	_ connectors.CrawlIterator         = (*ConnectorIterator)(nil)
+	_ connectors.CheckpointableIterator = (*ConnectorIterator)(nil)
+)
 
-// NewConnectorIterator binds exec to src.
+// NewConnectorIterator binds exec to src, starting from the beginning.
 func NewConnectorIterator(exec *recipe.Executor, src domain.Source) *ConnectorIterator {
 	return &ConnectorIterator{exec: exec, src: src}
+}
+
+// NewConnectorIteratorResume binds exec to src and resumes from a cursor
+// previously produced by Checkpoint() (stored in a crawl_runs row). An empty
+// cursor is equivalent to NewConnectorIterator. This is how a recipe source —
+// like the rest of the pipeline now — picks up a bounded crawl across slices
+// and across process restarts instead of restarting from page 0 / tenant 0.
+func NewConnectorIteratorResume(exec *recipe.Executor, src domain.Source, cursor json.RawMessage) (*ConnectorIterator, error) {
+	st, err := recipe.UnmarshalState(cursor)
+	if err != nil {
+		return nil, err
+	}
+	return &ConnectorIterator{exec: exec, src: src, state: st}, nil
+}
+
+// Checkpoint serializes the next-page state so the crawl handler can persist it
+// and resume later. it.state is the position of the page to fetch next (Next()
+// advances it on every successful, non-final page), which is exactly the resume
+// point. Returns nil only if the opaque state fails to serialize (never expected).
+func (it *ConnectorIterator) Checkpoint() *connectors.CheckpointState {
+	cur, err := recipe.MarshalState(it.state)
+	if err != nil {
+		return nil
+	}
+	pageIdx, lastURL := recipe.StateProgress(it.state)
+	return &connectors.CheckpointState{Cursor: cur, PageIdx: pageIdx, LastURL: lastURL}
 }
 
 func (it *ConnectorIterator) Next(ctx context.Context) bool {

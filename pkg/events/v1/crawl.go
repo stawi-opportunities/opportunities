@@ -62,6 +62,18 @@ type CrawlRequestV1 struct {
 	// Attempt is 1 for a fresh admission; retries bump it. Logged,
 	// not acted on — retry policy lives in Frame's redelivery config.
 	Attempt int `json:"attempt,omitempty" parquet:"attempt,optional"`
+
+	// RunID ties this request to a crawl_runs row. Set on a continuation
+	// (the handler self-re-enqueues after a bounded slice) and on a
+	// watchdog re-drive, so the handler resumes that exact run from its
+	// persisted cursor rather than starting a fresh pass. Empty on a
+	// scheduler-originated request, where the handler opens (or single-
+	// flight-drops to) the source's active run.
+	RunID string `json:"run_id,omitempty" parquet:"run_id,optional"`
+
+	// IsContinuation marks a self-re-enqueued slice (vs a fresh scheduled
+	// start or a watchdog re-drive). Informational for tracing/telemetry.
+	IsContinuation bool `json:"is_continuation,omitempty" parquet:"is_continuation,optional"`
 }
 
 // CrawlPageCompletedV1 is emitted by the crawl-request handler after

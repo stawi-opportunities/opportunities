@@ -45,6 +45,30 @@ type CrawlerConfig struct {
 	// outage, where it paces the backlog through the backpressure gate.
 	CrawlOverdueBatch int `env:"CRAWL_OVERDUE_BATCH" envDefault:"25"`
 
+	// Resumable bounded-slice crawling (crawl_runs state machine). A crawl is
+	// driven in slices that end after CrawlSliceMaxPages pages OR
+	// CrawlSliceMaxSeconds seconds — whichever first — then the handler
+	// self-re-enqueues a backpressure-gated continuation. This keeps every
+	// message well under NATS ack_wait and makes a millions-of-jobs board
+	// resumable across slices and process restarts.
+	CrawlSliceMaxPages   int `env:"CRAWL_SLICE_MAX_PAGES" envDefault:"50"`
+	CrawlSliceMaxSeconds int `env:"CRAWL_SLICE_MAX_SECONDS" envDefault:"120"`
+
+	// CrawlRunLeaseTTLSec is the per-source run lease. Renewed every page so a
+	// slow page never expires a live slice; a crashed owner's lease lapses
+	// within one TTL and the watchdog reclaims the run. Keep ≥
+	// CrawlSliceMaxSeconds so the watchdog never races an in-flight slice.
+	CrawlRunLeaseTTLSec int `env:"CRAWL_RUN_LEASE_TTL_SEC" envDefault:"300"`
+
+	// CrawlRunStuckMaxAttempts fails a run after this many slices without
+	// completing — a backstop against a run that never converges (e.g. a
+	// source that always errors mid-pagination) holding the single-flight slot.
+	CrawlRunStuckMaxAttempts int `env:"CRAWL_RUN_STUCK_MAX_ATTEMPTS" envDefault:"200"`
+
+	// CrawlRunWatchdogBatch caps how many lapsed runs the watchdog re-drives
+	// per tick (each emit is backpressure-gated).
+	CrawlRunWatchdogBatch int `env:"CRAWL_RUN_WATCHDOG_BATCH" envDefault:"50"`
+
 	// Unblocker fallback: when a direct fetch is blocked (403/429/451/503 or a
 	// transport error), the request is retried through this proxy — a Bright
 	// Data Web Unlocker / Oxylabs / similar endpoint, e.g.
