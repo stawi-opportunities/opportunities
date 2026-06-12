@@ -11,18 +11,18 @@ import (
 var (
 	meter = otel.Meter("stawi.opportunities.pipeline")
 
-	StageTransitions          metric.Int64Counter
-	StageDuration             metric.Float64Histogram
-	BloomHits                 metric.Int64Counter
-	BloomMisses               metric.Int64Counter
-	OpportunitiesReady        metric.Int64Counter
-	VerifyRejections          metric.Int64Counter
-	ExtractionLatency         metric.Float64Histogram
-	AIExtractions             metric.Int64Counter
-	AIFailures                metric.Int64Counter
-	EmbedFailures             metric.Int64Counter
-	TranslateFailures         metric.Int64Counter
-	PreferenceTriggeredRuns   metric.Int64Counter
+	StageTransitions        metric.Int64Counter
+	StageDuration           metric.Float64Histogram
+	BloomHits               metric.Int64Counter
+	BloomMisses             metric.Int64Counter
+	OpportunitiesReady      metric.Int64Counter
+	VerifyRejections        metric.Int64Counter
+	ExtractionLatency       metric.Float64Histogram
+	AIExtractions           metric.Int64Counter
+	AIFailures              metric.Int64Counter
+	EmbedFailures           metric.Int64Counter
+	TranslateFailures       metric.Int64Counter
+	PreferenceTriggeredRuns metric.Int64Counter
 )
 
 // Init registers all pipeline metrics with the global OTel meter provider.
@@ -111,6 +111,10 @@ func Init() error {
 		metric.WithDescription("Match runs triggered by a preferences-updated event, labelled by kind"),
 	)
 	if err != nil {
+		return err
+	}
+
+	if err = InitCrawl(); err != nil {
 		return err
 	}
 

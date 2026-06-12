@@ -292,7 +292,11 @@ func (r *SourceRepository) RecordFailure(ctx context.Context, id string, healthS
 
 // FlagNeedsTuning marks a source as having connector quality issues.
 func (r *SourceRepository) FlagNeedsTuning(ctx context.Context, id string, needsTuning bool) error {
-	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Update("needs_tuning", needsTuning).Error
+	fields := map[string]any{"needs_tuning": needsTuning, "needs_tuning_at": nil}
+	if needsTuning {
+		fields["needs_tuning_at"] = time.Now().UTC()
+	}
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Updates(fields).Error
 }
 
 // PauseSource manually pauses a source.

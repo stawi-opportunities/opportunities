@@ -160,6 +160,20 @@ func (r *CrawlRepository) ListBySource(ctx context.Context, sourceID string, lim
 	return rows, err
 }
 
+// LastCrawlAt returns the scheduled_at of the most recent crawl_jobs
+// row, or the zero time when the ledger is empty. Used by the crawl
+// watchdog to detect "nothing has crawled in N hours".
+func (r *CrawlRepository) LastCrawlAt(ctx context.Context) (time.Time, error) {
+	var row struct {
+		Last *time.Time
+	}
+	err := r.db(ctx, true).Raw(`SELECT max(scheduled_at) AS last FROM crawl_jobs`).Scan(&row).Error
+	if err != nil || row.Last == nil {
+		return time.Time{}, err
+	}
+	return *row.Last, nil
+}
+
 // ListRawPayloadsBySource returns up to `limit` recently-fetched
 // raw_payloads for a source. Used by the reparse admin endpoint
 // to enqueue a batch.

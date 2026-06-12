@@ -10,7 +10,10 @@ import (
 
 	"github.com/PaesslerAG/jsonpath"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/pitabwire/util"
+
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // Executor runs a recipe deterministically — no LLM. It is constructed per
@@ -85,15 +88,20 @@ func (e *Executor) htmlPage(ctx context.Context, src domain.Source, listURL stri
 	}
 
 	detailURLs := e.collectDetailURLs(listPC, listURL)
+	skipped := 0
 	for _, du := range detailURLs {
 		if !sameHost(src.BaseURL, du) {
 			continue
 		}
 		body, st, ferr := e.fetcher.Get(ctx, du)
 		if ferr != nil {
+			skipped++
+			telemetry.RecordCrawlSilentLoss("detail_fetch_skip")
 			continue // skip a detail page we can't fetch; keep crawling
 		}
 		if st < 200 || st >= 300 {
+			skipped++
+			telemetry.RecordCrawlSilentLoss("detail_fetch_skip")
 			continue
 		}
 		pc, perr := NewPageContext(du, string(body), nil)
@@ -105,6 +113,14 @@ func (e *Executor) htmlPage(ctx context.Context, src domain.Source, listURL stri
 			return items, raw, status, listPC, berr
 		}
 		items = append(items, opp)
+	}
+	if skipped > 0 {
+		// A listing whose detail pages are unreachable yields fewer jobs
+		// while reporting success — make the degradation visible.
+		util.Log(ctx).WithField("listing", listURL).
+			WithField("skipped", skipped).
+			WithField("fetched", len(items)).
+			Warn("recipe: detail pages skipped (fetch error or non-2xx)")
 	}
 	return items, raw, status, listPC, nil
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stretchr/testify/assert"
@@ -19,18 +20,30 @@ func (f fakeLister) ListByStatuses(_ context.Context, _ []domain.SourceStatus, _
 
 func bfSource(id string, typ domain.SourceType, recipe string, tuning bool) *domain.Source {
 	s := &domain.Source{Type: typ, ExtractionRecipe: recipe, NeedsTuning: tuning}
+	if tuning {
+		now := time.Now().UTC()
+		s.NeedsTuningAt = &now // freshly flagged — inside the cooldown
+	}
 	s.ID = id
 	s.Status = domain.SourceActive
 	return s
 }
 
 func TestRecipeBackfillHandler_EnqueuesOnlyEligible(t *testing.T) {
+	stale := time.Now().UTC().Add(-NeedsTuningTTL - time.Hour)
+	expired := bfSource("f", "jobberman", "{}", true)
+	expired.NeedsTuningAt = &stale // flag older than the TTL — re-admitted
+	legacy := bfSource("g", "jobberman", "{}", true)
+	legacy.NeedsTuningAt = nil // flagged before the column existed — re-admitted
+
 	lister := fakeLister{srcs: []*domain.Source{
 		bfSource("a", "brightermonday", "{}", false),                  // eligible -> queue
 		bfSource("b", "brightermonday", `{"acquisition":"x"}`, false), // has recipe -> skip
 		bfSource("c", "greenhouse", "{}", false),                      // not a target type -> skip
-		bfSource("d", "jobberman", "{}", true),                        // needs_tuning -> skip
+		bfSource("d", "jobberman", "{}", true),                        // fresh needs_tuning -> skip
 		bfSource("e", "jobberman", "", false),                         // eligible -> queue
+		expired,                                                       // expired needs_tuning -> queue
+		legacy,                                                        // legacy nil stamp -> queue
 	}}
 	var queued []string
 	emit := func(_ context.Context, id string) error { queued = append(queued, id); return nil }
@@ -42,8 +55,8 @@ func TestRecipeBackfillHandler_EnqueuesOnlyEligible(t *testing.T) {
 	h(rec, httptest.NewRequest(http.MethodPost, "/admin/recipes/backfill", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.ElementsMatch(t, []string{"a", "e"}, queued)
-	assert.Contains(t, rec.Body.String(), `"queued":2`)
+	assert.ElementsMatch(t, []string{"a", "e", "f", "g"}, queued)
+	assert.Contains(t, rec.Body.String(), `"queued":4`)
 }
 
 func TestRecipeBackfillHandler_DisabledNoOps(t *testing.T) {

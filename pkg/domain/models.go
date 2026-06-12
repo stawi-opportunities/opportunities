@@ -129,6 +129,11 @@ type Source struct {
 	HealthScore         float64      `gorm:"type:real;not null;default:1.0" json:"health_score"`
 	ConsecutiveFailures int          `gorm:"not null;default:0" json:"consecutive_failures"`
 	NeedsTuning         bool         `gorm:"not null;default:false" json:"needs_tuning"`
+	// NeedsTuningAt stamps when needs_tuning was last raised, so the
+	// recipe backfill can re-admit stuck sources after a cooldown instead
+	// of skipping them forever. NULL on sources flagged before the column
+	// existed — treated as already-expired (retry-eligible).
+	NeedsTuningAt *time.Time `json:"needs_tuning_at,omitempty"`
 	Config              string       `gorm:"type:jsonb;default:'{}'" json:"config"`
 	// ExtractionRecipe holds the source's active AI-generated extraction
 	// recipe as raw JSON ('{}' when none). Stored as a string so the domain
