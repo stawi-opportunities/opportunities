@@ -42,6 +42,36 @@ not one per site. The categories are closed; adding a site never adds one.
 New work should prefer recipes; the spec connectors remain for sources already
 configured that way.)
 
+### Multi-tenant ATS platforms (Greenhouse, Lever, Ashby) — ONE source, many boards
+
+These platforms host thousands of company boards under one API
+(`boards-api.greenhouse.io/v1/boards/{tenant}/jobs`,
+`api.lever.co/v0/postings/{tenant}`,
+`api.ashbyhq.com/posting-api/job-board/{tenant}`). None exposes a global
+"all jobs" firehose — you must address each board. **Do not create a
+source row per company.** Instead, one `api` recipe carries the tenant
+list and the engine crawls each in turn:
+
+```json
+"list": { "mode":"api", "endpoint":"https://…/{tenant}/jobs",
+          "tenants":["airbnb","stripe", …], "items_path":"$.jobs" }
+```
+
+- `{tenant}` is substituted per board; one page == one tenant; dead
+  boards (404) are skipped, not fatal.
+- The company name comes from the record (`$.company_name`, Greenhouse)
+  or, when the platform omits it (Lever/Ashby), the
+  **`{"from":["tenant"]}`** source yields the board token.
+- Adding/removing a board edits the tenant list — **data, never code**.
+
+**Discovering tenants** (so you never hand-maintain the list):
+`cmd/ats-tenants -platform greenhouse|lever|ashby` harvests every board
+token from the free **Common Crawl** URL index, then validates each
+against the board API and prints the live set. (Greenhouse ≈ 1k+, Ashby
+≈ 2k+ live boards from a few CC pages.) Feed that into the recipe's
+`tenants`. The existing `sources.discovered.v1` pipeline also adds boards
+it sees while crawling.
+
 ---
 
 ## 2. The extraction vocabulary — `FieldExtractor`
@@ -51,7 +81,7 @@ data planes **in order, first non-empty wins**, then runs transforms. This is
 the whole vocabulary — there is nothing site-specific in Go:
 
 ```json
-{"from": ["json_ld","next_data","microdata","selector","xpath","meta","record","const","page_url"],
+{"from": ["json_ld","next_data","microdata","selector","xpath","meta","record","const","page_url","tenant"],
  "json_path": "$.title",        // json_ld / next_data / record
  "microdata": "title",          // schema.org itemprop
  "selector": "h1", "attr": "href",   // CSS
