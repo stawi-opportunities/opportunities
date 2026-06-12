@@ -49,6 +49,23 @@ type Config struct {
 	// HTTPTimeoutSec bounds the per-URL fetch. Default 20s.
 	HTTPTimeoutSec int `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
+	// Unblocker fallback — same contract as the crawler (see
+	// apps/crawler/config): blocked fetches (403/429/451/503 or a
+	// transport error) retry through this residential-unblocker proxy.
+	// The frontier-worker fetches DETAIL pages on WAF-fronted boards, so
+	// it needs the fallback at least as much as the listing crawler.
+	// Empty disables (direct-only).
+	UnblockerProxyURL   string `env:"UNBLOCKER_PROXY_URL"`
+	UnblockerCACert     string `env:"UNBLOCKER_CA_CERT"`
+	UnblockerTimeoutSec int    `env:"UNBLOCKER_TIMEOUT_SEC" envDefault:"60"`
+
+	// scrape.do unblocker (API mode); takes precedence over the proxy
+	// above. See apps/crawler/config for the option semantics.
+	ScrapeDoToken   string `env:"SCRAPEDO_TOKEN"`
+	ScrapeDoRender  bool   `env:"SCRAPEDO_RENDER" envDefault:"false"`
+	ScrapeDoSuper   bool   `env:"SCRAPEDO_SUPER" envDefault:"false"`
+	ScrapeDoGeoCode string `env:"SCRAPEDO_GEOCODE"`
+
 	// DequeueBatch caps the URLs claimed per Dequeue call.
 	// Default 5 — large enough to amortise the txn cost, small
 	// enough that a slow fetch doesn't park other URLs in

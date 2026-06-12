@@ -85,7 +85,11 @@ func (h *RecipeGenerateHandler) generate(ctx context.Context, sourceID string, s
 	if len(sampleURLs) == 0 {
 		sampleURLs = h.deriveSampleURLs(ctx, src)
 	}
-	rec, samples, err := h.deps.Generator.Generate(ctx, *src, sampleURLs)
+	// ListingPath is the operator-supplied DEFINITE location of the jobs
+	// listing (relative to BaseURL). Generation derives the list rule
+	// from that exact page and pins it as the recipe's list.endpoint —
+	// nothing is guessed.
+	rec, samples, err := h.deps.Generator.GenerateFrom(ctx, *src, src.ListingPath, sampleURLs)
 	if err != nil {
 		// Transient provider rate limit: NOT a property of the source. Don't
 		// flag it (a busy minute would drain the whole queue into needs_tuning);
@@ -141,11 +145,16 @@ func (h *RecipeGenerateHandler) deriveSampleURLs(ctx context.Context, src *domai
 				Warn("recipe.generate: sample URL lookup failed")
 		}
 	}
-	// No recorded crawl history: discover detail pages off the listing.
-	// Validation dry-runs DETAIL extraction per sample, so a bare listing
-	// page (BaseURL) can never pass the gate — it produced pass_rate=0.
+	// No recorded crawl history: discover detail pages off the DEFINITE
+	// listing (BaseURL + ListingPath). Validation dry-runs DETAIL
+	// extraction per sample, so a bare listing page can never pass the
+	// gate — it produced pass_rate=0.
 	if h.deps.Fetcher != nil {
-		if urls, err := recipe.DiscoverDetailURLs(ctx, h.deps.Fetcher, src.BaseURL, n); err == nil && len(urls) > 0 {
+		listingURL := src.BaseURL
+		if src.ListingPath != "" {
+			listingURL = strings.TrimSuffix(src.BaseURL, "/") + "/" + strings.TrimPrefix(src.ListingPath, "/")
+		}
+		if urls, err := recipe.DiscoverDetailURLs(ctx, h.deps.Fetcher, listingURL, n); err == nil && len(urls) > 0 {
 			util.Log(ctx).WithField("source", src.ID).WithField("samples", len(urls)).
 				Info("recipe.generate: sampled detail pages from listing")
 			return urls

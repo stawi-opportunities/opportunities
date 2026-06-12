@@ -1,0 +1,18 @@
+{
+ "source": {
+  "type": "myjobmag",
+  "base_url": "https://www.myjobmagghana.com",
+  "country": "GH",
+  "language": "en",
+  "status": "active",
+  "kinds": [
+   "job"
+  ],
+  "listing_path": ""
+ },
+ "sample_urls": [
+  "https://www.myjobmagghana.com/job/call-center-operator-independent-contractor-unateus",
+  "https://www.myjobmagghana.com/job/client-support-representative-myjobmag",
+  "https://www.myjobmagghana.com/job/maintenance-controller-control-autom-accra-brewery-plc"
+ ]
+}

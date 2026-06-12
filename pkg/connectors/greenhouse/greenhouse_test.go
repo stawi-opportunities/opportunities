@@ -3,9 +3,13 @@ package greenhouse
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	connectors "github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
@@ -84,5 +88,49 @@ func TestCheckpoint_RoundTrip(t *testing.T) {
 	}
 	if rIt.page != 4 {
 		t.Fatalf("resumed iter.page = %d; want 4", rIt.page)
+	}
+}
+
+// TestCrawl_DeadBoardFailsLoudly: a 404 board token must produce an
+// iterator error, not a "successful" crawl with zero jobs — 19 of 90
+// prod sources were dead boards masquerading as healthy zero-yield.
+func TestCrawl_DeadBoardFailsLoudly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"status":404,"error":"not found"}`))
+	}))
+	defer srv.Close()
+	old := apiBaseURL
+	apiBaseURL = srv.URL
+	defer func() { apiBaseURL = old }()
+
+	c := New(httpx.NewClient(5*time.Second, "test"))
+	it := c.Crawl(context.Background(), domain.Source{BaseURL: "https://boards.greenhouse.io/goneco"})
+	if it.Next(context.Background()) {
+		t.Fatal("dead board must not yield items")
+	}
+	if it.Err() == nil {
+		t.Fatal("dead board (404) must surface an iterator error, not silent zero yield")
+	}
+}
+
+// TestCrawl_LiveBoardStillWorks guards the happy path around the new
+// status check.
+func TestCrawl_LiveBoardStillWorks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"jobs":[{"id":1,"title":"Engineer","absolute_url":"https://x/1","location":{"name":"Remote"},"content":"desc"}]}`))
+	}))
+	defer srv.Close()
+	old := apiBaseURL
+	apiBaseURL = srv.URL
+	defer func() { apiBaseURL = old }()
+
+	c := New(httpx.NewClient(5*time.Second, "test"))
+	it := c.Crawl(context.Background(), domain.Source{BaseURL: "https://boards.greenhouse.io/liveco"})
+	if !it.Next(context.Background()) {
+		t.Fatalf("live board should yield a page; err=%v", it.Err())
+	}
+	if n := len(it.Items()); n != 1 {
+		t.Fatalf("items=%d, want 1", n)
 	}
 }

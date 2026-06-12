@@ -125,10 +125,36 @@ func (e *Executor) htmlPage(ctx context.Context, src domain.Source, listURL stri
 	return items, raw, status, listPC, nil
 }
 
-// collectDetailURLs evaluates the recipe's Link extractor inside each
-// ItemSelector match, returning resolved detail URLs.
+// collectDetailURLs returns the job-detail URLs on a listing page. The
+// reusable path (preferred) is list.link_pattern: harvest every anchor
+// whose resolved href contains the pattern. The legacy path evaluates
+// the Link extractor inside each ItemSelector match.
 func (e *Executor) collectDetailURLs(listPC *PageContext, listURL string) []string {
-	if listPC.HTML == nil || e.recipe.List.ItemSelector == "" {
+	if listPC.HTML == nil {
+		return nil
+	}
+
+	// link_pattern: any anchor under the job URL path. No per-site CSS —
+	// the URL contract ("/listings/", "/job/", …) is the stable signal.
+	if pat := e.recipe.List.LinkPattern; pat != "" {
+		var urls []string
+		seen := map[string]bool{}
+		listPC.HTML.Find("a[href]").Each(func(_ int, a *goquery.Selection) {
+			href, _ := a.Attr("href")
+			abs, err := resolveURL(listURL, href)
+			if err != nil {
+				return
+			}
+			u := abs.String()
+			if strings.Contains(u, pat) && !seen[u] {
+				seen[u] = true
+				urls = append(urls, u)
+			}
+		})
+		return urls
+	}
+
+	if e.recipe.List.ItemSelector == "" {
 		return nil
 	}
 	var urls []string
@@ -141,8 +167,15 @@ func (e *Executor) collectDetailURLs(listPC *PageContext, listURL string) []stri
 		if perr != nil {
 			return
 		}
+		// Resolve every link against the listing URL so a relative href
+		// ("/job/123") becomes absolute regardless of whether the recipe
+		// author remembered the absolute_url transform — otherwise the
+		// downstream same-host check drops it and the board silently
+		// yields zero detail URLs.
 		if link, _ := Evaluate(e.recipe.List.Link, itemPC); link != "" {
-			urls = append(urls, link)
+			if abs, err := resolveURL(listURL, link); err == nil {
+				urls = append(urls, abs.String())
+			}
 		}
 	})
 	return urls
@@ -184,6 +217,59 @@ func (e *Executor) Page(ctx context.Context, src domain.Source, st PageState) (i
 	default:
 		return e.htmlPaged(ctx, src, st)
 	}
+}
+
+// ListProbe executes ONLY the recipe's list rule against the live source
+// and reports how many items/detail links it finds — no detail-page
+// fetches, no field extraction. This is the activation gate's defense
+// against hallucinated list selectors: detail validation alone can score
+// 1.00 while item_selector matches nothing (both first production
+// recipes shipped that way and would have zero-yielded their boards).
+func (e *Executor) ListProbe(ctx context.Context, src domain.Source) (int, error) {
+	if e.recipe.Acquisition == "api" {
+		pageURL, err := e.apiURL(src, 1, "")
+		if err != nil {
+			return 0, err
+		}
+		items, _, _, _, err := e.apiPage(ctx, src, pageURL)
+		if err != nil {
+			return 0, err
+		}
+		return len(items), nil
+	}
+	urls, err := e.ListDetailURLs(ctx, src)
+	return len(urls), err
+}
+
+// ListDetailURLs runs the recipe's list rule against the live listing
+// (HTML mode) and returns the same-host detail URLs it finds — the real
+// job pages, derived from the recipe itself. Verification and sample
+// selection use this instead of generic link discovery, so the pages
+// validated are exactly the ones the recipe will crawl (not advice or
+// category pages a pattern matcher might surface).
+func (e *Executor) ListDetailURLs(ctx context.Context, src domain.Source) ([]string, error) {
+	listURL, err := e.htmlListURL(src, 1)
+	if err != nil {
+		return nil, err
+	}
+	raw, status, err := e.fetcher.Get(ctx, listURL)
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, fmt.Errorf("listing %s returned status %d", listURL, status)
+	}
+	pc, err := NewPageContext(listURL, string(raw), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, u := range e.collectDetailURLs(pc, listURL) {
+		if sameHost(src.BaseURL, u) {
+			out = append(out, u)
+		}
+	}
+	return out, nil
 }
 
 func (e *Executor) apiPaged(ctx context.Context, src domain.Source, st PageState) ([]domain.ExternalOpportunity, []byte, int, PageState, bool, error) {

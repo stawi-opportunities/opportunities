@@ -155,3 +155,21 @@ func TestEvaluateList_UnsupportedSourceErrors(t *testing.T) {
 	_, err = EvaluateList(FieldExtractor{From: []string{"const"}, Const: "x"}, pc)
 	require.Error(t, err)
 }
+
+func TestEvaluate_XPath(t *testing.T) {
+	html := `<html><body><h1 id="t">  Senior Engineer  </h1><a class="ext" href="https://apply.example/x">apply</a></body></html>`
+	pc, err := NewPageContext("https://x/job/1", html, nil)
+	if err != nil {
+		t.Fatalf("pc: %v", err)
+	}
+	// text via xpath
+	got, _ := Evaluate(FieldExtractor{From: []string{"xpath"}, XPath: "//h1[@id='t']", Transform: []string{"trim"}}, pc)
+	if got != "Senior Engineer" {
+		t.Fatalf("xpath text = %q", got)
+	}
+	// attribute via xpath
+	href, _ := Evaluate(FieldExtractor{From: []string{"xpath"}, XPath: "//a[@class='ext']", Attr: "href"}, pc)
+	if href != "https://apply.example/x" {
+		t.Fatalf("xpath attr = %q", href)
+	}
+}

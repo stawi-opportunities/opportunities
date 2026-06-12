@@ -7,16 +7,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/andybalholm/cascadia"
+	"github.com/antchfx/xpath"
 )
 
 // validFromSources are the data planes a FieldExtractor may read from, in the
 // order callers typically list them (structured data first, selectors last).
 var validFromSources = map[string]bool{
 	"json_ld": true, "next_data": true, "microdata": true,
-	"selector": true, "meta": true, "record": true, "const": true, "page_url": true,
+	"selector": true, "xpath": true, "meta": true, "record": true, "const": true, "page_url": true,
 }
 
 // FieldExtractor describes how to pull ONE value from a page or record. From is
@@ -27,6 +29,7 @@ type FieldExtractor struct {
 	JSONPath  string        `json:"json_path,omitempty"`
 	Microdata string        `json:"microdata,omitempty"`
 	Selector  string        `json:"selector,omitempty"`
+	XPath     string        `json:"xpath,omitempty"`
 	Attr      string        `json:"attr,omitempty"`
 	Meta      string        `json:"meta,omitempty"`
 	Const     string        `json:"const,omitempty"`
@@ -111,7 +114,15 @@ type ListRule struct {
 	ItemsPath    string            `json:"items_path,omitempty"`
 	ItemSelector string            `json:"item_selector,omitempty"`
 	Link         FieldExtractor    `json:"link,omitzero"`
-	Pagination   Pagination        `json:"pagination"`
+	// LinkPattern is the REUSABLE link-discovery primitive: a substring
+	// every job-detail URL contains (e.g. "/listings/", "/job/", "/jobs/").
+	// When set, the engine harvests every same-host anchor whose resolved
+	// href contains it — no per-site CSS card selectors. The URL path that
+	// defines "a job" is a far more stable contract than presentation
+	// classes (data-cy, tailwind), so this is preferred over
+	// ItemSelector+Link for HTML boards.
+	LinkPattern string     `json:"link_pattern,omitempty"`
+	Pagination  Pagination `json:"pagination"`
 }
 
 type DetailRule struct {
@@ -171,16 +182,43 @@ func (d DetailRule) requiredEnvelopeFields() map[string]FieldExtractor {
 }
 
 // Normalize absorbs harmless LLM-output noise before Validate: an omitted
-// pagination mode means "none", and transforms that don't exist in the registry
+// pagination mode means "none", transforms that don't exist in the registry
 // are dropped (small models hallucinate names like "contains"; extraction
 // without them still runs, and the pass-rate gate remains the real quality
-// arbiter). This keeps the bounded repair loop for genuine structural errors
-// instead of burning attempts on cosmetic ones.
+// arbiter), and common From-source aliases are coerced onto the canonical
+// names ("html"→selector, "og:title"→meta). This keeps the bounded repair
+// loop for genuine structural errors instead of burning attempts on
+// cosmetic ones.
 func (r *Recipe) Normalize() {
 	if r.List.Pagination.Mode == "" {
 		r.List.Pagination.Mode = "none"
 	}
 	clean := func(fx *FieldExtractor) {
+		// Coerce From aliases the LLMs reliably produce despite the prompt
+		// whitelisting canonical names. Unknown sources are dropped (the
+		// remaining sources still run; required-field emptiness is caught
+		// by Validate / the pass-rate gate).
+		if len(fx.From) > 0 {
+			kept := fx.From[:0]
+			for _, src := range fx.From {
+				switch {
+				case validFromSources[src]:
+					kept = append(kept, src)
+				case src == "html" || src == "css" || src == "dom":
+					kept = append(kept, "selector")
+				case strings.HasPrefix(src, "og:") || strings.HasPrefix(src, "twitter:"):
+					if fx.Meta == "" {
+						fx.Meta = src
+					}
+					kept = append(kept, "meta")
+				case src == "json" || src == "jsonld" || src == "json-ld":
+					kept = append(kept, "json_ld")
+				case src == "url":
+					kept = append(kept, "page_url")
+				}
+			}
+			fx.From = kept
+		}
 		if len(fx.Transform) == 0 {
 			return
 		}
@@ -256,6 +294,11 @@ func (r *Recipe) Validate() error {
 		if fx.Selector != "" {
 			if _, err := cascadia.Compile(fx.Selector); err != nil {
 				errs = append(errs, fmt.Errorf("%s: invalid selector %q: %w", label, fx.Selector, err))
+			}
+		}
+		if fx.XPath != "" {
+			if _, err := xpath.Compile(fx.XPath); err != nil {
+				errs = append(errs, fmt.Errorf("%s: invalid xpath %q: %w", label, fx.XPath, err))
 			}
 		}
 	}

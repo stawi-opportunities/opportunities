@@ -1,0 +1,99 @@
+{
+ "acquisition": "structured_data",
+ "kind": {
+  "mode": "source_default"
+ },
+ "list": {
+  "mode": "selector",
+  "item_selector": ".job-list-li",
+  "link": {
+   "from": [
+    "selector"
+   ],
+   "selector": ".job-info h2 a",
+   "attr": "href",
+   "transform": [
+    "absolute_url"
+   ]
+  },
+  "pagination": {
+   "mode": "none"
+  },
+  "endpoint": ""
+ },
+ "detail": {
+  "record_source": "json_ld",
+  "title": {
+   "from": [
+    "json_ld",
+    "selector"
+   ],
+   "json_path": "$.title",
+   "selector": "h1",
+   "transform": [
+    "trim"
+   ]
+  },
+  "description": {
+   "from": [
+    "json_ld",
+    "selector"
+   ],
+   "json_path": "$.description",
+   "selector": ".job-details",
+   "transform": [
+    "html_to_text"
+   ]
+  },
+  "issuing_entity": {
+   "from": [
+    "json_ld",
+    "selector"
+   ],
+   "json_path": "$.hiringOrganization.name",
+   "selector": ".company-name a, .job-company, h1",
+   "transform": [
+    "trim"
+   ]
+  },
+  "apply_url": {
+   "from": [
+    "json_ld",
+    "page_url"
+   ],
+   "json_path": "$.url"
+  },
+  "anchor_country": {
+   "from": [
+    "json_ld",
+    "const"
+   ],
+   "json_path": "$.jobLocation.address.addressCountry",
+   "const": "GH"
+  },
+  "location_text": {
+   "from": [
+    "json_ld"
+   ],
+   "json_path": "$.jobLocation.address.addressLocality"
+  },
+  "posted_at": {
+   "from": [
+    "json_ld"
+   ],
+   "json_path": "$.datePosted",
+   "transform": [
+    "parse_date"
+   ]
+  },
+  "deadline": {
+   "from": [
+    "json_ld"
+   ],
+   "json_path": "$.validThrough",
+   "transform": [
+    "parse_date"
+   ]
+  }
+ }
+}

@@ -117,11 +117,18 @@ func (it *iterator) Next(ctx context.Context) bool {
 		discoverInput = ext.Markdown
 	}
 
+	// AI link discovery is an OPTIMIZATION, not a dependency: when the
+	// inference fleet is timing out or rate-limited (the dominant failure
+	// across the universal-connector sources in the 2026-06-11 audit —
+	// "discover: chat: context deadline exceeded" killed every crawl),
+	// fall through to pattern matching instead of failing the crawl.
+	// Pagination is lost for this page (only the LLM finds NEXT: links),
+	// which costs depth, not correctness.
 	links, err := it.extractor.DiscoverLinks(ctx, discoverInput, it.nextURL)
 	if err != nil {
-		util.Log(ctx).WithError(err).WithField("url", it.nextURL).Warn("universal: AI discover links failed")
-		it.err = err
-		return false
+		util.Log(ctx).WithError(err).WithField("url", it.nextURL).
+			Warn("universal: AI discover links failed; falling back to pattern matching")
+		links = nil
 	}
 
 	// Separate job links from the optional NEXT: pagination link.
@@ -135,7 +142,7 @@ func (it *iterator) Next(ctx context.Context) bool {
 		}
 	}
 
-	// If AI found no links, fall back to pattern matching
+	// If AI found no links (or discovery failed), fall back to pattern matching.
 	if len(jobLinks) == 0 {
 		jobLinks = patternMatchLinks(string(raw), it.baseURL)
 	}

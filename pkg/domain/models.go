@@ -139,9 +139,18 @@ type Source struct {
 	// recipe as raw JSON ('{}' when none). Stored as a string so the domain
 	// package stays free of a pkg/recipe import (recipe imports domain).
 	// pkg/repository.RecipeRepository (un)marshals it to recipe.Recipe.
-	ExtractionRecipe string     `gorm:"type:jsonb;not null;default:'{}'" json:"extraction_recipe"`
-	LastSeenAt       *time.Time `json:"last_seen_at"`
-	NextCrawlAt      time.Time  `gorm:"index" json:"next_crawl_at"`
+	ExtractionRecipe string `gorm:"type:jsonb;not null;default:'{}'" json:"extraction_recipe"`
+	// ListingPath is the DEFINITE location of the jobs listing relative to
+	// BaseURL ("" when BaseURL itself is the listing). Operator-supplied
+	// fact, never guessed: recipe generation derives the recipe's list
+	// rule from this exact page and pins it as the recipe's
+	// list.endpoint, so generation, validation and crawling all operate
+	// on the same definite URL. (BaseURL is often a homepage whose
+	// job-ish links are advice articles — learning from it produces
+	// recipes for the wrong pages.)
+	ListingPath string     `gorm:"type:text;not null;default:''" json:"listing_path"`
+	LastSeenAt  *time.Time `json:"last_seen_at"`
+	NextCrawlAt time.Time  `gorm:"index" json:"next_crawl_at"`
 
 	// Adaptive recrawl score (0.0–1.0). 1.0 means "crawl at
 	// MinIntervalMinutes"; 0.0 means "crawl at MaxIntervalMinutes".

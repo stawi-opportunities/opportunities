@@ -64,7 +64,11 @@ func (h headeredClient) Get(ctx context.Context, url string, _ map[string]string
 
 func TestRecipeGenerateHandler_GeneratesValidatesActivates(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`<html><head><script type="application/ld+json">{"title":"Go Eng","description":"A description well over the fifty character verify minimum for sure now.","hiringOrganization":{"name":"ACME"},"url":"https://x.io/apply","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body></body></html>`))
+		// Path-agnostic stub: every fetch returns a page that serves BOTH a
+		// `.c` listing card (so the list-rule gate finds an item) AND the
+		// JSON-LD detail payload (so extraction passes). The detail link
+		// resolves back to this same server.
+		_, _ = w.Write([]byte(`<html><head><script type="application/ld+json">{"title":"Go Eng","description":"A description well over the fifty character verify minimum for sure now.","hiringOrganization":{"name":"ACME"},"url":"https://x.io/apply","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body><div class="c"><a href="/job/1">Go Eng</a></div></body></html>`))
 	}))
 	defer srv.Close()
 

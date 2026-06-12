@@ -152,22 +152,27 @@ func main() {
 		Timeout: time.Duration(cfg.HTTPTimeoutSec) * time.Second,
 	}
 	// Unblocker fallback: route blocked requests (WAF/anti-bot 403s on HTML job
-	// boards) through a residential-unblocker proxy, while requests that succeed
-	// directly (most JSON APIs) stay off the paid path.
+	// boards) through scrape.do or a residential-unblocker proxy, while requests
+	// that succeed directly (most JSON APIs) stay off the paid path.
 	var doer httpx.HTTPDoer = httpDoer
-	if cfg.UnblockerProxyURL != "" {
-		unblocker, insecure, perr := httpx.NewProxyDoer(
-			cfg.UnblockerProxyURL, cfg.UnblockerCACert,
-			time.Duration(cfg.UnblockerTimeoutSec)*time.Second)
-		if perr != nil {
-			log.WithError(perr).Warn("unblocker fallback disabled: invalid UNBLOCKER_PROXY_URL")
+	unblocker, desc, insecure, uerr := httpx.NewUnblocker(httpx.UnblockerConfig{
+		ScrapeDoToken:   cfg.ScrapeDoToken,
+		ScrapeDoRender:  cfg.ScrapeDoRender,
+		ScrapeDoSuper:   cfg.ScrapeDoSuper,
+		ScrapeDoGeoCode: cfg.ScrapeDoGeoCode,
+		ProxyURL:        cfg.UnblockerProxyURL,
+		ProxyCACert:     cfg.UnblockerCACert,
+		Timeout:         time.Duration(cfg.UnblockerTimeoutSec) * time.Second,
+	}, httpDoer)
+	switch {
+	case uerr != nil:
+		log.WithError(uerr).Warn("unblocker fallback disabled: invalid configuration")
+	case unblocker != nil:
+		doer = httpx.NewFallbackDoer(httpDoer, unblocker)
+		if insecure {
+			log.WithField("via", desc).Warn("unblocker fallback enabled WITHOUT a pinned CA — proxy TLS is not verified")
 		} else {
-			doer = httpx.NewFallbackDoer(httpDoer, unblocker)
-			if insecure {
-				log.Warn("unblocker fallback enabled WITHOUT a pinned CA — proxy TLS is not verified; set UNBLOCKER_CA_CERT")
-			} else {
-				log.Info("unblocker fallback enabled (CA-pinned) for blocked requests")
-			}
+			log.WithField("via", desc).Info("unblocker fallback enabled for blocked requests")
 		}
 	}
 	httpClient := httpx.NewClientFromDoer(doer, cfg.UserAgent)

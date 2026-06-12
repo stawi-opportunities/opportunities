@@ -1,0 +1,2792 @@
+
+<!doctype html>
+
+
+
+<html>
+<head lang="en"><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="content-language" content="en">
+<meta name="robots" content="index, follow">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+<title>South Africa Jobs - 1000+ Jobs Posted Daily | MyJobMag</title>
+<meta name="description" content="Find latest job vacancies in South Africa now." />
+<link rel="canonical" href="https://www.myjobmag.co.za/jobs" />  
+<link rel="next" href="https://www.myjobmag.co.za/jobs/page/2" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="copyright" content="myjobmag.co.za" />
+<meta name="author" content="Myjobmag" />
+<meta name="language" content="English" />
+<meta property="og:title" content="South Africa Jobs - 1000+ Jobs Posted Daily | MyJobMag" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://www.myjobmag.co.za/jobs" />
+<meta property="og:image" content="https://www.myjobmag.co.za/images/myjobmag.png" />
+<meta property="og:site_name" content="MyJobMag" />
+<meta property="og:description" content="Find latest job vacancies in South Africa now." />
+<link href="/css/myjobmag.1777537964.css" rel="stylesheet" type="text/css">
+ <link href="/css/responsive.1775485072.css" rel="stylesheet" type="text/css">
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+
+<script>
+var thisHomePage = 1;
+</script>
+    
+
+<!-- Global site tag (gtag.js) - Google Analytics  -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-90175074-1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-90175074-1');
+</script>
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<meta name="theme-color" content="#cccccc">
+
+<!--
+<script type="application/ld+json">
+{"@context":"https://schema.org",
+"@type":"organization",
+"name":"MyJobMag - https://www.myjobmag.co.za",
+"url":"https://www.myjobmag.co.za",
+"logo":{"@type":"ImageObject","url":"https://www.myjobmag.co.za/images/myjobmag-logo-190.png","width":190,"height":190}}
+</script>
+--></head>
+
+
+<body >
+
+<div class="header" id="dheader" >
+<div class="content-wrap">
+	
+    
+    
+    <a id="d-site-logo" href="/" class="logo"><img width="126px" height="38px" src="/images/myjobmag-logo1.png?a" alt="myjobmag logo" /></a>
+    
+    
+    <nav>
+    <div id="menue-back-box" onclick="document.getElementById('check01').click()"></div>
+     <input id="check01" type="checkbox" name="menu" class="menu-check" onclick="checkMenueBox(this)" />
+    <label for="check01" id="menue-but-box">&nbsp;</label>
+    	<ul id="nav-ul" class="site-menu">
+        <li id="close-menue" onclick="closeMenueBox(this)">X</li>
+        <li class="nav-li" id="employer-postjob-nav"><a href="/employers/" class="nav-a">Employers, Post a Job</a></li>
+                	<li  class="nav-li "> 
+    			<a  href="/jobs" class="nav-a" id="jobs-nav">Jobs</a>
+                                <ul id="jobs-by-nav">
+                	                	<li id="jobs-by-field-nav"><a  href="/jobs-by-field">Jobs by Field</a></li>
+					                	<li id="jobs-by-city-nav"><a  href="/jobs-city">Jobs by City</a></li>
+					                	<li id="jobs-by-education-nav"><a  href="/jobs-by-education">Jobs by Education</a></li>
+					                	<li id="jobs-by-province-nav"><a  href="/jobs-location">Jobs by Province</a></li>
+					                	<li id="jobs-by-industry-nav"><a  href="/jobs-by-industry">Jobs by Industry</a></li>
+					                	<li id="remote-jobs-nav"><a  href="/jobs-by-type/remote">Remote Jobs</a></li>
+					                </ul>
+                            </li>
+                    	<li  class="nav-li "> 
+    			<a target="_blank" href="/blog" class="nav-a" id="get-advice-nav">Get Advice</a>
+                                <ul id="jobs-by-nav">
+                	                	<li id="career-advice-nav"><a target="_blank" href="/blog">Career Advice</a></li>
+					                	<li id="hr-recruiter-advice-nav"><a target="_blank" href="/blog/category/hr-advice">HR/Recruiter Advice</a></li>
+					                	<li id="hr-resources-nav"><a  href="/resources">HR Resources</a></li>
+					                </ul>
+                            </li>
+                    	<li  class="nav-li "> 
+    			<a  href="/featured-job-posting" class="nav-a" id="post-jobs-nav">Post Jobs</a>
+                            </li>
+                        
+            <li id="post-a-job-navx" class="nav-li"><a href="/employers/" class="nav-a" >Post A Job / Recruit</a></li>
+                
+           <!---
+            <li class="nav-li">
+    			<a href="" class="nav-a" id="career-advice-nav">Career Advice</a>
+                <ul>
+                	<li><a href="">Career Tips</a></li>
+                    <li><a href="">Career Videos</a></li>
+                    <li><a href="" id="resources-nav">Resources</a></li>
+                </ul>
+            </li>
+           
+            
+            
+			<li class="nav-li">
+    			<a href="" class="nav-a">Interns</a>
+            </li>
+			<li class="nav-li">
+    			<a href="" style="border-right-style:none" class="nav-a">CV Builder</a>
+            </li>
+            --->
+                        <li class="nav-li" id="login-nav" >
+    			<a id="nav-login-id" href="/login" class="nav-a" style=" border:none">Login</a>
+            </li>
+            <li class="nav-li" id="signup-nav">
+    			<a id="nav-signup-id" href="/signup" class="nav-a" style=" border:none">Signup</a>
+            </li>
+			           
+            
+        </ul>
+    </nav>
+   
+       
+    <ul id="login-signup-ul" class="nav-2" style="margin-right:0px">
+    	<li ><a style=" border-color:#FFF" href="/login">Login</a></li>
+        <li ><a id="nav-2-signup" href="/signup">Signup</a></li>
+        <li id="ls-employers" style="padding-right:0px;"><a id="hd-emp-but" href="/employers/" title="Post a Job">Employers</a></li>
+    </ul>
+        
+    
+    <div class="switch-country">
+    <input id="check02" type="checkbox" name="menu" class="country-menu-check"/>
+    <label for="check02" id="sa-country-bx" class="switch-country-a" style="background-image:url(/pictures/flag/419479899_south-africa-flag.jpg), url(../images/icons.png)">South Africa</label>
+    	<ul id="switch-country-ul">
+                	<li><a href="https://www.myjobmagghana.com"  style="background-image:url(/pictures/flag/491801725_gh.jpg)">Ghana</a></li>
+                    	<li><a href="https://www.myjobmag.co.ke"  style="background-image:url(/pictures/flag/435641681_kenya-flag.jpg)">Kenya</a></li>
+                    	<li><a href="https://www.myjobmag.com"  style="background-image:url(/pictures/flag/865758178_nigerian-flag.jpg)">Nigeria</a></li>
+                    	<li><a href="https://www.myjobmag.co.za"  style="background-image:url(/pictures/flag/419479899_south-africa-flag.jpg)">South Africa</a></li>
+                    	<li><a href="https://www.myjobmag.co.uk"  style="background-image:url(/pictures/flag/d1b20344ccecd65a72978eca795a8f06.jpg)">UK</a></li>
+                    	
+        </ul>
+    </div>
+    
+        
+        <a href="javascript:;" class="mobile-search-icon" onclick="showSearchBox(1,this)">&nbsp;</a>
+        </div>
+</div>
+
+<div class="mobile-nav">
+<a href="/jobs" id="mn-jobs">Jobs</a>
+<a href="/blog" id="mn-advice">Career Advice</a>
+<a href="/employers/" style=" border-right:none" id="mn-signup">Post Job</a>
+</div><div id='search-box-wrap2'>
+    <div id="search" class="dsearch-class1" >
+<div class="content-wrap">
+<form class="search-form" action="/search/jobs" method="get">
+ <label id="search-title">Search for Jobs</label>
+	<div class="search-input-wrap">
+   
+   <div class="search-input-box">
+   <!-- onKeyUp="suggestOptions(this,'new_jobs_positions;companies','title;company_name',this.value,50)" onBlur="hideSuggestionBox(this)" -->
+	<input class="search-input" type="text"  id="search-key" autocomplete="off" placeholder="Company Name or Job Title" name="q"  /> 
+       </div>
+       <div class="search-input-box">
+        <input style="color:#CCC" title="Location" id="search-location" class="search-input" type="text" value="Location" onclick="dropMultiSelect(this,this.nextSibling);" readonly="readonly"  /><div class="select-option-house"><div id="select-option-box"><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="Gauteng" />Gauteng</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="Western Cape" />Western Cape</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="Eastern Cape" />Eastern Cape</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="Free State" />Free State</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="KwaZulu-Natal" />KwaZulu-Natal</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="Limpopo" />Limpopo</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="Mpumalanga" />Mpumalanga</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="North West" />North West</label><label class="mag-b bp-bt-5" id="input-rap"><input name="location-sinput" autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'location')" type="radio" value="Northern Cape" />Northern Cape</label></div></div>    
+    </div>
+    
+    <div id="advance-fields">
+<div class="search-input-box">
+<input style="color:#CCC" title="Field" id="search-field" class="search-input" type="text" value="Field" onclick="dropMultiSelect(this,this.nextSibling);" readonly="readonly"  /><div class="select-option-house"><div id="select-option-box"><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Administration / Facilities" />Administration / Facilities</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Agriculture / Agro-Allied" />Agriculture / Agro-Allied</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Art / Crafts / Languages" />Art / Crafts / Languages</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Aviation / Aerospace" />Aviation / Aerospace</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Banking" />Banking</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Bursary and Scholarships" />Bursary and Scholarships</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Caregiver / Nanny / Social Workers" />Caregiver / Nanny / Social Workers</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Catering / Confectionery" />Catering / Confectionery</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Construction and Site Engineering" />Construction and Site Engineering</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Consultancy" />Consultancy</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Content, Editorial and Journalism" />Content, Editorial and Journalism</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Customer Care, Success and Service" />Customer Care, Success and Service</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Data, Business Analysis and AI" />Data, Business Analysis and AI</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Driving" />Driving</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Education / Teaching / Training" />Education / Teaching / Training</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Engineering / Technical" />Engineering / Technical</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Environment Health and Safety" />Environment Health and Safety</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Finance / Accounting / Audit" />Finance / Accounting / Audit</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Food, Beverage and Hospitality" />Food, Beverage and Hospitality</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="General" />General</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Graduate Jobs" />Graduate Jobs</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Human Resources / HR" />Human Resources / HR</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="ICT / Computer" />ICT / Computer</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Insurance" />Insurance</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Internships " />Internships </label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Janitorial Services" />Janitorial Services</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Legal and Regulatory" />Legal and Regulatory</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Logistics" />Logistics</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Manufacturing" />Manufacturing</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Marketing and Communication" />Marketing and Communication</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Media Production and Entertainment" />Media Production and Entertainment</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Medical / Healthcare" />Medical / Healthcare</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="NGO/Non-Profit" />NGO/Non-Profit</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Oil and Gas, Energy and Mining" />Oil and Gas, Energy and Mining</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Pharmaceutical" />Pharmaceutical</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Procurement / Store-keeping / Supply Chain" />Procurement / Store-keeping / Supply Chain</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Product Management" />Product Management</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Project and Program Management" />Project and Program Management</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Real Estate" />Real Estate</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Research and Development" />Research and Development</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="RFP / RFQ / EOI" />RFP / RFQ / EOI</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Risk Management and Compliance" />Risk Management and Compliance</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Sales and Business Development" />Sales and Business Development</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Science" />Science</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Security / Intelligence" />Security / Intelligence</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Shipping and Maritime" />Shipping and Maritime</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Sports, Fitness and Personal Care" />Sports, Fitness and Personal Care</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Strategic and Top Management" />Strategic and Top Management</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Travels and Tours" />Travels and Tours</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="UX, Design and Architecture" />UX, Design and Architecture</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'field')" type="radio" name="field-sinput" value="Volunteer" />Volunteer</label></div></div></div>
+
+
+<div class="search-input-box">
+<input style="color:#CCC" title="Education" id="search-education" class="search-input" type="text" value="Education" onclick="dropMultiSelect(this,this.nextSibling);" readonly="readonly"  /><div class="select-option-house"><div id="select-option-box"><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="Bachelors" />Bachelors</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="First School Leaving Certificate" />First School Leaving Certificate</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="Higher National Certificate" />Higher National Certificate</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="Masters" />Masters</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="Matric" />Matric</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="National Certificate" />National Certificate</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="Ph.D" />Ph.D</label><label class="mag-b bp-bt-5" id="input-rap"><input autocomplete="off" onchange="selectOption3(this,this.parentNode.parentNode,'education')" type="radio" name="edu-sinput" value="Professional Certificate" />Professional Certificate</label></div></div></div>
+
+
+
+   
+        <div id="close-advance" onClick="closeAdvanceSearch(this)">Close</div>
+    </div>
+    </div>
+      <input type="submit" class="search-but" value="Search Job" id="search-but" />
+      <div onClick="showAdvanceSearch(this)" id="advance-search-but" class="advance-search-but">Detailed Search</div>
+</form>
+
+
+</div>
+
+
+</div>
+
+</div>    </div>
+
+<section id="jobs-cat-sec" >
+
+<div class="content-wrap2" > 
+
+    
+
+    	<div  id="cat-left-sec" class="left-section" >
+
+    
+    <div class="mag-b" id="cat-search-hold-box" style="">
+
+<form method="get" class="smart-search bm-t-40" onSubmit="" id="job-search-form-2" action="/search/jobs">
+	<div class="smart-search-input">
+    <div id="selected-keyz"></div>
+    <!-- onKeyUp="suggestOptions(this,'new_jobs_positions;companies','title;company_name',this.value,50)" onBlur="hideSuggestionBox(this)" autocomplete="off" -->
+        <label class="fl-l bw-auto"><input id="s-keyword-input" value="" class="sm-s-input" placeholder="Type a keyword"  /></label>
+	</div>
+
+    	<ul class="smart-search-fields">
+        	<li id="ss-f-field" tabindex="0"><div class="ss-f-but">Field</div>
+            <ul>
+                        <li onClick="selectSearchField(this,'field','Administration / Facilities')">Administration / Facilities</li>
+			            <li onClick="selectSearchField(this,'field','Agriculture / Agro-Allied')">Agriculture / Agro-Allied</li>
+			            <li onClick="selectSearchField(this,'field','Art / Crafts / Languages')">Art / Crafts / Languages</li>
+			            <li onClick="selectSearchField(this,'field','Aviation / Aerospace')">Aviation / Aerospace</li>
+			            <li onClick="selectSearchField(this,'field','Banking')">Banking</li>
+			            <li onClick="selectSearchField(this,'field','Bursary and Scholarships')">Bursary and Scholarships</li>
+			            <li onClick="selectSearchField(this,'field','Caregiver / Nanny / Social Workers')">Caregiver / Nanny / Social Workers</li>
+			            <li onClick="selectSearchField(this,'field','Catering / Confectionery')">Catering / Confectionery</li>
+			            <li onClick="selectSearchField(this,'field','Construction and Site Engineering')">Construction and Site Engineering</li>
+			            <li onClick="selectSearchField(this,'field','Consultancy')">Consultancy</li>
+			            <li onClick="selectSearchField(this,'field','Content, Editorial and Journalism')">Content, Editorial and Journalism</li>
+			            <li onClick="selectSearchField(this,'field','Customer Care, Success and Service')">Customer Care, Success and Service</li>
+			            <li onClick="selectSearchField(this,'field','Data, Business Analysis and AI')">Data, Business Analysis and AI</li>
+			            <li onClick="selectSearchField(this,'field','Driving')">Driving</li>
+			            <li onClick="selectSearchField(this,'field','Education / Teaching / Training')">Education / Teaching / Training</li>
+			            <li onClick="selectSearchField(this,'field','Engineering / Technical')">Engineering / Technical</li>
+			            <li onClick="selectSearchField(this,'field','Environment Health and Safety')">Environment Health and Safety</li>
+			            <li onClick="selectSearchField(this,'field','Finance / Accounting / Audit')">Finance / Accounting / Audit</li>
+			            <li onClick="selectSearchField(this,'field','Food, Beverage and Hospitality')">Food, Beverage and Hospitality</li>
+			            <li onClick="selectSearchField(this,'field','General')">General</li>
+			            <li onClick="selectSearchField(this,'field','Graduate Jobs')">Graduate Jobs</li>
+			            <li onClick="selectSearchField(this,'field','Human Resources / HR')">Human Resources / HR</li>
+			            <li onClick="selectSearchField(this,'field','ICT / Computer')">ICT / Computer</li>
+			            <li onClick="selectSearchField(this,'field','Insurance')">Insurance</li>
+			            <li onClick="selectSearchField(this,'field','Internships ')">Internships </li>
+			            <li onClick="selectSearchField(this,'field','Janitorial Services')">Janitorial Services</li>
+			            <li onClick="selectSearchField(this,'field','Legal and Regulatory')">Legal and Regulatory</li>
+			            <li onClick="selectSearchField(this,'field','Logistics')">Logistics</li>
+			            <li onClick="selectSearchField(this,'field','Manufacturing')">Manufacturing</li>
+			            <li onClick="selectSearchField(this,'field','Marketing and Communication')">Marketing and Communication</li>
+			            <li onClick="selectSearchField(this,'field','Media Production and Entertainment')">Media Production and Entertainment</li>
+			            <li onClick="selectSearchField(this,'field','Medical / Healthcare')">Medical / Healthcare</li>
+			            <li onClick="selectSearchField(this,'field','NGO/Non-Profit')">NGO/Non-Profit</li>
+			            <li onClick="selectSearchField(this,'field','Oil and Gas, Energy and Mining')">Oil and Gas, Energy and Mining</li>
+			            <li onClick="selectSearchField(this,'field','Pharmaceutical')">Pharmaceutical</li>
+			            <li onClick="selectSearchField(this,'field','Procurement / Store-keeping / Supply Chain')">Procurement / Store-keeping / Supply Chain</li>
+			            <li onClick="selectSearchField(this,'field','Product Management')">Product Management</li>
+			            <li onClick="selectSearchField(this,'field','Project and Program Management')">Project and Program Management</li>
+			            <li onClick="selectSearchField(this,'field','Real Estate')">Real Estate</li>
+			            <li onClick="selectSearchField(this,'field','Research and Development')">Research and Development</li>
+			            <li onClick="selectSearchField(this,'field','RFP / RFQ / EOI')">RFP / RFQ / EOI</li>
+			            <li onClick="selectSearchField(this,'field','Risk Management and Compliance')">Risk Management and Compliance</li>
+			            <li onClick="selectSearchField(this,'field','Sales and Business Development')">Sales and Business Development</li>
+			            <li onClick="selectSearchField(this,'field','Science')">Science</li>
+			            <li onClick="selectSearchField(this,'field','Security / Intelligence')">Security / Intelligence</li>
+			            <li onClick="selectSearchField(this,'field','Shipping and Maritime')">Shipping and Maritime</li>
+			            <li onClick="selectSearchField(this,'field','Sports, Fitness and Personal Care')">Sports, Fitness and Personal Care</li>
+			            <li onClick="selectSearchField(this,'field','Strategic and Top Management')">Strategic and Top Management</li>
+			            <li onClick="selectSearchField(this,'field','Travels and Tours')">Travels and Tours</li>
+			            <li onClick="selectSearchField(this,'field','UX, Design and Architecture')">UX, Design and Architecture</li>
+			            <li onClick="selectSearchField(this,'field','Volunteer')">Volunteer</li>
+			            </ul>
+            </li>
+          
+            <li id="ss-f-location" tabindex="0"><div class="ss-f-but">Location</div>
+            	<ul>
+                	            	<li onClick="selectSearchField(this,'location','Gauteng')">Gauteng</li>
+			            	<li onClick="selectSearchField(this,'location','Western Cape')">Western Cape</li>
+			            	<li onClick="selectSearchField(this,'location','Eastern Cape')">Eastern Cape</li>
+			            	<li onClick="selectSearchField(this,'location','Free State')">Free State</li>
+			            	<li onClick="selectSearchField(this,'location','KwaZulu-Natal')">KwaZulu-Natal</li>
+			            	<li onClick="selectSearchField(this,'location','Limpopo')">Limpopo</li>
+			            	<li onClick="selectSearchField(this,'location','Mpumalanga')">Mpumalanga</li>
+			            	<li onClick="selectSearchField(this,'location','North West')">North West</li>
+			            	<li onClick="selectSearchField(this,'location','Northern Cape')">Northern Cape</li>
+			                </ul>
+            </li>
+            <li id="ss-f-experience" tabindex="0"><div class="ss-f-but">Experience</div>
+            	<ul>
+                	            	<li onClick="selectSearchField(this,'experience','None')">None</li>
+			            	<li onClick="selectSearchField(this,'experience','1 - 4')">1 - 4</li>
+			            	<li onClick="selectSearchField(this,'experience','5 - 10')">5 - 10</li>
+			            	<li onClick="selectSearchField(this,'experience','11 - 35')">11 - 35</li>
+			                </ul>
+            </li>
+            <li id="ss-f-education" tabindex="0"><div class="ss-f-but">Education</div>
+            <ul>
+            	            	<li onClick="selectSearchField(this,'education','Bachelors')">Bachelors</li>
+			            	<li onClick="selectSearchField(this,'education','First School Leaving Certificate')">First School Leaving Certificate</li>
+			            	<li onClick="selectSearchField(this,'education','Higher National Certificate')">Higher National Certificate</li>
+			            	<li onClick="selectSearchField(this,'education','Masters')">Masters</li>
+			            	<li onClick="selectSearchField(this,'education','Matric')">Matric</li>
+			            	<li onClick="selectSearchField(this,'education','National Certificate')">National Certificate</li>
+			            	<li onClick="selectSearchField(this,'education','Ph.D')">Ph.D</li>
+			            	<li onClick="selectSearchField(this,'education','Professional Certificate')">Professional Certificate</li>
+			            </ul>
+            </li>
+        </ul>
+    
+    	<input type="button" onClick="organizeSearchData()" class="smart-search-but" value="Filter Jobs" />
+    </form>
+
+</div>
+            
+    	        
+    <h1 class="main-h2-2" style="margin-top: 40px; margin-bottom: 30px;">
+
+
+
+		Jobs in South Africa
+
+
+    </h1>
+
+
+
+
+         <ul class="job-list">
+                
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/ampath"  ><img src="/company_logo/86/861723054_download - 2023-09-29T115636.613.png" alt="Ampath" width="100%" height="auto" title="Ampath logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/job-openings-at-ampath-14">Job Openings at Ampath</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">We are one of Southern Africa's foremost pathology laboratories. We take pride in our innovative, professional and quality pathology and laboratory medicine services that we provide to healthcare practitioners and patients.
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/phlebotomist-vergelegen-ampath-1">Phlebotomist | Vergelegen</a></li><li><a style="" href="/job/phlebotomist-night-shift-entabeni-ampath">Phlebotomist | Night Shift | Entabeni</a></li><li><a style="" href="/job/phlebotomist-polokwane-ampath-3">Phlebotomist | Polokwane</a></li><li><a style="" href="/job/motorbike-courier-code-a-and-or-b-rustenburg-ampath">Motorbike Courier (Code A and/or B) | Rustenburg</a></li><li><a style="" href="/job/technologist-medical-laboratory-scientist-clinpath-witbank-ampath">Technologist | Medical Laboratory Scientist | Clinpath | Witbank</a></li><li><a style="" href="/job/branch-administrator-unitas-ampath-1">Branch Administrator | Unitas</a></li><li><a style="" href="/job/phlebotomist-6-month-contract-newcastle-ampath">Phlebotomist | 6 Month Contract | Newcastle</a></li><li><a style="" href="/job/branch-administrator-newcastle-ampath">Branch Administrator | Newcastle</a></li><li><a style="" href="/job/branch-administrator-cedar-ampath">Branch Administrator | Cedar</a></li><li><a style="" href="/job/branch-administrator-springs-ampath">Branch Administrator | Springs</a></li><li><a style="" href="/job/phlebotomist-parys-ampath">Phlebotomist | Parys</a></li><li><a style="" href="/job/branch-administrator-heidelberg-ampath">Branch Administrator | Heidelberg</a></li><li><a style="" href="/job/branch-administrator-hilton-ampath">Branch Administrator | Hilton</a></li><li><a style="" href="/job/customer-relationship-officer-bloemfontein-ampath">Customer Relationship Officer | Bloemfontein</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/curro-holdings-ltd"  ><img src="/company_logo/86/892436904_curro_owler_20160227_222038_original.png" alt="Curro Holdings Ltd" width="100%" height="auto" title="Curro Holdings Ltd logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/explore-roles-at-curro-holdings-ltd">Explore Roles at Curro Holdings Ltd</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Curro provides independent school education in English and Afrikaans to learners from 3 months to Grade 12, making use of an education model based on: Christian ethos and values Child friendliness Cre...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/class-assistant-curro-holdings-ltd-9">Class Assistant</a></li><li><a style="" href="/job/sesotho-fal-teacher-intermediate-phase-curro-holdings-ltd">Sesotho FAL Teacher (Intermediate Phase)</a></li><li><a style="" href="/job/head-of-culture-primary-school-curro-holdings-ltd-1">Head Of Culture: Primary School</a></li><li><a style="" href="/job/senior-financial-planning-analysis-manager-curro-holdings-ltd">Senior Financial Planning & Analysis Manager</a></li><li><a style="" href="/job/general-worker-curro-holdings-ltd-2">General Worker</a></li><li><a style="" href="/job/senior-phase-teacher-for-coding-robotics-accounting-mathematical-literacy-grades-8-10-curro-holdings-ltd">Senior Phase Teacher For Coding & Robotics, Accounting, Mathematical Literacy Grades: 8 - 10</a></li><li><a style="" href="/job/fet-phase-teacher-for-accounting-business-studies-grades-10-12-curro-holdings-ltd">FET Phase Teacher For Accounting, Business Studies Grades: 10 - 12</a></li><li><a style="" href="/job/deputy-head-curro-holdings-ltd-3">Deputy Head</a></li><li><a style="" href="/job/temporary-preschool-teacher-group-2-curro-holdings-ltd">Temporary Preschool Teacher (Group 2)</a></li><li><a style="" href="/job/intermediate-phase-grade-head-curro-holdings-ltd">Intermediate Phase Grade Head</a></li><li><a style="" href="/job/life-sciences-fet-phase-teacher-curro-holdings-ltd">Life Sciences FET Phase Teacher</a></li><li><a style="" href="/job/temporary-fet-teacher-curro-holdings-ltd">Temporary FET Teacher</a></li><li><a style="" href="/job/a-physical-sciences-teacher-fet-phase-curro-holdings-ltd">A Physical Sciences Teacher (FET Phase)</a></li><li><a style="" href="/job/temporary-fet-teacher-at-curro-nelspruit-curro-holdings-ltd">Temporary FET Teacher at Curro Nelspruit</a></li><li><a style="" href="/job/temporary-foundation-phase-teacher-curro-holdings-ltd">Temporary Foundation Phase Teacher</a></li><li><a style="" href="/job/afrikaans-fal-and-life-orientation-teacher-senior-phase-curro-holdings-ltd">Afrikaans FAL and Life Orientation Teacher (Senior Phase)</a></li><li><a style="" href="/job/foundation-phase-teacher-curro-holdings-ltd-30">Foundation Phase Teacher</a></li><li><a style="" href="/job/temporary-intermediate-phase-teacher-curro-holdings-ltd">Temporary Intermediate Phase Teacher</a></li><li><a style="" href="/job/group-1-teacher-assistant-curro-holdings-ltd">Group 1 Teacher Assistant</a></li><li><a style="" href="/job/temporary-group-1-teacher-assistant-curro-holdings-ltd">Temporary Group 1 Teacher Assistant</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+<li class="job-list-li" style="text-align:center;">
+            <div  id="adbox">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<!-- Responsive all sites - no matched -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-0011597892009729"
+     data-ad-slot="6391150709"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+</li>    
+
+              
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/bayer"  ><img src="/company_logo/86/60580Bayer.png" alt="Bayer" width="100%" height="auto" title="Bayer logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/job-vacancies-at-bayer-5">Job Vacancies at Bayer</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Bayer is a global enterprise with core competencies in the Life Science fields of health care and agriculture. Its products and services are designed to benefit people and improve their quality of lif...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/customer-service-representative-bayer">Customer Service Representative</a></li><li><a style="" href="/job/key-account-manager-shoprite-bayer-1">Key Account Manager Shoprite</a></li><li><a style="" href="/job/maintenance-technician-bayer">Maintenance Technician</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/totalenergies"  ><img src="/company_logo/86/10805419_totalenergies.png" alt="TotalEnergies" width="100%" height="auto" title="TotalEnergies logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/job/health-and-wellness-specialist-totalenergies">Health and Wellness Specialist at TotalEnergies</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">TotalEnergies is a company with a wealth of opportunities
+Because diversity is an integral part of our Company's history and inextricably woven into our DNA. Whatever your origin, gender identity, age or background, your experience is one of your greatest assets.
+Everyone has a place at TotalEnergies and in any one of our fields of activity!
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/mayfly-agri-pty-ltd"  ><img src="/company_logo/86/66221company.jpg" alt="Mayfly Agri (Pty) Ltd" width="100%" height="auto" title="Mayfly Agri (Pty) Ltd logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/latest-jobs-at-mayfly-agri-pty-ltd-7">Latest Jobs at Mayfly Agri (Pty) Ltd</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">We are a South African specialist recruitment service provider with technically qualified and experienced consultants.
+
+Our services include complete and specialised recruitment solutions and effective human resource services as well as in-depth and accurate market research offerings. Our management team brings years of experience, a well-developed network, recruiting skills along with a dynamic approach to a vast and complex industry.
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/senior-operator-mayfly-agri-pty-ltd-1">Senior Operator</a></li><li><a style="" href="/job/commercial-agronomist-pietermaritzburg-mayfly-agri-pty-ltd">Commercial Agronomist -Pietermaritzburg</a></li><li><a style="" href="/job/commercial-agronomist-potchefstroom-mayfly-agri-pty-ltd">Commercial Agronomist -Potchefstroom</a></li><li><a style="" href="/job/audit-and-financial-reporting-manager-mayfly-agri-pty-ltd">Audit and Financial Reporting Manager</a></li><li><a style="" href="/job/commercial-agronomist-jhb-mayfly-agri-pty-ltd">Commercial Agronomist -JHB</a></li><li><a style="" href="/job/corporate-finance-executive-mayfly-agri-pty-ltd-1">Corporate Finance Executive</a></li><li><a style="" href="/job/project-manager-mayfly-agri-pty-ltd">Project Manager</a></li><li><a style="" href="/job/power-bi-specialist-mayfly-agri-pty-ltd">Power BI Specialist</a></li><li><a style="" href="/job/area-sales-manager-free-state-mayfly-agri-pty-ltd">Area Sales Manager - Free State</a></li><li><a style="" href="/job/operations-manager-cold-chain-mayfly-agri-pty-ltd">Operations Manager - Cold Chain</a></li><li><a style="" href="/job/field-maintenance-manager-drones-uav-mayfly-agri-pty-ltd">Field Maintenance Manager (Drones/UAV)</a></li><li><a style="" href="/job/head-of-r-d-global-agriculture-mayfly-agri-pty-ltd">Head of R&D - Global Agriculture</a></li><li><a style="" href="/job/debtors-controller-mayfly-agri-pty-ltd">Debtors Controller</a></li><li><a style="" href="/job/country-manager-animal-health-mayfly-agri-pty-ltd">Country Manager - Animal Health</a></li><li><a style="" href="/job/technical-sales-support-manager-mayfly-agri-pty-ltd">Technical Sales Support Manager</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/eskom-communications"  ><img src="/company_logo/86/35457eskom.png" alt="Eskom Communications" width="100%" height="auto" title="Eskom Communications logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/jobs-available-at-eskom-communications">Jobs Available at Eskom Communications</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Eskom generates approximately 95% of the electricity used in South Africa and approximately 45% of the electricity used in Africa. Eskom generates, transmits and distributes electricity to industrial,...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/re-advert-senior-engineer-telecommunications-eskom-communications">Re-Advert- Senior Engineer Telecommunications</a></li><li><a style="" href="/job/project-coordinator-technical-projects-t12-eskom-communications">Project Coordinator Technical Projects - T12</a></li><li><a style="" href="/job/senior-advisor-planning-and-performance-eskom-communications">Senior Advisor Planning and Performance</a></li><li><a style="" href="/job/senior-advisor-people-relations-stakeholder-relations-eskom-communications">Senior Advisor People Relations (Stakeholder Relations)</a></li><li><a style="" href="/job/officer-procurement-t12-camden-p-s-re-advert-eskom-communications">Officer Procurement T12 - Camden P/S - Re-Advert</a></li><li><a style="" href="/job/technician-secondary-plant-metering-and-measurements-eskom-communications">Technician Secondary Plant (Metering and Measurements)</a></li><li><a style="" href="/job/supervisor-tech-site-port-shepstone-kzn-eskom-communications">Supervisor Tech Site - Port Shepstone KZN</a></li><li><a style="" href="/job/team-leader-construction-port-shepstone-kzn-eskom-communications">Team Leader Construction - Port Shepstone KZN</a></li><li><a style="" href="/job/officer-quality-mgmt-port-shepstone-eskom-communications">Officer Quality Mgmt Port Shepstone</a></li><li><a style="" href="/job/technician-secondary-plant-telecontrol-eskom-communications">Technician Secondary Plant (Telecontrol)</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/agricultural-research-council"  ><img src="/company_logo/86/68023Agricultural Research Council.png" alt="Agricultural Research Council" width="100%" height="auto" title="Agricultural Research Council logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/job/specialist-researcher-entomology-onderstepoort-agricultural-research-council">Specialist Researcher: Entomology (Onderstepoort) at Agricultural Research Council</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">ARC Vision
+&quot;Excellence in Agricultural Research and Development&quot;
+
+The ARC's vision reflects its core business and celebrates its unique role, acknowledging its position as the principal agri...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+<li class="job-list-li" style="text-align:center;">
+            <div  id="adbox">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<!-- Responsive all sites - no matched -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-0011597892009729"
+     data-ad-slot="6391150709"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+</li>    
+
+              
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/pepkor-speciality"  ><img src="/company_logo/86/57005Pepkor Speciality  logo.png" alt="Pepkor Speciality" width="100%" height="auto" title="Pepkor Speciality logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/hot-jobs-at-pepkor-speciality-30">Hot Jobs at Pepkor Speciality</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Pepkor has the largest retail store footprint in southern Africa. With 5 470 stores operating across 10 African countries, our businesses include many of the most trusted brands on the continent. Pepk...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/store-planner-tygervalley-pepkor-speciality-1">Store Planner -Tygervalley</a></li><li><a style="" href="/job/benefits-administrator-graduate-pepkor-speciality">Benefits Administrator Graduate</a></li><li><a style="" href="/job/payroll-administrator-graduate-pepkor-speciality">Payroll Administrator Graduate</a></li><li><a style="" href="/job/back-end-web-developer-pepkor-speciality">Back-End Web Developer</a></li><li><a style="" href="/job/human-resources-intern-pepkor-speciality">Human Resources Intern</a></li><li><a style="" href="/job/shop-assistant-cashier-pepkor-speciality">Shop Assistant /Cashier</a></li><li><a style="" href="/job/sales-supervisor-woodlands-boulevard-pepkor-speciality">Sales Supervisor -Woodlands Boulevard</a></li><li><a style="" href="/job/bookkeeper-pepkor-speciality">Bookkeeper</a></li><li><a style="" href="/job/credit-controller-pepkor-speciality">Credit Controller</a></li><li><a style="" href="/job/marketing-coordinator-graduate-pepkor-speciality">Marketing Coordinator : Graduate</a></li><li><a style="" href="/job/trainee-buyer-graduate-pepkor-speciality">Trainee Buyer - Graduate</a></li><li><a style="" href="/job/visual-merchandise-coordinator-pepkor-speciality">Visual Merchandise Coordinator</a></li><li><a style="" href="/job/store-planner-graduate-pepkor-speciality">Store Planner Graduate</a></li><li><a style="" href="/job/design-graduate-textile-graphic-design-pepkor-speciality">Design Graduate (Textile & Graphic Design)</a></li><li><a style="" href="/job/store-manager-pepkor-speciality-41">Store Manager</a></li><li><a style="" href="/job/risk-admin-controller-pepkor-speciality-2">Risk Admin Controller</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/ackermans"  ><img src="/company_logo/86/23900Ackermans.jpg" alt="Ackermans" width="100%" height="auto" title="Ackermans logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/top-roles-at-ackermans">Top Roles at Ackermans</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">The Ackermans story goes back as far as 1916, when Gus Ackerman opened the first store in Wynberg in Cape Town. His vision for the store was to create a place where customers could find great products at fantastic prices, which is exactly what Ackermans became. Ackermans was, subsequently, bought by the Pepkor Group in 1986. Today, there are more than 850 Ackermans stores in 5 countries, making us a leading value fashion retailer for the whole family - continuously setting the standard for value and affordability. With a wide selection of fashion for ladies, kids, babies, and men, as well as homeware, cellular, and key financial products, we’ll keep bringing value to your life every day.
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/skills-development-manager-ackermans">Skills Development Manager</a></li><li><a style="" href="/job/co-manager-blue-route-mall-ackermans">Co - Manager - Blue Route Mall</a></li><li><a style="" href="/job/graduate-programme-retail-space-planner-ackermans">Graduate Programme: Retail Space Planner</a></li><li><a style="" href="/job/supervisor-parow-belhar-mall-new-store-opening-ackermans">Supervisor - Parow / Belhar Mall (New Store Opening)</a></li><li><a style="" href="/job/store-manager-parow-belhar-mall-new-store-opening-ackermans">Store Manager - Parow / Belhar Mall (New Store Opening)</a></li><li><a style="" href="/job/accountant-forex-ackermans">Accountant: Forex</a></li><li><a style="" href="/job/admin-supervisor-pe-new-brighton-ackermans">Admin Supervisor - PE New Brighton</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/man-automotive-south-africa-pty-ltd"  ><img src="/company_logo/86/31922man_logo_batch.svg" alt="MAN Automotive (South Africa) (Pty) Ltd" width="100%" height="auto" title="MAN Automotive (South Africa) (Pty) Ltd logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/engineering-roles-at-man-automotive-south-africa-pty-ltd">Engineering Roles at MAN Automotive (South Africa) (Pty) Ltd</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">MAN Automotive (South Africa) (Pty) Ltd, a wholly-owned subsidiary of MAN Truck & Bus AG in Germany, is a leading manufacturer of medium, heavy and extra-heavy trucks, as well as commuter buses and lu...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/diesel-mechanic-pinetown-man-automotive-south-africa-pty-ltd-18">Diesel Mechanic (Pinetown)</a></li><li><a style="" href="/job/auto-electrician-pietermaritzburg-man-automotive-south-africa-pty-ltd-4">Auto Electrician (Pietermaritzburg)</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/ntice-sourcing-solutions"  ><img src="/company_logo/86/100912389_ntice.jpg" alt="Ntice Sourcing Solutions" width="100%" height="auto" title="Ntice Sourcing Solutions logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/job/client-service-consultant-pinelands-cape-town-67084-ntice-sourcing-solutions">Client Service Consultant - Pinelands - Cape Town (67084) at Ntice Sourcing Solutions</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Ntice looks to improve efficiencies within the recruitment industry through automating manual processes and procedures, allowing businesses to drastically reduce the cost of advertising, agency spend...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/eastern-cape-department-of-health"  ><img src="/company_logo/86/1247dc4beb9eefdba969c608fc0360badownload (67).png" alt="Eastern Cape Department of Health" width="100%" height="auto" title="Eastern Cape Department of Health logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/hot-jobs-at-eastern-cape-department-of-health">Hot Jobs at Eastern Cape Department of Health</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Vision
+
+A quality health service to the people of the Eastern Cape Province promoting a better life for all.
+
+Mission
+
+To provide and ensure accessible comprehensive integrated services in the E...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/social-worker-grade1-4-eastern-cape-department-of-health">Social Worker Grade1 - 4</a></li><li><a style="" href="/job/pharmacy-assistant-basic-grade-1-to-3-eastern-cape-department-of-health">Pharmacy Assistant (Basic) Grade 1 to 3</a></li><li><a style="" href="/job/pharmacy-assistant-post-basic-grade-1-3-eastern-cape-department-of-health">Pharmacy Assistant (Post Basic) Grade 1 - 3</a></li><li><a style="" href="/job/pharmacist-grade-1-3-eastern-cape-department-of-health">Pharmacist Grade 1-3</a></li><li><a style="" href="/job/clinical-nurse-practitioner-grade-1-2-primary-health-care-eastern-cape-department-of-health">Clinical Nurse Practitioner Grade 1- 2 (Primary Health Care)</a></li><li><a style="" href="/job/professional-nurse-grade-1-2-specialty-eastern-cape-department-of-health">Professional Nurse Grade 1-2 (Specialty)</a></li><li><a style="" href="/job/professional-nurse-grade-1-3-general-eastern-cape-department-of-health">Professional Nurse Grade 1-3 (General)</a></li><li><a style="" href="/job/staff-nurse-grade-1-3-eastern-cape-department-of-health">Staff Nurse Grade 1-3</a></li><li><a style="" href="/job/nursing-assistant-grade-1-3-eastern-cape-department-of-health">Nursing Assistant Grade 1- 3</a></li><li><a style="" href="/job/operational-manager-general-eastern-cape-department-of-health">Operational Manager (General)</a></li><li><a style="" href="/job/operational-manager-speciality-eastern-cape-department-of-health">Operational Manager (Speciality)</a></li><li><a style="" href="/job/clinical-technology-eastern-cape-department-of-health">Clinical Technology</a></li><li><a style="" href="/job/audiology-podiatry-dental-theraphy-eastern-cape-department-of-health">Audiology/Podiatry/ Dental Theraphy</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+<li class="job-list-li" style="text-align:center;">
+            <div  id="adbox">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<!-- Responsive all sites - no matched -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-0011597892009729"
+     data-ad-slot="6391150709"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+</li>    
+
+              
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/helderberg-personnel"  ><img src="/company_logo/86/15429Helderberg Personnel.png" alt="Helderberg Personnel" width="100%" height="auto" title="Helderberg Personnel logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/job-opportunities-at-helderberg-personnel-1">Job Opportunities at Helderberg Personnel</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Based in Somerset West, Helderberg Personnel was established in 1998. The company initially started doing placements in the Helderberg Basin and over the years expanded nationally. Our background has...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/debtors-clerk-helderberg-personnel-6">Debtors Clerk</a></li><li><a style="" href="/job/sales-administrator-helderberg-personnel-12">Sales Administrator</a></li><li><a style="" href="/job/maintenance-supervisor-facilities-helderberg-personnel-1">Maintenance Supervisor (Facilities)</a></li><li><a style="" href="/job/mechanical-engineer-helderberg-personnel-1">Mechanical Engineer</a></li><li><a style="" href="/job/production-administrator-helderberg-personnel">Production Administrator</a></li><li><a style="" href="/job/accountant-bookkeeper-helderberg-personnel-1">Accountant/Bookkeeper</a></li><li><a style="" href="/job/hotel-receptionist-helderberg-personnel-2">Hotel Receptionist</a></li><li><a style="" href="/job/account-manager-accounting-firm-helderberg-personnel-1">Account Manager (Accounting Firm)</a></li><li><a style="" href="/job/accountant-helderberg-personnel-12">Accountant</a></li><li><a style="" href="/job/sql-administrator-sql-developer-helderberg-personnel-1">SQL Administrator / SQL Developer</a></li><li><a style="" href="/job/trade-accountant-contract-administrator-helderberg-personnel-1">Trade Accountant / Contract Administrator</a></li><li><a style="" href="/job/accountant-helderberg-personnel-13">Accountant</a></li><li><a style="" href="/job/senior-accountant-helderberg-personnel-2">Senior Accountant</a></li><li><a style="" href="/job/operations-manager-helderberg-personnel">Operations Manager</a></li><li><a style="" href="/job/financial-accountant-cima-saica-helderberg-personnel">Financial Accountant (CIMA / SAICA)</a></li><li><a style="" href="/job/administrative-coordinator-helderberg-personnel-11">Administrative Coordinator</a></li><li><a style="" href="/job/warehouse-manager-nuts-hazyview-helderberg-personnel">Warehouse Manager: Nuts (Hazyview)</a></li><li><a style="" href="/job/head-chef-chef-partner-helderberg-personnel">Head Chef / Chef-Partner</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/au-pair-extraordinaire"  ><img src="/company_logo/86/47483download (6).png" alt="Au Pair Extraordinaire" width="100%" height="auto" title="Au Pair Extraordinaire logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/job-vacancies-at-au-pair-extraordinaire-6">Job Vacancies at Au Pair Extraordinaire</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">At Au Pair Extraordinaire we pride ourselves on our commitment to providing exceptional childcare and education placement service and peace of mind to both the families and candidates who put their co...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/au-pair-sandton-r16-000-per-month-au-pair-extraordinaire">Au Pair | Sandton | R16 000 Per Month</a></li><li><a style="" href="/job/au-pair-fourways-r9000-r9500-per-month-au-pair-extraordinaire">Au Pair | Fourways | R9000 - R9500 Per Month</a></li><li><a style="" href="/job/admin-assistant-fourways-r8-000-per-month-au-pair-extraordinaire">Admin Assistant | Fourways | R8 000 Per Month</a></li><li><a style="" href="/job/au-pair-atholl-r9-000-r10-000-per-month-au-pair-extraordinaire">Au Pair | Atholl | R9 000 - R10 000 Per Month</a></li><li><a style="" href="/job/weekend-au-pair-thornton-r5-000-per-month-au-pair-extraordinaire">Weekend Au Pair | Thornton | R5 000 Per Month</a></li><li><a style="" href="/job/au-pair-waterkloof-park-r10-000-r12-000-per-month-au-pair-extraordinaire">Au Pair | Waterkloof Park | R10 000 - R12 000 Per Month</a></li><li><a style="" href="/job/au-pair-kalk-bay-r9000-r11-000-per-month-au-pair-extraordinaire">Au Pair | Kalk Bay | R9000 - R11 000 Per Month</a></li><li><a style="" href="/job/ruimsig-au-pair-r8000-r8500-au-pair-extraordinaire">Ruimsig | Au Pair | R8000 - R8500</a></li><li><a style="" href="/job/au-pair-melrose-r10-000-per-month-au-pair-extraordinaire">Au Pair | Melrose | R10 000 Per Month</a></li><li><a style="" href="/job/homeschool-tutor-bryanston-r15-000-per-month-au-pair-extraordinaire-1">Homeschool Tutor | Bryanston | R15 000 Per Month</a></li><li><a style="" href="/job/homeschool-tutor-illovo-r9000-r13-000-per-month-au-pair-extraordinaire">Homeschool Tutor | Illovo | R9000 - R13 000 Per Month</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/shoprite-group-of-companies"  ><img src="/company_logo/86/148451699_shoprite.png" alt="Shoprite Group of Companies" width="100%" height="auto" title="Shoprite Group of Companies logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/open-roles-at-shoprite-group-of-companies">Open Roles at Shoprite Group of Companies</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">The Shoprite Group of Companies, comprising several iconic brands, is the largest retailer in Africa. It started out as a group of eight grocery stores in 1979, and has grown into a technologically-ad...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/branch-manager-shoprite-group-of-companies-25">Branch Manager</a></li><li><a style="" href="/job/maintenance-manager-shoprite-group-of-companies-1">Maintenance Manager</a></li><li><a style="" href="/job/driver-instructor-shoprite-group-of-companies-4">Driver Instructor</a></li><li><a style="" href="/job/verification-agent-shoprite-group-of-companies">Verification Agent</a></li><li><a style="" href="/job/financial-assistant-shoprite-group-of-companies-2">Financial Assistant</a></li><li><a style="" href="/job/digital-commerce-operations-and-quality-lead-shoprite-group-of-companies">Digital Commerce Operations and Quality Lead</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/flash-mobile-vending"  ><img src="/company_logo/86/328264709_flash group.png" alt="Flash Group" width="100%" height="auto" title="Flash Group logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/job/junior-key-account-manager-jhb-north-flash-mobile-vending">Junior Key Account Manager (JHB North) at Flash Group</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">Tech-forward innovation leaders in the informal retail market. Through our FLASH Business platform, we strive to empower our Traders with a wide range of products and offer unrivalled convenience for...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/busamed-hospital-group"  ><img src="/company_logo/86/fc4d69d4e7dbb8dbc39718d887e91d9adownload (1).png" alt="Busamed Hospital Group" width="100%" height="auto" title="Busamed Hospital Group logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/latest-jobs-at-busamed-hospital-group-2">Latest Jobs at Busamed Hospital Group</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">At Busamed, we are dedicated to providing exceptional healthcare services, and we are always looking for passionate and talented individuals to join our team. Whether you're a seasoned professional or...
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/unit-manager-busamed-hospital-group-5">Unit Manager</a></li><li><a style="" href="/job/registered-nurse-scrub-busamed-hospital-group">Registered Nurse - Scrub</a></li><li><a style="" href="/job/patient-services-manager-busamed-hospital-group-3">Patient Services Manager</a></li><li><a style="" href="/job/case-manager-busamed-hospital-group-5">Case Manager</a></li><li><a style="" href="/job/learnership-business-administration-busamed-hospital-group">Learnership – Business Administration</a></li><li><a style="" href="/job/deputy-nursing-manager-busamed-hospital-group">Deputy Nursing Manager</a></li><li><a style="" href="/job/learnership-generic-management-nqf-level-5-busamed-hospital-group">Learnership: Generic Management NQF Level 5</a></li><li><a style="" href="/job/learnership-business-administration-nqf-level-4-busamed-hospital-group">Learnership - Business Administration NQF Level 4</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+            
+<li class="job-list-li" style="text-align:center;">
+            <div  id="adbox">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<!-- Responsive all sites - no matched -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-0011597892009729"
+     data-ad-slot="6391150709"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+</li>    
+
+              
+                <li class="job-list-li">
+
+                	<ul>
+
+                    
+
+
+                    <li class="job-logo">
+
+                    	<a  href="/jobs-at/empact-group"  ><img src="/company_logo/86/17261Empact Group.jpg" alt="Empact Group" width="100%" height="auto" title="Empact Group logo" /></a>
+
+                    </li>
+
+                    
+                    <li class="job-info">
+
+                	<ul>
+
+
+                    <li class="mag-b">
+
+                    <h2><a style=" " href="/jobs/top-jobs-at-empact-group-1">Top Jobs at Empact Group</a></h2>
+
+                    </li>
+
+
+
+                    <li class="job-desc">At Empact we are on a journey - a journey to do our best and be the best for our people, our clients, our partners, our community and our planet.
+
+
+                    </li>
+
+
+
+                   
+
+
+
+                    <li class="job-item">
+
+
+
+                    	<ul>
+
+
+
+                        <li id="job-date">11 June</li>
+
+
+
+                        
+
+
+                      
+
+
+
+                        </ul>
+
+
+
+                    </li>
+
+
+
+                  
+
+
+                  <li class="sub-job-sec">
+
+
+
+                    	<ul id="sbu-job-list">
+
+
+
+                          <li><a style="" href="/job/patient-liaison-officer-empact-group-2">Patient Liaison Officer</a></li><li><a style="" href="/job/supervisor-empact-group-5">Supervisor</a></li><li><a style="" href="/job/ward-hostess-empact-group-14">Ward Hostess</a></li><li><a style="" href="/job/project-manager-empact-group-12">Project Manager</a></li><li><a style="" href="/job/cashier-empact-group-5">Cashier</a></li><li><a style="" href="/job/senior-catering-manager-empact-group-1">Senior Catering Manager</a></li><li><a style="" href="/job/junior-catering-manager-empact-group-1">Junior Catering Manager</a></li>
+
+
+                          </ul>
+
+
+
+                    </li>
+
+
+
+                    
+
+
+                    </ul>
+
+
+
+                    </li>
+
+
+
+                    </ul>
+
+
+
+                </li>
+
+
+
+              
+
+                            </ul>
+
+ <div class="mag-b bm-b-20" >
+
+
+
+	<ul class='setPaginate'><li><a class='current_page'>1</a></li><li><a href='/jobs/page/2'>2</a></li><li><a href='/jobs/page/3'>3</a></li><li><a href='/jobs/page/4'>4</a></li><li><a href='/jobs/page/5'>5</a></li></ul>
+
+</div>
+
+  <div class="mag-b bm-b-10 center">          
+
+<div  id="adbox">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<!-- Responsive all sites - no matched -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-0011597892009729"
+     data-ad-slot="6391150709"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+
+</div>
+
+        </div>
+
+
+
+        <div class="right-section bm-t-40">
+
+
+        
+        <div class="mag-b bm-b-30">
+
+        
+        <ul class="category-box" style="border-bottom:none;">
+        <li id="job-cat-head">Jobs By Province </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+        	       <li><a title="Jobs in Gauteng" href="/jobs-location/gauteng">Jobs in Gauteng</a></li>
+               <li><a title="Jobs in Western Cape" href="/jobs-location/western-cape">Jobs in Western Cape</a></li>
+               <li><a title="Jobs in Eastern Cape" href="/jobs-location/eastern-cape">Jobs in Eastern Cape</a></li>
+               <li><a title="Jobs in Free State" href="/jobs-location/free-state">Jobs in Free State</a></li>
+               <li><a title="Jobs in KwaZulu-Natal" href="/jobs-location/kwazulu-natal">Jobs in KwaZulu-Natal</a></li>
+               <li><a title="Jobs in North West" href="/jobs-location/north-west">Jobs in North West</a></li>
+               <li><a title="Jobs in Limpopo" href="/jobs-location/limpopo">Jobs in Limpopo</a></li>
+               <li><a title="Jobs in Mpumalanga" href="/jobs-location/mpumalanga">Jobs in Mpumalanga</a></li>
+                   
+             <li style="width:100%"><a title="Search jobs by location" href="/jobs-location" id="view-all">Search jobs by location</a></li>
+        </ul>
+        
+                <ul class="category-box" style="border-bottom:none;">
+        <li id="job-cat-head">Jobs By City </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+        	       <li><a title="Jobs in Johannesburg" href="/jobs-city/johannesburg">Jobs in Johannesburg</a></li>
+               <li><a title="Jobs in Cape Town" href="/jobs-city/cape-town">Jobs in Cape Town</a></li>
+               <li><a title="Jobs in Durban" href="/jobs-city/durban">Jobs in Durban</a></li>
+               <li><a title="Jobs in Jagersfontein" href="/jobs-city/jagersfontein">Jobs in Jagersfontein</a></li>
+               <li><a title="Jobs in Bellville" href="/jobs-city/bellville">Jobs in Bellville</a></li>
+               <li><a title="Jobs in Bloemfontein" href="/jobs-city/bloemfontein">Jobs in Bloemfontein</a></li>
+               <li><a title="Jobs in Stellenbosch" href="/jobs-city/stellenbosch">Jobs in Stellenbosch</a></li>
+               <li><a title="Jobs in Pretoria" href="/jobs-city/pretoria">Jobs in Pretoria</a></li>
+                   
+             <li style="width:100%"><a title="Search jobs by city" href="/jobs-city" id="view-all">Search jobs by city</a></li>
+        </ul>
+                
+        <ul class="category-box" style="border-bottom:none;display:none;">
+                <li id="job-cat-head">Jobs By Education </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+            	<li><a title="First School Leaving Certificate Jobs" href="/jobs-by-education/fslc">First School Leaving Certificate Jobs</a></li>
+            	<li><a title="Matric Jobs" href="/jobs-by-education/matric">Matric Jobs</a></li>
+            	<li><a title="National Certificate Jobs" href="/jobs-by-education/national-certificate">National Certificate Jobs</a></li>
+            	<li><a title="Higher National Certificate Jobs" href="/jobs-by-education/higher-national-certificate">Higher National Certificate Jobs</a></li>
+            	<li><a title="Bachelors Jobs" href="/jobs-by-education/bachelors">Bachelors Jobs</a></li>
+            	<li><a title=" Masters Jobs" href="/jobs-by-education/masters"> Masters Jobs</a></li>
+            	<li><a title="Ph.D Jobs" href="/jobs-by-education/phd">Ph.D Jobs</a></li>
+                    <li style="width:100%"><a title="Search jobs by qualification" href="/jobs-by-education" id="view-all">Search jobs by qualification</a></li>
+        </ul>
+        
+           <ul class="category-box" style="border-bottom:none;">
+        
+                <li id="job-cat-head">Jobs By Field </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+        	    	<li><a title="Engineering / Technical Jobs" href="/jobs-by-field/engineering">Engineering / Technical Jobs</a></li>
+               
+            	<li><a title="Medical / Healthcare Jobs" href="/jobs-by-field/medical">Medical / Healthcare Jobs</a></li>
+               
+            	<li><a title="Administration / Secretarial Jobs" href="/jobs-by-field/administration">Administration / Secretarial Jobs</a></li>
+               
+            	<li><a title="Sales / Marketing / Retail / Business Development Jobs" href="/jobs-by-field/sales-marketing">Sales / Marketing / Retail / Business Development Jobs</a></li>
+               
+            	<li><a title="Agriculture / Agro-Allied Jobs" href="/jobs-by-field/agriculture">Agriculture / Agro-Allied Jobs</a></li>
+               
+            	<li><a title="Building and Construction Jobs" href="/jobs-by-field/building-and-construction">Building and Construction Jobs</a></li>
+               
+            	<li><a title="Aviation / Airline Jobs" href="/jobs-by-field/aviation">Aviation / Airline Jobs</a></li>
+               
+            	<li><a title="Banking Jobs" href="/jobs-by-field/banking">Banking Jobs</a></li>
+               
+                       
+           
+               
+            <li style="width:100%"><a title="Search jobs by field" href="/jobs-by-field" id="view-all">Search jobs by field</a></li>
+        </ul>
+ 
+       
+       
+       
+        
+        <ul class="category-box" style="border-bottom:none;">
+                               
+</ul>
+        
+        
+         <ul class="category-box" style="border-bottom:none;">
+          
+                <li id="job-cat-head">Jobs By Industry </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+        
+            	<li><a title="Engineering / Technical Jobs" href="/jobs-by-industry/engineering">Engineering / Technical Jobs</a></li>
+            	<li><a title="Healthcare / Medical Jobs" href="/jobs-by-industry/medical">Healthcare / Medical Jobs</a></li>
+            	<li><a title="Creative / Arts Jobs" href="/jobs-by-industry/creative">Creative / Arts Jobs</a></li>
+            	<li><a title="Education / Teaching Jobs" href="/jobs-by-industry/education">Education / Teaching Jobs</a></li>
+            	<li><a title="Oil and Gas / Marine Jobs" href="/jobs-by-industry/oil-and-gas">Oil and Gas / Marine Jobs</a></li>
+            	<li><a title="Agriculture / Agro-Allied Jobs" href="/jobs-by-industry/agriculture">Agriculture / Agro-Allied Jobs</a></li>
+            	<li><a title="Manufacturing / Production / FMCG Jobs" href="/jobs-by-industry/manufacturing">Manufacturing / Production / FMCG Jobs</a></li>
+            	<li><a title="Media / Radio / TV Jobs" href="/jobs-by-industry/broadcasting">Media / Radio / TV Jobs</a></li>
+                <li style="width:100%"><a href="/jobs-by-industry" id="view-all">Search jobs by industry</a></li>
+		</ul>
+        <ul class="category-box" style="border-bottom:none;">
+        
+                <li id="job-cat-head">Jobs By Title </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+        	    	<li><a title="Project Manager Jobs" href="/jobs-by-title/project-manager">Project Manager Jobs</a></li>
+            	<li><a title="Business Development Manager Jobs" href="/jobs-by-title/business-development-manager">Business Development Manager Jobs</a></li>
+            	<li><a title="Business Analyst Jobs" href="/jobs-by-title/business-analyst">Business Analyst Jobs</a></li>
+            	<li><a title="Sales Representative Jobs" href="/jobs-by-title/sales-representative">Sales Representative Jobs</a></li>
+            	<li><a title="Account Manager Jobs" href="/jobs-by-title/account-manager">Account Manager Jobs</a></li>
+            	<li><a title="Marketing Manager Jobs" href="/jobs-by-title/marketing-manager">Marketing Manager Jobs</a></li>
+            	<li><a title="Accountant Jobs" href="/jobs-by-title/accountant">Accountant Jobs</a></li>
+            	<li><a title="Software Developer Jobs" href="/jobs-by-title/software-developer">Software Developer Jobs</a></li>
+                   
+            <li style="width:100%"><a title="Search jobs by title" href="/job-titles" id="view-all">Search jobs by title</a></li>
+        </ul>
+        
+        <ul class="category-box" style="border-bottom:none;">
+        
+                <li id="job-cat-head">Jobs By Type </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+        	    	<li><a title="Contract Jobs" href="/jobs-by-type/contract">Contract Jobs</a></li>
+            	<li><a title="Full Time Jobs" href="/jobs-by-type/full-time">Full Time Jobs</a></li>
+            	<li><a title="Part Time Jobs" href="/jobs-by-type/part-time">Part Time Jobs</a></li>
+            	<li><a title="Expatriate Jobs" href="/jobs-by-type/expatriate">Expatriate Jobs</a></li>
+            	<li><a title="Remote Jobs" href="/jobs-by-type/remote">Remote Jobs</a></li>
+            	<li><a title="Hybrid Jobs" href="/jobs-by-type/hybrid">Hybrid Jobs</a></li>
+            	<li><a title="Onsite Jobs" href="/jobs-by-type/onsite">Onsite Jobs</a></li>
+                 <li><a title="Students Jobs Online" href="/jobs/students">Students Jobs Online</a></li>
+        </ul>
+        
+        <ul class="category-box">
+                <li id="job-cat-head">Jobs By Date </li>
+        <li style="width:100%"><div class="h3-line bm-b-20">&nbsp;</div></li>
+		<li><a title="Today Jobs" href="/jobs-by-date/today">Today Jobs</a></li>
+        <li><a title="Yesterday Jobs" href="/jobs-by-date/yesterday">Yesterday Jobs</a></li>
+        <li><a title="This Week Jobs" href="/jobs-by-date/this-week">This Week Jobs</a></li>
+        <li><a title="Last Week Jobs" href="/jobs-by-date/last-week">Last Week Jobs</a></li>
+        <li><a title="This Month Jobs" href="/jobs-by-date/this-month">This Month Jobs</a></li>
+        <li><a title="Last Month Jobs" href="/jobs-by-date/last-month">Last Month Jobs</a></li>
+		</ul>
+
+
+        </div>
+
+
+        <div class="mag-b bm-b-30">
+
+
+
+        <div  id="adbox">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<!-- Responsive all sites - no matched -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-0011597892009729"
+     data-ad-slot="6391150709"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+
+
+
+       </div>
+
+
+
+       
+
+
+
+            
+<div id="subscription" style="width: 90%; padding-left: 5%; padding-right: 5%; padding-top: 30px; padding-bottom: 30px; margin-top: 0px; margin-bottom: 20px">
+
+	
+
+    <div class="mag-b">
+
+    <h2 class="main-h2">Subscribe to Job Alert</h2>
+
+    
+
+    <div class="h2-line bm-b-10" id="subscr-h2-line">&nbsp;</div>
+
+     <p class="center ts-14 tc-b66">Join our happy subscribers</p>
+
+    </div>
+
+    	<!-- class="g-recaptcha" data-sitekey="6LcGMrEUAAAAAG_g0W92nONs41w-H2m2C0QQef9g" data-callback='onSubmit' data-badge="inline"--> 
+
+		<form name="subscribe-form" class="subscribe-form" action="/subscribe" method="post"><input style="" onClick="activeSubscribe(this)" autocomplete="off" onKeyUp="showEmailHost(this)" id="subscribe-user-email2" class="subscribe-input" type="email" name="subscribe_email_input" placeholder="Enter your email here!" value="" /><input type="text" name="first_name" autocomplete="off" id="subscribe-user-name" /><input type="checkbox" name="mail" id="subscribe-user-mail" autocomplete="off" value="yes" /><input    id="subscribe-but2" type="submit" value="Subscribe" /><input type="hidden" name="subscribe_token" value="25c993aa7a8a79e3d9bfbd277b14b4e2" /><div id="mail-host-house" style="margin-top: 0px"><ul class="mail-hosts"><li onClick="choseEmailHost(this)">@gmail.com</li><li onClick="choseEmailHost(this)">@yahoo.com</li><li onClick="choseEmailHost(this)">@outlook.com
+</li></ul></div></form>
+
+   </div>
+
+
+
+
+        
+
+
+      
+
+
+
+<div class="mag-b bm-b-50">
+
+
+
+		<div class="box-title">
+
+
+
+        	<h2>Career Advice</h2>
+
+
+
+        </div>
+
+
+
+                <ul class="job-tips">
+
+
+
+           
+
+
+	<li class="" style=" border-bottom:none; ">
+
+
+
+    	
+
+
+
+    	<a style=" " href="/blog/common-cv-mistakes-career-changers-make">Common CV Mistakes Career Changers Make</a>
+
+
+
+
+    </li>
+
+
+
+    
+
+
+	<li class="bg-a4" style=" border-bottom:none; ">
+
+
+
+    	
+
+
+
+    	<a style=" " href="/blog/initiatives-to-boost-employee-engagement">20 Initiatives to Boost Employee Engagement</a>
+
+
+
+
+    </li>
+
+
+
+    
+
+
+	<li class="" style=" border-bottom:none; ">
+
+
+
+    	
+
+
+
+    	<a style=" " href="/blog/30-common-interview-mistakes-to-avoid">30 Common Interview Mistakes to Avoid</a>
+
+
+
+
+    </li>
+
+
+
+    
+
+
+	<li class="bg-a4" style=" border-bottom:none; ">
+
+
+
+    	
+
+
+
+    	<a style=" " href="/blog/how-to-explain-employment-gaps">How to Explain Employment Gaps Without Hurting Your Chances in 2025 (With Examples)</a>
+
+
+
+
+    </li>
+
+
+
+    
+
+
+</ul>
+
+
+
+<a href="/blog" class="view-all-post">View All Career Advice</a>
+
+
+
+</div>
+
+
+
+
+
+
+
+
+
+<div class="mag-b" id="br-all-str-rt" >&nbsp;</div>
+
+<div class="mag-b bm-b-50" id="right-main-ad3">
+
+        <div  id="adbox">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0011597892009729"
+     crossorigin="anonymous"></script>
+<!-- Responsive all sites - no matched -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-0011597892009729"
+     data-ad-slot="6391150709"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+</div>
+
+
+
+       </div>
+
+
+
+
+
+
+
+        </div>
+
+
+
+        </div>
+
+</section>
+
+<div class="mag-b" id="main-subscribe-box">
+
+<div id="subscription">
+
+	<div class="content-wrap">
+
+    <div class="mag-b">
+
+    <h2 class="main-h2">Subscribe to Job Alert</h2>
+
+    
+
+    <div class="h2-line bm-b-10" id="subscr-h2-line">&nbsp;</div>
+
+     <p class="center ts-14 tc-b66">Join our happy subscribers</p>
+
+    </div>
+
+    	<!-- class="g-recaptcha" data-sitekey="6LcGMrEUAAAAAG_g0W92nONs41w-H2m2C0QQef9g" data-callback='onSubmit' data-badge="inline"--> 
+
+		<form name="subscribe-form" class="subscribe-form" action="/subscribe" method="post"><input onClick="activeSubscribe(this)" autocomplete="off" onKeyUp="showEmailHost(this)" id="subscribe-user-email" class="subscribe-input" type="email" name="subscribe_email_input" placeholder="Enter your email here!" value="" /><input type="text" name="first_name" autocomplete="off" id="subscribe-user-name" /><input type="checkbox" name="mail" id="subscribe-user-mail" autocomplete="off" value="yes" /><input  id="subscribe-but" type="submit" value="Subscribe" /><input type="hidden" name="subscribe_token" value="25c993aa7a8a79e3d9bfbd277b14b4e2" /><div id="mail-host-house"><ul class="mail-hosts"><li onClick="choseEmailHost(this)">@gmail.com</li><li onClick="choseEmailHost(this)">@yahoo.com</li><li onClick="choseEmailHost(this)">@outlook.com
+</li></ul></div>
+		    		
+		</form>
+
+   </div>
+
+</div>
+
+</div>
+
+
+
+
+<footer id="main-footer">
+<div class="content-wrap">
+
+<ul class="footer-ul">
+<li class="mjm-desc">
+
+</li>
+<li class="footer-list">
+	<ul>
+    	<li id="footer-title">Candidates</li>
+        <li id="footer-head-line"></li>
+        
+                <li><a href="/jobs" target="_blank">Job Listing</a></li>
+                <li><a href="/cv-pilot/" target="_blank">CV Pilot</a></li>
+                <li><a href="/cv-match" target="_blank">CV Job Description Matcher</a></li>
+                <li><a href="/internship/" target="_blank">Internship</a></li>
+                <li><a href="/job-trends" target="_blank">Job Trends</a></li>
+                <li><a href="/companies" target="_blank">Companies Hiring</a></li>
+            </ul>
+</li>
+<li class="footer-list">
+    <ul>
+    	<li id="footer-title">Companies</li>
+        <li id="footer-head-line"></li>
+
+        <li><a href="/employers/" target="_blank">Post a Job</a></li>
+                <li><a href="/shortlist" target="_blank">Shortlisting Service</a></li>
+                <li><a href="/recruitment" target="_blank">Recruitment Service</a></li>
+                <li><a href="/employers/find-candidates" target="_blank">Candidate Search</a></li>
+                <li><a href="/hr-glossary" target="_blank">HR Glossary</a></li>
+                <li><a href="/advertise" target="_blank">Advertise</a></li>
+                <li><a href="/job-descriptions" target="_blank">Job Descriptions</a></li>
+            </ul>
+</li>
+<li class="footer-list">    
+<ul>
+        <li id="footer-title">Sharing</li>
+        <li id="footer-head-line"></li>
+        
+                <li><a href="/widget/feed-widget" >Job Widget</a></li>
+                <li><a href="/feeds/" >XML Feed</a></li>
+                <li><a href="/sitemap" >Sitemap (HTML)</a></li>
+                <li><a href="/testimonies" >Testimonials</a></li>
+                <li><a href="/faq" >Help - FAQs</a></li>
+        
+        <li>
+        <ul class="social-box">
+                	<li><a target="_blank" id="social-facebook" href="https://www.facebook.com/myjobmag.co.za" class="" rel="nofollow"></a></li>
+                	<li><a target="_blank" id="social-twitter" href="https://twitter.com/MyjobmagSA" class="" rel="nofollow"></a></li>
+                	<li><a target="_blank" id="social-linkedin" href="https://www.linkedin.com/company/myjobmag-south-africa/" class="" rel="nofollow"></a></li>
+                 </ul>
+        </li>
+  </ul>
+</li>
+<li class="footer-list">    
+<ul>
+        <li id="footer-title">Myjobmag Sites</li>
+        <li id="footer-head-line"></li>
+        
+                 <li><a href="https://www.myjobmagghana.com" >Jobs in Ghana</a></li>
+                <li><a href="https://www.myjobmag.co.ke" >Jobs in Kenya</a></li>
+                <li><a href="https://www.myjobmag.com" >Jobs in Nigeria</a></li>
+                <li><a href="https://www.myjobmag.co.za" >Jobs in South Africa</a></li>
+                <li><a href="https://www.myjobmag.co.uk" >Jobs in UK</a></li>
+                <li>
+  </ul>
+</li>
+
+</ul>
+	<div class="footer-butom">
+    	<a href="/about" target="_blank">About</a>
+		<a href="/contact" target="_blank">Contact</a>
+        <a href="/privacy" target="_blank">Privacy Policy</a>
+		<a href="/terms" target="_blank">Terms</a>
+		        <a id="footer-email" href="/cdn-cgi/l/email-protection#6b180e191d02080e182b0612010409060a0c45080445110a"><b><span class="__cf_email__" data-cfemail="700315020619131503301d091a1f121d11175e131f5e0a11">[email&#160;protected]</span></b></a>
+        
+         
+              <span class="copy-rit">Copyright © 2026 <a style="border-right-style:none" href="/">MyJobMagSouthAfrica</a></span>
+           </div>
+    
+</div>
+</footer>
+
+<!--<div id="cookies-notify">
+<span>This website uses cookies to improve your experience. By using this site you agree to the storing of cookies on your device to enhance navigation, analyze site usage, and assist in our marketing efforts. To learn more, see our <a href="/policy" style="color:#F90; text-decoration:none">Cookie Policy</a>.</span> <a href="javascript:;" onclick="agreePolicyCookie()" class="cookies-ok">Accept and Close</a> 
+</div>-->
+
+<a href="#0" class="js-cd-top" id="scroll-to-top">&nbsp;</a>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script type="text/javascript" language="javascript" src="/js/scroll-page.1773477057.js"></script>
+
+
+
+
+<script> //setTimeout('abcdload()',2000);</script>
+
+
+
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"fa47905596b7458cb97bcb9260aa356e","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0a31d53aaeaaf07',t:'MTc4MTIwNzEwOQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+
+
+
+</html>
