@@ -1,10 +1,15 @@
 package recipe
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
+	"io"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -21,6 +26,11 @@ import (
 type Executor struct {
 	recipe  *Recipe
 	fetcher Fetcher
+
+	// sitemap list-mode caches the enumerated job URLs so the sitemap
+	// (and its index) is fetched once per crawl, not once per page.
+	sitemapURLs   []string
+	sitemapLoaded bool
 }
 
 // NewExecutor builds an Executor for a recipe + fetcher.
@@ -211,12 +221,151 @@ type PageState struct {
 // plus its detail pages) and computes the next PageState. done is true when
 // there are no more pages. This is the unit the CrawlIterator adapter drives.
 func (e *Executor) Page(ctx context.Context, src domain.Source, st PageState) (items []domain.ExternalOpportunity, raw []byte, status int, next PageState, done bool, err error) {
-	switch e.recipe.Acquisition {
-	case "api":
+	switch {
+	case e.recipe.Acquisition == "api":
 		return e.apiPaged(ctx, src, st)
+	case e.recipe.List.Mode == "sitemap":
+		return e.sitemapPaged(ctx, src, st)
 	default:
 		return e.htmlPaged(ctx, src, st)
 	}
+}
+
+// sitemapBatch is how many detail pages one sitemap page fetches+extracts.
+const sitemapBatch = 25
+
+// sitemapPaged crawls a board whose sitemap enumerates every job URL —
+// the most complete + efficient method when available (no listing
+// pagination, no JS). It loads all job URLs from list.endpoint (a
+// sitemap or sitemap-index URL; auto-discovered from robots.txt when
+// empty), filtered by list.link_pattern, then extracts them in batches
+// across pages, capped by list.pagination.max_pages.
+func (e *Executor) sitemapPaged(ctx context.Context, src domain.Source, st PageState) ([]domain.ExternalOpportunity, []byte, int, PageState, bool, error) {
+	if !e.sitemapLoaded {
+		urls, err := e.loadSitemapURLs(ctx, src)
+		if err != nil {
+			return nil, nil, 0, PageState{}, true, err
+		}
+		e.sitemapURLs = urls
+		e.sitemapLoaded = true
+	}
+	start := st.page * sitemapBatch
+	if start >= len(e.sitemapURLs) {
+		return nil, nil, 200, PageState{}, true, nil
+	}
+	end := min(start+sitemapBatch, len(e.sitemapURLs))
+
+	var items []domain.ExternalOpportunity
+	for _, u := range e.sitemapURLs[start:end] {
+		body, status, ferr := e.fetcher.Get(ctx, u)
+		if ferr != nil || status < 200 || status >= 300 {
+			continue
+		}
+		pc, perr := NewPageContext(u, string(body), nil)
+		if perr != nil {
+			continue
+		}
+		if opp, berr := buildOpportunity(pc, src, e.recipe); berr == nil {
+			items = append(items, opp)
+		}
+	}
+	nextPage := st.page + 1
+	maxPages := e.recipe.List.Pagination.MaxPages
+	done := end >= len(e.sitemapURLs) || (maxPages > 0 && nextPage >= maxPages)
+	return items, nil, 200, PageState{page: nextPage}, done, nil
+}
+
+// loadSitemapURLs fetches the sitemap (or sitemap index, recursing one
+// level into sub-sitemaps) and returns the same-host job-detail URLs
+// matching list.link_pattern. list.endpoint is the sitemap URL; when
+// empty it is auto-discovered from robots.txt, then /sitemap.xml.
+func (e *Executor) loadSitemapURLs(ctx context.Context, src domain.Source) ([]string, error) {
+	roots := e.sitemapRoots(ctx, src)
+	pat := e.recipe.List.LinkPattern
+	seen := map[string]bool{}
+	var out []string
+	add := func(u string) {
+		if u == "" || seen[u] || !sameHost(src.BaseURL, u) {
+			return
+		}
+		if pat != "" && !strings.Contains(u, pat) {
+			return
+		}
+		seen[u] = true
+		out = append(out, u)
+	}
+	// One level of sitemap-index recursion: a <loc> that is itself a
+	// sitemap (.xml/.xml.gz, or contains "sitemap") is fetched and its
+	// <loc>s collected; everything else is a candidate job URL.
+	for _, root := range roots {
+		locs := e.fetchLocs(ctx, root)
+		for _, loc := range locs {
+			if isSitemapURL(loc) {
+				for _, sub := range e.fetchLocs(ctx, loc) {
+					add(sub)
+				}
+				continue
+			}
+			add(loc)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("sitemap: no job URLs matching %q under %v", pat, roots)
+	}
+	return out, nil
+}
+
+func (e *Executor) sitemapRoots(ctx context.Context, src domain.Source) []string {
+	if e.recipe.List.Endpoint != "" {
+		if u, err := resolveURL(src.BaseURL, e.recipe.List.Endpoint); err == nil {
+			return []string{u.String()}
+		}
+	}
+	// Discover from robots.txt.
+	var roots []string
+	if u, err := resolveURL(src.BaseURL, "/robots.txt"); err == nil {
+		if body, status, ferr := e.fetcher.Get(ctx, u.String()); ferr == nil && status == 200 {
+			for _, line := range strings.Split(string(body), "\n") {
+				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "sitemap:") {
+					roots = append(roots, strings.TrimSpace(line[strings.Index(line, ":")+1:]))
+				}
+			}
+		}
+	}
+	if len(roots) == 0 {
+		if u, err := resolveURL(src.BaseURL, "/sitemap.xml"); err == nil {
+			roots = []string{u.String()}
+		}
+	}
+	return roots
+}
+
+// fetchLocs fetches a sitemap (gunzipping .gz) and returns its <loc> values.
+func (e *Executor) fetchLocs(ctx context.Context, sitemapURL string) []string {
+	body, status, err := e.fetcher.Get(ctx, sitemapURL)
+	if err != nil || status != 200 || len(body) == 0 {
+		return nil
+	}
+	if strings.HasSuffix(sitemapURL, ".gz") {
+		if zr, zerr := gzip.NewReader(bytes.NewReader(body)); zerr == nil {
+			if un, rerr := io.ReadAll(io.LimitReader(zr, 64*1024*1024)); rerr == nil {
+				body = un
+			}
+			_ = zr.Close()
+		}
+	}
+	var out []string
+	for _, m := range locRe.FindAllStringSubmatch(string(body), -1) {
+		out = append(out, strings.TrimSpace(html.UnescapeString(m[1])))
+	}
+	return out
+}
+
+var locRe = regexp.MustCompile(`(?s)<loc>\s*(.*?)\s*</loc>`)
+
+func isSitemapURL(u string) bool {
+	l := strings.ToLower(u)
+	return strings.HasSuffix(l, ".xml") || strings.HasSuffix(l, ".xml.gz") || strings.Contains(l, "sitemap")
 }
 
 // ListProbe executes ONLY the recipe's list rule against the live source
@@ -241,6 +390,10 @@ func (e *Executor) ListProbe(ctx context.Context, src domain.Source) (int, error
 	return len(urls), err
 }
 
+// resetSitemapCache lets a verifier re-run ListDetailURLs and a crawl on
+// the same Executor without the first call's cache masking the second.
+func (e *Executor) resetSitemapCache() { e.sitemapLoaded, e.sitemapURLs = false, nil }
+
 // ListDetailURLs runs the recipe's list rule against the live listing
 // (HTML mode) and returns the same-host detail URLs it finds — the real
 // job pages, derived from the recipe itself. Verification and sample
@@ -248,6 +401,9 @@ func (e *Executor) ListProbe(ctx context.Context, src domain.Source) (int, error
 // validated are exactly the ones the recipe will crawl (not advice or
 // category pages a pattern matcher might surface).
 func (e *Executor) ListDetailURLs(ctx context.Context, src domain.Source) ([]string, error) {
+	if e.recipe.List.Mode == "sitemap" {
+		return e.loadSitemapURLs(ctx, src)
+	}
 	listURL, err := e.htmlListURL(src, 1)
 	if err != nil {
 		return nil, err
