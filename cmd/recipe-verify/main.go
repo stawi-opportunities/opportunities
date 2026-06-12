@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -73,7 +74,29 @@ func main() {
 		Status:  domain.SourceActive,
 	}
 
-	client := httpx.NewClient(20*time.Second, "opportunities-recipe-verify/1.0")
+	// Match production's fetch path: direct browser-emulated fetch first, with
+	// a scrape.do unblocker fallback for WAF/anti-bot sites when SCRAPEDO_TOKEN
+	// is set. Without the token, falls back to a plain browser-emulated client
+	// (fine for sites that don't block).
+	var client *httpx.Client
+	httpDoer := &http.Client{Timeout: 30 * time.Second}
+	if tok := os.Getenv("SCRAPEDO_TOKEN"); tok != "" {
+		unblocker, desc, _, uerr := httpx.NewUnblocker(httpx.UnblockerConfig{
+			ScrapeDoToken:  tok,
+			ScrapeDoRender: os.Getenv("SCRAPEDO_RENDER") == "true",
+			ScrapeDoSuper:  os.Getenv("SCRAPEDO_SUPER") == "true",
+			Timeout:        60 * time.Second,
+		}, httpDoer)
+		if uerr != nil {
+			fmt.Fprintf(os.Stderr, "warn: scrape.do disabled: %v\n", uerr)
+			client = httpx.NewClient(20*time.Second, "opportunities-recipe-verify/1.0")
+		} else {
+			fmt.Fprintf(os.Stderr, "note: scrape.do unblocker fallback enabled (%s)\n", desc)
+			client = httpx.NewClientFromDoer(httpx.NewFallbackDoer(httpDoer, unblocker), "opportunities-recipe-verify/1.0")
+		}
+	} else {
+		client = httpx.NewClient(20*time.Second, "opportunities-recipe-verify/1.0")
+	}
 	fetcher := recipe.NewHTTPFetcher(client)
 
 	// API mode extracts inline from the JSON response — there are no
