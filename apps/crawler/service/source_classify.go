@@ -7,6 +7,26 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
+// managedATSHosts are multi-tenant ATS platforms that a SINGLE aggregate source
+// crawls in full (one `api` recipe with a tenant list — see
+// docs/ops/crawl-framework.md). Discovering an individual board on one of these
+// hosts must NOT mint a standalone per-company source: those have no connector
+// (the connectors were migrated to recipes) and would error "connector not
+// registered" forever. The aggregate already covers the whole platform, and the
+// tenant list grows via cmd/ats-tenants / Common Crawl.
+var managedATSHosts = map[string]bool{
+	"jobs.lever.co":               true,
+	"jobs.eu.lever.co":            true,
+	"boards.greenhouse.io":        true,
+	"job-boards.greenhouse.io":    true,
+	"job-boards.eu.greenhouse.io": true,
+	"jobs.ashbyhq.com":            true,
+}
+
+// isManagedATSHost reports whether host (already lowercased, www-stripped) is a
+// multi-tenant ATS platform owned by an aggregate source.
+func isManagedATSHost(host string) bool { return managedATSHosts[host] }
+
 // classifyATS recognises hosted-ATS job-board URLs and returns the connector
 // type that extracts them most effectively (structured API/page connectors —
 // no LLM, no recipe) plus the canonical BaseURL including the company segment

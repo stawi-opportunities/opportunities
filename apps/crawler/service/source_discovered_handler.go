@@ -122,6 +122,17 @@ func (h *SourceDiscoveredHandler) Execute(ctx context.Context, payload any) erro
 		return nil
 	}
 
+	// Multi-tenant ATS platforms (Greenhouse, Lever, Ashby) are each owned by a
+	// single aggregate source that crawls every board. Drop discoveries of
+	// individual boards on these hosts — minting a per-company source here would
+	// create a connector-less row that errors "connector not registered" on every
+	// dispatch (the connectors were migrated to recipes). The aggregate already
+	// covers the platform; its tenant list grows via cmd/ats-tenants.
+	if isManagedATSHost(host) {
+		log.Debug("source-discovered: managed ATS host owned by an aggregate; dropping individual board")
+		return nil
+	}
+
 	// Intake research: recognise hosted-ATS boards (lever / greenhouse /
 	// smartrecruiters) and type them for their structured connector — the
 	// most effective extraction path (JSON API / structured page, no LLM,

@@ -42,6 +42,12 @@ type SourceGetter interface {
 	GetByID(ctx context.Context, id string) (*domain.Source, error)
 }
 
+// SourceStatusSetter lets the handler pause a source it can't crawl (no
+// connector and no recipe). Satisfied by *repository.SourceRepository.
+type SourceStatusSetter interface {
+	SetStatus(ctx context.Context, id string, status domain.SourceStatus) error
+}
+
 // CrawlRunStore is the crawl_runs state-machine slice the handler drives
 // (satisfied by *repository.CrawlRunRepository). It is an interface so the
 // handler can be unit-tested without a database.
@@ -67,13 +73,17 @@ type CrawlRequestDeps struct {
 	// rate-limited pump (see cmd/main.go) drains the inbox onto pl_ingested,
 	// so a crawl burst lands in the DB rather than slamming JetStream. nil →
 	// legacy direct-publish.
-	Inbox      *crawlinbox.Store
-	Sources    SourceGetter
-	Registry   *connectors.Registry
-	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
-	Archive    archive.Archive
-	Extractor  *extraction.Extractor // nil → skip AI enrichment
-	Normalizer *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
+	Inbox   *crawlinbox.Store
+	Sources SourceGetter
+	// StatusSetter (optional) pauses a source the handler can't crawl — no
+	// connector and no recipe (e.g. an individual ATS board whose connector was
+	// migrated to an aggregate recipe). nil disables auto-pause.
+	StatusSetter SourceStatusSetter
+	Registry     *connectors.Registry
+	Kinds        *opportunity.Registry // opportunity-kind registry; required by Verify
+	Archive      archive.Archive
+	Extractor    *extraction.Extractor // nil → skip AI enrichment
+	Normalizer   *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
 	// PageFetcher fetches per-URL HTML so URL-only iterator stubs
 	// (sitemap, universal AI link discovery) can be enriched with
 	// LLM-extracted title/description/issuing_entity BEFORE Verify.
@@ -297,13 +307,27 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	if !usedRecipe {
 		c, ok := h.deps.Registry.Get(src.Type)
 		if !ok {
+			// No connector AND no recipe → this source can't be crawled. The
+			// common case is an individual ATS board (greenhouse/lever) whose
+			// connector was migrated to an aggregate recipe; left active it
+			// burns a dispatch on every tick. Auto-pause it so it self-heals
+			// (an operator or the aggregate owns its coverage), then ack.
+			if h.deps.StatusSetter != nil {
+				if perr := h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused); perr != nil {
+					log.WithError(perr).Warn("crawl.request: auto-pause of connector-less source failed")
+				} else {
+					log.WithField("source_type", src.Type).
+						Warn("crawl.request: no connector — paused source to stop futile dispatch")
+				}
+			} else {
+				log.WithField("source_type", src.Type).Warn("crawl.request: no connector")
+			}
 			h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
 				RequestID: req.RequestID,
 				SourceID:  req.SourceID,
 				URL:       src.BaseURL,
 				ErrorCode: "connector_not_registered",
 			})
-			log.WithField("source_type", src.Type).Warn("crawl.request: no connector")
 			return nil
 		}
 		conn = c
