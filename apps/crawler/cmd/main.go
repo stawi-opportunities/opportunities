@@ -391,6 +391,7 @@ func main() {
 		IngestedQueue:       cfg.QueuePipelineIngestedName,
 		Inbox:               inboxStore,
 		Sources:             sourceRepo,
+		StatusSetter:        sourceRepo,
 		Registry:            registry,
 		Kinds:               reg,
 		Archive:             arch,

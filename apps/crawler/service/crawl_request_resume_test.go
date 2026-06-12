@@ -304,6 +304,53 @@ func TestCrawlRequestHandler_BoundedSliceResumeAndComplete(t *testing.T) {
 	}
 }
 
+// fakeStatusSetter records SetStatus calls.
+type fakeStatusSetter struct {
+	calls map[string]domain.SourceStatus
+}
+
+func (f *fakeStatusSetter) SetStatus(_ context.Context, id string, status domain.SourceStatus) error {
+	if f.calls == nil {
+		f.calls = map[string]domain.SourceStatus{}
+	}
+	f.calls[id] = status
+	return nil
+}
+
+// TestCrawlRequestHandler_NoConnectorAutoPauses verifies that a source with no
+// connector and no recipe (e.g. an individual ATS board whose connector was
+// migrated to an aggregate recipe) is auto-paused so it stops being dispatched.
+func TestCrawlRequestHandler_NoConnectorAutoPauses(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ctx, svc := frame.NewServiceWithContext(ctx, frame.WithName("no-conn-test"), frametests.WithNoopDriver())
+	defer svc.Stop(ctx)
+	svc.EventsManager().Add(&envCollector[eventsv1.CrawlPageCompletedV1]{topic: eventsv1.TopicCrawlPageCompleted})
+	go func() { _ = svc.Run(ctx, "") }()
+
+	srcs := &fakeSourceGetter{rows: map[string]*domain.Source{
+		"gh1": {BaseModel: domain.BaseModel{ID: "gh1"}, Type: domain.SourceGreenhouse,
+			BaseURL: "https://boards.greenhouse.io/stripe", Status: domain.SourceActive, Country: "US"},
+	}}
+	setter := &fakeStatusSetter{}
+	h := NewCrawlRequestHandler(CrawlRequestDeps{
+		Svc: svc, Sources: srcs, StatusSetter: setter,
+		Registry: connectors.NewRegistry(), // empty → no connector for greenhouse
+	})
+
+	env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
+		RequestID: "r", SourceID: "gh1", Mode: "auto", Attempt: 1,
+	})
+	raw, _ := json.Marshal(env)
+	rm := json.RawMessage(raw)
+	if err := h.Execute(ctx, &rm); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if setter.calls["gh1"] != domain.SourcePaused {
+		t.Fatalf("connector-less source not auto-paused: calls=%v", setter.calls)
+	}
+}
+
 // TestCrawlRequestHandler_SingleFlightDropsDuplicateTick verifies a scheduled
 // tick that arrives while a run is already active is dropped (no second pass).
 func TestCrawlRequestHandler_SingleFlightDropsDuplicateTick(t *testing.T) {
