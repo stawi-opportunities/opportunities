@@ -125,8 +125,15 @@ func (e *Executor) collectDetailURLs(listPC *PageContext, listURL string) []stri
 		if perr != nil {
 			return
 		}
+		// Resolve every link against the listing URL so a relative href
+		// ("/job/123") becomes absolute regardless of whether the recipe
+		// author remembered the absolute_url transform — otherwise the
+		// downstream same-host check drops it and the board silently
+		// yields zero detail URLs.
 		if link, _ := Evaluate(e.recipe.List.Link, itemPC); link != "" {
-			urls = append(urls, link)
+			if abs, err := resolveURL(listURL, link); err == nil {
+				urls = append(urls, abs.String())
+			}
 		}
 	})
 	return urls
