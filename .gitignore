@@ -22,3 +22,7 @@ bin/
 /node_modules/
 ui/static/app/
 ui/static/admin-app/
+
+# stray go-run binaries
+/recipe-verify
+/recipe-gen
