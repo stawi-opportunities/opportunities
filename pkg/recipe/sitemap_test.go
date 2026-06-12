@@ -17,17 +17,17 @@ func TestSitemapMode_EnumeratesAndExtracts(t *testing.T) {
 	var base string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprintf(w, `<sitemapindex><sitemap><loc>%s/sitemap-jobs.xml</loc></sitemap></sitemapindex>`, base)
+		_, _ = fmt.Fprintf(w, `<sitemapindex><sitemap><loc>%s/sitemap-jobs.xml</loc></sitemap></sitemapindex>`, base)
 	})
 	mux.HandleFunc("/sitemap-jobs.xml", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprintf(w, `<urlset><url><loc>%s/job/1</loc></url><url><loc>%s/job/2</loc></url><url><loc>%s/about</loc></url></urlset>`, base, base, base)
+		_, _ = fmt.Fprintf(w, `<urlset><url><loc>%s/job/1</loc></url><url><loc>%s/job/2</loc></url><url><loc>%s/about</loc></url></urlset>`, base, base, base)
 	})
 	job := func(title string) string {
 		return `<html><head><script type="application/ld+json">{"@type":"JobPosting","title":"` + title + `","description":"We are hiring a great engineer to do great distributed-systems work for the team.","hiringOrganization":{"name":"Acme"},"url":"x","jobLocation":{"address":{"addressCountry":"KE"}}}</script></head><body></body></html>`
 	}
-	mux.HandleFunc("/job/1", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, job("Engineer One")) })
-	mux.HandleFunc("/job/2", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, job("Engineer Two")) })
-	mux.HandleFunc("/about", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "<html>about</html>") })
+	mux.HandleFunc("/job/1", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, job("Engineer One")) })
+	mux.HandleFunc("/job/2", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, job("Engineer Two")) })
+	mux.HandleFunc("/about", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "<html>about</html>") })
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	base = srv.URL
