@@ -14,7 +14,7 @@ export default function SignupCta() {
     const section = document.getElementById('signup-cta-section');
     if (!section) return;
 
-    // Authenticated visitors see nothing ΓÇö one fewer "please sign up"
+    // Authenticated visitors see nothing -- one fewer "please sign up"
     // reminder on every page they visit while logged in.
     if (state === 'authenticated') {
       section.style.display = 'none';

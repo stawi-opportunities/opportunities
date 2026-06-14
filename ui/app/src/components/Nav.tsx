@@ -3,11 +3,11 @@ import { StawiAuth } from "./StawiAuth";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
 const browseItems = [
-  { href: "/jobs/",         emoji: "≡ƒÆ╝", label: "Jobs",         sub: "Full-time, remote & more" },
-  { href: "/scholarships/", emoji: "≡ƒÄô", label: "Scholarships", sub: "Grants & bursaries" },
-  { href: "/tenders/",      emoji: "≡ƒôï", label: "Tenders",      sub: "RFPs & procurement" },
-  { href: "/deals/",        emoji: "≡ƒÅ╖∩╕Å", label: "Deals",        sub: "Curated discounts" },
-  { href: "/funding/",      emoji: "≡ƒÆ░", label: "Funding",      sub: "Grants & investment" },
+  { href: "/jobs/",         emoji: '\uD83D\uDCBC', label: "Jobs",         sub: "Full-time, remote & more" },
+  { href: "/scholarships/", emoji: '\uD83C\uDF93', label: "Scholarships", sub: "Grants & bursaries" },
+  { href: "/tenders/",      emoji: '\uD83D\uDCCB', label: "Tenders",      sub: "RFPs & procurement" },
+  { href: "/deals/",        emoji: '\uD83C\uDFF7\uFE0F', label: "Deals",        sub: "Curated discounts" },
+  { href: "/funding/",      emoji: '\uD83D\uDCB0', label: "Funding",      sub: "Grants & investment" },
 ];
 
 function BrowseDropdown() {
@@ -110,7 +110,7 @@ export default function Nav() {
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8">
 
         {/* Logo */}
-        <a href="/" className="flex-shrink-0" aria-label="Stawi ΓÇö Growing together">
+        <a href="/" className="flex-shrink-0" aria-label={"Stawi \u2014 Growing together"}>
           <img src="/images/logo.svg" alt="Stawi" height="40" className="h-10 w-auto" />
         </a>
 

@@ -8,7 +8,7 @@ import { SearchForm } from './search/SearchForm';
 import { useI18n } from '@/i18n/I18nProvider';
 
 /**
- * /search/ â€” query + filters + facets + pagination. Reads initial state
+ * /search/ -- query + filters + facets + pagination. Reads initial state
  * from the URL so deep links are shareable; writes back on changes via
  * history.replaceState so the back button stays predictable without full
  * navigations.
@@ -63,7 +63,7 @@ export default function Search() {
           </svg>
           {t('search.filters')}
           {hasActiveFilters && (
-            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">â€¢</span>
+            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">&bull;</span>
           )}
         </button>
         {hasActiveFilters && (
