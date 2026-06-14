@@ -32,7 +32,7 @@ const STATUS_KEYS: Record<string, StringKey> = {
 
 export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: Props) {
   const { t } = useI18n();
-  const title = snapshot?.title ?? t('common.loading');
+  const title = snapshot?.title ?? item.opportunity_id;
   const company = snapshot?.company ?? '';
   const location = snapshot?.location ?? '';
 

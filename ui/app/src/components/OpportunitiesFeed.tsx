@@ -7,7 +7,9 @@ import {
   type FeedItem,
   type OpportunityFilter,
 } from '@/api/candidates';
-import { OpportunityCard } from './OpportunityCard';
+import { fetchSnapshot } from '@/api/snapshot';
+import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
+import { OpportunityCard, type OpportunitySnapshot } from './OpportunityCard';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
 
@@ -33,6 +35,24 @@ function writeFilterToURL(filter: OpportunityFilter) {
   window.history.pushState({}, '', url.toString());
 }
 
+function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
+  if (!snap) return null;
+  return {
+    title: snap.title,
+    company: snap.issuing_entity,
+    location: snap.anchor_location
+      ? [snap.anchor_location.city, snap.anchor_location.region, snap.anchor_location.country]
+          .filter(Boolean)
+          .join(', ')
+      : undefined,
+    posted_at: snap.posted_at,
+    salary_min: snap.amount_min,
+    salary_max: snap.amount_max,
+    currency: snap.currency,
+    kind: snap.kind,
+  };
+}
+
 export function OpportunitiesFeed() {
   const { t } = useI18n();
   const [filter, setFilter] = useState<OpportunityFilter>(readFilterFromURL);
@@ -40,6 +60,7 @@ export function OpportunitiesFeed() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [snapshots, setSnapshots] = useState<Record<string, OpportunitySnapshot | null>>({});
 
   const load = useCallback(async (f: OpportunityFilter, cursor?: string) => {
     setLoading(true);
@@ -58,6 +79,28 @@ export function OpportunitiesFeed() {
   useEffect(() => {
     void load(filter);
   }, [filter, load]);
+
+  useEffect(() => {
+    const ids = items
+      .filter((it) => !(it.opportunity_id in snapshots))
+      .map((it) => it.opportunity_id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.allSettled(ids.map((id) => fetchSnapshot(id)));
+      if (cancelled) return;
+      const map: Record<string, OpportunitySnapshot | null> = {};
+      ids.forEach((id, i) => {
+        const r = results[i] as PromiseFulfilledResult<ApiSnapshot | null> | PromiseRejectedResult;
+        const snap = r.status === 'fulfilled' ? r.value : null;
+        map[id] = toCardSnapshot(snap);
+      });
+      setSnapshots((prev) => ({ ...prev, ...map }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
 
   const onSelectFilter = (id: OpportunityFilter) => {
     if (id === filter) return;
@@ -169,7 +212,7 @@ export function OpportunitiesFeed() {
               <OpportunityCard
                 key={it.opportunity_id}
                 item={it}
-                snapshot={null}
+                snapshot={snapshots[it.opportunity_id] ?? null}
                 onStar={onStar}
                 onUnstar={onUnstar}
                 onApply={onApply}
