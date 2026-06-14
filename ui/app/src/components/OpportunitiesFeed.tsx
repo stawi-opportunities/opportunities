@@ -81,13 +81,13 @@ export function OpportunitiesFeed() {
   }, [filter, load]);
 
   useEffect(() => {
-    const ids = items.filter((it) => !(it.opportunity_id in snapshots)).map((it) => it.opportunity_id);
+    const ids = items
+      .filter((it) => !(it.opportunity_id in snapshots))
+      .map((it) => it.opportunity_id);
     if (ids.length === 0) return;
     let cancelled = false;
     (async () => {
-      const results = await Promise.allSettled(
-        ids.map((id) => fetchSnapshot(id))
-      );
+      const results = await Promise.allSettled(ids.map((id) => fetchSnapshot(id)));
       if (cancelled) return;
       const map: Record<string, OpportunitySnapshot | null> = {};
       ids.forEach((id, i) => {
