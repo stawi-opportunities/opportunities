@@ -33,6 +33,7 @@ const islands: Island[] = [
   { id: 'mount-auth-callback', component: () => import('@/components/AuthCallback') },
   { id: 'mount-footer', component: () => import('@/components/Footer') },
   { id: 'mount-get-started-cta', component: () => import('@/components/GetStartedCta') },
+  { id: 'mount-scroll-top', component: () => import('@/components/common/ScrollToTop') },
 ];
 
 async function hydrate(island: Island, el: HTMLElement) {
