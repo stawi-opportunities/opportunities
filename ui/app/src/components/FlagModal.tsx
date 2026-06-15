@@ -86,7 +86,10 @@ export default function FlagModal({ slug }: { slug: string }) {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div ref={dialogRef} className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
+      <div
+        ref={dialogRef}
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+      >
         <h3 id="flag-modal-title" className="text-lg font-semibold text-gray-900">
           {t('flag.title')}
         </h3>

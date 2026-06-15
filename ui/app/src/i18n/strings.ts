@@ -1270,7 +1270,7 @@ const fr: Strings = {
   'footer.explore': 'Explorer',
   'footer.jobs': 'Emplois',
   'footer.scholarships': 'Bourses',
-  'footer.tenders': 'Appels d\'offres',
+  'footer.tenders': "Appels d'offres",
   'footer.deals': 'Bonnes affaires',
   'footer.funding': 'Financement',
 };

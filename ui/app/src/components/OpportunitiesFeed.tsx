@@ -220,7 +220,9 @@ export function OpportunitiesFeed() {
             ))}
           </ul>
           <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>{items.length} {t('feed.opportunities')}</span>
+            <span>
+              {items.length} {t('feed.opportunities')}
+            </span>
             {nextCursor && (
               <button
                 type="button"
