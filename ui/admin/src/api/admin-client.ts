@@ -6,7 +6,7 @@ import { getConfig } from '@/utils/config';
 // non-React helpers share token + role state.
 let instance: AuthRuntime | null = null;
 
-function authRuntime(): AuthRuntime {
+export function authRuntime(): AuthRuntime {
   if (instance) return instance;
   const cfg = getConfig();
   instance = createAuthRuntime({
