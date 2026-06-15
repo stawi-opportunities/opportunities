@@ -1,62 +1,53 @@
 import { useParams } from 'react-router-dom';
-import {
-  getRawPayloadBodyURL,
-  reparseRawPayload,
-} from '@/api/admin-client';
-import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { getRawPayloadBodyURL, reparseRawPayload } from '@/api/admin-client';
+import { Button, ErrorBlock, useToast } from '@/components/ui';
 
-// RawPayloadViewer wraps /admin/raw_payloads/{id}/body in a sandboxed
-// iframe so the operator can eyeball the captured HTML next to a
-// re-extract button. The iframe uses sandbox="allow-same-origin" only —
-// no script execution, no top-navigation — so a malicious captured
-// page can't break out of the admin UI.
 export function RawPayloadViewer() {
   const { id } = useParams<{ id: string }>();
-  const [reparseMsg, setReparseMsg] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  if (!id) return <p>No raw_payload id supplied.</p>;
+  const reparse = useMutation({
+    mutationFn: () => reparseRawPayload(id ?? ''),
+    onSuccess: (res) => {
+      toast(`Queued ${res.queued} raw_payload(s) for re-extraction.`, { type: 'success' });
+    },
+    onError: (e: Error) => {
+      toast(`Reparse failed: ${e.message}`, { type: 'error' });
+    },
+  });
 
-  const handleReparse = async () => {
-    setReparseMsg('Queuing…');
-    try {
-      const res = await reparseRawPayload(id);
-      setReparseMsg(`Queued ${res.queued} raw_payload(s) for re-extraction.`);
-    } catch (e) {
-      setReparseMsg(
-        `Reparse failed: ${e instanceof Error ? e.message : String(e)}`
-      );
-    }
-  };
+  if (!id) return <ErrorBlock message="No raw_payload id supplied." />;
 
   return (
     <div>
-      <header
+      <div
         style={{
           display: 'flex',
-          alignItems: 'baseline',
+          alignItems: 'center',
           gap: '1rem',
           flexWrap: 'wrap',
+          marginBottom: '1rem',
         }}
       >
-        <h1 style={{ margin: 0 }}>
+        <h1 style={{ margin: 0, fontSize: '1.15rem' }}>
           Raw payload <code>{id}</code>
         </h1>
-        <a href={getRawPayloadBodyURL(id)} target="_blank" rel="noreferrer">
+        <a href={getRawPayloadBodyURL(id)} target="_blank" rel="noreferrer" style={{ fontSize: '0.88rem' }}>
           Open standalone →
         </a>
-        <button type="button" onClick={handleReparse}>
+        <Button size="sm" variant="outline" loading={reparse.isPending} onClick={() => reparse.mutate()}>
           Reparse
-        </button>
-        {reparseMsg && <small>{reparseMsg}</small>}
-      </header>
+        </Button>
+      </div>
       <iframe
         title={`raw payload ${id}`}
         src={getRawPayloadBodyURL(id)}
         style={{
-          marginTop: '1rem',
           width: '100%',
           height: 'calc(100vh - 220px)',
-          border: '1px solid #ccc',
+          border: '1px solid var(--c-border)',
+          borderRadius: 'var(--radius-md)',
         }}
         sandbox="allow-same-origin"
       />

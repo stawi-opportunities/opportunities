@@ -1,56 +1,79 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  getOpportunityTrace,
-  type OpportunityTraceResponse,
-} from '@/api/admin-client';
+import { useQuery } from '@tanstack/react-query';
+import { getOpportunityTrace } from '@/api/admin-client';
+import { Card, ErrorBlock, LoadingSkeleton, StatusBadge } from '@/components/ui';
 
-// OpportunityTrace renders GET /admin/trace/opportunities/{slug}: every
-// pipeline variant that joined this canonical slug, with timestamps so
-// operators can see when each upstream source last contributed.
+type SortKey = 'ingested_at' | 'joined_at' | 'source';
+type SortDir = 'asc' | 'desc';
+
 export function OpportunityTrace() {
   const { slug } = useParams<{ slug: string }>();
-  const [data, setData] = useState<OpportunityTraceResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('joined_at');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  useEffect(() => {
-    if (!slug) return;
-    setData(null);
-    setErr(null);
-    getOpportunityTrace(slug)
-      .then(setData)
-      .catch((e: unknown) =>
-        setErr(e instanceof Error ? e.message : String(e))
-      );
-  }, [slug]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['opportunity-trace', slug],
+    queryFn: () => getOpportunityTrace(slug ?? ''),
+    enabled: !!slug,
+  });
 
-  if (err) return <pre style={{ color: 'crimson' }}>{err}</pre>;
-  if (!data) return <p>Loading opportunity…</p>;
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
+
+  if (!slug) return <ErrorBlock message="Missing opportunity slug" />;
+  if (isLoading) return <LoadingSkeleton type="card" />;
+  if (error) return <ErrorBlock message="Failed to load opportunity" detail={String(error)} />;
+  if (!data) return null;
+
+  const sorted = [...data.variants].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortKey === 'source') return a.source.id.localeCompare(b.source.id) * dir;
+    return (new Date(a[sortKey]).getTime() - new Date(b[sortKey]).getTime()) * dir;
+  });
+
+  const SortIcon = () => <span style={{ fontSize: '0.7rem', marginLeft: '0.2rem' }}>{sortDir === 'asc' ? '▲' : '▼'}</span>;
 
   return (
     <div>
-      <header>
-        <h1>{data.slug}</h1>
-        <p>{data.variant_count} variant(s) joined this canonical.</p>
-      </header>
+      <div style={{ marginBottom: '1.25rem' }}>
+        <h1 style={{ margin: 0 }}>{data.slug}</h1>
+        <p style={{ margin: '0.25rem 0 0', color: 'var(--c-text-secondary)', fontSize: '0.88rem' }}>
+          {data.variant_count} variant(s) joined this canonical.
+        </p>
+      </div>
 
-      <section>
-        {data.variants.length === 0 ? (
-          <p style={{ color: '#666' }}>
+      {sorted.length === 0 ? (
+        <Card>
+          <p style={{ color: 'var(--c-text-secondary)', margin: 0 }}>
             No variants in the 7-day Postgres retention window.
           </p>
-        ) : (
+        </Card>
+      ) : (
+        <Card padding={false}>
           <table>
             <thead>
               <tr>
                 <th>Variant</th>
-                <th>Source</th>
-                <th>Ingested</th>
-                <th>Joined</th>
+                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('source')}>
+                  Source{sortKey === 'source' && <SortIcon />}
+                </th>
+                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('ingested_at')}>
+                  Ingested{sortKey === 'ingested_at' && <SortIcon />}
+                </th>
+                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('joined_at')}>
+                  Joined{sortKey === 'joined_at' && <SortIcon />}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {data.variants.map((v) => (
+              {sorted.map((v) => (
                 <tr key={v.variant_id}>
                   <td>
                     <Link to={`/variants/${encodeURIComponent(v.variant_id)}`}>
@@ -61,16 +84,16 @@ export function OpportunityTrace() {
                     <Link to={`/sources/${encodeURIComponent(v.source.id)}`}>
                       {v.source.id}
                     </Link>{' '}
-                    ({v.source.type})
+                    <StatusBadge variant="neutral" label={v.source.type} size="sm" dot={false} />
                   </td>
-                  <td>{new Date(v.ingested_at).toLocaleString()}</td>
-                  <td>{new Date(v.joined_at).toLocaleString()}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{new Date(v.ingested_at).toLocaleString()}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{new Date(v.joined_at).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </section>
+        </Card>
+      )}
     </div>
   );
 }

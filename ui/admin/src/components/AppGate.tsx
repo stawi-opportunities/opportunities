@@ -1,12 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { getRoles } from '@/api/admin-client';
 
-// Role-based mount per the admin-trace plan.
-//
-// The API's requireAdmin is the actual security boundary — this gate is
-// defense-in-depth + a UX nicety so non-admins don't see a half-rendered
-// page that 403s on every request. Renders a 404-shaped page on denial
-// to avoid leaking the existence of the admin surface to non-admins.
 export function AppGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'checking' | 'ok' | 'denied'>('checking');
 
