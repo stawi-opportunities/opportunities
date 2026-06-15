@@ -201,6 +201,7 @@ export interface Strings {
   'feed.empty': string;
   'feed.tryAllFilter': string;
   'feed.loadError': string;
+  'feed.opportunities': string;
 
   // ---- Dashboard ----
   'dash.title': string;
@@ -336,6 +337,12 @@ export interface Strings {
   'footer.terms': string;
   'footer.rights': string;
   'footer.madeBy': string;
+  'footer.explore': string;
+  'footer.jobs': string;
+  'footer.scholarships': string;
+  'footer.tenders': string;
+  'footer.deals': string;
+  'footer.funding': string;
 }
 
 // ---------------------------------------------------------------------------
@@ -501,6 +508,7 @@ const en: Strings = {
   'feed.empty': 'Nothing to show here yet.',
   'feed.tryAllFilter': "Try the 'All' filter.",
   'feed.loadError': "Couldn't load your opportunities.",
+  'feed.opportunities': 'opportunities',
 
   'onboard.step': 'Step',
   'onboard.of': 'of',
@@ -637,6 +645,12 @@ const en: Strings = {
   'footer.terms': 'Terms',
   'footer.rights': 'All rights reserved.',
   'footer.madeBy': 'A product of',
+  'footer.explore': 'Explore',
+  'footer.jobs': 'Jobs',
+  'footer.scholarships': 'Scholarships',
+  'footer.tenders': 'Tenders',
+  'footer.deals': 'Deals',
+  'footer.funding': 'Funding',
 };
 
 // ---------------------------------------------------------------------------
@@ -803,6 +817,7 @@ const es: Strings = {
   'feed.empty': 'Aún no hay nada que mostrar.',
   'feed.tryAllFilter': "Prueba el filtro 'Todas'.",
   'feed.loadError': 'No pudimos cargar tus oportunidades.',
+  'feed.opportunities': 'oportunidades',
 
   'onboard.step': 'Paso',
   'onboard.of': 'de',
@@ -939,6 +954,12 @@ const es: Strings = {
   'footer.terms': 'Términos',
   'footer.rights': 'Todos los derechos reservados.',
   'footer.madeBy': 'Un producto de',
+  'footer.explore': 'Explorar',
+  'footer.jobs': 'Empleos',
+  'footer.scholarships': 'Becas',
+  'footer.tenders': 'Licitaciones',
+  'footer.deals': 'Ofertas',
+  'footer.funding': 'Financiamiento',
 };
 
 // ---------------------------------------------------------------------------
@@ -1106,6 +1127,7 @@ const fr: Strings = {
   'feed.empty': 'Rien à afficher pour le moment.',
   'feed.tryAllFilter': 'Essayez le filtre « Tout ».',
   'feed.loadError': 'Impossible de charger vos opportunités.',
+  'feed.opportunities': 'opportunités',
 
   'onboard.step': 'Étape',
   'onboard.of': 'sur',
@@ -1245,6 +1267,12 @@ const fr: Strings = {
   'footer.terms': 'Conditions',
   'footer.rights': 'Tous droits réservés.',
   'footer.madeBy': 'Un produit de',
+  'footer.explore': 'Explorer',
+  'footer.jobs': 'Emplois',
+  'footer.scholarships': 'Bourses',
+  'footer.tenders': "Appels d'offres",
+  'footer.deals': 'Bonnes affaires',
+  'footer.funding': 'Financement',
 };
 
 // ---------------------------------------------------------------------------
@@ -1411,6 +1439,7 @@ const de: Strings = {
   'feed.empty': 'Hier gibt es noch nichts zu sehen.',
   'feed.tryAllFilter': 'Versuche den Filter „Alle“.',
   'feed.loadError': 'Deine Chancen konnten nicht geladen werden.',
+  'feed.opportunities': 'M\u00f6glichkeiten',
 
   'onboard.step': 'Schritt',
   'onboard.of': 'von',
@@ -1549,6 +1578,12 @@ const de: Strings = {
   'footer.terms': 'AGB',
   'footer.rights': 'Alle Rechte vorbehalten.',
   'footer.madeBy': 'Ein Produkt von',
+  'footer.explore': 'Entdecken',
+  'footer.jobs': 'Stellen',
+  'footer.scholarships': 'Stipendien',
+  'footer.tenders': 'Ausschreibungen',
+  'footer.deals': 'Angebote',
+  'footer.funding': 'Förderung',
 };
 
 // ---------------------------------------------------------------------------
@@ -1715,6 +1750,7 @@ const pt: Strings = {
   'feed.empty': 'Nada para mostrar por enquanto.',
   'feed.tryAllFilter': "Experimente o filtro 'Todas'.",
   'feed.loadError': 'Não foi possível carregar suas oportunidades.',
+  'feed.opportunities': 'oportunidades',
 
   'onboard.step': 'Passo',
   'onboard.of': 'de',
@@ -1851,6 +1887,12 @@ const pt: Strings = {
   'footer.terms': 'Termos',
   'footer.rights': 'Todos os direitos reservados.',
   'footer.madeBy': 'Um produto de',
+  'footer.explore': 'Explorar',
+  'footer.jobs': 'Vagas',
+  'footer.scholarships': 'Bolsas',
+  'footer.tenders': 'Licitações',
+  'footer.deals': 'Ofertas',
+  'footer.funding': 'Financiamento',
 };
 
 // ---------------------------------------------------------------------------
@@ -2016,6 +2058,7 @@ const ja: Strings = {
   'feed.empty': 'まだ表示するものがありません。',
   'feed.tryAllFilter': '「すべて」フィルターをお試しください。',
   'feed.loadError': '求人情報を読み込めませんでした。',
+  'feed.opportunities': '機会',
 
   'onboard.step': 'ステップ',
   'onboard.of': '/',
@@ -2150,6 +2193,12 @@ const ja: Strings = {
   'footer.terms': '利用規約',
   'footer.rights': 'All rights reserved.',
   'footer.madeBy': '提供元',
+  'footer.explore': '探す',
+  'footer.jobs': '求人',
+  'footer.scholarships': '奨学金',
+  'footer.tenders': '入札',
+  'footer.deals': 'お得',
+  'footer.funding': '資金調達',
 };
 
 // ---------------------------------------------------------------------------
@@ -2315,6 +2364,7 @@ const ar: Strings = {
   'feed.empty': 'لا يوجد شيء لعرضه بعد.',
   'feed.tryAllFilter': 'جرّب فلتر "الكل".',
   'feed.loadError': 'تعذر تحميل فرصك.',
+  'feed.opportunities': 'فرصة',
 
   'onboard.step': 'الخطوة',
   'onboard.of': 'من',
@@ -2449,6 +2499,12 @@ const ar: Strings = {
   'footer.terms': 'الشروط',
   'footer.rights': 'جميع الحقوق محفوظة.',
   'footer.madeBy': 'منتج من',
+  'footer.explore': 'استكشاف',
+  'footer.jobs': 'وظائف',
+  'footer.scholarships': 'منح دراسية',
+  'footer.tenders': 'مناقصات',
+  'footer.deals': 'صفقات',
+  'footer.funding': 'تمويل',
 };
 
 // ---------------------------------------------------------------------------
@@ -2613,6 +2669,7 @@ const zh: Strings = {
   'feed.empty': '暂无内容。',
   'feed.tryAllFilter': '试试“全部”筛选。',
   'feed.loadError': '无法加载您的机会。',
+  'feed.opportunities': '机会',
 
   'onboard.step': '第',
   'onboard.of': '步，共',
@@ -2738,6 +2795,12 @@ const zh: Strings = {
   'footer.terms': '条款',
   'footer.rights': '保留所有权利。',
   'footer.madeBy': '出品方',
+  'footer.explore': '浏览',
+  'footer.jobs': '工作',
+  'footer.scholarships': '奖学金',
+  'footer.tenders': '招标',
+  'footer.deals': '优惠',
+  'footer.funding': '融资',
 };
 
 export const CATALOG: Record<LangCode, Strings> = {

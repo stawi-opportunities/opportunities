@@ -101,7 +101,7 @@ function BrowseDropdown() {
 function MobileMenu({ open }: { open: boolean }) {
   if (!open) return null;
   return (
-    <div className="border-t border-gray-100 bg-white px-4 pb-4 pt-2 md:hidden">
+    <div className="border-t border-gray-100 bg-white px-4 pb-4 pt-2 md:hidden animate-slide-down">
       <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
         Browse
       </p>
