@@ -5,9 +5,10 @@ interface CardProps {
   children: ReactNode;
   footer?: ReactNode;
   padding?: boolean;
+  style?: React.CSSProperties;
 }
 
-export function Card({ title, children, footer, padding = true }: CardProps) {
+export function Card({ title, children, footer, padding = true, style }: CardProps) {
   return (
     <section
       style={{
@@ -16,6 +17,7 @@ export function Card({ title, children, footer, padding = true }: CardProps) {
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-sm)',
         animation: 'slideUp 0.3s ease-out',
+        ...style,
       }}
     >
       {title && (

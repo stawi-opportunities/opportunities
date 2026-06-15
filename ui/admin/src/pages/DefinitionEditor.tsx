@@ -1,125 +1,144 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteDefinition,
   getDefinition,
   putDefinition,
 } from '@/api/admin-client';
+import { Button, ConfirmDialog, ErrorBlock, LoadingSkeleton, useToast } from '@/components/ui';
 
-// DefinitionEditor renders a textarea-driven editor for a single
-// definition YAML. PUT broadcasts opportunities.definitions.changed.v1
-// so every crawler/api/worker replica reloads the new body within
-// seconds — operators can iterate on kind YAMLs, prompts, connector
-// specs, and seeds directly in the browser without a redeploy.
 export function DefinitionEditor() {
   const { type, name } = useParams<{ type: string; name: string }>();
   const navigate = useNavigate();
-  const [body, setBody] = useState<string>('');
-  const [original, setOriginal] = useState<string>('');
-  const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [body, setBody] = useState('');
+  const [showDelete, setShowDelete] = useState(false);
+
+  const { data: original, isLoading, error } = useQuery({
+    queryKey: ['definition', type, name],
+    queryFn: () => getDefinition(type ?? '', name ?? ''),
+    enabled: !!type && !!name,
+  });
 
   useEffect(() => {
-    if (!type || !name) return;
-    setLoading(true);
-    setStatus(null);
-    getDefinition(type, name)
-      .then((b) => {
-        setBody(b);
-        setOriginal(b);
-        setLoading(false);
-      })
-      .catch((e: unknown) => {
-        setStatus(
-          `Load failed: ${e instanceof Error ? e.message : String(e)}`
-        );
-        setLoading(false);
-      });
-  }, [type, name]);
+    if (original !== undefined) setBody(original);
+  }, [original]);
 
-  const dirty = body !== original;
+  const dirty = original !== undefined && body !== original;
 
-  const save = async () => {
-    if (!type || !name) return;
-    setStatus('Saving…');
-    try {
-      await putDefinition(type, name, body);
-      setOriginal(body);
-      setStatus('Saved — broadcasting to crawlers.');
-    } catch (e) {
-      setStatus(
-        `Save failed: ${e instanceof Error ? e.message : String(e)}`
-      );
-    }
-  };
+  const save = useMutation({
+    mutationFn: () => putDefinition(type ?? '', name ?? '', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['definition', type, name] });
+      queryClient.invalidateQueries({ queryKey: ['definitions'] });
+      toast('Saved — broadcasting to crawlers.', { type: 'success' });
+    },
+    onError: (e: Error) => {
+      toast(`Save failed: ${e.message}`, { type: 'error' });
+    },
+  });
 
-  const remove = async () => {
-    if (!type || !name) return;
-    if (!window.confirm(`Delete ${type}/${name}? This cannot be undone.`)) {
-      return;
-    }
-    setStatus('Deleting…');
-    try {
-      await deleteDefinition(type, name);
+  const remove = useMutation({
+    mutationFn: () => deleteDefinition(type ?? '', name ?? ''),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['definitions'] });
+      toast('Definition deleted.', { type: 'success' });
       navigate('/definitions');
-    } catch (e) {
-      setStatus(
-        `Delete failed: ${e instanceof Error ? e.message : String(e)}`
-      );
-    }
-  };
+    },
+    onError: (e: Error) => {
+      toast(`Delete failed: ${e.message}`, { type: 'error' });
+      setShowDelete(false);
+    },
+  });
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (dirty && !save.isPending) save.mutate();
+      }
+    },
+    [dirty, save]
+  );
+
+  if (!type || !name) return <ErrorBlock message="Missing definition type or name" />;
+  if (isLoading) return <LoadingSkeleton type="card" />;
+  if (error) return <ErrorBlock message="Failed to load definition" detail={String(error)} />;
 
   return (
     <div>
-      <header>
-        <h1>
-          <Link to="/definitions">definitions</Link>
-          {' / '}
+      <div style={{ marginBottom: '0.75rem' }}>
+        <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
           {type} / {name}
         </h1>
-        {dirty && <small style={{ color: '#a60' }}>unsaved changes</small>}
-      </header>
-
-      {loading ? (
-        <p>Loading…</p>
-      ) : (
-        <>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+        {dirty && (
+          <span
             style={{
-              width: '100%',
-              height: '60vh',
-              fontFamily:
-                'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              fontSize: '0.85rem',
-              padding: '0.5rem',
-              boxSizing: 'border-box',
-            }}
-            spellCheck={false}
-          />
-          <div
-            style={{
-              marginTop: '0.5rem',
-              display: 'flex',
-              gap: '0.5rem',
-              alignItems: 'center',
+              display: 'inline-block',
+              marginTop: '0.25rem',
+              fontSize: '0.78rem',
+              color: 'var(--c-warning)',
+              fontWeight: 500,
             }}
           >
-            <button type="button" onClick={save} disabled={!dirty}>
-              Save
-            </button>
-            <button
-              type="button"
-              onClick={remove}
-              style={{ color: 'crimson' }}
-            >
-              Delete
-            </button>
-            {status && <small>{status}</small>}
-          </div>
-        </>
-      )}
+            Unsaved changes
+          </span>
+        )}
+      </div>
+
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={handleKeyDown}
+        spellCheck={false}
+        style={{
+          width: '100%',
+          height: '60vh',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.85rem',
+          padding: '0.75rem',
+          boxSizing: 'border-box',
+          border: `1px solid ${dirty ? 'var(--c-warning)' : 'var(--c-border)'}`,
+          borderRadius: 'var(--radius-md)',
+          outline: 'none',
+          resize: 'vertical',
+          tabSize: 2,
+          lineHeight: 1.5,
+        }}
+      />
+
+      <div
+        style={{
+          marginTop: '0.75rem',
+          display: 'flex',
+          gap: '0.5rem',
+          alignItems: 'center',
+        }}
+      >
+        <Button onClick={() => save.mutate()} disabled={!dirty} loading={save.isPending}>
+          Save
+        </Button>
+        <Button variant="danger" onClick={() => setShowDelete(true)}>
+          Delete
+        </Button>
+        {save.isSuccess && (
+          <small style={{ color: 'var(--c-success)' }}>Saved</small>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={showDelete}
+        title="Delete definition"
+        message={`Delete ${type}/${name}? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        busy={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        onCancel={() => setShowDelete(false)}
+      />
     </div>
   );
 }

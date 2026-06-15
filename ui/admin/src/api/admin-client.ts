@@ -277,11 +277,13 @@ export const reparseSource = (id: string, since: string) =>
 export const getRawPayloadBodyURL = (id: string): string =>
   `/admin/raw_payloads/${id}/body`;
 
-export const listSources = async (limit: number = 100): Promise<SourceListItem[]> => {
-  const res = await fetchAdminJSON<SourceListResponse>(
-    `/admin/sources?limit=${limit}`
+export const listSources = async (
+  limit: number = 100,
+  offset: number = 0
+): Promise<SourceListResponse> => {
+  return fetchAdminJSON<SourceListResponse>(
+    `/admin/sources?limit=${limit}&offset=${offset}`
   );
-  return res.sources;
 };
 
 // rescoreSource force-recomputes a source's freshness score +
