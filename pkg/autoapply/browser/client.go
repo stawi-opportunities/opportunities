@@ -7,15 +7,18 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 
@@ -35,6 +38,11 @@ var ErrElementNotFound = errors.New("browser: required element not found")
 // skip — better to under-report than double-submit.
 var ErrSubmitNotConfirmed = errors.New("browser: submission not confirmed")
 
+// ErrOTPTimeout is returned when an OTP-gated submission reached the
+// security-code step but no code arrived from the CodeProvider before
+// its deadline. Terminal skip — the page is gone, there is no resume.
+var ErrOTPTimeout = errors.New("browser: OTP code not received in time")
+
 // SubmitOptions controls one FillAndSubmit invocation.
 type SubmitOptions struct {
 	URL         string
@@ -52,6 +60,49 @@ type SubmitOptions struct {
 	// non-empty and ConfirmSel is empty, the body must contain this
 	// substring (case-insensitive).
 	ConfirmText string
+
+	// OTPFieldSel, when non-empty together with CodeProvider, switches
+	// FillAndSubmit into two-phase mode: after the first submit click it
+	// waits for this selector — the "security code" field a source
+	// renders once it has emailed a verification code — fetches the code
+	// via CodeProvider, types it, clicks OTPSubmitSel (or SubmitSel when
+	// empty), then runs the normal confirmation check.
+	OTPFieldSel string
+	// OTPSubmitSel is the resubmit control clicked after the code is
+	// entered. Falls back to SubmitSel when empty.
+	OTPSubmitSel string
+	// CodeProvider blocks until the emailed security code is available
+	// (or its own deadline elapses). Supplied by the submitter, it
+	// typically polls the OTP rendezvous. A non-nil error makes
+	// FillAndSubmit return ErrOTPTimeout. The browser slot is held for
+	// the whole duration of this call.
+	CodeProvider func(ctx context.Context) (string, error)
+
+	// ScreenshotPath, when set, saves a full-page PNG of the filled form
+	// (after fill + upload, before submit). Used for safe live testing.
+	ScreenshotPath string
+	// NoSubmit fills the form (and screenshots when ScreenshotPath is set)
+	// but returns before clicking submit — no submission, CAPTCHA, OTP, or
+	// confirmation. Used to validate field-filling against a live board
+	// without sending a real application.
+	NoSubmit bool
+	// PostSubmitShotPath, when set, saves a full-page PNG immediately after
+	// the submit click — capturing whatever gated the submit (CAPTCHA, the
+	// emailed security-code field, a validation error, or success). For
+	// observability/debugging.
+	PostSubmitShotPath string
+}
+
+// FieldDescriptor is a compact, structured view of one fillable form
+// control: its real CSS selector plus the label/question text, type, and
+// (for selects) the option texts. Feeding these to the LLM — instead of
+// raw truncated HTML — keeps the selectors real and the prompt small.
+type FieldDescriptor struct {
+	Selector string   `json:"selector"`
+	Label    string   `json:"label"`
+	Type     string   `json:"type"` // text, email, tel, textarea, select, ...
+	Required bool     `json:"required"`
+	Options  []string `json:"options,omitempty"`
 }
 
 // ApplyClient is the public interface used by submitters. It is
@@ -59,6 +110,9 @@ type SubmitOptions struct {
 type ApplyClient interface {
 	FillAndSubmit(ctx context.Context, opts SubmitOptions) error
 	GetHTML(ctx context.Context, url string) (string, error)
+	// GetFormFields navigates to url and returns the live form's fillable
+	// controls with real selectors + labels, for LLM-assisted answering.
+	GetFormFields(ctx context.Context, url string) ([]FieldDescriptor, error)
 	Close()
 }
 
@@ -68,6 +122,7 @@ type ApplyClient interface {
 type Pool struct {
 	timeout   time.Duration
 	userAgent string
+	solver    CaptchaSolver // nil → CAPTCHAs are skipped (ErrCAPTCHA)
 
 	slots     chan *instance
 	instances []*instance
@@ -230,23 +285,19 @@ func (p *Pool) FillAndSubmit(ctx context.Context, opts SubmitOptions) error {
 	if err := page.Navigate(opts.URL); err != nil {
 		return fmt.Errorf("browser: navigate: %w", err)
 	}
-	_ = page.WaitStable(2 * time.Second)
+	settle(page)
 
-	if hasCAPTCHA(page) {
-		telemetry.RecordAutoApplyCaptcha(hostBucket(opts.URL))
-		return ErrCAPTCHA
-	}
+	// No CAPTCHA handling here: on page load an invisible/enterprise
+	// widget is present with an empty token regardless of whether a
+	// challenge will actually be demanded, so solving now would burn a
+	// paid solve on every form. CAPTCHAs are handled reactively after the
+	// submit attempt below, where an unsolved challenge is a real signal.
 
 	for sel, val := range opts.TextFields {
 		if val == "" {
 			continue
 		}
-		el, err := page.Timeout(5 * time.Second).Element(sel)
-		if err != nil {
-			continue // non-required field; skip silently
-		}
-		_ = el.SelectAllText()
-		_ = el.Input(val)
+		fillField(page, sel, val)
 	}
 
 	if opts.FileField != "" && len(opts.FileBytes) > 0 {
@@ -255,8 +306,21 @@ func (p *Pool) FillAndSubmit(ctx context.Context, opts SubmitOptions) error {
 			defer func() { _ = os.Remove(tmpPath) }()
 			if fileEl, err := page.Timeout(5 * time.Second).Element(opts.FileField); err == nil {
 				_ = fileEl.SetFiles([]string{tmpPath})
+				settle(page) // let the async upload render before submit
 			}
 		}
+	}
+
+	if opts.ScreenshotPath != "" {
+		captureForm(page, opts.ScreenshotPath)
+	}
+	if opts.NoSubmit {
+		// Fill-only validation: never click submit. Confirm the submit
+		// control exists so the caller knows the form is complete.
+		if _, err := page.Timeout(10 * time.Second).Element(opts.SubmitSel); err != nil {
+			return ErrElementNotFound
+		}
+		return nil
 	}
 
 	submitEl, err := page.Timeout(10 * time.Second).Element(opts.SubmitSel)
@@ -267,17 +331,161 @@ func (p *Pool) FillAndSubmit(ctx context.Context, opts SubmitOptions) error {
 		return fmt.Errorf("browser: click submit: %w", err)
 	}
 
-	_ = page.WaitStable(3 * time.Second)
+	settle(page)
 
-	if hasCAPTCHA(page) {
-		telemetry.RecordAutoApplyCaptcha(hostBucket(opts.URL))
-		return ErrCAPTCHA
+	// Capture the post-submit state when requested — shows what gated the
+	// submit (CAPTCHA, the emailed security-code field, a validation error,
+	// or success). The relevant UI appears around the submit button, so we
+	// wait for processing to settle, scroll there, and shoot the viewport.
+	// Debug/observability only.
+	if opts.PostSubmitShotPath != "" {
+		time.Sleep(3 * time.Second)
+		if el, e := page.Timeout(5 * time.Second).Element(opts.SubmitSel); e == nil {
+			_ = el.ScrollIntoView()
+		}
+		if data, e := page.Screenshot(false, nil); e == nil {
+			_ = os.WriteFile(opts.PostSubmitShotPath, data, 0o644)
+		}
+		// Also dump the post-submit fillable fields (e.g. the security-code
+		// boxes) so we can see their real selectors.
+		if res, e := page.Eval(fieldExtractJS); e == nil {
+			_ = os.WriteFile(opts.PostSubmitShotPath+".fields.json", []byte(res.Value.Str()), 0o644)
+		}
 	}
 
-	if !verifySubmit(page, opts) {
+	// A challenge that gated the submit click (commonly enterprise
+	// reCAPTCHA): solve it, then resubmit with the injected token.
+	if solved, err := p.handleCaptcha(ctx, page, opts.URL); err != nil {
+		return err
+	} else if solved {
+		if resubmitEl, e := page.Timeout(10 * time.Second).Element(opts.SubmitSel); e == nil {
+			_ = resubmitEl.Click(proto.InputMouseButtonLeft, 1)
+			settle(page)
+		}
+	}
+
+	// Email-OTP gate: the first submit caused the source to email a
+	// security code and render a code field. Hold the page open, fetch
+	// the code, enter it, and resubmit before checking for success.
+	if opts.CodeProvider != nil && opts.OTPFieldSel != "" {
+		if err := runOTPPhase(ctx, page, opts); err != nil {
+			return err
+		}
+	}
+
+	// Verify on a page handle with a FRESH deadline: an OTP hold can run
+	// well past p.timeout, expiring the original handle's context and making
+	// verifySubmit's page.HTML() fail — a false "not confirmed" even on a
+	// real success (observed on Cloudflare's "Thank you for applying!").
+	if !verifySubmit(page.CancelTimeout().Timeout(15*time.Second), opts) {
 		return ErrSubmitNotConfirmed
 	}
 
+	return nil
+}
+
+// otpSegmentRE splits a segmented-input id like "security-input-0" into a
+// stable prefix ("security-input-") and the starting index (0).
+var otpSegmentRE = regexp.MustCompile(`^(.*?)(\d+)$`)
+
+// enterOTPCode types the code into the security-code control. Greenhouse
+// (and many OTP widgets) render one single-character box per digit
+// (#security-input-0 … #security-input-7); when the matched element's id
+// ends in a number we distribute the code one char per box. Otherwise we
+// fall back to a single Input. Each box is set via Input so the input
+// event fires and the React state registers.
+func enterOTPCode(page *rod.Page, otpEl *rod.Element, code string) {
+	id := attr(otpEl, "id")
+	if m := otpSegmentRE.FindStringSubmatch(id); m != nil {
+		prefix, start := m[1], m[2]
+		base := 0
+		_, _ = fmt.Sscanf(start, "%d", &base)
+		for i, r := range code {
+			sel := "#" + cssEscapeAttr(prefix) + fmt.Sprintf("%d", base+i)
+			el, err := page.Timeout(2 * time.Second).Element(sel)
+			if err != nil {
+				if i == 0 {
+					break // not actually segmented — fall through to single
+				}
+				continue
+			}
+			_ = el.SelectAllText()
+			_ = el.Input(string(r))
+		}
+		// Verify the last box took a value; if segmented filling worked we're done.
+		if last, err := page.Timeout(time.Second).Element("#" + cssEscapeAttr(prefix) + fmt.Sprintf("%d", base+len(code)-1)); err == nil {
+			if v, e := last.Property("value"); e == nil && v.Str() != "" {
+				return
+			}
+		}
+	}
+	// Single-field fallback.
+	_ = otpEl.SelectAllText()
+	_ = otpEl.Input(code)
+}
+
+// runOTPPhase waits for the security-code field, blocks on CodeProvider
+// for the emailed code, enters it, and clicks the resubmit control.
+//
+// The page's per-call timeout (p.timeout) is cancelled first because the
+// CodeProvider wait routinely exceeds it; fresh short timeouts are
+// applied to each browser op instead, while the overall wait stays
+// bounded by ctx and CodeProvider's own deadline.
+func runOTPPhase(ctx context.Context, page *rod.Page, opts SubmitOptions) error {
+	page = page.CancelTimeout()
+
+	// Confirm a code was actually requested — the security-code field
+	// must appear. If it doesn't, the first submit either completed
+	// without OTP or failed; let verifySubmit be the judge.
+	if _, err := page.Timeout(15 * time.Second).Element(opts.OTPFieldSel); err != nil {
+		return nil
+	}
+
+	code, err := opts.CodeProvider(ctx)
+	if err != nil {
+		return ErrOTPTimeout
+	}
+
+	// Re-find the field with a FRESH handle: the element located before the
+	// CodeProvider wait carries a short deadline that expires during the
+	// (often minute-long) wait, which would make every subsequent op on it
+	// fail silently and leave the boxes empty.
+	otpEl, err := page.Timeout(15 * time.Second).Element(opts.OTPFieldSel)
+	if err != nil {
+		return ErrSubmitNotConfirmed
+	}
+
+	enterOTPCode(page, otpEl, code)
+
+	// Debug capture of the code-entered state (before resubmit).
+	if opts.PostSubmitShotPath != "" {
+		if data, e := page.Screenshot(false, nil); e == nil {
+			_ = os.WriteFile(opts.PostSubmitShotPath+".entered.png", data, 0o644)
+		}
+	}
+
+	submitSel := opts.OTPSubmitSel
+	if submitSel == "" {
+		submitSel = opts.SubmitSel
+	}
+	submitEl, err := page.Timeout(10 * time.Second).Element(submitSel)
+	if err != nil {
+		return ErrElementNotFound
+	}
+	if err := submitEl.Click(proto.InputMouseButtonLeft, 1); err != nil {
+		return fmt.Errorf("browser: click otp submit: %w", err)
+	}
+
+	settle(page)
+
+	// Debug capture of the final state after the code-resubmit (the
+	// confirmation page, or a "code invalid" error).
+	if opts.PostSubmitShotPath != "" {
+		time.Sleep(2 * time.Second)
+		if data, e := page.Screenshot(true, nil); e == nil {
+			_ = os.WriteFile(opts.PostSubmitShotPath+".final.png", data, 0o644)
+		}
+	}
 	return nil
 }
 
@@ -314,12 +522,324 @@ func (p *Pool) GetHTML(ctx context.Context, url string) (string, error) {
 	if err := page.Navigate(url); err != nil {
 		return "", fmt.Errorf("browser: navigate: %w", err)
 	}
-	_ = page.WaitStable(2 * time.Second)
+	settle(page)
 
 	return page.HTML()
 }
 
+// fieldExtractJS walks the rendered DOM and returns each fillable control
+// with a real selector (#id preferred, else [name=...]), its label/question
+// text, type, required flag, and (for selects) option texts. Hidden,
+// submit, button, file, and search inputs are skipped.
+const fieldExtractJS = `() => {
+	const out = [];
+	const seen = new Set();
+	const labelFor = (el) => {
+		if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l && l.innerText) return l.innerText.trim(); }
+		if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').trim();
+		const lab = el.closest('label'); if (lab && lab.innerText) return lab.innerText.trim();
+		const wrap = el.closest('div'); if (wrap) { const l = wrap.querySelector('label'); if (l && l.innerText) return l.innerText.trim(); }
+		return '';
+	};
+	// The question text for a grouped control (radios): prefer a fieldset
+	// legend, else a label/legend in the wrapping container.
+	const groupLabel = (el) => {
+		const fs = el.closest('fieldset');
+		if (fs) { const lg = fs.querySelector('legend'); if (lg && lg.innerText) return lg.innerText.trim(); }
+		const wrap = el.closest('div'); if (wrap) { const l = wrap.querySelector('label, legend'); if (l && l.innerText) return l.innerText.trim(); }
+		return labelFor(el);
+	};
+	const sel = (el) => el.id ? '#' + CSS.escape(el.id) : (el.name ? '[name="' + CSS.escape(el.name) + '"]' : '');
+	document.querySelectorAll('input, textarea, select').forEach(el => {
+		const tag = el.tagName.toLowerCase();
+		const type = (el.type || tag).toLowerCase();
+		if (['hidden','submit','button','file','search','reset','image'].includes(type)) return;
+
+		// Radios: collapse a same-name group into one field carrying the
+		// option labels, so the model picks one value.
+		if (type === 'radio' && el.name) {
+			const key = 'radio:' + el.name;
+			if (seen.has(key)) return; seen.add(key);
+			const group = [...document.querySelectorAll('input[type=radio][name="' + CSS.escape(el.name) + '"]')];
+			out.push({ selector: '[name="' + CSS.escape(el.name) + '"]', label: (groupLabel(el) || '').slice(0,160), type: 'radio', required: group.some(r => r.required), options: group.map(r => labelFor(r) || r.value).filter(Boolean).slice(0,40) });
+			return;
+		}
+
+		const s = sel(el); if (!s) return;
+		const role = el.getAttribute('role') || '';
+		let t = tag === 'select' ? 'select' : type;
+		if (role === 'combobox' || el.getAttribute('aria-autocomplete') === 'list' || el.getAttribute('aria-haspopup') === 'listbox') t = 'combobox';
+		const f = { selector: s, label: (labelFor(el) || '').slice(0,160), type: t, required: !!(el.required || el.getAttribute('aria-required') === 'true') };
+		if (tag === 'select') f.options = [...el.options].map(o => (o.text || '').trim()).filter(Boolean).slice(0,40);
+		out.push(f);
+	});
+	return JSON.stringify(out);
+}`
+
+// GetFormFields navigates to url and returns the live form's fillable
+// controls as structured descriptors (real selectors + labels), so an LLM
+// can answer custom questions against actual selectors instead of guessing
+// from truncated HTML.
+func (p *Pool) GetFormFields(ctx context.Context, url string) ([]FieldDescriptor, error) {
+	inst, err := p.acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer p.release(inst)
+
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+
+	if err := inst.ensure(); err != nil {
+		return nil, err
+	}
+
+	page, err := inst.browser.Context(ctx).Page(proto.TargetCreateTarget{URL: "about:blank"})
+	if err != nil {
+		_ = inst.browser.Close()
+		inst.browser = nil
+		telemetry.RecordAutoApplyBrowserRestart("crashed")
+		return nil, fmt.Errorf("browser: new page: %w", err)
+	}
+	defer func() { _ = page.Close() }()
+
+	page = page.Context(ctx).Timeout(p.timeout)
+	if err := page.SetUserAgent(&proto.NetworkSetUserAgentOverride{UserAgent: p.userAgent}); err != nil {
+		return nil, fmt.Errorf("browser: set user agent: %w", err)
+	}
+	if err := page.Navigate(url); err != nil {
+		return nil, fmt.Errorf("browser: navigate: %w", err)
+	}
+	settle(page)
+
+	res, err := page.Eval(fieldExtractJS)
+	if err != nil {
+		return nil, fmt.Errorf("browser: extract fields: %w", err)
+	}
+	var fields []FieldDescriptor
+	if err := json.Unmarshal([]byte(res.Value.Str()), &fields); err != nil {
+		return nil, fmt.Errorf("browser: decode fields: %w", err)
+	}
+	return fields, nil
+}
+
 // verifySubmit checks the post-submit page for one of the configured
+// fillField sets one form control, choosing the right interaction for its
+// kind: native <select> via Select, react-select/combobox via open-type-pick,
+// and plain inputs/textareas via Input. Best-effort — a missing or stubborn
+// field is skipped silently (non-required fields are common).
+func fillField(page *rod.Page, sel, val string) {
+	el, err := page.Timeout(5 * time.Second).Element(sel)
+	if err != nil {
+		return
+	}
+	typ := strings.ToLower(attr(el, "type"))
+	switch {
+	case elTag(el) == "select":
+		_ = el.Select([]string{val}, true, rod.SelectorTypeText)
+	case typ == "radio":
+		setRadioGroup(page, el, val)
+	case typ == "checkbox":
+		setChecked(el, truthy(val))
+	case isCombobox(el):
+		fillReactSelect(page, el, val)
+	default: // text, email, tel, url, number, date, password, textarea, …
+		_ = el.SelectAllText()
+		_ = el.Input(val)
+	}
+}
+
+// setChecked clicks a checkbox to match the desired state, only when it
+// currently differs (so it never toggles an already-correct box).
+func setChecked(el *rod.Element, want bool) {
+	checked := false
+	if p, err := el.Property("checked"); err == nil {
+		checked = p.Bool()
+	}
+	if want != checked {
+		_ = el.Click(proto.InputMouseButtonLeft, 1)
+	}
+}
+
+// setRadioGroup clicks the radio in el's name-group whose label or value
+// matches val. el is any radio in the group (the [name=...] selector
+// resolves to the first one).
+func setRadioGroup(page *rod.Page, el *rod.Element, val string) {
+	name := attr(el, "name")
+	if name == "" {
+		// Lone radio with no group: click it when the value is affirmative.
+		if truthy(val) {
+			_ = el.Click(proto.InputMouseButtonLeft, 1)
+		}
+		return
+	}
+	radios, err := page.Elements(`input[type="radio"][name="` + cssEscapeAttr(name) + `"]`)
+	if err != nil {
+		return
+	}
+	var contains *rod.Element
+	for _, r := range radios {
+		lbl := radioLabel(r)
+		rv := attr(r, "value")
+		if strings.EqualFold(strings.TrimSpace(lbl), val) || strings.EqualFold(rv, val) {
+			_ = r.Click(proto.InputMouseButtonLeft, 1)
+			return
+		}
+		if contains == nil && lbl != "" && strings.Contains(strings.ToLower(lbl), strings.ToLower(val)) {
+			contains = r
+		}
+	}
+	if contains != nil {
+		_ = contains.Click(proto.InputMouseButtonLeft, 1)
+	}
+}
+
+// radioLabel returns the visible label text associated with a radio input.
+func radioLabel(el *rod.Element) string {
+	obj, err := el.Eval(`() => {
+		if (this.id) { const l = document.querySelector('label[for="' + CSS.escape(this.id) + '"]'); if (l && l.innerText) return l.innerText.trim(); }
+		const lab = this.closest('label'); if (lab && lab.innerText) return lab.innerText.trim();
+		if (this.getAttribute('aria-label')) return this.getAttribute('aria-label').trim();
+		return this.value || '';
+	}`)
+	if err != nil {
+		return ""
+	}
+	return obj.Value.Str()
+}
+
+// cssEscapeAttr escapes a value for safe inclusion in a CSS attribute
+// selector string (the common metacharacters in form names).
+func cssEscapeAttr(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return r.Replace(s)
+}
+
+func truthy(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "yes", "y", "1", "on", "checked", "agree", "i agree", "confirm", "acknowledge":
+		return true
+	}
+	return false
+}
+
+// elTag returns the lowercased tag name of an element.
+func elTag(el *rod.Element) string {
+	obj, err := el.Eval(`() => this.tagName.toLowerCase()`)
+	if err != nil {
+		return ""
+	}
+	return obj.Value.Str()
+}
+
+// isCombobox reports whether el is a custom dropdown (e.g. react-select),
+// which presents as a text input but needs open → type → pick to commit.
+func isCombobox(el *rod.Element) bool {
+	switch attr(el, "role") {
+	case "combobox", "listbox":
+		return true
+	}
+	return attr(el, "aria-haspopup") == "listbox" || attr(el, "aria-autocomplete") == "list"
+}
+
+// fillReactSelect commits a value in a react-select-style dropdown: focus
+// to open the menu, type to filter, then click the option whose text
+// matches. It NEVER presses Enter — in a form field that can trigger a
+// submission. When no option matches it presses Escape to close the menu
+// and leaves the field unset (safer than a wrong or accidental submit).
+func fillReactSelect(page *rod.Page, el *rod.Element, val string) {
+	_ = el.Click(proto.InputMouseButtonLeft, 1)
+	_ = el.Input(val)
+
+	// Scope the option lookup to THIS combobox's own listbox (via the
+	// input's aria-controls/aria-owns). Without scoping, a previously
+	// filled combobox whose menu is still mounted leaks its options into
+	// the query and the match lands on the wrong widget (or not at all) —
+	// which is exactly why the location field wasn't committing.
+	optSel := `[role="option"], [id*="-option-"], [class*="select__option"], [class*="-option"], .pac-item, li[role="option"]`
+	if lb := attr(el, "aria-controls"); lb == "" {
+		if lb = attr(el, "aria-owns"); lb != "" {
+			optSel = `[id="` + cssEscapeAttr(lb) + `"] [role="option"], [id="` + cssEscapeAttr(lb) + `"] li`
+		}
+	} else {
+		optSel = `[id="` + cssEscapeAttr(lb) + `"] [role="option"], [id="` + cssEscapeAttr(lb) + `"] li`
+	}
+
+	// Option menus render asynchronously — react-select filters in a tick,
+	// location autocompletes fetch over the network. Poll up to ~4s rather
+	// than guessing a single delay.
+	var opts []*rod.Element
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		opts, _ = page.Elements(optSel)
+		if len(opts) > 0 {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	// Prefer an exact (case-insensitive) match, then a contains match.
+	var contains *rod.Element
+	for _, o := range opts {
+		txt, terr := o.Text()
+		if terr != nil {
+			continue
+		}
+		t := strings.TrimSpace(txt)
+		if strings.EqualFold(t, val) {
+			_ = o.Click(proto.InputMouseButtonLeft, 1)
+			return
+		}
+		if contains == nil && t != "" && strings.Contains(strings.ToLower(t), strings.ToLower(val)) {
+			contains = o
+		}
+	}
+	if contains != nil {
+		_ = contains.Click(proto.InputMouseButtonLeft, 1)
+		return
+	}
+	_ = el.Type(input.Escape) // close the menu; never submit
+}
+
+// settle waits for the page to become usable after a navigation or
+// action: the load event plus a bounded DOM-stability window. It
+// deliberately avoids WaitStable (network-idle), which never settles on
+// modern ATS pages with continuous analytics/beacons and would burn the
+// entire page deadline before any field could be filled.
+func settle(page *rod.Page) {
+	_ = page.WaitLoad()
+	_ = page.Timeout(8 * time.Second).WaitDOMStable(time.Second, 0)
+}
+
+// captureForm saves a PNG of the application form (the <form> with the
+// most fields) at full resolution, so filled values are legible. Falls
+// back to a full-page screenshot when no form is found.
+func captureForm(page *rod.Page, path string) {
+	marked, err := page.Eval(`() => {
+		const forms = [...document.querySelectorAll('form')];
+		if (!forms.length) return false;
+		let best = forms[0], n = -1;
+		for (const f of forms) {
+			const c = f.querySelectorAll('input,select,textarea').length;
+			if (c > n) { n = c; best = f; }
+		}
+		best.id = '__autoapply_form';
+		return true;
+	}`)
+	if err == nil && marked.Value.Bool() {
+		if el, e := page.Element("#__autoapply_form"); e == nil {
+			_ = el.ScrollIntoView()
+			if data, se := el.Screenshot(proto.PageCaptureScreenshotFormatPng, 0); se == nil {
+				_ = os.WriteFile(path, data, 0o644)
+				return
+			}
+		}
+	}
+	if data, se := page.Screenshot(true, nil); se == nil {
+		_ = os.WriteFile(path, data, 0o644)
+	}
+}
+
 // confirmation signals. Returns true when the page passes.
 //
 // When neither ConfirmSel nor ConfirmText is set the function returns
@@ -342,17 +862,6 @@ func verifySubmit(page *rod.Page, opts SubmitOptions) bool {
 		}
 	}
 	return false
-}
-
-func hasCAPTCHA(page *rod.Page) bool {
-	html, err := page.HTML()
-	if err != nil {
-		return false
-	}
-	lower := strings.ToLower(html)
-	return strings.Contains(lower, "hcaptcha") ||
-		strings.Contains(lower, "recaptcha") ||
-		strings.Contains(lower, "cf-turnstile")
 }
 
 // hostBucket returns the apex domain (or "unknown") for telemetry

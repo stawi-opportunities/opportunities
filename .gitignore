@@ -17,3 +17,9 @@ bin/
 # Bootstrap secrets — NEVER commit these
 scripts/bootstrap/vault-seeds.env
 .claude/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+tmp/

@@ -30,6 +30,7 @@ var (
 	AutoApplyCVDownloadFails metric.Int64Counter
 	AutoApplyBrowserRestarts metric.Int64Counter
 	AutoApplyCaptcha         metric.Int64Counter
+	AutoApplyCaptchaSolve    metric.Int64Counter
 	AutoApplyTransientErrors metric.Int64Counter
 )
 
@@ -159,6 +160,13 @@ func Init() error {
 
 	AutoApplyCaptcha, err = meter.Int64Counter("autoapply.captcha_detected",
 		metric.WithDescription("CAPTCHA walls detected, labelled by host bucket"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyCaptchaSolve, err = meter.Int64Counter("autoapply.captcha_solve",
+		metric.WithDescription("CAPTCHA solve attempts via the solver, labelled by host/type/outcome"),
 	)
 	if err != nil {
 		return err
@@ -306,6 +314,20 @@ func RecordAutoApplyCaptcha(host string) {
 	}
 	AutoApplyCaptcha.Add(context.Background(), 1,
 		metric.WithAttributes(attribute.String("host", host)))
+}
+
+// RecordAutoApplyCaptchaSolve increments the solve-attempt counter.
+// outcome is "solved" or "failed"; typ is the challenge kind.
+func RecordAutoApplyCaptchaSolve(host, typ, outcome string) {
+	if AutoApplyCaptchaSolve == nil {
+		return
+	}
+	AutoApplyCaptchaSolve.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("host", host),
+			attribute.String("type", typ),
+			attribute.String("outcome", outcome),
+		))
 }
 
 // RecordAutoApplyTransientError increments the transient-error counter.

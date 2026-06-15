@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/cache"
+	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	fconfig "github.com/pitabwire/frame/config"
+	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/frame/datastore"
 	"github.com/pitabwire/util"
 
@@ -24,6 +27,8 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/ats"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/brightermondaysubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/browser"
+	"github.com/stawi-opportunities/opportunities/pkg/autoapply/captcha"
+	"github.com/stawi-opportunities/opportunities/pkg/autoapply/otprendezvous"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/sessionsubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -79,11 +84,21 @@ func main() {
 	appRepo := repository.NewApplicationRepository(pool.DB)
 	matchRepo := repository.NewMatchRepository(pool.DB)
 
+	// CAPTCHA solver (optional). When configured, detected challenges are
+	// solved via the service instead of skipping the application. Attached
+	// to every browser pool below.
+	var captchaSolver browser.CaptchaSolver
+	if cfg.CaptchaProvider == "2captcha" && cfg.CaptchaAPIKey != "" {
+		captchaSolver = captcha.NewTwoCaptcha(cfg.CaptchaAPIKey).
+			WithTimeout(time.Duration(cfg.CaptchaSolveTimeoutSec) * time.Second)
+		log.Info("autoapply: 2captcha solver enabled")
+	}
+
 	browserClient := browser.NewPool(
 		cfg.BrowserConcurrency,
 		time.Duration(cfg.BrowserTimeoutSec)*time.Second,
 		cfg.BrowserUserAgent,
-	)
+	).WithCaptchaSolver(captchaSolver)
 	defer browserClient.Close()
 
 	// Session-replay submitter — registered ahead of every other tier
@@ -137,14 +152,53 @@ func main() {
 			HTTPTimeout: 30 * time.Second,
 		}))
 	}
+	// Shared LLM client (when inference is configured) powers both the
+	// Greenhouse custom-question answering and the generic LLM form tier.
+	var llm autoapply.LLMClient
+	if cfg.InferenceBaseURL != "" {
+		llm = newOpenAIClient(cfg.InferenceBaseURL, cfg.InferenceAPIKey, cfg.InferenceModel)
+	}
+
+	// Greenhouse gates submission behind an emailed security code. When
+	// OTP is enabled we wire a rendezvous the submitter polls while
+	// holding the browser open; the OTP-email ingress (Phase 2/3) Puts
+	// the code into the same rendezvous. The in-memory backing is correct
+	// only for a single autoapply instance — multi-instance deployments
+	// must back this with Valkey so the webhook and browser share state.
+	//
+	// OTP submissions hold a browser slot for up to OTPWaitSec, so they
+	// run on a dedicated pool to avoid starving the fast submitters.
+	var (
+		greenhouse    *ats.GreenhouseSubmitter
+		otpRendezvous *otprendezvous.CacheRendezvous // shared by the submitter + the injector/webhook
+	)
+	if cfg.OTPEnabled {
+		otpRendezvous, err = buildOTPRendezvous(cfg.OTPRedisURL)
+		if err != nil {
+			log.WithError(err).Fatal("autoapply: OTP rendezvous init failed")
+		}
+		otpBrowserClient := browser.NewPool(
+			cfg.OTPBrowserConcurrency,
+			time.Duration(cfg.BrowserTimeoutSec)*time.Second,
+			cfg.BrowserUserAgent,
+		).WithCaptchaSolver(captchaSolver)
+		defer otpBrowserClient.Close()
+		greenhouse = ats.NewGreenhouseSubmitterWithOTP(
+			otpBrowserClient, otpRendezvous, time.Duration(cfg.OTPWaitSec)*time.Second)
+		log.WithField("otp_wait_sec", cfg.OTPWaitSec).
+			WithField("otp_backing", otpBacking(cfg.OTPRedisURL)).
+			WithField("otp_browser_concurrency", cfg.OTPBrowserConcurrency).
+			Info("autoapply: greenhouse email-OTP enabled (dedicated browser pool)")
+	} else {
+		greenhouse = ats.NewGreenhouseSubmitter(browserClient)
+	}
 	tiers = append(tiers,
-		ats.NewGreenhouseSubmitter(browserClient),
+		greenhouse.WithLLM(llm), // nil llm leaves custom-question answering off
 		ats.NewLeverSubmitter(browserClient),
 		ats.NewWorkdaySubmitter(browserClient),
 		ats.NewSmartRecruitersSubmitter(browserClient),
 	)
-	if cfg.InferenceBaseURL != "" {
-		llm := newOpenAIClient(cfg.InferenceBaseURL, cfg.InferenceAPIKey, cfg.InferenceModel)
+	if llm != nil {
 		tiers = append(tiers, autoapply.NewLLMFormSubmitter(browserClient, llm))
 	}
 	tiers = append(tiers,
@@ -202,6 +256,21 @@ func main() {
 		mux.Handle("POST /dev/intent", devIntentHandler(svc, cfg.AutoApplyQueueURL))
 		log.Warn("autoapply: POST /dev/intent enabled — devmode build only")
 	}
+	// Phase-2 manual OTP injector: a human-supplied stand-in for the
+	// inbound-email ingress. Mounts only when OTP is enabled and a secret
+	// is configured, so it cannot be reached by default.
+	if otpRendezvous != nil && cfg.OTPInjectSecret != "" {
+		mux.Handle("POST /internal/otp", service.NewOTPInjectHandler(otpRendezvous, cfg.OTPInjectSecret))
+		log.Info("autoapply: POST /internal/otp manual OTP injector enabled")
+	}
+	// Phase-3 inbound OTP-email webhook: the production data source that
+	// replaces the manual injector. Both feed the same rendezvous.
+	if otpRendezvous != nil && cfg.OTPWebhookSecret != "" {
+		mux.Handle("POST /webhooks/otp", service.NewOTPWebhookHandler(
+			otpRendezvous, cfg.OTPWebhookSecret, cfg.OTPSenderDomain))
+		log.WithField("sender_domain", cfg.OTPSenderDomain).
+			Info("autoapply: POST /webhooks/otp inbound OTP-email webhook enabled")
+	}
 	svc.Init(ctx, frame.WithHTTPHandler(mux))
 
 	log.Info("autoapply: service starting")
@@ -209,6 +278,29 @@ func main() {
 		log.WithError(err).Error("autoapply: service run failed")
 		os.Exit(1)
 	}
+}
+
+// buildOTPRendezvous returns the rendezvous backing the OTP hold-open
+// path. With a Valkey URL it shares state across instances (so the webhook
+// and the browser-holding submitter can be separate pods); empty falls
+// back to an in-process cache, correct only for a single instance.
+func buildOTPRendezvous(redisURL string) (*otprendezvous.CacheRendezvous, error) {
+	if redisURL == "" {
+		return otprendezvous.NewInMemory(), nil
+	}
+	raw, err := framevalkey.New(cache.WithDSN(data.DSN(redisURL)))
+	if err != nil {
+		return nil, err
+	}
+	return otprendezvous.New(raw), nil
+}
+
+// otpBacking is a log-friendly label for the rendezvous backend.
+func otpBacking(redisURL string) string {
+	if redisURL == "" {
+		return "in-memory"
+	}
+	return "valkey"
 }
 
 // devIntentHandler accepts a JSON AutoApplyIntentV1 (NOT an envelope —

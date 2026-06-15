@@ -170,6 +170,11 @@ const (
 	AppStatusSubmitted = "submitted"
 	AppStatusFailed    = "failed"
 	AppStatusSkipped   = "skipped"
+	// AppStatusAwaitingOTP marks an application whose first submit
+	// reached an emailed-security-code gate and is being held open while
+	// the OTP-email ingress delivers the code. Observability only — the
+	// hold-open path has no async resume.
+	AppStatusAwaitingOTP = "awaiting_otp"
 )
 
 // CandidateApplication records a job application submitted by or on behalf of a candidate.
