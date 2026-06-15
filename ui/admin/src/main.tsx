@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppGate } from '@/components/AppGate';
 import { Layout } from '@/components/Layout';
+import { ToastProvider } from '@/components/ui/Toast';
 import { SourceList } from '@/pages/SourceList';
 import { SourceTrace } from '@/pages/SourceTrace';
 import { VariantTrace } from '@/pages/VariantTrace';
@@ -19,6 +20,7 @@ if (!container) throw new Error('admin-root element missing');
 createRoot(container).render(
   <StrictMode>
     <BrowserRouter basename="/admin">
+      <ToastProvider>
       <AppGate>
         <Routes>
           <Route path="/" element={<Layout />}>
@@ -40,6 +42,7 @@ createRoot(container).render(
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AppGate>
+      </ToastProvider>
     </BrowserRouter>
   </StrictMode>
 );
