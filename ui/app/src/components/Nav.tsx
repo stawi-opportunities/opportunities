@@ -133,6 +133,9 @@ function MobileMenu({ open }: { open: boolean }) {
       >
         About
       </a>
+      <a href="/faq/" className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+        FAQ
+      </a>
     </div>
   );
 }
@@ -171,6 +174,12 @@ export default function Nav() {
             className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
           >
             About
+          </a>
+          <a
+            href="/faq/"
+            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
+          >
+            FAQ
           </a>
         </nav>
 

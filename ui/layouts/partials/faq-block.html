@@ -1,0 +1,21 @@
+{{ with .Site.Data.faq.categories }}
+  {{ range $cat := . }}
+    {{ if eq $cat.category "Billing & Plans" }}
+      <section class="mt-20 border-t border-gray-200 pt-12">
+        <h2 class="text-2xl font-bold text-navy-900">Questions</h2>
+        <dl class="mt-8 grid gap-10 sm:grid-cols-2">
+          {{ range $cat.questions }}
+            <div>
+              <dt class="text-base font-semibold text-navy-900">{{ .q }}</dt>
+              <dd class="mt-2 text-base leading-relaxed text-gray-700">{{ .a }}</dd>
+            </div>
+          {{ end }}
+        </dl>
+        <p class="mt-8 text-sm text-gray-500">
+          More questions? See the
+          <a href="/faq/" class="font-semibold text-accent-600 hover:text-accent-700">full FAQ</a>.
+        </p>
+      </section>
+    {{ end }}
+  {{ end }}
+{{ end }}

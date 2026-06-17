@@ -16,62 +16,7 @@
       {{ partial "pricing-cards.html" . }}
     </div>
 
-    <section class="mt-20 border-t border-gray-200 pt-12">
-      <h2 class="text-2xl font-bold text-navy-900">Questions</h2>
-      <dl class="mt-8 grid gap-10 sm:grid-cols-2">
-        <div>
-          <dt class="text-base font-semibold text-navy-900">Can I cancel any time?</dt>
-          <dd class="mt-2 text-base leading-relaxed text-gray-700">
-            Yes. Starter and Pro are month-to-month. Managed is a
-            rolling engagement you pause or cancel when your search
-            wraps up.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-base font-semibold text-navy-900">What counts as a "match"?</dt>
-          <dd class="mt-2 text-base leading-relaxed text-gray-700">
-            A role our matching engine (or your recruiter, on Managed)
-            believes fits your CV, target title, seniority, region, and
-            salary. You see them on your dashboard and in your weekly
-            digest.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-base font-semibold text-navy-900">How fast are matches delivered?</dt>
-          <dd class="mt-2 text-base leading-relaxed text-gray-700">
-            Starter is a weekly digest. Pro subscribers jump the queue
-            and receive near-real-time notifications. Managed runs at
-            whatever cadence your recruiter agrees with you.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-base font-semibold text-navy-900">Does Pro get priority support?</dt>
-          <dd class="mt-2 text-base leading-relaxed text-gray-700">
-            Starter and Pro both receive email support. Only Managed
-            includes a direct line and same-day responses.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-base font-semibold text-navy-900">What payment methods work?</dt>
-          <dd class="mt-2 text-base leading-relaxed text-gray-700">
-            In Kenya &amp; Tanzania you pay via M-Pesa (STK push).
-            In Uganda, Ghana, Rwanda, Nigeria, Cameroon, Côte
-            d'Ivoire &amp; Benin, via MTN MoMo. In Malawi and
-            Zambia, via Airtel Money. Everywhere else, Polar handles
-            card, Apple Pay, and PayPal in USD. You'll see the exact
-            method during checkout.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-base font-semibold text-navy-900">Do you apply to jobs for me?</dt>
-          <dd class="mt-2 text-base leading-relaxed text-gray-700">
-            Only on Managed. Starter and Pro surface matches; every
-            listing links to the employer's own application page so
-            you control what gets sent.
-          </dd>
-        </div>
-      </dl>
-    </section>
+    {{ partial "faq-block.html" . }}
   </div>
 </section>
 {{ end }}
