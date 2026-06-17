@@ -1,0 +1,39 @@
+{{ define "main" }}
+<article class="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
+  <header class="text-center">
+    <h1 class="text-3xl font-bold tracking-tight text-navy-900 sm:text-4xl">{{ .Title }}</h1>
+    <p class="mt-3 text-lg leading-relaxed text-gray-600">{{ .Description }}</p>
+  </header>
+
+  {{ with .Site.Data.faq.categories }}
+    {{ range $catIndex, $cat := . }}
+      <section class="mt-12">
+        <h2 class="text-xl font-semibold text-navy-900">{{ $cat.category }}</h2>
+        <dl class="mt-4 divide-y divide-gray-200 rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+          {{ range $cat.questions }}
+            <details class="group open:bg-gray-50/50">
+              <summary class="flex cursor-pointer items-center justify-between px-5 py-4 text-base font-medium text-gray-900 transition-colors hover:text-accent-600 [&::-webkit-details-marker]:hidden">
+                <span>{{ .q }}</span>
+                <svg class="h-4 w-4 flex-shrink-0 text-gray-500 transition-transform duration-200 group-open:rotate-45" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </summary>
+              <dd class="px-5 pb-4 pt-0 text-base leading-relaxed text-gray-700">
+                {{ .a | markdownify }}
+              </dd>
+            </details>
+          {{ end }}
+        </dl>
+      </section>
+    {{ end }}
+  {{ end }}
+
+  <section class="mt-16 rounded-2xl bg-navy-900 px-6 py-10 text-center sm:px-10">
+    <h2 class="text-xl font-semibold text-white">Still have questions?</h2>
+    <p class="mt-2 text-gray-400">We're here to help. Reach out and we'll get back to you.</p>
+    <a href="mailto:jobs@stawi.org" class="mt-5 inline-flex items-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-navy-900 transition-colors hover:bg-gray-100">
+      Contact us →
+    </a>
+  </section>
+</article>
+{{ end }}

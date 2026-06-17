@@ -32,6 +32,7 @@ export interface Strings {
   'nav.allJobs': string;
   'nav.search': string;
   'nav.about': string;
+  'nav.faq': string;
   'nav.pricing': string;
   'nav.signIn': string;
   'nav.language': string;
@@ -328,6 +329,7 @@ export interface Strings {
   'footer.advancedSearch': string;
   'footer.company': string;
   'footer.about': string;
+  'footer.faq': string;
   'footer.pricing': string;
   'footer.contact': string;
   'footer.legal': string;
@@ -354,6 +356,7 @@ const en: Strings = {
   'nav.allJobs': 'All Jobs',
   'nav.search': 'Advanced search',
   'nav.about': 'About',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Pricing',
   'nav.signIn': 'Sign in',
   'nav.language': 'Language',
@@ -636,6 +639,7 @@ const en: Strings = {
   'footer.advancedSearch': 'Advanced search',
   'footer.company': 'Company',
   'footer.about': 'About',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Pricing',
   'footer.contact': 'Contact',
   'footer.legal': 'Legal',
@@ -662,6 +666,7 @@ const es: Strings = {
   'nav.allJobs': 'Todas las ofertas',
   'nav.search': 'Búsqueda avanzada',
   'nav.about': 'Nosotros',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Precios',
   'nav.signIn': 'Iniciar sesión',
   'nav.language': 'Idioma',
@@ -945,6 +950,7 @@ const es: Strings = {
   'footer.advancedSearch': 'Búsqueda avanzada',
   'footer.company': 'Empresa',
   'footer.about': 'Nosotros',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Precios',
   'footer.contact': 'Contacto',
   'footer.legal': 'Legal',
@@ -971,6 +977,7 @@ const fr: Strings = {
   'nav.allJobs': 'Toutes les offres',
   'nav.search': 'Recherche avancée',
   'nav.about': 'À propos',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Tarifs',
   'nav.signIn': 'Se connecter',
   'nav.language': 'Langue',
@@ -1258,6 +1265,7 @@ const fr: Strings = {
   'footer.advancedSearch': 'Recherche avancée',
   'footer.company': 'Entreprise',
   'footer.about': 'À propos',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Tarifs',
   'footer.contact': 'Contact',
   'footer.legal': 'Mentions légales',
@@ -1284,6 +1292,7 @@ const de: Strings = {
   'nav.allJobs': 'Alle Stellen',
   'nav.search': 'Erweiterte Suche',
   'nav.about': 'Über uns',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Preise',
   'nav.signIn': 'Anmelden',
   'nav.language': 'Sprache',
@@ -1569,6 +1578,7 @@ const de: Strings = {
   'footer.advancedSearch': 'Erweiterte Suche',
   'footer.company': 'Unternehmen',
   'footer.about': 'Über uns',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Preise',
   'footer.contact': 'Kontakt',
   'footer.legal': 'Rechtliches',
@@ -1595,6 +1605,7 @@ const pt: Strings = {
   'nav.allJobs': 'Todas as vagas',
   'nav.search': 'Busca avançada',
   'nav.about': 'Sobre',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Planos',
   'nav.signIn': 'Entrar',
   'nav.language': 'Idioma',
@@ -1878,6 +1889,7 @@ const pt: Strings = {
   'footer.advancedSearch': 'Busca avançada',
   'footer.company': 'Empresa',
   'footer.about': 'Sobre',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Planos',
   'footer.contact': 'Contato',
   'footer.legal': 'Jurídico',
@@ -1904,6 +1916,7 @@ const ja: Strings = {
   'nav.allJobs': 'すべての求人',
   'nav.search': '詳細検索',
   'nav.about': '会社概要',
+  'nav.faq': 'FAQ',
   'nav.pricing': '料金',
   'nav.signIn': 'ログイン',
   'nav.language': '言語',
@@ -2184,6 +2197,7 @@ const ja: Strings = {
   'footer.advancedSearch': '詳細検索',
   'footer.company': '会社情報',
   'footer.about': '会社概要',
+  'footer.faq': 'FAQ',
   'footer.pricing': '料金',
   'footer.contact': 'お問い合わせ',
   'footer.legal': '法的情報',
@@ -2210,6 +2224,7 @@ const ar: Strings = {
   'nav.allJobs': 'كل الوظائف',
   'nav.search': 'بحث متقدم',
   'nav.about': 'من نحن',
+  'nav.faq': 'الأسئلة الشائعة',
   'nav.pricing': 'الأسعار',
   'nav.signIn': 'تسجيل الدخول',
   'nav.language': 'اللغة',
@@ -2490,6 +2505,7 @@ const ar: Strings = {
   'footer.advancedSearch': 'بحث متقدم',
   'footer.company': 'الشركة',
   'footer.about': 'من نحن',
+  'footer.faq': 'الأسئلة الشائعة',
   'footer.pricing': 'الأسعار',
   'footer.contact': 'اتصل بنا',
   'footer.legal': 'قانوني',
@@ -2516,6 +2532,7 @@ const zh: Strings = {
   'nav.allJobs': '全部职位',
   'nav.search': '高级搜索',
   'nav.about': '关于',
+  'nav.faq': '常见问题',
   'nav.pricing': '定价',
   'nav.signIn': '登录',
   'nav.language': '语言',
@@ -2786,6 +2803,7 @@ const zh: Strings = {
   'footer.advancedSearch': '高级搜索',
   'footer.company': '公司',
   'footer.about': '关于',
+  'footer.faq': '常见问题',
   'footer.pricing': '定价',
   'footer.contact': '联系我们',
   'footer.legal': '法律信息',

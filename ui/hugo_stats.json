@@ -263,6 +263,7 @@
       "hover:shadow-xl",
       "hover:text-[#219c3f]",
       "hover:text-accent-600",
+      "hover:text-accent-700",
       "hover:text-navy-900",
       "hover:text-white",
       "inline-flex",

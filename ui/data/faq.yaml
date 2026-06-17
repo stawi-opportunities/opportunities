@@ -1,0 +1,55 @@
+categories:
+  - category: "Getting Started"
+    questions:
+      - q: "What is Stawi Jobs?"
+        a: "Stawi Jobs is an AI-powered opportunity matching platform. We aggregate jobs, scholarships, tenders, deals, and funding from thousands of sources worldwide, run them through a quality gate, and surface the ones most relevant to you."
+      - q: "Is Stawi Jobs free?"
+        a: "Search and browsing are always free, with or without an account. Premium features like unlimited matches, near-real-time notifications, and priority support are available on paid plans."
+      - q: "Do I need an account to search?"
+        a: "No. You can browse and search all opportunities without signing up. Creating an account lets you save favourites, set preferences, and receive weekly digests."
+      - q: "How do I create an account?"
+        a: "Click 'Get started' and sign up with your email or Google account. The process takes under a minute."
+
+  - category: "Matching & Discovery"
+    questions:
+      - q: "How does the matching engine work?"
+        a: "Our engine compares your profile — target role, seniority, regions, salary — against every listing. Matches appear on your dashboard and in your weekly digest. The more you refine your preferences, the better the matches."
+      - q: "What counts as a 'match'?"
+        a: "A role our matching engine believes fits your CV, target title, seniority, region, and salary. You see them on your dashboard and in your weekly digest."
+      - q: "How fast are matches delivered?"
+        a: "Free accounts receive a weekly digest. Premium subscribers jump the queue and receive near-real-time notifications as new opportunities are indexed."
+      - q: "Can I filter by country or region?"
+        a: "Yes. Set your preferred regions in your profile. You can also use the advanced search to filter by country, type, salary range, and more."
+
+  - category: "Billing & Plans"
+    questions:
+      - q: "Can I cancel any time?"
+        a: "Yes. Starter and Pro are month-to-month with no long-term commitment. Managed is a rolling engagement you pause or cancel when your search wraps up."
+      - q: "Does Pro get priority support?"
+        a: "Starter and Pro both receive email support. Only Managed includes a direct line and same-day responses."
+      - q: "What payment methods are accepted?"
+        a: "In Kenya & Tanzania you pay via M-Pesa (STK push). In Uganda, Ghana, Rwanda, Nigeria, Cameroon, Côte d'Ivoire & Benin, via MTN MoMo. In Malawi and Zambia, via Airtel Money. Everywhere else, Polar handles card, Apple Pay, and PayPal in USD."
+      - q: "Do you apply to jobs for me?"
+        a: "Only on Managed. Starter and Pro surface matches; every listing links to the employer's own application page so you control what gets sent."
+
+  - category: "Listings & Quality"
+    questions:
+      - q: "Where do listings come from?"
+        a: "We crawl thousands of company career pages, job boards, government portals, and institutional websites. Each listing is checked for freshness, a legitimate employer, and complete details before it appears."
+      - q: "How often is the data updated?"
+        a: "New opportunities are indexed continuously throughout the day. Our quality pipeline runs in near-real-time, so stale or closed listings are removed within hours."
+      - q: "Can I submit a listing?"
+        a: "Currently we don't accept direct submissions. Employers who want their openings indexed should ensure their career page is crawlable — our system will discover it automatically."
+      - q: "What types of opportunities do you cover?"
+        a: "Jobs (full-time, part-time, remote, contract), scholarships & bursaries, tenders & RFPs, deals & discounts, and funding & grants. We cover all industries and regions."
+
+  - category: "Account & Privacy"
+    questions:
+      - q: "What information do you collect?"
+        a: "We collect only what's needed to provide matches — your target role, seniority, regions, and salary range. Your CV is stored securely and never shared with employers without your explicit action."
+      - q: "Can I delete my account?"
+        a: "Yes. Go to your profile settings and select 'Delete account'. All your data is permanently removed within 48 hours."
+      - q: "How is my data protected?"
+        a: "All data is encrypted at rest and in transit. We use Ory Hydra for authentication and never store passwords. Our infrastructure runs on Google Cloud with SOC 2 compliance."
+      - q: "Do you sell my data?"
+        a: "Never. Your data belongs to you. We don't share, sell, or rent personal information to third parties. See our privacy policy for full details."

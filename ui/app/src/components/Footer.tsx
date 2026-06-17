@@ -92,6 +92,14 @@ export default function Footer() {
               </li>
               <li>
                 <a
+                  href="/faq/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  FAQ
+                </a>
+              </li>
+              <li>
+                <a
                   href="/pricing/"
                   className="text-sm text-gray-400 transition-colors hover:text-white"
                 >
