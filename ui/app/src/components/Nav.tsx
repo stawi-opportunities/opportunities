@@ -133,10 +133,7 @@ function MobileMenu({ open }: { open: boolean }) {
       >
         About
       </a>
-      <a
-        href="/faq/"
-        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-      >
+      <a href="/faq/" className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
         FAQ
       </a>
     </div>
