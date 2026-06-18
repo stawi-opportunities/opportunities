@@ -8,6 +8,8 @@ import { getConfig } from '@/utils/config';
 
 let instance: AuthRuntime | null = null;
 
+export const opportunitiesAuthScopes = ['openid', 'profile', 'offline_access'] as const;
+
 export function authRuntime(): AuthRuntime {
   if (instance) return instance;
   const cfg = getConfig();
@@ -17,7 +19,7 @@ export function authRuntime(): AuthRuntime {
     idpBaseUrl: cfg.oidcIssuer,
     apiBaseUrl: cfg.candidatesAPIURL,
     redirectUri: cfg.oidcRedirectURI,
-    scopes: ['openid', 'profile', 'offline_access'],
+    scopes: [...opportunitiesAuthScopes],
     skipFedCM: true,
   });
   return instance;

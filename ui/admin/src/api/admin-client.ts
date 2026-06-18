@@ -6,6 +6,8 @@ import { getConfig } from '@/utils/config';
 // non-React helpers share token + role state.
 let instance: AuthRuntime | null = null;
 
+export const opportunitiesAdminAuthScopes = ['openid', 'profile', 'offline_access'] as const;
+
 function authRuntime(): AuthRuntime {
   if (instance) return instance;
   const cfg = getConfig();
@@ -19,7 +21,7 @@ function authRuntime(): AuthRuntime {
     // service's /matching/* prefix is added inline by call sites.
     apiBaseUrl: cfg.candidatesAPIURL,
     redirectUri: cfg.oidcRedirectURI,
-    scopes: ['openid', 'profile', 'offline_access'],
+    scopes: [...opportunitiesAdminAuthScopes],
     skipFedCM: true,
   });
   return instance;
