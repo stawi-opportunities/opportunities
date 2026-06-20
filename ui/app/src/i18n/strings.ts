@@ -241,6 +241,19 @@ export interface Strings {
   'dash.openingPayment': string;
   'dash.payPerMonth': string;
   'dash.perMonth': string;
+  'dash.welcomeTitle': string;
+  'dash.welcomeBody': string;
+  'dash.welcomeDismiss': string;
+  'dash.welcomeTour': string;
+  'dash.statusActive': string;
+  'dash.statusPastDue': string;
+  'dash.statusCancelled': string;
+  'dash.emptyFeedTitle': string;
+  'dash.emptyFeedHint': string;
+  'dash.emptyFeedCompleteProfile': string;
+  'dash.emptyFeedSetPreferences': string;
+  'dash.emptyFeedBrowseAll': string;
+  'onboard.profileSaved': string;
 
   // ---- Onboarding ----
   'onboard.step': string;
@@ -632,6 +645,20 @@ const en: Strings = {
   'dash.openingPayment': 'Opening payment…',
   'dash.payPerMonth': 'Pay',
   'dash.perMonth': '/month',
+  'dash.welcomeTitle': 'Welcome to Stawi Opportunities!',
+  'dash.welcomeBody':
+    'We match you with the best opportunities across Africa. Start by completing your profile and setting your preferences.',
+  'dash.welcomeDismiss': 'Dismiss',
+  'dash.welcomeTour': 'Take a quick tour →',
+  'dash.statusActive': 'Active',
+  'dash.statusPastDue': 'Past due',
+  'dash.statusCancelled': 'Cancelled',
+  'dash.emptyFeedTitle': 'No opportunities yet',
+  'dash.emptyFeedHint': 'Complete these steps to start receiving matches:',
+  'dash.emptyFeedCompleteProfile': 'Complete your profile',
+  'dash.emptyFeedSetPreferences': 'Set your preferences',
+  'dash.emptyFeedBrowseAll': 'Browse all opportunities',
+  'onboard.profileSaved': 'Profile saved!',
 
   'footer.jobSeekers': 'Job seekers',
   'footer.browseJobs': 'Browse jobs',
@@ -943,6 +970,20 @@ const es: Strings = {
   'dash.openingPayment': 'Abriendo pago…',
   'dash.payPerMonth': 'Pagar',
   'dash.perMonth': '/mes',
+  'dash.welcomeTitle': '¡Bienvenido a Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Te emparejamos con las mejores oportunidades en toda África. Comienza completando tu perfil y configurando tus preferencias.',
+  'dash.welcomeDismiss': 'Descartar',
+  'dash.welcomeTour': 'Haz un recorrido rápido →',
+  'dash.statusActive': 'Activo',
+  'dash.statusPastDue': 'Vencido',
+  'dash.statusCancelled': 'Cancelado',
+  'dash.emptyFeedTitle': 'Aún no hay oportunidades',
+  'dash.emptyFeedHint': 'Completa estos pasos para empezar a recibir coincidencias:',
+  'dash.emptyFeedCompleteProfile': 'Completa tu perfil',
+  'dash.emptyFeedSetPreferences': 'Configura tus preferencias',
+  'dash.emptyFeedBrowseAll': 'Explora todas las oportunidades',
+  'onboard.profileSaved': '¡Perfil guardado!',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar empleos',
@@ -1258,6 +1299,20 @@ const fr: Strings = {
   'dash.openingPayment': 'Ouverture du paiement…',
   'dash.payPerMonth': 'Payer',
   'dash.perMonth': '/mois',
+  'dash.welcomeTitle': 'Bienvenue sur Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Nous vous mettons en relation avec les meilleures opportunités en Afrique. Commencez par compléter votre profil et définir vos préférences.',
+  'dash.welcomeDismiss': 'Ignorer',
+  'dash.welcomeTour': 'Faire un tour rapide →',
+  'dash.statusActive': 'Actif',
+  'dash.statusPastDue': 'En retard',
+  'dash.statusCancelled': 'Annulé',
+  'dash.emptyFeedTitle': "Pas encore d'opportunités",
+  'dash.emptyFeedHint': 'Suivez ces étapes pour commencer à recevoir des correspondances:',
+  'dash.emptyFeedCompleteProfile': 'Complétez votre profil',
+  'dash.emptyFeedSetPreferences': 'Définissez vos préférences',
+  'dash.emptyFeedBrowseAll': 'Parcourir toutes les opportunités',
+  'onboard.profileSaved': 'Profil enregistré!',
 
   'footer.jobSeekers': 'Candidats',
   'footer.browseJobs': 'Parcourir les offres',
@@ -1571,6 +1626,20 @@ const de: Strings = {
   'dash.openingPayment': 'Zahlung wird geöffnet…',
   'dash.payPerMonth': 'Zahlen',
   'dash.perMonth': '/Monat',
+  'dash.welcomeTitle': 'Willkommen bei Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Wir verbinden Sie mit den besten Möglichkeiten in ganz Afrika. Vervollständigen Sie Ihr Profil und legen Sie Ihre Präferenzen fest.',
+  'dash.welcomeDismiss': 'Schließen',
+  'dash.welcomeTour': 'Kurze Tour starten →',
+  'dash.statusActive': 'Aktiv',
+  'dash.statusPastDue': 'Überfällig',
+  'dash.statusCancelled': 'Gekündigt',
+  'dash.emptyFeedTitle': 'Noch keine Möglichkeiten',
+  'dash.emptyFeedHint': 'Führen Sie diese Schritte aus, um Übereinstimmungen zu erhalten:',
+  'dash.emptyFeedCompleteProfile': 'Profil vervollständigen',
+  'dash.emptyFeedSetPreferences': 'Präferenzen festlegen',
+  'dash.emptyFeedBrowseAll': 'Alle Möglichkeiten durchsuchen',
+  'onboard.profileSaved': 'Profil gespeichert!',
 
   'footer.jobSeekers': 'Jobsuchende',
   'footer.browseJobs': 'Stellen durchsuchen',
@@ -1882,6 +1951,20 @@ const pt: Strings = {
   'dash.openingPayment': 'Abrindo pagamento…',
   'dash.payPerMonth': 'Pagar',
   'dash.perMonth': '/mês',
+  'dash.welcomeTitle': 'Bem-vindo ao Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Conectamos você às melhores oportunidades em toda a África. Comece completando seu perfil e definindo suas preferências.',
+  'dash.welcomeDismiss': 'Dispensar',
+  'dash.welcomeTour': 'Faça um tour rápido →',
+  'dash.statusActive': 'Ativo',
+  'dash.statusPastDue': 'Vencido',
+  'dash.statusCancelled': 'Cancelado',
+  'dash.emptyFeedTitle': 'Ainda não há oportunidades',
+  'dash.emptyFeedHint': 'Conclua estas etapas para começar a receber correspondências:',
+  'dash.emptyFeedCompleteProfile': 'Complete seu perfil',
+  'dash.emptyFeedSetPreferences': 'Defina suas preferências',
+  'dash.emptyFeedBrowseAll': 'Explore todas as oportunidades',
+  'onboard.profileSaved': 'Perfil salvo!',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar vagas',
@@ -2190,6 +2273,20 @@ const ja: Strings = {
   'dash.openingPayment': '決済画面を開いています…',
   'dash.payPerMonth': '支払う',
   'dash.perMonth': '/月',
+  'dash.welcomeTitle': 'Stawi Opportunitiesへようこそ！',
+  'dash.welcomeBody':
+    'アフリカ全土の最適な機会をマッチングします。プロフィールを完了し、希望条件を設定してください。',
+  'dash.welcomeDismiss': '閉じる',
+  'dash.welcomeTour': 'クイックツアー →',
+  'dash.statusActive': '有効',
+  'dash.statusPastDue': '支払い期限切れ',
+  'dash.statusCancelled': '解約済み',
+  'dash.emptyFeedTitle': 'まだ機会はありません',
+  'dash.emptyFeedHint': '以下の手順を完了してマッチングを受け取りましょう:',
+  'dash.emptyFeedCompleteProfile': 'プロフィールを完了する',
+  'dash.emptyFeedSetPreferences': '希望条件を設定する',
+  'dash.emptyFeedBrowseAll': 'すべての機会を閲覧する',
+  'onboard.profileSaved': 'プロフィールを保存しました！',
 
   'footer.jobSeekers': '求職者の方へ',
   'footer.browseJobs': '求人を閲覧',
@@ -2498,6 +2595,20 @@ const ar: Strings = {
   'dash.openingPayment': 'جارٍ فتح صفحة الدفع…',
   'dash.payPerMonth': 'ادفع',
   'dash.perMonth': '/شهر',
+  'dash.welcomeTitle': 'مرحبًا بك في ستاوي للفرص!',
+  'dash.welcomeBody':
+    'نوفر لك أفضل الفرص في جميع أنحاء أفريقيا. ابدأ بإكمال ملفك الشخصي وتحديد تفضيلاتك.',
+  'dash.welcomeDismiss': 'تجاهل',
+  'dash.welcomeTour': 'جولة سريعة ←',
+  'dash.statusActive': 'نشط',
+  'dash.statusPastDue': 'متأخر',
+  'dash.statusCancelled': 'ملغي',
+  'dash.emptyFeedTitle': 'لا توجد فرص بعد',
+  'dash.emptyFeedHint': 'أكمل هذه الخطوات لبدء تلقي المطابقات:',
+  'dash.emptyFeedCompleteProfile': 'أكمل ملفك الشخصي',
+  'dash.emptyFeedSetPreferences': 'حدد تفضيلاتك',
+  'dash.emptyFeedBrowseAll': 'تصفح جميع الفرص',
+  'onboard.profileSaved': 'تم حفظ الملف الشخصي!',
 
   'footer.jobSeekers': 'الباحثون عن عمل',
   'footer.browseJobs': 'تصفح الوظائف',
@@ -2796,6 +2907,19 @@ const zh: Strings = {
   'dash.openingPayment': '正在打开支付页面…',
   'dash.payPerMonth': '支付',
   'dash.perMonth': '/月',
+  'dash.welcomeTitle': '欢迎来到 Stawi Opportunities！',
+  'dash.welcomeBody': '我们为您匹配非洲各地的最佳机会。首先完善您的个人资料并设置偏好。',
+  'dash.welcomeDismiss': '关闭',
+  'dash.welcomeTour': '快速游览 →',
+  'dash.statusActive': '活跃',
+  'dash.statusPastDue': '逾期',
+  'dash.statusCancelled': '已取消',
+  'dash.emptyFeedTitle': '暂无机会',
+  'dash.emptyFeedHint': '完成以下步骤开始接收匹配：',
+  'dash.emptyFeedCompleteProfile': '完善个人资料',
+  'dash.emptyFeedSetPreferences': '设置偏好',
+  'dash.emptyFeedBrowseAll': '浏览所有机会',
+  'onboard.profileSaved': '个人资料已保存！',
 
   'footer.jobSeekers': '求职者',
   'footer.browseJobs': '浏览职位',

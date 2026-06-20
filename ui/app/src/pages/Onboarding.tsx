@@ -153,6 +153,7 @@ export default function Onboarding() {
   const [draftSaveWarning, setDraftSaveWarning] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
   const initialPlan = useMemo(readPlanFromQuery, []);
   const form = useForm<FormValues>({
     defaultValues: {
@@ -232,6 +233,9 @@ export default function Onboarding() {
           console.warn('[onboarding] CV upload failed (profile saved):', cvErr);
         }
       }
+
+      setProfileSaved(true);
+      await new Promise((r) => setTimeout(r, 800));
 
       try {
         const checkout = await createCheckout({ plan_id: data.plan });
@@ -343,6 +347,24 @@ export default function Onboarding() {
         {step === 1 && <Step1Form form={form} t={t} />}
         {step === 2 && <Step2Form form={form} t={t} />}
         {step === 3 && <Step3Form form={form} t={t} />}
+        {profileSaved && (
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <svg
+              className="h-4 w-4 shrink-0 text-emerald-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            {t('onboard.profileSaved')} — {t('dash.openingPayment')}
+          </div>
+        )}
         {submitError && (
           <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
             {submitError}

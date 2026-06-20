@@ -10,6 +10,7 @@ import {
 import { fetchSnapshot } from '@/api/snapshot';
 import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
 import { OpportunityCard, type OpportunitySnapshot } from './OpportunityCard';
+import { EmptyFeedState } from '@/components/dashboard/EmptyFeedState';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
 
@@ -198,13 +199,20 @@ export function OpportunitiesFeed() {
           {t('feed.loadError')}
         </div>
       ) : loading && items.length === 0 ? (
-        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-600">
-          {t('common.loading')}
-        </p>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse rounded-lg border border-gray-200 bg-white p-4">
+              <div className="h-4 w-3/4 rounded bg-gray-100" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-gray-100" />
+              <div className="mt-3 flex gap-2">
+                <div className="h-8 w-20 rounded bg-gray-100" />
+                <div className="h-8 w-20 rounded bg-gray-100" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : items.length === 0 ? (
-        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-600">
-          {t('feed.empty')} {filter !== 'all' && t('feed.tryAllFilter')}
-        </p>
+        <EmptyFeedState filter={filter} t={t} />
       ) : (
         <>
           <ul className="space-y-3">
