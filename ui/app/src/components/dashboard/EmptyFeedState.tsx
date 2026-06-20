@@ -19,11 +19,7 @@ export function EmptyFeedState({ filter, t }: Props) {
         aria-hidden="true"
       >
         <circle cx="60" cy="40" r="16" strokeWidth="2" />
-        <path
-          d="M30 90c0-16.6 13.4-30 30-30s30 13.4 30 30"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
+        <path d="M30 90c0-16.6 13.4-30 30-30s30 13.4 30 30" strokeWidth="2" strokeLinecap="round" />
         <rect x="44" y="72" width="32" height="20" rx="3" strokeWidth="1.5" strokeDasharray="3 2" />
       </svg>
 
@@ -55,10 +51,17 @@ export function EmptyFeedState({ filter, t }: Props) {
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              />
             </svg>
           </div>
-          <p className="mt-2 text-sm font-medium text-gray-900">{t('dash.emptyFeedCompleteProfile')}</p>
+          <p className="mt-2 text-sm font-medium text-gray-900">
+            {t('dash.emptyFeedCompleteProfile')}
+          </p>
           <p className="mt-0.5 text-xs text-gray-500">{t('onboard.aboutYouHint')}</p>
         </a>
 
@@ -73,11 +76,23 @@ export function EmptyFeedState({ filter, t }: Props) {
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
             </svg>
           </div>
-          <p className="mt-2 text-sm font-medium text-gray-900">{t('dash.emptyFeedSetPreferences')}</p>
+          <p className="mt-2 text-sm font-medium text-gray-900">
+            {t('dash.emptyFeedSetPreferences')}
+          </p>
           <p className="mt-0.5 text-xs text-gray-500">{t('dash.matchPreferencesHint')}</p>
         </a>
 
@@ -87,7 +102,12 @@ export function EmptyFeedState({ filter, t }: Props) {
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-700">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </div>
           <p className="mt-2 text-sm font-medium text-gray-900">{t('dash.emptyFeedBrowseAll')}</p>

@@ -42,7 +42,11 @@ export default function Dashboard() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
       <DashboardHeader plan={plan} status={subscription} t={t} />
       <PendingCheckoutPoller />
-      {isActive && <div className="mt-4"><WelcomeBanner t={t} /></div>}
+      {isActive && (
+        <div className="mt-4">
+          <WelcomeBanner t={t} />
+        </div>
+      )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[320px_1fr]">
         <aside>

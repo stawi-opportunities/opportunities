@@ -16,7 +16,10 @@ export function DashboardHeader({
   status: string;
   t: (k: StringKey, fallback?: string) => string;
 }) {
-  const style = STATUS_STYLES[status] ?? { bg: 'bg-gray-100 text-gray-600', labelKey: 'dash.setupIncomplete' as StringKey };
+  const style = STATUS_STYLES[status] ?? {
+    bg: 'bg-gray-100 text-gray-600',
+    labelKey: 'dash.setupIncomplete' as StringKey,
+  };
   const planName = plan ? planById(plan).name : 'Setup incomplete';
   const tagline =
     plan && status === 'active'
@@ -33,7 +36,9 @@ export function DashboardHeader({
       <div>
         <h1 className="text-3xl font-bold text-gray-900">{t('dash.title')}</h1>
         <p className="mt-1 flex items-center gap-2 text-gray-600">
-          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${style.bg}`}>
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${style.bg}`}
+          >
             {plan ? planName : t(style.labelKey)}
           </span>
           <span>{tagline}</span>
