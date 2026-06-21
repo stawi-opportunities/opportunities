@@ -5,9 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/providers/AuthProvider';
 import { submitOnboarding, uploadCV } from '@/api/profile';
 import { createCheckout } from '@/api/billing';
-import { PLANS, planById, type PlanId } from '@/utils/plans';
+import { planById, type PlanId } from '@/utils/plans';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
+import { StepProgress } from '@/components/onboarding/StepProgress';
+import { CvUploadZone } from '@/components/onboarding/CvUploadZone';
+import { PlanSelector } from '@/components/onboarding/PlanSelector';
 import {
   fetchMeSubscription,
   fetchOnboardingDraft,
@@ -55,12 +58,6 @@ const Step3Schema = z.object({
   plan: z.enum(['starter', 'pro', 'managed']),
   agreeTerms: z.literal(true),
 });
-
-const STEP_LABEL_KEYS: StringKey[] = [
-  'onboard.aboutYou',
-  'onboard.yourPreferences',
-  'onboard.choosePlan',
-];
 
 const REGION_KEYS: { value: string; labelKey: StringKey }[] = [
   { value: 'Anywhere', labelKey: 'onboard.anywhere' },
@@ -294,30 +291,27 @@ export default function Onboarding() {
     if (!validateStep(step)) return;
     if (step < 3) {
       const nextStep = (step + 1) as 1 | 2 | 3;
-      const values = form.getValues();
-      const fieldsForServer: OnboardingDraftFields = {
-        target_job_title: '',
-        experience_level: 'mid',
-        job_search_status: 'actively_looking',
-        salary_range: values.salaryAmount
-          ? `${values.salaryCurrency ?? 'USD'} ${values.salaryAmount}`
-          : undefined,
-        wants_ats_report: true,
-        preferred_regions: values.preferredRegions,
-        preferred_timezones: values.preferredTimezones,
-        preferred_languages: values.preferredLanguages,
-        job_types: values.jobTypes,
-        country: values.country,
-        plan: values.plan,
-      };
-      try {
-        await saveOnboardingDraft(nextStep, fieldsForServer);
-        setDraftSaveWarning(false);
-      } catch {
-        setDraftSaveWarning(true);
-      }
+      await saveDraft(nextStep);
       setStep(nextStep);
     } else await form.handleSubmit(onSubmit)();
+  }
+
+  async function saveDraft(targetStep: 1 | 2 | 3) {
+    const values = form.getValues();
+    const fieldsForServer = buildDraftFields(values);
+    try {
+      await saveOnboardingDraft(targetStep, fieldsForServer);
+      setDraftSaveWarning(false);
+    } catch {
+      setDraftSaveWarning(true);
+    }
+  }
+
+  async function goBack() {
+    if (step === 1) return;
+    const prevStep = (step - 1) as 1 | 2 | 3;
+    await saveDraft(prevStep);
+    setStep(prevStep);
   }
 
   const selectedPlan = form.watch('plan');
@@ -325,6 +319,40 @@ export default function Onboarding() {
     step === 3
       ? `${t('onboard.continueToPayment')} ┬╖ $${planById(selectedPlan).price}${t('dash.perMonth')}`
       : t('onboard.continue');
+
+  function buildDraftFields(values: FormValues): OnboardingDraftFields {
+    return {
+      target_job_title: '',
+      experience_level: 'mid',
+      job_search_status: 'actively_looking',
+      salary_range: values.salaryAmount
+        ? `${values.salaryCurrency ?? 'USD'} ${values.salaryAmount}`
+        : undefined,
+      wants_ats_report: true,
+      preferred_regions: values.preferredRegions,
+      preferred_timezones: values.preferredTimezones,
+      preferred_languages: values.preferredLanguages,
+      job_types: values.jobTypes,
+      country: values.country,
+      plan: values.plan,
+    };
+  }
+
+  async function skipPreferences() {
+    try {
+      await saveOnboardingDraft(3, {
+        ...buildDraftFields(form.getValues()),
+        preferred_regions: [],
+        preferred_timezones: [],
+        preferred_languages: [],
+        job_types: [],
+        country: '',
+      });
+    } catch {
+      /* non-blocking */
+    }
+    setStep(3);
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -336,7 +364,7 @@ export default function Onboarding() {
           {t('onboard.draftSaveWarning')}
         </div>
       )}
-      <Progress step={step} t={t} />
+      <StepProgress step={step} t={t} />
       <form
         className="mt-8"
         onSubmit={(e) => {
@@ -345,7 +373,7 @@ export default function Onboarding() {
         }}
       >
         {step === 1 && <Step1Form form={form} t={t} />}
-        {step === 2 && <Step2Form form={form} t={t} />}
+        {step === 2 && <Step2Form form={form} t={t} onSkipPreferences={skipPreferences} />}
         {step === 3 && <Step3Form form={form} t={t} />}
         {profileSaved && (
           <div className="mt-4 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -374,9 +402,12 @@ export default function Onboarding() {
           <button
             type="button"
             disabled={step === 1 || submitting}
-            onClick={() => setStep((s) => Math.max(1, s - 1) as 1 | 2 | 3)}
-            className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
+            onClick={() => void goBack()}
+            className="inline-flex items-center gap-1.5 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
           >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+            </svg>
             {t('onboard.back')}
           </button>
           <button
@@ -394,42 +425,7 @@ export default function Onboarding() {
 
 type T = (k: StringKey, fallback?: string) => string;
 
-function Progress({ step, t }: { step: 1 | 2 | 3; t: T }) {
-  return (
-    <div
-      role="progressbar"
-      aria-label="Onboarding progress"
-      aria-valuemin={1}
-      aria-valuemax={3}
-      aria-valuenow={step}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {t('onboard.step')} {step} {t('onboard.of')} 3 ┬╖ {t(STEP_LABEL_KEYS[step - 1]!)}
-      </p>
-      <ol className="mt-3 grid grid-cols-3 gap-2" aria-hidden>
-        {STEP_LABEL_KEYS.map((key, i) => {
-          const n = (i + 1) as 1 | 2 | 3;
-          const done = step > n;
-          const active = step === n;
-          return (
-            <li key={key} className="flex flex-col gap-1">
-              <div
-                className={`h-1.5 rounded-full transition-colors ${
-                  done || active ? 'bg-accent-500' : 'bg-gray-200'
-                }`}
-              />
-              <span className={`text-xs ${active ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
-                {t(key)}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
-
-type FormProps = { form: UseFormReturn<FormValues>; t: T };
+type FormProps = { form: UseFormReturn<FormValues>; t: T; onSkipPreferences?: () => Promise<void> };
 
 function Step1Form({ form, t }: FormProps) {
   const {
@@ -446,63 +442,12 @@ function Step1Form({ form, t }: FormProps) {
         <p className="mt-1 text-gray-600">{t('onboard.aboutYouHint')}</p>
       </header>
 
-      <Field label={t('onboard.uploadCV')} error={errors.cv?.message as string | undefined}>
-        {(id) => (
-          <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4">
-            {cv ? (
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900">{cv.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {(cv.size / 1024).toFixed(1)} KB ┬╖ {t('onboard.readyToUpload')}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setValue('cv', undefined, { shouldValidate: true })}
-                  className="text-sm font-medium text-gray-600 hover:text-gray-900"
-                >
-                  {t('onboard.remove')}
-                </button>
-              </div>
-            ) : (
-              <div className="text-center">
-                <input
-                  id={id}
-                  type="file"
-                  accept=".pdf,.doc,.docx,.rtf,.txt"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    setValue('cv', f ?? undefined, { shouldValidate: true });
-                  }}
-                  className="sr-only"
-                />
-                <label
-                  htmlFor={id}
-                  className="inline-flex cursor-pointer items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                >
-                  <svg
-                    className="mr-2 h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                  {t('onboard.chooseFile')}
-                </label>
-                <p className="mt-2 text-xs text-gray-500">{t('onboard.cvFormats')}</p>
-              </div>
-            )}
-          </div>
-        )}
-      </Field>
+      <CvUploadZone
+        value={cv}
+        onChange={(f) => setValue('cv', f, { shouldValidate: true })}
+        error={errors.cv?.message as string | undefined}
+        t={t}
+      />
       <p className="text-xs text-gray-500">{t('onboard.cvPrivacy')}</p>
 
       <Field label={t('onboard.extraInfo')} error={errors.extraInfo?.message as string | undefined}>
@@ -545,7 +490,7 @@ function Step1Form({ form, t }: FormProps) {
   );
 }
 
-function Step2Form({ form, t }: FormProps) {
+function Step2Form({ form, t, onSkipPreferences }: FormProps) {
   const {
     watch,
     setValue,
@@ -711,6 +656,18 @@ function Step2Form({ form, t }: FormProps) {
           />
         )}
       </Field>
+      {onSkipPreferences && (
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => void onSkipPreferences()}
+            className="text-sm text-gray-400 underline hover:text-gray-600"
+          >
+            {t('onboard.skipPreferences')}
+          </button>
+          <p className="mt-1 text-xs text-gray-400">{t('onboard.skipPreferencesHint')}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -733,42 +690,7 @@ function Step3Form({ form, t }: FormProps) {
 
       <Field error={errors.plan?.message as string | undefined}>
         {() => (
-          <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Plan">
-            {PLANS.map((p) => {
-              const on = plan === p.id;
-              const priceLabel = `$${p.price}${t('dash.perMonth')}`;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  onClick={() => setValue('plan', p.id, { shouldValidate: true })}
-                  className={`flex flex-col items-start gap-1 rounded-lg border-2 p-4 text-left transition-colors ${
-                    on
-                      ? 'border-accent-500 bg-accent-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex w-full items-center justify-between gap-2">
-                    <span className="text-base font-semibold text-gray-900">{p.name}</span>
-                    <span className="text-sm font-semibold text-gray-900">{priceLabel}</span>
-                  </div>
-                  <p className="text-sm text-gray-600">{p.tagline}</p>
-                  {p.matchesPerWeek !== null && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      {t('onboard.matchesPerWeek').replace('{count}', String(p.matchesPerWeek))}
-                    </p>
-                  )}
-                  {p.meta.agent && (
-                    <p className="mt-1 text-xs font-medium text-accent-700">
-                      {t('onboard.includesAgent')}
-                    </p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <PlanSelector value={plan} onChange={(id) => setValue('plan', id, { shouldValidate: true })} t={t} />
         )}
       </Field>
 

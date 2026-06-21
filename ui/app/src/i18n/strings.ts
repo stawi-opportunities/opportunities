@@ -329,6 +329,12 @@ export interface Strings {
   'onboard.validationLanguage': string;
   'onboard.validationJobType': string;
   'onboard.validationTerms': string;
+  'onboard.cvDropHere': string;
+  'onboard.cvDragPrompt': string;
+  'onboard.skipPreferences': string;
+  'onboard.skipPreferencesHint': string;
+  'onboard.features': string;
+  'onboard.showLess': string;
 
   // ---- CTA ----
   'cta.twoMinutes': string;
@@ -604,6 +610,12 @@ const en: Strings = {
   'onboard.validationLanguage': 'Pick at least one language',
   'onboard.validationJobType': 'Pick at least one job type',
   'onboard.validationTerms': 'Please agree to the Terms before finishing',
+  'onboard.cvDropHere': 'Drop your CV here',
+  'onboard.cvDragPrompt': 'Drag & drop your CV here, or click to browse',
+  'onboard.skipPreferences': 'Skip for now — I\'ll set this up later',
+  'onboard.skipPreferencesHint': 'You can always configure these later from your dashboard',
+  'onboard.features': 'features',
+  'onboard.showLess': 'Show less',
 
   'dash.title': 'Your dashboard',
   'dash.setupIncomplete': 'Setup incomplete',
@@ -929,6 +941,12 @@ const es: Strings = {
   'onboard.validationLanguage': 'Selecciona al menos un idioma',
   'onboard.validationJobType': 'Selecciona al menos un tipo de empleo',
   'onboard.validationTerms': 'Acepta los Términos antes de finalizar',
+  'onboard.cvDropHere': 'Suelta tu CV aquí',
+  'onboard.cvDragPrompt': 'Arrastra y suelta tu CV aquí, o haz clic para explorar',
+  'onboard.skipPreferences': 'Saltar por ahora — lo configuraré después',
+  'onboard.skipPreferencesHint': 'Siempre puedes configurarlo desde tu panel',
+  'onboard.features': 'funciones',
+  'onboard.showLess': 'Mostrar menos',
 
   'dash.title': 'Tu panel',
   'dash.setupIncomplete': 'Configuración incompleta',
@@ -1256,6 +1274,12 @@ const fr: Strings = {
   'onboard.validationLanguage': 'Sélectionnez au moins une langue',
   'onboard.validationJobType': 'Sélectionnez au moins un type de poste',
   'onboard.validationTerms': 'Veuillez accepter les Conditions avant de terminer',
+  'onboard.cvDropHere': 'Déposez votre CV ici',
+  'onboard.cvDragPrompt': 'Glissez-déposez votre CV ici, ou cliquez pour parcourir',
+  'onboard.skipPreferences': 'Passer pour le moment — je configurerai plus tard',
+  'onboard.skipPreferencesHint': 'Vous pouvez toujours configurer cela depuis votre tableau de bord',
+  'onboard.features': 'fonctionnalités',
+  'onboard.showLess': 'Afficher moins',
 
   'dash.title': 'Votre tableau de bord',
   'dash.setupIncomplete': 'Configuration incomplète',
@@ -1584,6 +1608,12 @@ const de: Strings = {
   'onboard.validationLanguage': 'Wähle mindestens eine Sprache',
   'onboard.validationJobType': 'Wähle mindestens eine Beschäftigungsart',
   'onboard.validationTerms': 'Bitte stimme den Nutzungsbedingungen zu, bevor du fortfährst',
+  'onboard.cvDropHere': 'Lebenslauf hier ablegen',
+  'onboard.cvDragPrompt': 'Ziehe deinen Lebenslauf hierher oder klicke zum Durchsuchen',
+  'onboard.skipPreferences': 'Überspringen — ich richte das später ein',
+  'onboard.skipPreferencesHint': 'Du kannst dies jederzeit in deinem Dashboard konfigurieren',
+  'onboard.features': 'Funktionen',
+  'onboard.showLess': 'Weniger anzeigen',
 
   'dash.title': 'Dein Dashboard',
   'dash.setupIncomplete': 'Einrichtung unvollständig',
@@ -1910,6 +1940,12 @@ const pt: Strings = {
   'onboard.validationLanguage': 'Selecione pelo menos um idioma',
   'onboard.validationJobType': 'Selecione pelo menos um tipo de vaga',
   'onboard.validationTerms': 'Aceite os Termos antes de finalizar',
+  'onboard.cvDropHere': 'Solte seu currículo aqui',
+  'onboard.cvDragPrompt': 'Arraste e solte seu currículo aqui, ou clique para procurar',
+  'onboard.skipPreferences': 'Pular por agora — vou configurar depois',
+  'onboard.skipPreferencesHint': 'Você sempre pode configurar isso no seu painel',
+  'onboard.features': 'recursos',
+  'onboard.showLess': 'Mostrar menos',
 
   'dash.title': 'Seu painel',
   'dash.setupIncomplete': 'Configuração incompleta',
@@ -2233,6 +2269,12 @@ const ja: Strings = {
   'onboard.validationLanguage': '少なくとも1つの言語を選択してください',
   'onboard.validationJobType': '少なくとも1つの雇用形態を選択してください',
   'onboard.validationTerms': '完了する前に利用規約に同意してください',
+  'onboard.cvDropHere': 'ここに履歴書をドロップ',
+  'onboard.cvDragPrompt': '履歴書をドラッグ＆ドロップするか、クリックして選択',
+  'onboard.skipPreferences': 'スキップ — 後で設定します',
+  'onboard.skipPreferencesHint': 'ダッシュボードからいつでも設定できます',
+  'onboard.features': '機能',
+  'onboard.showLess': '表示を減らす',
 
   'dash.title': 'ダッシュボード',
   'dash.setupIncomplete': '設定が未完了です',
@@ -2555,6 +2597,12 @@ const ar: Strings = {
   'onboard.validationLanguage': 'اختر لغة واحدة على الأقل',
   'onboard.validationJobType': 'اختر نوع وظيفة واحداً على الأقل',
   'onboard.validationTerms': 'يرجى الموافقة على الشروط قبل الإنهاء',
+  'onboard.cvDropHere': 'أسقط سيرتك الذاتية هنا',
+  'onboard.cvDragPrompt': 'اسحب وأفلت سيرتك الذاتية هنا، أو انقر للتصفح',
+  'onboard.skipPreferences': 'تخط الآن — سأضبط هذا لاحقًا',
+  'onboard.skipPreferencesHint': 'يمكنك دائمًا تكوين هذه الإعدادات من لوحة التحكم',
+  'onboard.features': 'ميزات',
+  'onboard.showLess': 'عرض أقل',
 
   'dash.title': 'لوحة التحكم',
   'dash.setupIncomplete': 'الإعداد غير مكتمل',
@@ -2870,6 +2918,12 @@ const zh: Strings = {
   'onboard.validationLanguage': '请至少选择一种语言',
   'onboard.validationJobType': '请至少选择一种工作类型',
   'onboard.validationTerms': '请在完成前同意服务条款',
+  'onboard.cvDropHere': '将简历拖放到此处',
+  'onboard.cvDragPrompt': '将简历拖放到此处，或点击浏览',
+  'onboard.skipPreferences': '跳过 — 我稍后再设置',
+  'onboard.skipPreferencesHint': '您可以随时在控制面板中进行配置',
+  'onboard.features': '功能',
+  'onboard.showLess': '显示更少',
 
   'dash.title': '我的面板',
   'dash.setupIncomplete': '设置未完成',
