@@ -612,7 +612,7 @@ const en: Strings = {
   'onboard.validationTerms': 'Please agree to the Terms before finishing',
   'onboard.cvDropHere': 'Drop your CV here',
   'onboard.cvDragPrompt': 'Drag & drop your CV here, or click to browse',
-  'onboard.skipPreferences': 'Skip for now — I\'ll set this up later',
+  'onboard.skipPreferences': "Skip for now — I'll set this up later",
   'onboard.skipPreferencesHint': 'You can always configure these later from your dashboard',
   'onboard.features': 'features',
   'onboard.showLess': 'Show less',
@@ -1277,7 +1277,8 @@ const fr: Strings = {
   'onboard.cvDropHere': 'Déposez votre CV ici',
   'onboard.cvDragPrompt': 'Glissez-déposez votre CV ici, ou cliquez pour parcourir',
   'onboard.skipPreferences': 'Passer pour le moment — je configurerai plus tard',
-  'onboard.skipPreferencesHint': 'Vous pouvez toujours configurer cela depuis votre tableau de bord',
+  'onboard.skipPreferencesHint':
+    'Vous pouvez toujours configurer cela depuis votre tableau de bord',
   'onboard.features': 'fonctionnalités',
   'onboard.showLess': 'Afficher moins',
 

@@ -406,7 +406,12 @@ export default function Onboarding() {
             className="inline-flex items-center gap-1.5 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
             {t('onboard.back')}
           </button>
@@ -690,7 +695,11 @@ function Step3Form({ form, t }: FormProps) {
 
       <Field error={errors.plan?.message as string | undefined}>
         {() => (
-          <PlanSelector value={plan} onChange={(id) => setValue('plan', id, { shouldValidate: true })} t={t} />
+          <PlanSelector
+            value={plan}
+            onChange={(id) => setValue('plan', id, { shouldValidate: true })}
+            t={t}
+          />
         )}
       </Field>
 

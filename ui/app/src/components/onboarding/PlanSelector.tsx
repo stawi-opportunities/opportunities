@@ -20,7 +20,9 @@ export function PlanSelector({ value, onChange, t }: Props) {
           <div
             key={p.id}
             className={`relative flex flex-col rounded-lg border-2 p-5 transition-colors ${
-              on ? 'border-accent-500 bg-accent-50 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'
+              on
+                ? 'border-accent-500 bg-accent-50 shadow-sm'
+                : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
           >
             {p.highlight && (
@@ -60,14 +62,26 @@ export function PlanSelector({ value, onChange, t }: Props) {
                 onClick={() => setExpanded(showAll ? null : p.id)}
                 className="text-xs font-medium text-accent-600 hover:text-accent-700"
               >
-                {showAll ? `${t('onboard.showLess')} ↑` : `${p.features.length} ${t('onboard.features')} →`}
+                {showAll
+                  ? `${t('onboard.showLess')} ↑`
+                  : `${p.features.length} ${t('onboard.features')} →`}
               </button>
               {showAll && (
                 <ul className="mt-2 space-y-1">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-1.5 text-xs text-gray-500">
-                      <svg className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      <svg
+                        className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M5 13l4 4L19 7"
+                        />
                       </svg>
                       {f}
                     </li>
