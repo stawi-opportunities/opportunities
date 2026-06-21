@@ -682,7 +682,7 @@ const en: Strings = {
   'dash.celebrationBody': "Here's what happens next:",
   'dash.celebrationStep1': "We're now matching you with opportunities",
   'dash.celebrationStep2': "You'll receive email notifications for new matches",
-  'dash.celebrationStep3': "Your first matches will appear within 24 hours",
+  'dash.celebrationStep3': 'Your first matches will appear within 24 hours',
   'dash.celebrationDismiss': 'Got it, show me my dashboard',
   'onboard.profileSaved': 'Profile saved!',
 
@@ -1362,9 +1362,10 @@ const fr: Strings = {
   'dash.celebrationTitle': 'Tout est prêt !',
   'dash.celebrationBody': 'Voici la suite :',
   'dash.celebrationStep1': 'Nous vous mettons maintenant en relation avec des opportunités',
-  'dash.celebrationStep2': 'Vous recevrez des notifications par email pour les nouvelles correspondances',
+  'dash.celebrationStep2':
+    'Vous recevrez des notifications par email pour les nouvelles correspondances',
   'dash.celebrationStep3': 'Vos premières correspondances apparaîtront dans les 24 heures',
-  'dash.celebrationDismiss': "Compris, montrez-moi mon tableau de bord",
+  'dash.celebrationDismiss': 'Compris, montrez-moi mon tableau de bord',
   'onboard.profileSaved': 'Profil enregistré!',
 
   'footer.jobSeekers': 'Candidats',

@@ -30,9 +30,7 @@ export function PreferencesPanel() {
       const countries = profile.preferred_countries
         ? profile.preferred_countries.split(',').filter(Boolean)
         : [];
-      const languages = profile.languages
-        ? profile.languages.split(';').filter(Boolean)
-        : [];
+      const languages = profile.languages ? profile.languages.split(';').filter(Boolean) : [];
       countries.forEach((c: string) => result.push({ label: c.trim() }));
       languages.forEach((l: string) => result.push({ label: l.trim() }));
     }

@@ -11,7 +11,11 @@ import { fetchSnapshot } from '@/api/snapshot';
 import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
 import { OpportunityCard, type OpportunitySnapshot } from './OpportunityCard';
 import { EmptyFeedState } from '@/components/dashboard/EmptyFeedState';
-import { FilterChips, readFiltersFromURL, type FeedFilters } from '@/components/dashboard/FilterChips';
+import {
+  FilterChips,
+  readFiltersFromURL,
+  type FeedFilters,
+} from '@/components/dashboard/FilterChips';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
 
@@ -221,17 +225,13 @@ export function OpportunitiesFeed() {
               }`}
             >
               {t(f.labelKey)}
-              {count > 0 && (
-                <span className="ml-1.5 text-xs opacity-70">({count})</span>
-              )}
+              {count > 0 && <span className="ml-1.5 text-xs opacity-70">({count})</span>}
             </button>
           );
         })}
       </div>
 
-      {items.length > 0 && (
-        <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
-      )}
+      {items.length > 0 && <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />}
 
       {hasError ? (
         <div

@@ -59,7 +59,11 @@ export function FilterChips({ filters, onChange, t }: Props) {
             : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
         }`}
       >
-        {filters.remote === true ? 'Remote' : filters.remote === false ? 'On-site' : 'Remote / On-site'}
+        {filters.remote === true
+          ? 'Remote'
+          : filters.remote === false
+            ? 'On-site'
+            : 'Remote / On-site'}
       </button>
 
       {OPPORTUNITY_KINDS.map(({ value, labelKey }) => {

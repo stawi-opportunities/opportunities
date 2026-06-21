@@ -18,7 +18,10 @@ export function CelebrationOverlay({ t, onDismiss }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4">
       <div className="relative max-w-md rounded-xl bg-white p-6 text-center shadow-2xl animate-fade-in">
         {/* Confetti dots */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl" aria-hidden>
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
+          aria-hidden
+        >
           {Array.from({ length: 20 }).map((_, i) => (
             <div
               key={i}
@@ -53,20 +56,50 @@ export function CelebrationOverlay({ t, onDismiss }: Props) {
           <p className="mt-2 text-sm text-gray-600">{t('dash.celebrationBody')}</p>
           <ul className="mt-4 space-y-2 text-left text-sm text-gray-700">
             <li className="flex items-center gap-2">
-              <svg className="h-4 w-4 shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              <svg
+                className="h-4 w-4 shrink-0 text-emerald-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               {t('dash.celebrationStep1')}
             </li>
             <li className="flex items-center gap-2">
-              <svg className="h-4 w-4 shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              <svg
+                className="h-4 w-4 shrink-0 text-emerald-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               {t('dash.celebrationStep2')}
             </li>
             <li className="flex items-center gap-2">
-              <svg className="h-4 w-4 shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              <svg
+                className="h-4 w-4 shrink-0 text-emerald-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               {t('dash.celebrationStep3')}
             </li>
