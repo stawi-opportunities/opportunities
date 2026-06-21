@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   applyToOpportunity,
   fetchOpportunities,
@@ -11,6 +11,7 @@ import { fetchSnapshot } from '@/api/snapshot';
 import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
 import { OpportunityCard, type OpportunitySnapshot } from './OpportunityCard';
 import { EmptyFeedState } from '@/components/dashboard/EmptyFeedState';
+import { FilterChips, readFiltersFromURL, type FeedFilters } from '@/components/dashboard/FilterChips';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
 
@@ -57,11 +58,44 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
 export function OpportunitiesFeed() {
   const { t } = useI18n();
   const [filter, setFilter] = useState<OpportunityFilter>(readFilterFromURL);
+  const [feedFilters, setFeedFilters] = useState<FeedFilters>(readFiltersFromURL);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [snapshots, setSnapshots] = useState<Record<string, OpportunitySnapshot | null>>({});
+
+  const counts = useMemo(
+    () => ({
+      all: items.length,
+      matches: items.filter((i) => (i.score ?? 0) > 0).length,
+      starred: items.filter((i) => i.starred).length,
+      applied: items.filter((i) => i.application).length,
+    }),
+    [items]
+  );
+
+  const filteredItems = useMemo(() => {
+    let result = items;
+    if (feedFilters.remote === true) {
+      result = result.filter((it) => {
+        const snap = snapshots[it.opportunity_id];
+        return snap?.location?.toLowerCase().includes('remote') ?? false;
+      });
+    } else if (feedFilters.remote === false) {
+      result = result.filter((it) => {
+        const snap = snapshots[it.opportunity_id];
+        return snap && !snap.location?.toLowerCase().includes('remote');
+      });
+    }
+    if (feedFilters.kind) {
+      result = result.filter((it) => {
+        const snap = snapshots[it.opportunity_id];
+        return snap?.kind === feedFilters.kind;
+      });
+    }
+    return result;
+  }, [items, snapshots, feedFilters]);
 
   const load = useCallback(async (f: OpportunityFilter, cursor?: string) => {
     setLoading(true);
@@ -172,6 +206,7 @@ export function OpportunitiesFeed() {
       <div className="flex flex-wrap items-center gap-2" role="tablist">
         {FILTER_KEYS.map((f) => {
           const active = f.id === filter;
+          const count = counts[f.id];
           return (
             <button
               key={f.id}
@@ -186,10 +221,17 @@ export function OpportunitiesFeed() {
               }`}
             >
               {t(f.labelKey)}
+              {count > 0 && (
+                <span className="ml-1.5 text-xs opacity-70">({count})</span>
+              )}
             </button>
           );
         })}
       </div>
+
+      {items.length > 0 && (
+        <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
+      )}
 
       {hasError ? (
         <div
@@ -211,12 +253,16 @@ export function OpportunitiesFeed() {
             </div>
           ))}
         </div>
+      ) : filteredItems.length === 0 && items.length > 0 ? (
+        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500">
+          No opportunities match your current filters.
+        </p>
       ) : items.length === 0 ? (
         <EmptyFeedState filter={filter} t={t} />
       ) : (
         <>
           <ul className="space-y-3">
-            {items.map((it) => (
+            {filteredItems.map((it) => (
               <OpportunityCard
                 key={it.opportunity_id}
                 item={it}
@@ -229,7 +275,7 @@ export function OpportunitiesFeed() {
           </ul>
           <div className="flex items-center justify-between text-xs text-gray-400">
             <span>
-              {items.length} {t('feed.opportunities')}
+              {filteredItems.length} {t('feed.opportunities')}
             </span>
             {nextCursor && (
               <button

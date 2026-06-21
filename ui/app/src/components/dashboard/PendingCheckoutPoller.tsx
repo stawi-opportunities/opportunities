@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { pollCheckoutStatus } from '@/api/billing';
+import { CelebrationOverlay } from '@/components/dashboard/CelebrationOverlay';
+import { useI18n } from '@/i18n/I18nProvider';
 import { QUERY_KEYS } from '@/constants/queryKeys';
 
 const PENDING_PROMPT_KEY = 'stawi.billing.pending_prompt_id';
@@ -24,6 +26,7 @@ const PENDING_PROMPT_KEY = 'stawi.billing.pending_prompt_id';
  */
 export function PendingCheckoutPoller() {
   const qc = useQueryClient();
+  const { t } = useI18n();
   const [state, setState] = useState<'idle' | 'polling' | 'paid' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -105,11 +108,7 @@ export function PendingCheckoutPoller() {
 
   if (state === 'idle') return null;
   if (state === 'paid') {
-    return (
-      <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-        Payment received — your subscription is now active.
-      </div>
-    );
+    return <CelebrationOverlay t={t} onDismiss={() => setState('idle')} />;
   }
   if (state === 'failed') {
     return (
