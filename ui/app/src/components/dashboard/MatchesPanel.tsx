@@ -27,6 +27,7 @@ export function MatchesPanel({
   }
   const planInfo = planById(plan);
   const cap = planInfo.matchesPerWeek ?? 0;
+  const progressPct = cap > 0 ? Math.min(100, Math.round(((delivered ?? 0) / cap) * 100)) : 0;
 
   if (subQueryError || queued === null || delivered === null) {
     return (
@@ -50,14 +51,20 @@ export function MatchesPanel({
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
             Delivered this week
           </p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">
-            {delivered}
-            <span className="text-sm font-normal text-gray-500"> / {cap}</span>
-          </p>
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-2xl font-bold text-gray-900">{delivered}</span>
+            <span className="text-sm text-gray-500">/ {cap}</span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div
+              className="h-full rounded-full bg-accent-500 transition-all duration-700 ease-out"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">In your queue</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{queued}</p>
+          <p className="mt-2 text-2xl font-bold text-gray-900">{queued}</p>
         </div>
       </div>
       {plan === 'starter' && (

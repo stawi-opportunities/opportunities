@@ -187,6 +187,7 @@ export interface Strings {
   'status.rejected': string;
   'status.hired': string;
   'card.match': string;
+  'card.new': string;
 
   // ---- Cascade / feed ----
   'cascade.yourPreferences': string;
@@ -253,6 +254,12 @@ export interface Strings {
   'dash.emptyFeedCompleteProfile': string;
   'dash.emptyFeedSetPreferences': string;
   'dash.emptyFeedBrowseAll': string;
+  'dash.celebrationTitle': string;
+  'dash.celebrationBody': string;
+  'dash.celebrationStep1': string;
+  'dash.celebrationStep2': string;
+  'dash.celebrationStep3': string;
+  'dash.celebrationDismiss': string;
   'onboard.profileSaved': string;
 
   // ---- Onboarding ----
@@ -517,6 +524,7 @@ const en: Strings = {
   'status.rejected': 'Rejected',
   'status.hired': 'Hired',
   'card.match': '% match',
+  'card.new': 'New',
 
   'cascade.yourPreferences': 'Your preferences',
   'cascade.outside': 'Outside {country}',
@@ -670,6 +678,12 @@ const en: Strings = {
   'dash.emptyFeedCompleteProfile': 'Complete your profile',
   'dash.emptyFeedSetPreferences': 'Set your preferences',
   'dash.emptyFeedBrowseAll': 'Browse all opportunities',
+  'dash.celebrationTitle': "You're all set!",
+  'dash.celebrationBody': "Here's what happens next:",
+  'dash.celebrationStep1': "We're now matching you with opportunities",
+  'dash.celebrationStep2': "You'll receive email notifications for new matches",
+  'dash.celebrationStep3': 'Your first matches will appear within 24 hours',
+  'dash.celebrationDismiss': 'Got it, show me my dashboard',
   'onboard.profileSaved': 'Profile saved!',
 
   'footer.jobSeekers': 'Job seekers',
@@ -848,6 +862,7 @@ const es: Strings = {
   'status.rejected': 'Rechazado',
   'status.hired': 'Contratado',
   'card.match': '% coincidencia',
+  'card.new': 'Nuevo',
 
   'cascade.yourPreferences': 'Tus preferencias',
   'cascade.outside': 'Fuera de {country}',
@@ -1001,6 +1016,12 @@ const es: Strings = {
   'dash.emptyFeedCompleteProfile': 'Completa tu perfil',
   'dash.emptyFeedSetPreferences': 'Configura tus preferencias',
   'dash.emptyFeedBrowseAll': 'Explora todas las oportunidades',
+  'dash.celebrationTitle': '¡Todo listo!',
+  'dash.celebrationBody': 'Esto es lo que sigue:',
+  'dash.celebrationStep1': 'Ahora te estamos emparejando con oportunidades',
+  'dash.celebrationStep2': 'Recibirás notificaciones por correo de nuevas coincidencias',
+  'dash.celebrationStep3': 'Tus primeras coincidencias aparecerán en 24 horas',
+  'dash.celebrationDismiss': 'Entendido, muéstrame mi panel',
   'onboard.profileSaved': '¡Perfil guardado!',
 
   'footer.jobSeekers': 'Candidatos',
@@ -1180,6 +1201,7 @@ const fr: Strings = {
   'status.rejected': 'Refusé',
   'status.hired': 'Embauché',
   'card.match': '% correspondance',
+  'card.new': 'Nouveau',
 
   'cascade.yourPreferences': 'Vos préférences',
   'cascade.outside': 'Hors de {country}',
@@ -1337,6 +1359,13 @@ const fr: Strings = {
   'dash.emptyFeedCompleteProfile': 'Complétez votre profil',
   'dash.emptyFeedSetPreferences': 'Définissez vos préférences',
   'dash.emptyFeedBrowseAll': 'Parcourir toutes les opportunités',
+  'dash.celebrationTitle': 'Tout est prêt !',
+  'dash.celebrationBody': 'Voici la suite :',
+  'dash.celebrationStep1': 'Nous vous mettons maintenant en relation avec des opportunités',
+  'dash.celebrationStep2':
+    'Vous recevrez des notifications par email pour les nouvelles correspondances',
+  'dash.celebrationStep3': 'Vos premières correspondances apparaîtront dans les 24 heures',
+  'dash.celebrationDismiss': 'Compris, montrez-moi mon tableau de bord',
   'onboard.profileSaved': 'Profil enregistré!',
 
   'footer.jobSeekers': 'Candidats',
@@ -1515,6 +1544,7 @@ const de: Strings = {
   'status.rejected': 'Abgelehnt',
   'status.hired': 'Eingestellt',
   'card.match': '% Übereinstimmung',
+  'card.new': 'Neu',
 
   'cascade.yourPreferences': 'Deine Präferenzen',
   'cascade.outside': 'Außerhalb von {country}',
@@ -1670,6 +1700,12 @@ const de: Strings = {
   'dash.emptyFeedCompleteProfile': 'Profil vervollständigen',
   'dash.emptyFeedSetPreferences': 'Präferenzen festlegen',
   'dash.emptyFeedBrowseAll': 'Alle Möglichkeiten durchsuchen',
+  'dash.celebrationTitle': 'Alles bereit!',
+  'dash.celebrationBody': 'So geht es weiter:',
+  'dash.celebrationStep1': 'Wir gleichen Sie jetzt mit Möglichkeiten ab',
+  'dash.celebrationStep2': 'Sie erhalten E-Mail-Benachrichtigungen über neue Übereinstimmungen',
+  'dash.celebrationStep3': 'Ihre ersten Übereinstimmungen erscheinen innerhalb von 24 Stunden',
+  'dash.celebrationDismiss': 'Verstanden, zeigen Sie mir mein Dashboard',
   'onboard.profileSaved': 'Profil gespeichert!',
 
   'footer.jobSeekers': 'Jobsuchende',
@@ -1848,6 +1884,7 @@ const pt: Strings = {
   'status.rejected': 'Rejeitado',
   'status.hired': 'Contratado',
   'card.match': '% compatível',
+  'card.new': 'Novo',
 
   'cascade.yourPreferences': 'Suas preferências',
   'cascade.outside': 'Fora de {country}',
@@ -2001,6 +2038,12 @@ const pt: Strings = {
   'dash.emptyFeedCompleteProfile': 'Complete seu perfil',
   'dash.emptyFeedSetPreferences': 'Defina suas preferências',
   'dash.emptyFeedBrowseAll': 'Explore todas as oportunidades',
+  'dash.celebrationTitle': 'Tudo pronto!',
+  'dash.celebrationBody': 'Aqui está o que vem a seguir:',
+  'dash.celebrationStep1': 'Estamos agora combinando você com oportunidades',
+  'dash.celebrationStep2': 'Você receberá notificações por e-mail de novas correspondências',
+  'dash.celebrationStep3': 'Suas primeiras correspondências aparecerão em 24 horas',
+  'dash.celebrationDismiss': 'Entendi, mostre-me meu painel',
   'onboard.profileSaved': 'Perfil salvo!',
 
   'footer.jobSeekers': 'Candidatos',
@@ -2178,6 +2221,7 @@ const ja: Strings = {
   'status.rejected': '不採用',
   'status.hired': '採用',
   'card.match': '%マッチ',
+  'card.new': '新着',
 
   'cascade.yourPreferences': 'あなたの希望条件',
   'cascade.outside': '{country}以外',
@@ -2329,6 +2373,12 @@ const ja: Strings = {
   'dash.emptyFeedCompleteProfile': 'プロフィールを完了する',
   'dash.emptyFeedSetPreferences': '希望条件を設定する',
   'dash.emptyFeedBrowseAll': 'すべての機会を閲覧する',
+  'dash.celebrationTitle': '準備完了！',
+  'dash.celebrationBody': '次のステップ:',
+  'dash.celebrationStep1': 'あなたに合った機会をマッチングしています',
+  'dash.celebrationStep2': '新しいマッチングのメール通知を受け取ります',
+  'dash.celebrationStep3': '最初のマッチングは24時間以内に表示されます',
+  'dash.celebrationDismiss': 'わかりました、ダッシュボードを表示',
   'onboard.profileSaved': 'プロフィールを保存しました！',
 
   'footer.jobSeekers': '求職者の方へ',
@@ -2506,6 +2556,7 @@ const ar: Strings = {
   'status.rejected': 'مرفوض',
   'status.hired': 'تم التوظيف',
   'card.match': '% تطابق',
+  'card.new': 'جديد',
 
   'cascade.yourPreferences': 'تفضيلاتك',
   'cascade.outside': 'خارج {country}',
@@ -2657,6 +2708,12 @@ const ar: Strings = {
   'dash.emptyFeedCompleteProfile': 'أكمل ملفك الشخصي',
   'dash.emptyFeedSetPreferences': 'حدد تفضيلاتك',
   'dash.emptyFeedBrowseAll': 'تصفح جميع الفرص',
+  'dash.celebrationTitle': 'كل شيء جاهز!',
+  'dash.celebrationBody': 'إليك ما يلي:',
+  'dash.celebrationStep1': 'نقوم الآن بمطابقتك مع الفرص',
+  'dash.celebrationStep2': 'ستتلقى إشعارات بريد إلكتروني للمطابقات الجديدة',
+  'dash.celebrationStep3': 'ستظهر مطابقتك الأولى خلال 24 ساعة',
+  'dash.celebrationDismiss': 'حسنًا، أظهر لي لوحة التحكم',
   'onboard.profileSaved': 'تم حفظ الملف الشخصي!',
 
   'footer.jobSeekers': 'الباحثون عن عمل',
@@ -2833,6 +2890,7 @@ const zh: Strings = {
   'status.rejected': '已拒绝',
   'status.hired': '已录用',
   'card.match': '%匹配',
+  'card.new': '新',
 
   'cascade.yourPreferences': '你的偏好',
   'cascade.outside': '{country}以外',
@@ -2974,6 +3032,12 @@ const zh: Strings = {
   'dash.emptyFeedCompleteProfile': '完善个人资料',
   'dash.emptyFeedSetPreferences': '设置偏好',
   'dash.emptyFeedBrowseAll': '浏览所有机会',
+  'dash.celebrationTitle': '一切就绪！',
+  'dash.celebrationBody': '接下来：',
+  'dash.celebrationStep1': '我们正在为您匹配机会',
+  'dash.celebrationStep2': '您将收到新匹配的邮件通知',
+  'dash.celebrationStep3': '您的首次匹配将在24小时内出现',
+  'dash.celebrationDismiss': '明白了，显示我的控制面板',
   'onboard.profileSaved': '个人资料已保存！',
 
   'footer.jobSeekers': '求职者',
