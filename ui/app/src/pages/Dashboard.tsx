@@ -19,6 +19,7 @@ import { DashboardSidebar, type SectionId } from '@/components/dashboard/Dashboa
 import { DashboardBreadcrumbs } from '@/components/dashboard/DashboardBreadcrumbs';
 import { PlanChangeModal } from '@/components/dashboard/PlanChangeModal';
 import { CancelSubscriptionModal } from '@/components/dashboard/CancelSubscriptionModal';
+import { SettingsPage } from '@/components/settings/SettingsPage';
 import { useI18n } from '@/i18n/I18nProvider';
 
 function getSectionFromHash(): SectionId {
@@ -148,11 +149,7 @@ export default function Dashboard() {
                   t={t}
                 />
               )}
-              {activeSection === 'settings' && (
-                <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
-                  Settings will be available soon.
-                </div>
-              )}
+              {activeSection === 'settings' && <SettingsPage t={t} />}
             </>
           )}
         </section>
