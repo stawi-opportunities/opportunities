@@ -178,7 +178,8 @@ function ProfileMount() {
           window.location.href = '/';
         },
       });
-    } catch {
+   } catch (_e) {
+      // Widget mount is best-effort; skeleton stays visible on failure.
     }
     return () => handle?.unmount();
   }, []);
