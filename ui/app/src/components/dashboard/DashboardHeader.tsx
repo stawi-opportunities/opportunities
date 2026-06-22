@@ -10,10 +10,12 @@ const STATUS_STYLES: Record<string, { bg: string; labelKey: StringKey }> = {
 export function DashboardHeader({
   plan,
   status,
+  onOpenPlanChange,
   t,
 }: {
   plan: PlanId | null;
   status: string;
+  onOpenPlanChange?: () => void;
   t: (k: StringKey, fallback?: string) => string;
 }) {
   const style = STATUS_STYLES[status] ?? {
@@ -49,12 +51,13 @@ export function DashboardHeader({
           {t('dash.browseJobs')}
         </a>
         {plan !== 'managed' && (
-          <a
-            href="/pricing/"
+          <button
+            type="button"
+            onClick={onOpenPlanChange}
             className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
           >
             {status === 'active' ? t('dash.changePlan') : t('dash.viewPlans')}
-          </a>
+          </button>
         )}
       </div>
     </header>

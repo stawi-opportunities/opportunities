@@ -37,6 +37,13 @@ export interface Strings {
   'nav.signIn': string;
   'nav.language': string;
   'nav.categoriesHint': string;
+  'nav.dashboard': string;
+  'nav.feed': string;
+  'nav.matches': string;
+  'nav.saved': string;
+  'nav.preferences': string;
+  'nav.billing': string;
+  'nav.settings': string;
 
   // ---- Call-to-action buttons ----
   'cta.applyNow': string;
@@ -261,6 +268,50 @@ export interface Strings {
   'dash.celebrationStep3': string;
   'dash.celebrationDismiss': string;
   'onboard.profileSaved': string;
+  'dash.breadcrumbDashboard': string;
+
+  // ---- Plan change modal ----
+  'plan.changeTitle': string;
+  'plan.currentPlan': string;
+  'plan.newPlan': string;
+  'plan.proratedAmount': string;
+  'plan.nextBilling': string;
+  'plan.confirmChange': string;
+  'plan.changeSuccess': string;
+  'plan.changeError': string;
+  'plan.managedChangeHint': string;
+
+  // ---- Cancel subscription modal ----
+  'cancel.title': string;
+  'cancel.reason': string;
+  'cancel.foundJob': string;
+  'cancel.tooExpensive': string;
+  'cancel.notEnoughMatches': string;
+  'cancel.justPausing': string;
+  'cancel.other': string;
+  'cancel.foundJobMessage': string;
+  'cancel.tooExpensiveHint': string;
+  'cancel.pauseHint': string;
+  'cancel.confirmTitle': string;
+  'cancel.confirmBody': string;
+  'cancel.confirmCheckbox': string;
+  'cancel.confirmButton': string;
+  'cancel.success': string;
+
+  // ---- Usage chart ----
+  'usage.title': string;
+  'usage.week': string;
+  'usage.delivered': string;
+  'usage.queued': string;
+  'usage.noData': string;
+
+  // ---- Invoice history ----
+  'invoice.title': string;
+  'invoice.date': string;
+  'invoice.amount': string;
+  'invoice.status': string;
+  'invoice.download': string;
+  'invoice.empty': string;
 
   // ---- Onboarding ----
   'onboard.step': string;
@@ -387,6 +438,13 @@ const en: Strings = {
   'nav.signIn': 'Sign in',
   'nav.language': 'Language',
   'nav.categoriesHint': 'Categories load once jobs are indexed.',
+  'nav.dashboard': 'Dashboard',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Matches',
+  'nav.saved': 'Saved',
+  'nav.preferences': 'Preferences',
+  'nav.billing': 'Billing',
+  'nav.settings': 'Settings',
 
   'cta.applyNow': 'Apply now',
   'cta.saveJob': 'Save job',
@@ -685,6 +743,46 @@ const en: Strings = {
   'dash.celebrationStep3': 'Your first matches will appear within 24 hours',
   'dash.celebrationDismiss': 'Got it, show me my dashboard',
   'onboard.profileSaved': 'Profile saved!',
+  'dash.breadcrumbDashboard': 'Dashboard',
+
+  'plan.changeTitle': 'Change your plan',
+  'plan.currentPlan': 'Current plan',
+  'plan.newPlan': 'New plan',
+  'plan.proratedAmount': 'Prorated amount',
+  'plan.nextBilling': 'Next billing date',
+  'plan.confirmChange': 'Confirm change',
+  'plan.changeSuccess': 'Plan changed to {plan}!',
+  'plan.changeError': "Couldn't change plan. Try again.",
+  'plan.managedChangeHint': 'Contact your agent to change plans.',
+
+  'cancel.title': 'Cancel subscription',
+  'cancel.reason': "What's the main reason?",
+  'cancel.foundJob': 'I found a job already',
+  'cancel.tooExpensive': 'Too expensive',
+  'cancel.notEnoughMatches': 'Not enough matches',
+  'cancel.justPausing': 'Just taking a break',
+  'cancel.other': 'Other',
+  'cancel.foundJobMessage': "Congratulations! We'll keep your profile in case things change.",
+  'cancel.tooExpensiveHint': 'Did you know Pro is 5× the matches?',
+  'cancel.pauseHint': 'You can pause instead. Matches resume when you return.',
+  'cancel.confirmTitle': 'Are you sure?',
+  'cancel.confirmBody': "Your subscription will end on {date}. You'll lose access to matching and your profile will be paused.",
+  'cancel.confirmCheckbox': 'I understand my subscription will be cancelled',
+  'cancel.confirmButton': 'Cancel subscription',
+  'cancel.success': 'Your subscription has been cancelled.',
+
+  'usage.title': 'Usage history',
+  'usage.week': 'Week',
+  'usage.delivered': 'Delivered',
+  'usage.queued': 'Queued',
+  'usage.noData': 'Usage data will appear after your first full week.',
+
+  'invoice.title': 'Invoices',
+  'invoice.date': 'Date',
+  'invoice.amount': 'Amount',
+  'invoice.status': 'Status',
+  'invoice.download': 'Download',
+  'invoice.empty': 'No invoices yet.',
 
   'footer.jobSeekers': 'Job seekers',
   'footer.browseJobs': 'Browse jobs',
@@ -724,6 +822,13 @@ const es: Strings = {
   'nav.signIn': 'Iniciar sesión',
   'nav.language': 'Idioma',
   'nav.categoriesHint': 'Las categorías aparecerán cuando haya empleos indexados.',
+  'nav.dashboard': 'Panel',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Coincidencias',
+  'nav.saved': 'Guardados',
+  'nav.preferences': 'Preferencias',
+  'nav.billing': 'Facturación',
+  'nav.settings': 'Ajustes',
 
   'cta.applyNow': 'Postular ahora',
   'cta.saveJob': 'Guardar empleo',
@@ -1023,6 +1128,46 @@ const es: Strings = {
   'dash.celebrationStep3': 'Tus primeras coincidencias aparecerán en 24 horas',
   'dash.celebrationDismiss': 'Entendido, muéstrame mi panel',
   'onboard.profileSaved': '¡Perfil guardado!',
+  'dash.breadcrumbDashboard': 'Panel',
+
+  'plan.changeTitle': 'Cambiar tu plan',
+  'plan.currentPlan': 'Plan actual',
+  'plan.newPlan': 'Nuevo plan',
+  'plan.proratedAmount': 'Monto prorrateado',
+  'plan.nextBilling': 'Próxima facturación',
+  'plan.confirmChange': 'Confirmar cambio',
+  'plan.changeSuccess': '¡Plan cambiado a {plan}!',
+  'plan.changeError': 'No se pudo cambiar el plan. Intenta de nuevo.',
+  'plan.managedChangeHint': 'Contacta a tu agente para cambiar de plan.',
+
+  'cancel.title': 'Cancelar suscripción',
+  'cancel.reason': '¿Cuál es la razón principal?',
+  'cancel.foundJob': 'Ya encontré un empleo',
+  'cancel.tooExpensive': 'Demasiado caro',
+  'cancel.notEnoughMatches': 'No suficientes coincidencias',
+  'cancel.justPausing': 'Solo tomando un descanso',
+  'cancel.other': 'Otro',
+  'cancel.foundJobMessage': '¡Felicidades! Mantendremos tu perfil por si algo cambia.',
+  'cancel.tooExpensiveHint': '¿Sabías que Pro tiene 5× más coincidencias?',
+  'cancel.pauseHint': 'Puedes pausar. Las coincidencias se reanudarán cuando regreses.',
+  'cancel.confirmTitle': '¿Estás seguro?',
+  'cancel.confirmBody': 'Tu suscripción terminará el {date}. Perderás acceso a las coincidencias y tu perfil será pausado.',
+  'cancel.confirmCheckbox': 'Entiendo que mi suscripción será cancelada',
+  'cancel.confirmButton': 'Cancelar suscripción',
+  'cancel.success': 'Tu suscripción ha sido cancelada.',
+
+  'usage.title': 'Historial de uso',
+  'usage.week': 'Semana',
+  'usage.delivered': 'Entregadas',
+  'usage.queued': 'En cola',
+  'usage.noData': 'Los datos de uso aparecerán después de tu primera semana completa.',
+
+  'invoice.title': 'Facturas',
+  'invoice.date': 'Fecha',
+  'invoice.amount': 'Monto',
+  'invoice.status': 'Estado',
+  'invoice.download': 'Descargar',
+  'invoice.empty': 'Aún no hay facturas.',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar empleos',
@@ -1062,6 +1207,13 @@ const fr: Strings = {
   'nav.signIn': 'Se connecter',
   'nav.language': 'Langue',
   'nav.categoriesHint': "Les catégories s'afficheront une fois les offres indexées.",
+  'nav.dashboard': 'Tableau de bord',
+  'nav.feed': 'Fil',
+  'nav.matches': 'Correspondances',
+  'nav.saved': 'Enregistrés',
+  'nav.preferences': 'Préférences',
+  'nav.billing': 'Facturation',
+  'nav.settings': 'Paramètres',
 
   'cta.applyNow': 'Postuler',
   'cta.saveJob': 'Enregistrer',
@@ -1367,6 +1519,46 @@ const fr: Strings = {
   'dash.celebrationStep3': 'Vos premières correspondances apparaîtront dans les 24 heures',
   'dash.celebrationDismiss': 'Compris, montrez-moi mon tableau de bord',
   'onboard.profileSaved': 'Profil enregistré!',
+  'dash.breadcrumbDashboard': 'Tableau de bord',
+
+  'plan.changeTitle': 'Changer de forfait',
+  'plan.currentPlan': 'Forfait actuel',
+  'plan.newPlan': 'Nouveau forfait',
+  'plan.proratedAmount': 'Montant au prorata',
+  'plan.nextBilling': 'Prochaine facturation',
+  'plan.confirmChange': 'Confirmer le changement',
+  'plan.changeSuccess': 'Forfait changé pour {plan}!',
+  'plan.changeError': 'Impossible de changer de forfait. Réessayez.',
+  'plan.managedChangeHint': 'Contactez votre agent pour changer de forfait.',
+
+  'cancel.title': 'Annuler l\'abonnement',
+  'cancel.reason': 'Quelle est la raison principale?',
+  'cancel.foundJob': 'J\'ai déjà trouvé un emploi',
+  'cancel.tooExpensive': 'Trop cher',
+  'cancel.notEnoughMatches': 'Pas assez de correspondances',
+  'cancel.justPausing': 'Je fais une pause',
+  'cancel.other': 'Autre',
+  'cancel.foundJobMessage': 'Félicitations! Nous conservons votre profil au cas où.',
+  'cancel.tooExpensiveHint': 'Saviez-vous que Pro a 5× plus de correspondances?',
+  'cancel.pauseHint': 'Vous pouvez mettre en pause. Les correspondances reprendront à votre retour.',
+  'cancel.confirmTitle': 'Êtes-vous sûr?',
+  'cancel.confirmBody': 'Votre abonnement se terminera le {date}. Vous perdrez l\'accès aux correspondances et votre profil sera mis en pause.',
+  'cancel.confirmCheckbox': 'Je comprends que mon abonnement sera annulé',
+  'cancel.confirmButton': 'Annuler l\'abonnement',
+  'cancel.success': 'Votre abonnement a été annulé.',
+
+  'usage.title': 'Historique d\'utilisation',
+  'usage.week': 'Semaine',
+  'usage.delivered': 'Livrées',
+  'usage.queued': 'En file',
+  'usage.noData': 'Les données d\'utilisation apparaîtront après votre première semaine complète.',
+
+  'invoice.title': 'Factures',
+  'invoice.date': 'Date',
+  'invoice.amount': 'Montant',
+  'invoice.status': 'Statut',
+  'invoice.download': 'Télécharger',
+  'invoice.empty': 'Aucune facture pour le moment.',
 
   'footer.jobSeekers': 'Candidats',
   'footer.browseJobs': 'Parcourir les offres',
@@ -1406,6 +1598,13 @@ const de: Strings = {
   'nav.signIn': 'Anmelden',
   'nav.language': 'Sprache',
   'nav.categoriesHint': 'Kategorien erscheinen, sobald Stellen indexiert sind.',
+  'nav.dashboard': 'Dashboard',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Übereinstimmungen',
+  'nav.saved': 'Gespeichert',
+  'nav.preferences': 'Präferenzen',
+  'nav.billing': 'Abrechnung',
+  'nav.settings': 'Einstellungen',
 
   'cta.applyNow': 'Jetzt bewerben',
   'cta.saveJob': 'Merken',
@@ -1707,6 +1906,46 @@ const de: Strings = {
   'dash.celebrationStep3': 'Ihre ersten Übereinstimmungen erscheinen innerhalb von 24 Stunden',
   'dash.celebrationDismiss': 'Verstanden, zeigen Sie mir mein Dashboard',
   'onboard.profileSaved': 'Profil gespeichert!',
+  'dash.breadcrumbDashboard': 'Dashboard',
+
+  'plan.changeTitle': 'Plan ändern',
+  'plan.currentPlan': 'Aktueller Plan',
+  'plan.newPlan': 'Neuer Plan',
+  'plan.proratedAmount': 'Anteiliger Betrag',
+  'plan.nextBilling': 'Nächste Abrechnung',
+  'plan.confirmChange': 'Änderung bestätigen',
+  'plan.changeSuccess': 'Plan geändert zu {plan}!',
+  'plan.changeError': 'Plan konnte nicht geändert werden. Versuche es erneut.',
+  'plan.managedChangeHint': 'Kontaktiere deinen Agenten, um den Plan zu ändern.',
+
+  'cancel.title': 'Abonnement kündigen',
+  'cancel.reason': 'Was ist der Hauptgrund?',
+  'cancel.foundJob': 'Ich habe bereits einen Job gefunden',
+  'cancel.tooExpensive': 'Zu teuer',
+  'cancel.notEnoughMatches': 'Nicht genug Übereinstimmungen',
+  'cancel.justPausing': 'Mache eine Pause',
+  'cancel.other': 'Sonstiges',
+  'cancel.foundJobMessage': 'Herzlichen Glückwunsch! Wir behalten dein Profil für den Fall der Fälle.',
+  'cancel.tooExpensiveHint': 'Wusstest du, dass Pro 5× mehr Übereinstimmungen bietet?',
+  'cancel.pauseHint': 'Du kannst pausieren. Die Übereinstimmungen werden bei deiner Rückkehr fortgesetzt.',
+  'cancel.confirmTitle': 'Bist du sicher?',
+  'cancel.confirmBody': 'Dein Abonnement endet am {date}. Du verlierst den Zugang zu Übereinstimmungen und dein Profil wird pausiert.',
+  'cancel.confirmCheckbox': 'Ich verstehe, dass mein Abonnement gekündigt wird',
+  'cancel.confirmButton': 'Abonnement kündigen',
+  'cancel.success': 'Dein Abonnement wurde gekündigt.',
+
+  'usage.title': 'Nutzungsverlauf',
+  'usage.week': 'Woche',
+  'usage.delivered': 'Geliefert',
+  'usage.queued': 'In Warteschlange',
+  'usage.noData': 'Nutzungsdaten erscheinen nach deiner ersten vollständigen Woche.',
+
+  'invoice.title': 'Rechnungen',
+  'invoice.date': 'Datum',
+  'invoice.amount': 'Betrag',
+  'invoice.status': 'Status',
+  'invoice.download': 'Herunterladen',
+  'invoice.empty': 'Noch keine Rechnungen.',
 
   'footer.jobSeekers': 'Jobsuchende',
   'footer.browseJobs': 'Stellen durchsuchen',
@@ -1746,6 +1985,13 @@ const pt: Strings = {
   'nav.signIn': 'Entrar',
   'nav.language': 'Idioma',
   'nav.categoriesHint': 'As categorias aparecem quando houver vagas indexadas.',
+  'nav.dashboard': 'Painel',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Correspondências',
+  'nav.saved': 'Salvos',
+  'nav.preferences': 'Preferências',
+  'nav.billing': 'Faturamento',
+  'nav.settings': 'Configurações',
 
   'cta.applyNow': 'Candidatar-se',
   'cta.saveJob': 'Salvar vaga',
@@ -2045,6 +2291,46 @@ const pt: Strings = {
   'dash.celebrationStep3': 'Suas primeiras correspondências aparecerão em 24 horas',
   'dash.celebrationDismiss': 'Entendi, mostre-me meu painel',
   'onboard.profileSaved': 'Perfil salvo!',
+  'dash.breadcrumbDashboard': 'Painel',
+
+  'plan.changeTitle': 'Alterar seu plano',
+  'plan.currentPlan': 'Plano atual',
+  'plan.newPlan': 'Novo plano',
+  'plan.proratedAmount': 'Valor proporcional',
+  'plan.nextBilling': 'Próxima fatura',
+  'plan.confirmChange': 'Confirmar alteração',
+  'plan.changeSuccess': 'Plano alterado para {plan}!',
+  'plan.changeError': 'Não foi possível alterar o plano. Tente novamente.',
+  'plan.managedChangeHint': 'Contate seu agente para alterar o plano.',
+
+  'cancel.title': 'Cancelar assinatura',
+  'cancel.reason': 'Qual o principal motivo?',
+  'cancel.foundJob': 'Já encontrei um emprego',
+  'cancel.tooExpensive': 'Muito caro',
+  'cancel.notEnoughMatches': 'Não há correspondências suficientes',
+  'cancel.justPausing': 'Só fazendo uma pausa',
+  'cancel.other': 'Outro',
+  'cancel.foundJobMessage': 'Parabéns! Manteremos seu perfil caso as coisas mudem.',
+  'cancel.tooExpensiveHint': 'Sabia que o Pro tem 5× mais correspondências?',
+  'cancel.pauseHint': 'Você pode pausar. As correspondências serão retomadas quando você voltar.',
+  'cancel.confirmTitle': 'Tem certeza?',
+  'cancel.confirmBody': 'Sua assinatura terminará em {date}. Você perderá o acesso às correspondências e seu perfil será pausado.',
+  'cancel.confirmCheckbox': 'Entendo que minha assinatura será cancelada',
+  'cancel.confirmButton': 'Cancelar assinatura',
+  'cancel.success': 'Sua assinatura foi cancelada.',
+
+  'usage.title': 'Histórico de uso',
+  'usage.week': 'Semana',
+  'usage.delivered': 'Entregues',
+  'usage.queued': 'Na fila',
+  'usage.noData': 'Os dados de uso aparecerão após sua primeira semana completa.',
+
+  'invoice.title': 'Faturas',
+  'invoice.date': 'Data',
+  'invoice.amount': 'Valor',
+  'invoice.status': 'Status',
+  'invoice.download': 'Baixar',
+  'invoice.empty': 'Nenhuma fatura ainda.',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar vagas',
@@ -2084,6 +2370,13 @@ const ja: Strings = {
   'nav.signIn': 'ログイン',
   'nav.language': '言語',
   'nav.categoriesHint': '求人が登録されるとカテゴリが表示されます。',
+  'nav.dashboard': 'ダッシュボード',
+  'nav.feed': 'フィード',
+  'nav.matches': 'マッチ',
+  'nav.saved': '保存済み',
+  'nav.preferences': '設定',
+  'nav.billing': '請求',
+  'nav.settings': '設定',
 
   'cta.applyNow': '応募する',
   'cta.saveJob': '保存',
@@ -2380,6 +2673,46 @@ const ja: Strings = {
   'dash.celebrationStep3': '最初のマッチングは24時間以内に表示されます',
   'dash.celebrationDismiss': 'わかりました、ダッシュボードを表示',
   'onboard.profileSaved': 'プロフィールを保存しました！',
+  'dash.breadcrumbDashboard': 'ダッシュボード',
+
+  'plan.changeTitle': 'プランを変更',
+  'plan.currentPlan': '現在のプラン',
+  'plan.newPlan': '新しいプラン',
+  'plan.proratedAmount': '日割り金額',
+  'plan.nextBilling': '次回請求日',
+  'plan.confirmChange': '変更を確認',
+  'plan.changeSuccess': '{plan}にプラン変更しました！',
+  'plan.changeError': 'プランを変更できませんでした。もう一度お試しください。',
+  'plan.managedChangeHint': 'エージェントに連絡してプランを変更してください。',
+
+  'cancel.title': 'サブスクリプションを解約',
+  'cancel.reason': '主な理由は何ですか？',
+  'cancel.foundJob': 'すでに仕事が見つかりました',
+  'cancel.tooExpensive': '料金が高い',
+  'cancel.notEnoughMatches': 'マッチングが足りない',
+  'cancel.justPausing': '休憩中',
+  'cancel.other': 'その他',
+  'cancel.foundJobMessage': 'おめでとうございます！変更があった場合に備えてプロフィールを保持します。',
+  'cancel.tooExpensiveHint': 'Proは5倍のマッチングがあることをご存知ですか？',
+  'cancel.pauseHint': '一時停止できます。戻ったときにマッチングが再開されます。',
+  'cancel.confirmTitle': 'よろしいですか？',
+  'cancel.confirmBody': 'サブスクリプションは{date}に終了します。マッチングへのアクセスが失われ、プロフィールは一時停止されます。',
+  'cancel.confirmCheckbox': 'サブスクリプションが解約されることを理解しています',
+  'cancel.confirmButton': 'サブスクリプションを解約',
+  'cancel.success': 'サブスクリプションが解約されました。',
+
+  'usage.title': '使用履歴',
+  'usage.week': '週',
+  'usage.delivered': '配信済み',
+  'usage.queued': 'キュー中',
+  'usage.noData': '使用データは最初の1週間が完了した後に表示されます。',
+
+  'invoice.title': '請求書',
+  'invoice.date': '日付',
+  'invoice.amount': '金額',
+  'invoice.status': 'ステータス',
+  'invoice.download': 'ダウンロード',
+  'invoice.empty': 'まだ請求書はありません。',
 
   'footer.jobSeekers': '求職者の方へ',
   'footer.browseJobs': '求人を閲覧',
@@ -2419,6 +2752,13 @@ const ar: Strings = {
   'nav.signIn': 'تسجيل الدخول',
   'nav.language': 'اللغة',
   'nav.categoriesHint': 'ستظهر الفئات بمجرد فهرسة الوظائف.',
+  'nav.dashboard': 'لوحة التحكم',
+  'nav.feed': 'التغذية',
+  'nav.matches': 'المطابقات',
+  'nav.saved': 'المحفوظة',
+  'nav.preferences': 'التفضيلات',
+  'nav.billing': 'الفواتير',
+  'nav.settings': 'الإعدادات',
 
   'cta.applyNow': 'قدّم الآن',
   'cta.saveJob': 'حفظ الوظيفة',
@@ -2715,6 +3055,46 @@ const ar: Strings = {
   'dash.celebrationStep3': 'ستظهر مطابقتك الأولى خلال 24 ساعة',
   'dash.celebrationDismiss': 'حسنًا، أظهر لي لوحة التحكم',
   'onboard.profileSaved': 'تم حفظ الملف الشخصي!',
+  'dash.breadcrumbDashboard': 'لوحة التحكم',
+
+  'plan.changeTitle': 'تغيير خطتك',
+  'plan.currentPlan': 'الخطة الحالية',
+  'plan.newPlan': 'الخطة الجديدة',
+  'plan.proratedAmount': 'المبلغ النسبي',
+  'plan.nextBilling': 'تاريخ الفاتورة القادمة',
+  'plan.confirmChange': 'تأكيد التغيير',
+  'plan.changeSuccess': 'تم تغيير الخطة إلى {plan}!',
+  'plan.changeError': 'تعذر تغيير الخطة. حاول مرة أخرى.',
+  'plan.managedChangeHint': 'اتصل بوكيلك لتغيير الخطة.',
+
+  'cancel.title': 'إلغاء الاشتراك',
+  'cancel.reason': 'ما هو السبب الرئيسي؟',
+  'cancel.foundJob': 'لقد وجدت وظيفة بالفعل',
+  'cancel.tooExpensive': 'غالي جداً',
+  'cancel.notEnoughMatches': 'لا توجد مطابقات كافية',
+  'cancel.justPausing': 'فقط آخذ استراحة',
+  'cancel.other': 'أخرى',
+  'cancel.foundJobMessage': 'تهانينا! سنحتفظ بملفك الشخصي في حال تغيرت الأمور.',
+  'cancel.tooExpensiveHint': 'هل تعلم أن Pro يوفر 5 أضعاف المطابقات؟',
+  'cancel.pauseHint': 'يمكنك الإيقاف المؤقت. ستستأنف المطابقات عند عودتك.',
+  'cancel.confirmTitle': 'هل أنت متأكد؟',
+  'cancel.confirmBody': 'سينتهي اشتراكك في {date}. ستفقد الوصول إلى المطابقات وسيتم إيقاف ملفك الشخصي مؤقتاً.',
+  'cancel.confirmCheckbox': 'أتفهم أنه سيتم إلغاء اشتراكي',
+  'cancel.confirmButton': 'إلغاء الاشتراك',
+  'cancel.success': 'تم إلغاء اشتراكك.',
+
+  'usage.title': 'سجل الاستخدام',
+  'usage.week': 'الأسبوع',
+  'usage.delivered': 'تم التوصيل',
+  'usage.queued': 'في الانتظار',
+  'usage.noData': 'ستظهر بيانات الاستخدام بعد أسبوعك الكامل الأول.',
+
+  'invoice.title': 'الفواتير',
+  'invoice.date': 'التاريخ',
+  'invoice.amount': 'المبلغ',
+  'invoice.status': 'الحالة',
+  'invoice.download': 'تحميل',
+  'invoice.empty': 'لا توجد فواتير بعد.',
 
   'footer.jobSeekers': 'الباحثون عن عمل',
   'footer.browseJobs': 'تصفح الوظائف',
@@ -2754,6 +3134,13 @@ const zh: Strings = {
   'nav.signIn': '登录',
   'nav.language': '语言',
   'nav.categoriesHint': '职位入库后将显示分类。',
+  'nav.dashboard': '控制面板',
+  'nav.feed': '动态',
+  'nav.matches': '匹配',
+  'nav.saved': '已收藏',
+  'nav.preferences': '偏好设置',
+  'nav.billing': '账单',
+  'nav.settings': '设置',
 
   'cta.applyNow': '立即申请',
   'cta.saveJob': '收藏职位',
@@ -3039,6 +3426,46 @@ const zh: Strings = {
   'dash.celebrationStep3': '您的首次匹配将在24小时内出现',
   'dash.celebrationDismiss': '明白了，显示我的控制面板',
   'onboard.profileSaved': '个人资料已保存！',
+  'dash.breadcrumbDashboard': '控制面板',
+
+  'plan.changeTitle': '更改套餐',
+  'plan.currentPlan': '当前套餐',
+  'plan.newPlan': '新套餐',
+  'plan.proratedAmount': '按比例计算的金额',
+  'plan.nextBilling': '下次账单日期',
+  'plan.confirmChange': '确认更改',
+  'plan.changeSuccess': '已更改为{plan}套餐！',
+  'plan.changeError': '无法更改套餐。请重试。',
+  'plan.managedChangeHint': '联系您的专属代理以更改套餐。',
+
+  'cancel.title': '取消订阅',
+  'cancel.reason': '主要原因是什么？',
+  'cancel.foundJob': '我已经找到了工作',
+  'cancel.tooExpensive': '价格太贵',
+  'cancel.notEnoughMatches': '匹配不够多',
+  'cancel.justPausing': '只是想休息一下',
+  'cancel.other': '其他',
+  'cancel.foundJobMessage': '恭喜您！我们会保留您的资料，以备情况有变。',
+  'cancel.tooExpensiveHint': '您知道Pro有5倍的匹配量吗？',
+  'cancel.pauseHint': '您可以暂停。匹配将在您回来时恢复。',
+  'cancel.confirmTitle': '您确定吗？',
+  'cancel.confirmBody': '您的订阅将于{date}结束。您将失去匹配功能，您的资料将被暂停。',
+  'cancel.confirmCheckbox': '我理解我的订阅将被取消',
+  'cancel.confirmButton': '取消订阅',
+  'cancel.success': '您的订阅已取消。',
+
+  'usage.title': '使用记录',
+  'usage.week': '周',
+  'usage.delivered': '已交付',
+  'usage.queued': '排队中',
+  'usage.noData': '使用数据将在您完成第一整周后显示。',
+
+  'invoice.title': '账单',
+  'invoice.date': '日期',
+  'invoice.amount': '金额',
+  'invoice.status': '状态',
+  'invoice.download': '下载',
+  'invoice.empty': '暂无账单。',
 
   'footer.jobSeekers': '求职者',
   'footer.browseJobs': '浏览职位',
