@@ -1,23 +1,9 @@
 import type { UsageEntry } from '@/api/billing';
 import type { StringKey } from '@/i18n/strings';
 
-function Bar({
-  value,
-  max,
-  color,
-}: {
-  value: number;
-  max: number;
-  color: string;
-}) {
+function Bar({ value, max, color }: { value: number; max: number; color: string }) {
   const height = max > 0 ? `${Math.round((value / max) * 100)}%` : '0%';
-  return (
-    <div
-      className={`w-full rounded-t ${color}`}
-      style={{ height }}
-      title={`${value}`}
-    />
-  );
+  return <div className={`w-full rounded-t ${color}`} style={{ height }} title={`${value}`} />;
 }
 
 export function UsageChart({
@@ -43,18 +29,16 @@ export function UsageChart({
     <div>
       <div className="flex items-end justify-center gap-1" style={{ height: '160px' }}>
         {history.map((entry) => (
-          <div key={entry.week} className="flex flex-col items-center gap-0.5" style={{ width: barW }}>
+          <div
+            key={entry.week}
+            className="flex flex-col items-center gap-0.5"
+            style={{ width: barW }}
+          >
             <div className="flex h-full w-full items-end justify-center gap-px">
-              <div
-                className="flex w-1/2 flex-col-reverse"
-                style={{ height: '100%' }}
-              >
+              <div className="flex w-1/2 flex-col-reverse" style={{ height: '100%' }}>
                 <Bar value={entry.delivered} max={maxVal} color="bg-accent-500" />
               </div>
-              <div
-                className="flex w-1/2 flex-col-reverse"
-                style={{ height: '100%' }}
-              >
+              <div className="flex w-1/2 flex-col-reverse" style={{ height: '100%' }}>
                 <Bar value={entry.queued} max={maxVal} color="bg-blue-300" />
               </div>
             </div>

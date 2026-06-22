@@ -49,7 +49,10 @@ export function PlanChangeModal({
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-gray-900">{t('plan.changeTitle')}</h2>
             <p className="text-sm text-gray-600">
-              {t('plan.currentPlan')}: <span className="font-medium">{currentInfo.name} — ${currentInfo.price}/mo</span>
+              {t('plan.currentPlan')}:{' '}
+              <span className="font-medium">
+                {currentInfo.name} — ${currentInfo.price}/mo
+              </span>
             </p>
             {currentPlan === 'managed' ? (
               <div className="rounded-md bg-amber-50 p-4 text-sm text-amber-800">
@@ -79,7 +82,10 @@ export function PlanChangeModal({
                         <p className="text-sm text-gray-500">{p.tagline}</p>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {p.features.slice(0, 3).map((f) => (
-                            <span key={f} className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                            <span
+                              key={f}
+                              className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                            >
                               {f}
                             </span>
                           ))}
@@ -123,11 +129,15 @@ export function PlanChangeModal({
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">{t('plan.currentPlan')}</span>
-                <span className="font-medium text-gray-900">{currentInfo.name} — ${currentInfo.price}/mo</span>
+                <span className="font-medium text-gray-900">
+                  {currentInfo.name} — ${currentInfo.price}/mo
+                </span>
               </div>
               <div className="mt-2 flex items-center justify-between text-sm">
                 <span className="text-gray-600">{t('plan.newPlan')}</span>
-                <span className="font-medium text-accent-700">{planById(selected).name} — ${planById(selected).price}/mo</span>
+                <span className="font-medium text-accent-700">
+                  {planById(selected).name} — ${planById(selected).price}/mo
+                </span>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-4">
@@ -153,7 +163,13 @@ export function PlanChangeModal({
         return (
           <div className="space-y-4 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-              <svg className="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg
+                className="h-6 w-6 text-emerald-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
               </svg>
             </div>
@@ -184,7 +200,13 @@ export function PlanChangeModal({
         return (
           <div className="space-y-4 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-              <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg
+                className="h-6 w-6 text-red-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </div>

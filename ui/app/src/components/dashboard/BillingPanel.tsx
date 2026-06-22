@@ -41,8 +41,8 @@ export function BillingPanel({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-gray-700">
-              <span className="font-medium">{info.name}</span> · ${info.price}/{t('dash.perMonth')} ·{' '}
-              <span className="text-emerald-700">{t('dash.active')}</span>
+              <span className="font-medium">{info.name}</span> · ${info.price}/{t('dash.perMonth')}{' '}
+              · <span className="text-emerald-700">{t('dash.active')}</span>
             </p>
             {renewsAt && (
               <p className="mt-1 text-xs text-gray-500">

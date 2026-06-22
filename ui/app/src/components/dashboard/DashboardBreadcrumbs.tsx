@@ -34,7 +34,13 @@ export function DashboardBreadcrumbs({
           return (
             <li key={crumb.href} className="flex items-center gap-1.5">
               {i > 0 && (
-                <svg className="h-3.5 w-3.5 flex-shrink-0 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <svg
+                  className="h-3.5 w-3.5 flex-shrink-0 text-gray-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="m9 20.247 6-16.5" />
                 </svg>
               )}

@@ -75,7 +75,12 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <DashboardHeader plan={plan} status={subscription} onOpenPlanChange={() => setShowPlanChange(true)} t={t} />
+      <DashboardHeader
+        plan={plan}
+        status={subscription}
+        onOpenPlanChange={() => setShowPlanChange(true)}
+        t={t}
+      />
       <PendingCheckoutPoller />
       {isActive && (
         <div className="mt-4">
@@ -88,12 +93,22 @@ export default function Dashboard() {
       </div>
 
       <div className="mt-4 lg:hidden">
-        <DashboardSidebar active={activeSection} onNavigate={navigate} t={t} matchCount={sub?.queued_matches} />
+        <DashboardSidebar
+          active={activeSection}
+          onNavigate={navigate}
+          t={t}
+          matchCount={sub?.queued_matches}
+        />
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[240px_1fr]">
         <aside className="hidden lg:block">
-          <DashboardSidebar active={activeSection} onNavigate={navigate} t={t} matchCount={sub?.queued_matches} />
+          <DashboardSidebar
+            active={activeSection}
+            onNavigate={navigate}
+            t={t}
+            matchCount={sub?.queued_matches}
+          />
           <div className="mt-6">
             <ProfileMount />
           </div>
@@ -110,7 +125,13 @@ export default function Dashboard() {
                 </>
               )}
               {activeSection === 'matches' && (
-                <MatchesPanel plan={plan} queued={sub?.queued_matches ?? null} delivered={sub?.delivered_this_week ?? null} subQueryError={subQ.isError} onUpgrade={() => setShowPlanChange(true)} />
+                <MatchesPanel
+                  plan={plan}
+                  queued={sub?.queued_matches ?? null}
+                  delivered={sub?.delivered_this_week ?? null}
+                  subQueryError={subQ.isError}
+                  onUpgrade={() => setShowPlanChange(true)}
+                />
               )}
               {activeSection === 'saved' && (
                 <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
@@ -119,7 +140,13 @@ export default function Dashboard() {
               )}
               {activeSection === 'preferences' && <PreferencesPanel />}
               {activeSection === 'billing' && plan && isActive && (
-                <BillingPanel plan={plan} renewsAt={sub?.renews_at} onOpenPlanChange={() => setShowPlanChange(true)} onOpenCancel={() => setShowCancel(true)} t={t} />
+                <BillingPanel
+                  plan={plan}
+                  renewsAt={sub?.renews_at}
+                  onOpenPlanChange={() => setShowPlanChange(true)}
+                  onOpenCancel={() => setShowCancel(true)}
+                  t={t}
+                />
               )}
               {activeSection === 'settings' && (
                 <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
@@ -178,7 +205,7 @@ function ProfileMount() {
           window.location.href = '/';
         },
       });
-   } catch (_e) {
+    } catch (_e) {
       // Widget mount is best-effort; skeleton stays visible on failure.
     }
     return () => handle?.unmount();
