@@ -62,7 +62,10 @@ export function SettingsSecurity({ t }: { t: (k: StringKey, fallback?: string) =
       <Panel title={t('settings.changePassword')}>
         <div className="space-y-4">
           <div>
-            <label htmlFor="settings-current-pw" className="block text-sm font-medium text-gray-700">
+            <label
+              htmlFor="settings-current-pw"
+              className="block text-sm font-medium text-gray-700"
+            >
               {t('settings.currentPassword')}
             </label>
             <input
@@ -86,7 +89,10 @@ export function SettingsSecurity({ t }: { t: (k: StringKey, fallback?: string) =
             />
           </div>
           <div>
-            <label htmlFor="settings-confirm-pw" className="block text-sm font-medium text-gray-700">
+            <label
+              htmlFor="settings-confirm-pw"
+              className="block text-sm font-medium text-gray-700"
+            >
               {t('settings.confirmPassword')}
             </label>
             <input

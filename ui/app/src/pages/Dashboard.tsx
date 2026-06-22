@@ -149,9 +149,7 @@ export default function Dashboard() {
                   t={t}
                 />
               )}
-              {activeSection === 'settings' && (
-                <SettingsPage t={t} />
-              )}
+              {activeSection === 'settings' && <SettingsPage t={t} />}
             </>
           )}
         </section>

@@ -24,7 +24,11 @@ export function SettingsProfile({ t }: { t: (k: StringKey, fallback?: string) =>
 
   const saveMutation = useMutation({
     mutationFn: (payload: { name: string; current_title: string; phone: string }) =>
-      updateProfile({ name: payload.name, current_title: payload.current_title, phone: payload.phone }),
+      updateProfile({
+        name: payload.name,
+        current_title: payload.current_title,
+        phone: payload.phone,
+      }),
     onSuccess: () => push(t('settings.profileSaved'), 'success'),
     onError: () => push(t('settings.profileFailed'), 'error'),
   });
@@ -75,7 +79,10 @@ export function SettingsProfile({ t }: { t: (k: StringKey, fallback?: string) =>
           <p className="mt-1 text-xs text-gray-400">{t('settings.managedByIdp')}</p>
         </div>
         <div>
-          <label htmlFor="settings-currentTitle" className="block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="settings-currentTitle"
+            className="block text-sm font-medium text-gray-700"
+          >
             {t('settings.currentTitle')}
           </label>
           <input

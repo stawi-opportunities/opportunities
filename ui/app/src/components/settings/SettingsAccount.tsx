@@ -20,7 +20,9 @@ export function SettingsAccount({ t }: { t: (k: StringKey, fallback?: string) =>
     mutationFn: () => deleteAccount(deleteReason || undefined),
     onSuccess: () => {
       push(t('settings.accountDeleted'), 'success');
-      setTimeout(() => { window.location.href = '/'; }, 2000);
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
     },
     onError: () => push('Failed to delete account.', 'error'),
   });
@@ -85,7 +87,10 @@ export function SettingsAccount({ t }: { t: (k: StringKey, fallback?: string) =>
               </button>
               <button
                 type="button"
-                onClick={() => { setShowDeleteConfirm(false); setDeleteReason(''); }}
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteReason('');
+                }}
                 disabled={deleteMutation.isPending}
                 className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >

@@ -120,9 +120,7 @@ export async function updateProfile(payload: ProfilePayload): Promise<{ ok: bool
 /**
  * PUT /me/notifications — updates notification preferences.
  */
-export async function updateNotificationPrefs(
-  prefs: NotificationPrefs
-): Promise<{ ok: boolean }> {
+export async function updateNotificationPrefs(prefs: NotificationPrefs): Promise<{ ok: boolean }> {
   return authRuntime().fetch('/me/notifications', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
