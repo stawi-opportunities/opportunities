@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { StawiAuth } from './StawiAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { useAuth } from '@/providers/AuthProvider';
 
 const browseItems = [
   { href: '/jobs/', emoji: '\uD83D\uDCBC', label: 'Jobs', sub: 'Full-time, remote & more' },
@@ -98,10 +99,31 @@ function BrowseDropdown() {
   );
 }
 
-function MobileMenu({ open }: { open: boolean }) {
+function MobileMenu({ open, isAuth }: { open: boolean; isAuth: boolean }) {
   if (!open) return null;
   return (
     <div className="border-t border-gray-100 bg-white px-4 pb-4 pt-2 md:hidden animate-slide-down">
+      {isAuth && (
+        <a
+          href="/dashboard/"
+          className="mb-2 flex items-center gap-2 rounded-lg bg-navy-50 px-3 py-2 text-sm font-medium text-navy-900 hover:bg-navy-100"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"
+            />
+          </svg>
+          Dashboard
+        </a>
+      )}
       <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
         Browse
       </p>
@@ -141,6 +163,8 @@ function MobileMenu({ open }: { open: boolean }) {
 }
 
 export default function Nav() {
+  const { state } = useAuth();
+  const isAuth = state === 'authenticated';
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -157,6 +181,27 @@ export default function Nav() {
         {/* Desktop nav */}
         <nav className="hidden items-center gap-2 md:flex" aria-label="Main navigation">
           <BrowseDropdown />
+          {isAuth && (
+            <a
+              href="/dashboard/"
+              className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium text-navy-900 transition-colors hover:bg-navy-50"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"
+                />
+              </svg>
+              Dashboard
+            </a>
+          )}
           <a
             href="/categories/"
             className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
@@ -225,7 +270,7 @@ export default function Nav() {
         </div>
       </div>
 
-      <MobileMenu open={mobileOpen} />
+      <MobileMenu open={mobileOpen} isAuth={isAuth} />
     </header>
   );
 }

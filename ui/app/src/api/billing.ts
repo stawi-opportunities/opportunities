@@ -88,6 +88,106 @@ export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStat
   return authRuntime().fetch(`/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`);
 }
 
+// ── Plan change ──────────────────────────────────────────────────
+
+export interface ChangePlanInput {
+  plan_id: PlanId;
+}
+
+export interface ChangePlanResponse {
+  success: boolean;
+  new_plan: string;
+  prorated_amount: number;
+  prorated_credit: number;
+  next_billing: string;
+}
+
+/** POST /billing/change-plan — auth'd. */
+export async function changePlan(input: ChangePlanInput): Promise<ChangePlanResponse> {
+  return authRuntime().fetch('/billing/change-plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+// ── Cancellation ─────────────────────────────────────────────────
+
+export interface CancelInput {
+  reason: string;
+  detail?: string;
+}
+
+export interface CancelResponse {
+  success: boolean;
+  effective_date: string;
+}
+
+/** POST /billing/cancel — auth'd. */
+export async function cancelSubscription(input: CancelInput): Promise<CancelResponse> {
+  return authRuntime().fetch('/billing/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+// ── Pause / Reactivate ───────────────────────────────────────────
+
+export interface PauseResponse {
+  success: boolean;
+  resume_date: string;
+}
+
+/** POST /billing/pause — auth'd. */
+export async function pauseSubscription(): Promise<PauseResponse> {
+  return authRuntime().fetch('/billing/pause', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export interface ReactivateResponse {
+  success: boolean;
+}
+
+/** POST /billing/reactivate — auth'd. */
+export async function reactivateSubscription(): Promise<ReactivateResponse> {
+  return authRuntime().fetch('/billing/reactivate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// ── Invoice history ──────────────────────────────────────────────
+
+export interface Invoice {
+  id: string;
+  date: string;
+  amount: number;
+  currency: string;
+  status: 'paid' | 'pending' | 'failed';
+  pdf_url?: string;
+}
+
+/** GET /billing/invoices — auth'd. */
+export async function fetchInvoices(): Promise<Invoice[]> {
+  return authRuntime().fetch('/billing/invoices');
+}
+
+// ── Usage history ────────────────────────────────────────────────
+
+export interface UsageEntry {
+  week: string;
+  delivered: number;
+  queued: number;
+}
+
+/** GET /billing/usage-history — auth'd. */
+export async function fetchUsageHistory(): Promise<UsageEntry[]> {
+  return authRuntime().fetch('/billing/usage-history');
+}
+
 // ── Internal helper ───────────────────────────────────────────────
 
 /**

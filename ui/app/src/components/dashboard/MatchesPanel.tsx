@@ -6,14 +6,13 @@ export function MatchesPanel({
   queued,
   delivered,
   subQueryError,
+  onUpgrade,
 }: {
   plan: PlanId;
-  /** null means the API didn't return a count (or query failed) — show
-   *  a degraded state rather than rendering a falsy "0 / cap" that
-   *  the user will read as "your plan isn't running matches." */
   queued: number | null;
   delivered: number | null;
   subQueryError: boolean;
+  onUpgrade?: () => void;
 }) {
   if (plan === 'managed') {
     return (
@@ -70,9 +69,19 @@ export function MatchesPanel({
       {plan === 'starter' && (
         <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
           Want 5× the matches and priority placement in the queue?{' '}
-          <a href="/pricing/" className="font-medium text-accent-600 hover:text-accent-700">
-            Upgrade to Pro →
-          </a>
+          {onUpgrade ? (
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="font-medium text-accent-600 hover:text-accent-700"
+            >
+              Upgrade to Pro →
+            </button>
+          ) : (
+            <a href="/pricing/" className="font-medium text-accent-600 hover:text-accent-700">
+              Upgrade to Pro →
+            </a>
+          )}
         </div>
       )}
       {delivered === 0 && (
