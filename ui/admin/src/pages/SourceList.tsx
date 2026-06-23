@@ -77,6 +77,7 @@ export function SourceList() {
         <input
           type="text"
           placeholder="Search by ID, type, or country…"
+          aria-label="Search sources"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           style={{
@@ -92,7 +93,7 @@ export function SourceList() {
 
       {filtered.length === 0 ? (
         <Card>
-          <p style={{ color: 'var(--c-text-secondary)', margin: 0 }}>
+          <p role="status" style={{ color: 'var(--c-text-secondary)', margin: 0 }}>
             {search ? 'No sources match your search.' : 'No sources configured.'}
           </p>
         </Card>
@@ -155,13 +156,13 @@ export function SourceList() {
             fontSize: '0.85rem',
           }}
         >
-          <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+          <Button size="sm" variant="outline" disabled={page === 0} aria-label="Previous page" aria-disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
             Previous
           </Button>
-          <span style={{ color: 'var(--c-text-secondary)' }}>
+          <span role="status" style={{ color: 'var(--c-text-secondary)' }}>
             Page {page + 1} of {totalPages} ({data.total} total)
           </span>
-          <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
+          <Button size="sm" variant="outline" disabled={page >= totalPages - 1} aria-label="Next page" aria-disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
             Next
           </Button>
         </div>

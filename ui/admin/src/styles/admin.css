@@ -107,3 +107,35 @@ h3 { font-size: 1rem; margin: 0 0 0.25rem; }
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Button hover & focus-visible states (set via data-variant attribute) */
+button[data-variant="primary"]:hover:not(:disabled):not([data-loading]) {
+  background: var(--c-primary-hover) !important;
+  border-color: var(--c-primary-hover) !important;
+}
+button[data-variant="primary"]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+button[data-variant="danger"]:hover:not(:disabled):not([data-loading]) {
+  background: var(--c-danger-hover) !important;
+  border-color: var(--c-danger-hover) !important;
+}
+button[data-variant="danger"]:focus-visible {
+  outline: 2px solid var(--c-danger);
+  outline-offset: 2px;
+}
+button[data-variant="ghost"]:hover:not(:disabled):not([data-loading]) {
+  background: rgba(0,0,0,0.05) !important;
+}
+button[data-variant="ghost"]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+button[data-variant="outline"]:hover:not(:disabled):not([data-loading]) {
+  background: rgba(0,0,0,0.03) !important;
+}
+button[data-variant="outline"]:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}

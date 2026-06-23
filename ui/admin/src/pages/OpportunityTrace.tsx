@@ -38,7 +38,7 @@ export function OpportunityTrace() {
     return (new Date(a[sortKey]).getTime() - new Date(b[sortKey]).getTime()) * dir;
   });
 
-  const SortIcon = () => <span style={{ fontSize: '0.7rem', marginLeft: '0.2rem' }}>{sortDir === 'asc' ? '▲' : '▼'}</span>;
+  const SortIcon = () => <span style={{ fontSize: '0.7rem', marginLeft: '0.2rem' }} aria-hidden="true">{sortDir === 'asc' ? '▲' : '▼'}</span>;
 
   return (
     <div>
@@ -61,13 +61,34 @@ export function OpportunityTrace() {
             <thead>
               <tr>
                 <th>Variant</th>
-                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('source')}>
+                <th
+                  tabIndex={0}
+                  role="columnheader"
+                  aria-sort={sortKey === 'source' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => toggleSort('source')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSort('source'); } }}
+                >
                   Source{sortKey === 'source' && <SortIcon />}
                 </th>
-                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('ingested_at')}>
+                <th
+                  tabIndex={0}
+                  role="columnheader"
+                  aria-sort={sortKey === 'ingested_at' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => toggleSort('ingested_at')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSort('ingested_at'); } }}
+                >
                   Ingested{sortKey === 'ingested_at' && <SortIcon />}
                 </th>
-                <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('joined_at')}>
+                <th
+                  tabIndex={0}
+                  role="columnheader"
+                  aria-sort={sortKey === 'joined_at' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => toggleSort('joined_at')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSort('joined_at'); } }}
+                >
                   Joined{sortKey === 'joined_at' && <SortIcon />}
                 </th>
               </tr>

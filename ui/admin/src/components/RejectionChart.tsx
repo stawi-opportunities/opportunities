@@ -5,7 +5,7 @@
 export function RejectionChart({ reasons }: { reasons: Record<string, number> }) {
   const entries = Object.entries(reasons).sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) {
-    return <p style={{ color: '#666' }}>No rejections in the window.</p>;
+    return <p style={{ color: 'var(--c-text-secondary)' }}>No rejections in the window.</p>;
   }
   const max = Math.max(1, ...entries.map(([, n]) => n));
   return (
@@ -19,7 +19,7 @@ export function RejectionChart({ reasons }: { reasons: Record<string, number> })
             <td>
               <div
                 style={{
-                  background: '#c00',
+                  background: 'var(--c-danger)',
                   width: `${(count / max) * 100}%`,
                   minWidth: '2rem',
                   padding: '0.2rem 0.4rem',

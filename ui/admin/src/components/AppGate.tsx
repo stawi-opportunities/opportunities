@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { getRoles } from '@/api/admin-client';
+import { LoadingSkeleton } from '@/components/ui';
 
 export function AppGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'checking' | 'ok' | 'denied'>('checking');
@@ -19,12 +20,12 @@ export function AppGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  if (state === 'checking') return <p>Loading…</p>;
+  if (state === 'checking') return <LoadingSkeleton type="card" />;
   if (state === 'denied')
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <h1>Not found</h1>
-        <p>This page does not exist.</p>
+        <h1>Access denied</h1>
+        <p>You do not have admin permissions.</p>
       </div>
     );
   return <>{children}</>;
