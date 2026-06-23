@@ -18,6 +18,7 @@ import {
 } from '@/components/dashboard/FilterChips';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
+import { useToast } from '@/hooks/useToast';
 
 const FILTER_KEYS: { id: OpportunityFilter; labelKey: StringKey }[] = [
   { id: 'all', labelKey: 'feed.all' },
@@ -61,6 +62,7 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
 
 export function OpportunitiesFeed() {
   const { t } = useI18n();
+  const { push: toast } = useToast();
   const [filter, setFilter] = useState<OpportunityFilter>(readFilterFromURL);
   const [feedFilters, setFeedFilters] = useState<FeedFilters>(readFiltersFromURL);
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -157,9 +159,10 @@ export function OpportunitiesFeed() {
         await starOpportunity(id);
       } catch {
         setItems(snapshot);
+        toast('Failed to save.', 'error');
       }
     },
-    [items]
+    [items, toast]
   );
 
   const onUnstar = useCallback(
@@ -172,9 +175,10 @@ export function OpportunitiesFeed() {
         await unstarOpportunity(id);
       } catch {
         setItems(snapshot);
+        toast('Failed to remove.', 'error');
       }
     },
-    [items]
+    [items, toast]
   );
 
   const onApply = useCallback(
@@ -198,11 +202,13 @@ export function OpportunitiesFeed() {
       );
       try {
         await applyToOpportunity(id, 'manual');
+        toast('Applied successfully.', 'success');
       } catch {
         setItems(snapshot);
+        toast('Failed to apply.', 'error');
       }
     },
-    [items]
+    [items, toast]
   );
 
   return (

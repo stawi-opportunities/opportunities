@@ -87,7 +87,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: P
             <button
               type="button"
               onClick={() => onApply(item.opportunity_id)}
-              className="rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
+              className="rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800"
             >
               {t('cta.apply')}
             </button>
@@ -97,7 +97,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: P
               type="button"
               onClick={() => onUnstar(item.opportunity_id)}
               aria-label="Remove from saved"
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-50"
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50"
             >
               ★ {t('cta.saved')}
             </button>
@@ -106,7 +106,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: P
               type="button"
               onClick={() => onStar(item.opportunity_id)}
               aria-label="Save opportunity"
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
             >
               ☆ {t('cta.save')}
             </button>

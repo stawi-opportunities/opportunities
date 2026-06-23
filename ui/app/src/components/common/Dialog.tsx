@@ -36,7 +36,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId.current}
@@ -45,7 +45,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
     >
       <div
         ref={dialogRef}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl animate-slide-down"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
@@ -62,7 +62,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="shrink-0 rounded p-1 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-navy-500"
+            className="shrink-0 rounded p-1 text-gray-500 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-navy-500"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
