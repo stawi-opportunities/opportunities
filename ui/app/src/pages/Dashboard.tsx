@@ -20,6 +20,7 @@ import { DashboardBreadcrumbs } from '@/components/dashboard/DashboardBreadcrumb
 import { PlanChangeModal } from '@/components/dashboard/PlanChangeModal';
 import { CancelSubscriptionModal } from '@/components/dashboard/CancelSubscriptionModal';
 import { SettingsPage } from '@/components/settings/SettingsPage';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -131,36 +132,50 @@ export default function Dashboard() {
           ) : (
             <>
               {activeSection === 'feed' && (
-                <>
+                <ErrorBoundary>
                   {plan === 'managed' && sub?.agent && <AgentCard agent={sub.agent} />}
                   <OpportunitiesFeed />
-                </>
+                </ErrorBoundary>
               )}
               {activeSection === 'matches' && (
-                <MatchesPanel
-                  plan={plan}
-                  queued={sub?.queued_matches ?? null}
-                  delivered={sub?.delivered_this_week ?? null}
-                  subQueryError={subQ.isError}
-                  onUpgrade={() => setShowPlanChange(true)}
-                />
+                <ErrorBoundary>
+                  <MatchesPanel
+                    plan={plan}
+                    queued={sub?.queued_matches ?? null}
+                    delivered={sub?.delivered_this_week ?? null}
+                    subQueryError={subQ.isError}
+                    onUpgrade={() => setShowPlanChange(true)}
+                  />
+                </ErrorBoundary>
               )}
               {activeSection === 'saved' && (
-                <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
-                  Saved opportunities will appear here.
-                </div>
+                <ErrorBoundary>
+                  <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
+                    Saved opportunities will appear here.
+                  </div>
+                </ErrorBoundary>
               )}
-              {activeSection === 'preferences' && <PreferencesPanel />}
+              {activeSection === 'preferences' && (
+                <ErrorBoundary>
+                  <PreferencesPanel />
+                </ErrorBoundary>
+              )}
               {activeSection === 'billing' && plan && isActive && (
-                <BillingPanel
-                  plan={plan}
-                  renewsAt={sub?.renews_at}
-                  onOpenPlanChange={() => setShowPlanChange(true)}
-                  onOpenCancel={() => setShowCancel(true)}
-                  t={t}
-                />
+                <ErrorBoundary>
+                  <BillingPanel
+                    plan={plan}
+                    renewsAt={sub?.renews_at}
+                    onOpenPlanChange={() => setShowPlanChange(true)}
+                    onOpenCancel={() => setShowCancel(true)}
+                    t={t}
+                  />
+                </ErrorBoundary>
               )}
-              {activeSection === 'settings' && <SettingsPage t={t} />}
+              {activeSection === 'settings' && (
+                <ErrorBoundary>
+                  <SettingsPage t={t} />
+                </ErrorBoundary>
+              )}
             </>
           )}
         </section>

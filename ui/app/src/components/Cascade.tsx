@@ -163,7 +163,7 @@ export default function Cascade(props: CascadeProps) {
         <button
           type="button"
           onClick={() => q.refetch()}
-          className="rounded bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-800"
+          className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
         >
           Retry
         </button>

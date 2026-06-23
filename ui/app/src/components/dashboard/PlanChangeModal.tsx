@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PLANS, planById, type PlanId } from '@/utils/plans';
 import { changePlan } from '@/api/billing';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { StringKey } from '@/i18n/strings';
 
 type Step = 'select' | 'confirm' | 'success' | 'error';
@@ -23,6 +24,14 @@ export function PlanChangeModal({
   const [errorMsg, setErrorMsg] = useState('');
 
   const currentInfo = planById(currentPlan);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useFocusTrap(dialogRef, true, onClose);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
 
   const handleContinue = () => {
     if (selected === currentPlan) return;
@@ -235,7 +244,7 @@ export function PlanChangeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+      <div ref={dialogRef} className="w-full max-w-lg rounded-xl bg-white shadow-xl">
         <div className="px-6 py-5">{renderContent()}</div>
       </div>
     </div>

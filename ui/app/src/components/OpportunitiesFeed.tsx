@@ -69,6 +69,7 @@ export function OpportunitiesFeed() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [pendingItems, setPendingItems] = useState<Set<string>>(new Set());
   const [snapshots, setSnapshots] = useState<Record<string, OpportunitySnapshot | null>>({});
 
   const counts = useMemo(
@@ -151,6 +152,7 @@ export function OpportunitiesFeed() {
 
   const onStar = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       setItems((prev) =>
         prev.map((it) => (it.opportunity_id === id ? { ...it, starred: true } : it))
@@ -160,6 +162,8 @@ export function OpportunitiesFeed() {
       } catch {
         setItems(snapshot);
         toast('Failed to save.', 'error');
+      } finally {
+        setPendingItems((prev) => { const next = new Set(prev); next.delete(id); return next; });
       }
     },
     [items, toast]
@@ -167,6 +171,7 @@ export function OpportunitiesFeed() {
 
   const onUnstar = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       setItems((prev) =>
         prev.map((it) => (it.opportunity_id === id ? { ...it, starred: false } : it))
@@ -176,6 +181,8 @@ export function OpportunitiesFeed() {
       } catch {
         setItems(snapshot);
         toast('Failed to remove.', 'error');
+      } finally {
+        setPendingItems((prev) => { const next = new Set(prev); next.delete(id); return next; });
       }
     },
     [items, toast]
@@ -183,6 +190,7 @@ export function OpportunitiesFeed() {
 
   const onApply = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       const now = new Date().toISOString();
       setItems((prev) =>
@@ -206,6 +214,8 @@ export function OpportunitiesFeed() {
       } catch {
         setItems(snapshot);
         toast('Failed to apply.', 'error');
+      } finally {
+        setPendingItems((prev) => { const next = new Set(prev); next.delete(id); return next; });
       }
     },
     [items, toast]
@@ -276,6 +286,7 @@ export function OpportunitiesFeed() {
                 onStar={onStar}
                 onUnstar={onUnstar}
                 onApply={onApply}
+                isPending={pendingItems.has(it.opportunity_id)}
               />
             ))}
           </ul>
