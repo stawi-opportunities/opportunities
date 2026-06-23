@@ -45,15 +45,11 @@ export function Button({
   style,
   ...rest
 }: ButtonProps) {
-  const hoverBg: Record<Variant, string> = {
-    primary: 'var(--c-primary-hover)',
-    danger: 'var(--c-danger-hover)',
-    ghost: '#eef0f2',
-    outline: '#eef0f2',
-  };
-
   return (
     <button
+      data-variant={variant}
+      data-size={size}
+      data-loading={loading || undefined}
       style={{
         ...base,
         ...variants[variant],
@@ -61,14 +57,6 @@ export function Button({
         opacity: disabled || loading ? 0.55 : undefined,
         pointerEvents: disabled || loading ? 'none' : undefined,
         ...style,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled && !loading)
-          (e.currentTarget as HTMLButtonElement).style.backgroundColor = hoverBg[variant];
-      }}
-      onMouseLeave={(e) => {
-        if (!disabled && !loading)
-          (e.currentTarget as HTMLButtonElement).style.backgroundColor = variants[variant].backgroundColor || '';
       }}
       disabled={disabled || loading}
       {...rest}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteDefinition,
@@ -16,6 +16,8 @@ export function DefinitionEditor() {
 
   const [body, setBody] = useState('');
   const [showDelete, setShowDelete] = useState(false);
+  const [showBlockedNav, setShowBlockedNav] = useState(false);
+  const pendingNav = useRef<(() => void) | null>(null);
 
   const { data: original, isLoading, error } = useQuery({
     queryKey: ['definition', type, name],
@@ -28,6 +30,24 @@ export function DefinitionEditor() {
   }, [original]);
 
   const dirty = original !== undefined && body !== original;
+
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      setShowBlockedNav(true);
+      pendingNav.current = blocker.proceed;
+    }
+  }, [blocker.state]);
 
   const save = useMutation({
     mutationFn: () => putDefinition(type ?? '', name ?? '', body),
@@ -94,6 +114,8 @@ export function DefinitionEditor() {
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={handleKeyDown}
         spellCheck={false}
+        aria-label="Definition editor"
+        maxLength={100000}
         style={{
           width: '100%',
           height: '60vh',
@@ -138,6 +160,16 @@ export function DefinitionEditor() {
         busy={remove.isPending}
         onConfirm={() => remove.mutate()}
         onCancel={() => setShowDelete(false)}
+      />
+
+      <ConfirmDialog
+        open={showBlockedNav}
+        title="Unsaved changes"
+        message="You have unsaved changes. Leave without saving?"
+        confirmLabel="Leave"
+        variant="danger"
+        onConfirm={() => { setShowBlockedNav(false); pendingNav.current?.(); }}
+        onCancel={() => { setShowBlockedNav(false); blocker.reset?.(); }}
       />
     </div>
   );

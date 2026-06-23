@@ -55,6 +55,7 @@ export function DefinitionsList() {
         <input
           type="text"
           placeholder="Search by name…"
+          aria-label="Search definitions"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
@@ -120,7 +121,7 @@ export function DefinitionsList() {
       >
       {entries.length === 0 ? (
         <Card>
-          <p style={{ color: 'var(--c-text-secondary)', margin: 0 }}>
+          <p role="status" style={{ color: 'var(--c-text-secondary)', margin: 0 }}>
             {search ? `No "${currentType}" definitions match your search.` : `No "${currentType}" definitions.`}
           </p>
         </Card>
