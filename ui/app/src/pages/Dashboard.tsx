@@ -21,6 +21,7 @@ import { PlanChangeModal } from '@/components/dashboard/PlanChangeModal';
 import { CancelSubscriptionModal } from '@/components/dashboard/CancelSubscriptionModal';
 import { SettingsPage } from '@/components/settings/SettingsPage';
 import { useI18n } from '@/i18n/I18nProvider';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 function getSectionFromHash(): SectionId {
   const hash = window.location.hash.replace('#', '');
@@ -36,6 +37,16 @@ export default function Dashboard() {
   const [showCancel, setShowCancel] = useState(false);
 
   const subQ = useSubscription();
+
+  const sectionLabels: Record<SectionId, string> = {
+    feed: 'Feed',
+    matches: 'Matches',
+    saved: 'Saved',
+    preferences: 'Preferences',
+    billing: 'Billing',
+    settings: 'Settings',
+  };
+  useDocumentTitle(`Dashboard — ${sectionLabels[activeSection]} | Stawi`);
 
   useEffect(() => {
     const onHashChange = () => setActiveSection(getSectionFromHash());
