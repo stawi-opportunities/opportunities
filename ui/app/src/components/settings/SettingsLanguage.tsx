@@ -23,7 +23,7 @@ export function SettingsLanguage({ t }: { t: (k: StringKey, fallback?: string) =
             </option>
           ))}
         </select>
-        <p className="mt-2 text-xs text-gray-400">{t('settings.comingSoon')}</p>
+        <p className="mt-2 text-xs text-gray-500">{t('settings.comingSoon')}</p>
       </Panel>
 
       <Panel title={t('settings.workingLanguages')}>

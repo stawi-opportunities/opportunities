@@ -12,7 +12,7 @@ export function AgentCard({ agent }: { agent: { name: string; email: string } })
           href={`mailto:${agent.email}`}
           className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
         >
-          Email {agent.name.split(' ')[0]}
+          Email {agent.name.split(' ')[0] || agent.name}
         </a>
         <a
           href="#schedule"

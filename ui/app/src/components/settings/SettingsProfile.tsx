@@ -76,7 +76,7 @@ export function SettingsProfile({ t }: { t: (k: StringKey, fallback?: string) =>
             placeholder="managed@idp.com"
             className="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500"
           />
-          <p className="mt-1 text-xs text-gray-400">{t('settings.managedByIdp')}</p>
+          <p className="mt-1 text-xs text-gray-500">{t('settings.managedByIdp')}</p>
         </div>
         <div>
           <label

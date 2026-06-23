@@ -126,7 +126,7 @@ export function SettingsSecurity({ t }: { t: (k: StringKey, fallback?: string) =
         >
           {t('settings.enable2FA')}
         </button>
-        <p className="mt-2 text-xs text-gray-400">{t('settings.comingSoon')}</p>
+        <p className="mt-2 text-xs text-gray-500">{t('settings.comingSoon')}</p>
       </Panel>
 
       <Panel title={t('settings.activeSessions')}>
