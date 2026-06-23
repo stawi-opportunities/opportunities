@@ -54,14 +54,25 @@ export function DefinitionEditor() {
     },
   });
 
+  const handleSave = useCallback(() => {
+    if (!dirty || save.isPending) return;
+    try {
+      JSON.parse(body);
+    } catch {
+      toast('Invalid JSON — check syntax before saving.', { type: 'error' });
+      return;
+    }
+    save.mutate();
+  }, [dirty, save, body, toast]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
-        if (dirty && !save.isPending) save.mutate();
+        handleSave();
       }
     },
-    [dirty, save]
+    [handleSave]
   );
 
   if (!type || !name) return <ErrorBlock message="Missing definition type or name" />;
@@ -118,7 +129,7 @@ export function DefinitionEditor() {
           alignItems: 'center',
         }}
       >
-        <Button onClick={() => save.mutate()} disabled={!dirty} loading={save.isPending}>
+        <Button onClick={handleSave} disabled={!dirty} loading={save.isPending}>
           Save
         </Button>
         <Button variant="danger" onClick={() => setShowDelete(true)}>
