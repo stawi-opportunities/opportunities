@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { useScrollLock } from '@/hooks/useScrollLock';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -25,8 +27,17 @@ export function ConfirmDialog({
   busy = false,
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   useFocusTrap(dialogRef, open, onCancel);
+  useEscapeKey(onCancel, open);
+  useScrollLock(open);
+
+  useEffect(() => {
+    if (open) {
+      confirmRef.current?.focus();
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -48,7 +59,9 @@ export function ConfirmDialog({
           inset: 0,
           background: 'rgba(0,0,0,0.35)',
         }}
-        onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onCancel();
+        }}
       />
       <div
         ref={dialogRef}
@@ -67,13 +80,32 @@ export function ConfirmDialog({
           animation: 'slideUp 0.2s ease-out',
         }}
       >
-        <h2 id="confirm-title" style={{ margin: '0 0 0.5rem', fontSize: '1.05rem' }}>
+        <h2
+          id="confirm-title"
+          style={{ margin: '0 0 0.5rem', fontSize: '1.05rem' }}
+        >
           {title}
         </h2>
-        <p id="confirm-message" style={{ margin: 0, color: 'var(--c-text-secondary)', fontSize: '0.9rem' }}>
+
+        <p
+          id="confirm-message"
+          style={{
+            margin: 0,
+            color: 'var(--c-text-secondary)',
+            fontSize: '0.9rem',
+          }}
+        >
           {message}
         </p>
-        <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+
+        <div
+          style={{
+            marginTop: '1.25rem',
+            display: 'flex',
+            gap: '0.5rem',
+            justifyContent: 'flex-end',
+          }}
+        >
           <button
             type="button"
             onClick={onCancel}
@@ -89,7 +121,9 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </button>
+
           <button
+            ref={confirmRef}
             type="button"
             onClick={onConfirm}
             disabled={busy}
@@ -97,7 +131,10 @@ export function ConfirmDialog({
               padding: '0.35rem 0.8rem',
               borderRadius: 'var(--radius-md)',
               border: 'none',
-              background: variant === 'danger' ? 'var(--c-danger)' : 'var(--c-primary)',
+              background:
+                variant === 'danger'
+                  ? 'var(--c-danger)'
+                  : 'var(--c-primary)',
               color: '#fff',
               cursor: 'pointer',
               fontSize: '0.85rem',

@@ -176,6 +176,18 @@ export function Layout() {
     }
   }, [toast]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        const input = document.querySelector<HTMLInputElement>('input[name="slug"]');
+        input?.focus();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <>
       {/* Mobile sidebar overlay */}
