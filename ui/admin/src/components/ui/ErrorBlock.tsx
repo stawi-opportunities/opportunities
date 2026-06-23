@@ -11,6 +11,8 @@ export function ErrorBlock({ message, detail, onRetry }: ErrorBlockProps) {
 
   return (
     <div
+      role="alert"
+      aria-live="assertive"
       style={{
         background: '#fef2f2',
         border: '1px solid #fecaca',
@@ -43,6 +45,7 @@ export function ErrorBlock({ message, detail, onRetry }: ErrorBlockProps) {
         {detail && (
           <button
             type="button"
+            aria-expanded={expanded}
             onClick={() => setExpanded(!expanded)}
             style={{
               background: 'none',

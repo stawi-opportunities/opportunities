@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { authRuntime } from '@/api/admin-client';
 import { useToast } from '@/components/ui/Toast';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface Breadcrumb {
   label: string;
@@ -12,7 +13,6 @@ function useBreadcrumbs(): Breadcrumb[] {
   const { pathname } = useLocation();
   const segs = pathname.split('/').filter(Boolean);
 
-  // Map known route patterns to breadcrumb labels
   const labelMap: Record<string, string> = {
     definitions: 'Definitions',
     sources: 'Sources',
@@ -27,7 +27,6 @@ function useBreadcrumbs(): Breadcrumb[] {
 
   if (segs.length === 0) return crumbs;
 
-  // /definitions[/...]
   if (segs[0] === 'definitions') {
     crumbs[crumbs.length - 1] = { label: 'Definitions', path: '/definitions' };
     if (segs[1]) crumbs.push({ label: segs[1] });
@@ -35,25 +34,21 @@ function useBreadcrumbs(): Breadcrumb[] {
     return crumbs;
   }
 
-  // /sources/:id
   if (segs[0] === 'sources' && segs[1]) {
     crumbs.push({ label: segs[1] });
     return crumbs;
   }
 
-  // /variants/:id
   if (segs[0] === 'variants' && segs[1]) {
     crumbs.push({ label: 'Variants' }, { label: segs[1] });
     return crumbs;
   }
 
-  // /opportunities/:slug
   if (segs[0] === 'opportunities' && segs[1]) {
     crumbs.push({ label: 'Opportunities' }, { label: segs[1] });
     return crumbs;
   }
 
-  // /seeds/:id/digest
   if (segs[0] === 'seeds' && segs[1]) {
     crumbs.push(
       { label: 'Seeds' },
@@ -63,13 +58,11 @@ function useBreadcrumbs(): Breadcrumb[] {
     return crumbs;
   }
 
-  // /raw_payloads/:id
   if (segs[0] === 'raw_payloads' && segs[1]) {
     crumbs.push({ label: 'Raw Payloads' }, { label: segs[1] });
     return crumbs;
   }
 
-  // fallback – add unknown segments as-is
   for (const s of segs) {
     crumbs.push({ label: labelMap[s] ?? s });
   }
@@ -145,6 +138,9 @@ export function Layout() {
   const userEmail = useAuthUser();
   const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  useFocusTrap(sidebarRef, sidebarOpen, () => setSidebarOpen(false));
 
   const goSlug = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -196,7 +192,7 @@ export function Layout() {
       )}
 
       {/* Sidebar */}
-      <aside style={sidebarStyle}>
+      <aside ref={sidebarRef} id="sidebar" style={sidebarStyle}>
         <div style={{ padding: '1rem 0.75rem', borderBottom: '1px solid var(--c-border)' }}>
           <Link to="/" style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--c-text)', textDecoration: 'none' }}>
             Stawi Admin
@@ -205,10 +201,18 @@ export function Layout() {
 
         <nav style={{ flex: 1, paddingTop: '1rem' }}>
           <div style={sidebarSection}>
-            <Link to="/" style={navLinkStyle(location.pathname === '/')}>
+            <Link
+              to="/"
+              style={navLinkStyle(location.pathname === '/')}
+              aria-current={location.pathname === '/' ? 'page' : undefined}
+            >
               Sources
             </Link>
-            <Link to="/definitions" style={navLinkStyle(location.pathname.startsWith('/definitions'))}>
+            <Link
+              to="/definitions"
+              style={navLinkStyle(location.pathname.startsWith('/definitions'))}
+              aria-current={location.pathname.startsWith('/definitions') ? 'page' : undefined}
+            >
               Definitions
             </Link>
           </div>
@@ -218,10 +222,16 @@ export function Layout() {
               Quick jump
             </div>
             <form onSubmit={goSlug} style={{ marginBottom: '0.5rem' }}>
-              <input name="slug" placeholder="Opportunity slug…" style={formInput} />
+              <label htmlFor="quick-slug" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+                Opportunity slug
+              </label>
+              <input id="quick-slug" name="slug" placeholder="Opportunity slug…" style={formInput} />
             </form>
             <form onSubmit={goVariant}>
-              <input name="variant" placeholder="Variant id…" style={formInput} />
+              <label htmlFor="quick-variant" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+                Variant ID
+              </label>
+              <input id="quick-variant" name="variant" placeholder="Variant id…" style={formInput} />
             </form>
           </div>
         </nav>
@@ -253,6 +263,8 @@ export function Layout() {
         }}
         className="sidebar-toggle"
         aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+        aria-expanded={sidebarOpen}
+        aria-controls="sidebar"
       >
         {sidebarOpen ? '×' : '☰'}
       </button>
@@ -280,13 +292,15 @@ export function Layout() {
           <nav aria-label="Breadcrumb">
             {crumbs.map((c, i) => (
               <span key={i}>
-                {i > 0 && <span style={{ margin: '0 0.35rem', color: 'var(--c-text-secondary)' }}>/</span>}
+                {i > 0 && <span aria-hidden="true" style={{ margin: '0 0.35rem', color: 'var(--c-text-secondary)' }}>/</span>}
                 {c.path ? (
                   <Link to={c.path} style={{ color: 'var(--c-text-secondary)' }}>
                     {c.label}
                   </Link>
                 ) : (
-                  <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{c.label}</span>
+                  <span style={{ color: 'var(--c-text)', fontWeight: 500 }} aria-current={i === crumbs.length - 1 ? 'page' : undefined}>
+                    {c.label}
+                  </span>
                 )}
               </span>
             ))}
@@ -303,13 +317,14 @@ export function Layout() {
               padding: '0.2rem 0.5rem',
               borderRadius: 'var(--radius-sm)',
             }}
+            aria-label="Logout"
           >
             Logout
           </button>
         </div>
 
         {/* Page content */}
-        <main style={{ padding: '1.5rem 2rem' }}>
+        <main id="main-content" style={{ padding: '1.5rem 2rem' }}>
           <Outlet />
         </main>
       </div>

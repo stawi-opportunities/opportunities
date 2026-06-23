@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -6,6 +6,7 @@ interface ToastItem {
   id: number;
   message: string;
   type: ToastType;
+  leaving?: boolean;
 }
 
 interface ToastContextValue {
@@ -15,6 +16,7 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 let nextId = 1;
+const MAX_VISIBLE = 5;
 
 const typeColors: Record<ToastType, { bg: string; border: string; text: string }> = {
   success: { bg: '#e6f7ed', border: '#b7ebc8', text: '#166534' },
@@ -25,25 +27,37 @@ const typeColors: Record<ToastType, { bg: string; border: string; text: string }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
+  const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+
+  const remove = useCallback((id: number) => {
+    setItems((prev) => prev.map((t) => t.id === id ? { ...t, leaving: true } : t));
+    const existing = timersRef.current.get(id);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      setItems((prev) => prev.filter((t) => t.id !== id));
+      timersRef.current.delete(id);
+    }, 200);
+    timersRef.current.set(id, timer);
+  }, []);
 
   const toast = useCallback((message: string, opts?: { type?: ToastType; duration?: number }) => {
     const id = nextId++;
     const type = opts?.type ?? 'info';
     const duration = opts?.duration ?? 4000;
-    setItems((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setItems((prev) => prev.filter((t) => t.id !== id));
-    }, duration);
-  }, []);
-
-  const remove = useCallback((id: number) => {
-    setItems((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+    setItems((prev) => {
+      const next = [...prev, { id, message, type }];
+      return next.length > MAX_VISIBLE ? next.slice(next.length - MAX_VISIBLE) : next;
+    });
+    const timer = setTimeout(() => remove(id), duration);
+    timersRef.current.set(id, timer);
+  }, [remove]);
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
       <div
+        aria-live="polite"
+        aria-relevant="additions"
         style={{
           position: 'fixed',
           top: '0.75rem',
@@ -69,7 +83,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 color: c.text,
                 fontSize: '0.85rem',
                 boxShadow: 'var(--shadow-md)',
-                animation: 'toast-in 0.25s ease-out',
+                animation: item.leaving ? 'toast-out 0.2s ease-in forwards' : 'toast-in 0.25s ease-out',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',

@@ -106,7 +106,7 @@ export function SourceTrace() {
       <div style={{ marginBottom: '1.25rem' }}>
         <SectionHeader label="24-hour summary" sectionKey="summary" collapsed={collapsed} onToggle={toggle} />
         {!collapsed['summary'] && (
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+          <div id="section-summary" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
             <StatCard label="Crawl jobs" value={summary.crawl_jobs} />
             <StatCard label="Failed" value={summary.crawl_jobs_failed} color="var(--c-danger)" />
             <StatCard label="Raw payloads" value={summary.raw_payloads} />
@@ -133,7 +133,8 @@ export function SourceTrace() {
       <div style={{ marginBottom: '1.25rem' }}>
         <SectionHeader label="Iterator checkpoints" sectionKey="checkpoints" collapsed={collapsed} onToggle={toggle} />
         {!collapsed['checkpoints'] && (
-          checkpoints.length === 0 ? (
+          <div id="section-checkpoints">
+          {checkpoints.length === 0 ? (
             <p style={{ color: 'var(--c-text-secondary)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
               No active checkpoints — last crawl completed cleanly.
             </p>
@@ -168,15 +169,17 @@ export function SourceTrace() {
                 </tbody>
               </table>
             </Card>
-          )
-        )}
+          )}
+        </div>
+      )}
       </div>
 
       {/* Recent crawls */}
       <div>
         <SectionHeader label="Recent crawls" sectionKey="crawls" collapsed={collapsed} onToggle={toggle} />
         {!collapsed['crawls'] && (
-          recent_crawls.length === 0 ? (
+          <div id="section-crawls">
+          {recent_crawls.length === 0 ? (
             <p style={{ color: 'var(--c-text-secondary)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
               No crawls in the window.
             </p>
@@ -209,8 +212,9 @@ export function SourceTrace() {
                 </tbody>
               </table>
             </Card>
-          )
-        )}
+          )}
+        </div>
+      )}
       </div>
 
       <ConfirmDialog
@@ -239,9 +243,21 @@ function SectionHeader({
   onToggle: (key: string) => void;
 }) {
   const isCollapsed = !!collapsed[sectionKey];
+  const contentId = `section-${sectionKey}`;
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onToggle(sectionKey);
+    }
+  };
   return (
     <h2
       onClick={() => onToggle(sectionKey)}
+      onKeyDown={handleKey}
+      tabIndex={0}
+      role="button"
+      aria-expanded={!isCollapsed}
+      aria-controls={contentId}
       style={{
         fontSize: '1.05rem',
         margin: 0,

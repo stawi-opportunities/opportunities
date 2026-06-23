@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -23,20 +24,9 @@ export function ConfirmDialog({
   onCancel,
   busy = false,
 }: ConfirmDialogProps) {
-  const confirmRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (open) confirmRef.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [open, onCancel]);
+  useFocusTrap(dialogRef, open, onCancel);
 
   if (!open) return null;
 
@@ -58,12 +48,14 @@ export function ConfirmDialog({
           inset: 0,
           background: 'rgba(0,0,0,0.35)',
         }}
-        onClick={onCancel}
+        onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
+        aria-describedby="confirm-message"
         style={{
           position: 'relative',
           background: 'var(--c-surface)',
@@ -78,7 +70,7 @@ export function ConfirmDialog({
         <h2 id="confirm-title" style={{ margin: '0 0 0.5rem', fontSize: '1.05rem' }}>
           {title}
         </h2>
-        <p style={{ margin: 0, color: 'var(--c-text-secondary)', fontSize: '0.9rem' }}>
+        <p id="confirm-message" style={{ margin: 0, color: 'var(--c-text-secondary)', fontSize: '0.9rem' }}>
           {message}
         </p>
         <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -98,7 +90,6 @@ export function ConfirmDialog({
             {cancelLabel}
           </button>
           <button
-            ref={confirmRef}
             type="button"
             onClick={onConfirm}
             disabled={busy}

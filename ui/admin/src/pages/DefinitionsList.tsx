@@ -70,17 +70,32 @@ export function DefinitionsList() {
 
       {/* Type tabs */}
       <div
+        role="tablist"
+        aria-label="Definition types"
         style={{
           display: 'flex',
           gap: '0.25rem',
           flexWrap: 'wrap',
           marginBottom: '1rem',
         }}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+          e.preventDefault();
+          const idx = types.indexOf(currentType);
+          const next = e.key === 'ArrowRight'
+            ? (idx + 1) % types.length
+            : (idx - 1 + types.length) % types.length;
+          const t = types[next];
+          if (t) setActiveType(t);
+        }}
       >
         {types.map((t) => (
           <button
             key={t}
             type="button"
+            role="tab"
+            aria-selected={t === currentType}
+            aria-controls="definitions-panel"
             onClick={() => setActiveType(t)}
             style={{
               padding: '0.3rem 0.75rem',
@@ -98,6 +113,11 @@ export function DefinitionsList() {
         ))}
       </div>
 
+      <div
+        role="tabpanel"
+        id="definitions-panel"
+        aria-label={currentType}
+      >
       {entries.length === 0 ? (
         <Card>
           <p style={{ color: 'var(--c-text-secondary)', margin: 0 }}>
@@ -138,6 +158,7 @@ export function DefinitionsList() {
           </table>
         </Card>
       )}
+      </div>
     </div>
   );
 }
