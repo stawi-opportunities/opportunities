@@ -188,7 +188,9 @@ export default function Onboarding() {
       );
       setStep(draft.step);
       setDraftLoaded(true);
-    })().catch(() => { setDraftLoaded(true); });
+    })().catch(() => {
+      setDraftLoaded(true);
+    });
     return () => {
       cancelled = true;
     };

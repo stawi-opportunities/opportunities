@@ -29,7 +29,9 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
     if (open) {
       document.body.style.overflow = 'hidden';
     }
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [open]);
 
   if (!open) return null;
@@ -41,7 +43,9 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
       aria-modal="true"
       aria-labelledby={titleId.current}
       aria-describedby={description ? descId.current : undefined}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         ref={dialogRef}
@@ -64,8 +68,19 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
             aria-label="Close dialog"
             className="shrink-0 rounded p-1 text-gray-500 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-navy-500"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>

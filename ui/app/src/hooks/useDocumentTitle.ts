@@ -4,6 +4,8 @@ export function useDocumentTitle(title: string) {
   useEffect(() => {
     const prev = document.title;
     document.title = title;
-    return () => { document.title = prev; };
+    return () => {
+      document.title = prev;
+    };
   }, [title]);
 }

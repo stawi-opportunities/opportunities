@@ -40,7 +40,9 @@ export function CancelSubscriptionModal({
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, []);
 
   const handleContinue = () => {

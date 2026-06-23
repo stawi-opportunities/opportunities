@@ -163,7 +163,11 @@ export function OpportunitiesFeed() {
         setItems(snapshot);
         toast('Failed to save.', 'error');
       } finally {
-        setPendingItems((prev) => { const next = new Set(prev); next.delete(id); return next; });
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
     [items, toast]
@@ -182,7 +186,11 @@ export function OpportunitiesFeed() {
         setItems(snapshot);
         toast('Failed to remove.', 'error');
       } finally {
-        setPendingItems((prev) => { const next = new Set(prev); next.delete(id); return next; });
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
     [items, toast]
@@ -215,7 +223,11 @@ export function OpportunitiesFeed() {
         setItems(snapshot);
         toast('Failed to apply.', 'error');
       } finally {
-        setPendingItems((prev) => { const next = new Set(prev); next.delete(id); return next; });
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
     [items, toast]
