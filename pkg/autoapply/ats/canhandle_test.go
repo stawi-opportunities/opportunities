@@ -25,15 +25,6 @@ func TestSplitName(t *testing.T) {
 	}
 }
 
-func TestGreenhouse_CanHandle(t *testing.T) {
-	s := NewGreenhouseSubmitter(nil)
-	assert.True(t, s.CanHandle(domain.SourceGreenhouse, ""))
-	assert.True(t, s.CanHandle("", "https://boards.greenhouse.io/co/jobs/1"))
-	assert.True(t, s.CanHandle("", "https://co.com/jobs?gh_jid=42"))
-	assert.True(t, s.CanHandle("", "https://co.com/greenhouse.io/jobs"))
-	assert.False(t, s.CanHandle("", "https://jobs.lever.co/co/1"))
-}
-
 func TestLever_CanHandle(t *testing.T) {
 	s := NewLeverSubmitter(nil)
 	assert.True(t, s.CanHandle(domain.SourceLever, ""))

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -38,11 +37,6 @@ var ErrElementNotFound = errors.New("browser: required element not found")
 // skip — better to under-report than double-submit.
 var ErrSubmitNotConfirmed = errors.New("browser: submission not confirmed")
 
-// ErrOTPTimeout is returned when an OTP-gated submission reached the
-// security-code step but no code arrived from the CodeProvider before
-// its deadline. Terminal skip — the page is gone, there is no resume.
-var ErrOTPTimeout = errors.New("browser: OTP code not received in time")
-
 // SubmitOptions controls one FillAndSubmit invocation.
 type SubmitOptions struct {
 	URL         string
@@ -61,28 +55,11 @@ type SubmitOptions struct {
 	// substring (case-insensitive).
 	ConfirmText string
 
-	// OTPFieldSel, when non-empty together with CodeProvider, switches
-	// FillAndSubmit into two-phase mode: after the first submit click it
-	// waits for this selector — the "security code" field a source
-	// renders once it has emailed a verification code — fetches the code
-	// via CodeProvider, types it, clicks OTPSubmitSel (or SubmitSel when
-	// empty), then runs the normal confirmation check.
-	OTPFieldSel string
-	// OTPSubmitSel is the resubmit control clicked after the code is
-	// entered. Falls back to SubmitSel when empty.
-	OTPSubmitSel string
-	// CodeProvider blocks until the emailed security code is available
-	// (or its own deadline elapses). Supplied by the submitter, it
-	// typically polls the OTP rendezvous. A non-nil error makes
-	// FillAndSubmit return ErrOTPTimeout. The browser slot is held for
-	// the whole duration of this call.
-	CodeProvider func(ctx context.Context) (string, error)
-
 	// ScreenshotPath, when set, saves a full-page PNG of the filled form
 	// (after fill + upload, before submit). Used for safe live testing.
 	ScreenshotPath string
 	// NoSubmit fills the form (and screenshots when ScreenshotPath is set)
-	// but returns before clicking submit — no submission, CAPTCHA, OTP, or
+	// but returns before clicking submit — no submission, CAPTCHA, or
 	// confirmation. Used to validate field-filling against a live board
 	// without sending a real application.
 	NoSubmit bool
@@ -364,128 +341,15 @@ func (p *Pool) FillAndSubmit(ctx context.Context, opts SubmitOptions) error {
 		}
 	}
 
-	// Email-OTP gate: the first submit caused the source to email a
-	// security code and render a code field. Hold the page open, fetch
-	// the code, enter it, and resubmit before checking for success.
-	if opts.CodeProvider != nil && opts.OTPFieldSel != "" {
-		if err := runOTPPhase(ctx, page, opts); err != nil {
-			return err
-		}
-	}
-
-	// Verify on a page handle with a FRESH deadline: an OTP hold can run
-	// well past p.timeout, expiring the original handle's context and making
-	// verifySubmit's page.HTML() fail — a false "not confirmed" even on a
-	// real success (observed on Cloudflare's "Thank you for applying!").
+	// Verify on a page handle with a FRESH deadline: a long-running gate
+	// (e.g. a CAPTCHA solve) can run well past p.timeout, expiring the
+	// original handle's context and making verifySubmit's page.HTML() fail
+	// — a false "not confirmed" even on a real success (observed on
+	// Cloudflare's "Thank you for applying!").
 	if !verifySubmit(page.CancelTimeout().Timeout(15*time.Second), opts) {
 		return ErrSubmitNotConfirmed
 	}
 
-	return nil
-}
-
-// otpSegmentRE splits a segmented-input id like "security-input-0" into a
-// stable prefix ("security-input-") and the starting index (0).
-var otpSegmentRE = regexp.MustCompile(`^(.*?)(\d+)$`)
-
-// enterOTPCode types the code into the security-code control. Greenhouse
-// (and many OTP widgets) render one single-character box per digit
-// (#security-input-0 … #security-input-7); when the matched element's id
-// ends in a number we distribute the code one char per box. Otherwise we
-// fall back to a single Input. Each box is set via Input so the input
-// event fires and the React state registers.
-func enterOTPCode(page *rod.Page, otpEl *rod.Element, code string) {
-	id := attr(otpEl, "id")
-	if m := otpSegmentRE.FindStringSubmatch(id); m != nil {
-		prefix, start := m[1], m[2]
-		base := 0
-		_, _ = fmt.Sscanf(start, "%d", &base)
-		for i, r := range code {
-			sel := "#" + cssEscapeAttr(prefix) + fmt.Sprintf("%d", base+i)
-			el, err := page.Timeout(2 * time.Second).Element(sel)
-			if err != nil {
-				if i == 0 {
-					break // not actually segmented — fall through to single
-				}
-				continue
-			}
-			_ = el.SelectAllText()
-			_ = el.Input(string(r))
-		}
-		// Verify the last box took a value; if segmented filling worked we're done.
-		if last, err := page.Timeout(time.Second).Element("#" + cssEscapeAttr(prefix) + fmt.Sprintf("%d", base+len(code)-1)); err == nil {
-			if v, e := last.Property("value"); e == nil && v.Str() != "" {
-				return
-			}
-		}
-	}
-	// Single-field fallback.
-	_ = otpEl.SelectAllText()
-	_ = otpEl.Input(code)
-}
-
-// runOTPPhase waits for the security-code field, blocks on CodeProvider
-// for the emailed code, enters it, and clicks the resubmit control.
-//
-// The page's per-call timeout (p.timeout) is cancelled first because the
-// CodeProvider wait routinely exceeds it; fresh short timeouts are
-// applied to each browser op instead, while the overall wait stays
-// bounded by ctx and CodeProvider's own deadline.
-func runOTPPhase(ctx context.Context, page *rod.Page, opts SubmitOptions) error {
-	page = page.CancelTimeout()
-
-	// Confirm a code was actually requested — the security-code field
-	// must appear. If it doesn't, the first submit either completed
-	// without OTP or failed; let verifySubmit be the judge.
-	if _, err := page.Timeout(15 * time.Second).Element(opts.OTPFieldSel); err != nil {
-		return nil
-	}
-
-	code, err := opts.CodeProvider(ctx)
-	if err != nil {
-		return ErrOTPTimeout
-	}
-
-	// Re-find the field with a FRESH handle: the element located before the
-	// CodeProvider wait carries a short deadline that expires during the
-	// (often minute-long) wait, which would make every subsequent op on it
-	// fail silently and leave the boxes empty.
-	otpEl, err := page.Timeout(15 * time.Second).Element(opts.OTPFieldSel)
-	if err != nil {
-		return ErrSubmitNotConfirmed
-	}
-
-	enterOTPCode(page, otpEl, code)
-
-	// Debug capture of the code-entered state (before resubmit).
-	if opts.PostSubmitShotPath != "" {
-		if data, e := page.Screenshot(false, nil); e == nil {
-			_ = os.WriteFile(opts.PostSubmitShotPath+".entered.png", data, 0o644)
-		}
-	}
-
-	submitSel := opts.OTPSubmitSel
-	if submitSel == "" {
-		submitSel = opts.SubmitSel
-	}
-	submitEl, err := page.Timeout(10 * time.Second).Element(submitSel)
-	if err != nil {
-		return ErrElementNotFound
-	}
-	if err := submitEl.Click(proto.InputMouseButtonLeft, 1); err != nil {
-		return fmt.Errorf("browser: click otp submit: %w", err)
-	}
-
-	settle(page)
-
-	// Debug capture of the final state after the code-resubmit (the
-	// confirmation page, or a "code invalid" error).
-	if opts.PostSubmitShotPath != "" {
-		time.Sleep(2 * time.Second)
-		if data, e := page.Screenshot(true, nil); e == nil {
-			_ = os.WriteFile(opts.PostSubmitShotPath+".final.png", data, 0o644)
-		}
-	}
 	return nil
 }
 

@@ -69,37 +69,6 @@ type AutoApplyConfig struct {
 	// slot is held for up to this long, so size pools accordingly.
 	CaptchaSolveTimeoutSec int `env:"AUTO_APPLY_CAPTCHA_SOLVE_TIMEOUT_SEC" envDefault:"180"`
 
-	// OTPEnabled turns on the email-OTP hold-open path for Greenhouse
-	// applications that gate submission behind an emailed security code.
-	// When on, a matching submission holds a browser slot open until the
-	// code arrives (via the OTP-email ingress) or OTPWaitSec elapses.
-	OTPEnabled bool `env:"AUTO_APPLY_OTP_ENABLED" envDefault:"false"`
-	// OTPWaitSec bounds how long a browser slot is held waiting for the
-	// emailed security code before giving up (otp_timeout). Keep this
-	// comfortably under the queue's ack/visibility deadline so a held
-	// message is not redelivered mid-wait.
-	OTPWaitSec int `env:"AUTO_APPLY_OTP_WAIT_SEC" envDefault:"60"`
-	// OTPBrowserConcurrency sizes a dedicated browser pool for the
-	// hold-open OTP path, so long OTP waits don't starve the fast
-	// (non-OTP) submitters sharing BrowserConcurrency. Each slot can be
-	// occupied for up to OTPWaitSec, so size against expected OTP volume
-	// and RAM (~150MB/browser).
-	OTPBrowserConcurrency int `env:"AUTO_APPLY_OTP_BROWSER_CONCURRENCY" envDefault:"4"`
-	// OTPInjectSecret guards the manual Phase-2 OTP injector endpoint
-	// (POST /internal/otp), the human stand-in for the OTP-email ingress.
-	// Empty disables the route.
-	OTPInjectSecret string `env:"AUTO_APPLY_OTP_INJECT_SECRET" envDefault:""`
-	// OTPWebhookSecret guards the inbound OTP-email webhook
-	// (POST /webhooks/otp). Empty disables the route.
-	OTPWebhookSecret string `env:"AUTO_APPLY_OTP_WEBHOOK_SECRET" envDefault:""`
-	// OTPSenderDomain is the allowed From-domain for OTP emails; subdomains
-	// are accepted (e.g. us.greenhouse-mail.io). Empty disables the check.
-	OTPSenderDomain string `env:"AUTO_APPLY_OTP_SENDER_DOMAIN" envDefault:"greenhouse-mail.io"`
-	// OTPRedisURL backs the OTP rendezvous with Valkey so the webhook and
-	// the browser-holding submitter can run on separate instances. Empty
-	// falls back to an in-process cache (single-instance only).
-	OTPRedisURL string `env:"AUTO_APPLY_OTP_REDIS_URL" envDefault:""`
-
 	// CV download bounds. CVMaxBytes guards against memory blow-up;
 	// CVDownloadTimeoutSec bounds a slow signed-URL fetch.
 	CVMaxBytes           int64 `env:"CV_MAX_BYTES"            envDefault:"10485760"` // 10 MiB
