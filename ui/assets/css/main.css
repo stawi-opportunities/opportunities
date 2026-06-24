@@ -41,15 +41,14 @@
   }
   .card:hover {
     @apply -translate-y-0.5 shadow-md;
+    filter: brightness(1.02);
   }
 
-  /* group is a Tailwind behaviour marker — can't be in @apply.
-     Hover states that use ring colours are also set here. */
   .industry-card {
     @apply relative overflow-hidden rounded-2xl bg-slate-50 p-7 ring-1 ring-gray-200 transition-all duration-200;
   }
   .industry-card:hover {
-    @apply shadow-md -translate-y-0.5;
+    @apply shadow-md -translate-y-0.5 bg-accent-50;
     --tw-ring-color: theme('colors.accent.400');
   }
 
@@ -89,4 +88,38 @@
     @apply block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400;
   }
   .input-field:focus { @apply border-navy-900 ring-1 ring-navy-900; }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-accent-400 via-accent-300 to-accent-400 bg-clip-text text-transparent;
+  }
+
+  /* ── Scroll-reveal ── */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 600ms cubic-bezier(0.22, 1, 0.36, 1),
+                transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  [data-reveal][data-revealed] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  [data-reveal="scale"] {
+    opacity: 0;
+    transform: scale(0.95);
+    transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1),
+                transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  [data-reveal="scale"][data-revealed] {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    [data-reveal="scale"] { opacity: 1; transform: none; transition: none; }
+  }
 }
