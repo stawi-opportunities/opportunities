@@ -1444,6 +1444,7 @@ input:where([type='file']):focus {
           background-clip: text;
   color: transparent;
 }
+ feat/styling-scroll-reveal
 /* ── Scroll-reveal ── */
 [data-reveal] {
     opacity: 0;
@@ -1469,6 +1470,8 @@ input:where([type='file']):focus {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
     [data-reveal="scale"] { opacity: 1; transform: none; transition: none; }
   }
+
+ main
 .sr-only {
   position: absolute;
   width: 1px;
