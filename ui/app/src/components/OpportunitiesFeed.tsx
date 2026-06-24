@@ -18,6 +18,7 @@ import {
 } from '@/components/dashboard/FilterChips';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
+import { useToast } from '@/hooks/useToast';
 
 const FILTER_KEYS: { id: OpportunityFilter; labelKey: StringKey }[] = [
   { id: 'all', labelKey: 'feed.all' },
@@ -61,12 +62,14 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
 
 export function OpportunitiesFeed() {
   const { t } = useI18n();
+  const { push: toast } = useToast();
   const [filter, setFilter] = useState<OpportunityFilter>(readFilterFromURL);
   const [feedFilters, setFeedFilters] = useState<FeedFilters>(readFiltersFromURL);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [pendingItems, setPendingItems] = useState<Set<string>>(new Set());
   const [snapshots, setSnapshots] = useState<Record<string, OpportunitySnapshot | null>>({});
 
   const counts = useMemo(
@@ -149,6 +152,7 @@ export function OpportunitiesFeed() {
 
   const onStar = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       setItems((prev) =>
         prev.map((it) => (it.opportunity_id === id ? { ...it, starred: true } : it))
@@ -157,13 +161,21 @@ export function OpportunitiesFeed() {
         await starOpportunity(id);
       } catch {
         setItems(snapshot);
+        toast('Failed to save.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
-    [items]
+    [items, toast]
   );
 
   const onUnstar = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       setItems((prev) =>
         prev.map((it) => (it.opportunity_id === id ? { ...it, starred: false } : it))
@@ -172,13 +184,21 @@ export function OpportunitiesFeed() {
         await unstarOpportunity(id);
       } catch {
         setItems(snapshot);
+        toast('Failed to remove.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
-    [items]
+    [items, toast]
   );
 
   const onApply = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       const now = new Date().toISOString();
       setItems((prev) =>
@@ -198,11 +218,19 @@ export function OpportunitiesFeed() {
       );
       try {
         await applyToOpportunity(id, 'manual');
+        toast('Applied successfully.', 'success');
       } catch {
         setItems(snapshot);
+        toast('Failed to apply.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
-    [items]
+    [items, toast]
   );
 
   return (
@@ -270,6 +298,7 @@ export function OpportunitiesFeed() {
                 onStar={onStar}
                 onUnstar={onUnstar}
                 onApply={onApply}
+                isPending={pendingItems.has(it.opportunity_id)}
               />
             ))}
           </ul>

@@ -70,7 +70,7 @@ function BrowseDropdown() {
                 </span>
                 <div>
                   <div className="font-medium">{label}</div>
-                  <div className="text-xs text-gray-400">{sub}</div>
+                  <div className="text-xs text-gray-500">{sub}</div>
                 </div>
               </a>
             ))}
@@ -124,7 +124,7 @@ function MobileMenu({ open, isAuth }: { open: boolean; isAuth: boolean }) {
           Dashboard
         </a>
       )}
-      <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
         Browse
       </p>
       {browseItems.map(({ href, emoji, label }) => (

@@ -135,7 +135,20 @@ export default function CategoryIndex() {
           </div>
         )}
 
-        {!q.isLoading && cats.length > 0 && (
+        {!q.isLoading && q.isError && (
+          <div className="mt-14 text-center">
+            <p className="text-sm text-gray-500">Failed to load categories.</p>
+            <button
+              type="button"
+              onClick={() => q.refetch()}
+              className="mt-3 rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!q.isLoading && !q.isError && cats.length > 0 && (
           <div className="mt-14">
             <h2 className="text-xl font-semibold text-gray-900">Browse by industry</h2>
             <p className="mt-1 text-sm text-gray-500">Refine your search by sector or field.</p>
@@ -149,7 +162,7 @@ export default function CategoryIndex() {
                   <div className="font-medium capitalize text-gray-900 group-hover:text-navy-900">
                     {c.key || 'Uncategorised'}
                   </div>
-                  <div className="mt-1 text-xs text-gray-400">
+                  <div className="mt-1 text-xs text-gray-500">
                     {c.count.toLocaleString()} {c.count === 1 ? 'opportunity' : 'opportunities'}
                   </div>
                 </a>

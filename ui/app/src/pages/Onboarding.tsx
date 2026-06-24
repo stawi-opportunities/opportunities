@@ -188,7 +188,9 @@ export default function Onboarding() {
       );
       setStep(draft.step);
       setDraftLoaded(true);
-    })();
+    })().catch(() => {
+      setDraftLoaded(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -666,11 +668,11 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
           <button
             type="button"
             onClick={() => void onSkipPreferences()}
-            className="text-sm text-gray-400 underline hover:text-gray-600"
+            className="text-sm text-gray-500 underline hover:text-gray-600"
           >
             {t('onboard.skipPreferences')}
           </button>
-          <p className="mt-1 text-xs text-gray-400">{t('onboard.skipPreferencesHint')}</p>
+          <p className="mt-1 text-xs text-gray-500">{t('onboard.skipPreferencesHint')}</p>
         </div>
       )}
     </div>

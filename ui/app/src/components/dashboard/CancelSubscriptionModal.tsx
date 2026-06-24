@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cancelSubscription } from '@/api/billing';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { StringKey } from '@/i18n/strings';
 
 type Step = 'reason' | 'confirm' | 'success' | 'error';
@@ -33,6 +34,16 @@ export function CancelSubscriptionModal({
   const [detail, setDetail] = useState('');
   const [checked, setChecked] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useFocusTrap(dialogRef, true, onClose);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
 
   const handleContinue = () => {
     if (!selectedReason) return;
@@ -216,7 +227,7 @@ export function CancelSubscriptionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+      <div ref={dialogRef} className="w-full max-w-lg rounded-xl bg-white shadow-xl">
         <div className="px-6 py-5">{renderContent()}</div>
       </div>
     </div>
