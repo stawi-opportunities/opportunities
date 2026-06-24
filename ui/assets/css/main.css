@@ -89,4 +89,8 @@
     @apply block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400;
   }
   .input-field:focus { @apply border-navy-900 ring-1 ring-navy-900; }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-accent-400 via-accent-300 to-accent-400 bg-clip-text text-transparent;
+  }
 }
