@@ -20,14 +20,14 @@ export interface SiteConfig {
 }
 
 const DEFAULTS: SiteConfig = {
-  candidatesAPIURL: 'https://api.stawi.org',
-  oidcIssuer: 'https://oauth2.stawi.org',
-  oidcClientID: 'd7is2kspf2t7cl19qlpg',
-  oidcInstallationID: 'd7gi6lkpf2t67dlsqrhg',
+  candidatesAPIURL: "https://api.stawi.org",
+  oidcIssuer: "https://oauth2.stawi.org",
+  oidcClientID: "d7is2kspf2t7cl19qlpg",
+  oidcInstallationID: "d7gi6lkpf2t67dlsqrhg",
   oidcRedirectURI:
-    typeof window !== 'undefined'
+    typeof window !== "undefined"
       ? `${window.location.origin}/auth/callback/`
-      : 'http://localhost:5170/auth/callback/',
+      : "http://localhost:5170/auth/callback/",
 };
 
 let cached: SiteConfig | null = null;
@@ -39,8 +39,10 @@ export function getConfig(): SiteConfig {
 }
 
 function loadFromMeta(): SiteConfig {
-  if (typeof document === 'undefined') return DEFAULTS;
-  const el = document.querySelector<HTMLMetaElement>('meta[name="site-params"]');
+  if (typeof document === "undefined") return DEFAULTS;
+  const el = document.querySelector<HTMLMetaElement>(
+    'meta[name="site-params"]',
+  );
   if (!el) return DEFAULTS;
   try {
     const parsed = JSON.parse(el.content) as Partial<SiteConfig>;
@@ -53,7 +55,7 @@ function loadFromMeta(): SiteConfig {
 function stripEmpty<T extends object>(obj: T): Partial<T> {
   const out: Partial<T> = {};
   for (const [k, v] of Object.entries(obj) as [keyof T, unknown][]) {
-    if (v !== '' && v != null) {
+    if (v !== "" && v != null) {
       out[k] = v as T[keyof T];
     }
   }

@@ -1,5 +1,5 @@
-import { createAuthRuntime, type AuthRuntime } from '@stawi/auth-runtime';
-import { getConfig } from '@/utils/config';
+import { createAuthRuntime, type AuthRuntime } from "@stawi/auth-runtime";
+import { getConfig } from "@/utils/config";
 
 // Module-level singleton — same pattern as ui/app/src/auth/runtime.ts.
 // One auth runtime across the SPA so React components and any
@@ -19,7 +19,7 @@ export function authRuntime(): AuthRuntime {
     // service's /matching/* prefix is added inline by call sites.
     apiBaseUrl: cfg.candidatesAPIURL,
     redirectUri: cfg.oidcRedirectURI,
-    scopes: ['openid', 'profile', 'offline_access'],
+    scopes: ["openid", "profile", "offline_access"],
     skipFedCM: true,
   });
   return instance;
@@ -127,7 +127,7 @@ export type OpportunityTraceResponse = {
 export type SeedDigestResponse = {
   source_id: string;
   date: string;
-  data_source: 'postgres' | 'iceberg';
+  data_source: "postgres" | "iceberg";
   crawl_jobs?: number;
   variants_emitted: number;
   variants_rejected: number;
@@ -195,28 +195,28 @@ export type ReparseResponse = {
 // Fetch wrappers — one per endpoint.
 // =====================================================================
 
-export const getSourceTrace = (id: string, since: string = '24h') =>
+export const getSourceTrace = (id: string, since: string = "24h") =>
   fetchAdminJSON<SourceTraceResponse>(
-    `/admin/trace/sources/${encodeURIComponent(id)}?since=${encodeURIComponent(since)}`
+    `/admin/trace/sources/${encodeURIComponent(id)}?since=${encodeURIComponent(since)}`,
   );
 
 export const getVariantTrace = (id: string) =>
   fetchAdminJSON<VariantTimelineResponse>(
-    `/admin/trace/variants/${encodeURIComponent(id)}`
+    `/admin/trace/variants/${encodeURIComponent(id)}`,
   );
 
 export const getOpportunityTrace = (slug: string) =>
   fetchAdminJSON<OpportunityTraceResponse>(
-    `/admin/trace/opportunities/${encodeURIComponent(slug)}`
+    `/admin/trace/opportunities/${encodeURIComponent(slug)}`,
   );
 
 export const getSeedDigest = (id: string, date: string) =>
   fetchAdminJSON<SeedDigestResponse>(
-    `/admin/trace/seeds/${encodeURIComponent(id)}/digest?date=${encodeURIComponent(date)}`
+    `/admin/trace/seeds/${encodeURIComponent(id)}/digest?date=${encodeURIComponent(date)}`,
   );
 
 export const listDefinitions = (type?: string) => {
-  const query = type ? `?type=${encodeURIComponent(type)}` : '';
+  const query = type ? `?type=${encodeURIComponent(type)}` : "";
   return fetchAdminJSON<DefinitionsListResponse>(`/admin/definitions${query}`);
 };
 
@@ -229,44 +229,44 @@ export const listDefinitions = (type?: string) => {
 export const getDefinition = (type: string, name: string): Promise<string> =>
   authRuntime().fetch<string>(
     `/admin/definitions/${encodeURIComponent(type)}/${encodeURIComponent(name)}`,
-    { headers: { Accept: 'application/x-yaml' } }
+    { headers: { Accept: "application/x-yaml" } },
   );
 
 export const putDefinition = async (
   type: string,
   name: string,
-  body: string
+  body: string,
 ): Promise<void> => {
   await authRuntime().fetch(
     `/admin/definitions/${encodeURIComponent(type)}/${encodeURIComponent(name)}`,
     {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/x-yaml' },
+      method: "PUT",
+      headers: { "Content-Type": "application/x-yaml" },
       body,
-    }
+    },
   );
 };
 
 export const deleteDefinition = async (
   type: string,
-  name: string
+  name: string,
 ): Promise<void> => {
   await authRuntime().fetch(
     `/admin/definitions/${encodeURIComponent(type)}/${encodeURIComponent(name)}`,
-    { method: 'DELETE' }
+    { method: "DELETE" },
   );
 };
 
 export const reparseRawPayload = (id: string) =>
   authRuntime().fetch<ReparseResponse>(
     `/admin/raw_payloads/${encodeURIComponent(id)}/reparse`,
-    { method: 'POST' }
+    { method: "POST" },
   );
 
 export const reparseSource = (id: string, since: string) =>
   authRuntime().fetch<ReparseResponse>(
     `/admin/sources/${encodeURIComponent(id)}/reparse?since=${encodeURIComponent(since)}`,
-    { method: 'POST' }
+    { method: "POST" },
   );
 
 // getRawPayloadBodyURL returns just the URL string. The browser fetches
@@ -279,10 +279,10 @@ export const getRawPayloadBodyURL = (id: string): string =>
 
 export const listSources = async (
   limit: number = 100,
-  offset: number = 0
+  offset: number = 0,
 ): Promise<SourceListResponse> => {
   return fetchAdminJSON<SourceListResponse>(
-    `/admin/sources?limit=${limit}&offset=${offset}`
+    `/admin/sources?limit=${limit}&offset=${offset}`,
   );
 };
 
@@ -294,7 +294,7 @@ export const listSources = async (
 export const rescoreSource = (id: string): Promise<RescoreResponse> =>
   authRuntime().fetch<RescoreResponse>(
     `/admin/sources/${encodeURIComponent(id)}/rescore`,
-    { method: 'POST' }
+    { method: "POST" },
   );
 
 // Per-source iterator checkpoint shape returned by GET /admin/checkpoints.
@@ -314,8 +314,10 @@ export type CheckpointListResponse = {
   count: number;
 };
 
-export const listCheckpoints = (sourceID?: string): Promise<CheckpointListResponse> => {
-  const q = sourceID ? `?source_id=${encodeURIComponent(sourceID)}` : '';
+export const listCheckpoints = (
+  sourceID?: string,
+): Promise<CheckpointListResponse> => {
+  const q = sourceID ? `?source_id=${encodeURIComponent(sourceID)}` : "";
   return fetchAdminJSON<CheckpointListResponse>(`/admin/checkpoints${q}`);
 };
 
@@ -323,10 +325,10 @@ export const listCheckpoints = (sourceID?: string): Promise<CheckpointListRespon
 // on the server — clearing an already-missing checkpoint returns 204.
 export const clearCheckpoint = async (
   sourceID: string,
-  connectorType: string
+  connectorType: string,
 ): Promise<void> => {
   await authRuntime().fetch(
     `/admin/checkpoints/${encodeURIComponent(sourceID)}/${encodeURIComponent(connectorType)}`,
-    { method: 'DELETE' }
+    { method: "DELETE" },
   );
 };
