@@ -158,11 +158,17 @@ function SidebarNav({
             onClick={() => onNavigate(s.id)}
             className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
               isActive
-                ? 'bg-navy-50 text-navy-900'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                ? 'bg-navy-50 text-navy-900 dark:bg-navy-800 dark:text-white'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white'
             }`}
           >
-            <span className={isActive ? 'text-navy-700' : 'text-gray-400'}>{s.icon}</span>
+            <span
+              className={
+                isActive ? 'text-navy-700 dark:text-navy-300' : 'text-gray-400 dark:text-gray-500'
+              }
+            >
+              {s.icon}
+            </span>
             <span>{t(s.labelKey)}</span>
             {s.badge != null && (
               <span className="ml-auto inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-700">
@@ -216,7 +222,7 @@ export function DashboardSidebar({
       {/* Mobile hamburger — visible below lg */}
       <button
         type="button"
-        className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 lg:hidden"
+        className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800 lg:hidden"
         aria-label="Open dashboard navigation"
         aria-expanded={drawerOpen}
         onClick={() => setDrawerOpen((o) => !o)}
@@ -255,15 +261,17 @@ export function DashboardSidebar({
       {/* Mobile drawer */}
       <div
         ref={drawerRef}
-        className={`fixed left-0 top-0 z-50 h-full w-64 transform bg-white shadow-xl transition-transform duration-200 ease-in-out lg:hidden ${
+        className={`fixed left-0 top-0 z-50 h-full w-64 transform bg-white shadow-xl transition-transform duration-200 ease-in-out lg:hidden dark:bg-navy-900 ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
-          <span className="text-sm font-semibold text-gray-900">{t('nav.dashboard')}</span>
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4 dark:border-navy-700">
+          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+            {t('nav.dashboard')}
+          </span>
           <button
             type="button"
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-navy-800 dark:hover:text-gray-300"
             aria-label="Close dashboard navigation"
             onClick={() => setDrawerOpen(false)}
           >

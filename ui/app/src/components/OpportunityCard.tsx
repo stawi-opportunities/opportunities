@@ -43,14 +43,16 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
 
   return (
     <li
-      className={`flex flex-col gap-3 rounded-lg border bg-white p-4 sm:flex-row sm:items-start sm:gap-4 ${
-        isMatched ? 'border-l-4 border-l-emerald-500 border-gray-200' : 'border-gray-200'
+      className={`flex flex-col gap-3 rounded-lg border bg-white p-4 sm:flex-row sm:items-start sm:gap-4 dark:bg-navy-900 ${
+        isMatched
+          ? 'border-l-4 border-l-emerald-500 border-gray-200 dark:border-navy-700'
+          : 'border-gray-200 dark:border-navy-700'
       }`}
     >
       <div className="flex-1">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
               {title}
               {isNew && (
                 <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
@@ -59,7 +61,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               )}
             </h3>
             {(company || location) && (
-              <p className="mt-0.5 text-sm text-gray-600">
+              <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
                 {company}
                 {company && location && ' · '}
                 {location}
@@ -100,7 +102,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               onClick={() => onUnstar(item.opportunity_id)}
               aria-label="Remove from saved"
               disabled={isPending}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900"
             >
               ★ {t('cta.saved')}
             </button>
@@ -110,7 +112,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               onClick={() => onStar(item.opportunity_id)}
               aria-label="Save opportunity"
               disabled={isPending}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-300 dark:hover:bg-navy-800"
             >
               ☆ {t('cta.save')}
             </button>

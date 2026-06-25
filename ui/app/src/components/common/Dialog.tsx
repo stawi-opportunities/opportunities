@@ -49,15 +49,18 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
     >
       <div
         ref={dialogRef}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl animate-slide-down"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl animate-slide-down dark:bg-navy-900"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 id={titleId.current} className="text-lg font-semibold text-gray-900">
+            <h2
+              id={titleId.current}
+              className="text-lg font-semibold text-gray-900 dark:text-white"
+            >
               {title}
             </h2>
             {description && (
-              <p id={descId.current} className="mt-1 text-sm text-gray-500">
+              <p id={descId.current} className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {description}
               </p>
             )}
@@ -66,7 +69,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="shrink-0 rounded p-1 text-gray-500 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-navy-500"
+            className="shrink-0 rounded p-1 text-gray-500 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-navy-500 dark:text-gray-400 dark:hover:text-gray-300"
           >
             <svg
               className="h-5 w-5"

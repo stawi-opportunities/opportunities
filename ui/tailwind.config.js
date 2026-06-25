@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./layouts/**/*.html",
     "./content/**/*.md",
@@ -8,6 +9,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Semantic aliases backed by CSS custom properties for theme switching.
+        // Usage: bg-surface, text-main, border-muted, etc.
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        'surface-muted': 'rgb(var(--color-muted) / <alpha-value>)',
+        main: 'rgb(var(--color-text) / <alpha-value>)',
+        secondary: 'rgb(var(--color-text-secondary) / <alpha-value>)',
+        muted: 'rgb(var(--color-border) / <alpha-value>)',
+        'nav-bg': 'rgb(var(--color-nav-bg) / <alpha-value>)',
+        inverse: 'rgb(var(--color-inverse) / <alpha-value>)',
+
         // Deep corporate navy — the primary brand colour. Used for text,
         // buttons, nav, and hero backgrounds.
         navy: {
