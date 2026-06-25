@@ -70,7 +70,9 @@
      server (HMR); in production we load the hashed bundle recorded in
      data/app_manifest.json by the Vite build. -->
 {{ if hugo.IsServer }}
-  <!-- Vite v6 serves all modules under the /app/ base path. -->
+  <!-- All three URLs include the /app/ prefix because vite.config.ts
+       sets base: "/app/" — Vite v6 dev server routes resources under it
+       the same way production does. -->
   <script type="module" src="http://localhost:5173/app/@vite/client"></script>
   <!-- @vitejs/plugin-react preamble. When Vite itself serves the HTML it
        injects this automatically; under Hugo we have to do it ourselves. -->

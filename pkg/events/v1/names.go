@@ -73,6 +73,32 @@ const (
 	// absent from AllTopics() below.
 	TopicCandidateCVStaleNudge = "candidates.cv.stale_nudge.v1"
 
+	// TopicApplicationSubmitted is emitted by the autoapply service after
+	// each submission attempt (success, failure, or skip). The writer
+	// sinks it to Iceberg for analytics.
+	TopicApplicationSubmitted = "candidates.applications.submitted.v1"
+
+	// TopicSessionCaptured is emitted by the matching service when the
+	// browser extension uploads a fresh authenticated session for a
+	// (candidate, source) pair. Analytics-only.
+	TopicSessionCaptured = "candidates.sessions.captured.v1"
+	// TopicSessionRequired is emitted by the autoapply handler when an
+	// intent arrives but no live session exists for the (candidate,
+	// source). The notification service maps this to a "Re-connect your
+	// account" CTA in the UI.
+	TopicSessionRequired = "candidates.sessions.required.v1"
+	// TopicSessionExpired is emitted by the autoapply replay leg when
+	// it detects a captured session is no longer accepted by the source
+	// (redirect to login, 401, captcha). Triggers UI re-onboarding and
+	// records the failure for analytics.
+	TopicSessionExpired = "candidates.sessions.expired.v1"
+	// TopicProfileIncomplete is emitted by the autoapply handler when an
+	// apply is skipped because the candidate's on-source profile (e.g.
+	// BrighterMonday, Jobberman) is missing required apply-form fields.
+	// The notification service maps this to a "Complete your <source>
+	// profile" CTA in the UI.
+	TopicProfileIncomplete = "candidates.profile.incomplete.v1"
+
 	// TopicCandidateWeeklyJobsDigest is a notification-only event
 	// targeting candidates who completed signup/onboarding but have
 	// not finished checkout (Subscription IN free/trial/cancelled OR
@@ -105,6 +131,11 @@ const (
 	// outage doesn't block the publish path.
 	SubjectWorkerEmbed     = "svc.opportunities.worker.embed.v1"
 	SubjectWorkerTranslate = "svc.opportunities.worker.translate.v1"
+
+	// SubjectAutoApplySubmit is published by apps/matching when a
+	// qualified match is ready for auto-apply, consumed by apps/autoapply
+	// which executes the browser submission and records the result.
+	SubjectAutoApplySubmit = "svc.opportunities.autoapply.submit.v1"
 
 	// SubjectMatchingDeadletter receives matching events that exceeded the
 	// redelivery budget. Admin /api/admin/dlq/replay re-publishes them.
@@ -142,6 +173,11 @@ func AllTopics() []string {
 		TopicCandidatePreferencesUpdated,
 		TopicCandidateMatchesReady,
 		TopicOpportunityAutoFlagged,
+		TopicApplicationSubmitted,
+		TopicSessionCaptured,
+		TopicSessionRequired,
+		TopicSessionExpired,
+		TopicProfileIncomplete,
 		TopicDefinitionsChanged,
 	}
 }

@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "name": "opportunities.candidates.autoapply.daily-sweep",
+  "description": "Every day at 08:00 UTC: run the auto-apply match pipeline for every eligible candidate (active + paid + auto_apply=true). Emits AutoApplyIntentV1 for qualifying matches up to the per-candidate daily limit.",
+  "schedule": {
+    "cron": "0 8 * * *",
+    "active": false
+  },
+  "input": {},
+  "config": {},
+  "timeout": "45m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "autoapply_sweep",
+      "type": "call",
+      "name": "Invoke auto-apply daily sweep",
+      "timeout": "40m",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "60s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-candidates.opportunities.svc/_admin/autoapply/sweep",
+          "method": "POST",
+          "headers": { "Content-Type": "application/json" },
+          "body": {}
+        },
+        "output_var": "sweep_result"
+      }
+    }
+  ]
+}

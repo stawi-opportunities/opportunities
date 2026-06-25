@@ -30,6 +30,7 @@ const islands: Island[] = [
   { id: 'mount-category-page', component: () => import('@/components/CategoryPage') },
   { id: 'mount-dashboard', component: () => import('@/pages/Dashboard') },
   { id: 'mount-onboarding', component: () => import('@/pages/Onboarding') },
+  { id: 'mount-connected', component: () => import('@/pages/ConnectedAccounts') },
   { id: 'mount-auth-callback', component: () => import('@/components/AuthCallback') },
   { id: 'mount-footer', component: () => import('@/components/Footer') },
   { id: 'mount-get-started-cta', component: () => import('@/components/GetStartedCta') },

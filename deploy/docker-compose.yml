@@ -37,6 +37,21 @@ services:
     volumes:
       - manticore-data:/var/lib/manticore
 
+  # NATS with JetStream — the durable bus used by every service for
+  # both Frame Events and Frame Queue. Without it the local services
+  # fall back to mem:// and you can't publish intents from one process
+  # to another.
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data"]
+    ports:
+      - "4222:4222"   # client port — set NATS_URL=nats://localhost:4222
+      - "8222:8222"   # monitoring HTTP — http://localhost:8222/varz
+    volumes:
+      - natsdata:/data
+
 volumes:
   pgdata:
   manticore-data:
+  natsdata:

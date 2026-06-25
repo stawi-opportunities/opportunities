@@ -12,9 +12,13 @@ import (
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/cache"
+	framevalkey "github.com/pitabwire/frame/cache/valkey"
 	frameclient "github.com/pitabwire/frame/client"
 	fconfig "github.com/pitabwire/frame/config"
+	"github.com/pitabwire/frame/data"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/security"
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
@@ -33,6 +37,9 @@ import (
 	matchingv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/matching/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	"github.com/stawi-opportunities/opportunities/pkg/authmanifest"
+	"github.com/stawi-opportunities/opportunities/pkg/authsession"
+	"github.com/stawi-opportunities/opportunities/pkg/authz/stawitok"
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
@@ -92,6 +99,18 @@ func main() {
 		log.WithField("kinds", reg.Known()).Info("opportunity registry: loaded from disk")
 	}
 
+	// Load the per-source authentication manifest registry. Missing or
+	// empty SOURCE_AUTH_DIR is tolerated — the registry stays empty and
+	// the session-capture endpoints serve an empty list. A YAML parse or
+	// validation failure is fatal so misconfiguration surfaces at boot.
+	authManifests, err := authmanifest.LoadFromDir(cfg.SourceAuthDir)
+	if err != nil {
+		log.WithError(err).Fatal("authmanifest: load failed")
+	}
+	log.WithField("source_auth_count", len(authManifests.Known())).
+		WithField("source_auth_dir", cfg.SourceAuthDir).
+		Info("authmanifest: loaded")
+
 	// Matcher registry: per-kind preference scorers. Phase 7.5 only
 	// constructs + logs; Phase 7.6/7.7 will route the candidates/match
 	// pipeline through it.
@@ -119,6 +138,7 @@ func main() {
 		if err := pool.Migrate(ctx, cfg.GetDatabaseMigrationPath(),
 			&domain.CandidateProfile{},
 			&domain.CandidateApplication{},
+			&domain.CandidateSession{},
 			&domain.OpportunityFlag{},
 		); err != nil {
 			log.WithError(err).Fatal("migrate failed")
@@ -142,16 +162,29 @@ func main() {
 	})
 
 	// --- Iceberg catalog (for candidatestore Reader + StaleReader) ---
-	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:       cfg.IcebergCatalogName,
-		URI:        cfg.IcebergCatalogURI,
-		Warehouse:  cfg.IcebergWarehouse,
-		OAuthToken: cfg.IcebergCatalogToken,
-	})
-	if err != nil {
-		log.WithError(err).Fatal("candidates: iceberg catalog load failed")
+	//
+	// Optional in local-dev: when ICEBERG_CATALOG_URI is empty the
+	// iceberg-dependent endpoints (/candidates/match,
+	// /_admin/cv/stale_nudge) and the preference-update re-match event
+	// handler are skipped, but the rest of the service — including
+	// session-capture — boots normally.
+	var candStore *candidatestore.Reader
+	var staleReader *candidatestore.StaleReader
+	if cfg.IcebergCatalogURI != "" {
+		cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
+			Name:       cfg.IcebergCatalogName,
+			URI:        cfg.IcebergCatalogURI,
+			Warehouse:  cfg.IcebergWarehouse,
+			OAuthToken: cfg.IcebergCatalogToken,
+		})
+		if err != nil {
+			log.WithError(err).Fatal("candidates: iceberg catalog load failed")
+		}
+		candStore = candidatestore.NewReader(cat)
+		staleReader = candidatestore.NewStaleReader(cat)
+	} else {
+		log.Warn("candidates: ICEBERG_CATALOG_URI unset — /candidates/match + /_admin/cv/stale_nudge disabled")
 	}
-	candStore := candidatestore.NewReader(cat)
 
 	// --- AI extractor ---
 	var extractor *extraction.Extractor
@@ -189,13 +222,28 @@ func main() {
 
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
+	// appRepo + matchRepo are retained on this branch for the
+	// event-driven autoapply trigger path
+	// (service/events/v1/auto_apply.go). Main retired them in PR #6
+	// alongside Manticore; consolidating onto main's HTTP-CRUD
+	// applications model is a separate follow-up.
+	appRepo := repository.NewApplicationRepository(dbFn)
+	matchRepo := repository.NewMatchRepository(dbFn)
 	// Post-Manticore: the search adapter speaks pgvector + JSONB
 	// filters directly against the `opportunities` table over the
 	// existing read-only pool. No new dialer, no extra service.
 	search := httpv1.NewPostgresSearch(dbFn)
-	matchSvc := httpv1.NewMatchService(candStore, search, 20)
-	staleReader := candidatestore.NewStaleReader(cat)
-	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
+	// matchSvc + staleLister both need the iceberg-backed candidatestore
+	// so they're nil in the degraded (no-iceberg) mode. Every consumer
+	// below is wrapped in a nil check.
+	var matchSvc *httpv1.MatchService
+	var staleLister adminv1.StaleLister
+	if candStore != nil {
+		matchSvc = httpv1.NewMatchService(candStore, search, 20)
+	}
+	if staleReader != nil {
+		staleLister = adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
+	}
 	// Weekly jobs digest collaborators — non-personalised email for
 	// candidates who completed signup but not checkout. The same
 	// pgsearch.Search backs the match service; we reuse its handle
@@ -214,12 +262,31 @@ func main() {
 	// Skip when extractor is unconfigured so the binary still serves
 	// the upload + preferences + match endpoints in a degraded mode
 	// (uploads archive but don't enrich).
-	prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
-		Svc:      svc,
-		Match:    matchSvc,
-		Matchers: matcherReg,
-		TopK:     50,
+	// PreferenceMatchHandler re-runs matching when a candidate updates
+	// their preferences. Needs the iceberg-backed match service — if
+	// iceberg is unconfigured the handler is left nil and the
+	// frame.WithRegisterEvents calls below are gated to skip it.
+	var prefMatchH *eventv1.PreferenceMatchHandler
+	if matchSvc != nil {
+		prefMatchH = eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
+			Svc:      svc,
+			Match:    matchSvc,
+			Matchers: matcherReg,
+			TopK:     50,
+		})
+	}
+	// --- Auto-apply trigger handler ---
+	autoApplyH := eventv1.NewAutoApplyTriggerHandler(eventv1.AutoApplyTriggerDeps{
+		Svc:           svc,
+		CandidateRepo: candidateRepo,
+		AppRepo:       appRepo,
+		MatchLookup:   matchRepo,
+		ScoreMin:      cfg.AutoApplyScoreMin,
+		DailyLimit:    cfg.AutoApplyDailyLimit,
+		QueueURL:      cfg.AutoApplyQueueURL,
+		Enabled:       cfg.AutoApplyEnabled,
 	})
+
 	if extractor != nil {
 		scorer := cv.NewScorer(extractor)
 		extractH := eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
@@ -248,11 +315,12 @@ func main() {
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
 			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL, embedH),
-			frame.WithRegisterEvents(prefMatchH),
+			frame.WithRegisterEvents(eventHandlersNonNil(prefMatchH, autoApplyH)...),
 		)
 	} else {
 		// Even without an extractor we still want preference-update
@@ -264,8 +332,9 @@ func main() {
 		// later replay) — explicitly degraded mode.
 		svc.Init(ctx,
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
 			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
-			frame.WithRegisterEvents(prefMatchH),
+			frame.WithRegisterEvents(eventHandlersNonNil(prefMatchH, autoApplyH)...),
 		)
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
@@ -419,11 +488,70 @@ func main() {
 	// pipeline as POST /candidates/cv/upload.
 	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
 	mux.HandleFunc("POST /candidates/preferences", httpv1.PreferencesHandler(svc))
-	mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
-		Svc:    svc,
-		Store:  candStore,
-		Search: search,
-	}))
+	mux.HandleFunc("POST /candidates/{id}/auto-apply/enable", httpv1.AutoApplyEnableHandler(candidateRepo))
+	mux.HandleFunc("POST /candidates/{id}/auto-apply/disable", httpv1.AutoApplyDisableHandler(candidateRepo))
+	// /candidates/match requires the iceberg-backed candidate store.
+	// Skip the route entirely when iceberg is unconfigured rather than
+	// surfacing a 500 — the UI's match list just shows empty.
+	if candStore != nil {
+		mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
+			Svc:    svc,
+			Store:  candStore,
+			Search: search,
+		}))
+	}
+
+	// Source-auth manifest endpoints. Read-only metadata; cheap to
+	// expose unconditionally so the extension can fetch them even when
+	// session-capture itself is disabled.
+	mux.HandleFunc("GET /sources/auth-manifest", httpv1.AuthManifestListHandler(authManifests))
+	mux.HandleFunc("GET /sources/{source_type}/auth", httpv1.SourceAuthHandler(authManifests))
+
+	// Session-capture wiring. Skipped (with a loud warning) when any
+	// of the three keys is missing — the rest of the matching service
+	// still boots so local-dev cycles do not require Valkey + KMS
+	// setup just to iterate on the matching pipeline.
+	if cfg.SessionMasterKey != "" && cfg.SessionTokenKey != "" {
+		rawCache, err := buildSessionCache(ctx, cfg.ValkeyURL)
+		if err != nil {
+			log.WithError(err).Fatal("session-capture: cache wiring failed")
+		}
+		wrapper, err := authsession.NewLocalWrapperFromBase64(cfg.SessionMasterKey, cfg.SessionMasterKeyID)
+		if err != nil {
+			log.WithError(err).Fatal("session-capture: master key invalid")
+		}
+		issuer, err := stawitok.NewIssuerFromBase64(rawCache, cfg.SessionTokenKey)
+		if err != nil {
+			log.WithError(err).Fatal("session-capture: token key invalid")
+		}
+		sessionRepo := repository.NewCandidateSessionRepository(dbFn)
+		sessionStore := authsession.NewStore(sessionRepo, wrapper)
+
+		pairingDeps := httpv1.PairingDeps{
+			KV:       rawCache,
+			Issuer:   issuer,
+			Resolver: candidateRepo,
+		}
+		sessionDeps := httpv1.SessionDeps{
+			Svc:       svc,
+			Issuer:    issuer,
+			Resolver:  candidateRepo,
+			Recorder:  sessionStore,
+			Lister:    sessionRepo,
+			Manifests: authManifests,
+		}
+
+		mux.HandleFunc("POST /pairings", httpv1.PairingCreateHandler(pairingDeps))
+		mux.HandleFunc("POST /pairings/redeem", httpv1.PairingRedeemHandler(pairingDeps))
+		mux.HandleFunc("POST /pairings/refresh", httpv1.PairingRefreshHandler(pairingDeps))
+		mux.HandleFunc("POST /pairings/revoke", httpv1.PairingRevokeHandler(pairingDeps))
+		mux.HandleFunc("POST /candidates/me/sessions/{source_type}", httpv1.SessionCaptureHandler(sessionDeps))
+		mux.HandleFunc("GET /candidates/me/sessions", httpv1.SessionListHandler(sessionDeps))
+		mux.HandleFunc("DELETE /candidates/me/sessions/{source_type}", httpv1.SessionRevokeHandler(sessionDeps))
+		log.WithField("valkey", cfg.ValkeyURL != "").Info("session-capture: enabled")
+	} else {
+		log.Warn("session-capture: disabled (SESSION_MASTER_KEY or SESSION_TOKEN_KEY missing)")
+	}
 
 	// --- /me/subscription (dashboard summary) ---
 	// The gateway HTTPRoute forwards /me/* unchanged to this backend.
@@ -627,12 +755,15 @@ func main() {
 	}
 
 	// --- Trustage admin endpoints ---
-	mux.HandleFunc("POST /_admin/cv/stale_nudge",
-		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
-			Svc:        svc,
-			Lister:     staleLister,
-			StaleAfter: 60 * 24 * time.Hour,
-		}))
+	// stale_nudge requires the iceberg-backed StaleReader.
+	if staleLister != nil {
+		mux.HandleFunc("POST /_admin/cv/stale_nudge",
+			adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
+				Svc:        svc,
+				Lister:     staleLister,
+				StaleAfter: 60 * 24 * time.Hour,
+			}))
+	}
 	mux.HandleFunc("POST /_admin/candidates/weekly_jobs_digest",
 		adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
 			Svc:      svc,
@@ -728,7 +859,14 @@ func main() {
 		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
 
-	svc.Init(ctx, frame.WithHTTPHandler(mux))
+	// Wrap the mux in a tiny CORS shim so the browser extension (running
+	// under a `chrome-extension://…` origin) and any UI on a different
+	// host can call /pairings, /candidates/me/sessions/*, etc. without
+	// being blocked by preflight. In production the gateway in front of
+	// this service handles CORS; the duplicate headers do no harm. Safe
+	// because every candidate-scoped endpoint already authorises via
+	// Bearer token — CORS is not the security boundary.
+	svc.Init(ctx, frame.WithHTTPHandler(withCORS(mux)))
 
 	if err := svc.Run(ctx, ""); err != nil {
 		log.WithError(err).Error("candidates: service run failed")
@@ -842,6 +980,68 @@ type embedderAdapter struct{ e *extraction.Extractor }
 
 func (a embedderAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
 	return a.e.Embed(ctx, text)
+}
+
+// buildSessionCache returns a RawCache suitable for pairing codes and
+// Stawi tokens. A Valkey URL produces the production driver; an empty
+// URL falls back to Frame's in-memory cache so local dev cycles work
+// without standing up Valkey. The in-memory fallback is NOT safe in
+// production — every restart drops every live token.
+func buildSessionCache(_ context.Context, valkeyURL string) (cache.RawCache, error) {
+	if valkeyURL == "" {
+		return cache.NewInMemoryCache(), nil
+	}
+	return framevalkey.New(cache.WithDSN(data.DSN(valkeyURL)))
+}
+
+// eventHandlersNonNil filters out nil handlers before passing the slice
+// to frame.WithRegisterEvents. Nil handlers come from feature-gated
+// wiring (e.g. prefMatchH is nil when ICEBERG_CATALOG_URI is unset).
+// Frame would panic on a nil registration; we silently drop it.
+func eventHandlersNonNil(h ...events.EventI) []events.EventI {
+	out := make([]events.EventI, 0, len(h))
+	for _, e := range h {
+		if e == nil {
+			continue
+		}
+		// Catch typed nil — *PreferenceMatchHandler with a nil pointer
+		// satisfies the events.EventI interface (non-nil interface,
+		// nil dynamic value), which Frame can't detect with a plain
+		// h == nil check. We do a reflect-free check via the only
+		// methods every EventI implements: Name() returns "" on the
+		// zero value of our concrete handler types.
+		if e.Name() == "" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// withCORS adds the headers needed by the browser extension popup
+// (and any non-gateway UI) to reach this service cross-origin. The
+// allow-origin echoes the request's Origin when set, so the response
+// stays correct when called from multiple extension IDs or local UI
+// hosts. credentials are NOT marked allowed — every authed endpoint
+// uses Bearer-in-header, not cookies, so that's fine.
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // candidateOnboardAdapter satisfies httpv1.CandidatesOnboardStore by

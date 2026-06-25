@@ -29,6 +29,29 @@ var noIcebergPersistence = map[string]bool{
 	eventsv1.TopicTranslations:           true,
 	eventsv1.TopicOpportunityAutoFlagged: true,
 	eventsv1.TopicDefinitionsChanged:     true,
+
+	// TopicApplicationSubmitted: needs an Iceberg table + Arrow
+	// schema + builder before it can leave this list. The auto-apply
+	// service emits it, the candidate_applications Postgres row is
+	// the authoritative store for now; analytics rollup over Iceberg
+	// is a follow-up. Listing it here keeps the writer from panicking
+	// the dispatch test and acks the message harmlessly.
+	eventsv1.TopicApplicationSubmitted: true,
+
+	// Session-capture events: the authoritative store is the
+	// candidate_sessions Postgres table + the notification service
+	// downstream of TopicSessionRequired/Expired. An analytics rollup
+	// over these events is a Phase 8+ follow-up — until then they ack
+	// without writing to Iceberg.
+	eventsv1.TopicSessionCaptured: true,
+	eventsv1.TopicSessionRequired: true,
+	eventsv1.TopicSessionExpired:  true,
+
+	// TopicProfileIncomplete: notification-driving event (the
+	// "Complete your <source> profile" CTA). Authoritative state is the
+	// candidate's on-source profile; an analytics rollup over these is a
+	// follow-up. Acks without writing to Iceberg until then.
+	eventsv1.TopicProfileIncomplete: true,
 }
 
 // TestAllTopicsHaveDispatch verifies that every topic returned by

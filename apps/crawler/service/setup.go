@@ -56,7 +56,9 @@ func BuildRegistry(ctx context.Context, client *httpx.Client, extractor *extract
 	if extractor != nil {
 		for _, st := range []domain.SourceType{
 			domain.SourceBrighterMonday,
+			domain.SourceBrighterMondayUG,
 			domain.SourceJobberman,
+			domain.SourceJobbermanGH,
 			domain.SourceMyJobMag,
 			domain.SourceNjorku,
 			domain.SourceCareers24,

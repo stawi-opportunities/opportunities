@@ -1,0 +1,58 @@
+# Jobberman Nigeria — second source on the extension-capture path.
+# Reuses every piece of pkg/authmanifest, pkg/authsession, pkg/autoapply/
+# sessionsubmitter, and the extension/popup with no Go or extension
+# changes — adding this file IS the implementation, which validates
+# the per-source pluggability claim from §11 of the design doc.
+#
+# NOTE: Jobberman's apply form may use a different field naming than
+# BrighterMonday. The values below are the most common shape; if a
+# capture fails with form_changed, inspect the page and patch this
+# manifest — no code change needed.
+
+source_type: jobberman
+auth_method: extension
+display_name: Jobberman Nigeria
+login_url: https://www.jobberman.com/login
+home_url: https://www.jobberman.com
+cookie_domains:
+  - .jobberman.com
+storage_keys: []
+required_cookies:
+  - laravel_session
+  - XSRF-TOKEN
+session_ttl: 720h
+detect_logged_in:
+  method: GET
+  url: https://www.jobberman.com/api/v1/me
+  expect_status: 200
+apply_flow:
+  type: http_form
+  form_url_pattern: '^https://www\.jobberman\.com/(job/.+/apply|listings/.+)$'
+  fields:
+    cv_file:
+      name: resume
+      source: cv_bytes
+    cover_letter:
+      name: cover_letter
+      source: cover_letter
+    phone:
+      name: phone
+      source: phone
+    full_name:
+      name: full_name
+      source: full_name
+  csrf:
+    source: cookie
+    cookie: XSRF-TOKEN
+    header: X-XSRF-TOKEN
+instructions_md: |
+  ### Connect Jobberman
+
+  1. **Install the Stawi extension** if you haven't already.
+  2. Sign in to <https://www.jobberman.com/login> in the same browser.
+  3. Click the **Stawi** icon in your toolbar and choose
+     **"Connect this account"**.
+  4. The Jobberman card on this page should switch to **Connected ✓**.
+
+  You can disconnect at any time. Stawi only uses this session to
+  submit applications you've explicitly approved.

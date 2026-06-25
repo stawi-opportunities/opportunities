@@ -146,6 +146,31 @@ func (r *CandidateRepository) ListPendingSubscriptions(ctx context.Context, limi
 	return candidates, err
 }
 
+// UpdateAutoApply sets the auto_apply flag for the given candidate ID.
+func (r *CandidateRepository) UpdateAutoApply(ctx context.Context, id string, enabled bool) error {
+	return r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("id = ?", id).
+		Update("auto_apply", enabled).Error
+}
+
+// ListAutoApplyEligible returns active, paid candidates with auto_apply=true,
+// paginated by ID cursor (afterID exclusive). Used by the auto-apply sweep cron.
+func (r *CandidateRepository) ListAutoApplyEligible(ctx context.Context, afterID string, limit int) ([]*domain.CandidateProfile, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	q := r.db(ctx, true).
+		Where("status = ? AND subscription = ? AND auto_apply = true",
+			domain.CandidateActive, domain.SubscriptionPaid)
+	if afterID != "" {
+		q = q.Where("id > ?", afterID)
+	}
+	var out []*domain.CandidateProfile
+	err := q.Order("id ASC").Limit(limit).Find(&out).Error
+	return out, err
+}
+
 // ListUnpaidWithProfile returns candidates who completed signup +
 // onboarding but have not finished checkout — i.e. their effective
 // subscription is not 'paid'. Used by the weekly jobs digest cron to

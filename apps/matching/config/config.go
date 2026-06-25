@@ -19,7 +19,15 @@ type CandidatesConfig struct {
 	//   ICEBERG_WAREHOUSE     logical warehouse registered in Lakekeeper, e.g. "product-opportunities"
 	//   ICEBERG_CATALOG_TOKEN optional pre-obtained bearer; leave unset when
 	//                         the cluster Lakekeeper runs with auth disabled.
-	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI,required"`
+	//
+	// ICEBERG_CATALOG_URI is optional. When unset, the matching service
+	// degrades: /candidates/match, /_admin/cv/stale_nudge, and the
+	// preference-update re-match handler are not registered. The rest
+	// of the surface (CV upload, preferences, auto-apply toggle, the
+	// /pairings + /candidates/me/sessions session-capture endpoints,
+	// and admin/candidates/weekly_jobs_digest) still boots so local-dev
+	// cycles can iterate on session-capture without a Lakekeeper.
+	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI"`
 	IcebergCatalogName  string `env:"ICEBERG_CATALOG_NAME"  envDefault:"stawi"`
 	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:"product-opportunities"`
 	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`
@@ -64,6 +72,11 @@ type CandidatesConfig struct {
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
 
+	// SourceAuthDir is the directory holding the per-source authentication
+	// manifests (pkg/authmanifest). Empty / missing directory leaves the
+	// registry empty and disables session-based capture endpoints.
+	SourceAuthDir string `env:"SOURCE_AUTH_DIR" envDefault:"/etc/source-auth"`
+
 	// CV-pipeline queue subject URLs. The cv-extract / cv-improve /
 	// cv-embed handlers are durable Frame Queue subscribers (per the
 	// async decision tree: external LLM calls + long-running work →
@@ -74,6 +87,32 @@ type CandidatesConfig struct {
 	CVExtractQueueURL string `env:"CV_EXTRACT_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
 	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
 	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
+
+	// Auto-apply trigger settings.
+	AutoApplyEnabled    bool    `env:"AUTO_APPLY_ENABLED"     envDefault:"false"`
+	AutoApplyScoreMin   float64 `env:"AUTO_APPLY_SCORE_MIN"   envDefault:"0.75"`
+	AutoApplyDailyLimit int     `env:"AUTO_APPLY_DAILY_LIMIT" envDefault:"5"`
+	AutoApplyQueueURL   string  `env:"AUTO_APPLY_QUEUE_URL"   envDefault:"mem://svc.opportunities.autoapply.submit.v1"`
+
+	// Session-capture cryptography.
+	//
+	//   SESSION_MASTER_KEY  — base64-encoded 32 bytes; wraps per-row DEKs
+	//                         in candidate_sessions (envelope encryption).
+	//   SESSION_MASTER_KEY_ID — opaque identifier ("v1") stored alongside
+	//                           each row so a future rotation can keep
+	//                           multiple masters resident.
+	//   SESSION_TOKEN_KEY   — base64-encoded 32 bytes; HMAC key for the
+	//                         opaque Stawi access/refresh tokens used by
+	//                         the browser extension. Distinct from
+	//                         SESSION_MASTER_KEY so a leak of one does
+	//                         not implicate the other.
+	//
+	// All three are required for session-capture to start; the wiring
+	// in cmd/main.go skips the routes when any of them is empty so the
+	// service still boots in dev without sessions configured.
+	SessionMasterKey   string `env:"SESSION_MASTER_KEY"    envDefault:""`
+	SessionMasterKeyID string `env:"SESSION_MASTER_KEY_ID" envDefault:"v1"`
+	SessionTokenKey    string `env:"SESSION_TOKEN_KEY"     envDefault:""`
 
 	// Canonical pipeline queue (service-profile idiom). The worker's canonical
 	// stage publishes CanonicalUpsertedV1 to this subject; matching's Path-A
@@ -95,9 +134,12 @@ type CandidatesConfig struct {
 	// host. Defaults to production; preview deploys override via env.
 	PlansURL string `env:"PLANS_URL" envDefault:"https://jobs.stawi.org/pricing/"`
 
-	// ValkeyURL is the Valkey/Redis connection URL for the distributed debouncer.
-	// When empty (default) the in-memory MemoryDebouncer is used, which is safe
-	// for dev/test but does not survive restarts or span multiple replicas.
+	// ValkeyURL backs both the distributed debouncer used by the
+	// Phase-2 continuous matching pipeline AND the pairing-code +
+	// Stawi-token storage for session-capture. Empty falls back to
+	// the in-memory cache, which is safe for dev/test but does not
+	// survive restarts or span multiple replicas. A single URL serves
+	// both consumers — they use disjoint key prefixes.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
 
 	// Phase-2 continuous matching pipeline feature flags (spec §5.5).

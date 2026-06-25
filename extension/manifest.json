@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Stawi AutoApply",
+  "short_name": "Stawi",
+  "version": "0.1.0",
+  "description": "Capture authenticated job-board sessions so Stawi can submit applications on your behalf.",
+
+  "permissions": [
+    "cookies",
+    "storage",
+    "activeTab",
+    "alarms"
+  ],
+
+  "host_permissions": [
+    "https://*.brightermonday.co.ke/*",
+    "http://localhost:8082/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_title": "Stawi AutoApply",
+    "default_popup": "popup/popup.html"
+  }
+}

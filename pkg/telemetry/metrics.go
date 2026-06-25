@@ -23,6 +23,15 @@ var (
 	EmbedFailures           metric.Int64Counter
 	TranslateFailures       metric.Int64Counter
 	PreferenceTriggeredRuns metric.Int64Counter
+
+	AutoApplyAttempts        metric.Int64Counter
+	AutoApplyLimitReached    metric.Int64Counter
+	AutoApplySubmitDuration  metric.Float64Histogram
+	AutoApplyCVDownloadFails metric.Int64Counter
+	AutoApplyBrowserRestarts metric.Int64Counter
+	AutoApplyCaptcha         metric.Int64Counter
+	AutoApplyCaptchaSolve    metric.Int64Counter
+	AutoApplyTransientErrors metric.Int64Counter
 )
 
 // Init registers all pipeline metrics with the global OTel meter provider.
@@ -114,6 +123,62 @@ func Init() error {
 		return err
 	}
 
+	AutoApplyAttempts, err = meter.Int64Counter("autoapply.attempts",
+		metric.WithDescription("Auto-apply submission attempts, labelled by status and method"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyLimitReached, err = meter.Int64Counter("autoapply.daily_limit_reached",
+		metric.WithDescription("Times the per-candidate daily auto-apply limit was reached"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplySubmitDuration, err = meter.Float64Histogram("autoapply.submit.duration_seconds",
+		metric.WithDescription("End-to-end submission latency, labelled by method and status"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyCVDownloadFails, err = meter.Int64Counter("autoapply.cv_download.failures",
+		metric.WithDescription("CV download failures, labelled by reason (network, http_status, too_large, blocked_url)"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyBrowserRestarts, err = meter.Int64Counter("autoapply.browser.restarts",
+		metric.WithDescription("Headless browser process restarts, labelled by reason (launch_failed, health_check, crashed)"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyCaptcha, err = meter.Int64Counter("autoapply.captcha_detected",
+		metric.WithDescription("CAPTCHA walls detected, labelled by host bucket"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyCaptchaSolve, err = meter.Int64Counter("autoapply.captcha_solve",
+		metric.WithDescription("CAPTCHA solve attempts via the solver, labelled by host/type/outcome"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AutoApplyTransientErrors, err = meter.Int64Counter("autoapply.transient_errors",
+		metric.WithDescription("Transient infra errors that triggered a redelivery, labelled by stage"),
+	)
+	if err != nil {
+		return err
+	}
+
 	if err = InitCrawl(); err != nil {
 		return err
 	}
@@ -189,4 +254,92 @@ func RecordPreferenceTriggeredRun(kind string) {
 	}
 	PreferenceTriggeredRuns.Add(context.Background(), 1,
 		metric.WithAttributes(attribute.String("kind", kind)))
+}
+
+// RecordAutoApplyAttempt increments the auto-apply attempt counter.
+// status is one of "submitted", "skipped", "failed"; method is the
+// submitter that handled it (e.g. "greenhouse_ui", "email_fallback").
+func RecordAutoApplyAttempt(status, method string) {
+	if AutoApplyAttempts == nil {
+		return
+	}
+	AutoApplyAttempts.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("status", status),
+			attribute.String("method", method),
+		))
+}
+
+// RecordAutoApplyLimitReached increments the daily-limit counter.
+func RecordAutoApplyLimitReached() {
+	if AutoApplyLimitReached == nil {
+		return
+	}
+	AutoApplyLimitReached.Add(context.Background(), 1)
+}
+
+// RecordAutoApplySubmitDuration records end-to-end submission latency.
+// status is "submitted", "skipped", or "failed"; method is the submitter
+// that handled it (e.g. "greenhouse_ui").
+func RecordAutoApplySubmitDuration(seconds float64, status, method string) {
+	if AutoApplySubmitDuration == nil {
+		return
+	}
+	AutoApplySubmitDuration.Record(context.Background(), seconds,
+		metric.WithAttributes(
+			attribute.String("status", status),
+			attribute.String("method", method),
+		))
+}
+
+// RecordAutoApplyCVDownloadFailure increments the CV-download failure
+// counter. reason is a low-cardinality tag.
+func RecordAutoApplyCVDownloadFailure(reason string) {
+	if AutoApplyCVDownloadFails == nil {
+		return
+	}
+	AutoApplyCVDownloadFails.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("reason", reason)))
+}
+
+// RecordAutoApplyBrowserRestart increments the browser-restart counter.
+func RecordAutoApplyBrowserRestart(reason string) {
+	if AutoApplyBrowserRestarts == nil {
+		return
+	}
+	AutoApplyBrowserRestarts.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("reason", reason)))
+}
+
+// RecordAutoApplyCaptcha increments the captcha-detected counter.
+func RecordAutoApplyCaptcha(host string) {
+	if AutoApplyCaptcha == nil {
+		return
+	}
+	AutoApplyCaptcha.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("host", host)))
+}
+
+// RecordAutoApplyCaptchaSolve increments the solve-attempt counter.
+// outcome is "solved" or "failed"; typ is the challenge kind.
+func RecordAutoApplyCaptchaSolve(host, typ, outcome string) {
+	if AutoApplyCaptchaSolve == nil {
+		return
+	}
+	AutoApplyCaptchaSolve.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("host", host),
+			attribute.String("type", typ),
+			attribute.String("outcome", outcome),
+		))
+}
+
+// RecordAutoApplyTransientError increments the transient-error counter.
+// stage is one of "exists_check", "persist", "publish", "browser_init".
+func RecordAutoApplyTransientError(stage string) {
+	if AutoApplyTransientErrors == nil {
+		return
+	}
+	AutoApplyTransientErrors.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("stage", stage)))
 }
