@@ -47,5 +47,6 @@ LABEL org.opencontainers.image.source=$REPOSITORY
 
 WORKDIR /
 COPY --from=builder /app/binary /matching
+COPY --from=builder /app/apps/matching/migrations /migrations
 
 ENTRYPOINT ["/matching"]

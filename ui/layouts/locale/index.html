@@ -15,7 +15,7 @@
   </header>
 
   <ul class="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-    {{ range .Site.Data.locale_shards.shards }}
+    {{ range hugo.Data.locale_shards.shards }}
     <li>
       <a
         href="/l/{{ lower .country }}/"

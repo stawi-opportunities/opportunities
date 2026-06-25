@@ -11,6 +11,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
 // SourceHealthRepo is the slice of SourceRepository used to reconcile
@@ -22,7 +23,17 @@ type SourceHealthRepo interface {
 	RecordFailure(ctx context.Context, id string, newHealth float64, consecutive int) error
 	FlagNeedsTuning(ctx context.Context, id string, flag bool) error
 	UpdateNextCrawl(ctx context.Context, id string, next, verified time.Time, health float64) error
+	SetStatus(ctx context.Context, id string, status domain.SourceStatus) error
 }
+
+// DegradeAfterFailures is the consecutive-failure count at which an
+// active source is automatically demoted to degraded. Degraded sources
+// still crawl (scheduleActive includes them) — the demotion exists so
+// persistently-failing sources are visible in /admin/sources/health and
+// the crawl.source.health metric instead of silently burning crawl
+// budget at health 0 forever. A later success at recovered health
+// promotes the source back to active.
+const DegradeAfterFailures = 5
 
 // PageCompletedHandler consumes crawl.page.completed.v1 and updates
 // the sources row's health_score / consecutive_failures / needs_tuning
@@ -32,6 +43,19 @@ type SourceHealthRepo interface {
 // group (its slowness never back-pressures fetches).
 type PageCompletedHandler struct {
 	repo SourceHealthRepo
+
+	// EmitRegenerate, when non-nil, is invoked to trigger a recipe
+	// regeneration for drift recovery. Only called for recipe-driven
+	// sources (ExtractionRecipe set). nil disables the drift trigger
+	// entirely (e.g. when RECIPE_ENABLED is off).
+	EmitRegenerate func(ctx context.Context, sourceID, reason string)
+
+	// RegenRejectRate / RegenMinPages gate the regenerate trigger
+	// independently of the (hardcoded 0.8) needs_tuning flag. A
+	// regenerate is emitted only when JobsFound >= RegenMinPages and
+	// rejectRate >= RegenRejectRate. Zero RegenRejectRate disables it.
+	RegenRejectRate float64
+	RegenMinPages   int
 }
 
 // NewPageCompletedHandler wires the handler.
@@ -91,12 +115,26 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 	switch {
 	case p.ErrorCode != "":
 		// Connection/iterator failure — circuit-breaker style decay.
+		telemetry.RecordSourceHealthEvent("failure")
 		newHealth := src.HealthScore - 0.2
 		if newHealth < 0 {
 			newHealth = 0
 		}
-		if err := h.repo.RecordFailure(ctx, src.ID, newHealth, src.ConsecutiveFailures+1); err != nil {
+		consecutive := src.ConsecutiveFailures + 1
+		if err := h.repo.RecordFailure(ctx, src.ID, newHealth, consecutive); err != nil {
 			log.WithError(err).Warn("page-completed: RecordFailure failed")
+		}
+		// Persistent failure → demote to degraded so the source shows up
+		// in health reporting instead of failing invisibly forever. Still
+		// crawled (scheduleActive includes degraded); recovery is automatic
+		// on the success path below.
+		if consecutive >= DegradeAfterFailures && src.Status == domain.SourceActive {
+			telemetry.RecordSourceHealthEvent("degraded")
+			log.WithField("consecutive_failures", consecutive).
+				Error("page-completed: source demoted to degraded after persistent failures")
+			if err := h.repo.SetStatus(ctx, src.ID, domain.SourceDegraded); err != nil {
+				log.WithError(err).Warn("page-completed: SetStatus(degraded) failed")
+			}
 		}
 		// Phase 4 deliberately does not apply exponential backoff on
 		// failure. Health-score decay (−0.2 above) is the gating signal;
@@ -107,6 +145,7 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 
 	case rejectRate > 0.8 && p.JobsFound > 0:
 		// High reject rate — flag for review but keep crawling.
+		telemetry.RecordSourceHealthEvent("needs_tuning")
 		if err := h.repo.FlagNeedsTuning(ctx, src.ID, true); err != nil {
 			log.WithError(err).Warn("page-completed: FlagNeedsTuning failed")
 		}
@@ -127,9 +166,26 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 				log.WithError(err).Warn("page-completed: FlagNeedsTuning(clear) failed")
 			}
 		}
+		// Auto-recover an auto-demoted source once health is back.
+		if src.Status == domain.SourceDegraded && newHealth >= 0.8 {
+			telemetry.RecordSourceHealthEvent("recovered")
+			log.Info("page-completed: degraded source recovered; promoting to active")
+			if err := h.repo.SetStatus(ctx, src.ID, domain.SourceActive); err != nil {
+				log.WithError(err).Warn("page-completed: SetStatus(active) failed")
+			}
+		}
 		if err := h.repo.UpdateNextCrawl(ctx, src.ID, next, now, newHealth); err != nil {
 			log.WithError(err).Warn("page-completed: UpdateNextCrawl failed (success path)")
 		}
+	}
+
+	// Drift recovery: independently of the needs_tuning flag (fixed 0.8),
+	// emit a recipe regeneration once the configurable reject-rate drift
+	// thresholds are crossed for a recipe-driven source. No-op when the
+	// trigger is unwired or RegenRejectRate is zero (disabled).
+	if h.EmitRegenerate != nil && h.RegenRejectRate > 0 && p.JobsFound >= h.RegenMinPages &&
+		rejectRate >= h.RegenRejectRate && src.ExtractionRecipe != "" && src.ExtractionRecipe != "{}" {
+		h.EmitRegenerate(ctx, src.ID, fmt.Sprintf("reject_rate=%.2f", rejectRate))
 	}
 
 	return nil

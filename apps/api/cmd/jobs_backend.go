@@ -37,31 +37,31 @@ type job struct {
 	// CanonicalID is the xid that worker.canonical assigns.
 	CanonicalID string `json:"canonical_id,omitempty"`
 	// Polymorphic discriminator: job, scholarship, tender, deal, funding.
-	Kind          string `json:"kind,omitempty"`
-	Title         string `json:"title,omitempty"`
-	Description   string `json:"description,omitempty"`
-	IssuingEntity string `json:"issuing_entity,omitempty"`
-	Categories    []int64 `json:"categories,omitempty"`
-	Country       string  `json:"country,omitempty"`
-	Region        string  `json:"region,omitempty"`
-	City          string  `json:"city,omitempty"`
-	Lat           float64 `json:"lat,omitempty"`
-	Lon           float64 `json:"lon,omitempty"`
-	Remote        bool    `json:"remote,omitempty"`
-	GeoScope      string  `json:"geo_scope,omitempty"`
-	PostedAt      *time.Time `json:"posted_at,omitempty"`
-	Deadline      *time.Time `json:"deadline,omitempty"`
-	AmountMin     float64 `json:"amount_min,omitempty"`
-	AmountMax     float64 `json:"amount_max,omitempty"`
-	Currency      string  `json:"currency,omitempty"`
-	EmploymentType    string  `json:"employment_type,omitempty"`
-	Seniority         string  `json:"seniority,omitempty"`
-	FieldOfStudy      string  `json:"field_of_study,omitempty"`
-	DegreeLevel       string  `json:"degree_level,omitempty"`
-	ProcurementDomain string  `json:"procurement_domain,omitempty"`
-	FundingFocus      string  `json:"funding_focus,omitempty"`
-	DiscountPercent   float64 `json:"discount_percent,omitempty"`
-	SourceID          uint64  `json:"source_id,omitempty"`
+	Kind              string     `json:"kind,omitempty"`
+	Title             string     `json:"title,omitempty"`
+	Description       string     `json:"description,omitempty"`
+	IssuingEntity     string     `json:"issuing_entity,omitempty"`
+	Categories        []int64    `json:"categories,omitempty"`
+	Country           string     `json:"country,omitempty"`
+	Region            string     `json:"region,omitempty"`
+	City              string     `json:"city,omitempty"`
+	Lat               float64    `json:"lat,omitempty"`
+	Lon               float64    `json:"lon,omitempty"`
+	Remote            bool       `json:"remote,omitempty"`
+	GeoScope          string     `json:"geo_scope,omitempty"`
+	PostedAt          *time.Time `json:"posted_at,omitempty"`
+	Deadline          *time.Time `json:"deadline,omitempty"`
+	AmountMin         float64    `json:"amount_min,omitempty"`
+	AmountMax         float64    `json:"amount_max,omitempty"`
+	Currency          string     `json:"currency,omitempty"`
+	EmploymentType    string     `json:"employment_type,omitempty"`
+	Seniority         string     `json:"seniority,omitempty"`
+	FieldOfStudy      string     `json:"field_of_study,omitempty"`
+	DegreeLevel       string     `json:"degree_level,omitempty"`
+	ProcurementDomain string     `json:"procurement_domain,omitempty"`
+	FundingFocus      string     `json:"funding_focus,omitempty"`
+	DiscountPercent   float64    `json:"discount_percent,omitempty"`
+	SourceID          uint64     `json:"source_id,omitempty"`
 }
 
 // JobsBackend is the common read API every public endpoint uses.
@@ -306,6 +306,19 @@ func (p *jobsPostgres) Count(ctx context.Context, filter []map[string]any) (int,
 	return n, nil
 }
 
+// CountCompanies returns the number of recorded issuing organisations.
+func (p *jobsPostgres) CountCompanies(ctx context.Context) (int, error) {
+	db, err := p.sqlDB(ctx, true)
+	if err != nil {
+		return 0, err
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM companies`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("postgres: count companies: %w", err)
+	}
+	return n, nil
+}
+
 // Top returns up-to-limit recent rows. minScore is ignored (kept for
 // JobsBackend signature parity).
 func (p *jobsPostgres) Top(ctx context.Context, _ float64, limit int) ([]job, error) {
@@ -358,8 +371,8 @@ func (p *jobsPostgres) list(ctx context.Context, filter []map[string]any, limit 
 // using the composite (kind, country, last_seen_at) partial index.
 func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, error) {
 	families := []struct {
-		name   string
-		expr   string
+		name    string
+		expr    string
 		fromCol string
 	}{
 		{"kind", "kind", "kind"},

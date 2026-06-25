@@ -52,6 +52,15 @@ func main() {
 	store := variantstate.NewStore(pool.DB)
 	util.Log(ctx).Info("materializer: opportunities store wired")
 
+	// Fail loudly if the schema's vector dimension and the configured
+	// embedding model disagree. Without this guard a mismatch makes
+	// pgvector reject every UpdateEmbedding, which soft-fails per row —
+	// silently leaving the whole corpus unembedded and search empty.
+	if err := store.VerifyEmbeddingDim(ctx, cfg.EmbeddingDim); err != nil {
+		util.Log(ctx).WithError(err).Fatal("materializer: embedding dimension guard failed")
+	}
+	util.Log(ctx).WithField("embedding_dim", cfg.EmbeddingDim).Info("materializer: embedding dimension verified")
+
 	// Load the opportunity-kinds registry. Prefer the R2-backed
 	// definitions loader; fall back to the on-disk ConfigMap when R2
 	// isn't configured (materializer's deploy doesn't ship R2 creds
@@ -87,6 +96,17 @@ func main() {
 	if err := service.RegisterSubscriptions(); err != nil {
 		util.Log(ctx).WithError(err).Fatal("materializer: register subscriptions failed")
 	}
+
+	// Embeddings arrive on a dedicated Frame Queue (service-profile idiom):
+	// the worker's embed stage publishes EmbeddingV1 to pipeline_embeddings,
+	// and the materializer is its durable consumer (own consumer_durable_name
+	// on the same subject). This is the one pipeline output the materializer
+	// writes — it lands the vector into opportunities.embedding. The admin-
+	// plane handlers (source-stopped/auto-flagged/canonical-expired) stay on
+	// the low-volume events bus via RegisterSubscriptions above.
+	svc.Init(ctx,
+		frame.WithRegisterSubscriber(cfg.QueuePipelineEmbeddingsName, cfg.QueuePipelineEmbeddings, service.EmbeddingWorker()),
+	)
 
 	// definitions.changed.v1 broadcast — invalidates the loader cache
 	// and live-rebuilds the kind registry on admin edits.

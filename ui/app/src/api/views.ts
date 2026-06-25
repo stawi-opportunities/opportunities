@@ -40,3 +40,29 @@ export function pingJobView(slug: string): void {
     // Belt-and-braces — we never want telemetry to crash the page.
   }
 }
+
+/**
+ * Beacon a candidate-apply event at the jobs API. Mirrors pingJobView
+ * but hits POST /opportunities/{slug}/apply. Fire-and-forget; never
+ * throws; prefers sendBeacon so the request survives page navigation.
+ */
+export function pingApply(slug: string): void {
+  if (!slug || typeof window === 'undefined') return;
+  const url = `${getConfig().apiURL}/opportunities/${encodeURIComponent(slug)}/apply`;
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([''], { type: 'text/plain' });
+      const ok = navigator.sendBeacon(url, blob);
+      if (ok) return;
+    }
+    void fetch(url, {
+      method: 'POST',
+      keepalive: true,
+      credentials: 'include',
+      headers: { 'Content-Type': 'text/plain' },
+      body: '',
+    }).catch(() => {});
+  } catch {
+    // Never let telemetry crash the page.
+  }
+}

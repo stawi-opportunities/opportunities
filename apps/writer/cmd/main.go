@@ -116,9 +116,36 @@ func main() {
 	})
 
 	wService := writersvc.NewService(svc, buffer, cat, cfg.FlushMaxInterval)
-	if err := wService.RegisterSubscriptions(eventsv1.AllTopics()); err != nil {
+	// Events-bus topics (crawl/source observability, variant-rejection, the
+	// candidate-side lifecycle) stay on the shared Frame Events stream.
+	if err := wService.RegisterSubscriptions(writersvc.EventBusTopics()); err != nil {
 		util.Log(ctx).WithError(err).Fatal("writer: register subscriptions failed")
 	}
+
+	// Pipeline-stage topics now flow on dedicated Frame Queues. The writer is
+	// a fan-out durable consumer of each (its own consumer_durable_name on the
+	// same subject the in-pipeline consumer drains), funnelling the stage event
+	// into the same buffer for Iceberg archival. Name+URI must match the
+	// worker's QUEUE_PIPELINE_* env. mem:// is the local/test default.
+	pipelineQueues := map[string][2]string{
+		eventsv1.TopicVariantsIngested:   {cfg.QueuePipelineIngestedName, cfg.QueuePipelineIngested},
+		eventsv1.TopicVariantsNormalized: {cfg.QueuePipelineNormalizedName, cfg.QueuePipelineNormalized},
+		eventsv1.TopicVariantsValidated:  {cfg.QueuePipelineValidatedName, cfg.QueuePipelineValidated},
+		eventsv1.TopicVariantsFlagged:    {cfg.QueuePipelineFlaggedName, cfg.QueuePipelineFlagged},
+		eventsv1.TopicVariantsClustered:  {cfg.QueuePipelineClusteredName, cfg.QueuePipelineClustered},
+		eventsv1.TopicEmbeddings:         {cfg.QueuePipelineEmbeddingsName, cfg.QueuePipelineEmbeddings},
+		eventsv1.TopicPublished:          {cfg.QueuePipelinePublishedName, cfg.QueuePipelinePublished},
+	}
+	var queueOpts []frame.Option
+	for _, topic := range writersvc.PipelineQueueTopics() {
+		nameURI, ok := pipelineQueues[topic]
+		if !ok {
+			util.Log(ctx).WithField("topic", topic).Fatal("writer: pipeline topic missing queue config")
+		}
+		queueOpts = append(queueOpts,
+			frame.WithRegisterSubscriber(nameURI[0], nameURI[1], wService.QueueWorker(topic)))
+	}
+	svc.Init(ctx, queueOpts...)
 
 	// definitions.changed.v1 broadcast — invalidates the loader cache
 	// and live-rebuilds the kind registry on admin edits.

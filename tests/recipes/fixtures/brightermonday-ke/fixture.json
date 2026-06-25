@@ -1,0 +1,4 @@
+{
+ "source": {"type":"brightermonday","base_url":"https://www.brightermonday.co.ke","country":"KE","language":"en","status":"active","kinds":["job"],"listing_path":"/jobs"},
+ "sample_urls": ["https://www.brightermonday.co.ke/listings/associates-advocates-k7mkwm","https://www.brightermonday.co.ke/listings/brand-research-and-events-specialist-r8dwkg","https://www.brightermonday.co.ke/listings/business-development-officer-j6mgn4"]
+}

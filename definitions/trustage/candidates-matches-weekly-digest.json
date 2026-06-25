@@ -22,7 +22,7 @@
       "call": {
         "action": "http.request",
         "input": {
-          "url": "http://opportunities-candidates.product-opportunities.svc/_admin/matches/weekly_digest",
+          "url": "http://opportunities-matching.product-opportunities.svc/_admin/matches/weekly_digest",
           "method": "POST",
           "headers": {
             "Content-Type": "application/json"

@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "name": "opportunities.sources.recipe-backfill",
+  "description": "Every 15 min — enqueues AI recipe generation (recipe.generate.v1) for active/degraded sources of a recipe-eligible type that lack a recipe and are not flagged for tuning. No-op while recipe generation is disabled (RECIPE_ENABLED=false), so the cron is always safe to fire. Idempotent: sources that already have a recipe are skipped. The endpoint only enumerates and enqueues — generation runs on the recipe.generate.v1 consumers, so throughput scales by adding crawler replicas.",
+  "input": {},
+  "config": {},
+  "timeout": "10m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "recipe_backfill",
+      "type": "call",
+      "name": "Enqueue recipe generation for recipe-less sources",
+      "timeout": "5m",
+      "retry": {
+        "max_attempts": 3,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/recipes/backfill",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {}
+        }
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.sources.recipe-backfill.default",
+      "cron_expr": "*/15 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

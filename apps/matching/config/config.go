@@ -51,12 +51,17 @@ type CandidatesConfig struct {
 	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY"  envDefault:""`
 	EmbeddingModel   string `env:"EMBEDDING_MODEL"    envDefault:""`
+	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
+	// 0 omits it. Must equal EMBEDDING_DIM.
+	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
 
 	// Reranker (cross-encoder, e.g. BAAI/bge-reranker-v2-m3 via TEI).
 	// Matcher falls back to retrieval-order when unset.
 	RerankBaseURL string `env:"RERANK_BASE_URL" envDefault:""`
 	RerankAPIKey  string `env:"RERANK_API_KEY"  envDefault:""`
 	RerankModel   string `env:"RERANK_MODEL"    envDefault:""`
+	// RerankDialect: "tei" (default) or "openai"/"siliconflow" for /v1/rerank.
+	RerankDialect string `env:"RERANK_DIALECT" envDefault:""`
 
 	// Matching-stage feature flags.
 	RerankEnabled     bool    `env:"RERANK_ENABLED"      envDefault:"false"`
@@ -109,6 +114,21 @@ type CandidatesConfig struct {
 	SessionMasterKeyID string `env:"SESSION_MASTER_KEY_ID" envDefault:"v1"`
 	SessionTokenKey    string `env:"SESSION_TOKEN_KEY"     envDefault:""`
 
+	// Canonical pipeline queue (service-profile idiom). The worker's canonical
+	// stage publishes CanonicalUpsertedV1 to this subject; matching's Path-A
+	// fan-out is one of its durable consumers (own consumer_durable_name on the
+	// same subject as the worker's publish stage + the writer sink). Name+URI
+	// must match the worker's QUEUE_PIPELINE_CANONICAL_* so the fan-out actually
+	// sees canonicals; mem:// is the local/test default.
+	QueuePipelineCanonical     string `env:"QUEUE_PIPELINE_CANONICAL_URI"  envDefault:"mem://pipeline_canonical"`
+	QueuePipelineCanonicalName string `env:"QUEUE_PIPELINE_CANONICAL_NAME" envDefault:"pipeline_canonical"`
+
+	// Candidate-embedding queue: cv-embed publishes CandidateEmbeddingV1 here;
+	// the candidate-change consumer drains it for gap-fill + rerank. Dedicated
+	// durable queue (not the shared events bus) so the flow is isolated + robust.
+	CandidateEmbeddingQueueURI  string `env:"CANDIDATE_EMBEDDING_QUEUE_URI"  envDefault:"mem://candidate_embedding"`
+	CandidateEmbeddingQueueName string `env:"CANDIDATE_EMBEDDING_QUEUE_NAME" envDefault:"candidate_embedding"`
+
 	// PlansURL is embedded into the weekly-jobs-digest event so the
 	// notification service's email template doesn't have to assume the
 	// host. Defaults to production; preview deploys override via env.
@@ -130,6 +150,25 @@ type CandidatesConfig struct {
 	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
 	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
 	MatchingDebounceTTLSeconds     int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
+	// PooledReranker bounds: a cloud cross-encoder over RERANK_TOP_K docs
+	// takes seconds, so the per-call timeout must be generous (the old
+	// hardcoded 1s timed out → reranker silently fell back to bi-encoder).
+	MatchingRerankerTimeoutSeconds int `env:"MATCHING_RERANKER_TIMEOUT_SECONDS" envDefault:"30"`
+	MatchingRerankerConcurrency    int `env:"MATCHING_RERANKER_CONCURRENCY"     envDefault:"8"`
 	// Phase-4 extension-facing /api/me/* routes (spec §5.5).
 	MatchingExtensionEnabled bool `env:"MATCHING_EXTENSION_ENABLED" envDefault:"false"`
+
+	// Billing / payments. BillingServiceURI points at the co-deployed
+	// service-payment + service-billing pod (set live to
+	// http://service-payment.finance.svc:80). When empty the billing
+	// routes serve the plan catalog + degrade checkout to a 503 (NopGateway)
+	// so the binary still boots without a payment backend in dev/test.
+	BillingServiceURI string `env:"BILLING_SERVICE_URI" envDefault:""`
+	// BillingWebhookSecret enables HMAC-SHA256 verification of the
+	// service-payment completion webhook (X-Payment-Signature header over
+	// the raw body). Empty disables verification (dev/test only).
+	BillingWebhookSecret string `env:"BILLING_WEBHOOK_SECRET" envDefault:""`
+	// BillingReconcileBatch bounds how many pending checkouts one
+	// POST /_admin/billing/reconcile sweep examines.
+	BillingReconcileBatch int `env:"BILLING_RECONCILE_BATCH" envDefault:"200"`
 }

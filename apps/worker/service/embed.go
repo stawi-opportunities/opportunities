@@ -97,11 +97,12 @@ type EmbedHandler struct {
 	svc       *frame.Service
 	extractor *extraction.Extractor
 	store     *variantstate.Store // nil-safe; soft-fails on Postgres outage
+	outQueue  string              // Queue Name for EmbeddingV1 (consumed by the materializer)
 }
 
-// NewEmbedHandler ...
-func NewEmbedHandler(svc *frame.Service, ex *extraction.Extractor, store *variantstate.Store) *EmbedHandler {
-	return &EmbedHandler{svc: svc, extractor: ex, store: store}
+// NewEmbedHandler binds the handler. outQueue is the embeddings Queue Name.
+func NewEmbedHandler(svc *frame.Service, ex *extraction.Extractor, store *variantstate.Store, outQueue string) *EmbedHandler {
+	return &EmbedHandler{svc: svc, extractor: ex, store: store, outQueue: outQueue}
 }
 
 // Handle implements queue.SubscribeWorker.
@@ -120,7 +121,7 @@ func (h *EmbedHandler) Handle(ctx context.Context, _ map[string]string, payload 
 	}
 
 	desc, _ := c.Attributes["description"].(string)
-	text := strings.Join([]string{c.Title, c.IssuingEntity, desc}, " · ")
+	text := extraction.EmbedInput(c.Title, c.IssuingEntity, desc)
 	vec, err := h.extractor.Embed(ctx, text)
 	if err != nil {
 		reason := classifyEmbedFailure(err)
@@ -170,6 +171,9 @@ func (h *EmbedHandler) Handle(ctx context.Context, _ map[string]string, payload 
 		Vector:        vec,
 		ModelVersion:  h.extractor.EmbedModelVersion(),
 	}
-	outEnv := eventsv1.NewEnvelope(eventsv1.TopicEmbeddings, out)
-	return h.svc.EventsManager().Emit(ctx, eventsv1.TopicEmbeddings, outEnv)
+	body, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicEmbeddings, out))
+	if err != nil {
+		return err
+	}
+	return h.svc.QueueManager().Publish(ctx, h.outQueue, body, nil)
 }

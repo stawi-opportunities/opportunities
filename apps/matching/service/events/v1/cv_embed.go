@@ -11,6 +11,7 @@ import (
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
 // Embedder abstracts extraction.Extractor.Embed.
@@ -23,6 +24,10 @@ type CVEmbedDeps struct {
 	Svc          *frame.Service
 	Embedder     Embedder
 	ModelVersion string
+	// CandidateEmbeddingQueueName is the dedicated durable queue the
+	// CandidateEmbeddingV1 envelope is published to (drained by the
+	// candidate-change consumer for gap-fill + rerank).
+	CandidateEmbeddingQueueName string
 }
 
 // CVEmbedHandler consumes the cv-embed queue subject and emits a
@@ -58,6 +63,10 @@ func (h *CVEmbedHandler) Handle(ctx context.Context, _ map[string]string, payloa
 		log.Warn("cv-embed: empty composed text; skipping")
 		return nil
 	}
+	// e5 "query: " prefix — the candidate CV is the search side. Indexed
+	// opportunities carry "passage: " (see extraction.EmbedInput); both
+	// must be present for the asymmetric model to score the pair correctly.
+	text = extraction.EmbedQueryPrefix + text
 
 	vec, err := h.deps.Embedder.Embed(ctx, text)
 	if err != nil {
@@ -75,8 +84,12 @@ func (h *CVEmbedHandler) Handle(ctx context.Context, _ map[string]string, payloa
 		ModelVersion: h.deps.ModelVersion,
 	}
 	envOut := eventsv1.NewEnvelope(eventsv1.TopicCandidateEmbedding, out)
-	if err := h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateEmbedding, envOut); err != nil {
-		return fmt.Errorf("cv-embed: emit: %w", err)
+	body, err := json.Marshal(envOut)
+	if err != nil {
+		return fmt.Errorf("cv-embed: marshal: %w", err)
+	}
+	if err := h.deps.Svc.QueueManager().Publish(ctx, h.deps.CandidateEmbeddingQueueName, body, nil); err != nil {
+		return fmt.Errorf("cv-embed: publish: %w", err)
 	}
 	log.WithField("dim", len(vec)).Info("cv-embed: done")
 	return nil

@@ -34,6 +34,20 @@ func (f *fakeOnboardStore) OnboardAtomically(_ context.Context, candidateID stri
 	return nil
 }
 
+type fakeOnboardMatchTrigger struct {
+	called      bool
+	candidateID string
+	kinds       []string
+	err         error
+}
+
+func (f *fakeOnboardMatchTrigger) TriggerInitialMatch(_ context.Context, candidateID string, kinds []string) error {
+	f.called = true
+	f.candidateID = candidateID
+	f.kinds = kinds
+	return f.err
+}
+
 func reqOnboard(t *testing.T, body string) *http.Request {
 	t.Helper()
 	r := httptest.NewRequest(http.MethodPost, "/candidates/onboard", bytes.NewBufferString(body))
@@ -83,7 +97,6 @@ func TestCandidatesOnboardHandler_RejectsMissingRequiredFields(t *testing.T) {
 	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
 
 	tests := map[string]string{
-		"missing target_job_title": `{"experience_level":"mid","job_search_status":"a","country":"KE","plan":"starter","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
 		"missing plan":             `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
 		"agree_terms false":        `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","plan":"starter","agree_terms":false,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
 		"invalid plan":             `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","plan":"gold","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
@@ -95,6 +108,55 @@ func TestCandidatesOnboardHandler_RejectsMissingRequiredFields(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, rec.Code, name)
 	}
 	require.Nil(t, store.updatedCand, "no transaction should run for bad payloads")
+}
+
+func TestCandidatesOnboardHandler_EmptyTargetJobTitleAccepted(t *testing.T) {
+	t.Parallel()
+	store := &fakeOnboardStore{}
+	trigger := &fakeOnboardMatchTrigger{}
+	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{
+		Store: store,
+		Match: trigger,
+	}))
+
+	const noTitle = `{
+	  "experience_level": "mid",
+	  "job_search_status": "actively_looking",
+	  "wants_ats_report": false,
+	  "preferred_regions": [],
+	  "preferred_timezones": [],
+	  "preferred_languages": [],
+	  "job_types": ["job"],
+	  "country": "KE",
+	  "plan": "starter",
+	  "agree_terms": true
+	}`
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, reqOnboard(t, noTitle))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, store.updatedCand)
+	require.Empty(t, store.updatedCand.TargetJobTitle)
+	require.True(t, trigger.called, "initial match trigger must fire after a successful onboard")
+	require.Equal(t, "cand_onboard_1", trigger.candidateID)
+	require.Equal(t, []string{"job"}, trigger.kinds)
+}
+
+func TestCandidatesOnboardHandler_MatchTriggerErrorIsNonFatal(t *testing.T) {
+	t.Parallel()
+	store := &fakeOnboardStore{}
+	trigger := &fakeOnboardMatchTrigger{err: errors.New("emit wedged")}
+	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{
+		Store: store,
+		Match: trigger,
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, reqOnboard(t, validBody))
+
+	require.Equal(t, http.StatusOK, rec.Code, "a trigger failure must not fail the onboard response")
+	require.True(t, trigger.called)
 }
 
 func TestCandidatesOnboardHandler_StoreErrorReturnsProblemJSON(t *testing.T) {

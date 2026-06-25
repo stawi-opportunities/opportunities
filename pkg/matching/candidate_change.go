@@ -35,6 +35,9 @@ type CandidateChange struct {
 	SalaryFloorUSD *int
 	MinScore       float64
 	TriggeredBy    string // rules_changed | cv_changed | admin
+	// QueryText is the candidate-side text (CV summary / skills) fed to the
+	// cross-encoder as the rerank query. Empty disables reranking for this run.
+	QueryText string
 }
 
 // RunCandidateChange executes Path C. Returns ErrDebounced if the
@@ -63,5 +66,6 @@ func RunCandidateChange(ctx context.Context, in CandidateChange, deps CandidateC
 		SalaryFloorUSD: in.SalaryFloorUSD,
 		Since:          since,
 		MinScore:       in.MinScore,
+		QueryText:      in.QueryText,
 	}, deps.GapFill)
 }

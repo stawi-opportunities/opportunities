@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "name": "opportunities.crawl.runs.sweep",
+  "description": "Every 2 minutes: re-drive resumable crawl_runs whose lease has lapsed — a crashed/redeployed owner, or a lost/backpressure-deferred continuation — by re-emitting a backpressure-gated continuation. The durable crawl_runs row is the source of truth, so even a dropped continuation converges. Runs past the stuck-attempt ceiling are failed (freeing the source's single-flight slot). Idempotent; safe to fire.",
+  "input": {},
+  "config": {},
+  "timeout": "2m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "sweep",
+      "type": "call",
+      "name": "Re-drive lapsed crawl runs",
+      "timeout": "60s",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/crawl/runs/sweep",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {}
+        },
+        "output_var": "sweep_result"
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.crawl.runs.sweep.default",
+      "cron_expr": "*/2 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

@@ -287,11 +287,21 @@ func jobStatsHandler(jm JobsBackend) http.HandlerFunc {
 			return
 		}
 		countries := len(facets["country"])
+		// Company count: best-effort via the Postgres backend; a fresh
+		// environment without the companies table just reports 0.
+		totalCompanies := 0
+		if cc, ok := jm.(interface {
+			CountCompanies(context.Context) (int, error)
+		}); ok {
+			if n, cerr := cc.CountCompanies(ctx); cerr == nil {
+				totalCompanies = n
+			}
+		}
 		w.Header().Set("Cache-Control", "public, max-age=300")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"total_jobs":      totalJobs,
-			"total_companies": 0,
+			"total_companies": totalCompanies,
 			"countries":       countries,
 		})
 	}

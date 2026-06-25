@@ -16,6 +16,8 @@ export interface SearchResult {
   quality_score: number;
   snippet: string;
   is_featured: boolean;
+  views_24h?: number;
+  applies_24h?: number;
 }
 
 export interface FacetEntry {
@@ -57,10 +59,11 @@ export interface LatestJobsResponse {
   results: SearchResult[];
 }
 
+// Mirrors GET /api/stats (apps/api/cmd/endpoints.go jobStatsHandler).
 export interface StatsSummary {
   total_jobs: number;
   total_companies: number;
-  active_sources: number;
+  countries: number;
 }
 
 export interface CategoryListResponse {

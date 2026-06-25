@@ -32,10 +32,18 @@ export interface Strings {
   'nav.allJobs': string;
   'nav.search': string;
   'nav.about': string;
+  'nav.faq': string;
   'nav.pricing': string;
   'nav.signIn': string;
   'nav.language': string;
   'nav.categoriesHint': string;
+  'nav.dashboard': string;
+  'nav.feed': string;
+  'nav.matches': string;
+  'nav.saved': string;
+  'nav.preferences': string;
+  'nav.billing': string;
+  'nav.settings': string;
 
   // ---- Call-to-action buttons ----
   'cta.applyNow': string;
@@ -186,6 +194,7 @@ export interface Strings {
   'status.rejected': string;
   'status.hired': string;
   'card.match': string;
+  'card.new': string;
 
   // ---- Cascade / feed ----
   'cascade.yourPreferences': string;
@@ -201,6 +210,7 @@ export interface Strings {
   'feed.empty': string;
   'feed.tryAllFilter': string;
   'feed.loadError': string;
+  'feed.opportunities': string;
 
   // ---- Dashboard ----
   'dash.title': string;
@@ -239,6 +249,69 @@ export interface Strings {
   'dash.openingPayment': string;
   'dash.payPerMonth': string;
   'dash.perMonth': string;
+  'dash.welcomeTitle': string;
+  'dash.welcomeBody': string;
+  'dash.welcomeDismiss': string;
+  'dash.welcomeTour': string;
+  'dash.statusActive': string;
+  'dash.statusPastDue': string;
+  'dash.statusCancelled': string;
+  'dash.emptyFeedTitle': string;
+  'dash.emptyFeedHint': string;
+  'dash.emptyFeedCompleteProfile': string;
+  'dash.emptyFeedSetPreferences': string;
+  'dash.emptyFeedBrowseAll': string;
+  'dash.celebrationTitle': string;
+  'dash.celebrationBody': string;
+  'dash.celebrationStep1': string;
+  'dash.celebrationStep2': string;
+  'dash.celebrationStep3': string;
+  'dash.celebrationDismiss': string;
+  'onboard.profileSaved': string;
+  'dash.breadcrumbDashboard': string;
+
+  // ---- Plan change modal ----
+  'plan.changeTitle': string;
+  'plan.currentPlan': string;
+  'plan.newPlan': string;
+  'plan.proratedAmount': string;
+  'plan.nextBilling': string;
+  'plan.confirmChange': string;
+  'plan.changeSuccess': string;
+  'plan.changeError': string;
+  'plan.managedChangeHint': string;
+
+  // ---- Cancel subscription modal ----
+  'cancel.title': string;
+  'cancel.reason': string;
+  'cancel.foundJob': string;
+  'cancel.tooExpensive': string;
+  'cancel.notEnoughMatches': string;
+  'cancel.justPausing': string;
+  'cancel.other': string;
+  'cancel.foundJobMessage': string;
+  'cancel.tooExpensiveHint': string;
+  'cancel.pauseHint': string;
+  'cancel.confirmTitle': string;
+  'cancel.confirmBody': string;
+  'cancel.confirmCheckbox': string;
+  'cancel.confirmButton': string;
+  'cancel.success': string;
+
+  // ---- Usage chart ----
+  'usage.title': string;
+  'usage.week': string;
+  'usage.delivered': string;
+  'usage.queued': string;
+  'usage.noData': string;
+
+  // ---- Invoice history ----
+  'invoice.title': string;
+  'invoice.date': string;
+  'invoice.amount': string;
+  'invoice.status': string;
+  'invoice.download': string;
+  'invoice.empty': string;
 
   // ---- Onboarding ----
   'onboard.step': string;
@@ -314,11 +387,86 @@ export interface Strings {
   'onboard.validationLanguage': string;
   'onboard.validationJobType': string;
   'onboard.validationTerms': string;
+  'onboard.cvDropHere': string;
+  'onboard.cvDragPrompt': string;
+  'onboard.skipPreferences': string;
+  'onboard.skipPreferencesHint': string;
+  'onboard.features': string;
+  'onboard.showLess': string;
 
   // ---- CTA ----
   'cta.twoMinutes': string;
   'cta.twoMinutesHint': string;
   'cta.getStarted': string;
+
+  // ---- Settings ----
+  'settings.title': string;
+  'settings.sectionProfile': string;
+  'settings.sectionNotifications': string;
+  'settings.sectionSecurity': string;
+  'settings.sectionAccount': string;
+  'settings.sectionLanguage': string;
+  'settings.sectionTheme': string;
+  'settings.profile': string;
+  'settings.name': string;
+  'settings.email': string;
+  'settings.phone': string;
+  'settings.currentTitle': string;
+  'settings.cv': string;
+  'settings.cvUploaded': string;
+  'settings.cvUploadNew': string;
+  'settings.saveProfile': string;
+  'settings.profileSaved': string;
+  'settings.profileFailed': string;
+  'settings.managedByIdp': string;
+  'settings.notifications': string;
+  'settings.emailDigest': string;
+  'settings.daily': string;
+  'settings.weekly': string;
+  'settings.off': string;
+  'settings.matchAlerts': string;
+  'settings.matchAlertsHint': string;
+  'settings.weeklySummary': string;
+  'settings.weeklySummaryHint': string;
+  'settings.marketingEmails': string;
+  'settings.marketingEmailsHint': string;
+  'settings.saveNotifications': string;
+  'settings.notificationsSaved': string;
+  'settings.notificationsFailed': string;
+  'settings.comingSoon': string;
+  'settings.security': string;
+  'settings.changePassword': string;
+  'settings.currentPassword': string;
+  'settings.newPassword': string;
+  'settings.confirmPassword': string;
+  'settings.passwordChanged': string;
+  'settings.passwordMismatch': string;
+  'settings.passwordWeak': string;
+  'settings.passwordSame': string;
+  'settings.twoFactor': string;
+  'settings.twoFactorDisabled': string;
+  'settings.enable2FA': string;
+  'settings.activeSessions': string;
+  'settings.revokeSession': string;
+  'settings.noSessions': string;
+  'settings.account': string;
+  'settings.deleteAccount': string;
+  'settings.deleteAccountWarning': string;
+  'settings.deleteConfirm': string;
+  'settings.deleteReason': string;
+  'settings.accountDeleted': string;
+  'settings.dataExport': string;
+  'settings.dataExportHint': string;
+  'settings.dataExportRequested': string;
+  'settings.language': string;
+  'settings.uiLanguage': string;
+  'settings.workingLanguages': string;
+  'settings.country': string;
+  'settings.theme': string;
+  'settings.themeLight': string;
+  'settings.themeDark': string;
+  'settings.themeSystem': string;
+  'settings.themeComingSoon': string;
 
   // ---- Footer ----
   'footer.jobSeekers': string;
@@ -327,6 +475,7 @@ export interface Strings {
   'footer.advancedSearch': string;
   'footer.company': string;
   'footer.about': string;
+  'footer.faq': string;
   'footer.pricing': string;
   'footer.contact': string;
   'footer.legal': string;
@@ -336,6 +485,12 @@ export interface Strings {
   'footer.terms': string;
   'footer.rights': string;
   'footer.madeBy': string;
+  'footer.explore': string;
+  'footer.jobs': string;
+  'footer.scholarships': string;
+  'footer.tenders': string;
+  'footer.deals': string;
+  'footer.funding': string;
 }
 
 // ---------------------------------------------------------------------------
@@ -347,10 +502,18 @@ const en: Strings = {
   'nav.allJobs': 'All Jobs',
   'nav.search': 'Advanced search',
   'nav.about': 'About',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Pricing',
   'nav.signIn': 'Sign in',
   'nav.language': 'Language',
   'nav.categoriesHint': 'Categories load once jobs are indexed.',
+  'nav.dashboard': 'Dashboard',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Matches',
+  'nav.saved': 'Saved',
+  'nav.preferences': 'Preferences',
+  'nav.billing': 'Billing',
+  'nav.settings': 'Settings',
 
   'cta.applyNow': 'Apply now',
   'cta.saveJob': 'Save job',
@@ -458,7 +621,7 @@ const en: Strings = {
   'flag.other': 'Other',
   'flag.thankYou': 'Thanks — your report has been recorded and will be reviewed by our moderators.',
   'flag.reason': 'Reason',
-  'flag.details': 'Details (optional)',
+  'flag.details': 'Details',
   'flag.detailsPlaceholder': 'What looks wrong about this listing?',
   'flag.alreadyFlagged': "You've already flagged this listing — thanks for keeping the site clean.",
   'flag.signInRequired': 'You need to be signed in to flag a listing.',
@@ -488,6 +651,7 @@ const en: Strings = {
   'status.rejected': 'Rejected',
   'status.hired': 'Hired',
   'card.match': '% match',
+  'card.new': 'New',
 
   'cascade.yourPreferences': 'Your preferences',
   'cascade.outside': 'Outside {country}',
@@ -501,6 +665,7 @@ const en: Strings = {
   'feed.empty': 'Nothing to show here yet.',
   'feed.tryAllFilter': "Try the 'All' filter.",
   'feed.loadError': "Couldn't load your opportunities.",
+  'feed.opportunities': 'opportunities',
 
   'onboard.step': 'Step',
   'onboard.of': 'of',
@@ -529,8 +694,8 @@ const en: Strings = {
   'onboard.extraInfoPlaceholder':
     'Anything else you want us to know — certifications, visa status, notice period, etc.',
   'onboard.salaryPlaceholder': 'Annual amount',
-  'onboard.targetSalary': 'Target salary (optional)',
-  'onboard.uploadCV': 'Upload your CV (optional)',
+  'onboard.targetSalary': 'Target salary',
+  'onboard.uploadCV': 'Upload your CV',
   'onboard.chooseFile': 'Choose file',
   'onboard.cvFormats': 'PDF, DOCX, RTF, or TXT · up to 10 MB',
   'onboard.readyToUpload': 'ready to upload',
@@ -545,7 +710,7 @@ const en: Strings = {
   'onboard.southAmerica': 'South America',
   'onboard.asia': 'Asia',
   'onboard.oceania': 'Oceania',
-  'onboard.timezones': 'Preferred time zones (optional)',
+  'onboard.timezones': 'Preferred time zones',
   'onboard.languages': 'Languages you work in',
   'onboard.jobType': 'Job type',
   'onboard.fullTime': 'Full-time',
@@ -580,6 +745,12 @@ const en: Strings = {
   'onboard.validationLanguage': 'Pick at least one language',
   'onboard.validationJobType': 'Pick at least one job type',
   'onboard.validationTerms': 'Please agree to the Terms before finishing',
+  'onboard.cvDropHere': 'Drop your CV here',
+  'onboard.cvDragPrompt': 'Drag & drop your CV here, or click to browse',
+  'onboard.skipPreferences': "Skip for now — I'll set this up later",
+  'onboard.skipPreferencesHint': 'You can always configure these later from your dashboard',
+  'onboard.features': 'features',
+  'onboard.showLess': 'Show less',
 
   'dash.title': 'Your dashboard',
   'dash.setupIncomplete': 'Setup incomplete',
@@ -621,6 +792,137 @@ const en: Strings = {
   'dash.openingPayment': 'Opening payment…',
   'dash.payPerMonth': 'Pay',
   'dash.perMonth': '/month',
+  'dash.welcomeTitle': 'Welcome to Stawi Opportunities!',
+  'dash.welcomeBody':
+    'We match you with the best opportunities across Africa. Start by completing your profile and setting your preferences.',
+  'dash.welcomeDismiss': 'Dismiss',
+  'dash.welcomeTour': 'Take a quick tour →',
+  'dash.statusActive': 'Active',
+  'dash.statusPastDue': 'Past due',
+  'dash.statusCancelled': 'Cancelled',
+  'dash.emptyFeedTitle': 'No opportunities yet',
+  'dash.emptyFeedHint': 'Complete these steps to start receiving matches:',
+  'dash.emptyFeedCompleteProfile': 'Complete your profile',
+  'dash.emptyFeedSetPreferences': 'Set your preferences',
+  'dash.emptyFeedBrowseAll': 'Browse all opportunities',
+  'dash.celebrationTitle': "You're all set!",
+  'dash.celebrationBody': "Here's what happens next:",
+  'dash.celebrationStep1': "We're now matching you with opportunities",
+  'dash.celebrationStep2': "You'll receive email notifications for new matches",
+  'dash.celebrationStep3': 'Your first matches will appear within 24 hours',
+  'dash.celebrationDismiss': 'Got it, show me my dashboard',
+  'onboard.profileSaved': 'Profile saved!',
+  'dash.breadcrumbDashboard': 'Dashboard',
+
+  'plan.changeTitle': 'Change your plan',
+  'plan.currentPlan': 'Current plan',
+  'plan.newPlan': 'New plan',
+  'plan.proratedAmount': 'Prorated amount',
+  'plan.nextBilling': 'Next billing date',
+  'plan.confirmChange': 'Confirm change',
+  'plan.changeSuccess': 'Plan changed to {plan}!',
+  'plan.changeError': "Couldn't change plan. Try again.",
+  'plan.managedChangeHint': 'Contact your agent to change plans.',
+
+  'cancel.title': 'Cancel subscription',
+  'cancel.reason': "What's the main reason?",
+  'cancel.foundJob': 'I found a job already',
+  'cancel.tooExpensive': 'Too expensive',
+  'cancel.notEnoughMatches': 'Not enough matches',
+  'cancel.justPausing': 'Just taking a break',
+  'cancel.other': 'Other',
+  'cancel.foundJobMessage': "Congratulations! We'll keep your profile in case things change.",
+  'cancel.tooExpensiveHint': 'Did you know Pro is 5× the matches?',
+  'cancel.pauseHint': 'You can pause instead. Matches resume when you return.',
+  'cancel.confirmTitle': 'Are you sure?',
+  'cancel.confirmBody':
+    "Your subscription will end on {date}. You'll lose access to matching and your profile will be paused.",
+  'cancel.confirmCheckbox': 'I understand my subscription will be cancelled',
+  'cancel.confirmButton': 'Cancel subscription',
+  'cancel.success': 'Your subscription has been cancelled.',
+
+  'usage.title': 'Usage history',
+  'usage.week': 'Week',
+  'usage.delivered': 'Delivered',
+  'usage.queued': 'Queued',
+  'usage.noData': 'Usage data will appear after your first full week.',
+
+  'invoice.title': 'Invoices',
+  'invoice.date': 'Date',
+  'invoice.amount': 'Amount',
+  'invoice.status': 'Status',
+  'invoice.download': 'Download',
+  'invoice.empty': 'No invoices yet.',
+
+  'settings.title': 'Settings',
+  'settings.sectionProfile': 'Profile',
+  'settings.sectionNotifications': 'Notifications',
+  'settings.sectionSecurity': 'Security',
+  'settings.sectionAccount': 'Account',
+  'settings.sectionLanguage': 'Language',
+  'settings.sectionTheme': 'Theme',
+  'settings.profile': 'Profile',
+  'settings.name': 'Full name',
+  'settings.email': 'Email address',
+  'settings.phone': 'Phone number',
+  'settings.currentTitle': 'Current job title',
+  'settings.cv': 'CV / Resume',
+  'settings.cvUploaded': 'CV uploaded',
+  'settings.cvUploadNew': 'Upload new CV',
+  'settings.saveProfile': 'Save profile',
+  'settings.profileSaved': 'Profile updated successfully.',
+  'settings.profileFailed': 'Failed to update profile.',
+  'settings.managedByIdp': 'Managed by your identity provider',
+  'settings.notifications': 'Notifications',
+  'settings.emailDigest': 'Email digest frequency',
+  'settings.daily': 'Daily',
+  'settings.weekly': 'Weekly',
+  'settings.off': 'Off',
+  'settings.matchAlerts': 'Match alerts',
+  'settings.matchAlertsHint': 'Get notified when a new match is found.',
+  'settings.weeklySummary': 'Weekly summary',
+  'settings.weeklySummaryHint': 'Receive a weekly summary of your account activity.',
+  'settings.marketingEmails': 'Marketing emails',
+  'settings.marketingEmailsHint': 'Tips, product updates, and job market insights.',
+  'settings.saveNotifications': 'Save preferences',
+  'settings.notificationsSaved': 'Notification preferences saved.',
+  'settings.notificationsFailed': 'Failed to save notification preferences.',
+  'settings.comingSoon': 'Coming soon',
+  'settings.security': 'Security',
+  'settings.changePassword': 'Change password',
+  'settings.currentPassword': 'Current password',
+  'settings.newPassword': 'New password',
+  'settings.confirmPassword': 'Confirm new password',
+  'settings.passwordChanged': 'Password changed successfully.',
+  'settings.passwordMismatch': 'Passwords do not match.',
+  'settings.passwordWeak': 'Password does not meet security requirements.',
+  'settings.passwordSame': 'New password must be different from current password.',
+  'settings.twoFactor': 'Two-factor authentication',
+  'settings.twoFactorDisabled': 'Two-factor authentication is disabled.',
+  'settings.enable2FA': 'Enable 2FA',
+  'settings.activeSessions': 'Active sessions',
+  'settings.revokeSession': 'Revoke',
+  'settings.noSessions': 'No other active sessions.',
+  'settings.account': 'Account',
+  'settings.deleteAccount': 'Delete account',
+  'settings.deleteAccountWarning':
+    'This action is permanent and cannot be undone. All your data will be deleted.',
+  'settings.deleteConfirm': 'Are you sure you want to delete your account?',
+  'settings.deleteReason': "We're sorry to see you go. Tell us why (optional):",
+  'settings.accountDeleted': 'Account deleted successfully.',
+  'settings.dataExport': 'Export my data',
+  'settings.dataExportHint': 'Download all your profile, matches, and activity data.',
+  'settings.dataExportRequested':
+    "Data export requested. You will receive an email when it's ready.",
+  'settings.language': 'Language',
+  'settings.uiLanguage': 'UI language',
+  'settings.workingLanguages': 'Working languages',
+  'settings.country': 'Country',
+  'settings.theme': 'Theme',
+  'settings.themeLight': 'Light',
+  'settings.themeDark': 'Dark',
+  'settings.themeSystem': 'System',
+  'settings.themeComingSoon': 'Theme switching is coming soon.',
 
   'footer.jobSeekers': 'Job seekers',
   'footer.browseJobs': 'Browse jobs',
@@ -628,6 +930,7 @@ const en: Strings = {
   'footer.advancedSearch': 'Advanced search',
   'footer.company': 'Company',
   'footer.about': 'About',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Pricing',
   'footer.contact': 'Contact',
   'footer.legal': 'Legal',
@@ -637,6 +940,12 @@ const en: Strings = {
   'footer.terms': 'Terms',
   'footer.rights': 'All rights reserved.',
   'footer.madeBy': 'A product of',
+  'footer.explore': 'Explore',
+  'footer.jobs': 'Jobs',
+  'footer.scholarships': 'Scholarships',
+  'footer.tenders': 'Tenders',
+  'footer.deals': 'Deals',
+  'footer.funding': 'Funding',
 };
 
 // ---------------------------------------------------------------------------
@@ -648,10 +957,18 @@ const es: Strings = {
   'nav.allJobs': 'Todas las ofertas',
   'nav.search': 'Búsqueda avanzada',
   'nav.about': 'Nosotros',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Precios',
   'nav.signIn': 'Iniciar sesión',
   'nav.language': 'Idioma',
   'nav.categoriesHint': 'Las categorías aparecerán cuando haya empleos indexados.',
+  'nav.dashboard': 'Panel',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Coincidencias',
+  'nav.saved': 'Guardados',
+  'nav.preferences': 'Preferencias',
+  'nav.billing': 'Facturación',
+  'nav.settings': 'Ajustes',
 
   'cta.applyNow': 'Postular ahora',
   'cta.saveJob': 'Guardar empleo',
@@ -760,7 +1077,7 @@ const es: Strings = {
   'flag.thankYou':
     'Gracias — tu reporte ha sido registrado y será revisado por nuestros moderadores.',
   'flag.reason': 'Motivo',
-  'flag.details': 'Detalles (opcional)',
+  'flag.details': 'Detalles',
   'flag.detailsPlaceholder': '¿Qué tiene de incorrecto este anuncio?',
   'flag.alreadyFlagged': 'Ya reportaste este anuncio — gracias por mantener el sitio limpio.',
   'flag.signInRequired': 'Debes iniciar sesión para reportar un anuncio.',
@@ -790,6 +1107,7 @@ const es: Strings = {
   'status.rejected': 'Rechazado',
   'status.hired': 'Contratado',
   'card.match': '% coincidencia',
+  'card.new': 'Nuevo',
 
   'cascade.yourPreferences': 'Tus preferencias',
   'cascade.outside': 'Fuera de {country}',
@@ -803,6 +1121,7 @@ const es: Strings = {
   'feed.empty': 'Aún no hay nada que mostrar.',
   'feed.tryAllFilter': "Prueba el filtro 'Todas'.",
   'feed.loadError': 'No pudimos cargar tus oportunidades.',
+  'feed.opportunities': 'oportunidades',
 
   'onboard.step': 'Paso',
   'onboard.of': 'de',
@@ -831,8 +1150,8 @@ const es: Strings = {
   'onboard.extraInfoPlaceholder':
     'Cualquier otra cosa que quieras que sepamos: certificaciones, situación de visa, período de preaviso, etc.',
   'onboard.salaryPlaceholder': 'Monto anual',
-  'onboard.targetSalary': 'Salario objetivo (opcional)',
-  'onboard.uploadCV': 'Sube tu CV (opcional)',
+  'onboard.targetSalary': 'Salario objetivo',
+  'onboard.uploadCV': 'Sube tu CV',
   'onboard.chooseFile': 'Elegir archivo',
   'onboard.cvFormats': 'PDF, DOCX, RTF o TXT · hasta 10 MB',
   'onboard.readyToUpload': 'listo para subir',
@@ -847,7 +1166,7 @@ const es: Strings = {
   'onboard.southAmerica': 'Sudamérica',
   'onboard.asia': 'Asia',
   'onboard.oceania': 'Oceanía',
-  'onboard.timezones': 'Zonas horarias preferidas (opcional)',
+  'onboard.timezones': 'Zonas horarias preferidas',
   'onboard.languages': 'Idiomas en los que trabajas',
   'onboard.jobType': 'Tipo de empleo',
   'onboard.fullTime': 'Tiempo completo',
@@ -882,6 +1201,12 @@ const es: Strings = {
   'onboard.validationLanguage': 'Selecciona al menos un idioma',
   'onboard.validationJobType': 'Selecciona al menos un tipo de empleo',
   'onboard.validationTerms': 'Acepta los Términos antes de finalizar',
+  'onboard.cvDropHere': 'Suelta tu CV aquí',
+  'onboard.cvDragPrompt': 'Arrastra y suelta tu CV aquí, o haz clic para explorar',
+  'onboard.skipPreferences': 'Saltar por ahora — lo configuraré después',
+  'onboard.skipPreferencesHint': 'Siempre puedes configurarlo desde tu panel',
+  'onboard.features': 'funciones',
+  'onboard.showLess': 'Mostrar menos',
 
   'dash.title': 'Tu panel',
   'dash.setupIncomplete': 'Configuración incompleta',
@@ -923,6 +1248,138 @@ const es: Strings = {
   'dash.openingPayment': 'Abriendo pago…',
   'dash.payPerMonth': 'Pagar',
   'dash.perMonth': '/mes',
+  'dash.welcomeTitle': '¡Bienvenido a Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Te emparejamos con las mejores oportunidades en toda África. Comienza completando tu perfil y configurando tus preferencias.',
+  'dash.welcomeDismiss': 'Descartar',
+  'dash.welcomeTour': 'Haz un recorrido rápido →',
+  'dash.statusActive': 'Activo',
+  'dash.statusPastDue': 'Vencido',
+  'dash.statusCancelled': 'Cancelado',
+  'dash.emptyFeedTitle': 'Aún no hay oportunidades',
+  'dash.emptyFeedHint': 'Completa estos pasos para empezar a recibir coincidencias:',
+  'dash.emptyFeedCompleteProfile': 'Completa tu perfil',
+  'dash.emptyFeedSetPreferences': 'Configura tus preferencias',
+  'dash.emptyFeedBrowseAll': 'Explora todas las oportunidades',
+  'dash.celebrationTitle': '¡Todo listo!',
+  'dash.celebrationBody': 'Esto es lo que sigue:',
+  'dash.celebrationStep1': 'Ahora te estamos emparejando con oportunidades',
+  'dash.celebrationStep2': 'Recibirás notificaciones por correo de nuevas coincidencias',
+  'dash.celebrationStep3': 'Tus primeras coincidencias aparecerán en 24 horas',
+  'dash.celebrationDismiss': 'Entendido, muéstrame mi panel',
+  'onboard.profileSaved': '¡Perfil guardado!',
+  'dash.breadcrumbDashboard': 'Panel',
+
+  'plan.changeTitle': 'Cambiar tu plan',
+  'plan.currentPlan': 'Plan actual',
+  'plan.newPlan': 'Nuevo plan',
+  'plan.proratedAmount': 'Monto prorrateado',
+  'plan.nextBilling': 'Próxima facturación',
+  'plan.confirmChange': 'Confirmar cambio',
+  'plan.changeSuccess': '¡Plan cambiado a {plan}!',
+  'plan.changeError': 'No se pudo cambiar el plan. Intenta de nuevo.',
+  'plan.managedChangeHint': 'Contacta a tu agente para cambiar de plan.',
+
+  'cancel.title': 'Cancelar suscripción',
+  'cancel.reason': '¿Cuál es la razón principal?',
+  'cancel.foundJob': 'Ya encontré un empleo',
+  'cancel.tooExpensive': 'Demasiado caro',
+  'cancel.notEnoughMatches': 'No suficientes coincidencias',
+  'cancel.justPausing': 'Solo tomando un descanso',
+  'cancel.other': 'Otro',
+  'cancel.foundJobMessage': '¡Felicidades! Mantendremos tu perfil por si algo cambia.',
+  'cancel.tooExpensiveHint': '¿Sabías que Pro tiene 5× más coincidencias?',
+  'cancel.pauseHint': 'Puedes pausar. Las coincidencias se reanudarán cuando regreses.',
+  'cancel.confirmTitle': '¿Estás seguro?',
+  'cancel.confirmBody':
+    'Tu suscripción terminará el {date}. Perderás acceso a las coincidencias y tu perfil será pausado.',
+  'cancel.confirmCheckbox': 'Entiendo que mi suscripción será cancelada',
+  'cancel.confirmButton': 'Cancelar suscripción',
+  'cancel.success': 'Tu suscripción ha sido cancelada.',
+
+  'usage.title': 'Historial de uso',
+  'usage.week': 'Semana',
+  'usage.delivered': 'Entregadas',
+  'usage.queued': 'En cola',
+  'usage.noData': 'Los datos de uso aparecerán después de tu primera semana completa.',
+
+  'invoice.title': 'Facturas',
+  'invoice.date': 'Fecha',
+  'invoice.amount': 'Monto',
+  'invoice.status': 'Estado',
+  'invoice.download': 'Descargar',
+  'invoice.empty': 'Aún no hay facturas.',
+
+  'settings.title': 'Configuración',
+  'settings.sectionProfile': 'Perfil',
+  'settings.sectionNotifications': 'Notificaciones',
+  'settings.sectionSecurity': 'Seguridad',
+  'settings.sectionAccount': 'Cuenta',
+  'settings.sectionLanguage': 'Idioma',
+  'settings.sectionTheme': 'Tema',
+  'settings.profile': 'Perfil',
+  'settings.name': 'Nombre completo',
+  'settings.email': 'Correo electrónico',
+  'settings.phone': 'Teléfono',
+  'settings.currentTitle': 'Puesto actual',
+  'settings.cv': 'CV / Currículum',
+  'settings.cvUploaded': 'CV subido',
+  'settings.cvUploadNew': 'Subir nuevo CV',
+  'settings.saveProfile': 'Guardar perfil',
+  'settings.profileSaved': 'Perfil actualizado correctamente.',
+  'settings.profileFailed': 'Error al actualizar el perfil.',
+  'settings.managedByIdp': 'Gestionado por su proveedor de identidad',
+  'settings.notifications': 'Notificaciones',
+  'settings.emailDigest': 'Frecuencia de resumen por correo',
+  'settings.daily': 'Diario',
+  'settings.weekly': 'Semanal',
+  'settings.off': 'Desactivado',
+  'settings.matchAlerts': 'Alertas de coincidencias',
+  'settings.matchAlertsHint': 'Reciba una notificación cuando se encuentre una nueva coincidencia.',
+  'settings.weeklySummary': 'Resumen semanal',
+  'settings.weeklySummaryHint': 'Reciba un resumen semanal de su actividad.',
+  'settings.marketingEmails': 'Correos de marketing',
+  'settings.marketingEmailsHint':
+    'Consejos, actualizaciones del producto y perspectivas del mercado laboral.',
+  'settings.saveNotifications': 'Guardar preferencias',
+  'settings.notificationsSaved': 'Preferencias de notificación guardadas.',
+  'settings.notificationsFailed': 'Error al guardar las preferencias de notificación.',
+  'settings.comingSoon': 'Próximamente',
+  'settings.security': 'Seguridad',
+  'settings.changePassword': 'Cambiar contraseña',
+  'settings.currentPassword': 'Contraseña actual',
+  'settings.newPassword': 'Nueva contraseña',
+  'settings.confirmPassword': 'Confirmar nueva contraseña',
+  'settings.passwordChanged': 'Contraseña cambiada correctamente.',
+  'settings.passwordMismatch': 'Las contraseñas no coinciden.',
+  'settings.passwordWeak': 'La contraseña no cumple con los requisitos de seguridad.',
+  'settings.passwordSame': 'La nueva contraseña debe ser diferente de la actual.',
+  'settings.twoFactor': 'Autenticación de dos factores',
+  'settings.twoFactorDisabled': 'La autenticación de dos factores está desactivada.',
+  'settings.enable2FA': 'Activar 2FA',
+  'settings.activeSessions': 'Sesiones activas',
+  'settings.revokeSession': 'Revocar',
+  'settings.noSessions': 'No hay otras sesiones activas.',
+  'settings.account': 'Cuenta',
+  'settings.deleteAccount': 'Eliminar cuenta',
+  'settings.deleteAccountWarning':
+    'Esta acción es permanente y no se puede deshacer. Todos sus datos serán eliminados.',
+  'settings.deleteConfirm': '¿Está seguro de que desea eliminar su cuenta?',
+  'settings.deleteReason': 'Lamentamos verlo partir. Cuéntenos por qué (opcional):',
+  'settings.accountDeleted': 'Cuenta eliminada correctamente.',
+  'settings.dataExport': 'Exportar mis datos',
+  'settings.dataExportHint': 'Descargue todos sus datos de perfil, coincidencias y actividad.',
+  'settings.dataExportRequested':
+    'Exportación de datos solicitada. Recibirá un correo cuando esté lista.',
+  'settings.language': 'Idioma',
+  'settings.uiLanguage': 'Idioma de la interfaz',
+  'settings.workingLanguages': 'Idiomas de trabajo',
+  'settings.country': 'País',
+  'settings.theme': 'Tema',
+  'settings.themeLight': 'Claro',
+  'settings.themeDark': 'Oscuro',
+  'settings.themeSystem': 'Sistema',
+  'settings.themeComingSoon': 'El cambio de tema estará disponible próximamente.',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar empleos',
@@ -930,6 +1387,7 @@ const es: Strings = {
   'footer.advancedSearch': 'Búsqueda avanzada',
   'footer.company': 'Empresa',
   'footer.about': 'Nosotros',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Precios',
   'footer.contact': 'Contacto',
   'footer.legal': 'Legal',
@@ -939,6 +1397,12 @@ const es: Strings = {
   'footer.terms': 'Términos',
   'footer.rights': 'Todos los derechos reservados.',
   'footer.madeBy': 'Un producto de',
+  'footer.explore': 'Explorar',
+  'footer.jobs': 'Empleos',
+  'footer.scholarships': 'Becas',
+  'footer.tenders': 'Licitaciones',
+  'footer.deals': 'Ofertas',
+  'footer.funding': 'Financiamiento',
 };
 
 // ---------------------------------------------------------------------------
@@ -950,10 +1414,18 @@ const fr: Strings = {
   'nav.allJobs': 'Toutes les offres',
   'nav.search': 'Recherche avancée',
   'nav.about': 'À propos',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Tarifs',
   'nav.signIn': 'Se connecter',
   'nav.language': 'Langue',
   'nav.categoriesHint': "Les catégories s'afficheront une fois les offres indexées.",
+  'nav.dashboard': 'Tableau de bord',
+  'nav.feed': 'Fil',
+  'nav.matches': 'Correspondances',
+  'nav.saved': 'Enregistrés',
+  'nav.preferences': 'Préférences',
+  'nav.billing': 'Facturation',
+  'nav.settings': 'Paramètres',
 
   'cta.applyNow': 'Postuler',
   'cta.saveJob': 'Enregistrer',
@@ -1062,7 +1534,7 @@ const fr: Strings = {
   'flag.thankYou':
     'Merci — votre signalement a été enregistré et sera examiné par nos modérateurs.',
   'flag.reason': 'Motif',
-  'flag.details': 'Détails (facultatif)',
+  'flag.details': 'Détails',
   'flag.detailsPlaceholder': "Qu'est-ce qui semble incorrect dans cette annonce ?",
   'flag.alreadyFlagged':
     'Vous avez déjà signalé cette annonce — merci de contribuer à la qualité du site.',
@@ -1093,6 +1565,7 @@ const fr: Strings = {
   'status.rejected': 'Refusé',
   'status.hired': 'Embauché',
   'card.match': '% correspondance',
+  'card.new': 'Nouveau',
 
   'cascade.yourPreferences': 'Vos préférences',
   'cascade.outside': 'Hors de {country}',
@@ -1106,6 +1579,7 @@ const fr: Strings = {
   'feed.empty': 'Rien à afficher pour le moment.',
   'feed.tryAllFilter': 'Essayez le filtre « Tout ».',
   'feed.loadError': 'Impossible de charger vos opportunités.',
+  'feed.opportunities': 'opportunités',
 
   'onboard.step': 'Étape',
   'onboard.of': 'sur',
@@ -1135,8 +1609,8 @@ const fr: Strings = {
   'onboard.extraInfoPlaceholder':
     'Tout ce que vous souhaitez nous faire savoir : certifications, statut de visa, préavis, etc.',
   'onboard.salaryPlaceholder': 'Montant annuel',
-  'onboard.targetSalary': 'Salaire cible (facultatif)',
-  'onboard.uploadCV': 'Importez votre CV (facultatif)',
+  'onboard.targetSalary': 'Salaire cible',
+  'onboard.uploadCV': 'Importez votre CV',
   'onboard.chooseFile': 'Choisir un fichier',
   'onboard.cvFormats': 'PDF, DOCX, RTF ou TXT · 10 Mo maximum',
   'onboard.readyToUpload': 'prêt à importer',
@@ -1151,7 +1625,7 @@ const fr: Strings = {
   'onboard.southAmerica': 'Amérique du Sud',
   'onboard.asia': 'Asie',
   'onboard.oceania': 'Océanie',
-  'onboard.timezones': 'Fuseaux horaires préférés (facultatif)',
+  'onboard.timezones': 'Fuseaux horaires préférés',
   'onboard.languages': 'Langues dans lesquelles vous travaillez',
   'onboard.jobType': 'Type de poste',
   'onboard.fullTime': 'Temps plein',
@@ -1186,6 +1660,13 @@ const fr: Strings = {
   'onboard.validationLanguage': 'Sélectionnez au moins une langue',
   'onboard.validationJobType': 'Sélectionnez au moins un type de poste',
   'onboard.validationTerms': 'Veuillez accepter les Conditions avant de terminer',
+  'onboard.cvDropHere': 'Déposez votre CV ici',
+  'onboard.cvDragPrompt': 'Glissez-déposez votre CV ici, ou cliquez pour parcourir',
+  'onboard.skipPreferences': 'Passer pour le moment — je configurerai plus tard',
+  'onboard.skipPreferencesHint':
+    'Vous pouvez toujours configurer cela depuis votre tableau de bord',
+  'onboard.features': 'fonctionnalités',
+  'onboard.showLess': 'Afficher moins',
 
   'dash.title': 'Votre tableau de bord',
   'dash.setupIncomplete': 'Configuration incomplète',
@@ -1229,6 +1710,141 @@ const fr: Strings = {
   'dash.openingPayment': 'Ouverture du paiement…',
   'dash.payPerMonth': 'Payer',
   'dash.perMonth': '/mois',
+  'dash.welcomeTitle': 'Bienvenue sur Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Nous vous mettons en relation avec les meilleures opportunités en Afrique. Commencez par compléter votre profil et définir vos préférences.',
+  'dash.welcomeDismiss': 'Ignorer',
+  'dash.welcomeTour': 'Faire un tour rapide →',
+  'dash.statusActive': 'Actif',
+  'dash.statusPastDue': 'En retard',
+  'dash.statusCancelled': 'Annulé',
+  'dash.emptyFeedTitle': "Pas encore d'opportunités",
+  'dash.emptyFeedHint': 'Suivez ces étapes pour commencer à recevoir des correspondances:',
+  'dash.emptyFeedCompleteProfile': 'Complétez votre profil',
+  'dash.emptyFeedSetPreferences': 'Définissez vos préférences',
+  'dash.emptyFeedBrowseAll': 'Parcourir toutes les opportunités',
+  'dash.celebrationTitle': 'Tout est prêt !',
+  'dash.celebrationBody': 'Voici la suite :',
+  'dash.celebrationStep1': 'Nous vous mettons maintenant en relation avec des opportunités',
+  'dash.celebrationStep2':
+    'Vous recevrez des notifications par email pour les nouvelles correspondances',
+  'dash.celebrationStep3': 'Vos premières correspondances apparaîtront dans les 24 heures',
+  'dash.celebrationDismiss': 'Compris, montrez-moi mon tableau de bord',
+  'onboard.profileSaved': 'Profil enregistré!',
+  'dash.breadcrumbDashboard': 'Tableau de bord',
+
+  'plan.changeTitle': 'Changer de forfait',
+  'plan.currentPlan': 'Forfait actuel',
+  'plan.newPlan': 'Nouveau forfait',
+  'plan.proratedAmount': 'Montant au prorata',
+  'plan.nextBilling': 'Prochaine facturation',
+  'plan.confirmChange': 'Confirmer le changement',
+  'plan.changeSuccess': 'Forfait changé pour {plan}!',
+  'plan.changeError': 'Impossible de changer de forfait. Réessayez.',
+  'plan.managedChangeHint': 'Contactez votre agent pour changer de forfait.',
+
+  'cancel.title': "Annuler l'abonnement",
+  'cancel.reason': 'Quelle est la raison principale?',
+  'cancel.foundJob': "J'ai déjà trouvé un emploi",
+  'cancel.tooExpensive': 'Trop cher',
+  'cancel.notEnoughMatches': 'Pas assez de correspondances',
+  'cancel.justPausing': 'Je fais une pause',
+  'cancel.other': 'Autre',
+  'cancel.foundJobMessage': 'Félicitations! Nous conservons votre profil au cas où.',
+  'cancel.tooExpensiveHint': 'Saviez-vous que Pro a 5× plus de correspondances?',
+  'cancel.pauseHint':
+    'Vous pouvez mettre en pause. Les correspondances reprendront à votre retour.',
+  'cancel.confirmTitle': 'Êtes-vous sûr?',
+  'cancel.confirmBody':
+    "Votre abonnement se terminera le {date}. Vous perdrez l'accès aux correspondances et votre profil sera mis en pause.",
+  'cancel.confirmCheckbox': 'Je comprends que mon abonnement sera annulé',
+  'cancel.confirmButton': "Annuler l'abonnement",
+  'cancel.success': 'Votre abonnement a été annulé.',
+
+  'usage.title': "Historique d'utilisation",
+  'usage.week': 'Semaine',
+  'usage.delivered': 'Livrées',
+  'usage.queued': 'En file',
+  'usage.noData': "Les données d'utilisation apparaîtront après votre première semaine complète.",
+
+  'invoice.title': 'Factures',
+  'invoice.date': 'Date',
+  'invoice.amount': 'Montant',
+  'invoice.status': 'Statut',
+  'invoice.download': 'Télécharger',
+  'invoice.empty': 'Aucune facture pour le moment.',
+
+  'settings.title': 'Paramètres',
+  'settings.sectionProfile': 'Profil',
+  'settings.sectionNotifications': 'Notifications',
+  'settings.sectionSecurity': 'Sécurité',
+  'settings.sectionAccount': 'Compte',
+  'settings.sectionLanguage': 'Langue',
+  'settings.sectionTheme': 'Thème',
+  'settings.profile': 'Profil',
+  'settings.name': 'Nom complet',
+  'settings.email': 'Adresse e-mail',
+  'settings.phone': 'Numéro de téléphone',
+  'settings.currentTitle': 'Poste actuel',
+  'settings.cv': 'CV',
+  'settings.cvUploaded': 'CV téléchargé',
+  'settings.cvUploadNew': 'Télécharger un nouveau CV',
+  'settings.saveProfile': 'Enregistrer le profil',
+  'settings.profileSaved': 'Profil mis à jour avec succès.',
+  'settings.profileFailed': 'Échec de la mise à jour du profil.',
+  'settings.managedByIdp': "Géré par votre fournisseur d'identité",
+  'settings.notifications': 'Notifications',
+  'settings.emailDigest': 'Fréquence du résumé par e-mail',
+  'settings.daily': 'Quotidien',
+  'settings.weekly': 'Hebdomadaire',
+  'settings.off': 'Désactivé',
+  'settings.matchAlerts': 'Alertes de correspondance',
+  'settings.matchAlertsHint': "Soyez notifié lorsqu'une nouvelle correspondance est trouvée.",
+  'settings.weeklySummary': 'Résumé hebdomadaire',
+  'settings.weeklySummaryHint': 'Recevez un résumé hebdomadaire de votre activité.',
+  'settings.marketingEmails': 'E-mails marketing',
+  'settings.marketingEmailsHint': 'Conseils, mises à jour produit et perspectives du marché.',
+  'settings.saveNotifications': 'Enregistrer les préférences',
+  'settings.notificationsSaved': 'Préférences de notification enregistrées.',
+  'settings.notificationsFailed': "Échec de l'enregistrement des préférences.",
+  'settings.comingSoon': 'Bientôt disponible',
+  'settings.security': 'Sécurité',
+  'settings.changePassword': 'Changer le mot de passe',
+  'settings.currentPassword': 'Mot de passe actuel',
+  'settings.newPassword': 'Nouveau mot de passe',
+  'settings.confirmPassword': 'Confirmer le nouveau mot de passe',
+  'settings.passwordChanged': 'Mot de passe changé avec succès.',
+  'settings.passwordMismatch': 'Les mots de passe ne correspondent pas.',
+  'settings.passwordWeak': 'Le mot de passe ne répond pas aux exigences de sécurité.',
+  'settings.passwordSame': "Le nouveau mot de passe doit être différent de l'actuel.",
+  'settings.twoFactor': 'Authentification à deux facteurs',
+  'settings.twoFactorDisabled': "L'authentification à deux facteurs est désactivée.",
+  'settings.enable2FA': 'Activer 2FA',
+  'settings.activeSessions': 'Sessions actives',
+  'settings.revokeSession': 'Révoquer',
+  'settings.noSessions': 'Aucune autre session active.',
+  'settings.account': 'Compte',
+  'settings.deleteAccount': 'Supprimer le compte',
+  'settings.deleteAccountWarning':
+    'Cette action est permanente et irréversible. Toutes vos données seront supprimées.',
+  'settings.deleteConfirm': 'Êtes-vous sûr de vouloir supprimer votre compte ?',
+  'settings.deleteReason':
+    'Nous sommes désolés de vous voir partir. Dites-nous pourquoi (facultatif) :',
+  'settings.accountDeleted': 'Compte supprimé avec succès.',
+  'settings.dataExport': 'Exporter mes données',
+  'settings.dataExportHint':
+    'Téléchargez toutes vos données de profil, correspondances et activités.',
+  'settings.dataExportRequested':
+    'Exportation demandée. Vous recevrez un e-mail quand elle sera prête.',
+  'settings.language': 'Langue',
+  'settings.uiLanguage': "Langue de l'interface",
+  'settings.workingLanguages': 'Langues de travail',
+  'settings.country': 'Pays',
+  'settings.theme': 'Thème',
+  'settings.themeLight': 'Clair',
+  'settings.themeDark': 'Sombre',
+  'settings.themeSystem': 'Système',
+  'settings.themeComingSoon': 'Le changement de thème arrive bientôt.',
 
   'footer.jobSeekers': 'Candidats',
   'footer.browseJobs': 'Parcourir les offres',
@@ -1236,6 +1852,7 @@ const fr: Strings = {
   'footer.advancedSearch': 'Recherche avancée',
   'footer.company': 'Entreprise',
   'footer.about': 'À propos',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Tarifs',
   'footer.contact': 'Contact',
   'footer.legal': 'Mentions légales',
@@ -1245,6 +1862,12 @@ const fr: Strings = {
   'footer.terms': 'Conditions',
   'footer.rights': 'Tous droits réservés.',
   'footer.madeBy': 'Un produit de',
+  'footer.explore': 'Explorer',
+  'footer.jobs': 'Emplois',
+  'footer.scholarships': 'Bourses',
+  'footer.tenders': "Appels d'offres",
+  'footer.deals': 'Bonnes affaires',
+  'footer.funding': 'Financement',
 };
 
 // ---------------------------------------------------------------------------
@@ -1256,10 +1879,18 @@ const de: Strings = {
   'nav.allJobs': 'Alle Stellen',
   'nav.search': 'Erweiterte Suche',
   'nav.about': 'Über uns',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Preise',
   'nav.signIn': 'Anmelden',
   'nav.language': 'Sprache',
   'nav.categoriesHint': 'Kategorien erscheinen, sobald Stellen indexiert sind.',
+  'nav.dashboard': 'Dashboard',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Übereinstimmungen',
+  'nav.saved': 'Gespeichert',
+  'nav.preferences': 'Präferenzen',
+  'nav.billing': 'Abrechnung',
+  'nav.settings': 'Einstellungen',
 
   'cta.applyNow': 'Jetzt bewerben',
   'cta.saveJob': 'Merken',
@@ -1368,7 +1999,7 @@ const de: Strings = {
   'flag.other': 'Sonstiges',
   'flag.thankYou': 'Danke — deine Meldung wurde erfasst und wird von unseren Moderatoren geprüft.',
   'flag.reason': 'Grund',
-  'flag.details': 'Details (optional)',
+  'flag.details': 'Details',
   'flag.detailsPlaceholder': 'Was stimmt nicht mit diesem Inserat?',
   'flag.alreadyFlagged': 'Du hast dieses Inserat bereits gemeldet — danke für deinen Beitrag.',
   'flag.signInRequired': 'Du musst angemeldet sein, um ein Inserat zu melden.',
@@ -1398,6 +2029,7 @@ const de: Strings = {
   'status.rejected': 'Abgelehnt',
   'status.hired': 'Eingestellt',
   'card.match': '% Übereinstimmung',
+  'card.new': 'Neu',
 
   'cascade.yourPreferences': 'Deine Präferenzen',
   'cascade.outside': 'Außerhalb von {country}',
@@ -1411,6 +2043,7 @@ const de: Strings = {
   'feed.empty': 'Hier gibt es noch nichts zu sehen.',
   'feed.tryAllFilter': 'Versuche den Filter „Alle“.',
   'feed.loadError': 'Deine Chancen konnten nicht geladen werden.',
+  'feed.opportunities': 'M\u00f6glichkeiten',
 
   'onboard.step': 'Schritt',
   'onboard.of': 'von',
@@ -1440,8 +2073,8 @@ const de: Strings = {
   'onboard.extraInfoPlaceholder':
     'Alles Weitere, das wir wissen sollten — Zertifizierungen, Visastatus, Kündigungsfrist usw.',
   'onboard.salaryPlaceholder': 'Jahresbetrag',
-  'onboard.targetSalary': 'Zielgehalt (optional)',
-  'onboard.uploadCV': 'Lade deinen Lebenslauf hoch (optional)',
+  'onboard.targetSalary': 'Zielgehalt',
+  'onboard.uploadCV': 'Lade deinen Lebenslauf hoch',
   'onboard.chooseFile': 'Datei auswählen',
   'onboard.cvFormats': 'PDF, DOCX, RTF oder TXT · bis zu 10 MB',
   'onboard.readyToUpload': 'bereit zum Hochladen',
@@ -1456,7 +2089,7 @@ const de: Strings = {
   'onboard.southAmerica': 'Südamerika',
   'onboard.asia': 'Asien',
   'onboard.oceania': 'Ozeanien',
-  'onboard.timezones': 'Bevorzugte Zeitzonen (optional)',
+  'onboard.timezones': 'Bevorzugte Zeitzonen',
   'onboard.languages': 'Sprachen, in denen du arbeitest',
   'onboard.jobType': 'Beschäftigungsart',
   'onboard.fullTime': 'Vollzeit',
@@ -1491,6 +2124,12 @@ const de: Strings = {
   'onboard.validationLanguage': 'Wähle mindestens eine Sprache',
   'onboard.validationJobType': 'Wähle mindestens eine Beschäftigungsart',
   'onboard.validationTerms': 'Bitte stimme den Nutzungsbedingungen zu, bevor du fortfährst',
+  'onboard.cvDropHere': 'Lebenslauf hier ablegen',
+  'onboard.cvDragPrompt': 'Ziehe deinen Lebenslauf hierher oder klicke zum Durchsuchen',
+  'onboard.skipPreferences': 'Überspringen — ich richte das später ein',
+  'onboard.skipPreferencesHint': 'Du kannst dies jederzeit in deinem Dashboard konfigurieren',
+  'onboard.features': 'Funktionen',
+  'onboard.showLess': 'Weniger anzeigen',
 
   'dash.title': 'Dein Dashboard',
   'dash.setupIncomplete': 'Einrichtung unvollständig',
@@ -1533,6 +2172,142 @@ const de: Strings = {
   'dash.openingPayment': 'Zahlung wird geöffnet…',
   'dash.payPerMonth': 'Zahlen',
   'dash.perMonth': '/Monat',
+  'dash.welcomeTitle': 'Willkommen bei Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Wir verbinden Sie mit den besten Möglichkeiten in ganz Afrika. Vervollständigen Sie Ihr Profil und legen Sie Ihre Präferenzen fest.',
+  'dash.welcomeDismiss': 'Schließen',
+  'dash.welcomeTour': 'Kurze Tour starten →',
+  'dash.statusActive': 'Aktiv',
+  'dash.statusPastDue': 'Überfällig',
+  'dash.statusCancelled': 'Gekündigt',
+  'dash.emptyFeedTitle': 'Noch keine Möglichkeiten',
+  'dash.emptyFeedHint': 'Führen Sie diese Schritte aus, um Übereinstimmungen zu erhalten:',
+  'dash.emptyFeedCompleteProfile': 'Profil vervollständigen',
+  'dash.emptyFeedSetPreferences': 'Präferenzen festlegen',
+  'dash.emptyFeedBrowseAll': 'Alle Möglichkeiten durchsuchen',
+  'dash.celebrationTitle': 'Alles bereit!',
+  'dash.celebrationBody': 'So geht es weiter:',
+  'dash.celebrationStep1': 'Wir gleichen Sie jetzt mit Möglichkeiten ab',
+  'dash.celebrationStep2': 'Sie erhalten E-Mail-Benachrichtigungen über neue Übereinstimmungen',
+  'dash.celebrationStep3': 'Ihre ersten Übereinstimmungen erscheinen innerhalb von 24 Stunden',
+  'dash.celebrationDismiss': 'Verstanden, zeigen Sie mir mein Dashboard',
+  'onboard.profileSaved': 'Profil gespeichert!',
+  'dash.breadcrumbDashboard': 'Dashboard',
+
+  'plan.changeTitle': 'Plan ändern',
+  'plan.currentPlan': 'Aktueller Plan',
+  'plan.newPlan': 'Neuer Plan',
+  'plan.proratedAmount': 'Anteiliger Betrag',
+  'plan.nextBilling': 'Nächste Abrechnung',
+  'plan.confirmChange': 'Änderung bestätigen',
+  'plan.changeSuccess': 'Plan geändert zu {plan}!',
+  'plan.changeError': 'Plan konnte nicht geändert werden. Versuche es erneut.',
+  'plan.managedChangeHint': 'Kontaktiere deinen Agenten, um den Plan zu ändern.',
+
+  'cancel.title': 'Abonnement kündigen',
+  'cancel.reason': 'Was ist der Hauptgrund?',
+  'cancel.foundJob': 'Ich habe bereits einen Job gefunden',
+  'cancel.tooExpensive': 'Zu teuer',
+  'cancel.notEnoughMatches': 'Nicht genug Übereinstimmungen',
+  'cancel.justPausing': 'Mache eine Pause',
+  'cancel.other': 'Sonstiges',
+  'cancel.foundJobMessage':
+    'Herzlichen Glückwunsch! Wir behalten dein Profil für den Fall der Fälle.',
+  'cancel.tooExpensiveHint': 'Wusstest du, dass Pro 5× mehr Übereinstimmungen bietet?',
+  'cancel.pauseHint':
+    'Du kannst pausieren. Die Übereinstimmungen werden bei deiner Rückkehr fortgesetzt.',
+  'cancel.confirmTitle': 'Bist du sicher?',
+  'cancel.confirmBody':
+    'Dein Abonnement endet am {date}. Du verlierst den Zugang zu Übereinstimmungen und dein Profil wird pausiert.',
+  'cancel.confirmCheckbox': 'Ich verstehe, dass mein Abonnement gekündigt wird',
+  'cancel.confirmButton': 'Abonnement kündigen',
+  'cancel.success': 'Dein Abonnement wurde gekündigt.',
+
+  'usage.title': 'Nutzungsverlauf',
+  'usage.week': 'Woche',
+  'usage.delivered': 'Geliefert',
+  'usage.queued': 'In Warteschlange',
+  'usage.noData': 'Nutzungsdaten erscheinen nach deiner ersten vollständigen Woche.',
+
+  'invoice.title': 'Rechnungen',
+  'invoice.date': 'Datum',
+  'invoice.amount': 'Betrag',
+  'invoice.status': 'Status',
+  'invoice.download': 'Herunterladen',
+  'invoice.empty': 'Noch keine Rechnungen.',
+
+  'settings.title': 'Einstellungen',
+  'settings.sectionProfile': 'Profil',
+  'settings.sectionNotifications': 'Benachrichtigungen',
+  'settings.sectionSecurity': 'Sicherheit',
+  'settings.sectionAccount': 'Konto',
+  'settings.sectionLanguage': 'Sprache',
+  'settings.sectionTheme': 'Design',
+  'settings.profile': 'Profil',
+  'settings.name': 'Vollständiger Name',
+  'settings.email': 'E-Mail-Adresse',
+  'settings.phone': 'Telefonnummer',
+  'settings.currentTitle': 'Aktuelle Berufsbezeichnung',
+  'settings.cv': 'Lebenslauf',
+  'settings.cvUploaded': 'Lebenslauf hochgeladen',
+  'settings.cvUploadNew': 'Neuen Lebenslauf hochladen',
+  'settings.saveProfile': 'Profil speichern',
+  'settings.profileSaved': 'Profil erfolgreich aktualisiert.',
+  'settings.profileFailed': 'Fehler beim Aktualisieren des Profils.',
+  'settings.managedByIdp': 'Wird von Ihrem Identitätsanbieter verwaltet',
+  'settings.notifications': 'Benachrichtigungen',
+  'settings.emailDigest': 'E-Mail-Zusammenfassungshäufigkeit',
+  'settings.daily': 'Täglich',
+  'settings.weekly': 'Wöchentlich',
+  'settings.off': 'Aus',
+  'settings.matchAlerts': 'Übereinstimmungsbenachrichtigungen',
+  'settings.matchAlertsHint':
+    'Benachrichtigt werden, wenn eine neue Übereinstimmung gefunden wird.',
+  'settings.weeklySummary': 'Wöchentliche Zusammenfassung',
+  'settings.weeklySummaryHint': 'Erhalten Sie eine wöchentliche Zusammenfassung Ihrer Aktivitäten.',
+  'settings.marketingEmails': 'Marketing-E-Mails',
+  'settings.marketingEmailsHint': 'Tipps, Produktaktualisierungen und Arbeitsmarkteinblicke.',
+  'settings.saveNotifications': 'Einstellungen speichern',
+  'settings.notificationsSaved': 'Benachrichtigungseinstellungen gespeichert.',
+  'settings.notificationsFailed': 'Fehler beim Speichern der Benachrichtigungseinstellungen.',
+  'settings.comingSoon': 'Demnächst verfügbar',
+  'settings.security': 'Sicherheit',
+  'settings.changePassword': 'Passwort ändern',
+  'settings.currentPassword': 'Aktuelles Passwort',
+  'settings.newPassword': 'Neues Passwort',
+  'settings.confirmPassword': 'Neues Passwort bestätigen',
+  'settings.passwordChanged': 'Passwort erfolgreich geändert.',
+  'settings.passwordMismatch': 'Passwörter stimmen nicht überein.',
+  'settings.passwordWeak': 'Das Passwort erfüllt nicht die Sicherheitsanforderungen.',
+  'settings.passwordSame': 'Das neue Passwort muss sich vom aktuellen unterscheiden.',
+  'settings.twoFactor': 'Zwei-Faktor-Authentifizierung',
+  'settings.twoFactorDisabled': 'Zwei-Faktor-Authentifizierung ist deaktiviert.',
+  'settings.enable2FA': '2FA aktivieren',
+  'settings.activeSessions': 'Aktive Sitzungen',
+  'settings.revokeSession': 'Widerrufen',
+  'settings.noSessions': 'Keine anderen aktiven Sitzungen.',
+  'settings.account': 'Konto',
+  'settings.deleteAccount': 'Konto löschen',
+  'settings.deleteAccountWarning':
+    'Diese Aktion ist endgültig und kann nicht rückgängig gemacht werden. Alle Ihre Daten werden gelöscht.',
+  'settings.deleteConfirm': 'Sind Sie sicher, dass Sie Ihr Konto löschen möchten?',
+  'settings.deleteReason':
+    'Es tut uns leid, Sie gehen zu sehen. Teilen Sie uns mit, warum (optional):',
+  'settings.accountDeleted': 'Konto erfolgreich gelöscht.',
+  'settings.dataExport': 'Meine Daten exportieren',
+  'settings.dataExportHint':
+    'Laden Sie alle Ihre Profil-, Übereinstimmungs- und Aktivitätsdaten herunter.',
+  'settings.dataExportRequested':
+    'Datenexport angefordert. Sie erhalten eine E-Mail, wenn er bereit ist.',
+  'settings.language': 'Sprache',
+  'settings.uiLanguage': 'Oberflächensprache',
+  'settings.workingLanguages': 'Arbeitssprachen',
+  'settings.country': 'Land',
+  'settings.theme': 'Design',
+  'settings.themeLight': 'Hell',
+  'settings.themeDark': 'Dunkel',
+  'settings.themeSystem': 'System',
+  'settings.themeComingSoon': 'Designwechsel kommt demnächst.',
 
   'footer.jobSeekers': 'Jobsuchende',
   'footer.browseJobs': 'Stellen durchsuchen',
@@ -1540,6 +2315,7 @@ const de: Strings = {
   'footer.advancedSearch': 'Erweiterte Suche',
   'footer.company': 'Unternehmen',
   'footer.about': 'Über uns',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Preise',
   'footer.contact': 'Kontakt',
   'footer.legal': 'Rechtliches',
@@ -1549,6 +2325,12 @@ const de: Strings = {
   'footer.terms': 'AGB',
   'footer.rights': 'Alle Rechte vorbehalten.',
   'footer.madeBy': 'Ein Produkt von',
+  'footer.explore': 'Entdecken',
+  'footer.jobs': 'Stellen',
+  'footer.scholarships': 'Stipendien',
+  'footer.tenders': 'Ausschreibungen',
+  'footer.deals': 'Angebote',
+  'footer.funding': 'Förderung',
 };
 
 // ---------------------------------------------------------------------------
@@ -1560,10 +2342,18 @@ const pt: Strings = {
   'nav.allJobs': 'Todas as vagas',
   'nav.search': 'Busca avançada',
   'nav.about': 'Sobre',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Planos',
   'nav.signIn': 'Entrar',
   'nav.language': 'Idioma',
   'nav.categoriesHint': 'As categorias aparecem quando houver vagas indexadas.',
+  'nav.dashboard': 'Painel',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Correspondências',
+  'nav.saved': 'Salvos',
+  'nav.preferences': 'Preferências',
+  'nav.billing': 'Faturamento',
+  'nav.settings': 'Configurações',
 
   'cta.applyNow': 'Candidatar-se',
   'cta.saveJob': 'Salvar vaga',
@@ -1672,7 +2462,7 @@ const pt: Strings = {
   'flag.thankYou':
     'Obrigado — sua denúncia foi registrada e será analisada por nossos moderadores.',
   'flag.reason': 'Motivo',
-  'flag.details': 'Detalhes (opcional)',
+  'flag.details': 'Detalhes',
   'flag.detailsPlaceholder': 'O que parece errado neste anúncio?',
   'flag.alreadyFlagged': 'Você já denunciou este anúncio — obrigado por manter o site limpo.',
   'flag.signInRequired': 'Você precisa estar logado para denunciar um anúncio.',
@@ -1702,6 +2492,7 @@ const pt: Strings = {
   'status.rejected': 'Rejeitado',
   'status.hired': 'Contratado',
   'card.match': '% compatível',
+  'card.new': 'Novo',
 
   'cascade.yourPreferences': 'Suas preferências',
   'cascade.outside': 'Fora de {country}',
@@ -1715,6 +2506,7 @@ const pt: Strings = {
   'feed.empty': 'Nada para mostrar por enquanto.',
   'feed.tryAllFilter': "Experimente o filtro 'Todas'.",
   'feed.loadError': 'Não foi possível carregar suas oportunidades.',
+  'feed.opportunities': 'oportunidades',
 
   'onboard.step': 'Passo',
   'onboard.of': 'de',
@@ -1743,8 +2535,8 @@ const pt: Strings = {
   'onboard.extraInfoPlaceholder':
     'Qualquer outra coisa que queira nos contar — certificações, situação de visto, período de aviso prévio, etc.',
   'onboard.salaryPlaceholder': 'Valor anual',
-  'onboard.targetSalary': 'Salário desejado (opcional)',
-  'onboard.uploadCV': 'Envie seu currículo (opcional)',
+  'onboard.targetSalary': 'Salário desejado',
+  'onboard.uploadCV': 'Envie seu currículo',
   'onboard.chooseFile': 'Escolher arquivo',
   'onboard.cvFormats': 'PDF, DOCX, RTF ou TXT · até 10 MB',
   'onboard.readyToUpload': 'pronto para enviar',
@@ -1759,7 +2551,7 @@ const pt: Strings = {
   'onboard.southAmerica': 'América do Sul',
   'onboard.asia': 'Ásia',
   'onboard.oceania': 'Oceania',
-  'onboard.timezones': 'Fusos horários preferidos (opcional)',
+  'onboard.timezones': 'Fusos horários preferidos',
   'onboard.languages': 'Idiomas em que você trabalha',
   'onboard.jobType': 'Tipo de vaga',
   'onboard.fullTime': 'Tempo integral',
@@ -1794,6 +2586,12 @@ const pt: Strings = {
   'onboard.validationLanguage': 'Selecione pelo menos um idioma',
   'onboard.validationJobType': 'Selecione pelo menos um tipo de vaga',
   'onboard.validationTerms': 'Aceite os Termos antes de finalizar',
+  'onboard.cvDropHere': 'Solte seu currículo aqui',
+  'onboard.cvDragPrompt': 'Arraste e solte seu currículo aqui, ou clique para procurar',
+  'onboard.skipPreferences': 'Pular por agora — vou configurar depois',
+  'onboard.skipPreferencesHint': 'Você sempre pode configurar isso no seu painel',
+  'onboard.features': 'recursos',
+  'onboard.showLess': 'Mostrar menos',
 
   'dash.title': 'Seu painel',
   'dash.setupIncomplete': 'Configuração incompleta',
@@ -1835,6 +2633,138 @@ const pt: Strings = {
   'dash.openingPayment': 'Abrindo pagamento…',
   'dash.payPerMonth': 'Pagar',
   'dash.perMonth': '/mês',
+  'dash.welcomeTitle': 'Bem-vindo ao Stawi Opportunities!',
+  'dash.welcomeBody':
+    'Conectamos você às melhores oportunidades em toda a África. Comece completando seu perfil e definindo suas preferências.',
+  'dash.welcomeDismiss': 'Dispensar',
+  'dash.welcomeTour': 'Faça um tour rápido →',
+  'dash.statusActive': 'Ativo',
+  'dash.statusPastDue': 'Vencido',
+  'dash.statusCancelled': 'Cancelado',
+  'dash.emptyFeedTitle': 'Ainda não há oportunidades',
+  'dash.emptyFeedHint': 'Conclua estas etapas para começar a receber correspondências:',
+  'dash.emptyFeedCompleteProfile': 'Complete seu perfil',
+  'dash.emptyFeedSetPreferences': 'Defina suas preferências',
+  'dash.emptyFeedBrowseAll': 'Explore todas as oportunidades',
+  'dash.celebrationTitle': 'Tudo pronto!',
+  'dash.celebrationBody': 'Aqui está o que vem a seguir:',
+  'dash.celebrationStep1': 'Estamos agora combinando você com oportunidades',
+  'dash.celebrationStep2': 'Você receberá notificações por e-mail de novas correspondências',
+  'dash.celebrationStep3': 'Suas primeiras correspondências aparecerão em 24 horas',
+  'dash.celebrationDismiss': 'Entendi, mostre-me meu painel',
+  'onboard.profileSaved': 'Perfil salvo!',
+  'dash.breadcrumbDashboard': 'Painel',
+
+  'plan.changeTitle': 'Alterar seu plano',
+  'plan.currentPlan': 'Plano atual',
+  'plan.newPlan': 'Novo plano',
+  'plan.proratedAmount': 'Valor proporcional',
+  'plan.nextBilling': 'Próxima fatura',
+  'plan.confirmChange': 'Confirmar alteração',
+  'plan.changeSuccess': 'Plano alterado para {plan}!',
+  'plan.changeError': 'Não foi possível alterar o plano. Tente novamente.',
+  'plan.managedChangeHint': 'Contate seu agente para alterar o plano.',
+
+  'cancel.title': 'Cancelar assinatura',
+  'cancel.reason': 'Qual o principal motivo?',
+  'cancel.foundJob': 'Já encontrei um emprego',
+  'cancel.tooExpensive': 'Muito caro',
+  'cancel.notEnoughMatches': 'Não há correspondências suficientes',
+  'cancel.justPausing': 'Só fazendo uma pausa',
+  'cancel.other': 'Outro',
+  'cancel.foundJobMessage': 'Parabéns! Manteremos seu perfil caso as coisas mudem.',
+  'cancel.tooExpensiveHint': 'Sabia que o Pro tem 5× mais correspondências?',
+  'cancel.pauseHint': 'Você pode pausar. As correspondências serão retomadas quando você voltar.',
+  'cancel.confirmTitle': 'Tem certeza?',
+  'cancel.confirmBody':
+    'Sua assinatura terminará em {date}. Você perderá o acesso às correspondências e seu perfil será pausado.',
+  'cancel.confirmCheckbox': 'Entendo que minha assinatura será cancelada',
+  'cancel.confirmButton': 'Cancelar assinatura',
+  'cancel.success': 'Sua assinatura foi cancelada.',
+
+  'usage.title': 'Histórico de uso',
+  'usage.week': 'Semana',
+  'usage.delivered': 'Entregues',
+  'usage.queued': 'Na fila',
+  'usage.noData': 'Os dados de uso aparecerão após sua primeira semana completa.',
+
+  'invoice.title': 'Faturas',
+  'invoice.date': 'Data',
+  'invoice.amount': 'Valor',
+  'invoice.status': 'Status',
+  'invoice.download': 'Baixar',
+  'invoice.empty': 'Nenhuma fatura ainda.',
+
+  'settings.title': 'Configurações',
+  'settings.sectionProfile': 'Perfil',
+  'settings.sectionNotifications': 'Notificações',
+  'settings.sectionSecurity': 'Segurança',
+  'settings.sectionAccount': 'Conta',
+  'settings.sectionLanguage': 'Idioma',
+  'settings.sectionTheme': 'Tema',
+  'settings.profile': 'Perfil',
+  'settings.name': 'Nome completo',
+  'settings.email': 'Endereço de e-mail',
+  'settings.phone': 'Telefone',
+  'settings.currentTitle': 'Cargo atual',
+  'settings.cv': 'Currículo',
+  'settings.cvUploaded': 'Currículo enviado',
+  'settings.cvUploadNew': 'Enviar novo currículo',
+  'settings.saveProfile': 'Salvar perfil',
+  'settings.profileSaved': 'Perfil atualizado com sucesso.',
+  'settings.profileFailed': 'Falha ao atualizar o perfil.',
+  'settings.managedByIdp': 'Gerenciado pelo seu provedor de identidade',
+  'settings.notifications': 'Notificações',
+  'settings.emailDigest': 'Frequência do resumo por e-mail',
+  'settings.daily': 'Diário',
+  'settings.weekly': 'Semanal',
+  'settings.off': 'Desligado',
+  'settings.matchAlerts': 'Alertas de correspondência',
+  'settings.matchAlertsHint': 'Seja notificado quando uma nova correspondência for encontrada.',
+  'settings.weeklySummary': 'Resumo semanal',
+  'settings.weeklySummaryHint': 'Receba um resumo semanal da sua atividade.',
+  'settings.marketingEmails': 'E-mails de marketing',
+  'settings.marketingEmailsHint':
+    'Dicas, atualizações de produto e insights do mercado de trabalho.',
+  'settings.saveNotifications': 'Salvar preferências',
+  'settings.notificationsSaved': 'Preferências de notificação salvas.',
+  'settings.notificationsFailed': 'Falha ao salvar preferências de notificação.',
+  'settings.comingSoon': 'Em breve',
+  'settings.security': 'Segurança',
+  'settings.changePassword': 'Alterar senha',
+  'settings.currentPassword': 'Senha atual',
+  'settings.newPassword': 'Nova senha',
+  'settings.confirmPassword': 'Confirmar nova senha',
+  'settings.passwordChanged': 'Senha alterada com sucesso.',
+  'settings.passwordMismatch': 'As senhas não coincidem.',
+  'settings.passwordWeak': 'A senha não atende aos requisitos de segurança.',
+  'settings.passwordSame': 'A nova senha deve ser diferente da atual.',
+  'settings.twoFactor': 'Autenticação de dois fatores',
+  'settings.twoFactorDisabled': 'A autenticação de dois fatores está desativada.',
+  'settings.enable2FA': 'Ativar 2FA',
+  'settings.activeSessions': 'Sessões ativas',
+  'settings.revokeSession': 'Revogar',
+  'settings.noSessions': 'Nenhuma outra sessão ativa.',
+  'settings.account': 'Conta',
+  'settings.deleteAccount': 'Excluir conta',
+  'settings.deleteAccountWarning':
+    'Esta ação é permanente e não pode ser desfeita. Todos os seus dados serão excluídos.',
+  'settings.deleteConfirm': 'Tem certeza de que deseja excluir sua conta?',
+  'settings.deleteReason': 'Lamentamos vê-lo partir. Conte-nos por quê (opcional):',
+  'settings.accountDeleted': 'Conta excluída com sucesso.',
+  'settings.dataExport': 'Exportar meus dados',
+  'settings.dataExportHint': 'Baixe todos os seus dados de perfil, correspondências e atividade.',
+  'settings.dataExportRequested':
+    'Exportação de dados solicitada. Você receberá um e-mail quando estiver pronta.',
+  'settings.language': 'Idioma',
+  'settings.uiLanguage': 'Idioma da interface',
+  'settings.workingLanguages': 'Idiomas de trabalho',
+  'settings.country': 'País',
+  'settings.theme': 'Tema',
+  'settings.themeLight': 'Claro',
+  'settings.themeDark': 'Escuro',
+  'settings.themeSystem': 'Sistema',
+  'settings.themeComingSoon': 'A troca de tema estará disponível em breve.',
 
   'footer.jobSeekers': 'Candidatos',
   'footer.browseJobs': 'Explorar vagas',
@@ -1842,6 +2772,7 @@ const pt: Strings = {
   'footer.advancedSearch': 'Busca avançada',
   'footer.company': 'Empresa',
   'footer.about': 'Sobre',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Planos',
   'footer.contact': 'Contato',
   'footer.legal': 'Jurídico',
@@ -1851,6 +2782,12 @@ const pt: Strings = {
   'footer.terms': 'Termos',
   'footer.rights': 'Todos os direitos reservados.',
   'footer.madeBy': 'Um produto de',
+  'footer.explore': 'Explorar',
+  'footer.jobs': 'Vagas',
+  'footer.scholarships': 'Bolsas',
+  'footer.tenders': 'Licitações',
+  'footer.deals': 'Ofertas',
+  'footer.funding': 'Financiamento',
 };
 
 // ---------------------------------------------------------------------------
@@ -1862,10 +2799,18 @@ const ja: Strings = {
   'nav.allJobs': 'すべての求人',
   'nav.search': '詳細検索',
   'nav.about': '会社概要',
+  'nav.faq': 'FAQ',
   'nav.pricing': '料金',
   'nav.signIn': 'ログイン',
   'nav.language': '言語',
   'nav.categoriesHint': '求人が登録されるとカテゴリが表示されます。',
+  'nav.dashboard': 'ダッシュボード',
+  'nav.feed': 'フィード',
+  'nav.matches': 'マッチ',
+  'nav.saved': '保存済み',
+  'nav.preferences': '設定',
+  'nav.billing': '請求',
+  'nav.settings': '設定',
 
   'cta.applyNow': '応募する',
   'cta.saveJob': '保存',
@@ -1973,7 +2918,7 @@ const ja: Strings = {
   'flag.other': 'その他',
   'flag.thankYou': 'ありがとうございます。報告は記録され、モデレーターが確認します。',
   'flag.reason': '理由',
-  'flag.details': '詳細（任意）',
+  'flag.details': '詳細',
   'flag.detailsPlaceholder': 'この掲載のどこが問題ですか？',
   'flag.alreadyFlagged':
     'この掲載は既に報告済みです。サイトの品質維持にご協力いただきありがとうございます。',
@@ -2003,6 +2948,7 @@ const ja: Strings = {
   'status.rejected': '不採用',
   'status.hired': '採用',
   'card.match': '%マッチ',
+  'card.new': '新着',
 
   'cascade.yourPreferences': 'あなたの希望条件',
   'cascade.outside': '{country}以外',
@@ -2016,6 +2962,7 @@ const ja: Strings = {
   'feed.empty': 'まだ表示するものがありません。',
   'feed.tryAllFilter': '「すべて」フィルターをお試しください。',
   'feed.loadError': '求人情報を読み込めませんでした。',
+  'feed.opportunities': '機会',
 
   'onboard.step': 'ステップ',
   'onboard.of': '/',
@@ -2043,8 +2990,8 @@ const ja: Strings = {
   'onboard.extraInfoPlaceholder':
     'その他お知らせいただきたいこと — 資格、ビザの状況、退職予定時期など。',
   'onboard.salaryPlaceholder': '年収',
-  'onboard.targetSalary': '希望年収（任意）',
-  'onboard.uploadCV': '履歴書をアップロード（任意）',
+  'onboard.targetSalary': '希望年収',
+  'onboard.uploadCV': '履歴書をアップロード',
   'onboard.chooseFile': 'ファイルを選択',
   'onboard.cvFormats': 'PDF、DOCX、RTF、TXT · 10 MBまで',
   'onboard.readyToUpload': 'アップロード準備完了',
@@ -2059,7 +3006,7 @@ const ja: Strings = {
   'onboard.southAmerica': '南米',
   'onboard.asia': 'アジア',
   'onboard.oceania': 'オセアニア',
-  'onboard.timezones': '希望タイムゾーン（任意）',
+  'onboard.timezones': '希望タイムゾーン',
   'onboard.languages': '業務で使用する言語',
   'onboard.jobType': '雇用形態',
   'onboard.fullTime': '正社員',
@@ -2094,6 +3041,12 @@ const ja: Strings = {
   'onboard.validationLanguage': '少なくとも1つの言語を選択してください',
   'onboard.validationJobType': '少なくとも1つの雇用形態を選択してください',
   'onboard.validationTerms': '完了する前に利用規約に同意してください',
+  'onboard.cvDropHere': 'ここに履歴書をドロップ',
+  'onboard.cvDragPrompt': '履歴書をドラッグ＆ドロップするか、クリックして選択',
+  'onboard.skipPreferences': 'スキップ — 後で設定します',
+  'onboard.skipPreferencesHint': 'ダッシュボードからいつでも設定できます',
+  'onboard.features': '機能',
+  'onboard.showLess': '表示を減らす',
 
   'dash.title': 'ダッシュボード',
   'dash.setupIncomplete': '設定が未完了です',
@@ -2134,6 +3087,137 @@ const ja: Strings = {
   'dash.openingPayment': '決済画面を開いています…',
   'dash.payPerMonth': '支払う',
   'dash.perMonth': '/月',
+  'dash.welcomeTitle': 'Stawi Opportunitiesへようこそ！',
+  'dash.welcomeBody':
+    'アフリカ全土の最適な機会をマッチングします。プロフィールを完了し、希望条件を設定してください。',
+  'dash.welcomeDismiss': '閉じる',
+  'dash.welcomeTour': 'クイックツアー →',
+  'dash.statusActive': '有効',
+  'dash.statusPastDue': '支払い期限切れ',
+  'dash.statusCancelled': '解約済み',
+  'dash.emptyFeedTitle': 'まだ機会はありません',
+  'dash.emptyFeedHint': '以下の手順を完了してマッチングを受け取りましょう:',
+  'dash.emptyFeedCompleteProfile': 'プロフィールを完了する',
+  'dash.emptyFeedSetPreferences': '希望条件を設定する',
+  'dash.emptyFeedBrowseAll': 'すべての機会を閲覧する',
+  'dash.celebrationTitle': '準備完了！',
+  'dash.celebrationBody': '次のステップ:',
+  'dash.celebrationStep1': 'あなたに合った機会をマッチングしています',
+  'dash.celebrationStep2': '新しいマッチングのメール通知を受け取ります',
+  'dash.celebrationStep3': '最初のマッチングは24時間以内に表示されます',
+  'dash.celebrationDismiss': 'わかりました、ダッシュボードを表示',
+  'onboard.profileSaved': 'プロフィールを保存しました！',
+  'dash.breadcrumbDashboard': 'ダッシュボード',
+
+  'plan.changeTitle': 'プランを変更',
+  'plan.currentPlan': '現在のプラン',
+  'plan.newPlan': '新しいプラン',
+  'plan.proratedAmount': '日割り金額',
+  'plan.nextBilling': '次回請求日',
+  'plan.confirmChange': '変更を確認',
+  'plan.changeSuccess': '{plan}にプラン変更しました！',
+  'plan.changeError': 'プランを変更できませんでした。もう一度お試しください。',
+  'plan.managedChangeHint': 'エージェントに連絡してプランを変更してください。',
+
+  'cancel.title': 'サブスクリプションを解約',
+  'cancel.reason': '主な理由は何ですか？',
+  'cancel.foundJob': 'すでに仕事が見つかりました',
+  'cancel.tooExpensive': '料金が高い',
+  'cancel.notEnoughMatches': 'マッチングが足りない',
+  'cancel.justPausing': '休憩中',
+  'cancel.other': 'その他',
+  'cancel.foundJobMessage':
+    'おめでとうございます！変更があった場合に備えてプロフィールを保持します。',
+  'cancel.tooExpensiveHint': 'Proは5倍のマッチングがあることをご存知ですか？',
+  'cancel.pauseHint': '一時停止できます。戻ったときにマッチングが再開されます。',
+  'cancel.confirmTitle': 'よろしいですか？',
+  'cancel.confirmBody':
+    'サブスクリプションは{date}に終了します。マッチングへのアクセスが失われ、プロフィールは一時停止されます。',
+  'cancel.confirmCheckbox': 'サブスクリプションが解約されることを理解しています',
+  'cancel.confirmButton': 'サブスクリプションを解約',
+  'cancel.success': 'サブスクリプションが解約されました。',
+
+  'usage.title': '使用履歴',
+  'usage.week': '週',
+  'usage.delivered': '配信済み',
+  'usage.queued': 'キュー中',
+  'usage.noData': '使用データは最初の1週間が完了した後に表示されます。',
+
+  'invoice.title': '請求書',
+  'invoice.date': '日付',
+  'invoice.amount': '金額',
+  'invoice.status': 'ステータス',
+  'invoice.download': 'ダウンロード',
+  'invoice.empty': 'まだ請求書はありません。',
+
+  'settings.title': '設定',
+  'settings.sectionProfile': 'プロフィール',
+  'settings.sectionNotifications': '通知',
+  'settings.sectionSecurity': 'セキュリティ',
+  'settings.sectionAccount': 'アカウント',
+  'settings.sectionLanguage': '言語',
+  'settings.sectionTheme': 'テーマ',
+  'settings.profile': 'プロフィール',
+  'settings.name': '氏名',
+  'settings.email': 'メールアドレス',
+  'settings.phone': '電話番号',
+  'settings.currentTitle': '現在の役職',
+  'settings.cv': '履歴書',
+  'settings.cvUploaded': '履歴書をアップロード済み',
+  'settings.cvUploadNew': '新しい履歴書をアップロード',
+  'settings.saveProfile': 'プロフィールを保存',
+  'settings.profileSaved': 'プロフィールを更新しました。',
+  'settings.profileFailed': 'プロフィールの更新に失敗しました。',
+  'settings.managedByIdp': 'IDプロバイダーによって管理されています',
+  'settings.notifications': '通知',
+  'settings.emailDigest': 'メールダイジェストの頻度',
+  'settings.daily': '毎日',
+  'settings.weekly': '毎週',
+  'settings.off': 'オフ',
+  'settings.matchAlerts': 'マッチアラート',
+  'settings.matchAlertsHint': '新しいマッチが見つかったときに通知を受け取ります。',
+  'settings.weeklySummary': '週次サマリー',
+  'settings.weeklySummaryHint': 'アカウント活動の週次サマリーを受け取ります。',
+  'settings.marketingEmails': 'マーケティングメール',
+  'settings.marketingEmailsHint': 'ヒント、製品アップデート、求人市場の洞察。',
+  'settings.saveNotifications': '設定を保存',
+  'settings.notificationsSaved': '通知設定を保存しました。',
+  'settings.notificationsFailed': '通知設定の保存に失敗しました。',
+  'settings.comingSoon': '近日対応予定',
+  'settings.security': 'セキュリティ',
+  'settings.changePassword': 'パスワードを変更',
+  'settings.currentPassword': '現在のパスワード',
+  'settings.newPassword': '新しいパスワード',
+  'settings.confirmPassword': '新しいパスワード（確認）',
+  'settings.passwordChanged': 'パスワードを変更しました。',
+  'settings.passwordMismatch': 'パスワードが一致しません。',
+  'settings.passwordWeak': 'パスワードがセキュリティ要件を満たしていません。',
+  'settings.passwordSame': '新しいパスワードは現在のパスワードと異なる必要があります。',
+  'settings.twoFactor': '二要素認証',
+  'settings.twoFactorDisabled': '二要素認証は無効です。',
+  'settings.enable2FA': '2FAを有効にする',
+  'settings.activeSessions': 'アクティブなセッション',
+  'settings.revokeSession': '取り消す',
+  'settings.noSessions': '他のアクティブなセッションはありません。',
+  'settings.account': 'アカウント',
+  'settings.deleteAccount': 'アカウントを削除',
+  'settings.deleteAccountWarning': 'この操作は元に戻せません。すべてのデータが削除されます。',
+  'settings.deleteConfirm': 'アカウントを削除してもよろしいですか？',
+  'settings.deleteReason': '退会されるのは残念です。理由をお聞かせください（任意）：',
+  'settings.accountDeleted': 'アカウントを削除しました。',
+  'settings.dataExport': 'データをエクスポート',
+  'settings.dataExportHint': 'プロフィール、マッチ、アクティビティデータをダウンロードします。',
+  'settings.dataExportRequested':
+    'データエクスポートをリクエストしました。準備ができ次第メールでお知らせします。',
+  'settings.language': '言語',
+  'settings.uiLanguage': 'UI言語',
+  'settings.workingLanguages': '使用言語',
+  'settings.country': '国',
+  'settings.theme': 'テーマ',
+  'settings.themeLight': 'ライト',
+  'settings.themeDark': 'ダーク',
+  'settings.themeSystem': 'システム',
+  'settings.themeComingSoon': 'テーマ切り替えは近日対応予定です。',
 
   'footer.jobSeekers': '求職者の方へ',
   'footer.browseJobs': '求人を閲覧',
@@ -2141,6 +3225,7 @@ const ja: Strings = {
   'footer.advancedSearch': '詳細検索',
   'footer.company': '会社情報',
   'footer.about': '会社概要',
+  'footer.faq': 'FAQ',
   'footer.pricing': '料金',
   'footer.contact': 'お問い合わせ',
   'footer.legal': '法的情報',
@@ -2150,6 +3235,12 @@ const ja: Strings = {
   'footer.terms': '利用規約',
   'footer.rights': 'All rights reserved.',
   'footer.madeBy': '提供元',
+  'footer.explore': '探す',
+  'footer.jobs': '求人',
+  'footer.scholarships': '奨学金',
+  'footer.tenders': '入札',
+  'footer.deals': 'お得',
+  'footer.funding': '資金調達',
 };
 
 // ---------------------------------------------------------------------------
@@ -2161,10 +3252,18 @@ const ar: Strings = {
   'nav.allJobs': 'كل الوظائف',
   'nav.search': 'بحث متقدم',
   'nav.about': 'من نحن',
+  'nav.faq': 'الأسئلة الشائعة',
   'nav.pricing': 'الأسعار',
   'nav.signIn': 'تسجيل الدخول',
   'nav.language': 'اللغة',
   'nav.categoriesHint': 'ستظهر الفئات بمجرد فهرسة الوظائف.',
+  'nav.dashboard': 'لوحة التحكم',
+  'nav.feed': 'التغذية',
+  'nav.matches': 'المطابقات',
+  'nav.saved': 'المحفوظة',
+  'nav.preferences': 'التفضيلات',
+  'nav.billing': 'الفواتير',
+  'nav.settings': 'الإعدادات',
 
   'cta.applyNow': 'قدّم الآن',
   'cta.saveJob': 'حفظ الوظيفة',
@@ -2272,7 +3371,7 @@ const ar: Strings = {
   'flag.other': 'أخرى',
   'flag.thankYou': 'شكراً — تم تسجيل بلاغك وسيتم مراجعته من قبل فريق الإشراف.',
   'flag.reason': 'السبب',
-  'flag.details': 'تفاصيل (اختياري)',
+  'flag.details': 'تفاصيل',
   'flag.detailsPlaceholder': 'ما المشكلة في هذا الإعلان؟',
   'flag.alreadyFlagged':
     'لقد أبلغت عن هذا الإعلان سابقاً — شكراً لمساعدتك في الحفاظ على جودة الموقع.',
@@ -2302,6 +3401,7 @@ const ar: Strings = {
   'status.rejected': 'مرفوض',
   'status.hired': 'تم التوظيف',
   'card.match': '% تطابق',
+  'card.new': 'جديد',
 
   'cascade.yourPreferences': 'تفضيلاتك',
   'cascade.outside': 'خارج {country}',
@@ -2315,6 +3415,7 @@ const ar: Strings = {
   'feed.empty': 'لا يوجد شيء لعرضه بعد.',
   'feed.tryAllFilter': 'جرّب فلتر "الكل".',
   'feed.loadError': 'تعذر تحميل فرصك.',
+  'feed.opportunities': 'فرصة',
 
   'onboard.step': 'الخطوة',
   'onboard.of': 'من',
@@ -2342,8 +3443,8 @@ const ar: Strings = {
   'onboard.extraInfoPlaceholder':
     'أي شيء آخر تريد إطلاعنا عليه — شهادات، حالة التأشيرة، فترة الإشعار، إلخ.',
   'onboard.salaryPlaceholder': 'المبلغ السنوي',
-  'onboard.targetSalary': 'الراتب المستهدف (اختياري)',
-  'onboard.uploadCV': 'ارفع سيرتك الذاتية (اختياري)',
+  'onboard.targetSalary': 'الراتب المستهدف',
+  'onboard.uploadCV': 'ارفع سيرتك الذاتية',
   'onboard.chooseFile': 'اختر ملفاً',
   'onboard.cvFormats': 'PDF أو DOCX أو RTF أو TXT · حتى 10 ميجابايت',
   'onboard.readyToUpload': 'جاهز للرفع',
@@ -2358,7 +3459,7 @@ const ar: Strings = {
   'onboard.southAmerica': 'أمريكا الجنوبية',
   'onboard.asia': 'آسيا',
   'onboard.oceania': 'أوقيانوسيا',
-  'onboard.timezones': 'المناطق الزمنية المفضلة (اختياري)',
+  'onboard.timezones': 'المناطق الزمنية المفضلة',
   'onboard.languages': 'اللغات التي تعمل بها',
   'onboard.jobType': 'نوع الوظيفة',
   'onboard.fullTime': 'دوام كامل',
@@ -2393,6 +3494,12 @@ const ar: Strings = {
   'onboard.validationLanguage': 'اختر لغة واحدة على الأقل',
   'onboard.validationJobType': 'اختر نوع وظيفة واحداً على الأقل',
   'onboard.validationTerms': 'يرجى الموافقة على الشروط قبل الإنهاء',
+  'onboard.cvDropHere': 'أسقط سيرتك الذاتية هنا',
+  'onboard.cvDragPrompt': 'اسحب وأفلت سيرتك الذاتية هنا، أو انقر للتصفح',
+  'onboard.skipPreferences': 'تخط الآن — سأضبط هذا لاحقًا',
+  'onboard.skipPreferencesHint': 'يمكنك دائمًا تكوين هذه الإعدادات من لوحة التحكم',
+  'onboard.features': 'ميزات',
+  'onboard.showLess': 'عرض أقل',
 
   'dash.title': 'لوحة التحكم',
   'dash.setupIncomplete': 'الإعداد غير مكتمل',
@@ -2433,6 +3540,136 @@ const ar: Strings = {
   'dash.openingPayment': 'جارٍ فتح صفحة الدفع…',
   'dash.payPerMonth': 'ادفع',
   'dash.perMonth': '/شهر',
+  'dash.welcomeTitle': 'مرحبًا بك في ستاوي للفرص!',
+  'dash.welcomeBody':
+    'نوفر لك أفضل الفرص في جميع أنحاء أفريقيا. ابدأ بإكمال ملفك الشخصي وتحديد تفضيلاتك.',
+  'dash.welcomeDismiss': 'تجاهل',
+  'dash.welcomeTour': 'جولة سريعة ←',
+  'dash.statusActive': 'نشط',
+  'dash.statusPastDue': 'متأخر',
+  'dash.statusCancelled': 'ملغي',
+  'dash.emptyFeedTitle': 'لا توجد فرص بعد',
+  'dash.emptyFeedHint': 'أكمل هذه الخطوات لبدء تلقي المطابقات:',
+  'dash.emptyFeedCompleteProfile': 'أكمل ملفك الشخصي',
+  'dash.emptyFeedSetPreferences': 'حدد تفضيلاتك',
+  'dash.emptyFeedBrowseAll': 'تصفح جميع الفرص',
+  'dash.celebrationTitle': 'كل شيء جاهز!',
+  'dash.celebrationBody': 'إليك ما يلي:',
+  'dash.celebrationStep1': 'نقوم الآن بمطابقتك مع الفرص',
+  'dash.celebrationStep2': 'ستتلقى إشعارات بريد إلكتروني للمطابقات الجديدة',
+  'dash.celebrationStep3': 'ستظهر مطابقتك الأولى خلال 24 ساعة',
+  'dash.celebrationDismiss': 'حسنًا، أظهر لي لوحة التحكم',
+  'onboard.profileSaved': 'تم حفظ الملف الشخصي!',
+  'dash.breadcrumbDashboard': 'لوحة التحكم',
+
+  'plan.changeTitle': 'تغيير خطتك',
+  'plan.currentPlan': 'الخطة الحالية',
+  'plan.newPlan': 'الخطة الجديدة',
+  'plan.proratedAmount': 'المبلغ النسبي',
+  'plan.nextBilling': 'تاريخ الفاتورة القادمة',
+  'plan.confirmChange': 'تأكيد التغيير',
+  'plan.changeSuccess': 'تم تغيير الخطة إلى {plan}!',
+  'plan.changeError': 'تعذر تغيير الخطة. حاول مرة أخرى.',
+  'plan.managedChangeHint': 'اتصل بوكيلك لتغيير الخطة.',
+
+  'cancel.title': 'إلغاء الاشتراك',
+  'cancel.reason': 'ما هو السبب الرئيسي؟',
+  'cancel.foundJob': 'لقد وجدت وظيفة بالفعل',
+  'cancel.tooExpensive': 'غالي جداً',
+  'cancel.notEnoughMatches': 'لا توجد مطابقات كافية',
+  'cancel.justPausing': 'فقط آخذ استراحة',
+  'cancel.other': 'أخرى',
+  'cancel.foundJobMessage': 'تهانينا! سنحتفظ بملفك الشخصي في حال تغيرت الأمور.',
+  'cancel.tooExpensiveHint': 'هل تعلم أن Pro يوفر 5 أضعاف المطابقات؟',
+  'cancel.pauseHint': 'يمكنك الإيقاف المؤقت. ستستأنف المطابقات عند عودتك.',
+  'cancel.confirmTitle': 'هل أنت متأكد؟',
+  'cancel.confirmBody':
+    'سينتهي اشتراكك في {date}. ستفقد الوصول إلى المطابقات وسيتم إيقاف ملفك الشخصي مؤقتاً.',
+  'cancel.confirmCheckbox': 'أتفهم أنه سيتم إلغاء اشتراكي',
+  'cancel.confirmButton': 'إلغاء الاشتراك',
+  'cancel.success': 'تم إلغاء اشتراكك.',
+
+  'usage.title': 'سجل الاستخدام',
+  'usage.week': 'الأسبوع',
+  'usage.delivered': 'تم التوصيل',
+  'usage.queued': 'في الانتظار',
+  'usage.noData': 'ستظهر بيانات الاستخدام بعد أسبوعك الكامل الأول.',
+
+  'invoice.title': 'الفواتير',
+  'invoice.date': 'التاريخ',
+  'invoice.amount': 'المبلغ',
+  'invoice.status': 'الحالة',
+  'invoice.download': 'تحميل',
+  'invoice.empty': 'لا توجد فواتير بعد.',
+
+  'settings.title': 'الإعدادات',
+  'settings.sectionProfile': 'الملف الشخصي',
+  'settings.sectionNotifications': 'الإشعارات',
+  'settings.sectionSecurity': 'الأمان',
+  'settings.sectionAccount': 'الحساب',
+  'settings.sectionLanguage': 'اللغة',
+  'settings.sectionTheme': 'المظهر',
+  'settings.profile': 'الملف الشخصي',
+  'settings.name': 'الاسم الكامل',
+  'settings.email': 'البريد الإلكتروني',
+  'settings.phone': 'رقم الهاتف',
+  'settings.currentTitle': 'المسمى الوظيفي الحالي',
+  'settings.cv': 'السيرة الذاتية',
+  'settings.cvUploaded': 'تم رفع السيرة الذاتية',
+  'settings.cvUploadNew': 'رفع سيرة ذاتية جديدة',
+  'settings.saveProfile': 'حفظ الملف الشخصي',
+  'settings.profileSaved': 'تم تحديث الملف الشخصي بنجاح.',
+  'settings.profileFailed': 'فشل تحديث الملف الشخصي.',
+  'settings.managedByIdp': 'تتم إدارته بواسطة مزود الهوية الخاص بك',
+  'settings.notifications': 'الإشعارات',
+  'settings.emailDigest': 'تكرار ملخص البريد الإلكتروني',
+  'settings.daily': 'يومي',
+  'settings.weekly': 'أسبوعي',
+  'settings.off': 'إيقاف',
+  'settings.matchAlerts': 'تنبيهات التطابق',
+  'settings.matchAlertsHint': 'احصل على إشعار عند العثور على تطابق جديد.',
+  'settings.weeklySummary': 'ملخص أسبوعي',
+  'settings.weeklySummaryHint': 'احصل على ملخص أسبوعي لنشاط حسابك.',
+  'settings.marketingEmails': 'رسائل البريد التسويقية',
+  'settings.marketingEmailsHint': 'نصائح وتحديثات المنتج ورؤى سوق العمل.',
+  'settings.saveNotifications': 'حفظ التفضيلات',
+  'settings.notificationsSaved': 'تم حفظ تفضيلات الإشعارات.',
+  'settings.notificationsFailed': 'فشل حفظ تفضيلات الإشعارات.',
+  'settings.comingSoon': 'قريباً',
+  'settings.security': 'الأمان',
+  'settings.changePassword': 'تغيير كلمة المرور',
+  'settings.currentPassword': 'كلمة المرور الحالية',
+  'settings.newPassword': 'كلمة المرور الجديدة',
+  'settings.confirmPassword': 'تأكيد كلمة المرور الجديدة',
+  'settings.passwordChanged': 'تم تغيير كلمة المرور بنجاح.',
+  'settings.passwordMismatch': 'كلمتا المرور غير متطابقتين.',
+  'settings.passwordWeak': 'كلمة المرور لا تستوفي متطلبات الأمان.',
+  'settings.passwordSame': 'يجب أن تختلف كلمة المرور الجديدة عن الحالية.',
+  'settings.twoFactor': 'المصادقة الثنائية',
+  'settings.twoFactorDisabled': 'المصادقة الثنائية معطلة.',
+  'settings.enable2FA': 'تفعيل المصادقة الثنائية',
+  'settings.activeSessions': 'الجلسات النشطة',
+  'settings.revokeSession': 'إلغاء',
+  'settings.noSessions': 'لا توجد جلسات نشطة أخرى.',
+  'settings.account': 'الحساب',
+  'settings.deleteAccount': 'حذف الحساب',
+  'settings.deleteAccountWarning': 'هذا الإجراء دائم ولا يمكن التراجع عنه. سيتم حذف جميع بياناتك.',
+  'settings.deleteConfirm': 'هل أنت متأكد من رغبتك في حذف حسابك؟',
+  'settings.deleteReason': 'نأسف لرؤيتك ترحل. أخبرنا بالسبب (اختياري):',
+  'settings.accountDeleted': 'تم حذف الحساب بنجاح.',
+  'settings.dataExport': 'تصدير بياناتي',
+  'settings.dataExportHint': 'قم بتنزيل جميع بيانات ملفك الشخصي والتطابقات والنشاط.',
+  'settings.dataExportRequested':
+    'تم طلب تصدير البيانات. ستتلقى بريداً إلكترونياً عندما يصبح جاهزاً.',
+  'settings.language': 'اللغة',
+  'settings.uiLanguage': 'لغة الواجهة',
+  'settings.workingLanguages': 'لغات العمل',
+  'settings.country': 'البلد',
+  'settings.theme': 'المظهر',
+  'settings.themeLight': 'فاتح',
+  'settings.themeDark': 'داكن',
+  'settings.themeSystem': 'النظام',
+  'settings.themeComingSoon': 'تغيير المظهر سيكون متاحاً قريباً.',
 
   'footer.jobSeekers': 'الباحثون عن عمل',
   'footer.browseJobs': 'تصفح الوظائف',
@@ -2440,6 +3677,7 @@ const ar: Strings = {
   'footer.advancedSearch': 'بحث متقدم',
   'footer.company': 'الشركة',
   'footer.about': 'من نحن',
+  'footer.faq': 'الأسئلة الشائعة',
   'footer.pricing': 'الأسعار',
   'footer.contact': 'اتصل بنا',
   'footer.legal': 'قانوني',
@@ -2449,6 +3687,12 @@ const ar: Strings = {
   'footer.terms': 'الشروط',
   'footer.rights': 'جميع الحقوق محفوظة.',
   'footer.madeBy': 'منتج من',
+  'footer.explore': 'استكشاف',
+  'footer.jobs': 'وظائف',
+  'footer.scholarships': 'منح دراسية',
+  'footer.tenders': 'مناقصات',
+  'footer.deals': 'صفقات',
+  'footer.funding': 'تمويل',
 };
 
 // ---------------------------------------------------------------------------
@@ -2460,10 +3704,18 @@ const zh: Strings = {
   'nav.allJobs': '全部职位',
   'nav.search': '高级搜索',
   'nav.about': '关于',
+  'nav.faq': '常见问题',
   'nav.pricing': '定价',
   'nav.signIn': '登录',
   'nav.language': '语言',
   'nav.categoriesHint': '职位入库后将显示分类。',
+  'nav.dashboard': '控制面板',
+  'nav.feed': '动态',
+  'nav.matches': '匹配',
+  'nav.saved': '已收藏',
+  'nav.preferences': '偏好设置',
+  'nav.billing': '账单',
+  'nav.settings': '设置',
 
   'cta.applyNow': '立即申请',
   'cta.saveJob': '收藏职位',
@@ -2571,7 +3823,7 @@ const zh: Strings = {
   'flag.other': '其他',
   'flag.thankYou': '感谢——您的举报已记录，我们的管理员将进行审核。',
   'flag.reason': '原因',
-  'flag.details': '详情（可选）',
+  'flag.details': '详情',
   'flag.detailsPlaceholder': '这条信息有什么问题？',
   'flag.alreadyFlagged': '您已举报过此信息——感谢您帮助维护网站质量。',
   'flag.signInRequired': '您需要登录才能举报信息。',
@@ -2600,6 +3852,7 @@ const zh: Strings = {
   'status.rejected': '已拒绝',
   'status.hired': '已录用',
   'card.match': '%匹配',
+  'card.new': '新',
 
   'cascade.yourPreferences': '你的偏好',
   'cascade.outside': '{country}以外',
@@ -2613,6 +3866,7 @@ const zh: Strings = {
   'feed.empty': '暂无内容。',
   'feed.tryAllFilter': '试试“全部”筛选。',
   'feed.loadError': '无法加载您的机会。',
+  'feed.opportunities': '机会',
 
   'onboard.step': '第',
   'onboard.of': '步，共',
@@ -2638,8 +3892,8 @@ const zh: Strings = {
   'onboard.extraInfo': '补充信息',
   'onboard.extraInfoPlaceholder': '其他需要我们了解的信息——证书、签证状态、离职通知期等。',
   'onboard.salaryPlaceholder': '年薪金额',
-  'onboard.targetSalary': '目标薪资（可选）',
-  'onboard.uploadCV': '上传简历（可选）',
+  'onboard.targetSalary': '目标薪资',
+  'onboard.uploadCV': '上传简历',
   'onboard.chooseFile': '选择文件',
   'onboard.cvFormats': 'PDF、DOCX、RTF 或 TXT · 最大 10 MB',
   'onboard.readyToUpload': '准备上传',
@@ -2653,7 +3907,7 @@ const zh: Strings = {
   'onboard.southAmerica': '南美',
   'onboard.asia': '亚洲',
   'onboard.oceania': '大洋洲',
-  'onboard.timezones': '首选时区（可选）',
+  'onboard.timezones': '首选时区',
   'onboard.languages': '工作语言',
   'onboard.jobType': '工作类型',
   'onboard.fullTime': '全职',
@@ -2685,6 +3939,12 @@ const zh: Strings = {
   'onboard.validationLanguage': '请至少选择一种语言',
   'onboard.validationJobType': '请至少选择一种工作类型',
   'onboard.validationTerms': '请在完成前同意服务条款',
+  'onboard.cvDropHere': '将简历拖放到此处',
+  'onboard.cvDragPrompt': '将简历拖放到此处，或点击浏览',
+  'onboard.skipPreferences': '跳过 — 我稍后再设置',
+  'onboard.skipPreferencesHint': '您可以随时在控制面板中进行配置',
+  'onboard.features': '功能',
+  'onboard.showLess': '显示更少',
 
   'dash.title': '我的面板',
   'dash.setupIncomplete': '设置未完成',
@@ -2722,6 +3982,133 @@ const zh: Strings = {
   'dash.openingPayment': '正在打开支付页面…',
   'dash.payPerMonth': '支付',
   'dash.perMonth': '/月',
+  'dash.welcomeTitle': '欢迎来到 Stawi Opportunities！',
+  'dash.welcomeBody': '我们为您匹配非洲各地的最佳机会。首先完善您的个人资料并设置偏好。',
+  'dash.welcomeDismiss': '关闭',
+  'dash.welcomeTour': '快速游览 →',
+  'dash.statusActive': '活跃',
+  'dash.statusPastDue': '逾期',
+  'dash.statusCancelled': '已取消',
+  'dash.emptyFeedTitle': '暂无机会',
+  'dash.emptyFeedHint': '完成以下步骤开始接收匹配：',
+  'dash.emptyFeedCompleteProfile': '完善个人资料',
+  'dash.emptyFeedSetPreferences': '设置偏好',
+  'dash.emptyFeedBrowseAll': '浏览所有机会',
+  'dash.celebrationTitle': '一切就绪！',
+  'dash.celebrationBody': '接下来：',
+  'dash.celebrationStep1': '我们正在为您匹配机会',
+  'dash.celebrationStep2': '您将收到新匹配的邮件通知',
+  'dash.celebrationStep3': '您的首次匹配将在24小时内出现',
+  'dash.celebrationDismiss': '明白了，显示我的控制面板',
+  'onboard.profileSaved': '个人资料已保存！',
+  'dash.breadcrumbDashboard': '控制面板',
+
+  'plan.changeTitle': '更改套餐',
+  'plan.currentPlan': '当前套餐',
+  'plan.newPlan': '新套餐',
+  'plan.proratedAmount': '按比例计算的金额',
+  'plan.nextBilling': '下次账单日期',
+  'plan.confirmChange': '确认更改',
+  'plan.changeSuccess': '已更改为{plan}套餐！',
+  'plan.changeError': '无法更改套餐。请重试。',
+  'plan.managedChangeHint': '联系您的专属代理以更改套餐。',
+
+  'cancel.title': '取消订阅',
+  'cancel.reason': '主要原因是什么？',
+  'cancel.foundJob': '我已经找到了工作',
+  'cancel.tooExpensive': '价格太贵',
+  'cancel.notEnoughMatches': '匹配不够多',
+  'cancel.justPausing': '只是想休息一下',
+  'cancel.other': '其他',
+  'cancel.foundJobMessage': '恭喜您！我们会保留您的资料，以备情况有变。',
+  'cancel.tooExpensiveHint': '您知道Pro有5倍的匹配量吗？',
+  'cancel.pauseHint': '您可以暂停。匹配将在您回来时恢复。',
+  'cancel.confirmTitle': '您确定吗？',
+  'cancel.confirmBody': '您的订阅将于{date}结束。您将失去匹配功能，您的资料将被暂停。',
+  'cancel.confirmCheckbox': '我理解我的订阅将被取消',
+  'cancel.confirmButton': '取消订阅',
+  'cancel.success': '您的订阅已取消。',
+
+  'usage.title': '使用记录',
+  'usage.week': '周',
+  'usage.delivered': '已交付',
+  'usage.queued': '排队中',
+  'usage.noData': '使用数据将在您完成第一整周后显示。',
+
+  'invoice.title': '账单',
+  'invoice.date': '日期',
+  'invoice.amount': '金额',
+  'invoice.status': '状态',
+  'invoice.download': '下载',
+  'invoice.empty': '暂无账单。',
+
+  'settings.title': '设置',
+  'settings.sectionProfile': '个人资料',
+  'settings.sectionNotifications': '通知',
+  'settings.sectionSecurity': '安全',
+  'settings.sectionAccount': '账户',
+  'settings.sectionLanguage': '语言',
+  'settings.sectionTheme': '主题',
+  'settings.profile': '个人资料',
+  'settings.name': '姓名',
+  'settings.email': '邮箱地址',
+  'settings.phone': '电话号码',
+  'settings.currentTitle': '当前职位',
+  'settings.cv': '简历',
+  'settings.cvUploaded': '简历已上传',
+  'settings.cvUploadNew': '上传新简历',
+  'settings.saveProfile': '保存资料',
+  'settings.profileSaved': '个人资料更新成功。',
+  'settings.profileFailed': '更新个人资料失败。',
+  'settings.managedByIdp': '由您的身份提供商管理',
+  'settings.notifications': '通知',
+  'settings.emailDigest': '邮件摘要频率',
+  'settings.daily': '每天',
+  'settings.weekly': '每周',
+  'settings.off': '关闭',
+  'settings.matchAlerts': '匹配提醒',
+  'settings.matchAlertsHint': '发现新匹配时收到通知。',
+  'settings.weeklySummary': '每周摘要',
+  'settings.weeklySummaryHint': '接收账户活动的每周摘要。',
+  'settings.marketingEmails': '营销邮件',
+  'settings.marketingEmailsHint': '技巧、产品更新和就业市场洞察。',
+  'settings.saveNotifications': '保存偏好',
+  'settings.notificationsSaved': '通知偏好已保存。',
+  'settings.notificationsFailed': '保存通知偏好失败。',
+  'settings.comingSoon': '即将推出',
+  'settings.security': '安全',
+  'settings.changePassword': '修改密码',
+  'settings.currentPassword': '当前密码',
+  'settings.newPassword': '新密码',
+  'settings.confirmPassword': '确认新密码',
+  'settings.passwordChanged': '密码修改成功。',
+  'settings.passwordMismatch': '密码不匹配。',
+  'settings.passwordWeak': '密码不符合安全要求。',
+  'settings.passwordSame': '新密码必须与当前密码不同。',
+  'settings.twoFactor': '两步验证',
+  'settings.twoFactorDisabled': '两步验证已禁用。',
+  'settings.enable2FA': '启用两步验证',
+  'settings.activeSessions': '活跃会话',
+  'settings.revokeSession': '撤销',
+  'settings.noSessions': '没有其他活跃会话。',
+  'settings.account': '账户',
+  'settings.deleteAccount': '删除账户',
+  'settings.deleteAccountWarning': '此操作不可撤销。您的所有数据将被删除。',
+  'settings.deleteConfirm': '您确定要删除您的账户吗？',
+  'settings.deleteReason': '很遗憾看到您离开。请告诉我们原因（可选）：',
+  'settings.accountDeleted': '账户删除成功。',
+  'settings.dataExport': '导出我的数据',
+  'settings.dataExportHint': '下载您的个人资料、匹配和活动数据。',
+  'settings.dataExportRequested': '数据导出请求已提交。准备就绪后会通过邮件通知您。',
+  'settings.language': '语言',
+  'settings.uiLanguage': '界面语言',
+  'settings.workingLanguages': '工作语言',
+  'settings.country': '国家',
+  'settings.theme': '主题',
+  'settings.themeLight': '浅色',
+  'settings.themeDark': '深色',
+  'settings.themeSystem': '系统',
+  'settings.themeComingSoon': '主题切换功能即将推出。',
 
   'footer.jobSeekers': '求职者',
   'footer.browseJobs': '浏览职位',
@@ -2729,6 +4116,7 @@ const zh: Strings = {
   'footer.advancedSearch': '高级搜索',
   'footer.company': '公司',
   'footer.about': '关于',
+  'footer.faq': '常见问题',
   'footer.pricing': '定价',
   'footer.contact': '联系我们',
   'footer.legal': '法律信息',
@@ -2738,6 +4126,12 @@ const zh: Strings = {
   'footer.terms': '条款',
   'footer.rights': '保留所有权利。',
   'footer.madeBy': '出品方',
+  'footer.explore': '浏览',
+  'footer.jobs': '工作',
+  'footer.scholarships': '奖学金',
+  'footer.tenders': '招标',
+  'footer.deals': '优惠',
+  'footer.funding': '融资',
 };
 
 export const CATALOG: Record<LangCode, Strings> = {

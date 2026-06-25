@@ -1,34 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { categoryLabel } from '@/utils/format';
-import { fetchCandidate } from '@/api/candidates';
-import type { FacetEntry, Facets, SearchParams } from '@/types/search';
-import { useAuth } from '@/providers/AuthProvider';
-import { useI18n } from '@/i18n/I18nProvider';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Facets } from '@/types/search';
+import { useCandidateProfile } from '@/hooks/useCandidateProfile';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useSearchURLParams } from '@/hooks/useSearchURLParams';
 import Cascade from './Cascade';
+import { FiltersPanel } from './search/FiltersPanel';
+import { SearchForm } from './search/SearchForm';
+import { useI18n } from '@/i18n/I18nProvider';
 
+/**
+ * /search/ -- query + filters + facets + pagination. Reads initial state
+ * from the URL so deep links are shareable; writes back on changes via
+ * history.replaceState so the back button stays predictable without full
+ * navigations.
+ */
 export default function Search() {
   const { t } = useI18n();
-  const [params, setParams] = useState<SearchParams>(() => readParamsFromURL());
+  const [params, setParams] = useSearchURLParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [facets, setFacets] = useState<Facets | undefined>();
-  useEffect(() => writeParamsToURL(params), [params]);
 
-  const auth = useAuth();
-  const profile = useQuery({
-    queryKey: ['candidate-profile'],
-    queryFn: fetchCandidate,
-    enabled: auth.state === 'authenticated',
-    staleTime: 5 * 60_000,
-  });
-  const preferredCountries = useMemo(
-    () => splitCSV(profile.data?.preferred_countries),
-    [profile.data?.preferred_countries]
-  );
-  const preferredLanguages = useMemo(
-    () => splitCSV(profile.data?.languages),
-    [profile.data?.languages]
-  );
+  const { preferredCountries, preferredLanguages } = useCandidateProfile();
 
   const hasActiveFilters = Boolean(
     params.category ||
@@ -43,25 +35,11 @@ export default function Search() {
     setParams({ sort: params.sort });
   }
 
-  const remoteFacetLabeller = (k: string) => {
-    switch (k) {
-      case 'remote':
-        return t('search.remote');
-      case 'hybrid':
-        return t('search.hybrid');
-      case 'onsite':
-      case 'on_site':
-        return t('search.onSite');
-      default:
-        return k;
-    }
-  };
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-6">
         <h1 className="sr-only">{t('search.searchJobs')}</h1>
-        <SearchForm value={params} onChange={(next) => setParams(next)} t={t} />
+        <SearchForm value={params} onChange={(next) => setParams(next)} />
       </header>
 
       <div className="flex items-center justify-between border-b border-gray-200 pb-3 md:hidden">
@@ -86,7 +64,7 @@ export default function Search() {
           </svg>
           {t('search.filters')}
           {hasActiveFilters && (
-            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">•</span>
+            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">&bull;</span>
           )}
         </button>
         {hasActiveFilters && (
@@ -108,8 +86,6 @@ export default function Search() {
             facets={facets}
             hasActiveFilters={hasActiveFilters}
             onClear={clearAll}
-            t={t}
-            remoteFacetLabeller={remoteFacetLabeller}
           />
         </aside>
 
@@ -141,8 +117,6 @@ export default function Search() {
             facets={facets}
             hasActiveFilters={hasActiveFilters}
             onClear={clearAll}
-            t={t}
-            remoteFacetLabeller={remoteFacetLabeller}
           />
           <div className="sticky bottom-0 mt-6 flex gap-3 border-t border-gray-200 bg-white px-4 py-3">
             <button
@@ -166,114 +140,34 @@ export default function Search() {
   );
 }
 
-function FiltersPanel({
-  params,
-  setParams,
-  facets,
-  hasActiveFilters,
-  onClear,
-  t,
-  remoteFacetLabeller,
-}: {
-  params: SearchParams;
-  setParams: (p: SearchParams) => void;
-  facets: Facets | undefined;
-  hasActiveFilters: boolean;
-  onClear: () => void;
-  t: (k: import('@/i18n/strings').StringKey) => string;
-  remoteFacetLabeller: (k: string) => string;
-}) {
-  return (
-    <div className="md:sticky md:top-20">
-      <div className="mb-4 flex items-center justify-between">
-        <SortPicker
-          value={params.sort ?? (params.q ? 'relevance' : 'recent')}
-          onChange={(sort) => setParams({ ...params, sort })}
-          t={t}
-        />
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="hidden text-sm text-gray-600 hover:text-gray-900 md:inline"
-          >
-            {t('search.clear')}
-          </button>
-        )}
-      </div>
-      {facets && (
-        <>
-          <FacetBlock
-            label={t('search.category')}
-            entries={facets.category}
-            selected={params.category}
-            labeller={categoryLabel}
-            onSelect={(v) => setParams({ ...params, category: v, offset: 0 })}
-            uncategorisedLabel={t('search.uncategorised')}
-          />
-          <FacetBlock
-            label={t('search.remote')}
-            entries={facets.remote_type}
-            selected={params.remote_type}
-            labeller={remoteFacetLabeller}
-            onSelect={(v) => setParams({ ...params, remote_type: v, offset: 0 })}
-            uncategorisedLabel={t('search.uncategorised')}
-          />
-          <FacetBlock
-            label={t('search.employmentType')}
-            entries={facets.employment_type}
-            selected={params.employment_type}
-            onSelect={(v) => setParams({ ...params, employment_type: v, offset: 0 })}
-            uncategorisedLabel={t('search.uncategorised')}
-          />
-          <FacetBlock
-            label={t('search.seniority')}
-            entries={facets.seniority}
-            selected={params.seniority}
-            onSelect={(v) => setParams({ ...params, seniority: v, offset: 0 })}
-            uncategorisedLabel={t('search.uncategorised')}
-          />
-          <FacetBlock
-            label={t('search.country')}
-            entries={facets.country}
-            selected={params.country}
-            onSelect={(v) => setParams({ ...params, country: v, offset: 0 })}
-            uncategorisedLabel={t('search.uncategorised')}
-          />
-        </>
-      )}
-    </div>
-  );
-}
-
 function MobileDrawer({
   children,
   onClose,
   t,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClose: () => void;
   t: (k: import('@/i18n/strings').StringKey) => string;
 }) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(panelRef, true, onClose);
   useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onEsc);
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', onEsc);
       document.body.style.overflow = '';
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-black/40 md:hidden"
+      className="fixed inset-0 z-50 flex flex-col bg-black/40 md:hidden animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-label={t('search.filters')}
       onClick={onClose}
     >
       <div
-        className="mt-auto flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl bg-white"
+        ref={panelRef}
+        className="mt-auto flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl bg-white animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
@@ -304,202 +198,4 @@ function MobileDrawer({
       </div>
     </div>
   );
-}
-
-function SearchForm({
-  value,
-  onChange,
-  t,
-}: {
-  value: SearchParams;
-  onChange: (next: SearchParams) => void;
-  t: (k: import('@/i18n/strings').StringKey) => string;
-}) {
-  const [q, setQ] = useState(value.q ?? '');
-  useEffect(() => setQ(value.q ?? ''), [value.q]);
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onChange({ ...value, q: q.trim() || undefined, offset: 0 });
-      }}
-      className="flex gap-2"
-      role="search"
-    >
-      <div className="relative flex-1">
-        <svg
-          className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
-        <input
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('search.searchPlaceholder')}
-          className="w-full rounded-md border border-gray-300 bg-white py-2.5 pl-10 pr-10 text-base shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-          aria-label={t('search.searchJobs')}
-        />
-        {q && (
-          <button
-            type="button"
-            onClick={() => {
-              setQ('');
-              onChange({ ...value, q: undefined, offset: 0 });
-            }}
-            aria-label={t('search.clear')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-600"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
-      <button
-        type="submit"
-        className="rounded-md bg-navy-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
-      >
-        {t('search.searchButton')}
-      </button>
-    </form>
-  );
-}
-
-function SortPicker({
-  value,
-  onChange,
-  t,
-}: {
-  value: SearchParams['sort'];
-  onChange: (v: SearchParams['sort']) => void;
-  t: (k: import('@/i18n/strings').StringKey) => string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-        {t('search.sort')}
-      </label>
-      <select
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value as SearchParams['sort'])}
-        className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
-      >
-        <option value="relevance">{t('search.sortRelevance')}</option>
-        <option value="recent">{t('search.sortRecent')}</option>
-        <option value="quality">{t('search.sortQuality')}</option>
-        <option value="salary_high">{t('search.sortSalary')}</option>
-      </select>
-    </div>
-  );
-}
-
-function FacetBlock({
-  label,
-  entries,
-  selected,
-  labeller,
-  onSelect,
-  uncategorisedLabel,
-}: {
-  label: string;
-  entries: FacetEntry[];
-  selected: string | undefined;
-  labeller?: (k: string) => string;
-  onSelect: (v: string | undefined) => void;
-  uncategorisedLabel: string;
-}) {
-  if (!entries.length) return null;
-  const fmt = labeller ?? ((k: string) => k || uncategorisedLabel);
-  return (
-    <div className="mb-5">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</h3>
-      <ul>
-        {entries.slice(0, 8).map((e) => {
-          const isSel = selected === e.key;
-          return (
-            <li key={e.key}>
-              <button
-                type="button"
-                aria-pressed={isSel}
-                className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
-                  isSel ? 'bg-navy-50 font-medium text-navy-900' : 'text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => onSelect(isSel ? undefined : e.key)}
-              >
-                <span>{fmt(e.key)}</span>
-                <span className={`text-xs ${isSel ? 'text-navy-700' : 'text-gray-400'}`}>
-                  {e.count.toLocaleString()}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function splitCSV(csv: string | undefined | null): string[] {
-  if (!csv) return [];
-  return csv
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function readParamsFromURL(): SearchParams {
-  if (typeof window === 'undefined') return {};
-  const p = new URL(window.location.href).searchParams;
-  const out: SearchParams = {};
-  const pick = (k: keyof SearchParams) => {
-    const v = p.get(k);
-    if (v) (out as Record<string, unknown>)[k] = v;
-  };
-  pick('q');
-  pick('category');
-  pick('remote_type');
-  pick('employment_type');
-  pick('seniority');
-  pick('country');
-  pick('sort');
-  return out;
-}
-
-function writeParamsToURL(params: SearchParams) {
-  const url = new URL(window.location.href);
-  for (const key of [
-    'q',
-    'category',
-    'remote_type',
-    'employment_type',
-    'seniority',
-    'country',
-    'sort',
-  ] as const) {
-    const v = params[key];
-    if (v) url.searchParams.set(key, String(v));
-    else url.searchParams.delete(key);
-  }
-  window.history.replaceState({}, '', url.toString());
 }

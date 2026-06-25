@@ -155,11 +155,21 @@ export default function Cascade(props: CascadeProps) {
   }, [q.data?.facets, props.onFacets]);
 
   if (q.isLoading && !q.data) return <CascadeSkeleton />;
-  // On error or empty state, render nothing. The user asked us not to
-  // surface transient load failures as banners — a quiet empty frame
-  // is preferred. The skeleton already covered the "hope" UX during
-  // the in-flight request; beyond that, keep the page clean.
-  if (q.isError || !q.data || q.data.tiers.length === 0) return null;
+  if (q.data && q.data.tiers.length === 0) return null;
+  if (q.isError || !q.data) {
+    return (
+      <div className="mt-8 text-center">
+        <p className="mb-3 text-sm text-gray-500">Failed to load feed.</p>
+        <button
+          type="button"
+          onClick={() => q.refetch()}
+          className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-2 space-y-10">

@@ -22,6 +22,21 @@ type Config struct {
 	// OpportunityKindsDir is the directory holding the opportunity-kinds YAML
 	// registry. Mounted as a ConfigMap in production at this path.
 	OpportunityKindsDir string `env:"OPPORTUNITY_KINDS_DIR" envDefault:"/etc/opportunity-kinds"`
+
+	// Embeddings Frame Queue (consumed to write opportunities.embedding).
+	// Name+URI pair per the service-profile idiom; must match the worker's
+	// embeddings queue (distinct consumer_durable_name on the same subject).
+	QueuePipelineEmbeddings     string `env:"QUEUE_PIPELINE_EMBEDDINGS_URI"  envDefault:"mem://pipeline_embeddings"`
+	QueuePipelineEmbeddingsName string `env:"QUEUE_PIPELINE_EMBEDDINGS_NAME" envDefault:"pipeline_embeddings"`
+
+	// EmbeddingDim is the native output dimension of the deployed embedding
+	// model. It MUST equal the opportunities.embedding vector(N) dimension;
+	// the materializer verifies this at boot and refuses to start on a
+	// mismatch (a mismatch makes pgvector reject every write, silently
+	// dropping all embeddings). 1024 = intfloat/multilingual-e5-large (the
+	// deployed model). e5-small would be 384; the value must track whatever
+	// EMBEDDING_MODEL is deployed and the schema migration.
+	EmbeddingDim int `env:"EMBEDDING_DIM" envDefault:"1024"`
 }
 
 // Load parses env → Config.

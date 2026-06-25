@@ -1,7 +1,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 @layer base {
   html {
     scroll-behavior: smooth;
@@ -11,7 +10,6 @@
        element. */
     font-size: 17px;
   }
-
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
@@ -24,43 +22,84 @@
       transition-duration: 0.01ms !important;
     }
   }
-
   :focus-visible {
     outline: 2px solid #0c1226;
     outline-offset: 2px;
   }
-
   body {
     @apply bg-slate-50 text-gray-800 antialiased;
   }
 }
-
 @layer components {
   .card {
-    @apply rounded-[2rem] border border-gray-200 bg-white shadow-sm ring-1 ring-gray-200 transition-transform duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg;
+    @apply rounded-2xl border border-gray-200 bg-white shadow-sm ring-1 ring-gray-200 transition-all duration-200 ease-out;
   }
-
+  .card:hover {
+    @apply -translate-y-0.5 shadow-md;
+    filter: brightness(1.02);
+  }
+  .industry-card {
+    @apply relative overflow-hidden rounded-2xl bg-slate-50 p-7 ring-1 ring-gray-200 transition-all duration-200;
+  }
+  .industry-card:hover {
+    @apply shadow-md -translate-y-0.5 bg-accent-50;
+    --tw-ring-color: theme('colors.accent.400');
+  }
+  .step-card {
+    @apply rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200;
+  }
+  .feature-card {
+    @apply rounded-2xl border border-white/10 bg-white/5 p-8;
+  }
   .badge-type {
     @apply inline-flex items-center rounded-full bg-accent-100 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-accent-700 shadow-sm;
   }
-
   .badge-featured {
     @apply inline-flex items-center rounded-full bg-accent-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-accent-700;
   }
-
   .panel {
     @apply rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-gray-200;
   }
-
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-md bg-navy-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-navy-800 focus-visible:ring-2 focus-visible:ring-navy-900 focus-visible:ring-offset-2;
+    @apply inline-flex items-center justify-center rounded-md bg-navy-900 px-6 py-3 text-sm font-semibold text-white transition-colors;
   }
-
+  .btn-primary:hover { @apply bg-navy-800; }
+  .btn-primary:focus-visible { @apply ring-2 ring-navy-900 ring-offset-2; }
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-md border border-navy-900 bg-white px-6 py-3 text-sm font-semibold text-navy-900 transition-colors hover:bg-navy-50 focus-visible:ring-2 focus-visible:ring-navy-900 focus-visible:ring-offset-2;
+    @apply inline-flex items-center justify-center rounded-md border border-navy-900 bg-white px-6 py-3 text-sm font-semibold text-navy-900 transition-colors;
   }
-
+  .btn-secondary:hover { @apply bg-navy-50; }
+  .btn-secondary:focus-visible { @apply ring-2 ring-navy-900 ring-offset-2; }
   .input-field {
-    @apply block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-navy-900 focus:ring-1 focus:ring-navy-900;
+    @apply block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400;
+  }
+  .input-field:focus { @apply border-navy-900 ring-1 ring-navy-900; }
+  .gradient-text {
+    @apply bg-gradient-to-r from-accent-400 via-accent-300 to-accent-400 bg-clip-text text-transparent;
+  }
+  /* ── Scroll-reveal ── */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 600ms cubic-bezier(0.22, 1, 0.36, 1),
+                transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  [data-reveal][data-revealed] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  [data-reveal="scale"] {
+    opacity: 0;
+    transform: scale(0.95);
+    transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1),
+                transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  [data-reveal="scale"][data-revealed] {
+    opacity: 1;
+    transform: scale(1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    [data-reveal="scale"] { opacity: 1; transform: none; transition: none; }
   }
 }

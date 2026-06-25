@@ -25,7 +25,7 @@ func TestGapFill_FiltersBelowMinScore(t *testing.T) {
 	el := &fakeEventLog{}
 	res, err := matching.GapFill(context.Background(), matching.GapFillInput{
 		CandidateID: "u",
-		Embedding:   unitVec(1536, 0),
+		Embedding:   unitVec(1024, 0),
 		Since:       time.Now().Add(-time.Hour),
 		MinScore:    0.4,
 	}, matching.GapFillDeps{

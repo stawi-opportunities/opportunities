@@ -16,6 +16,7 @@ import (
 	"fmt"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/queue"
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -69,13 +70,21 @@ func (s *Service) RegisterSubscriptions() error {
 	// mode if you forgot was "permanent NATS retry storm" which wedged
 	// the consumer behind max_ack_pending).
 	mgr.SetStrict(false)
-	mgr.Add(NewCanonicalUpsertHandler(s))
+	// Pipeline outputs moved to Frame Queue: EmbeddingV1 is consumed via a
+	// dedicated queue subscriber (see EmbeddingWorker, wired in main.go);
+	// CanonicalUpserted/Translation were materializer no-ops (the worker
+	// upserts in-process) and are no longer on the events bus. The admin-
+	// driven events below stay on the events bus (low volume, separate plane).
 	mgr.Add(NewCanonicalExpiredHandler(s))
-	mgr.Add(NewTranslationHandler(s))
-	mgr.Add(NewEmbeddingHandler(s))
 	mgr.Add(NewAutoFlaggedHandler(s))
 	mgr.Add(NewSourceStoppedHandler(s))
 	return nil
+}
+
+// EmbeddingWorker returns the embeddings Frame Queue subscriber. The caller
+// registers it via frame.WithRegisterSubscriber in main.go.
+func (s *Service) EmbeddingWorker() queue.SubscribeWorker {
+	return NewEmbeddingHandler(s)
 }
 
 // (materializerIgnoreEvents removed — Frame v1.97.3 loose-mode handles
@@ -288,25 +297,13 @@ func NewEmbeddingHandler(s *Service) *EmbeddingHandler {
 	return &EmbeddingHandler{s: s}
 }
 
-func (h *EmbeddingHandler) Name() string { return eventsv1.TopicEmbeddings }
+var _ queue.SubscribeWorker = (*EmbeddingHandler)(nil)
 
-func (h *EmbeddingHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-func (h *EmbeddingHandler) Validate(_ context.Context, p any) error {
-	r, ok := p.(*json.RawMessage)
-	if !ok || r == nil || len(*r) == 0 {
-		return errors.New("embedding: empty payload")
-	}
-	return nil
-}
-
-func (h *EmbeddingHandler) Execute(ctx context.Context, p any) error {
-	raw := p.(*json.RawMessage)
+// Handle consumes EmbeddingV1 from the embeddings Frame Queue and writes the
+// vector to opportunities.embedding.
+func (h *EmbeddingHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	var env eventsv1.Envelope[eventsv1.EmbeddingV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return fmt.Errorf("embedding: decode: %w", err)
 	}
 	pl := env.Payload

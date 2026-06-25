@@ -106,7 +106,7 @@ func (r *CrawlRepository) SaveRawPayload(ctx context.Context, payload *domain.Ra
 	// (SQLSTATE 08P01 "prepared statement name is already in use"),
 	// which the frontier-worker hit hammering this path per URL. The
 	// once-per-payload INSERT gains nothing from prepare-caching.
-	// Same per-call override pattern as SourceRepository.RefreshSignals.
+	// Same per-call PrepareStmt override pattern as SourceRepository.LoadSignals.
 	return r.db(ctx, false).
 		Session(&gorm.Session{PrepareStmt: false}).
 		Create(payload).Error
@@ -158,6 +158,20 @@ func (r *CrawlRepository) ListBySource(ctx context.Context, sourceID string, lim
          LIMIT ?
     `, sourceID, limit).Scan(&rows).Error
 	return rows, err
+}
+
+// LastCrawlAt returns the scheduled_at of the most recent crawl_jobs
+// row, or the zero time when the ledger is empty. Used by the crawl
+// watchdog to detect "nothing has crawled in N hours".
+func (r *CrawlRepository) LastCrawlAt(ctx context.Context) (time.Time, error) {
+	var row struct {
+		Last *time.Time
+	}
+	err := r.db(ctx, true).Raw(`SELECT max(scheduled_at) AS last FROM crawl_jobs`).Scan(&row).Error
+	if err != nil || row.Last == nil {
+		return time.Time{}, err
+	}
+	return *row.Last, nil
 }
 
 // ListRawPayloadsBySource returns up to `limit` recently-fetched

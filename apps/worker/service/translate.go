@@ -31,11 +31,12 @@ type TranslateHandler struct {
 	extractor *extraction.Extractor
 	langs     []string
 	store     *variantstate.Store // nil-safe; soft-fails on Postgres outage
+	outQueue  string              // Queue Name for TranslationV1 (consumed by the materializer)
 }
 
-// NewTranslateHandler ...
-func NewTranslateHandler(svc *frame.Service, ex *extraction.Extractor, langs []string, store *variantstate.Store) *TranslateHandler {
-	return &TranslateHandler{svc: svc, extractor: ex, langs: langs, store: store}
+// NewTranslateHandler binds the handler. outQueue is the translations Queue Name.
+func NewTranslateHandler(svc *frame.Service, ex *extraction.Extractor, langs []string, store *variantstate.Store, outQueue string) *TranslateHandler {
+	return &TranslateHandler{svc: svc, extractor: ex, langs: langs, store: store, outQueue: outQueue}
 }
 
 // Handle implements queue.SubscribeWorker.
@@ -68,9 +69,12 @@ func (h *TranslateHandler) Handle(ctx context.Context, _ map[string]string, payl
 			_ = h.store.RecordErrorByCanonical(ctx, c.OpportunityID, variantstate.StageTranslate, fmt.Errorf("translate[%s]: %w", lang, err))
 			continue
 		}
-		outEnv := eventsv1.NewEnvelope(eventsv1.TopicTranslations, tr)
-		if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicTranslations, outEnv); err != nil {
-			_ = h.store.RecordErrorByCanonical(ctx, c.OpportunityID, variantstate.StageTranslate, fmt.Errorf("translate: emit: %w", err))
+		body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicTranslations, tr))
+		if mErr != nil {
+			return mErr
+		}
+		if err := h.svc.QueueManager().Publish(ctx, h.outQueue, body, nil); err != nil {
+			_ = h.store.RecordErrorByCanonical(ctx, c.OpportunityID, variantstate.StageTranslate, fmt.Errorf("translate: publish: %w", err))
 			return err
 		}
 	}

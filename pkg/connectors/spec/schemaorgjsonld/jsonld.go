@@ -181,6 +181,12 @@ func MapJobPosting(raw json.RawMessage) (*domain.ExternalOpportunity, error) {
 		opp.Description = v
 	}
 	opp.IssuingEntity = readHiringOrganization(jp["hiringOrganization"])
+	if logo := readOrganizationLogo(jp["hiringOrganization"]); logo != "" {
+		if opp.Attributes == nil {
+			opp.Attributes = map[string]any{}
+		}
+		opp.Attributes["company_logo"] = logo
+	}
 	if t := parseDate(stringValue(jp["datePosted"])); t != nil {
 		opp.PostedAt = t
 	}
@@ -217,6 +223,24 @@ func readHiringOrganization(v any) string {
 	case map[string]any:
 		if name, ok := x["name"].(string); ok {
 			return name
+		}
+	}
+	return ""
+}
+
+// readOrganizationLogo extracts hiringOrganization.logo, tolerating both a bare
+// URL string and a schema.org ImageObject ({"@type":"ImageObject","url":"..."}).
+func readOrganizationLogo(v any) string {
+	org, ok := v.(map[string]any)
+	if !ok {
+		return ""
+	}
+	switch logo := org["logo"].(type) {
+	case string:
+		return logo
+	case map[string]any:
+		if u, ok := logo["url"].(string); ok {
+			return u
 		}
 	}
 	return ""

@@ -33,6 +33,9 @@ type GapFillInput struct {
 	SalaryFloorUSD *int
 	Since          time.Time
 	MinScore       float64
+	// QueryText is the candidate-side text (CV summary / skills) used as the
+	// cross-encoder query. Empty disables reranking for this run.
+	QueryText string
 }
 
 // GapFillResult summarises the read-path execution.
@@ -117,10 +120,10 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 			continue
 		}
 		scoredHits = append(scoredHits, scored{hit: h, tot: res.Total})
-		rerankIn = append(rerankIn, RerankItem{ID: h.OpportunityID, Score: res.Total})
+		rerankIn = append(rerankIn, RerankItem{ID: h.OpportunityID, Text: h.Text, Score: res.Total})
 	}
 
-	rerankOut, used, _ := deps.Reranker.Rerank(ctx, rerankIn)
+	rerankOut, used, _ := deps.Reranker.Rerank(ctx, in.QueryText, rerankIn)
 	rerankByID := map[string]float64{}
 	if used {
 		for _, r := range rerankOut {

@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "name": "opportunities.source.crawl-overdue",
+  "description": "Every 15 min: dispatch sources >=1h past due — ticks the per-source dynamic schedules lost to a closed backpressure gate, a never-activated workflow, or Trustage downtime. Statically synced (SyncFromDir) so it fires even when dynamically-created workflows don't (the 2026-06-03 failure mode). Backpressure-gated and lease-stamped, so it is always safe to fire.",
+  "input": {},
+  "config": {},
+  "timeout": "2m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "crawl_overdue",
+      "type": "call",
+      "name": "Dispatch overdue sources",
+      "timeout": "90s",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/sources/crawl-overdue",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {}
+        },
+        "output_var": "overdue_result"
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.source.crawl-overdue.default",
+      "cron_expr": "*/15 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

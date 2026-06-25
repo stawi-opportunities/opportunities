@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   applyToOpportunity,
   fetchOpportunities,
@@ -7,9 +7,18 @@ import {
   type FeedItem,
   type OpportunityFilter,
 } from '@/api/candidates';
-import { OpportunityCard } from './OpportunityCard';
+import { fetchSnapshot } from '@/api/snapshot';
+import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
+import { OpportunityCard, type OpportunitySnapshot } from './OpportunityCard';
+import { EmptyFeedState } from '@/components/dashboard/EmptyFeedState';
+import {
+  FilterChips,
+  readFiltersFromURL,
+  type FeedFilters,
+} from '@/components/dashboard/FilterChips';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
+import { useToast } from '@/hooks/useToast';
 
 const FILTER_KEYS: { id: OpportunityFilter; labelKey: StringKey }[] = [
   { id: 'all', labelKey: 'feed.all' },
@@ -33,13 +42,67 @@ function writeFilterToURL(filter: OpportunityFilter) {
   window.history.pushState({}, '', url.toString());
 }
 
+function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
+  if (!snap) return null;
+  return {
+    title: snap.title,
+    company: snap.issuing_entity,
+    location: snap.anchor_location
+      ? [snap.anchor_location.city, snap.anchor_location.region, snap.anchor_location.country]
+          .filter(Boolean)
+          .join(', ')
+      : undefined,
+    posted_at: snap.posted_at,
+    salary_min: snap.amount_min,
+    salary_max: snap.amount_max,
+    currency: snap.currency,
+    kind: snap.kind,
+  };
+}
+
 export function OpportunitiesFeed() {
   const { t } = useI18n();
+  const { push: toast } = useToast();
   const [filter, setFilter] = useState<OpportunityFilter>(readFilterFromURL);
+  const [feedFilters, setFeedFilters] = useState<FeedFilters>(readFiltersFromURL);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [pendingItems, setPendingItems] = useState<Set<string>>(new Set());
+  const [snapshots, setSnapshots] = useState<Record<string, OpportunitySnapshot | null>>({});
+
+  const counts = useMemo(
+    () => ({
+      all: items.length,
+      matches: items.filter((i) => (i.score ?? 0) > 0).length,
+      starred: items.filter((i) => i.starred).length,
+      applied: items.filter((i) => i.application).length,
+    }),
+    [items]
+  );
+
+  const filteredItems = useMemo(() => {
+    let result = items;
+    if (feedFilters.remote === true) {
+      result = result.filter((it) => {
+        const snap = snapshots[it.opportunity_id];
+        return snap?.location?.toLowerCase().includes('remote') ?? false;
+      });
+    } else if (feedFilters.remote === false) {
+      result = result.filter((it) => {
+        const snap = snapshots[it.opportunity_id];
+        return snap && !snap.location?.toLowerCase().includes('remote');
+      });
+    }
+    if (feedFilters.kind) {
+      result = result.filter((it) => {
+        const snap = snapshots[it.opportunity_id];
+        return snap?.kind === feedFilters.kind;
+      });
+    }
+    return result;
+  }, [items, snapshots, feedFilters]);
 
   const load = useCallback(async (f: OpportunityFilter, cursor?: string) => {
     setLoading(true);
@@ -59,6 +122,28 @@ export function OpportunitiesFeed() {
     void load(filter);
   }, [filter, load]);
 
+  useEffect(() => {
+    const ids = items
+      .filter((it) => !(it.opportunity_id in snapshots))
+      .map((it) => it.opportunity_id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.allSettled(ids.map((id) => fetchSnapshot(id)));
+      if (cancelled) return;
+      const map: Record<string, OpportunitySnapshot | null> = {};
+      ids.forEach((id, i) => {
+        const r = results[i] as PromiseFulfilledResult<ApiSnapshot | null> | PromiseRejectedResult;
+        const snap = r.status === 'fulfilled' ? r.value : null;
+        map[id] = toCardSnapshot(snap);
+      });
+      setSnapshots((prev) => ({ ...prev, ...map }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
   const onSelectFilter = (id: OpportunityFilter) => {
     if (id === filter) return;
     writeFilterToURL(id);
@@ -67,6 +152,7 @@ export function OpportunitiesFeed() {
 
   const onStar = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       setItems((prev) =>
         prev.map((it) => (it.opportunity_id === id ? { ...it, starred: true } : it))
@@ -75,13 +161,21 @@ export function OpportunitiesFeed() {
         await starOpportunity(id);
       } catch {
         setItems(snapshot);
+        toast('Failed to save.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
-    [items]
+    [items, toast]
   );
 
   const onUnstar = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       setItems((prev) =>
         prev.map((it) => (it.opportunity_id === id ? { ...it, starred: false } : it))
@@ -90,13 +184,21 @@ export function OpportunitiesFeed() {
         await unstarOpportunity(id);
       } catch {
         setItems(snapshot);
+        toast('Failed to remove.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
-    [items]
+    [items, toast]
   );
 
   const onApply = useCallback(
     async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
       const snapshot = items;
       const now = new Date().toISOString();
       setItems((prev) =>
@@ -116,11 +218,19 @@ export function OpportunitiesFeed() {
       );
       try {
         await applyToOpportunity(id, 'manual');
+        toast('Applied successfully.', 'success');
       } catch {
         setItems(snapshot);
+        toast('Failed to apply.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     },
-    [items]
+    [items, toast]
   );
 
   return (
@@ -128,6 +238,7 @@ export function OpportunitiesFeed() {
       <div className="flex flex-wrap items-center gap-2" role="tablist">
         {FILTER_KEYS.map((f) => {
           const active = f.id === filter;
+          const count = counts[f.id];
           return (
             <button
               key={f.id}
@@ -142,10 +253,13 @@ export function OpportunitiesFeed() {
               }`}
             >
               {t(f.labelKey)}
+              {count > 0 && <span className="ml-1.5 text-xs opacity-70">({count})</span>}
             </button>
           );
         })}
       </div>
+
+      {items.length > 0 && <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />}
 
       {hasError ? (
         <div
@@ -155,37 +269,54 @@ export function OpportunitiesFeed() {
           {t('feed.loadError')}
         </div>
       ) : loading && items.length === 0 ? (
-        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-600">
-          {t('common.loading')}
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse rounded-lg border border-gray-200 bg-white p-4">
+              <div className="h-4 w-3/4 rounded bg-gray-100" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-gray-100" />
+              <div className="mt-3 flex gap-2">
+                <div className="h-8 w-20 rounded bg-gray-100" />
+                <div className="h-8 w-20 rounded bg-gray-100" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filteredItems.length === 0 && items.length > 0 ? (
+        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500">
+          No opportunities match your current filters.
         </p>
       ) : items.length === 0 ? (
-        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-600">
-          {t('feed.empty')} {filter !== 'all' && t('feed.tryAllFilter')}
-        </p>
+        <EmptyFeedState filter={filter} t={t} />
       ) : (
         <>
           <ul className="space-y-3">
-            {items.map((it) => (
+            {filteredItems.map((it) => (
               <OpportunityCard
                 key={it.opportunity_id}
                 item={it}
-                snapshot={null}
+                snapshot={snapshots[it.opportunity_id] ?? null}
                 onStar={onStar}
                 onUnstar={onUnstar}
                 onApply={onApply}
+                isPending={pendingItems.has(it.opportunity_id)}
               />
             ))}
           </ul>
-          {nextCursor && (
-            <button
-              type="button"
-              onClick={() => void load(filter, nextCursor)}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              disabled={loading}
-            >
-              {loading ? t('common.loading') : t('cta.loadMore')}
-            </button>
-          )}
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>
+              {filteredItems.length} {t('feed.opportunities')}
+            </span>
+            {nextCursor && (
+              <button
+                type="button"
+                onClick={() => void load(filter, nextCursor)}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                disabled={loading}
+              >
+                {loading ? t('common.loading') : t('cta.loadMore')}
+              </button>
+            )}
+          </div>
         </>
       )}
     </section>

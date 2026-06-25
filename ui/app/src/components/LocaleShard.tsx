@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import Cascade from './Cascade';
-import { useAuth } from '@/providers/AuthProvider';
-import { fetchCandidate } from '@/api/candidates';
+import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { useI18n } from '@/i18n/I18nProvider';
 
 export default function LocaleShard() {
@@ -30,21 +28,7 @@ export default function LocaleShard() {
     };
   }, [country, languages]);
 
-  const auth = useAuth();
-  const profile = useQuery({
-    queryKey: ['candidate-profile'],
-    queryFn: fetchCandidate,
-    enabled: auth.state === 'authenticated',
-    staleTime: 5 * 60_000,
-  });
-  const preferredCountries = useMemo(
-    () => splitCSV(profile.data?.preferred_countries),
-    [profile.data?.preferred_countries]
-  );
-  const preferredLanguages = useMemo(
-    () => splitCSV(profile.data?.languages),
-    [profile.data?.languages]
-  );
+  const { preferredCountries, preferredLanguages } = useCandidateProfile();
 
   return (
     <ShardStatusBanner country={country} languages={languages}>
@@ -96,12 +80,4 @@ function ShardStatusBanner({
       {children}
     </>
   );
-}
-
-function splitCSV(csv: string | undefined | null): string[] {
-  if (!csv) return [];
-  return csv
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
 }

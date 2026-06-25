@@ -70,6 +70,40 @@ func TestSourceDiscoveredUpsertsNewURL(t *testing.T) {
 	}
 }
 
+// TestSourceDiscoveredDropsManagedATSHosts verifies a discovered individual
+// board on a multi-tenant ATS platform (greenhouse/lever/ashby) is dropped —
+// those platforms are owned by a single aggregate source, and minting a
+// per-company row would create a connector-less source that errors forever.
+func TestSourceDiscoveredDropsManagedATSHosts(t *testing.T) {
+	for _, u := range []string{
+		"https://boards.greenhouse.io/stripe",
+		"https://jobs.lever.co/revolut",
+		"https://jobs.ashbyhq.com/openai",
+		"https://job-boards.greenhouse.io/airbnb/jobs/123",
+	} {
+		t.Run(u, func(t *testing.T) {
+			repo := newFakeUpserter()
+			repo.rows["s-origin"] = &domain.Source{
+				BaseModel: domain.BaseModel{ID: "s-origin"},
+				BaseURL:   "https://example.com",
+				Status:    domain.SourceActive,
+			}
+			h := NewSourceDiscoveredHandler(repo, nil)
+			env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
+				DiscoveredURL: u, SourceID: "s-origin", Country: "KE",
+			})
+			raw, _ := json.Marshal(env)
+			rm := json.RawMessage(raw)
+			if err := h.Execute(context.Background(), &rm); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if len(repo.upserts) != 0 {
+				t.Fatalf("managed ATS host should be dropped, got upserts=%v", repo.upserts)
+			}
+		})
+	}
+}
+
 // TestSourceDiscoveredDroppedFromUnapprovedOrigin verifies that the
 // handler refuses to mint a new source when the origin that emitted
 // the discovery is itself not yet approved. Without this gate a freshly

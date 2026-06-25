@@ -14,8 +14,82 @@ type CrawlerConfig struct {
 	BatchSize         int    `env:"BATCH_SIZE" envDefault:"500"`
 	BatchFlushSec     int    `env:"BATCH_FLUSH_SEC" envDefault:"10"`
 	SeedsDir          string `env:"SEEDS_DIR" envDefault:"/seeds"`
-	UserAgent         string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
-	HTTPTimeoutSec    int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
+
+	// Pipeline head queue: the crawler publishes VariantIngestedV1 here (the
+	// worker's normalize stage subscribes). Name+URI per the service-profile
+	// idiom; must match the worker's ingested queue.
+	QueuePipelineIngested     string `env:"QUEUE_PIPELINE_INGESTED_URI"  envDefault:"mem://pipeline_ingested"`
+	QueuePipelineIngestedName string `env:"QUEUE_PIPELINE_INGESTED_NAME" envDefault:"pipeline_ingested"`
+	UserAgent                 string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
+	HTTPTimeoutSec            int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
+
+	// InferenceTimeoutSec bounds a single LLM call (extraction / recipe
+	// synthesis). It must be far larger than HTTPTimeoutSec: page fetches want
+	// to fail fast, but an LLM generating full JSON from a long page routinely
+	// takes 10–60s. Reusing the 20s page-fetch client here silently timed out
+	// every real extraction ("Client.Timeout exceeded while awaiting headers").
+	InferenceTimeoutSec int `env:"INFERENCE_TIMEOUT_SEC" envDefault:"120"`
+
+	// RecipeBackfillLimit caps how many recipe-less sources the backfill cron
+	// enqueues for generation per run. Each generation makes several LLM calls,
+	// so enqueuing all sources at once bursts past a shared inference tier's
+	// rate limit. Keep this small (e.g. 2–3) on a rate-limited tier so
+	// generation paces under the cap; raise it with in-cluster/high-tier
+	// inference. The cron fires every 15 min, so N here ≈ N recipes per 15 min.
+	RecipeBackfillLimit int `env:"RECIPE_BACKFILL_LIMIT" envDefault:"25"`
+
+	// CrawlOverdueBatch caps how many overdue sources the catch-up sweep
+	// (POST /admin/sources/crawl-overdue) dispatches per tick. The sweep
+	// only sees sources ≥1h past due — ticks the per-source schedules
+	// already lost — so the batch mostly matters when recovering from an
+	// outage, where it paces the backlog through the backpressure gate.
+	CrawlOverdueBatch int `env:"CRAWL_OVERDUE_BATCH" envDefault:"25"`
+
+	// Resumable bounded-slice crawling (crawl_runs state machine). A crawl is
+	// driven in slices that end after CrawlSliceMaxPages pages OR
+	// CrawlSliceMaxSeconds seconds — whichever first — then the handler
+	// self-re-enqueues a backpressure-gated continuation. This keeps every
+	// message well under NATS ack_wait and makes a millions-of-jobs board
+	// resumable across slices and process restarts.
+	CrawlSliceMaxPages   int `env:"CRAWL_SLICE_MAX_PAGES" envDefault:"50"`
+	CrawlSliceMaxSeconds int `env:"CRAWL_SLICE_MAX_SECONDS" envDefault:"120"`
+
+	// CrawlRunLeaseTTLSec is the per-source run lease. Renewed every page so a
+	// slow page never expires a live slice; a crashed owner's lease lapses
+	// within one TTL and the watchdog reclaims the run. Keep ≥
+	// CrawlSliceMaxSeconds so the watchdog never races an in-flight slice.
+	CrawlRunLeaseTTLSec int `env:"CRAWL_RUN_LEASE_TTL_SEC" envDefault:"300"`
+
+	// CrawlRunStuckMaxAttempts fails a run after this many slices without
+	// completing — a backstop against a run that never converges (e.g. a
+	// source that always errors mid-pagination) holding the single-flight slot.
+	CrawlRunStuckMaxAttempts int `env:"CRAWL_RUN_STUCK_MAX_ATTEMPTS" envDefault:"200"`
+
+	// CrawlRunWatchdogBatch caps how many lapsed runs the watchdog re-drives
+	// per tick (each emit is backpressure-gated).
+	CrawlRunWatchdogBatch int `env:"CRAWL_RUN_WATCHDOG_BATCH" envDefault:"50"`
+
+	// Unblocker fallback: when a direct fetch is blocked (403/429/451/503 or a
+	// transport error), the request is retried through this proxy — a Bright
+	// Data Web Unlocker / Oxylabs / similar endpoint, e.g.
+	// http://brd-customer-<id>-zone-<zone>:<pass>@brd.superproxy.io:33335
+	// Empty disables the fallback (direct-only, current behaviour). Pin the
+	// provider's CA via UnblockerCACert to verify the proxy's re-signed TLS;
+	// without it, verification on the proxy transport is skipped.
+	UnblockerProxyURL   string `env:"UNBLOCKER_PROXY_URL"`
+	UnblockerCACert     string `env:"UNBLOCKER_CA_CERT"`
+	UnblockerTimeoutSec int    `env:"UNBLOCKER_TIMEOUT_SEC" envDefault:"60"`
+
+	// scrape.do unblocker (API mode). Takes precedence over the generic
+	// proxy above. Render runs a headless browser (JS/Cloudflare
+	// challenges); Super uses the residential pool (harder IP blocks);
+	// both cost more credits, so default off — plain mode already
+	// unblocks Cloudflare boards like libyanjobs. GeoCode pins egress
+	// country (e.g. "us"). Empty token disables.
+	ScrapeDoToken   string `env:"SCRAPEDO_TOKEN"`
+	ScrapeDoRender  bool   `env:"SCRAPEDO_RENDER" envDefault:"false"`
+	ScrapeDoSuper   bool   `env:"SCRAPEDO_SUPER" envDefault:"false"`
+	ScrapeDoGeoCode string `env:"SCRAPEDO_GEOCODE"`
 
 	// EnrichConcurrency caps the parallel fetch+LLM-extract calls
 	// per crawler page for URL-only stubs (sitemap + universal
@@ -40,14 +114,19 @@ type CrawlerConfig struct {
 	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel   string `env:"EMBEDDING_MODEL" envDefault:""`
+	// EmbeddingDimensions pins the embeddings API "dimensions" field for
+	// Matryoshka models (Qwen3-Embedding); 0 omits it. Must equal EMBEDDING_DIM.
+	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
 
 	// Reranker — carried for consistency with the other apps. Crawler
 	// doesn't currently rerank, but having the knobs in one config struct
 	// keeps copy-paste safe.
-	RerankBaseURL     string `env:"RERANK_BASE_URL" envDefault:""`
-	RerankAPIKey      string `env:"RERANK_API_KEY" envDefault:""`
-	RerankModel       string `env:"RERANK_MODEL" envDefault:""`
-	ValkeyAddr string `env:"VALKEY_ADDR" envDefault:""`
+	RerankBaseURL string `env:"RERANK_BASE_URL" envDefault:""`
+	RerankAPIKey  string `env:"RERANK_API_KEY" envDefault:""`
+	RerankModel   string `env:"RERANK_MODEL" envDefault:""`
+	// RerankDialect: "tei" (default) or "openai"/"siliconflow" for /v1/rerank.
+	RerankDialect string `env:"RERANK_DIALECT" envDefault:""`
+	ValkeyAddr    string `env:"VALKEY_ADDR" envDefault:""`
 
 	// Cloudflare R2 — one account token authorised on all three
 	// product-opportunities buckets. Bucket names live in the static
@@ -106,6 +185,41 @@ type CrawlerConfig struct {
 	// at /workflows into Trustage during the migration Job.
 	TrustageURL          string `env:"TRUSTAGE_URL" envDefault:""`
 	TrustageWorkflowsDir string `env:"TRUSTAGE_WORKFLOWS_DIR" envDefault:"/workflows"`
+
+	// CrawlBaseURL is the in-cluster URL Trustage uses to reach THIS crawler's
+	// admin API for per-source crawl schedules (POST {base}/admin/sources/{id}/crawl).
+	// Must be resolvable from the operations namespace where Trustage runs.
+	CrawlBaseURL string `env:"CRAWL_BASE_URL" envDefault:"http://opportunities-crawler.product-opportunities.svc"`
+
+	// CrawlInboxEnabled buffers crawled variants in the crawl_inbox Postgres
+	// table instead of publishing straight to pl_ingested; a rate-limited pump
+	// drains the inbox onto the queue only while pl_ingested is below
+	// CrawlInboxPumpHighWater. Decouples a crawl burst (a paginated board emits
+	// hundreds–thousands of variants at once) from JetStream, which blocks on an
+	// fsync ack per publish. Default off for a safe rollout.
+	CrawlInboxEnabled       bool `env:"CRAWL_INBOX_ENABLED" envDefault:"false"`
+	CrawlInboxPumpHighWater int  `env:"CRAWL_INBOX_PUMP_HIGH_WATER" envDefault:"5000"`
+	CrawlInboxPumpBatch     int  `env:"CRAWL_INBOX_PUMP_BATCH" envDefault:"500"`
+
+	// SourceSchedulesEnabled gates the per-source Trustage schedule sync — the
+	// fully-dynamic, event-driven crawl scheduling model. When true and a
+	// TrustageURL is configured, source lifecycle mutations emit
+	// sources.scheduling.changed.v1 and the crawler creates/archives a
+	// per-source Trustage schedule to match the source's live status; a boot
+	// reconcile + reconcile backstop heal drift. Defaults on — this is the only
+	// crawl driver (the legacy central cron tick has been retired).
+	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"true"`
+
+	// Recipe generation knobs. All default to off / conservative values so
+	// the feature ships dormant (RECIPE_ENABLED=false) and is enabled
+	// per-deploy. See docs/superpowers/specs/2026-06-09-ai-generated-extraction-recipes-design.md §5H.
+	RecipeEnabled          bool    `env:"RECIPE_ENABLED"            envDefault:"false"`
+	RecipeSampleCount      int     `env:"RECIPE_SAMPLE_COUNT"       envDefault:"4"` // reserved for Plan 5 backfill sampling
+	RecipePassThreshold    float64 `env:"RECIPE_PASS_THRESHOLD"     envDefault:"0.8"`
+	RecipeMaxGenAttempts   int     `env:"RECIPE_MAX_GEN_ATTEMPTS"   envDefault:"3"`
+	RecipeRegenRejectRate  float64 `env:"RECIPE_REGEN_REJECT_RATE"  envDefault:"0.5"`
+	RecipeRegenMinPages    int     `env:"RECIPE_REGEN_MIN_PAGES"    envDefault:"20"`
+	RecipeMaxRegenFailures int     `env:"RECIPE_MAX_REGEN_FAILURES" envDefault:"3"`
 
 	// Analytics (OpenObserve) — shared across every opportunities service.
 	AnalyticsBaseURL  string `env:"ANALYTICS_BASE_URL" envDefault:""`

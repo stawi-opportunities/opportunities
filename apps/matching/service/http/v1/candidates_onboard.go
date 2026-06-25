@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/pitabwire/util"
 
@@ -22,9 +21,22 @@ type CandidatesOnboardStore interface {
 	OnboardAtomically(ctx context.Context, candidateID string, mutate func(*domain.CandidateProfile)) error
 }
 
+// OnboardMatchTrigger fires the candidate-change / preference-update
+// path so a freshly-onboarded candidate gets gap-fill matches even
+// before (or without) a CV upload. Production impl emits a
+// PreferencesUpdatedV1 event onto the preferences-updated topic, which
+// the PreferenceMatchHandler consumes. Best-effort: errors are logged,
+// never surfaced to the onboard response.
+type OnboardMatchTrigger interface {
+	TriggerInitialMatch(ctx context.Context, candidateID string, kinds []string) error
+}
+
 // CandidatesOnboardDeps bundles the inputs the handler needs.
 type CandidatesOnboardDeps struct {
 	Store CandidatesOnboardStore
+	// Match optionally fires the initial match pass after a successful
+	// onboard. nil disables the trigger (the wizard still completes).
+	Match OnboardMatchTrigger
 }
 
 // onboardPayload mirrors ui/app/src/api/candidates.ts:OnboardingPayload.
@@ -88,13 +100,11 @@ func CandidatesOnboardHandler(deps CandidatesOnboardDeps) http.HandlerFunc {
 		}
 		// Minimal validation — most schema enforcement lives in the
 		// wizard's client-side react-hook-form Step1/2/3 schemas.
-		// Server-side we guard the cross-step invariants: required
-		// fields, agree_terms must be true, plan must be a known tier.
-		if strings.TrimSpace(in.TargetJobTitle) == "" {
-			httpmw.ProblemJSON(w, http.StatusBadRequest,
-				"target_job_title_required", "target_job_title is required")
-			return
-		}
+		// Server-side we guard the cross-step invariants: agree_terms
+		// must be true, plan must be a known tier. target_job_title is
+		// OPTIONAL — the wizard never collects a job title; matching keys
+		// off the CV embedding + preferred roles/geo/salary, so an empty
+		// title must be accepted.
 		if !validPlan(in.Plan) {
 			httpmw.ProblemJSON(w, http.StatusBadRequest,
 				"invalid_plan", "plan must be one of: starter, pro, managed")
@@ -141,6 +151,16 @@ func CandidatesOnboardHandler(deps CandidatesOnboardDeps) http.HandlerFunc {
 			httpmw.ProblemJSON(w, http.StatusBadGateway,
 				"onboard_failed", "could not save onboarding data")
 			return
+		}
+
+		// Best-effort: kick off an initial match pass so a candidate who
+		// set preferences gets gap-fill matches even before/without a CV.
+		// Non-fatal — a failure here must not fail the onboard response.
+		if deps.Match != nil {
+			if err := deps.Match.TriggerInitialMatch(ctx, candidateID, in.JobTypes); err != nil {
+				log.WithError(err).WithField("candidate_id", candidateID).
+					Warn("candidates/onboard: initial match trigger failed (non-fatal)")
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

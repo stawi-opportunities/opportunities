@@ -7,14 +7,14 @@ export default function GetStartedCta() {
 
   if (state === 'authenticated') return null;
 
-  const onClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // login() is a full-page redirect to the IdP; after sign-in,
+    // /auth/callback/ routes to /dashboard/ or /onboarding/ based on
+    // subscription status. Going straight to login() (rather than the
+    // href fallback) skips an extra hop through /onboarding/. The href
+    // stays as the no-JS fallback.
     e.preventDefault();
-    try {
-      await login();
-      window.location.href = '/onboarding/';
-    } catch {
-      // Widget renders its own error banner.
-    }
+    void login();
   };
 
   return (

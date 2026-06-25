@@ -72,7 +72,7 @@ func (r *CandidateRepository) IncrementMatchesSent(ctx context.Context, id strin
 		Model(&domain.CandidateProfile{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
-			"matches_sent":     gorm.Expr("matches_sent + 1"),
+			"matches_sent":      gorm.Expr("matches_sent + 1"),
 			"last_contacted_at": now,
 		}).Error
 }
@@ -104,6 +104,32 @@ func (r *CandidateRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db(ctx, true).Model(&domain.CandidateProfile{}).Count(&count).Error
 	return count, err
+}
+
+// ActivateSubscription flips a candidate to the paid tier on a confirmed
+// payment. Idempotent: it only writes when the row is not already
+// (subscription=paid, subscription_id=subID) so a webhook + the
+// reconciler can both fire for the same payment without double-effects.
+// Returns whether the row was changed. planID, when non-empty, confirms
+// the persisted plan; subID links the candidate to the billing
+// subscription.
+func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidateID, subID, planID string) (bool, error) {
+	updates := map[string]interface{}{
+		"subscription":    domain.SubscriptionPaid,
+		"subscription_id": subID,
+	}
+	if planID != "" {
+		updates["plan_id"] = planID
+	}
+	res := r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("id = ? AND NOT (subscription = ? AND subscription_id = ?)",
+			candidateID, domain.SubscriptionPaid, subID).
+		Updates(updates)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }
 
 // ListPendingSubscriptions returns candidates with a SubscriptionID
@@ -153,7 +179,7 @@ func (r *CandidateRepository) ListAutoApplyEligible(ctx context.Context, afterID
 //
 // "Unpaid" is defined as one of:
 //   - Subscription IN (free, trial, cancelled)
-//   - Subscription = paid BUT SubscriptionID = '' (the candidate row
+//   - Subscription = paid BUT SubscriptionID = ” (the candidate row
 //     was set to 'paid' optimistically without a backing subscription;
 //     the reconciler will eventually correct this)
 //

@@ -4,6 +4,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,13 +88,13 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 		}
 		defer func() { _ = file.Close() }()
 
-		body, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+		body, err := readBounded(file, maxBytes)
 		if err != nil {
+			if err == errTooLarge {
+				http.Error(w, `{"error":"file too large"}`, http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, fmt.Sprintf(`{"error":"read file: %s"}`, err.Error()), http.StatusBadRequest)
-			return
-		}
-		if int64(len(body)) > maxBytes {
-			http.Error(w, `{"error":"file too large"}`, http.StatusRequestEntityTooLarge)
 			return
 		}
 
@@ -117,7 +118,7 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 		}
 
 		cvVersion := 1 // v1 shortcut; Phase 6 computes the real next version
-		payload := eventsv1.CVUploadedV1{
+		if err := enqueueCVExtract(ctx, deps.Svc, cvUploadInput{
 			CandidateID:   candidateID,
 			CVVersion:     cvVersion,
 			RawArchiveRef: archive.RawKey(hash),
@@ -125,20 +126,8 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 			ContentType:   hdr.Header.Get("Content-Type"),
 			SizeBytes:     size,
 			ExtractedText: text,
-		}
-		env := eventsv1.NewEnvelope(eventsv1.TopicCVUploaded, payload)
-		envBytes, marshalErr := json.Marshal(env)
-		if marshalErr != nil {
-			log.WithError(marshalErr).Error("upload: marshal failed")
-			http.Error(w, `{"error":"marshal failed"}`, http.StatusInternalServerError)
-			return
-		}
-		// Publish onto the durable cv-extract queue subject. The
-		// extract handler is a Frame Queue subscriber (external LLM
-		// call), not a Frame Event handler, so it survives restarts +
-		// retries with backoff if Cloudflare AI Gateway is flaky.
-		if pubErr := deps.Svc.QueueManager().Publish(ctx, eventsv1.SubjectCVExtract, envBytes); pubErr != nil {
-			log.WithError(pubErr).Error("upload: publish failed")
+		}); err != nil {
+			log.WithError(err).Error("upload: enqueue cv-extract failed")
 			http.Error(w, `{"error":"publish failed"}`, http.StatusInternalServerError)
 			return
 		}
@@ -151,6 +140,62 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 			"cv_version":   cvVersion,
 		})
 	}
+}
+
+// cvUploadInput carries the fields enqueueCVExtract folds into a
+// CVUploadedV1 envelope. Shared by POST /candidates/cv/upload (multipart)
+// and PUT /me/cv (raw body) so both entry points drive the identical
+// cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill pipeline.
+type cvUploadInput struct {
+	CandidateID   string
+	CVVersion     int
+	RawArchiveRef string
+	Filename      string
+	ContentType   string
+	SizeBytes     int64
+	ExtractedText string
+}
+
+// enqueueCVExtract marshals a CVUploadedV1 envelope and publishes it onto
+// the durable cv-extract queue subject. The extract handler is a Frame
+// Queue subscriber (external LLM call), not a Frame Event handler, so it
+// survives restarts + retries with backoff if the AI Gateway is flaky.
+func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadInput) error {
+	payload := eventsv1.CVUploadedV1{
+		CandidateID:   in.CandidateID,
+		CVVersion:     in.CVVersion,
+		RawArchiveRef: in.RawArchiveRef,
+		Filename:      in.Filename,
+		ContentType:   in.ContentType,
+		SizeBytes:     in.SizeBytes,
+		ExtractedText: in.ExtractedText,
+	}
+	env := eventsv1.NewEnvelope(eventsv1.TopicCVUploaded, payload)
+	envBytes, err := json.Marshal(env)
+	if err != nil {
+		return fmt.Errorf("upload: marshal cv-uploaded envelope: %w", err)
+	}
+	if err := svc.QueueManager().Publish(ctx, eventsv1.SubjectCVExtract, envBytes); err != nil {
+		return fmt.Errorf("upload: publish cv-extract: %w", err)
+	}
+	return nil
+}
+
+// errTooLarge signals that the uploaded file exceeded the byte cap.
+var errTooLarge = errors.New("file too large")
+
+// readBounded reads up to maxBytes from r, returning errTooLarge if the
+// source has more bytes than the cap. Shared by the multipart upload
+// handler and the PUT /me/cv handler.
+func readBounded(r io.Reader, maxBytes int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, errTooLarge
+	}
+	return body, nil
 }
 
 // extractText picks PDF or DOCX extraction based on filename suffix.

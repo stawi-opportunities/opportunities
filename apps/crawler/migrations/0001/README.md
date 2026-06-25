@@ -127,7 +127,7 @@ CREATE TABLE opportunities (
   first_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_seen_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   attributes       JSONB NOT NULL DEFAULT '{}'::jsonb,
-  embedding        vector(1024),
+  embedding        vector(1024),  -- intfloat/multilingual-e5-large; see migration 20260602_0110
   quality_score    NUMERIC,
   hidden           BOOLEAN NOT NULL DEFAULT false,
   hidden_reason    TEXT,
@@ -205,3 +205,4 @@ CREATE TRIGGER opportunities_set_updated_at
 -- ===========================================================================
 GRANT SELECT, INSERT, UPDATE, DELETE ON pipeline_variants TO opportunities;
 GRANT SELECT, INSERT, UPDATE, DELETE ON opportunities      TO opportunities;
+- frame v1.98+ executes each migration file as ONE prepared statement: a file must contain a SINGLE SQL command (wrap multi-step migrations in one DO $$ block with EXECUTEs). Multi-command files fail with SQLSTATE 42601.

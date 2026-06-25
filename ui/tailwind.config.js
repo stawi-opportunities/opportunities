@@ -43,7 +43,60 @@ module.exports = {
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
       },
+      animation: {
+        'fade-in': 'fadeIn 150ms ease-out',
+        'slide-up': 'slideUp 200ms ease-out',
+        'slide-down': 'slideDown 200ms ease-out',
+        'confetti': 'confetti 1s ease-out forwards',
+        'fade-up': 'fadeUp 500ms ease-out both',
+        'float-y': 'floatY 3s ease-in-out infinite',
+        'orb': 'orb 25s ease-in-out infinite',
+        'orb-slow': 'orb 35s ease-in-out infinite reverse',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        fadeUp: {
+          '0%': { opacity: '0', transform: 'translateY(24px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideUp: {
+          '0%': { transform: 'translateY(100%)' },
+          '100%': { transform: 'translateY(0)' },
+        },
+        slideDown: {
+          '0%': { opacity: '0', transform: 'translateY(-8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        confetti: {
+          '0%': { transform: 'translateY(0) rotate(0deg)', opacity: '1' },
+          '100%': { transform: 'translateY(200px) rotate(720deg)', opacity: '0' },
+        },
+        floatY: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-12px)' },
+        },
+        orb: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '25%': { transform: 'translate(30px, -40px) scale(1.08)' },
+          '50%': { transform: 'translate(-20px, 20px) scale(0.95)' },
+          '75%': { transform: 'translate(40px, 30px) scale(1.05)' },
+        },
+      },
     },
   },
-  plugins: [require("@tailwindcss/forms"), require("@tailwindcss/typography")],
+  plugins: [
+    require("@tailwindcss/forms"),
+    require("@tailwindcss/typography"),
+    function ({ matchUtilities, theme }) {
+      matchUtilities(
+        {
+          'animation-delay': (value) => ({ animationDelay: value }),
+        },
+        { values: { ...theme('transitionDelay'), 400: '400ms' } }
+      );
+    },
+  ],
 };

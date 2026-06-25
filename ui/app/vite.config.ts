@@ -16,7 +16,7 @@ function hugoManifestPlugin() {
       // Vite emits to ui/static/app/assets/<file>, which Hugo then copies
       // into ui/public/app/assets/<file> and serves at /app/assets/<file>.
       // We record the /app/-prefixed path so head.html can drop it directly
-      // into a <script src="/…"> tag without extra logic.
+      // into a <script src="/ΓÇª"> tag without extra logic.
       for (const [fileName, chunk] of Object.entries(bundle)) {
         if (chunk.type === 'chunk' && chunk.isEntry) {
           manifest['main.js'] = 'app/' + fileName;
@@ -36,7 +36,7 @@ export default defineConfig(({ command }) => ({
   plugins: [react(), hugoManifestPlugin()],
   // Production builds emit under /app/ because Hugo copies static/app/
   // to public/app/. In dev mode the Hugo template loads directly from
-  // the Vite dev server origin, so no base prefix is needed — keeping
+  // the Vite dev server origin, so no base prefix is needed ΓÇö keeping
   // base at "/" avoids the mismatch where head.html requests
   // /src/main.tsx but Vite serves /app/src/main.tsx.
   base: command === 'build' ? '/app/' : '/',
@@ -67,5 +67,23 @@ export default defineConfig(({ command }) => ({
     strictPort: true,
     cors: true,
     origin: 'http://localhost:5173',
+    // Proxy API requests to the production backend so the browser never
+    // makes a cross-origin fetch ΓÇö CORS is bypassed entirely in dev.
+    // Start Hugo with HUGO_PARAMS_apiURL=http://localhost:5173/jobs-api
+    // and HUGO_PARAMS_candidatesAPIURL=http://localhost:5173/candidates-api.
+    proxy: {
+      '/jobs-api': {
+        target: 'https://api.stawi.org',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path: string) => path.replace(/^\/jobs-api/, '/jobs'),
+      },
+      '/candidates-api': {
+        target: 'https://api.stawi.org',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path: string) => path.replace(/^\/candidates-api/, ''),
+      },
+    },
   },
 }));

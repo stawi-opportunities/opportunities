@@ -114,24 +114,43 @@ const (
 // Source represents a configured job board or careers page to crawl.
 type Source struct {
 	BaseModel
-	Type             SourceType     `gorm:"type:varchar(50);not null;uniqueIndex:idx_source_type_url" json:"type"`
-	Name             string         `gorm:"type:varchar(255)" json:"name"`
-	BaseURL          string         `gorm:"type:text;not null;uniqueIndex:idx_source_type_url" json:"base_url"`
-	Country          string         `gorm:"type:varchar(10)" json:"country"`
-	Language         string         `gorm:"type:varchar(10);not null;default:'en';index" json:"language"`
+	Type     SourceType `gorm:"type:varchar(50);not null;uniqueIndex:idx_source_type_url" json:"type"`
+	Name     string     `gorm:"type:varchar(255)" json:"name"`
+	BaseURL  string     `gorm:"type:text;not null;uniqueIndex:idx_source_type_url" json:"base_url"`
+	Country  string     `gorm:"type:varchar(10)" json:"country"`
+	Language string     `gorm:"type:varchar(10);not null;default:'en';index" json:"language"`
 	// Default is 'pending': any INSERT that forgets to set Status now
 	// lands in the verify-then-approve lifecycle instead of accidentally
 	// being treated as already-trusted. Seed/admin/discovery paths set
 	// the column explicitly; this default is the safety net.
-	Status           SourceStatus   `gorm:"type:varchar(20);not null;default:'pending'" json:"status"`
-	Priority         Priority       `gorm:"type:smallint;not null;default:1" json:"priority"`
-	CrawlIntervalSec int            `gorm:"not null;default:3600" json:"crawl_interval_sec"`
-	HealthScore         float64        `gorm:"type:real;not null;default:1.0" json:"health_score"`
-	ConsecutiveFailures int            `gorm:"not null;default:0" json:"consecutive_failures"`
-	NeedsTuning         bool           `gorm:"not null;default:false" json:"needs_tuning"`
-	Config              string         `gorm:"type:jsonb;default:'{}'" json:"config"`
-	LastSeenAt       *time.Time     `json:"last_seen_at"`
-	NextCrawlAt      time.Time      `gorm:"index" json:"next_crawl_at"`
+	Status              SourceStatus `gorm:"type:varchar(20);not null;default:'pending'" json:"status"`
+	Priority            Priority     `gorm:"type:smallint;not null;default:1" json:"priority"`
+	CrawlIntervalSec    int          `gorm:"not null;default:3600" json:"crawl_interval_sec"`
+	HealthScore         float64      `gorm:"type:real;not null;default:1.0" json:"health_score"`
+	ConsecutiveFailures int          `gorm:"not null;default:0" json:"consecutive_failures"`
+	NeedsTuning         bool         `gorm:"not null;default:false" json:"needs_tuning"`
+	// NeedsTuningAt stamps when needs_tuning was last raised, so the
+	// recipe backfill can re-admit stuck sources after a cooldown instead
+	// of skipping them forever. NULL on sources flagged before the column
+	// existed — treated as already-expired (retry-eligible).
+	NeedsTuningAt *time.Time `json:"needs_tuning_at,omitempty"`
+	Config              string       `gorm:"type:jsonb;default:'{}'" json:"config"`
+	// ExtractionRecipe holds the source's active AI-generated extraction
+	// recipe as raw JSON ('{}' when none). Stored as a string so the domain
+	// package stays free of a pkg/recipe import (recipe imports domain).
+	// pkg/repository.RecipeRepository (un)marshals it to recipe.Recipe.
+	ExtractionRecipe string `gorm:"type:jsonb;not null;default:'{}'" json:"extraction_recipe"`
+	// ListingPath is the DEFINITE location of the jobs listing relative to
+	// BaseURL ("" when BaseURL itself is the listing). Operator-supplied
+	// fact, never guessed: recipe generation derives the recipe's list
+	// rule from this exact page and pins it as the recipe's
+	// list.endpoint, so generation, validation and crawling all operate
+	// on the same definite URL. (BaseURL is often a homepage whose
+	// job-ish links are advice articles — learning from it produces
+	// recipes for the wrong pages.)
+	ListingPath string     `gorm:"type:text;not null;default:''" json:"listing_path"`
+	LastSeenAt  *time.Time `json:"last_seen_at"`
+	NextCrawlAt time.Time  `gorm:"index" json:"next_crawl_at"`
 
 	// Adaptive recrawl score (0.0–1.0). 1.0 means "crawl at
 	// MinIntervalMinutes"; 0.0 means "crawl at MaxIntervalMinutes".
@@ -146,14 +165,14 @@ type Source struct {
 	// Reachability probe run before every enqueue. Sources that fail
 	// repeatedly get their NextCrawlAt pushed out with backoff rather
 	// than being dispatched into a pipeline that will just 404.
-	LastVerifiedAt    *time.Time `json:"last_verified_at"`
-	LastVerifyStatus  int        `gorm:"not null;default:0" json:"last_verify_status"`
+	LastVerifiedAt   *time.Time `json:"last_verified_at"`
+	LastVerifyStatus int        `gorm:"not null;default:0" json:"last_verify_status"`
 
 	// Source quality sliding window
-	QualityWindowStart  *time.Time `json:"quality_window_start"`
-	QualityWindowDays   int        `gorm:"not null;default:1" json:"quality_window_days"`
-	QualityValidated    int        `gorm:"not null;default:0" json:"quality_validated"`
-	QualityFlagged      int        `gorm:"not null;default:0" json:"quality_flagged"`
+	QualityWindowStart *time.Time `json:"quality_window_start"`
+	QualityWindowDays  int        `gorm:"not null;default:1" json:"quality_window_days"`
+	QualityValidated   int        `gorm:"not null;default:0" json:"quality_validated"`
+	QualityFlagged     int        `gorm:"not null;default:0" json:"quality_flagged"`
 
 	// Kinds declares which opportunity kinds this source emits. Required at
 	// registration time; validated against the registry. A connector that emits

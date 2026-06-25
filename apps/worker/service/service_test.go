@@ -27,16 +27,11 @@ type collector struct {
 	got   []json.RawMessage
 }
 
-func (c *collector) Name() string { return c.topic }
-func (c *collector) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-func (c *collector) Validate(_ context.Context, _ any) error { return nil }
-func (c *collector) Execute(_ context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
+// Handle implements queue.SubscribeWorker so the collector can tap a
+// pipeline Frame Queue subject and accumulate the raw bytes it receives.
+func (c *collector) Handle(_ context.Context, _ map[string]string, payload []byte) error {
 	c.mu.Lock()
-	c.got = append(c.got, append(json.RawMessage(nil), *raw...))
+	c.got = append(c.got, append(json.RawMessage(nil), payload...))
 	c.mu.Unlock()
 	return nil
 }
@@ -44,6 +39,53 @@ func (c *collector) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.got)
+}
+
+// pipeline queue Names used by the in-memory E2E tests.
+const (
+	qIngested   = "pipeline_ingested"
+	qNormalized = "pipeline_normalized"
+	qValidated  = "pipeline_validated"
+	qClustered  = "pipeline_clustered"
+	qCanonical  = "pipeline_canonical"
+	qFlagged    = "pipeline_flagged"
+)
+
+// wireChain registers the full normalize→validate→dedup→canonical Frame
+// Queue chain on the in-memory driver and a collector tapping the canonical
+// queue. Publish is intentionally skipped (the tests assert up to canonical).
+func wireChain(t *testing.T, ctx context.Context, svc *frame.Service, wsvc *workersvc.Service) *collector {
+	t.Helper()
+	col := &collector{topic: qCanonical}
+	m := func(n string) string { return "mem://" + n }
+	svc.Init(ctx,
+		frame.WithRegisterPublisher(qIngested, m(qIngested)),
+		frame.WithRegisterPublisher(qNormalized, m(qNormalized)),
+		frame.WithRegisterPublisher(qValidated, m(qValidated)),
+		frame.WithRegisterPublisher(qFlagged, m(qFlagged)),
+		frame.WithRegisterPublisher(qClustered, m(qClustered)),
+		frame.WithRegisterPublisher(qCanonical, m(qCanonical)),
+		frame.WithRegisterSubscriber(qIngested, m(qIngested), wsvc.NormalizeWorker(qNormalized)),
+		frame.WithRegisterSubscriber(qNormalized, m(qNormalized), wsvc.ValidateWorker(qValidated, qFlagged)),
+		frame.WithRegisterSubscriber(qValidated, m(qValidated), wsvc.DedupWorker(qClustered)),
+		frame.WithRegisterSubscriber(qClustered, m(qClustered), wsvc.CanonicalWorker(qCanonical)),
+		frame.WithRegisterSubscriber(qCanonical, m(qCanonical), col),
+	)
+	go func() { _ = svc.Run(ctx, "") }()
+	frametest.WaitPublisherReady(t, svc, qIngested, 2*time.Second)
+	return col
+}
+
+// seedIngested publishes a VariantIngestedV1 onto the ingested queue.
+func seedIngested(t *testing.T, ctx context.Context, svc *frame.Service, in eventsv1.VariantIngestedV1) {
+	t.Helper()
+	body, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, in))
+	if err != nil {
+		t.Fatalf("marshal seed: %v", err)
+	}
+	if err := svc.QueueManager().Publish(ctx, qIngested, body, nil); err != nil {
+		t.Fatalf("publish seed: %v", err)
+	}
 }
 
 // TestWorkerPipelineE2E verifies the full normalize → validate → dedup →
@@ -96,27 +138,12 @@ func TestWorkerPipelineE2E(t *testing.T) {
 	// which leaves TopicCanonicalsUpserted free for the collector.
 	// The canonicalFanout (Handlers()[4]) is skipped; with nil
 	// extractor/publisher its embed/translate/publish stages are no-ops.
-	colCanonical := &collector{topic: eventsv1.TopicCanonicalsUpserted}
-	svc.EventsManager().Add(colCanonical)
+	// Wire the linear Frame Queue chain and tap the canonical output.
+	colCanonical := wireChain(t, ctx, svc, wsvc)
 
-	// Register the four pipeline handlers via WithRegisterEvents so they
-	// are added during the pre-start phase (after eventsManager is wired
-	// to the live queue). handlers[:4] = normalize, validate, dedup, canonical.
-	handlers := wsvc.Handlers()
-	svc.Init(ctx, frame.WithRegisterEvents(handlers[:4]...))
-
-	// Start Frame's run-loop in the background. The pre-start phase
-	// executes here, registering all four pipeline handlers. The
-	// collector was added directly before Init so it is not overwritten.
-	go func() { _ = svc.Run(ctx, "") }()
-	// Wait for the events-bus publisher to finish Init so the upcoming
-	// Emit() doesn't race with publisher.topic assignment.
-	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
-
-	// Emit the seed event. Country is lowercase "ke" so we can assert
-	// that normalize uppercased it to "KE" on the cluster snapshot.
-	now := time.Now().UTC()
-	in := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventsv1.VariantIngestedV1{
+	// Seed the chain. Country is lowercase "ke" so we can assert normalize
+	// uppercased it to "KE" on the cluster snapshot.
+	seedIngested(t, ctx, svc, eventsv1.VariantIngestedV1{
 		VariantID:     "var_pipe_1",
 		SourceID:      "src_pipe",
 		ExternalID:    "ext_1",
@@ -126,11 +153,8 @@ func TestWorkerPipelineE2E(t *testing.T) {
 		Title:         "Backend Engineer",
 		IssuingEntity: "Acme",
 		AnchorCountry: "ke", // lowercase — normalize should uppercase this
-		ScrapedAt:     now,
+		ScrapedAt:     time.Now().UTC(),
 	})
-	if err := svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsIngested, in); err != nil {
-		t.Fatalf("emit seed event: %v", err)
-	}
 
 	// Poll until the canonical collector receives an event (pipeline settled).
 	deadline := time.Now().Add(15 * time.Second)
@@ -228,17 +252,9 @@ func TestPipeline_ScholarshipPropagatesAttributes(t *testing.T) {
 
 	wsvc := workersvc.NewService(svc, nil, nil, nil, dedupCache, clusterCache, nil, nil, false, false, "valkey")
 
-	colCanonical := &collector{topic: eventsv1.TopicCanonicalsUpserted}
-	svc.EventsManager().Add(colCanonical)
+	colCanonical := wireChain(t, ctx, svc, wsvc)
 
-	handlers := wsvc.Handlers()
-	svc.Init(ctx, frame.WithRegisterEvents(handlers[:4]...))
-
-	go func() { _ = svc.Run(ctx, "") }()
-	frametest.WaitPublisherReady(t, svc, eventsv1.TopicVariantsIngested, 2*time.Second)
-
-	now := time.Now().UTC()
-	in := eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventsv1.VariantIngestedV1{
+	seedIngested(t, ctx, svc, eventsv1.VariantIngestedV1{
 		VariantID:     "var_sch_1",
 		SourceID:      "src_sch",
 		ExternalID:    "ext_sch_1",
@@ -252,11 +268,8 @@ func TestPipeline_ScholarshipPropagatesAttributes(t *testing.T) {
 			"field_of_study": "Climate",
 			"degree_level":   "masters",
 		},
-		ScrapedAt: now,
+		ScrapedAt: time.Now().UTC(),
 	})
-	if err := svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsIngested, in); err != nil {
-		t.Fatalf("emit seed event: %v", err)
-	}
 
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {

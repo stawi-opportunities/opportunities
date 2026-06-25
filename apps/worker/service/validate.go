@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/queue"
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -63,48 +63,32 @@ type ValidateHandler struct {
 	minConfidence float64
 	skipLLM       bool
 	store         *variantstate.Store
+	nextValidated string // Queue Name for VariantValidatedV1
+	nextFlagged   string // Queue Name for VariantFlaggedV1
 }
 
-// NewValidateHandler uses the package-level ValidationMinConfidence.
-func NewValidateHandler(svc *frame.Service, ex *extraction.Extractor) *ValidateHandler {
-	return &ValidateHandler{svc: svc, extractor: ex, minConfidence: ValidationMinConfidence}
-}
-
-// NewValidateHandlerWithSkip returns a handler that skips the LLM
-// validation pass entirely. Every variant emits VariantValidated@1.0.
-func NewValidateHandlerWithSkip(svc *frame.Service, ex *extraction.Extractor, skipLLM bool, store *variantstate.Store) *ValidateHandler {
+// NewValidateHandlerWithSkip returns a handler consuming VariantNormalizedV1.
+// nextValidated/nextFlagged are the downstream Queue Names. When skipLLM is
+// true every variant passes through validated@1.0.
+func NewValidateHandlerWithSkip(svc *frame.Service, ex *extraction.Extractor, skipLLM bool, store *variantstate.Store, nextValidated, nextFlagged string) *ValidateHandler {
 	return &ValidateHandler{
 		svc:           svc,
 		extractor:     ex,
 		minConfidence: ValidationMinConfidence,
 		skipLLM:       skipLLM,
 		store:         store,
+		nextValidated: nextValidated,
+		nextFlagged:   nextFlagged,
 	}
 }
 
-// Name ...
-func (h *ValidateHandler) Name() string { return eventsv1.TopicVariantsNormalized }
+var _ queue.SubscribeWorker = (*ValidateHandler)(nil)
 
-// PayloadType ...
-func (h *ValidateHandler) PayloadType() any {
-	var raw json.RawMessage
-	return &raw
-}
-
-// Validate ...
-func (h *ValidateHandler) Validate(_ context.Context, payload any) error {
-	raw, ok := payload.(*json.RawMessage)
-	if !ok || raw == nil || len(*raw) == 0 {
-		return errors.New("validate: empty payload")
-	}
-	return nil
-}
-
-// Execute runs the validator.
-func (h *ValidateHandler) Execute(ctx context.Context, payload any) error {
-	raw := payload.(*json.RawMessage)
+// Handle runs the validator and publishes VariantValidatedV1 (or
+// VariantFlaggedV1) to the next pipeline queue.
+func (h *ValidateHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	var env eventsv1.Envelope[eventsv1.VariantNormalizedV1]
-	if err := json.Unmarshal(*raw, &env); err != nil {
+	if err := json.Unmarshal(payload, &env); err != nil {
 		return err
 	}
 	n := env.Payload
@@ -186,9 +170,12 @@ func (h *ValidateHandler) emitValidated(ctx context.Context, n eventsv1.VariantN
 		Attributes:   n.Attributes,
 	}
 	_ = model
-	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsValidated, out)
-	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsValidated, env); err != nil {
-		_ = h.store.RecordError(ctx, n.VariantID, variantstate.StageValidated, fmt.Errorf("validate: emit validated: %w", err))
+	body, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsValidated, out))
+	if err != nil {
+		return err
+	}
+	if err := h.svc.QueueManager().Publish(ctx, h.nextValidated, body, nil); err != nil {
+		_ = h.store.RecordError(ctx, n.VariantID, variantstate.StageValidated, fmt.Errorf("validate: publish validated: %w", err))
 		return err
 	}
 	_ = h.store.AdvanceStage(ctx, n.VariantID,
@@ -207,9 +194,12 @@ func (h *ValidateHandler) emitFlagged(ctx context.Context, n eventsv1.VariantNor
 		ModelVersion: model,
 		FlaggedAt:    time.Now().UTC(),
 	}
-	env := eventsv1.NewEnvelope(eventsv1.TopicVariantsFlagged, out)
-	if err := h.svc.EventsManager().Emit(ctx, eventsv1.TopicVariantsFlagged, env); err != nil {
-		_ = h.store.RecordError(ctx, n.VariantID, variantstate.StageValidated, fmt.Errorf("validate: emit flagged: %w", err))
+	body, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsFlagged, out))
+	if err != nil {
+		return err
+	}
+	if err := h.svc.QueueManager().Publish(ctx, h.nextFlagged, body, nil); err != nil {
+		_ = h.store.RecordError(ctx, n.VariantID, variantstate.StageValidated, fmt.Errorf("validate: publish flagged: %w", err))
 		return err
 	}
 	_ = h.store.AdvanceStage(ctx, n.VariantID,

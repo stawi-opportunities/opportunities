@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "name": "opportunities.source.schedule.reconcile",
+  "description": "Every 10 min: drive each source's per-source Trustage crawl schedule to match its status (active/degraded → ensure, everything else → archive). Backstop for the per-mutation hooks; heals drift if the crawler was down during a source add/enable/disable/remove.",
+  "input": {},
+  "config": {},
+  "timeout": "5m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "reconcile_source_schedules",
+      "type": "call",
+      "name": "Reconcile per-source crawl schedules",
+      "timeout": "4m",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/sources/schedules/reconcile",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {}
+        },
+        "output_var": "reconcile_result"
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.source.schedule.reconcile.default",
+      "cron_expr": "*/10 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

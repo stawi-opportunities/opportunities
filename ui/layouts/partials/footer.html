@@ -1,40 +1,53 @@
-<div id="mount-footer">
-  {{/* Static fallback rendered until React hydrates the Footer island.
-       Keeps the page usable with JS disabled and provides stable
-       layout dimensions during load. */}}
-  <footer class="mt-auto border-t border-gray-200 bg-gray-50" role="contentinfo">
-    <div class="mx-auto max-w-7xl px-6 py-14 sm:px-8 lg:px-12">
-      <div class="grid grid-cols-2 gap-10 sm:grid-cols-3">
-        <div>
-          <h3 class="text-base font-semibold text-navy-900">Job seekers</h3>
-          <ul class="mt-4 space-y-3" role="list">
-            <li><a href="/jobs/" class="text-base text-gray-700 hover:text-navy-900">Browse jobs</a></li>
-            <li><a href="/categories/" class="text-base text-gray-700 hover:text-navy-900">Categories</a></li>
-            <li><a href="/search/" class="text-base text-gray-700 hover:text-navy-900">Advanced search</a></li>
-          </ul>
-        </div>
-        <div>
-          <h3 class="text-base font-semibold text-navy-900">Company</h3>
-          <ul class="mt-4 space-y-3" role="list">
-            <li><a href="/about/" class="text-base text-gray-700 hover:text-navy-900">About</a></li>
-            <li><a href="/pricing/" class="text-base text-gray-700 hover:text-navy-900">Pricing</a></li>
-            <li><a href="mailto:jobs@stawi.org" class="text-base text-gray-700 hover:text-navy-900">Contact</a></li>
-          </ul>
-        </div>
-        <div>
-          <h3 class="text-base font-semibold text-navy-900">Legal</h3>
-          <ul class="mt-4 space-y-3" role="list">
-            <li><a href="/terms/" class="text-base text-gray-700 hover:text-navy-900">Terms of service</a></li>
-            <li><a href="/privacy/" class="text-base text-gray-700 hover:text-navy-900">Privacy policy</a></li>
-          </ul>
-        </div>
+<footer class="mt-auto bg-navy-950 text-gray-400" role="contentinfo">
+  <div class="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+
+    <div class="grid grid-cols-2 gap-10 sm:grid-cols-4">
+      <!-- Brand -->
+      <div class="col-span-2 sm:col-span-1">
+        <a href="/" aria-label="Stawi">
+          <img src="/images/logo-white.svg" alt="Stawi" height="32" class="h-8 w-auto opacity-90"/>
+        </a>
+        <p class="mt-4 text-sm leading-relaxed text-gray-500">AI-powered opportunity matching &mdash; jobs, scholarships, tenders, deals and funding &mdash; worldwide.</p>
       </div>
-      <div class="mt-12 flex flex-col items-start justify-between gap-2 border-t border-gray-200 pt-6 sm:flex-row sm:items-center">
-        <p class="text-sm text-gray-600">&copy; {{ now.Year }} Stawi Jobs. All rights reserved.</p>
-        <p class="text-sm text-gray-500">
-          A product of <a href="https://stawi.org" class="hover:text-gray-700">Stawi</a>.
-        </p>
+
+      <!-- Explore -->
+      <div>
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-white">Explore</h3>
+        <ul class="mt-4 space-y-2.5" role="list">
+          <li><a href="/jobs/"         class="text-sm text-gray-400 transition-colors hover:text-white">Jobs</a></li>
+          <li><a href="/scholarships/" class="text-sm text-gray-400 transition-colors hover:text-white">Scholarships</a></li>
+          <li><a href="/tenders/"      class="text-sm text-gray-400 transition-colors hover:text-white">Tenders</a></li>
+          <li><a href="/deals/"        class="text-sm text-gray-400 transition-colors hover:text-white">Deals</a></li>
+          <li><a href="/funding/"      class="text-sm text-gray-400 transition-colors hover:text-white">Funding</a></li>
+          <li><a href="/search/"       class="text-sm text-gray-400 transition-colors hover:text-white">Advanced search</a></li>
+        </ul>
+      </div>
+
+      <!-- Company -->
+      <div>
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-white">Company</h3>
+        <ul class="mt-4 space-y-2.5" role="list">
+          <li><a href="/about/" class="text-sm text-gray-400 transition-colors hover:text-white">About</a></li>
+          <li><a href="/faq/" class="text-sm text-gray-400 transition-colors hover:text-white">FAQ</a></li>
+          <li><a href="/pricing/" class="text-sm text-gray-400 transition-colors hover:text-white">Pricing</a></li>
+          <li><a href="mailto:jobs@stawi.org" class="text-sm text-gray-400 transition-colors hover:text-white">Contact</a></li>
+        </ul>
+      </div>
+
+      <!-- Legal -->
+      <div>
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-white">Legal</h3>
+        <ul class="mt-4 space-y-2.5" role="list">
+          <li><a href="/terms/" class="text-sm text-gray-400 transition-colors hover:text-white">Terms of service</a></li>
+          <li><a href="/privacy/" class="text-sm text-gray-400 transition-colors hover:text-white">Privacy policy</a></li>
+        </ul>
       </div>
     </div>
-  </footer>
-</div>
+
+    <div class="mt-12 flex flex-col items-start justify-between gap-2 border-t border-white/10 pt-6 sm:flex-row sm:items-center">
+      <p class="text-sm text-gray-500">&copy; {{ now.Year }} Stawi Jobs. All rights reserved.</p>
+      <p class="text-sm text-gray-600">A product of <a href="https://stawi.org" class="text-gray-400 hover:text-white transition-colors">Stawi</a>.</p>
+    </div>
+
+  </div>
+</footer>

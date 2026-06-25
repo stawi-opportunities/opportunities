@@ -21,13 +21,16 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/recipeconn"
 	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/crawlinbox"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
@@ -39,16 +42,48 @@ type SourceGetter interface {
 	GetByID(ctx context.Context, id string) (*domain.Source, error)
 }
 
+// SourceStatusSetter lets the handler pause a source it can't crawl (no
+// connector and no recipe). Satisfied by *repository.SourceRepository.
+type SourceStatusSetter interface {
+	SetStatus(ctx context.Context, id string, status domain.SourceStatus) error
+}
+
+// CrawlRunStore is the crawl_runs state-machine slice the handler drives
+// (satisfied by *repository.CrawlRunRepository). It is an interface so the
+// handler can be unit-tested without a database.
+type CrawlRunStore interface {
+	StartRun(ctx context.Context, sourceID string, scheduledAt time.Time, owner string, leaseTTL time.Duration) (*domain.CrawlRun, bool, error)
+	Claim(ctx context.Context, id, owner string, leaseTTL time.Duration) (*domain.CrawlRun, bool, error)
+	Progress(ctx context.Context, id string, cursor json.RawMessage, pageIdx int, lastURL string, leaseTTL time.Duration) error
+	Yield(ctx context.Context, id string, cursor json.RawMessage, pageIdx int, lastURL string, leaseTTL time.Duration, dFound, dEmitted, dRejected int) error
+	Complete(ctx context.Context, id string, cursor json.RawMessage, pageIdx int, lastURL string, dFound, dEmitted, dRejected int) error
+	Fail(ctx context.Context, id, code, message string, dFound, dEmitted, dRejected int) error
+}
+
 // CrawlRequestDeps bundles the handler's collaborators so construction
 // stays one-shot and tests can inject fakes without ceremony.
 type CrawlRequestDeps struct {
-	Svc        *frame.Service
-	Sources    SourceGetter
-	Registry   *connectors.Registry
-	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
-	Archive    archive.Archive
-	Extractor  *extraction.Extractor // nil → skip AI enrichment
-	Normalizer *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
+	Svc *frame.Service
+	// IngestedQueue is the Frame Queue Name the crawler publishes
+	// VariantIngestedV1 to — the head of the opportunity pipeline chain
+	// (consumed by the worker's normalize stage).
+	IngestedQueue string
+	// Inbox, when non-nil, buffers crawled variants into the crawl_inbox
+	// Postgres table instead of publishing straight to IngestedQueue. A
+	// rate-limited pump (see cmd/main.go) drains the inbox onto pl_ingested,
+	// so a crawl burst lands in the DB rather than slamming JetStream. nil →
+	// legacy direct-publish.
+	Inbox   *crawlinbox.Store
+	Sources SourceGetter
+	// StatusSetter (optional) pauses a source the handler can't crawl — no
+	// connector and no recipe (e.g. an individual ATS board whose connector was
+	// migrated to an aggregate recipe). nil disables auto-pause.
+	StatusSetter SourceStatusSetter
+	Registry     *connectors.Registry
+	Kinds        *opportunity.Registry // opportunity-kind registry; required by Verify
+	Archive      archive.Archive
+	Extractor    *extraction.Extractor // nil → skip AI enrichment
+	Normalizer   *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
 	// PageFetcher fetches per-URL HTML so URL-only iterator stubs
 	// (sitemap, universal AI link discovery) can be enriched with
 	// LLM-extracted title/description/issuing_entity BEFORE Verify.
@@ -81,13 +116,35 @@ type CrawlRequestDeps struct {
 	// Postgres outage MUST fail the crawl, otherwise the ledger silently
 	// diverges from reality.
 	CrawlRepo *repository.CrawlRepository
-	// CheckpointRepo persists per-source iterator state so a crawler
-	// that crashes mid-iteration resumes from the last successful page
-	// on the next NATS redelivery. nil disables checkpointing — the
-	// connector is invoked via plain Crawl (no resume) and no rows
-	// are written. Best-effort throughout: a Postgres outage degrades
-	// resumption to "always start fresh" rather than stalling the crawl.
-	CheckpointRepo *repository.CheckpointRepository
+	// RunRepo drives the crawl_runs state machine: it opens a run per source
+	// (single-flight), holds the per-slice lease, and persists the resume
+	// cursor after every page so a crash, redeploy, or bounded-slice yield
+	// resumes from the last page instead of restarting from zero. nil (unit
+	// tests) degrades the crawl to a single-shot, non-resumable drain.
+	RunRepo CrawlRunStore
+
+	// Admitter is the backpressure gate. Continuation re-enqueues pass through
+	// it so a deep crawl paces itself when the pipeline is saturated. nil emits
+	// continuations unconditionally (test paths).
+	Admitter Admitter
+
+	// Owner identifies this process as the holder of a run's lease (e.g. the
+	// pod name). Two consumers can't both drive a run's slice concurrently.
+	Owner string
+
+	// SliceMaxPages / SliceMaxSeconds bound one slice (one NATS message): the
+	// slice ends after whichever is hit first, then the handler yields and
+	// self-re-enqueues. Zero falls back to 50 pages / 120s.
+	SliceMaxPages   int
+	SliceMaxSeconds int
+
+	// RunLeaseTTLSec is the per-source run lease, renewed every page. Zero
+	// falls back to 5 minutes.
+	RunLeaseTTLSec int
+
+	// RunStuckMaxAttempts fails a run after this many slices without completing
+	// (a backstop against a run that never converges). Zero disables the cap.
+	RunStuckMaxAttempts int
 
 	// Frontier wires the D2 URL-frontier path. When non-nil AND the
 	// source has FrontierEnabled=true, the crawl handler enqueues
@@ -98,6 +155,22 @@ type CrawlRequestDeps struct {
 	// nil disables the path entirely — every source falls back to
 	// the legacy direct-extract behaviour regardless of the flag.
 	Frontier frontier.Frontier
+
+	// RecipeRepo, when set, supplies per-source extraction recipes. A source
+	// with an active recipe crawls via the deterministic recipe Executor
+	// instead of its registered connector.
+	RecipeRepo *repository.RecipeRepository
+
+	// RecipeEnabled gates the recipe path globally. When false, sources keep
+	// crawling via their registered connector even if they have a recipe — the
+	// rollout kill-switch (RECIPE_ENABLED).
+	RecipeEnabled bool
+}
+
+// useRecipePath reports whether a crawl should use the deterministic recipe
+// Executor: only when the engine is globally enabled and the source has one.
+func useRecipePath(enabled bool, rec *recipe.Recipe) bool {
+	return enabled && rec != nil
 }
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
@@ -116,6 +189,12 @@ type CrawlRequestHandler struct {
 func NewCrawlRequestHandler(deps CrawlRequestDeps) *CrawlRequestHandler {
 	if deps.Rand == nil {
 		deps.Rand = rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec
+	}
+	if deps.Owner == "" {
+		// A per-process lease owner so two consumers never drive the same run's
+		// slice concurrently. Hostname-ish identity is enough; uniqueness across
+		// pods matters, not human readability.
+		deps.Owner = "crawler-" + xid.New().String()
 	}
 	return &CrawlRequestHandler{deps: deps}
 }
@@ -208,21 +287,90 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
-	conn, ok := h.deps.Registry.Get(src.Type)
-	if !ok {
-		h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
-			RequestID: req.RequestID,
-			SourceID:  req.SourceID,
-			URL:       src.BaseURL,
-			ErrorCode: "connector_not_registered",
-		})
-		log.WithField("source_type", src.Type).Warn("crawl.request: no connector")
-		return nil
+	// Resolve the crawl path: a source with an active extraction recipe runs
+	// via the deterministic recipe Executor; otherwise its registered
+	// connector. Both drive the same crawl_runs state machine below.
+	var (
+		rec        *recipe.Recipe
+		usedRecipe bool
+		conn       connectors.Connector
+	)
+	if h.deps.RecipeEnabled && h.deps.RecipeRepo != nil {
+		r, rErr := h.deps.RecipeRepo.Active(ctx, src.ID)
+		if rErr != nil {
+			log.WithError(rErr).Warn("crawl.request: recipe lookup failed; using connector")
+		} else if useRecipePath(h.deps.RecipeEnabled, r) {
+			rec = r
+			usedRecipe = true
+		}
+	}
+	if !usedRecipe {
+		c, ok := h.deps.Registry.Get(src.Type)
+		if !ok {
+			// No connector AND no recipe → this source can't be crawled. The
+			// common case is an individual ATS board (greenhouse/lever) whose
+			// connector was migrated to an aggregate recipe; left active it
+			// burns a dispatch on every tick. Auto-pause it so it self-heals
+			// (an operator or the aggregate owns its coverage), then ack.
+			if h.deps.StatusSetter != nil {
+				if perr := h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused); perr != nil {
+					log.WithError(perr).Warn("crawl.request: auto-pause of connector-less source failed")
+				} else {
+					log.WithField("source_type", src.Type).
+						Warn("crawl.request: no connector — paused source to stop futile dispatch")
+				}
+			} else {
+				log.WithField("source_type", src.Type).Warn("crawl.request: no connector")
+			}
+			h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
+				RequestID: req.RequestID,
+				SourceID:  req.SourceID,
+				URL:       src.BaseURL,
+				ErrorCode: "connector_not_registered",
+			})
+			return nil
+		}
+		conn = c
 	}
 
-	// Audit ledger: open a crawl_jobs row. Idempotent on idempotency_key
-	// — Frame redeliveries of the same NATS msg reuse the same row via
-	// the unique (idempotency_key, scheduled_at) composite index.
+	// Resume state machine: resolve the crawl_runs row that owns this slice. A
+	// continuation (RunID set) claims its run's lease — losing the claim drops
+	// the redelivery. A scheduled tick opens a fresh run, single-flight against
+	// the partial unique index: if a run is already active for the source, this
+	// duplicate tick is dropped. When RunRepo is unwired (unit tests) the crawl
+	// degrades to a single-shot, non-resumable drain.
+	leaseTTL := time.Duration(h.deps.RunLeaseTTLSec) * time.Second
+	if leaseTTL <= 0 {
+		leaseTTL = 5 * time.Minute
+	}
+	var run *domain.CrawlRun
+	if h.deps.RunRepo != nil {
+		if req.RunID != "" {
+			claimed, ok, cErr := h.deps.RunRepo.Claim(ctx, req.RunID, h.deps.Owner, leaseTTL)
+			if cErr != nil {
+				return fmt.Errorf("crawl.request: claim run: %w", cErr)
+			}
+			if !ok || claimed == nil {
+				log.WithField("run_id", req.RunID).Info("crawl.request: run already owned or closed; dropping continuation")
+				return nil
+			}
+			run = claimed
+		} else {
+			opened, started, sErr := h.deps.RunRepo.StartRun(ctx, src.ID, req.ScheduledAt, h.deps.Owner, leaseTTL)
+			if sErr != nil {
+				return fmt.Errorf("crawl.request: start run: %w", sErr)
+			}
+			if !started {
+				log.Info("crawl.request: a run is already active for this source; dropping duplicate scheduled tick")
+				return nil
+			}
+			run = opened
+		}
+	}
+
+	// Audit ledger: open a crawl_jobs row per slice. Fresh ticks dedupe
+	// redeliveries on (source, scheduled tick); continuations key on their
+	// unique RequestID so each slice gets its own audit row.
 	crawlJob := &domain.CrawlJob{
 		SourceID:       src.ID,
 		ScheduledAt:    req.ScheduledAt,
@@ -231,7 +379,11 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		IdempotencyKey: req.IdempotencyKey,
 	}
 	if crawlJob.IdempotencyKey == "" {
-		crawlJob.IdempotencyKey = fmt.Sprintf("%s:%s", src.ID, req.ScheduledAt.Format(time.RFC3339))
+		if req.RunID != "" {
+			crawlJob.IdempotencyKey = req.RequestID
+		} else {
+			crawlJob.IdempotencyKey = fmt.Sprintf("%s:%s", src.ID, req.ScheduledAt.Format(time.RFC3339))
+		}
 	}
 	if crawlJob.ScheduledAt.IsZero() {
 		crawlJob.ScheduledAt = time.Now().UTC()
@@ -252,32 +404,35 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		}
 	}
 
-	// Resume from a prior checkpoint when the connector supports it.
-	// Stale checkpoints (>StaleAfter, default 6h) are discarded: the
-	// source's listing-page state has likely shifted and we'd skip
-	// fresh records. Soft-fail on the lookup — a Postgres outage
-	// degrades resumption to "always start fresh" rather than stalling
-	// the crawl.
-	var iter connectors.CrawlIterator
-	var prevCheckpoint *connectors.CheckpointState
-	if h.deps.CheckpointRepo != nil {
-		cp, stale, cpErr := h.deps.CheckpointRepo.Get(ctx, src.ID, string(conn.Type()))
-		switch {
-		case cpErr != nil:
-			log.WithError(cpErr).Warn("crawl.request: checkpoint Get failed")
-		case cp != nil && !stale:
-			prevCheckpoint = &connectors.CheckpointState{
-				Cursor:  cp.Cursor,
-				PageIdx: cp.PageIdx,
-				LastURL: cp.LastURL,
-			}
-			log.WithField("page_idx", cp.PageIdx).Info("crawl.request: resuming from checkpoint")
-		case cp != nil && stale:
-			log.WithField("source_id", src.ID).Debug("crawl.request: discarding stale checkpoint")
-		}
+	// Build the iterator, seeded from the run's persisted cursor so a recipe
+	// source — like every source now — resumes mid-pagination instead of
+	// restarting from page 0 / tenant 0 on each slice or after a crash.
+	var (
+		resumeCursor  json.RawMessage
+		resumePageIdx int
+		resumeLastURL string
+	)
+	if run != nil {
+		resumeCursor, resumePageIdx, resumeLastURL = run.Cursor, run.PageIdx, run.LastURL
 	}
-	if resumable, ok := conn.(connectors.ResumableConnector); ok && prevCheckpoint != nil {
-		iter = resumable.CrawlResume(ctx, *src, prevCheckpoint)
+	var iter connectors.CrawlIterator
+	if usedRecipe {
+		exec := recipe.NewExecutor(rec, recipe.NewHTTPFetcher(h.deps.PageFetcher))
+		if len(resumeCursor) > 0 {
+			ri, e := recipeconn.NewConnectorIteratorResume(exec, *src, resumeCursor)
+			if e != nil {
+				log.WithError(e).Warn("crawl.request: bad run cursor; starting recipe fresh")
+				iter = recipeconn.NewConnectorIterator(exec, *src)
+			} else {
+				iter = ri
+			}
+		} else {
+			iter = recipeconn.NewConnectorIterator(exec, *src)
+		}
+	} else if resumable, ok := conn.(connectors.ResumableConnector); ok && len(resumeCursor) > 0 {
+		iter = resumable.CrawlResume(ctx, *src, &connectors.CheckpointState{
+			Cursor: resumeCursor, PageIdx: resumePageIdx, LastURL: resumeLastURL,
+		})
 	} else {
 		iter = conn.Crawl(ctx, *src)
 	}
@@ -289,7 +444,43 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		lastCursor   string
 		iterErr      error
 		status       = http.StatusOK
+
+		// Run progress, tracked from the iterator's checkpoint each page and
+		// flushed to crawl_runs at slice end (Yield/Complete).
+		runCursor  = resumeCursor
+		runPageIdx = resumePageIdx
+		runLastURL = resumeLastURL
+		pagesSlice int
+		bounded    bool
 	)
+	sliceMaxPages := h.deps.SliceMaxPages
+	if sliceMaxPages <= 0 {
+		sliceMaxPages = 50
+	}
+	sliceMaxDur := time.Duration(h.deps.SliceMaxSeconds) * time.Second
+	if sliceMaxDur <= 0 {
+		sliceMaxDur = 120 * time.Second
+	}
+	sliceDeadline := time.Now().Add(sliceMaxDur)
+
+	// advance records one processed page: persist the run's cursor + renew the
+	// lease (so the watchdog never reclaims a live slice), then report whether
+	// the slice budget (K pages OR T seconds) is exhausted. Called once per
+	// page on both the frontier and the direct-extract paths.
+	advance := func() bool {
+		if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
+			if cp := cpi.Checkpoint(); cp != nil {
+				runCursor, runPageIdx, runLastURL = cp.Cursor, cp.PageIdx, cp.LastURL
+				if run != nil && h.deps.RunRepo != nil {
+					if err := h.deps.RunRepo.Progress(ctx, run.ID, cp.Cursor, cp.PageIdx, cp.LastURL, leaseTTL); err != nil {
+						util.Log(ctx).WithError(err).Warn("crawl.request: run progress persist failed")
+					}
+				}
+			}
+		}
+		pagesSlice++
+		return run != nil && (pagesSlice >= sliceMaxPages || time.Now().After(sliceDeadline))
+	}
 
 	for iter.Next(ctx) {
 		status = iter.HTTPStatus()
@@ -337,22 +528,14 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			jobsFound += enqueued + skipped
 			jobsEmitted += enqueued
 			jobsRejected += skipped
-			// Cursor + checkpoint still propagate so the iterator
-			// resumes across redeliveries.
 			if cur := iter.Cursor(); cur != nil {
 				lastCursor = string(cur)
 			}
-			if h.deps.CheckpointRepo != nil {
-				if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
-					if cp := cpi.Checkpoint(); cp != nil {
-						if putErr := h.deps.CheckpointRepo.Put(
-							ctx, src.ID, string(conn.Type()),
-							cp.Cursor, cp.PageIdx, cp.LastURL,
-						); putErr != nil {
-							log.WithError(putErr).Warn("crawl.request: checkpoint Put failed (frontier path)")
-						}
-					}
-				}
+			// Persist run progress + renew the lease, then honour the slice
+			// budget (the frontier path is just as resumable as direct extract).
+			if advance() {
+				bounded = true
+				break
 			}
 			continue
 		}
@@ -507,10 +690,20 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 				CrawlJobID:   jobIDPtr,
 			})
 
-			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
-				eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload),
-			); emitErr != nil {
-				log.WithError(emitErr).Warn("crawl.request: emit variant failed")
+			body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))
+			if mErr != nil {
+				log.WithError(mErr).Warn("crawl.request: marshal variant failed")
+				continue
+			}
+			if h.deps.Inbox != nil {
+				if iErr := h.deps.Inbox.Insert(ctx, eventPayload.VariantID, eventPayload.SourceID, body); iErr != nil {
+					log.WithError(iErr).Warn("crawl.request: inbox insert failed")
+					telemetry.RecordCrawlSilentLoss("inbox_insert_drop")
+					continue
+				}
+			} else if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
+				log.WithError(pErr).Warn("crawl.request: publish variant failed")
+				telemetry.RecordCrawlSilentLoss("variant_publish_drop")
 				continue
 			}
 			jobsEmitted++
@@ -523,30 +716,19 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			lastCursor = string(cur)
 		}
 
-		// Persist checkpoint per page when the iterator participates.
-		// Soft-fail — if Postgres is down we lose resume capability
-		// but the crawl itself keeps going. The clear at end-of-iter
-		// also soft-fails so a stuck row doesn't block fresh crawls
-		// (operator can DELETE /admin/checkpoints/{src}/{type}).
-		if h.deps.CheckpointRepo != nil {
-			if cpi, ok := iter.(connectors.CheckpointableIterator); ok {
-				if cp := cpi.Checkpoint(); cp != nil {
-					if putErr := h.deps.CheckpointRepo.Put(
-						ctx, src.ID, string(conn.Type()),
-						cp.Cursor, cp.PageIdx, cp.LastURL,
-					); putErr != nil {
-						log.WithError(putErr).Warn("crawl.request: checkpoint Put failed")
-					}
-				}
-			}
-		}
-
 		// Opportunistic DiscoverSites — sampled so we don't triple the
 		// AI bill. Operates on the last page's raw HTML (iter.Content
 		// is already parsed; use RawPayload for the unprocessed bytes).
 		if h.deps.Extractor != nil && h.deps.DiscoverSample > 0 &&
 			h.deps.Rand.Float64() < h.deps.DiscoverSample {
 			h.sampleDiscoverSites(ctx, src, iter.RawPayload())
+		}
+
+		// Persist run progress + renew the lease, then stop the slice if its
+		// page/time budget is spent (more pages remain → yield + continuation).
+		if advance() {
+			bounded = true
+			break
 		}
 	}
 
@@ -555,15 +737,33 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		log.WithError(e).Warn("crawl.request: iterator failed")
 	}
 
-	// Clear the checkpoint on clean completion — next scheduled crawl
-	// starts fresh rather than re-emitting "we already saw page N".
-	// Iterator errors leave the row in place so the next redelivery
-	// resumes from where we crashed. Best-effort: a delete failure is
-	// not worth failing the surrounding crawl.
-	if iterErr == nil && h.deps.CheckpointRepo != nil {
-		if _, ok := iter.(connectors.CheckpointableIterator); ok {
-			if clrErr := h.deps.CheckpointRepo.Clear(ctx, src.ID, string(conn.Type())); clrErr != nil {
-				log.WithError(clrErr).Warn("crawl.request: checkpoint Clear failed")
+	// Finalize the run. Three outcomes:
+	//   - error: persist the last good cursor and release the lease so the
+	//     watchdog re-drives after the lease lapses (paced retry); fail the run
+	//     once it has burned through the stuck-attempt ceiling.
+	//   - bounded: more pages remain — yield and self-re-enqueue a
+	//     backpressure-gated continuation.
+	//   - exhausted: the iterator reached the end — complete the run, freeing
+	//     the source for a fresh pass on its next scheduled tick.
+	if run != nil && h.deps.RunRepo != nil {
+		switch {
+		case iterErr != nil:
+			stuckMax := h.deps.RunStuckMaxAttempts
+			if stuckMax > 0 && run.Attempt+1 >= stuckMax {
+				if e := h.deps.RunRepo.Fail(ctx, run.ID, "iterator_failed", iterErr.Error(), jobsFound, jobsEmitted, jobsRejected); e != nil {
+					log.WithError(e).Warn("crawl.request: run Fail failed")
+				}
+			} else if e := h.deps.RunRepo.Yield(ctx, run.ID, runCursor, runPageIdx, runLastURL, leaseTTL, jobsFound, jobsEmitted, jobsRejected); e != nil {
+				log.WithError(e).Warn("crawl.request: run Yield (after error) failed")
+			}
+		case bounded:
+			if e := h.deps.RunRepo.Yield(ctx, run.ID, runCursor, runPageIdx, runLastURL, leaseTTL, jobsFound, jobsEmitted, jobsRejected); e != nil {
+				log.WithError(e).Warn("crawl.request: run Yield failed")
+			}
+			h.emitContinuation(ctx, src, run.ID, req)
+		default:
+			if e := h.deps.RunRepo.Complete(ctx, run.ID, runCursor, runPageIdx, runLastURL, jobsFound, jobsEmitted, jobsRejected); e != nil {
+				log.WithError(e).Warn("crawl.request: run Complete failed")
 			}
 		}
 	}
@@ -583,6 +783,12 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		completed.ErrorMessage = iterErr.Error()
 	}
 	h.emitCompleted(ctx, completed)
+
+	if iterErr != nil {
+		telemetry.RecordCrawlCompletion("failure")
+	} else {
+		telemetry.RecordCrawlCompletion("success")
+	}
 
 	if h.deps.CrawlRepo != nil {
 		finalStatus := domain.CrawlSucceeded
@@ -635,6 +841,36 @@ func (h *CrawlRequestHandler) sampleDiscoverSites(ctx context.Context, src *doma
 	}
 }
 
+// emitContinuation self-re-enqueues the next slice of an in-progress run,
+// gated by the backpressure admitter. If admission is denied (the pipeline is
+// saturated) or the emit fails, we leave the run yielded — the watchdog
+// re-drives it once its lease lapses, so the crawl never stalls or drops work.
+func (h *CrawlRequestHandler) emitContinuation(ctx context.Context, src *domain.Source, runID string, req eventsv1.CrawlRequestV1) {
+	log := util.Log(ctx).WithField("source_id", src.ID).WithField("run_id", runID)
+	if h.deps.Admitter != nil {
+		if granted, wait := h.deps.Admitter.Admit(ctx, eventsv1.TopicCrawlRequests, 1); granted < 1 {
+			telemetry.RecordCrawlDispatch("denied", "continuation")
+			log.WithField("retry_after_sec", int(wait/time.Second)).
+				Debug("crawl.request: continuation deferred by backpressure; watchdog will re-drive")
+			return
+		}
+	}
+	env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
+		RequestID:      xid.New().String(),
+		SourceID:       src.ID,
+		ScheduledAt:    req.ScheduledAt,
+		Mode:           "auto",
+		Attempt:        req.Attempt + 1,
+		RunID:          runID,
+		IsContinuation: true,
+	})
+	if err := h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCrawlRequests, env); err != nil {
+		log.WithError(err).Warn("crawl.request: continuation emit failed; watchdog will re-drive")
+		return
+	}
+	telemetry.RecordCrawlDispatch("emitted", "continuation")
+}
+
 // emitCompleted publishes a CrawlPageCompletedV1 envelope. Best-
 // effort — if emission fails (rare; Frame transport down) we log and
 // return. Next crawl picks up the source again via scheduler tick.
@@ -661,6 +897,9 @@ func resolveArchiveRef(ctx context.Context, arch archive.Archive, page *content.
 		if putHash, _, putErr := arch.PutRaw(ctx, body); putErr == nil {
 			return archive.RawKey(putHash)
 		}
+		// Variants emitted without a ref can never be reparsed — count it
+		// so a dead archive shows up as a trend, not a debug-log mystery.
+		telemetry.RecordCrawlSilentLoss("archive_ref_missing")
 		return ""
 	}
 	return archive.RawKey(hash)
@@ -825,7 +1064,20 @@ func (h *CrawlRequestHandler) enrichOne(ctx context.Context, opp *domain.Externa
 		return
 	}
 
-	body := string(raw)
+	rawHTML := string(raw)
+	// Company logo: capture the detail page's og:image (best-effort, only when
+	// structured data hasn't already supplied one). Flows to the company record
+	// via attributes.company_logo.
+	if logo := content.OGImage(rawHTML); logo != "" {
+		if opp.Attributes == nil {
+			opp.Attributes = map[string]any{}
+		}
+		if _, has := opp.Attributes["company_logo"]; !has {
+			opp.Attributes["company_logo"] = logo
+		}
+	}
+
+	body := rawHTML
 	if ext, _ := content.ExtractFromHTML(body); ext != nil && ext.Markdown != "" {
 		body = ext.Markdown
 	}
@@ -1052,11 +1304,13 @@ func (h *CrawlRequestHandler) reparse(ctx context.Context, req eventsv1.CrawlReq
 		})
 	}
 
-	if evtMgr := h.deps.Svc.EventsManager(); evtMgr != nil {
-		if emitErr := evtMgr.Emit(ctx, eventsv1.TopicVariantsIngested,
-			eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload),
-		); emitErr != nil {
-			log.WithError(emitErr).Warn("reparse: emit variant failed")
+	if body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload)); mErr == nil {
+		if h.deps.Inbox != nil {
+			if iErr := h.deps.Inbox.Insert(ctx, eventPayload.VariantID, eventPayload.SourceID, body); iErr != nil {
+				log.WithError(iErr).Warn("reparse: inbox insert failed")
+			}
+		} else if pErr := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); pErr != nil {
+			log.WithError(pErr).Warn("reparse: publish variant failed")
 		}
 	}
 

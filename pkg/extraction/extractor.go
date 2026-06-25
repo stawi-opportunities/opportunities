@@ -64,10 +64,20 @@ type Extractor struct {
 	embeddingBaseURL string
 	embeddingAPIKey  string
 	embeddingModel   string
+	// embeddingDimensions, when >0, is sent as the OpenAI "dimensions"
+	// field so MRL-capable models (e.g. SiliconFlow Qwen3-Embedding) emit
+	// a fixed-width vector matching the pgvector column. 0 = omit (the
+	// model's native width, e.g. e5-large's 1024).
+	embeddingDimensions int
 
 	rerankBaseURL string
 	rerankAPIKey  string
 	rerankModel   string
+	// rerankDialect selects the rerank wire format. "" / "tei" = TEI's
+	// POST /rerank with {query,texts} → [{index,score}]. "openai" /
+	// "siliconflow" = POST /v1/rerank with {model,query,documents} →
+	// {results:[{index,relevance_score}]}.
+	rerankDialect string
 
 	client HTTPDoer
 
@@ -89,17 +99,19 @@ func New(cfg Config) *Extractor {
 		hc = &http.Client{Timeout: extractionTimeout}
 	}
 	e := &Extractor{
-		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:           cfg.APIKey,
-		model:            cfg.Model,
-		embeddingBaseURL: strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
-		embeddingAPIKey:  cfg.EmbeddingAPIKey,
-		embeddingModel:   cfg.EmbeddingModel,
-		rerankBaseURL:    strings.TrimRight(cfg.RerankBaseURL, "/"),
-		rerankAPIKey:     cfg.RerankAPIKey,
-		rerankModel:      cfg.RerankModel,
-		client:           hc,
-		registry:         cfg.Registry,
+		baseURL:             strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:              cfg.APIKey,
+		model:               cfg.Model,
+		embeddingBaseURL:    strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
+		embeddingAPIKey:     cfg.EmbeddingAPIKey,
+		embeddingModel:      cfg.EmbeddingModel,
+		embeddingDimensions: cfg.EmbeddingDimensions,
+		rerankBaseURL:       strings.TrimRight(cfg.RerankBaseURL, "/"),
+		rerankAPIKey:        cfg.RerankAPIKey,
+		rerankModel:         cfg.RerankModel,
+		rerankDialect:       strings.ToLower(strings.TrimSpace(cfg.RerankDialect)),
+		client:              hc,
+		registry:            cfg.Registry,
 	}
 	e.llm = chatLLM{e: e}
 	return e
@@ -496,6 +508,32 @@ func stripAllTags(s string) string {
 
 const maxEmbedChars = 2000
 
+// e5 retrieval prefixes. The intfloat/multilingual-e5-* models are trained
+// with asymmetric "query: " / "passage: " instructions. We index the
+// corpus items (opportunities) as passages and embed the search side
+// (candidate CVs, see apps/matching .../cv_embed.go) as queries. Cosine
+// similarity is symmetric, so a single stored vector per item is correct
+// in BOTH match directions: reverse-KNN (candidate query → opportunity
+// passages) and forward fan-out (opportunity → candidate-query passages)
+// both rank by cos(query_candidate, passage_opportunity).
+const (
+	EmbedPassagePrefix = "passage: "
+	EmbedQueryPrefix   = "query: "
+)
+
+// EmbedInput builds the canonical passage text fed to the embedding model
+// from an opportunity's salient fields. Centralised so the live embed
+// handler (apps/worker/service/embed.go) and the offline backfill
+// (cmd/embed-backfill) produce byte-identical inputs — and therefore
+// directly comparable vectors — for the same row. The "passage: " prefix
+// is part of the input the model was trained on; it must be present
+// consistently for every indexed opportunity. Truncation to the model's
+// token window (TEI --auto-truncate enforces the 512-token cap
+// server-side) happens inside Embed.
+func EmbedInput(title, issuingEntity, description string) string {
+	return EmbedPassagePrefix + strings.Join([]string{title, issuingEntity, description}, " · ")
+}
+
 // Embed generates an embedding vector for the given text via the OpenAI-
 // compatible /v1/embeddings endpoint. Input text is truncated to 2000
 // characters. Returns (nil, nil) — silently — when embeddings aren't
@@ -510,6 +548,18 @@ func (e *Extractor) Embed(ctx context.Context, text string) ([]float32, error) {
 	defer cancel()
 	text = truncateText(text, maxEmbedChars)
 	return e.embed(embedCtx, text)
+}
+
+// Complete sends prompt directly to the chat completions endpoint and returns
+// the model's raw text response. It is the low-level escape hatch used by the
+// recipe Generator (pkg/recipe) which assembles its own structured prompts and
+// needs the response as a plain string before JSON-parsing the recipe.
+//
+// Unlike Prompt, Complete does not prepend any system/user split and does not
+// assume the reply is JSON (expectJSON=true keeps json_object mode so the
+// model's output is valid JSON when the caller asks for a recipe).
+func (e *Extractor) Complete(ctx context.Context, prompt string) (string, error) {
+	return e.chat(ctx, prompt, true)
 }
 
 // Prompt sends an arbitrary system + user content pair to the LLM and

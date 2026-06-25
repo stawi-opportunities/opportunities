@@ -18,11 +18,11 @@ import (
 	"github.com/antinvestor/service-trustage/client/workflows"
 	crawlerconfig "github.com/stawi-opportunities/opportunities/apps/crawler/config"
 	"github.com/stawi-opportunities/opportunities/apps/crawler/service"
-	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/backpressure"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/crawlinbox"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -31,8 +31,10 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
+	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
@@ -104,8 +106,9 @@ func main() {
 	// MIGRATION_PATH for *.sql files and applies any not yet recorded
 	// in the migrations tracking table, then GORM AutoMigrate keeps
 	// the two historically-GORM-managed tables (sources + raw_refs)
-	// in shape. FinalizeSchema applies pg_trgm + other extensions GORM
-	// cannot express. Returns immediately after migration completes.
+	// in shape. Postgres-specific bits GORM can't express (pg_trgm,
+	// partial indexes) are migration files too. Returns immediately
+	// after migration completes.
 	if cfg.DoDatabaseMigrate() {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")
@@ -148,7 +151,31 @@ func main() {
 	httpDoer := &http.Client{
 		Timeout: time.Duration(cfg.HTTPTimeoutSec) * time.Second,
 	}
-	httpClient := httpx.NewClientFromDoer(httpDoer, cfg.UserAgent)
+	// Unblocker fallback: route blocked requests (WAF/anti-bot 403s on HTML job
+	// boards) through scrape.do or a residential-unblocker proxy, while requests
+	// that succeed directly (most JSON APIs) stay off the paid path.
+	var doer httpx.HTTPDoer = httpDoer
+	unblocker, desc, insecure, uerr := httpx.NewUnblocker(httpx.UnblockerConfig{
+		ScrapeDoToken:   cfg.ScrapeDoToken,
+		ScrapeDoRender:  cfg.ScrapeDoRender,
+		ScrapeDoSuper:   cfg.ScrapeDoSuper,
+		ScrapeDoGeoCode: cfg.ScrapeDoGeoCode,
+		ProxyURL:        cfg.UnblockerProxyURL,
+		ProxyCACert:     cfg.UnblockerCACert,
+		Timeout:         time.Duration(cfg.UnblockerTimeoutSec) * time.Second,
+	}, httpDoer)
+	switch {
+	case uerr != nil:
+		log.WithError(uerr).Warn("unblocker fallback disabled: invalid configuration")
+	case unblocker != nil:
+		doer = httpx.NewFallbackDoer(httpDoer, unblocker)
+		if insecure {
+			log.WithField("via", desc).Warn("unblocker fallback enabled WITHOUT a pinned CA — proxy TLS is not verified")
+		} else {
+			log.WithField("via", desc).Info("unblocker fallback enabled for blocked requests")
+		}
+	}
+	httpClient := httpx.NewClientFromDoer(doer, cfg.UserAgent)
 
 	// AI extractor — OpenAI-compatible back-end. Reads INFERENCE_* first,
 	// falls back to the legacy OLLAMA_* vars during the Cloudflare AI
@@ -164,22 +191,27 @@ func main() {
 			cfg.OllamaURL, cfg.OllamaModel,
 		)
 		extractor = extraction.New(extraction.Config{
-			BaseURL:          infBase,
-			APIKey:           infKey,
-			Model:            infModel,
-			EmbeddingBaseURL: embBase,
-			EmbeddingAPIKey:  embKey,
-			EmbeddingModel:   embModel,
-			RerankBaseURL:    cfg.RerankBaseURL,
-			RerankAPIKey:     cfg.RerankAPIKey,
-			RerankModel:      cfg.RerankModel,
-			Registry:         reg,
+			BaseURL:             infBase,
+			APIKey:              infKey,
+			Model:               infModel,
+			EmbeddingBaseURL:    embBase,
+			EmbeddingAPIKey:     embKey,
+			EmbeddingModel:      embModel,
+			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			RerankBaseURL:       cfg.RerankBaseURL,
+			RerankAPIKey:        cfg.RerankAPIKey,
+			RerankModel:         cfg.RerankModel,
+			RerankDialect:       cfg.RerankDialect,
+			Registry:            reg,
 			// Plain stdlib client: the inference back-end is an external
 			// API (Groq, OpenAI, Cloudflare AI Gateway) that authenticates
 			// with INFERENCE_API_KEY directly, not Hydra-issued JWTs.
 			// Frame's HTTPClientManager would attach an OAuth Bearer
 			// targeting our own audience list and fail at the signer.
-			HTTPClient: httpDoer,
+			//
+			// Its own timeout (InferenceTimeoutSec) — NOT the 20s page-fetch
+			// httpDoer, which timed out every real extraction mid-generation.
+			HTTPClient: &http.Client{Timeout: time.Duration(cfg.InferenceTimeoutSec) * time.Second},
 		})
 		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
 	}
@@ -315,11 +347,12 @@ func main() {
 	// the crawl rather than silently diverge.
 	crawlRepo := repository.NewCrawlRepository(dbFn)
 
-	// Iterator checkpoint store — feeds the resume path on the next
-	// NATS redelivery after a crash. Soft-fail throughout: a Postgres
-	// outage degrades resumption to "always start fresh" rather than
-	// stalling the crawl.
-	checkpointRepo := repository.NewCheckpointRepository(dbFn)
+	// crawl_runs state machine — the durable per-source resume state behind
+	// bounded-slice crawling. Drives single-flight, the per-slice lease, and
+	// the cursor that lets a millions-of-jobs board resume instead of
+	// restarting. Supersedes the old crawl_checkpoints store.
+	crawlRunRepo := repository.NewCrawlRunRepository(dbFn)
+	recipeRepo := repository.NewRecipeRepository(dbFn)
 
 	// URL frontier (D2) — discovered URLs from frontier-enabled
 	// sources land here; apps/frontier-worker pulls + fetches them.
@@ -346,24 +379,96 @@ func main() {
 		}
 	}
 
+	// crawl_inbox buffer + pump (decouples crawl bursts from JetStream).
+	var inboxStore *crawlinbox.Store
+	if cfg.CrawlInboxEnabled {
+		inboxStore = crawlinbox.NewStore(dbFn)
+		log.Info("crawl-inbox: enabled — crawled variants buffered in Postgres, drained to pl_ingested by the pump")
+	}
+
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
-		Svc:               svc,
-		Sources:           sourceRepo,
-		Registry:          registry,
-		Kinds:             reg,
-		Archive:           arch,
-		Extractor:         extractor,
-		Normalizer:        normalizer,
-		PageFetcher:       httpClient,
-		EnrichConcurrency: cfg.EnrichConcurrency,
-		DiscoverSample:    0.05, // roughly 1-in-20 pages get DiscoverSites
-		VariantStore:      variantStore,
-		CrawlRepo:         crawlRepo,
-		CheckpointRepo:    checkpointRepo,
-		Frontier:          urlFrontier,
+		Svc:                 svc,
+		IngestedQueue:       cfg.QueuePipelineIngestedName,
+		Inbox:               inboxStore,
+		Sources:             sourceRepo,
+		StatusSetter:        sourceRepo,
+		Registry:            registry,
+		Kinds:               reg,
+		Archive:             arch,
+		Extractor:           extractor,
+		Normalizer:          normalizer,
+		PageFetcher:         httpClient,
+		EnrichConcurrency:   cfg.EnrichConcurrency,
+		DiscoverSample:      0.05, // roughly 1-in-20 pages get DiscoverSites
+		VariantStore:        variantStore,
+		CrawlRepo:           crawlRepo,
+		RunRepo:             crawlRunRepo,
+		Admitter:            bpGate,
+		SliceMaxPages:       cfg.CrawlSliceMaxPages,
+		SliceMaxSeconds:     cfg.CrawlSliceMaxSeconds,
+		RunLeaseTTLSec:      cfg.CrawlRunLeaseTTLSec,
+		RunStuckMaxAttempts: cfg.CrawlRunStuckMaxAttempts,
+		Frontier:            urlFrontier,
+		RecipeRepo:          recipeRepo,
+		RecipeEnabled:       cfg.RecipeEnabled,
 	})
 	pageDoneH := service.NewPageCompletedHandler(sourceRepo)
+	// Drift-triggered recipe regeneration: when a recipe-driven source's
+	// reject rate crosses the threshold, the page-completed handler emits
+	// recipe.regenerate.v1 so the generator re-synthesises off fresh pages.
+	// Only wired when recipe generation is enabled.
+	if cfg.RecipeEnabled {
+		pageDoneH.RegenRejectRate = cfg.RecipeRegenRejectRate
+		pageDoneH.RegenMinPages = cfg.RecipeRegenMinPages
+		pageDoneH.EmitRegenerate = func(emitCtx context.Context, sourceID, reason string) {
+			evtMgr := svc.EventsManager()
+			if evtMgr == nil {
+				return
+			}
+			env := eventsv1.NewEnvelope(eventsv1.TopicRecipeRegenerate, eventsv1.RecipeRegenerateV1{SourceID: sourceID})
+			if err := evtMgr.Emit(emitCtx, eventsv1.TopicRecipeRegenerate, env); err != nil {
+				util.Log(emitCtx).WithError(err).WithField("source_id", sourceID).
+					WithField("reason", reason).Warn("recipe: drift regenerate emit failed")
+			}
+		}
+	}
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
+
+	// Inbox pump: drain crawl_inbox → pl_ingested, but only while the queue has
+	// headroom — so JetStream holds just the working set and the DB absorbs the
+	// burst. Replicas claim disjoint batches via FOR UPDATE SKIP LOCKED.
+	if inboxStore != nil {
+		go func() {
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if st, err := bpGate.Check(ctx); err == nil && st.Pending >= cfg.CrawlInboxPumpHighWater {
+						continue // queue full enough — let the pipeline drain first
+					}
+					rows, err := inboxStore.ClaimBatch(ctx, cfg.CrawlInboxPumpBatch, 5*time.Minute)
+					if err != nil {
+						log.WithError(err).Warn("crawl-inbox pump: claim failed")
+						continue
+					}
+					done := make([]string, 0, len(rows))
+					for _, r := range rows {
+						if pErr := svc.QueueManager().Publish(ctx, cfg.QueuePipelineIngestedName, r.Payload, nil); pErr != nil {
+							log.WithError(pErr).Warn("crawl-inbox pump: publish failed; row stays claimed for re-drive")
+							continue
+						}
+						done = append(done, r.VariantID)
+					}
+					if dErr := inboxStore.Delete(ctx, done); dErr != nil {
+						log.WithError(dErr).Warn("crawl-inbox pump: delete drained rows failed")
+					}
+				}
+			}
+		}()
+	}
 
 	// The crawler subscribes to svc.opportunities.events.> (catch-all)
 	// but only handles three topics. Frame v1.97.3 loose-mode acks-and-
@@ -388,7 +493,58 @@ func main() {
 		handlers = append(handlers, definitions.NewBroadcastConsumer(loader, rebuild))
 		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
-	svc.Init(ctx, frame.WithRegisterEvents(handlers...))
+
+	// Recipe generate/regenerate handlers. Only wired when RECIPE_ENABLED
+	// and an AI extractor is configured — the Generator needs an LLM seam
+	// (extractor.Complete) to synthesise recipes. The two handlers consume
+	// recipe.generate.v1 / recipe.regenerate.v1 and run the
+	// Generator → Validator → Store pipeline, activating on a pass-rate gate.
+	if cfg.RecipeEnabled && extractor != nil {
+		recipeGen := recipe.NewGenerator(extractor, recipe.NewHTTPFetcher(httpClient), reg, cfg.RecipeMaxGenAttempts)
+		recipeGen.SetPassThreshold(cfg.RecipePassThreshold)
+		recipeDeps := service.RecipeHandlerDeps{
+			Sources: sourceRepo, Recipes: recipeRepo, Generator: recipeGen, Registry: reg,
+			Fetcher: recipe.NewHTTPFetcher(httpClient), Flagger: sourceRepo,
+			Samples: recipeRepo, SampleCount: cfg.RecipeSampleCount, Model: cfg.InferenceModel,
+			PassThreshold: cfg.RecipePassThreshold,
+		}
+		handlers = append(handlers,
+			service.NewRecipeGenerateHandler(recipeDeps),
+			service.NewRecipeRegenerateHandler(recipeDeps),
+		)
+		log.WithField("topics", []string{eventsv1.TopicRecipeGenerate, eventsv1.TopicRecipeRegenerate}).
+			Info("recipe: generate/regenerate handlers wired")
+	}
+	// Per-source Trustage schedule sync (the model that replaces the central
+	// scheduler tick). When enabled + a TrustageURL is set, source lifecycle
+	// mutations emit sources.scheduling.changed.v1 and the
+	// SourceSchedulingHandler creates/archives the per-source crawl schedule to
+	// match the source's live status; a boot reconcile + the
+	// POST /admin/sources/schedules/reconcile backstop heal drift.
+	var scheduleClient service.WorkflowClient
+	if cfg.SourceSchedulesEnabled && cfg.TrustageURL != "" {
+		if cli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL); cliErr != nil {
+			log.WithError(cliErr).Error("source-schedules: trustage client init failed; per-source schedules disabled")
+		} else {
+			scheduleClient = cli
+			log.Info("source-schedules: per-source Trustage scheduling enabled")
+		}
+	}
+	// The scheduling handler is the consumer side of the event the admin
+	// handlers emit: it re-derives the desired schedule from the source's live
+	// status. Only wired when scheduling is on (scheduleClient != nil).
+	if scheduleClient != nil {
+		handlers = append(handlers,
+			service.NewSourceSchedulingHandler(scheduleClient, sourceRepo, cfg.CrawlBaseURL))
+		log.WithField("topic", eventsv1.TopicSourceSchedulingChanged).
+			Info("source-schedules: scheduling-changed handler wired")
+	}
+
+	svc.Init(ctx,
+		frame.WithRegisterEvents(handlers...),
+		// Pipeline head: publish VariantIngestedV1 to the opportunity chain.
+		frame.WithRegisterPublisher(cfg.QueuePipelineIngestedName, cfg.QueuePipelineIngested),
+	)
 	if mgr := svc.EventsManager(); mgr != nil {
 		mgr.SetStrict(false)
 	}
@@ -410,6 +566,52 @@ func main() {
 		log.Warn("no SecurityManager configured — admin endpoints are UNPROTECTED")
 	}
 
+	// ensureSchedule / removeSchedule are nil-safe no-ops when scheduling is
+	// off, so the admin handlers can call them unconditionally. Both now EMIT
+	// sources.scheduling.changed.v1 rather than touching Trustage inline — the
+	// SourceSchedulingHandler (registered below) re-derives the desired state
+	// from the source's live status and does the ensure/archive. This keeps the
+	// schedule sync idempotent and order-independent across replicas.
+	emitSchedulingChanged := func(ctx context.Context, id string) {
+		if scheduleClient == nil {
+			return
+		}
+		evtMgr := svc.EventsManager()
+		if evtMgr == nil {
+			return
+		}
+		env := eventsv1.NewEnvelope(eventsv1.TopicSourceSchedulingChanged,
+			eventsv1.SourceSchedulingChangedV1{SourceID: id})
+		if err := evtMgr.Emit(ctx, eventsv1.TopicSourceSchedulingChanged, env); err != nil {
+			log.WithError(err).WithField("source_id", id).Warn("source-schedules: scheduling-changed emit failed")
+		}
+	}
+	ensureSchedule := emitSchedulingChanged
+	removeSchedule := emitSchedulingChanged
+	// Boot reconcile: drive every source's schedule to match its status. Runs
+	// detached so a slow/unavailable Trustage never blocks crawler startup.
+	if scheduleClient != nil {
+		go func() {
+			bgCtx := context.WithoutCancel(ctx)
+			rctx, cancel := context.WithTimeout(bgCtx, 5*time.Minute)
+			defer cancel()
+			// One-time retirement of the legacy static-cron sweep
+			// (definitions/trustage/source-crawl-tick.json). It has been
+			// replaced by per-source schedules; archive it so Trustage stops
+			// firing POST /admin/sources/crawl-due (which no longer exists).
+			// Idempotent + best-effort.
+			if aerr := service.ArchiveWorkflowByName(rctx, scheduleClient, "opportunities.source.crawl-tick"); aerr != nil {
+				log.WithError(aerr).Warn("source-schedules: archive legacy crawl-tick workflow failed")
+			}
+			all, err := sourceRepo.ListAll(rctx)
+			if err != nil {
+				log.WithError(err).Warn("source-schedules: boot reconcile ListAll failed")
+				return
+			}
+			service.ReconcileSourceSchedules(rctx, scheduleClient, all, cfg.CrawlBaseURL)
+		}()
+	}
+
 	// Admin: pause a source  (?id=N)
 	adminMux.HandleFunc("/admin/sources/pause", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -425,6 +627,7 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
 			return
 		}
+		removeSchedule(r.Context(), id)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "paused"})
 	})
@@ -444,6 +647,7 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
 			return
 		}
+		ensureSchedule(r.Context(), id)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
 	})
@@ -485,6 +689,7 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, stopErr.Error()), http.StatusInternalServerError)
 			return
 		}
+		removeSchedule(r.Context(), id)
 
 		// Emit the cascade-delete event. Best-effort; the source is
 		// already marked disabled so missing the emit only delays
@@ -561,9 +766,43 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"count": len(ids), "ids": ids})
 	})
 
-	// Trustage fires this every 30 s; see definitions/trustage/scheduler-tick.json.
-	adminMux.HandleFunc("POST /admin/scheduler/tick",
-		service.SchedulerTickHandler(svc, sourceRepo, bpGate))
+	// Per-source crawl: each source's own Trustage schedule POSTs here at the
+	// source's cadence. Emits exactly one crawl.requests.v1 for {id}, gated by
+	// backpressure (429 + Retry-After when the pipeline is saturated).
+	adminMux.HandleFunc("POST /admin/sources/{id}/crawl",
+		service.SourceCrawlHandler(svc, sourceRepo, bpGate))
+
+	// Schedule reconcile backstop: Trustage fires this periodically to heal
+	// drift between sources.status and the per-source Trustage schedules.
+	adminMux.HandleFunc("POST /admin/sources/schedules/reconcile",
+		service.ScheduleReconcileHandler(sourceRepo, scheduleClient, cfg.CrawlBaseURL))
+
+	// Overdue catch-up sweep: dispatches sources at least an hour past due —
+	// the ticks the per-source schedules lost to a closed backpressure gate,
+	// a never-activated workflow, or Trustage downtime. Static-synced cron;
+	// see definitions/trustage/source-crawl-overdue.json.
+	adminMux.HandleFunc("POST /admin/sources/crawl-overdue",
+		service.CrawlOverdueHandler(svc, sourceRepo, sourceRepo, bpGate, cfg.CrawlOverdueBatch))
+
+	// Crawl-pipeline liveness watchdog: ERROR-logs (and reports) when sources
+	// are due but nothing has crawled in hours. Static-synced cron; see
+	// definitions/trustage/crawl-watchdog.json.
+	watchdog := service.CrawlWatchdogHandler(crawlRepo, sourceRepo)
+	adminMux.HandleFunc("GET /admin/crawl/watchdog", watchdog)
+
+	// Resumable-run watchdog: re-drives crawl_runs whose lease lapsed (crashed
+	// owner, lost/deferred continuation) and fails runs past the stuck ceiling.
+	// Static-synced cron; see definitions/trustage/crawl-runs-sweep.json.
+	adminMux.HandleFunc("POST /admin/crawl/runs/sweep",
+		service.CrawlRunWatchdogHandler(svc, crawlRunRepo, bpGate,
+			cfg.CrawlRunWatchdogBatch, cfg.CrawlRunStuckMaxAttempts, cfg.CrawlRunLeaseTTLSec))
+	adminMux.HandleFunc("POST /admin/crawl/watchdog", watchdog)
+
+	// Stale-job retention sweep: hides opportunities that vanished from a
+	// source's feed (and restores any that came back). Trustage fires this
+	// every 15 min; see definitions/trustage/retention-expire.json.
+	adminMux.HandleFunc("POST /admin/retention/expire",
+		service.RetentionExpireHandler(variantStore))
 
 	// Admin: bulk reset quality-window counters on all active sources.
 	// Trustage fires this weekly; see definitions/trustage/sources-quality-window-reset.json.
@@ -574,6 +813,27 @@ func main() {
 	// Trustage fires this hourly; see definitions/trustage/sources-health-decay.json.
 	adminMux.HandleFunc("POST /admin/sources/health-decay",
 		service.HealthDecayHandler(sourceRepo))
+
+	// Admin: enqueue AI recipe generation for recipe-less sources. Trustage fires
+	// this every 15 min; see definitions/trustage/sources-recipe-backfill.json.
+	// No-op while RECIPE_ENABLED=false. The endpoint only enumerates + emits
+	// recipe.generate.v1; generation runs on the event consumers, so it scales by
+	// adding crawler replicas.
+	adminMux.HandleFunc("POST /admin/recipes/backfill",
+		service.RecipeBackfillHandler(service.RecipeBackfillDeps{
+			Sources: sourceRepo,
+			Enabled: cfg.RecipeEnabled,
+			Targets: service.UniversalRecipeTargets,
+			Limit:   cfg.RecipeBackfillLimit,
+			Emit: func(emitCtx context.Context, sourceID string) error {
+				evtMgr := svc.EventsManager()
+				if evtMgr == nil {
+					return fmt.Errorf("recipe-backfill: events manager not configured")
+				}
+				env := eventsv1.NewEnvelope(eventsv1.TopicRecipeGenerate, eventsv1.RecipeGenerateV1{SourceID: sourceID})
+				return evtMgr.Emit(emitCtx, eventsv1.TopicRecipeGenerate, env)
+			},
+		}))
 
 	// Admin: backpressure state — operator-facing visibility into the
 	// gate. Useful for dashboards and for confirming the Trustage

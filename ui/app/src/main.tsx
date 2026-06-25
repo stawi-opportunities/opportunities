@@ -1,8 +1,9 @@
 import { StrictMode, type ComponentType, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppProviders } from '@/providers/AppProviders';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 
-// Every island is a [id → component] pair. Only the components whose mount
+// Every island is a [id ΓåÆ component] pair. Only the components whose mount
 // target exists on the page get rendered. Components are lazy-imported so
 // a page that only uses <Nav> doesn't pay for <Onboarding>'s form library.
 
@@ -33,6 +34,8 @@ const islands: Island[] = [
   { id: 'mount-auth-callback', component: () => import('@/components/AuthCallback') },
   { id: 'mount-footer', component: () => import('@/components/Footer') },
   { id: 'mount-get-started-cta', component: () => import('@/components/GetStartedCta') },
+  { id: 'mount-scroll-top', component: () => import('@/components/common/ScrollToTop') },
+  { id: 'mount-skip-to-content', component: () => import('@/components/common/SkipToContent') },
 ];
 
 async function hydrate(island: Island, el: HTMLElement) {
@@ -41,9 +44,11 @@ async function hydrate(island: Island, el: HTMLElement) {
   createRoot(el).render(
     <StrictMode>
       <AppProviders>
-        <Suspense fallback={null}>
-          <Component />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <Component />
+          </Suspense>
+        </ErrorBoundary>
       </AppProviders>
     </StrictMode>
   );

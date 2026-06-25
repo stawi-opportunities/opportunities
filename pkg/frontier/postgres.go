@@ -9,7 +9,7 @@
 // PrepareStmt is disabled on the dequeue query: pgbouncer in
 // transaction pooling mode collides on cached statement names
 // across pooled connections (SQLSTATE 08P01). Mirrors the pattern
-// at pkg/repository/source.go:441-454 (RefreshSignals/LoadSignals).
+// at pkg/repository/source.go (LoadSignals).
 package frontier
 
 import (

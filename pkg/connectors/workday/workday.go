@@ -63,6 +63,17 @@ func (c *Connector) crawlFrom(ctx context.Context, src domain.Source, startPage 
 	if err != nil {
 		return &iter{src: src, page: startPage, raw: body, httpStatus: status, err: err, lastURL: u}
 	}
+	// Same dead-board guard as greenhouse: a non-200 must fail the crawl,
+	// not decode into zero postings. NOTE: this endpoint shape
+	// ({base}/wday/cxs/jobs via GET) has never returned data for a real
+	// tenant — Workday's CXS API is POST {host}/wday/cxs/{tenant}/{site}/jobs
+	// — but the only Workday source in prod (microsoft.wd5) 500s even on
+	// its human careers page, so there is no live board to rebuild and
+	// verify against. Revisit when a real Workday source is added.
+	if status != 200 {
+		return &iter{src: src, page: startPage, raw: body, httpStatus: status,
+			err: fmt.Errorf("workday board: status %d on %s", status, u), lastURL: u}
+	}
 
 	var payload struct {
 		JobPostings []struct {

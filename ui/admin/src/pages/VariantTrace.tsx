@@ -1,55 +1,44 @@
-import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   getVariantTrace,
   reparseRawPayload,
-  type VariantTimelineResponse,
 } from '@/api/admin-client';
 import { TraceTimeline } from '@/components/TraceTimeline';
+import { Button, Card, ErrorBlock, LoadingSkeleton, useToast } from '@/components/ui';
 
-// VariantTrace renders GET /admin/trace/variants/{id}: full join across
-// source, crawl_job, raw_payload + the stage transitions for one
-// variant. Includes a "view captured HTML" deep-link and a one-click
-// reparse button so operators can drive a re-extraction after a
-// definition change.
 export function VariantTrace() {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<VariantTimelineResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [reparseMsg, setReparseMsg] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    if (!id) return;
-    setData(null);
-    setErr(null);
-    getVariantTrace(id)
-      .then(setData)
-      .catch((e: unknown) =>
-        setErr(e instanceof Error ? e.message : String(e))
-      );
-  }, [id]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['variant-trace', id],
+    queryFn: () => getVariantTrace(id ?? ''),
+    enabled: !!id,
+  });
 
-  const handleReparse = async () => {
-    if (!data?.raw_payload?.id) return;
-    setReparseMsg('Queuing…');
-    try {
-      const res = await reparseRawPayload(data.raw_payload.id);
-      setReparseMsg(`Queued ${res.queued} raw_payload(s) for re-extraction.`);
-    } catch (e) {
-      setReparseMsg(`Reparse failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
+  const reparse = useMutation({
+    mutationFn: () => reparseRawPayload(data?.raw_payload?.id ?? ''),
+    onSuccess: (res) => {
+      toast(`Queued ${res.queued} raw_payload(s) for re-extraction.`, { type: 'success' });
+    },
+    onError: (e: Error) => {
+      toast(`Reparse failed: ${e.message}`, { type: 'error' });
+    },
+  });
 
-  if (err) return <pre style={{ color: 'crimson' }}>{err}</pre>;
-  if (!data) return <p>Loading variant…</p>;
+  if (!id) return <ErrorBlock message="Missing variant ID" />;
+  if (isLoading) return <LoadingSkeleton type="card" />;
+  if (error) return <ErrorBlock message="Failed to load variant" detail={String(error)} />;
+  if (!data) return null;
 
   return (
     <div>
-      <header>
-        <h1>
+      <div style={{ marginBottom: '1.25rem' }}>
+        <h1 style={{ margin: 0, fontSize: '1.15rem' }}>
           Variant <code>{data.variant_id}</code>
         </h1>
-        <p>
+        <div style={{ marginTop: '0.35rem', fontSize: '0.88rem', color: 'var(--c-text-secondary)' }}>
           <strong>Source:</strong>{' '}
           <Link to={`/sources/${encodeURIComponent(data.source.id)}`}>
             {data.source.id}
@@ -61,45 +50,35 @@ export function VariantTrace() {
             <>
               <br />
               <strong>Opportunity:</strong>{' '}
-              <Link
-                to={`/opportunities/${encodeURIComponent(data.opportunity_slug)}`}
-              >
+              <Link to={`/opportunities/${encodeURIComponent(data.opportunity_slug)}`}>
                 {data.opportunity_slug}
               </Link>
             </>
           )}
-        </p>
-      </header>
+        </div>
+      </div>
 
-      <section>
-        <h2>Timeline</h2>
+      <Card title="Timeline" style={{ marginBottom: '1rem' }}>
         <TraceTimeline stages={data.stages} />
-      </section>
+      </Card>
 
       {data.raw_payload && (
-        <section>
-          <h2>Raw payload</h2>
+        <Card title="Raw payload" style={{ marginBottom: '1rem' }}>
           <table>
             <tbody>
               <tr>
-                <td>ID</td>
+                <td style={{ fontWeight: 500 }}>ID</td>
                 <td>
-                  <Link
-                    to={`/raw_payloads/${encodeURIComponent(data.raw_payload.id)}`}
-                  >
+                  <Link to={`/raw_payloads/${encodeURIComponent(data.raw_payload.id)}`}>
                     {data.raw_payload.id}
                   </Link>
                 </td>
               </tr>
               {data.raw_payload.source_url && (
                 <tr>
-                  <td>Source URL</td>
+                  <td style={{ fontWeight: 500 }}>Source URL</td>
                   <td>
-                    <a
-                      href={data.raw_payload.source_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={data.raw_payload.source_url} target="_blank" rel="noreferrer">
                       {data.raw_payload.source_url}
                     </a>
                   </td>
@@ -107,64 +86,54 @@ export function VariantTrace() {
               )}
               {data.raw_payload.content_hash && (
                 <tr>
-                  <td>Content hash</td>
-                  <td>
-                    <code>{data.raw_payload.content_hash}</code>
-                  </td>
+                  <td style={{ fontWeight: 500 }}>Content hash</td>
+                  <td><code>{data.raw_payload.content_hash}</code></td>
                 </tr>
               )}
               <tr>
-                <td>Size</td>
+                <td style={{ fontWeight: 500 }}>Size</td>
                 <td>{data.raw_payload.size_bytes} B</td>
               </tr>
               <tr>
-                <td>HTTP status</td>
+                <td style={{ fontWeight: 500 }}>HTTP status</td>
                 <td>{data.raw_payload.http_status}</td>
               </tr>
               <tr>
-                <td>Fetched at</td>
+                <td style={{ fontWeight: 500 }}>Fetched at</td>
                 <td>{new Date(data.raw_payload.fetched_at).toLocaleString()}</td>
               </tr>
             </tbody>
           </table>
-          <p style={{ marginTop: '0.5rem' }}>
+          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             {data.raw_payload.body_url && (
-              <a
-                href={data.raw_payload.body_url}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a href={data.raw_payload.body_url} target="_blank" rel="noreferrer">
                 View captured HTML →
               </a>
             )}
-            <button
-              type="button"
-              onClick={handleReparse}
-              style={{ marginLeft: '1rem' }}
-            >
+            <Button size="sm" variant="outline" loading={reparse.isPending} onClick={() => reparse.mutate()}>
               Reparse
-            </button>
-            {reparseMsg && (
-              <small style={{ marginLeft: '0.5rem' }}>{reparseMsg}</small>
-            )}
-          </p>
-        </section>
+            </Button>
+          </div>
+        </Card>
       )}
 
       {data.last_error && (
-        <section>
-          <h2>Last error</h2>
+        <Card title="Last error">
           <pre
             style={{
-              color: 'crimson',
-              background: '#fee',
-              padding: '0.5rem',
+              color: 'var(--c-danger)',
+              background: '#fef2f2',
+              padding: '0.75rem',
+              borderRadius: 'var(--radius-sm)',
               whiteSpace: 'pre-wrap',
+              fontSize: '0.85rem',
+              margin: 0,
+              overflowX: 'auto',
             }}
           >
             {data.last_error}
           </pre>
-        </section>
+        </Card>
       )}
     </div>
   );

@@ -19,6 +19,12 @@ type Config struct {
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY,required"`
 	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
 
+	// Pipeline head queue: the frontier-worker publishes VariantIngestedV1
+	// here (the worker's normalize stage subscribes). Must match the
+	// worker/crawler ingested queue.
+	QueuePipelineIngested     string `env:"QUEUE_PIPELINE_INGESTED_URI"  envDefault:"mem://pipeline_ingested"`
+	QueuePipelineIngestedName string `env:"QUEUE_PIPELINE_INGESTED_NAME" envDefault:"pipeline_ingested"`
+
 	// AI extractor. Optional — when unset the worker skips the LLM
 	// pass and forwards the URL stub with whatever metadata the
 	// connector supplied. Same env knobs as apps/crawler so the
@@ -29,6 +35,9 @@ type Config struct {
 	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL"`
 	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY"`
 	EmbeddingModel   string `env:"EMBEDDING_MODEL"`
+	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
+	// 0 omits it. Must equal EMBEDDING_DIM.
+	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
 
 	// OpportunityKindsDir is the on-disk fallback when R2-backed
 	// definitions aren't configured. Mirrors apps/crawler.
@@ -39,6 +48,23 @@ type Config struct {
 
 	// HTTPTimeoutSec bounds the per-URL fetch. Default 20s.
 	HTTPTimeoutSec int `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
+
+	// Unblocker fallback — same contract as the crawler (see
+	// apps/crawler/config): blocked fetches (403/429/451/503 or a
+	// transport error) retry through this residential-unblocker proxy.
+	// The frontier-worker fetches DETAIL pages on WAF-fronted boards, so
+	// it needs the fallback at least as much as the listing crawler.
+	// Empty disables (direct-only).
+	UnblockerProxyURL   string `env:"UNBLOCKER_PROXY_URL"`
+	UnblockerCACert     string `env:"UNBLOCKER_CA_CERT"`
+	UnblockerTimeoutSec int    `env:"UNBLOCKER_TIMEOUT_SEC" envDefault:"60"`
+
+	// scrape.do unblocker (API mode); takes precedence over the proxy
+	// above. See apps/crawler/config for the option semantics.
+	ScrapeDoToken   string `env:"SCRAPEDO_TOKEN"`
+	ScrapeDoRender  bool   `env:"SCRAPEDO_RENDER" envDefault:"false"`
+	ScrapeDoSuper   bool   `env:"SCRAPEDO_SUPER" envDefault:"false"`
+	ScrapeDoGeoCode string `env:"SCRAPEDO_GEOCODE"`
 
 	// DequeueBatch caps the URLs claimed per Dequeue call.
 	// Default 5 — large enough to amortise the txn cost, small

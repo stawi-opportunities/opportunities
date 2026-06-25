@@ -17,7 +17,7 @@ func TestNoopReranker_PassesScoresThrough(t *testing.T) {
 		{ID: "a", Score: 0.7},
 		{ID: "b", Score: 0.9},
 	}
-	out, used, err := r.Rerank(context.Background(), items)
+	out, used, err := r.Rerank(context.Background(), "q", items)
 	require.NoError(t, err)
 	require.False(t, used)
 	require.Equal(t, items, out)
@@ -30,11 +30,11 @@ func TestPooledReranker_FallsBackOnPoolFull(t *testing.T) {
 	items := []matching.RerankItem{{ID: "x", Score: 0.5}}
 
 	// First call enters and blocks.
-	go func() { _, _, _ = pooled.Rerank(context.Background(), items) }()
+	go func() { _, _, _ = pooled.Rerank(context.Background(), "q", items) }()
 	time.Sleep(2 * time.Millisecond)
 
 	// Second call cannot enter and falls back.
-	out, used, err := pooled.Rerank(context.Background(), items)
+	out, used, err := pooled.Rerank(context.Background(), "q", items)
 	require.NoError(t, err)
 	require.False(t, used)
 	require.Equal(t, items, out)
@@ -46,7 +46,7 @@ func TestPooledReranker_FallsBackOnUpstreamError(t *testing.T) {
 	err := errors.New("model down")
 	pooled := matching.NewPooledReranker(&errorReranker{err: err}, 4, time.Second)
 	items := []matching.RerankItem{{ID: "x", Score: 0.5}}
-	out, used, gotErr := pooled.Rerank(context.Background(), items)
+	out, used, gotErr := pooled.Rerank(context.Background(), "q", items)
 	require.NoError(t, gotErr)
 	require.False(t, used)
 	require.Equal(t, items, out)
@@ -56,13 +56,13 @@ type blockingReranker struct {
 	block chan struct{}
 }
 
-func (b *blockingReranker) Rerank(ctx context.Context, items []matching.RerankItem) ([]matching.RerankItem, bool, error) {
+func (b *blockingReranker) Rerank(_ context.Context, _ string, items []matching.RerankItem) ([]matching.RerankItem, bool, error) {
 	<-b.block
 	return items, true, nil
 }
 
 type errorReranker struct{ err error }
 
-func (e *errorReranker) Rerank(_ context.Context, _ []matching.RerankItem) ([]matching.RerankItem, bool, error) {
+func (e *errorReranker) Rerank(_ context.Context, _ string, _ []matching.RerankItem) ([]matching.RerankItem, bool, error) {
 	return nil, false, e.err
 }

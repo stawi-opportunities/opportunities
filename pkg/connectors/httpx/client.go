@@ -34,6 +34,12 @@ type HTTPDoer interface {
 type Client struct {
 	http      HTTPDoer
 	userAgent string
+	// browser emulates a real Chrome client (coherent header bundle +
+	// content-encoding negotiation). On by default — most public job
+	// boards 403 the default Go signature but serve a browser-shaped
+	// request fine. Disable with PlainMode for endpoints that want us to
+	// identify honestly (e.g. our own internal services).
+	browser bool
 }
 
 // NewClient creates a Client with the given request timeout and User-Agent.
@@ -45,6 +51,7 @@ func NewClient(timeout time.Duration, userAgent string) *Client {
 	return &Client{
 		http:      &http.Client{Timeout: timeout},
 		userAgent: userAgent,
+		browser:   true,
 	}
 }
 
@@ -56,7 +63,32 @@ func NewClientFromDoer(doer HTTPDoer, userAgent string) *Client {
 	if doer == nil {
 		doer = http.DefaultClient
 	}
-	return &Client{http: doer, userAgent: userAgent}
+	return &Client{http: doer, userAgent: userAgent, browser: true}
+}
+
+// PlainMode turns off browser emulation, sending only the User-Agent.
+// Returns the receiver for chaining. Use for hosts that should see an
+// honest bot identity (internal APIs, robots-respecting fetches).
+func (c *Client) PlainMode() *Client {
+	c.browser = false
+	return c
+}
+
+// applyHeaders sets the outgoing request headers: the full browser
+// bundle when emulation is on (else just the User-Agent), then the
+// caller's per-request headers, which always win — so a connector
+// asking for Accept: application/json still gets it.
+func (c *Client) applyHeaders(req *http.Request, headers map[string]string) {
+	if c.browser {
+		for k, v := range browserHeaders(c.userAgent) {
+			req.Header.Set(k, v)
+		}
+	} else {
+		req.Header.Set("User-Agent", c.userAgent)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 }
 
 // Get performs a GET request to url, attaching any extra headers supplied.
@@ -120,10 +152,7 @@ func (c *Client) doGet(ctx context.Context, url string, headers map[string]strin
 		return nil, 0, fmt.Errorf("build request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
+	c.applyHeaders(req, headers)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -131,13 +160,30 @@ func (c *Client) doGet(ctx context.Context, url string, headers map[string]strin
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB max
+	// 32MB cap. Single-page ATS APIs return the whole board in one JSON
+	// response — boards.greenhouse.io/coupang measures 14.5MB with
+	// content=true — and a cap below the payload size silently truncates
+	// the body, surfacing as "unexpected end of JSON input" decode
+	// failures that look like a connector bug instead of a size limit.
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}
 
+	// Browser emulation advertises gzip/deflate/br, which stops Go's
+	// transport from auto-decompressing — undo it ourselves. A no-op for
+	// identity responses and for transport-gunzipped bodies (their
+	// Content-Encoding header is already stripped).
+	body, derr := decodeBody(resp.Header.Get("Content-Encoding"), raw)
+	if derr != nil {
+		return nil, resp.StatusCode, fmt.Errorf("decode %s body: %w", resp.Header.Get("Content-Encoding"), derr)
+	}
+
 	return body, resp.StatusCode, nil
 }
+
+// maxBodyBytes bounds a single response body read.
+const maxBodyBytes = 32 * 1024 * 1024
 
 // Verify checks whether url is reachable without downloading the body. It
 // tries HEAD first and falls back to a GET with a Range: bytes=0-0 header for
@@ -157,10 +203,13 @@ func (c *Client) Verify(ctx context.Context, url string) (int, error) {
 		if err != nil {
 			return 0, fmt.Errorf("build %s request: %w", method, err)
 		}
-		req.Header.Set("User-Agent", c.userAgent)
+		// Probe with the same identity we'll crawl with — a gateway that
+		// would 403 the real fetch should 403 the probe too, not pass it.
+		extra := map[string]string(nil)
 		if method == http.MethodGet {
-			req.Header.Set("Range", "bytes=0-0")
+			extra = map[string]string{"Range": "bytes=0-0"}
 		}
+		c.applyHeaders(req, extra)
 
 		resp, err := c.http.Do(req)
 		if err != nil {

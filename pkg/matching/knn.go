@@ -31,12 +31,17 @@ type CandidateHit struct {
 	Kinds          []string
 	Countries      []string
 	SalaryFloorUSD *int
+	// Text is the candidate's document text for cross-encoder reranking.
+	// The denormalized candidate_match_indexes table carries no title/skill
+	// columns, so this is empty today; the reranker degrades to a no-op.
+	Text string
 }
 
 const fanOutKNNSQL = `
 SELECT candidate_id,
        embedding <=> $1::vector AS distance,
-       min_score, daily_cap, kinds, countries, salary_floor_usd
+       min_score, daily_cap, kinds, countries, salary_floor_usd,
+       '' AS text
 FROM candidate_match_indexes
 WHERE enabled = TRUE
   AND $2 = ANY(kinds)
@@ -70,7 +75,7 @@ func (k *KNN) FanOutKNN(ctx context.Context, p FanOutKNNParams) ([]CandidateHit,
 			floor     sql.NullInt64
 		)
 		if err := rows.Scan(&h.CandidateID, &h.Distance, &h.MinScore,
-			&h.DailyCap, &kinds, &countries, &floor); err != nil {
+			&h.DailyCap, &kinds, &countries, &floor, &h.Text); err != nil {
 			return nil, fmt.Errorf("matching: fan-out knn scan: %w", err)
 		}
 		h.Kinds = []string(kinds)
@@ -98,14 +103,18 @@ type OppHit struct {
 	Kind          string
 	Country       string
 	FirstSeenAt   time.Time
+	// Text is the opportunity's title + truncated description, used as the
+	// document passed to the cross-encoder reranker.
+	Text string
 }
 
 const reverseKNNSQL = `
-SELECT id,
+SELECT canonical_id,
        embedding <=> $1::vector AS distance,
        COALESCE(kind, '')    AS kind,
        COALESCE(country, '') AS country,
-       first_seen_at
+       first_seen_at,
+       COALESCE(title,'') || ' ' || left(COALESCE(attributes->>'description',''), 1500) AS text
 FROM opportunities
 WHERE status = 'active'
   AND hidden = false
@@ -133,7 +142,7 @@ func (k *KNN) ReverseKNN(ctx context.Context, p ReverseKNNParams) ([]OppHit, err
 	for rows.Next() {
 		var h OppHit
 		if err := rows.Scan(&h.OpportunityID, &h.Distance, &h.Kind,
-			&h.Country, &h.FirstSeenAt); err != nil {
+			&h.Country, &h.FirstSeenAt, &h.Text); err != nil {
 			return nil, fmt.Errorf("matching: reverse knn scan: %w", err)
 		}
 		out = append(out, h)

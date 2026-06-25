@@ -3,7 +3,7 @@ import { authRuntime } from '@/auth/runtime';
 
 // All auth'd candidate-service API calls go through the shared runtime.
 // @stawi/auth-runtime 1.0+ owns the token (no getAccessToken export),
-// so we can't forge Bearer headers ourselves — every call uses
+// so we can't forge Bearer headers ourselves ΓÇö every call uses
 // `runtime.fetch()` (JSON / string / ArrayBuffer bodies only) or
 // `runtime.upload()` (single-file body). Multipart with file + text
 // fields isn't supported, which is why onboarding sends profile text
@@ -31,7 +31,7 @@ export interface OnboardingPayload {
 }
 
 /**
- * POST /candidates/onboard — creates the CandidateProfile row from
+ * POST /candidates/onboard ΓÇö creates the CandidateProfile row from
  * the text fields. CV upload is a separate PUT /me/cv call (required
  * because the v1 runtime can't send multipart-with-text-fields).
  */
@@ -46,7 +46,7 @@ export async function submitOnboarding(
 }
 
 /**
- * PUT /me/cv — uploads the CV file as the raw request body.  The
+ * PUT /me/cv ΓÇö uploads the CV file as the raw request body.  The
  * server re-extracts text + scores the CV in the background; the
  * response carries the updated candidate row.
  */
@@ -67,7 +67,7 @@ export interface CandidateSummary {
   subscription: string;
 }
 
-/** GET /me — authed user identity + CandidateProfile row.  Returns
+/** GET /me ΓÇö authed user identity + CandidateProfile row.  Returns
  *  null on any failure so callers can render anon fallback. */
 export async function fetchCandidate(): Promise<CandidateSummary | null> {
   try {
@@ -78,7 +78,7 @@ export async function fetchCandidate(): Promise<CandidateSummary | null> {
   }
 }
 
-// ── Billing ──────────────────────────────────────────────────────
+// ΓöÇΓöÇ Billing ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface BillingPlan {
   id: PlanId;
@@ -98,7 +98,7 @@ export interface BillingPlansResponse {
   plans: BillingPlan[];
 }
 
-/** GET /billing/plans — public; no auth.  Use native fetch() for
+/** GET /billing/plans ΓÇö public; no auth.  Use native fetch() for
  *  consistency with the R2-origin calls that don't need a token. */
 export async function fetchBillingPlans(): Promise<BillingPlansResponse> {
   const base = getCandidatesOrigin();
@@ -129,7 +129,7 @@ export interface CheckoutCreateInput {
   route_hint?: string;
 }
 
-/** POST /billing/checkout — auth'd. */
+/** POST /billing/checkout ΓÇö auth'd. */
 export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
   return authRuntime().fetch('/matching/billing/checkout', {
     method: 'POST',
@@ -150,14 +150,14 @@ export interface CheckoutStatusResponse {
   error: string;
 }
 
-/** GET /billing/checkout/status?prompt_id=… — auth'd long-poll. */
+/** GET /billing/checkout/status?prompt_id=ΓÇª ΓÇö auth'd long-poll. */
 export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
   return authRuntime().fetch(
     `/matching/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`
   );
 }
 
-// ── /me/subscription ─────────────────────────────────────────────
+// ΓöÇΓöÇ /me/subscription ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface MeSubscription {
   plan: string | null;
@@ -168,7 +168,7 @@ export interface MeSubscription {
   delivered_this_week: number;
 }
 
-/** GET /me/subscription — auth'd.  Fallback shape on any failure so
+/** GET /me/subscription ΓÇö auth'd.  Fallback shape on any failure so
  *  the dashboard renders the "choose a plan" nudge instead of
  *  breaking. */
 export async function fetchMeSubscription(): Promise<MeSubscription> {
@@ -187,7 +187,7 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
   }
 }
 
-// ── /me/onboarding ─────────────────────────────────────────────
+// ΓöÇΓöÇ /me/onboarding ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 /** The wizard's persisted form values. Shape mirrors the Onboarding.tsx
  *  FormValues minus file (`cv`) and the agree-terms boolean (those are
@@ -213,7 +213,7 @@ export interface OnboardingDraft {
   updated_at?: string;
 }
 
-/** GET /matching/me/onboarding — never throws; returns the canonical
+/** GET /matching/me/onboarding ΓÇö never throws; returns the canonical
  *  empty draft on any failure so the wizard mount is non-blocking. */
 export async function fetchOnboardingDraft(): Promise<OnboardingDraft> {
   const empty: OnboardingDraft = { step: 1, fields: {} };
@@ -229,7 +229,7 @@ export async function fetchOnboardingDraft(): Promise<OnboardingDraft> {
   }
 }
 
-/** PUT /matching/me/onboarding — fire-and-forget autosave. Errors are
+/** PUT /matching/me/onboarding ΓÇö fire-and-forget autosave. Errors are
  *  surfaced via the returned promise so the caller can show a
  *  non-blocking warning; we do NOT throw to the caller's `await` in
  *  the happy path. */
@@ -244,7 +244,7 @@ export async function saveOnboardingDraft(
   });
 }
 
-// ── /me/opportunities ─────────────────────────────────────────────
+// ΓöÇΓöÇ /me/opportunities ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export type OpportunityFilter = 'all' | 'matches' | 'starred' | 'applied';
 
@@ -305,7 +305,7 @@ export async function applyToOpportunity(
   });
 }
 
-// ── helpers ──────────────────────────────────────────────────────
+// ΓöÇΓöÇ helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function getCandidatesOrigin(): string {
   // runtime.fetch uses apiBaseUrl; for public endpoints we bypass

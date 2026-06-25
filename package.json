@@ -1,0 +1,9 @@
+{
+  "name": "stawi-opportunities",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Repo-root manifest that exists so Cloudflare Pages' mandatory root-level install step (v2 build strategy runs `npm clean-install` before the build command) succeeds. The frontend itself lives under ui/ and is built by `make ui-build`, which installs ui, ui/app and ui/admin, runs the Vite + Hugo builds, and emits ui/public. There are no root-level runtime dependencies.",
+  "scripts": {
+    "build": "make ui-build"
+  }
+}

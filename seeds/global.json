@@ -3,16 +3,9 @@
     "base_url": "https://www.indeed.com",
     "country": "",
     "crawl_interval_sec": 3600,
-    "kinds": ["job"],
-    "priority": "hot",
-    "region": "global",
-    "source_type": "generic_html"
-  },
-  {
-    "base_url": "https://www.flexjobs.com",
-    "country": "",
-    "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "kinds": [
+      "job"
+    ],
     "priority": "hot",
     "region": "global",
     "source_type": "generic_html"
@@ -21,7 +14,9 @@
     "base_url": "https://www.linkedin.com/jobs",
     "country": "",
     "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "kinds": [
+      "job"
+    ],
     "priority": "hot",
     "region": "global",
     "source_type": "generic_html"

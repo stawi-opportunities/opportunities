@@ -79,6 +79,22 @@ func (c *envCol[P]) Execute(_ context.Context, payload any) error {
 }
 func (c *envCol[P]) Len() int { c.mu.Lock(); defer c.mu.Unlock(); return len(c.got) }
 
+// queueCol drains a dedicated durable queue (queue.SubscribeWorker) by
+// capturing raw payloads. cv-embed publishes CandidateEmbeddingV1 here
+// (not the events bus) per the async decision tree.
+type queueCol struct {
+	mu  sync.Mutex
+	got [][]byte
+}
+
+func (c *queueCol) Handle(_ context.Context, _ map[string]string, payload []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.got = append(c.got, append([]byte(nil), payload...))
+	return nil
+}
+func (c *queueCol) Len() int { c.mu.Lock(); defer c.mu.Unlock(); return len(c.got) }
+
 // --- test ---
 
 // TestCandidatesE2EUploadToEmbedding drives the full upload → cv-extract
@@ -94,6 +110,9 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 	const extractURL = "mem://e2e.cv.extract"
 	const improveURL = "mem://e2e.cv.improve"
 	const embedURL = "mem://e2e.cv.embed"
+	// Dedicated candidate-embedding queue (cv-embed publishes here).
+	const candEmbedName = eventsv1.TopicCandidateEmbedding
+	const candEmbedURL = "mem://e2e.candidate.embedding"
 
 	// Production handlers — constructed with svc (set after init).
 	var extractH *eventv1.CVExtractHandler
@@ -111,6 +130,7 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 		frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, extractURL),
 		frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, improveURL),
 		frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, embedURL),
+		frame.WithRegisterPublisher(candEmbedName, candEmbedURL),
 	)
 	defer svc.Stop(ctx)
 
@@ -124,31 +144,36 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 	})
 	embedH = eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
 		Svc: svc, Embedder: &fakeEmbedder{},
+		CandidateEmbeddingQueueName: candEmbedName,
 	})
+
+	// cv-embed now publishes onto the dedicated candidate-embedding queue;
+	// drain it with a queue.SubscribeWorker collector.
+	embeddingCol := &queueCol{}
 
 	// Register subscribers post-construction.
 	svc.Init(ctx,
 		frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, extractURL, extractH),
 		frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, improveURL, improveH),
 		frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, embedURL, embedH),
+		frame.WithRegisterSubscriber(candEmbedName, candEmbedURL, embeddingCol),
 	)
 
-	// Terminal-event collectors — cv-improve emits CVImprovedV1, cv-embed
-	// emits CandidateEmbeddingV1, and the preferences flow emits
-	// PreferencesUpdatedV1. These all stay on the events bus because
-	// they are fast/internal — only the external-LLM stages were
-	// migrated to Queue.
+	// Terminal-event collectors — cv-improve emits CVImprovedV1 and the
+	// preferences flow emits PreferencesUpdatedV1; both stay on the events
+	// bus (fast/internal). cv-embed instead publishes CandidateEmbeddingV1
+	// onto a dedicated durable queue (drained by embeddingCol above) since
+	// it feeds the slow gap-fill + rerank consumer.
 	improvedCol := &envCol[eventsv1.CVImprovedV1]{topic: eventsv1.TopicCVImproved}
-	embeddingCol := &envCol[eventsv1.CandidateEmbeddingV1]{topic: eventsv1.TopicCandidateEmbedding}
 	prefsCol := &envCol[eventsv1.PreferencesUpdatedV1]{topic: eventsv1.TopicCandidatePreferencesUpdated}
 	svc.EventsManager().Add(improvedCol)
-	svc.EventsManager().Add(embeddingCol)
 	svc.EventsManager().Add(prefsCol)
 
 	go func() { _ = svc.Run(ctx, "") }()
 	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVExtract, 2*time.Second)
 	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVImprove, 2*time.Second)
 	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVEmbed, 2*time.Second)
+	frametest.WaitPublisherReady(t, svc, candEmbedName, 2*time.Second)
 
 	// --- POST /candidates/cv/upload ---
 	uploadHandler := httpv1.UploadHandler(httpv1.UploadDeps{

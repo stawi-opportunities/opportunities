@@ -56,7 +56,7 @@ func TestFanOut_DailyCapOverflowsBeyondLimit(t *testing.T) {
 	el := matching.NewEventLog(db)
 
 	require.NoError(t, idx.Upsert(ctx, matching.CandidateIndex{
-		CandidateID: "cap_c", Embedding: unitVec(1536, 0),
+		CandidateID: "cap_c", Embedding: unitVec(1024, 0),
 		MinScore: 0.1, DailyCap: 2, Kinds: []string{"job"},
 		Countries: []string{"KE"}, Enabled: true,
 	}))
@@ -82,7 +82,7 @@ func TestFanOut_DailyCapOverflowsBeyondLimit(t *testing.T) {
 		OpportunityID: "cap_opp_new",
 		Kind:          "job",
 		Country:       "KE",
-		Embedding:     unitVec(1536, 0),
+		Embedding:     unitVec(1024, 0),
 		FirstSeenAt:   time.Now(),
 	}, matching.FanOutDeps{
 		KNN: knn, Store: store, EventLog: el,

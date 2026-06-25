@@ -20,6 +20,13 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
+// admitterFunc is a minimal Admitter for tests (grants/denies inline).
+type admitterFunc func(ctx context.Context, topic string, want int) (int, time.Duration)
+
+func (f admitterFunc) Admit(ctx context.Context, topic string, want int) (int, time.Duration) {
+	return f(ctx, topic, want)
+}
+
 // fakeCrawlerRepo implements every narrow interface the Phase 4 crawler
 // handlers use (SourceLister, SourceGetter, SourceHealthRepo, SourceUpserter)
 // in a single fake so the e2e test can wire one repo into every handler.
@@ -99,6 +106,15 @@ func (r *fakeCrawlerRepo) FlagNeedsTuning(_ context.Context, id string, flag boo
 	defer r.mu.Unlock()
 	if s, ok := r.rows[id]; ok {
 		s.NeedsTuning = flag
+	}
+	return nil
+}
+
+func (r *fakeCrawlerRepo) SetStatus(_ context.Context, id string, status domain.SourceStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if s, ok := r.rows[id]; ok {
+		s.Status = status
 	}
 	return nil
 }
@@ -187,9 +203,10 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	})
 
 	// variantCol observes variants ingested. envCollector is defined in
-	// crawl_request_handler_test.go (same package).
+	// crawl_request_handler_test.go (same package). Variants now flow on the
+	// ingested Frame Queue (service-profile idiom), not the events bus.
 	variantCol := &envCollector[eventsv1.VariantIngestedV1]{topic: eventsv1.TopicVariantsIngested}
-	svc.EventsManager().Add(variantCol)
+	ingestedQ := wireIngestedQueue(ctx, svc, variantCol)
 
 	// pageCol + the real PageCompletedHandler share one fanout registration
 	// because Frame's event registry is a map[name]EventI — one entry per
@@ -202,6 +219,7 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	// and the in-memory fake archive.
 	reqH := NewCrawlRequestHandler(CrawlRequestDeps{
 		Svc: svc, Sources: repo, Registry: reg, Archive: archive.NewFakeArchive(),
+		IngestedQueue: ingestedQ,
 	})
 	discH := NewSourceDiscoveredHandler(repo, nil)
 	for _, c := range []events.EventI{reqH, fanout, discH} {
@@ -212,19 +230,22 @@ func TestCrawlerE2ETickToVariantEvents(t *testing.T) {
 	go func() { _ = svc.Run(ctx, "") }()
 	frametest.WaitPublisherReady(t, svc, eventsv1.TopicCrawlRequests, 2*time.Second)
 
-	// Hit the tick endpoint; the admitter grants everything.
+	// Hit the per-source crawl endpoint for src_e2e; the admitter grants all.
 	admit := admitterFunc(func(_ context.Context, _ string, want int) (int, time.Duration) {
 		return want, 0
 	})
-	handler := SchedulerTickHandler(svc, repo, admit)
+	handler := SourceCrawlHandler(svc, repo, admit)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/admin/scheduler/tick", nil)
+	req := httptest.NewRequest(http.MethodPost, "/admin/sources/src_e2e/crawl", nil)
+	req.SetPathValue("id", "src_e2e")
 	handler(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("tick status=%d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("crawl status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var resp schedulerTickResponse
+	var resp struct {
+		Dispatched int `json:"dispatched"`
+	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 	if resp.Dispatched != 1 {
 		t.Fatalf("dispatched=%d, want 1", resp.Dispatched)

@@ -14,10 +14,11 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/cache"
 	framevalkey "github.com/pitabwire/frame/cache/valkey"
+	frameclient "github.com/pitabwire/frame/client"
 	fconfig "github.com/pitabwire/frame/config"
 	"github.com/pitabwire/frame/data"
-	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/events"
 	"github.com/pitabwire/frame/security"
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
@@ -25,20 +26,21 @@ import (
 	candidatesconfig "github.com/stawi-opportunities/opportunities/apps/matching/config"
 	adminv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/admin/v1"
 	eventv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/events/v1"
-	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 	meV1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/me/v1"
-	matchingv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/matching/v1"
+	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 	matchersreg "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
 	dealm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/deal"
 	fundingm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/funding"
 	jobm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/job"
 	scholarshipm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/scholarship"
 	tenderm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/tender"
+	matchingv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/matching/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/authmanifest"
 	"github.com/stawi-opportunities/opportunities/pkg/authsession"
 	"github.com/stawi-opportunities/opportunities/pkg/authz/stawitok"
+	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
@@ -51,6 +53,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
+	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
@@ -123,24 +126,22 @@ func main() {
 	dbFn := pool.DB
 
 	// Handle database migration if configured (colony Helm chart sets
-	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). Runs
-	// AutoMigrate on every model this service reads/writes, then exits.
-	// Without this branch the matching binary kept starting the full
-	// service inside the migration Job and never returning, which the
-	// Helm controller flagged as InProgress and the upgrade rolled back
-	// (the production HR was looping on this — migration-21, -22, ...).
+	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). pool.Migrate
+	// AutoMigrates the models AND applies the SQL migration files under
+	// migrations/0001 (the raw-SQL OLTP serving tables — applications,
+	// application_notes/attachments/reminders, idempotency_keys,
+	// candidate_saved_jobs, candidate_checkouts — that AutoMigrate doesn't own),
+	// then exits. Without this branch the matching binary kept starting the full
+	// service inside the migration Job and never returning, which the Helm
+	// controller flagged as InProgress and the upgrade rolled back.
 	if cfg.DoDatabaseMigrate() {
-		migrationDB := dbFn(ctx, false)
-		if err := migrationDB.AutoMigrate(
+		if err := pool.Migrate(ctx, cfg.GetDatabaseMigrationPath(),
 			&domain.CandidateProfile{},
 			&domain.CandidateApplication{},
 			&domain.CandidateSession{},
 			&domain.OpportunityFlag{},
 		); err != nil {
-			log.WithError(err).Fatal("auto-migrate failed")
-		}
-		if err := repository.FinalizeSchema(migrationDB); err != nil {
-			log.WithError(err).Fatal("finalize schema failed")
+			log.WithError(err).Fatal("migrate failed")
 		}
 		log.Info("migration complete")
 		return
@@ -195,14 +196,26 @@ func main() {
 			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
 			"", "")
 		extractor = extraction.New(extraction.Config{
-			BaseURL:          infBase,
-			APIKey:           infKey,
-			Model:            infModel,
-			EmbeddingBaseURL: embBase,
-			EmbeddingAPIKey:  embKey,
-			EmbeddingModel:   embModel,
-			Registry:         reg,
-			HTTPClient:       svc.HTTPClientManager().Client(ctx),
+			BaseURL:             infBase,
+			APIKey:              infKey,
+			Model:               infModel,
+			EmbeddingBaseURL:    embBase,
+			EmbeddingAPIKey:     embKey,
+			EmbeddingModel:      embModel,
+			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			RerankBaseURL:       cfg.RerankBaseURL,
+			RerankAPIKey:        cfg.RerankAPIKey,
+			RerankModel:         cfg.RerankModel,
+			RerankDialect:       cfg.RerankDialect,
+			Registry:            reg,
+			// External inference (SiliconFlow) authenticates with its own API
+			// key in the Authorization header. The manager normally auto-attaches
+			// this service's OAuth bearer, which would clobber that header → SF
+			// 401. client.WithHTTPNoAuth() (frame v1.97.8+) hands us the full
+			// manager client — OTEL spans, retry, connection pooling — but with
+			// NO bearer, so the SF key survives. Per-call context deadlines
+			// (PooledReranker, Embed/Prompt) bound each request.
+			HTTPClient: svc.HTTPClientManager().Client(ctx, frameclient.WithHTTPNoAuth()),
 		})
 		log.WithField("url", infBase).Info("AI extraction enabled")
 	}
@@ -289,9 +302,10 @@ func main() {
 			ModelVersion: cfg.InferenceModel,
 		})
 		embedH := eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
-			Svc:          svc,
-			Embedder:     embedderAdapter{extractor},
-			ModelVersion: cfg.EmbeddingModel,
+			Svc:                         svc,
+			Embedder:                    embedderAdapter{extractor},
+			ModelVersion:                cfg.EmbeddingModel,
+			CandidateEmbeddingQueueName: cfg.CandidateEmbeddingQueueName,
 		})
 		// Wire the cv-pipeline as durable queue subscribers. The upload
 		// HTTP handler publishes onto SubjectCVExtract; cv-extract fans
@@ -302,6 +316,7 @@ func main() {
 			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
+			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL, embedH),
@@ -318,6 +333,7 @@ func main() {
 		svc.Init(ctx,
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectAutoApplySubmit, cfg.AutoApplyQueueURL),
+			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterEvents(eventHandlersNonNil(prefMatchH, autoApplyH)...),
 		)
 		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
@@ -358,11 +374,21 @@ func main() {
 
 		var rerank matching.Reranker = matching.NoopReranker{}
 		if cfg.MatchingRerankerEnabled {
-			// Upstream reranker client is Phase 5. Until then, wrap the noop
-			// in the pool so the rest of the wiring behaves identically.
-			// TODO(phase-5): drive concurrency + timeout from
-			// cfg.MatchingRerankerConcurrency / cfg.MatchingRerankerTimeoutSeconds.
-			rerank = matching.NewPooledReranker(matching.NoopReranker{}, 8, time.Second)
+			// Drive the real cross-encoder when an extractor (with a rerank
+			// backend) is configured; otherwise fall back to the pooled noop
+			// so the rest of the wiring behaves identically.
+			rerankTimeout := time.Duration(cfg.MatchingRerankerTimeoutSeconds) * time.Second
+			rerankConc := cfg.MatchingRerankerConcurrency
+			if extractor != nil && extractor.RerankerVersion() != "" {
+				rerank = matching.NewPooledReranker(
+					matching.NewExtractorReranker(extractor, cfg.RerankTopK), rerankConc, rerankTimeout)
+				log.WithField("model", extractor.RerankerVersion()).
+					WithField("timeout", rerankTimeout).
+					Info("matching: cross-encoder reranker enabled")
+			} else {
+				rerank = matching.NewPooledReranker(matching.NoopReranker{}, rerankConc, rerankTimeout)
+				log.Warn("matching: reranker enabled but no rerank backend configured — using no-op")
+			}
 		}
 
 		dlqPub := &queuePublisherAdapter{svc: svc}
@@ -370,43 +396,50 @@ func main() {
 
 		if cfg.MatchingFanoutEnabled {
 			fanout := matchingv1.NewFanOutConsumer(matchingv1.FanOutConsumerDeps{
-				Store:    matchStore,
-				EventLog: matchEvents,
-				KNN:      matchKNN,
-				Reranker: rerank,
-				Weights:  matching.DefaultWeights(),
-				DLQ:      dlq,
+				Store:     matchStore,
+				EventLog:  matchEvents,
+				KNN:       matchKNN,
+				Reranker:  rerank,
+				Weights:   matching.DefaultWeights(),
+				DLQ:       dlq,
 				OppEmbedQ: matchingv1.NewSQLOppEmbeddingQuery(sqlDB),
 				// Phase 5: daily-cap enforcement via the continuous aggregate.
 				DailyCap: matching.NewPGDailyCapQuery(sqlDB),
 			})
+			// Subscribe to the worker's canonical pipeline queue (same subject
+			// the worker publishes CanonicalUpsertedV1 to). Frame derives a
+			// matching-service-specific consumer_durable_name, so the worker's
+			// publish stage and the writer sink each keep their own cursor —
+			// this is a true fan-out, not a steal.
 			svc.Init(ctx,
-				frame.WithRegisterSubscriber(fanout.Name(), fanout.Name(), fanout))
-			log.Info("matching: fan-out (Path A) enabled")
+				frame.WithRegisterSubscriber(cfg.QueuePipelineCanonicalName, cfg.QueuePipelineCanonical, fanout))
+			log.WithField("queue", cfg.QueuePipelineCanonicalName).Info("matching: fan-out (Path A) enabled")
 		}
 
 		if cfg.MatchingCandidateChangeEnabled {
-			debounceTTL := time.Duration(cfg.MatchingDebounceTTLSeconds) * time.Second
-			for _, topic := range []string{
-				eventsv1.TopicCandidatePreferencesUpdated,
-				eventsv1.TopicCandidateEmbedding,
-			} {
-				cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
-					IndexStore: matchIdx,
-					KNN:        matchKNN,
-					Store:      matchStore,
-					EventLog:   matchEvents,
-					Reranker:   rerank,
-					Weights:    matching.DefaultWeights(),
-					Debouncer:  deb,
-					DLQ:        dlq,
-					Topic:      topic,
-				})
-				_ = debounceTTL // TTL carried per-candidate via CandidateChange.DebounceTTL in Phase 5
-				svc.Init(ctx,
-					frame.WithRegisterSubscriber(cc.Name(), cc.Name(), cc))
-			}
-			log.Info("matching: candidate-change (Path C) enabled")
+			candText := matchingv1.NewSQLCandidateText(sqlDB)
+			// Path C: a CV embedding change drives gap-fill + cross-encoder
+			// rerank. cv-embed publishes CandidateEmbeddingV1 onto the dedicated
+			// durable candidate-embedding queue; this consumer drains it as a
+			// queue.SubscribeWorker (per the async decision tree: durable + slow
+			// work → Frame Queue, not the shared events bus). The consumer also
+			// folds in the candidate_match_indexes upsert. Preference changes
+			// stay on the PreferenceMatchHandler (events.EventI) — a separate
+			// flow on the events bus.
+			cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
+				IndexStore: matchIdx,
+				KNN:        matchKNN,
+				Store:      matchStore,
+				EventLog:   matchEvents,
+				Reranker:   rerank,
+				Weights:    matching.DefaultWeights(),
+				Debouncer:  deb,
+				DLQ:        dlq,
+				Topic:      eventsv1.TopicCandidateEmbedding,
+				CandText:   candText,
+			})
+			svc.Init(ctx, frame.WithRegisterSubscriber(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI, cc))
+			log.Info("matching: candidate-change (Path C) enabled — embedding queue → gap-fill + rerank")
 		}
 	}
 
@@ -440,11 +473,20 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
-	mux.HandleFunc("POST /candidates/cv/upload", httpv1.UploadHandler(httpv1.UploadDeps{
+	uploadDeps := httpv1.UploadDeps{
 		Svc:     svc,
 		Archive: arch,
 		Text:    textExtractor{},
-	}))
+	}
+	mux.HandleFunc("POST /candidates/cv/upload", httpv1.UploadHandler(uploadDeps))
+
+	// PUT /me/cv — the dashboard CV upload. The gateway strips the
+	// /matching prefix → PUT /me/cv. The auth-runtime upload() helper
+	// sends the CV as a multipart "file" part (method PUT); the handler
+	// derives the candidate from the JWT subject and runs the SAME
+	// archive → cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill
+	// pipeline as POST /candidates/cv/upload.
+	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
 	mux.HandleFunc("POST /candidates/preferences", httpv1.PreferencesHandler(svc))
 	mux.HandleFunc("POST /candidates/{id}/auto-apply/enable", httpv1.AutoApplyEnableHandler(candidateRepo))
 	mux.HandleFunc("POST /candidates/{id}/auto-apply/disable", httpv1.AutoApplyDisableHandler(candidateRepo))
@@ -550,7 +592,13 @@ func main() {
 	// the checkout the wizard kicked off completes.
 	onboardStore := &candidateOnboardAdapter{repo: candidateRepo}
 	mux.Handle("POST /candidates/onboard", authMW(
-		httpv1.CandidatesOnboardHandler(httpv1.CandidatesOnboardDeps{Store: onboardStore}),
+		httpv1.CandidatesOnboardHandler(httpv1.CandidatesOnboardDeps{
+			Store: onboardStore,
+			// Best-effort initial-match trigger: emits PreferencesUpdatedV1
+			// so the PreferenceMatchHandler gives a freshly-onboarded
+			// candidate gap-fill matches even before/without a CV.
+			Match: &onboardMatchTrigger{svc: svc},
+		}),
 	))
 
 	// /me/saved-jobs — star/unstar. Both verbs share the same handler;
@@ -603,6 +651,109 @@ func main() {
 		httpv1.ApplicationsHandler(httpv1.ApplicationsDeps{Starter: appStarter}),
 	))
 
+	// --- Billing / payments + subscription ---------------------------------
+	// The gateway strips /matching, so the UI's /billing/* calls land here.
+	//   GET  /billing/plans            (public)  — plan catalog
+	//   POST /billing/checkout         (auth'd)  — start a payment
+	//   GET  /billing/checkout/status  (auth'd)  — poll a checkout
+	//   POST /billing/webhook          (public)  — service-payment callback
+	//   POST /_admin/billing/reconcile (Trustage)— reconcile pending checkouts
+	//
+	// Construct the payment gateway from BILLING_SERVICE_URI via
+	// services.NewClients (co-deployed service-payment + service-billing pod,
+	// dialled with the service_payment OAuth audience). When the URI is unset
+	// the NopGateway keeps /billing/plans working and degrades checkout to a
+	// 503 so the binary still boots in dev/test.
+	var billingGateway billing.Gateway = billing.NopGateway{}
+	clients, clientsErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+		BillingURI: cfg.BillingServiceURI,
+		HTTPClient: svc.HTTPClientManager().Client(ctx),
+	})
+	if clientsErr != nil {
+		// NewClients records the first init error but still returns the
+		// partially-populated set; a nil Payment client just means we stay
+		// on the NopGateway. Log and continue rather than fail boot.
+		log.WithError(clientsErr).Warn("billing: service client init reported an error; checkout may be degraded")
+	}
+	billingEnabled := clients != nil && clients.Payment != nil
+	if billingEnabled {
+		billingGateway = billing.NewPaymentGateway(clients.Payment)
+		log.WithField("uri", cfg.BillingServiceURI).Info("billing: payment gateway enabled")
+	} else {
+		log.Warn("billing: BILLING_SERVICE_URI unset or payment client unavailable — checkout degraded (plans still served)")
+	}
+
+	// Checkout ledger + activation share one *sql.DB-backed store. When the
+	// pool is unavailable the routes still register but persistence/activation
+	// degrade (the gateway calls still work; the reconciler/poller can't
+	// resolve rows).
+	var checkoutStore *billing.Store
+	var billingActivator *billing.Activator
+	if gdb := dbFn(ctx, false); gdb != nil {
+		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
+			checkoutStore = billing.NewStore(sqlDB)
+			billingActivator = billing.NewActivator(checkoutStore, candidateRepo)
+		} else {
+			log.WithError(dbErr).Warn("billing: sql.DB unwrap failed; checkout persistence + activation disabled")
+		}
+	}
+
+	// Security: when real payments are enabled the webhook (which flips
+	// subscriptions to paid) MUST be authenticated. Refuse to boot rather
+	// than expose a forgeable, unauthenticated activation endpoint.
+	if billingEnabled && cfg.BillingWebhookSecret == "" {
+		log.Fatal("billing: payment gateway enabled but BILLING_WEBHOOK_SECRET is empty — refusing to start (the activation webhook would be unauthenticated)")
+	}
+
+	mux.HandleFunc("GET /billing/plans", httpv1.PlansHandler())
+	mux.Handle("POST /billing/checkout", authMW(
+		httpv1.CheckoutHandler(httpv1.CheckoutDeps{
+			Gateway: billingGateway,
+			Store:   checkoutStore,
+		}),
+	))
+	// Status enforces ownership via the stored checkout, so it requires the
+	// store; without it the handler 503s — don't register it at all.
+	if checkoutStore != nil {
+		mux.Handle("GET /billing/checkout/status", authMW(
+			httpv1.CheckoutStatusHandler(httpv1.CheckoutStatusDeps{
+				Gateway:   billingGateway,
+				Store:     checkoutStore,
+				Activator: billingActivator,
+			}),
+		))
+	} else {
+		log.Warn("billing/checkout/status: checkout store unavailable; route not registered")
+	}
+	// Webhook carries no candidate JWT (the provider can't); it is gated
+	// SOLELY by the mandatory HMAC signature, so register it only when the
+	// secret is configured (and we fail boot above if billing is live without
+	// one).
+	if cfg.BillingWebhookSecret != "" {
+		mux.HandleFunc("POST /billing/webhook", httpv1.WebhookHandler(httpv1.WebhookDeps{
+			Activator: billingActivator,
+			Secret:    cfg.BillingWebhookSecret,
+		}))
+	} else {
+		log.Warn("billing/webhook: BILLING_WEBHOOK_SECRET unset; webhook route not registered")
+	}
+	// Trustage-driven reconciler sweep — the safety net behind the webhook.
+	if checkoutStore != nil && billingActivator != nil {
+		billingReconciler := billing.NewReconciler(checkoutStore, billingGateway, billingActivator, cfg.BillingReconcileBatch)
+		mux.HandleFunc("POST /_admin/billing/reconcile", func(w http.ResponseWriter, r *http.Request) {
+			res, recErr := billingReconciler.Run(r.Context())
+			if recErr != nil {
+				log.WithError(recErr).Error("_admin/billing/reconcile: sweep failed")
+				httpmw.ProblemJSON(w, http.StatusBadGateway, "reconcile_failed", "billing reconcile sweep failed")
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(res)
+		})
+	} else {
+		log.Warn("_admin/billing/reconcile: store/activator unavailable; reconcile route not registered")
+	}
+
 	// --- Trustage admin endpoints ---
 	// stale_nudge requires the iceberg-backed StaleReader.
 	if staleLister != nil {
@@ -623,6 +774,45 @@ func main() {
 			Window:   7 * 24 * time.Hour,
 			JobLimit: 10,
 		}))
+
+	// POST /_admin/matches/weekly_digest — Monday-morning Trustage cron.
+	// Re-runs the gap-fill match pipeline for every ACTIVE candidate so
+	// each gets refreshed candidate_matches + a candidates.matches.ready.v1
+	// envelope for the notification service. Skip-wires gracefully if the
+	// DB pool is unavailable (route not registered → cron logs a 404,
+	// same degraded behaviour as the other DB-gated routes).
+	if gdb := dbFn(ctx, false); gdb != nil {
+		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
+			activeLister := adminv1.NewRepoActiveCandidateLister(
+				func(ctx context.Context, limit int) ([]string, error) {
+					rows, lErr := candidateRepo.ListActive(ctx, limit)
+					if lErr != nil {
+						return nil, lErr
+					}
+					ids := make([]string, 0, len(rows))
+					for _, c := range rows {
+						ids = append(ids, c.ID)
+					}
+					return ids, nil
+				}, 5000)
+			mux.HandleFunc("POST /_admin/matches/weekly_digest",
+				adminv1.MatchesWeeklyDigestHandler(adminv1.MatchesWeeklyDigestDeps{
+					Svc:      svc,
+					Active:   activeLister,
+					Index:    matching.NewIndexStore(sqlDB),
+					KNN:      matching.NewKNN(sqlDB),
+					Store:    matching.NewStore(sqlDB),
+					EventLog: matching.NewEventLog(sqlDB),
+					Reranker: matching.NoopReranker{},
+					Weights:  matching.DefaultWeights(),
+					Since:    30 * 24 * time.Hour,
+				}))
+		} else {
+			log.WithError(dbErr).Warn("_admin/matches/weekly_digest: sql.DB unwrap failed; route not registered")
+		}
+	} else {
+		log.Warn("_admin/matches/weekly_digest: DB pool unavailable; route not registered")
+	}
 
 	// --- Phase-4 extension-facing /api/me/* routes (flag-gated per spec §5.5) ---
 	if cfg.MatchingExtensionEnabled {
@@ -693,6 +883,34 @@ type queuePublisherAdapter struct{ svc *frame.Service }
 
 func (a *queuePublisherAdapter) Publish(ctx context.Context, subject string, payload []byte) error {
 	return a.svc.QueueManager().Publish(ctx, subject, payload)
+}
+
+// onboardMatchTrigger satisfies httpv1.OnboardMatchTrigger by emitting a
+// PreferencesUpdatedV1 event onto the preferences-updated topic. The
+// PreferenceMatchHandler (a Frame Events subscriber) consumes it and runs
+// the match pipeline for each opted-in kind, so a candidate gets initial
+// gap-fill matches immediately after onboarding — even before a CV lands.
+//
+// OptIns is keyed by the candidate's selected kinds (empty job_types →
+// fall back to "job"); the values are empty JSON objects since onboarding
+// doesn't collect kind-specific preference blobs yet.
+type onboardMatchTrigger struct{ svc *frame.Service }
+
+func (t *onboardMatchTrigger) TriggerInitialMatch(ctx context.Context, candidateID string, kinds []string) error {
+	if len(kinds) == 0 {
+		kinds = []string{"job"}
+	}
+	optIns := make(map[string]json.RawMessage, len(kinds))
+	for _, k := range kinds {
+		optIns[k] = json.RawMessage(`{}`)
+	}
+	payload := eventsv1.PreferencesUpdatedV1{
+		CandidateID: candidateID,
+		OptIns:      optIns,
+		UpdatedAt:   time.Now().UTC(),
+	}
+	env := eventsv1.NewEnvelope(eventsv1.TopicCandidatePreferencesUpdated, payload)
+	return t.svc.EventsManager().Emit(ctx, eventsv1.TopicCandidatePreferencesUpdated, env)
 }
 
 type textExtractor struct{}

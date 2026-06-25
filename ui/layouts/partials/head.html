@@ -18,6 +18,11 @@
 <!-- Canonical -->
 <link rel="canonical" href="{{ .Permalink }}">
 
+<!-- Google Fonts: Inter -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+
 <!-- Favicon / icons -->
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="mask-icon" href="/favicon.svg" color="#45b739">
@@ -29,7 +34,7 @@
       Cascade falls back to inference. */}}
 {{ if .Params.country }}
 {{ $cc := upper .Params.country }}
-{{ $shard := index (where .Site.Data.locale_shards.shards "country" $cc) 0 }}
+{{ $shard := index (where hugo.Data.locale_shards.shards "country" $cc) 0 }}
 {{ $langs := cond (ne $shard nil) $shard.languages (slice "en") }}
 <meta name="visitor-locale" content='{{ dict "country" $cc "languages" $langs | jsonify }}'>
 {{ end }}
@@ -48,10 +53,10 @@
     "posthogHost"        (.Site.Params.posthogHost | default "")
   | jsonify }}'>
 
-<!-- CSS: Tailwind source now includes ui/app/src/**/*.{ts,tsx} so classes
-     used in React components generate into main.css at Hugo build time. -->
-{{ $css := resources.Get "css/main.css" | css.PostCSS | minify | fingerprint }}
-<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+<!-- CSS: served from /css/main.css (pre-built by PostCSS+Tailwind).
+     In dev, rebuild with: cd ui && npx postcss assets/css/main.css -o static/css/main.css
+     In production (CF Pages / make ui-build), the Makefile runs postcss before hugo. -->
+<link rel="stylesheet" href="/css/main.css">
 
 <!-- Warm auth + content + jobs-API connections so the first click /
      snapshot fetch / search doesn't pay cold DNS + TLS latency. -->
@@ -61,18 +66,13 @@
 <!-- Unsplash CDN hosts the profession photos on the home page. -->
 <link rel="preconnect" href="https://images.unsplash.com" crossorigin>
 
-<!-- Preload fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
 <!-- React app entry. In `hugo server` we load directly from the Vite dev
      server (HMR); in production we load the hashed bundle recorded in
      data/app_manifest.json by the Vite build. -->
 {{ if hugo.IsServer }}
   <!-- All three URLs include the /app/ prefix because vite.config.ts
-       sets base: "/app/" — dev server routes resources under it the
-       same way production does. -->
+       sets base: "/app/" — Vite v6 dev server routes resources under it
+       the same way production does. -->
   <script type="module" src="http://localhost:5173/app/@vite/client"></script>
   <!-- @vitejs/plugin-react preamble. When Vite itself serves the HTML it
        injects this automatically; under Hugo we have to do it ourselves. -->

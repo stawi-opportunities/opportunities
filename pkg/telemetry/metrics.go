@@ -11,18 +11,18 @@ import (
 var (
 	meter = otel.Meter("stawi.opportunities.pipeline")
 
-	StageTransitions          metric.Int64Counter
-	StageDuration             metric.Float64Histogram
-	BloomHits                 metric.Int64Counter
-	BloomMisses               metric.Int64Counter
-	OpportunitiesReady        metric.Int64Counter
-	VerifyRejections          metric.Int64Counter
-	ExtractionLatency         metric.Float64Histogram
-	AIExtractions             metric.Int64Counter
-	AIFailures                metric.Int64Counter
-	EmbedFailures             metric.Int64Counter
-	TranslateFailures         metric.Int64Counter
-	PreferenceTriggeredRuns   metric.Int64Counter
+	StageTransitions        metric.Int64Counter
+	StageDuration           metric.Float64Histogram
+	BloomHits               metric.Int64Counter
+	BloomMisses             metric.Int64Counter
+	OpportunitiesReady      metric.Int64Counter
+	VerifyRejections        metric.Int64Counter
+	ExtractionLatency       metric.Float64Histogram
+	AIExtractions           metric.Int64Counter
+	AIFailures              metric.Int64Counter
+	EmbedFailures           metric.Int64Counter
+	TranslateFailures       metric.Int64Counter
+	PreferenceTriggeredRuns metric.Int64Counter
 
 	AutoApplyAttempts        metric.Int64Counter
 	AutoApplyLimitReached    metric.Int64Counter
@@ -176,6 +176,10 @@ func Init() error {
 		metric.WithDescription("Transient infra errors that triggered a redelivery, labelled by stage"),
 	)
 	if err != nil {
+		return err
+	}
+
+	if err = InitCrawl(); err != nil {
 		return err
 	}
 

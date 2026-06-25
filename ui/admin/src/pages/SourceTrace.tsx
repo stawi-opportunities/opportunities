@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   clearCheckpoint,
   fetchAdminJSON,
@@ -7,193 +8,270 @@ import {
   type CheckpointRow,
   type SourceTraceResponse,
 } from '@/api/admin-client';
+import { Button, Card, ConfirmDialog, ErrorBlock, LoadingSkeleton, StatusBadge, useToast } from '@/components/ui';
 
-// Renders GET /admin/trace/sources/{id}?since=24h as a 24-hour summary
-// plus a recent-crawls table. The endpoint is implemented in
-// apps/api/cmd/trace_admin.go and tested in trace_admin_test.go.
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  color?: string;
+}
+
+function StatCard({ label, value, color }: StatCardProps) {
+  return (
+    <div
+      style={{
+        background: 'var(--c-surface)',
+        border: '1px solid var(--c-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '0.75rem 1rem',
+        textAlign: 'center',
+        minWidth: 100,
+      }}
+    >
+      <div style={{ fontSize: '1.4rem', fontWeight: 700, color: color ?? 'var(--c-text)' }}>{value}</div>
+      <div style={{ fontSize: '0.78rem', color: 'var(--c-text-secondary)', marginTop: '0.15rem' }}>{label}</div>
+    </div>
+  );
+}
+
 export function SourceTrace() {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<SourceTraceResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [checkpoints, setCheckpoints] = useState<CheckpointRow[]>([]);
-  const [cpBusy, setCpBusy] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
-  const reloadCheckpoints = useCallback(() => {
-    if (!id) return;
-    listCheckpoints(id)
-      .then((res) => setCheckpoints(res.checkpoints))
-      .catch(() => setCheckpoints([])); // soft-fail: trace UI keeps rendering
-  }, [id]);
+  const [cpToReset, setCpToReset] = useState<CheckpointRow | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    if (!id) return;
-    setData(null);
-    setErr(null);
-    fetchAdminJSON<SourceTraceResponse>(
-      `/admin/trace/sources/${encodeURIComponent(id)}?since=24h`
-    )
-      .then(setData)
-      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
-    reloadCheckpoints();
-  }, [id, reloadCheckpoints]);
+  const toggle = (key: string) => setCollapsed((p) => ({ ...p, [key]: !p[key] }));
 
-  const onReset = async (connectorType: string) => {
-    if (!id) return;
-    if (!window.confirm(`Reset checkpoint for ${id}/${connectorType}? Next crawl will start from page 1.`)) {
-      return;
-    }
-    setCpBusy(connectorType);
-    try {
-      await clearCheckpoint(id, connectorType);
-      reloadCheckpoints();
-    } catch (e: unknown) {
-      window.alert('Failed to clear checkpoint: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setCpBusy(null);
-    }
-  };
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['source-trace', id],
+    queryFn: () =>
+      fetchAdminJSON<SourceTraceResponse>(
+        `/admin/trace/sources/${encodeURIComponent(id ?? '')}?since=24h`
+      ),
+    enabled: !!id,
+    refetchInterval: 30_000,
+  });
 
-  if (err) return <pre style={{ color: 'crimson' }}>{err}</pre>;
-  if (!data) return <p>Loading source trace…</p>;
+  const { data: cpData } = useQuery({
+    queryKey: ['checkpoints', id],
+    queryFn: () => listCheckpoints(id),
+    enabled: !!id,
+  });
+
+  const clearCp = useMutation({
+    mutationFn: (row: CheckpointRow) => clearCheckpoint(row.source_id, row.connector_type),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checkpoints', id] });
+      toast('Checkpoint cleared', { type: 'success' });
+      setCpToReset(null);
+    },
+    onError: (e: Error) => {
+      toast(`Failed: ${e.message}`, { type: 'error' });
+      setCpToReset(null);
+    },
+  });
+
+  if (!id) return <ErrorBlock message="Missing source ID" />;
+  if (isLoading) return <LoadingSkeleton type="card" />;
+  if (error) return <ErrorBlock message="Failed to load source trace" detail={String(error)} />;
+  if (!data) return null;
 
   const { source, summary, recent_crawls } = data;
+  const checkpoints = cpData?.checkpoints ?? [];
 
   return (
     <div>
-      <header>
-        <h1>
+      <div style={{ marginBottom: '1.25rem' }}>
+        <h1 style={{ margin: 0 }}>
           {source.id}{' '}
-          <small style={{ color: '#666', fontWeight: 'normal' }}>({source.type})</small>
+          <span style={{ fontWeight: 400, fontSize: '0.9rem', color: 'var(--c-text-secondary)' }}>
+            ({source.type})
+          </span>
         </h1>
-        <p>
-          <strong>{source.base_url}</strong> · {source.country} · status{' '}
-          <code>{source.status}</code> · health{' '}
-          <code>{source.health_score.toFixed(2)}</code>
+        <p style={{ margin: '0.35rem 0 0', color: 'var(--c-text-secondary)', fontSize: '0.88rem' }}>
+          {source.base_url} · {source.country} · status{' '}
+          <StatusBadge variant={source.status === 'active' ? 'success' : source.status === 'paused' ? 'warning' : 'error'} label={source.status} size="sm" />
+          · health score <code>{source.health_score.toFixed(2)}</code>
         </p>
         {source.next_crawl_at && (
-          <p style={{ color: '#666' }}>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--c-text-secondary)', fontSize: '0.82rem' }}>
             Next crawl at {new Date(source.next_crawl_at).toLocaleString()}
           </p>
         )}
-      </header>
+      </div>
 
-      <section>
-        <h2>24-hour summary</h2>
-        <table>
-          <tbody>
-            <tr>
-              <td>Crawl jobs</td>
-              <td>
-                {summary.crawl_jobs} ({summary.crawl_jobs_failed} failed)
-              </td>
-            </tr>
-            <tr>
-              <td>Raw payloads</td>
-              <td>{summary.raw_payloads}</td>
-            </tr>
-            <tr>
-              <td>Variants emitted</td>
-              <td>{summary.variants_emitted}</td>
-            </tr>
-            <tr>
-              <td>Variants published</td>
-              <td>{summary.variants_published}</td>
-            </tr>
-            <tr>
-              <td>Variants rejected</td>
-              <td>{summary.variants_rejected}</td>
-            </tr>
-          </tbody>
-        </table>
-        {Object.keys(summary.rejection_reasons).length > 0 && (
-          <>
-            <h3>Rejection reasons</h3>
-            <ul>
+      {/* 24-hour summary */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <SectionHeader label="24-hour summary" sectionKey="summary" collapsed={collapsed} onToggle={toggle} />
+        {!collapsed['summary'] && (
+          <div id="section-summary" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+            <StatCard label="Crawl jobs" value={summary.crawl_jobs} />
+            <StatCard label="Failed" value={summary.crawl_jobs_failed} color="var(--c-danger)" />
+            <StatCard label="Raw payloads" value={summary.raw_payloads} />
+            <StatCard label="Emitted" value={summary.variants_emitted} color="var(--c-info)" />
+            <StatCard label="Published" value={summary.variants_published} color="var(--c-success)" />
+            <StatCard label="Rejected" value={summary.variants_rejected} color="var(--c-danger)" />
+          </div>
+        )}
+        {!collapsed['summary'] && Object.keys(summary.rejection_reasons).length > 0 && (
+          <div style={{ marginTop: '0.75rem' }}>
+            <h3 style={{ fontSize: '0.9rem', margin: '0 0 0.35rem' }}>Rejection reasons</h3>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem' }}>
               {Object.entries(summary.rejection_reasons).map(([reason, count]) => (
                 <li key={reason}>
                   <code>{reason}</code> × {count}
                 </li>
               ))}
             </ul>
-          </>
+          </div>
         )}
-      </section>
+      </div>
 
-      <section>
-        <h2>Iterator checkpoints</h2>
-        {checkpoints.length === 0 ? (
-          <p style={{ color: '#666' }}>
-            No active checkpoints — last crawl completed cleanly (or
-            the connector doesn't participate in resume).
-          </p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Connector</th>
-                <th>Page</th>
-                <th>Last URL</th>
-                <th>Updated</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {checkpoints.map((c) => (
-                <tr key={`${c.source_id}/${c.connector_type}`}>
-                  <td><code>{c.connector_type}</code></td>
-                  <td>{c.page_idx}</td>
-                  <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {c.last_url ?? ''}
-                  </td>
-                  <td>{new Date(c.last_checkpoint_at).toLocaleString()}</td>
-                  <td>
-                    <button
-                      onClick={() => onReset(c.connector_type)}
-                      disabled={cpBusy === c.connector_type}
-                    >
-                      {cpBusy === c.connector_type ? 'Clearing…' : 'Reset checkpoint'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      {/* Iterator checkpoints */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <SectionHeader label="Iterator checkpoints" sectionKey="checkpoints" collapsed={collapsed} onToggle={toggle} />
+        {!collapsed['checkpoints'] && (
+          <div id="section-checkpoints">
+          {checkpoints.length === 0 ? (
+            <p style={{ color: 'var(--c-text-secondary)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+              No active checkpoints — last crawl completed cleanly.
+            </p>
+          ) : (
+            <Card padding={false}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Connector</th>
+                    <th>Page</th>
+                    <th>Last URL</th>
+                    <th>Updated</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkpoints.map((c) => (
+                    <tr key={`${c.source_id}/${c.connector_type}`}>
+                      <td><code>{c.connector_type}</code></td>
+                      <td>{c.page_idx}</td>
+                      <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {c.last_url ?? ''}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{new Date(c.last_checkpoint_at).toLocaleString()}</td>
+                      <td>
+                        <Button size="sm" variant="outline" onClick={() => setCpToReset(c)}>
+                          Reset
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </div>
+      )}
+      </div>
 
-      <section>
-        <h2>Recent crawls</h2>
-        {recent_crawls.length === 0 ? (
-          <p style={{ color: '#666' }}>No crawls in the window.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Scheduled</th>
-                <th>Status</th>
-                <th>Found</th>
-                <th>Stored</th>
-                <th>Raw</th>
-                <th>Duration (ms)</th>
-                <th>Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recent_crawls.map((c) => (
-                <tr key={c.crawl_job_id}>
-                  <td>{new Date(c.scheduled_at).toLocaleString()}</td>
-                  <td>{c.status}</td>
-                  <td>{c.jobs_found}</td>
-                  <td>{c.jobs_stored}</td>
-                  <td>{c.raw_payloads}</td>
-                  <td>{c.duration_ms}</td>
-                  <td>{c.error_code ?? ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      {/* Recent crawls */}
+      <div>
+        <SectionHeader label="Recent crawls" sectionKey="crawls" collapsed={collapsed} onToggle={toggle} />
+        {!collapsed['crawls'] && (
+          <div id="section-crawls">
+          {recent_crawls.length === 0 ? (
+            <p style={{ color: 'var(--c-text-secondary)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+              No crawls in the window.
+            </p>
+          ) : (
+            <Card padding={false}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Scheduled</th>
+                    <th>Status</th>
+                    <th>Found</th>
+                    <th>Stored</th>
+                    <th>Raw</th>
+                    <th>Duration</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent_crawls.map((c) => (
+                    <tr key={c.crawl_job_id}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{new Date(c.scheduled_at).toLocaleString()}</td>
+                      <td>{c.status}</td>
+                      <td>{c.jobs_found}</td>
+                      <td>{c.jobs_stored}</td>
+                      <td>{c.raw_payloads}</td>
+                      <td>{c.duration_ms} ms</td>
+                      <td>{c.error_code ?? ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </div>
+      )}
+      </div>
+
+      <ConfirmDialog
+        open={!!cpToReset}
+        title="Reset checkpoint"
+        message={`Clear the checkpoint for ${cpToReset?.source_id}/${cpToReset?.connector_type}? The next crawl will start from page 1.`}
+        confirmLabel="Reset"
+        variant="danger"
+        busy={clearCp.isPending}
+        onConfirm={() => { if (cpToReset) clearCp.mutate(cpToReset); }}
+        onCancel={() => setCpToReset(null)}
+      />
     </div>
+  );
+}
+
+function SectionHeader({
+  label,
+  sectionKey,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  sectionKey: string;
+  collapsed: Record<string, boolean>;
+  onToggle: (key: string) => void;
+}) {
+  const isCollapsed = !!collapsed[sectionKey];
+  const contentId = `section-${sectionKey}`;
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onToggle(sectionKey);
+    }
+  };
+  return (
+    <h2
+      onClick={() => onToggle(sectionKey)}
+      onKeyDown={handleKey}
+      tabIndex={0}
+      role="button"
+      aria-expanded={!isCollapsed}
+      aria-controls={contentId}
+      style={{
+        fontSize: '1.05rem',
+        margin: 0,
+        cursor: 'pointer',
+        userSelect: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+      }}
+    >
+      <span style={{ fontSize: '0.75rem', color: 'var(--c-text-secondary)', transition: 'transform 0.2s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : undefined }}>
+        ▼
+      </span>
+      {label}
+    </h2>
   );
 }

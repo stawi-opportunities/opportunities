@@ -10,14 +10,14 @@ type Stage = {
 };
 
 function stageColor(stage: string): string {
-  if (stage === 'rejected' || stage === 'failed') return '#c00';
-  if (stage === 'published') return '#070';
-  return '#0a7';
+  if (stage === 'rejected' || stage === 'failed') return 'var(--c-danger)';
+  if (stage === 'published') return 'var(--c-success)';
+  return 'var(--c-info)';
 }
 
 export function TraceTimeline({ stages }: { stages: Stage[] }) {
   if (stages.length === 0) {
-    return <p style={{ color: '#666' }}>No stage transitions recorded.</p>;
+    return <p style={{ color: 'var(--c-text-secondary)' }}>No stage transitions recorded.</p>;
   }
   return (
     <ol
@@ -25,7 +25,7 @@ export function TraceTimeline({ stages }: { stages: Stage[] }) {
         listStyle: 'none',
         padding: 0,
         margin: '0.5rem 0 0 0.5rem',
-        borderLeft: '2px solid #ccc',
+        borderLeft: '2px solid var(--c-border)',
       }}
     >
       {stages.map((s, i) => (
@@ -48,16 +48,16 @@ export function TraceTimeline({ stages }: { stages: Stage[] }) {
             }}
           />
           <strong>{s.stage}</strong>{' '}
-          <small style={{ color: '#666' }}>
+          <small style={{ color: 'var(--c-text-secondary)' }}>
             at {new Date(s.at).toLocaleString()}
           </small>
           {s.duration_ms != null && s.duration_ms > 0 && (
-            <span style={{ marginLeft: '0.5rem', color: '#888' }}>
+            <span style={{ marginLeft: '0.5rem', color: 'var(--c-text-secondary)' }}>
               ({s.duration_ms} ms)
             </span>
           )}
           {s.canonical_id && (
-            <span style={{ marginLeft: '0.5rem', color: '#666' }}>
+            <span style={{ marginLeft: '0.5rem', color: 'var(--c-text-secondary)' }}>
               canonical=<code>{s.canonical_id}</code>
             </span>
           )}
