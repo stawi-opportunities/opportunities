@@ -36,12 +36,7 @@ type ButtonAsLink = ButtonBaseProps &
 type ButtonProps = ButtonAsButton | ButtonAsLink;
 
 export function Button(props: ButtonProps) {
-  const {
-    variant = 'primary',
-    size = 'md',
-    className,
-    ...rest
-  } = props;
+  const { variant = 'primary', size = 'md', className, as: tag, ...rest } = props as ButtonAsButton & ButtonAsLink;
 
   const classes = clsx(
     'inline-flex items-center justify-center gap-2 transition-all duration-150',
@@ -50,11 +45,9 @@ export function Button(props: ButtonProps) {
     className,
   );
 
-  if (props.as === 'a') {
-    const { as: _as, ...anchorProps } = rest as ButtonAsLink;
-    return <a className={classes} {...anchorProps} />;
+  if (tag === 'a') {
+    return <a className={classes} {...(rest as AnchorHTMLAttributes<HTMLAnchorElement>)} />;
   }
 
-  const { as: _as, ...btnProps } = rest as ButtonAsButton;
-  return <button className={classes} {...btnProps} />;
+  return <button className={classes} {...(rest as ButtonHTMLAttributes<HTMLButtonElement>)} />;
 }
