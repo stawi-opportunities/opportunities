@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { useEscapeKey } from '@/hooks/useEscapeKey';
-import { useScrollLock } from '@/hooks/useScrollLock';
+import { useEffect, useRef } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { useScrollLock } from "@/hooks/useScrollLock";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -9,7 +9,7 @@ interface ConfirmDialogProps {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  variant?: 'danger' | 'primary';
+  variant?: "danger" | "primary";
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
@@ -19,9 +19,9 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
-  variant = 'danger',
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  variant = "danger",
   onConfirm,
   onCancel,
   busy = false,
@@ -44,20 +44,20 @@ export function ConfirmDialog({
   return (
     <div
       style={{
-        position: 'fixed',
+        position: "fixed",
         inset: 0,
         zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        animation: 'fadeIn 0.15s ease-out',
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        animation: "fadeIn 0.15s ease-out",
       }}
     >
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           inset: 0,
-          background: 'rgba(0,0,0,0.35)',
+          background: "rgba(0,0,0,0.35)",
         }}
         onClick={(e) => {
           if (e.target === e.currentTarget) onCancel();
@@ -70,19 +70,19 @@ export function ConfirmDialog({
         aria-labelledby="confirm-title"
         aria-describedby="confirm-message"
         style={{
-          position: 'relative',
-          background: 'var(--c-surface)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
-          padding: '1.25rem',
+          position: "relative",
+          background: "var(--c-surface)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "0 8px 30px rgba(0,0,0,0.18)",
+          padding: "1.25rem",
           maxWidth: 420,
-          width: '90%',
-          animation: 'slideUp 0.2s ease-out',
+          width: "90%",
+          animation: "slideUp 0.2s ease-out",
         }}
       >
         <h2
           id="confirm-title"
-          style={{ margin: '0 0 0.5rem', fontSize: '1.05rem' }}
+          style={{ margin: "0 0 0.5rem", fontSize: "1.05rem" }}
         >
           {title}
         </h2>
@@ -91,8 +91,8 @@ export function ConfirmDialog({
           id="confirm-message"
           style={{
             margin: 0,
-            color: 'var(--c-text-secondary)',
-            fontSize: '0.9rem',
+            color: "var(--c-text-secondary)",
+            fontSize: "0.9rem",
           }}
         >
           {message}
@@ -100,10 +100,10 @@ export function ConfirmDialog({
 
         <div
           style={{
-            marginTop: '1.25rem',
-            display: 'flex',
-            gap: '0.5rem',
-            justifyContent: 'flex-end',
+            marginTop: "1.25rem",
+            display: "flex",
+            gap: "0.5rem",
+            justifyContent: "flex-end",
           }}
         >
           <button
@@ -111,12 +111,12 @@ export function ConfirmDialog({
             onClick={onCancel}
             disabled={busy}
             style={{
-              padding: '0.35rem 0.8rem',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--c-border)',
-              background: 'var(--c-surface)',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
+              padding: "0.35rem 0.8rem",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--c-border)",
+              background: "var(--c-surface)",
+              cursor: "pointer",
+              fontSize: "0.85rem",
             }}
           >
             {cancelLabel}
@@ -128,21 +128,19 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={busy}
             style={{
-              padding: '0.35rem 0.8rem',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
+              padding: "0.35rem 0.8rem",
+              borderRadius: "var(--radius-md)",
+              border: "none",
               background:
-                variant === 'danger'
-                  ? 'var(--c-danger)'
-                  : 'var(--c-primary)',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
+                variant === "danger" ? "var(--c-danger)" : "var(--c-primary)",
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: "0.85rem",
               fontWeight: 500,
               opacity: busy ? 0.6 : undefined,
             }}
           >
-            {busy ? 'Processing…' : confirmLabel}
+            {busy ? "Processing…" : confirmLabel}
           </button>
         </div>
       </div>

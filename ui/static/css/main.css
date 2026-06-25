@@ -699,13 +699,8 @@ input:where([type='file']):focus {
 }
   html {
     scroll-behavior: smooth;
-    /* Root size bumped from the browser default 16px → 17px so every
-       rem-based Tailwind utility renders a touch larger. Improves
-       readability across the whole site without hand-tuning every
-       element. */
     font-size: 17px;
   }
-
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
@@ -719,11 +714,21 @@ input:where([type='file']):focus {
     }
   }
 
+  @media print {
+    nav, footer, .animate-orb, .animate-orb-slow, .animate-float-y,
+    #particle-canvas, #mobile-menu, #nav-toggle,
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+    .gradient-text { background: none !important; color: #0c1226 !important; }
+    body { background: white; color: black; font-size: 12pt; }
+    @page { margin: 1.5cm; }
+    a[href]::after { content: " (" attr(href) ")"; font-size: 0.8em; color: #666; }
+    a[href^="/"]::after { content: " (https://stawi.org" attr(href) ")"; }
+  }
+
   :focus-visible {
     outline: 2px solid #0c1226;
     outline-offset: 2px;
   }
-
   body {
   --tw-bg-opacity: 1;
   background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));
@@ -1444,7 +1449,6 @@ input:where([type='file']):focus {
           background-clip: text;
   color: transparent;
 }
- feat/styling-scroll-reveal
 /* ── Scroll-reveal ── */
 [data-reveal] {
     opacity: 0;
@@ -1470,8 +1474,6 @@ input:where([type='file']):focus {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
     [data-reveal="scale"] { opacity: 1; transform: none; transition: none; }
   }
-
- main
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1700,6 +1702,9 @@ input:where([type='file']):focus {
 }
 .mr-1\.5 {
   margin-right: 0.375rem;
+}
+.mr-auto {
+  margin-right: auto;
 }
 .mt-0\.5 {
   margin-top: 0.125rem;
@@ -2238,6 +2243,9 @@ input:where([type='file']):focus {
 }
 .grid-cols-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .flex-col {
   flex-direction: column;

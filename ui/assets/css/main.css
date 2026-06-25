@@ -4,10 +4,6 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    /* Root size bumped from the browser default 16px → 17px so every
-       rem-based Tailwind utility renders a touch larger. Improves
-       readability across the whole site without hand-tuning every
-       element. */
     font-size: 17px;
   }
   @media (prefers-reduced-motion: reduce) {
@@ -22,6 +18,18 @@
       transition-duration: 0.01ms !important;
     }
   }
+
+  @media print {
+    nav, footer, .animate-orb, .animate-orb-slow, .animate-float-y,
+    #particle-canvas, #mobile-menu, #nav-toggle,
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+    .gradient-text { background: none !important; color: #0c1226 !important; }
+    body { background: white; color: black; font-size: 12pt; }
+    @page { margin: 1.5cm; }
+    a[href]::after { content: " (" attr(href) ")"; font-size: 0.8em; color: #666; }
+    a[href^="/"]::after { content: " (https://stawi.org" attr(href) ")"; }
+  }
+
   :focus-visible {
     outline: 2px solid #0c1226;
     outline-offset: 2px;
