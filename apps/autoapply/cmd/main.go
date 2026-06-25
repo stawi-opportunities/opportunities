@@ -265,7 +265,7 @@ func devIntentHandler(svc *frame.Service, _ string) http.Handler {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"status":"queued","event_id":%q}`, env.EventID)))
+		_, _ = fmt.Fprintf(w, `{"status":"queued","event_id":%q}`, env.EventID)
 	})
 }
 
@@ -312,7 +312,7 @@ func (c *openAIClient) Complete(ctx context.Context, system, user string) (strin
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))

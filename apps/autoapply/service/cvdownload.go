@@ -82,7 +82,7 @@ func (f *httpCVFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, strin
 		telemetry.RecordAutoApplyCVDownloadFailure("network")
 		return nil, "", fmt.Errorf("cv: fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		telemetry.RecordAutoApplyCVDownloadFailure("http_status")

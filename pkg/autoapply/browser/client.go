@@ -39,12 +39,12 @@ var ErrSubmitNotConfirmed = errors.New("browser: submission not confirmed")
 
 // SubmitOptions controls one FillAndSubmit invocation.
 type SubmitOptions struct {
-	URL         string
-	TextFields  map[string]string
-	FileField   string
-	FileBytes   []byte
-	FileName    string
-	SubmitSel   string
+	URL        string
+	TextFields map[string]string
+	FileField  string
+	FileBytes  []byte
+	FileName   string
+	SubmitSel  string
 	// ConfirmSel is a CSS selector that must appear after submit for the
 	// submission to be considered successful. Optional but strongly
 	// recommended per-ATS — without it any non-erroring click is a
@@ -672,7 +672,7 @@ func fillReactSelect(page *rod.Page, el *rod.Element, val string) {
 // entire page deadline before any field could be filled.
 func settle(page *rod.Page) {
 	_ = page.WaitLoad()
-	_ = page.Timeout(8 * time.Second).WaitDOMStable(time.Second, 0)
+	_ = page.Timeout(8*time.Second).WaitDOMStable(time.Second, 0)
 }
 
 // captureForm saves a PNG of the application form (the <form> with the
@@ -755,7 +755,7 @@ func writeTempFile(data []byte, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := f.Write(data); err != nil {
 		return "", err
 	}

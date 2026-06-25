@@ -1,6 +1,7 @@
 package autoapply
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ func TestEmailFallback_CanHandleMailto(t *testing.T) {
 
 func TestEmailFallback_NoSMTPSkips(t *testing.T) {
 	s := NewEmailFallback("", 587, "", "")
-	res, err := s.Submit(nil, SubmitRequest{ApplyURL: "mailto:hr@co.com"})
+	res, err := s.Submit(context.TODO(), SubmitRequest{ApplyURL: "mailto:hr@co.com"})
 	require.NoError(t, err)
 	assert.Equal(t, "skipped", res.Method)
 	assert.Equal(t, "no_smtp", res.SkipReason)
@@ -27,8 +28,8 @@ func TestEmailFallback_NoSMTPSkips(t *testing.T) {
 
 func TestParseMailtoRecipient(t *testing.T) {
 	cases := map[string]string{
-		"mailto:hr@co.com":                   "hr@co.com",
-		"mailto:hr@co.com?subject=Apply":     "hr@co.com",
+		"mailto:hr@co.com":                    "hr@co.com",
+		"mailto:hr@co.com?subject=Apply":      "hr@co.com",
 		"mailto:Hiring%20Team%3Chr@co.com%3E": "hr@co.com",
 	}
 	for in, want := range cases {

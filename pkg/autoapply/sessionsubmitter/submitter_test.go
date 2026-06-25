@@ -156,7 +156,7 @@ func TestSubmit_HappyMultipart(t *testing.T) {
 		for _, fhdrs := range r.MultipartForm.File {
 			fh := fhdrs[0]
 			f, _ := fh.Open()
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			buf := make([]byte, fh.Size)
 			_, _ = f.Read(buf)
 			gotFile = buf

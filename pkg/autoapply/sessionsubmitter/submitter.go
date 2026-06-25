@@ -158,7 +158,7 @@ func (s *Submitter) Submit(ctx context.Context, req autoapply.SubmitRequest) (au
 	if err != nil {
 		return autoapply.SubmitResult{}, fmt.Errorf("apply GET: %w", err)
 	}
-	defer getResp.Body.Close()
+	defer func() { _ = getResp.Body.Close() }()
 
 	if loggedOut := looksLoggedOut(getResp, m); loggedOut {
 		_ = s.sessions.Revoke(ctx, req.CandidateID, req.SourceType)
@@ -196,7 +196,7 @@ func (s *Submitter) Submit(ctx context.Context, req autoapply.SubmitRequest) (au
 	if err != nil {
 		return autoapply.SubmitResult{}, fmt.Errorf("apply POST: %w", err)
 	}
-	defer postResp.Body.Close()
+	defer func() { _ = postResp.Body.Close() }()
 
 	if looksLoggedOut(postResp, m) {
 		_ = s.sessions.Revoke(ctx, req.CandidateID, req.SourceType)

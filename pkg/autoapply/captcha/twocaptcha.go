@@ -185,7 +185,7 @@ func (c *TwoCaptcha) post(ctx context.Context, path string, body any, out any) e
 	if err != nil {
 		return fmt.Errorf("2captcha %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))

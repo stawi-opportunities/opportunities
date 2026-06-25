@@ -131,7 +131,7 @@ func (s *Submitter) Submit(ctx context.Context, req autoapply.SubmitRequest) (au
 	if err != nil {
 		return autoapply.SubmitResult{}, fmt.Errorf("listing GET: %w", err)
 	}
-	defer getResp.Body.Close()
+	defer func() { _ = getResp.Body.Close() }()
 
 	if loggedOut(getResp) {
 		_ = s.sessions.Revoke(ctx, req.CandidateID, req.SourceType)
@@ -189,7 +189,7 @@ func (s *Submitter) Submit(ctx context.Context, req autoapply.SubmitRequest) (au
 	if err != nil {
 		return autoapply.SubmitResult{}, fmt.Errorf("apply POST: %w", err)
 	}
-	defer postResp.Body.Close()
+	defer func() { _ = postResp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(io.LimitReader(postResp.Body, 1<<20))
 
@@ -263,7 +263,7 @@ func (s *Submitter) confirmOnDashboard(
 	if err != nil {
 		return false, nil, fmt.Errorf("enquiries GET: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, nil, fmt.Errorf("enquiries GET: status %d", resp.StatusCode)

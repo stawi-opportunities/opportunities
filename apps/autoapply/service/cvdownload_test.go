@@ -44,12 +44,12 @@ func TestValidateCVURL_BlocksMetadata(t *testing.T) {
 
 func TestSanitiseFilename(t *testing.T) {
 	cases := map[string]string{
-		"resume.pdf":           "resume.pdf",
-		"../etc/passwd":        "passwd",
-		"/abs/path/cv.pdf":     "cv.pdf",
-		"../..\\Windows\\sys":  "sys", // backslash treated as separator
-		"":                     "resume.pdf",
-		"中文.pdf":               ".pdf", // non-ascii stripped
+		"resume.pdf":                      "resume.pdf",
+		"../etc/passwd":                   "passwd",
+		"/abs/path/cv.pdf":                "cv.pdf",
+		"../..\\Windows\\sys":             "sys", // backslash treated as separator
+		"":                                "resume.pdf",
+		"中文.pdf":                          ".pdf", // non-ascii stripped
 		strings.Repeat("a", 100) + ".pdf": strings.Repeat("a", 64),
 	}
 	for in, want := range cases {
@@ -74,7 +74,7 @@ func TestHTTPCVFetcher_Success(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 	resp, err := f.client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, "mycv.pdf", deriveFilename(resp, srv.URL))
 }
 
@@ -88,7 +88,7 @@ func TestHTTPCVFetcher_TooLarge(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 	resp, err := f.client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// Manually exercise the size cap in Fetch by re-reading.
 	data, _, err := readWithCap(resp, f.maxBytes)
 	require.Error(t, err)
