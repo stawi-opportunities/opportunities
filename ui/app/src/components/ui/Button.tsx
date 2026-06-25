@@ -51,10 +51,10 @@ export function Button(props: ButtonProps) {
   );
 
   if (props.as === 'a') {
-   const { as: _as, ...anchorProps } = rest as ButtonAsLink;
+    const { as: _as, ...anchorProps } = rest as ButtonAsLink;
     return <a className={classes} {...anchorProps} />;
   }
 
- const { as: _as, ...btnProps } = rest as ButtonAsButton;
+  const { as: _as, ...btnProps } = rest as ButtonAsButton;
   return <button className={classes} {...btnProps} />;
 }
