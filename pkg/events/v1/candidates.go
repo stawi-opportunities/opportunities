@@ -66,9 +66,9 @@ type CVExtractedV1 struct {
 	// "80000" or "85k"; the cv-extract handler (Task 7) is responsible
 	// for parsing them into integers, clamping non-parseable outputs
 	// to 0, and converting units. Downstream consumers read integers.
-	SalaryMin int `json:"salary_min,omitempty" parquet:"salary_min,optional"`
-	SalaryMax int `json:"salary_max,omitempty" parquet:"salary_max,optional"`
-	Currency  string   `json:"currency,omitempty"            parquet:"currency,optional"`
+	SalaryMin int    `json:"salary_min,omitempty" parquet:"salary_min,optional"`
+	SalaryMax int    `json:"salary_max,omitempty" parquet:"salary_max,optional"`
+	Currency  string `json:"currency,omitempty"            parquet:"currency,optional"`
 
 	// Score components (matches cv.ScoreComponents).
 	ScoreATS      int `json:"score_ats"      parquet:"score_ats"`
@@ -87,13 +87,13 @@ type CVExtractedV1 struct {
 
 // CVFix mirrors cv.PriorityFix, carried inside CVImprovedV1.
 type CVFix struct {
-	FixID       string `json:"fix_id"             parquet:"fix_id"`
-	Title       string `json:"title,omitempty"    parquet:"title,optional"`
+	FixID string `json:"fix_id"             parquet:"fix_id"`
+	Title string `json:"title,omitempty"    parquet:"title,optional"`
 	// ImpactLevel is serialised as "impact" on the wire to keep the
 	// JSON terse and to mirror cv.PriorityFix.Impact (the struct
 	// field this is produced from).
-	ImpactLevel string `json:"impact,omitempty" parquet:"impact,optional"`
-	Category    string `json:"category,omitempty" parquet:"category,optional"`
+	ImpactLevel    string `json:"impact,omitempty" parquet:"impact,optional"`
+	Category       string `json:"category,omitempty" parquet:"category,optional"`
 	Why            string `json:"why,omitempty"      parquet:"why,optional"`
 	AutoApplicable bool   `json:"auto_applicable"    parquet:"auto_applicable"`
 	Rewrite        string `json:"rewrite,omitempty"  parquet:"rewrite,optional"`
@@ -182,6 +182,11 @@ type AutoApplyIntentV1 struct {
 	CurrentTitle string `json:"current_title"`
 	Skills       string `json:"skills"`
 	CoverLetter  string `json:"cover_letter"`
+	// Salary expectation (candidate profile). Used to fill per-application
+	// salary fields that the source's own profile never pre-fills (e.g.
+	// the ROAM boards' salary_expectation). Zero when unknown.
+	SalaryMin int `json:"salary_min,omitempty"`
+	SalaryMax int `json:"salary_max,omitempty"`
 }
 
 // ApplicationSubmittedV1 is emitted by the autoapply service after a
@@ -199,6 +204,25 @@ type ApplicationSubmittedV1 struct {
 
 	EventID    string    `json:"-" parquet:"event_id"`
 	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+}
+
+// ProfileIncompleteV1 is emitted by the autoapply handler when an apply
+// attempt is skipped because the candidate's profile ON THE SOURCE site
+// (e.g. BrighterMonday, Jobberman) is missing required fields the apply
+// form pre-fills server-side. The notification service maps this to a
+// "Complete your <source> profile" CTA in the candidate's dashboard;
+// analytics subscribes for the per-source profile-completion funnel.
+//
+// MissingFields is a short comma-separated list of the form field names
+// that came back empty (e.g. "headline,salary_expectation"), for the CTA
+// copy. It is higher-cardinality context, never a metric label.
+type ProfileIncompleteV1 struct {
+	CandidateID    string    `json:"candidate_id"`
+	SourceType     string    `json:"source_type"`
+	CanonicalJobID string    `json:"canonical_job_id,omitempty"`
+	ApplyURL       string    `json:"apply_url,omitempty"`
+	MissingFields  string    `json:"missing_fields,omitempty"`
+	DetectedAt     time.Time `json:"detected_at"`
 }
 
 // DigestJob is one new-job item carried inside WeeklyJobsDigestV1.

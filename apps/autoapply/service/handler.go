@@ -240,6 +240,8 @@ func (h *AutoApplyHandler) Handle(ctx context.Context, _ map[string]string, payl
 		CoverLetter:  intent.CoverLetter,
 		CVBytes:      cvBytes,
 		CVFilename:   cvFilename,
+		SalaryMin:    intent.SalaryMin,
+		SalaryMax:    intent.SalaryMax,
 	}
 
 	// Dry-run short-circuits the submitter so a developer can drive
@@ -330,21 +332,21 @@ func (h *AutoApplyHandler) finalise(
 		Info("autoapply: attempt complete")
 
 	h.emitApplicationSubmitted(ctx, intent, result, status, pending.ID)
-	h.emitSessionLifecycleIfApplicable(ctx, intent, result)
+	h.emitLifecycleSkipEvents(ctx, intent, result)
 }
 
-// emitSessionLifecycleIfApplicable mirrors the session-related skip
-// reasons emitted by the sessionsubmitter into the
-// SessionRequiredV1 / SessionExpiredV1 event topics. The
-// notification service subscribes to these and surfaces the
-// "Reconnect your account" CTA in the UI; analytics subscribes for
-// the per-source recapture funnel.
+// emitLifecycleSkipEvents maps candidate-facing skip reasons into their
+// notification/analytics event topics:
+//   - session_required / session_expired → SessionRequiredV1 /
+//     SessionExpiredV1 ("Reconnect your account" CTA + recapture funnel).
+//   - profile_incomplete → ProfileIncompleteV1 ("Complete your <source>
+//     profile" CTA + profile-completion funnel).
 //
 // We intentionally emit at the handler layer, not the submitter
-// layer, so a future second submitter that also detects expiry (e.g.
+// layer, so a future second submitter that also detects these (e.g.
 // the headless leg) gets the same event taxonomy without duplicating
 // the emit logic.
-func (h *AutoApplyHandler) emitSessionLifecycleIfApplicable(
+func (h *AutoApplyHandler) emitLifecycleSkipEvents(
 	ctx context.Context,
 	intent eventsv1.AutoApplyIntentV1,
 	result autoapply.SubmitResult,
@@ -378,6 +380,18 @@ func (h *AutoApplyHandler) emitSessionLifecycleIfApplicable(
 		})
 		if err := h.svc.EventsManager().Emit(emitCtx, eventsv1.TopicSessionExpired, env); err != nil {
 			util.Log(ctx).WithError(err).Warn("autoapply: emit SessionExpiredV1 failed")
+		}
+	case "profile_incomplete":
+		env := eventsv1.NewEnvelope(eventsv1.TopicProfileIncomplete, eventsv1.ProfileIncompleteV1{
+			CandidateID:    intent.CandidateID,
+			SourceType:     intent.SourceType,
+			CanonicalJobID: intent.CanonicalJobID,
+			ApplyURL:       intent.ApplyURL,
+			MissingFields:  result.SkipDetail,
+			DetectedAt:     time.Now().UTC(),
+		})
+		if err := h.svc.EventsManager().Emit(emitCtx, eventsv1.TopicProfileIncomplete, env); err != nil {
+			util.Log(ctx).WithError(err).Warn("autoapply: emit ProfileIncompleteV1 failed")
 		}
 	}
 }

@@ -43,6 +43,11 @@ type SubmitRequest struct {
 	CoverLetter  string
 	CVBytes      []byte // nil when not available; submitters handle gracefully
 	CVFilename   string // "resume.pdf" etc.
+	// Salary expectation from the candidate profile, used to fill
+	// per-application salary fields a source's profile never pre-fills.
+	// Zero when unknown.
+	SalaryMin int
+	SalaryMax int
 }
 
 // SubmitResult describes the outcome of a submission attempt.
@@ -56,4 +61,10 @@ type SubmitResult struct {
 	// Method=="skipped" (e.g. "captcha", "unsupported", "no_submitter",
 	// "no_smtp", "empty_url").
 	SkipReason string
+	// SkipDetail is optional free-form context for a skip, higher
+	// cardinality than SkipReason so it is NOT used as a metric label.
+	// E.g. for SkipReason=="profile_incomplete" the ROAM submitters put
+	// the comma-separated missing form fields here, which the handler
+	// forwards into ProfileIncompleteV1 for the dashboard CTA copy.
+	SkipDetail string
 }

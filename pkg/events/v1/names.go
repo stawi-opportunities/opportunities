@@ -74,6 +74,12 @@ const (
 	// (redirect to login, 401, captcha). Triggers UI re-onboarding and
 	// records the failure for analytics.
 	TopicSessionExpired = "candidates.sessions.expired.v1"
+	// TopicProfileIncomplete is emitted by the autoapply handler when an
+	// apply is skipped because the candidate's on-source profile (e.g.
+	// BrighterMonday, Jobberman) is missing required apply-form fields.
+	// The notification service maps this to a "Complete your <source>
+	// profile" CTA in the UI.
+	TopicProfileIncomplete = "candidates.profile.incomplete.v1"
 
 	// TopicCandidateWeeklyJobsDigest is a notification-only event
 	// targeting candidates who completed signup/onboarding but have
@@ -153,6 +159,7 @@ func AllTopics() []string {
 		TopicSessionCaptured,
 		TopicSessionRequired,
 		TopicSessionExpired,
+		TopicProfileIncomplete,
 		TopicDefinitionsChanged,
 	}
 }

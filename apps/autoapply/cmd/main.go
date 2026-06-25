@@ -22,9 +22,9 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/authsession"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/ats"
-	"github.com/stawi-opportunities/opportunities/pkg/autoapply/brightermondaysubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/browser"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/captcha"
+	"github.com/stawi-opportunities/opportunities/pkg/autoapply/roamsubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/sessionsubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -132,16 +132,18 @@ func main() {
 	// InferenceModel != "" in that case).
 	tiers := []autoapply.Submitter{}
 	if sessionProvider != nil {
-		// Register BrighterMonday-specific submitter BEFORE the generic
-		// session-replay submitter. The BM apply is a Laravel form POST
-		// to a templated URL (/account/customer/enquiries/<id>/store-enquiry)
-		// extracted from the listing page's <form action="…">; the
-		// generic submitter can't infer that URL from the manifest's
-		// form_url_pattern alone.
-		tiers = append(tiers, brightermondaysubmitter.New(brightermondaysubmitter.Config{
-			Sessions:    sessionProvider,
-			HTTPTimeout: 30 * time.Second,
-		}))
+		// Register the ROAM Africa boards (BrighterMonday, Jobberman) BEFORE
+		// the generic session-replay submitter. They share one engine
+		// (roamsubmitter) and differ only by site config (name/source/
+		// origin). The apply is a Laravel form POST to a templated URL
+		// extracted from the listing page's <form action="…">, which the
+		// generic submitter can't infer from the manifest's
+		// form_url_pattern alone — so these must take precedence.
+		roamCfg := roamsubmitter.Config{Sessions: sessionProvider, HTTPTimeout: 30 * time.Second}
+		tiers = append(tiers,
+			roamsubmitter.New(roamsubmitter.BrighterMonday(), roamCfg),
+			roamsubmitter.New(roamsubmitter.Jobberman(), roamCfg),
+		)
 		tiers = append(tiers, sessionsubmitter.New(sessionsubmitter.Config{
 			Manifests:   authManifests,
 			Sessions:    sessionProvider,

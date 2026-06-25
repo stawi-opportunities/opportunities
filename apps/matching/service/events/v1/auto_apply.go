@@ -209,6 +209,8 @@ func (h *AutoApplyTriggerHandler) Execute(ctx context.Context, payload any) erro
 			Location:       profile.PreferredLocations,
 			CurrentTitle:   profile.CurrentTitle,
 			Skills:         strings.Join(profile.Skills, ", "),
+			SalaryMin:      int(profile.SalaryMin),
+			SalaryMax:      int(profile.SalaryMax),
 		}
 
 		intentEnv := eventsv1.NewEnvelope(eventsv1.SubjectAutoApplySubmit, intent)

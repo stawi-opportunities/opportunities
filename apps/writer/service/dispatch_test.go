@@ -46,6 +46,12 @@ var noIcebergPersistence = map[string]bool{
 	eventsv1.TopicSessionCaptured: true,
 	eventsv1.TopicSessionRequired: true,
 	eventsv1.TopicSessionExpired:  true,
+
+	// TopicProfileIncomplete: notification-driving event (the
+	// "Complete your <source> profile" CTA). Authoritative state is the
+	// candidate's on-source profile; an analytics rollup over these is a
+	// follow-up. Acks without writing to Iceberg until then.
+	eventsv1.TopicProfileIncomplete: true,
 }
 
 // TestAllTopicsHaveDispatch verifies that every topic returned by
