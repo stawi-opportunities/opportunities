@@ -132,18 +132,18 @@ func main() {
 	// InferenceModel != "" in that case).
 	tiers := []autoapply.Submitter{}
 	if sessionProvider != nil {
-		// Register the ROAM Africa boards (BrighterMonday, Jobberman) BEFORE
-		// the generic session-replay submitter. They share one engine
-		// (roamsubmitter) and differ only by site config (name/source/
-		// origin). The apply is a Laravel form POST to a templated URL
-		// extracted from the listing page's <form action="…">, which the
-		// generic submitter can't infer from the manifest's
-		// form_url_pattern alone — so these must take precedence.
+		// Register the ROAM Africa boards (BrighterMonday KE/UG, Jobberman
+		// NG/GH) BEFORE the generic session-replay submitter. They share one
+		// engine (roamsubmitter) and differ only by site config (name/
+		// source/origin), one per country. The apply is a Laravel form POST
+		// to a templated URL extracted from the listing page's
+		// <form action="…">, which the generic submitter can't infer from
+		// the manifest's form_url_pattern alone — so these must take
+		// precedence.
 		roamCfg := roamsubmitter.Config{Sessions: sessionProvider, HTTPTimeout: 30 * time.Second}
-		tiers = append(tiers,
-			roamsubmitter.New(roamsubmitter.BrighterMonday(), roamCfg),
-			roamsubmitter.New(roamsubmitter.Jobberman(), roamCfg),
-		)
+		for _, site := range roamsubmitter.AllSites() {
+			tiers = append(tiers, roamsubmitter.New(site, roamCfg))
+		}
 		tiers = append(tiers, sessionsubmitter.New(sessionsubmitter.Config{
 			Manifests:   authManifests,
 			Sessions:    sessionProvider,

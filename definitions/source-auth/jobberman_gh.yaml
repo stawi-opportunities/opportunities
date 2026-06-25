@@ -1,0 +1,53 @@
+# Jobberman Ghana — extension-captured session, HTTP-form replay.
+#
+# Same ROAM Africa Laravel platform as Jobberman Nigeria, on the Ghana
+# domain (jobberman.com.gh). A SEPARATE source from the Nigeria board:
+# cookies are scoped to .jobberman.com.gh, so a Nigeria session cannot
+# apply here. The candidate connects each country independently.
+
+source_type: jobberman_gh
+auth_method: extension
+display_name: Jobberman Ghana
+login_url: https://www.jobberman.com.gh/login
+home_url: https://www.jobberman.com.gh
+cookie_domains:
+  - .jobberman.com.gh
+storage_keys: []
+required_cookies:
+  - laravel_session
+  - XSRF-TOKEN
+session_ttl: 720h
+detect_logged_in:
+  method: GET
+  url: https://www.jobberman.com.gh/account/customer/enquiries
+  expect_status: 200
+apply_flow:
+  type: http_form
+  form_url_pattern: '^https://www\.jobberman\.com\.gh/(job/.+/apply|listings/.+)$'
+  fields:
+    cv_file:
+      name: resume
+      source: cv_bytes
+    cover_letter:
+      name: cover_letter
+      source: cover_letter
+    phone:
+      name: phone
+      source: phone
+    full_name:
+      name: full_name
+      source: full_name
+  csrf:
+    source: cookie
+    cookie: XSRF-TOKEN
+    header: X-XSRF-TOKEN
+instructions_md: |
+  ### Connect Jobberman Ghana
+
+  1. **Install the Stawi extension** if you haven't already.
+  2. Sign in to <https://www.jobberman.com.gh/login> in the same browser.
+  3. Click the **Stawi** icon in your toolbar and choose **"Connect this account"**.
+  4. The Jobberman Ghana card on this page should switch to **Connected ✓**.
+
+  You can disconnect at any time. Stawi only uses this session to
+  submit applications you've explicitly approved.

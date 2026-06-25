@@ -21,13 +21,18 @@ const (
 	SourceHimalayas SourceType = "himalayas"
 	SourceFindwork  SourceType = "findwork"
 
-	// African job board connectors
-	SourceBrighterMonday SourceType = "brightermonday"
-	SourceJobberman      SourceType = "jobberman"
-	SourceMyJobMag       SourceType = "myjobmag"
-	SourceNjorku         SourceType = "njorku"
-	SourceCareers24      SourceType = "careers24"
-	SourcePNet           SourceType = "pnet"
+	// African job board connectors. The ROAM Africa (Ringier) brands run
+	// one platform per country on its own domain, and sessions are keyed by
+	// source_type — so each country is its own source (its own captured
+	// session/cookies, its own "connect" card).
+	SourceBrighterMonday   SourceType = "brightermonday"    // Kenya  — brightermonday.co.ke
+	SourceBrighterMondayUG SourceType = "brightermonday_ug" // Uganda — brightermonday.co.ug
+	SourceJobberman        SourceType = "jobberman"         // Nigeria — jobberman.com
+	SourceJobbermanGH      SourceType = "jobberman_gh"      // Ghana   — jobberman.com.gh
+	SourceMyJobMag         SourceType = "myjobmag"
+	SourceNjorku           SourceType = "njorku"
+	SourceCareers24        SourceType = "careers24"
+	SourcePNet             SourceType = "pnet"
 
 	// Existing connectors
 	SourceGreenhouse          SourceType = "greenhouse"
@@ -134,7 +139,7 @@ type Source struct {
 	// of skipping them forever. NULL on sources flagged before the column
 	// existed — treated as already-expired (retry-eligible).
 	NeedsTuningAt *time.Time `json:"needs_tuning_at,omitempty"`
-	Config              string       `gorm:"type:jsonb;default:'{}'" json:"config"`
+	Config        string     `gorm:"type:jsonb;default:'{}'" json:"config"`
 	// ExtractionRecipe holds the source's active AI-generated extraction
 	// recipe as raw JSON ('{}' when none). Stored as a string so the domain
 	// package stays free of a pkg/recipe import (recipe imports domain).

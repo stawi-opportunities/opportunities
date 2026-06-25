@@ -27,7 +27,7 @@ detect_logged_in:
   expect_status: 200
 apply_flow:
   type: http_form
-  form_url_pattern: '^https://www\.jobberman\.com/job/.+/apply$'
+  form_url_pattern: '^https://www\.jobberman\.com/(job/.+/apply|listings/.+)$'
   fields:
     cv_file:
       name: resume

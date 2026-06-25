@@ -10,22 +10,30 @@ import (
 )
 
 func TestCanHandle(t *testing.T) {
-	bm := New(BrighterMonday(), Config{})
-	jb := New(Jobberman(), Config{})
+	bmKE := New(BrighterMondayKE(), Config{})
+	bmUG := New(BrighterMondayUG(), Config{})
+	jbNG := New(JobbermanNG(), Config{})
+	jbGH := New(JobbermanGH(), Config{})
 
-	// Each handles its own source + /listings/ URL on its origin.
-	assert.True(t, bm.CanHandle(domain.SourceBrighterMonday,
+	// Each handles its own source + /listings/ URL on its own origin.
+	assert.True(t, bmKE.CanHandle(domain.SourceBrighterMonday,
 		"https://www.brightermonday.co.ke/listings/oracle-apps-dba-45jq74"))
-	assert.True(t, jb.CanHandle(domain.SourceJobberman,
+	assert.True(t, bmUG.CanHandle(domain.SourceBrighterMondayUG,
+		"https://www.brightermonday.co.ug/listings/sales-lead-9xk2"))
+	assert.True(t, jbNG.CanHandle(domain.SourceJobberman,
 		"https://www.jobberman.com/listings/senior-fullstack-engineer-er95n9?ref=email"))
+	assert.True(t, jbGH.CanHandle(domain.SourceJobbermanGH,
+		"https://www.jobberman.com.gh/listings/data-analyst-7y3"))
 
-	// Wrong source type.
-	assert.False(t, bm.CanHandle(domain.SourceJobberman,
+	// Wrong source type (right brand, wrong country).
+	assert.False(t, bmKE.CanHandle(domain.SourceBrighterMondayUG,
 		"https://www.brightermonday.co.ke/listings/oracle-apps-dba-45jq74"))
 
-	// Right source but the other site's origin.
-	assert.False(t, jb.CanHandle(domain.SourceJobberman,
+	// Right source but the other country's / brand's origin.
+	assert.False(t, bmUG.CanHandle(domain.SourceBrighterMondayUG,
 		"https://www.brightermonday.co.ke/listings/oracle-apps-dba-45jq74"))
+	assert.False(t, jbGH.CanHandle(domain.SourceJobbermanGH,
+		"https://www.jobberman.com/listings/senior-fullstack-engineer-er95n9"))
 }
 
 func TestExtractListingSlug(t *testing.T) {

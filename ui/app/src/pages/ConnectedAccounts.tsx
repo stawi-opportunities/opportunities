@@ -11,8 +11,8 @@
 // list of supported sources, so adding a new YAML makes a new card
 // appear here without any UI change.
 
-import { useEffect, useState } from "react";
-import { useAuth } from "@/providers/AuthProvider";
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/providers/AuthProvider';
 import {
   fetchConnectedAccounts,
   createPairing,
@@ -20,7 +20,7 @@ import {
   revokeSession,
   type SourceAuthManifest,
   type ConnectedSession,
-} from "@/api/sessions";
+} from '@/api/sessions';
 
 type Account = SourceAuthManifest & { session?: ConnectedSession };
 
@@ -45,7 +45,7 @@ export default function ConnectedAccounts() {
   }
 
   useEffect(() => {
-    if (state === "authenticated") {
+    if (state === 'authenticated') {
       void refresh();
     }
   }, [state]);
@@ -62,9 +62,7 @@ export default function ConnectedAccounts() {
 
   async function onRevokeExtension() {
     if (
-      !confirm(
-        "Disconnect the extension? You'll need to pair it again to capture new sessions.",
-      )
+      !confirm("Disconnect the extension? You'll need to pair it again to capture new sessions.")
     ) {
       return;
     }
@@ -80,7 +78,7 @@ export default function ConnectedAccounts() {
   async function onRevokeSession(sourceType: string) {
     if (
       !confirm(
-        `Disconnect ${sourceType}? Stawi will stop auto-applying to this source until you reconnect.`,
+        `Disconnect ${sourceType}? Stawi will stop auto-applying to this source until you reconnect.`
       )
     ) {
       return;
@@ -93,7 +91,7 @@ export default function ConnectedAccounts() {
     }
   }
 
-  if (state === "unauthenticated") {
+  if (state === 'unauthenticated') {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
         <h1 className="text-2xl font-bold text-gray-900">Connected accounts</h1>
@@ -115,8 +113,8 @@ export default function ConnectedAccounts() {
       <header>
         <h1 className="text-2xl font-bold text-gray-900">Connected accounts</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Stawi can submit applications on your behalf to job boards you connect.
-          Install the Stawi extension, sign in to each board yourself, then click{" "}
+          Stawi can submit applications on your behalf to job boards you connect. Install the Stawi
+          extension, sign in to each board yourself, then click{' '}
           <strong>Connect this account</strong> in the extension popup.
         </p>
       </header>
@@ -158,22 +156,12 @@ export default function ConnectedAccounts() {
         )}
       </section>
 
-      {error && (
-        <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-      {loading && !accounts && (
-        <p className="mt-6 text-sm text-gray-500">Loading sources…</p>
-      )}
+      {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {loading && !accounts && <p className="mt-6 text-sm text-gray-500">Loading sources…</p>}
 
       <ul className="mt-6 space-y-3">
         {(accounts ?? []).map((a) => (
-          <SourceCard
-            key={a.source_type}
-            acct={a}
-            onRevoke={onRevokeSession}
-          />
+          <SourceCard key={a.source_type} acct={a} onRevoke={onRevokeSession} />
         ))}
         {accounts && accounts.length === 0 && (
           <li className="rounded-md border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
@@ -185,20 +173,12 @@ export default function ConnectedAccounts() {
   );
 }
 
-function SourceCard({
-  acct,
-  onRevoke,
-}: {
-  acct: Account;
-  onRevoke: (sourceType: string) => void;
-}) {
-  const status = acct.session?.status ?? "not_connected";
+function SourceCard({ acct, onRevoke }: { acct: Account; onRevoke: (sourceType: string) => void }) {
+  const status = acct.session?.status ?? 'not_connected';
   return (
     <li className="rounded-lg border border-gray-200 p-4">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-gray-900">
-          {acct.display_name}
-        </h3>
+        <h3 className="text-base font-semibold text-gray-900">{acct.display_name}</h3>
         <StatusBadge status={status} />
       </div>
       <details className="mt-3">
@@ -218,12 +198,12 @@ function SourceCard({
         >
           Open login page ↗
         </a>
-        {(status === "connected" || status === "expired") && (
+        {(status === 'connected' || status === 'expired') && (
           <button
             onClick={() => onRevoke(acct.source_type)}
             className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
           >
-            {status === "connected" ? "Disconnect" : "Clear and reconnect"}
+            {status === 'connected' ? 'Disconnect' : 'Clear and reconnect'}
           </button>
         )}
       </div>
@@ -233,19 +213,19 @@ function SourceCard({
 
 function StatusBadge({ status }: { status: string }) {
   const label =
-    status === "connected"
-      ? "Connected ✓"
-      : status === "expired"
-        ? "Reconnect needed"
-        : status === "revoked"
-          ? "Revoked"
-          : "Not connected";
+    status === 'connected'
+      ? 'Connected ✓'
+      : status === 'expired'
+        ? 'Reconnect needed'
+        : status === 'revoked'
+          ? 'Revoked'
+          : 'Not connected';
   const cls =
-    status === "connected"
-      ? "bg-emerald-100 text-emerald-800"
-      : status === "expired"
-        ? "bg-amber-100 text-amber-800"
-        : "bg-red-100 text-red-800";
+    status === 'connected'
+      ? 'bg-emerald-100 text-emerald-800'
+      : status === 'expired'
+        ? 'bg-amber-100 text-amber-800'
+        : 'bg-red-100 text-red-800';
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cls}`}

@@ -24,32 +24,32 @@
 // not ship this file to a static build that serves over a real
 // domain.
 
-import type { AuthRuntime, AuthState } from "@stawi/auth-runtime";
-import { getConfig } from "@/utils/config";
+import type { AuthRuntime, AuthState } from '@stawi/auth-runtime';
+import { getConfig } from '@/utils/config';
 
-const DEV_SUB = "local-test-user";
+const DEV_SUB = 'local-test-user';
 
 // useDevAuth returns true when ?devauth=1 is on the current URL OR a
 // stashed flag is in sessionStorage (so the flag survives the OIDC
 // callback redirect, which we don't actually use in dev mode but the
 // pattern means a manual reload doesn't drop the flag).
 export function useDevAuth(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === 'undefined') return false;
   const url = new URL(window.location.href);
-  if (url.searchParams.get("devauth") === "1") {
-    sessionStorage.setItem("stawi:devauth", "1");
+  if (url.searchParams.get('devauth') === '1') {
+    sessionStorage.setItem('stawi:devauth', '1');
     return true;
   }
-  return sessionStorage.getItem("stawi:devauth") === "1";
+  return sessionStorage.getItem('stawi:devauth') === '1';
 }
 
 function b64url(s: string): string {
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function forgedJWT(sub: string): string {
-  const header = b64url(JSON.stringify({ alg: "none", typ: "JWT" }));
-  const payload = b64url(JSON.stringify({ sub, iss: "local-dev", aud: "stawi" }));
+  const header = b64url(JSON.stringify({ alg: 'none', typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({ sub, iss: 'local-dev', aud: 'stawi' }));
   return `${header}.${payload}.dev-signature`;
 }
 
@@ -58,7 +58,7 @@ function forgedJWT(sub: string): string {
  * Methods we don't actually exercise return safe no-op values.
  */
 export function createDevAuthRuntime(): AuthRuntime {
-  const apiBaseUrl = getConfig().candidatesAPIURL.replace(/\/$/, "");
+  const apiBaseUrl = getConfig().candidatesAPIURL.replace(/\/$/, '');
   const token = forgedJWT(DEV_SUB);
 
   const listeners = new Set<(s: AuthState) => void>();
@@ -66,41 +66,44 @@ export function createDevAuthRuntime(): AuthRuntime {
   // Notify "authenticated" on the next tick so any onAuthStateChange
   // subscriber registered before/after this call still fires.
   queueMicrotask(() => {
-    for (const l of listeners) l("authenticated");
+    for (const l of listeners) l('authenticated');
   });
 
   return {
-    version: "dev-shim",
-    getState: (): AuthState => "authenticated",
+    version: 'dev-shim',
+    getState: (): AuthState => 'authenticated',
     prefetchDiscovery: async () => {},
     ensureAuthenticated: async () => {},
-    completeRedirect: async () => ({ returnTo: "/" }),
+    completeRedirect: async () => ({ returnTo: '/' }),
     logout: async () => {
-      sessionStorage.removeItem("stawi:devauth");
+      sessionStorage.removeItem('stawi:devauth');
       const url = new URL(window.location.href);
-      url.searchParams.delete("devauth");
+      url.searchParams.delete('devauth');
       window.location.href = url.toString();
     },
     onAuthStateChange: (cb) => {
       listeners.add(cb);
       // Fire immediately for new subscribers — they expect to learn
       // the current state synchronously.
-      queueMicrotask(() => cb("authenticated"));
+      queueMicrotask(() => cb('authenticated'));
       return () => listeners.delete(cb);
     },
     onSecurityEvent: () => () => {},
     onFedcmEvent: () => () => {},
     getRoles: async () => [],
-    getClaims: async () => ({ sub: DEV_SUB, name: "Local Test User", email: "dev@stawi.test" }),
-    fetch: async <T = unknown>(path: string, init?: {
-      method?: string;
-      headers?: Record<string, string>;
-      body?: string | ArrayBuffer | null;
-    }): Promise<T> => {
+    getClaims: async () => ({ sub: DEV_SUB, name: 'Local Test User', email: 'dev@stawi.test' }),
+    fetch: async <T = unknown>(
+      path: string,
+      init?: {
+        method?: string;
+        headers?: Record<string, string>;
+        body?: string | ArrayBuffer | null;
+      }
+    ): Promise<T> => {
       const res = await window.fetch(apiBaseUrl + path, {
-        method: init?.method ?? "GET",
+        method: init?.method ?? 'GET',
         headers: {
-          Accept: "application/json",
+          Accept: 'application/json',
           ...(init?.headers ?? {}),
           Authorization: `Bearer ${token}`,
         },
@@ -119,9 +122,9 @@ export function createDevAuthRuntime(): AuthRuntime {
     },
     upload: async <T = unknown>(path: string, file: File): Promise<T> => {
       const res = await window.fetch(apiBaseUrl + path, {
-        method: "PUT",
+        method: 'PUT',
         headers: {
-          "Content-Type": file.type || "application/octet-stream",
+          'Content-Type': file.type || 'application/octet-stream',
           Authorization: `Bearer ${token}`,
         },
         body: file,

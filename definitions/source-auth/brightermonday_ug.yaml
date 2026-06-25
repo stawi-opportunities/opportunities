@@ -1,0 +1,54 @@
+# BrighterMonday Uganda — extension-captured session, HTTP-form replay.
+#
+# Same ROAM Africa Laravel platform as BrighterMonday Kenya, on the
+# Uganda domain. It is a SEPARATE source from the Kenya board: the
+# session cookies are scoped to .brightermonday.co.ug, so a Kenya
+# session cannot apply here and vice-versa. The candidate connects each
+# country independently (its own card on the Connected Accounts page).
+
+source_type: brightermonday_ug
+auth_method: extension
+display_name: BrighterMonday Uganda
+login_url: https://www.brightermonday.co.ug/login
+home_url: https://www.brightermonday.co.ug
+cookie_domains:
+  - .brightermonday.co.ug
+storage_keys: []
+required_cookies: []
+session_ttl: 720h
+# /account/customer/enquiries is the candidate's "my applications"
+# dashboard — 200 when the session is valid, 302 → /login when not.
+detect_logged_in:
+  method: GET
+  url: https://www.brightermonday.co.ug/account/customer/enquiries
+  expect_status: 200
+apply_flow:
+  type: http_form
+  form_url_pattern: '^https://www\.brightermonday\.co\.ug/(job/.+/apply|listings/.+)$'
+  fields:
+    cv_file:
+      name: resume
+      source: cv_bytes
+    cover_letter:
+      name: cover_letter
+      source: cover_letter
+    phone:
+      name: phone
+      source: phone
+    full_name:
+      name: full_name
+      source: full_name
+  csrf:
+    source: cookie
+    cookie: XSRF-TOKEN
+    header: X-XSRF-TOKEN
+instructions_md: |
+  ### Connect BrighterMonday Uganda
+
+  1. **Install the Stawi extension** from the Chrome Web Store or Firefox Add-ons.
+  2. Go to <https://www.brightermonday.co.ug/login> and sign in to your BrighterMonday Uganda account.
+  3. Click the **Stawi** icon in your browser toolbar and choose **"Connect this account"**.
+  4. Return to this page — the BrighterMonday Uganda card should flip to **Connected ✓**.
+
+  Stawi will only access BrighterMonday Uganda while submitting applications you've approved.
+  You can disconnect at any time from this page.

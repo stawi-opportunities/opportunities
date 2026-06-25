@@ -188,6 +188,12 @@ func TestDeriveSourceType(t *testing.T) {
 		{"https://jobs.lever.co/company/456", "lever"},
 		{"https://acme.myworkdayjobs.com/en-US/External", "workday"},
 		{"https://careers.smartrecruiters.com/co/role-id", "smartrecruiters_page"},
+		// ROAM Africa boards — one source per country. Ghana must not be
+		// misread as Nigeria (jobberman.com.gh contains jobberman.com).
+		{"https://www.brightermonday.co.ke/listings/dev-abc", "brightermonday"},
+		{"https://www.brightermonday.co.ug/listings/dev-abc", "brightermonday_ug"},
+		{"https://www.jobberman.com/listings/dev-abc", "jobberman"},
+		{"https://www.jobberman.com.gh/listings/dev-abc", "jobberman_gh"},
 		{"https://example.com/jobs/123", ""},
 	}
 	for _, c := range cases {

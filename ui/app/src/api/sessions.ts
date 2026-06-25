@@ -3,11 +3,11 @@
 // which attaches the OIDC JWT — the gateway verifies the signature and
 // the matching service trusts the sub claim.
 
-import { authRuntime } from "@/auth/runtime";
+import { authRuntime } from '@/auth/runtime';
 
 export interface SourceAuthManifest {
   source_type: string;
-  auth_method: "none" | "extension" | "oauth" | "api_token";
+  auth_method: 'none' | 'extension' | 'oauth' | 'api_token';
   display_name: string;
   login_url: string;
   home_url?: string;
@@ -16,7 +16,7 @@ export interface SourceAuthManifest {
 
 export interface ConnectedSession {
   source_type: string;
-  status: "connected" | "expired" | "revoked";
+  status: 'connected' | 'expired' | 'revoked';
   captured_at: string;
   expires_at?: string;
   last_used_at?: string;
@@ -37,25 +37,25 @@ export async function fetchSourceAuth(sourceType: string): Promise<SourceAuthMan
 /** GET /candidates/me/sessions — per-source connection status for the candidate. */
 export async function fetchSessions(): Promise<ConnectedSession[]> {
   const body = await authRuntime().fetch<{ sessions: ConnectedSession[] }>(
-    "/candidates/me/sessions",
+    '/candidates/me/sessions'
   );
   return body.sessions ?? [];
 }
 
 /** POST /pairings — mint a 6-character pairing code the user types into the extension. */
 export async function createPairing(): Promise<PairingCreateResponse> {
-  return authRuntime().fetch("/pairings", { method: "POST" });
+  return authRuntime().fetch('/pairings', { method: 'POST' });
 }
 
 /** POST /pairings/revoke — drop every Stawi token issued for this candidate. */
 export async function revokeExtension(): Promise<void> {
-  await authRuntime().fetch("/pairings/revoke", { method: "POST" });
+  await authRuntime().fetch('/pairings/revoke', { method: 'POST' });
 }
 
 /** DELETE /candidates/me/sessions/:source_type — revoke one source's session. */
 export async function revokeSession(sourceType: string): Promise<void> {
   await authRuntime().fetch(`/candidates/me/sessions/${encodeURIComponent(sourceType)}`, {
-    method: "DELETE",
+    method: 'DELETE',
   });
 }
 
@@ -64,7 +64,7 @@ export async function fetchConnectedAccounts(): Promise<
   Array<SourceAuthManifest & { session?: ConnectedSession }>
 > {
   const list = await authRuntime().fetch<{ sources: SourceAuthManifest[] }>(
-    "/sources/auth-manifest",
+    '/sources/auth-manifest'
   );
   const sessions = await fetchSessions();
   const byType = new Map(sessions.map((s) => [s.source_type, s]));

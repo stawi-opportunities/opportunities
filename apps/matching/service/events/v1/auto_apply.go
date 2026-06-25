@@ -261,6 +261,17 @@ func deriveSourceType(applyURL string) string {
 		return string(domain.SourceWorkday)
 	case strings.Contains(lower, "smartrecruiters.com"):
 		return string(domain.SourceSmartRecruitersPage)
+	// ROAM Africa boards — one source per country (own domain + session).
+	// Order matters: jobberman.com.gh must be tested before jobberman.com,
+	// since the Ghana host contains the Nigeria host as a substring.
+	case strings.Contains(lower, "brightermonday.co.ke"):
+		return string(domain.SourceBrighterMonday)
+	case strings.Contains(lower, "brightermonday.co.ug"):
+		return string(domain.SourceBrighterMondayUG)
+	case strings.Contains(lower, "jobberman.com.gh"):
+		return string(domain.SourceJobbermanGH)
+	case strings.Contains(lower, "jobberman.com"):
+		return string(domain.SourceJobberman)
 	default:
 		return ""
 	}
