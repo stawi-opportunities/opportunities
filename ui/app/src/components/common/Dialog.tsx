@@ -51,7 +51,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
     <div
       className={clsx(
         'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 transition-opacity duration-200',
-        exiting ? 'opacity-0' : 'opacity-100 animate-fade-in',
+        exiting ? 'opacity-0' : 'opacity-100 animate-fade-in'
       )}
       role="dialog"
       aria-modal="true"
@@ -65,7 +65,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         ref={dialogRef}
         className={clsx(
           'w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl transition-all duration-200 dark:bg-navy-900',
-          exiting ? 'scale-95 opacity-0 translate-y-2' : 'scale-100 opacity-100 animate-slide-down',
+          exiting ? 'scale-95 opacity-0 translate-y-2' : 'scale-100 opacity-100 animate-slide-down'
         )}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

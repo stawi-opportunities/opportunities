@@ -20,7 +20,7 @@ export function Badge({ variant = 'neutral', className, children, ...rest }: Bad
       className={clsx(
         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
         variantStyles[variant],
-        className,
+        className
       )}
       {...rest}
     >
