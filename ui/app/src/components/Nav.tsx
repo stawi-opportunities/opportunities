@@ -2,18 +2,19 @@ import { useState, useRef, useEffect } from 'react';
 import { StawiAuth } from './StawiAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAuth } from '@/providers/AuthProvider';
+import { Icon } from './ui/Icon';
 
 const browseItems = [
-  { href: '/jobs/', emoji: '\uD83D\uDCBC', label: 'Jobs', sub: 'Full-time, remote & more' },
+  { href: '/jobs/', icon: 'briefcase' as const, label: 'Jobs', sub: 'Full-time, remote & more' },
   {
     href: '/scholarships/',
-    emoji: '\uD83C\uDF93',
+    icon: 'graduation' as const,
     label: 'Scholarships',
     sub: 'Grants & bursaries',
   },
-  { href: '/tenders/', emoji: '\uD83D\uDCCB', label: 'Tenders', sub: 'RFPs & procurement' },
-  { href: '/deals/', emoji: '\uD83C\uDFF7\uFE0F', label: 'Deals', sub: 'Curated discounts' },
-  { href: '/funding/', emoji: '\uD83D\uDCB0', label: 'Funding', sub: 'Grants & investment' },
+  { href: '/tenders/', icon: 'clipboard' as const, label: 'Tenders', sub: 'RFPs & procurement' },
+  { href: '/deals/', icon: 'tag' as const, label: 'Deals', sub: 'Curated discounts' },
+  { href: '/funding/', icon: 'money' as const, label: 'Funding', sub: 'Grants & investment' },
 ];
 
 function BrowseDropdown() {
@@ -58,15 +59,15 @@ function BrowseDropdown() {
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-xl border border-gray-100 bg-white shadow-lg ring-1 ring-black/5 dark:border-navy-700 dark:bg-navy-900">
           <div className="p-1.5">
-            {browseItems.map(({ href, emoji, label, sub }) => (
+            {browseItems.map(({ href, icon, label, sub }) => (
               <a
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white"
               >
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base dark:bg-navy-800">
-                  {emoji}
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-600 dark:bg-navy-800 dark:text-gray-400">
+                  <Icon name={icon} size={16} />
                 </span>
                 <div>
                   <div className="font-medium">{label}</div>
@@ -127,13 +128,14 @@ function MobileMenu({ open, isAuth }: { open: boolean; isAuth: boolean }) {
       <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
         Browse
       </p>
-      {browseItems.map(({ href, emoji, label }) => (
+      {browseItems.map(({ href, icon, label }) => (
         <a
           key={href}
           href={href}
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800"
         >
-          {emoji} {label}
+          <Icon name={icon} size={16} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+          {label}
         </a>
       ))}
       <div className="my-2 border-t border-gray-100 dark:border-navy-700" />
