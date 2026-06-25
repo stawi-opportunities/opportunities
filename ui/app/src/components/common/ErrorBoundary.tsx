@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback;
       return (
         <div className="mx-auto max-w-md py-16 text-center" role="alert">
-          <p className="mb-2 text-sm text-gray-500">Something went wrong</p>
+          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">Something went wrong</p>
           <button
             type="button"
             onClick={this.handleRetry}

@@ -41,7 +41,7 @@ function BrowseDropdown() {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="true"
-        className="flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
+        className="flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white"
       >
         Browse
         <svg
@@ -56,29 +56,29 @@ function BrowseDropdown() {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-xl border border-gray-100 bg-white shadow-lg ring-1 ring-black/5">
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-xl border border-gray-100 bg-white shadow-lg ring-1 ring-black/5 dark:border-navy-700 dark:bg-navy-900">
           <div className="p-1.5">
             {browseItems.map(({ href, emoji, label, sub }) => (
               <a
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900"
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white"
               >
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base">
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base dark:bg-navy-800">
                   {emoji}
                 </span>
                 <div>
                   <div className="font-medium">{label}</div>
-                  <div className="text-xs text-gray-500">{sub}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{sub}</div>
                 </div>
               </a>
             ))}
           </div>
-          <div className="border-t border-gray-100 px-3 py-2">
+          <div className="border-t border-gray-100 px-3 py-2 dark:border-navy-700">
             <a
               href="/search/"
-              className="flex items-center gap-1.5 text-xs font-medium text-navy-700 hover:text-navy-900"
+              className="flex items-center gap-1.5 text-xs font-medium text-navy-700 hover:text-navy-900 dark:text-navy-300 dark:hover:text-white"
             >
               <svg
                 className="h-3.5 w-3.5"
@@ -102,11 +102,11 @@ function BrowseDropdown() {
 function MobileMenu({ open, isAuth }: { open: boolean; isAuth: boolean }) {
   if (!open) return null;
   return (
-    <div className="border-t border-gray-100 bg-white px-4 pb-4 pt-2 md:hidden animate-slide-down">
+    <div className="border-t border-gray-100 bg-white px-4 pb-4 pt-2 md:hidden animate-slide-down dark:border-navy-700 dark:bg-navy-900">
       {isAuth && (
         <a
           href="/dashboard/"
-          className="mb-2 flex items-center gap-2 rounded-lg bg-navy-50 px-3 py-2 text-sm font-medium text-navy-900 hover:bg-navy-100"
+          className="mb-2 flex items-center gap-2 rounded-lg bg-navy-50 px-3 py-2 text-sm font-medium text-navy-900 hover:bg-navy-100 dark:text-white"
         >
           <svg
             className="h-4 w-4"
@@ -124,38 +124,41 @@ function MobileMenu({ open, isAuth }: { open: boolean; isAuth: boolean }) {
           Dashboard
         </a>
       )}
-      <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+      <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
         Browse
       </p>
       {browseItems.map(({ href, emoji, label }) => (
         <a
           key={href}
           href={href}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800"
         >
           {emoji} {label}
         </a>
       ))}
-      <div className="my-2 border-t border-gray-100" />
+      <div className="my-2 border-t border-gray-100 dark:border-navy-700" />
       <a
         href="/categories/"
-        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800"
       >
         Categories
       </a>
       <a
         href="/pricing/"
-        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800"
       >
         Pricing
       </a>
       <a
         href="/about/"
-        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800"
       >
         About
       </a>
-      <a href="/faq/" className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+      <a
+        href="/faq/"
+        className="flex rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800"
+      >
         FAQ
       </a>
     </div>
@@ -169,7 +172,7 @@ export default function Nav() {
 
   return (
     <header
-      className="sticky top-0 z-40 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur-xl"
+      className="sticky top-0 z-40 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur-xl dark:border-navy-700 dark:bg-navy-900/95"
       role="banner"
     >
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8">
@@ -184,7 +187,7 @@ export default function Nav() {
           {isAuth && (
             <a
               href="/dashboard/"
-              className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium text-navy-900 transition-colors hover:bg-navy-50"
+              className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium text-navy-900 transition-colors hover:bg-navy-50 dark:text-white"
             >
               <svg
                 className="h-4 w-4"
@@ -204,25 +207,25 @@ export default function Nav() {
           )}
           <a
             href="/categories/"
-            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
+            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white"
           >
             Categories
           </a>
           <a
             href="/pricing/"
-            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
+            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white"
           >
             Pricing
           </a>
           <a
             href="/about/"
-            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
+            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white"
           >
             About
           </a>
           <a
             href="/faq/"
-            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900"
+            className="rounded-md px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white"
           >
             FAQ
           </a>
@@ -236,7 +239,7 @@ export default function Nav() {
           {/* Mobile hamburger */}
           <button
             type="button"
-            className="flex items-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-navy-900 md:hidden"
+            className="flex items-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-navy-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white md:hidden"
             aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((o) => !o)}

@@ -23,6 +23,7 @@ import { SettingsPage } from '@/components/settings/SettingsPage';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useTheme } from '@/providers/ThemeProvider';
 
 function getSectionFromHash(): SectionId {
   const hash = window.location.hash.replace('#', '');
@@ -150,7 +151,7 @@ export default function Dashboard() {
               )}
               {activeSection === 'saved' && (
                 <ErrorBoundary>
-                  <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500">
+                  <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-400">
                     Saved opportunities will appear here.
                   </div>
                 </ErrorBoundary>
@@ -207,6 +208,7 @@ export default function Dashboard() {
 }
 
 function ProfileMount() {
+  const { resolved: resolvedTheme } = useTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -221,7 +223,7 @@ function ProfileMount() {
         installationId: cfg.oidcInstallationID,
         idpBaseUrl: cfg.oidcIssuer,
         apiBaseUrl: cfg.candidatesAPIURL,
-        theme: 'light',
+        theme: resolvedTheme,
         tokens: profileWidgetTokens,
         css: profileWidgetCSS,
         onLogout: () => {
@@ -240,8 +242,10 @@ function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {
   const { t } = useI18n();
   return (
     <div className="mx-auto max-w-md py-16 text-center">
-      <h1 className="text-2xl font-semibold text-gray-900">{t('dash.signInTitle')}</h1>
-      <p className="mt-2 text-gray-600">{t('dash.signInHint')}</p>
+      <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        {t('dash.signInTitle')}
+      </h1>
+      <p className="mt-2 text-gray-600 dark:text-gray-300">{t('dash.signInHint')}</p>
       <button
         type="button"
         onClick={() => void onSignIn()}
@@ -258,34 +262,37 @@ function Skeleton() {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex animate-pulse items-end justify-between gap-4">
         <div className="space-y-2">
-          <div className="h-8 w-48 rounded bg-gray-100" />
+          <div className="h-8 w-48 rounded bg-gray-100 dark:bg-navy-800" />
           <div className="flex items-center gap-2">
-            <div className="h-5 w-16 rounded-full bg-gray-100" />
-            <div className="h-4 w-64 rounded bg-gray-100" />
+            <div className="h-5 w-16 rounded-full bg-gray-100 dark:bg-navy-800" />
+            <div className="h-4 w-64 rounded bg-gray-100 dark:bg-navy-800" />
           </div>
         </div>
         <div className="flex gap-3">
-          <div className="h-5 w-20 rounded bg-gray-100" />
-          <div className="h-10 w-28 rounded-md bg-gray-100" />
+          <div className="h-5 w-20 rounded bg-gray-100 dark:bg-navy-800" />
+          <div className="h-10 w-28 rounded-md bg-gray-100 dark:bg-navy-800" />
         </div>
       </div>
       <div className="mt-8 grid animate-pulse gap-8 lg:grid-cols-[240px_1fr]">
         <aside className="space-y-4">
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-gray-200 bg-white p-6">
-            <div className="h-16 w-16 rounded-full bg-gray-100" />
-            <div className="h-4 w-24 rounded bg-gray-100" />
-            <div className="h-3 w-32 rounded bg-gray-100" />
-            <div className="h-3 w-20 rounded bg-gray-100" />
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-gray-200 bg-white p-6 dark:border-navy-700 dark:bg-navy-900">
+            <div className="h-16 w-16 rounded-full bg-gray-100 dark:bg-navy-800" />
+            <div className="h-4 w-24 rounded bg-gray-100 dark:bg-navy-800" />
+            <div className="h-3 w-32 rounded bg-gray-100 dark:bg-navy-800" />
+            <div className="h-3 w-20 rounded bg-gray-100 dark:bg-navy-800" />
           </div>
         </aside>
         <section className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="h-4 w-3/4 rounded bg-gray-100" />
-              <div className="mt-2 h-3 w-1/2 rounded bg-gray-100" />
+            <div
+              key={i}
+              className="rounded-lg border border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-900"
+            >
+              <div className="h-4 w-3/4 rounded bg-gray-100 dark:bg-navy-800" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-gray-100 dark:bg-navy-800" />
               <div className="mt-3 flex gap-2">
-                <div className="h-8 w-20 rounded bg-gray-100" />
-                <div className="h-8 w-20 rounded bg-gray-100" />
+                <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
+                <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
               </div>
             </div>
           ))}
