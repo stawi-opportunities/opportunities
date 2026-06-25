@@ -177,6 +177,35 @@ func (b *Buffer) FlushAll() []*Batch {
 	return out
 }
 
+// Requeue puts an uncommitted batch back into its partition buffer. It is used
+// when an Iceberg commit fails after a flush removed the batch from memory.
+func (b *Buffer) Requeue(batch *Batch) {
+	if batch == nil || len(batch.Events) == 0 {
+		return
+	}
+	key := bufferKey{topic: batch.EventType, secondary: batch.PartKey.Secondary}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	pb, exists := b.parts[key]
+	if !exists {
+		pb = &partitionBuffer{dt: batch.PartKey.DT, openedAt: time.Now()}
+		b.parts[key] = pb
+		b.insertOrder = append(b.insertOrder, key)
+	}
+
+	requeued := make([]json.RawMessage, len(batch.Events))
+	var bytes int
+	for i, raw := range batch.Events {
+		requeued[i] = append(json.RawMessage(nil), raw...)
+		bytes += len(raw)
+	}
+	pb.events = append(requeued, pb.events...)
+	pb.bytes += bytes
+	b.totalBytes += int64(bytes)
+}
+
 // StatsForTopic returns the total (bytes, events) currently buffered across
 // all partition-secondary slots for the given topic.  Returns (0,0) if no
 // data is buffered for that topic.  Safe for concurrent use.
@@ -194,10 +223,10 @@ func (b *Buffer) StatsForTopic(topic string) (bytes int, events int) {
 
 // BufferStats is the aggregate view reported by Stats().
 type BufferStats struct {
-	TotalBytes    int64            // bytes currently buffered across all partitions
-	MaxTotalBytes int64            // current budget ceiling (adapts with pod memory)
-	PartitionCount int             // number of open partition buffers
-	PerTopicBytes map[string]int64 // bytes per event topic
+	TotalBytes     int64            // bytes currently buffered across all partitions
+	MaxTotalBytes  int64            // current budget ceiling (adapts with pod memory)
+	PartitionCount int              // number of open partition buffers
+	PerTopicBytes  map[string]int64 // bytes per event topic
 }
 
 // Stats returns a point-in-time snapshot of buffer utilisation. Safe for

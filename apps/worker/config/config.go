@@ -58,6 +58,11 @@ type Config struct {
 	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
 	// 0 omits it. Must equal EMBEDDING_DIM.
 	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
+	// EmbeddingMaxConcurrency limits simultaneous outbound embedding calls
+	// per worker process. Use this with EmbeddingMinInterval when the provider
+	// enforces low RPM limits.
+	EmbeddingMaxConcurrency int           `env:"EMBEDDING_MAX_CONCURRENCY" envDefault:"0"`
+	EmbeddingMinInterval    time.Duration `env:"EMBEDDING_MIN_INTERVAL" envDefault:"0s"`
 
 	// Translation target languages. Empty → translator is a no-op.
 	// Pipe-separated: "en|sw|fr".

@@ -142,15 +142,17 @@ func main() {
 	var ex *extraction.Extractor
 	if cfg.InferenceBaseURL != "" || cfg.EmbeddingBaseURL != "" {
 		ex = extraction.New(extraction.Config{
-			BaseURL:          cfg.InferenceBaseURL,
-			APIKey:           cfg.InferenceAPIKey,
-			Model:            cfg.InferenceModel,
-			EmbeddingBaseURL:    cfg.EmbeddingBaseURL,
-			EmbeddingAPIKey:     cfg.EmbeddingAPIKey,
-			EmbeddingModel:      cfg.EmbeddingModel,
-			EmbeddingDimensions: cfg.EmbeddingDimensions,
-			Registry:            reg,
-			HTTPClient:          svc.HTTPClientManager().Client(ctx),
+			BaseURL:                 cfg.InferenceBaseURL,
+			APIKey:                  cfg.InferenceAPIKey,
+			Model:                   cfg.InferenceModel,
+			EmbeddingBaseURL:        cfg.EmbeddingBaseURL,
+			EmbeddingAPIKey:         cfg.EmbeddingAPIKey,
+			EmbeddingModel:          cfg.EmbeddingModel,
+			EmbeddingDimensions:     cfg.EmbeddingDimensions,
+			EmbeddingMaxConcurrency: cfg.EmbeddingMaxConcurrency,
+			EmbeddingMinInterval:    cfg.EmbeddingMinInterval,
+			Registry:                reg,
+			HTTPClient:              svc.HTTPClientManager().Client(ctx),
 		})
 	}
 

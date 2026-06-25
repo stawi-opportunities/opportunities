@@ -18,11 +18,12 @@ import (
 type WriterHandler struct {
 	topic  string
 	buffer *Buffer
+	commit func(context.Context, *Batch) error
 }
 
 // NewWriterHandler binds a handler to a topic + buffer.
-func NewWriterHandler(topic string, buffer *Buffer) *WriterHandler {
-	return &WriterHandler{topic: topic, buffer: buffer}
+func NewWriterHandler(topic string, buffer *Buffer, commit func(context.Context, *Batch) error) *WriterHandler {
+	return &WriterHandler{topic: topic, buffer: buffer, commit: commit}
 }
 
 // Name — the event name Frame dispatches on.
@@ -62,7 +63,7 @@ func (h *WriterHandler) Execute(ctx context.Context, payload any) error {
 	if !ok || raw == nil {
 		return errors.New("writer: wrong payload type")
 	}
-	return h.enqueue(*raw)
+	return h.enqueue(ctx, *raw)
 }
 
 // Handle is the Frame Queue entry point (queue.SubscribeWorker). The
@@ -70,17 +71,24 @@ func (h *WriterHandler) Execute(ctx context.Context, payload any) error {
 // writer is a fan-out durable consumer of each (its own
 // consumer_durable_name, parallel to the in-pipeline consumer). The raw
 // envelope bytes land straight in the buffer — same path as Execute.
-func (h *WriterHandler) Handle(_ context.Context, _ map[string]string, payload []byte) error {
+func (h *WriterHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	if len(payload) == 0 {
 		return errors.New("writer: empty queue payload")
 	}
-	return h.enqueue(json.RawMessage(payload))
+	return h.enqueue(ctx, json.RawMessage(payload))
 }
 
-func (h *WriterHandler) enqueue(raw json.RawMessage) error {
+func (h *WriterHandler) enqueue(ctx context.Context, raw json.RawMessage) error {
 	hint := extractHint(raw, h.topic)
-	if _, err := h.buffer.Add(raw, hint); err != nil {
+	batch, err := h.buffer.Add(raw, hint)
+	if err != nil {
 		return fmt.Errorf("writer: buffer.Add: %w", err)
+	}
+	if batch != nil && h.commit != nil {
+		if err := h.commit(ctx, batch); err != nil {
+			h.buffer.Requeue(batch)
+			return fmt.Errorf("writer: threshold commit: %w", err)
+		}
 	}
 	return nil
 }

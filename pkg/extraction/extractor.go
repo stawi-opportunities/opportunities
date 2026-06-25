@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -68,7 +69,11 @@ type Extractor struct {
 	// field so MRL-capable models (e.g. SiliconFlow Qwen3-Embedding) emit
 	// a fixed-width vector matching the pgvector column. 0 = omit (the
 	// model's native width, e.g. e5-large's 1024).
-	embeddingDimensions int
+	embeddingDimensions  int
+	embeddingSlots       chan struct{}
+	embeddingMinInterval time.Duration
+	embeddingMu          sync.Mutex
+	embeddingLast        time.Time
 
 	rerankBaseURL string
 	rerankAPIKey  string
@@ -98,20 +103,26 @@ func New(cfg Config) *Extractor {
 	if hc == nil {
 		hc = &http.Client{Timeout: extractionTimeout}
 	}
+	var embeddingSlots chan struct{}
+	if cfg.EmbeddingMaxConcurrency > 0 {
+		embeddingSlots = make(chan struct{}, cfg.EmbeddingMaxConcurrency)
+	}
 	e := &Extractor{
-		baseURL:             strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:              cfg.APIKey,
-		model:               cfg.Model,
-		embeddingBaseURL:    strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
-		embeddingAPIKey:     cfg.EmbeddingAPIKey,
-		embeddingModel:      cfg.EmbeddingModel,
-		embeddingDimensions: cfg.EmbeddingDimensions,
-		rerankBaseURL:       strings.TrimRight(cfg.RerankBaseURL, "/"),
-		rerankAPIKey:        cfg.RerankAPIKey,
-		rerankModel:         cfg.RerankModel,
-		rerankDialect:       strings.ToLower(strings.TrimSpace(cfg.RerankDialect)),
-		client:              hc,
-		registry:            cfg.Registry,
+		baseURL:              strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:               cfg.APIKey,
+		model:                cfg.Model,
+		embeddingBaseURL:     strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
+		embeddingAPIKey:      cfg.EmbeddingAPIKey,
+		embeddingModel:       cfg.EmbeddingModel,
+		embeddingDimensions:  cfg.EmbeddingDimensions,
+		embeddingSlots:       embeddingSlots,
+		embeddingMinInterval: cfg.EmbeddingMinInterval,
+		rerankBaseURL:        strings.TrimRight(cfg.RerankBaseURL, "/"),
+		rerankAPIKey:         cfg.RerankAPIKey,
+		rerankModel:          cfg.RerankModel,
+		rerankDialect:        strings.ToLower(strings.TrimSpace(cfg.RerankDialect)),
+		client:               hc,
+		registry:             cfg.Registry,
 	}
 	e.llm = chatLLM{e: e}
 	return e

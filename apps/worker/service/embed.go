@@ -145,6 +145,11 @@ func (h *EmbedHandler) Handle(ctx context.Context, _ map[string]string, payload 
 		// redelivery here: after maxEmbedAttempts recorded attempts, ack
 		// and leave the embedding NULL for the backfill rather than loop
 		// forever and occupy a queue slot.
+		if reason == "rate_limit" {
+			util.Log(ctx).WithField("reason", reason).
+				Info("embed: provider rate limit exhausted; acking and leaving embedding NULL")
+			return nil
+		}
 		attempts, _ := h.store.AttemptCountByCanonical(ctx, c.OpportunityID, variantstate.StageEmbed)
 		if attempts >= maxEmbedAttempts {
 			util.Log(ctx).WithError(err).

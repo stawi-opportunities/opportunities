@@ -105,7 +105,7 @@ func (s *Service) RegisterSubscriptions(topics []string) error {
 	}
 	mgr.SetStrict(false)
 	for _, t := range topics {
-		h := NewWriterHandler(t, s.buffer)
+		h := NewWriterHandler(t, s.buffer, s.commitBatch)
 		mgr.Add(h)
 	}
 	return nil
@@ -117,7 +117,7 @@ func (s *Service) RegisterSubscriptions(topics []string) error {
 // queue. The returned worker funnels into the same buffer the events-bus
 // handlers use, so the flusher path is identical.
 func (s *Service) QueueWorker(topic string) queue.SubscribeWorker {
-	return NewWriterHandler(topic, s.buffer)
+	return NewWriterHandler(topic, s.buffer, s.commitBatch)
 }
 
 // RunFlusher drives the time-based flush path. Size/count-based
@@ -138,10 +138,11 @@ func (s *Service) RunFlusher(ctx context.Context) error {
 		case <-t.C:
 			for _, b := range s.buffer.Due() {
 				if err := s.commitBatch(ctx, b); err != nil {
+					s.buffer.Requeue(b)
 					util.Log(ctx).WithError(err).
 						WithField("collection", b.Collection).
 						WithField("part", b.PartKey.Secondary).
-						Error("writer: commit batch failed; keeping events for redelivery")
+						Error("writer: commit batch failed; requeued for retry")
 				}
 			}
 		}
