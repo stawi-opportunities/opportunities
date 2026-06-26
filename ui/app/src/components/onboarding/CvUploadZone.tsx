@@ -57,12 +57,12 @@ export function CvUploadZone({ value, onChange, error, t }: Props) {
         onClick={() => inputRef.current?.click()}
         className={`cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
           value
-            ? 'border-emerald-300 bg-emerald-50'
+            ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20'
             : dragging
-              ? 'border-accent-500 bg-accent-50'
+              ? 'border-accent-500 bg-accent-50 dark:bg-accent-900/20'
               : displayError
-                ? 'border-red-300 bg-red-50'
-                : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+                ? 'border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-900/20'
+                : 'border-gray-300 bg-gray-50 hover:border-gray-400 dark:border-navy-600 dark:bg-navy-800 dark:hover:border-navy-500'
         }`}
       >
         {value ? (
@@ -82,8 +82,10 @@ export function CvUploadZone({ value, onChange, error, t }: Props) {
                 />
               </svg>
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-gray-900">{value.name}</p>
-                <p className="text-xs text-gray-500">
+                <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                  {value.name}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   {(value.size / 1024).toFixed(1)} KB · {t('onboard.readyToUpload')}
                 </p>
               </div>
@@ -94,7 +96,7 @@ export function CvUploadZone({ value, onChange, error, t }: Props) {
                 e.stopPropagation();
                 onChange(undefined);
               }}
-              className="shrink-0 text-sm font-medium text-gray-600 hover:text-gray-900"
+              className="shrink-0 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
             >
               {t('onboard.remove')}
             </button>
@@ -131,8 +133,12 @@ export function CvUploadZone({ value, onChange, error, t }: Props) {
                 d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
               />
             </svg>
-            <p className="mt-2 text-sm text-gray-700">{t('onboard.cvDragPrompt')}</p>
-            <p className="mt-1 text-xs text-gray-500">{t('onboard.cvFormats')}</p>
+            <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+              {t('onboard.cvDragPrompt')}
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {t('onboard.cvFormats')}
+            </p>
           </div>
         )}
       </div>
@@ -150,7 +156,7 @@ export function CvUploadZone({ value, onChange, error, t }: Props) {
       />
 
       {displayError && (
-        <p className="mt-1 text-sm text-red-600" role="alert">
+        <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
           {displayError}
         </p>
       )}

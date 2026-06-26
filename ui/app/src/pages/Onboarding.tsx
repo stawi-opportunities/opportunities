@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, type SubmitHandler, type UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
@@ -11,6 +11,8 @@ import type { StringKey } from '@/i18n/strings';
 import { StepProgress } from '@/components/onboarding/StepProgress';
 import { CvUploadZone } from '@/components/onboarding/CvUploadZone';
 import { PlanSelector } from '@/components/onboarding/PlanSelector';
+import { Field } from '@/components/ui/Field';
+import { Button } from '@/components/ui/Button';
 import {
   fetchMeSubscription,
   fetchOnboardingDraft,
@@ -80,16 +82,16 @@ const TIMEZONES = [
   'PST (UTC-8)',
 ];
 
-const LANGUAGE_KEYS: { value: string; labelKey: StringKey }[] = [
-  { value: 'English', labelKey: 'onboard.anywhere' },
-  { value: 'French', labelKey: 'onboard.anywhere' },
-  { value: 'Arabic', labelKey: 'onboard.anywhere' },
-  { value: 'Swahili', labelKey: 'onboard.anywhere' },
-  { value: 'Portuguese', labelKey: 'onboard.anywhere' },
-  { value: 'Spanish', labelKey: 'onboard.anywhere' },
-  { value: 'German', labelKey: 'onboard.anywhere' },
-  { value: 'Mandarin', labelKey: 'onboard.anywhere' },
-];
+const LANGUAGE_KEYS = [
+  'English',
+  'French',
+  'Arabic',
+  'Swahili',
+  'Portuguese',
+  'Spanish',
+  'German',
+  'Mandarin',
+] as const;
 
 const JOB_TYPE_KEYS: { value: string; labelKey: StringKey }[] = [
   { value: 'Full-time', labelKey: 'onboard.fullTime' },
@@ -199,7 +201,7 @@ export default function Onboarding() {
   if (state === 'unauthenticated' || state === 'initializing') {
     return (
       <div className="mx-auto flex min-h-[40vh] max-w-md items-center justify-center px-4 py-16 text-center">
-        <p className="text-sm text-gray-600">{t('onboard.openingSignIn')}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">{t('onboard.openingSignIn')}</p>
       </div>
     );
   }
@@ -316,10 +318,15 @@ export default function Onboarding() {
     setStep(prevStep);
   }
 
+  const stepRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    stepRef.current?.querySelector<HTMLElement>('input, textarea, select')?.focus();
+  }, [step]);
+
   const selectedPlan = form.watch('plan');
   const finishLabel =
     step === 3
-      ? `${t('onboard.continueToPayment')} ┬╖ $${planById(selectedPlan).price}${t('dash.perMonth')}`
+      ? `${t('onboard.continueToPayment')} \u00B7 $${planById(selectedPlan).price}${t('dash.perMonth')}`
       : t('onboard.continue');
 
   function buildDraftFields(values: FormValues): OnboardingDraftFields {
@@ -361,7 +368,7 @@ export default function Onboarding() {
       {draftSaveWarning && (
         <div
           role="status"
-          className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-300"
         >
           {t('onboard.draftSaveWarning')}
         </div>
@@ -374,13 +381,15 @@ export default function Onboarding() {
           void next();
         }}
       >
-        {step === 1 && <Step1Form form={form} t={t} />}
-        {step === 2 && <Step2Form form={form} t={t} onSkipPreferences={skipPreferences} />}
-        {step === 3 && <Step3Form form={form} t={t} />}
+        <div ref={stepRef}>
+          {step === 1 && <Step1Form form={form} t={t} />}
+          {step === 2 && <Step2Form form={form} t={t} onSkipPreferences={skipPreferences} />}
+          {step === 3 && <Step3Form form={form} t={t} />}
+        </div>
         {profileSaved && (
-          <div className="mt-4 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
             <svg
-              className="h-4 w-4 shrink-0 text-emerald-600"
+              className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -396,16 +405,20 @@ export default function Onboarding() {
           </div>
         )}
         {submitError && (
-          <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          <p
+            className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300"
+            role="alert"
+          >
             {submitError}
           </p>
         )}
         <div className="mt-8 flex items-center justify-between">
-          <button
+          <Button
+            variant="secondary"
+            size="md"
             type="button"
             disabled={step === 1 || submitting}
             onClick={() => void goBack()}
-            className="inline-flex items-center gap-1.5 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -416,14 +429,10 @@ export default function Onboarding() {
               />
             </svg>
             {t('onboard.back')}
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded bg-navy-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900 disabled:opacity-60"
-          >
+          </Button>
+          <Button variant="primary" size="md" type="submit" disabled={submitting}>
             {submitting ? t('onboard.submitting') : finishLabel}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -445,8 +454,10 @@ function Step1Form({ form, t }: FormProps) {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-gray-900">{t('onboard.aboutYou')}</h1>
-        <p className="mt-1 text-gray-600">{t('onboard.aboutYouHint')}</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          {t('onboard.aboutYou')}
+        </h1>
+        <p className="mt-1 text-gray-600 dark:text-gray-400">{t('onboard.aboutYouHint')}</p>
       </header>
 
       <CvUploadZone
@@ -455,7 +466,7 @@ function Step1Form({ form, t }: FormProps) {
         error={errors.cv?.message as string | undefined}
         t={t}
       />
-      <p className="text-xs text-gray-500">{t('onboard.cvPrivacy')}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">{t('onboard.cvPrivacy')}</p>
 
       <Field label={t('onboard.extraInfo')} error={errors.extraInfo?.message as string | undefined}>
         {(id) => (
@@ -464,7 +475,7 @@ function Step1Form({ form, t }: FormProps) {
             rows={3}
             placeholder={t('onboard.extraInfoPlaceholder')}
             {...register('extraInfo')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+            className="input-field"
           />
         )}
       </Field>
@@ -472,10 +483,7 @@ function Step1Form({ form, t }: FormProps) {
       <Field label={t('onboard.targetSalary')}>
         {() => (
           <div className="flex gap-3">
-            <select
-              {...register('salaryCurrency')}
-              className="w-28 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
-            >
+            <select {...register('salaryCurrency')} className="input-field w-28">
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -488,7 +496,7 @@ function Step1Form({ form, t }: FormProps) {
               step="1000"
               placeholder={t('onboard.salaryPlaceholder')}
               {...register('salaryAmount', { valueAsNumber: true })}
-              className="flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+              className="input-field flex-1"
             />
           </div>
         )}
@@ -527,8 +535,10 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-gray-900">{t('onboard.yourPreferences')}</h1>
-        <p className="mt-1 text-gray-600">{t('onboard.preferencesHint')}</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          {t('onboard.yourPreferences')}
+        </h1>
+        <p className="mt-1 text-gray-600 dark:text-gray-400">{t('onboard.preferencesHint')}</p>
       </header>
       <Field
         label={t('onboard.regions')}
@@ -546,7 +556,7 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
                   className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                     on
                       ? 'border-navy-900 bg-navy-900 text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:border-navy-500 dark:hover:bg-navy-700'
                   }`}
                   onClick={() => toggleRegion(value)}
                 >
@@ -570,7 +580,7 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
                   className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                     on
                       ? 'border-navy-900 bg-navy-900 text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:border-navy-500 dark:hover:bg-navy-700'
                   }`}
                   onClick={() =>
                     setValue(
@@ -592,7 +602,7 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
       >
         {() => (
           <div className="flex flex-wrap gap-2" role="group" aria-label={t('onboard.languages')}>
-            {LANGUAGE_KEYS.map(({ value }) => {
+            {LANGUAGE_KEYS.map((value) => {
               const on = selectedLangs.includes(value);
               return (
                 <button
@@ -602,7 +612,7 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
                   className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                     on
                       ? 'border-navy-900 bg-navy-900 text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:border-navy-500 dark:hover:bg-navy-700'
                   }`}
                   onClick={() => {
                     setValue(
@@ -632,7 +642,7 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
                   className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                     on
                       ? 'border-navy-900 bg-navy-900 text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:border-navy-500 dark:hover:bg-navy-700'
                   }`}
                   onClick={() => {
                     setValue(
@@ -659,7 +669,7 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
             autoComplete="country-name"
             placeholder={t('onboard.countryPlaceholder')}
             {...register('country')}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+            className="input-field"
           />
         )}
       </Field>
@@ -668,11 +678,13 @@ function Step2Form({ form, t, onSkipPreferences }: FormProps) {
           <button
             type="button"
             onClick={() => void onSkipPreferences()}
-            className="text-sm text-gray-500 underline hover:text-gray-600"
+            className="text-sm text-gray-500 underline hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
           >
             {t('onboard.skipPreferences')}
           </button>
-          <p className="mt-1 text-xs text-gray-500">{t('onboard.skipPreferencesHint')}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {t('onboard.skipPreferencesHint')}
+          </p>
         </div>
       )}
     </div>
@@ -691,8 +703,10 @@ function Step3Form({ form, t }: FormProps) {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-gray-900">{t('onboard.choosePlan')}</h1>
-        <p className="mt-1 text-gray-600">{t('onboard.choosePlanHint')}</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          {t('onboard.choosePlan')}
+        </h1>
+        <p className="mt-1 text-gray-600 dark:text-gray-400">{t('onboard.choosePlanHint')}</p>
       </header>
 
       <Field error={errors.plan?.message as string | undefined}>
@@ -711,9 +725,9 @@ function Step3Form({ form, t }: FormProps) {
             <input
               type="checkbox"
               {...register('agreeTerms')}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-navy-900 focus:ring-navy-900"
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-navy-900 focus:ring-navy-900 dark:border-navy-500 dark:bg-navy-800"
             />
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
               {t('onboard.agreeTermsLabel')}{' '}
               <a
                 href="/terms/"
@@ -734,34 +748,7 @@ function Step3Form({ form, t }: FormProps) {
         )}
       </Field>
 
-      <p className="text-xs text-gray-500">{t('onboard.paymentRedirectHint')}</p>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label?: string;
-  error?: string;
-  children: (id: string) => React.ReactNode;
-}) {
-  const id = useId();
-  return (
-    <div>
-      {label && (
-        <label htmlFor={id} className="block text-sm font-medium text-gray-700">
-          {label}
-        </label>
-      )}
-      <div className={label ? 'mt-1' : ''}>{children(id)}</div>
-      {error && (
-        <p className="mt-1 text-sm text-red-600" role="alert">
-          {error}
-        </p>
-      )}
+      <p className="text-xs text-gray-500 dark:text-gray-400">{t('onboard.paymentRedirectHint')}</p>
     </div>
   );
 }

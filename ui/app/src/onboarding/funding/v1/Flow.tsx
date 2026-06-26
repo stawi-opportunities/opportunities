@@ -4,6 +4,7 @@
 // for vector / lexical matching against the call's eligibility),
 // requested amount range, and geographic scope.
 
+import { Button } from '@/components/ui/Button';
 import { useState, type ChangeEvent } from 'react';
 import {
   LocationPicker,
@@ -46,9 +47,13 @@ export function Flow({
       }}
       className="space-y-6 max-w-xl"
     >
-      <h2 className="text-2xl font-semibold text-gray-900">Tell us about your funding needs</h2>
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        Tell us about your funding needs
+      </h2>
       <label className="block text-sm">
-        <span className="block font-medium text-gray-700">Organisation type</span>
+        <span className="block font-medium text-gray-700 dark:text-gray-300">
+          Organisation type
+        </span>
         <select
           className="input-field mt-1"
           value={p.organisation_type}
@@ -89,9 +94,7 @@ export function Flow({
         onChange={(l) => setP({ ...p, geographic_scope: l })}
         label="Geographic scope"
       />
-      <button className="btn-primary" type="submit">
-        Save preferences
-      </button>
+      <Button type="submit">Save preferences</Button>
     </form>
   );
 }

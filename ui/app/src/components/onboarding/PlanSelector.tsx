@@ -21,12 +21,12 @@ export function PlanSelector({ value, onChange, t }: Props) {
             key={p.id}
             className={`relative flex flex-col rounded-lg border-2 p-5 transition-colors ${
               on
-                ? 'border-accent-500 bg-accent-50 shadow-sm'
-                : 'border-gray-200 bg-white hover:border-gray-300'
+                ? 'border-accent-500 bg-accent-50 shadow-sm dark:bg-accent-900/20'
+                : 'border-gray-200 bg-white hover:border-gray-300 dark:border-navy-600 dark:bg-navy-800 dark:hover:border-navy-500'
             }`}
           >
             {p.highlight && (
-              <span className="absolute -top-2.5 right-3 rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+              <span className="absolute -top-2.5 right-3 rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                 Most popular
               </span>
             )}
@@ -38,14 +38,16 @@ export function PlanSelector({ value, onChange, t }: Props) {
               onClick={() => onChange(p.id)}
               className="flex flex-col items-start gap-1 text-left"
             >
-              <span className="text-lg font-bold text-gray-900">{p.name}</span>
-              <span className="text-xl font-bold text-gray-900">
+              <span className="text-lg font-bold text-gray-900 dark:text-white">{p.name}</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-white">
                 ${p.price}
-                <span className="text-sm font-normal text-gray-500">{t('dash.perMonth')}</span>
+                <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                  {t('dash.perMonth')}
+                </span>
               </span>
-              <span className="mt-1 text-sm text-gray-600">{p.tagline}</span>
+              <span className="mt-1 text-sm text-gray-600 dark:text-gray-300">{p.tagline}</span>
               {p.matchesPerWeek !== null && (
-                <span className="mt-1 text-xs text-gray-500">
+                <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {t('onboard.matchesPerWeek').replace('{count}', String(p.matchesPerWeek))}
                 </span>
               )}
@@ -69,7 +71,10 @@ export function PlanSelector({ value, onChange, t }: Props) {
               {showAll && (
                 <ul className="mt-2 space-y-1">
                   {p.features.map((f) => (
-                    <li key={f} className="flex items-start gap-1.5 text-xs text-gray-500">
+                    <li
+                      key={f}
+                      className="flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+                    >
                       <svg
                         className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500"
                         fill="none"

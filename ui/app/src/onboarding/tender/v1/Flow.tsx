@@ -4,6 +4,7 @@
 // company name, registration country, and a comma-separated list of
 // capabilities the matcher uses to score notice descriptions.
 
+import { Button } from '@/components/ui/Button';
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 
 export interface TenderPreferences {
@@ -32,7 +33,9 @@ export function Flow({
   };
   return (
     <form onSubmit={submit} className="space-y-4 max-w-xl">
-      <h2 className="text-2xl font-semibold text-gray-900">Tell us about your company</h2>
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        Tell us about your company
+      </h2>
       <input
         className="input-field"
         placeholder="Company name"
@@ -64,9 +67,7 @@ export function Flow({
           })
         }
       />
-      <button className="btn-primary" type="submit">
-        Save preferences
-      </button>
+      <Button type="submit">Save preferences</Button>
     </form>
   );
 }

@@ -2,6 +2,7 @@
 // deal matcher. Categories drive topical relevance; countries scope
 // availability (some deals are geo-fenced).
 
+import { Button } from '@/components/ui/Button';
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 
 export interface DealPreferences {
@@ -30,12 +31,17 @@ export function Flow({
   };
   return (
     <form onSubmit={submit} className="space-y-4 max-w-xl">
-      <h2 className="text-2xl font-semibold text-gray-900">What kinds of deals interest you?</h2>
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        What kinds of deals interest you?
+      </h2>
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700">Categories</legend>
+        <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Categories</legend>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
           {CATEGORIES.map((c) => (
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700" key={c}>
+            <label
+              className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+              key={c}
+            >
               <input
                 type="checkbox"
                 checked={p.interest_categories.includes(c)}
@@ -69,9 +75,7 @@ export function Flow({
           })
         }
       />
-      <button className="btn-primary" type="submit">
-        Save preferences
-      </button>
+      <Button type="submit">Save preferences</Button>
     </form>
   );
 }
