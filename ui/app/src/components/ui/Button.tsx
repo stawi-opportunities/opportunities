@@ -25,19 +25,14 @@ interface ButtonBaseProps {
   variant?: Variant;
   size?: Size;
   className?: string;
+  as?: 'button' | 'a';
 }
 
-type ButtonAsButton = ButtonBaseProps &
-  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'> & { as?: 'button' };
+type ButtonProps = ButtonBaseProps &
+  ButtonHTMLAttributes<HTMLButtonElement> &
+  AnchorHTMLAttributes<HTMLAnchorElement>;
 
-type ButtonAsLink = ButtonBaseProps &
-  Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'className'> & { as: 'a' };
-
-type ButtonProps = ButtonAsButton | ButtonAsLink;
-
-export function Button(props: ButtonProps) {
-  const { variant = 'primary', size = 'md', className, ...rest } = props;
-
+export function Button({ variant = 'primary', size = 'md', className, as: tag, ...rest }: ButtonProps) {
   const classes = clsx(
     'inline-flex items-center justify-center gap-2 transition-all duration-150',
     variantStyles[variant],
@@ -45,11 +40,9 @@ export function Button(props: ButtonProps) {
     className,
   );
 
-  if (props.as === 'a') {
-    const { as: _as, ...anchorProps } = rest as Omit<ButtonAsLink, 'variant' | 'size' | 'className'>;
-    return <a className={classes} {...anchorProps} />;
+  if (tag === 'a') {
+    return <a className={classes} {...rest} />;
   }
 
-  const { as: _as, ...btnProps } = rest as Omit<ButtonAsButton, 'variant' | 'size' | 'className'>;
-  return <button className={classes} {...btnProps} />;
+  return <button className={classes} {...rest} />;
 }
