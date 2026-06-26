@@ -52,7 +52,9 @@ export function Flow({
       }}
       className="space-y-6 max-w-xl"
     >
-      <h2 className="text-2xl font-semibold text-gray-900">Tell us about your job search</h2>
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        Tell us about your job search
+      </h2>
       <input
         type="text"
         placeholder="Target roles (comma-separated)"
@@ -69,10 +71,15 @@ export function Flow({
         className="input-field"
       />
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700">Employment type</legend>
+        <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Employment type
+        </legend>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
           {EMPLOYMENT_TYPES.map((t) => (
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700" key={t}>
+            <label
+              className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+              key={t}
+            >
               <input
                 type="checkbox"
                 checked={p.employment_types.includes(t)}

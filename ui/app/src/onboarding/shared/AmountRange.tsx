@@ -24,7 +24,7 @@ export function AmountRange({
 }): JSX.Element {
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
       <div className="flex gap-2">
         <input
           type="number"

@@ -100,9 +100,9 @@
   .btn-secondary:hover { @apply bg-navy-50; }
   .btn-secondary:focus-visible { @apply ring-2 ring-navy-900 ring-offset-2; }
   .input-field {
-    @apply block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400;
+    @apply block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 dark:border-navy-600 dark:bg-navy-800 dark:text-white dark:placeholder-gray-500;
   }
-  .input-field:focus { @apply border-navy-900 ring-1 ring-navy-900; }
+  .input-field:focus { @apply border-navy-900 ring-1 ring-navy-900 dark:border-accent-500 dark:ring-accent-500; }
   .gradient-text {
     @apply bg-gradient-to-r from-accent-400 via-accent-300 to-accent-400 bg-clip-text text-transparent;
   }
@@ -130,5 +130,18 @@
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
     [data-reveal="scale"] { opacity: 1; transform: none; transition: none; }
+  }
+  .shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  html.dark .shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%);
+    background-size: 200% 100%;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 }

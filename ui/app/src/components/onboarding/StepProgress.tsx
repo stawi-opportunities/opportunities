@@ -14,7 +14,7 @@ interface Props {
 export function StepProgress({ step, t }: Props) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {t('onboard.step')} {step} {t('onboard.of')} 3 · {t(STEP_LABEL_KEYS[step - 1]!)}
       </p>
       <nav className="mt-4" aria-label="Onboarding steps">
@@ -47,7 +47,7 @@ export function StepProgress({ step, t }: Props) {
                       className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-semibold transition-colors ${
                         active
                           ? 'border-accent-500 bg-accent-50 text-accent-700'
-                          : 'border-gray-200 bg-white text-gray-400'
+                          : 'border-gray-200 bg-white text-gray-400 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-500'
                       }`}
                     >
                       {n}
@@ -55,7 +55,9 @@ export function StepProgress({ step, t }: Props) {
                   )}
                   <span
                     className={`text-xs leading-tight ${
-                      active ? 'font-medium text-gray-900' : 'text-gray-500'
+                      active
+                        ? 'font-medium text-gray-900 dark:text-white'
+                        : 'text-gray-500 dark:text-gray-400'
                     }`}
                   >
                     {t(key)}
@@ -64,7 +66,7 @@ export function StepProgress({ step, t }: Props) {
                 {i < 2 && (
                   <div
                     className={`mx-2 mt-[-1.75rem] h-0.5 flex-1 self-center transition-colors ${
-                      done ? 'bg-accent-500' : 'bg-gray-200'
+                      done ? 'bg-accent-500' : 'bg-gray-200 dark:bg-navy-600'
                     }`}
                     aria-hidden
                   />

@@ -36,7 +36,7 @@ export function OnboardingRouter({
   const loader = flows[flowId];
   if (!loader) {
     return (
-      <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+      <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
         Unknown onboarding flow: <code>{flowId}</code>
       </div>
     );
@@ -45,7 +45,7 @@ export function OnboardingRouter({
   // outside this render to avoid re-creating it on every mount.
   const LazyFlow = getOrCreateLazy(flowId, loader);
   return (
-    <Suspense fallback={<div className="text-sm text-gray-500">Loading…</div>}>
+    <Suspense fallback={<div className="text-sm text-gray-500 dark:text-gray-400">Loading…</div>}>
       <LazyFlow onSubmit={onSubmit} initial={initial} />
     </Suspense>
   );

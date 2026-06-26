@@ -36,7 +36,7 @@ export function LocationPicker({
 }) {
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
       <input
         type="text"
         placeholder="Countries (comma-separated ISO codes, e.g. KE, TZ, UG)"
@@ -67,7 +67,7 @@ export function LocationPicker({
         }
         className="input-field"
       />
-      <label className="flex items-center gap-2 text-sm text-gray-700">
+      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
         <input
           type="checkbox"
           checked={value.remote_ok}
