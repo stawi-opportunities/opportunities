@@ -55,7 +55,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">
               {title}
               {isNew && (
-                <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                   {t('card.new')}
                 </span>
               )}
@@ -70,7 +70,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
           </div>
           {isMatched && (
             <span
-              className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700"
+              className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               title="Match score"
             >
               {Math.round(item.score! * 100)}
@@ -81,7 +81,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {item.application ? (
-            <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+            <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
               {STATUS_KEYS[item.application.status]
                 ? t(STATUS_KEYS[item.application.status]!)
                 : item.application.status}
@@ -102,7 +102,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               onClick={() => onUnstar(item.opportunity_id)}
               aria-label="Remove from saved"
               disabled={isPending}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900"
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-amber-300 dark:hover:bg-amber-900/20"
             >
               ★ {t('cta.saved')}
             </button>

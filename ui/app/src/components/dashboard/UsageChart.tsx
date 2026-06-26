@@ -15,7 +15,7 @@ export function UsageChart({
 }) {
   if (!history.length) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400">
         {t('usage.noData')}
       </div>
     );
@@ -42,11 +42,13 @@ export function UsageChart({
                 <Bar value={entry.queued} max={maxVal} color="bg-blue-300" />
               </div>
             </div>
-            <span className="text-[10px] text-gray-400">{entry.week.slice(-5)}</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+              {entry.week.slice(-5)}
+            </span>
           </div>
         ))}
       </div>
-      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-gray-500">
+      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-gray-500 dark:text-gray-400">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-accent-500" />
           {t('usage.delivered')}

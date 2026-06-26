@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { getConfig } from '@/utils/config';
 import { useSubscription } from '@/hooks/useSubscription';
 import { normalizePlan } from '@/utils/plans';
+import { Button } from '@/components/ui/Button';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { AgentCard } from '@/components/dashboard/AgentCard';
 import { BillingPanel } from '@/components/dashboard/BillingPanel';
@@ -246,13 +247,9 @@ function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {
         {t('dash.signInTitle')}
       </h1>
       <p className="mt-2 text-gray-600 dark:text-gray-300">{t('dash.signInHint')}</p>
-      <button
-        type="button"
-        onClick={() => void onSignIn()}
-        className="mt-6 rounded-md bg-navy-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
-      >
+      <Button variant="primary" size="md" type="button" onClick={() => void onSignIn()}>
         {t('nav.signIn')}
-      </button>
+      </Button>
     </div>
   );
 }

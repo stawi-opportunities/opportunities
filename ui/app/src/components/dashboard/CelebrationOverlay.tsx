@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Button } from '@/components/ui/Button';
 import type { StringKey } from '@/i18n/strings';
 
 interface Props {
@@ -16,7 +17,7 @@ export function CelebrationOverlay({ t, onDismiss }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4">
-      <div className="relative max-w-md rounded-xl bg-white p-6 text-center shadow-2xl animate-fade-in">
+      <div className="relative max-w-md rounded-xl bg-white p-6 text-center shadow-2xl animate-fade-in dark:bg-navy-900">
         {/* Confetti dots */}
         <div
           className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
@@ -37,9 +38,9 @@ export function CelebrationOverlay({ t, onDismiss }: Props) {
         </div>
 
         <div className="relative">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
             <svg
-              className="h-8 w-8 text-emerald-600"
+              className="h-8 w-8 text-emerald-600 dark:text-emerald-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -52,9 +53,13 @@ export function CelebrationOverlay({ t, onDismiss }: Props) {
               />
             </svg>
           </div>
-          <h2 className="mt-4 text-xl font-bold text-gray-900">{t('dash.celebrationTitle')}</h2>
-          <p className="mt-2 text-sm text-gray-600">{t('dash.celebrationBody')}</p>
-          <ul className="mt-4 space-y-2 text-left text-sm text-gray-700">
+          <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
+            {t('dash.celebrationTitle')}
+          </h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            {t('dash.celebrationBody')}
+          </p>
+          <ul className="mt-4 space-y-2 text-left text-sm text-gray-700 dark:text-gray-300">
             <li className="flex items-center gap-2">
               <svg
                 className="h-4 w-4 shrink-0 text-emerald-500"
@@ -104,13 +109,9 @@ export function CelebrationOverlay({ t, onDismiss }: Props) {
               {t('dash.celebrationStep3')}
             </li>
           </ul>
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="mt-6 w-full rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white hover:bg-navy-800"
-          >
+          <Button variant="primary" size="md" type="button" onClick={onDismiss} className="w-full">
             {t('dash.celebrationDismiss')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
