@@ -34,11 +34,11 @@ export function WelcomeBanner({ t }: { t: (k: StringKey, fallback?: string) => s
   if (!visible) return null;
 
   return (
-    <div className="relative rounded-lg border border-blue-200 bg-blue-50 p-4 sm:p-6">
+    <div className="relative rounded-lg border border-blue-200 bg-blue-50 p-4 sm:p-6 dark:border-blue-800 dark:bg-blue-900/30">
       <button
         type="button"
         onClick={() => setVisible(false)}
-        className="absolute right-2 top-2 rounded p-1 text-blue-500 hover:bg-blue-100 hover:text-blue-700"
+        className="absolute right-2 top-2 rounded p-1 text-blue-500 hover:bg-blue-100 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/50 dark:hover:text-blue-300"
         aria-label={t('dash.welcomeDismiss')}
       >
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50,9 +50,11 @@ export function WelcomeBanner({ t }: { t: (k: StringKey, fallback?: string) => s
           />
         </svg>
       </button>
-      <h2 className="text-lg font-semibold text-blue-900">{t('dash.welcomeTitle')}</h2>
-      <p className="mt-1 text-sm text-blue-800">{t('dash.welcomeBody')}</p>
-      <p className="mt-3 text-sm font-medium text-accent-600 hover:text-accent-700">
+      <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-200">
+        {t('dash.welcomeTitle')}
+      </h2>
+      <p className="mt-1 text-sm text-blue-800 dark:text-blue-300">{t('dash.welcomeBody')}</p>
+      <p className="mt-3 text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300">
         {t('dash.welcomeTour')}
       </p>
     </div>

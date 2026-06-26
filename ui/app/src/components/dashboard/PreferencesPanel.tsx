@@ -92,7 +92,7 @@ export function PreferencesPanel() {
 
   return (
     <Panel title="Match preferences">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-gray-600 dark:text-gray-400">
         Opt into the kinds of opportunities you want matched. We'll only run matchers for kinds
         you've configured.
       </p>
@@ -102,7 +102,7 @@ export function PreferencesPanel() {
           {pills.map((pill, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-700"
+              className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-700 dark:bg-navy-700 dark:text-gray-300"
             >
               {pill.label}
             </span>
@@ -111,7 +111,7 @@ export function PreferencesPanel() {
       )}
 
       <nav
-        className="mt-4 flex flex-wrap gap-1 border-b border-gray-200"
+        className="mt-4 flex flex-wrap gap-1 border-b border-gray-200 dark:border-navy-700"
         role="tablist"
         aria-label="Opportunity kinds"
       >
@@ -125,8 +125,8 @@ export function PreferencesPanel() {
               aria-selected={on}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 on
-                  ? 'border-b-2 border-accent-500 text-navy-900'
-                  : 'border-b-2 border-transparent text-gray-600 hover:text-gray-900'
+                  ? 'border-b-2 border-accent-500 text-navy-900 dark:text-white'
+                  : 'border-b-2 border-transparent text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
               }`}
               onClick={() => {
                 setActive(kind);
@@ -145,10 +145,14 @@ export function PreferencesPanel() {
           onSubmit={(prefs) => void persist(activeEntry.kind, prefs)}
         />
       </div>
-      {status === 'saving' && <p className="mt-3 text-sm text-gray-500">Saving…</p>}
-      {status === 'saved' && <p className="mt-3 text-sm text-emerald-700">Preferences saved.</p>}
+      {status === 'saving' && (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Saving…</p>
+      )}
+      {status === 'saved' && (
+        <p className="mt-3 text-sm text-emerald-700 dark:text-emerald-400">Preferences saved.</p>
+      )}
       {status === 'error' && (
-        <p className="mt-3 text-sm text-red-700" role="alert">
+        <p className="mt-3 text-sm text-red-700 dark:text-red-400" role="alert">
           {errMsg ?? "Couldn't save preferences."}
         </p>
       )}

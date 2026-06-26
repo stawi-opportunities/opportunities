@@ -112,18 +112,18 @@ export function PendingCheckoutPoller() {
   }
   if (state === 'failed') {
     return (
-      <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+      <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
         {error ?? "Payment didn't complete."} You can retry below.
       </div>
     );
   }
   return (
     <div
-      className="mt-4 flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"
+      className="mt-4 flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
       role="status"
       aria-live="polite"
     >
-      <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+      <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent dark:border-blue-300 dark:border-t-transparent" />
       Waiting for your payment provider to confirm — this usually takes under a minute. You can
       leave this tab open; we'll update it automatically.
     </div>

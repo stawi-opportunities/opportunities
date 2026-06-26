@@ -8,9 +8,9 @@ const STATUS_LABEL: Record<string, StringKey> = {
 };
 
 const STATUS_BG: Record<string, string> = {
-  paid: 'bg-emerald-50 text-emerald-700',
-  pending: 'bg-amber-50 text-amber-700',
-  failed: 'bg-red-50 text-red-700',
+  paid: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  pending: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  failed: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
 export function InvoiceHistory({
@@ -22,7 +22,7 @@ export function InvoiceHistory({
 }) {
   if (!invoices.length) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400">
         {t('invoice.empty')}
       </div>
     );
@@ -32,7 +32,7 @@ export function InvoiceHistory({
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-gray-200 text-xs font-medium uppercase tracking-wide text-gray-500">
+          <tr className="border-b border-gray-200 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-navy-700 dark:text-gray-400">
             <th className="pb-2 pr-4">{t('invoice.date')}</th>
             <th className="pb-2 pr-4">{t('invoice.amount')}</th>
             <th className="pb-2 pr-4">{t('invoice.status')}</th>
@@ -41,11 +41,11 @@ export function InvoiceHistory({
         </thead>
         <tbody>
           {invoices.map((inv) => (
-            <tr key={inv.id} className="border-b border-gray-100">
-              <td className="py-2.5 pr-4 text-gray-900">
+            <tr key={inv.id} className="border-b border-gray-100 dark:border-navy-700">
+              <td className="py-2.5 pr-4 text-gray-900 dark:text-white">
                 {new Date(inv.date).toLocaleDateString()}
               </td>
-              <td className="py-2.5 pr-4 font-medium text-gray-900">
+              <td className="py-2.5 pr-4 font-medium text-gray-900 dark:text-white">
                 {inv.currency} {inv.amount.toFixed(2)}
               </td>
               <td className="py-2.5 pr-4">

@@ -10,9 +10,9 @@ export function EmptyFeedState({ filter, t }: Props) {
   const showTryAll = filter !== 'all';
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
+    <div className="rounded-lg border border-gray-200 bg-white p-6 text-center dark:border-navy-700 dark:bg-navy-900">
       <svg
-        className="mx-auto h-24 w-24 text-gray-300"
+        className="mx-auto h-24 w-24 text-gray-300 dark:text-navy-600"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 120 120"
@@ -23,11 +23,13 @@ export function EmptyFeedState({ filter, t }: Props) {
         <rect x="44" y="72" width="32" height="20" rx="3" strokeWidth="1.5" strokeDasharray="3 2" />
       </svg>
 
-      <h3 className="mt-4 text-base font-semibold text-gray-900">{t('dash.emptyFeedTitle')}</h3>
-      <p className="mt-1 text-sm text-gray-600">{t('dash.emptyFeedHint')}</p>
+      <h3 className="mt-4 text-base font-semibold text-gray-900 dark:text-white">
+        {t('dash.emptyFeedTitle')}
+      </h3>
+      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{t('dash.emptyFeedHint')}</p>
 
       {showTryAll && (
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           <a
             href="/?filter=all"
             onClick={(e) => {
@@ -37,7 +39,7 @@ export function EmptyFeedState({ filter, t }: Props) {
               window.history.pushState({}, '', url.toString());
               window.location.reload();
             }}
-            className="font-medium text-accent-600 hover:text-accent-700"
+            className="font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
           >
             {t('feed.tryAllFilter')}
           </a>
@@ -47,9 +49,9 @@ export function EmptyFeedState({ filter, t }: Props) {
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <a
           href="/onboarding/"
-          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50"
+          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-navy-700 dark:hover:border-navy-600 dark:hover:bg-navy-800"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -59,10 +61,12 @@ export function EmptyFeedState({ filter, t }: Props) {
               />
             </svg>
           </div>
-          <p className="mt-2 text-sm font-medium text-gray-900">
+          <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
             {t('dash.emptyFeedCompleteProfile')}
           </p>
-          <p className="mt-0.5 text-xs text-gray-500">{t('onboard.aboutYouHint')}</p>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            {t('onboard.aboutYouHint')}
+          </p>
         </a>
 
         <a
@@ -72,9 +76,9 @@ export function EmptyFeedState({ filter, t }: Props) {
             const panel = document.getElementById('match-preferences');
             if (panel) panel.scrollIntoView({ behavior: 'smooth' });
           }}
-          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50"
+          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-navy-700 dark:hover:border-navy-600 dark:hover:bg-navy-800"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -90,17 +94,19 @@ export function EmptyFeedState({ filter, t }: Props) {
               />
             </svg>
           </div>
-          <p className="mt-2 text-sm font-medium text-gray-900">
+          <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
             {t('dash.emptyFeedSetPreferences')}
           </p>
-          <p className="mt-0.5 text-xs text-gray-500">{t('dash.matchPreferencesHint')}</p>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            {t('dash.matchPreferencesHint')}
+          </p>
         </a>
 
         <a
           href="/jobs/"
-          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50"
+          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-navy-700 dark:hover:border-navy-600 dark:hover:bg-navy-800"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-700">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -110,8 +116,10 @@ export function EmptyFeedState({ filter, t }: Props) {
               />
             </svg>
           </div>
-          <p className="mt-2 text-sm font-medium text-gray-900">{t('dash.emptyFeedBrowseAll')}</p>
-          <p className="mt-0.5 text-xs text-gray-500">{t('cta.browseAll')}</p>
+          <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+            {t('dash.emptyFeedBrowseAll')}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{t('cta.browseAll')}</p>
         </a>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { planById, type PlanId } from '@/utils/plans';
+import { Button } from '@/components/ui/Button';
 import { Panel } from './Panel';
 import { UsageChart } from './UsageChart';
 import { InvoiceHistory } from './InvoiceHistory';
@@ -40,64 +41,56 @@ export function BillingPanel({
       <Panel title={t('nav.billing')}>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-gray-700 dark:text-gray-300">
               <span className="font-medium">{info.name}</span> · ${info.price}/{t('dash.perMonth')}{' '}
-              · <span className="text-emerald-700">{t('dash.active')}</span>
+              · <span className="text-emerald-700 dark:text-emerald-400">{t('dash.active')}</span>
             </p>
             {renewsAt && (
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {t('dash.renewsOn')} {new Date(renewsAt).toLocaleDateString()}
               </p>
             )}
           </div>
-          <div className="text-right text-sm font-medium text-gray-900">
+          <div className="text-right text-sm font-medium text-gray-900 dark:text-white">
             <p>${info.price}</p>
-            <p className="text-xs text-gray-500">{t('dash.perMonth')}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t('dash.perMonth')}</p>
           </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onOpenPlanChange}
-            className="rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
-          >
+          <Button variant="primary" size="sm" type="button" onClick={onOpenPlanChange}>
             {t('dash.changePlan')}
-          </button>
-          <button
-            type="button"
-            onClick={onOpenCancel}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
+          </Button>
+          <Button variant="secondary" size="sm" type="button" onClick={onOpenCancel}>
             {t('cancel.title')}
-          </button>
+          </Button>
         </div>
 
-        <div className="mt-4 flex gap-4 border-t border-gray-100 pt-4">
+        <div className="mt-4 flex gap-4 border-t border-gray-100 pt-4 dark:border-navy-700">
           <button
             type="button"
             onClick={() => setShowUsage(!showUsage)}
-            className="text-sm font-medium text-accent-600 hover:text-accent-700"
+            className="text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
           >
             {showUsage ? t('common.loading') : t('usage.title')} {showUsage ? '▲' : '▼'}
           </button>
           <button
             type="button"
             onClick={() => setShowInvoices(!showInvoices)}
-            className="text-sm font-medium text-accent-600 hover:text-accent-700"
+            className="text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
           >
             {showInvoices ? t('common.loading') : t('invoice.title')} {showInvoices ? '▲' : '▼'}
           </button>
         </div>
 
         {showUsage && (
-          <div className="mt-4 border-t border-gray-100 pt-4">
+          <div className="mt-4 border-t border-gray-100 pt-4 dark:border-navy-700">
             <UsageChart history={usageHistory} t={t} />
           </div>
         )}
 
         {showInvoices && (
-          <div className="mt-4 border-t border-gray-100 pt-4">
+          <div className="mt-4 border-t border-gray-100 pt-4 dark:border-navy-700">
             <InvoiceHistory invoices={invoices} t={t} />
           </div>
         )}
