@@ -32,12 +32,18 @@ type ButtonProps = ButtonBaseProps &
   ButtonHTMLAttributes<HTMLButtonElement> &
   AnchorHTMLAttributes<HTMLAnchorElement>;
 
-export function Button({ variant = 'primary', size = 'md', className, as: tag, ...rest }: ButtonProps) {
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  className,
+  as: tag,
+  ...rest
+}: ButtonProps) {
   const classes = clsx(
     'inline-flex items-center justify-center gap-2 transition-all duration-150',
     variantStyles[variant],
     sizeStyles[size],
-    className,
+    className
   );
 
   if (tag === 'a') {
