@@ -43,12 +43,14 @@ type AutoApplyConfig struct {
 	DailyLimitBackstop int     `env:"AUTO_APPLY_DAILY_LIMIT_BACKSTOP" envDefault:"10"`
 	ScoreMinBackstop   float64 `env:"AUTO_APPLY_SCORE_MIN_BACKSTOP"   envDefault:"0.0"`
 
-	// SMTP email fallback (optional). When SMTPHost is empty the email
-	// submitter degrades gracefully to a "skipped/no_smtp" result.
-	SMTPHost     string `env:"SMTP_HOST"     envDefault:""`
-	SMTPPort     int    `env:"SMTP_PORT"     envDefault:"587"`
-	SMTPFrom     string `env:"SMTP_FROM"     envDefault:""`
-	SMTPPassword string `env:"SMTP_PASSWORD" envDefault:""`
+	// Email delivery via the antinvestor Notification service. Used by the
+	// MyJobMag and mailto: (email-fallback) submitters: the application is
+	// queued as an outbound email notification whose source is the
+	// candidate's own email and whose recipient is the employer address,
+	// with the CV carried by reference for the backend to attach. When
+	// NotificationServiceURI is empty the email submitters degrade
+	// gracefully to a "skipped/no_sender" result.
+	NotificationServiceURI string `env:"NOTIFICATION_SERVICE_URI" envDefault:""`
 
 	// Browser automation timeout per submission (seconds).
 	BrowserTimeoutSec int `env:"BROWSER_TIMEOUT_SEC" envDefault:"30"`

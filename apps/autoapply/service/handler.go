@@ -240,6 +240,7 @@ func (h *AutoApplyHandler) Handle(ctx context.Context, _ map[string]string, payl
 		CoverLetter:  intent.CoverLetter,
 		CVBytes:      cvBytes,
 		CVFilename:   cvFilename,
+		CVRef:        intent.CVUrl,
 		SalaryMin:    intent.SalaryMin,
 		SalaryMax:    intent.SalaryMax,
 	}

@@ -2,7 +2,6 @@ package autoapply
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,19 +10,54 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
+// stubSender is a test EmailSender that records the last Send call.
+type stubSender struct {
+	configured bool
+	to         string
+	subject    string
+	req        SubmitRequest
+	called     bool
+	err        error
+}
+
+func (s *stubSender) Configured() bool { return s.configured }
+
+func (s *stubSender) Send(_ context.Context, to, subject string, req SubmitRequest) error {
+	s.called = true
+	s.to, s.subject, s.req = to, subject, req
+	return s.err
+}
+
 func TestEmailFallback_CanHandleMailto(t *testing.T) {
-	s := NewEmailFallback("", 0, "", "")
+	s := NewEmailFallback(&stubSender{})
 	assert.True(t, s.CanHandle("", "mailto:hr@co.com"))
 	assert.True(t, s.CanHandle("", "MAILTO:hr@co.com"))
 	assert.False(t, s.CanHandle("", "https://co.com/apply"))
 }
 
-func TestEmailFallback_NoSMTPSkips(t *testing.T) {
-	s := NewEmailFallback("", 587, "", "")
-	res, err := s.Submit(context.TODO(), SubmitRequest{ApplyURL: "mailto:hr@co.com"})
+func TestEmailFallback_NoSenderSkips(t *testing.T) {
+	for _, s := range []*EmailFallback{
+		NewEmailFallback(nil),
+		NewEmailFallback(&stubSender{configured: false}),
+	} {
+		res, err := s.Submit(context.TODO(), SubmitRequest{ApplyURL: "mailto:hr@co.com"})
+		require.NoError(t, err)
+		assert.Equal(t, "skipped", res.Method)
+		assert.Equal(t, "no_sender", res.SkipReason)
+	}
+}
+
+func TestEmailFallback_SendsToMailtoRecipient(t *testing.T) {
+	sender := &stubSender{configured: true}
+	s := NewEmailFallback(sender)
+	res, err := s.Submit(context.TODO(), SubmitRequest{
+		ApplyURL: "mailto:hr@co.com?subject=Apply",
+		FullName: "Ada Lovelace",
+	})
 	require.NoError(t, err)
-	assert.Equal(t, "skipped", res.Method)
-	assert.Equal(t, "no_smtp", res.SkipReason)
+	assert.Equal(t, "email", res.Method)
+	assert.True(t, sender.called)
+	assert.Equal(t, "hr@co.com", sender.to)
 }
 
 func TestParseMailtoRecipient(t *testing.T) {
@@ -54,37 +88,6 @@ func TestParseMailtoRecipient_BadInput(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestBuildEmailBody_HasRequiredHeaders(t *testing.T) {
-	body, err := buildEmailBody("autoapply@stawi.io", "hr@co.com", SubmitRequest{
-		FullName:   "Ada Lovelace",
-		Email:      "ada@example.com",
-		Phone:      "+1-555-0100",
-		CVBytes:    []byte("PDF"),
-		CVFilename: "ada.pdf",
-	})
-	require.NoError(t, err)
-	s := string(body)
-	assert.Contains(t, s, "From: autoapply@stawi.io")
-	assert.Contains(t, s, "To: hr@co.com")
-	assert.Contains(t, s, "Reply-To: ada@example.com")
-	assert.Contains(t, s, "Subject:")
-	assert.Contains(t, s, "Date: ")
-	assert.Contains(t, s, "Message-ID: <")
-	assert.Contains(t, s, "MIME-Version: 1.0")
-	assert.Contains(t, s, "Content-Type: multipart/mixed; boundary=")
-	assert.Contains(t, s, "Content-Disposition: attachment; filename=\"ada.pdf\"")
-	// base64 line-wrapped at 76
-	for _, line := range strings.Split(s, "\r\n") {
-		require.LessOrEqual(t, len(line), 998, "RFC 5322 max line length")
-	}
-}
-
-func TestSafeAttachmentName(t *testing.T) {
-	assert.Equal(t, "resume.pdf", safeAttachmentName(""))
-	assert.Equal(t, "cv.pdf", safeAttachmentName("/abs/cv.pdf"))
-	assert.Equal(t, "passwd", safeAttachmentName("../etc/passwd"))
 }
 
 // Sanity: domain.SourceType is unused in this test file but re-exporting

@@ -24,11 +24,14 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/ats"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/browser"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/captcha"
+	"github.com/stawi-opportunities/opportunities/pkg/autoapply/myjobmagsubmitter"
+	"github.com/stawi-opportunities/opportunities/pkg/autoapply/notifyemail"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/roamsubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/autoapply/sessionsubmitter"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
+	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
@@ -157,6 +160,28 @@ func main() {
 		llm = newOpenAIClient(cfg.InferenceBaseURL, cfg.InferenceAPIKey, cfg.InferenceModel)
 	}
 
+	// Email delivery via the Notification service. The MyJobMag submitter
+	// (scrapes the listing's "Method of Application" email) and the mailto:
+	// email fallback both queue the application as an outbound email
+	// notification — sourced from the candidate's address, recipient the
+	// employer, CV by reference for the backend to attach. When
+	// NOTIFICATION_SERVICE_URI is unset the client is nil and both degrade
+	// to skipped/no_sender.
+	var emailSender autoapply.EmailSender
+	svcClients, clientsErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+		NotificationURI: cfg.NotificationServiceURI,
+		HTTPClient:      svc.HTTPClientManager().Client(ctx),
+	})
+	if clientsErr != nil {
+		log.WithError(clientsErr).Warn("autoapply: notification client init reported an error; email submitters degraded")
+	}
+	if svcClients != nil && svcClients.Notification != nil {
+		emailSender = notifyemail.New(svcClients.Notification)
+		log.WithField("uri", cfg.NotificationServiceURI).Info("autoapply: notification email sender enabled")
+	} else {
+		log.Warn("autoapply: NOTIFICATION_SERVICE_URI unset — email submitters will skip (no_sender)")
+	}
+
 	tiers = append(tiers,
 		ats.NewLeverSubmitter(browserClient),
 		ats.NewWorkdaySubmitter(browserClient),
@@ -165,8 +190,10 @@ func main() {
 	if llm != nil {
 		tiers = append(tiers, autoapply.NewLLMFormSubmitter(browserClient, llm))
 	}
+	// MyJobMag (email-by-listing) before the generic mailto: fallback.
 	tiers = append(tiers,
-		autoapply.NewEmailFallback(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom, cfg.SMTPPassword),
+		myjobmagsubmitter.New(myjobmagsubmitter.Config{Sender: emailSender, HTTPTimeout: 30 * time.Second}),
+		autoapply.NewEmailFallback(emailSender),
 	)
 
 	registry := autoapply.NewRegistry(tiers...)

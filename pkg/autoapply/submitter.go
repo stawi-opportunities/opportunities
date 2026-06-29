@@ -43,6 +43,11 @@ type SubmitRequest struct {
 	CoverLetter  string
 	CVBytes      []byte // nil when not available; submitters handle gracefully
 	CVFilename   string // "resume.pdf" etc.
+	// CVRef is an opaque reference to the candidate's CV (its URL or file
+	// id) that delivery backends resolve to the actual file at send time.
+	// Used by the Notification-service email path, which carries the CV by
+	// reference under Extras["attachment"] rather than inlining bytes.
+	CVRef string
 	// Salary expectation from the candidate profile, used to fill
 	// per-application salary fields a source's profile never pre-fills.
 	// Zero when unknown.
@@ -59,7 +64,7 @@ type SubmitResult struct {
 	ExternalRef string
 	// SkipReason is a short, low-cardinality string populated when
 	// Method=="skipped" (e.g. "captcha", "unsupported", "no_submitter",
-	// "no_smtp", "empty_url").
+	// "no_sender", "no_email", "empty_url").
 	SkipReason string
 	// SkipDetail is optional free-form context for a skip, higher
 	// cardinality than SkipReason so it is NOT used as a metric label.
