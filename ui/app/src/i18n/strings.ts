@@ -399,6 +399,9 @@ export interface Strings {
   'cta.twoMinutesHint': string;
   'cta.getStarted': string;
 
+  // ---- Common ----
+  'common.comingSoon': string;
+
   // ---- Settings ----
   'settings.title': string;
   'settings.sectionProfile': string;
@@ -535,6 +538,8 @@ const en: Strings = {
   'cta.twoMinutes': 'Two minutes to set up.',
   'cta.twoMinutesHint': 'Upload your CV, tell us what you want, we take it from there.',
   'cta.getStarted': 'Get started',
+
+  'common.comingSoon': 'Coming soon',
 
   'job.postedOn': 'Posted',
   'job.remote': 'Remote',
@@ -990,6 +995,8 @@ const es: Strings = {
   'cta.twoMinutes': 'Listo en dos minutos.',
   'cta.twoMinutesHint': 'Sube tu CV, dinos qué buscas y nosotros nos encargamos del resto.',
   'cta.getStarted': 'Comenzar',
+
+  'common.comingSoon': 'Próximamente',
 
   'job.postedOn': 'Publicado',
   'job.remote': 'Remoto',
@@ -1447,6 +1454,8 @@ const fr: Strings = {
   'cta.twoMinutes': 'Prêt en deux minutes.',
   'cta.twoMinutesHint': "Importez votre CV, dites-nous ce que vous cherchez, on s'occupe du reste.",
   'cta.getStarted': 'Commencer',
+
+  'common.comingSoon': 'Bientôt disponible',
 
   'job.postedOn': 'Publié le',
   'job.remote': 'Télétravail',
@@ -1914,6 +1923,8 @@ const de: Strings = {
     'Laden Sie Ihren Lebenslauf hoch, sagen Sie uns, was Sie suchen, und wir erledigen den Rest.',
   'cta.getStarted': 'Loslegen',
 
+  'common.comingSoon': 'Demnächst verfügbar',
+
   'job.postedOn': 'Veröffentlicht',
   'job.remote': 'Remote',
   'job.employmentType': 'Beschäftigungsart',
@@ -2376,6 +2387,8 @@ const pt: Strings = {
   'cta.twoMinutesHint': 'Envie seu currículo, diga-nos o que procura e nós cuidamos do resto.',
   'cta.getStarted': 'Começar',
 
+  'common.comingSoon': 'Em breve',
+
   'job.postedOn': 'Publicada em',
   'job.remote': 'Remoto',
   'job.employmentType': 'Tipo de contrato',
@@ -2833,6 +2846,8 @@ const ja: Strings = {
   'cta.twoMinutesHint': '履歴書をアップロードし、希望を伝えるだけ。あとはお任せください。',
   'cta.getStarted': '始める',
 
+  'common.comingSoon': '近日公開予定',
+
   'job.postedOn': '掲載日',
   'job.remote': 'リモート',
   'job.employmentType': '雇用形態',
@@ -3286,6 +3301,8 @@ const ar: Strings = {
   'cta.twoMinutesHint': 'ارفع سيرتك الذاتية، أخبرنا بما تبحث عنه، ونحن نتولى الباقي.',
   'cta.getStarted': 'ابدأ الآن',
 
+  'common.comingSoon': 'قريبًا',
+
   'job.postedOn': 'نُشرت في',
   'job.remote': 'عن بُعد',
   'job.employmentType': 'نوع الوظيفة',
@@ -3737,6 +3754,8 @@ const zh: Strings = {
   'cta.twoMinutes': '两分钟即可完成设置。',
   'cta.twoMinutesHint': '上传简历，告诉我们您的求职意向，剩下的交给我们。',
   'cta.getStarted': '立即开始',
+
+  'common.comingSoon': '即将推出',
 
   'job.postedOn': '发布时间',
   'job.remote': '远程',
