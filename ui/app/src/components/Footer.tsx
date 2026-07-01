@@ -1,7 +1,9 @@
 import { useI18n } from '@/i18n/I18nProvider';
+import { useToast } from '@/hooks/useToast';
 
 export default function Footer() {
   const { t } = useI18n();
+  const { push: toast } = useToast();
   const year = new Date().getFullYear();
 
   return (
@@ -36,36 +38,40 @@ export default function Footer() {
                 </a>
               </li>
               <li>
-                <a
-                  href="/scholarships/"
-                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
                 >
                   {t('footer.scholarships')}
-                </a>
+                </button>
               </li>
               <li>
-                <a
-                  href="/tenders/"
-                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
                 >
                   {t('footer.tenders')}
-                </a>
+                </button>
               </li>
               <li>
-                <a
-                  href="/deals/"
-                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
                 >
                   {t('footer.deals')}
-                </a>
+                </button>
               </li>
               <li>
-                <a
-                  href="/funding/"
-                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
                 >
                   {t('footer.funding')}
-                </a>
+                </button>
               </li>
               <li>
                 <a
