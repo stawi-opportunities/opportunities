@@ -111,15 +111,14 @@ type SinglePageIterator struct {
 
 // NewSinglePageIterator creates a SinglePageIterator for a single-page result.
 // If raw bytes are provided it will attempt content extraction: HTML payloads
-// are run through content.ExtractFromHTML; everything else is treated as JSON.
+// are run through content.ExtractFromHTML. Structured payloads are already
+// parsed by their connector.
 func NewSinglePageIterator(jobs []domain.ExternalOpportunity, raw []byte, status int, err error) *SinglePageIterator {
 	var ext *content.Extracted
 	if len(raw) > 0 {
 		rawStr := string(raw)
 		if strings.Contains(rawStr, "<") {
 			ext, _ = content.ExtractFromHTML(rawStr)
-		} else {
-			ext = content.ExtractFromJSON(rawStr, "")
 		}
 	}
 	return &SinglePageIterator{

@@ -1,5 +1,5 @@
-// Package repository: TraceRepository walks the crawl-to-publish chain
-// (crawl_jobs -> raw_payloads -> pipeline_variants -> opportunities) for
+// Package repository: TraceRepository walks the PostgreSQL ingestion chain
+// (crawl_jobs -> job_ingest_queue -> opportunities) for
 // the admin /admin/trace/* endpoints.
 //
 // Read-only. The repo soft-fails on Postgres misses (returns nil + nil)
@@ -19,23 +19,16 @@ import (
 )
 
 // SourceSummary aggregates trace metrics for a single source over a
-// time window. The base aggregate is Postgres-only; the api handler
-// layers Iceberg historic rejections on top when the requested window
-// exceeds the pipeline_variants 7d retention. The DataSource flag tells
-// the operator UI which path was used so it can surface a "historic
-// data included" badge.
+// time window.
 type SourceSummary struct {
 	Window            time.Duration    `json:"-"`
 	CrawlJobs         int64            `json:"crawl_jobs"`
 	CrawlJobsFailed   int64            `json:"crawl_jobs_failed"`
-	RawPayloads       int64            `json:"raw_payloads"`
 	VariantsEmitted   int64            `json:"variants_emitted"`
 	VariantsPublished int64            `json:"variants_published"`
 	VariantsRejected  int64            `json:"variants_rejected"`
 	RejectionReasons  map[string]int64 `json:"rejection_reasons"`
-	// DataSource is "postgres" by default; the api handler upgrades
-	// it to "postgres+iceberg" after a successful historic read.
-	DataSource string `json:"data_source"`
+	DataSource        string           `json:"data_source"`
 }
 
 // CrawlSummary is one row in the SourceTrace.recent_crawls list.
@@ -48,7 +41,6 @@ type CrawlSummary struct {
 	Status      domain.CrawlJobStatus `json:"status"`
 	JobsFound   int                   `json:"jobs_found"`
 	JobsStored  int                   `json:"jobs_stored"`
-	RawPayloads int64                 `json:"raw_payloads"`
 	ErrorCode   string                `json:"error_code,omitempty"`
 }
 
@@ -59,7 +51,6 @@ type VariantTimeline struct {
 	HardKey         string            `json:"hard_key,omitempty"`
 	Source          SourceTrace       `json:"source"`
 	CrawlJob        *CrawlSummary     `json:"crawl_job,omitempty"`
-	RawPayload      *RawPayloadTrace  `json:"raw_payload,omitempty"`
 	Stages          []StageTransition `json:"stages"`
 	CurrentStage    string            `json:"current_stage"`
 	OpportunitySlug string            `json:"opportunity_slug,omitempty"`
@@ -73,23 +64,8 @@ type SourceTrace struct {
 	Type string `json:"type"`
 }
 
-// RawPayloadTrace is the raw_payloads projection embedded in
-// VariantTimeline. body_url is populated by the handler (not the repo)
-// so the UI can link directly to /admin/raw_payloads/{id}/body.
-type RawPayloadTrace struct {
-	ID          string    `json:"id"`
-	SourceURL   string    `json:"source_url,omitempty"`
-	StorageURI  string    `json:"storage_uri,omitempty"`
-	ContentHash string    `json:"content_hash,omitempty"`
-	SizeBytes   int64     `json:"size_bytes"`
-	FetchedAt   time.Time `json:"fetched_at"`
-	HTTPStatus  int       `json:"http_status"`
-	BodyURL     string    `json:"body_url,omitempty"`
-}
-
 // StageTransition is one row in VariantTimeline.stages. The repo
-// currently emits a single row (current_stage); a follow-up plan can
-// hydrate the full history from the Iceberg variants.* sinks.
+// currently emits the latest queue state.
 type StageTransition struct {
 	Stage      string    `json:"stage"`
 	At         time.Time `json:"at"`
@@ -118,8 +94,7 @@ func NewTraceRepository(db func(ctx context.Context, readOnly bool) *gorm.DB) *T
 }
 
 // SourceSummary returns aggregate metrics for a source over a window.
-// All counts are Postgres-only — VariantsRejected is 0 until Plan C
-// wires the Iceberg fallback for the variants_rejected sink.
+// All counts are served from PostgreSQL.
 func (r *TraceRepository) SourceSummary(ctx context.Context, sourceID string, window time.Duration) (*SourceSummary, error) {
 	since := time.Now().Add(-window)
 	s := SourceSummary{
@@ -131,19 +106,16 @@ func (r *TraceRepository) SourceSummary(ctx context.Context, sourceID string, wi
 		SELECT
 		  (SELECT count(*) FROM crawl_jobs WHERE source_id = ? AND scheduled_at >= ?) AS crawl_jobs,
 		  (SELECT count(*) FROM crawl_jobs WHERE source_id = ? AND scheduled_at >= ? AND status = 'failed') AS crawl_jobs_failed,
-		  (SELECT count(*) FROM raw_payloads rp
-		     JOIN crawl_jobs cj ON cj.id = rp.crawl_job_id
-		    WHERE cj.source_id = ? AND rp.fetched_at >= ?) AS raw_payloads,
-		  (SELECT count(*) FROM pipeline_variants WHERE source_id = ? AND ingested_at >= ?) AS variants_emitted,
-		  (SELECT count(*) FROM pipeline_variants WHERE source_id = ? AND ingested_at >= ? AND current_stage = 'published') AS variants_published,
-		  0::bigint AS variants_rejected
+		  (SELECT count(*) FROM job_ingest_queue WHERE source_id = ? AND created_at >= ?) AS variants_emitted,
+		  (SELECT count(*) FROM job_ingest_queue WHERE source_id = ? AND created_at >= ? AND status = 'processed') AS variants_published,
+		  (SELECT count(*) FROM job_ingest_events WHERE source_id = ? AND occurred_at >= ? AND event_type = 'rejected') AS variants_rejected
 	`,
 		sourceID, since,
 		sourceID, since,
 		sourceID, since,
 		sourceID, since,
 		sourceID, since,
-	).Row().Scan(&s.CrawlJobs, &s.CrawlJobsFailed, &s.RawPayloads, &s.VariantsEmitted, &s.VariantsPublished, &s.VariantsRejected)
+	).Row().Scan(&s.CrawlJobs, &s.CrawlJobsFailed, &s.VariantsEmitted, &s.VariantsPublished, &s.VariantsRejected)
 	if err != nil {
 		return nil, fmt.Errorf("SourceSummary: %w", err)
 	}
@@ -151,8 +123,7 @@ func (r *TraceRepository) SourceSummary(ctx context.Context, sourceID string, wi
 }
 
 // RecentCrawls returns up to limit most-recent crawl_jobs rows for a
-// source within a time window, each annotated with its raw_payloads
-// count.
+// source within a time window.
 func (r *TraceRepository) RecentCrawls(ctx context.Context, sourceID string, window time.Duration, limit int) ([]CrawlSummary, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -164,8 +135,7 @@ func (r *TraceRepository) RecentCrawls(ctx context.Context, sourceID string, win
 		       cj.scheduled_at, cj.started_at, cj.finished_at,
 		       COALESCE(EXTRACT(EPOCH FROM (cj.finished_at - cj.started_at))*1000, 0)::bigint AS duration_ms,
 		       cj.status, cj.jobs_found, cj.jobs_stored,
-		       COALESCE(cj.error_code, '') AS error_code,
-		       (SELECT count(*) FROM raw_payloads rp WHERE rp.crawl_job_id = cj.id) AS raw_payloads
+		       COALESCE(cj.error_code, '') AS error_code
 		  FROM crawl_jobs cj
 		 WHERE cj.source_id = ? AND cj.scheduled_at >= ?
 		 ORDER BY cj.scheduled_at DESC
@@ -178,59 +148,46 @@ func (r *TraceRepository) RecentCrawls(ctx context.Context, sourceID string, win
 }
 
 // VariantTimeline returns the full join for a single variant_id.
-// Returns (nil, nil) when the variant isn't in pipeline_variants
-// (retention expired or never written).
+// Returns (nil, nil) when the variant isn't in the ingestion queue.
 func (r *TraceRepository) VariantTimeline(ctx context.Context, variantID string) (*VariantTimeline, error) {
 	var row struct {
-		VariantID     string
-		HardKey       string
-		SourceID      string
-		SourceType    string
-		CrawlJobID    *string
-		ScheduledAt   *time.Time
-		StartedAt     *time.Time
-		FinishedAt    *time.Time
-		CrawlStatus   *string
-		JobsFound     *int
-		JobsStored    *int
-		RawPayloadID  *string
-		RPSourceURL   *string
-		RPStorageURI  *string
-		RPContentHash *string
-		RPSizeBytes   *int64
-		RPFetchedAt   *time.Time
-		RPHTTPStatus  *int
-		CurrentStage  string
-		StageAt       time.Time
-		IngestedAt    time.Time
-		CanonicalID   *string
-		Slug          *string
-		LastError     *string
+		VariantID    string
+		HardKey      string
+		SourceID     string
+		SourceType   string
+		CrawlJobID   *string
+		ScheduledAt  *time.Time
+		StartedAt    *time.Time
+		FinishedAt   *time.Time
+		CrawlStatus  *string
+		JobsFound    *int
+		JobsStored   *int
+		CurrentStage string
+		StageAt      time.Time
+		IngestedAt   time.Time
+		CanonicalID  *string
+		Slug         *string
+		LastError    *string
 	}
 	err := r.db(ctx, true).Raw(`
-		SELECT pv.variant_id, pv.hard_key, pv.source_id,
+		SELECT q.variant_id, COALESCE(q.payload->'payload'->>'hard_key',''), q.source_id,
 		       COALESCE(s.type::text, '') AS source_type,
-		       pv.crawl_job_id,
+		       q.crawl_job_id,
 		       cj.scheduled_at, cj.started_at, cj.finished_at,
 		       cj.status AS crawl_status, cj.jobs_found, cj.jobs_stored,
-		       pv.raw_payload_id,
-		       rp.source_url AS rp_source_url, rp.storage_uri AS rp_storage_uri,
-		       rp.content_hash AS rp_content_hash, rp.size_bytes AS rp_size_bytes,
-		       rp.fetched_at AS rp_fetched_at, rp.http_status AS rp_http_status,
-		       pv.current_stage, pv.stage_at, pv.ingested_at,
-		       pv.canonical_id, o.slug, pv.last_error
-		  FROM pipeline_variants pv
-	 LEFT JOIN sources s        ON s.id  = pv.source_id
-	 LEFT JOIN crawl_jobs cj    ON cj.id = pv.crawl_job_id
-	 LEFT JOIN raw_payloads rp  ON rp.id = pv.raw_payload_id
-	 LEFT JOIN opportunities o  ON o.canonical_id = pv.canonical_id
-		 WHERE pv.variant_id = ?
-		 ORDER BY pv.ingested_at DESC
+		       q.status, q.updated_at, q.created_at,
+		       oi.canonical_id, o.slug, q.last_error
+		  FROM job_ingest_queue q
+	 LEFT JOIN sources s        ON s.id  = q.source_id
+	 LEFT JOIN crawl_jobs cj    ON cj.id = q.crawl_job_id
+	 LEFT JOIN opportunity_identities oi ON oi.hard_key = q.payload->'payload'->>'hard_key'
+	 LEFT JOIN opportunities o  ON o.canonical_id = oi.canonical_id
+		 WHERE q.variant_id = ?
+		 ORDER BY q.created_at DESC
 		 LIMIT 1
 	`, variantID).Row().Scan(
 		&row.VariantID, &row.HardKey, &row.SourceID, &row.SourceType,
 		&row.CrawlJobID, &row.ScheduledAt, &row.StartedAt, &row.FinishedAt, &row.CrawlStatus, &row.JobsFound, &row.JobsStored,
-		&row.RawPayloadID, &row.RPSourceURL, &row.RPStorageURI, &row.RPContentHash, &row.RPSizeBytes, &row.RPFetchedAt, &row.RPHTTPStatus,
 		&row.CurrentStage, &row.StageAt, &row.IngestedAt, &row.CanonicalID, &row.Slug, &row.LastError,
 	)
 	if err != nil {
@@ -266,23 +223,6 @@ func (r *TraceRepository) VariantTimeline(ctx context.Context, variantID string)
 			out.CrawlJob.JobsStored = *row.JobsStored
 		}
 	}
-	if row.RawPayloadID != nil {
-		out.RawPayload = &RawPayloadTrace{
-			ID:          *row.RawPayloadID,
-			SourceURL:   strValue(row.RPSourceURL),
-			StorageURI:  strValue(row.RPStorageURI),
-			ContentHash: strValue(row.RPContentHash),
-		}
-		if row.RPSizeBytes != nil {
-			out.RawPayload.SizeBytes = *row.RPSizeBytes
-		}
-		if row.RPFetchedAt != nil {
-			out.RawPayload.FetchedAt = *row.RPFetchedAt
-		}
-		if row.RPHTTPStatus != nil {
-			out.RawPayload.HTTPStatus = *row.RPHTTPStatus
-		}
-	}
 	if row.Slug != nil {
 		out.OpportunitySlug = *row.Slug
 	}
@@ -292,7 +232,7 @@ func (r *TraceRepository) VariantTimeline(ctx context.Context, variantID string)
 	return out, nil
 }
 
-// OpportunityVariants returns every pipeline_variants row joined to a
+// OpportunityVariants returns every processed ingestion row joined to a
 // canonical (by slug). Used for the canonical-lineage view.
 func (r *TraceRepository) OpportunityVariants(ctx context.Context, slug string) ([]OpportunityVariant, error) {
 	type row struct {
@@ -304,15 +244,16 @@ func (r *TraceRepository) OpportunityVariants(ctx context.Context, slug string) 
 	}
 	raw := []row{}
 	err := r.db(ctx, true).Raw(`
-		SELECT pv.variant_id,
-		       pv.source_id      AS source_id,
+		SELECT q.variant_id,
+		       q.source_id      AS source_id,
 		       COALESCE(s.type::text,'') AS source_type,
-		       pv.ingested_at, pv.stage_at AS joined_at
-		  FROM pipeline_variants pv
-		  JOIN opportunities o ON o.canonical_id = pv.canonical_id
-	 LEFT JOIN sources s        ON s.id = pv.source_id
+		       q.created_at AS ingested_at, q.processed_at AS joined_at
+		  FROM job_ingest_queue q
+		  JOIN opportunity_identities oi ON oi.hard_key = q.payload->'payload'->>'hard_key'
+		  JOIN opportunities o ON o.canonical_id = oi.canonical_id
+	 LEFT JOIN sources s        ON s.id = q.source_id
 		 WHERE o.slug = ?
-		 ORDER BY pv.stage_at ASC
+		 ORDER BY q.processed_at ASC
 	`, slug).Scan(&raw).Error
 	if err != nil {
 		return nil, fmt.Errorf("OpportunityVariants: %w", err)
@@ -337,11 +278,7 @@ func strValue(p *string) string {
 }
 
 // DayDigest is the per-source rollup for a single calendar day. Populated
-// by TraceRepository.DayDigest for the Postgres path; the api handler
-// fills the same shape from Iceberg when the date is older than the
-// pipeline_variants 7d retention. RejectionReasons is left empty by the
-// Postgres path because variants_rejected isn't persisted to Postgres —
-// the Iceberg branch fills it.
+// by TraceRepository.DayDigest.
 type DayDigest struct {
 	CrawlJobs         int64            `json:"crawl_jobs"`
 	VariantsEmitted   int64            `json:"variants_emitted"`
@@ -358,10 +295,11 @@ func (r *TraceRepository) DayDigest(ctx context.Context, sourceID string, start,
 	err := r.db(ctx, true).Raw(`
 		SELECT
 		  (SELECT count(*) FROM crawl_jobs WHERE source_id = ? AND scheduled_at >= ? AND scheduled_at < ?) AS crawl_jobs,
-		  (SELECT count(*) FROM pipeline_variants WHERE source_id = ? AND ingested_at >= ? AND ingested_at < ?) AS variants_emitted,
-		  (SELECT count(*) FROM pipeline_variants WHERE source_id = ? AND ingested_at >= ? AND ingested_at < ? AND current_stage = 'published') AS variants_published,
-		  0::bigint AS variants_rejected
+		  (SELECT count(*) FROM job_ingest_queue WHERE source_id = ? AND created_at >= ? AND created_at < ?) AS variants_emitted,
+		  (SELECT count(*) FROM job_ingest_queue WHERE source_id = ? AND created_at >= ? AND created_at < ? AND status = 'processed') AS variants_published,
+		  (SELECT count(*) FROM job_ingest_events WHERE source_id = ? AND occurred_at >= ? AND occurred_at < ? AND event_type = 'rejected') AS variants_rejected
 	`, sourceID, start, end,
+		sourceID, start, end,
 		sourceID, start, end,
 		sourceID, start, end,
 	).Row().Scan(&s.CrawlJobs, &s.VariantsEmitted, &s.VariantsPublished, &s.VariantsRejected)

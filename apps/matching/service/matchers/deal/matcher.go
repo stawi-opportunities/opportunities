@@ -4,7 +4,7 @@
 // against deal categories. The candidate-side input is a
 // DealPreferences struct (preferred categories, max price, country).
 //
-// SearchFilter would filter Manticore to kind = "deal" plus AnyOf
+// SearchFilter would filter PostgreSQL to kind = "deal" plus AnyOf
 // clauses on category and country.
 //
 // Score would combine:

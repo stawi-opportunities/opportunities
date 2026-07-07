@@ -41,7 +41,6 @@ import (
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
-	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
@@ -107,20 +106,20 @@ func main() {
 	dbFn := pool.DB
 
 	// Handle database migration if configured (colony Helm chart sets
-	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). pool.Migrate
-	// AutoMigrates the models AND applies the SQL migration files under
-	// migrations/0001 (the raw-SQL OLTP serving tables — applications,
-	// application_notes/attachments/reminders, idempotency_keys,
-	// candidate_saved_jobs, candidate_checkouts — that AutoMigrate doesn't own),
-	// then exits. Without this branch the matching binary kept starting the full
-	// service inside the migration Job and never returning, which the Helm
-	// controller flagged as InProgress and the upgrade rolled back.
+	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). GORM owns
+	// ordinary tables; capability SQL adds pgvector support. The job exits after
+	// migration instead of starting the service.
 	if cfg.DoDatabaseMigrate() {
-		if err := pool.Migrate(ctx, cfg.GetDatabaseMigrationPath(),
+		models := []any{
 			&domain.CandidateProfile{},
 			&domain.CandidateApplication{},
 			&domain.OpportunityFlag{},
-		); err != nil {
+		}
+		models = append(models, matching.Schema()...)
+		models = append(models, applications.Schema()...)
+		models = append(models, savedjobs.Schema()...)
+		models = append(models, billing.Schema()...)
+		if err := pool.Migrate(ctx, cfg.GetDatabaseMigrationPath(), models...); err != nil {
 			log.WithError(err).Fatal("migrate failed")
 		}
 		log.Info("migration complete")
@@ -141,27 +140,19 @@ func main() {
 		Bucket:          cfg.R2ArchiveBucket,
 	})
 
-	// --- Iceberg catalog (for candidatestore Reader + StaleReader) ---
-	cat, err := icebergclient.LoadCatalog(ctx, icebergclient.CatalogConfig{
-		Name:       cfg.IcebergCatalogName,
-		URI:        cfg.IcebergCatalogURI,
-		Warehouse:  cfg.IcebergWarehouse,
-		OAuthToken: cfg.IcebergCatalogToken,
-	})
+	sqlDB, err := dbFn(ctx, false).DB()
 	if err != nil {
-		log.WithError(err).Fatal("candidates: iceberg catalog load failed")
+		log.WithError(err).Fatal("candidates: unwrap PostgreSQL pool")
 	}
-	candStore := candidatestore.NewReader(cat)
+	candStore := candidatestore.NewReader(sqlDB)
 
 	// --- AI extractor ---
 	var extractor *extraction.Extractor
 	infBase, infModel, infKey := extraction.ResolveInference(
-		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
-		"", "")
+		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey)
 	if infBase != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
-			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
-			"", "")
+			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey)
 		extractor = extraction.New(extraction.Config{
 			BaseURL:             infBase,
 			APIKey:              infKey,
@@ -189,13 +180,10 @@ func main() {
 
 	// --- Production adapters (Tasks 13-17) ---
 	candidateRepo := repository.NewCandidateRepository(dbFn)
-	// Post-Manticore: the search adapter speaks pgvector + JSONB
-	// filters directly against the `opportunities` table over the
-	// existing read-only pool. No new dialer, no extra service.
+	// Search speaks pgvector + JSONB directly against opportunities.
 	search := httpv1.NewPostgresSearch(dbFn)
 	matchSvc := httpv1.NewMatchService(candStore, search, 20)
-	staleReader := candidatestore.NewStaleReader(cat)
-	staleLister := adminv1.NewR2StaleLister(staleReader, 60*24*time.Hour, 500)
+	staleLister := adminv1.NewRepoStaleLister(candidateRepo, 500)
 	// Weekly jobs digest collaborators — non-personalised email for
 	// candidates who completed signup but not checkout. The same
 	// pgsearch.Search backs the match service; we reuse its handle
@@ -243,7 +231,7 @@ func main() {
 		// Wire the cv-pipeline as durable queue subscribers. The upload
 		// HTTP handler publishes onto SubjectCVExtract; cv-extract fans
 		// out to SubjectCVImprove + SubjectCVEmbed; both terminate by
-		// emitting their own events for the writer + materialiser.
+		// emitting their domain events.
 		svc.Init(ctx,
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
 			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
@@ -288,7 +276,7 @@ func main() {
 
 	// --- Phase-2 continuous matching pipeline (flag-gated per spec §5.5) ---
 
-	if cfg.MatchingFanoutEnabled || cfg.MatchingCandidateChangeEnabled {
+	if cfg.MatchingCandidateChangeEnabled {
 		// Extract *sql.DB from the existing GORM pool so the new pipeline
 		// can use database/sql directly. pool.DB returns *gorm.DB; .DB()
 		// unwraps the underlying connection pool.
@@ -324,28 +312,6 @@ func main() {
 
 		dlqPub := &queuePublisherAdapter{svc: svc}
 		dlq := matchingv1.NewDLQGuard(dlqPub, eventsv1.SubjectMatchingDeadletter, cfg.MatchingDLQThreshold)
-
-		if cfg.MatchingFanoutEnabled {
-			fanout := matchingv1.NewFanOutConsumer(matchingv1.FanOutConsumerDeps{
-				Store:     matchStore,
-				EventLog:  matchEvents,
-				KNN:       matchKNN,
-				Reranker:  rerank,
-				Weights:   matching.DefaultWeights(),
-				DLQ:       dlq,
-				OppEmbedQ: matchingv1.NewSQLOppEmbeddingQuery(sqlDB),
-				// Phase 5: daily-cap enforcement via the continuous aggregate.
-				DailyCap: matching.NewPGDailyCapQuery(sqlDB),
-			})
-			// Subscribe to the worker's canonical pipeline queue (same subject
-			// the worker publishes CanonicalUpsertedV1 to). Frame derives a
-			// matching-service-specific consumer_durable_name, so the worker's
-			// publish stage and the writer sink each keep their own cursor —
-			// this is a true fan-out, not a steal.
-			svc.Init(ctx,
-				frame.WithRegisterSubscriber(cfg.QueuePipelineCanonicalName, cfg.QueuePipelineCanonical, fanout))
-			log.WithField("queue", cfg.QueuePipelineCanonicalName).Info("matching: fan-out (Path A) enabled")
-		}
 
 		if cfg.MatchingCandidateChangeEnabled {
 			candText := matchingv1.NewSQLCandidateText(sqlDB)
@@ -418,7 +384,7 @@ func main() {
 	// archive → cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill
 	// pipeline as POST /candidates/cv/upload.
 	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
-	mux.HandleFunc("POST /candidates/preferences", httpv1.PreferencesHandler(svc))
+	mux.HandleFunc("POST /candidates/preferences", httpv1.PreferencesHandler(svc, sqlDB))
 	mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
 		Svc:    svc,
 		Store:  candStore,

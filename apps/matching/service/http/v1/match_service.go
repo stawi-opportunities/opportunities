@@ -27,7 +27,7 @@ type MatchResult struct {
 	Matches      []SearchHit
 }
 
-// MatchService runs the "embedding + preferences + Manticore KNN +
+// MatchService runs the "embedding + preferences + PostgreSQL KNN +
 // top-K truncation" pipeline for one candidate. Used by both the
 // HTTP match handler and the weekly-digest cron.
 type MatchService struct {
@@ -45,7 +45,7 @@ func NewMatchService(store CandidateStore, search SearchIndex, topK int) *MatchS
 }
 
 // RunMatch loads the candidate's embedding + preferences, queries
-// Manticore, and returns the top-K hits. Does NOT emit events —
+// PostgreSQL, and returns the top-K hits. Does NOT emit events —
 // that's the caller's job (HTTP handler emits after writing the
 // response; cron emits in the weekly-digest loop).
 func (s *MatchService) RunMatch(ctx context.Context, candidateID string) (MatchResult, error) {
@@ -58,7 +58,7 @@ func (s *MatchService) RunMatch(ctx context.Context, candidateID string) (MatchR
 	}
 	prefs, _ := s.store.LatestPreferences(ctx, candidateID)
 
-	// MatchService is the legacy CV-vs-job pipeline; it cares only
+	// MatchService handles the CV-vs-job pipeline; it cares only
 	// about the "job" opt-in. Per-kind matching for other kinds runs
 	// through the matcher registry (Phase 7.2-7.5) which reads the
 	// same OptIns map directly.

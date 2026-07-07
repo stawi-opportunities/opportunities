@@ -103,17 +103,12 @@ func (c *Connector) crawlFrom(ctx context.Context, src domain.Source, startPage 
 		})
 	}
 
-	var ext *content.Extracted
-	if len(body) > 0 {
-		ext = content.ExtractFromJSON(string(body), "")
-	}
 	return &iter{
 		src:        src,
 		page:       startPage,
 		jobs:       out,
 		raw:        body,
 		httpStatus: status,
-		extracted:  ext,
 		lastURL:    u,
 	}
 }
@@ -129,7 +124,6 @@ type iter struct {
 	httpStatus int
 	err        error
 	consumed   bool
-	extracted  *content.Extracted
 	lastURL    string
 }
 
@@ -147,7 +141,7 @@ func (it *iter) RawPayload() []byte                  { return it.raw }
 func (it *iter) HTTPStatus() int                     { return it.httpStatus }
 func (it *iter) Err() error                          { return it.err }
 func (it *iter) Cursor() json.RawMessage             { return nil }
-func (it *iter) Content() *content.Extracted         { return it.extracted }
+func (it *iter) Content() *content.Extracted         { return nil }
 
 // Checkpoint serializes the iter's page index + last-fetched URL for
 // the crawl handler to persist. Implements connectors.CheckpointableIterator.

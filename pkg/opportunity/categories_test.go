@@ -33,19 +33,17 @@ func TestRegistry_CategoryLabels(t *testing.T) {
 	}
 }
 
-func TestHashCategory_MaterializerParity(t *testing.T) {
-	// Sanity: HashCategory and the materializer's local impl produce
-	// identical values. This test fails if anyone changes the hash
-	// formula in one place but not the other.
+func TestHashCategoryStable(t *testing.T) {
+	// Sanity: HashCategory produces stable values. This test fails if anyone
+	// changes the hash formula unintentionally.
 	for _, s := range []string{"STEM", "Arts", "Climate", "Programming", "Other"} {
 		want := HashCategory(s)
-		// Replicate the materializer formula inline so the test is
-		// self-contained:
+		// Replicate the formula inline so the test is self-contained:
 		h := fnv.New64a()
 		_, _ = h.Write([]byte(s))
 		v := int64(h.Sum64() & 0x7FFFFFFFFFFFFFFF)
 		if want != v {
-			t.Errorf("HashCategory(%q) = %d, materializer formula = %d", s, want, v)
+			t.Errorf("HashCategory(%q) = %d, formula = %d", s, want, v)
 		}
 	}
 }

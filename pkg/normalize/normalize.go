@@ -44,9 +44,9 @@ func (n *Normalizer) Normalize(ext *domain.ExternalOpportunity, sourceID, countr
 // JobVariant is the normalised, pipeline-ready representation of one observed
 // job posting. It is an in-memory-only struct — it is never persisted to
 // Postgres directly. Downstream callers map its fields into event payloads
-// (e.g. eventsv1.VariantIngestedV1) for the R2/event-log pipeline.
+// (e.g. eventsv1.VariantIngestedV1) for PostgreSQL ingestion.
 type JobVariant struct {
-	ExternalJobID    string
+	ExternalID       string
 	SourceID         string
 	HardKey          string
 	SourceURL        string
@@ -228,12 +228,10 @@ func contentHash(externalID, title, company, location, description string) strin
 // The normalizer will opportunistically override this with a whatlanggo
 // detection when the description is long enough to give a reliable signal.
 //
-// Field mapping versus the old ExternalJob shape: job-specific scalars
-// (RemoteType, EmploymentType, Seniority, etc.) and slices (Skills, Roles,
-// Benefits, RequiredSkills, NiceToHaveSkills, ToolsFrameworks, ...) now live
-// under ext.Attributes and are read via the AttrString / AttrStringSlice /
-// AttrFloat helpers. This keeps the same JobVariant wire layout while the
-// connector emits a kind-agnostic ExternalOpportunity.
+// Field mapping: job-specific scalars (RemoteType, EmploymentType, Seniority,
+// etc.) and slices (Skills, Roles, Benefits, RequiredSkills,
+// NiceToHaveSkills, ToolsFrameworks, ...) live under ext.Attributes and are
+// read via the AttrString / AttrStringSlice / AttrFloat helpers.
 func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country, sourceBoard, language string, scrapedAt time.Time) JobVariant {
 	// 1. Trim all text fields.
 	title := strings.TrimSpace(ext.Title)
@@ -300,7 +298,7 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 	}
 
 	return JobVariant{
-		ExternalJobID:    externalID,
+		ExternalID:       externalID,
 		SourceID:         sourceID,
 		HardKey:          hardKey,
 		SourceURL:        sourceURL,

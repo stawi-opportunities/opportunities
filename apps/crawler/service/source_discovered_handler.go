@@ -25,9 +25,8 @@ type SourceUpserter interface {
 }
 
 // SourceDiscoveredHandler consumes sources.discovered.v1 and upserts
-// the target URL as a `generic-html` source. Same blocklist + self-
-// domain filter as the legacy SourceExpansionHandler; payload shape
-// changed from SourceURLsPayload (batched) to one event per URL.
+// the target URL as a `generic-html` source. The blocklist and self-domain
+// filter are applied to one URL per event.
 type SourceDiscoveredHandler struct {
 	repo SourceUpserter
 	reg  *opportunity.Registry
@@ -161,7 +160,7 @@ func (h *SourceDiscoveredHandler) Execute(ctx context.Context, payload any) erro
 	// Discovered sources land in SourcePending. They become eligible for
 	// crawling only after passing source-level verification AND being
 	// approved (manually by an operator, or automatically when
-	// AutoApprove=true). The legacy "discovered → active" flow is gone:
+	// AutoApprove=true). Direct "discovered → active" promotion is not allowed:
 	// every new domain now goes through the same lifecycle as an
 	// operator-created source, except AutoApprove defaults to false so
 	// a real human reviews the verification report before it starts

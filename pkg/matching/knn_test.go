@@ -68,9 +68,9 @@ func TestReverseKNN_OrdersByDistanceSinceCursor(t *testing.T) {
 	seedOpp := func(id string, axis int, kind, country string, firstSeen time.Time) {
 		v := unitVec(1024, axis)
 		_, err := db.ExecContext(ctx, `
-			INSERT INTO opportunities (id, posted_at, status, hidden, embedding, kind, country, first_seen_at)
-			VALUES ($1, now(), 'active', false, $2::vector, $3, $4, $5)
-		`, id, vectorLiteralFor(v), kind, country, firstSeen)
+				INSERT INTO opportunities (canonical_id, slug, kind, title, apply_url, posted_at, status, hidden, embedding, country, first_seen_at)
+				VALUES ($1::varchar(20), $1::text, $3, $1::text, 'https://example.test/apply/' || $1::text, now(), 'active', false, $2::vector, $4, $5)
+			`, id, vectorLiteralFor(v), kind, country, firstSeen)
 		require.NoError(t, err)
 	}
 	seedOpp("opp_close", 0, "job", "KE", now)

@@ -8,9 +8,8 @@ import (
 )
 
 // PostgresSearch adapts *pgsearch.Search to the SearchIndex interface
-// required by MatchHandler. Post-consolidation it replaces the
-// Manticore adapter — all reads go through pgvector + the
-// `opportunities` canonical table.
+// required by MatchHandler. All reads go through pgvector and the
+// opportunities table.
 type PostgresSearch struct {
 	s *pgsearch.Search
 }
@@ -61,6 +60,7 @@ func (m *PostgresSearch) KNNWithFilters(ctx context.Context, req SearchRequest) 
 			CanonicalID: h.CanonicalID,
 			Slug:        h.Slug,
 			Title:       h.Title,
+			ApplyURL:    h.ApplyURL,
 			Company:     h.Company,
 			Score:       h.Score,
 		})

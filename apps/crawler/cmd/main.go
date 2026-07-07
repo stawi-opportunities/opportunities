@@ -19,16 +19,14 @@ import (
 	crawlerconfig "github.com/stawi-opportunities/opportunities/apps/crawler/config"
 	"github.com/stawi-opportunities/opportunities/apps/crawler/service"
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
-	"github.com/stawi-opportunities/opportunities/pkg/archive"
-	"github.com/stawi-opportunities/opportunities/pkg/backpressure"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
-	"github.com/stawi-opportunities/opportunities/pkg/crawlinbox"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
+	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/recipe"
@@ -36,7 +34,6 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
-	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 func main() {
@@ -102,13 +99,9 @@ func main() {
 
 	// Handle database migration if configured (colony Helm chart sets
 	// DO_DATABASE_MIGRATE=true for the pre-install migration job).
-	// Pattern follows service-trustage: pool.Migrate scans
-	// MIGRATION_PATH for *.sql files and applies any not yet recorded
-	// in the migrations tracking table, then GORM AutoMigrate keeps
-	// the two historically-GORM-managed tables (sources + raw_refs)
-	// in shape. Postgres-specific bits GORM can't express (pg_trgm,
-	// partial indexes) are migration files too. Returns immediately
-	// after migration completes.
+	// GORM owns ordinary schema. The few SQL files only enable database
+	// capabilities GORM cannot express: extensions, Timescale policies,
+	// append-only triggers, partial indexes, and materialized views.
 	if cfg.DoDatabaseMigrate() {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")
@@ -177,18 +170,14 @@ func main() {
 	}
 	httpClient := httpx.NewClientFromDoer(doer, cfg.UserAgent)
 
-	// AI extractor — OpenAI-compatible back-end. Reads INFERENCE_* first,
-	// falls back to the legacy OLLAMA_* vars during the Cloudflare AI
-	// Gateway rollout so in-flight deploys keep working.
+	// AI extractor — OpenAI-compatible back-end.
 	var extractor *extraction.Extractor
 	infBase, infModel, infKey := extraction.ResolveInference(
 		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
-		cfg.OllamaURL, cfg.OllamaModel,
 	)
 	if infBase != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
 			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
-			cfg.OllamaURL, cfg.OllamaModel,
 		)
 		extractor = extraction.New(extraction.Config{
 			BaseURL:             infBase,
@@ -223,16 +212,6 @@ func main() {
 	// as the public content bucket — Cloudflare R2 IAM scopes the
 	// token to specific buckets, so the platform doesn't need to
 	// manage two key sets. rawRefRepo tracks which variants reference
-	// which raw/{hash} blobs so the purge sweeper can GC orphans
-	// safely.
-	arch := archive.NewR2Archive(archive.R2Config{
-		AccountID:       cfg.R2AccountID,
-		AccessKeyID:     cfg.R2AccessKeyID,
-		SecretAccessKey: cfg.R2SecretAccessKey,
-		Bucket:          cfg.R2ArchiveBucket,
-	})
-	rawRefRepo := repository.NewRawRefRepository(dbFn)
-
 	// Analytics client — batches events to OpenObserve. Nil when
 	// ANALYTICS_BASE_URL is unset; all call sites handle the no-op.
 	analyticsClient := analytics.New(analytics.Config{
@@ -245,80 +224,6 @@ func main() {
 	if analyticsClient != nil {
 		svc.AddCleanupMethod(func(ctx context.Context) { _ = analyticsClient.Close(ctx) })
 	}
-
-	// Backpressure gate for crawl dispatch. Bounds the pending queue
-	// at cfg.BackpressureHighWater (defaults to 100k). Trustage's
-	// cron keeps firing but the admin endpoints no-op while the
-	// gate is closed. Hysteresis at cfg.BackpressureLowWater (50k)
-	// prevents flapping once we're near the threshold.
-	bpGate := backpressure.New(backpressure.Config{
-		MonitorURL:   cfg.BackpressureMonitorURL,
-		StreamName:   cfg.BackpressureStreamName,
-		ConsumerName: cfg.BackpressureConsumerName,
-		HighWater:    cfg.BackpressureHighWater,
-		LowWater:     cfg.BackpressureLowWater,
-	}, svc.HTTPClientManager().Client(ctx))
-
-	// ── Task 5: per-topic drain-time policy ────────────────────────
-	//
-	// Configure the five worker-input topics with a 15m/45m drain-time
-	// window. HPA ceiling awareness is enabled so the gate collapses to
-	// zero-admit as soon as the HPA has nowhere to scale to.
-	workerTopicPolicy := backpressure.Policy{
-		MaxDrainTime:     15 * time.Minute,
-		HardCeilingDrain: 45 * time.Minute,
-		HPACeilingKnown:  true,
-	}
-	for _, t := range []string{
-		eventsv1.TopicVariantsIngested,
-		eventsv1.TopicVariantsNormalized,
-		eventsv1.TopicVariantsValidated,
-		eventsv1.TopicVariantsClustered,
-		eventsv1.TopicCanonicalsUpserted,
-	} {
-		bpGate.ConfigTopic(t, workerTopicPolicy)
-	}
-
-	// Lag poller: samples queue depth via the NATS monitor every 10 s and
-	// feeds UpdateLag for each worker-input topic. The gate already has the
-	// full drain-time policy configured above; this ticker keeps lag data
-	// fresh so Admit can apply throttle fractions rather than falling back
-	// to the binary hysteresis path.
-	//
-	// NOTE: the monitor's /jsz endpoint exposes a single "pending" field
-	// that aggregates across all consumers on the stream. There is no per-
-	// topic pending count available without per-consumer queries. We feed
-	// the aggregate depth uniformly to all five topics as a conservative
-	// upper-bound; the throttle applies to all topics equally when the
-	// shared queue is deep. A more granular approach (per-consumer /jsz
-	// calls) can be added in a later task without changing the gate API.
-	lagPoller := service.NewLagPoller()
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		workerTopics := []string{
-			eventsv1.TopicVariantsIngested,
-			eventsv1.TopicVariantsNormalized,
-			eventsv1.TopicVariantsValidated,
-			eventsv1.TopicVariantsClustered,
-			eventsv1.TopicCanonicalsUpserted,
-		}
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case now := <-ticker.C:
-				state, err := bpGate.Check(ctx)
-				if err != nil {
-					continue
-				}
-				for _, topic := range workerTopics {
-					depth, rate := lagPoller.Sample(topic, int64(state.Pending), now)
-					bpGate.UpdateLag(topic, depth, rate, false)
-				}
-			}
-		}
-	}()
 
 	// ── Phase 4 event handlers ──────────────────────────────────────
 	//
@@ -335,13 +240,7 @@ func main() {
 	geocoder := geocode.New()
 	normalizer := normalize.New(geocoder)
 
-	// pipeline_variants store — soft-fails on Postgres outage. Crawler
-	// already has dbFn, so we wire the store directly. Writes the
-	// ingested ledger row before the NATS emit (and rejected rows on
-	// Verify failures).
-	variantStore := variantstate.NewStore(dbFn)
-
-	// crawl_jobs + raw_payloads audit ledger. Writes propagate errors
+	// crawl_jobs audit ledger. Writes propagate errors
 	// (unlike VariantStore) — the ledger is the source of truth for
 	// what the pipeline ever attempted, so a Postgres outage MUST fail
 	// the crawl rather than silently diverge.
@@ -379,35 +278,30 @@ func main() {
 		}
 	}
 
-	// crawl_inbox buffer + pump (decouples crawl bursts from JetStream).
-	var inboxStore *crawlinbox.Store
-	if cfg.CrawlInboxEnabled {
-		inboxStore = crawlinbox.NewStore(dbFn)
-		log.Info("crawl-inbox: enabled — crawled variants buffered in Postgres, drained to pl_ingested by the pump")
-	}
+	ingestQueue := jobqueue.NewProducer(dbFn, cfg.IngestMaxPending)
+	crawlAdmitter := jobqueue.NewCapacityAdmitter(ingestQueue, cfg.IngestMaxPending, cfg.IngestMaxOldestAge, nil)
 
 	crawlReqH := service.NewCrawlRequestHandler(service.CrawlRequestDeps{
 		Svc:                 svc,
-		IngestedQueue:       cfg.QueuePipelineIngestedName,
-		Inbox:               inboxStore,
+		IngestQueue:         ingestQueue,
 		Sources:             sourceRepo,
 		StatusSetter:        sourceRepo,
 		Registry:            registry,
 		Kinds:               reg,
-		Archive:             arch,
 		Extractor:           extractor,
 		Normalizer:          normalizer,
 		PageFetcher:         httpClient,
 		EnrichConcurrency:   cfg.EnrichConcurrency,
 		DiscoverSample:      0.05, // roughly 1-in-20 pages get DiscoverSites
-		VariantStore:        variantStore,
 		CrawlRepo:           crawlRepo,
 		RunRepo:             crawlRunRepo,
-		Admitter:            bpGate,
+		Admitter:            crawlAdmitter,
 		SliceMaxPages:       cfg.CrawlSliceMaxPages,
 		SliceMaxSeconds:     cfg.CrawlSliceMaxSeconds,
 		RunLeaseTTLSec:      cfg.CrawlRunLeaseTTLSec,
 		RunStuckMaxAttempts: cfg.CrawlRunStuckMaxAttempts,
+		IngestMaxPending:    cfg.IngestMaxPending,
+		IngestMaxOldestAge:  cfg.IngestMaxOldestAge,
 		Frontier:            urlFrontier,
 		RecipeRepo:          recipeRepo,
 		RecipeEnabled:       cfg.RecipeEnabled,
@@ -433,42 +327,6 @@ func main() {
 		}
 	}
 	srcDiscH := service.NewSourceDiscoveredHandler(sourceRepo, reg)
-
-	// Inbox pump: drain crawl_inbox → pl_ingested, but only while the queue has
-	// headroom — so JetStream holds just the working set and the DB absorbs the
-	// burst. Replicas claim disjoint batches via FOR UPDATE SKIP LOCKED.
-	if inboxStore != nil {
-		go func() {
-			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if st, err := bpGate.Check(ctx); err == nil && st.Pending >= cfg.CrawlInboxPumpHighWater {
-						continue // queue full enough — let the pipeline drain first
-					}
-					rows, err := inboxStore.ClaimBatch(ctx, cfg.CrawlInboxPumpBatch, 5*time.Minute)
-					if err != nil {
-						log.WithError(err).Warn("crawl-inbox pump: claim failed")
-						continue
-					}
-					done := make([]string, 0, len(rows))
-					for _, r := range rows {
-						if pErr := svc.QueueManager().Publish(ctx, cfg.QueuePipelineIngestedName, r.Payload, nil); pErr != nil {
-							log.WithError(pErr).Warn("crawl-inbox pump: publish failed; row stays claimed for re-drive")
-							continue
-						}
-						done = append(done, r.VariantID)
-					}
-					if dErr := inboxStore.Delete(ctx, done); dErr != nil {
-						log.WithError(dErr).Warn("crawl-inbox pump: delete drained rows failed")
-					}
-				}
-			}
-		}()
-	}
 
 	// The crawler subscribes to svc.opportunities.events.> (catch-all)
 	// but only handles three topics. Frame v1.97.3 loose-mode acks-and-
@@ -542,8 +400,6 @@ func main() {
 
 	svc.Init(ctx,
 		frame.WithRegisterEvents(handlers...),
-		// Pipeline head: publish VariantIngestedV1 to the opportunity chain.
-		frame.WithRegisterPublisher(cfg.QueuePipelineIngestedName, cfg.QueuePipelineIngested),
 	)
 	if mgr := svc.EventsManager(); mgr != nil {
 		mgr.SetStrict(false)
@@ -595,14 +451,6 @@ func main() {
 			bgCtx := context.WithoutCancel(ctx)
 			rctx, cancel := context.WithTimeout(bgCtx, 5*time.Minute)
 			defer cancel()
-			// One-time retirement of the legacy static-cron sweep
-			// (definitions/trustage/source-crawl-tick.json). It has been
-			// replaced by per-source schedules; archive it so Trustage stops
-			// firing POST /admin/sources/crawl-due (which no longer exists).
-			// Idempotent + best-effort.
-			if aerr := service.ArchiveWorkflowByName(rctx, scheduleClient, "opportunities.source.crawl-tick"); aerr != nil {
-				log.WithError(aerr).Warn("source-schedules: archive legacy crawl-tick workflow failed")
-			}
 			all, err := sourceRepo.ListAll(rctx)
 			if err != nil {
 				log.WithError(err).Warn("source-schedules: boot reconcile ListAll failed")
@@ -652,18 +500,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
 	})
 
-	// Admin: stop a source AND cascade-delete its jobs from search.
-	//
-	// Two-step contract:
-	//   1. Flip sources.status to `disabled` with audit stamps
-	//      (last_stopped_at / last_stopped_by) so future scheduler
-	//      ticks skip it. ListDue's WHERE clause already excludes
-	//      `disabled`, so this halts new crawls without further
-	//      coordination.
-	//   2. Emit SourceStoppedV1. The materializer's subscriber runs
-	//      DELETE FROM idx_opportunities_rt WHERE source_id =
-	//      hashID(id) — removing every historical job attributed to
-	//      this source from search in one round-trip.
+	// Admin: stop a source and deactivate its PostgreSQL opportunity lineage.
 	//
 	// Query params: ?id=<source_id>&reason=<text>&operator=<actor>
 	// `operator` is the audit identity (defaults to "unknown" when
@@ -691,20 +528,10 @@ func main() {
 		}
 		removeSchedule(r.Context(), id)
 
-		// Emit the cascade-delete event. Best-effort; the source is
-		// already marked disabled so missing the emit only delays
-		// Manticore cleanup (it would normally happen on the
-		// canonical_expired path once the retention sweep runs).
-		if evtMgr := svc.EventsManager(); evtMgr != nil {
-			env := eventsv1.NewEnvelope(eventsv1.TopicSourcesStopped, eventsv1.SourceStoppedV1{
-				SourceID:  id,
-				Reason:    reason,
-				StoppedBy: operator,
-				StoppedAt: now,
-			})
-			if emitErr := svc.EventsManager().Emit(r.Context(), eventsv1.TopicSourcesStopped, env); emitErr != nil {
-				log.WithError(emitErr).WithField("source_id", id).Warn("source-stop: emit failed; jobs will be removed only by retention sweep")
-			}
+		if err := ingestQueue.DeactivateSource(r.Context(), id, "source stopped: "+reason); err != nil {
+			log.WithError(err).WithField("source_id", id).Error("source-stop: opportunity deactivation failed")
+			http.Error(w, `{"error":"source stopped but opportunity deactivation failed; retry request"}`, http.StatusInternalServerError)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -770,7 +597,7 @@ func main() {
 	// source's cadence. Emits exactly one crawl.requests.v1 for {id}, gated by
 	// backpressure (429 + Retry-After when the pipeline is saturated).
 	adminMux.HandleFunc("POST /admin/sources/{id}/crawl",
-		service.SourceCrawlHandler(svc, sourceRepo, bpGate))
+		service.SourceCrawlHandler(svc, sourceRepo, crawlAdmitter))
 
 	// Schedule reconcile backstop: Trustage fires this periodically to heal
 	// drift between sources.status and the per-source Trustage schedules.
@@ -782,7 +609,7 @@ func main() {
 	// a never-activated workflow, or Trustage downtime. Static-synced cron;
 	// see definitions/trustage/source-crawl-overdue.json.
 	adminMux.HandleFunc("POST /admin/sources/crawl-overdue",
-		service.CrawlOverdueHandler(svc, sourceRepo, sourceRepo, bpGate, cfg.CrawlOverdueBatch))
+		service.CrawlOverdueHandler(svc, sourceRepo, sourceRepo, crawlAdmitter, cfg.CrawlOverdueBatch))
 
 	// Crawl-pipeline liveness watchdog: ERROR-logs (and reports) when sources
 	// are due but nothing has crawled in hours. Static-synced cron; see
@@ -794,15 +621,9 @@ func main() {
 	// owner, lost/deferred continuation) and fails runs past the stuck ceiling.
 	// Static-synced cron; see definitions/trustage/crawl-runs-sweep.json.
 	adminMux.HandleFunc("POST /admin/crawl/runs/sweep",
-		service.CrawlRunWatchdogHandler(svc, crawlRunRepo, bpGate,
+		service.CrawlRunWatchdogHandler(svc, crawlRunRepo, crawlAdmitter,
 			cfg.CrawlRunWatchdogBatch, cfg.CrawlRunStuckMaxAttempts, cfg.CrawlRunLeaseTTLSec))
 	adminMux.HandleFunc("POST /admin/crawl/watchdog", watchdog)
-
-	// Stale-job retention sweep: hides opportunities that vanished from a
-	// source's feed (and restores any that came back). Trustage fires this
-	// every 15 min; see definitions/trustage/retention-expire.json.
-	adminMux.HandleFunc("POST /admin/retention/expire",
-		service.RetentionExpireHandler(variantStore))
 
 	// Admin: bulk reset quality-window counters on all active sources.
 	// Trustage fires this weekly; see definitions/trustage/sources-quality-window-reset.json.
@@ -835,59 +656,25 @@ func main() {
 			},
 		}))
 
-	// Admin: backpressure state — operator-facing visibility into the
-	// gate. Useful for dashboards and for confirming the Trustage
-	// workflow is correctly no-op'ing during saturation.
+	// Admin: authoritative PostgreSQL ingestion pressure.
 	adminMux.HandleFunc("GET /admin/crawl/status", func(w http.ResponseWriter, r *http.Request) {
-		state, err := bpGate.Check(r.Context())
+		stats, err := ingestQueue.Stats(r.Context())
 		w.Header().Set("Content-Type", "application/json")
 		resp := map[string]any{
-			"paused":     state.Paused,
-			"pending":    state.Pending,
-			"high_water": state.HighWater,
-			"low_water":  state.LowWater,
+			"paused":                 err != nil || stats.Pending >= cfg.IngestMaxPending || stats.OldestAge >= cfg.IngestMaxOldestAge,
+			"pending":                stats.Pending,
+			"oldest_age_seconds":     int64(stats.OldestAge / time.Second),
+			"max_pending":            cfg.IngestMaxPending,
+			"max_oldest_age_seconds": int64(cfg.IngestMaxOldestAge / time.Second),
 		}
 		if err != nil {
 			resp["error"] = err.Error()
-			w.WriteHeader(http.StatusOK) // fail-open status
+			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	// Admin: R2 archive purge — drop cluster bundles + orphan raw/
-	// blobs for canonicals past the grace window. Fired by Trustage
-	// on the same cadence as stage2 retention.
-	adminMux.HandleFunc("POST /admin/r2/purge", func(w http.ResponseWriter, r *http.Request) {
-		grace := 7
-		if v := r.URL.Query().Get("grace_days"); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 90 {
-				grace = n
-			}
-		}
-		limit := 100
-		if v := r.URL.Query().Get("limit"); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 1000 {
-				limit = n
-			}
-		}
-		purgeR2Archive(r.Context(), dbFn, arch, rawRefRepo, grace, limit)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "grace_days": grace, "limit": limit})
-	})
-
-	// Admin: nightly orphan reconciliation. Walks clusters/* in the
-	// archive bucket and deletes any cluster directory whose ID is
-	// missing from canonical_jobs. Catches orphan bundles from failed
-	// DB commits and objects missed by the purge sweeper.
-	adminMux.HandleFunc("POST /admin/r2/reconcile", func(w http.ResponseWriter, r *http.Request) {
-		reconcileOrphans(r.Context(), arch.Client(), arch.Bucket(), dbFn, arch)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	})
-
-	// Admin: recent crawl_jobs for a source, each with a count of the
-	// raw_payloads it produced. Triage view: "when did we last crawl
-	// source X, what happened, how many raw_payloads landed?"
+	// Admin: recent crawl jobs for a source.
 	adminMux.HandleFunc("GET /admin/crawl_jobs",
 		service.CrawlJobsAdminHandler(crawlRepo))
 

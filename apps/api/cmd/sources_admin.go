@@ -39,7 +39,6 @@ import (
 	awscreds "github.com/aws/aws-sdk-go-v2/credentials"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
@@ -49,7 +48,6 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/freshness"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
-	"github.com/stawi-opportunities/opportunities/pkg/icebergclient"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/sourceverify"
@@ -189,21 +187,10 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	mux.HandleFunc("GET /admin/sources", requireAdmin(a.handleList))
 	mux.HandleFunc("POST /admin/sources", requireAdmin(a.handleCreate))
 
-	// /admin/trace/* shares the same database pool + source repo for
-	// the source-lookup leg, so we wire it here rather than duplicating
-	// the frame-datastore boot in main.go. The Iceberg catalog is
-	// optional — when ICEBERG_CATALOG_URI isn't set the handler skips
-	// the historic layer and serves Postgres-only summaries.
-	var iceCat *icebergclient.Catalog
-	if cat, err := icebergclient.NewCatalogFromEnv(ctx); err == nil {
-		iceCat = cat
-		log.Info("source admin: iceberg catalog wired for historic trace queries")
-	} else {
-		log.WithError(err).Warn("source admin: iceberg catalog init failed; historic queries disabled")
-	}
+	// /admin/trace/* reads the same authoritative PostgreSQL database.
 	traceRepo := repository.NewTraceRepository(pool.DB)
-	registerTraceAdmin(mux, traceRepo, repo, iceCat)
-	registerDigestAdmin(mux, traceRepo, iceCat)
+	registerTraceAdmin(mux, traceRepo, repo)
+	registerDigestAdmin(mux, traceRepo)
 
 	// /admin/crawl-runs — operator can inspect the crawl_runs state machine
 	// per source and reset a wedged run (failing it frees the source's
@@ -219,31 +206,6 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	frontierRepo := frontier.NewAdminRepository(pool.DB)
 	registerFrontierAdmin(mux, frontierRepo)
 	log.Info("source admin: /admin/frontier wired")
-
-	// /admin/raw_payloads/{id}/body — operator pulls the original HTML
-	// from R2 for rejection drill-down. Wired only when R2 creds + the
-	// archive bucket name are present; otherwise the endpoint stays
-	// disabled and the rest of the admin surface keeps working.
-	crawlRepo := repository.NewCrawlRepository(pool.DB)
-	if cfg.R2AccountID != "" && cfg.R2ArchiveBucket != "" {
-		arch := archive.NewR2Archive(archive.R2Config{
-			AccountID:       cfg.R2AccountID,
-			AccessKeyID:     cfg.R2AccessKeyID,
-			SecretAccessKey: cfg.R2SecretAccessKey,
-			Bucket:          cfg.R2ArchiveBucket,
-		})
-		registerRawPayloadAdmin(mux, crawlRepo, arch)
-		log.Info("source admin: /admin/raw_payloads/{id}/body wired")
-	} else {
-		log.Warn("source admin: R2 not configured; /admin/raw_payloads/{id}/body disabled")
-	}
-
-	// /admin/raw_payloads/{id}/reparse + /admin/sources/{id}/reparse —
-	// publish a CrawlRequestV1 with RawPayloadID set so the crawler
-	// re-runs extraction on stored HTML. Available even without R2
-	// configured (the crawler-side handler does the storage probe).
-	registerReparseAdmin(mux, crawlRepo, frameEmitter{svc: svc})
-	log.Info("source admin: /admin/raw_payloads/{id}/reparse + /admin/sources/{id}/reparse wired")
 
 	// /admin/definitions/* — pluggable-definitions CRUD over R2. Reuses
 	// the loader main.go already started so this surface, the per-replica
@@ -462,8 +424,7 @@ type updateSourceRequest struct {
 	ListingPath               *string              `json:"listing_path"`
 	// FrontierEnabled is the D2 opt-in flag — flips the source's
 	// crawl path to the URL-frontier model. Default (unset) leaves
-	// the existing value alone; legacy direct-extract sources
-	// stay on the legacy path until the operator explicitly opts in.
+	// the existing source-level execution path unchanged.
 	FrontierEnabled *bool `json:"frontier_enabled"`
 }
 

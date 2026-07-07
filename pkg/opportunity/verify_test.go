@@ -70,12 +70,33 @@ func TestVerify_ScholarshipHappyPath(t *testing.T) {
 		Title:         "MSc Climate Science",
 		Description:   "Long description that is well above the minimum length required for verify to be happy.",
 		IssuingEntity: "ETH Zurich",
+		ApplyURL:      "https://eth.example/apply",
 		Deadline:      &deadline,
 		Attributes:    map[string]any{"field_of_study": "Climate"},
 	}
 	r := Verify(opp, src, reg)
 	if !r.OK {
 		t.Fatalf("expected OK, got %+v", r)
+	}
+}
+
+func TestVerify_AlwaysRequiresApplyURL(t *testing.T) {
+	reg := newRegistry(t)
+	src := &domain.Source{Kinds: []string{"scholarship"}}
+	deadline := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	opp := &domain.ExternalOpportunity{
+		Kind:          "scholarship",
+		Title:         "MSc Climate Science",
+		Description:   "Long description that is well above the minimum length required for verify to be happy.",
+		IssuingEntity: "ETH Zurich",
+		ApplyURL:      "   ",
+		Deadline:      &deadline,
+		Attributes:    map[string]any{"field_of_study": "Climate"},
+	}
+
+	r := Verify(opp, src, reg)
+	if r.OK || !contains(r.Missing, "apply_url") {
+		t.Fatalf("expected apply_url to be required for every kind, got %+v", r)
 	}
 }
 

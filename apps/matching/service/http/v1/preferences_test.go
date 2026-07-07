@@ -22,8 +22,8 @@ type prefCollector struct {
 	got []eventsv1.Envelope[eventsv1.PreferencesUpdatedV1]
 }
 
-func (c *prefCollector) Name() string     { return eventsv1.TopicCandidatePreferencesUpdated }
-func (c *prefCollector) PayloadType() any { var raw json.RawMessage; return &raw }
+func (c *prefCollector) Name() string                        { return eventsv1.TopicCandidatePreferencesUpdated }
+func (c *prefCollector) PayloadType() any                    { var raw json.RawMessage; return &raw }
 func (c *prefCollector) Validate(context.Context, any) error { return nil }
 func (c *prefCollector) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)

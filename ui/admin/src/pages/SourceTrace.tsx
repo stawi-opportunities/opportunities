@@ -88,10 +88,6 @@ export function SourceTrace() {
               </td>
             </tr>
             <tr>
-              <td>Raw payloads</td>
-              <td>{summary.raw_payloads}</td>
-            </tr>
-            <tr>
               <td>Variants emitted</td>
               <td>{summary.variants_emitted}</td>
             </tr>
@@ -173,7 +169,6 @@ export function SourceTrace() {
                 <th>Status</th>
                 <th>Found</th>
                 <th>Stored</th>
-                <th>Raw</th>
                 <th>Duration (ms)</th>
                 <th>Error</th>
               </tr>
@@ -185,7 +180,6 @@ export function SourceTrace() {
                   <td>{c.status}</td>
                   <td>{c.jobs_found}</td>
                   <td>{c.jobs_stored}</td>
-                  <td>{c.raw_payloads}</td>
                   <td>{c.duration_ms}</td>
                   <td>{c.error_code ?? ''}</td>
                 </tr>

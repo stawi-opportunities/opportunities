@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { StawiAuth } from "./StawiAuth";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 
 const browseItems = [
   { href: "/jobs/",         emoji: "≡ƒÆ╝", label: "Jobs",         sub: "Full-time, remote & more" },
@@ -124,7 +123,6 @@ export default function Nav() {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
-          <LanguageSwitcher />
           <StawiAuth />
 
           {/* Mobile hamburger */}

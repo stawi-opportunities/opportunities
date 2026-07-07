@@ -36,11 +36,12 @@ type SearchRequest struct {
 //
 // Reasons is an optional list of short, human-readable strings explaining
 // why this opportunity matched (populated when the per-kind matcher is
-// run; empty for the legacy CV-vs-job KNN-only pipeline).
+// run; empty for the CV-vs-job KNN-only pipeline).
 type SearchHit struct {
 	CanonicalID string
 	Slug        string
 	Title       string
+	ApplyURL    string
 	Company     string
 	Score       float64
 	Reasons     []string
@@ -72,6 +73,7 @@ type matchResponseRow struct {
 	CanonicalID string   `json:"canonical_id"`
 	Slug        string   `json:"slug,omitempty"`
 	Title       string   `json:"title,omitempty"`
+	ApplyURL    string   `json:"apply_url"`
 	Company     string   `json:"company,omitempty"`
 	Score       float64  `json:"score"`
 	Reasons     []string `json:"reasons,omitempty"`
@@ -116,7 +118,7 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 		eventRows := make([]eventsv1.MatchRow, 0, len(res.Matches))
 		for _, h := range res.Matches {
 			rows = append(rows, matchResponseRow(h))
-			eventRows = append(eventRows, eventsv1.MatchRow{CanonicalID: h.CanonicalID, Score: h.Score})
+			eventRows = append(eventRows, eventsv1.MatchRow{CanonicalID: h.CanonicalID, ApplyURL: h.ApplyURL, Score: h.Score})
 		}
 		resp := matchResponse{
 			OK: true, CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: rows,

@@ -76,6 +76,7 @@ func meHandler(d *Deps) http.HandlerFunc {
 type matchResp struct {
 	MatchID       string         `json:"match_id"`
 	OpportunityID string         `json:"opportunity_id"`
+	ApplyURL      string         `json:"apply_url"`
 	Status        string         `json:"status"`
 	Score         float64        `json:"score"`
 	RerankScore   *float64       `json:"rerank_score,omitempty"`
@@ -88,7 +89,7 @@ type matchResp struct {
 
 func toMatchResp(m matching.Match) matchResp {
 	return matchResp{
-		MatchID: m.MatchID, OpportunityID: m.OpportunityID,
+		MatchID: m.MatchID, OpportunityID: m.OpportunityID, ApplyURL: m.ApplyURL,
 		Status: string(m.Status), Score: m.Score, RerankScore: m.RerankScore,
 		ViewedAt: m.ViewedAt, DismissedAt: m.DismissedAt, AppliedAt: m.AppliedAt,
 		Metadata: m.Metadata, CreatedAt: m.CreatedAt,
@@ -156,7 +157,9 @@ func getMatch(d *Deps) http.HandlerFunc {
 // is owned by someone else.
 func loadOwnedMatch(ctx context.Context, d *Deps, candidateID, matchID string) (*matching.Match, error) {
 	row := d.DB.QueryRowContext(ctx, `
-SELECT match_id, candidate_id, opportunity_id, status, score, rerank_score,
+SELECT match_id, candidate_id, opportunity_id,
+       COALESCE((SELECT o.apply_url FROM opportunities o WHERE o.canonical_id=candidate_matches.opportunity_id), ''),
+       status, score, rerank_score,
        reranker_used, viewed_at, applied_at, dismissed_at,
        COALESCE(last_event_id,''), metadata, created_at, updated_at
 FROM candidate_matches
@@ -171,7 +174,7 @@ WHERE match_id = $1 AND candidate_id = $2
 		dismAt    sql.NullTime
 		mdRaw     []byte
 	)
-	if err := row.Scan(&m.MatchID, &m.CandidateID, &m.OpportunityID, &status,
+	if err := row.Scan(&m.MatchID, &m.CandidateID, &m.OpportunityID, &m.ApplyURL, &status,
 		&m.Score, &rerank, &m.RerankerUsed,
 		&viewedAt, &appliedAt, &dismAt, &m.LastEventID, &mdRaw,
 		&m.CreatedAt, &m.UpdatedAt,

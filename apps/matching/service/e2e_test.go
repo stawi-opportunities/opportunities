@@ -63,9 +63,9 @@ type envCol[P any] struct {
 	got   []eventsv1.Envelope[P]
 }
 
-func (c *envCol[P]) Name() string                          { return c.topic }
-func (c *envCol[P]) PayloadType() any                      { var raw json.RawMessage; return &raw }
-func (c *envCol[P]) Validate(context.Context, any) error   { return nil }
+func (c *envCol[P]) Name() string                        { return c.topic }
+func (c *envCol[P]) PayloadType() any                    { var raw json.RawMessage; return &raw }
+func (c *envCol[P]) Validate(context.Context, any) error { return nil }
 func (c *envCol[P]) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)
 	var env eventsv1.Envelope[P]

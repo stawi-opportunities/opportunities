@@ -35,8 +35,7 @@ func TestApplicationsLifecycleSuite(t *testing.T) {
 func (s *ApplicationsLifecycleSuite) SetupSuite() {
 	s.ctx = context.Background()
 	s.db = testhelpers.PostgresContainerNoMigrate(s.T(), s.ctx)
-	require.NoError(s.T(), testhelpers.EnsureOpportunitiesStub(s.ctx, s.db))
-	testhelpers.ApplyMigrationsDir(s.T(), s.ctx, s.db, "../../db/migrations")
+	testhelpers.ApplyGreenfieldSchema(s.T(), s.ctx, s.db)
 
 	store := applications.NewStore(s.db)
 	events := applications.NewEventLog(s.db)

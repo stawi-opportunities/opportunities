@@ -2,28 +2,16 @@
 package config
 
 import (
+	"time"
+
 	fconfig "github.com/pitabwire/frame/config"
 )
 
 // Config for apps/frontier-worker. Frame base handles Postgres +
-// pub/sub + OTEL. The worker dequeues URLs from url_frontier,
-// fetches each, archives the raw HTML to R2, and forwards the
-// extracted record into the existing variants pipeline.
+// pub/sub + OTEL. The worker dequeues URLs from url_frontier, fetches each,
+// parses the response in memory, discards it, and enqueues the extracted row.
 type Config struct {
 	fconfig.ConfigurationDefault
-
-	// Cloudflare R2 — archive bucket only (frontier-worker doesn't
-	// write to the content bucket; the canonical worker owns that).
-	R2AccountID       string `env:"R2_ACCOUNT_ID,required"`
-	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID,required"`
-	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY,required"`
-	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
-
-	// Pipeline head queue: the frontier-worker publishes VariantIngestedV1
-	// here (the worker's normalize stage subscribes). Must match the
-	// worker/crawler ingested queue.
-	QueuePipelineIngested     string `env:"QUEUE_PIPELINE_INGESTED_URI"  envDefault:"mem://pipeline_ingested"`
-	QueuePipelineIngestedName string `env:"QUEUE_PIPELINE_INGESTED_NAME" envDefault:"pipeline_ingested"`
 
 	// AI extractor. Optional — when unset the worker skips the LLM
 	// pass and forwards the URL stub with whatever metadata the
@@ -78,7 +66,9 @@ type Config struct {
 	// IdleTickSeconds drives the heartbeat poll cadence — the
 	// worker calls Dequeue every N seconds as a fallback in case
 	// the NATS wake-up signal misses. Default 5s.
-	IdleTickSeconds int `env:"IDLE_TICK_SECONDS" envDefault:"5"`
+	IdleTickSeconds    int           `env:"IDLE_TICK_SECONDS" envDefault:"5"`
+	IngestMaxPending   int64         `env:"INGEST_MAX_PENDING" envDefault:"100000"`
+	IngestMaxOldestAge time.Duration `env:"INGEST_MAX_OLDEST_AGE" envDefault:"30m"`
 }
 
 // Load parses env into Config using Frame's env loader.

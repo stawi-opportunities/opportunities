@@ -149,4 +149,3 @@ func statsHandler(ct *counters.Counters) http.HandlerFunc {
 		})
 	}
 }
-

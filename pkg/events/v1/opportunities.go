@@ -20,6 +20,7 @@ type VariantIngestedV1 struct {
 	// Universal envelope fields (denormalised for analytics queries that
 	// don't want to JSON-decode Attributes).
 	Title         string `json:"title"`
+	ApplyURL      string `json:"apply_url"`
 	IssuingEntity string `json:"issuing_entity,omitempty"`
 	AnchorCountry string `json:"anchor_country,omitempty"` // ISO 3166-1 alpha-2
 	AnchorRegion  string `json:"anchor_region,omitempty"`

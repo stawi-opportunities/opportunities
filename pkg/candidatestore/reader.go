@@ -1,259 +1,64 @@
-// Package candidatestore provides read-only access to the latest
-// per-candidate derived state (embedding, preferences) from Iceberg
-// append-only tables. The match endpoint uses it to avoid reading
-// Postgres on the hot path.
-//
-// Staleness: each call scans the append-only table filtered by
-// candidate_id. Iceberg's bucket(32, candidate_id) partition plus a
-// bloom filter on candidate_id limits the scan to ~1/32 of files.
-// Target latency <100ms p95 for single-candidate lookups.
+// Package candidatestore reads candidate matching state from PostgreSQL.
 package candidatestore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	iceberg "github.com/apache/iceberg-go"
-	"github.com/apache/iceberg-go/catalog"
-	"github.com/apache/iceberg-go/table"
-
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/matching"
 )
 
-// ErrNotFound is returned when no embedding/preferences row exists
-// for the requested candidate in the Iceberg table.
 var ErrNotFound = errors.New("candidatestore: candidate state not found")
-
-// ErrEmbeddingNotFound is returned specifically when no embedding row exists.
 var ErrEmbeddingNotFound = fmt.Errorf("%w: no embedding row", ErrNotFound)
 
-// Reader reads candidate embedding + preference state from Iceberg
-// append-only tables, folding in Go to find the latest row per candidate.
-type Reader struct {
-	cat catalog.Catalog
+type Reader struct{ db *sql.DB }
+
+func NewReader(db *sql.DB) *Reader { return &Reader{db: db} }
+
+func SavePreferences(ctx context.Context, db *sql.DB, p eventsv1.PreferencesUpdatedV1) error {
+	b, err := json.Marshal(p.OptIns)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `INSERT INTO candidate_preferences (candidate_id,opt_ins,updated_at)
+		VALUES ($1,$2::jsonb,$3) ON CONFLICT (candidate_id) DO UPDATE SET
+		opt_ins=EXCLUDED.opt_ins, updated_at=GREATEST(EXCLUDED.updated_at,candidate_preferences.updated_at)`,
+		p.CandidateID, string(b), p.UpdatedAt)
+	return err
 }
 
-// NewReader builds a Reader backed by an Iceberg catalog.
-func NewReader(cat catalog.Catalog) *Reader {
-	return &Reader{cat: cat}
-}
-
-// LatestEmbedding returns the embedding row for candidateID from the
-// append-only candidates.embeddings Iceberg table. Rows are streamed
-// batch-by-batch (ToArrowRecords); only the latest row by occurred_at is
-// retained in memory at any time, so memory is O(1) regardless of how many
-// CV versions the candidate has accumulated.
-//
-// Returns (zero, ErrEmbeddingNotFound) when no row exists for the candidate.
 func (r *Reader) LatestEmbedding(ctx context.Context, candidateID string) (eventsv1.CandidateEmbeddingV1, error) {
-	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "embeddings"})
-	if err != nil {
-		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: load embeddings: %w", err)
-	}
-
-	scan := tbl.Scan(
-		table.WithRowFilter(iceberg.EqualTo(iceberg.Reference("candidate_id"), candidateID)),
-		table.WithSelectedFields("candidate_id", "cv_version", "vector", "model_version", "occurred_at"),
-	)
-
-	_, itr, err := scan.ToArrowRecords(ctx)
-	if err != nil {
-		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: scan embeddings: %w", err)
-	}
-
-	var latest eventsv1.CandidateEmbeddingV1
-	var latestOccurred time.Time
-	found := false
-
-	for batch, batchErr := range itr {
-		if batchErr != nil {
-			return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: iterate embeddings: %w", batchErr)
-		}
-		sc := batch.Schema()
-		cidxCandidateID := sc.FieldIndices("candidate_id")
-		cidxVector := sc.FieldIndices("vector")
-		if len(cidxCandidateID) == 0 || len(cidxVector) == 0 {
-			batch.Release()
-			continue
-		}
-		nRows := int(batch.NumRows())
-		for i := 0; i < nRows; i++ {
-			row := decodeEmbeddingRow(batch, sc, i)
-			if !found || row.OccurredAt.After(latestOccurred) {
-				latest = row
-				latestOccurred = row.OccurredAt
-				found = true
-			}
-		}
-		batch.Release()
-	}
-
-	if !found {
+	var vector, model string
+	var updated time.Time
+	err := r.db.QueryRowContext(ctx, `SELECT embedding::text, 'candidate-match-index', updated_at
+		FROM candidate_match_indexes WHERE candidate_id=$1 AND enabled=true`, candidateID).Scan(&vector, &model, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
 		return eventsv1.CandidateEmbeddingV1{}, ErrEmbeddingNotFound
 	}
-	return latest, nil
+	if err != nil {
+		return eventsv1.CandidateEmbeddingV1{}, fmt.Errorf("candidatestore: embedding: %w", err)
+	}
+	return eventsv1.CandidateEmbeddingV1{CandidateID: candidateID, Vector: matching.ParseVectorLiteral(vector), ModelVersion: model, OccurredAt: updated}, nil
 }
 
-// LatestPreferences returns the preferences row for candidateID from the
-// append-only candidates.preferences Iceberg table. Rows are streamed
-// batch-by-batch (ToArrowRecords); only the latest row by occurred_at is
-// retained in memory at any time.
-//
-// Returns (zero, ErrNotFound) when no row exists.
 func (r *Reader) LatestPreferences(ctx context.Context, candidateID string) (eventsv1.PreferencesUpdatedV1, error) {
-	tbl, err := r.cat.LoadTable(ctx, []string{"candidates", "preferences"})
-	if err != nil {
-		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: load preferences: %w", err)
-	}
-
-	scan := tbl.Scan(
-		table.WithRowFilter(iceberg.EqualTo(iceberg.Reference("candidate_id"), candidateID)),
-		table.WithSelectedFields(
-			"candidate_id", "opt_ins_json", "updated_at", "occurred_at",
-		),
-	)
-
-	_, itr, err := scan.ToArrowRecords(ctx)
-	if err != nil {
-		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: scan preferences: %w", err)
-	}
-
-	var latest eventsv1.PreferencesUpdatedV1
-	var latestOccurred time.Time
-	found := false
-
-	for batch, batchErr := range itr {
-		if batchErr != nil {
-			return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: iterate preferences: %w", batchErr)
-		}
-		sc := batch.Schema()
-		cidxCandidateID := sc.FieldIndices("candidate_id")
-		if len(cidxCandidateID) == 0 {
-			batch.Release()
-			continue
-		}
-		nRows := int(batch.NumRows())
-		for i := 0; i < nRows; i++ {
-			row := decodePreferencesRow(batch, sc, i)
-			if !found || row.OccurredAt.After(latestOccurred) {
-				latest = row
-				latestOccurred = row.OccurredAt
-				found = true
-			}
-		}
-		batch.Release()
-	}
-
-	if !found {
+	var raw []byte
+	var updated time.Time
+	err := r.db.QueryRowContext(ctx, `SELECT opt_ins, updated_at FROM candidate_preferences WHERE candidate_id=$1`, candidateID).Scan(&raw, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
 		return eventsv1.PreferencesUpdatedV1{}, ErrNotFound
 	}
-	return latest, nil
+	if err != nil {
+		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: preferences: %w", err)
+	}
+	var optIns map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &optIns); err != nil {
+		return eventsv1.PreferencesUpdatedV1{}, fmt.Errorf("candidatestore: preferences JSON: %w", err)
+	}
+	return eventsv1.PreferencesUpdatedV1{CandidateID: candidateID, OptIns: optIns, UpdatedAt: updated, OccurredAt: updated}, nil
 }
-
-// --- per-row decoders (operate on a single Arrow RecordBatch row) ---
-
-// decodeEmbeddingRow extracts one row from a RecordBatch that has the
-// embeddings schema (candidate_id, cv_version, vector, model_version, occurred_at).
-func decodeEmbeddingRow(rec arrow.RecordBatch, sc *arrow.Schema, i int) eventsv1.CandidateEmbeddingV1 {
-	var row eventsv1.CandidateEmbeddingV1
-
-	if idxs := sc.FieldIndices("candidate_id"); len(idxs) > 0 {
-		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.CandidateID = col.Value(i)
-		}
-	}
-	if idxs := sc.FieldIndices("cv_version"); len(idxs) > 0 {
-		if col, ok := rec.Column(idxs[0]).(*array.Int32); ok && !col.IsNull(i) {
-			row.CVVersion = int(col.Value(i))
-		}
-	}
-	if idxs := sc.FieldIndices("vector"); len(idxs) > 0 {
-		if col := listColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.Vector = listFloat32Values(col, i)
-		}
-	}
-	if idxs := sc.FieldIndices("model_version"); len(idxs) > 0 {
-		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.ModelVersion = col.Value(i)
-		}
-	}
-	if idxs := sc.FieldIndices("occurred_at"); len(idxs) > 0 {
-		if col, ok := rec.Column(idxs[0]).(*array.Timestamp); ok && !col.IsNull(i) {
-			row.OccurredAt = timestampToTime(rec, idxs[0], col, i)
-		}
-	}
-	return row
-}
-
-// decodePreferencesRow extracts one row from a RecordBatch that has the
-// preferences schema. The OptIns map is JSON-decoded from the
-// opt_ins_json column (the writer marshals the kind→blob map into a
-// single JSON string to keep the schema kind-agnostic).
-func decodePreferencesRow(rec arrow.RecordBatch, sc *arrow.Schema, i int) eventsv1.PreferencesUpdatedV1 {
-	var row eventsv1.PreferencesUpdatedV1
-
-	if idxs := sc.FieldIndices("candidate_id"); len(idxs) > 0 {
-		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			row.CandidateID = col.Value(i)
-		}
-	}
-	if idxs := sc.FieldIndices("opt_ins_json"); len(idxs) > 0 {
-		if col := stringColOrNil(rec, idxs[0]); col != nil && !col.IsNull(i) {
-			s := col.Value(i)
-			if s != "" {
-				_ = json.Unmarshal([]byte(s), &row.OptIns)
-			}
-		}
-	}
-	if idxs := sc.FieldIndices("updated_at"); len(idxs) > 0 {
-		if col, ok := rec.Column(idxs[0]).(*array.Timestamp); ok && !col.IsNull(i) {
-			row.UpdatedAt = timestampToTime(rec, idxs[0], col, i)
-		}
-	}
-	if idxs := sc.FieldIndices("occurred_at"); len(idxs) > 0 {
-		if col, ok := rec.Column(idxs[0]).(*array.Timestamp); ok && !col.IsNull(i) {
-			row.OccurredAt = timestampToTime(rec, idxs[0], col, i)
-		}
-	}
-	return row
-}
-
-// --- low-level Arrow column helpers ---
-
-func stringColOrNil(rec arrow.RecordBatch, colIdx int) *array.String {
-	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
-		return nil
-	}
-	c, _ := rec.Column(colIdx).(*array.String)
-	return c
-}
-
-func listColOrNil(rec arrow.RecordBatch, colIdx int) *array.List {
-	if colIdx < 0 || colIdx >= int(rec.NumCols()) {
-		return nil
-	}
-	c, _ := rec.Column(colIdx).(*array.List)
-	return c
-}
-
-// listFloat32Values extracts []float32 from row i of a List<float32> column.
-func listFloat32Values(col *array.List, i int) []float32 {
-	start, end := col.ValueOffsets(i)
-	vals, ok := col.ListValues().(*array.Float32)
-	if !ok || start >= end {
-		return nil
-	}
-	raw := vals.Float32Values()
-	if int(end) > len(raw) {
-		return nil
-	}
-	out := make([]float32, end-start)
-	copy(out, raw[start:end])
-	return out
-}
-

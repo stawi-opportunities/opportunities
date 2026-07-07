@@ -3,9 +3,8 @@
 //
 // The frontier-worker consumes wake-up events on
 // crawl.url.enqueued.v1, dequeues URLs from url_frontier under
-// per-host politeness, fetches each URL, archives the raw HTML
-// to R2, runs the AI extractor, and emits VariantIngestedV1 into
-// the existing pipeline.
+// per-host politeness, fetches and parses each URL in memory, then enqueues the
+// extracted result.
 //
 // Horizontally scalable: multiple replicas race on Dequeue's
 // SKIP LOCKED claim and never double-claim. Initial replicas = 2.
@@ -23,18 +22,17 @@ import (
 
 	frontiercfg "github.com/stawi-opportunities/opportunities/apps/frontier-worker/config"
 	frontiersvc "github.com/stawi-opportunities/opportunities/apps/frontier-worker/service"
-	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
+	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
-	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 func main() {
@@ -90,8 +88,6 @@ func main() {
 
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
-	crawlRepo := repository.NewCrawlRepository(dbFn)
-	variantStore := variantstate.NewStore(dbFn)
 
 	// Frontier with the OnEnqueue hook left unset — the
 	// frontier-worker doesn't re-enqueue; that's the crawler's
@@ -134,12 +130,10 @@ func main() {
 	var extractor *extraction.Extractor
 	infBase, infModel, infKey := extraction.ResolveInference(
 		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
-		"", "",
 	)
 	if infBase != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
 			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
-			"", "",
 		)
 		// Dedicated inference client with a generous timeout. The fetch
 		// client (httpDoer) is intentionally short (HTTP_TIMEOUT_SEC=20s)
@@ -168,30 +162,20 @@ func main() {
 	geocoder := geocode.New()
 	normalizer := normalize.New(geocoder)
 
-	// Archive — same R2 archive bucket as the crawler so reparse
-	// + retention paths see one consistent set of raw_payloads.
-	arch := archive.NewR2Archive(archive.R2Config{
-		AccountID:       cfg.R2AccountID,
-		AccessKeyID:     cfg.R2AccessKeyID,
-		SecretAccessKey: cfg.R2SecretAccessKey,
-		Bucket:          cfg.R2ArchiveBucket,
-	})
-
 	handler := frontiersvc.NewHandler(frontiersvc.Deps{
-		Svc:           svc,
-		IngestedQueue: cfg.QueuePipelineIngestedName,
-		Frontier:      pf,
-		Sources:       sourceRepo,
-		Kinds:         reg,
-		Archive:       arch,
-		Extractor:     extractor,
-		Normalizer:    normalizer,
-		Fetcher:       httpClient,
-		VariantStore:  variantStore,
-		CrawlRepo:     crawlRepo,
-		DequeueBatch:  cfg.DequeueBatch,
-		MaxAttempts:   cfg.MaxAttempts,
-		IdleTick:      time.Duration(cfg.IdleTickSeconds) * time.Second,
+		Svc:                svc,
+		IngestQueue:        jobqueue.NewProducer(dbFn, cfg.IngestMaxPending),
+		IngestMaxPending:   cfg.IngestMaxPending,
+		IngestMaxOldestAge: cfg.IngestMaxOldestAge,
+		Frontier:           pf,
+		Sources:            sourceRepo,
+		Kinds:              reg,
+		Extractor:          extractor,
+		Normalizer:         normalizer,
+		Fetcher:            httpClient,
+		DequeueBatch:       cfg.DequeueBatch,
+		MaxAttempts:        cfg.MaxAttempts,
+		IdleTick:           time.Duration(cfg.IdleTickSeconds) * time.Second,
 	})
 
 	// Definitions broadcast — same live-reload pattern as the
@@ -213,7 +197,6 @@ func main() {
 
 	svc.Init(ctx,
 		frame.WithRegisterEvents(handlers...),
-		frame.WithRegisterPublisher(cfg.QueuePipelineIngestedName, cfg.QueuePipelineIngested),
 	)
 
 	// Loose mode — the worker subscribes to the catch-all

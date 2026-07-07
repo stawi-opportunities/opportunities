@@ -144,29 +144,21 @@ func (r *RecipeRepository) History(ctx context.Context, sourceID string) ([]Sour
 
 // RecentURLs returns up to `limit` distinct, recently-crawled detail-page URLs
 // for a source (newest first) — real, known-fetchable pages that seed recipe
-// generation far better than a bare BaseURL. It unions two sources of truth:
-// raw_payloads (the crawler's fetch ledger, used by archiving connectors) and
-// opportunities.apply_url (detail URLs of jobs already materialised by the
-// per-page path, which is how the universal HTML boards surface their URLs).
+// generation far better than a bare BaseURL. URLs come from compact parsed
+// source lineage rather than retained HTTP response bodies.
 // Returns an empty slice (not an error) when the source has crawled nothing yet.
 func (r *RecipeRepository) RecentURLs(ctx context.Context, sourceID string, limit int) ([]string, error) {
 	if limit <= 0 {
 		limit = 4
 	}
 	var rows []string
-	// Over-fetch then de-dup in Go (DISTINCT + ORDER BY a non-selected column is
-	// invalid in Postgres). Both tables are recency-indexed so the LIMIT is cheap.
+	// Over-fetch then de-dup in Go.
 	const q = `
-		SELECT url FROM (
-			SELECT source_url AS url, fetched_at AS ts FROM raw_payloads
-				WHERE source_id = ? AND source_url <> ''
-			UNION ALL
-			SELECT apply_url AS url, last_seen_at AS ts FROM opportunities
-				WHERE source_id = ? AND apply_url IS NOT NULL AND apply_url <> ''
-		) u
-		ORDER BY ts DESC
+		SELECT apply_url FROM opportunity_sources
+		WHERE source_id = ? AND apply_url IS NOT NULL AND apply_url <> ''
+		ORDER BY last_seen_at DESC
 		LIMIT ?`
-	if err := r.db(ctx, true).Raw(q, sourceID, sourceID, limit*8).Scan(&rows).Error; err != nil {
+	if err := r.db(ctx, true).Raw(q, sourceID, limit*8).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	seen := make(map[string]bool, len(rows))

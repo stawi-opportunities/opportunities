@@ -15,7 +15,7 @@ function authRuntime(): AuthRuntime {
     clientId: cfg.oidcClientID,
     installationId: cfg.oidcInstallationID,
     idpBaseUrl: cfg.oidcIssuer,
-    // Admin /admin/trace/* and /admin/raw_payloads/* are served by the
+    // Admin /admin/trace/* is served by the
     // api service at the bare api.stawi.org root (alongside /jobs/*).
     // candidatesAPIURL is the bare root by convention; the matching
     // service's /matching/* prefix is added inline by call sites.
@@ -54,7 +54,6 @@ export type SourceTraceResponse = {
     window: string;
     crawl_jobs: number;
     crawl_jobs_failed: number;
-    raw_payloads: number;
     variants_emitted: number;
     variants_published: number;
     variants_rejected: number;
@@ -70,7 +69,6 @@ export type SourceTraceResponse = {
     status: string;
     jobs_found: number;
     jobs_stored: number;
-    raw_payloads: number;
     error_code?: string;
   }>;
 };
@@ -91,18 +89,7 @@ export type VariantTimelineResponse = {
     status: string;
     jobs_found: number;
     jobs_stored: number;
-    raw_payloads: number;
     error_code?: string;
-  };
-  raw_payload?: {
-    id: string;
-    source_url?: string;
-    storage_uri?: string;
-    content_hash?: string;
-    size_bytes: number;
-    fetched_at: string;
-    http_status: number;
-    body_url?: string;
   };
   stages: Array<{
     stage: string;
@@ -129,7 +116,7 @@ export type OpportunityTraceResponse = {
 export type SeedDigestResponse = {
   source_id: string;
   date: string;
-  data_source: 'postgres' | 'iceberg';
+  data_source: 'postgres';
   crawl_jobs?: number;
   variants_emitted: number;
   variants_rejected: number;
@@ -185,12 +172,6 @@ export type SourceListResponse = {
   total: number;
   limit: number;
   offset: number;
-};
-
-export type ReparseResponse = {
-  queued: number;
-  source_id?: string;
-  window_seconds?: number;
 };
 
 // =====================================================================
@@ -258,26 +239,6 @@ export const deleteDefinition = async (
     { method: 'DELETE' }
   );
 };
-
-export const reparseRawPayload = (id: string) =>
-  authRuntime().fetch<ReparseResponse>(
-    `/admin/raw_payloads/${encodeURIComponent(id)}/reparse`,
-    { method: 'POST' }
-  );
-
-export const reparseSource = (id: string, since: string) =>
-  authRuntime().fetch<ReparseResponse>(
-    `/admin/sources/${encodeURIComponent(id)}/reparse?since=${encodeURIComponent(since)}`,
-    { method: 'POST' }
-  );
-
-// getRawPayloadBodyURL returns just the URL string. The browser fetches
-// it directly (e.g. via an <iframe src>) — auth is handled by the
-// shared cookie / DPoP context the auth-runtime already established.
-// Note: prefix matches the path the api service serves; no encoding of
-// the id segment because all raw_payload IDs are flake-style ULIDs.
-export const getRawPayloadBodyURL = (id: string): string =>
-  `/admin/raw_payloads/${id}/body`;
 
 export const listSources = async (limit: number = 100): Promise<SourceListItem[]> => {
   const res = await fetchAdminJSON<SourceListResponse>(

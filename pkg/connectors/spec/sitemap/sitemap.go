@@ -33,8 +33,8 @@ type impl struct{}
 // XML shapes — kept private to this package; the sitemap protocol is
 // stable enough that we don't share with pkg/connectors/sitemapcrawler.
 type sitemapIndex struct {
-	XMLName  xml.Name      `xml:"sitemapindex"`
-	Sitemaps []sitemapLoc  `xml:"sitemap"`
+	XMLName  xml.Name     `xml:"sitemapindex"`
+	Sitemaps []sitemapLoc `xml:"sitemap"`
 }
 
 type sitemapLoc struct {
@@ -88,9 +88,8 @@ func (impl) Crawl(ctx context.Context, src domain.Source, client *httpx.Client, 
 	// Frontier-enabled sources short-circuit the detail fetch
 	// entirely: the connector's job in D2 is URL discovery, and
 	// the per-URL fetch + extract happens in apps/frontier-worker
-	// under per-host politeness. The legacy path (FrontierEnabled
-	// = false) keeps the existing detail-fetch behaviour intact so
-	// sources that haven't opted in see zero change in output.
+	// under per-host politeness. Source-level execution (FrontierEnabled
+	// = false) performs the detail fetch directly.
 	if opts.DetailFetch && !src.FrontierEnabled {
 		fallback := opts.DetailFallbackType
 		if fallback == "" {

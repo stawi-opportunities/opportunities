@@ -1,5 +1,4 @@
-// Package pgsearch is the Postgres-native replacement for the
-// Manticore-era pkg/searchindex. It exposes a small filter algebra
+// Package pgsearch exposes a small Postgres-native filter algebra
 // (Kind / AnyOf / RangeMin / RemoteOK) plus a Search adapter that
 // renders pgvector KNN + WHERE-clause queries against the
 // `opportunities` canonical table.
@@ -27,11 +26,11 @@ import (
 // in the JSONB Attributes column (employment_type, seniority,
 // degree_level, field_of_study, …) go in AttributeAnyOf.
 type Filter struct {
-	Kind             string
-	AnyOf            []AnyOf
-	AttributeAnyOf   []AnyOf
-	RangeMin         []RangeMin
-	RemoteOK         bool
+	Kind           string
+	AnyOf          []AnyOf
+	AttributeAnyOf []AnyOf
+	RangeMin       []RangeMin
+	RemoteOK       bool
 }
 
 // AnyOf renders to either `<Field> = ANY($n)` (top-level columns)

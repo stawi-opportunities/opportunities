@@ -1,7 +1,6 @@
 // Package savedjobs is the read+write surface for candidate-starred
-// opportunities. Backed by the candidate_saved_jobs table (see
-// db/migrations/0018_candidate_saved_jobs.sql). Sibling to
-// pkg/matching/store.go; same raw-sql style for the same reason —
+// opportunities. Backed by the candidate_saved_jobs PostgreSQL table. Sibling
+// to pkg/matching/store.go; same raw-sql style for the same reason —
 // the queries are aggregate-shaped and don't fit BaseRepository.
 package savedjobs
 

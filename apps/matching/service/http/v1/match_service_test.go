@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 )
 
 func TestMatchServiceRunMatchReturnsHits(t *testing.T) {
@@ -15,7 +15,7 @@ func TestMatchServiceRunMatchReturnsHits(t *testing.T) {
 		prefs: eventsv1.PreferencesUpdatedV1{CandidateID: "cnd_1"},
 	}
 	search := &fakeSearchIndex{rows: []SearchHit{
-		{CanonicalID: "can_a", Score: 0.9},
+		{CanonicalID: "can_a", ApplyURL: "https://example.test/apply/a", Score: 0.9},
 		{CanonicalID: "can_b", Score: 0.8},
 	}}
 	svc := NewMatchService(store, search, 5)
@@ -26,6 +26,9 @@ func TestMatchServiceRunMatchReturnsHits(t *testing.T) {
 	}
 	if len(res.Matches) != 2 || res.Matches[0].CanonicalID != "can_a" {
 		t.Fatalf("bad result: %+v", res)
+	}
+	if res.Matches[0].ApplyURL != "https://example.test/apply/a" {
+		t.Fatalf("apply_url not preserved: %+v", res.Matches[0])
 	}
 	if res.CandidateID != "cnd_1" || res.MatchBatchID == "" {
 		t.Fatalf("ids wrong: %+v", res)

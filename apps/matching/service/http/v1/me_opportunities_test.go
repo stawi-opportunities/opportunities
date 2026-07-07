@@ -31,8 +31,8 @@ func TestOpportunitiesHandler_DefaultFilter(t *testing.T) {
 	t.Parallel()
 	store := &fakeFeedStore{page: matching.ListOpportunitiesPage{
 		Items: []matching.OpportunityFeedItem{
-			{OpportunityID: "opp_a", Score: 0.9, Starred: true, CreatedAt: time.Unix(1, 0)},
-			{OpportunityID: "opp_b", Score: 0.6, Application: &matching.ApplicationSummary{
+			{OpportunityID: "opp_a", ApplyURL: "https://example.test/apply/a", Score: 0.9, Starred: true, CreatedAt: time.Unix(1, 0)},
+			{OpportunityID: "opp_b", ApplyURL: "https://example.test/apply/b", Score: 0.6, Application: &matching.ApplicationSummary{
 				Status: "applied", AppliedAt: time.Unix(2, 0), Method: "manual",
 			}, CreatedAt: time.Unix(2, 0)},
 		},
@@ -49,6 +49,7 @@ func TestOpportunitiesHandler_DefaultFilter(t *testing.T) {
 	var body struct {
 		Items []struct {
 			OpportunityID string  `json:"opportunity_id"`
+			ApplyURL      string  `json:"apply_url"`
 			Score         float64 `json:"score,omitempty"`
 			Starred       bool    `json:"starred"`
 			Application   *struct {
@@ -60,6 +61,7 @@ func TestOpportunitiesHandler_DefaultFilter(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Len(t, body.Items, 2)
 	require.Equal(t, "opp_a", body.Items[0].OpportunityID)
+	require.Equal(t, "https://example.test/apply/a", body.Items[0].ApplyURL)
 	require.True(t, body.Items[0].Starred)
 	require.Nil(t, body.Items[0].Application)
 	require.Equal(t, "opp_b", body.Items[1].OpportunityID)

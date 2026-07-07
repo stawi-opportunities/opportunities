@@ -1,9 +1,4 @@
-// Package main — JobsBackend interface and the Postgres-backed
-// implementation that drives Phase 6 of the consolidation plan
-// (see deployment.manifests/SHARED_TASK_NOTES.md).
-//
-// jobsPostgres satisfies this interface; the legacy Manticore backend
-// has been retired (Phase 6, spec §5.6).
+// Package main contains the PostgreSQL-backed opportunities read API.
 //
 // 1-month default time window: every list / count query that doesn't
 // explicitly pass `since` filters on `last_seen_at >= now() - 1 month`.
@@ -26,64 +21,55 @@ import (
 )
 
 // job is the canonical in-memory representation shared by all endpoint
-// handlers. The Postgres backend populates Slug and CanonicalID; the
-// legacy Manticore backend (now retired) populated ID.
+// handlers. PostgreSQL populates Slug and CanonicalID.
 type job struct {
-	// Numeric primary key — used by the retired Manticore backend.
-	// Zero on the Postgres backend (which uses Slug/CanonicalID).
-	ID uint64 `json:"id"`
 	// Public string identifier (opportunities.slug).
 	Slug string `json:"slug,omitempty"`
 	// CanonicalID is the xid that worker.canonical assigns.
 	CanonicalID string `json:"canonical_id,omitempty"`
 	// Polymorphic discriminator: job, scholarship, tender, deal, funding.
-	Kind              string     `json:"kind,omitempty"`
-	Title             string     `json:"title,omitempty"`
-	Description       string     `json:"description,omitempty"`
-	IssuingEntity     string     `json:"issuing_entity,omitempty"`
-	Categories        []int64    `json:"categories,omitempty"`
-	Country           string     `json:"country,omitempty"`
-	Region            string     `json:"region,omitempty"`
-	City              string     `json:"city,omitempty"`
-	Lat               float64    `json:"lat,omitempty"`
-	Lon               float64    `json:"lon,omitempty"`
-	Remote            bool       `json:"remote,omitempty"`
-	GeoScope          string     `json:"geo_scope,omitempty"`
-	PostedAt          *time.Time `json:"posted_at,omitempty"`
-	Deadline          *time.Time `json:"deadline,omitempty"`
-	AmountMin         float64    `json:"amount_min,omitempty"`
-	AmountMax         float64    `json:"amount_max,omitempty"`
-	Currency          string     `json:"currency,omitempty"`
-	EmploymentType    string     `json:"employment_type,omitempty"`
-	Seniority         string     `json:"seniority,omitempty"`
-	FieldOfStudy      string     `json:"field_of_study,omitempty"`
-	DegreeLevel       string     `json:"degree_level,omitempty"`
-	ProcurementDomain string     `json:"procurement_domain,omitempty"`
-	FundingFocus      string     `json:"funding_focus,omitempty"`
-	DiscountPercent   float64    `json:"discount_percent,omitempty"`
-	SourceID          uint64     `json:"source_id,omitempty"`
+	Kind              string         `json:"kind,omitempty"`
+	Title             string         `json:"title,omitempty"`
+	Description       string         `json:"description,omitempty"`
+	IssuingEntity     string         `json:"issuing_entity,omitempty"`
+	Categories        []int64        `json:"categories,omitempty"`
+	Country           string         `json:"country,omitempty"`
+	Region            string         `json:"region,omitempty"`
+	City              string         `json:"city,omitempty"`
+	Lat               float64        `json:"lat,omitempty"`
+	Lon               float64        `json:"lon,omitempty"`
+	Remote            bool           `json:"remote,omitempty"`
+	GeoScope          string         `json:"geo_scope,omitempty"`
+	PostedAt          *time.Time     `json:"posted_at,omitempty"`
+	Deadline          *time.Time     `json:"deadline,omitempty"`
+	AmountMin         float64        `json:"amount_min,omitempty"`
+	AmountMax         float64        `json:"amount_max,omitempty"`
+	Currency          string         `json:"currency,omitempty"`
+	EmploymentType    string         `json:"employment_type,omitempty"`
+	Seniority         string         `json:"seniority,omitempty"`
+	FieldOfStudy      string         `json:"field_of_study,omitempty"`
+	DegreeLevel       string         `json:"degree_level,omitempty"`
+	ProcurementDomain string         `json:"procurement_domain,omitempty"`
+	FundingFocus      string         `json:"funding_focus,omitempty"`
+	DiscountPercent   float64        `json:"discount_percent,omitempty"`
+	ApplyURL          string         `json:"apply_url"`
+	Attributes        map[string]any `json:"attributes,omitempty"`
+	SourceID          uint64         `json:"source_id,omitempty"`
 }
 
-// JobsBackend is the common read API every public endpoint uses.
-// Implementations live in manticore_client.go (Manticore-RT) and
-// jobs_backend.go below (Postgres pg_search + pgvectorscale).
+// JobsBackend is the read API every public endpoint uses.
 type JobsBackend interface {
 	// GetBySlug returns one opportunity by its public string slug, or
-	// (nil, nil) when no row matches. Both backends accept the same
-	// slug shape — the Manticore backend hashes the input, the
-	// Postgres backend does an exact match on opportunities.slug.
+	// (nil, nil) when no row matches.
 	GetBySlug(ctx context.Context, slug string) (*job, error)
 
 	// Count returns the total active rows matching filter. Filter is
-	// the same "Manticore-shape" filter clauses used by the Manticore
-	// backend; the Postgres backend translates them to SQL predicates.
+	// the filter clauses used by the HTTP handlers.
 	// Nil filter → 1-month default window applied.
 	Count(ctx context.Context, filter []map[string]any) (int, error)
 
 	// Top returns up-to-limit active opportunities ordered by recency.
-	// The minScore parameter is accepted for the Manticore backend's
-	// signature compatibility; Postgres ignores it (no quality_score
-	// in the schema yet).
+	// minScore is reserved for quality filtering.
 	Top(ctx context.Context, minScore float64, limit int) ([]job, error)
 
 	// Latest returns up-to-limit active opportunities by posted_at
@@ -100,9 +86,8 @@ type JobsBackend interface {
 
 	// Search runs a full-text search with filters, paging, and
 	// term-aggregations in one round trip. Returns (hits, total, aggs).
-	// q is the free-text query (empty for filter-only); when non-empty
-	// the Postgres backend uses pg_search BM25; the Manticore backend
-	// uses its match query.
+	// q is the free-text query (empty for filter-only); non-empty queries
+	// use pg_search BM25.
 	Search(
 		ctx context.Context,
 		q string,
@@ -118,8 +103,7 @@ type JobsBackend interface {
 // ---------------------------------------------------------------------------
 
 // jobsPostgres satisfies JobsBackend against the CNPG cluster's
-// opportunities table — populated by worker.canonical (Phase 4) and
-// the materializer's admin handlers (Phase 5).
+// opportunities table populated by the PostgreSQL ingestion worker.
 //
 // We hold Frame's GORM pool factory (same shape pkg/variantstate uses)
 // and pull a *sql.DB out of it per call. Read-only queries go through
@@ -161,8 +145,6 @@ func defaultSince() time.Time {
 }
 
 // activePred returns the universal predicate that keeps live rows.
-// Mirrors the Manticore activeFilter semantics: not hidden, status =
-// active, deadline future or null.
 func activePred() string {
 	return `hidden = false
 	  AND status = 'active'
@@ -210,7 +192,7 @@ func scanJob(rows *sql.Rows) (job, error) {
 	j.Currency = currency.String
 	j.AmountMin = amountMin.Float64
 	j.AmountMax = amountMax.Float64
-	_ = apply.String // captured for completeness; SearchResult doesn't expose
+	j.ApplyURL = apply.String
 	if postedAt.Valid {
 		t := postedAt.Time.UTC()
 		j.PostedAt = &t
@@ -219,13 +201,13 @@ func scanJob(rows *sql.Rows) (job, error) {
 		t := deadline.Time.UTC()
 		j.Deadline = &t
 	}
-	// Per-kind sparse facet projection — opportunities.attributes
-	// carries the same map the Manticore sparseColsForKind path
-	// projects. Pull just the keys the searchResult shape exposes;
+	// Pull the sparse facet keys exposed by the search response from
+	// opportunities.attributes;
 	// callers that need the rest can hit a future per-row endpoint.
 	if len(attrsRaw) > 0 {
 		var attrs map[string]any
 		if err := json.Unmarshal(attrsRaw, &attrs); err == nil {
+			j.Attributes = attrs
 			if v, ok := attrs["employment_type"].(string); ok {
 				j.EmploymentType = v
 			}
@@ -246,10 +228,7 @@ func scanJob(rows *sql.Rows) (job, error) {
 			}
 		}
 	}
-	// categories is currently stored under attributes.categories; once
-	// the materializer adds a first-class column we'll select it
-	// directly. Empty for now is safe — searchResult.Category falls
-	// back to "" which the SPA handles.
+	// categories currently live under attributes.categories.
 	_ = categoryRaw
 	_ = quality
 	return j, nil
@@ -431,8 +410,7 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 // Search runs a full-text BM25 query + filters + facets in one pass.
 // Empty q falls back to the listing path; non-empty q uses pg_search's
 // `@@@` operator with paradedb.parse(). Hybrid scoring (BM25 +
-// embedding cosine) lands in a follow-up — for v1 BM25 alone is on
-// par with the Manticore default.
+// embedding cosine) lands in a follow-up.
 func (p *jobsPostgres) Search(
 	ctx context.Context,
 	q string,
@@ -619,17 +597,14 @@ func scanJobMaybeBM25(rows *sql.Rows, hasScore bool) (job, error) {
 // Filter translation
 // ---------------------------------------------------------------------------
 
-// postgresWhere converts the Manticore-shape filter clauses used by
-// endpoints_v2.go into a SQL fragment + arg slice. The clause shape
-// mirrors the keys the Manticore backend already accepts:
+// postgresWhere converts API filter clauses into a SQL fragment and args:
 //
 //	{"equals": {"country": "KE"}}
 //	{"equals": {"categories": 123456789}}
 //	{"range":  {"amount_min": {"gte": 500}}}
 //	{"range":  {"amount_max": {"lte": 5000}}}
 //
-// Unknown shapes are skipped silently — the goal is feature parity
-// with the live Manticore filter, not full SQL DSL coverage.
+// Unknown shapes are skipped; this is intentionally not a general SQL DSL.
 func postgresWhere(filter []map[string]any) (string, []any) {
 	var b strings.Builder
 	args := []any{}
@@ -671,23 +646,21 @@ func postgresWhere(filter []map[string]any) (string, []any) {
 	return b.String(), args
 }
 
-// translateEquals maps the Manticore column name to the Postgres
-// column or JSONB expression. Returns ok=false for unknown columns.
+// translateEquals maps an API filter name to a PostgreSQL column or JSONB
+// expression. It returns false for unknown filters.
 func translateEquals(col string, val any, pidx int) (string, any, bool) {
 	switch col {
 	case "kind", "country", "region", "city", "currency":
 		return quoteSafeCol(col) + " = $" + intToStr(pidx), val, true
 	case "geo_scope", "employment_type", "seniority":
-		// Promoted to top-level columns (migration 20260528_lean_plan2).
+		// Frequently-filtered fields are top-level columns.
 		return col + " = $" + intToStr(pidx), val, true
 	case "field_of_study", "degree_level":
 		// Still under attributes JSONB.
 		return "attributes->>'" + col + "' = $" + intToStr(pidx), val, true
 	case "categories":
-		// Manticore stored categories as int64; Postgres carries them
-		// in attributes.categories as a JSON array of strings. Skip
-		// for v1 — facet filter on category lands in a follow-up
-		// once the materializer projects a first-class column.
+		// Categories are string arrays under attributes. Category filtering is
+		// handled by the dedicated facet path.
 		return "", nil, false
 	case "remote":
 		return "remote = $" + intToStr(pidx), val, true

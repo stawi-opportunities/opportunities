@@ -17,6 +17,7 @@ type Hit struct {
 	CanonicalID string
 	Slug        string
 	Title       string
+	ApplyURL    string
 	Company     string
 	Country     string
 	Kind        string
@@ -46,7 +47,7 @@ type DB func(ctx context.Context, readOnly bool) *gorm.DB
 // Search renders pgvector KNN + filter queries against the
 // `opportunities` table.
 //
-// Construction is parameterless — there is no Manticore URL to dial.
+// Construction only requires the PostgreSQL connection factory.
 // All queries go through the read-only Postgres pool the rest of the
 // matching service already holds.
 type Search struct {
@@ -115,6 +116,7 @@ func (s *Search) KNNWithFilters(ctx context.Context, req KNNRequest) ([]Hit, err
 	q := `SELECT canonical_id,
 	             slug,
 	             title,
+	             apply_url,
 	             COALESCE(issuing_entity, '') AS company,
 	             COALESCE(country, '')        AS country,
 	             kind,
@@ -156,6 +158,7 @@ func (s *Search) ListNewJobs(ctx context.Context, since time.Time, country strin
 	q := `SELECT canonical_id,
 	             slug,
 	             title,
+	             apply_url,
 	             COALESCE(issuing_entity, '') AS company,
 	             COALESCE(country, '')        AS country,
 	             kind,
@@ -222,6 +225,7 @@ func (s *Search) scan(ctx context.Context, q string, args []any) ([]Hit, error) 
 		CanonicalID string
 		Slug        string
 		Title       string
+		ApplyURL    string
 		Company     string
 		Country     string
 		Kind        string

@@ -46,6 +46,12 @@ func buildOpportunity(pc *PageContext, src domain.Source, r *Recipe) (domain.Ext
 		AmountMax:     parseFloat(val(d.AmountMax)),
 		Currency:      val(d.Currency),
 	}
+	// A detail page is itself an actionable destination when the source does
+	// not expose a separate application link. Keep this first-class so every
+	// parser result can support application flows without another lookup.
+	if strings.TrimSpace(opp.ApplyURL) == "" {
+		opp.ApplyURL = pc.URL
+	}
 
 	opp.ExternalID = opp.ApplyURL
 

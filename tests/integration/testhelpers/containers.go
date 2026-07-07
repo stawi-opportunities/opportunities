@@ -14,16 +14,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
-	tcwait "github.com/testcontainers/testcontainers-go/wait"
 	tcminio "github.com/testcontainers/testcontainers-go/modules/minio"
+	tcwait "github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/stawi-opportunities/opportunities/pkg/applications"
+	"github.com/stawi-opportunities/opportunities/pkg/billing"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/frontier"
+	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
+	"github.com/stawi-opportunities/opportunities/pkg/matching"
+	"github.com/stawi-opportunities/opportunities/pkg/repository"
+	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
 )
 
 // MinIOContainer starts a MinIO server and returns its S3-compatible endpoint URL.
@@ -37,37 +50,6 @@ func MinIOContainer(t *testing.T, ctx context.Context) (endpoint, accessKey, sec
 	ep, err := mc.ConnectionString(ctx)
 	require.NoError(t, err, "minio connection string")
 	return ep, "minioadmin", "minioadmin"
-}
-
-// ManticoreContainer starts a Manticore Search server and returns its
-// HTTP JSON API URL (port 9308).
-// Image: manticoresearch/manticore:6.2.0
-//
-// TODO: pin image version once the cluster's Manticore version is confirmed.
-func ManticoreContainer(t *testing.T, ctx context.Context) string {
-	t.Helper()
-	req := testcontainers.ContainerRequest{
-		Image:        "manticoresearch/manticore:6.2.0",
-		ExposedPorts: []string{"9308/tcp", "9306/tcp"},
-		WaitingFor: tcwait.ForAll(
-			tcwait.ForListeningPort("9308/tcp").WithStartupTimeout(60*time.Second),
-		),
-		Env: map[string]string{
-			"MANTICORE_RT_MEM_LIMIT": "128M",
-		},
-	}
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err, "start manticore container")
-	t.Cleanup(func() { _ = c.Terminate(ctx) })
-
-	host, err := c.Host(ctx)
-	require.NoError(t, err)
-	port, err := c.MappedPort(ctx, "9308")
-	require.NoError(t, err)
-	return fmt.Sprintf("http://%s:%s", host, port.Port())
 }
 
 // NATSContainer starts a NATS server with JetStream enabled and returns
@@ -160,9 +142,10 @@ func PostgresContainerNoMigrate(t *testing.T, ctx context.Context) *sql.DB {
 	return db
 }
 
-// ApplyMigrationsDir applies every db/migrations/*.sql file in the given directory
-// in numeric order. Useful when you need to interleave database setup before migrations.
-func ApplyMigrationsDir(t *testing.T, ctx context.Context, db *sql.DB, dir string) {
+// ApplyCapabilitySQLDir applies every *.sql file in the given directory in
+// numeric order. These files are limited to PostgreSQL capabilities GORM cannot
+// express; ordinary table shape is created by AutoMigrate.
+func ApplyCapabilitySQLDir(t *testing.T, ctx context.Context, db *sql.DB, dir string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err, "read migrations dir %s", dir)
@@ -183,48 +166,58 @@ func ApplyMigrationsDir(t *testing.T, ctx context.Context, db *sql.DB, dir strin
 	}
 }
 
-// EnsureOpportunitiesStub creates minimal stub tables required before migrations
-// can run cleanly on a fresh container:
-//
-//   - opportunities: needed by migration 0012 (partial index on opportunities).
-//   - candidate_profiles: needed by migration 0003 (ALTER TABLE DROP COLUMN IF EXISTS).
-//   - pipeline_variants: needed by migration 0019 (ALTER TABLE ADD COLUMN). In
-//     production this table is created by GORM AutoMigrate before migrations run.
-//
-// These are temporary stubs; production uses GORM AutoMigrate for the full
-// schemas. The IF NOT EXISTS guard makes every call idempotent.
-func EnsureOpportunitiesStub(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS opportunities (
-			id TEXT PRIMARY KEY,
-			posted_at TIMESTAMPTZ,
-			status TEXT,
-			hidden BOOLEAN
-		);
-		CREATE TABLE IF NOT EXISTS candidate_profiles (
-			id TEXT PRIMARY KEY
-		);
-		CREATE TABLE IF NOT EXISTS pipeline_variants (
-			variant_id  VARCHAR(20) NOT NULL,
-			ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-			PRIMARY KEY (variant_id, ingested_at)
-		);
-	`)
-	return err
+// ApplyGreenfieldSchema mirrors production migration jobs: GORM creates
+// ordinary PostgreSQL tables, then the app-specific capability SQL enables
+// TimescaleDB hypertables, pgvector indexes, append-only triggers, partial
+// indexes, and continuous aggregates.
+func ApplyGreenfieldSchema(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+	g, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{})
+	require.NoError(t, err)
+
+	models := []any{
+		&domain.Source{},
+		&domain.CrawlJob{},
+		&repository.SourceRecipe{},
+		&domain.Company{},
+		&domain.CrawlRun{},
+		&jobqueue.QueueRecord{},
+		&jobqueue.OpportunityRecord{},
+		&jobqueue.OpportunityIdentityRecord{},
+		&jobqueue.OpportunitySourceRecord{},
+		&jobqueue.IngestEventRecord{},
+		&domain.CandidateProfile{},
+		&domain.CandidateApplication{},
+		&domain.OpportunityFlag{},
+	}
+	models = append(models, frontier.Schema()...)
+	models = append(models, matching.Schema()...)
+	models = append(models, applications.Schema()...)
+	models = append(models, savedjobs.Schema()...)
+	models = append(models, billing.Schema()...)
+	require.NoError(t, g.AutoMigrate(models...))
+
+	root := repoRoot(t)
+	ApplyCapabilitySQLDir(t, ctx, db, filepath.Join(root, "apps", "crawler", "migrations", "0001"))
+	ApplyCapabilitySQLDir(t, ctx, db, filepath.Join(root, "apps", "matching", "migrations", "0001"))
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
 }
 
 // PostgresContainer boots TimescaleDB + pgvector (the official ha image
-// ships both) and applies every db/migrations/*.sql in numeric order.
+// ships both) and applies the greenfield GORM + capability schema.
 // Returns a *sql.DB connected to the freshly migrated database.
 //
 // Use this in any integration suite that needs a clean DB with the
 // project's schema applied. The container is torn down via t.Cleanup.
-//
-// For more control (e.g., creating stub tables before migrations),
-// use PostgresContainerNoMigrate + EnsureOpportunitiesStub + ApplyMigrationsDir directly.
-func PostgresContainer(t *testing.T, ctx context.Context, migrationsDir string) *sql.DB {
+func PostgresContainer(t *testing.T, ctx context.Context) *sql.DB {
 	t.Helper()
 	db := PostgresContainerNoMigrate(t, ctx)
-	ApplyMigrationsDir(t, ctx, db, migrationsDir)
+	ApplyGreenfieldSchema(t, ctx, db)
 	return db
 }

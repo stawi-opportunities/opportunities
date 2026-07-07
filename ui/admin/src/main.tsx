@@ -10,7 +10,6 @@ import { OpportunityTrace } from '@/pages/OpportunityTrace';
 import { SeedDigest } from '@/pages/SeedDigest';
 import { DefinitionsList } from '@/pages/DefinitionsList';
 import { DefinitionEditor } from '@/pages/DefinitionEditor';
-import { RawPayloadViewer } from '@/pages/RawPayloadViewer';
 import '@/styles/admin.css';
 
 const container = document.getElementById('admin-root');
@@ -35,7 +34,6 @@ createRoot(container).render(
               path="definitions/:type/:name"
               element={<DefinitionEditor />}
             />
-            <Route path="raw_payloads/:id" element={<RawPayloadViewer />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

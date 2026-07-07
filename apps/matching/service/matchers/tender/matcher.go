@@ -13,7 +13,7 @@
 //	  service_capability_regions,
 //	}
 //
-// SearchFilter would filter Manticore to:
+// SearchFilter would filter PostgreSQL to:
 //   - kind = "tender"
 //   - country IN <service_capability_regions>
 //   - procurement_domain IN <capabilities>

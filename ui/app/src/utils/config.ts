@@ -10,8 +10,6 @@ export interface SiteConfig {
   apiURL: string;
   /** Candidates / profile API origin (unified api.stawi.org root). */
   candidatesAPIURL: string;
-  /** R2 public content origin for OpportunitySnapshot JSON. */
-  contentOrigin: string;
   /** OIDC issuer (Ory Hydra). */
   oidcIssuer: string;
   /** Hydra client_id string for this environment. */
@@ -35,7 +33,6 @@ const DEFAULTS: SiteConfig = {
   // also uses this runtime and calls /profile.v1.*. See
   // api-gateway-path-prefix-convention memory for the org-wide rule.
   candidatesAPIURL: 'https://api.stawi.org',
-  contentOrigin: 'https://opportunities-data.stawi.org',
   oidcIssuer: 'https://oauth2.stawi.org',
   oidcClientID: 'd7is2kspf2t7cl19qlpg',
   oidcInstallationID: 'd7gi6lkpf2t67dlsqrhg',

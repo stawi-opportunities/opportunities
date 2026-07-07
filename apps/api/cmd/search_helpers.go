@@ -1,12 +1,10 @@
 // apps/api/cmd/search_helpers.go
 //
-// Shared helpers for endpoint handlers: wire-shape types, filter
-// builders, and result converters. Factored out from the legacy
-// manticore_client.go during the Phase 6 Manticore retirement.
+// Shared helpers for endpoint handlers: wire-shape types, filter builders, and
+// result converters.
 package main
 
 import (
-	"strconv"
 	"strings"
 	"time"
 )
@@ -22,7 +20,7 @@ func activeFilter() []map[string]any {
 // searchResult is the SPA-facing wire shape for a single opportunity.
 // Field names match ui/app/src/types/search.ts SearchResult exactly.
 //
-//	id            ← Slug when set (Postgres backend); numeric hashID string otherwise (legacy)
+//	id            ← Slug when set
 //	category      ← first categories[] entry resolved via Registry; "" otherwise
 //	quality_score ← 0 (no proxy in the polymorphic schema)
 //	snippet       ← first 280 chars of description, on a word boundary
@@ -30,6 +28,7 @@ type searchResult struct {
 	ID             string     `json:"id"`
 	Slug           string     `json:"slug"`
 	Title          string     `json:"title"`
+	ApplyURL       string     `json:"apply_url"`
 	Company        string     `json:"company"`
 	Description    string     `json:"description,omitempty"`
 	LocationText   string     `json:"location_text"`
@@ -49,18 +48,13 @@ type searchResult struct {
 }
 
 // toSearchResult converts an internal job into the SPA-facing wire shape.
-// Postgres backend: j.Slug is the canonical public identifier; j.ID is 0.
 func toSearchResult(j job, categoryLabel func(int64) string) searchResult {
-	// Prefer the real slug; fall back to the numeric ID string for
-	// any residual Manticore-era rows that lack a slug column.
 	id := j.Slug
-	if id == "" {
-		id = strconv.FormatUint(j.ID, 10)
-	}
 	out := searchResult{
 		ID:             id,
 		Slug:           id,
 		Title:          j.Title,
+		ApplyURL:       j.ApplyURL,
 		Company:        j.IssuingEntity,
 		Description:    j.Description,
 		LocationText:   buildLocationText(j),

@@ -18,8 +18,7 @@ func setupStoreDB(t *testing.T) (*sql.DB, context.Context) {
 	t.Helper()
 	ctx := context.Background()
 	db := testhelpers.PostgresContainerNoMigrate(t, ctx)
-	require.NoError(t, testhelpers.EnsureOpportunitiesStub(ctx, db))
-	testhelpers.ApplyMigrationsDir(t, ctx, db, "../../db/migrations")
+	testhelpers.ApplyGreenfieldSchema(t, ctx, db)
 	return db, ctx
 }
 

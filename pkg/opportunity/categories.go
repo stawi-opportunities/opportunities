@@ -4,10 +4,7 @@ import (
 	"hash/fnv"
 )
 
-// HashCategory returns the deterministic int64 hash of a category string,
-// matching the materializer's encoding into Manticore's multi64 column.
-// Identical formula to apps/materializer/service/indexer.go::hashCategory —
-// the two MUST produce the same value for the same input.
+// HashCategory returns the deterministic positive int64 hash of a category.
 func HashCategory(s string) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(s))

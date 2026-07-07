@@ -134,7 +134,7 @@ type Source struct {
 	// of skipping them forever. NULL on sources flagged before the column
 	// existed — treated as already-expired (retry-eligible).
 	NeedsTuningAt *time.Time `json:"needs_tuning_at,omitempty"`
-	Config              string       `gorm:"type:jsonb;default:'{}'" json:"config"`
+	Config        string     `gorm:"type:jsonb;default:'{}'" json:"config"`
 	// ExtractionRecipe holds the source's active AI-generated extraction
 	// recipe as raw JSON ('{}' when none). Stored as a string so the domain
 	// package stays free of a pkg/recipe import (recipe imports domain).
@@ -216,9 +216,9 @@ type Source struct {
 	// need customization. Operator-editable via PUT /admin/sources/{id}.
 	ExtractionPromptExtension string `gorm:"type:text;not null;default:''" json:"extraction_prompt_extension"`
 
-	// FrontierEnabled opts a source into the URL-frontier path (D2).
-	// false (default) keeps the legacy per-source iterator behaviour;
-	// true routes discovery output through pkg/frontier so the
+	// FrontierEnabled opts a source into URL-level frontier scheduling.
+	// false uses source-level iteration; true routes discovery output through
+	// pkg/frontier so the
 	// frontier-worker fans out per-URL fetch + extract under shared
 	// per-host politeness windows. Operator-toggled via PUT
 	// /admin/sources/{id}.
@@ -229,12 +229,11 @@ func (Source) TableName() string { return "sources" }
 
 // CrawlJob records a single crawl execution against a source.
 //
-// Hypertable partitioned by scheduled_at (see migration 0019). PK is
-// (id, scheduled_at). Idempotency is enforced by a composite UNIQUE
-// INDEX on (idempotency_key, scheduled_at) defined in the migration.
+// GORM owns the table shape and composite keys. The capability migration
+// converts it to a TimescaleDB hypertable partitioned by scheduled_at.
 type CrawlJob struct {
 	ID             string         `gorm:"primaryKey;column:id;type:varchar(20)" json:"id"`
-	ScheduledAt    time.Time      `gorm:"primaryKey;column:scheduled_at;not null" json:"scheduled_at"`
+	ScheduledAt    time.Time      `gorm:"primaryKey;column:scheduled_at;not null;uniqueIndex:crawl_jobs_idempotency_idx,priority:2" json:"scheduled_at"`
 	CreatedAt      time.Time      `gorm:"column:created_at;not null;default:now()" json:"created_at"`
 	UpdatedAt      time.Time      `gorm:"column:updated_at;not null;default:now()" json:"updated_at"`
 	DeletedAt      *time.Time     `gorm:"column:deleted_at" json:"deleted_at,omitempty"`
@@ -243,7 +242,7 @@ type CrawlJob struct {
 	FinishedAt     *time.Time     `gorm:"column:finished_at" json:"finished_at"`
 	Status         CrawlJobStatus `gorm:"column:status;type:varchar(20);not null;default:'scheduled'" json:"status"`
 	Attempt        int            `gorm:"column:attempt;not null;default:1" json:"attempt"`
-	IdempotencyKey string         `gorm:"column:idempotency_key;type:varchar(255)" json:"idempotency_key"`
+	IdempotencyKey string         `gorm:"column:idempotency_key;type:varchar(255);not null;uniqueIndex:crawl_jobs_idempotency_idx,priority:1" json:"idempotency_key"`
 	ErrorCode      string         `gorm:"column:error_code;type:text" json:"error_code"`
 	ErrorMessage   string         `gorm:"column:error_message;type:text" json:"error_message"`
 	JobsFound      int            `gorm:"column:jobs_found;not null;default:0" json:"jobs_found"`
@@ -252,53 +251,9 @@ type CrawlJob struct {
 
 func (CrawlJob) TableName() string { return "crawl_jobs" }
 
-// RawPayloadStatus is the queue-state lifecycle for raw_payloads.
-type RawPayloadStatus string
-
-const (
-	RawPayloadStatusPending   RawPayloadStatus = "pending"
-	RawPayloadStatusEnriching RawPayloadStatus = "enriching"
-	RawPayloadStatusEnriched  RawPayloadStatus = "enriched"
-	RawPayloadStatusFailed    RawPayloadStatus = "failed"
-	RawPayloadStatusSkipped   RawPayloadStatus = "skipped"
-)
-
-// RawPayload is the metadata row for every HTTP fetch the crawler
-// makes. The actual response body lives in R2 at raw/{content_hash}.html.gz
-// via pkg/archive — this row records the fetch event, points to the
-// blob, and drives the enricher queue.
-//
-// Hypertable partitioned by fetched_at (see migration 0019). PK is
-// (id, fetched_at) — matches the variantstate.Variant pattern at
-// pkg/variantstate/store.go:100-115.
-type RawPayload struct {
-	ID           string           `gorm:"primaryKey;column:id;type:varchar(20)" json:"id"`
-	FetchedAt    time.Time        `gorm:"primaryKey;column:fetched_at;not null" json:"fetched_at"`
-	CreatedAt    time.Time        `gorm:"column:created_at;not null;default:now()" json:"created_at"`
-	UpdatedAt    time.Time        `gorm:"column:updated_at;not null;default:now()" json:"updated_at"`
-	DeletedAt    *time.Time       `gorm:"column:deleted_at" json:"deleted_at,omitempty"`
-	CrawlJobID   string           `gorm:"column:crawl_job_id;type:varchar(20);not null" json:"crawl_job_id"`
-	SourceID     string           `gorm:"column:source_id;type:varchar(20)" json:"source_id,omitempty"`
-	SourceURL    string           `gorm:"column:source_url;type:text" json:"source_url,omitempty"`
-	StorageURI   string           `gorm:"column:storage_uri;type:text" json:"storage_uri"`
-	ContentHash  string           `gorm:"column:content_hash;type:varchar(64)" json:"content_hash"`
-	SizeBytes    int64            `gorm:"column:size_bytes;not null;default:0" json:"size_bytes"`
-	HTTPStatus   int              `gorm:"column:http_status;not null" json:"http_status"`
-	Status       RawPayloadStatus `gorm:"column:status;type:text;not null;default:'pending'" json:"status"`
-	AttemptCount int              `gorm:"column:attempt_count;not null;default:0" json:"attempt_count"`
-	NextRetryAt  *time.Time       `gorm:"column:next_retry_at" json:"next_retry_at,omitempty"`
-	LastError    string           `gorm:"column:last_error;type:text" json:"last_error,omitempty"`
-
-	ReparseCount   int        `gorm:"column:reparse_count;not null;default:0" json:"reparse_count"`
-	LastReparsedAt *time.Time `gorm:"column:last_reparsed_at" json:"last_reparsed_at,omitempty"`
-}
-
-func (RawPayload) TableName() string { return "raw_payloads" }
-
-// ExternalOpportunity is the canonical intermediate representation a
-// connector returns for a single ingested item. Replaces the old
-// ExternalJob; the kind discriminator decides which Spec governs
-// extraction, verification, and downstream rendering.
+// ExternalOpportunity is the canonical intermediate representation a connector
+// returns for a single ingested item. The kind discriminator decides which Spec
+// governs extraction, verification, and downstream rendering.
 type ExternalOpportunity struct {
 	// Discriminator. Empty when the source declares zero kinds — the
 	// extractor classifies before downstream stages run.
@@ -338,12 +293,8 @@ type ExternalOpportunity struct {
 	// (warning) but not rejected.
 	Attributes map[string]any `json:"attributes,omitempty"`
 
-	// Pipeline metadata (kind-agnostic)
-	RawHTML         string     `json:"raw_html,omitempty"`
-	RawHash         string     `json:"raw_hash,omitempty"`
-	ContentMarkdown string     `json:"content_markdown,omitempty"`
-	Source          SourceType `json:"source"`
-	QualityScore    float64    `json:"quality_score,omitempty"`
+	// Connector type that produced the row.
+	Source SourceType `json:"source"`
 }
 
 // AttrString returns Attributes[key] as a string, or "" if missing/wrong type.
@@ -406,21 +357,6 @@ const (
 	StageReady      VariantStage = "ready"
 	StageFlagged    VariantStage = "flagged"
 )
-
-// RawRef is the reference-count row linking a raw content-hash
-// (R2 raw/{hash}.html.gz) to the variants that use it. Written
-// by the canonical handler when it promotes a variant into a
-// cluster; deleted by the purge sweeper once the owning cluster
-// is torn down. When a hash's ref count drops to zero, the raw
-// blob is GC'd from R2.
-type RawRef struct {
-	BaseModel
-	ContentHash string `gorm:"type:varchar(64);not null;uniqueIndex:idx_raw_refs_hash_variant" json:"content_hash"`
-	ClusterID   string `gorm:"type:varchar(20);not null;index" json:"cluster_id"`
-	VariantID   string `gorm:"type:varchar(20);not null;uniqueIndex:idx_raw_refs_hash_variant" json:"variant_id"`
-}
-
-func (RawRef) TableName() string { return "raw_refs" }
 
 // CrawlRequest is published to the queue to trigger a crawl.
 type CrawlRequest struct {

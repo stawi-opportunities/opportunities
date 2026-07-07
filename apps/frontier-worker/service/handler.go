@@ -7,8 +7,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,34 +17,30 @@ import (
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
-	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/content"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
+	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
-	"github.com/stawi-opportunities/opportunities/pkg/variantstate"
 )
 
 // Deps bundles the collaborators the frontier-worker needs.
 type Deps struct {
-	Svc *frame.Service
-	// IngestedQueue is the Frame Queue Name to publish VariantIngestedV1 to
-	// (the worker's normalize stage subscribes).
-	IngestedQueue string
-	Frontier      frontier.Frontier
-	Sources       *repository.SourceRepository
-	Kinds        *opportunity.Registry
-	Archive      archive.Archive
-	Extractor    *extraction.Extractor
-	Normalizer   *normalize.Normalizer
-	Fetcher      *httpx.Client
-	VariantStore *variantstate.Store
-	CrawlRepo    *repository.CrawlRepository
+	Svc                *frame.Service
+	IngestQueue        *jobqueue.Store
+	IngestMaxPending   int64
+	IngestMaxOldestAge time.Duration
+	Frontier           frontier.Frontier
+	Sources            *repository.SourceRepository
+	Kinds              *opportunity.Registry
+	Extractor          *extraction.Extractor
+	Normalizer         *normalize.Normalizer
+	Fetcher            *httpx.Client
 
 	// DequeueBatch caps the URLs claimed per Dequeue call.
 	DequeueBatch int
@@ -140,10 +134,21 @@ const (
 func (h *Handler) drain(ctx context.Context) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.deps.IngestQueue == nil {
+		return fmt.Errorf("PostgreSQL ingest queue is not configured")
+	}
 
 	deadline := time.Now().Add(drainBudget)
 	for batches := 0; batches < drainMaxBatches; batches++ {
 		if time.Now().After(deadline) {
+			return nil
+		}
+		stats, err := h.deps.IngestQueue.Stats(ctx)
+		if err != nil {
+			return fmt.Errorf("frontier ingest backlog: %w", err)
+		}
+		if (h.deps.IngestMaxPending > 0 && stats.Pending >= h.deps.IngestMaxPending) ||
+			(h.deps.IngestMaxOldestAge > 0 && stats.OldestAge >= h.deps.IngestMaxOldestAge) {
 			return nil
 		}
 		urls, err := h.deps.Frontier.Dequeue(ctx, h.deps.DequeueBatch, h.workerID)
@@ -160,12 +165,12 @@ func (h *Handler) drain(ctx context.Context) error {
 	return nil
 }
 
-// runOne fetches the URL, archives the raw HTML, runs extraction,
+// runOne fetches the URL, parses it in memory, runs extraction,
 // emits VariantIngestedV1, and Completes the frontier row. On any
 // transport / status error the worker calls Fail with the configured
 // retry budget so the URL backs off and retries.
 func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
-	// Per-URL deadline so fetch+archive+extract+emit can never hang
+	// Per-URL deadline so fetch, storage, extraction, and enqueue cannot hang
 	// indefinitely. Must stay below the frontier reclaim lease
 	// (staleLeaseSeconds = 15m) so a slow-but-live worker finishes
 	// before its claim is reclaimed and double-processed.
@@ -195,20 +200,6 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		return
 	}
 
-	// Archive the raw HTML. resolveArchiveRef-style helper —
-	// content-addressed, idempotent via HasRaw.
-	rawHash := sha256Hex(body)
-	archiveRef := ""
-	if h.deps.Archive != nil {
-		if has, hasErr := h.deps.Archive.HasRaw(ctx, rawHash); hasErr == nil && !has {
-			if putHash, _, putErr := h.deps.Archive.PutRaw(ctx, body); putErr == nil {
-				archiveRef = archive.RawKey(putHash)
-			}
-		} else if hasErr == nil && has {
-			archiveRef = archive.RawKey(rawHash)
-		}
-	}
-
 	// Load the source so we can stamp source-derived fields
 	// (Country, Kinds, etc.) on the emitted variant.
 	src, err := h.deps.Sources.GetByID(ctx, u.SourceID)
@@ -229,29 +220,6 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 			log.WithError(failErr).Warn("frontier-worker: Fail failed")
 		}
 		return
-	}
-
-	// Per-page audit row. crawl_jobs_id is not available here
-	// — the frontier-worker doesn't open a crawl_jobs row per
-	// URL (that's a per-source artefact). Leave it empty; the
-	// raw_payload row is still operator-inspectable by source_id.
-	var rawPayloadID string
-	if h.deps.CrawlRepo != nil {
-		rp := &domain.RawPayload{
-			SourceID:    src.ID,
-			SourceURL:   u.CanonicalURL,
-			StorageURI:  archiveRef,
-			ContentHash: rawHash,
-			SizeBytes:   int64(len(body)),
-			FetchedAt:   time.Now().UTC(),
-			HTTPStatus:  status,
-			Status:      domain.RawPayloadStatusPending,
-		}
-		if rawErr := h.deps.CrawlRepo.SaveRawPayload(ctx, rp); rawErr != nil {
-			log.WithError(rawErr).Warn("frontier-worker: save raw_payload failed")
-		} else {
-			rawPayloadID = rp.ID
-		}
 	}
 
 	// Run the AI extractor when configured. The frontier-worker
@@ -343,13 +311,11 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 			attrs = map[string]any{}
 		}
 		attrs["description"] = variant.Description
-		attrs["apply_url"] = variant.ApplyURL
 		attrs["language"] = variant.Language
 		attrs["remote_type"] = variant.RemoteType
 		attrs["employment_type"] = variant.EmploymentType
 		attrs["location_text"] = variant.LocationText
 		attrs["content_hash"] = variant.ContentHash
-		attrs["raw_archive_ref"] = archiveRef
 		if variant.PostedAt != nil {
 			attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
 		}
@@ -357,11 +323,12 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		eventPayload := eventsv1.VariantIngestedV1{
 			VariantID:     xid.New().String(),
 			SourceID:      src.ID,
-			ExternalID:    variant.ExternalJobID,
+			ExternalID:    variant.ExternalID,
 			HardKey:       variant.HardKey,
 			Kind:          kind,
 			Stage:         string(domain.StageRaw),
 			Title:         variant.Title,
+			ApplyURL:      variant.ApplyURL,
 			IssuingEntity: variant.Company,
 			AnchorCountry: variant.Country,
 			Remote:        variant.RemoteType == "remote",
@@ -372,26 +339,22 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 			ScrapedAt:     now,
 		}
 
-		if h.deps.VariantStore != nil {
-			rawIDPtr := stringPtrOrNil(rawPayloadID)
-			_ = h.deps.VariantStore.Upsert(ctx, variantstate.Variant{
-				VariantID:    eventPayload.VariantID,
-				SourceID:     eventPayload.SourceID,
-				HardKey:      eventPayload.HardKey,
-				Kind:         eventPayload.Kind,
-				CurrentStage: variantstate.StageIngested,
-				RawPayloadID: rawIDPtr,
-			})
-		}
-
 		body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))
 		if mErr != nil {
 			log.WithError(mErr).Warn("frontier-worker: marshal variant failed")
 			emitErr = mErr
 			continue
 		}
-		if err := h.deps.Svc.QueueManager().Publish(ctx, h.deps.IngestedQueue, body, nil); err != nil {
-			log.WithError(err).Warn("frontier-worker: publish variant failed")
+		if h.deps.IngestQueue == nil {
+			emitErr = fmt.Errorf("PostgreSQL ingest queue is not configured")
+			continue
+		}
+		if err := h.deps.IngestQueue.Enqueue(ctx, jobqueue.EnqueueRequest{
+			VariantID: eventPayload.VariantID, SourceID: eventPayload.SourceID,
+			IdempotencyKey: "frontier:" + u.URLID + ":" + eventPayload.HardKey,
+			Payload:        body,
+		}); err != nil {
+			log.WithError(err).Warn("frontier-worker: enqueue variant failed")
 			emitErr = err
 			continue
 		}
@@ -422,16 +385,3 @@ func podName() string {
 	}
 	return "frontier-worker-" + xid.New().String()
 }
-
-func sha256Hex(body []byte) string {
-	sum := sha256.Sum256(body)
-	return hex.EncodeToString(sum[:])
-}
-
-func stringPtrOrNil(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-

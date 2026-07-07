@@ -17,7 +17,6 @@ source "${SCRIPT_DIR}/vault-seeds.env"
 
 # Validate required variables are set and non-empty.
 REQUIRED_VARS=(
-    ICEBERG_CATALOG_URI
     R2_ACCOUNT_ID
     R2_ACCESS_KEY_ID
     R2_SECRET_ACCESS_KEY
@@ -39,7 +38,6 @@ SA_TOKEN=$(kubectl create token external-secrets -n external-secrets --audience=
 
 echo "Seeding Vault paths via vault-openbao-0..."
 cat <<SCRIPT | sed "s|__SA_TOKEN__|${SA_TOKEN}|g" \
-             | sed "s|__ICEBERG_CATALOG_URI__|${ICEBERG_CATALOG_URI}|g" \
              | sed "s|__R2_ACCOUNT_ID__|${R2_ACCOUNT_ID}|g" \
              | sed "s|__R2_ACCESS_KEY_ID__|${R2_ACCESS_KEY_ID}|g" \
              | sed "s|__R2_SECRET_ACCESS_KEY__|${R2_SECRET_ACCESS_KEY}|g" \
@@ -50,10 +48,6 @@ export BAO_ADDR="https://127.0.0.1:8200"
 export BAO_CACERT="/vault/userconfig/vault-ca/ca.crt"
 export BAO_TOKEN=\$(bao write -field=token auth/kubernetes/login role=external-secrets jwt="__SA_TOKEN__")
 
-echo "  -> writing iceberg-catalog..."
-bao kv put secret/stawi-opportunities/opportunities/common/iceberg-catalog \
-    uri="__ICEBERG_CATALOG_URI__"
-
 echo "  -> writing r2-account..."
 bao kv put secret/stawi-opportunities/opportunities/common/r2-account \
     r2_account_id="__R2_ACCOUNT_ID__" \
@@ -63,11 +57,9 @@ bao kv put secret/stawi-opportunities/opportunities/common/r2-account \
     r2_deploy_hook_url="__R2_DEPLOY_HOOK_URL__"
 
 echo "  -> verifying..."
-bao kv get -field=uri secret/stawi-opportunities/opportunities/common/iceberg-catalog >/dev/null
 bao kv get -field=r2_endpoint secret/stawi-opportunities/opportunities/common/r2-account >/dev/null
 SCRIPT
 
 echo "Vault seeding complete. ExternalSecrets will sync within their refreshInterval (~1h)."
 echo "To force immediate sync:"
-echo "  kubectl annotate externalsecret iceberg-catalog-credentials-opportunities -n product-opportunities reconcile.external-secrets.io/trigger=\$(date +%s) --overwrite"
 echo "  kubectl annotate externalsecret r2-account-credentials-opportunities -n product-opportunities reconcile.external-secrets.io/trigger=\$(date +%s) --overwrite"

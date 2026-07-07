@@ -69,7 +69,7 @@ func PlanByID(id PlanID) (Plan, bool) {
 }
 
 // NormalizePlan trims + validates a raw plan string into a known tier.
-// Anything unknown (including legacy "free") returns false.
+// Anything outside the current paid catalog returns false.
 func NormalizePlan(raw string) (PlanID, bool) {
 	id := PlanID(strings.TrimSpace(strings.ToLower(raw)))
 	if _, ok := PlanByID(id); ok {

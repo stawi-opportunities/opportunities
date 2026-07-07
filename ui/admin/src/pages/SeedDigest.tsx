@@ -1,24 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import {
-  getSeedDigest,
-  reparseSource,
-  type SeedDigestResponse,
-} from '@/api/admin-client';
+import { getSeedDigest, type SeedDigestResponse } from '@/api/admin-client';
 import { RejectionChart } from '@/components/RejectionChart';
 
 // SeedDigest renders GET /admin/trace/seeds/{id}/digest?date=YYYY-MM-DD:
 // a one-day rollup of crawl jobs, variants emitted/published/rejected
-// plus the reason histogram. Recent dates (≤7d) come from Postgres,
-// older dates fall back to Iceberg — the `data_source` field exposes
-// which one supplied the numbers.
+// plus the reason histogram, all served from PostgreSQL.
 export function SeedDigest() {
   const { id } = useParams<{ id: string }>();
   const [params, setParams] = useSearchParams();
   const date = params.get('date') ?? new Date().toISOString().slice(0, 10);
   const [data, setData] = useState<SeedDigestResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [reparseMsg, setReparseMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -30,23 +23,6 @@ export function SeedDigest() {
         setErr(e instanceof Error ? e.message : String(e))
       );
   }, [id, date]);
-
-  const handleReparse = async () => {
-    if (!id) return;
-    setReparseMsg('Queuing…');
-    try {
-      const res = await reparseSource(id, '24h');
-      setReparseMsg(
-        `Queued ${res.queued} raw_payload(s) for re-extraction (window: ${
-          res.window_seconds ?? '?'
-        }s).`
-      );
-    } catch (e) {
-      setReparseMsg(
-        `Reparse failed: ${e instanceof Error ? e.message : String(e)}`
-      );
-    }
-  };
 
   return (
     <div>
@@ -68,10 +44,6 @@ export function SeedDigest() {
               onChange={(e) => setParams({ date: e.target.value })}
             />
           </label>
-          <button type="button" onClick={handleReparse}>
-            Reparse last 24h
-          </button>
-          {reparseMsg && <small>{reparseMsg}</small>}
         </p>
       </header>
 

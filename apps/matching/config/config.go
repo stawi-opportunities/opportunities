@@ -9,25 +9,9 @@ import (
 type CandidatesConfig struct {
 	fconfig.ConfigurationDefault
 
-	// Iceberg catalog — Lakekeeper REST endpoint. Lakekeeper owns the
-	// metadata DB and storage credentials; this binary only speaks REST.
-	// Used by candidatestore.Reader and candidatestore.StaleReader to
-	// read candidates.{embeddings,preferences,cv_extracted}_current tables.
-	//
-	//   ICEBERG_CATALOG_URI   e.g. http://lakekeeper-catalog.lakehouse.svc.cluster.local:8181/catalog
-	//   ICEBERG_CATALOG_NAME  local catalog handle, e.g. "stawi"
-	//   ICEBERG_WAREHOUSE     logical warehouse registered in Lakekeeper, e.g. "product-opportunities"
-	//   ICEBERG_CATALOG_TOKEN optional pre-obtained bearer; leave unset when
-	//                         the cluster Lakekeeper runs with auth disabled.
-	IcebergCatalogURI   string `env:"ICEBERG_CATALOG_URI,required"`
-	IcebergCatalogName  string `env:"ICEBERG_CATALOG_NAME"  envDefault:"stawi"`
-	IcebergWarehouse    string `env:"ICEBERG_WAREHOUSE"     envDefault:"product-opportunities"`
-	IcebergCatalogToken string `env:"ICEBERG_CATALOG_TOKEN" envDefault:""`
-
 	// Cloudflare R2 — one account token authorised on all three
 	// product-opportunities buckets. Matching uses the archive
-	// bucket for raw CV bytes uploaded by candidates; chronicle
-	// reads go through the Iceberg catalog (Lakekeeper).
+	// bucket only for raw CV bytes uploaded by candidates.
 	R2AccountID       string `env:"R2_ACCOUNT_ID"        envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID"     envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
@@ -75,15 +59,6 @@ type CandidatesConfig struct {
 	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
 	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
 
-	// Canonical pipeline queue (service-profile idiom). The worker's canonical
-	// stage publishes CanonicalUpsertedV1 to this subject; matching's Path-A
-	// fan-out is one of its durable consumers (own consumer_durable_name on the
-	// same subject as the worker's publish stage + the writer sink). Name+URI
-	// must match the worker's QUEUE_PIPELINE_CANONICAL_* so the fan-out actually
-	// sees canonicals; mem:// is the local/test default.
-	QueuePipelineCanonical     string `env:"QUEUE_PIPELINE_CANONICAL_URI"  envDefault:"mem://pipeline_canonical"`
-	QueuePipelineCanonicalName string `env:"QUEUE_PIPELINE_CANONICAL_NAME" envDefault:"pipeline_canonical"`
-
 	// Candidate-embedding queue: cv-embed publishes CandidateEmbeddingV1 here;
 	// the candidate-change consumer drains it for gap-fill + rerank. Dedicated
 	// durable queue (not the shared events bus) so the flow is isolated + robust.
@@ -103,7 +78,6 @@ type CandidatesConfig struct {
 	// Phase-2 continuous matching pipeline feature flags (spec §5.5).
 	// All default to false so the binary is safe to deploy before the
 	// pipeline is validated in staging.
-	MatchingFanoutEnabled          bool `env:"MATCHING_FANOUT_ENABLED"           envDefault:"false"`
 	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"false"`
 	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
 	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`

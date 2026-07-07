@@ -29,9 +29,8 @@ type SourceFlagger interface {
 }
 
 // SampleURLProvider yields recently-crawled page URLs for a source — real,
-// known-fetchable samples for recipe generation. repository.RecipeRepository
-// satisfies it (raw_payloads-backed). Far more reliable than the bare BaseURL,
-// which often redirects or 403s a non-connector request.
+// known-fetchable samples for recipe generation. Compact parsed lineage is
+// preferred over retaining response bodies.
 type SampleURLProvider interface {
 	RecentURLs(ctx context.Context, sourceID string, limit int) ([]string, error)
 }
@@ -126,9 +125,7 @@ func (h *RecipeGenerateHandler) generate(ctx context.Context, sourceID string, s
 // deriveSampleURLs picks the URLs to learn a recipe from: the source's most
 // recently-crawled DETAIL pages, falling back to discovering detail links off
 // the listing, then to the BaseURL as a last resort. Listing-equivalent URLs
-// (the BaseURL itself / the site root) are filtered out of recorded history —
-// the crawler archives listing fetches into raw_payloads, and validation
-// dry-runs DETAIL extraction, so a listing sample can never pass the gate.
+// (the BaseURL itself / the site root) are filtered out of recorded history.
 func (h *RecipeGenerateHandler) deriveSampleURLs(ctx context.Context, src *domain.Source) []string {
 	n := h.deps.SampleCount
 	if n <= 0 {

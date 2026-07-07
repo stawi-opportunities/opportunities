@@ -42,15 +42,13 @@ type SeedEntry struct {
 	BaseURL    string            `json:"base_url"`
 	Country    string            `json:"country"`
 	// Language is the ISO 639-1 code of postings served by this source
-	// (e.g. "en", "fr", "ja"). Blank entries default to "en" — almost
-	// every legacy seed predates this field.
+	// (e.g. "en", "fr", "ja"). Blank entries default to "en".
 	Language         string        `json:"language"`
 	Region           string        `json:"region"`
 	CrawlIntervalSec int           `json:"crawl_interval_sec"`
 	Priority         priorityLabel `json:"priority"`
 	// Kinds declares which opportunity kinds this seeded source emits.
-	// Blank entries default to ["job"] — every legacy seed predates the
-	// generification work and is a job-only source.
+	// Blank entries default to ["job"].
 	Kinds []string `json:"kinds,omitempty"`
 	// RequiredAttributesByKind tightens Spec.KindRequired for this source.
 	// Optional; blank entries default to {}.

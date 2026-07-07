@@ -1,5 +1,5 @@
 // Mirrors pkg/events/v1/canonicals.go (CanonicalUpsertedV1) — the JSON
-// shape published to R2 at /<prefix>/<slug>.json. Polymorphic across
+// shape served by the PostgreSQL-backed jobs API. Polymorphic across
 // the five opportunity kinds; per-kind fields live under `attributes`.
 //
 // When schema_version bumps, widen the type and branch on version at
@@ -24,7 +24,7 @@ export interface OpportunitySnapshot {
   description?: string; // markdown body
   issuing_entity: string; // was company.name on JobSnapshot
   apply_url: string;
-  posted_at: string; // RFC3339
+  posted_at?: string; // RFC3339
   deadline?: string; // RFC3339, optional
   anchor_location?: AnchorLocation;
   remote?: boolean;
@@ -43,8 +43,6 @@ export interface OpportunitySnapshot {
 
   // Optional pre-rendered HTML (legacy jobs path); preferred is `description` markdown.
   description_html?: string;
-  // Optional translation/locale metadata (carried through from older job snapshots).
-  language?: string;
   expires_at?: string;
   is_featured?: boolean;
   quality_score?: number;

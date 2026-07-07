@@ -27,8 +27,8 @@ type digestCollector struct {
 	got []json.RawMessage
 }
 
-func (c *digestCollector) Name() string                       { return eventsv1.TopicCandidateWeeklyJobsDigest }
-func (c *digestCollector) PayloadType() any                   { var raw json.RawMessage; return &raw }
+func (c *digestCollector) Name() string                        { return eventsv1.TopicCandidateWeeklyJobsDigest }
+func (c *digestCollector) PayloadType() any                    { var raw json.RawMessage; return &raw }
 func (c *digestCollector) Validate(context.Context, any) error { return nil }
 func (c *digestCollector) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)
@@ -86,7 +86,7 @@ type fakeNewJobsLister struct {
 func (f *fakeNewJobsLister) ListNewJobs(_ context.Context, _ time.Time, country string, _ []string, _ int) ([]eventsv1.DigestJob, error) {
 	f.calls = append(f.calls, country)
 	if country == f.failOn {
-		return nil, errors.New("manticore down")
+		return nil, errors.New("stats backend down")
 	}
 	return f.byCountry[country], nil
 }
@@ -202,7 +202,7 @@ func TestWeeklyJobsDigestEmitsEvenWhenStatsErrors(t *testing.T) {
 		Jobs: &fakeNewJobsLister{byCountry: map[string][]eventsv1.DigestJob{
 			"KE": {{CanonicalID: "j1", Title: "T", Country: "KE", Kind: "job", Slug: "t"}},
 		}},
-		Stats: &fakeWeeklyStats{err: errors.New("manticore facet down")},
+		Stats: &fakeWeeklyStats{err: errors.New("weekly stats down")},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/_admin/candidates/weekly_jobs_digest", nil)

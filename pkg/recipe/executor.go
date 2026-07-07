@@ -151,8 +151,8 @@ func (e *Executor) htmlPage(ctx context.Context, src domain.Source, listURL stri
 }
 
 // collectDetailURLs returns the job-detail URLs on a listing page. The
-// reusable path (preferred) is list.link_pattern: harvest every anchor
-// whose resolved href contains the pattern. The legacy path evaluates
+// preferred path is list.link_pattern: harvest every anchor
+// whose resolved href contains the pattern. The selector fallback evaluates
 // the Link extractor inside each ItemSelector match.
 func (e *Executor) collectDetailURLs(listPC *PageContext, listURL string) []string {
 	if listPC.HTML == nil {

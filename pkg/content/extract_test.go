@@ -36,11 +36,6 @@ func TestExtractFromHTML_BasicPage(t *testing.T) {
 		return
 	}
 
-	// RawHTML must be preserved exactly.
-	if result.RawHTML != basicPage {
-		t.Error("RawHTML should equal input HTML")
-	}
-
 	// Markdown should contain the main content body.
 	if !strings.Contains(result.Markdown, "experienced Go engineer") {
 		t.Errorf("Markdown should contain job description, got: %q", result.Markdown)
@@ -60,60 +55,16 @@ func TestExtractFromHTML_Empty(t *testing.T) {
 			t.Fatalf("expected non-nil result for input %q", input)
 			return
 		}
-		// RawHTML may round-trip verbatim or be normalised — both are
-		// acceptable for this smoke test.
-		_ = result.RawHTML
 	}
 }
 
-func TestExtractFromHTML_ReturnsAllFields(t *testing.T) {
+func TestExtractFromHTML_ReturnsMarkdown(t *testing.T) {
 	result, err := ExtractFromHTML(basicPage)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.RawHTML == "" {
-		t.Error("RawHTML must not be empty")
-	}
-	// CleanHTML may be empty if trafilatura returns only ContentText, but Markdown should be set.
 	if result.Markdown == "" {
 		t.Error("Markdown must not be empty for a page with content")
-	}
-}
-
-func TestExtractFromJSON_Basic(t *testing.T) {
-	jsonPayload := `{"title":"Backend Engineer","description":"<p>We need a backend engineer.</p>","salary":120000}`
-	description := "<p>We need a <strong>backend engineer</strong> with 3+ years experience.</p>"
-
-	result := ExtractFromJSON(jsonPayload, description)
-	if result == nil {
-		t.Fatal("expected non-nil result")
-		return
-	}
-
-	// RawHTML should be the JSON.
-	if result.RawHTML != jsonPayload {
-		t.Errorf("RawHTML should be the JSON payload, got: %q", result.RawHTML)
-	}
-
-	// CleanHTML should be empty for JSON connectors.
-	if result.CleanHTML != "" {
-		t.Errorf("CleanHTML should be empty for JSON, got: %q", result.CleanHTML)
-	}
-
-	// Markdown should be derived from the description.
-	if !strings.Contains(result.Markdown, "backend engineer") {
-		t.Errorf("Markdown should contain description content, got: %q", result.Markdown)
-	}
-}
-
-func TestExtractFromJSON_EmptyDescription(t *testing.T) {
-	result := ExtractFromJSON(`{"id":1}`, "")
-	if result == nil {
-		t.Fatal("expected non-nil result")
-		return
-	}
-	if result.Markdown != "" {
-		t.Errorf("Markdown should be empty when description is empty, got: %q", result.Markdown)
 	}
 }
 

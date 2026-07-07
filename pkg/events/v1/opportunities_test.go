@@ -15,6 +15,7 @@ func TestVariantIngestedV1_RoundTrip(t *testing.T) {
 		Kind:          "job",
 		Stage:         "ingested",
 		Title:         "Senior Go Engineer",
+		ApplyURL:      "https://example.test/jobs/abc/apply",
 		IssuingEntity: "Acme",
 		AnchorCountry: "KE",
 		AnchorCity:    "Nairobi",
@@ -32,7 +33,7 @@ func TestVariantIngestedV1_RoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if out.Kind != "job" || out.Attributes["employment_type"] != "full-time" {
+	if out.Kind != "job" || out.ApplyURL != in.ApplyURL || out.Attributes["employment_type"] != "full-time" {
 		t.Fatalf("round-trip lost data: %+v", out)
 	}
 }

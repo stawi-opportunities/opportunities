@@ -35,8 +35,7 @@ type UnpaidCandidateLister interface {
 }
 
 // NewJobsLister returns the freshest jobs (across the past N days)
-// matching a candidate's filters. Production impl backs onto the
-// Manticore real-time index.
+// matching a candidate's filters. Production reads PostgreSQL.
 type NewJobsLister interface {
 	ListNewJobs(ctx context.Context, since time.Time, country string, kinds []string, limit int) ([]eventsv1.DigestJob, error)
 }

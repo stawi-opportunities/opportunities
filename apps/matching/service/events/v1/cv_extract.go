@@ -82,9 +82,8 @@ func NewCVExtractHandler(deps CVExtractDeps) *CVExtractHandler {
 
 // Handle implements queue.SubscribeWorker. The candidate_id +
 // cv_version pair is the dedup key — re-delivery from NATS won't
-// double-write because the downstream writer keys on (candidate_id,
-// cv_version) and the LLM extraction itself is content-deterministic
-// modulo provider variance.
+// double-write because candidate persistence keys on (candidate_id,
+// cv_version); extraction is content-deterministic modulo provider variance.
 func (h *CVExtractHandler) Handle(ctx context.Context, _ map[string]string, payload []byte) error {
 	if len(payload) == 0 {
 		return errors.New("cv-extract: empty payload")

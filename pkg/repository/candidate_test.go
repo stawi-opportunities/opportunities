@@ -21,18 +21,13 @@ func setupCandidateDB(t *testing.T) (*gorm.DB, *sql.DB, context.Context) {
 	t.Helper()
 	ctx := context.Background()
 	sqlDB := testhelpers.PostgresContainerNoMigrate(t, ctx)
-	require.NoError(t, testhelpers.EnsureOpportunitiesStub(ctx, sqlDB))
-	testhelpers.ApplyMigrationsDir(t, ctx, sqlDB, "../../db/migrations")
+	testhelpers.ApplyGreenfieldSchema(t, ctx, sqlDB)
 	g, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
 	require.NoError(t, err)
 	return g, sqlDB, ctx
 }
 
-// insertCandidate inserts a minimal candidate row using raw SQL. The
-// candidate_profiles table is created by the EnsureOpportunitiesStub
-// helper with only an `id` primary key; additional columns are added
-// by GORM AutoMigrate in production. For test purposes we only need
-// the row to exist so the draft methods have something to operate on.
+// insertCandidate inserts a minimal candidate row using raw SQL.
 func insertCandidate(t *testing.T, ctx context.Context, db *sql.DB, id string) {
 	t.Helper()
 	_, err := db.ExecContext(ctx,

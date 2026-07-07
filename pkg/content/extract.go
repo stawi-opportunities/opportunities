@@ -10,11 +10,9 @@ import (
 	"github.com/markusmobius/go-trafilatura"
 )
 
-// Extracted holds the three forms of extracted content.
+// Extracted holds parsed content used by extraction.
 type Extracted struct {
-	RawHTML   string // original HTTP response body
-	CleanHTML string // main content extracted (nav/ads/footer removed)
-	Markdown  string // clean markdown suitable for AI and humans
+	Markdown string
 }
 
 var metaTagRe = regexp.MustCompile(`(?is)<meta\s[^>]*>`)
@@ -56,15 +54,14 @@ func OGImage(rawHTML string) string {
 }
 
 // ExtractFromHTML takes raw HTML from an HTTP response, uses go-trafilatura to
-// extract the main content, converts it to Markdown, and returns all three forms.
+// extract the main content and converts it to Markdown. The response body is
+// not retained in the result.
 func ExtractFromHTML(rawHTML string) (*Extracted, error) {
 	if strings.TrimSpace(rawHTML) == "" {
 		return &Extracted{}, nil
 	}
 
-	result := &Extracted{
-		RawHTML: rawHTML,
-	}
+	result := &Extracted{}
 
 	// Use trafilatura to extract main content.
 	opts := trafilatura.Options{
@@ -75,42 +72,18 @@ func ExtractFromHTML(rawHTML string) (*Extracted, error) {
 	extracted, err := trafilatura.Extract(strings.NewReader(rawHTML), opts)
 	if err != nil || extracted == nil {
 		// Fallback: use the raw HTML as the clean HTML.
-		result.CleanHTML = rawHTML
 		result.Markdown = htmlToMarkdownOrStrip(rawHTML)
 		return result, nil
 	}
 
 	// Render ContentNode back to an HTML string.
 	if extracted.ContentNode != nil {
-		result.CleanHTML = dom.OuterHTML(extracted.ContentNode)
+		result.Markdown = htmlToMarkdownOrStrip(dom.OuterHTML(extracted.ContentNode))
 	} else {
-		result.CleanHTML = extracted.ContentText
-	}
-
-	// Convert clean HTML to Markdown.
-	if result.CleanHTML != "" {
-		result.Markdown = htmlToMarkdownOrStrip(result.CleanHTML)
-	} else if extracted.ContentText != "" {
 		result.Markdown = extracted.ContentText
 	}
 
 	return result, nil
-}
-
-// ExtractFromJSON handles JSON API connectors that already have structured data.
-// The JSON payload is stored as RawHTML, CleanHTML is empty, and Markdown is
-// derived from the description HTML (if provided).
-func ExtractFromJSON(jsonResponse string, description string) *Extracted {
-	result := &Extracted{
-		RawHTML:   jsonResponse,
-		CleanHTML: "",
-	}
-
-	if strings.TrimSpace(description) != "" {
-		result.Markdown = htmlToMarkdownOrStrip(description)
-	}
-
-	return result
 }
 
 // htmlToMarkdownOrStrip converts an HTML string to Markdown. If conversion

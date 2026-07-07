@@ -9,10 +9,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/pgsearch"
 )
 
-// PostgresJobsLister implements NewJobsLister against the
-// `opportunities` canonical table. Replaces the Manticore-era
-// ManticoreJobsLister; both share the same NewJobsLister interface so
-// the weekly digest cron didn't need to change.
+// PostgresJobsLister implements NewJobsLister against opportunities.
 //
 // The lister speaks the same "what would a user see" baseline as the
 // public API: status='active' AND hidden=false AND
@@ -40,6 +37,7 @@ func (l *PostgresJobsLister) ListNewJobs(ctx context.Context, since time.Time, c
 		out = append(out, eventsv1.DigestJob{
 			CanonicalID: h.CanonicalID,
 			Title:       h.Title,
+			ApplyURL:    h.ApplyURL,
 			Company:     h.Company,
 			Country:     h.Country,
 			Kind:        h.Kind,
@@ -51,9 +49,7 @@ func (l *PostgresJobsLister) ListNewJobs(ctx context.Context, since time.Time, c
 }
 
 // PostgresWeeklyStatsLister implements WeeklyStatsLister against
-// Postgres aggregations. Equivalent to the Manticore facet aggs the
-// old lister used, served by three small SELECT … GROUP BY queries
-// against the `opportunities` table.
+// Postgres aggregations, served by three small SELECT … GROUP BY queries.
 type PostgresWeeklyStatsLister struct {
 	s *pgsearch.Search
 }

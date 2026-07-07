@@ -9,7 +9,7 @@ import (
 )
 
 // CrawlJobsAdminHandler returns the last N crawl_jobs for a given source,
-// each with a count of raw_payloads it produced. Triage view for ops.
+// for operator triage.
 func CrawlJobsAdminHandler(repo *repository.CrawlRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

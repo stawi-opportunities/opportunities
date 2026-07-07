@@ -37,8 +37,7 @@ const DegradeAfterFailures = 5
 
 // PageCompletedHandler consumes crawl.page.completed.v1 and updates
 // the sources row's health_score / consecutive_failures / needs_tuning
-// / next_crawl_at fields. The logic mirrors the legacy inline updates
-// in apps/crawler/cmd/main.go's processSource, split out so the crawl
+// / next_crawl_at fields. This is split out so the crawl
 // hot path is pure emit + the reconciliation runs on its own consumer
 // group (its slowness never back-pressures fetches).
 type PageCompletedHandler struct {

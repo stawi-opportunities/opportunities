@@ -14,48 +14,16 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-// ResolveInference picks the active chat-completion back-end. Preference:
-//
-//  1. INFERENCE_BASE_URL / INFERENCE_MODEL / INFERENCE_API_KEY (new)
-//  2. OLLAMA_URL / OLLAMA_MODEL (legacy; no auth key)
-//
-// Returns (baseURL, model, apiKey). baseURL is empty when neither back-end
+// ResolveInference returns the configured chat-completion backend. baseURL is empty when no backend
 // is configured — callers treat that as "AI extraction disabled".
-func ResolveInference(inferenceURL, inferenceModel, inferenceKey, ollamaURL, ollamaModel string) (string, string, string) {
-	if inferenceURL != "" {
-		model := inferenceModel
-		if model == "" {
-			model = ollamaModel
-		}
-		return inferenceURL, model, inferenceKey
-	}
-	if ollamaURL != "" {
-		return ollamaURL, ollamaModel, ""
-	}
-	return "", "", ""
+func ResolveInference(inferenceURL, inferenceModel, inferenceKey string) (string, string, string) {
+	return inferenceURL, inferenceModel, inferenceKey
 }
 
-// ResolveEmbedding picks the embedding back-end. Preference:
-//
-//  1. EMBEDDING_BASE_URL / EMBEDDING_MODEL / EMBEDDING_API_KEY (new)
-//  2. OLLAMA_URL / OLLAMA_MODEL (legacy; Ollama serves embeddings on the
-//     same port/host as chat, so any configured Ollama URL doubles as an
-//     embedding source)
-//
-// Returns (baseURL, model, apiKey). baseURL is empty when embeddings are
+// ResolveEmbedding returns the configured embedding backend. baseURL is empty when embeddings are
 // disabled — callers skip storing the vector.
-func ResolveEmbedding(embedURL, embedModel, embedKey, ollamaURL, ollamaModel string) (string, string, string) {
-	if embedURL != "" {
-		model := embedModel
-		if model == "" {
-			model = ollamaModel
-		}
-		return embedURL, model, embedKey
-	}
-	if ollamaURL != "" {
-		return ollamaURL, ollamaModel, ""
-	}
-	return "", "", ""
+func ResolveEmbedding(embedURL, embedModel, embedKey string) (string, string, string) {
+	return embedURL, embedModel, embedKey
 }
 
 // ResolveRerank picks the active reranker back-end. Preference:
@@ -102,6 +70,12 @@ type Config struct {
 	// Qwen3-Embedding family) emit a fixed-width vector matching the
 	// pgvector column. 0 omits it (native width — e5-large is 1024).
 	EmbeddingDimensions int
+	// EmbeddingMaxConcurrency bounds simultaneous embedding HTTP calls made by
+	// this process. 0 disables the in-process semaphore.
+	EmbeddingMaxConcurrency int
+	// EmbeddingMinInterval spaces embedding HTTP calls made by this process.
+	// 0 disables pacing.
+	EmbeddingMinInterval time.Duration
 
 	// Reranker (cross-encoder). Hosted alongside the embedder in v1 —
 	// TEI serves one model per process so we run two deployments.
@@ -116,8 +90,7 @@ type Config struct {
 
 	// Registry drives per-kind extraction prompts and classifier
 	// candidates. Optional — when nil the extractor uses the universal
-	// prefix alone and defaults the kind to "job" so legacy callers
-	// (and tests not wired through boot) keep working.
+	// prefix alone and defaults the kind to "job".
 	Registry *opportunity.Registry
 
 	// HTTPClient overrides the underlying HTTP client. Production callers
@@ -212,7 +185,7 @@ func (e *Extractor) chat(ctx context.Context, prompt string, expectJSON bool) (s
 	return "", fmt.Errorf("chat: rate-limited after %d attempts: %w", maxAttempts, lastErr)
 }
 
-// backoffWait sleeps before a chat retry: the provider's Retry-After when
+// backoffWait sleeps before a retry: the provider's Retry-After when
 // present (capped 60s), else exponential (2,4,8s capped 30s). Returns ctx.Err()
 // if the context is cancelled while waiting.
 func backoffWait(ctx context.Context, attempt int, retryAfter string) error {
@@ -370,34 +343,99 @@ func (e *Extractor) embed(ctx context.Context, text string) ([]float32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("embed: marshal: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.embeddingBaseURL+"/v1/embeddings", bytes.NewReader(raw))
-	if err != nil {
-		return nil, fmt.Errorf("embed: new request: %w", err)
+
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		release, err := e.waitForEmbeddingTurn(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.embeddingBaseURL+"/v1/embeddings", bytes.NewReader(raw))
+		if err != nil {
+			release()
+			return nil, fmt.Errorf("embed: new request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if e.embeddingAPIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+e.embeddingAPIKey)
+		}
+		resp, err := e.client.Do(req)
+		if err != nil {
+			release()
+			return nil, fmt.Errorf("embed: request: %w", err)
+		}
+		release()
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			ra := resp.Header.Get("Retry-After")
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("embed: status %d: %s", resp.StatusCode, string(b))
+			if attempt == maxAttempts {
+				break
+			}
+			if werr := backoffWait(ctx, attempt, ra); werr != nil {
+				return nil, werr
+			}
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("embed: status %d: %s", resp.StatusCode, string(b))
+		}
+		// OpenAI-compatible embedding responses: {data: [{embedding: [...]}]}
+		var out struct {
+			Data []struct {
+				Embedding []float32 `json:"embedding"`
+			} `json:"data"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&out)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("embed: decode: %w", err)
+		}
+		if len(out.Data) == 0 || len(out.Data[0].Embedding) == 0 {
+			return nil, fmt.Errorf("embed: empty embedding in response")
+		}
+		return out.Data[0].Embedding, nil
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if e.embeddingAPIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+e.embeddingAPIKey)
+	return nil, fmt.Errorf("embed: rate-limited after %d attempts: %w", maxAttempts, lastErr)
+}
+
+func (e *Extractor) waitForEmbeddingTurn(ctx context.Context) (func(), error) {
+	release := func() {}
+	if e.embeddingSlots != nil {
+		select {
+		case e.embeddingSlots <- struct{}{}:
+			release = func() { <-e.embeddingSlots }
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("embed: request: %w", err)
+	if e.embeddingMinInterval <= 0 {
+		return release, nil
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("embed: status %d: %s", resp.StatusCode, string(b))
+	e.embeddingMu.Lock()
+	defer e.embeddingMu.Unlock()
+
+	if !e.embeddingLast.IsZero() {
+		wait := e.embeddingMinInterval - time.Since(e.embeddingLast)
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				release()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
 	}
-	// OpenAI-compatible embedding responses: {data: [{embedding: [...]}]}
-	var out struct {
-		Data []struct {
-			Embedding []float32 `json:"embedding"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("embed: decode: %w", err)
-	}
-	if len(out.Data) == 0 || len(out.Data[0].Embedding) == 0 {
-		return nil, fmt.Errorf("embed: empty embedding in response")
-	}
-	return out.Data[0].Embedding, nil
+	e.embeddingLast = time.Now()
+	return release, nil
 }

@@ -26,8 +26,8 @@ type Matcher interface {
 	// answer "we know about this kind") but are filtered out of the
 	// EnabledKinds list the UI uses to gate onboarding.
 	Disabled() bool
-	// SearchFilter returns a kind-scoped Manticore filter expression
-	// (or equivalent) built from the candidate's preferences blob.
+	// SearchFilter returns a kind-scoped PostgreSQL filter built from the
+	// candidate's preferences blob.
 	SearchFilter(prefs json.RawMessage) (any, error)
 	// Score ranks one opportunity against the same preferences blob and
 	// returns a Score in [0, 1] plus optional Reasons describing the

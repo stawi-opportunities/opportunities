@@ -82,6 +82,17 @@ func TestBuildOpportunity_AnchorCountryFallsBackToSource(t *testing.T) {
 	assert.Equal(t, "NG", opp.AnchorLocation.Country)
 }
 
+func TestBuildOpportunity_ApplyURLFallsBackToDetailPage(t *testing.T) {
+	pc, err := NewPageContext("https://x.io/jobs/fallback", `<html><body><h1>Role</h1></body></html>`, nil)
+	require.NoError(t, err)
+	r := &Recipe{Kind: KindRule{Mode: "source_default"}, Detail: DetailRule{}}
+
+	opp, err := buildOpportunity(pc, jobSource(), r)
+	require.NoError(t, err)
+	assert.Equal(t, "https://x.io/jobs/fallback", opp.ApplyURL)
+	assert.Equal(t, opp.ApplyURL, opp.ExternalID)
+}
+
 func TestBuildOpportunity_KindFixedAndByPath(t *testing.T) {
 	pc, err := NewPageContext("https://x.io/s/1",
 		`<html><head><script type="application/ld+json">{"kind":"scholarship"}</script></head><body></body></html>`, nil)

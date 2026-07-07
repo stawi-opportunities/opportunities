@@ -1,15 +1,14 @@
 SHELL := /bin/bash
 
-APP_DIRS := apps/crawler apps/scheduler apps/api apps/writer apps/materializer apps/worker
+APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching
 
 # Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
 HUGO_VERSION := 0.160.1
 HUGO_BIN     := $(CURDIR)/bin/hugo
 
-.PHONY: deps build test test-integration run-crawler run-scheduler run-api run-writer run-materializer run-worker \
+.PHONY: deps build test test-integration run-crawler run-api run-worker \
         infra-up infra-down \
         ui-deps ui-build ui-dev \
-        archive-verify \
         opportunity-kinds-link
 
 deps:
@@ -31,17 +30,8 @@ test-integration:
 run-crawler:
 	go run ./apps/crawler/cmd
 
-run-scheduler:
-	go run ./apps/scheduler/cmd
-
 run-api:
 	go run ./apps/api/cmd
-
-run-writer:
-	go run ./apps/writer/cmd
-
-run-materializer:
-	go run ./apps/materializer/cmd
 
 run-worker:
 	go run ./apps/worker/cmd
@@ -98,14 +88,6 @@ ui-dev:
 		HUGO_PARAMS_oidcRedirectURI=http://localhost:5170/auth/callback/ \
 		(cd ui && hugo server --bind 0.0.0.0 --port 5170 --disableFastRender) & \
 		wait
-
-# ---- QA -------------------------------------------------------------------
-# Post-deploy + nightly sentinel: samples active canonicals and checks that
-# each has canonical.json, manifest.json, per-variant JSON, and raw blobs in
-# the R2 archive bucket. Non-zero exit on any drift. See scripts/archive-verify.sh
-# for required env (R2_ARCHIVE_BUCKET, R2_ENDPOINT, PG*, AWS_*).
-archive-verify:
-	@scripts/archive-verify.sh
 
 # ---- Opportunity kinds ----------------------------------------------------
 # Stages the opportunity-kinds YAML registry at /tmp/opportunity-kinds for

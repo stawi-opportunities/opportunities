@@ -24,7 +24,7 @@ type SourceCrawlGetter interface {
 
 // Admitter is the backpressure-gate slice the crawl dispatch needs: given a
 // topic and a desired count, it returns how many are admitted and a wait hint.
-// Satisfied by *backpressure.Gate.
+// Satisfied by the PostgreSQL queue capacity admitter.
 type Admitter interface {
 	Admit(ctx context.Context, topic string, want int) (int, time.Duration)
 }

@@ -2,6 +2,7 @@ package opportunity
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
@@ -39,11 +40,22 @@ func Verify(opp *domain.ExternalOpportunity, src *domain.Source, reg *Registry) 
 	}
 
 	// 2. Universal required
+	applyURLChecked := false
 	for _, k := range spec.UniversalRequired {
+		if k == "apply_url" {
+			applyURLChecked = true
+		}
 		if !universalFieldPresent(opp, k) {
 			res.OK = false
 			res.Missing = append(res.Missing, k)
 		}
+	}
+	// Every accepted opportunity must carry an explicit application URL.
+	// Kind definitions may add stricter fields, but they cannot opt out of the
+	// URL needed by serving and auto-application clients.
+	if !applyURLChecked && !universalFieldPresent(opp, "apply_url") {
+		res.OK = false
+		res.Missing = append(res.Missing, "apply_url")
 	}
 
 	// 3. Kind required
@@ -99,7 +111,7 @@ func universalFieldPresent(opp *domain.ExternalOpportunity, key string) bool {
 	case "issuing_entity":
 		return opp.IssuingEntity != ""
 	case "apply_url":
-		return opp.ApplyURL != ""
+		return strings.TrimSpace(opp.ApplyURL) != ""
 	case "deadline":
 		return opp.Deadline != nil
 	case "anchor_country":

@@ -30,7 +30,7 @@ import (
 
 type apiConfig struct {
 	// Embed Frame's ConfigurationDefault so DATABASE_URL is parsed by
-	// the same path Worker/Crawler/Materializer use. Frame's
+	// the same path the worker and crawler use. Frame's
 	// WithDatastore() reads from this struct via the FrameConfig
 	// adapter exposed below.
 	fconfig.ConfigurationDefault
@@ -70,22 +70,12 @@ type apiConfig struct {
 	// log path keeps working unchanged.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
 
-	// R2* config powers /admin/raw_payloads/{id}/body — the operator
-	// drill-down that streams the original archived HTML from R2. The
-	// same credentials secret is mounted on the crawler/worker pods;
-	// the api just needs read access on the raw/* prefix inside the
-	// archive bucket (where crawler.PutRaw stores the gzipped HTML).
-	// All fields are optional — when AccountID or ArchiveBucket is
-	// empty the endpoint is not wired and the rest of the admin
-	// surface keeps working unchanged. R2Endpoint mirrors the
-	// crawler/worker config for parity, even though pkg/archive
-	// derives the endpoint URL from R2AccountID.
+	// R2 is used only for editable definitions on this service. Opportunity
+	// records and raw crawl payloads are read from PostgreSQL.
 	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
 	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
 	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Endpoint        string `env:"R2_ENDPOINT" envDefault:""`
 	R2ContentBucket   string `env:"R2_CONTENT_BUCKET" envDefault:"product-opportunities-content"`
-	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
 }
 
 func main() {
@@ -125,9 +115,7 @@ func main() {
 	}
 
 	// Frame service — pulls in DatastoreManager which gives us the
-	// CNPG pool the rest of the platform uses. We bring the api under
-	// the same wiring as worker/crawler/materializer per the golang-
-	// patterns skill ("Database — frame.WithDatastore()"). HTTP serving
+	// CNPG pool the rest of the platform uses. HTTP serving
 	// stays in the existing http.Server below; Frame's HTTP handler is
 	// not registered because the api owns its own mux + middleware.
 	ctx, svc := frame.NewServiceWithContext(ctx,
@@ -156,8 +144,7 @@ func main() {
 		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
 
-	// Postgres backend — opportunities table populated by worker.canonical
-	// + materializer admin handlers. Manticore path retired in Phase 6.
+	// PostgreSQL is the authoritative opportunity read backend.
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	if pool == nil {
 		log.Fatal("api: DATABASE_URL required")
@@ -166,7 +153,7 @@ func main() {
 	log.Info("api: jobs backend = postgres")
 
 	// Frame-managed HTTP client (OTEL trace propagation + retry policy)
-	// for analytics + R2 deploy-hook wiring.
+	// for analytics.
 	frameHTTPClient := frameclient.NewHTTPClient(ctx,
 		frameclient.WithHTTPTraceRequests(),
 	)
@@ -259,10 +246,7 @@ func main() {
 		registerFlagsAdmin(ctx, mux, jm)
 	}
 
-	// Verify-stage rejection visibility — operator-facing read of the
-	// opportunities.variants_rejected Iceberg sink. Currently stubbed
-	// to 501; see endpoints_v2.go for the implementation note.
-	mux.HandleFunc("GET /admin/variants/rejected", variantsRejectedHandler())
+	mux.HandleFunc("GET /admin/variants/rejected", requireAdmin(variantsRejectedHandler(pool.DB)))
 
 	// Analytics beacon — view path. Increments the Valkey counters
 	// (atomic INCR + 24h-windowed key with TTL) AND ships an

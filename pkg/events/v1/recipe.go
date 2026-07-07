@@ -7,7 +7,7 @@ package eventsv1
 // Store pipeline. On success the source moves to "active"; after
 // RECIPE_MAX_GEN_ATTEMPTS consecutive failures it moves to "needs_tuning".
 //
-// Wire format only — this event is not persisted in the Parquet log.
+// Wire format only — this event is not persisted in the event ledger log.
 type RecipeGenerateV1 struct {
 	// SourceID is the sources.id of the source that needs a recipe.
 	SourceID string `json:"source_id"`
@@ -36,7 +36,7 @@ type RecipeGenerateV1 struct {
 // the new one passes the validation gate. After RECIPE_MAX_REGEN_FAILURES
 // consecutive failures the source is marked "needs_tuning" for operator review.
 //
-// Wire format only — this event is not persisted in the Parquet log.
+// Wire format only — this event is not persisted in the event ledger log.
 type RecipeRegenerateV1 struct {
 	// SourceID is the sources.id of the source whose recipe has drifted.
 	SourceID string `json:"source_id"`

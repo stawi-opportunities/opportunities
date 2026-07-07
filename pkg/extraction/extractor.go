@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -37,7 +38,9 @@ and produce a single JSON object that strictly matches the schema below.
 Output ONLY the JSON object — no prose, no code fences. Empty/unknown
 fields should be omitted (not "" or null) unless the schema explicitly
 requires them. Use ISO 3166-1 alpha-2 for country codes and ISO 4217 for
-currency codes. Dates are RFC3339 timestamps in UTC.`
+currency codes. Dates are RFC3339 timestamps in UTC. apply_url is always
+required; return the direct application link, or the opportunity detail-page
+URL when no separate application link exists.`
 
 const maxContentChars = 4000
 const extractionTimeout = 10 * time.Minute // was 120s — let AI finish on CPU
@@ -53,8 +56,7 @@ type HTTPDoer interface {
 // Gateway, Groq, OpenAI, and Ollama 0.3+ unchanged.
 //
 // The two-stage Extract method consults registry to assemble per-kind
-// prompts. When registry is nil (legacy callers / tests not wired through
-// the boot path) Extract falls back to the universal prefix only and
+// prompts. When registry is nil, Extract falls back to the universal prefix and
 // classifier behaviour collapses to "kind=job by default".
 type Extractor struct {
 	baseURL string
@@ -68,7 +70,11 @@ type Extractor struct {
 	// field so MRL-capable models (e.g. SiliconFlow Qwen3-Embedding) emit
 	// a fixed-width vector matching the pgvector column. 0 = omit (the
 	// model's native width, e.g. e5-large's 1024).
-	embeddingDimensions int
+	embeddingDimensions  int
+	embeddingSlots       chan struct{}
+	embeddingMinInterval time.Duration
+	embeddingMu          sync.Mutex
+	embeddingLast        time.Time
 
 	rerankBaseURL string
 	rerankAPIKey  string
@@ -98,29 +104,29 @@ func New(cfg Config) *Extractor {
 	if hc == nil {
 		hc = &http.Client{Timeout: extractionTimeout}
 	}
+	var embeddingSlots chan struct{}
+	if cfg.EmbeddingMaxConcurrency > 0 {
+		embeddingSlots = make(chan struct{}, cfg.EmbeddingMaxConcurrency)
+	}
 	e := &Extractor{
-		baseURL:             strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:              cfg.APIKey,
-		model:               cfg.Model,
-		embeddingBaseURL:    strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
-		embeddingAPIKey:     cfg.EmbeddingAPIKey,
-		embeddingModel:      cfg.EmbeddingModel,
-		embeddingDimensions: cfg.EmbeddingDimensions,
-		rerankBaseURL:       strings.TrimRight(cfg.RerankBaseURL, "/"),
-		rerankAPIKey:        cfg.RerankAPIKey,
-		rerankModel:         cfg.RerankModel,
-		rerankDialect:       strings.ToLower(strings.TrimSpace(cfg.RerankDialect)),
-		client:              hc,
-		registry:            cfg.Registry,
+		baseURL:              strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:               cfg.APIKey,
+		model:                cfg.Model,
+		embeddingBaseURL:     strings.TrimRight(cfg.EmbeddingBaseURL, "/"),
+		embeddingAPIKey:      cfg.EmbeddingAPIKey,
+		embeddingModel:       cfg.EmbeddingModel,
+		embeddingDimensions:  cfg.EmbeddingDimensions,
+		embeddingSlots:       embeddingSlots,
+		embeddingMinInterval: cfg.EmbeddingMinInterval,
+		rerankBaseURL:        strings.TrimRight(cfg.RerankBaseURL, "/"),
+		rerankAPIKey:         cfg.RerankAPIKey,
+		rerankModel:          cfg.RerankModel,
+		rerankDialect:        strings.ToLower(strings.TrimSpace(cfg.RerankDialect)),
+		client:               hc,
+		registry:             cfg.Registry,
 	}
 	e.llm = chatLLM{e: e}
 	return e
-}
-
-// NewExtractor is the legacy two-arg constructor. Keeps existing callers
-// compiling while we migrate everyone to New(Config).
-func NewExtractor(baseURL, model string) *Extractor {
-	return New(Config{BaseURL: baseURL, Model: model})
 }
 
 // SetRegistry attaches an opportunity registry post-construction. Useful

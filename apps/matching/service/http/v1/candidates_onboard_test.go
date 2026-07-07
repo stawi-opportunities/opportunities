@@ -97,10 +97,10 @@ func TestCandidatesOnboardHandler_RejectsMissingRequiredFields(t *testing.T) {
 	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
 
 	tests := map[string]string{
-		"missing plan":             `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
-		"agree_terms false":        `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","plan":"starter","agree_terms":false,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
-		"invalid plan":             `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","plan":"gold","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
-		"unparseable":              `not json`,
+		"missing plan":      `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
+		"agree_terms false": `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","plan":"starter","agree_terms":false,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
+		"invalid plan":      `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","plan":"gold","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
+		"unparseable":       `not json`,
 	}
 	for name, body := range tests {
 		rec := httptest.NewRecorder()

@@ -19,9 +19,7 @@ type StaleCandidate struct {
 	LastUploadAt time.Time
 }
 
-// StaleLister enumerates stale candidates. Real impl scans
-// candidates_cv_current/ in R2 and filters by occurred_at < cutoff.
-// v1 uses a Postgres last-upload column as a shortcut.
+// StaleLister enumerates candidate state stored in PostgreSQL.
 type StaleLister interface {
 	ListStale(ctx context.Context, asOf time.Time) ([]StaleCandidate, error)
 }

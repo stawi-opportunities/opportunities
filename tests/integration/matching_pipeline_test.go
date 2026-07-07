@@ -33,22 +33,7 @@ func TestMatchingPipelineSuite(t *testing.T) { suite.Run(t, new(MatchingPipeline
 func (s *MatchingPipelineSuite) SetupSuite() {
 	s.ctx = context.Background()
 	s.db = testhelpers.PostgresContainerNoMigrate(s.T(), s.ctx)
-	require.NoError(s.T(), testhelpers.EnsureOpportunitiesStub(s.ctx, s.db))
-
-	// Enable pgvector before using the vector type in the ALTER TABLE below.
-	_, err := s.db.ExecContext(s.ctx, `CREATE EXTENSION IF NOT EXISTS vector`)
-	require.NoError(s.T(), err)
-
-	// Opportunities need extra columns for KNN; the minimal stub doesn't include them.
-	_, err = s.db.ExecContext(s.ctx, `
-		ALTER TABLE opportunities
-			ADD COLUMN IF NOT EXISTS embedding vector(1536),
-			ADD COLUMN IF NOT EXISTS kind TEXT,
-			ADD COLUMN IF NOT EXISTS country TEXT,
-			ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ DEFAULT now()
-	`)
-	require.NoError(s.T(), err)
-	testhelpers.ApplyMigrationsDir(s.T(), s.ctx, s.db, "../../db/migrations")
+	testhelpers.ApplyGreenfieldSchema(s.T(), s.ctx, s.db)
 
 	s.store = matching.NewStore(s.db)
 	s.events = matching.NewEventLog(s.db)
@@ -61,15 +46,15 @@ func (s *MatchingPipelineSuite) SetupSuite() {
 // candidate_match row and one candidate_match_event row.
 // Isolation: kind="grant_a", country="TZ" — no other test uses this pair.
 func (s *MatchingPipelineSuite) TestPathA_FanOutHappyPath() {
-	s.seedCandidate("c1", mpMakeUnitVector(1536, 0), 0.5, []string{"grant_a"}, []string{"TZ"})
-	s.seedOpportunity("o1", mpMakeUnitVector(1536, 0), "grant_a", "TZ")
+	s.seedCandidate("c1", mpMakeUnitVector(1024, 0), 0.5, []string{"grant_a"}, []string{"TZ"})
+	s.seedOpportunity("o1", mpMakeUnitVector(1024, 0), "grant_a", "TZ")
 
 	res, err := matching.FanOut(s.ctx, matching.FanOutInput{
 		CanonicalID:   "can_1",
 		OpportunityID: "o1",
 		Kind:          "grant_a",
 		Country:       "TZ",
-		Embedding:     mpMakeUnitVector(1536, 0),
+		Embedding:     mpMakeUnitVector(1024, 0),
 		FirstSeenAt:   time.Now(),
 	}, matching.FanOutDeps{
 		KNN: s.knn, Store: s.store, EventLog: s.events,
@@ -93,11 +78,11 @@ func (s *MatchingPipelineSuite) TestPathA_FanOutHappyPath() {
 // produces exactly 1 row (ON CONFLICT idempotency).
 // Isolation: kind="grant_b", country="TZ".
 func (s *MatchingPipelineSuite) TestPathA_IdempotentReplay() {
-	s.seedCandidate("c2", mpMakeUnitVector(1536, 1), 0.5, []string{"grant_b"}, []string{"TZ"})
-	s.seedOpportunity("o2", mpMakeUnitVector(1536, 1), "grant_b", "TZ")
+	s.seedCandidate("c2", mpMakeUnitVector(1024, 1), 0.5, []string{"grant_b"}, []string{"TZ"})
+	s.seedOpportunity("o2", mpMakeUnitVector(1024, 1), "grant_b", "TZ")
 	in := matching.FanOutInput{
 		CanonicalID: "can_2", OpportunityID: "o2", Kind: "grant_b", Country: "TZ",
-		Embedding: mpMakeUnitVector(1536, 1), FirstSeenAt: time.Now(),
+		Embedding: mpMakeUnitVector(1024, 1), FirstSeenAt: time.Now(),
 	}
 	deps := matching.FanOutDeps{KNN: s.knn, Store: s.store, EventLog: s.events,
 		Reranker: s.reranker, Weights: matching.DefaultWeights()}
@@ -117,11 +102,11 @@ func (s *MatchingPipelineSuite) TestPathA_IdempotentReplay() {
 // resurrected by a subsequent FanOut replay.
 // Isolation: kind="grant_c", country="TZ".
 func (s *MatchingPipelineSuite) TestTerminalStateImmuneToFanOut() {
-	s.seedCandidate("c3", mpMakeUnitVector(1536, 2), 0.5, []string{"grant_c"}, []string{"TZ"})
-	s.seedOpportunity("o3", mpMakeUnitVector(1536, 2), "grant_c", "TZ")
+	s.seedCandidate("c3", mpMakeUnitVector(1024, 2), 0.5, []string{"grant_c"}, []string{"TZ"})
+	s.seedOpportunity("o3", mpMakeUnitVector(1024, 2), "grant_c", "TZ")
 
 	in := matching.FanOutInput{CanonicalID: "can_3", OpportunityID: "o3", Kind: "grant_c",
-		Country: "TZ", Embedding: mpMakeUnitVector(1536, 2), FirstSeenAt: time.Now()}
+		Country: "TZ", Embedding: mpMakeUnitVector(1024, 2), FirstSeenAt: time.Now()}
 	deps := matching.FanOutDeps{KNN: s.knn, Store: s.store, EventLog: s.events,
 		Reranker: s.reranker, Weights: matching.DefaultWeights()}
 	_, err := matching.FanOut(s.ctx, in, deps)
@@ -146,14 +131,14 @@ func (s *MatchingPipelineSuite) TestTerminalStateImmuneToFanOut() {
 // already has a FanOut match does not create a duplicate row.
 // Isolation: kind="grant_d", country="TZ" — only o4 satisfies this filter.
 func (s *MatchingPipelineSuite) TestPathB_MergesWithoutDuplicates() {
-	s.seedCandidate("c4", mpMakeUnitVector(1536, 3), 0.4, []string{"grant_d"}, []string{"TZ"})
-	s.seedOpportunity("o4", mpMakeUnitVector(1536, 3), "grant_d", "TZ")
+	s.seedCandidate("c4", mpMakeUnitVector(1024, 3), 0.4, []string{"grant_d"}, []string{"TZ"})
+	s.seedOpportunity("o4", mpMakeUnitVector(1024, 3), "grant_d", "TZ")
 
 	fanout := matching.FanOutDeps{KNN: s.knn, Store: s.store, EventLog: s.events,
 		Reranker: s.reranker, Weights: matching.DefaultWeights()}
 	_, err := matching.FanOut(s.ctx, matching.FanOutInput{
 		CanonicalID: "can_4", OpportunityID: "o4", Kind: "grant_d", Country: "TZ",
-		Embedding: mpMakeUnitVector(1536, 3), FirstSeenAt: time.Now(),
+		Embedding: mpMakeUnitVector(1024, 3), FirstSeenAt: time.Now(),
 	}, fanout)
 	require.NoError(s.T(), err)
 
@@ -161,7 +146,7 @@ func (s *MatchingPipelineSuite) TestPathB_MergesWithoutDuplicates() {
 		Reranker: s.reranker, Weights: matching.DefaultWeights()}
 	_, err = matching.GapFill(s.ctx, matching.GapFillInput{
 		CandidateID: "c4",
-		Embedding:   mpMakeUnitVector(1536, 3),
+		Embedding:   mpMakeUnitVector(1024, 3),
 		Kinds:       []string{"grant_d"},
 		Countries:   []string{"TZ"},
 		Since:       time.Now().Add(-time.Hour),
@@ -187,9 +172,9 @@ func (s *MatchingPipelineSuite) seedCandidate(id string, emb []float32, minScore
 
 func (s *MatchingPipelineSuite) seedOpportunity(id string, emb []float32, kind, country string) {
 	_, err := s.db.ExecContext(s.ctx, `
-		INSERT INTO opportunities (id, posted_at, status, hidden, embedding, kind, country, first_seen_at)
-		VALUES ($1, now(), 'active', false, $2::vector, $3, $4, now())
-		ON CONFLICT (id) DO NOTHING
+		INSERT INTO opportunities (canonical_id, slug, kind, title, apply_url, posted_at, status, hidden, embedding, country, first_seen_at)
+		VALUES ($1::varchar(20), $1::text, $3, $1::text, 'https://example.test/apply/' || $1::text, now(), 'active', false, $2::vector, $4, now())
+		ON CONFLICT (canonical_id) DO NOTHING
 	`, id, mpVectorLit(emb), kind, country)
 	require.NoError(s.T(), err)
 }

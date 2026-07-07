@@ -39,7 +39,7 @@ export default function OpportunityDetail() {
 
   const q = useQuery({
     queryKey: ['snapshot', route?.prefix, route?.slug, lang],
-    queryFn: () => fetchSnapshot(route!.slug, lang, route!.prefix),
+    queryFn: () => fetchSnapshot(route!.slug),
     enabled: !!route,
     staleTime: 5 * 60_000,
   });
@@ -52,14 +52,10 @@ export default function OpportunityDetail() {
   useEffect(() => {
     if (!q.data) return;
     const snap = q.data;
-    const sLang = snap.language ?? '';
-    const showNotice = !!sLang && sLang !== lang;
-
     setAnalyticsContext('canonical_job_id', snap.id);
     setAnalyticsContext('slug', snap.slug);
     setAnalyticsContext('kind', snap.kind);
     setAnalyticsContext('ui_language', lang);
-    setAnalyticsContext('snapshot_language', sLang);
 
     trackJobView({
       canonical_job_id: snap.id,
@@ -68,8 +64,6 @@ export default function OpportunityDetail() {
       company: snap.issuing_entity,
       country: snap.anchor_location?.country,
       ui_language: lang,
-      snapshot_language: sLang,
-      translated_notice_shown: showNotice,
       referrer: typeof document !== 'undefined' ? document.referrer : '',
     });
 
@@ -116,7 +110,6 @@ export default function OpportunityDetail() {
   const expired = isoInPast(snap.deadline) || isoInPast(snap.expires_at);
   const canApply = !!snap.apply_url && !expired;
 
-  const showTranslatedNotice = !!snap.language && snap.language !== lang;
   const primaryCategory = snap.categories?.[0];
 
   return (
@@ -131,15 +124,6 @@ export default function OpportunityDetail() {
           role="status"
         >
           {expiredMessage(snap.kind, t)}
-        </div>
-      )}
-
-      {showTranslatedNotice && (
-        <div
-          className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900"
-          role="status"
-        >
-          {t('job.translatedNotice')}
         </div>
       )}
 

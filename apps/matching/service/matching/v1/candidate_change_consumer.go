@@ -114,6 +114,17 @@ func (c *CandidateChangeConsumer) Handle(ctx context.Context, headers map[string
 	})
 }
 
+func parseRedeliveryHeader(headers map[string]string) int {
+	for _, key := range []string{"Nats-Redelivery-Count", "nats-redelivery-count", "redelivery"} {
+		if value, ok := headers[key]; ok {
+			var count int
+			_, _ = fmt.Sscanf(value, "%d", &count)
+			return count
+		}
+	}
+	return 0
+}
+
 func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte) error {
 	candidateID, triggeredBy, vector, err := decodeCandidateChange(c.deps.Topic, payload)
 	if err != nil {

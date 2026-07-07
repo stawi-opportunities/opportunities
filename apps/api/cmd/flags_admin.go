@@ -7,10 +7,8 @@
 // same Bearer-token check as the source-admin endpoints.
 //
 // Threshold rule: when an insert pushes the unresolved scam-flag count
-// for a slug to >= domain.FlagAutoActionThreshold, the api emits an
-// OpportunityAutoFlaggedV1 event (best-effort) and structured-logs
-// the auto-action so operators see it in OpenObserve immediately.
-// Materializer subscribes to the event and drops the row from search.
+// for a slug to >= domain.FlagAutoActionThreshold, the API hides the
+// authoritative PostgreSQL row in the same request.
 package main
 
 import (
@@ -29,7 +27,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
-	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
@@ -55,31 +52,31 @@ type jobsLookup interface {
 	GetBySlug(ctx context.Context, slug string) (*job, error)
 }
 
-// flagEventEmitter is the auto-flag event emit interface. The
-// production wiring uses Frame's EventsManager when available; tests
-// pass a recorder. nil is safe — the threshold logic skips emit and
-// just structured-logs.
-type flagEventEmitter interface {
-	Emit(ctx context.Context, topic string, payload any) error
+type opportunityHider interface {
+	Hide(context.Context, string, string) error
+}
+type postgresOpportunityHider struct {
+	db func(context.Context, bool) *gorm.DB
 }
 
-// frameEmitter adapts *frame.Service to flagEventEmitter.
-type frameEmitter struct{ svc *frame.Service }
-
-func (f frameEmitter) Emit(ctx context.Context, topic string, payload any) error {
-	if f.svc == nil || f.svc.EventsManager() == nil {
-		return errors.New("flagEmitter: frame events manager unavailable")
+func (h postgresOpportunityHider) Hide(ctx context.Context, slug, reason string) error {
+	result := h.db(ctx, false).WithContext(ctx).Exec(`UPDATE opportunities SET hidden=true, hidden_reason=?, updated_at=now() WHERE slug=?`, reason, slug)
+	if result.Error != nil {
+		return result.Error
 	}
-	return f.svc.EventsManager().Emit(ctx, topic, payload)
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // flagsAdmin bundles dependencies for both the public flag endpoint
 // and the admin triage endpoints.
 type flagsAdmin struct {
-	repo        flagAdminRepo
-	sourceRepo  sourceAdminRepo // reused for ban_source action
-	jobs        jobsLookup
-	emitter     flagEventEmitter
+	repo       flagAdminRepo
+	sourceRepo sourceAdminRepo // reused for ban_source action
+	jobs       jobsLookup
+	hider      opportunityHider
 }
 
 // registerFlagsAdmin wires the user-facing /opportunities/{slug}/flag
@@ -119,7 +116,7 @@ func registerFlagsAdmin(ctx context.Context, mux *http.ServeMux, jm JobsBackend)
 		repo:       repo,
 		sourceRepo: srcRepo,
 		jobs:       jm,
-		emitter:    frameEmitter{svc: svc},
+		hider:      postgresOpportunityHider{db: pool.DB},
 	}
 
 	// Public endpoint — auth required (JWT in Authorization header).
@@ -188,16 +185,12 @@ func (a *flagsAdmin) handleUserFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the kind + canonical_id from the canonical row
-	// (best-effort — missing values are non-fatal, the flag still
-	// records). The canonical_id lets the auto-flag emit carry the
-	// pk-mappable id so the materializer can update the row by
-	// canonical_id.
-	kind, canonicalID := "", ""
+	// Resolve the kind from the canonical row. Missing values are non-fatal;
+	// the flag is still useful for operator review.
+	kind := ""
 	if a.jobs != nil {
 		if j, _ := a.jobs.GetBySlug(r.Context(), slug); j != nil {
 			kind = j.Kind
-			canonicalID = j.CanonicalID
 		}
 	}
 
@@ -241,7 +234,7 @@ func (a *flagsAdmin) handleUserFlag(w http.ResponseWriter, r *http.Request) {
 				WithField("slug", slug).
 				Warn("flag threshold check failed")
 		} else if count >= domain.FlagAutoActionThreshold {
-			autoActioned = a.emitAutoFlag(r.Context(), canonicalID, slug, kind, count)
+			autoActioned = a.hideAutoFlag(r.Context(), slug, kind, count)
 		}
 	}
 
@@ -259,29 +252,18 @@ func (a *flagsAdmin) handleUserFlag(w http.ResponseWriter, r *http.Request) {
 // error. The structured-log line is unconditional so operators always
 // see the threshold trip in OpenObserve regardless of the event-bus
 // state.
-func (a *flagsAdmin) emitAutoFlag(ctx context.Context, opportunityID, slug, kind string, count int) bool {
+func (a *flagsAdmin) hideAutoFlag(ctx context.Context, slug, kind string, count int) bool {
 	log := util.Log(ctx).
-		WithField("opportunity_id", opportunityID).
 		WithField("slug", slug).
 		WithField("kind", kind).
 		WithField("flag_count", count)
 	log.Warn("opportunity auto-flagged: threshold tripped")
 
-	if a.emitter == nil {
+	if a.hider == nil {
 		return false
 	}
-	emitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	env := eventsv1.NewEnvelope(eventsv1.TopicOpportunityAutoFlagged,
-		eventsv1.OpportunityAutoFlaggedV1{
-			OpportunityID: opportunityID,
-			Slug:          slug,
-			Kind:          kind,
-			FlagCount:     count,
-			FlaggedAt:     time.Now().UTC(),
-		})
-	if err := a.emitter.Emit(emitCtx, eventsv1.TopicOpportunityAutoFlagged, env); err != nil {
-		log.WithError(err).Warn("opportunity auto-flag emit failed")
+	if err := a.hider.Hide(ctx, slug, "scam flag threshold"); err != nil {
+		log.WithError(err).Warn("opportunity auto-hide failed")
 		return false
 	}
 	return true
@@ -349,11 +331,7 @@ func (a *flagsAdmin) handleListForOpportunity(w http.ResponseWriter, r *http.Req
 
 // resolveRequest is the body shape for POST /admin/flags/{id}/resolve.
 //
-// SourceID is optional and only consulted when Action == "ban_source"
-// — the canonical row in Manticore doesn't carry source_id today, so
-// operators must point us at the offending source explicitly. A
-// follow-up that stores source_id on the canonical doc can drop this
-// requirement.
+// SourceID is optional and only consulted when Action == "ban_source".
 type resolveRequest struct {
 	Action   domain.FlagResolutionAction `json:"action"`
 	Note     string                      `json:"note"`
@@ -406,8 +384,7 @@ func (a *flagsAdmin) handleResolve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ban_source: stop the source AND resolve every flag for the slug.
-	// The source ID is supplied explicitly in the request body (the
-	// canonical row in Manticore doesn't carry source_id today). When
+	// The source ID is supplied explicitly in the request body. When
 	// SourceID is empty the action still resolves the lead flag and
 	// bulk-resolves the slug's remaining flags but skips the source
 	// stop; the response signals this via banned_source_id == "".

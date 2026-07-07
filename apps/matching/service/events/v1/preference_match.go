@@ -96,7 +96,7 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 		}
 
 		// Run the underlying match service. Currently this is the
-		// legacy CV-vs-job KNN pipeline — once per-kind matching is
+		// CV-vs-job KNN pipeline — once per-kind matching is
 		// fully wired it will route through the matcher registry. The
 		// per-kind invocation here is the right place to plug that in
 		// without touching the weekly-digest path.
@@ -118,7 +118,7 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 
 		rows := make([]eventsv1.MatchRow, 0, len(res.Matches))
 		for _, m := range res.Matches {
-			rows = append(rows, eventsv1.MatchRow{CanonicalID: m.CanonicalID, Score: m.Score})
+			rows = append(rows, eventsv1.MatchRow{CanonicalID: m.CanonicalID, ApplyURL: m.ApplyURL, Score: m.Score})
 		}
 		readyEnv := eventsv1.NewEnvelope(
 			eventsv1.TopicCandidateMatchesReady,

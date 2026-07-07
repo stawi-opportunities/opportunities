@@ -29,8 +29,8 @@ type improvedCollector struct {
 	got []eventsv1.Envelope[eventsv1.CVImprovedV1]
 }
 
-func (c *improvedCollector) Name() string     { return eventsv1.TopicCVImproved }
-func (c *improvedCollector) PayloadType() any { var raw json.RawMessage; return &raw }
+func (c *improvedCollector) Name() string                        { return eventsv1.TopicCVImproved }
+func (c *improvedCollector) PayloadType() any                    { var raw json.RawMessage; return &raw }
 func (c *improvedCollector) Validate(context.Context, any) error { return nil }
 func (c *improvedCollector) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)

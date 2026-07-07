@@ -82,7 +82,8 @@ func (s *Store) UpsertMatch(ctx context.Context, m Match) (bool, error) {
 }
 
 const getByPairSQL = `
-SELECT match_id, candidate_id, opportunity_id, status,
+SELECT match_id, candidate_id, opportunity_id,
+       COALESCE((SELECT o.apply_url FROM opportunities o WHERE o.canonical_id=candidate_matches.opportunity_id), ''), status,
        score, rerank_score, reranker_used,
        viewed_at, applied_at, dismissed_at,
        last_event_id, metadata, created_at, updated_at
@@ -115,7 +116,7 @@ func scanMatch(scan func(...any) error) (*Match, error) {
 		metaRaw   []byte
 	)
 	err := scan(
-		&m.MatchID, &m.CandidateID, &m.OpportunityID, &status,
+		&m.MatchID, &m.CandidateID, &m.OpportunityID, &m.ApplyURL, &status,
 		&m.Score, &rerank, &m.RerankerUsed,
 		&viewedAt, &appliedAt, &dismAt,
 		&m.LastEventID, &metaRaw, &m.CreatedAt, &m.UpdatedAt,
@@ -239,7 +240,8 @@ func (s *Store) ListByCandidate(ctx context.Context, p ListByCandidateParams) (L
 	}
 	args = append(args, limit+1)
 	q := `
-SELECT match_id, candidate_id, opportunity_id, status,
+SELECT match_id, candidate_id, opportunity_id,
+       COALESCE((SELECT o.apply_url FROM opportunities o WHERE o.canonical_id=candidate_matches.opportunity_id), ''), status,
        score, rerank_score, reranker_used,
        viewed_at, applied_at, dismissed_at,
        last_event_id, metadata, created_at, updated_at
@@ -359,10 +361,9 @@ const (
 	FilterApplied FeedFilter = "applied"
 )
 
-// ApplicationSummary is the slice of `applications` (per
-// db/migrations/0010_applications_oltp.sql) the dashboard renders
-// next to each opportunity. Status uses the pkg/applications
-// state-machine values directly. Method is pulled from the
+// ApplicationSummary is the slice of `applications` the dashboard renders
+// next to each opportunity. Status uses the pkg/applications state-machine
+// values directly. Method is pulled from the
 // applications.metadata JSONB at `metadata->>'method'`; "manual" is
 // the default when absent (the field was added later than the table).
 type ApplicationSummary struct {
@@ -377,6 +378,7 @@ type ApplicationSummary struct {
 // the handler omits it when Score is the zero value.
 type OpportunityFeedItem struct {
 	OpportunityID string
+	ApplyURL      string
 	Score         float64
 	Starred       bool
 	Application   *ApplicationSummary
@@ -478,10 +480,12 @@ WITH base AS (
 
 	q := baseCTE + `
 SELECT b.opportunity_id, b.score, b.created_at,
+       o.apply_url,
        (s.opportunity_id IS NOT NULL) AS starred,
        a.status, COALESCE(a.submitted_at, a.created_at) AS applied_at, a.updated_at,
        a.metadata->>'method' AS method
 FROM base b
+JOIN opportunities o ON o.canonical_id = b.opportunity_id
 LEFT JOIN candidate_saved_jobs s
   ON s.candidate_id = $1 AND s.opportunity_id = b.opportunity_id
 LEFT JOIN applications a
@@ -505,7 +509,7 @@ LIMIT $` + fmt.Sprint(len(args))
 			appUpdated sql.NullTime
 			appMethod  sql.NullString
 		)
-		if err := rows.Scan(&item.OpportunityID, &item.Score, &item.CreatedAt,
+		if err := rows.Scan(&item.OpportunityID, &item.Score, &item.CreatedAt, &item.ApplyURL,
 			&item.Starred, &appStatus, &appAt, &appUpdated, &appMethod); err != nil {
 			return ListOpportunitiesPage{}, fmt.Errorf("matching: scan opportunity feed: %w", err)
 		}

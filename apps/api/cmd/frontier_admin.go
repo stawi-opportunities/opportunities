@@ -3,10 +3,10 @@
 // Admin /admin/frontier surface — inspect, requeue, and delete
 // rows in the D2 URL frontier.
 //
-//   GET    /admin/frontier[?state=…&host=…&source_id=…&limit=&offset=]
-//   GET    /admin/frontier/{url_id}
-//   POST   /admin/frontier/{url_id}/requeue
-//   DELETE /admin/frontier/{url_id}
+//	GET    /admin/frontier[?state=…&host=…&source_id=…&limit=&offset=]
+//	GET    /admin/frontier/{url_id}
+//	POST   /admin/frontier/{url_id}/requeue
+//	DELETE /admin/frontier/{url_id}
 //
 // Operator workflow: a host backlog or a wedged URL with retries
 // exhausted can be triaged by listing failed rows for that host,

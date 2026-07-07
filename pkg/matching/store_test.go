@@ -17,8 +17,7 @@ func setupStoreDB(t *testing.T) (*sql.DB, context.Context) {
 	t.Helper()
 	ctx := context.Background()
 	db := testhelpers.PostgresContainerNoMigrate(t, ctx)
-	require.NoError(t, testhelpers.EnsureOpportunitiesStub(ctx, db))
-	testhelpers.ApplyMigrationsDir(t, ctx, db, "../../db/migrations")
+	testhelpers.ApplyGreenfieldSchema(t, ctx, db)
 	return db, ctx
 }
 
@@ -212,8 +211,16 @@ VALUES ($1, $2, $3, $4, 0.7, 'evt_'||$1, '{}'::jsonb, NOW(), NOW())`,
 	insertMatch("m_match", "opp_match", matching.StatusNew)
 	insertMatch("m_applied", "opp_applied", matching.StatusApplied)
 	insertMatch("m_overflow", "opp_overflow", matching.StatusOverflow)
+	_, err := db.ExecContext(ctx, `
+INSERT INTO opportunities (canonical_id, slug, kind, title, apply_url, status, hidden)
+VALUES
+  ('opp_match', 'opp_match', 'job', 'Matched', 'https://example.test/apply/match', 'active', false),
+  ('opp_starred', 'opp_starred', 'job', 'Starred', 'https://example.test/apply/starred', 'active', false),
+  ('opp_applied', 'opp_applied', 'job', 'Applied', 'https://example.test/apply/applied', 'active', false),
+  ('opp_overflow', 'opp_overflow', 'job', 'Overflow', 'https://example.test/apply/overflow', 'active', false)`)
+	require.NoError(t, err)
 
-	_, err := db.ExecContext(ctx, `INSERT INTO candidate_saved_jobs (candidate_id, opportunity_id) VALUES ($1, $2), ($1, $3)`,
+	_, err = db.ExecContext(ctx, `INSERT INTO candidate_saved_jobs (candidate_id, opportunity_id) VALUES ($1, $2), ($1, $3)`,
 		candID, "opp_starred", "opp_applied")
 	require.NoError(t, err)
 
@@ -230,6 +237,9 @@ VALUES ('app_1', $1, 'opp_applied', 'm_applied', 'applied', '{"method":"manual"}
 	require.NoError(t, err)
 	ids := opportunityIDs(page.Items)
 	require.ElementsMatch(t, []string{"opp_match", "opp_starred", "opp_applied"}, ids)
+	for _, item := range page.Items {
+		require.NotEmpty(t, item.ApplyURL)
+	}
 
 	// filter=matches → matches only (no overflow).
 	page, err = s.ListOpportunitiesForCandidate(ctx, matching.ListOpportunitiesParams{

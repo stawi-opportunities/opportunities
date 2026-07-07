@@ -258,8 +258,7 @@ func RemoveSourceSchedule(ctx context.Context, client WorkflowClient, sourceID s
 }
 
 // ArchiveWorkflowByName archives every non-archived workflow with the exact
-// name so Trustage stops firing it. Idempotent. Used both to remove a source's
-// schedule and to retire the legacy central scheduler tick.
+// name so Trustage stops firing it. Idempotent.
 func ArchiveWorkflowByName(ctx context.Context, client WorkflowClient, name string) error {
 	listResp, err := client.ListWorkflows(ctx, connect.NewRequest(&workflowv1.ListWorkflowsRequest{Name: name}))
 	if err != nil {

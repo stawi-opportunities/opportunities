@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/util"
+	"gorm.io/gorm"
 
 	"github.com/stawi-opportunities/opportunities/pkg/counters"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -24,10 +26,8 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 		qs := req.URL.Query()
 
 		q := strings.TrimSpace(qs.Get("q"))
-		// activeFilter() replaces the legacy {"status":"active"} clause —
-		// the polymorphic schema has no status column; expired rows are
-		// pruned by deadline (CanonicalExpiredHandler). Caller-supplied
-		// filters compose on top of this universal predicate.
+		// Active-row filtering is enforced by the PostgreSQL backend;
+		// caller-supplied filters compose on top of it.
 		filter := append([]map[string]any{}, activeFilter()...)
 		if v := strings.ToUpper(strings.TrimSpace(qs.Get("country"))); v != "" {
 			filter = append(filter, map[string]any{"equals": map[string]any{"country": v}})
@@ -81,10 +81,8 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 		var sortSpec []any
 		switch sort {
 		case "recent", "quality":
-			// "quality" is a legacy sort key — the polymorphic schema
-			// has no quality_score column, so we fall back to recency.
-			// Both keys produce the same order to keep older clients
-			// working without surfacing the schema change in API contract.
+			// Quality currently falls back to recency until ranking incorporates
+			// the stored quality score.
 			sortSpec = []any{map[string]any{"posted_at": "desc"}}
 		default:
 			if q == "" {
@@ -92,8 +90,8 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 			}
 		}
 
-		// Facet families requested per page; backends decide whether
-		// to translate them (Manticore aggs, Postgres GROUP BY).
+		// Facet families requested per page; PostgreSQL resolves them with
+		// GROUP BY queries.
 		aggs := map[string]any{
 			"kind":            map[string]any{"terms": map[string]any{"field": "kind", "size": 16}},
 			"categories":      map[string]any{"terms": map[string]any{"field": "categories", "size": 32}},
@@ -160,12 +158,9 @@ func embedCounters(ctx context.Context, ct *counters.Counters, hits []job, categ
 	if ct == nil || len(hits) == 0 {
 		return out
 	}
-	// Slug-equivalent for the counters store is the numeric id as a
-	// decimal string — the polymorphic schema has no slug column and
-	// counters keys must be stable across reads and writes.
 	slugs := make([]string, 0, len(hits))
 	for _, h := range hits {
-		slugs = append(slugs, strconv.FormatUint(h.ID, 10))
+		slugs = append(slugs, h.Slug)
 	}
 	stats, err := ct.GetStatsBatch(ctx, slugs)
 	if err != nil {
@@ -173,7 +168,7 @@ func embedCounters(ctx context.Context, ct *counters.Counters, hits []job, categ
 		return out
 	}
 	for i, h := range hits {
-		s := stats[strconv.FormatUint(h.ID, 10)]
+		s := stats[h.Slug]
 		out[i].Views24h = s.Views24h
 		out[i].Applies24h = s.Applies24h
 	}
@@ -211,7 +206,17 @@ func jobByIDHandler(jm JobsBackend) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(toSearchResult(*j, nil))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"schema_version": 1,
+			"id":             j.CanonicalID, "slug": j.Slug, "kind": j.Kind,
+			"title": j.Title, "description": j.Description,
+			"issuing_entity": j.IssuingEntity, "apply_url": j.ApplyURL,
+			"posted_at": j.PostedAt, "deadline": j.Deadline,
+			"anchor_location": map[string]any{"country": j.Country, "region": j.Region, "city": j.City},
+			"remote":          j.Remote, "geo_scope": j.GeoScope,
+			"amount_min": j.AmountMin, "amount_max": j.AmountMax, "currency": j.Currency,
+			"attributes": j.Attributes,
+		})
 	}
 }
 
@@ -470,17 +475,21 @@ func feedTierHandler(jm JobsBackend) http.HandlerFunc {
 	}
 }
 
-// variantsRejectedHandler returns the most-recently rejected variants
-// (Verify-stage rejections) read from the
-// opportunities.variants_rejected Iceberg table. Stub for now —
-// returns 501 until a follow-up wires the catalog client query.
-func variantsRejectedHandler() http.HandlerFunc {
+func variantsRejectedHandler(db func(context.Context, bool) *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
+		limit := parseLimit(req.URL.Query().Get("limit"), 100, 500)
+		var rows []struct {
+			VariantID  string          `json:"variant_id"`
+			SourceID   string          `json:"source_id"`
+			OccurredAt time.Time       `json:"occurred_at"`
+			Details    json.RawMessage `json:"details"`
+		}
+		if err := db(req.Context(), true).WithContext(req.Context()).Raw(`SELECT variant_id,source_id,occurred_at,details
+			FROM job_ingest_events WHERE event_type='rejected' ORDER BY occurred_at DESC LIMIT ?`, limit).Scan(&rows).Error; err != nil {
+			writeError(w, http.StatusInternalServerError, "query_failed", err.Error())
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": "not yet implemented",
-			"note":  "TODO: query opportunities.variants_rejected via icebergclient catalog and return last N rows",
-		})
+		_ = json.NewEncoder(w).Encode(map[string]any{"rejections": rows, "count": len(rows)})
 	}
 }

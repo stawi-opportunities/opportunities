@@ -21,8 +21,8 @@ type prefMatchesReadyCollector struct {
 	got []eventsv1.Envelope[eventsv1.MatchesReadyV1]
 }
 
-func (c *prefMatchesReadyCollector) Name() string                       { return eventsv1.TopicCandidateMatchesReady }
-func (c *prefMatchesReadyCollector) PayloadType() any                   { var r json.RawMessage; return &r }
+func (c *prefMatchesReadyCollector) Name() string                        { return eventsv1.TopicCandidateMatchesReady }
+func (c *prefMatchesReadyCollector) PayloadType() any                    { var r json.RawMessage; return &r }
 func (c *prefMatchesReadyCollector) Validate(context.Context, any) error { return nil }
 func (c *prefMatchesReadyCollector) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)
@@ -83,7 +83,7 @@ func TestPreferenceMatchHandler_EmitsMatchesPerEnabledKind(t *testing.T) {
 	store := &prefFakeStore{emb: eventsv1.CandidateEmbeddingV1{
 		CandidateID: "cnd_1", Vector: []float32{0.1},
 	}}
-	search := &prefFakeSearch{rows: []httpv1.SearchHit{{CanonicalID: "can_a", Score: 0.9}}}
+	search := &prefFakeSearch{rows: []httpv1.SearchHit{{CanonicalID: "can_a", ApplyURL: "https://example.test/apply/a", Score: 0.9}}}
 	matchSvc := httpv1.NewMatchService(store, search, 5)
 
 	reg := matchers.NewRegistry()
@@ -128,6 +128,9 @@ func TestPreferenceMatchHandler_EmitsMatchesPerEnabledKind(t *testing.T) {
 	}
 	if len(col.got[0].Payload.Matches) == 0 {
 		t.Fatalf("no matches in emitted payload")
+	}
+	if col.got[0].Payload.Matches[0].ApplyURL != "https://example.test/apply/a" {
+		t.Fatalf("apply_url missing from emitted payload: %+v", col.got[0].Payload.Matches[0])
 	}
 }
 

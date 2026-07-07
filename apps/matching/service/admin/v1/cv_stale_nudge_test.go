@@ -29,8 +29,8 @@ type nudgeCollector struct {
 	got []json.RawMessage
 }
 
-func (c *nudgeCollector) Name() string     { return eventsv1.TopicCandidateCVStaleNudge }
-func (c *nudgeCollector) PayloadType() any { var raw json.RawMessage; return &raw }
+func (c *nudgeCollector) Name() string                        { return eventsv1.TopicCandidateCVStaleNudge }
+func (c *nudgeCollector) PayloadType() any                    { var raw json.RawMessage; return &raw }
 func (c *nudgeCollector) Validate(context.Context, any) error { return nil }
 func (c *nudgeCollector) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)

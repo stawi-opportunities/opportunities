@@ -20,25 +20,9 @@ func setupRecipeDB(t *testing.T) (*gorm.DB, context.Context) {
 	t.Helper()
 	ctx := context.Background()
 	sqlDB := testhelpers.PostgresContainerNoMigrate(t, ctx)
-	require.NoError(t, testhelpers.EnsureOpportunitiesStub(ctx, sqlDB))
-	testhelpers.ApplyMigrationsDir(t, ctx, sqlDB, "../../db/migrations")
+	testhelpers.ApplyGreenfieldSchema(t, ctx, sqlDB)
 	g, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
 	require.NoError(t, err)
-	// Production owns the crawler-managed tables (sources, source_recipes) via
-	// GORM AutoMigrate, not SQL — mirror that here. The 0001 init migration
-	// creates a legacy `sources` shape (BIGSERIAL id, no deleted_at) the current
-	// domain.Source model can't write to, so drop and rebuild via AutoMigrate.
-	// AutoMigrate also re-adds sources.extraction_recipe and builds the
-	// source_recipes table from repository.SourceRecipe. The partial unique
-	// index (one active recipe per source) can't be expressed via GORM tags,
-	// so production ships it as a SQL migration file
-	// (20260611_0133_source_recipes_active_uniq.sql) applied after AutoMigrate;
-	// mirror that exact statement here — the same path as Migrate().
-	require.NoError(t, g.Exec(`DROP TABLE IF EXISTS sources CASCADE`).Error)
-	require.NoError(t, g.Exec(`DROP TABLE IF EXISTS source_recipes CASCADE`).Error)
-	require.NoError(t, g.AutoMigrate(&domain.Source{}, &repository.SourceRecipe{}))
-	require.NoError(t, g.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_source_recipes_active `+
-		`ON source_recipes (source_id) WHERE status = 'active'`).Error)
 	return g, ctx
 }
 

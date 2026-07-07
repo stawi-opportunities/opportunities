@@ -26,6 +26,7 @@ type OpportunitiesDeps struct {
 
 type feedItemDTO struct {
 	OpportunityID string                 `json:"opportunity_id"`
+	ApplyURL      string                 `json:"apply_url"`
 	Score         float64                `json:"score,omitempty"`
 	Starred       bool                   `json:"starred"`
 	Application   *applicationSummaryDTO `json:"application,omitempty"`
@@ -85,6 +86,7 @@ func OpportunitiesHandler(deps OpportunitiesDeps) http.HandlerFunc {
 		for _, it := range page.Items {
 			dto := feedItemDTO{
 				OpportunityID: it.OpportunityID,
+				ApplyURL:      it.ApplyURL,
 				Score:         it.Score,
 				Starred:       it.Starred,
 				CreatedAt:     it.CreatedAt,

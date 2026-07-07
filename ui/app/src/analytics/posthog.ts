@@ -113,8 +113,6 @@ export interface JobViewAttrs {
   company?: string;
   country?: string;
   ui_language: string;
-  snapshot_language?: string;
-  translated_notice_shown: boolean;
   referrer: string;
 }
 

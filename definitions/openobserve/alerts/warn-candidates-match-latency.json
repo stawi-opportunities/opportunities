@@ -28,6 +28,6 @@
     "team": "platform",
     "runbook": "https://docs.opportunities.stawi.org/ops/runbooks/candidates-match-latency"
   },
-  "description": "Candidate match p95 latency exceeds 30 seconds. Weekly digest emails and real-time match events will be delayed. Check candidate embedding retrieval and Manticore vector search performance.",
+  "description": "Candidate match p95 latency exceeds 30 seconds. Weekly digest emails and real-time match events will be delayed. Check candidate embedding retrieval and PostgreSQL vector search performance.",
   "enabled": true
 }

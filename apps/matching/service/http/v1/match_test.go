@@ -12,8 +12,8 @@ import (
 	"github.com/pitabwire/frame"
 	"github.com/pitabwire/frame/frametests"
 
-	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
@@ -46,8 +46,8 @@ type matchReadyCollector struct {
 	got []eventsv1.Envelope[eventsv1.MatchesReadyV1]
 }
 
-func (c *matchReadyCollector) Name() string     { return eventsv1.TopicCandidateMatchesReady }
-func (c *matchReadyCollector) PayloadType() any { var raw json.RawMessage; return &raw }
+func (c *matchReadyCollector) Name() string                        { return eventsv1.TopicCandidateMatchesReady }
+func (c *matchReadyCollector) PayloadType() any                    { var raw json.RawMessage; return &raw }
 func (c *matchReadyCollector) Validate(context.Context, any) error { return nil }
 func (c *matchReadyCollector) Execute(_ context.Context, payload any) error {
 	raw := payload.(*json.RawMessage)
@@ -89,9 +89,9 @@ func TestMatchHandlerReturnsScoredTopK(t *testing.T) {
 			prefs: eventsv1.PreferencesUpdatedV1{CandidateID: "cnd_1", OptIns: map[string]json.RawMessage{"job": jobBlob}},
 		},
 		Search: &fakeSearchIndex{rows: []SearchHit{
-			{CanonicalID: "can_a", Slug: "job-a", Title: "Senior Backend", Score: 0.92},
-			{CanonicalID: "can_b", Slug: "job-b", Title: "Staff Backend", Score: 0.81},
-			{CanonicalID: "can_c", Slug: "job-c", Title: "Mid Backend", Score: 0.70},
+			{CanonicalID: "can_a", Slug: "job-a", Title: "Senior Backend", ApplyURL: "https://example.test/apply/a", Score: 0.92},
+			{CanonicalID: "can_b", Slug: "job-b", Title: "Staff Backend", ApplyURL: "https://example.test/apply/b", Score: 0.81},
+			{CanonicalID: "can_c", Slug: "job-c", Title: "Mid Backend", ApplyURL: "https://example.test/apply/c", Score: 0.70},
 		}},
 		TopK: 2,
 	})
@@ -113,6 +113,9 @@ func TestMatchHandlerReturnsScoredTopK(t *testing.T) {
 	if resp.Matches[0].CanonicalID != "can_a" {
 		t.Fatalf("order wrong: %+v", resp.Matches)
 	}
+	if resp.Matches[0].ApplyURL != "https://example.test/apply/a" {
+		t.Fatalf("apply_url missing from response: %+v", resp.Matches[0])
+	}
 
 	deadline := time.Now().Add(1 * time.Second)
 	for time.Now().Before(deadline) {
@@ -123,6 +126,12 @@ func TestMatchHandlerReturnsScoredTopK(t *testing.T) {
 	}
 	if col.Len() != 1 {
 		t.Fatalf("MatchesReadyV1 not emitted")
+	}
+	col.mu.Lock()
+	emittedURL := col.got[0].Payload.Matches[0].ApplyURL
+	col.mu.Unlock()
+	if emittedURL != "https://example.test/apply/a" {
+		t.Fatalf("apply_url missing from event: %q", emittedURL)
 	}
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useForm, type SubmitHandler, type UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
@@ -133,6 +133,7 @@ function readPlanFromQuery(): PlanId {
 export default function Onboarding() {
   const { t } = useI18n();
   const { state, login } = useAuth();
+  const wasAuthenticated = useRef(state === 'authenticated');
   const subQ = useQuery({
     queryKey: ['me-subscription'],
     queryFn: fetchMeSubscription,
@@ -172,7 +173,15 @@ export default function Onboarding() {
   });
 
   useEffect(() => {
+    if (state === 'authenticated') {
+      wasAuthenticated.current = true;
+      return;
+    }
     if (state === 'unauthenticated') {
+      if (wasAuthenticated.current) {
+        window.location.replace('/');
+        return;
+      }
       void login();
     }
   }, [state, login]);

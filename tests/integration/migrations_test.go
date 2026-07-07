@@ -4,8 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -14,31 +12,15 @@ import (
 	"github.com/stawi-opportunities/opportunities/tests/integration/testhelpers"
 )
 
-// migrationsDir resolves db/migrations relative to this test file.
-// (Caller of go test can be in any cwd.)
-func migrationsDir(t *testing.T) string {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	return filepath.Join(filepath.Dir(file), "..", "..", "db", "migrations")
-}
-
-func TestMigrationsApplyCleanly(t *testing.T) {
+func TestGreenfieldSchemaAppliesCleanly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	// Boot container without migrations.
 	db := testhelpers.PostgresContainerNoMigrate(t, ctx)
-
-	// Create minimal opportunities stub so migration 0012 (which creates
-	// an index on it) doesn't fail.
-	require.NoError(t, testhelpers.EnsureOpportunitiesStub(ctx, db))
-
-	// Apply all migrations.
-	testhelpers.ApplyMigrationsDir(t, ctx, db, migrationsDir(t))
+	testhelpers.ApplyGreenfieldSchema(t, ctx, db)
 
 	// Hypertables registered with Timescale.
 	for _, name := range []string{
@@ -83,7 +65,7 @@ func TestMigrationsApplyCleanly(t *testing.T) {
 	for _, name := range []string{
 		"applications", "application_notes",
 		"application_attachments", "application_reminders",
-		"match_rules", "candidate_match_indexes", "extension_grants",
+		"match_rules", "candidate_match_indexes",
 	} {
 		var exists bool
 		err := db.QueryRowContext(ctx, `
@@ -113,17 +95,17 @@ func TestMigrationsApplyCleanly(t *testing.T) {
 	`).Scan(&hnswExists))
 	require.True(t, hnswExists, "HNSW index should exist")
 
-	// Partial opportunities index created by migration 0012.
+	// Partial opportunities index created by the crawler capability migration.
 	var idxExists bool
 	require.NoError(t, db.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM pg_indexes
-			WHERE indexname = 'opportunities_active_posted_idx'
+			WHERE indexname = 'opportunities_active_recent_idx'
 		)
 	`).Scan(&idxExists))
-	require.True(t, idxExists, "opportunities_active_posted_idx should exist")
+	require.True(t, idxExists, "opportunities_active_recent_idx should exist")
 
-	// New OLTP table from 0013.
+	// Matching OLTP table created by GORM.
 	var cnt int
 	err = db.QueryRowContext(ctx,
 		`SELECT count(*) FROM information_schema.tables
@@ -131,12 +113,14 @@ func TestMigrationsApplyCleanly(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, cnt, "candidate_matches should exist post-0013")
 
-	err = db.QueryRowContext(ctx,
-		`SELECT count(*) FROM information_schema.table_constraints
-     WHERE table_name='candidate_matches'
-       AND constraint_name='candidate_matches_pair_uniq'`).Scan(&cnt)
-	require.NoError(t, err)
-	require.Equal(t, 1, cnt, "(candidate_id, opportunity_id) UNIQUE should exist")
+	var matchPairIndex bool
+	require.NoError(t, db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM pg_indexes
+			WHERE tablename='candidate_matches'
+			  AND indexname='candidate_matches_pair_uniq'
+		)`).Scan(&matchPairIndex))
+	require.True(t, matchPairIndex, "(candidate_id, opportunity_id) UNIQUE should exist")
 
 	// Continuous aggregates from 0015.
 	err = db.QueryRowContext(ctx,

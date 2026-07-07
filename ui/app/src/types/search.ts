@@ -4,6 +4,7 @@ export interface SearchResult {
   id: string;
   slug: string;
   title: string;
+  apply_url: string;
   company: string;
   location_text: string;
   country: string;

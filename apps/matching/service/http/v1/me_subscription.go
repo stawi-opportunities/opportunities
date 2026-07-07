@@ -17,12 +17,12 @@ import (
 // ui/app/src/api/candidates.ts:fetchMeSubscription so the frontend can
 // drop the synchronous fallback once this ships.
 type MeSubscription struct {
-	Plan              *string         `json:"plan"`
-	Status            string          `json:"status"`
-	RenewsAt          *string         `json:"renews_at,omitempty"`
-	Agent             *MeAgent        `json:"agent,omitempty"`
-	QueuedMatches     int             `json:"queued_matches"`
-	DeliveredThisWeek int             `json:"delivered_this_week"`
+	Plan              *string  `json:"plan"`
+	Status            string   `json:"status"`
+	RenewsAt          *string  `json:"renews_at,omitempty"`
+	Agent             *MeAgent `json:"agent,omitempty"`
+	QueuedMatches     int      `json:"queued_matches"`
+	DeliveredThisWeek int      `json:"delivered_this_week"`
 }
 
 // MeAgent is the human-recruiter card surfaced to "managed"-plan

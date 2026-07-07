@@ -4,7 +4,7 @@
 // parsed once at construction.
 //
 // Misses leave coordinates zero — callers that consume Lat/Lon (e.g.
-// Manticore GEODIST radius search) treat zero as "no anchor" and skip
+// radius search) treat zero as "no anchor" and skip
 // the record from radius queries. That's the correct behaviour: a
 // rural village we can't resolve simply doesn't show up in
 // "opportunities near me", but is still searchable by every other

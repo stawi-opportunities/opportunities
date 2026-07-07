@@ -6,9 +6,8 @@
 // or trace the bad listing back to its source and ban that source.
 //
 // Three or more distinct unresolved scam flags on the same slug trigger
-// auto-action: an OpportunityAutoFlaggedV1 event is emitted and the
-// materializer drops the row from search by setting quality_score=0
-// and pushing deadline to now(). Operator review still happens — the
+// auto-action immediately hides the PostgreSQL opportunity row. Operator
+// review still happens — the
 // auto-action is a containment measure, not a final verdict.
 package domain
 
@@ -43,7 +42,7 @@ func IsKnownFlagReason(r FlagReason) bool {
 // opportunity. Multiple flags on the same opportunity from distinct
 // users trigger auto-action via the threshold rule in the api's
 // flag handler (≥3 distinct unresolved scam flags → emit
-// OpportunityAutoFlaggedV1 → materializer drops the row from search).
+// automatic containment of the PostgreSQL serving row).
 //
 // Idempotency: a unique index over (opportunity_slug, submitted_by)
 // makes a duplicate flag from the same user a 409 instead of double-
@@ -70,7 +69,7 @@ const FlagDescriptionMaxLen = 1000
 
 // FlagAutoActionThreshold is the number of distinct unresolved scam
 // flags from distinct users that triggers automatic containment on a
-// slug (emit OpportunityAutoFlaggedV1; materializer hides the row).
+// slug and hides its serving row.
 const FlagAutoActionThreshold = 3
 
 // FlagResolutionAction is the controlled vocabulary an operator picks

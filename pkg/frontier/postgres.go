@@ -66,21 +66,21 @@ func NewPostgresFrontier(db PoolFn) *PostgresFrontier {
 // row is the GORM-mapped struct for url_frontier. Kept private —
 // callers interact with frontier.URL.
 type row struct {
-	URLID            string     `gorm:"column:url_id;primaryKey"`
-	CanonicalURL     string     `gorm:"column:canonical_url"`
-	CanonicalURLHash string     `gorm:"column:canonical_url_hash"`
-	Host             string     `gorm:"column:host"`
-	SourceID         string     `gorm:"column:source_id"`
-	Priority         float64    `gorm:"column:priority"`
-	State            string     `gorm:"column:state"`
-	Attempts         int        `gorm:"column:attempts"`
+	URLID            string     `gorm:"column:url_id;primaryKey;type:varchar(20)"`
+	CanonicalURL     string     `gorm:"column:canonical_url;type:text;not null"`
+	CanonicalURLHash string     `gorm:"column:canonical_url_hash;type:char(64);not null;uniqueIndex"`
+	Host             string     `gorm:"column:host;type:text;not null"`
+	SourceID         string     `gorm:"column:source_id;type:varchar(20);not null"`
+	Priority         float64    `gorm:"column:priority;not null;default:0.5;index:idx_url_frontier_dequeue,priority:2,sort:desc,where:state = 'pending'"`
+	State            string     `gorm:"column:state;type:text;not null;default:pending;index:idx_url_frontier_dequeue,priority:1,where:state = 'pending'"`
+	Attempts         int        `gorm:"column:attempts;not null;default:0"`
 	LastError        string     `gorm:"column:last_error"`
-	EnqueuedAt       time.Time  `gorm:"column:enqueued_at"`
+	EnqueuedAt       time.Time  `gorm:"column:enqueued_at;not null;default:now();index:idx_url_frontier_dequeue,priority:3,where:state = 'pending'"`
 	ClaimedAt        *time.Time `gorm:"column:claimed_at"`
 	ClaimedBy        string     `gorm:"column:claimed_by"`
 	CompletedAt      *time.Time `gorm:"column:completed_at"`
 	NextAttemptAt    *time.Time `gorm:"column:next_attempt_at"`
-	Metadata         []byte     `gorm:"column:metadata;type:jsonb"`
+	Metadata         []byte     `gorm:"column:metadata;type:jsonb;not null;default:'{}'"`
 }
 
 // TableName binds row → url_frontier so GORM doesn't pluralise.
@@ -90,22 +90,22 @@ func (row) TableName() string { return "url_frontier" }
 // the txn. We never SELECT it through GORM; this struct exists so
 // AutoMigrate in tests can shape the table.
 type hostStateRow struct {
-	Host            string     `gorm:"column:host;primaryKey"`
-	WindowMinutes   int        `gorm:"column:window_minutes"`
-	LastRequestAt   *time.Time `gorm:"column:last_request_at"`
-	NextEligibleAt  *time.Time `gorm:"column:next_eligible_at"`
-	OkCount24H      int        `gorm:"column:ok_count_24h"`
-	ErrCount24H     int        `gorm:"column:err_count_24h"`
-	ConcurrencyMax  int        `gorm:"column:concurrency_max"`
-	ConcurrencyNow  int        `gorm:"column:concurrency_now"`
+	Host           string     `gorm:"column:host;primaryKey;type:text"`
+	WindowMinutes  int        `gorm:"column:window_minutes;not null;default:1"`
+	LastRequestAt  *time.Time `gorm:"column:last_request_at"`
+	NextEligibleAt *time.Time `gorm:"column:next_eligible_at"`
+	OkCount24H     int        `gorm:"column:ok_count_24h;not null;default:0"`
+	ErrCount24H    int        `gorm:"column:err_count_24h;not null;default:0"`
+	ConcurrencyMax int        `gorm:"column:concurrency_max;not null;default:1"`
+	ConcurrencyNow int        `gorm:"column:concurrency_now;not null;default:0"`
 }
 
 // TableName binds hostStateRow → host_state.
 func (hostStateRow) TableName() string { return "host_state" }
 
 // Schema returns the slice of models AutoMigrate needs to shape
-// the queue + politeness tables. Used by integration tests; in
-// production the SQL migrations are the source of truth.
+// the queue + politeness tables. Production and integration tests use the
+// same GORM-owned schema.
 func Schema() []any {
 	return []any{&row{}, &hostStateRow{}}
 }
@@ -264,15 +264,15 @@ func (f *PostgresFrontier) Enqueue(ctx context.Context, urls []URL) ([]EnqueueRe
 }
 
 // Two-phase claim:
-//   1. Lock at most one host_state row per call with FOR UPDATE
-//      SKIP LOCKED. The host row is the politeness mutex; once
-//      one worker holds it, others skip the host until commit.
-//      Limiting to N hosts at a time is intentional — each call
-//      claims at most N URLs anyway, one per host.
-//   2. For each locked host, take the top-priority pending URL
-//      with FOR UPDATE SKIP LOCKED. The double SKIP LOCKED is
-//      belt-and-braces: in steady state phase 1 alone keeps
-//      different workers on different hosts.
+//  1. Lock at most one host_state row per call with FOR UPDATE
+//     SKIP LOCKED. The host row is the politeness mutex; once
+//     one worker holds it, others skip the host until commit.
+//     Limiting to N hosts at a time is intentional — each call
+//     claims at most N URLs anyway, one per host.
+//  2. For each locked host, take the top-priority pending URL
+//     with FOR UPDATE SKIP LOCKED. The double SKIP LOCKED is
+//     belt-and-braces: in steady state phase 1 alone keeps
+//     different workers on different hosts.
 //
 // We can't express this in a single SELECT — Postgres requires
 // FOR UPDATE on a single table, not on an IN/EXISTS subquery,

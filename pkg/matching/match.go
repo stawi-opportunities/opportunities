@@ -3,12 +3,13 @@ package matching
 import "time"
 
 // MatchStatus is the lifecycle state of a row in candidate_matches.
-//   new       — written by a matcher path, never read by the user
-//   viewed    — extension reported the user saw it
-//   dismissed — user (or rule) dismissed; terminal
-//   applying  — extension started the apply flow
-//   applied   — application submitted; terminal
-//   overflow  — beyond the candidate's daily_cap; hidden from default polls
+//
+//	new       — written by a matcher path, never read by the user
+//	viewed    — extension reported the user saw it
+//	dismissed — user (or rule) dismissed; terminal
+//	applying  — extension started the apply flow
+//	applied   — application submitted; terminal
+//	overflow  — beyond the candidate's daily_cap; hidden from default polls
 type MatchStatus string
 
 const (
@@ -44,6 +45,7 @@ type Match struct {
 	MatchID       string
 	CandidateID   string
 	OpportunityID string
+	ApplyURL      string
 	Status        MatchStatus
 	Score         float64
 	RerankScore   *float64

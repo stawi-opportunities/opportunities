@@ -36,7 +36,7 @@ const (
 
 // browserHeaders returns the header set a Chrome top-level navigation
 // sends. ua overrides the User-Agent ONLY when it already looks like a
-// browser (contains "Mozilla/") — a legacy bot UA is replaced by the
+// browser (contains "Mozilla/") — a bot UA is replaced by the
 // profile UA so it stays coherent with the Sec-CH-UA brand list.
 func browserHeaders(ua string) map[string]string {
 	if !strings.Contains(ua, "Mozilla/") {

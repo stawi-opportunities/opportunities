@@ -3,7 +3,7 @@
 //
 // Every event on the bus wraps a payload in an Envelope. Consumers
 // generic-deserialize the outer Envelope fields, then type-assert the
-// Payload against the event_type string to dispatch. Parquet writes
+// Payload against the event_type string to dispatch. event ledger writes
 // flatten Envelope + Payload into a single row per event type.
 package eventsv1
 
@@ -16,7 +16,7 @@ import (
 // Envelope is the common wrapper carried on every event on the bus.
 // The Payload type parameter is the event-specific body (e.g.
 // VariantIngestedV1). Keeping the envelope generic means both
-// producers and the writer can use compile-time typed access instead
+// producers and consumers can use compile-time typed access instead
 // of map[string]any dispatch.
 type Envelope[P any] struct {
 	EventID       string    `json:"event_id"`

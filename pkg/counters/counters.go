@@ -154,8 +154,7 @@ func (c *Counters) GetStats(ctx context.Context, slug string) (Stats, error) {
 //
 // Note on round-trips: the prior MGET implementation made one round
 // trip per call. Frame's RawCache abstraction is GET-per-key. For the
-// search response embedder this is fine (small N, embedded inside an
-// already-Manticore-bound request); if hot-path callers need batched
+// search response embedder this is fine for small N; if hot-path callers need batched
 // reads later, we can add a RawCacheBatch interface upstream.
 func (c *Counters) GetStatsBatch(ctx context.Context, slugs []string) (map[string]Stats, error) {
 	out := map[string]Stats{}

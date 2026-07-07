@@ -3,7 +3,7 @@ display_name: Funding Opportunity
 issuing_entity_label: Funder
 amount_kind: grant
 url_prefix: funding
-universal_required: [title, description, issuing_entity, deadline]
+universal_required: [title, description, issuing_entity, apply_url, deadline]
 kind_required: [focus_area]
 kind_optional: [organisation_eligibility, target_regions, funding_amount_range]
 categories: [Climate, Education, Health, Tech, Arts, Social-Enterprise, Other]

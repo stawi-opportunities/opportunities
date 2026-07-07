@@ -6,21 +6,7 @@ package eventsv1
 // SchemaVersion on the envelope.
 const (
 	// Opportunity pipeline — variants.
-	TopicVariantsIngested   = "opportunities.variants.ingested.v1"
-	TopicVariantsNormalized = "opportunities.variants.normalized.v1"
-	TopicVariantsValidated  = "opportunities.variants.validated.v1"
-	TopicVariantsFlagged    = "opportunities.variants.flagged.v1"
-	TopicVariantsClustered  = "opportunities.variants.clustered.v1"
-	TopicVariantsRejected   = "opportunities.variants.rejected.v1"
-
-	// Opportunity pipeline — canonicals.
-	TopicCanonicalsUpserted = "opportunities.canonicals.upserted.v1"
-	TopicCanonicalsExpired  = "opportunities.canonicals.expired.v1"
-
-	// Derived.
-	TopicEmbeddings   = "opportunities.embeddings.v1"
-	TopicTranslations = "opportunities.translations.v1"
-	TopicPublished    = "opportunities.published.v1"
+	TopicVariantsIngested = "opportunities.variants.ingested.v1"
 
 	// Crawl control plane.
 	TopicCrawlRequests      = "crawl.requests.v1"
@@ -35,9 +21,7 @@ const (
 	// handlers. The crawler's SourceSchedulingHandler consumes it and
 	// drives the per-source Trustage schedule to match the source's live
 	// status (ensure when active, archive otherwise). Like
-	// TopicCrawlRequests / TopicSourcesStopped this is a control-plane
-	// event the writer does NOT persist, so it is intentionally absent
-	// from AllTopics() below.
+	// TopicCrawlRequests this is a control-plane event.
 	TopicSourceSchedulingChanged = "sources.scheduling.changed.v1"
 
 	// Recipe lifecycle. Emitted by the crawler's generate/regenerate
@@ -47,19 +31,6 @@ const (
 	TopicRecipeGenerate   = "recipe.generate.v1"
 	TopicRecipeRegenerate = "recipe.regenerate.v1"
 
-	// Operator-driven kill switch. Emitted by the crawler when an admin
-	// calls /admin/sources/stop. The materializer subscribes and
-	// removes every Manticore document carrying the matching source_id;
-	// the writer persists the event for audit. Downstream consumers
-	// must treat it as terminal — the source is no longer crawled,
-	// and its historical jobs disappear from search.
-	TopicSourcesStopped = "sources.stopped.v1"
-
-	// User-driven scam-flagging auto-action. Emitted by the api when
-	// ≥ domain.FlagAutoActionThreshold distinct scam flags accumulate
-	// on a slug. The materializer hides the row from search.
-	TopicOpportunityAutoFlagged = "opportunities.auto_flagged.v1"
-
 	// Candidate lifecycle (Phase 5).
 	TopicCVUploaded                  = "candidates.cv.uploaded.v1"
 	TopicCVExtracted                 = "candidates.cv.extracted.v1"
@@ -68,9 +39,7 @@ const (
 	TopicCandidatePreferencesUpdated = "candidates.preferences.updated.v1"
 	TopicCandidateMatchesReady       = "candidates.matches.ready.v1"
 	// TopicCandidateCVStaleNudge is a notification-only event. The
-	// external notification service consumes it to send nudge emails;
-	// the writer does NOT persist it to Parquet, so it is intentionally
-	// absent from AllTopics() below.
+	// external notification service consumes it to send nudge emails.
 	TopicCandidateCVStaleNudge = "candidates.cv.stale_nudge.v1"
 
 	// TopicCandidateWeeklyJobsDigest is a notification-only event
@@ -80,8 +49,7 @@ const (
 	// Trustage weekly cron in apps/matching. Carries the top-N freshest
 	// jobs in the candidate's country + opted-in kinds plus headline
 	// analytics for the past 7 days. The external notification service
-	// renders the digest email; the writer does NOT persist this event
-	// to Parquet, so it is intentionally absent from AllTopics() below.
+	// renders the digest email.
 	TopicCandidateWeeklyJobsDigest = "candidates.weekly_jobs_digest.v1"
 )
 
@@ -99,49 +67,7 @@ const (
 	SubjectCVImprove = "svc.opportunities.matching.cv.improve.v1"
 	SubjectCVEmbed   = "svc.opportunities.matching.cv.embed.v1"
 
-	// Canonical fan-out (apps/worker). Embed and translate fire
-	// independently after a canonical is upserted. Each is its own
-	// durable subscriber so a transient embed/translate provider
-	// outage doesn't block the publish path.
-	SubjectWorkerEmbed     = "svc.opportunities.worker.embed.v1"
-	SubjectWorkerTranslate = "svc.opportunities.worker.translate.v1"
-
 	// SubjectMatchingDeadletter receives matching events that exceeded the
 	// redelivery budget. Admin /api/admin/dlq/replay re-publishes them.
 	SubjectMatchingDeadletter = "svc.opportunities.matching.deadletter"
 )
-
-// AllTopics returns every topic the writer is expected to subscribe
-// to for Phase 1. Kept as a single source of truth so `apps/writer`
-// doesn't drift from the declared topics.
-func AllTopics() []string {
-	return []string{
-		TopicVariantsIngested,
-		TopicVariantsNormalized,
-		TopicVariantsValidated,
-		TopicVariantsFlagged,
-		TopicVariantsClustered,
-		TopicVariantsRejected,
-		TopicCanonicalsUpserted,
-		TopicCanonicalsExpired,
-		TopicEmbeddings,
-		TopicTranslations,
-		TopicPublished,
-		TopicCrawlPageCompleted,
-		TopicSourcesDiscovered,
-		// TopicSourcesStopped is intentionally NOT persisted to Parquet
-		// today — the materializer cascade-delete is the load-bearing
-		// behaviour; audit trails live in the materializer's INFO logs
-		// plus the sources.last_stopped_at / last_stopped_by columns
-		// in Postgres. Add an arrow schema + BuildSourceStoppedRecord
-		// in apps/writer when permanent audit is required.
-		TopicCVUploaded,
-		TopicCVExtracted,
-		TopicCVImproved,
-		TopicCandidateEmbedding,
-		TopicCandidatePreferencesUpdated,
-		TopicCandidateMatchesReady,
-		TopicOpportunityAutoFlagged,
-		TopicDefinitionsChanged,
-	}
-}

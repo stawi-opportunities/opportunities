@@ -17,18 +17,18 @@ import (
 // from this key; the extracted plain text is also carried inline for
 // handler convenience in the normal path.
 type CVUploadedV1 struct {
-	CandidateID   string `json:"candidate_id"    parquet:"candidate_id"`
-	CVVersion     int    `json:"cv_version"      parquet:"cv_version"`
-	RawArchiveRef string `json:"raw_archive_ref" parquet:"raw_archive_ref"`
-	Filename      string `json:"filename,omitempty"     parquet:"filename,optional"`
-	ContentType   string `json:"content_type,omitempty" parquet:"content_type,optional"`
-	SizeBytes     int64  `json:"size_bytes,omitempty"   parquet:"size_bytes,optional"`
+	CandidateID   string `json:"candidate_id"   `
+	CVVersion     int    `json:"cv_version"     `
+	RawArchiveRef string `json:"raw_archive_ref"`
+	Filename      string `json:"filename,omitempty"    `
+	ContentType   string `json:"content_type,omitempty"`
+	SizeBytes     int64  `json:"size_bytes,omitempty"  `
 
 	// ExtractedText is the plain-text conversion of the uploaded PDF/DOCX.
-	ExtractedText string `json:"extracted_text" parquet:"extracted_text"`
+	ExtractedText string `json:"extracted_text"`
 
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	EventID    string    `json:"-"`
+	OccurredAt time.Time `json:"-"`
 }
 
 // CVExtractedV1 carries the parsed CV fields plus the deterministic
@@ -39,88 +39,88 @@ type CVUploadedV1 struct {
 // SalaryMax are integers here (normalised from the LLM's free-form
 // string output — see field comment below).
 type CVExtractedV1 struct {
-	CandidateID string `json:"candidate_id" parquet:"candidate_id"`
-	CVVersion   int    `json:"cv_version"   parquet:"cv_version"`
+	CandidateID string `json:"candidate_id"`
+	CVVersion   int    `json:"cv_version"  `
 
 	// CVFields (flattened; matches extraction.CVFields shape).
-	Name               string   `json:"name,omitempty"                parquet:"name,optional"`
-	Email              string   `json:"email,omitempty"               parquet:"email,optional"`
-	Phone              string   `json:"phone,omitempty"               parquet:"phone,optional"`
-	Location           string   `json:"location,omitempty"            parquet:"location,optional"`
-	CurrentTitle       string   `json:"current_title,omitempty"       parquet:"current_title,optional"`
-	Bio                string   `json:"bio,omitempty"                 parquet:"bio,optional"`
-	Seniority          string   `json:"seniority,omitempty"           parquet:"seniority,optional"`
-	YearsExperience    int      `json:"years_experience,omitempty"    parquet:"years_experience,optional"`
-	PrimaryIndustry    string   `json:"primary_industry,omitempty"    parquet:"primary_industry,optional"`
-	StrongSkills       []string `json:"strong_skills,omitempty"       parquet:"strong_skills,list,optional"`
-	WorkingSkills      []string `json:"working_skills,omitempty"      parquet:"working_skills,list,optional"`
-	ToolsFrameworks    []string `json:"tools_frameworks,omitempty"    parquet:"tools_frameworks,list,optional"`
-	Certifications     []string `json:"certifications,omitempty"      parquet:"certifications,list,optional"`
-	PreferredRoles     []string `json:"preferred_roles,omitempty"     parquet:"preferred_roles,list,optional"`
-	Languages          []string `json:"languages,omitempty"           parquet:"languages,list,optional"`
-	Education          string   `json:"education,omitempty"           parquet:"education,optional"`
-	PreferredLocations []string `json:"preferred_locations,omitempty" parquet:"preferred_locations,list,optional"`
-	RemotePreference   string   `json:"remote_preference,omitempty"   parquet:"remote_preference,optional"`
+	Name               string   `json:"name,omitempty"               `
+	Email              string   `json:"email,omitempty"              `
+	Phone              string   `json:"phone,omitempty"              `
+	Location           string   `json:"location,omitempty"           `
+	CurrentTitle       string   `json:"current_title,omitempty"      `
+	Bio                string   `json:"bio,omitempty"                `
+	Seniority          string   `json:"seniority,omitempty"          `
+	YearsExperience    int      `json:"years_experience,omitempty"   `
+	PrimaryIndustry    string   `json:"primary_industry,omitempty"   `
+	StrongSkills       []string `json:"strong_skills,omitempty"      `
+	WorkingSkills      []string `json:"working_skills,omitempty"     `
+	ToolsFrameworks    []string `json:"tools_frameworks,omitempty"   `
+	Certifications     []string `json:"certifications,omitempty"     `
+	PreferredRoles     []string `json:"preferred_roles,omitempty"    `
+	Languages          []string `json:"languages,omitempty"          `
+	Education          string   `json:"education,omitempty"          `
+	PreferredLocations []string `json:"preferred_locations,omitempty"`
+	RemotePreference   string   `json:"remote_preference,omitempty"  `
 	// SalaryMin / SalaryMax are the normalised integer form. The LLM
 	// extraction (extraction.CVFields) emits these as strings like
 	// "80000" or "85k"; the cv-extract handler (Task 7) is responsible
 	// for parsing them into integers, clamping non-parseable outputs
 	// to 0, and converting units. Downstream consumers read integers.
-	SalaryMin int `json:"salary_min,omitempty" parquet:"salary_min,optional"`
-	SalaryMax int `json:"salary_max,omitempty" parquet:"salary_max,optional"`
-	Currency  string   `json:"currency,omitempty"            parquet:"currency,optional"`
+	SalaryMin int    `json:"salary_min,omitempty"`
+	SalaryMax int    `json:"salary_max,omitempty"`
+	Currency  string `json:"currency,omitempty"           `
 
 	// Score components (matches cv.ScoreComponents).
-	ScoreATS      int `json:"score_ats"      parquet:"score_ats"`
-	ScoreKeywords int `json:"score_keywords" parquet:"score_keywords"`
-	ScoreImpact   int `json:"score_impact"   parquet:"score_impact"`
-	ScoreRoleFit  int `json:"score_role_fit" parquet:"score_role_fit"`
-	ScoreClarity  int `json:"score_clarity"  parquet:"score_clarity"`
-	ScoreOverall  int `json:"score_overall"  parquet:"score_overall"`
+	ScoreATS      int `json:"score_ats"     `
+	ScoreKeywords int `json:"score_keywords"`
+	ScoreImpact   int `json:"score_impact"  `
+	ScoreRoleFit  int `json:"score_role_fit"`
+	ScoreClarity  int `json:"score_clarity" `
+	ScoreOverall  int `json:"score_overall" `
 
-	ModelVersionExtract string `json:"model_version_extract,omitempty" parquet:"model_version_extract,optional"`
-	ModelVersionScore   string `json:"model_version_score,omitempty"   parquet:"model_version_score,optional"`
+	ModelVersionExtract string `json:"model_version_extract,omitempty"`
+	ModelVersionScore   string `json:"model_version_score,omitempty"  `
 
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	EventID    string    `json:"-"`
+	OccurredAt time.Time `json:"-"`
 }
 
 // CVFix mirrors cv.PriorityFix, carried inside CVImprovedV1.
 type CVFix struct {
-	FixID       string `json:"fix_id"             parquet:"fix_id"`
-	Title       string `json:"title,omitempty"    parquet:"title,optional"`
+	FixID string `json:"fix_id"            `
+	Title string `json:"title,omitempty"   `
 	// ImpactLevel is serialised as "impact" on the wire to keep the
 	// JSON terse and to mirror cv.PriorityFix.Impact (the struct
 	// field this is produced from).
-	ImpactLevel string `json:"impact,omitempty" parquet:"impact,optional"`
-	Category    string `json:"category,omitempty" parquet:"category,optional"`
-	Why            string `json:"why,omitempty"      parquet:"why,optional"`
-	AutoApplicable bool   `json:"auto_applicable"    parquet:"auto_applicable"`
-	Rewrite        string `json:"rewrite,omitempty"  parquet:"rewrite,optional"`
+	ImpactLevel    string `json:"impact,omitempty"`
+	Category       string `json:"category,omitempty"`
+	Why            string `json:"why,omitempty"     `
+	AutoApplicable bool   `json:"auto_applicable"   `
+	Rewrite        string `json:"rewrite,omitempty" `
 }
 
 // CVImprovedV1 is emitted by the cv-improve handler after deterministic
 // fix detection + LLM rewrite attachment.
 type CVImprovedV1 struct {
-	CandidateID  string  `json:"candidate_id" parquet:"candidate_id"`
-	CVVersion    int     `json:"cv_version"   parquet:"cv_version"`
-	Fixes        []CVFix `json:"fixes"        parquet:"fixes,list"`
-	ModelVersion string  `json:"model_version,omitempty" parquet:"model_version,optional"`
+	CandidateID  string  `json:"candidate_id"`
+	CVVersion    int     `json:"cv_version"  `
+	Fixes        []CVFix `json:"fixes"       `
+	ModelVersion string  `json:"model_version,omitempty"`
 
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	EventID    string    `json:"-"`
+	OccurredAt time.Time `json:"-"`
 }
 
 // CandidateEmbeddingV1 is emitted by the cv-embed handler after a
 // successful Embed() call on the CV text.
 type CandidateEmbeddingV1 struct {
-	CandidateID  string    `json:"candidate_id" parquet:"candidate_id"`
-	CVVersion    int       `json:"cv_version"   parquet:"cv_version"`
-	Vector       []float32 `json:"vector"       parquet:"vector,list"`
-	ModelVersion string    `json:"model_version,omitempty" parquet:"model_version,optional"`
+	CandidateID  string    `json:"candidate_id"`
+	CVVersion    int       `json:"cv_version"  `
+	Vector       []float32 `json:"vector"      `
+	ModelVersion string    `json:"model_version,omitempty"`
 
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	EventID    string    `json:"-"`
+	OccurredAt time.Time `json:"-"`
 }
 
 // PreferencesUpdatedV1 carries the candidate's per-kind preferences as
@@ -133,30 +133,31 @@ type CandidateEmbeddingV1 struct {
 // "deal", "funding"); a missing key means the candidate has not opted
 // into that kind.
 type PreferencesUpdatedV1 struct {
-	CandidateID string                     `json:"candidate_id" parquet:"candidate_id"`
-	OptIns      map[string]json.RawMessage `json:"opt_ins"      parquet:"opt_ins"`
-	UpdatedAt   time.Time                  `json:"updated_at"   parquet:"updated_at"`
+	CandidateID string                     `json:"candidate_id"`
+	OptIns      map[string]json.RawMessage `json:"opt_ins"     `
+	UpdatedAt   time.Time                  `json:"updated_at"  `
 
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	EventID    string    `json:"-"`
+	OccurredAt time.Time `json:"-"`
 }
 
 // MatchRow is one candidate-to-job match, carried inside MatchesReadyV1.
 type MatchRow struct {
-	CanonicalID string  `json:"canonical_id"           parquet:"canonical_id"`
-	Score       float64 `json:"score"                  parquet:"score"`
-	RerankScore float64 `json:"rerank_score,omitempty" parquet:"rerank_score,optional"`
+	CanonicalID string  `json:"canonical_id"          `
+	ApplyURL    string  `json:"apply_url"             `
+	Score       float64 `json:"score"                 `
+	RerankScore float64 `json:"rerank_score,omitempty"`
 }
 
 // MatchesReadyV1 is emitted by the match endpoint (or the Trustage
 // weekly-digest admin) after a candidate's top matches are ranked.
 type MatchesReadyV1 struct {
-	CandidateID  string     `json:"candidate_id"   parquet:"candidate_id"`
-	MatchBatchID string     `json:"match_batch_id" parquet:"match_batch_id"`
-	Matches      []MatchRow `json:"matches"        parquet:"matches,list"`
+	CandidateID  string     `json:"candidate_id"  `
+	MatchBatchID string     `json:"match_batch_id"`
+	Matches      []MatchRow `json:"matches"       `
 
-	EventID    string    `json:"-" parquet:"event_id"`
-	OccurredAt time.Time `json:"-" parquet:"occurred_at"`
+	EventID    string    `json:"-"`
+	OccurredAt time.Time `json:"-"`
 }
 
 // DigestJob is one new-job item carried inside WeeklyJobsDigestV1.
@@ -165,6 +166,7 @@ type MatchesReadyV1 struct {
 type DigestJob struct {
 	CanonicalID string    `json:"canonical_id"`
 	Title       string    `json:"title"`
+	ApplyURL    string    `json:"apply_url"`
 	Company     string    `json:"company,omitempty"`
 	Country     string    `json:"country,omitempty"`
 	Kind        string    `json:"kind"`
@@ -188,7 +190,7 @@ type DigestStats struct {
 
 // WeeklyJobsDigestV1 is emitted by the matching app's weekly admin
 // handler once per unpaid candidate. The notification service is the
-// sole consumer; the writer does NOT persist this event to Parquet.
+// sole consumer.
 //
 // Personalisation lives in `Country` and the `Kind` field of each
 // embedded job — the rendering side decides whether to localise

@@ -11,7 +11,7 @@
 //	  funding_amount_target,
 //	}
 //
-// SearchFilter would filter Manticore to:
+// SearchFilter would filter PostgreSQL to:
 //   - kind = "funding"
 //   - organisation_eligibility CONTAINS <organisation_type>
 //   - focus_area overlap with candidate focus_areas

@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   postgres:
-    image: postgres:16
+    image: timescale/timescaledb-ha:pg16
     environment:
       POSTGRES_USER: stawi
       POSTGRES_PASSWORD: stawi
@@ -12,31 +10,5 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-
-  opensearch:
-    image: opensearchproject/opensearch:2.14.0
-    environment:
-      discovery.type: single-node
-      plugins.security.disabled: "true"
-      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
-
-  manticore:
-    image: manticoresearch/manticore:6.3.2
-    restart: unless-stopped
-    ports:
-      - "9306:9306"   # MySQL SQL protocol (not used by our code but useful for ops)
-      - "9308:9308"   # HTTP / JSON API (our client uses this)
-    environment:
-      - EXTRA=1
-    volumes:
-      - manticore-data:/var/lib/manticore
-
 volumes:
   pgdata:
-  manticore-data:

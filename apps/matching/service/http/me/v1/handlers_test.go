@@ -24,59 +24,7 @@ func setupExtensionEnv(t *testing.T) (*http.ServeMux, *sql.DB, context.Context) 
 	t.Helper()
 	ctx := context.Background()
 	db := testhelpers.PostgresContainerNoMigrate(t, ctx)
-
-	// Create candidate_profiles with full schema BEFORE migrations.
-	// In production this is done by AutoMigrate; migrations only DROP legacy columns.
-	_, err := db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS candidate_profiles (
-			id VARCHAR(20) PRIMARY KEY,
-			profile_id VARCHAR(255),
-			status VARCHAR(20) NOT NULL DEFAULT 'unverified',
-			subscription VARCHAR(20) NOT NULL DEFAULT 'free',
-			auto_apply BOOLEAN NOT NULL DEFAULT false,
-			cv_url TEXT,
-			cv_storage_uri TEXT,
-			cv_content_hash VARCHAR(64),
-			current_title TEXT,
-			seniority VARCHAR(30),
-			years_experience INTEGER,
-			skills text[],
-			strong_skills text[],
-			working_skills text[],
-			tools_frameworks text[],
-			certifications TEXT,
-			preferred_roles TEXT,
-			industries TEXT,
-			education TEXT,
-			preferred_locations TEXT,
-			preferred_countries TEXT,
-			remote_preference VARCHAR(20),
-			salary_min REAL,
-			salary_max REAL,
-			currency VARCHAR(10),
-			target_job_title TEXT,
-			experience_level VARCHAR(30),
-			languages TEXT,
-			bio TEXT,
-			work_history JSONB DEFAULT '[]'::jsonb,
-			cv_scored_at TIMESTAMPTZ,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-			-- Legacy columns that migration 0003 will drop
-			cv_raw BOOLEAN,
-			cv_extracted TEXT,
-			cv_embedding TEXT,
-			cv_version VARCHAR(50),
-			preferences JSONB,
-			target_role TEXT,
-			excluded_companies TEXT,
-			score_components JSONB,
-			priority_fixes TEXT
-		)
-	`)
-	require.NoError(t, err)
-
-	require.NoError(t, testhelpers.EnsureOpportunitiesStub(ctx, db))
-	testhelpers.ApplyMigrationsDir(t, ctx, db, "../../../../../../db/migrations")
+	testhelpers.ApplyGreenfieldSchema(t, ctx, db)
 
 	mux := http.NewServeMux()
 	v1.Mount(mux, &v1.Deps{
@@ -131,6 +79,10 @@ func TestMatchesListAndDetail(t *testing.T) {
 	// Seed two matches directly.
 	for i, oid := range []string{"o1", "o2"} {
 		_, err := db.ExecContext(ctx, `
+INSERT INTO opportunities (canonical_id, slug, kind, title, apply_url, status, hidden)
+VALUES ($1::varchar(20), $1::text, 'job', $1::text, $2, 'active', false)`, oid, "https://example.test/apply/"+oid)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `
 INSERT INTO candidate_matches (match_id, candidate_id, opportunity_id, status, score, last_event_id)
 VALUES ($1, $2, $3, 'new', $4, '')
 `, "m"+oid, "u_list", oid, 0.9-float64(i)*0.1)
@@ -144,6 +96,7 @@ VALUES ($1, $2, $3, 'new', $4, '')
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &page)
 	require.Len(t, page.Items, 2)
+	require.Equal(t, "https://example.test/apply/o1", page.Items[0]["apply_url"])
 
 	// Detail
 	w2 := doMe(t, mux, "GET", "/api/me/matches/mo1", nil, "u_list", "")
@@ -151,6 +104,7 @@ VALUES ($1, $2, $3, 'new', $4, '')
 	var detail map[string]any
 	_ = json.Unmarshal(w2.Body.Bytes(), &detail)
 	require.Equal(t, "mo1", detail["match_id"])
+	require.Equal(t, "https://example.test/apply/o1", detail["apply_url"])
 
 	// Other candidate can't see it
 	w3 := doMe(t, mux, "GET", "/api/me/matches/mo1", nil, "intruder", "")

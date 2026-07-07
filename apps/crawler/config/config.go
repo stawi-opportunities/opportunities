@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	fconfig "github.com/pitabwire/frame/config"
 )
 
@@ -10,18 +12,10 @@ import (
 type CrawlerConfig struct {
 	fconfig.ConfigurationDefault
 
-	WorkerConcurrency int    `env:"WORKER_CONCURRENCY" envDefault:"4"`
-	BatchSize         int    `env:"BATCH_SIZE" envDefault:"500"`
-	BatchFlushSec     int    `env:"BATCH_FLUSH_SEC" envDefault:"10"`
-	SeedsDir          string `env:"SEEDS_DIR" envDefault:"/seeds"`
+	SeedsDir string `env:"SEEDS_DIR" envDefault:"/seeds"`
 
-	// Pipeline head queue: the crawler publishes VariantIngestedV1 here (the
-	// worker's normalize stage subscribes). Name+URI per the service-profile
-	// idiom; must match the worker's ingested queue.
-	QueuePipelineIngested     string `env:"QUEUE_PIPELINE_INGESTED_URI"  envDefault:"mem://pipeline_ingested"`
-	QueuePipelineIngestedName string `env:"QUEUE_PIPELINE_INGESTED_NAME" envDefault:"pipeline_ingested"`
-	UserAgent                 string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
-	HTTPTimeoutSec            int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
+	UserAgent      string `env:"USER_AGENT" envDefault:"opportunities-bot/2.0 (+https://opportunities.stawi.org)"`
+	HTTPTimeoutSec int    `env:"HTTP_TIMEOUT_SEC" envDefault:"20"`
 
 	// InferenceTimeoutSec bounds a single LLM call (extraction / recipe
 	// synthesis). It must be far larger than HTTPTimeoutSec: page fetches want
@@ -63,7 +57,7 @@ type CrawlerConfig struct {
 	// CrawlRunStuckMaxAttempts fails a run after this many slices without
 	// completing — a backstop against a run that never converges (e.g. a
 	// source that always errors mid-pagination) holding the single-flight slot.
-	CrawlRunStuckMaxAttempts int `env:"CRAWL_RUN_STUCK_MAX_ATTEMPTS" envDefault:"200"`
+	CrawlRunStuckMaxAttempts int `env:"CRAWL_RUN_STUCK_MAX_ATTEMPTS" envDefault:"0"`
 
 	// CrawlRunWatchdogBatch caps how many lapsed runs the watchdog re-drives
 	// per tick (each emit is backpressure-gated).
@@ -98,15 +92,10 @@ type CrawlerConfig struct {
 	// load-shedding when the shared inference fleet is saturated).
 	EnrichConcurrency int `env:"ENRICH_CONCURRENCY" envDefault:"4"`
 
-	// Inference back-end (OpenAI-compatible). INFERENCE_BASE_URL /
-	// INFERENCE_MODEL are the current knobs; OLLAMA_URL / OLLAMA_MODEL
-	// are accepted as fallbacks so existing deploys keep working during
-	// the cutover to Cloudflare AI Gateway.
+	// Inference back-end (OpenAI-compatible).
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
 	InferenceAPIKey  string `env:"INFERENCE_API_KEY" envDefault:""`
 	InferenceModel   string `env:"INFERENCE_MODEL" envDefault:""`
-	OllamaURL        string `env:"OLLAMA_URL" envDefault:""`
-	OllamaModel      string `env:"OLLAMA_MODEL" envDefault:"qwen2.5:1.5b"`
 
 	// Embeddings. When EMBEDDING_BASE_URL is empty, Extract.Embed() returns
 	// an empty slice and the pipeline skips storing the vector — matching
@@ -126,52 +115,6 @@ type CrawlerConfig struct {
 	RerankModel   string `env:"RERANK_MODEL" envDefault:""`
 	// RerankDialect: "tei" (default) or "openai"/"siliconflow" for /v1/rerank.
 	RerankDialect string `env:"RERANK_DIALECT" envDefault:""`
-	ValkeyAddr    string `env:"VALKEY_ADDR" envDefault:""`
-
-	// Cloudflare R2 — one account token authorised on all three
-	// product-opportunities buckets. Bucket names live in the static
-	// R2*Bucket fields below; only credentials + endpoint come from
-	// the secret store.
-	R2AccountID       string `env:"R2_ACCOUNT_ID" envDefault:""`
-	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID" envDefault:""`
-	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY" envDefault:""`
-	R2Endpoint        string `env:"R2_ENDPOINT" envDefault:""`
-	R2DeployHookURL   string `env:"R2_DEPLOY_HOOK_URL" envDefault:""`
-
-	// Bucket names — static config, not secret material. The crawler
-	// publishes snapshots to the content bucket and writes raw HTML
-	// + variant blobs + canonical bundles to the archive bucket.
-	R2ContentBucket string `env:"R2_CONTENT_BUCKET" envDefault:"product-opportunities-content"`
-	R2ArchiveBucket string `env:"R2_ARCHIVE_BUCKET" envDefault:"product-opportunities-archive"`
-
-	PublishMinQuality float64 `env:"PUBLISH_MIN_QUALITY" envDefault:"50"`
-
-	// RetentionGraceDays bounds how long a canonical job stays in the
-	// "expired" status before stage-2 retention physically deletes its
-	// R2 snapshot. 7 days is long enough that a user who bookmarked the
-	// page between crawls still sees the dead-link UX before it 404s.
-	RetentionGraceDays int `env:"RETENTION_GRACE_DAYS" envDefault:"7"`
-
-	// Back-pressure: pause new crawl dispatch when the NATS consumer's
-	// pending depth crosses HighWater; resume when it drops below
-	// LowWater. Read from NATS's http monitor (port 8222). Leave
-	// BackpressureMonitorURL blank to disable entirely — the gate
-	// becomes a no-op that always reports open.
-	BackpressureMonitorURL   string `env:"BACKPRESSURE_MONITOR_URL" envDefault:"http://core-queue-headless.queue-system.svc.cluster.local:8222"`
-	BackpressureStreamName   string `env:"BACKPRESSURE_STREAM_NAME" envDefault:"svc_opportunities_events"`
-	BackpressureConsumerName string `env:"BACKPRESSURE_CONSUMER_NAME" envDefault:"crawler-events"`
-	BackpressureHighWater    int    `env:"BACKPRESSURE_HIGH_WATER" envDefault:"100000"`
-	BackpressureLowWater     int    `env:"BACKPRESSURE_LOW_WATER" envDefault:"50000"`
-
-	// Translation fan-out. TranslateEnabled is the master switch. When
-	// true, every successful publish triggers LLM translation to each
-	// TranslateLanguages entry (source language is skipped automatically)
-	// and the translated JobSnapshot is uploaded to R2 at
-	// jobs/{slug}.{lang}.json. TranslateMinQuality sets a floor so we
-	// don't burn LLM quota on low-scoring jobs.
-	TranslateEnabled    bool     `env:"TRANSLATE_ENABLED" envDefault:"false"`
-	TranslateLanguages  []string `env:"TRANSLATE_LANGUAGES" envSeparator:"," envDefault:"en,es,fr,de,pt,ja,ar,zh"`
-	TranslateMinQuality float64  `env:"TRANSLATE_MIN_QUALITY" envDefault:"70"`
 
 	// Redirect service (for tracked /r/{slug} apply links).
 	// RedirectServiceURI is the cluster-internal Connect RPC endpoint,
@@ -191,23 +134,18 @@ type CrawlerConfig struct {
 	// Must be resolvable from the operations namespace where Trustage runs.
 	CrawlBaseURL string `env:"CRAWL_BASE_URL" envDefault:"http://opportunities-crawler.product-opportunities.svc"`
 
-	// CrawlInboxEnabled buffers crawled variants in the crawl_inbox Postgres
-	// table instead of publishing straight to pl_ingested; a rate-limited pump
-	// drains the inbox onto the queue only while pl_ingested is below
-	// CrawlInboxPumpHighWater. Decouples a crawl burst (a paginated board emits
-	// hundreds–thousands of variants at once) from JetStream, which blocks on an
-	// fsync ack per publish. Default off for a safe rollout.
-	CrawlInboxEnabled       bool `env:"CRAWL_INBOX_ENABLED" envDefault:"false"`
-	CrawlInboxPumpHighWater int  `env:"CRAWL_INBOX_PUMP_HIGH_WATER" envDefault:"5000"`
-	CrawlInboxPumpBatch     int  `env:"CRAWL_INBOX_PUMP_BATCH" envDefault:"500"`
+	// PostgreSQL queue limits bound crawl production by actual processing
+	// backlog. A slice finishes its current page, checkpoints it, then yields.
+	IngestMaxPending   int64         `env:"INGEST_MAX_PENDING" envDefault:"100000"`
+	IngestMaxOldestAge time.Duration `env:"INGEST_MAX_OLDEST_AGE" envDefault:"30m"`
 
 	// SourceSchedulesEnabled gates the per-source Trustage schedule sync — the
-	// fully-dynamic, event-driven crawl scheduling model. When true and a
+	// event-driven crawl scheduling model. When true and a
 	// TrustageURL is configured, source lifecycle mutations emit
 	// sources.scheduling.changed.v1 and the crawler creates/archives a
 	// per-source Trustage schedule to match the source's live status; a boot
 	// reconcile + reconcile backstop heal drift. Defaults on — this is the only
-	// crawl driver (the legacy central cron tick has been retired).
+	// crawl driver.
 	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"true"`
 
 	// Recipe generation knobs. All default to off / conservative values so

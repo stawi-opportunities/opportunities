@@ -211,4 +211,3 @@ func extractText(ex TextExtractor, filename string, body []byte) (string, error)
 		return "", errors.New("unsupported file type (only .pdf and .docx accepted)")
 	}
 }
-

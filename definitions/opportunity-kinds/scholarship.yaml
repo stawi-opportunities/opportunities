@@ -3,7 +3,7 @@ display_name: Scholarship
 issuing_entity_label: Institution
 amount_kind: stipend
 url_prefix: scholarships
-universal_required: [title, description, issuing_entity, deadline]
+universal_required: [title, description, issuing_entity, apply_url, deadline]
 kind_required: [field_of_study]
 kind_optional: [degree_level, gpa_min, age_max, eligible_nationalities, study_location]
 categories: [STEM, Humanities, Arts, Business, Medicine, Law, Other]

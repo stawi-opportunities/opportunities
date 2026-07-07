@@ -38,7 +38,7 @@ func InitCrawl() error {
 	}
 
 	CrawlSilentLoss, err = meter.Int64Counter("crawl.silent_loss.total",
-		metric.WithDescription("Best-effort paths that dropped data (detail_fetch_skip/archive_ref_missing/variant_publish_drop)"),
+		metric.WithDescription("Best-effort crawl paths that dropped data"),
 	)
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func RecordCrawlCompletion(outcome string) {
 
 // RecordCrawlSilentLoss counts a best-effort drop that previously left no
 // signal. kind is a short, low-cardinality tag: "detail_fetch_skip",
-// "archive_ref_missing", "variant_publish_drop", "inbox_insert_drop".
+// Values are bounded failure-reason labels defined by callers.
 func RecordCrawlSilentLoss(kind string) {
 	if CrawlSilentLoss == nil {
 		return

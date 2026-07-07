@@ -91,9 +91,8 @@ func TestExternalToVariant(t *testing.T) {
 		t.Errorf("hard key length wrong: got %d", len(v.HardKey))
 	}
 
-	// ExternalJobID matches trimmed input
-	if v.ExternalJobID != "job-123" {
-		t.Errorf("external_job_id wrong: got %q", v.ExternalJobID)
+	if v.ExternalID != "job-123" {
+		t.Errorf("external_id wrong: got %q", v.ExternalID)
 	}
 
 	// SourceID passed through
@@ -126,15 +125,15 @@ func TestGeneratedIDWhenMissing(t *testing.T) {
 
 	v := ExternalToVariant(ext, "src_test_1", "NG", "jobberman", "en", time.Now())
 
-	if v.ExternalJobID == "" {
-		t.Fatal("ExternalJobID should not be empty when input ExternalID is blank")
+	if v.ExternalID == "" {
+		t.Fatal("ExternalID should not be empty when input ExternalID is blank")
 	}
-	if len(v.ExternalJobID) != 16 {
-		t.Errorf("generated ExternalJobID should be 16 chars, got %d: %q", len(v.ExternalJobID), v.ExternalJobID)
+	if len(v.ExternalID) != 16 {
+		t.Errorf("generated ExternalID should be 16 chars, got %d: %q", len(v.ExternalID), v.ExternalID)
 	}
 	// The generated ID should be a prefix of the content hash.
-	if !strings.HasPrefix(v.ContentHash, v.ExternalJobID) {
-		t.Errorf("generated ID %q is not a prefix of content hash %q", v.ExternalJobID, v.ContentHash)
+	if !strings.HasPrefix(v.ContentHash, v.ExternalID) {
+		t.Errorf("generated ID %q is not a prefix of content hash %q", v.ExternalID, v.ContentHash)
 	}
 }
 
