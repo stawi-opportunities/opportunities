@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { authRuntime } from '@/auth/runtime';
 import { OnboardingRouter } from '@/onboarding/router';
+import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { Panel } from './Panel';
 
 // Per-kind onboarding tabs — each entry maps a kind id to the flow id
@@ -18,12 +19,23 @@ export function PreferencesPanel() {
   const [active, setActive] = useState<string>(PREFERENCE_KINDS[0]!.kind);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [errMsg, setErrMsg] = useState<string | null>(null);
-  // Enabled kinds come from /candidates/match-kinds; the matching service
-  // returns only kinds whose matcher isn't a stub. While loading we render
-  // nothing rather than show tabs that may disappear once the response
-  // lands. On fetch failure we fall back to the production-ready pair so
-  // the dashboard stays usable.
   const [enabledKinds, setEnabledKinds] = useState<string[] | null>(null);
+
+  const profileQ = useCandidateProfile();
+
+  const pills = useMemo(() => {
+    const result: { label: string }[] = [];
+    const profile = profileQ.data;
+    if (profile) {
+      const countries = profile.preferred_countries
+        ? profile.preferred_countries.split(',').filter(Boolean)
+        : [];
+      const languages = profile.languages ? profile.languages.split(';').filter(Boolean) : [];
+      countries.forEach((c: string) => result.push({ label: c.trim() }));
+      languages.forEach((l: string) => result.push({ label: l.trim() }));
+    }
+    return result;
+  }, [profileQ.data]);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,12 +92,26 @@ export function PreferencesPanel() {
 
   return (
     <Panel title="Match preferences">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-gray-600 dark:text-gray-400">
         Opt into the kinds of opportunities you want matched. We'll only run matchers for kinds
         you've configured.
       </p>
+
+      {pills.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {pills.map((pill, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-700 dark:bg-navy-700 dark:text-gray-300"
+            >
+              {pill.label}
+            </span>
+          ))}
+        </div>
+      )}
+
       <nav
-        className="mt-4 flex flex-wrap gap-1 border-b border-gray-200"
+        className="mt-4 flex flex-wrap gap-1 border-b border-gray-200 dark:border-navy-700"
         role="tablist"
         aria-label="Opportunity kinds"
       >
@@ -99,8 +125,8 @@ export function PreferencesPanel() {
               aria-selected={on}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 on
-                  ? 'border-b-2 border-accent-500 text-navy-900'
-                  : 'border-b-2 border-transparent text-gray-600 hover:text-gray-900'
+                  ? 'border-b-2 border-accent-500 text-navy-900 dark:text-white'
+                  : 'border-b-2 border-transparent text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
               }`}
               onClick={() => {
                 setActive(kind);
@@ -119,10 +145,14 @@ export function PreferencesPanel() {
           onSubmit={(prefs) => void persist(activeEntry.kind, prefs)}
         />
       </div>
-      {status === 'saving' && <p className="mt-3 text-sm text-gray-500">Saving…</p>}
-      {status === 'saved' && <p className="mt-3 text-sm text-emerald-700">Preferences saved.</p>}
+      {status === 'saving' && (
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Saving…</p>
+      )}
+      {status === 'saved' && (
+        <p className="mt-3 text-sm text-emerald-700 dark:text-emerald-400">Preferences saved.</p>
+      )}
       {status === 'error' && (
-        <p className="mt-3 text-sm text-red-700" role="alert">
+        <p className="mt-3 text-sm text-red-700 dark:text-red-400" role="alert">
           {errMsg ?? "Couldn't save preferences."}
         </p>
       )}

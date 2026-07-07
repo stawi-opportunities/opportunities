@@ -144,7 +144,7 @@ export default function OpportunityDetail() {
               </span>
             )}
             {snap.posted_at && (
-              <span className="text-gray-400">
+              <span className="text-gray-500">
                 {t('job.postedOn')} {timeAgo(snap.posted_at)}
               </span>
             )}

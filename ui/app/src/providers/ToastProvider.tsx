@@ -27,8 +27,13 @@ const ICON: Record<Toast['variant'], string> = {
 const AUTO_DISMISS_MS = 4_000;
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string) => void }) {
+  const [exiting, setExiting] = useState(false);
+
   useEffect(() => {
-    const timer = setTimeout(() => onDismiss(toast.id), AUTO_DISMISS_MS);
+    const timer = setTimeout(() => {
+      setExiting(true);
+      setTimeout(() => onDismiss(toast.id), 200);
+    }, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [toast.id, onDismiss]);
 
@@ -36,7 +41,9 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
     <div
       role="alert"
       aria-live="assertive"
-      className={`flex items-start gap-3 rounded-lg border p-4 shadow-md ${VARIANT_CLASSES[toast.variant]}`}
+      className={`flex items-start gap-3 rounded-lg border p-4 shadow-md transition-all duration-200 ${
+        exiting ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'
+      } ${VARIANT_CLASSES[toast.variant]}`}
     >
       <span className="mt-0.5 shrink-0 text-sm font-bold" aria-hidden="true">
         {ICON[toast.variant]}

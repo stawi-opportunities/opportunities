@@ -6,6 +6,7 @@
 // minimum GPA, target country, and how soon the deadline must fall.
 
 import { useState, type ChangeEvent } from 'react';
+import { Button } from '@/components/ui/Button';
 import {
   LocationPicker,
   emptyLocationPreference,
@@ -48,12 +49,19 @@ export function Flow({
       }}
       className="space-y-6 max-w-xl"
     >
-      <h2 className="text-2xl font-semibold text-gray-900">Find scholarships that fit you</h2>
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        Find scholarships that fit you
+      </h2>
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700">Degree level</legend>
+        <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Degree level
+        </legend>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
           {DEGREE_LEVELS.map((d) => (
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700" key={d}>
+            <label
+              className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+              key={d}
+            >
               <input
                 type="checkbox"
                 checked={p.degree_levels.includes(d)}
@@ -116,7 +124,7 @@ export function Flow({
         label="Where do you want to study?"
       />
       <label className="block text-sm">
-        <span className="block font-medium text-gray-700">
+        <span className="block font-medium text-gray-700 dark:text-gray-300">
           Only show scholarships closing in the next…
         </span>
         <input
@@ -129,11 +137,9 @@ export function Flow({
           min="1"
           max="365"
         />
-        <span className="ml-2 text-gray-600">days</span>
+        <span className="ml-2 text-gray-600 dark:text-gray-400">days</span>
       </label>
-      <button type="submit" className="btn-primary">
-        Save preferences
-      </button>
+      <Button type="submit">Save preferences</Button>
     </form>
   );
 }

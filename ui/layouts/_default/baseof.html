@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   {{ partial "head.html" . }}
@@ -15,6 +15,7 @@
        get-started banner there to keep it a clean single screen. */}}
   {{ if not .IsHome }}{{ partial "get-started-cta.html" . }}{{ end }}
   {{ partial "footer.html" . }}
+  <div id="mount-scroll-top"></div>
   {{ block "scripts" . }}{{ end }}
 </body>
 </html>

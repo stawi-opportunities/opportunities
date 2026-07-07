@@ -84,6 +84,75 @@ export async function fetchCandidate(): Promise<CandidateSummary | null> {
 
 // ── Subscription ──────────────────────────────────────────────────
 
+// ── Settings ───────────────────────────────────────────────────────
+
+export interface ProfilePayload {
+  name: string;
+  current_title?: string;
+  phone?: string;
+}
+
+export interface NotificationPrefs {
+  email_digest: 'daily' | 'weekly' | 'off';
+  match_alerts: boolean;
+  weekly_summary: boolean;
+  marketing_emails: boolean;
+}
+
+/**
+ * PUT /me/profile — updates name, title, phone.
+ */
+export async function updateProfile(payload: ProfilePayload): Promise<{ ok: boolean }> {
+  return authRuntime().fetch('/me/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * PUT /me/notifications — updates notification preferences.
+ */
+export async function updateNotificationPrefs(prefs: NotificationPrefs): Promise<{ ok: boolean }> {
+  return authRuntime().fetch('/me/notifications', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(prefs),
+  });
+}
+
+/**
+ * POST /me/change-password — change password (requires current password).
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<{ ok: boolean }> {
+  return authRuntime().fetch('/me/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
+/**
+ * POST /me/export-data — request a data-export email.
+ */
+export async function requestDataExport(): Promise<{ ok: boolean }> {
+  return authRuntime().fetch('/me/export-data', { method: 'POST' });
+}
+
+/**
+ * DELETE /me — permanent account deletion.
+ */
+export async function deleteAccount(reason?: string): Promise<{ ok: boolean }> {
+  return authRuntime().fetch('/me', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export interface MeSubscription {
   plan: string | null;
   status: 'none' | 'active' | 'past_due' | 'cancelled';

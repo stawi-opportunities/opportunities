@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { getSeedDigest, type SeedDigestResponse } from '@/api/admin-client';
-import { RejectionChart } from '@/components/RejectionChart';
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { getSeedDigest, type SeedDigestResponse } from "@/api/admin-client";
+import { RejectionChart } from "@/components/RejectionChart";
 
 // SeedDigest renders GET /admin/trace/seeds/{id}/digest?date=YYYY-MM-DD:
 // a one-day rollup of crawl jobs, variants emitted/published/rejected
@@ -9,7 +9,7 @@ import { RejectionChart } from '@/components/RejectionChart';
 export function SeedDigest() {
   const { id } = useParams<{ id: string }>();
   const [params, setParams] = useSearchParams();
-  const date = params.get('date') ?? new Date().toISOString().slice(0, 10);
+  const date = params.get("date") ?? new Date().toISOString().slice(0, 10);
   const [data, setData] = useState<SeedDigestResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -20,7 +20,7 @@ export function SeedDigest() {
     getSeedDigest(id, date)
       .then(setData)
       .catch((e: unknown) =>
-        setErr(e instanceof Error ? e.message : String(e))
+        setErr(e instanceof Error ? e.message : String(e)),
       );
   }, [id, date]);
 
@@ -28,16 +28,16 @@ export function SeedDigest() {
     <div>
       <header>
         <h1>
-          Digest{' '}
-          <small style={{ fontWeight: 'normal', color: '#666' }}>
-            for{' '}
-            <Link to={`/sources/${encodeURIComponent(id ?? '')}`}>{id}</Link> on{' '}
+          Digest{" "}
+          <small style={{ fontWeight: "normal", color: "#666" }}>
+            for{" "}
+            <Link to={`/sources/${encodeURIComponent(id ?? "")}`}>{id}</Link> on{" "}
             {date}
           </small>
         </h1>
-        <p style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <p style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <label>
-            Date:{' '}
+            Date:{" "}
             <input
               type="date"
               value={date}
@@ -47,7 +47,7 @@ export function SeedDigest() {
         </p>
       </header>
 
-      {err && <pre style={{ color: 'crimson' }}>{err}</pre>}
+      {err && <pre style={{ color: "crimson" }}>{err}</pre>}
       {data && (
         <>
           <section>
@@ -74,7 +74,7 @@ export function SeedDigest() {
                 </tr>
               </tbody>
             </table>
-            <p style={{ marginTop: '0.5rem' }}>
+            <p style={{ marginTop: "0.5rem" }}>
               <small>
                 data source: <code>{data.data_source}</code>
               </small>

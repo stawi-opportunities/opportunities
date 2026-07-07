@@ -1,19 +1,12 @@
-// UI string catalog. Kept as a flat record per language so missing-key
-// fallbacks are a single lookup. English is the canonical source — every
-// other language should have the same key set. When adding a new string,
-// add the English entry first, then fan it out to the other catalogs.
-//
-// Translations below are native-speaker approximations intended to ship
-// the MVP. Tighten them with a human pass before launch.
+// UI string catalog. English is the canonical and only shipped language.
+// Keep this flat so missing-key fallbacks are a single lookup.
 
 export type LangCode = 'en';
 
 export const SUPPORTED_LANGS: LangCode[] = ['en'];
 
-// Endonyms — what native speakers call their own language.
 export const LANG_LABEL: Record<LangCode, string> = { en: 'English' };
 
-// RTL scripts — drives <html dir="rtl"> when the current language is Arabic.
 export const RTL_LANGS = new Set<LangCode>();
 
 export interface Strings {
@@ -23,10 +16,18 @@ export interface Strings {
   'nav.allJobs': string;
   'nav.search': string;
   'nav.about': string;
+  'nav.faq': string;
   'nav.pricing': string;
   'nav.signIn': string;
   'nav.language': string;
   'nav.categoriesHint': string;
+  'nav.dashboard': string;
+  'nav.feed': string;
+  'nav.matches': string;
+  'nav.saved': string;
+  'nav.preferences': string;
+  'nav.billing': string;
+  'nav.settings': string;
 
   // ---- Call-to-action buttons ----
   'cta.applyNow': string;
@@ -55,6 +56,7 @@ export interface Strings {
   'job.salary': string;
   'job.skillsRequired': string;
   'job.skillsNiceToHave': string;
+  'job.translatedNotice': string;
 
   // ---- Deadline labels ----
   'deadline.closes': string;
@@ -176,6 +178,7 @@ export interface Strings {
   'status.rejected': string;
   'status.hired': string;
   'card.match': string;
+  'card.new': string;
 
   // ---- Cascade / feed ----
   'cascade.yourPreferences': string;
@@ -191,6 +194,7 @@ export interface Strings {
   'feed.empty': string;
   'feed.tryAllFilter': string;
   'feed.loadError': string;
+  'feed.opportunities': string;
 
   // ---- Dashboard ----
   'dash.title': string;
@@ -229,6 +233,69 @@ export interface Strings {
   'dash.openingPayment': string;
   'dash.payPerMonth': string;
   'dash.perMonth': string;
+  'dash.welcomeTitle': string;
+  'dash.welcomeBody': string;
+  'dash.welcomeDismiss': string;
+  'dash.welcomeTour': string;
+  'dash.statusActive': string;
+  'dash.statusPastDue': string;
+  'dash.statusCancelled': string;
+  'dash.emptyFeedTitle': string;
+  'dash.emptyFeedHint': string;
+  'dash.emptyFeedCompleteProfile': string;
+  'dash.emptyFeedSetPreferences': string;
+  'dash.emptyFeedBrowseAll': string;
+  'dash.celebrationTitle': string;
+  'dash.celebrationBody': string;
+  'dash.celebrationStep1': string;
+  'dash.celebrationStep2': string;
+  'dash.celebrationStep3': string;
+  'dash.celebrationDismiss': string;
+  'onboard.profileSaved': string;
+  'dash.breadcrumbDashboard': string;
+
+  // ---- Plan change modal ----
+  'plan.changeTitle': string;
+  'plan.currentPlan': string;
+  'plan.newPlan': string;
+  'plan.proratedAmount': string;
+  'plan.nextBilling': string;
+  'plan.confirmChange': string;
+  'plan.changeSuccess': string;
+  'plan.changeError': string;
+  'plan.managedChangeHint': string;
+
+  // ---- Cancel subscription modal ----
+  'cancel.title': string;
+  'cancel.reason': string;
+  'cancel.foundJob': string;
+  'cancel.tooExpensive': string;
+  'cancel.notEnoughMatches': string;
+  'cancel.justPausing': string;
+  'cancel.other': string;
+  'cancel.foundJobMessage': string;
+  'cancel.tooExpensiveHint': string;
+  'cancel.pauseHint': string;
+  'cancel.confirmTitle': string;
+  'cancel.confirmBody': string;
+  'cancel.confirmCheckbox': string;
+  'cancel.confirmButton': string;
+  'cancel.success': string;
+
+  // ---- Usage chart ----
+  'usage.title': string;
+  'usage.week': string;
+  'usage.delivered': string;
+  'usage.queued': string;
+  'usage.noData': string;
+
+  // ---- Invoice history ----
+  'invoice.title': string;
+  'invoice.date': string;
+  'invoice.amount': string;
+  'invoice.status': string;
+  'invoice.download': string;
+  'invoice.empty': string;
 
   // ---- Onboarding ----
   'onboard.step': string;
@@ -304,11 +371,89 @@ export interface Strings {
   'onboard.validationLanguage': string;
   'onboard.validationJobType': string;
   'onboard.validationTerms': string;
+  'onboard.cvDropHere': string;
+  'onboard.cvDragPrompt': string;
+  'onboard.skipPreferences': string;
+  'onboard.skipPreferencesHint': string;
+  'onboard.features': string;
+  'onboard.showLess': string;
 
   // ---- CTA ----
   'cta.twoMinutes': string;
   'cta.twoMinutesHint': string;
   'cta.getStarted': string;
+
+  // ---- Common ----
+  'common.comingSoon': string;
+
+  // ---- Settings ----
+  'settings.title': string;
+  'settings.sectionProfile': string;
+  'settings.sectionNotifications': string;
+  'settings.sectionSecurity': string;
+  'settings.sectionAccount': string;
+  'settings.sectionLanguage': string;
+  'settings.sectionTheme': string;
+  'settings.profile': string;
+  'settings.name': string;
+  'settings.email': string;
+  'settings.phone': string;
+  'settings.currentTitle': string;
+  'settings.cv': string;
+  'settings.cvUploaded': string;
+  'settings.cvUploadNew': string;
+  'settings.saveProfile': string;
+  'settings.profileSaved': string;
+  'settings.profileFailed': string;
+  'settings.managedByIdp': string;
+  'settings.notifications': string;
+  'settings.emailDigest': string;
+  'settings.daily': string;
+  'settings.weekly': string;
+  'settings.off': string;
+  'settings.matchAlerts': string;
+  'settings.matchAlertsHint': string;
+  'settings.weeklySummary': string;
+  'settings.weeklySummaryHint': string;
+  'settings.marketingEmails': string;
+  'settings.marketingEmailsHint': string;
+  'settings.saveNotifications': string;
+  'settings.notificationsSaved': string;
+  'settings.notificationsFailed': string;
+  'settings.comingSoon': string;
+  'settings.security': string;
+  'settings.changePassword': string;
+  'settings.currentPassword': string;
+  'settings.newPassword': string;
+  'settings.confirmPassword': string;
+  'settings.passwordChanged': string;
+  'settings.passwordMismatch': string;
+  'settings.passwordWeak': string;
+  'settings.passwordSame': string;
+  'settings.twoFactor': string;
+  'settings.twoFactorDisabled': string;
+  'settings.enable2FA': string;
+  'settings.activeSessions': string;
+  'settings.revokeSession': string;
+  'settings.noSessions': string;
+  'settings.account': string;
+  'settings.deleteAccount': string;
+  'settings.deleteAccountWarning': string;
+  'settings.deleteConfirm': string;
+  'settings.deleteReason': string;
+  'settings.accountDeleted': string;
+  'settings.dataExport': string;
+  'settings.dataExportHint': string;
+  'settings.dataExportRequested': string;
+  'settings.language': string;
+  'settings.uiLanguage': string;
+  'settings.workingLanguages': string;
+  'settings.country': string;
+  'settings.theme': string;
+  'settings.themeLight': string;
+  'settings.themeDark': string;
+  'settings.themeSystem': string;
+  'settings.themeComingSoon': string;
 
   // ---- Footer ----
   'footer.jobSeekers': string;
@@ -317,6 +462,7 @@ export interface Strings {
   'footer.advancedSearch': string;
   'footer.company': string;
   'footer.about': string;
+  'footer.faq': string;
   'footer.pricing': string;
   'footer.contact': string;
   'footer.legal': string;
@@ -326,21 +472,33 @@ export interface Strings {
   'footer.terms': string;
   'footer.rights': string;
   'footer.madeBy': string;
+  'footer.explore': string;
+  'footer.jobs': string;
+  'footer.scholarships': string;
+  'footer.tenders': string;
+  'footer.deals': string;
+  'footer.funding': string;
+  'settings.sessionManagementUnavailable': string;
 }
 
-// ---------------------------------------------------------------------------
-// English (canonical)
-// ---------------------------------------------------------------------------
 const en: Strings = {
   'nav.jobs': 'Jobs',
   'nav.findJobs': 'Find Jobs',
   'nav.allJobs': 'All Jobs',
   'nav.search': 'Advanced search',
   'nav.about': 'About',
+  'nav.faq': 'FAQ',
   'nav.pricing': 'Pricing',
   'nav.signIn': 'Sign in',
   'nav.language': 'Language',
   'nav.categoriesHint': 'Categories load once jobs are indexed.',
+  'nav.dashboard': 'Dashboard',
+  'nav.feed': 'Feed',
+  'nav.matches': 'Matches',
+  'nav.saved': 'Saved',
+  'nav.preferences': 'Preferences',
+  'nav.billing': 'Billing',
+  'nav.settings': 'Settings',
 
   'cta.applyNow': 'Apply now',
   'cta.saveJob': 'Save job',
@@ -363,6 +521,8 @@ const en: Strings = {
   'cta.twoMinutesHint': 'Upload your CV, tell us what you want, we take it from there.',
   'cta.getStarted': 'Get started',
 
+  'common.comingSoon': 'Coming soon',
+
   'job.postedOn': 'Posted',
   'job.remote': 'Remote',
   'job.employmentType': 'Employment type',
@@ -370,6 +530,7 @@ const en: Strings = {
   'job.salary': 'Salary',
   'job.skillsRequired': 'Required skills',
   'job.skillsNiceToHave': 'Nice to have',
+  'job.translatedNotice': 'Automatically translated from the original posting.',
 
   'deadline.closes': 'Closes',
   'deadline.expires': 'Expires',
@@ -477,6 +638,7 @@ const en: Strings = {
   'status.rejected': 'Rejected',
   'status.hired': 'Hired',
   'card.match': '% match',
+  'card.new': 'New',
 
   'cascade.yourPreferences': 'Your preferences',
   'cascade.outside': 'Outside {country}',
@@ -490,6 +652,7 @@ const en: Strings = {
   'feed.empty': 'Nothing to show here yet.',
   'feed.tryAllFilter': "Try the 'All' filter.",
   'feed.loadError': "Couldn't load your opportunities.",
+  'feed.opportunities': 'opportunities',
 
   'onboard.step': 'Step',
   'onboard.of': 'of',
@@ -569,6 +732,12 @@ const en: Strings = {
   'onboard.validationLanguage': 'Pick at least one language',
   'onboard.validationJobType': 'Pick at least one job type',
   'onboard.validationTerms': 'Please agree to the Terms before finishing',
+  'onboard.cvDropHere': 'Drop your CV here',
+  'onboard.cvDragPrompt': 'Drag & drop your CV here, or click to browse',
+  'onboard.skipPreferences': "Skip for now — I'll set this up later",
+  'onboard.skipPreferencesHint': 'You can always configure these later from your dashboard',
+  'onboard.features': 'features',
+  'onboard.showLess': 'Show less',
 
   'dash.title': 'Your dashboard',
   'dash.setupIncomplete': 'Setup incomplete',
@@ -610,6 +779,137 @@ const en: Strings = {
   'dash.openingPayment': 'Opening payment…',
   'dash.payPerMonth': 'Pay',
   'dash.perMonth': '/month',
+  'dash.welcomeTitle': 'Welcome to Stawi Opportunities!',
+  'dash.welcomeBody':
+    'We match you with the best opportunities across Africa. Start by completing your profile and setting your preferences.',
+  'dash.welcomeDismiss': 'Dismiss',
+  'dash.welcomeTour': 'Take a quick tour →',
+  'dash.statusActive': 'Active',
+  'dash.statusPastDue': 'Past due',
+  'dash.statusCancelled': 'Cancelled',
+  'dash.emptyFeedTitle': 'No opportunities yet',
+  'dash.emptyFeedHint': 'Complete these steps to start receiving matches:',
+  'dash.emptyFeedCompleteProfile': 'Complete your profile',
+  'dash.emptyFeedSetPreferences': 'Set your preferences',
+  'dash.emptyFeedBrowseAll': 'Browse all opportunities',
+  'dash.celebrationTitle': "You're all set!",
+  'dash.celebrationBody': "Here's what happens next:",
+  'dash.celebrationStep1': "We're now matching you with opportunities",
+  'dash.celebrationStep2': "You'll receive email notifications for new matches",
+  'dash.celebrationStep3': 'Your first matches will appear within 24 hours',
+  'dash.celebrationDismiss': 'Got it, show me my dashboard',
+  'onboard.profileSaved': 'Profile saved!',
+  'dash.breadcrumbDashboard': 'Dashboard',
+
+  'plan.changeTitle': 'Change your plan',
+  'plan.currentPlan': 'Current plan',
+  'plan.newPlan': 'New plan',
+  'plan.proratedAmount': 'Prorated amount',
+  'plan.nextBilling': 'Next billing date',
+  'plan.confirmChange': 'Confirm change',
+  'plan.changeSuccess': 'Plan changed to {plan}!',
+  'plan.changeError': "Couldn't change plan. Try again.",
+  'plan.managedChangeHint': 'Contact your agent to change plans.',
+
+  'cancel.title': 'Cancel subscription',
+  'cancel.reason': "What's the main reason?",
+  'cancel.foundJob': 'I found a job already',
+  'cancel.tooExpensive': 'Too expensive',
+  'cancel.notEnoughMatches': 'Not enough matches',
+  'cancel.justPausing': 'Just taking a break',
+  'cancel.other': 'Other',
+  'cancel.foundJobMessage': "Congratulations! We'll keep your profile in case things change.",
+  'cancel.tooExpensiveHint': 'Did you know Pro is 5× the matches?',
+  'cancel.pauseHint': 'You can pause instead. Matches resume when you return.',
+  'cancel.confirmTitle': 'Are you sure?',
+  'cancel.confirmBody':
+    "Your subscription will end on {date}. You'll lose access to matching and your profile will be paused.",
+  'cancel.confirmCheckbox': 'I understand my subscription will be cancelled',
+  'cancel.confirmButton': 'Cancel subscription',
+  'cancel.success': 'Your subscription has been cancelled.',
+
+  'usage.title': 'Usage history',
+  'usage.week': 'Week',
+  'usage.delivered': 'Delivered',
+  'usage.queued': 'Queued',
+  'usage.noData': 'Usage data will appear after your first full week.',
+
+  'invoice.title': 'Invoices',
+  'invoice.date': 'Date',
+  'invoice.amount': 'Amount',
+  'invoice.status': 'Status',
+  'invoice.download': 'Download',
+  'invoice.empty': 'No invoices yet.',
+
+  'settings.title': 'Settings',
+  'settings.sectionProfile': 'Profile',
+  'settings.sectionNotifications': 'Notifications',
+  'settings.sectionSecurity': 'Security',
+  'settings.sectionAccount': 'Account',
+  'settings.sectionLanguage': 'Language',
+  'settings.sectionTheme': 'Theme',
+  'settings.profile': 'Profile',
+  'settings.name': 'Full name',
+  'settings.email': 'Email address',
+  'settings.phone': 'Phone number',
+  'settings.currentTitle': 'Current job title',
+  'settings.cv': 'CV / Resume',
+  'settings.cvUploaded': 'CV uploaded',
+  'settings.cvUploadNew': 'Upload new CV',
+  'settings.saveProfile': 'Save profile',
+  'settings.profileSaved': 'Profile updated successfully.',
+  'settings.profileFailed': 'Failed to update profile.',
+  'settings.managedByIdp': 'Managed by your identity provider',
+  'settings.notifications': 'Notifications',
+  'settings.emailDigest': 'Email digest frequency',
+  'settings.daily': 'Daily',
+  'settings.weekly': 'Weekly',
+  'settings.off': 'Off',
+  'settings.matchAlerts': 'Match alerts',
+  'settings.matchAlertsHint': 'Get notified when a new match is found.',
+  'settings.weeklySummary': 'Weekly summary',
+  'settings.weeklySummaryHint': 'Receive a weekly summary of your account activity.',
+  'settings.marketingEmails': 'Marketing emails',
+  'settings.marketingEmailsHint': 'Tips, product updates, and job market insights.',
+  'settings.saveNotifications': 'Save preferences',
+  'settings.notificationsSaved': 'Notification preferences saved.',
+  'settings.notificationsFailed': 'Failed to save notification preferences.',
+  'settings.comingSoon': 'Coming soon',
+  'settings.security': 'Security',
+  'settings.changePassword': 'Change password',
+  'settings.currentPassword': 'Current password',
+  'settings.newPassword': 'New password',
+  'settings.confirmPassword': 'Confirm new password',
+  'settings.passwordChanged': 'Password changed successfully.',
+  'settings.passwordMismatch': 'Passwords do not match.',
+  'settings.passwordWeak': 'Password does not meet security requirements.',
+  'settings.passwordSame': 'New password must be different from current password.',
+  'settings.twoFactor': 'Two-factor authentication',
+  'settings.twoFactorDisabled': 'Two-factor authentication is disabled.',
+  'settings.enable2FA': 'Enable 2FA',
+  'settings.activeSessions': 'Active sessions',
+  'settings.revokeSession': 'Revoke',
+  'settings.noSessions': 'No other active sessions.',
+  'settings.account': 'Account',
+  'settings.deleteAccount': 'Delete account',
+  'settings.deleteAccountWarning':
+    'This action is permanent and cannot be undone. All your data will be deleted.',
+  'settings.deleteConfirm': 'Are you sure you want to delete your account?',
+  'settings.deleteReason': "We're sorry to see you go. Tell us why (optional):",
+  'settings.accountDeleted': 'Account deleted successfully.',
+  'settings.dataExport': 'Export my data',
+  'settings.dataExportHint': 'Download all your profile, matches, and activity data.',
+  'settings.dataExportRequested':
+    "Data export requested. You will receive an email when it's ready.",
+  'settings.language': 'Language',
+  'settings.uiLanguage': 'UI language',
+  'settings.workingLanguages': 'Working languages',
+  'settings.country': 'Country',
+  'settings.theme': 'Theme',
+  'settings.themeLight': 'Light',
+  'settings.themeDark': 'Dark',
+  'settings.themeSystem': 'System',
+  'settings.themeComingSoon': 'Theme switching is coming soon.',
 
   'footer.jobSeekers': 'Job seekers',
   'footer.browseJobs': 'Browse jobs',
@@ -617,6 +917,7 @@ const en: Strings = {
   'footer.advancedSearch': 'Advanced search',
   'footer.company': 'Company',
   'footer.about': 'About',
+  'footer.faq': 'FAQ',
   'footer.pricing': 'Pricing',
   'footer.contact': 'Contact',
   'footer.legal': 'Legal',
@@ -626,11 +927,15 @@ const en: Strings = {
   'footer.terms': 'Terms',
   'footer.rights': 'All rights reserved.',
   'footer.madeBy': 'A product of',
+  'footer.explore': 'Explore',
+  'footer.jobs': 'Jobs',
+  'footer.scholarships': 'Scholarships',
+  'footer.tenders': 'Tenders',
+  'footer.deals': 'Deals',
+  'footer.funding': 'Funding',
+  'settings.sessionManagementUnavailable': 'Session management is not exposed in this release.',
 };
 
-// ---------------------------------------------------------------------------
-// Spanish
-// ---------------------------------------------------------------------------
 export const CATALOG: Record<LangCode, Strings> = { en };
 
 export type StringKey = keyof Strings;

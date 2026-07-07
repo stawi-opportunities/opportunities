@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Facets } from '@/types/search';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSearchURLParams } from '@/hooks/useSearchURLParams';
 import Cascade from './Cascade';
 import { FiltersPanel } from './search/FiltersPanel';
@@ -8,7 +9,7 @@ import { SearchForm } from './search/SearchForm';
 import { useI18n } from '@/i18n/I18nProvider';
 
 /**
- * /search/ â€” query + filters + facets + pagination. Reads initial state
+ * /search/ -- query + filters + facets + pagination. Reads initial state
  * from the URL so deep links are shareable; writes back on changes via
  * history.replaceState so the back button stays predictable without full
  * navigations.
@@ -63,7 +64,7 @@ export default function Search() {
           </svg>
           {t('search.filters')}
           {hasActiveFilters && (
-            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">â€¢</span>
+            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">&bull;</span>
           )}
         </button>
         {hasActiveFilters && (
@@ -148,25 +149,25 @@ function MobileDrawer({
   onClose: () => void;
   t: (k: import('@/i18n/strings').StringKey) => string;
 }) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(panelRef, true, onClose);
   useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onEsc);
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', onEsc);
       document.body.style.overflow = '';
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-black/40 md:hidden"
+      className="fixed inset-0 z-50 flex flex-col bg-black/40 md:hidden animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-label={t('search.filters')}
       onClick={onClose}
     >
       <div
-        className="mt-auto flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl bg-white"
+        ref={panelRef}
+        className="mt-auto flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl bg-white animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button } from '@/components/ui/Button';
 import { createCheckout } from '@/api/billing';
 import { planById, type PlanId } from '@/utils/plans';
 
@@ -18,27 +19,27 @@ export function CompletePaymentPanel({ plan, status }: { plan: PlanId | null; st
         ? 'Re-activate any time to start receiving matches again.'
         : "We'll only run our matching engine on your CV once a plan is active. It takes two minutes.";
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 p-6">
-      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Action needed</p>
-      <h2 className="mt-2 text-xl font-bold text-gray-900">{headline}</h2>
-      <p className="mt-1 text-sm text-gray-700">{body}</p>
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 dark:border-amber-700 dark:bg-amber-900/20">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+        Action needed
+      </p>
+      <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white">{headline}</h2>
+      <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{body}</p>
       <div className="mt-4 flex flex-wrap gap-3">
         {plan && status !== 'cancelled' ? (
           <RetryCheckoutButton plan={plan} />
         ) : (
-          <a
-            href="/pricing/"
-            className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
-          >
+          <Button variant="primary" size="sm" onClick={() => (window.location.href = '/pricing/')}>
             Choose a plan
-          </a>
+          </Button>
         )}
-        <a
-          href="/onboarding/"
-          className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => (window.location.href = '/onboarding/')}
         >
           Edit preferences
-        </a>
+        </Button>
       </div>
     </div>
   );
@@ -75,15 +76,10 @@ function RetryCheckoutButton({ plan }: { plan: PlanId }) {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => void go()}
-        disabled={busy}
-        className="inline-flex items-center rounded-md bg-navy-900 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800 disabled:opacity-60"
-      >
+      <Button variant="primary" size="sm" type="button" onClick={() => void go()} disabled={busy}>
         {busy ? 'Opening payment…' : `Pay $${info.price}/mo`}
-      </button>
-      {err && <p className="mt-2 text-xs text-red-700">{err}</p>}
+      </Button>
+      {err && <p className="mt-2 text-xs text-red-700 dark:text-red-400">{err}</p>}
     </div>
   );
 }

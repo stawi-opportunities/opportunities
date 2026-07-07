@@ -19,6 +19,7 @@ interface Props {
   onStar: (opportunityId: string) => void;
   onUnstar: (opportunityId: string) => void;
   onApply: (opportunityId: string) => void;
+  isPending?: boolean;
 }
 
 const STATUS_KEYS: Record<string, StringKey> = {
@@ -30,32 +31,49 @@ const STATUS_KEYS: Record<string, StringKey> = {
   hired: 'status.hired',
 };
 
-export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: Props) {
+export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isPending }: Props) {
   const { t } = useI18n();
-  const title = snapshot?.title ?? t('common.loading');
+  const title = snapshot?.title ?? item.opportunity_id;
   const company = snapshot?.company ?? '';
   const location = snapshot?.location ?? '';
+  const isNew = snapshot?.posted_at
+    ? Date.now() - new Date(snapshot.posted_at).getTime() < 24 * 60 * 60 * 1000
+    : false;
+  const isMatched = (item.score ?? 0) > 0;
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-start sm:gap-4">
+    <li
+      className={`flex flex-col gap-3 rounded-lg border bg-white p-4 sm:flex-row sm:items-start sm:gap-4 dark:bg-navy-900 ${
+        isMatched
+          ? 'border-l-4 border-l-emerald-500 border-gray-200 dark:border-navy-700'
+          : 'border-gray-200 dark:border-navy-700'
+      }`}
+    >
       <div className="flex-1">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              {title}
+              {isNew && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                  {t('card.new')}
+                </span>
+              )}
+            </h3>
             {(company || location) && (
-              <p className="mt-0.5 text-sm text-gray-600">
+              <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
                 {company}
                 {company && location && ' · '}
                 {location}
               </p>
             )}
           </div>
-          {typeof item.score === 'number' && item.score > 0 && (
+          {isMatched && (
             <span
-              className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700"
+              className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               title="Match score"
             >
-              {Math.round(item.score * 100)}
+              {Math.round(item.score! * 100)}
               {t('card.match')}
             </span>
           )}
@@ -63,7 +81,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: P
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {item.application ? (
-            <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+            <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
               {STATUS_KEYS[item.application.status]
                 ? t(STATUS_KEYS[item.application.status]!)
                 : item.application.status}
@@ -72,7 +90,8 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: P
             <button
               type="button"
               onClick={() => onApply(item.opportunity_id)}
-              className="rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
+              disabled={isPending}
+              className="rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800 disabled:opacity-50"
             >
               {t('cta.apply')}
             </button>
@@ -82,7 +101,8 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: P
               type="button"
               onClick={() => onUnstar(item.opportunity_id)}
               aria-label="Remove from saved"
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-50"
+              disabled={isPending}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-amber-300 dark:hover:bg-amber-900/20"
             >
               ★ {t('cta.saved')}
             </button>
@@ -91,7 +111,8 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply }: P
               type="button"
               onClick={() => onStar(item.opportunity_id)}
               aria-label="Save opportunity"
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              disabled={isPending}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-300 dark:hover:bg-navy-800"
             >
               ☆ {t('cta.save')}
             </button>

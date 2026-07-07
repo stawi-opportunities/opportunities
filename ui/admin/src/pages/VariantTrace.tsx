@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { getVariantTrace, type VariantTimelineResponse } from '@/api/admin-client';
-import { TraceTimeline } from '@/components/TraceTimeline';
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import {
+  getVariantTrace,
+  type VariantTimelineResponse,
+} from "@/api/admin-client";
+import { TraceTimeline } from "@/components/TraceTimeline";
 
 // VariantTrace renders GET /admin/trace/variants/{id}: full join across
 // source, crawl job, and stage transitions for one parsed variant.
@@ -17,11 +20,11 @@ export function VariantTrace() {
     getVariantTrace(id)
       .then(setData)
       .catch((e: unknown) =>
-        setErr(e instanceof Error ? e.message : String(e))
+        setErr(e instanceof Error ? e.message : String(e)),
       );
   }, [id]);
 
-  if (err) return <pre style={{ color: 'crimson' }}>{err}</pre>;
+  if (err) return <pre style={{ color: "crimson" }}>{err}</pre>;
   if (!data) return <p>Loading variant…</p>;
 
   return (
@@ -31,17 +34,17 @@ export function VariantTrace() {
           Variant <code>{data.variant_id}</code>
         </h1>
         <p>
-          <strong>Source:</strong>{' '}
+          <strong>Source:</strong>{" "}
           <Link to={`/sources/${encodeURIComponent(data.source.id)}`}>
             {data.source.id}
-          </Link>{' '}
+          </Link>{" "}
           ({data.source.type})
           <br />
           <strong>Current stage:</strong> <code>{data.current_stage}</code>
           {data.opportunity_slug && (
             <>
               <br />
-              <strong>Opportunity:</strong>{' '}
+              <strong>Opportunity:</strong>{" "}
               <Link
                 to={`/opportunities/${encodeURIComponent(data.opportunity_slug)}`}
               >
@@ -62,10 +65,10 @@ export function VariantTrace() {
           <h2>Last error</h2>
           <pre
             style={{
-              color: 'crimson',
-              background: '#fee',
-              padding: '0.5rem',
-              whiteSpace: 'pre-wrap',
+              color: "crimson",
+              background: "#fee",
+              padding: "0.5rem",
+              whiteSpace: "pre-wrap",
             }}
           >
             {data.last_error}

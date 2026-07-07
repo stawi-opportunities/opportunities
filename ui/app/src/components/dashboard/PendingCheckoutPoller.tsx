@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { pollCheckoutStatus } from '@/api/billing';
+import { CelebrationOverlay } from '@/components/dashboard/CelebrationOverlay';
+import { useI18n } from '@/i18n/I18nProvider';
 import { QUERY_KEYS } from '@/constants/queryKeys';
 
 const PENDING_PROMPT_KEY = 'stawi.billing.pending_prompt_id';
@@ -24,6 +26,7 @@ const PENDING_PROMPT_KEY = 'stawi.billing.pending_prompt_id';
  */
 export function PendingCheckoutPoller() {
   const qc = useQueryClient();
+  const { t } = useI18n();
   const [state, setState] = useState<'idle' | 'polling' | 'paid' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -105,26 +108,22 @@ export function PendingCheckoutPoller() {
 
   if (state === 'idle') return null;
   if (state === 'paid') {
-    return (
-      <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-        Payment received — your subscription is now active.
-      </div>
-    );
+    return <CelebrationOverlay t={t} onDismiss={() => setState('idle')} />;
   }
   if (state === 'failed') {
     return (
-      <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+      <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
         {error ?? "Payment didn't complete."} You can retry below.
       </div>
     );
   }
   return (
     <div
-      className="mt-4 flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"
+      className="mt-4 flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
       role="status"
       aria-live="polite"
     >
-      <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+      <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent dark:border-blue-300 dark:border-t-transparent" />
       Waiting for your payment provider to confirm — this usually takes under a minute. You can
       leave this tab open; we'll update it automatically.
     </div>

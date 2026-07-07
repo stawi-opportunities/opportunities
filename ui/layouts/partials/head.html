@@ -18,6 +18,36 @@
 <!-- Canonical -->
 <link rel="canonical" href="{{ .Permalink }}">
 
+<!-- JSON-LD Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "{{ .Site.Title }}",
+  "url": "{{ .Site.BaseURL }}",
+  "description": "{{ .Site.Params.description }}",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "{{ .Site.BaseURL }}search/?q={search_term_string}"
+    },
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Stawi",
+  "url": "{{ .Site.BaseURL }}",
+  "logo": "{{ .Site.BaseURL }}images/logo.svg",
+  "description": "{{ .Site.Params.description }}",
+  "sameAs": []
+}
+</script>
+
 <!-- Google Fonts: Inter -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,7 +55,9 @@
 
 <!-- Favicon / icons -->
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
 <link rel="mask-icon" href="/favicon.svg" color="#45b739">
+<link rel="manifest" href="/site.webmanifest">
 <meta name="theme-color" content="#0c1226">
 
 {{/* Visitor locale — set on per-country shards (/l/<CC>/) so the
@@ -66,16 +98,13 @@
 <!-- Unsplash CDN hosts the profession photos on the home page. -->
 <link rel="preconnect" href="https://images.unsplash.com" crossorigin>
 
-<!-- Preload fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
 <!-- React app entry. In `hugo server` we load directly from the Vite dev
      server (HMR); in production we load the hashed bundle recorded in
      data/app_manifest.json by the Vite build. -->
 {{ if hugo.IsServer }}
-  <!-- Vite v6 serves all modules under the /app/ base path. -->
+  <!-- All three URLs include the /app/ prefix because vite.config.ts
+       sets base: "/app/" — Vite v6 dev server routes resources under it
+       the same way production does. -->
   <script type="module" src="http://localhost:5173/app/@vite/client"></script>
   <!-- @vitejs/plugin-react preamble. When Vite itself serves the HTML it
        injects this automatically; under Hugo we have to do it ourselves. -->

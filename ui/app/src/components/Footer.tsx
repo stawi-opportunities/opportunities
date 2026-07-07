@@ -1,30 +1,121 @@
 import { useI18n } from '@/i18n/I18nProvider';
+import { useToast } from '@/hooks/useToast';
 
 export default function Footer() {
   const { t } = useI18n();
+  const { push: toast } = useToast();
   const year = new Date().getFullYear();
 
   return (
-    <footer className="mt-auto border-t border-gray-200 bg-gray-50" role="contentinfo">
-      <div className="mx-auto max-w-7xl px-6 py-14 sm:px-8 lg:px-12">
-        <div className="grid grid-cols-2 gap-10">
+    <footer className="mt-auto bg-navy-950 text-gray-400" role="contentinfo">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 gap-10 sm:grid-cols-4">
+          <div className="col-span-2 sm:col-span-1">
+            <a href="/" aria-label="Stawi">
+              <img
+                src="/images/logo-white.svg"
+                alt="Stawi"
+                height="32"
+                className="h-8 w-auto opacity-90"
+              />
+            </a>
+            <p className="mt-4 text-sm leading-relaxed text-gray-500">
+              AI-powered opportunity matching &mdash; jobs, scholarships, tenders, deals and funding
+              &mdash; worldwide.
+            </p>
+          </div>
           <div>
-            <h3 className="text-base font-semibold text-navy-900">{t('footer.company')}</h3>
-            <ul className="mt-4 space-y-3" role="list">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-white">
+              {t('footer.explore')}
+            </h3>
+            <ul className="mt-4 space-y-2.5" role="list">
               <li>
-                <a href="/about/" className="text-base text-gray-700 hover:text-navy-900">
+                <a
+                  href="/jobs/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  {t('footer.jobs')}
+                </a>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
+                >
+                  {t('footer.scholarships')}
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
+                >
+                  {t('footer.tenders')}
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
+                >
+                  {t('footer.deals')}
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => toast(t('common.comingSoon'), 'info')}
+                  className="text-sm text-gray-400 transition-colors hover:text-white text-left"
+                >
+                  {t('footer.funding')}
+                </button>
+              </li>
+              <li>
+                <a
+                  href="/search/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  {t('footer.advancedSearch')}
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-white">
+              {t('footer.company')}
+            </h3>
+            <ul className="mt-4 space-y-2.5" role="list">
+              <li>
+                <a
+                  href="/about/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
                   {t('footer.about')}
                 </a>
               </li>
               <li>
-                <a href="/pricing/" className="text-base text-gray-700 hover:text-navy-900">
+                <a
+                  href="/faq/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  FAQ
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/pricing/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
                   {t('footer.pricing')}
                 </a>
               </li>
               <li>
                 <a
                   href="mailto:jobs@stawi.org"
-                  className="text-base text-gray-700 hover:text-navy-900"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
                 >
                   {t('footer.contact')}
                 </a>
@@ -32,28 +123,39 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <h3 className="text-base font-semibold text-navy-900">{t('footer.legal')}</h3>
-            <ul className="mt-4 space-y-3" role="list">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-white">
+              {t('footer.legal')}
+            </h3>
+            <ul className="mt-4 space-y-2.5" role="list">
               <li>
-                <a href="/terms/" className="text-base text-gray-700 hover:text-navy-900">
+                <a
+                  href="/terms/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
                   {t('footer.termsOfService')}
                 </a>
               </li>
               <li>
-                <a href="/privacy/" className="text-base text-gray-700 hover:text-navy-900">
+                <a
+                  href="/privacy/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
                   {t('footer.privacyPolicy')}
                 </a>
               </li>
             </ul>
           </div>
         </div>
-        <div className="mt-12 flex flex-col items-start justify-between gap-2 border-t border-gray-200 pt-6 sm:flex-row sm:items-center">
-          <p className="text-sm text-gray-600">
+        <div className="mt-12 flex flex-col items-start justify-between gap-2 border-t border-white/10 pt-6 sm:flex-row sm:items-center">
+          <p className="text-sm text-gray-500">
             &copy; {year} Stawi Jobs. {t('footer.rights')}
           </p>
           <p className="text-sm text-gray-500">
             {t('footer.madeBy')}{' '}
-            <a href="https://stawi.org" className="hover:text-gray-700">
+            <a
+              href="https://stawi.org"
+              className="text-gray-400 transition-colors hover:text-white"
+            >
               Stawi
             </a>
             .

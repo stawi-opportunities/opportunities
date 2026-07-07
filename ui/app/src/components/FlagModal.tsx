@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { authRuntime } from '@/auth/runtime';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
 
@@ -27,6 +28,8 @@ export default function FlagModal({ slug }: { slug: string }) {
   const [reason, setReason] = useState<string>('scam');
   const [description, setDescription] = useState('');
   const [state, setState] = useState<SubmitState>({ kind: 'idle' });
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(dialogRef, open, () => setOpen(false));
 
   function reset(): void {
     setReason('scam');
@@ -83,7 +86,10 @@ export default function FlagModal({ slug }: { slug: string }) {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+      <div
+        ref={dialogRef}
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+      >
         <h3 id="flag-modal-title" className="text-lg font-semibold text-gray-900">
           {t('flag.title')}
         </h3>

@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import {
   clearCheckpoint,
   fetchAdminJSON,
   listCheckpoints,
   type CheckpointRow,
   type SourceTraceResponse,
-} from '@/api/admin-client';
+} from "@/api/admin-client";
 
 // Renders GET /admin/trace/sources/{id}?since=24h as a 24-hour summary
 // plus a recent-crawls table. The endpoint is implemented in
@@ -30,16 +30,22 @@ export function SourceTrace() {
     setData(null);
     setErr(null);
     fetchAdminJSON<SourceTraceResponse>(
-      `/admin/trace/sources/${encodeURIComponent(id)}?since=24h`
+      `/admin/trace/sources/${encodeURIComponent(id)}?since=24h`,
     )
       .then(setData)
-      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) =>
+        setErr(e instanceof Error ? e.message : String(e)),
+      );
     reloadCheckpoints();
   }, [id, reloadCheckpoints]);
 
   const onReset = async (connectorType: string) => {
     if (!id) return;
-    if (!window.confirm(`Reset checkpoint for ${id}/${connectorType}? Next crawl will start from page 1.`)) {
+    if (
+      !window.confirm(
+        `Reset checkpoint for ${id}/${connectorType}? Next crawl will start from page 1.`,
+      )
+    ) {
       return;
     }
     setCpBusy(connectorType);
@@ -47,13 +53,16 @@ export function SourceTrace() {
       await clearCheckpoint(id, connectorType);
       reloadCheckpoints();
     } catch (e: unknown) {
-      window.alert('Failed to clear checkpoint: ' + (e instanceof Error ? e.message : String(e)));
+      window.alert(
+        "Failed to clear checkpoint: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
     } finally {
       setCpBusy(null);
     }
   };
 
-  if (err) return <pre style={{ color: 'crimson' }}>{err}</pre>;
+  if (err) return <pre style={{ color: "crimson" }}>{err}</pre>;
   if (!data) return <p>Loading source trace…</p>;
 
   const { source, summary, recent_crawls } = data;
@@ -62,16 +71,18 @@ export function SourceTrace() {
     <div>
       <header>
         <h1>
-          {source.id}{' '}
-          <small style={{ color: '#666', fontWeight: 'normal' }}>({source.type})</small>
+          {source.id}{" "}
+          <small style={{ color: "#666", fontWeight: "normal" }}>
+            ({source.type})
+          </small>
         </h1>
         <p>
-          <strong>{source.base_url}</strong> · {source.country} · status{' '}
-          <code>{source.status}</code> · health{' '}
+          <strong>{source.base_url}</strong> · {source.country} · status{" "}
+          <code>{source.status}</code> · health{" "}
           <code>{source.health_score.toFixed(2)}</code>
         </p>
         {source.next_crawl_at && (
-          <p style={{ color: '#666' }}>
+          <p style={{ color: "#666" }}>
             Next crawl at {new Date(source.next_crawl_at).toLocaleString()}
           </p>
         )}
@@ -105,11 +116,13 @@ export function SourceTrace() {
           <>
             <h3>Rejection reasons</h3>
             <ul>
-              {Object.entries(summary.rejection_reasons).map(([reason, count]) => (
-                <li key={reason}>
-                  <code>{reason}</code> × {count}
-                </li>
-              ))}
+              {Object.entries(summary.rejection_reasons).map(
+                ([reason, count]) => (
+                  <li key={reason}>
+                    <code>{reason}</code> × {count}
+                  </li>
+                ),
+              )}
             </ul>
           </>
         )}
@@ -118,9 +131,9 @@ export function SourceTrace() {
       <section>
         <h2>Iterator checkpoints</h2>
         {checkpoints.length === 0 ? (
-          <p style={{ color: '#666' }}>
-            No active checkpoints — last crawl completed cleanly (or
-            the connector doesn't participate in resume).
+          <p style={{ color: "#666" }}>
+            No active checkpoints — last crawl completed cleanly (or the
+            connector doesn't participate in resume).
           </p>
         ) : (
           <table>
@@ -136,10 +149,18 @@ export function SourceTrace() {
             <tbody>
               {checkpoints.map((c) => (
                 <tr key={`${c.source_id}/${c.connector_type}`}>
-                  <td><code>{c.connector_type}</code></td>
+                  <td>
+                    <code>{c.connector_type}</code>
+                  </td>
                   <td>{c.page_idx}</td>
-                  <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {c.last_url ?? ''}
+                  <td
+                    style={{
+                      maxWidth: 320,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {c.last_url ?? ""}
                   </td>
                   <td>{new Date(c.last_checkpoint_at).toLocaleString()}</td>
                   <td>
@@ -147,7 +168,9 @@ export function SourceTrace() {
                       onClick={() => onReset(c.connector_type)}
                       disabled={cpBusy === c.connector_type}
                     >
-                      {cpBusy === c.connector_type ? 'Clearing…' : 'Reset checkpoint'}
+                      {cpBusy === c.connector_type
+                        ? "Clearing…"
+                        : "Reset checkpoint"}
                     </button>
                   </td>
                 </tr>
@@ -160,7 +183,7 @@ export function SourceTrace() {
       <section>
         <h2>Recent crawls</h2>
         {recent_crawls.length === 0 ? (
-          <p style={{ color: '#666' }}>No crawls in the window.</p>
+          <p style={{ color: "#666" }}>No crawls in the window.</p>
         ) : (
           <table>
             <thead>
@@ -181,7 +204,7 @@ export function SourceTrace() {
                   <td>{c.jobs_found}</td>
                   <td>{c.jobs_stored}</td>
                   <td>{c.duration_ms}</td>
-                  <td>{c.error_code ?? ''}</td>
+                  <td>{c.error_code ?? ""}</td>
                 </tr>
               ))}
             </tbody>
