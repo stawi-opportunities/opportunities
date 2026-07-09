@@ -6,8 +6,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/pitabwire/frame/security"
-	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
+	"github.com/pitabwire/frame/v2/security"
+	securityhttp "github.com/pitabwire/frame/v2/security/interceptors/httptor"
 )
 
 type candidateKey struct{}

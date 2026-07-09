@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pitabwire/frame/cache"
-	framevalkey "github.com/pitabwire/frame/cache/valkey"
-	"github.com/pitabwire/frame/data"
+	"github.com/pitabwire/frame/v2/cache"
+	framevalkey "github.com/pitabwire/frame/v2/cache/valkey"
+	"github.com/pitabwire/frame/v2/data"
 )
 
 // ValkeyDebouncer is the production Debouncer backed by Valkey/Redis.

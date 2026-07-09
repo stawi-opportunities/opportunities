@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/pitabwire/frame"
-	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/v2"
+	"github.com/pitabwire/frame/v2/datastore"
 	"github.com/pitabwire/util"
 
 	appsconfig "github.com/stawi-opportunities/opportunities/apps/applications/config"

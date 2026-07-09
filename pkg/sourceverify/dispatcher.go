@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/pitabwire/frame/workerpool"
+	"github.com/pitabwire/frame/v2/workerpool"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/pitabwire/frame/cache"
+	"github.com/pitabwire/frame/v2/cache"
 )
 
 // startCounters returns a *Counters wired against Frame's

@@ -9,8 +9,9 @@ import (
 	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
 	"buf.build/gen/go/antinvestor/payment/connectrpc/go/v1/paymentv1connect"
 	"buf.build/gen/go/antinvestor/profile/connectrpc/go/profile/v1/profilev1connect"
-	apis "github.com/antinvestor/common"
-	"github.com/antinvestor/common/connection"
+	apis "github.com/antinvestor/common/v2"
+	"github.com/antinvestor/common/v2/connection"
+	"github.com/antinvestor/common/v2/servicecatalog"
 	"github.com/antinvestor/service-trustage/gen/go/workflow/v1/workflowv1connect"
 	"github.com/pitabwire/util"
 )
@@ -64,7 +65,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	if cc.NotificationURI != "" {
 		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.NotificationURI,
-			Audiences: []string{"service_notification"},
+			ServiceID:             servicecatalog.ServiceNotification,
 		}, notificationv1connect.NewNotificationServiceClient)
 		if err != nil {
 			record("notification", err)
@@ -76,7 +77,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	if cc.FileURI != "" {
 		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.FileURI,
-			Audiences: []string{"service_files"},
+			ServiceID:             servicecatalog.ServiceFiles,
 		}, filesv1connect.NewFilesServiceClient)
 		if err != nil {
 			record("files", err)
@@ -96,7 +97,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	if cc.BillingURI != "" {
 		payCli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.BillingURI,
-			Audiences: []string{"service_payment"},
+			ServiceID:             servicecatalog.ServicePayment,
 		}, paymentv1connect.NewPaymentServiceClient)
 		if err != nil {
 			record("payment", err)
@@ -106,7 +107,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 
 		billCli, billErr := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.BillingURI,
-			Audiences: []string{"service_billing"},
+			ServiceID:             servicecatalog.ServiceBilling,
 		}, billingv1connect.NewBillingServiceClient)
 		if billErr != nil {
 			record("billing", billErr)
@@ -118,7 +119,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	if cc.ProfileURI != "" {
 		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.ProfileURI,
-			Audiences: []string{"service_profile"},
+			ServiceID:             servicecatalog.ServiceProfile,
 		}, profilev1connect.NewProfileServiceClient)
 		if err != nil {
 			record("profile", err)
@@ -140,6 +141,6 @@ func NewTrustageWorkflowClient(
 ) (workflowv1connect.WorkflowServiceClient, error) {
 	return connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 		Endpoint:  trustageURL,
-		Audiences: []string{"service_trustage"},
+		ServiceID:             servicecatalog.ServiceTrustage,
 	}, workflowv1connect.NewWorkflowServiceClient)
 }

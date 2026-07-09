@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/v2"
 )
 
 // frameInternalEventsQueue is the default queue name Frame registers

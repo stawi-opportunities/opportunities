@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"

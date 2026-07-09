@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-	"github.com/pitabwire/frame/security"
+	"github.com/pitabwire/frame/v2/security"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/freshness"

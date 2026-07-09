@@ -4,7 +4,7 @@ package config
 import (
 	"time"
 
-	fconfig "github.com/pitabwire/frame/config"
+	fconfig "github.com/pitabwire/frame/v2/config"
 )
 
 // Config for apps/frontier-worker. Frame base handles Postgres +

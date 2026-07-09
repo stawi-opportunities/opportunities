@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
