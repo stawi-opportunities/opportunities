@@ -1,6 +1,6 @@
 package config
 
-import "github.com/pitabwire/frame/config"
+import "github.com/pitabwire/frame/v2/config"
 
 // Config drives the applications service. Defaults are conservative:
 // the service ships flag-off so production deploys are reversible per

@@ -28,11 +28,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pitabwire/frame"
-	frameclient "github.com/pitabwire/frame/client"
-	fconfig "github.com/pitabwire/frame/config"
-	"github.com/pitabwire/frame/datastore"
-	"github.com/pitabwire/frame/security"
+	"github.com/pitabwire/frame/v2"
+	frameclient "github.com/pitabwire/frame/v2/client"
+	fconfig "github.com/pitabwire/frame/v2/config"
+	"github.com/pitabwire/frame/v2/datastore"
+	"github.com/pitabwire/frame/v2/security"
 	"github.com/pitabwire/util"
 
 	"github.com/aws/aws-sdk-go-v2/aws"

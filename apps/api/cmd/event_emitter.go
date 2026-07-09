@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/v2"
 )
 
 // frameEmitter is used only for control-plane commands and definition change

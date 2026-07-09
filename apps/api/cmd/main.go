@@ -15,10 +15,10 @@ import (
 	"time"
 
 	env "github.com/caarlos0/env/v11"
-	"github.com/pitabwire/frame"
-	frameclient "github.com/pitabwire/frame/client"
-	fconfig "github.com/pitabwire/frame/config"
-	"github.com/pitabwire/frame/datastore"
+	"github.com/pitabwire/frame/v2"
+	frameclient "github.com/pitabwire/frame/v2/client"
+	fconfig "github.com/pitabwire/frame/v2/config"
+	"github.com/pitabwire/frame/v2/datastore"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"

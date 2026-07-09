@@ -15,9 +15,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/pitabwire/frame"
-	"github.com/pitabwire/frame/datastore"
-	"github.com/pitabwire/frame/events"
+	"github.com/pitabwire/frame/v2"
+	"github.com/pitabwire/frame/v2/datastore"
+	"github.com/pitabwire/frame/v2/events"
 	"github.com/pitabwire/util"
 
 	frontiercfg "github.com/stawi-opportunities/opportunities/apps/frontier-worker/config"

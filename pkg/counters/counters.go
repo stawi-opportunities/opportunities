@@ -26,9 +26,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pitabwire/frame/cache"
-	framevalkey "github.com/pitabwire/frame/cache/valkey"
-	"github.com/pitabwire/frame/data"
+	"github.com/pitabwire/frame/v2/cache"
+	framevalkey "github.com/pitabwire/frame/v2/cache/valkey"
+	"github.com/pitabwire/frame/v2/data"
 )
 
 // Counters is the package-level handle. Construct with NewClient (or

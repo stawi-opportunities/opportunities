@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pitabwire/frame"
-	fconfig "github.com/pitabwire/frame/config"
-	"github.com/pitabwire/frame/datastore"
-	"github.com/pitabwire/frame/events"
-	securityhttp "github.com/pitabwire/frame/security/interceptors/httptor"
+	"github.com/pitabwire/frame/v2"
+	fconfig "github.com/pitabwire/frame/v2/config"
+	"github.com/pitabwire/frame/v2/datastore"
+	"github.com/pitabwire/frame/v2/events"
+	securityhttp "github.com/pitabwire/frame/v2/security/interceptors/httptor"
 	"github.com/pitabwire/util"
 
 	"github.com/antinvestor/service-trustage/client/workflows"

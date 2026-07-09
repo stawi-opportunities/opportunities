@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/pitabwire/frame"
-	"github.com/pitabwire/frame/frametests"
+	"github.com/pitabwire/frame/v2"
+	"github.com/pitabwire/frame/v2/frametests"
 
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 )

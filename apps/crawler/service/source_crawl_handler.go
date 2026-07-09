@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/pitabwire/frame"
+	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
