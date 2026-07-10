@@ -22,8 +22,9 @@ export interface SiteConfig {
 const DEFAULTS: SiteConfig = {
   candidatesAPIURL: "https://api.stawi.org",
   oidcIssuer: "https://oauth2.stawi.org",
-  oidcClientID: "d7is2kspf2t7cl19qlpg",
-  oidcInstallationID: "d7gi6lkpf2t67dlsqrhg",
+  // Production SPA client + partition (same as ui/app).
+  oidcClientID: "d7is2kspf2t7cl19qlp0",
+  oidcInstallationID: "d7gi6lkpf2t67dlsqreg",
   oidcRedirectURI:
     typeof window !== "undefined"
       ? `${window.location.origin}/auth/callback/`

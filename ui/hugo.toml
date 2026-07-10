@@ -38,7 +38,10 @@ title = "Stawi Opportunities"
   # Override at build time via HUGO_PARAMS_oidcRedirectURI when you need to
   # pin a callback (e.g. the Makefile ui-dev target pins :5170).
   oidcIssuer         = "https://oauth2.stawi.org"
-  oidcClientID       = "d7is2kspf2t7cl19qlpg"
+  # Production public SPA client + partition (tenancy greenfield seed).
+  # Dev/local: override with HUGO_PARAMS_oidcClientID=d7is2kspf2t7cl19qlpg
+  # and HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqrhg.
+  oidcClientID       = "d7is2kspf2t7cl19qlp0"
   oidcInstallationID = "d7gi6lkpf2t67dlsqreg"
 
   # PostHog — posthogApiKey is the public project API key ("phc_..."),
