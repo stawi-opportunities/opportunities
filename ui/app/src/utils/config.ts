@@ -34,8 +34,10 @@ const DEFAULTS: SiteConfig = {
   // api-gateway-path-prefix-convention memory for the org-wide rule.
   candidatesAPIURL: 'https://api.stawi.org',
   oidcIssuer: 'https://oauth2.stawi.org',
-  oidcClientID: 'd7is2kspf2t7cl19qlpg',
-  oidcInstallationID: 'd7gi6lkpf2t67dlsqrhg',
+  // Production SPA client + partition. Keep in sync with ui/hugo.toml and
+  // the tenancy greenfield seed (client d7is2kspf2t7cl19qlp0).
+  oidcClientID: 'd7is2kspf2t7cl19qlp0',
+  oidcInstallationID: 'd7gi6lkpf2t67dlsqreg',
   oidcRedirectURI:
     typeof window !== 'undefined'
       ? `${window.location.origin}/auth/callback/`
