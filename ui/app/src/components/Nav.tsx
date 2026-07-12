@@ -1,17 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
 import { StawiAuth } from './StawiAuth';
+import { useToast } from '@/hooks/useToast';
+import { useI18n } from '@/i18n/I18nProvider';
 
-const browseItems = [
-  { href: '/jobs/', emoji: '≡ƒÆ╝', label: 'Jobs', sub: 'Full-time, remote & more' },
-  { href: '/scholarships/', emoji: '≡ƒÄô', label: 'Scholarships', sub: 'Grants & bursaries' },
-  { href: '/tenders/', emoji: '≡ƒôï', label: 'Tenders', sub: 'RFPs & procurement' },
-  { href: '/deals/', emoji: '≡ƒÅ╖∩╕Å', label: 'Deals', sub: 'Curated discounts' },
-  { href: '/funding/', emoji: '≡ƒÆ░', label: 'Funding', sub: 'Grants & investment' },
+const browseItems: Array<{
+  href: string;
+  emoji: string;
+  label: string;
+  sub: string;
+  comingSoon?: boolean;
+}> = [
+  { href: '/jobs/', emoji: '💼', label: 'Jobs', sub: 'Full-time, remote & more' },
+  {
+    href: '/scholarships/',
+    emoji: '🎓',
+    label: 'Scholarships',
+    sub: 'Grants & bursaries',
+    comingSoon: true,
+  },
+  { href: '/tenders/', emoji: '📋', label: 'Tenders', sub: 'RFPs & procurement', comingSoon: true },
+  { href: '/deals/', emoji: '🏷️', label: 'Deals', sub: 'Curated discounts', comingSoon: true },
+  {
+    href: '/funding/',
+    emoji: '💰',
+    label: 'Funding',
+    sub: 'Grants & investment',
+    comingSoon: true,
+  },
 ];
 
 function BrowseDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { push: toast } = useToast();
+  const { t } = useI18n();
 
   useEffect(() => {
     if (!open) return;
@@ -51,22 +73,42 @@ function BrowseDropdown() {
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-xl border border-gray-100 bg-white shadow-lg ring-1 ring-black/5">
           <div className="p-1.5">
-            {browseItems.map(({ href, emoji, label, sub }) => (
-              <a
-                key={href}
-                href={href}
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900"
-              >
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base">
-                  {emoji}
-                </span>
-                <div>
-                  <div className="font-medium">{label}</div>
-                  <div className="text-xs text-gray-400">{sub}</div>
-                </div>
-              </a>
-            ))}
+            {browseItems.map(({ href, emoji, label, sub, comingSoon }) =>
+              comingSoon ? (
+                <button
+                  key={href}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    toast(t('common.comingSoon'), 'info');
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900 text-left"
+                >
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base">
+                    {emoji}
+                  </span>
+                  <div>
+                    <div className="font-medium">{label}</div>
+                    <div className="text-xs text-gray-400">{sub}</div>
+                  </div>
+                </button>
+              ) : (
+                <a
+                  key={href}
+                  href={href}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900"
+                >
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base">
+                    {emoji}
+                  </span>
+                  <div>
+                    <div className="font-medium">{label}</div>
+                    <div className="text-xs text-gray-400">{sub}</div>
+                  </div>
+                </a>
+              )
+            )}
           </div>
           <div className="border-t border-gray-100 px-3 py-2">
             <a
@@ -93,21 +135,34 @@ function BrowseDropdown() {
 }
 
 function MobileMenu({ open }: { open: boolean }) {
+  const { push: toast } = useToast();
+  const { t } = useI18n();
   if (!open) return null;
   return (
     <div className="border-t border-gray-100 bg-white px-4 pb-4 pt-2 md:hidden">
       <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
         Browse
       </p>
-      {browseItems.map(({ href, emoji, label }) => (
-        <a
-          key={href}
-          href={href}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          {emoji} {label}
-        </a>
-      ))}
+      {browseItems.map(({ href, emoji, label, comingSoon }) =>
+        comingSoon ? (
+          <button
+            key={href}
+            type="button"
+            onClick={() => toast(t('common.comingSoon'), 'info')}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+          >
+            {emoji} {label}
+          </button>
+        ) : (
+          <a
+            key={href}
+            href={href}
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            {emoji} {label}
+          </a>
+        )
+      )}
       <div className="my-2 border-t border-gray-100" />
       <a
         href="/categories/"

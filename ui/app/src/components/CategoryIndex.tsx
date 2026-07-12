@@ -1,10 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { listCategories } from '@/api/search';
+import { useToast } from '@/hooks/useToast';
+import { useI18n } from '@/i18n/I18nProvider';
 
-const OPPORTUNITY_TYPES = [
+const OPPORTUNITY_TYPES: Array<{
+  href: string;
+  emoji: string;
+  label: string;
+  description: string;
+  color: string;
+  badge: string;
+  comingSoon?: boolean;
+}> = [
   {
     href: '/jobs/',
-    emoji: '≡ƒÆ╝',
+    emoji: '💼',
     label: 'Jobs',
     description: 'Full-time, part-time, remote & contract roles across every industry.',
     color: 'bg-blue-50 border-blue-100 hover:border-blue-300 hover:bg-blue-50/80',
@@ -12,39 +22,45 @@ const OPPORTUNITY_TYPES = [
   },
   {
     href: '/scholarships/',
-    emoji: '≡ƒÄô',
+    emoji: '🎓',
     label: 'Scholarships',
     description: 'Grants, bursaries and fellowships for students and researchers.',
     color: 'bg-green-50 border-green-100 hover:border-green-300 hover:bg-green-50/80',
     badge: 'bg-green-100 text-green-700',
+    comingSoon: true,
   },
   {
     href: '/tenders/',
-    emoji: '≡ƒôï',
+    emoji: '📋',
     label: 'Tenders',
     description: 'Government and private sector RFPs, bids and procurement notices.',
     color: 'bg-orange-50 border-orange-100 hover:border-orange-300 hover:bg-orange-50/80',
     badge: 'bg-orange-100 text-orange-700',
+    comingSoon: true,
   },
   {
     href: '/deals/',
-    emoji: '≡ƒÅ╖∩╕Å',
+    emoji: '🏷️',
     label: 'Deals',
     description: 'Curated discounts, offers and partnerships for professionals.',
     color: 'bg-pink-50 border-pink-100 hover:border-pink-300 hover:bg-pink-50/80',
     badge: 'bg-pink-100 text-pink-700',
+    comingSoon: true,
   },
   {
     href: '/funding/',
-    emoji: '≡ƒÆ░',
+    emoji: '💰',
     label: 'Funding',
     description: 'Grants, venture capital and investor opportunities for ventures.',
     color: 'bg-purple-50 border-purple-100 hover:border-purple-300 hover:bg-purple-50/80',
     badge: 'bg-purple-100 text-purple-700',
+    comingSoon: true,
   },
-] as const;
+];
 
 export default function CategoryIndex() {
+  const { push: toast } = useToast();
+  const { t } = useI18n();
   const q = useQuery({
     queryKey: ['categories'],
     queryFn: () => listCategories(),
@@ -92,34 +108,65 @@ export default function CategoryIndex() {
             Choose the kind of opportunity you are looking for.
           </p>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {OPPORTUNITY_TYPES.map(({ href, emoji, label, description, color, badge }) => (
-              <a
-                key={href}
-                href={href}
-                className={`group flex flex-col rounded-xl border p-5 transition-all duration-150 ${color}`}
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${badge}`}
+            {OPPORTUNITY_TYPES.map(
+              ({ href, emoji, label, description, color, badge, comingSoon }) =>
+                comingSoon ? (
+                  <button
+                    key={href}
+                    type="button"
+                    onClick={() => toast(t('common.comingSoon'), 'info')}
+                    className={`group flex w-full flex-col rounded-xl border p-5 text-left transition-all duration-150 ${color}`}
                   >
-                    {emoji}
-                  </span>
-                  <span className="text-base font-semibold text-gray-900 group-hover:text-navy-900">
-                    {label}
-                  </span>
-                  <svg
-                    className="ml-auto h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-navy-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${badge}`}
+                      >
+                        {emoji}
+                      </span>
+                      <span className="text-base font-semibold text-gray-900 group-hover:text-navy-900">
+                        {label}
+                      </span>
+                      <svg
+                        className="ml-auto h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-navy-600"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+                      </svg>
+                    </div>
+                    <p className="mt-3 text-sm leading-relaxed text-gray-500">{description}</p>
+                  </button>
+                ) : (
+                  <a
+                    key={href}
+                    href={href}
+                    className={`group flex flex-col rounded-xl border p-5 transition-all duration-150 ${color}`}
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
-                  </svg>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-gray-500">{description}</p>
-              </a>
-            ))}
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${badge}`}
+                      >
+                        {emoji}
+                      </span>
+                      <span className="text-base font-semibold text-gray-900 group-hover:text-navy-900">
+                        {label}
+                      </span>
+                      <svg
+                        className="ml-auto h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-navy-600"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+                      </svg>
+                    </div>
+                    <p className="mt-3 text-sm leading-relaxed text-gray-500">{description}</p>
+                  </a>
+                )
+            )}
           </div>
         </div>
 
