@@ -11,6 +11,10 @@ import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { AgentCard } from '@/components/dashboard/AgentCard';
 import { BillingPanel } from '@/components/dashboard/BillingPanel';
 import { PreferencesPanel } from '@/components/dashboard/PreferencesPanel';
+import { SavedJobsPanel } from '@/components/dashboard/SavedJobsPanel';
+import { ApplicationsPanel } from '@/components/dashboard/ApplicationsPanel';
+import { OverviewPanel } from '@/components/dashboard/OverviewPanel';
+import { GuidedTour, isTourCompleted } from '@/components/dashboard/GuidedTour';
 import { CompletePaymentPanel } from '@/components/dashboard/CompletePaymentPanel';
 import { PendingCheckoutPoller } from '@/components/dashboard/PendingCheckoutPoller';
 import { WelcomeBanner } from '@/components/dashboard/WelcomeBanner';
@@ -22,14 +26,25 @@ import { PlanChangeModal } from '@/components/dashboard/PlanChangeModal';
 import { CancelSubscriptionModal } from '@/components/dashboard/CancelSubscriptionModal';
 import { SettingsPage } from '@/components/settings/SettingsPage';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { ProfileCompleteness } from '@/components/dashboard/ProfileCompleteness';
+import { QuickActions } from '@/components/dashboard/QuickActions';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTheme } from '@/providers/ThemeProvider';
 
 function getSectionFromHash(): SectionId {
   const hash = window.location.hash.replace('#', '');
-  const valid: SectionId[] = ['feed', 'matches', 'saved', 'preferences', 'billing', 'settings'];
-  return valid.includes(hash as SectionId) ? (hash as SectionId) : 'feed';
+  const valid: SectionId[] = [
+    'overview',
+    'feed',
+    'matches',
+    'saved',
+    'applications',
+    'preferences',
+    'billing',
+    'settings',
+  ];
+  return valid.includes(hash as SectionId) ? (hash as SectionId) : 'overview';
 }
 
 export default function Dashboard() {
@@ -38,13 +53,16 @@ export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<SectionId>(getSectionFromHash);
   const [showPlanChange, setShowPlanChange] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   const subQ = useSubscription();
 
   const sectionLabels: Record<SectionId, string> = {
+    overview: 'Overview',
     feed: 'Feed',
     matches: 'Matches',
     saved: 'Saved',
+    applications: 'Applications',
     preferences: 'Preferences',
     billing: 'Billing',
     settings: 'Settings',
@@ -64,6 +82,12 @@ export default function Dashboard() {
       window.location.assign('/onboarding/');
     }
   }, [state, subQ.isLoading, subQ.data?.status]);
+
+  useEffect(() => {
+    if (!isTourCompleted()) {
+      setShowTour(true);
+    }
+  }, []);
 
   const navigate = (id: SectionId) => {
     window.location.hash = id;
@@ -99,11 +123,16 @@ export default function Dashboard() {
       <PendingCheckoutPoller />
       {isActive && (
         <div className="mt-4">
-          <WelcomeBanner t={t} />
+          <WelcomeBanner t={t} onStartTour={() => setShowTour(true)} />
         </div>
       )}
 
-      <div className="mt-4">
+      {isActive && (
+        <div className="mt-4">
+          <QuickActions />
+        </div>
+      )}
+      <div className="sticky top-0 z-10 -mx-4 bg-white px-4 pb-2 dark:bg-navy-900 sm:static sm:mx-0 sm:px-0 sm:pb-0">
         <DashboardBreadcrumbs active={activeSection} t={t} />
       </div>
 
@@ -125,6 +154,9 @@ export default function Dashboard() {
             matchCount={sub?.queued_matches}
           />
           <div className="mt-6">
+            <ProfileCompleteness />
+          </div>
+          <div className="mt-6">
             <ProfileMount />
           </div>
         </aside>
@@ -133,6 +165,11 @@ export default function Dashboard() {
             <CompletePaymentPanel plan={plan} status={subscription} />
           ) : (
             <>
+              {activeSection === 'overview' && (
+                <ErrorBoundary>
+                  <OverviewPanel />
+                </ErrorBoundary>
+              )}
               {activeSection === 'feed' && (
                 <ErrorBoundary>
                   {plan === 'managed' && sub?.agent && <AgentCard agent={sub.agent} />}
@@ -152,9 +189,12 @@ export default function Dashboard() {
               )}
               {activeSection === 'saved' && (
                 <ErrorBoundary>
-                  <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-gray-500 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-400">
-                    Saved opportunities will appear here.
-                  </div>
+                  <SavedJobsPanel />
+                </ErrorBoundary>
+              )}
+              {activeSection === 'applications' && (
+                <ErrorBoundary>
+                  <ApplicationsPanel />
                 </ErrorBoundary>
               )}
               {activeSection === 'preferences' && (
@@ -187,6 +227,8 @@ export default function Dashboard() {
       <div className="mt-8 lg:hidden">
         <ProfileMount />
       </div>
+
+      {showTour && <GuidedTour onDismiss={() => setShowTour(false)} />}
 
       {showPlanChange && plan && (
         <PlanChangeModal
