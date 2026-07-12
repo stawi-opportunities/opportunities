@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import Cascade from './Cascade';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
-import type { FeedParams } from '@/types/search';
+import type { FeedParams, SearchParams } from '@/types/search';
+import { SortPicker } from '@/components/ui/SortPicker';
 
 type FilterChip = {
   label: string;
@@ -21,6 +22,7 @@ const CHIPS: FilterChip[] = [
 export default function JobList() {
   const { preferredCountries, preferredLanguages } = useCandidateProfile();
   const [active, setActive] = useState<Partial<Record<FilterChip['key'], string>>>({});
+  const [sort, setSort] = useState<SearchParams['sort']>('recent');
 
   function toggle(chip: FilterChip) {
     setActive((prev) => {
@@ -34,7 +36,7 @@ export default function JobList() {
     });
   }
 
-  const filters = useMemo<FeedParams>(() => ({ sort: 'recent', ...active }), [active]);
+  const filters = useMemo<FeedParams>(() => ({ sort, ...active }), [sort, active]);
 
   const hasFilters = Object.keys(active).length > 0;
 
@@ -90,6 +92,9 @@ export default function JobList() {
         <aside className="hidden w-64 shrink-0 lg:block">
           <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-gray-800">Filters</h3>
+            <div className="mt-4">
+              <SortPicker value={sort} onChange={setSort} />
+            </div>
             <div className="mt-4 space-y-4">
               {['remote_type', 'employment_type', 'seniority'].map((key) => (
                 <div key={key}>

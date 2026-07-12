@@ -30,7 +30,7 @@ export function listCategories(): Promise<CategoryListResponse> {
 
 export function categoryJobs(
   slug: string,
-  opts: { cursor?: string; limit?: number } = {}
+  opts: { cursor?: string; limit?: number; sort?: SearchParams['sort'] } = {}
 ): Promise<CategoryJobsResponse> {
   return jobsApiGet<CategoryJobsResponse>(`/api/categories/${encodeURIComponent(slug)}/jobs`, opts);
 }

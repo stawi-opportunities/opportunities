@@ -1,5 +1,6 @@
 import { categoryLabel } from '@/utils/format';
 import type { FacetEntry, Facets, SearchParams } from '@/types/search';
+import { SortPicker } from '@/components/ui/SortPicker';
 
 const REMOTE_FACET_LABELS: Record<string, string> = {
   remote: 'Remote',
@@ -74,32 +75,6 @@ export function FiltersPanel({
           />
         </>
       )}
-    </div>
-  );
-}
-
-function SortPicker({
-  value,
-  onChange,
-}: {
-  value: SearchParams['sort'];
-  onChange: (v: SearchParams['sort']) => void;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-        Sort
-      </label>
-      <select
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value as SearchParams['sort'])}
-        className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
-      >
-        <option value="relevance">Relevance</option>
-        <option value="recent">Most recent</option>
-        <option value="quality">Highest quality</option>
-        <option value="salary_high">Salary: high to low</option>
-      </select>
     </div>
   );
 }
