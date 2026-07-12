@@ -22,9 +22,11 @@ export interface Strings {
   'nav.language': string;
   'nav.categoriesHint': string;
   'nav.dashboard': string;
+  'nav.overview': string;
   'nav.feed': string;
   'nav.matches': string;
   'nav.saved': string;
+  'nav.applications': string;
   'nav.preferences': string;
   'nav.billing': string;
   'nav.settings': string;
@@ -493,9 +495,11 @@ const en: Strings = {
   'nav.language': 'Language',
   'nav.categoriesHint': 'Categories load once jobs are indexed.',
   'nav.dashboard': 'Dashboard',
+  'nav.overview': 'Overview',
   'nav.feed': 'Feed',
   'nav.matches': 'Matches',
   'nav.saved': 'Saved',
+  'nav.applications': 'Applications',
   'nav.preferences': 'Preferences',
   'nav.billing': 'Billing',
   'nav.settings': 'Settings',

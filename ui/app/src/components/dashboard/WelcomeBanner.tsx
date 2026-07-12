@@ -20,7 +20,13 @@ function setVisitCount(n: number) {
   }
 }
 
-export function WelcomeBanner({ t }: { t: (k: StringKey, fallback?: string) => string }) {
+export function WelcomeBanner({
+  t,
+  onStartTour,
+}: {
+  t: (k: StringKey, fallback?: string) => string;
+  onStartTour?: () => void;
+}) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -54,9 +60,13 @@ export function WelcomeBanner({ t }: { t: (k: StringKey, fallback?: string) => s
         {t('dash.welcomeTitle')}
       </h2>
       <p className="mt-1 text-sm text-blue-800 dark:text-blue-300">{t('dash.welcomeBody')}</p>
-      <p className="mt-3 text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300">
+      <button
+        type="button"
+        onClick={onStartTour}
+        className="mt-3 text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
+      >
         {t('dash.welcomeTour')}
-      </p>
+      </button>
     </div>
   );
 }

@@ -240,99 +240,103 @@ export function OpportunitiesFeed() {
   );
 
   return (
-    <section aria-label="Your opportunities" className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2" role="tablist">
-        {FILTER_KEYS.map((f) => {
-          const active = f.id === filter;
-          const count = counts[f.id];
-          return (
-            <button
-              key={f.id}
-              role="tab"
-              aria-selected={active}
-              type="button"
-              onClick={() => onSelectFilter(f.id)}
-              className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                active
-                  ? 'bg-navy-900 text-white'
-                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
-              }`}
-            >
-              {t(f.labelKey)}
-              {count > 0 && <span className="ml-1.5 text-xs opacity-70">({count})</span>}
-            </button>
-          );
-        })}
+    <section aria-label="Your opportunities">
+      <div className="sticky top-0 z-10 -mx-4 bg-white px-4 pb-3 shadow-sm dark:bg-navy-900 sm:static sm:mx-0 sm:px-0 sm:pb-0 sm:shadow-none">
+        <div className="flex flex-wrap items-center gap-2 pt-2" role="tablist">
+          {FILTER_KEYS.map((f) => {
+            const active = f.id === filter;
+            const count = counts[f.id];
+            return (
+              <button
+                key={f.id}
+                role="tab"
+                aria-selected={active}
+                type="button"
+                onClick={() => onSelectFilter(f.id)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-navy-900 text-white'
+                    : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
+                }`}
+              >
+                {t(f.labelKey)}
+                {count > 0 && <span className="ml-1.5 text-xs opacity-70">({count})</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {items.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-end gap-4">
+            <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
+            <SortPicker value={sort} onChange={(v) => setSort(v)} />
+          </div>
+        )}
       </div>
 
-      {items.length > 0 && (
-        <div className="flex flex-wrap items-end gap-4">
-          <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
-          <SortPicker value={sort} onChange={(v) => setSort(v)} />
-        </div>
-      )}
-
-      {hasError ? (
-        <div
-          role="alert"
-          className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
-        >
-          {t('feed.loadError')}
-        </div>
-      ) : loading && items.length === 0 ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="animate-pulse rounded-lg border border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-900"
-            >
-              <div className="h-4 w-3/4 rounded bg-gray-100 dark:bg-navy-800" />
-              <div className="mt-2 h-3 w-1/2 rounded bg-gray-100 dark:bg-navy-800" />
-              <div className="mt-3 flex gap-2">
-                <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
-                <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : filteredItems.length === 0 && items.length > 0 ? (
-        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-400">
-          No opportunities match your current filters.
-        </p>
-      ) : items.length === 0 ? (
-        <EmptyFeedState filter={filter} t={t} />
-      ) : (
-        <>
-          <ul className="space-y-3">
-            {filteredItems.map((it) => (
-              <OpportunityCard
-                key={it.opportunity_id}
-                item={it}
-                snapshot={snapshots[it.opportunity_id] ?? null}
-                onStar={onStar}
-                onUnstar={onUnstar}
-                onApply={onApply}
-                isPending={pendingItems.has(it.opportunity_id)}
-              />
-            ))}
-          </ul>
-          <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
-            <span>
-              {filteredItems.length} {t('feed.opportunities')}
-            </span>
-            {nextCursor && (
-              <button
-                type="button"
-                onClick={() => void load(filter, nextCursor)}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700"
-                disabled={loading}
-              >
-                {loading ? t('common.loading') : t('cta.loadMore')}
-              </button>
-            )}
+      <div className="space-y-4">
+        {hasError ? (
+          <div
+            role="alert"
+            className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+          >
+            {t('feed.loadError')}
           </div>
-        </>
-      )}
+        ) : loading && items.length === 0 ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="animate-pulse rounded-lg border border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-900"
+              >
+                <div className="h-4 w-3/4 rounded bg-gray-100 dark:bg-navy-800" />
+                <div className="mt-2 h-3 w-1/2 rounded bg-gray-100 dark:bg-navy-800" />
+                <div className="mt-3 flex gap-2">
+                  <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
+                  <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredItems.length === 0 && items.length > 0 ? (
+          <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-400">
+            No opportunities match your current filters.
+          </p>
+        ) : items.length === 0 ? (
+          <EmptyFeedState filter={filter} t={t} />
+        ) : (
+          <>
+            <ul className="space-y-3">
+              {filteredItems.map((it) => (
+                <OpportunityCard
+                  key={it.opportunity_id}
+                  item={it}
+                  snapshot={snapshots[it.opportunity_id] ?? null}
+                  onStar={onStar}
+                  onUnstar={onUnstar}
+                  onApply={onApply}
+                  isPending={pendingItems.has(it.opportunity_id)}
+                />
+              ))}
+            </ul>
+            <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+              <span>
+                {filteredItems.length} {t('feed.opportunities')}
+              </span>
+              {nextCursor && (
+                <button
+                  type="button"
+                  onClick={() => void load(filter, nextCursor)}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700"
+                  disabled={loading}
+                >
+                  {loading ? t('common.loading') : t('cta.loadMore')}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </section>
   );
 }
