@@ -4,6 +4,8 @@ import { categoryJobs } from '@/api/search';
 import { JobRow } from './JobRow';
 import { categoryLabel } from '@/utils/format';
 import { useI18n } from '@/i18n/I18nProvider';
+import type { SearchParams } from '@/types/search';
+import { SortPicker } from '@/components/ui/SortPicker';
 
 export default function CategoryPage() {
   const { t } = useI18n();
@@ -12,10 +14,11 @@ export default function CategoryPage() {
     return m ? decodeURIComponent(m[1]!) : null;
   })();
   const [cursor, setCursor] = useState<string | undefined>();
+  const [sort, setSort] = useState<SearchParams['sort']>('recent');
 
   const q = useQuery({
-    queryKey: ['category-jobs', slug, cursor],
-    queryFn: () => categoryJobs(slug!, { cursor, limit: 25 }),
+    queryKey: ['category-jobs', slug, cursor, sort],
+    queryFn: () => categoryJobs(slug!, { cursor, limit: 25, sort }),
     enabled: !!slug,
     staleTime: 30_000,
   });
@@ -42,6 +45,16 @@ export default function CategoryPage() {
       <p className="mt-2 text-gray-600">
         {t('category.latestRoles').replace('{category}', title.toLowerCase())}
       </p>
+
+      <div className="mt-4">
+        <SortPicker
+          value={sort}
+          onChange={(v) => {
+            setSort(v);
+            setCursor(undefined);
+          }}
+        />
+      </div>
 
       {q.isLoading && <SkeletonList />}
       {q.isError && (

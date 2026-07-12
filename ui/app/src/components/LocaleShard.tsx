@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Cascade from './Cascade';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { useI18n } from '@/i18n/I18nProvider';
+import type { SearchParams } from '@/types/search';
+import { SortPicker } from '@/components/ui/SortPicker';
 
 export default function LocaleShard() {
   const mount = useMemo(() => document.getElementById('mount-locale-shard'), []);
@@ -29,11 +31,15 @@ export default function LocaleShard() {
   }, [country, languages]);
 
   const { preferredCountries, preferredLanguages } = useCandidateProfile();
+  const [sort, setSort] = useState<SearchParams['sort']>('recent');
 
   return (
     <ShardStatusBanner country={country} languages={languages}>
+      <div className="mb-4">
+        <SortPicker value={sort} onChange={setSort} />
+      </div>
       <Cascade
-        filters={{ sort: 'recent' }}
+        filters={{ sort }}
         preferredCountries={preferredCountries}
         preferredLanguages={preferredLanguages}
         tierLimit={25}

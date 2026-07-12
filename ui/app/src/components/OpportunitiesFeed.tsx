@@ -19,6 +19,8 @@ import {
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
 import { useToast } from '@/hooks/useToast';
+import { SortPicker } from '@/components/ui/SortPicker';
+import type { SearchParams } from '@/types/search';
 
 const FILTER_KEYS: { id: OpportunityFilter; labelKey: StringKey }[] = [
   { id: 'all', labelKey: 'feed.all' },
@@ -65,6 +67,7 @@ export function OpportunitiesFeed() {
   const { push: toast } = useToast();
   const [filter, setFilter] = useState<OpportunityFilter>(readFilterFromURL);
   const [feedFilters, setFeedFilters] = useState<FeedFilters>(readFiltersFromURL);
+  const [sort, setSort] = useState<SearchParams['sort']>('recent');
   const [items, setItems] = useState<FeedItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -104,23 +107,26 @@ export function OpportunitiesFeed() {
     return result;
   }, [items, snapshots, feedFilters]);
 
-  const load = useCallback(async (f: OpportunityFilter, cursor?: string) => {
-    setLoading(true);
-    setHasError(false);
-    try {
-      const page = await fetchOpportunities({ filter: f, cursor });
-      setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
-      setNextCursor(page.next_cursor);
-    } catch {
-      setHasError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (f: OpportunityFilter, cursor?: string) => {
+      setLoading(true);
+      setHasError(false);
+      try {
+        const page = await fetchOpportunities({ filter: f, cursor, sort });
+        setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
+        setNextCursor(page.next_cursor);
+      } catch {
+        setHasError(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sort]
+  );
 
   useEffect(() => {
     void load(filter);
-  }, [filter, load]);
+  }, [filter, sort, load]);
 
   useEffect(() => {
     const ids = items
@@ -259,7 +265,12 @@ export function OpportunitiesFeed() {
         })}
       </div>
 
-      {items.length > 0 && <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />}
+      {items.length > 0 && (
+        <div className="flex flex-wrap items-end gap-4">
+          <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
+          <SortPicker value={sort} onChange={(v) => setSort(v)} />
+        </div>
+      )}
 
       {hasError ? (
         <div

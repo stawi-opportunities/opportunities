@@ -269,12 +269,13 @@ export interface FeedPage {
 }
 
 export async function fetchOpportunities(
-  opts: { filter?: OpportunityFilter; cursor?: string; limit?: number } = {}
+  opts: { filter?: OpportunityFilter; cursor?: string; limit?: number; sort?: string } = {}
 ): Promise<FeedPage> {
   const params = new URLSearchParams();
   if (opts.filter && opts.filter !== 'all') params.set('filter', opts.filter);
   if (opts.cursor) params.set('cursor', opts.cursor);
   if (opts.limit) params.set('limit', String(opts.limit));
+  if (opts.sort) params.set('sort', opts.sort);
   const query = params.toString();
   const path = `/matching/me/opportunities${query ? `?${query}` : ''}`;
   return await authRuntime().fetch<FeedPage>(path);
