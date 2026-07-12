@@ -1,6 +1,8 @@
 import type { FeedItem } from '@/api/candidates';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
+import { Icon } from '@/components/ui/Icon';
+import { getTypeMeta } from '@/constants/opportunityTypes';
 
 export interface OpportunitySnapshot {
   title: string;
@@ -57,6 +59,12 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               {isNew && (
                 <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                   {t('card.new')}
+                </span>
+              )}
+              {snapshot?.kind && getTypeMeta(snapshot.kind) && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-navy-800 dark:text-gray-300">
+                  <Icon name={getTypeMeta(snapshot.kind)!.iconName} size={10} />
+                  {t(getTypeMeta(snapshot.kind)!.labelKey)}
                 </span>
               )}
             </h3>

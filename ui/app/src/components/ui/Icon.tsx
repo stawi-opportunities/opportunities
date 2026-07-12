@@ -234,7 +234,7 @@ const iconPaths: Record<string, (props: SVGProps<SVGSVGElement>) => ReactElement
   ),
 };
 
-type IconName = keyof typeof iconPaths;
+export type IconName = keyof typeof iconPaths;
 
 interface IconProps {
   name: IconName;

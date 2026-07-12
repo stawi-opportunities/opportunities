@@ -20,6 +20,8 @@ import {
   type OpportunityKind,
   type OpportunitySnapshot,
 } from '@/types/snapshot';
+import { Icon } from '@/components/ui/Icon';
+import { getTypeMeta } from '@/constants/opportunityTypes';
 
 const JobBody = lazy(() => import('@/components/bodies/JobBody'));
 const ScholarshipBody = lazy(() => import('@/components/bodies/ScholarshipBody'));
@@ -130,7 +132,15 @@ export default function OpportunityDetail() {
       <header className="mt-4 flex items-start gap-4">
         <IssuingEntityAvatar snap={snap} />
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{snap.title}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+            {snap.title}
+            {snap.kind && getTypeMeta(snap.kind) && (
+              <span className="ml-3 inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 align-middle">
+                <Icon name={getTypeMeta(snap.kind)!.iconName} size={12} />
+                {t(getTypeMeta(snap.kind)!.labelKey)}
+              </span>
+            )}
+          </h1>
           <p className="mt-1 text-sm text-gray-700">
             <span className="font-medium">{snap.issuing_entity}</span>
           </p>
