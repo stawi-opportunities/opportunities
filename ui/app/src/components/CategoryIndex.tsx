@@ -2,61 +2,62 @@ import { useQuery } from '@tanstack/react-query';
 import { listCategories } from '@/api/search';
 import { useToast } from '@/hooks/useToast';
 import { useI18n } from '@/i18n/I18nProvider';
+import { Icon } from './ui/Icon';
+import { OPPORTUNITY_TYPE_META } from '@/constants/opportunityTypes';
 
-const OPPORTUNITY_TYPES: Array<{
-  href: string;
-  emoji: string;
-  label: string;
-  description: string;
-  color: string;
-  badge: string;
-  comingSoon?: boolean;
-}> = [
-  {
-    href: '/jobs/',
-    emoji: '💼',
+const LABELS: Record<string, { label: string; description: string }> = {
+  job: {
     label: 'Jobs',
     description: 'Full-time, part-time, remote & contract roles across every industry.',
+  },
+  scholarship: {
+    label: 'Scholarships',
+    description: 'Grants, bursaries and fellowships for students and researchers.',
+  },
+  tender: {
+    label: 'Tenders',
+    description: 'Government and private sector RFPs, bids and procurement notices.',
+  },
+  deal: {
+    label: 'Deals',
+    description: 'Curated discounts, offers and partnerships for professionals.',
+  },
+  funding: {
+    label: 'Funding',
+    description: 'Grants, venture capital and investor opportunities for ventures.',
+  },
+};
+
+const COLORS: Record<string, { color: string; badge: string }> = {
+  job: {
     color: 'bg-blue-50 border-blue-100 hover:border-blue-300 hover:bg-blue-50/80',
     badge: 'bg-blue-100 text-blue-700',
   },
-  {
-    href: '/scholarships/',
-    emoji: '🎓',
-    label: 'Scholarships',
-    description: 'Grants, bursaries and fellowships for students and researchers.',
+  scholarship: {
     color: 'bg-green-50 border-green-100 hover:border-green-300 hover:bg-green-50/80',
     badge: 'bg-green-100 text-green-700',
-    comingSoon: true,
   },
-  {
-    href: '/tenders/',
-    emoji: '📋',
-    label: 'Tenders',
-    description: 'Government and private sector RFPs, bids and procurement notices.',
+  tender: {
     color: 'bg-orange-50 border-orange-100 hover:border-orange-300 hover:bg-orange-50/80',
     badge: 'bg-orange-100 text-orange-700',
-    comingSoon: true,
   },
-  {
-    href: '/deals/',
-    emoji: '🏷️',
-    label: 'Deals',
-    description: 'Curated discounts, offers and partnerships for professionals.',
+  deal: {
     color: 'bg-pink-50 border-pink-100 hover:border-pink-300 hover:bg-pink-50/80',
     badge: 'bg-pink-100 text-pink-700',
-    comingSoon: true,
   },
-  {
-    href: '/funding/',
-    emoji: '💰',
-    label: 'Funding',
-    description: 'Grants, venture capital and investor opportunities for ventures.',
+  funding: {
     color: 'bg-purple-50 border-purple-100 hover:border-purple-300 hover:bg-purple-50/80',
     badge: 'bg-purple-100 text-purple-700',
-    comingSoon: true,
   },
-];
+};
+
+const OPPORTUNITY_TYPES = OPPORTUNITY_TYPE_META.map((m) => ({
+  iconName: m.iconName,
+  href: m.href,
+  comingSoon: m.comingSoon,
+  ...LABELS[m.kind],
+  ...COLORS[m.kind],
+}));
 
 export default function CategoryIndex() {
   const { push: toast } = useToast();
@@ -109,7 +110,7 @@ export default function CategoryIndex() {
           </p>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {OPPORTUNITY_TYPES.map(
-              ({ href, emoji, label, description, color, badge, comingSoon }) =>
+              ({ iconName, href, label, description, color, badge, comingSoon }) =>
                 comingSoon ? (
                   <button
                     key={href}
@@ -119,9 +120,9 @@ export default function CategoryIndex() {
                   >
                     <div className="flex items-center gap-3">
                       <span
-                        className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${badge}`}
+                        className={`flex h-10 w-10 items-center justify-center rounded-lg ${badge}`}
                       >
-                        {emoji}
+                        <Icon name={iconName} size={20} />
                       </span>
                       <span className="text-base font-semibold text-gray-900 group-hover:text-navy-900">
                         {label}
@@ -146,9 +147,9 @@ export default function CategoryIndex() {
                   >
                     <div className="flex items-center gap-3">
                       <span
-                        className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${badge}`}
+                        className={`flex h-10 w-10 items-center justify-center rounded-lg ${badge}`}
                       >
-                        {emoji}
+                        <Icon name={iconName} size={20} />
                       </span>
                       <span className="text-base font-semibold text-gray-900 group-hover:text-navy-900">
                         {label}

@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 import type { StringKey } from '@/i18n/strings';
+import { Icon } from '@/components/ui/Icon';
+import { getTypeMeta } from '@/constants/opportunityTypes';
 
 export const OPPORTUNITY_KINDS = [
   { value: '', labelKey: 'feed.all' as StringKey },
@@ -83,6 +85,9 @@ export function FilterChips({ filters, onChange, t }: Props) {
                 : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
             }`}
           >
+            {value && getTypeMeta(value) && (
+              <Icon name={getTypeMeta(value)!.iconName} size={12} className="mr-1" />
+            )}
             {t(labelKey)}
           </button>
         );

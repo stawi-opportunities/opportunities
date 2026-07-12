@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { authRuntime } from '@/auth/runtime';
 import { OnboardingRouter } from '@/onboarding/router';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
+import { Icon } from '@/components/ui/Icon';
+import { getTypeMeta } from '@/constants/opportunityTypes';
 import { Panel } from './Panel';
 
 // Per-kind onboarding tabs — each entry maps a kind id to the flow id
@@ -117,13 +119,14 @@ export function PreferencesPanel() {
       >
         {visibleKinds.map(({ kind, label }) => {
           const on = active === kind;
+          const meta = getTypeMeta(kind);
           return (
             <button
               key={kind}
               type="button"
               role="tab"
               aria-selected={on}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors ${
                 on
                   ? 'border-b-2 border-accent-500 text-navy-900 dark:text-white'
                   : 'border-b-2 border-transparent text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
@@ -134,6 +137,7 @@ export function PreferencesPanel() {
                 setErrMsg(null);
               }}
             >
+              {meta && <Icon name={meta.iconName} size={14} />}
               {label}
             </button>
           );

@@ -2,32 +2,23 @@ import { useState, useRef, useEffect } from 'react';
 import { StawiAuth } from './StawiAuth';
 import { useToast } from '@/hooks/useToast';
 import { useI18n } from '@/i18n/I18nProvider';
+import { Icon } from './ui/Icon';
+import { OPPORTUNITY_TYPE_META } from '@/constants/opportunityTypes';
 
-const browseItems: Array<{
-  href: string;
-  emoji: string;
-  label: string;
-  sub: string;
-  comingSoon?: boolean;
-}> = [
-  { href: '/jobs/', emoji: '💼', label: 'Jobs', sub: 'Full-time, remote & more' },
-  {
-    href: '/scholarships/',
-    emoji: '🎓',
-    label: 'Scholarships',
-    sub: 'Grants & bursaries',
-    comingSoon: true,
-  },
-  { href: '/tenders/', emoji: '📋', label: 'Tenders', sub: 'RFPs & procurement', comingSoon: true },
-  { href: '/deals/', emoji: '🏷️', label: 'Deals', sub: 'Curated discounts', comingSoon: true },
-  {
-    href: '/funding/',
-    emoji: '💰',
-    label: 'Funding',
-    sub: 'Grants & investment',
-    comingSoon: true,
-  },
-];
+const LABELS: Record<string, { label: string; sub: string }> = {
+  job: { label: 'Jobs', sub: 'Full-time, remote & more' },
+  scholarship: { label: 'Scholarships', sub: 'Grants & bursaries' },
+  tender: { label: 'Tenders', sub: 'RFPs & procurement' },
+  deal: { label: 'Deals', sub: 'Curated discounts' },
+  funding: { label: 'Funding', sub: 'Grants & investment' },
+};
+
+const browseItems = OPPORTUNITY_TYPE_META.map((m) => ({
+  iconName: m.iconName,
+  href: m.href,
+  comingSoon: m.comingSoon,
+  ...LABELS[m.kind],
+}));
 
 function BrowseDropdown() {
   const [open, setOpen] = useState(false);
@@ -73,7 +64,7 @@ function BrowseDropdown() {
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-xl border border-gray-100 bg-white shadow-lg ring-1 ring-black/5">
           <div className="p-1.5">
-            {browseItems.map(({ href, emoji, label, sub, comingSoon }) =>
+            {browseItems.map(({ iconName, href, label, sub, comingSoon }) =>
               comingSoon ? (
                 <button
                   key={href}
@@ -84,8 +75,8 @@ function BrowseDropdown() {
                   }}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900 text-left"
                 >
-                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base">
-                    {emoji}
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-600">
+                    <Icon name={iconName} size={16} />
                   </span>
                   <div>
                     <div className="font-medium">{label}</div>
@@ -99,8 +90,8 @@ function BrowseDropdown() {
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-navy-900"
                 >
-                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-base">
-                    {emoji}
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-600">
+                    <Icon name={iconName} size={16} />
                   </span>
                   <div>
                     <div className="font-medium">{label}</div>
@@ -143,7 +134,7 @@ function MobileMenu({ open }: { open: boolean }) {
       <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
         Browse
       </p>
-      {browseItems.map(({ href, emoji, label, comingSoon }) =>
+      {browseItems.map(({ iconName, href, label, comingSoon }) =>
         comingSoon ? (
           <button
             key={href}
@@ -151,7 +142,8 @@ function MobileMenu({ open }: { open: boolean }) {
             onClick={() => toast(t('common.comingSoon'), 'info')}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
           >
-            {emoji} {label}
+            <Icon name={iconName} size={16} className="text-gray-500 flex-shrink-0" />
+            {label}
           </button>
         ) : (
           <a
@@ -159,7 +151,8 @@ function MobileMenu({ open }: { open: boolean }) {
             href={href}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
-            {emoji} {label}
+            <Icon name={iconName} size={16} className="text-gray-500 flex-shrink-0" />
+            {label}
           </a>
         )
       )}
