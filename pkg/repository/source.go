@@ -223,40 +223,6 @@ func (r *SourceRepository) ListAll(ctx context.Context) ([]*domain.Source, error
 	return sources, err
 }
 
-// DeleteNonEngineSources hard-deletes any source whose type is not a known
-// crawl engine, plus that source's recipes and crawl runs. Prefer a clean
-// delete + reseed over remapping historical site-specific type strings.
-// Safe to call every boot: no-op when every row already uses an engine type.
-func (r *SourceRepository) DeleteNonEngineSources(ctx context.Context) (deleted int64, err error) {
-	engines := make([]string, len(domain.KnownEngineTypes))
-	for i, t := range domain.KnownEngineTypes {
-		engines[i] = string(t)
-	}
-	db := r.db(ctx, false)
-	err = db.Transaction(func(tx *gorm.DB) error {
-		// Recipes first (no FK cascade).
-		if res := tx.Exec(`
-			DELETE FROM source_recipes
-			WHERE source_id IN (SELECT id FROM sources WHERE type NOT IN ?)
-		`, engines); res.Error != nil {
-			return fmt.Errorf("delete non-engine source recipes: %w", res.Error)
-		}
-		if res := tx.Exec(`
-			DELETE FROM crawl_runs
-			WHERE source_id IN (SELECT id FROM sources WHERE type NOT IN ?)
-		`, engines); res.Error != nil {
-			return fmt.Errorf("delete non-engine crawl runs: %w", res.Error)
-		}
-		res := tx.Exec(`DELETE FROM sources WHERE type NOT IN ?`, engines)
-		if res.Error != nil {
-			return fmt.Errorf("delete non-engine sources: %w", res.Error)
-		}
-		deleted = res.RowsAffected
-		return nil
-	})
-	return deleted, err
-}
-
 // UpdateNextCrawl updates scheduling fields after a crawl run.
 func (r *SourceRepository) UpdateNextCrawl(ctx context.Context, id string, nextCrawlAt time.Time, lastSeenAt time.Time, healthScore float64) error {
 	return r.db(ctx, false).

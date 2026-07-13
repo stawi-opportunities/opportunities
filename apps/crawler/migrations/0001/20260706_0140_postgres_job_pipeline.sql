@@ -112,34 +112,5 @@ BEGIN
             REFRESH MATERIALIZED VIEW CONCURRENTLY crawl_signals
         $body$
     $fn$;
-
-    -- Engines only: drop sources that are not a known crawl engine (no remap).
-    EXECUTE $sql$
-        DELETE FROM source_recipes
-        WHERE source_id IN (
-            SELECT id FROM sources
-            WHERE type NOT IN (
-                'api', 'schema_org', 'sitemap', 'generic_html',
-                'workday', 'smartrecruiters_api'
-            )
-        )
-    $sql$;
-    EXECUTE $sql$
-        DELETE FROM crawl_runs
-        WHERE source_id IN (
-            SELECT id FROM sources
-            WHERE type NOT IN (
-                'api', 'schema_org', 'sitemap', 'generic_html',
-                'workday', 'smartrecruiters_api'
-            )
-        )
-    $sql$;
-    EXECUTE $sql$
-        DELETE FROM sources
-        WHERE type NOT IN (
-            'api', 'schema_org', 'sitemap', 'generic_html',
-            'workday', 'smartrecruiters_api'
-        )
-    $sql$;
 END
 $mig$;

@@ -152,12 +152,6 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	}
 	repo := repository.NewSourceRepository(pool.DB)
 	recipeRepo := repository.NewRecipeRepository(pool.DB)
-	// Non-engine types are unsupported — drop them so admin only lists engines.
-	if n, derr := repo.DeleteNonEngineSources(ctx); derr != nil {
-		log.WithError(derr).Warn("source admin: delete non-engine sources failed")
-	} else if n > 0 {
-		log.WithField("deleted", n).Info("source admin: deleted non-engine sources")
-	}
 
 	// Frame-managed HTTP client (OTEL trace propagation + retry hooks).
 	// Both the connector retry path and the verifier's raw HEAD/GET probes
