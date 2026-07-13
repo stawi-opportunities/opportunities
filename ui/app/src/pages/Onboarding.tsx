@@ -22,6 +22,9 @@ type FormValues = Omit<z.infer<typeof Step1Schema>, 'cv'> & { cv?: File } & z.in
 
 const Step1Schema = z
   .object({
+    targetJobTitle: z.string().min(2, 'Enter your target job title'),
+    experienceLevel: z.enum(['entry', 'junior', 'mid', 'senior', 'lead', 'executive']),
+    jobSearchStatus: z.enum(['actively_looking', 'open_to_offers', 'casually_browsing']),
     cv: z
       .any()
       .optional()
@@ -157,6 +160,9 @@ export default function Onboarding() {
   const initialPlan = useMemo(readPlanFromQuery, []);
   const form = useForm<FormValues>({
     defaultValues: {
+      targetJobTitle: '',
+      experienceLevel: 'mid',
+      jobSearchStatus: 'actively_looking',
       cv: undefined,
       extraInfo: '',
       salaryAmount: undefined,
@@ -218,9 +224,9 @@ export default function Onboarding() {
     setSubmitError(null);
     try {
       await submitOnboarding({
-        target_job_title: '',
-        experience_level: 'mid',
-        job_search_status: 'actively_looking',
+        target_job_title: data.targetJobTitle,
+        experience_level: data.experienceLevel,
+        job_search_status: data.jobSearchStatus,
         salary_min: data.salaryAmount ?? undefined,
         salary_max: data.salaryAmount ?? undefined,
         currency: data.salaryCurrency ?? 'USD',
@@ -237,8 +243,10 @@ export default function Onboarding() {
       if (data.cv instanceof File) {
         try {
           await uploadCV(data.cv);
-        } catch (cvErr) {
-          console.warn('[onboarding] CV upload failed (profile saved):', cvErr);
+        } catch {
+          setSubmitError(
+            'CV uploaded failed. Your profile was saved, but your CV was not uploaded. You can re-upload it from Settings.'
+          );
         }
       }
 
@@ -279,6 +287,7 @@ export default function Onboarding() {
     if (parsed.success) return true;
 
     const msgMap: Record<string, StringKey> = {
+      targetJobTitle: 'onboard.validationJobTitle',
       extraInfo: 'onboard.validationCVOrInfo',
       cv: 'onboard.validationCV',
       preferredRegions: 'onboard.validationRegion',
@@ -301,9 +310,9 @@ export default function Onboarding() {
       const nextStep = (step + 1) as 1 | 2 | 3;
       const values = form.getValues();
       const fieldsForServer: OnboardingDraftFields = {
-        target_job_title: '',
-        experience_level: 'mid',
-        job_search_status: 'actively_looking',
+        target_job_title: values.targetJobTitle,
+        experience_level: values.experienceLevel,
+        job_search_status: values.jobSearchStatus,
         salary_range: values.salaryAmount
           ? `${values.salaryCurrency ?? 'USD'} ${values.salaryAmount}`
           : undefined,
@@ -335,10 +344,26 @@ export default function Onboarding() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
       {draftSaveWarning && (
         <div
-          role="status"
-          className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          role="alert"
+          className="relative mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
         >
           {t('onboard.draftSaveWarning')}
+          <button
+            type="button"
+            onClick={() => setDraftSaveWarning(false)}
+            className="absolute right-2 top-2 rounded p-1 text-amber-500 hover:bg-amber-100 hover:text-amber-700"
+            aria-label="Dismiss"
+          >
+            <svg
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
       <Progress step={step} t={t} />
@@ -426,6 +451,8 @@ function Step1Form({ form, t }: FormProps) {
     formState: { errors },
   } = form;
   const cv = watch('cv') as File | undefined;
+  const watchExperienceLevel = watch('experienceLevel');
+  const watchSearchStatus = watch('jobSearchStatus');
   return (
     <div className="space-y-6">
       <header>
@@ -501,6 +528,87 @@ function Step1Form({ form, t }: FormProps) {
             {...register('extraInfo')}
             className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
           />
+        )}
+      </Field>
+
+      <Field
+        label={t('onboard.targetJobTitle')}
+        error={errors.targetJobTitle?.message as string | undefined}
+      >
+        {(id) => (
+          <input
+            id={id}
+            type="text"
+            placeholder={t('onboard.targetJobTitlePlaceholder')}
+            {...register('targetJobTitle')}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-navy-900 focus:outline-none focus:ring-1 focus:ring-navy-900"
+          />
+        )}
+      </Field>
+
+      <Field label={t('onboard.experienceLevel')}>
+        {() => (
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label={t('onboard.experienceLevel')}
+          >
+            {(['entry', 'junior', 'mid', 'senior', 'lead', 'executive'] as const).map((level) => {
+              const on = watchExperienceLevel === level;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  aria-pressed={on}
+                  className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                    on
+                      ? 'border-navy-900 bg-navy-900 text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                  onClick={() => setValue('experienceLevel', level)}
+                >
+                  {t(`onboard.${level}` as StringKey)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Field>
+
+      <Field label={t('onboard.jobSearchStatus')}>
+        {() => (
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label={t('onboard.jobSearchStatus')}
+          >
+            {(['actively_looking', 'open_to_offers', 'casually_browsing'] as const).map(
+              (status) => {
+                const on = watchSearchStatus === status;
+                const key =
+                  status === 'actively_looking'
+                    ? 'activelyLooking'
+                    : status === 'open_to_offers'
+                      ? 'openToOffers'
+                      : 'casuallyBrowsing';
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    aria-pressed={on}
+                    className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                      on
+                        ? 'border-navy-900 bg-navy-900 text-white'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                    onClick={() => setValue('jobSearchStatus', status)}
+                  >
+                    {t(`onboard.${key}` as StringKey)}
+                  </button>
+                );
+              }
+            )}
+          </div>
         )}
       </Field>
 
