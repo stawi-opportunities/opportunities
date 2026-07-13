@@ -40,7 +40,7 @@ func TestConnectorIterator_ResumeFromCheckpoint(t *testing.T) {
 	r := &recipe.Recipe{Acquisition: "api", Kind: recipe.KindRule{Mode: "source_default"},
 		List:   recipe.ListRule{Mode: "api", Endpoint: "/api/jobs", ItemsPath: "$.jobs", Pagination: recipe.Pagination{Mode: "page_param", Param: "page", MaxPages: 10}},
 		Detail: recipe.DetailRule{RecordSource: "record", Title: rec("$.title"), Description: rec("$.description"), IssuingEntity: rec("$.company"), ApplyURL: rec("$.apply"), AnchorCountry: rec("$.country")}}
-	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "NG"}
+	src := domain.Source{Type: "schema_org", BaseURL: srv.URL, Country: "NG"}
 	src.ID = "s1"
 	src.Kinds = []string{"job"}
 	exec := recipe.NewExecutor(r, httptestFetcher{c: srv.Client()})
@@ -85,7 +85,7 @@ func TestConnectorIterator_SatisfiesCrawlIterator(t *testing.T) {
 	r := &recipe.Recipe{Acquisition: "api", Kind: recipe.KindRule{Mode: "source_default"},
 		List:   recipe.ListRule{Mode: "api", Endpoint: "/api/jobs", ItemsPath: "$.jobs", Pagination: recipe.Pagination{Mode: "page_param", Param: "page", MaxPages: 5}},
 		Detail: recipe.DetailRule{RecordSource: "record", Title: rec("$.title"), Description: rec("$.description"), IssuingEntity: rec("$.company"), ApplyURL: rec("$.apply"), AnchorCountry: rec("$.country")}}
-	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "NG"}
+	src := domain.Source{Type: "schema_org", BaseURL: srv.URL, Country: "NG"}
 	src.ID = "s1"
 	src.Kinds = []string{"job"}
 

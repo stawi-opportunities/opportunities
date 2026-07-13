@@ -124,7 +124,7 @@ func main() {
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
 	recipeRepo := repository.NewRecipeRepository(dbFn)
-	// Bundled stock recipes replace per-board Go connectors for public APIs.
+	// Bundled stock recipes for common public API boards.
 	if serr := stock.LoadDefault(); serr != nil {
 		log.WithError(serr).Warn("stock recipes: not loaded (STOCK_RECIPES_DIR / definitions/stock-recipes)")
 	} else {

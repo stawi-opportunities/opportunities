@@ -79,7 +79,7 @@ func TestRecipeGenerateHandler_GeneratesValidatesActivates(t *testing.T) {
 
 	recipeJSON := `{"acquisition":"structured_data","kind":{"mode":"source_default"},"list":{"mode":"selector","item_selector":".c","link":{"from":["selector"],"selector":"a","attr":"href"},"pagination":{"mode":"none"}},"detail":{"record_source":"json_ld","title":{"from":["json_ld"],"json_path":"$.title"},"description":{"from":["json_ld"],"json_path":"$.description"},"issuing_entity":{"from":["json_ld"],"json_path":"$.hiringOrganization.name"},"apply_url":{"from":["json_ld"],"json_path":"$.url"},"anchor_country":{"from":["json_ld"],"json_path":"$.jobLocation.address.addressCountry"}}}`
 
-	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "KE"}
+	src := domain.Source{Type: "schema_org", BaseURL: srv.URL, Country: "KE"}
 	src.ID = "s1"
 	src.Kinds = []string{"job"}
 
@@ -119,7 +119,7 @@ func TestRecipeGenerateHandler_BelowThresholdFlagsAndAcks(t *testing.T) {
 		t.Skipf("kinds: %v", err)
 	}
 	recipeJSON := `{"acquisition":"structured_data","kind":{"mode":"source_default"},"list":{"mode":"selector","item_selector":".c","link":{"from":["selector"],"selector":"a","attr":"href"},"pagination":{"mode":"none"}},"detail":{"record_source":"json_ld","title":{"from":["json_ld"],"json_path":"$.title"},"description":{"from":["json_ld"],"json_path":"$.description"},"issuing_entity":{"from":["json_ld"],"json_path":"$.c"},"apply_url":{"from":["json_ld"],"json_path":"$.u"},"anchor_country":{"from":["json_ld"],"json_path":"$.k"}}}`
-	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "KE"}
+	src := domain.Source{Type: "schema_org", BaseURL: srv.URL, Country: "KE"}
 	src.ID = "s2"
 	src.Kinds = []string{"job"}
 	store := &fakeRecipeStore{}
@@ -149,7 +149,7 @@ func TestRecipeGenerateHandler_SynthesisFailureFlagsAndAcks(t *testing.T) {
 	if err != nil {
 		t.Skipf("kinds: %v", err)
 	}
-	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "KE"}
+	src := domain.Source{Type: "schema_org", BaseURL: srv.URL, Country: "KE"}
 	src.ID = "s3"
 	src.Kinds = []string{"job"}
 	store := &fakeRecipeStore{}
@@ -179,7 +179,7 @@ func TestRecipeGenerateHandler_RateLimitDoesNotFlag(t *testing.T) {
 	if err != nil {
 		t.Skipf("kinds: %v", err)
 	}
-	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "KE"}
+	src := domain.Source{Type: "schema_org", BaseURL: srv.URL, Country: "KE"}
 	src.ID = "s4"
 	src.Kinds = []string{"job"}
 	store := &fakeRecipeStore{}

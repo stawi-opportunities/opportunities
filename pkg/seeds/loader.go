@@ -151,8 +151,10 @@ func LoadAndUpsertWithRecipes(ctx context.Context, seedsDir string, repo *reposi
 			if interval > 0 && interval < 12*3600 {
 				interval = 12 * 3600
 			}
-			// Prefer engine types for new seeds; legacy types still accepted
-			// (crawl maps them via domain.EngineType / stock recipes).
+			if !domain.IsKnownSourceType(e.SourceType) {
+				return fmt.Errorf("%s entry %d: unknown engine type %q (known: %v)",
+					path, i, e.SourceType, domain.KnownEngineTypes)
+			}
 			src := &domain.Source{
 				Type:                     e.SourceType,
 				Name:                     e.Name,
@@ -212,9 +214,6 @@ func attachSeedRecipe(ctx context.Context, recipes *repository.RecipeRepository,
 	var rec = stock.Get(name)
 	if rec == nil {
 		name, rec = stock.LookupByBaseURL(seed.BaseURL)
-	}
-	if rec == nil {
-		name, rec = stock.LookupLegacyType(string(seed.Type))
 	}
 	if rec == nil {
 		return nil

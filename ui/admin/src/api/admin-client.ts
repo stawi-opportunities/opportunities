@@ -142,8 +142,7 @@ export type DefinitionEntry = {
 export type DefinitionsListResponse = Record<string, DefinitionEntry[]>;
 
 /**
- * Crawl engines only. Site-specific boards are data: source row + recipe.
- * Legacy type strings still appear on old rows but new sources use these.
+ * Crawl engines only. Boards are data: source row + recipe.
  */
 export const SOURCE_TYPES = [
   "api",

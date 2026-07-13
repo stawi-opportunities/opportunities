@@ -41,7 +41,7 @@ const validRecipeJSON = `{"acquisition":"structured_data","kind":{"mode":"source
 "detail":{"record_source":"json_ld","title":{"from":["json_ld"],"json_path":"$.title"},"description":{"from":["json_ld"],"json_path":"$.description"},"issuing_entity":{"from":["json_ld"],"json_path":"$.hiringOrganization.name"},"apply_url":{"from":["json_ld"],"json_path":"$.url"},"anchor_country":{"from":["json_ld"],"json_path":"$.jobLocation.address.addressCountry"}}}`
 
 func genSource() domain.Source {
-	s := domain.Source{Type: "brightermonday", BaseURL: "https://x.io", Country: "KE"}
+	s := domain.Source{Type: "schema_org", BaseURL: "https://x.io", Country: "KE"}
 	s.ID = "g1"
 	s.Kinds = []string{"job"}
 	return s

@@ -278,20 +278,15 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		}
 	}
 	if !usedRecipe && h.deps.RecipeEnabled {
-		if name, stockRec := stock.LookupLegacyType(string(src.Type)); stockRec != nil {
-			rec = stockRec
-			usedRecipe = true
-			h.bootstrapStockRecipe(ctx, src.ID, name, stockRec)
-		} else if name, stockRec := stock.LookupByBaseURL(src.BaseURL); stockRec != nil {
+		if name, stockRec := stock.LookupByBaseURL(src.BaseURL); stockRec != nil {
 			rec = stockRec
 			usedRecipe = true
 			h.bootstrapStockRecipe(ctx, src.ID, name, stockRec)
 		}
 	}
 	if !usedRecipe {
-		engine := domain.EngineType(src.Type)
-		if domain.RequiresRecipe(engine) {
-			log.WithField("source_type", src.Type).WithField("engine", engine).
+		if domain.RequiresRecipe(src.Type) {
+			log.WithField("source_type", src.Type).
 				Warn("crawl.request: engine requires a recipe; none installed")
 			if h.deps.StatusSetter != nil {
 				_ = h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused)
@@ -304,10 +299,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			})
 			return nil
 		}
-		c, ok := h.deps.Registry.Get(engine)
-		if !ok {
-			c, ok = h.deps.Registry.Get(src.Type)
-		}
+		c, ok := h.deps.Registry.Get(src.Type)
 		if !ok {
 			if h.deps.StatusSetter != nil {
 				if perr := h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused); perr != nil {

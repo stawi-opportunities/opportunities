@@ -10,7 +10,7 @@
 // Usage:
 //
 //	INFERENCE_API_KEY=… go run ./cmd/recipe-gen \
-//	    -base-url https://www.jobberman.com -type jobberman -country NG \
+//	    -base-url https://www.jobberman.com -type schema_org -country NG \
 //	    [-kinds job] [-samples 3] [-out recipe.json]
 //
 // Exit 0 only when the Generator's full gate chain (structural validation,

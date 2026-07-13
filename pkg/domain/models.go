@@ -9,68 +9,44 @@ import (
 	"github.com/lib/pq"
 )
 
-// SourceType identifies the connector used to crawl a source.
+// SourceType identifies the crawl engine for a source. Site-specific
+// behaviour lives in recipes (data), never as additional type constants.
 type SourceType string
 
 const (
-	// Engine types — crawl behaviour is data (recipe / listing URL), not a
-	// per-board Go package. Prefer these for all new sources.
 	SourceAPI                SourceType = "api"                // requires recipe (acquisition:api)
 	SourceSchemaOrg          SourceType = "schema_org"         // JobPosting JSON-LD
 	SourceSitemap            SourceType = "sitemap"            // sitemap + structured detail
 	SourceGenericHTML        SourceType = "generic_html"       // HTML list+detail via recipe
 	SourceWorkday            SourceType = "workday"            // Workday ATS engine
 	SourceSmartRecruitersAPI SourceType = "smartrecruiters_api"
-
-	// Legacy site-specific types — accepted on existing rows; mapped to
-	// engines / stock recipes at runtime. Do not add new site-specific types.
-	SourceRemoteOK            SourceType = "remoteok"
-	SourceArbeitnow           SourceType = "arbeitnow"
-	SourceJobicy              SourceType = "jobicy"
-	SourceTheMuse             SourceType = "themuse"
-	SourceHimalayas           SourceType = "himalayas"
-	SourceFindwork            SourceType = "findwork"
-	SourceBrighterMonday      SourceType = "brightermonday"
-	SourceJobberman           SourceType = "jobberman"
-	SourceMyJobMag            SourceType = "myjobmag"
-	SourceNjorku              SourceType = "njorku"
-	SourceCareers24           SourceType = "careers24"
-	SourcePNet                SourceType = "pnet"
-	SourceGreenhouse          SourceType = "greenhouse"
-	SourceLever               SourceType = "lever"
-	SourceSmartRecruitersPage SourceType = "smartrecruiters_page"
-	SourceHostedBoards        SourceType = "hosted_boards"
 )
 
-// EngineType normalizes a stored source type to the crawl engine family.
-// Site-specific legacy types map onto engines so the registry stays generic.
-func EngineType(t SourceType) SourceType {
+// KnownEngineTypes is the closed set of valid SourceType values.
+var KnownEngineTypes = []SourceType{
+	SourceAPI,
+	SourceSchemaOrg,
+	SourceSitemap,
+	SourceGenericHTML,
+	SourceWorkday,
+	SourceSmartRecruitersAPI,
+}
+
+// IsKnownSourceType reports whether t is a registered crawl engine.
+func IsKnownSourceType(t SourceType) bool {
 	switch t {
-	case SourceAPI, SourceRemoteOK, SourceArbeitnow, SourceJobicy,
-		SourceTheMuse, SourceHimalayas, SourceFindwork:
-		return SourceAPI
-	case SourceSchemaOrg, SourceBrighterMonday, SourceJobberman, SourceMyJobMag,
-		SourceNjorku, SourceCareers24, SourcePNet, SourceHostedBoards,
-		SourceSmartRecruitersPage:
-		return SourceSchemaOrg
-	case SourceGenericHTML, SourceGreenhouse, SourceLever:
-		return SourceGenericHTML
-	case SourceSitemap:
-		return SourceSitemap
-	case SourceWorkday:
-		return SourceWorkday
-	case SourceSmartRecruitersAPI:
-		return SourceSmartRecruitersAPI
-	default:
-		return t
+	case SourceAPI, SourceSchemaOrg, SourceSitemap, SourceGenericHTML,
+		SourceWorkday, SourceSmartRecruitersAPI:
+		return true
 	}
+	return false
 }
 
 // RequiresRecipe reports whether the engine needs a recipe before crawl
-// can produce jobs (API + HTML). Schema.org / sitemap / ATS engines can
-// run without a per-source recipe.
+// can produce jobs. Schema.org / sitemap / ATS engines can run without
+// a per-source recipe.
 func RequiresRecipe(t SourceType) bool {
-	switch EngineType(t) {
+	switch t {
 	case SourceAPI, SourceGenericHTML:
 		return true
 	default:

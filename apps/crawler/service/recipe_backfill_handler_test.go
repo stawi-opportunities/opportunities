@@ -31,19 +31,19 @@ func bfSource(id string, typ domain.SourceType, recipe string, tuning bool) *dom
 
 func TestRecipeBackfillHandler_EnqueuesOnlyEligible(t *testing.T) {
 	stale := time.Now().UTC().Add(-NeedsTuningTTL - time.Hour)
-	expired := bfSource("f", "jobberman", "{}", true)
+	expired := bfSource("f", "generic_html", "{}", true)
 	expired.NeedsTuningAt = &stale // flag older than the TTL — re-admitted
-	legacy := bfSource("g", "jobberman", "{}", true)
-	legacy.NeedsTuningAt = nil // flagged before the column existed — re-admitted
+	nilStamp := bfSource("g", "generic_html", "{}", true)
+	nilStamp.NeedsTuningAt = nil // flagged before the column existed — re-admitted
 
 	lister := fakeLister{srcs: []*domain.Source{
-		bfSource("a", "brightermonday", "{}", false),                  // eligible -> queue
-		bfSource("b", "brightermonday", `{"acquisition":"x"}`, false), // has recipe -> skip
+		bfSource("a", "schema_org", "{}", false),                  // eligible -> queue
+		bfSource("b", "schema_org", `{"acquisition":"x"}`, false), // has recipe -> skip
 		bfSource("c", "greenhouse", "{}", false),                      // not a target type -> skip
-		bfSource("d", "jobberman", "{}", true),                        // fresh needs_tuning -> skip
-		bfSource("e", "jobberman", "", false),                         // eligible -> queue
+		bfSource("d", "generic_html", "{}", true),                        // fresh needs_tuning -> skip
+		bfSource("e", "generic_html", "", false),                         // eligible -> queue
 		expired,                                                       // expired needs_tuning -> queue
-		legacy,                                                        // legacy nil stamp -> queue
+		nilStamp,                                                      // nil NeedsTuningAt stamp -> queue
 	}}
 	var queued []string
 	emit := func(_ context.Context, id string) error { queued = append(queued, id); return nil }
@@ -63,7 +63,7 @@ func TestRecipeBackfillHandler_DisabledNoOps(t *testing.T) {
 	var queued []string
 	emit := func(_ context.Context, id string) error { queued = append(queued, id); return nil }
 	h := RecipeBackfillHandler(RecipeBackfillDeps{
-		Sources: fakeLister{srcs: []*domain.Source{bfSource("a", "brightermonday", "{}", false)}},
+		Sources: fakeLister{srcs: []*domain.Source{bfSource("a", "schema_org", "{}", false)}},
 		Enabled: false, Targets: RecipeBackfillTargets, Emit: emit,
 	})
 	rec := httptest.NewRecorder()

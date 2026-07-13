@@ -35,17 +35,10 @@ func BackfillRecipes(ctx context.Context, sources []domain.Source, targets map[d
 	return queued, nil
 }
 
-// RecipeBackfillTargets are HTML / listing source types that benefit from
-// deterministic extraction recipes (JSON-LD alone is often incomplete).
+// RecipeBackfillTargets are engines that benefit from deterministic
+// extraction recipes (JSON-LD alone is often incomplete).
 var RecipeBackfillTargets = map[domain.SourceType]bool{
-	domain.SourceBrighterMonday:      true,
-	domain.SourceJobberman:           true,
-	domain.SourceMyJobMag:            true,
-	domain.SourceNjorku:              true,
-	domain.SourceCareers24:           true,
-	domain.SourcePNet:                true,
-	domain.SourceSchemaOrg:           true,
-	domain.SourceHostedBoards:        true,
-	domain.SourceGenericHTML:         true,
-	domain.SourceSmartRecruitersPage: true,
+	domain.SourceSchemaOrg:   true,
+	domain.SourceGenericHTML: true,
+	domain.SourceAPI:         true,
 }

@@ -131,21 +131,6 @@ func LookupByBaseURL(baseURL string) (name string, rec *recipe.Recipe) {
 			return n, clone(cache[n])
 		}
 	}
-	// Also try stock name == first label (legacy seed types).
-	if rec := cache[host]; rec != nil {
-		return host, clone(rec)
-	}
-	return "", nil
-}
-
-// LookupLegacyType maps old per-board SourceType values to stock recipes
-// so existing DB rows keep working after the engine-only registry change.
-func LookupLegacyType(sourceType string) (name string, rec *recipe.Recipe) {
-	key := strings.ToLower(strings.TrimSpace(sourceType))
-	// Historical type names == stock file names.
-	if rec := Get(key); rec != nil {
-		return key, rec
-	}
 	return "", nil
 }
 

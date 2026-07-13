@@ -1,18 +1,18 @@
 {
- "source": {
-  "type": "myjobmag",
-  "base_url": "https://www.myjobmag.co.ke",
-  "country": "KE",
-  "language": "en",
-  "status": "active",
-  "kinds": [
-   "job"
-  ],
-  "listing_path": ""
- },
- "sample_urls": [
-  "https://www.myjobmag.co.ke/job/insurance-administration-officer-restsure-insurance-agencies-limited",
-  "https://www.myjobmag.co.ke/job/senior-manager-it-infrastructure-security-systems-nathan-digital",
-  "https://www.myjobmag.co.ke/job/chemistry-teacher-st-ruth-school"
- ]
+  "source": {
+    "type": "schema_org",
+    "base_url": "https://www.myjobmag.co.ke",
+    "country": "KE",
+    "language": "en",
+    "status": "active",
+    "kinds": [
+      "job"
+    ],
+    "listing_path": ""
+  },
+  "sample_urls": [
+    "https://www.myjobmag.co.ke/job/insurance-administration-officer-restsure-insurance-agencies-limited",
+    "https://www.myjobmag.co.ke/job/senior-manager-it-infrastructure-security-systems-nathan-digital",
+    "https://www.myjobmag.co.ke/job/chemistry-teacher-st-ruth-school"
+  ]
 }

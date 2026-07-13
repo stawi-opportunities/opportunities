@@ -1,1 +1,18 @@
-{"source":{"type":"careers24","base_url":"https://www.careers24.com","country":"ZA","language":"en","status":"active","kinds":["job"],"listing_path":"/jobs"},"sample_urls":["https://www.careers24.com/jobs/adverts/2367322-senior-bi-project-coordinator-umhlanga/","https://www.careers24.com/jobs/adverts/2367323-general-assistant-plumbing-department-bellville/","https://www.careers24.com/jobs/adverts/2367324-sales-assistant-hardware-department-western-cape/"]}
+{
+  "source": {
+    "type": "schema_org",
+    "base_url": "https://www.careers24.com",
+    "country": "ZA",
+    "language": "en",
+    "status": "active",
+    "kinds": [
+      "job"
+    ],
+    "listing_path": "/jobs"
+  },
+  "sample_urls": [
+    "https://www.careers24.com/jobs/adverts/2367322-senior-bi-project-coordinator-umhlanga/",
+    "https://www.careers24.com/jobs/adverts/2367323-general-assistant-plumbing-department-bellville/",
+    "https://www.careers24.com/jobs/adverts/2367324-sales-assistant-hardware-department-western-cape/"
+  ]
+}

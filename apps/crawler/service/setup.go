@@ -37,25 +37,9 @@ func BuildRegistry(ctx context.Context, client *httpx.Client, loader *definition
 
 	// Schema.org JobPosting JSON-LD on listing/detail pages.
 	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceSchemaOrg))
-	// Alias for seeds/admin still using "html" / "generic_html" without a recipe
-	// (JSON-LD only boards). Prefer a recipe for non-JSON-LD HTML.
+	// generic_html without a recipe still gets JSON-LD-only crawl; prefer a
+	// recipe for non-JSON-LD HTML boards.
 	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceGenericHTML))
-
-	// Legacy type strings that previously had dedicated packages still resolve
-	// to the schema.org engine so existing rows keep crawling until recipes
-	// are attached. New sources should use engine types only.
-	for _, st := range []domain.SourceType{
-		domain.SourceBrighterMonday,
-		domain.SourceJobberman,
-		domain.SourceMyJobMag,
-		domain.SourceNjorku,
-		domain.SourceCareers24,
-		domain.SourcePNet,
-		domain.SourceHostedBoards,
-		domain.SourceSmartRecruitersPage,
-	} {
-		reg.Register(structured.NewHTMLJSONLD(client, st))
-	}
 
 	// Declarative feed/spec connectors from R2 definitions (still data-driven).
 	if loader != nil {
@@ -66,7 +50,7 @@ func BuildRegistry(ctx context.Context, client *httpx.Client, loader *definition
 		})
 	}
 
-	util.Log(ctx).Info("connectors: engine-only registry (recipes for site-specific extract)")
+	util.Log(ctx).Info("connectors: engine registry ready")
 	return reg
 }
 

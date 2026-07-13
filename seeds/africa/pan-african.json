@@ -8,7 +8,7 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "myjobmag"
+    "source_type": "schema_org"
   },
   {
     "base_url": "https://www.myjobmag.co.za",
@@ -19,7 +19,7 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "myjobmag"
+    "source_type": "schema_org"
   },
   {
     "base_url": "https://www.myjobmagghana.com",
@@ -30,7 +30,7 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "myjobmag"
+    "source_type": "schema_org"
   },
   {
     "base_url": "https://www.iworkinafrika.com",

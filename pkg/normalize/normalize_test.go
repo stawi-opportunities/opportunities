@@ -32,7 +32,7 @@ func TestExternalToVariant(t *testing.T) {
 		},
 	}
 
-	v := ExternalToVariant(ext, "src_test_42", "ke", "brightermonday", "en", scrapedAt)
+	v := ExternalToVariant(ext, "src_test_42", "ke", "schema_org", "en", scrapedAt)
 
 	// Trimming
 	if v.Title != "Software Engineer" {
@@ -124,7 +124,7 @@ func TestExternalToVariant_ExtractedCountryWins(t *testing.T) {
 		},
 	}
 	// Source fallback is KE — extracted NG must win.
-	v := ExternalToVariant(ext, "src", "ke", "remoteok", "en", scrapedAt)
+	v := ExternalToVariant(ext, "src", "ke", "api", "en", scrapedAt)
 	if v.Country != "NG" {
 		t.Fatalf("country: got %q want NG", v.Country)
 	}
@@ -170,7 +170,7 @@ func TestGeneratedIDWhenMissing(t *testing.T) {
 		// No ApplyURL → cannot use ApplyURLIdentity; use hash[:16].
 	}
 
-	v := ExternalToVariant(ext, "src_test_1", "NG", "jobberman", "en", time.Now())
+	v := ExternalToVariant(ext, "src_test_1", "NG", "schema_org", "en", time.Now())
 
 	if v.ExternalID == "" {
 		t.Fatal("ExternalID should not be empty when input ExternalID is blank")
