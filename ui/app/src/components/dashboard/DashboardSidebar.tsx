@@ -202,9 +202,9 @@ function SidebarNav({
             key={s.id}
             type="button"
             onClick={() => onNavigate(s.id)}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
               isActive
-                ? 'bg-navy-50 text-navy-900 dark:bg-navy-800 dark:text-white'
+                ? 'bg-gradient-to-r from-navy-50 to-transparent text-navy-900 dark:from-navy-800 dark:to-transparent dark:text-white'
                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white'
             }`}
           >
