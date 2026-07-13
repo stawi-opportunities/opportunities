@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { getOpportunityTrace } from "@/api/admin-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getOpportunity,
+  getOpportunityTrace,
+  hideOpportunity,
+  unhideOpportunity,
+} from "@/api/admin-client";
+import {
+  Button,
   Card,
   ErrorBlock,
   LoadingSkeleton,
   StatusBadge,
+  useToast,
 } from "@/components/ui";
 
 type SortKey = "ingested_at" | "joined_at" | "source";
@@ -16,11 +23,36 @@ export function OpportunityTrace() {
   const { slug } = useParams<{ slug: string }>();
   const [sortKey, setSortKey] = useState<SortKey>("joined_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["opportunity-trace", slug],
     queryFn: () => getOpportunityTrace(slug ?? ""),
     enabled: !!slug,
+  });
+
+  const job = useQuery({
+    queryKey: ["admin-job", slug],
+    queryFn: () => getOpportunity(slug ?? ""),
+    enabled: !!slug,
+  });
+
+  const hideMut = useMutation({
+    mutationFn: () => hideOpportunity(slug!, "operator_removed"),
+    onSuccess: () => {
+      toast("Job hidden", { type: "success" });
+      queryClient.invalidateQueries({ queryKey: ["admin-job", slug] });
+    },
+    onError: (e: Error) => toast(e.message, { type: "error" }),
+  });
+  const unhideMut = useMutation({
+    mutationFn: () => unhideOpportunity(slug!),
+    onSuccess: () => {
+      toast("Job restored", { type: "success" });
+      queryClient.invalidateQueries({ queryKey: ["admin-job", slug] });
+    },
+    onError: (e: Error) => toast(e.message, { type: "error" }),
   });
 
   const toggleSort = (key: SortKey) => {
@@ -61,7 +93,7 @@ export function OpportunityTrace() {
   return (
     <div>
       <div style={{ marginBottom: "1.25rem" }}>
-        <h1 style={{ margin: 0 }}>{data.slug}</h1>
+        <h1 style={{ margin: 0 }}>{job.data?.title || data.slug}</h1>
         <p
           style={{
             margin: "0.25rem 0 0",
@@ -69,8 +101,55 @@ export function OpportunityTrace() {
             fontSize: "0.88rem",
           }}
         >
-          {data.variant_count} variant(s) joined this canonical.
+          <code>{data.slug}</code> · {data.variant_count} variant(s)
+          {job.data?.hidden ? (
+            <>
+              {" "}
+              <StatusBadge variant="warning" label="hidden" size="sm" />
+            </>
+          ) : (
+            <>
+              {" "}
+              <StatusBadge variant="success" label="live" size="sm" />
+            </>
+          )}
         </p>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            marginTop: "0.75rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <Link to={`/jobs?q=${encodeURIComponent(data.slug)}`}>
+            <Button variant="outline">Sanitize fields</Button>
+          </Link>
+          {job.data?.hidden ? (
+            <Button
+              onClick={() => unhideMut.mutate()}
+              disabled={unhideMut.isPending}
+            >
+              Unhide
+            </Button>
+          ) : (
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (window.confirm("Hide this job from public serving?"))
+                  hideMut.mutate();
+              }}
+              disabled={hideMut.isPending}
+            >
+              Hide job
+            </Button>
+          )}
+          {job.data?.apply_url && (
+            <a href={job.data.apply_url} target="_blank" rel="noreferrer">
+              <Button variant="outline">Open apply URL</Button>
+            </a>
+          )}
+        </div>
       </div>
 
       {sorted.length === 0 ? (

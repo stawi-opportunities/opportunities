@@ -57,7 +57,9 @@ type CrawlerConfig struct {
 	// CrawlRunStuckMaxAttempts fails a run after this many slices without
 	// completing — a backstop against a run that never converges (e.g. a
 	// source that always errors mid-pagination) holding the single-flight slot.
-	CrawlRunStuckMaxAttempts int `env:"CRAWL_RUN_STUCK_MAX_ATTEMPTS" envDefault:"0"`
+	// Default 5: fail runs that never converge so single-flight does not
+	// block a source forever. Set 0 only for emergency debugging.
+	CrawlRunStuckMaxAttempts int `env:"CRAWL_RUN_STUCK_MAX_ATTEMPTS" envDefault:"5"`
 
 	// CrawlRunWatchdogBatch caps how many lapsed runs the watchdog re-drives
 	// per tick (each emit is backpressure-gated).
@@ -85,14 +87,8 @@ type CrawlerConfig struct {
 	ScrapeDoSuper   bool   `env:"SCRAPEDO_SUPER" envDefault:"false"`
 	ScrapeDoGeoCode string `env:"SCRAPEDO_GEOCODE"`
 
-	// EnrichConcurrency caps the parallel fetch+LLM-extract calls
-	// per crawler page for URL-only stubs (sitemap + universal
-	// AI-link-discovery iterators). 0 disables enrichment entirely
-	// (stubs flow through unmodified and fail Verify — useful for
-	// load-shedding when the shared inference fleet is saturated).
-	EnrichConcurrency int `env:"ENRICH_CONCURRENCY" envDefault:"4"`
-
-	// Inference back-end (OpenAI-compatible).
+	// Inference back-end (OpenAI-compatible). Used for recipe generation
+	// only — not for crawl-time job extraction.
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
 	InferenceAPIKey  string `env:"INFERENCE_API_KEY" envDefault:""`
 	InferenceModel   string `env:"INFERENCE_MODEL" envDefault:""`
@@ -148,10 +144,11 @@ type CrawlerConfig struct {
 	// crawl driver.
 	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"true"`
 
-	// Recipe generation knobs. All default to off / conservative values so
-	// the feature ships dormant (RECIPE_ENABLED=false) and is enabled
-	// per-deploy. See docs/superpowers/specs/2026-06-09-ai-generated-extraction-recipes-design.md §5H.
-	RecipeEnabled          bool    `env:"RECIPE_ENABLED"            envDefault:"false"`
+	// Recipe generation knobs. RECIPE_ENABLED defaults on so active
+	// extraction recipes (structured, deterministic) are preferred over
+	// connectors when present. Generation still requires an LLM for
+	// synthesising new recipes; execution does not.
+	RecipeEnabled          bool    `env:"RECIPE_ENABLED"            envDefault:"true"`
 	RecipeSampleCount      int     `env:"RECIPE_SAMPLE_COUNT"       envDefault:"4"` // reserved for Plan 5 backfill sampling
 	RecipePassThreshold    float64 `env:"RECIPE_PASS_THRESHOLD"     envDefault:"0.8"`
 	RecipeMaxGenAttempts   int     `env:"RECIPE_MAX_GEN_ATTEMPTS"   envDefault:"3"`

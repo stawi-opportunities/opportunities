@@ -104,7 +104,14 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 	}
 
 	now := time.Now().UTC()
-	next := now.Add(time.Duration(src.CrawlIntervalSec) * time.Second)
+	// Align with Trustage MinCrawlInterval (12h) so next_crawl_at does not
+	// mark sources due hours before the schedule can fire.
+	intervalSec := src.CrawlIntervalSec
+	const minIntervalSec = 12 * 3600
+	if intervalSec < minIntervalSec {
+		intervalSec = minIntervalSec
+	}
+	next := now.Add(time.Duration(intervalSec) * time.Second)
 
 	rejectRate := 0.0
 	if p.JobsFound > 0 {

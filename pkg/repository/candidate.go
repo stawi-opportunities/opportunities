@@ -113,6 +113,9 @@ func (r *CandidateRepository) Count(ctx context.Context) (int64, error) {
 // Returns whether the row was changed. planID, when non-empty, confirms
 // the persisted plan; subID links the candidate to the billing
 // subscription.
+//
+// AutoApply is set from plan entitlements (Pro/Managed true, Starter false)
+// so higher tiers unlock automated apply without a separate flag write.
 func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidateID, subID, planID string) (bool, error) {
 	updates := map[string]interface{}{
 		"subscription":    domain.SubscriptionPaid,
@@ -120,6 +123,13 @@ func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidat
 	}
 	if planID != "" {
 		updates["plan_id"] = planID
+	}
+	// Entitlements: auto-apply for pro/managed; starter is matches-only.
+	switch planID {
+	case "pro", "managed":
+		updates["auto_apply"] = true
+	case "starter":
+		updates["auto_apply"] = false
 	}
 	res := r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).

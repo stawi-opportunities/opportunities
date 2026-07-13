@@ -79,7 +79,7 @@ func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
 		Status: billing.StatusRedirect, Route: billing.RoutePolar,
 		PromptID: "chk_1", RedirectURL: "https://pay/abc",
 	}}
-	h := httpmw.CandidateAuth(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, candReq(t, http.MethodPost, "/billing/checkout", "cand_1", `{"plan_id":"pro"}`))
 
@@ -104,7 +104,7 @@ func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
 func TestCheckoutHandler_RejectsUnknownPlan(t *testing.T) {
 	t.Parallel()
 	gw := &stubGateway{}
-	h := httpmw.CandidateAuth(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, candReq(t, http.MethodPost, "/billing/checkout", "cand_1", `{"plan_id":"free"}`))
 
@@ -115,7 +115,7 @@ func TestCheckoutHandler_RejectsUnknownPlan(t *testing.T) {
 func TestCheckoutHandler_GatewayUnavailableIs503(t *testing.T) {
 	t.Parallel()
 	gw := &stubGateway{createErr: billing.ErrGatewayUnavailable}
-	h := httpmw.CandidateAuth(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, candReq(t, http.MethodPost, "/billing/checkout", "cand_1", `{"plan_id":"starter"}`))
 
@@ -128,7 +128,7 @@ func TestCheckoutHandler_GatewayUnavailableIs503(t *testing.T) {
 func TestCheckoutStatusHandler_RequiresPromptID(t *testing.T) {
 	t.Parallel()
 	gw := &stubGateway{}
-	h := httpmw.CandidateAuth(v1.CheckoutStatusHandler(v1.CheckoutStatusDeps{Gateway: gw}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutStatusHandler(v1.CheckoutStatusDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, candReq(t, http.MethodGet, "/billing/checkout/status", "cand_1", ""))
 
@@ -142,7 +142,7 @@ func TestCheckoutStatusHandler_NoStoreIs503(t *testing.T) {
 	// rather than poll the gateway by a guessable prompt_id — otherwise any
 	// candidate could read another's checkout (IDOR).
 	gw := &stubGateway{statusResult: billing.StatusResult{Status: billing.StatusPaid, SubscriptionID: "sub-1"}}
-	h := httpmw.CandidateAuth(v1.CheckoutStatusHandler(v1.CheckoutStatusDeps{Gateway: gw}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutStatusHandler(v1.CheckoutStatusDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, candReq(t, http.MethodGet, "/billing/checkout/status?prompt_id=chk_1", "cand_1", ""))
 

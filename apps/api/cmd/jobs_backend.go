@@ -202,8 +202,7 @@ func scanJob(rows *sql.Rows) (job, error) {
 		j.Deadline = &t
 	}
 	// Pull the sparse facet keys exposed by the search response from
-	// opportunities.attributes;
-	// callers that need the rest can hit a future per-row endpoint.
+	// opportunities.attributes.
 	if len(attrsRaw) > 0 {
 		var attrs map[string]any
 		if err := json.Unmarshal(attrsRaw, &attrs); err == nil {
@@ -226,9 +225,21 @@ func scanJob(rows *sql.Rows) (job, error) {
 			if v, ok := attrs["funding_focus"].(string); ok {
 				j.FundingFocus = v
 			}
+			// Categories: human labels stored as []string under attributes.
+			// We keep them on Attributes for the detail response; the
+			// searchResult.category string is resolved separately when a
+			// registry label function is provided.
+			if raw, ok := attrs["categories"]; ok {
+				switch vv := raw.(type) {
+				case []any:
+					// no-op on Categories ([]int64 legacy); labels ride in attributes
+					_ = vv
+				case []string:
+					_ = vv
+				}
+			}
 		}
 	}
-	// categories currently live under attributes.categories.
 	_ = categoryRaw
 	_ = quality
 	return j, nil
@@ -403,6 +414,44 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 		}
 		_ = rows.Close()
 		out[f.name] = buckets
+	}
+
+	// Category facet from attributes.categories (jsonb string array).
+	{
+		db, dbErr := p.sqlDB(ctx, true)
+		if dbErr != nil {
+			return nil, dbErr
+		}
+		q := `SELECT lower(c) AS bucket, count(*)
+		      FROM opportunities o,
+		           jsonb_array_elements_text(COALESCE(o.attributes->'categories', '[]'::jsonb)) c
+		      WHERE ` + activePred() + `
+		        AND o.last_seen_at >= $1
+		        AND btrim(c) <> ''
+		      GROUP BY bucket
+		      ORDER BY count(*) DESC
+		      LIMIT 200`
+		rows, err := db.QueryContext(ctx, q, defaultSince())
+		if err != nil {
+			// Non-fatal: environments without jsonb array categories still serve other facets.
+			util.Log(ctx).WithError(err).Warn("postgres: category facet failed")
+			out["categories"] = map[string]int{}
+		} else {
+			buckets := map[string]int{}
+			for rows.Next() {
+				var k sql.NullString
+				var n int
+				if err := rows.Scan(&k, &n); err != nil {
+					_ = rows.Close()
+					return nil, err
+				}
+				if k.Valid && k.String != "" {
+					buckets[k.String] = n
+				}
+			}
+			_ = rows.Close()
+			out["categories"] = buckets
+		}
 	}
 	return out, nil
 }
@@ -658,10 +707,13 @@ func translateEquals(col string, val any, pidx int) (string, any, bool) {
 	case "field_of_study", "degree_level":
 		// Still under attributes JSONB.
 		return "attributes->>'" + col + "' = $" + intToStr(pidx), val, true
-	case "categories":
-		// Categories are string arrays under attributes. Category filtering is
-		// handled by the dedicated facet path.
-		return "", nil, false
+	case "categories", "category":
+		// attributes.categories is a jsonb string array of human labels.
+		// Case-insensitive membership.
+		return `EXISTS (
+			SELECT 1 FROM jsonb_array_elements_text(COALESCE(attributes->'categories','[]'::jsonb)) c
+			 WHERE lower(c) = lower($` + intToStr(pidx) + `)
+		)`, val, true
 	case "remote":
 		return "remote = $" + intToStr(pidx), val, true
 	}
@@ -679,6 +731,7 @@ func quoteSafeCol(col string) string {
 		"amount_min": true, "amount_max": true,
 		"posted_at": true, "deadline": true,
 		"last_seen_at": true, "first_seen_at": true, "created_at": true,
+		"employment_type": true, "seniority": true, "geo_scope": true,
 	}
 	if allowed[col] {
 		return col

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,11 +21,13 @@ import (
 	fconfig "github.com/pitabwire/frame/v2/config"
 	"github.com/pitabwire/frame/v2/datastore"
 	"github.com/pitabwire/util"
+	"github.com/rs/xid"
 
 	"github.com/stawi-opportunities/opportunities/pkg/analytics"
 	"github.com/stawi-opportunities/opportunities/pkg/counters"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
@@ -201,6 +204,7 @@ func main() {
 	mux.HandleFunc("GET /api/jobs/top", topHandler(jm))
 	mux.HandleFunc("GET /api/jobs/latest", latestHandler(jm))
 	mux.HandleFunc("GET /api/categories", categoriesHandler(jm))
+	mux.HandleFunc("GET /api/categories/{slug}/jobs", categoryJobsHandler(jm))
 	mux.HandleFunc("GET /api/stats", jobStatsHandler(jm))
 	mux.HandleFunc("GET /api/feed", feedHandler(jm))
 	mux.HandleFunc("GET /api/feed/tier", feedTierHandler(jm))
@@ -242,7 +246,36 @@ func main() {
 					Warn("source admin: scheduling-changed emit failed")
 			}
 		}
-		registerSourcesAdmin(ctx, mux, &cfg, reg, loader, emitSchedulingChanged)
+		// Operator crawl kick: emit crawl.requests.v1 with the same
+		// idempotency key shape the crawler's Trustage endpoint uses.
+		// Optional queue-depth admitter when the job_ingest_queue table exists.
+		queueStore := jobqueue.New(pool.DB)
+		admit := jobqueue.NewCapacityAdmitter(queueStore, 50_000, 15*time.Minute, nil)
+		dispatchCrawl := func(emitCtx context.Context, sourceID string) (int, string, error) {
+			granted, _ := admit.Admit(emitCtx, eventsv1.TopicCrawlRequests, 1)
+			if granted < 1 {
+				return 0, "backpressure", fmt.Errorf("ingest queue at capacity; retry shortly")
+			}
+			mgr := svc.EventsManager()
+			if mgr == nil {
+				return 0, "events_unavailable", fmt.Errorf("events manager unavailable")
+			}
+			now := time.Now().UTC()
+			tickMinute := now.Truncate(time.Minute).Format(time.RFC3339)
+			env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
+				RequestID:      xid.New().String(),
+				SourceID:       sourceID,
+				IdempotencyKey: fmt.Sprintf("%s:%s", sourceID, tickMinute),
+				ScheduledAt:    now,
+				Mode:           "auto",
+				Attempt:        1,
+			})
+			if err := mgr.Emit(emitCtx, eventsv1.TopicCrawlRequests, env); err != nil {
+				return 0, "emit_failed", err
+			}
+			return 1, "", nil
+		}
+		registerSourcesAdmin(ctx, mux, &cfg, reg, loader, emitSchedulingChanged, dispatchCrawl)
 		registerFlagsAdmin(ctx, mux, jm)
 	}
 

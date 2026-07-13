@@ -95,7 +95,7 @@ func TestSubscriptionHandler_StatusMapping(t *testing.T) {
 			t.Parallel()
 			candReader := &fakeCandidateReader{candidate: tc.candidate}
 			matches := &fakeMatchSummarizer{queued: 3, delivered: 7}
-			h := httpmw.CandidateAuth(v1.SubscriptionHandler(v1.SubscriptionDeps{
+			h := httpmw.NewCandidateAuth(nil)(v1.SubscriptionHandler(v1.SubscriptionDeps{
 				Candidates: candReader,
 				Matches:    matches,
 			}))
@@ -124,7 +124,7 @@ func TestSubscriptionHandler_StatusMapping(t *testing.T) {
 func TestSubscriptionHandler_CandidateLookupErrorReturnsProblemJSON(t *testing.T) {
 	t.Parallel()
 	candReader := &fakeCandidateReader{err: errors.New("db down")}
-	h := httpmw.CandidateAuth(v1.SubscriptionHandler(v1.SubscriptionDeps{
+	h := httpmw.NewCandidateAuth(nil)(v1.SubscriptionHandler(v1.SubscriptionDeps{
 		Candidates: candReader,
 		Matches:    &fakeMatchSummarizer{},
 	}))
@@ -145,7 +145,7 @@ func TestSubscriptionHandler_NilMatchesDegradesToZeroCounts(t *testing.T) {
 	candReader := &fakeCandidateReader{
 		candidate: &domain.CandidateProfile{Subscription: domain.SubscriptionPaid, PlanID: "pro"},
 	}
-	h := httpmw.CandidateAuth(v1.SubscriptionHandler(v1.SubscriptionDeps{
+	h := httpmw.NewCandidateAuth(nil)(v1.SubscriptionHandler(v1.SubscriptionDeps{
 		Candidates: candReader,
 		Matches:    nil,
 	}))
@@ -169,7 +169,7 @@ func TestSubscriptionHandler_SummaryErrorReturnsZeroCountsNotFailure(t *testing.
 		candidate: &domain.CandidateProfile{Subscription: domain.SubscriptionPaid, PlanID: "pro"},
 	}
 	matches := &fakeMatchSummarizer{err: errors.New("connection refused")}
-	h := httpmw.CandidateAuth(v1.SubscriptionHandler(v1.SubscriptionDeps{
+	h := httpmw.NewCandidateAuth(nil)(v1.SubscriptionHandler(v1.SubscriptionDeps{
 		Candidates: candReader,
 		Matches:    matches,
 	}))
@@ -190,7 +190,7 @@ func TestSubscriptionHandler_BlankPlanRendersAsNullJSON(t *testing.T) {
 	candReader := &fakeCandidateReader{
 		candidate: &domain.CandidateProfile{Subscription: domain.SubscriptionPaid, PlanID: "   "},
 	}
-	h := httpmw.CandidateAuth(v1.SubscriptionHandler(v1.SubscriptionDeps{
+	h := httpmw.NewCandidateAuth(nil)(v1.SubscriptionHandler(v1.SubscriptionDeps{
 		Candidates: candReader,
 		Matches:    &fakeMatchSummarizer{},
 	}))

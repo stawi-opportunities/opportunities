@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "name": "opportunities.billing.reconcile",
+  "description": "Every 2 minutes: poll pending checkouts against the payment gateway and activate subscriptions when paid (safety net for dropped webhooks).",
+  "input": {},
+  "config": {},
+  "timeout": "5m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "billing_reconcile",
+      "type": "call",
+      "name": "Reconcile pending checkouts",
+      "timeout": "4m",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-matching.product-opportunities.svc/_admin/billing/reconcile",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Admin-Token": "${ADMIN_SHARED_SECRET}"
+          },
+          "body": {}
+        },
+        "output_var": "reconcile_result"
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.billing.reconcile.default",
+      "cron_expr": "*/2 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

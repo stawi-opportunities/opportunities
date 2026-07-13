@@ -2,7 +2,7 @@
   {
     "base_url": "https://wuzzuf.net",
     "country": "EG",
-    "crawl_interval_sec": 3600,
+    "crawl_interval_sec": 43200,
     "kinds": [
       "job"
     ],
@@ -14,7 +14,7 @@
   {
     "base_url": "https://forasna.com",
     "country": "EG",
-    "crawl_interval_sec": 3600,
+    "crawl_interval_sec": 43200,
     "kinds": [
       "job"
     ],

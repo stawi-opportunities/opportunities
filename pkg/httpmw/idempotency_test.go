@@ -49,7 +49,7 @@ func TestIdempotency_ReplayReturnsSameResponse(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"v":1}`))
 		}))
-	wrapped := httpmw.CandidateAuth(mid)
+	wrapped := httpmw.NewCandidateAuth(nil)(mid)
 
 	do := func() *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "/anything", nil)
@@ -82,7 +82,7 @@ func TestIdempotency_ErrorResponse_NotCached(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"err":"bad"}`))
 		}))
-	wrapped := httpmw.CandidateAuth(mid)
+	wrapped := httpmw.NewCandidateAuth(nil)(mid)
 
 	do := func() *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "/anything", nil)

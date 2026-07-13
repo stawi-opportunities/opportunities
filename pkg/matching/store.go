@@ -98,6 +98,24 @@ func (s *Store) GetByPair(ctx context.Context, candidateID, opportunityID string
 	return scanMatch(row.Scan)
 }
 
+// MarkApplied sets a match row to applied when the candidate records an
+// application. Idempotent for already-applied rows. No-op when no match
+// exists (manual apply without a prior match is still valid).
+func (s *Store) MarkApplied(ctx context.Context, candidateID, opportunityID string) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE candidate_matches
+   SET status = 'applied',
+       applied_at = COALESCE(applied_at, now()),
+       updated_at = now()
+ WHERE candidate_id = $1 AND opportunity_id = $2
+   AND status NOT IN ('dismissed')`,
+		candidateID, opportunityID)
+	if err != nil {
+		return fmt.Errorf("matching: mark applied: %w", err)
+	}
+	return nil
+}
+
 func nullableF64(p *float64) any {
 	if p == nil {
 		return nil

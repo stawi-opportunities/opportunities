@@ -23,6 +23,9 @@ type Deps struct {
 	AttachmentsStore *applications.AttachmentsStore
 	BlobStore        applications.BlobStore
 	Idempotency      *applications.IdempotencyStore
+	// Auth wraps /api/me/* routes. When nil, falls back to header-only
+	// CandidateAuth (tests). Production passes NewCandidateAuth(jwt).
+	Auth func(http.Handler) http.Handler
 
 	// Now is the time source — tests inject; defaults to time.Now.
 	Now func() time.Time

@@ -42,11 +42,15 @@ type UploadDeps struct {
 //	POST /candidates/cv/upload
 //	Content-Type: multipart/form-data
 //	Fields:
-//	  candidate_id (required, string)
+//	  candidate_id (optional when authenticated; must match JWT subject)
 //	  cv           (required, file; .pdf or .docx)
 //
+// MUST be wrapped with CandidateAuth in production. Identity is taken
+// from the JWT subject when present; a form candidate_id that disagrees
+// is rejected.
+//
 // Flow:
-//  1. Validate candidate_id + file present.
+//  1. Resolve candidate identity (auth subject preferred).
 //  2. Read file bytes (bounded by MaxBytes).
 //  3. Archive raw bytes via pkg/archive → raw_archive_ref.
 //  4. Extract plain text (PDF or DOCX branch based on filename).
@@ -76,6 +80,13 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 		}
 
 		candidateID := strings.TrimSpace(r.FormValue("candidate_id"))
+		if authID, ok := candidateIDFromAuth(ctx); ok {
+			if candidateID != "" && candidateID != authID {
+				http.Error(w, `{"error":"candidate_id does not match authenticated subject"}`, http.StatusForbidden)
+				return
+			}
+			candidateID = authID
+		}
 		if candidateID == "" {
 			http.Error(w, `{"error":"candidate_id is required"}`, http.StatusBadRequest)
 			return

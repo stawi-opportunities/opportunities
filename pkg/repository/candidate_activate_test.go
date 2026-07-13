@@ -28,6 +28,7 @@ func TestActivateSubscription_FlipsFreeToPaidIdempotently(t *testing.T) {
 			ADD COLUMN IF NOT EXISTS subscription    TEXT NOT NULL DEFAULT 'free',
 			ADD COLUMN IF NOT EXISTS subscription_id TEXT NOT NULL DEFAULT '',
 			ADD COLUMN IF NOT EXISTS plan_id         TEXT NOT NULL DEFAULT '',
+			ADD COLUMN IF NOT EXISTS auto_apply      BOOLEAN NOT NULL DEFAULT false,
 			ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 			ADD COLUMN IF NOT EXISTS deleted_at      TIMESTAMPTZ`)
 	require.NoError(t, err)

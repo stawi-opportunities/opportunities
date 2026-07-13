@@ -10,6 +10,9 @@ import { OpportunityTrace } from "@/pages/OpportunityTrace";
 import { SeedDigest } from "@/pages/SeedDigest";
 import { DefinitionsList } from "@/pages/DefinitionsList";
 import { DefinitionEditor } from "@/pages/DefinitionEditor";
+import { OpsOverview } from "@/pages/OpsOverview";
+import { JobsList } from "@/pages/JobsList";
+import { Rejections } from "@/pages/Rejections";
 import "@/styles/admin.css";
 
 const container = document.getElementById("admin-root");
@@ -21,8 +24,11 @@ createRoot(container).render(
       <AppGate>
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<SourceList />} />
+            <Route index element={<OpsOverview />} />
+            <Route path="sources" element={<SourceList />} />
             <Route path="sources/:id" element={<SourceTrace />} />
+            <Route path="jobs" element={<JobsList />} />
+            <Route path="rejections" element={<Rejections />} />
             <Route path="variants/:id" element={<VariantTrace />} />
             <Route path="opportunities/:slug" element={<OpportunityTrace />} />
             <Route path="seeds/:id/digest" element={<SeedDigest />} />

@@ -119,7 +119,65 @@ func (r *TraceRepository) SourceSummary(ctx context.Context, sourceID string, wi
 	if err != nil {
 		return nil, fmt.Errorf("SourceSummary: %w", err)
 	}
+	reasons, rerr := r.rejectionReasons(ctx, sourceID, since, time.Time{})
+	if rerr != nil {
+		return nil, rerr
+	}
+	s.RejectionReasons = reasons
 	return &s, nil
+}
+
+// rejectionReasons aggregates low-cardinality reject codes from
+// job_ingest_events.details. VariantRejectedV1 stores reasons[] (array);
+// older rows may use a single "reason" string. Both are counted.
+// until zero means open-ended (now + 1h safety margin).
+func (r *TraceRepository) rejectionReasons(ctx context.Context, sourceID string, since, until time.Time) (map[string]int64, error) {
+	out := map[string]int64{}
+	if until.IsZero() {
+		until = time.Now().UTC().Add(time.Hour)
+	}
+	q := `
+		SELECT COALESCE(NULLIF(reason, ''), 'unknown') AS reason, count(*)::bigint
+		  FROM (
+		    SELECT jsonb_array_elements_text(
+		             CASE WHEN jsonb_typeof(details->'reasons') = 'array'
+		                  THEN details->'reasons'
+		                  ELSE '[]'::jsonb END
+		           ) AS reason
+		      FROM job_ingest_events
+		     WHERE event_type = 'rejected'
+		       AND source_id = ?
+		       AND occurred_at >= ? AND occurred_at < ?
+		    UNION ALL
+		    SELECT details->>'reason' AS reason
+		      FROM job_ingest_events
+		     WHERE event_type = 'rejected'
+		       AND source_id = ?
+		       AND occurred_at >= ? AND occurred_at < ?
+		       AND COALESCE(details->>'reason', '') <> ''
+		       AND (details->'reasons' IS NULL OR jsonb_typeof(details->'reasons') <> 'array'
+		            OR jsonb_array_length(details->'reasons') = 0)
+		  ) r
+		 GROUP BY 1
+		 ORDER BY 2 DESC
+		 LIMIT 50`
+	rows, err := r.db(ctx, true).Raw(q,
+		sourceID, since, until,
+		sourceID, since, until,
+	).Rows()
+	if err != nil {
+		return out, fmt.Errorf("rejectionReasons: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var reason string
+		var n int64
+		if err := rows.Scan(&reason, &n); err != nil {
+			return out, fmt.Errorf("rejectionReasons scan: %w", err)
+		}
+		out[reason] = n
+	}
+	return out, rows.Err()
 }
 
 // RecentCrawls returns up to limit most-recent crawl_jobs rows for a
@@ -309,5 +367,10 @@ func (r *TraceRepository) DayDigest(ctx context.Context, sourceID string, start,
 		}
 		return nil, fmt.Errorf("DayDigest: %w", err)
 	}
+	reasons, rerr := r.rejectionReasons(ctx, sourceID, start, end)
+	if rerr != nil {
+		return nil, rerr
+	}
+	s.RejectionReasons = reasons
 	return &s, nil
 }

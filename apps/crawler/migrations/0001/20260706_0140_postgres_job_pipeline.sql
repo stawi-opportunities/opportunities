@@ -30,6 +30,11 @@ BEGIN
                WHERE status = ''processing''';
 
     EXECUTE 'ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS embedding vector(1024)';
+    -- ANN index for candidate→job reverse KNN / search. Partial: only rows
+    -- with embeddings and currently served participate (keeps build smaller).
+    EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_embedding_hnsw
+               ON opportunities USING hnsw (embedding vector_cosine_ops)
+               WHERE embedding IS NOT NULL AND hidden=false AND status=''active''';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_active_recent_idx ON opportunities(last_seen_at DESC) WHERE hidden=false AND status=''active''';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_kind_country_idx ON opportunities(kind,country,last_seen_at DESC) WHERE hidden=false AND status=''active''';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_employment_type_idx ON opportunities(employment_type) WHERE hidden=false AND status=''active'' AND employment_type IS NOT NULL';

@@ -2,8 +2,10 @@
   {
     "base_url": "https://libyanjobs.ly",
     "country": "LY",
-    "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "crawl_interval_sec": 43200,
+    "kinds": [
+      "job"
+    ],
     "language": "ar",
     "priority": "hot",
     "region": "north_africa",

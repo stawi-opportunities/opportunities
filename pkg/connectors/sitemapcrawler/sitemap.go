@@ -1,8 +1,6 @@
 // Package sitemapcrawler provides a connector that discovers job URLs from
-// XML sitemaps. It parses robots.txt for Sitemap directives, handles sitemap
-// index files, and filters URLs to only include job-related paths. Each
-// discovered URL is returned as an ExternalOpportunity stub; the pipeline's
-// NormalizeHandler is responsible for fetching the detail page content.
+// XML sitemaps and extracts structured JobPostings from each detail page
+// (schema.org JSON-LD). It does NOT emit URL-only AI stubs.
 package sitemapcrawler
 
 import (
@@ -18,11 +16,14 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/spec/schemaorgjsonld"
 	"github.com/stawi-opportunities/opportunities/pkg/content"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
-const batchSize = 50
+// batchSize is how many sitemap URLs we attempt per Next() call. Each URL
+// triggers one detail fetch for structured JSON-LD extraction.
+const batchSize = 20
 
 // jobPathPatterns are URL path fragments that indicate a job detail page.
 var jobPathPatterns = []string{
@@ -80,12 +81,15 @@ func (c *Connector) Type() domain.SourceType { return c.sourceType }
 
 // Crawl begins a sitemap-based crawl of the given source.
 // Uses source.LastSeenAt to skip sitemap entries that haven't changed since last crawl.
+// Each discovered URL is fetched and mapped via schema.org JobPosting JSON-LD
+// — URL-only stubs are never emitted.
 func (c *Connector) Crawl(_ context.Context, source domain.Source) connectors.CrawlIterator {
 	return &iterator{
-		client:      c.client,
-		baseURL:     strings.TrimRight(source.BaseURL, "/"),
-		batchSize:   batchSize,
-		lastSeenAt:  source.LastSeenAt,
+		client:     c.client,
+		sourceType: c.sourceType,
+		baseURL:    strings.TrimRight(source.BaseURL, "/"),
+		batchSize:  batchSize,
+		lastSeenAt: source.LastSeenAt,
 	}
 }
 
@@ -95,6 +99,7 @@ func (c *Connector) Crawl(_ context.Context, source domain.Source) connectors.Cr
 
 type iterator struct {
 	client     *httpx.Client
+	sourceType domain.SourceType
 	baseURL    string
 	lastSeenAt *time.Time // skip sitemap entries older than this
 	jobURLs    []string   // all discovered job URLs
@@ -128,41 +133,94 @@ func (it *iterator) Next(ctx context.Context) bool {
 		}
 	}
 
-	// Yield the next batch.
-	if it.pos >= len(it.jobURLs) {
-		it.done = true
-		return false
+	// Advance until we fill a non-empty structured batch or run out of URLs.
+	// Pages without JobPosting JSON-LD are skipped (no AI stubs).
+	for it.pos < len(it.jobURLs) {
+		end := it.pos + it.batchSize
+		if end > len(it.jobURLs) {
+			end = len(it.jobURLs)
+		}
+		batch := it.jobURLs[it.pos:end]
+		it.pos = end
+
+		jobs := make([]domain.ExternalOpportunity, 0, len(batch))
+		var lastStatus int
+		var lastBody []byte
+		structured, skipped := 0, 0
+		for _, u := range batch {
+			opp, body, status, ok := fetchStructuredJob(ctx, it.client, u, it.sourceType)
+			lastStatus, lastBody = status, body
+			if !ok || opp == nil {
+				skipped++
+				continue
+			}
+			jobs = append(jobs, *opp)
+			structured++
+		}
+		it.raw = lastBody
+		it.status = lastStatus
+		if structured > 0 || skipped > 0 {
+			util.Log(ctx).
+				WithField("structured", structured).
+				WithField("skipped_no_jsonld", skipped).
+				Debug("sitemapcrawler: structured detail batch")
+		}
+		if len(jobs) == 0 {
+			// Entire batch lacked structured data — try next batch rather
+			// than returning empty Items() which would look like end-of-iter.
+			continue
+		}
+		it.jobs = jobs
+		return true
 	}
 
-	end := it.pos + it.batchSize
-	if end > len(it.jobURLs) {
-		end = len(it.jobURLs)
-	}
-
-	batch := it.jobURLs[it.pos:end]
-	it.pos = end
-
-	jobs := make([]domain.ExternalOpportunity, 0, len(batch))
-	for _, u := range batch {
-		jobs = append(jobs, domain.ExternalOpportunity{
-			Kind:       "job",
-			ExternalID: u,
-			ApplyURL:   u,
-		})
-	}
-	it.jobs = jobs
-	return true
+	it.done = true
+	return false
 }
 
-func (it *iterator) Items() []domain.ExternalOpportunity      { return it.jobs }
-func (it *iterator) RawPayload() []byte                { return it.raw }
-func (it *iterator) HTTPStatus() int                   { return it.status }
-func (it *iterator) Err() error                        { return it.err }
-func (it *iterator) Cursor() json.RawMessage           { return nil }
+// fetchStructuredJob GETs a detail URL and maps the first schema.org
+// JobPosting. Returns ok=false when the page has no usable structured data.
+func fetchStructuredJob(ctx context.Context, client *httpx.Client, pageURL string, srcType domain.SourceType) (*domain.ExternalOpportunity, []byte, int, bool) {
+	if client == nil {
+		return nil, nil, 0, false
+	}
+	body, status, err := client.Get(ctx, pageURL, map[string]string{
+		"Accept": "text/html,application/xhtml+xml",
+	})
+	if err != nil || status != 200 || len(body) == 0 {
+		return nil, body, status, false
+	}
+	postings := schemaorgjsonld.ExtractJobPostings(body)
+	if len(postings) == 0 {
+		return nil, body, status, false
+	}
+	opp, mapErr := schemaorgjsonld.MapJobPosting(postings[0])
+	if mapErr != nil || opp == nil {
+		return nil, body, status, false
+	}
+	// Identity + apply URL defaults from the page we just fetched.
+	opp.Source = srcType
+	opp.SourceURL = pageURL
+	if strings.TrimSpace(opp.ApplyURL) == "" {
+		opp.ApplyURL = pageURL
+	}
+	if strings.TrimSpace(opp.ExternalID) == "" {
+		opp.ExternalID = pageURL
+	}
+	// Require the core fields a job needs; drop incomplete JSON-LD.
+	if strings.TrimSpace(opp.Title) == "" || strings.TrimSpace(opp.IssuingEntity) == "" {
+		return nil, body, status, false
+	}
+	return opp, body, status, true
+}
 
-// Content returns nil because sitemap stubs have no page content.
-// TODO: The NormalizeHandler will need to detect empty Markdown and fetch
-// the detail page itself when processing sitemap-discovered jobs.
+func (it *iterator) Items() []domain.ExternalOpportunity { return it.jobs }
+func (it *iterator) RawPayload() []byte                   { return it.raw }
+func (it *iterator) HTTPStatus() int                      { return it.status }
+func (it *iterator) Err() error                           { return it.err }
+func (it *iterator) Cursor() json.RawMessage              { return nil }
+
+// Content returns nil — JobPosting fields are on each item.
 func (it *iterator) Content() *content.Extracted { return nil }
 
 // --------------------------------------------------------------------------

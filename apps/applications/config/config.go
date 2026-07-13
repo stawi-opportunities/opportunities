@@ -9,7 +9,10 @@ type Config struct {
 	config.ConfigurationDefault
 
 	HTTPAddr            string `env:"HTTP_ADDR" envDefault:":8090"`
-	ApplicationsEnabled bool   `env:"APPLICATIONS_ENABLED" envDefault:"false"`
+	// Enabled by default so the applications tracking API is available when
+	// the binary is deployed. Set APPLICATIONS_ENABLED=false to expose only
+	// healthz during emergency rollbacks.
+	ApplicationsEnabled bool   `env:"APPLICATIONS_ENABLED" envDefault:"true"`
 	IdempotencyTTLHours int    `env:"APPLICATIONS_IDEMPOTENCY_TTL_HOURS" envDefault:"24"`
 
 	// R2 blob storage for attachments. Empty values disable R2; the

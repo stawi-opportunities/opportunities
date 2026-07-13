@@ -5,11 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
-	"math/rand"
 	"net/http"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/pitabwire/frame/v2"
@@ -19,10 +15,9 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/recipeconn"
-	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/crawlaccept"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
-	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
@@ -67,31 +62,12 @@ type CrawlRequestDeps struct {
 	// connector and no recipe (e.g. an individual ATS board whose connector was
 	// migrated to an aggregate recipe). nil disables auto-pause.
 	StatusSetter SourceStatusSetter
-	Registry     *connectors.Registry
-	Kinds        *opportunity.Registry // opportunity-kind registry; required by Verify
-	Extractor    *extraction.Extractor // nil → skip AI enrichment
-	Normalizer   *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
-	// PageFetcher fetches per-URL HTML so URL-only iterator stubs
-	// (sitemap, universal AI link discovery) can be enriched with
-	// LLM-extracted title/description/issuing_entity BEFORE Verify.
-	// nil → stubs flow through unchanged and are rejected by Verify.
+	Registry   *connectors.Registry
+	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
+	Normalizer *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
+	// PageFetcher is the HTTP client used by the recipe executor for
+	// structured page fetches. Not used for LLM enrichment.
 	PageFetcher *httpx.Client
-	// EnrichConcurrency bounds how many URL-stub fetch+extract calls
-	// run concurrently per page. Defaults to 4. Sized so multiple
-	// crawler pods × concurrent stubs stay below the configured llama
-	// slot budget; higher values overwhelm the inference fleet and
-	// trigger Frame ants-pool exhaustion downstream.
-	EnrichConcurrency int
-	// DiscoverSample is the probability [0..1] that a given iterator
-	// page triggers an additional DiscoverSites call. 0.0 = disabled
-	// (unit-test default). In production, set ~0.05 so roughly one in
-	// twenty crawled pages attempts site discovery. Multi-page connectors
-	// get correspondingly more rolls per source crawl.
-	DiscoverSample float64
-	// Rand is optional; nil uses a package-local deterministic source
-	// seeded in init(). Tests can inject a fixed seed to make sampling
-	// predictable.
-	Rand *rand.Rand
 	// CrawlRepo writes the crawl_jobs audit ledger.
 	// nil disables ledger writes (test paths). Errors propagate — a
 	// Postgres outage MUST fail the crawl, otherwise the ledger silently
@@ -160,10 +136,9 @@ func useRecipePath(enabled bool, rec *recipe.Recipe) bool {
 
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
 // connector iterator for the source, parses content in memory, optionally
-// extracts fields via AI, and enqueues accepted parsed records.
+// extracts structured jobs and enqueues accepted records.
 //
-//   - one jobs.variants.ingested.v1 per accepted job
-//   - optionally one sources.discovered.v1 per DiscoverSites hit
+//   - one opportunities.variants.ingested.v1 per accepted job
 //   - exactly one crawl.page.completed.v1 summary per request
 type CrawlRequestHandler struct {
 	deps CrawlRequestDeps
@@ -172,9 +147,6 @@ type CrawlRequestHandler struct {
 // NewCrawlRequestHandler wires the handler. Deps are captured by value
 // because nothing in the struct is mutable between calls.
 func NewCrawlRequestHandler(deps CrawlRequestDeps) *CrawlRequestHandler {
-	if deps.Rand == nil {
-		deps.Rand = rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec
-	}
 	if deps.Owner == "" {
 		// A per-process lease owner so two consumers never drive the same run's
 		// slice concurrently. Hostname-ish identity is enough; uniqueness across
@@ -489,120 +461,35 @@ pages:
 			continue
 		}
 
-		// Enrich URL-only stubs (sitemap + universal AI link
-		// discovery) by fetching each detail page and running the
-		// LLM extractor in parallel. Mutates pageItems in place.
-		// Connectors that already produce complete records (greenhouse,
-		// themuse, …) skip this step because their Title is non-empty.
-		h.enrichStubs(ctx, pageItems, src)
+		// Connectors must emit complete structured records (API fields or
+		// schema.org JSON-LD). Incomplete items fail crawlaccept.Verify —
+		// there is no LLM stub enrichment path.
 
 		for i := range pageItems {
 			extJob := pageItems[i]
 			jobsFound++
 
-			// Apply-URL fallback chain first — normalize and Verify both see the
-			// resolved URL.
-			ensureApplyURL(&extJob, extJob.SourceURL)
-			if extJob.ApplyURL == "" {
-				ensureApplyURL(&extJob, src.BaseURL)
-			}
-
-			// Resolve kind: prefer the connector-tagged kind on the
-			// ExternalOpportunity, falling back to the source's first
-			// declared Kind so single-kind connectors keep working when a
-			// connector forgets to tag.
-			kind := extJob.Kind
-			if kind == "" && len(src.Kinds) > 0 {
-				kind = src.Kinds[0]
-				extJob.Kind = kind
-			}
-
-			// Anchor-country fallback chain. Every source carries a
-			// declared country (geolocated at registration). When the
-			// LLM extractor fails to populate AnchorLocation.Country —
-			// which is common when a listing does not repeat its country,
-			// fall back to the source's declared country.
-			if src.Country != "" {
-				if extJob.AnchorLocation == nil {
-					extJob.AnchorLocation = &domain.Location{Country: src.Country}
-				} else if extJob.AnchorLocation.Country == "" {
-					extJob.AnchorLocation.Country = src.Country
+			// Single accept path: prepare → verify → normalize → pack.
+			// Shared with frontier-worker so "what is a storable job"
+			// cannot drift. Does not fall back ApplyURL to source BaseURL
+			// (that polluted multi-job boards with listing URLs).
+			accepted := crawlaccept.Accept(crawlaccept.Input{
+				Opp:        extJob,
+				Source:     src,
+				Kinds:      h.deps.Kinds,
+				Normalizer: h.deps.Normalizer,
+			})
+			if accepted.Rejected != nil {
+				jobsRejected++
+				kind := accepted.Rejected.Kind
+				telemetry.RecordVerifyRejection(kind, accepted.Rejected.Reason)
+				if rerr := h.publishAcceptReject(ctx, src.ID, extJob, accepted.Rejected, crawlJob.ID); rerr != nil {
+					log.WithError(rerr).Warn("crawl.request: publishRejected failed")
 				}
+				continue
 			}
-
-			// Source contract + kind contract gate. Rejections are written to
-			// the append-only PostgreSQL event ledger.
-			if h.deps.Kinds != nil {
-				if res := opportunity.Verify(&extJob, src, h.deps.Kinds); !res.OK {
-					jobsRejected++
-					reason := rejectionReason(res)
-					telemetry.RecordVerifyRejection(kind, reason)
-					if rerr := h.publishRejected(ctx, src.ID, kind, extJob, res, crawlJob.ID); rerr != nil {
-						log.WithError(rerr).Warn("crawl.request: publishRejected failed")
-					}
-					continue
-				}
-			}
-
-			// Convert to a VariantIngested payload via the normalize
-			// helper. Hard-key, stage, and mapping live there. When a
-			// Normalizer is wired (production), it runs the bundled
-			// gazetteer enrich pass first so AnchorLocation gets
-			// Lat/Lon/Region filled in for recognised cities.
-			now := time.Now().UTC()
-			var variant normalize.JobVariant
-			if h.deps.Normalizer != nil {
-				variant = h.deps.Normalizer.Normalize(
-					&extJob, src.ID, src.Country, string(src.Type), src.Language, now,
-				)
-			} else {
-				variant = normalize.ExternalToVariant(
-					extJob, src.ID, src.Country, string(src.Type), src.Language, now,
-				)
-			}
-
-			// Pack the kind-specific fields into Attributes so the new
-			// polymorphic VariantIngestedV1 carries them through. The
-			// universal envelope fields (title, currency, anchor) ride
-			// at the top level for partition pruning.
-			//
-			// Start from the connector-/extractor-supplied Attributes so
-			// kind-specific keys (e.g. field_of_study, degree_level for
-			// scholarships) survive the normalize step. The job-shaped
-			// overlays below are harmless for non-job kinds — they ride
-			// in as empty strings — but stay required for jobs.
-			attrs := maps.Clone(extJob.Attributes)
-			if attrs == nil {
-				attrs = map[string]any{}
-			}
-			attrs["description"] = variant.Description
-			attrs["language"] = variant.Language
-			attrs["remote_type"] = variant.RemoteType
-			attrs["employment_type"] = variant.EmploymentType
-			attrs["location_text"] = variant.LocationText
-			attrs["content_hash"] = variant.ContentHash
-			if variant.PostedAt != nil {
-				attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
-			}
-
-			eventPayload := eventsv1.VariantIngestedV1{
-				VariantID:     xid.New().String(),
-				SourceID:      src.ID,
-				ExternalID:    variant.ExternalID,
-				HardKey:       variant.HardKey,
-				Kind:          kind,
-				Stage:         string(domain.StageRaw),
-				Title:         variant.Title,
-				ApplyURL:      variant.ApplyURL,
-				IssuingEntity: variant.Company,
-				AnchorCountry: variant.Country,
-				Remote:        variant.RemoteType == "remote",
-				Currency:      variant.Currency,
-				AmountMin:     variant.SalaryMin,
-				AmountMax:     variant.SalaryMax,
-				Attributes:    attrs,
-				ScrapedAt:     now,
-			}
+			eventPayload := *accepted.Accepted
+			kind := eventPayload.Kind
 
 			body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))
 			if mErr != nil {
@@ -634,14 +521,6 @@ pages:
 		// value at loop end is the source's pagination state.
 		if cur := iter.Cursor(); cur != nil {
 			lastCursor = string(cur)
-		}
-
-		// Opportunistic DiscoverSites — sampled so we don't triple the
-		// AI bill. Operates on the last page's raw HTML (iter.Content
-		// is already parsed; use RawPayload for the unprocessed bytes).
-		if h.deps.Extractor != nil && h.deps.DiscoverSample > 0 &&
-			h.deps.Rand.Float64() < h.deps.DiscoverSample {
-			h.sampleDiscoverSites(ctx, src, iter.RawPayload())
 		}
 
 		// Persist run progress + renew the lease, then stop the slice if its
@@ -744,31 +623,6 @@ pages:
 	return nil
 }
 
-// sampleDiscoverSites is best-effort. DiscoverSites cost is not on the
-// user hot path and we never want a discovery failure to fail the
-// surrounding crawl — swallow errors.
-func (h *CrawlRequestHandler) sampleDiscoverSites(ctx context.Context, src *domain.Source, raw []byte) {
-	if h.deps.Extractor == nil || len(raw) == 0 {
-		return
-	}
-	sites, err := h.deps.Extractor.DiscoverSites(ctx, string(raw), src.BaseURL)
-	if err != nil {
-		util.Log(ctx).WithError(err).Debug("crawl.request: DiscoverSites failed (sampled)")
-		return
-	}
-	evtMgr := h.deps.Svc.EventsManager()
-	for _, site := range sites {
-		env := eventsv1.NewEnvelope(eventsv1.TopicSourcesDiscovered, eventsv1.SourceDiscoveredV1{
-			DiscoveredURL: site.URL,
-			Name:          site.Name,
-			Country:       site.Country,
-			Type:          site.Type,
-			SourceID:      src.ID,
-		})
-		_ = evtMgr.Emit(ctx, eventsv1.TopicSourcesDiscovered, env)
-	}
-}
-
 // emitContinuation self-re-enqueues the next slice of an in-progress run,
 // gated by the backpressure admitter. If admission is denied (the pipeline is
 // saturated) or the emit fails, we leave the run yielded — the watchdog
@@ -830,24 +684,24 @@ func (h *CrawlRequestHandler) emitCompleted(ctx context.Context, payload eventsv
 	}
 }
 
-// publishRejected records an immutable rejection audit event.
-// durable and operator-inspectable.
-func (h *CrawlRequestHandler) publishRejected(
-	ctx context.Context, sourceID, kind string,
-	opp domain.ExternalOpportunity, res opportunity.VerifyResult,
+// publishAcceptReject records an immutable rejection audit event from the
+// shared crawlaccept path.
+func (h *CrawlRequestHandler) publishAcceptReject(
+	ctx context.Context, sourceID string,
+	opp domain.ExternalOpportunity, rej *crawlaccept.Reject,
 	crawlJobID string,
 ) error {
-	reasons := append([]string(nil), res.Missing...)
-	if res.Mismatch != "" {
-		reasons = append(reasons, res.Mismatch)
+	reasons := append([]string(nil), rej.Missing...)
+	if rej.Detail != "" {
+		reasons = append(reasons, rej.Detail)
 	}
 	if len(reasons) == 0 {
-		reasons = []string{"verify_failed"}
+		reasons = []string{rej.Reason}
 	}
-	rej := eventsv1.VariantRejectedV1{
+	row := eventsv1.VariantRejectedV1{
 		VariantID:  xid.New().String(),
 		SourceID:   sourceID,
-		Kind:       kind,
+		Kind:       rej.Kind,
 		Title:      opp.Title,
 		Reasons:    reasons,
 		CrawlJobID: crawlJobID,
@@ -856,187 +710,12 @@ func (h *CrawlRequestHandler) publishRejected(
 	if h.deps.IngestQueue == nil {
 		return errors.New("PostgreSQL ingest queue is not configured")
 	}
-	return h.deps.IngestQueue.RecordRejected(ctx, rej.VariantID, sourceID, rej)
-}
-
-// rejectionReason categorises a VerifyResult into a low-cardinality
-// metric attribute. Mismatch wins over missing because a kind-mismatch
-// rejection is a source-config bug, while a missing field is a
-// connector or extractor bug.
-func rejectionReason(r opportunity.VerifyResult) string {
-	if r.Mismatch != "" {
-		return "mismatch"
-	}
-	if len(r.Missing) > 0 {
-		return "missing_" + r.Missing[0]
-	}
-	return "unknown"
-}
-
-// ensureApplyURL sets opp.ApplyURL to fallbackURL if the field is
-// currently empty. Replaces pkg/quality.EnsureApplyURL — the only
-// remaining surface that helper provided once Verify took over the
-// content gate.
-func ensureApplyURL(opp *domain.ExternalOpportunity, fallbackURL string) {
-	if strings.TrimSpace(opp.ApplyURL) == "" && fallbackURL != "" {
-		opp.ApplyURL = fallbackURL
-	}
-}
-
-// enrichStubs fetches per-URL HTML and runs the LLM extractor on
-// any URL-only stub the connector yielded (Title empty but ApplyURL
-// set). This is the second AI hop in the crawl pipeline: the first
-// hop discovers URLs (sitemap-XML or universal.DiscoverLinks); this
-// hop turns each URL into a fully-populated ExternalOpportunity.
-// Mutates items in place.
-//
-// Connectors that already emit complete records (greenhouse, themuse,
-// arbeitnow, …) skip enrichment because their Title is non-empty.
-//
-// Bounded concurrency keeps the llama fleet within its served-slot
-// budget; values above ~8 saturate inference and propagate timeouts
-// into the worker pool downstream.
-func (h *CrawlRequestHandler) enrichStubs(ctx context.Context, items []domain.ExternalOpportunity, src *domain.Source) {
-	if h.deps.Extractor == nil || h.deps.PageFetcher == nil {
-		return
-	}
-	// EnrichConcurrency==0 disables enrichment entirely — used as a
-	// load-shedding lever when the shared inference fleet is saturated
-	// and we'd rather let URL-only stubs dead-letter than backpressure
-	// the LLM-dependent worker pipeline.
-	if h.deps.EnrichConcurrency == 0 {
-		return
-	}
-
-	stubIdx := make([]int, 0, len(items))
-	for i := range items {
-		if strings.TrimSpace(items[i].Title) == "" && strings.TrimSpace(items[i].ApplyURL) != "" {
-			stubIdx = append(stubIdx, i)
-		}
-	}
-	if len(stubIdx) == 0 {
-		return
-	}
-
-	conc := h.deps.EnrichConcurrency
-	if conc < 0 {
-		conc = 4
-	}
-	sem := make(chan struct{}, conc)
-	var wg sync.WaitGroup
-
-	for _, i := range stubIdx {
-		sem <- struct{}{}
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			// Per-stub deadline so one slow detail page (fetch +
-			// inference) can't pin wg.Wait() — and the whole crawl
-			// handler — for minutes. 6m matches the inference ceiling.
-			stubCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
-			defer cancel()
-			h.enrichOne(stubCtx, &items[idx], src)
-		}(i)
-	}
-	wg.Wait()
-}
-
-// enrichOne fetches one detail page and merges LLM-extracted fields
-// into the stub. Best-effort — fetch errors, non-200, parse failures,
-// or empty extractions all leave the stub untouched (Verify rejects
-// them with the usual missing-field reasons). Logging stays at debug
-// to avoid flooding the crawler when whole sitemaps go 404.
-func (h *CrawlRequestHandler) enrichOne(ctx context.Context, opp *domain.ExternalOpportunity, src *domain.Source) {
-	raw, status, err := h.deps.PageFetcher.Get(ctx, opp.ApplyURL, nil)
-	if err != nil || status != 200 || len(raw) == 0 {
-		if err != nil {
-			util.Log(ctx).WithError(err).WithField("url", opp.ApplyURL).Debug("enrich: fetch failed")
-		}
-		return
-	}
-
-	rawHTML := string(raw)
-	// Company logo: capture the detail page's og:image (best-effort, only when
-	// structured data hasn't already supplied one). Flows to the company record
-	// via attributes.company_logo.
-	if logo := content.OGImage(rawHTML); logo != "" {
-		if opp.Attributes == nil {
-			opp.Attributes = map[string]any{}
-		}
-		if _, has := opp.Attributes["company_logo"]; !has {
-			opp.Attributes["company_logo"] = logo
-		}
-	}
-
-	body := rawHTML
-	if ext, _ := content.ExtractFromHTML(body); ext != nil && ext.Markdown != "" {
-		body = ext.Markdown
-	}
-
-	extracted, err := h.deps.Extractor.Extract(ctx, body, src.Kinds, src.ExtractionPromptExtension)
-	if err != nil || extracted == nil {
-		if err != nil {
-			util.Log(ctx).WithError(err).WithField("url", opp.ApplyURL).Debug("enrich: LLM extract failed")
-		}
-		return
-	}
-
-	mergeStubFields(opp, extracted)
-}
-
-// mergeStubFields copies fields from the LLM-extracted record into
-// the stub, preserving stub-supplied identity (ExternalID, ApplyURL,
-// Kind) and only filling empty fields. Attributes merge key-by-key
-// without overwriting connector-set values.
-func mergeStubFields(dst, src *domain.ExternalOpportunity) {
-	if dst.Title == "" {
-		dst.Title = src.Title
-	}
-	if dst.Description == "" {
-		dst.Description = src.Description
-	}
-	if dst.IssuingEntity == "" {
-		dst.IssuingEntity = src.IssuingEntity
-	}
-	if dst.LocationText == "" {
-		dst.LocationText = src.LocationText
-	}
-	if dst.AnchorLocation == nil && src.AnchorLocation != nil {
-		dst.AnchorLocation = src.AnchorLocation
-	}
-	if dst.Kind == "" {
-		dst.Kind = src.Kind
-	}
-	if dst.Deadline == nil {
-		dst.Deadline = src.Deadline
-	}
-	if dst.Currency == "" {
-		dst.Currency = src.Currency
-	}
-	if dst.AmountMin == 0 {
-		dst.AmountMin = src.AmountMin
-	}
-	if dst.AmountMax == 0 {
-		dst.AmountMax = src.AmountMax
-	}
-	if len(src.Attributes) > 0 {
-		if dst.Attributes == nil {
-			dst.Attributes = map[string]any{}
-		}
-		for k, v := range src.Attributes {
-			if _, has := dst.Attributes[k]; !has {
-				dst.Attributes[k] = v
-			}
-		}
-	}
+	return h.deps.IngestQueue.RecordRejected(ctx, row.VariantID, sourceID, row)
 }
 
 // enqueueFrontier walks the iterator's items and enqueues each
-// SourceURL into the URL frontier. Discovery-mode equivalent of
-// the variant-emit loop: instead of running enrichStubs + Verify
-// + emit, we hand the URL off to apps/frontier-worker which does
-// all of that per-URL under per-host politeness.
+// SourceURL into the URL frontier. The frontier-worker fetches each URL
+// and extracts structured JobPosting JSON-LD under per-host politeness.
 //
 // Returns (enqueued, skipped) so the caller can fold them into
 // the page-completed counters (jobs_emitted + jobs_rejected).

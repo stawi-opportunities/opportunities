@@ -66,6 +66,16 @@ func meHandler(d *Deps) http.HandlerFunc {
 				auto = rr.Document.Autoapply.Enabled
 			}
 		}
+		// Profile-level auto_apply (set on paid Pro/Managed activation)
+		// is the entitlement gate; rules toggle is the user preference.
+		if !auto && d.DB != nil {
+			var profileAuto bool
+			if err := d.DB.QueryRowContext(r.Context(),
+				`SELECT COALESCE(auto_apply, false) FROM candidate_profiles WHERE id = $1`, cand,
+			).Scan(&profileAuto); err == nil {
+				auto = profileAuto
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(meResp{CandidateID: cand, AutoApplyEnabled: auto})
 	}
@@ -317,6 +327,18 @@ func putRules(d *Deps) http.HandlerFunc {
 		if err != nil {
 			httpmw.ProblemJSON(w, http.StatusBadRequest, "invalid_rules", err.Error())
 			return
+		}
+		// Auto-apply requires a paid Pro/Managed entitlement on the profile.
+		if rules.Autoapply.Enabled && d.DB != nil {
+			var autoOK bool
+			_ = d.DB.QueryRowContext(r.Context(),
+				`SELECT COALESCE(auto_apply, false) FROM candidate_profiles WHERE id = $1`, cand,
+			).Scan(&autoOK)
+			if !autoOK {
+				httpmw.ProblemJSON(w, http.StatusPaymentRequired, "autoapply_not_entitled",
+					"auto-apply requires a Pro or Managed subscription")
+				return
+			}
 		}
 		rr, err := d.Rules.Upsert(r.Context(), cand, rules)
 		if err != nil {

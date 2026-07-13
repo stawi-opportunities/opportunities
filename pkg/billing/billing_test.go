@@ -175,6 +175,25 @@ func TestPaymentGateway_StatusMapping(t *testing.T) {
 	}
 }
 
+func TestEntitlementsFor(t *testing.T) {
+	starter := billing.EntitlementsFor(billing.PlanStarter)
+	require.Equal(t, 5, starter.WeeklyCap)
+	require.False(t, starter.AutoApply)
+
+	pro := billing.EntitlementsFor(billing.PlanPro)
+	require.Equal(t, 25, pro.WeeklyCap)
+	require.True(t, pro.AutoApply)
+
+	managed := billing.EntitlementsFor(billing.PlanManaged)
+	require.Equal(t, 0, managed.WeeklyCap)
+	require.True(t, managed.AutoApply)
+
+	// Unknown → starter-safe defaults
+	unknown := billing.EntitlementsFor(billing.PlanID("free"))
+	require.Equal(t, 5, unknown.WeeklyCap)
+	require.False(t, unknown.AutoApply)
+}
+
 func TestNopGateway(t *testing.T) {
 	t.Parallel()
 	_, err := billing.NopGateway{}.CreateCheckout(context.Background(), billing.CheckoutRequest{})

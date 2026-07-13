@@ -39,7 +39,7 @@ func TestProblemJSONExtra_MergesFields(t *testing.T) {
 }
 
 func TestCandidateAuth_MissingHeaderReturns401(t *testing.T) {
-	h := httpmw.CandidateAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := httpmw.NewCandidateAuth(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Fatal("inner handler should not run")
 	}))
 	r := httptest.NewRequest("GET", "/anything", nil)
@@ -51,7 +51,7 @@ func TestCandidateAuth_MissingHeaderReturns401(t *testing.T) {
 
 func TestCandidateAuth_PassesIDToContext(t *testing.T) {
 	var got string
-	h := httpmw.CandidateAuth(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	h := httpmw.NewCandidateAuth(nil)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		got = httpmw.CandidateFromContext(r.Context())
 	}))
 	r := httptest.NewRequest("GET", "/anything", nil)
@@ -69,7 +69,7 @@ func TestIdempotency_KeyMissing_PassesThrough(t *testing.T) {
 		Store:      nil, // no store needed when key is missing
 		RouteGroup: "test",
 	}, inner)
-	wrapped := httpmw.CandidateAuth(mid)
+	wrapped := httpmw.NewCandidateAuth(nil)(mid)
 
 	r := httptest.NewRequest("POST", "/anything", nil)
 	r.Header.Set("X-Candidate-ID", "c")

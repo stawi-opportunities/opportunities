@@ -73,7 +73,7 @@ const validBody = `{
 func TestCandidatesOnboardHandler_Success(t *testing.T) {
 	t.Parallel()
 	store := &fakeOnboardStore{}
-	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, reqOnboard(t, validBody))
@@ -94,7 +94,7 @@ func TestCandidatesOnboardHandler_Success(t *testing.T) {
 func TestCandidatesOnboardHandler_RejectsMissingRequiredFields(t *testing.T) {
 	t.Parallel()
 	store := &fakeOnboardStore{}
-	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
 
 	tests := map[string]string{
 		"missing plan":      `{"target_job_title":"PM","experience_level":"mid","job_search_status":"a","country":"KE","agree_terms":true,"wants_ats_report":false,"preferred_regions":[],"preferred_timezones":[],"preferred_languages":[],"job_types":[]}`,
@@ -114,7 +114,7 @@ func TestCandidatesOnboardHandler_EmptyTargetJobTitleAccepted(t *testing.T) {
 	t.Parallel()
 	store := &fakeOnboardStore{}
 	trigger := &fakeOnboardMatchTrigger{}
-	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{
+	h := httpmw.NewCandidateAuth(nil)(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{
 		Store: store,
 		Match: trigger,
 	}))
@@ -147,7 +147,7 @@ func TestCandidatesOnboardHandler_MatchTriggerErrorIsNonFatal(t *testing.T) {
 	t.Parallel()
 	store := &fakeOnboardStore{}
 	trigger := &fakeOnboardMatchTrigger{err: errors.New("emit wedged")}
-	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{
+	h := httpmw.NewCandidateAuth(nil)(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{
 		Store: store,
 		Match: trigger,
 	}))
@@ -162,7 +162,7 @@ func TestCandidatesOnboardHandler_MatchTriggerErrorIsNonFatal(t *testing.T) {
 func TestCandidatesOnboardHandler_StoreErrorReturnsProblemJSON(t *testing.T) {
 	t.Parallel()
 	store := &fakeOnboardStore{txErr: errors.New("db wedged")}
-	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, reqOnboard(t, validBody))
@@ -175,7 +175,7 @@ func TestCandidatesOnboardHandler_StoreErrorReturnsProblemJSON(t *testing.T) {
 func TestCandidatesOnboardHandler_MethodOther(t *testing.T) {
 	t.Parallel()
 	store := &fakeOnboardStore{}
-	h := httpmw.CandidateAuth(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
 
 	rec := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/candidates/onboard", nil)

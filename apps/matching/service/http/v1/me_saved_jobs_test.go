@@ -37,7 +37,7 @@ func (f *fakeSaver) Unstar(_ context.Context, c, o string) error {
 func TestSavedJobsHandler_PostStars(t *testing.T) {
 	t.Parallel()
 	s := &fakeSaver{}
-	h := httpmw.CandidateAuth(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/me/saved-jobs", bytes.NewBufferString(`{"opportunity_id":"opp_77"}`))
@@ -52,7 +52,7 @@ func TestSavedJobsHandler_PostStars(t *testing.T) {
 func TestSavedJobsHandler_PostRejectsMissingID(t *testing.T) {
 	t.Parallel()
 	s := &fakeSaver{}
-	h := httpmw.CandidateAuth(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
 
 	for _, body := range []string{`{}`, `{"opportunity_id":""}`, `not json`} {
 		rec := httptest.NewRecorder()
@@ -68,7 +68,7 @@ func TestSavedJobsHandler_PostRejectsMissingID(t *testing.T) {
 func TestSavedJobsHandler_DeleteUnstars(t *testing.T) {
 	t.Parallel()
 	s := &fakeSaver{}
-	h := httpmw.CandidateAuth(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/me/saved-jobs/opp_77", nil)
@@ -85,7 +85,7 @@ func TestSavedJobsHandler_DeleteUnstars(t *testing.T) {
 func TestSavedJobsHandler_StarPersistErrorIs502(t *testing.T) {
 	t.Parallel()
 	s := &fakeSaver{starErr: errors.New("db wedged")}
-	h := httpmw.CandidateAuth(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.SavedJobsHandler(v1.SavedJobsDeps{Store: s}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/me/saved-jobs", bytes.NewBufferString(`{"opportunity_id":"opp_77"}`))

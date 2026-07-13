@@ -1,22 +1,49 @@
 # API reference
 
 PostgreSQL is authoritative for opportunity search, details, crawl diagnostics,
-candidate state, and application state. The public API serves current rows from
-`opportunities`; admin trace endpoints join the PostgreSQL ingestion tables.
+candidate state, and application state.
 
-Primary surfaces:
+Handler implementations under `apps/api/cmd` and `apps/matching` are the source
+of truth for request fields and status codes. This page lists the primary
+surfaces only.
 
-- `/api/v2/search` and `/api/v2/jobs/{slug}`: opportunity discovery and details.
-- `/candidates/match`, `/api/me/matches`, and `/me/opportunities`: candidate
-  matching and application-ready feeds.
-- `/admin/crawl/status`: ingestion depth, oldest work age, and configured limits.
-- `/admin/crawl_jobs`: source crawl history.
-- `/admin/trace/*`: ingestion and source lineage diagnostics.
+## Public discovery (`apps/api`)
 
-Admin routes require an authenticated principal with the `admin` role. Handler
-implementations in `apps/api/cmd` are the source of truth for request fields and
-status codes.
+| Surface | Purpose |
+|---------|---------|
+| `GET /api/search` | Opportunity search |
+| `GET /api/jobs/{slug}` | Job detail by slug |
+| `GET /healthz` | Liveness |
 
-Every opportunity returned by discovery, detail, match, feed, or match-event
-surfaces includes a non-empty `apply_url`. Clients do not need a second lookup
-before starting an application.
+Every opportunity returned by discovery includes a non-empty `apply_url` when
+present in the serving row.
+
+## Candidate surface (`apps/matching`)
+
+Requires JWT (OIDC). Gateway may strip a `/matching` prefix.
+
+| Surface | Purpose |
+|---------|---------|
+| `GET /me/subscription` | Plan / paid status |
+| `GET /me/opportunities` | Unified feed (matches + saved + applications) |
+| `PUT /me/cv` | CV upload |
+| `POST /billing/checkout` | Start payment |
+| `GET /billing/plans` | Plan catalog (public) |
+
+## Crawl admin
+
+| Service | Surface | Purpose |
+|---------|---------|---------|
+| crawler | `POST /admin/sources/{id}/crawl` | Dispatch one crawl (Trustage) |
+| crawler | `GET /admin/crawl/status` | Queue depth, oldest age, pause |
+| api | `/admin/*` sources, frontier, trace | Operator control plane |
+
+Admin routes on API require an authenticated principal with the `admin` role
+when JWT middleware is wired. Matching Trustage jobs use `X-Admin-Token`
+(`ADMIN_SHARED_SECRET`).
+
+## Extract contract (product-facing)
+
+Clients should assume opportunities were produced by **structured extract**
+(API, schema.org JobPosting, recipe, or spec connector) and accepted by
+`pkg/crawlaccept`. There is no crawl-time AI stub path that invents listings.

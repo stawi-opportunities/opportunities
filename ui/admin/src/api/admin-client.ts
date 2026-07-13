@@ -264,38 +264,243 @@ export const rescoreSource = (id: string): Promise<RescoreResponse> =>
     { method: "POST" },
   );
 
-// Per-source iterator checkpoint shape returned by GET /admin/checkpoints.
-// Mirrors pkg/repository.Checkpoint — cursor is the connector's own
-// JSON shape, opaque to the UI.
-export type CheckpointRow = {
-  source_id: string;
-  connector_type: string;
-  cursor: unknown;
-  page_idx: number;
-  last_url?: string;
-  last_checkpoint_at: string;
+export type SourceActionResponse = {
+  ok: boolean;
+  id?: string;
+  status?: string;
+  dispatched?: number;
+  reason?: string;
+  source_id?: string;
 };
 
-export type CheckpointListResponse = {
-  checkpoints: CheckpointRow[];
+export const crawlSource = (id: string): Promise<SourceActionResponse> =>
+  authRuntime().fetch<SourceActionResponse>(
+    `/admin/sources/${encodeURIComponent(id)}/crawl`,
+    { method: "POST" },
+  );
+
+export const pauseSource = (id: string): Promise<SourceActionResponse> =>
+  authRuntime().fetch<SourceActionResponse>(
+    `/admin/sources/${encodeURIComponent(id)}/pause`,
+    { method: "POST" },
+  );
+
+export const resumeSource = (id: string): Promise<SourceActionResponse> =>
+  authRuntime().fetch<SourceActionResponse>(
+    `/admin/sources/${encodeURIComponent(id)}/resume`,
+    { method: "POST" },
+  );
+
+export const stopSource = (id: string): Promise<SourceActionResponse> =>
+  authRuntime().fetch<SourceActionResponse>(
+    `/admin/sources/${encodeURIComponent(id)}/stop`,
+    { method: "POST" },
+  );
+
+export const startSource = (id: string): Promise<SourceActionResponse> =>
+  authRuntime().fetch<SourceActionResponse>(
+    `/admin/sources/${encodeURIComponent(id)}/start`,
+    { method: "POST" },
+  );
+
+// ── Crawl runs (resumable slice state machine) ──────────────────────
+
+export type CrawlRunRow = {
+  id: string;
+  source_id: string;
+  status: string;
+  cursor?: unknown;
+  lease_expires_at?: string;
+  started_at?: string;
+  updated_at?: string;
+  finished_at?: string;
+  error_code?: string;
+  error_message?: string;
+  jobs_found?: number;
+  jobs_stored?: number;
+  jobs_rejected?: number;
+};
+
+export type CrawlRunListResponse = {
+  runs: CrawlRunRow[];
   count: number;
 };
 
-export const listCheckpoints = (
+export const listCrawlRuns = (
   sourceID?: string,
-): Promise<CheckpointListResponse> => {
-  const q = sourceID ? `?source_id=${encodeURIComponent(sourceID)}` : "";
-  return fetchAdminJSON<CheckpointListResponse>(`/admin/checkpoints${q}`);
+  limit = 50,
+): Promise<CrawlRunListResponse> => {
+  const params = new URLSearchParams();
+  if (sourceID) params.set("source_id", sourceID);
+  params.set("limit", String(limit));
+  return fetchAdminJSON<CrawlRunListResponse>(
+    `/admin/crawl-runs?${params.toString()}`,
+  );
 };
 
-// clearCheckpoint deletes one (source_id, connector_type) row. Idempotent
-// on the server — clearing an already-missing checkpoint returns 204.
-export const clearCheckpoint = async (
+export const resetCrawlRun = (
   sourceID: string,
-  connectorType: string,
-): Promise<void> => {
-  await authRuntime().fetch(
-    `/admin/checkpoints/${encodeURIComponent(sourceID)}/${encodeURIComponent(connectorType)}`,
+): Promise<{ reset: boolean; run_id?: string; reason?: string }> =>
+  authRuntime().fetch(`/admin/crawl-runs/${encodeURIComponent(sourceID)}/reset`, {
+    method: "POST",
+  });
+
+// ── Opportunities (admin browse + sanitize) ─────────────────────────
+
+export type AdminOpportunity = {
+  canonical_id: string;
+  slug: string;
+  kind: string;
+  source_id?: string;
+  title: string;
+  description?: string;
+  issuing_entity?: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  remote: boolean;
+  apply_url: string;
+  posted_at?: string;
+  deadline?: string;
+  currency?: string;
+  amount_min?: number;
+  amount_max?: number;
+  employment_type?: string;
+  seniority?: string;
+  geo_scope?: string;
+  status: string;
+  hidden: boolean;
+  hidden_reason?: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  attributes?: Record<string, unknown>;
+  updated_at: string;
+};
+
+export type AdminOpportunityListResponse = {
+  opportunities: AdminOpportunity[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type ListOpportunitiesParams = {
+  q?: string;
+  kind?: string;
+  country?: string;
+  source_id?: string;
+  hidden?: "true" | "false" | "";
+  limit?: number;
+  offset?: number;
+};
+
+export const listOpportunities = (
+  params: ListOpportunitiesParams = {},
+): Promise<AdminOpportunityListResponse> => {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.kind) qs.set("kind", params.kind);
+  if (params.country) qs.set("country", params.country);
+  if (params.source_id) qs.set("source_id", params.source_id);
+  if (params.hidden) qs.set("hidden", params.hidden);
+  qs.set("limit", String(params.limit ?? 50));
+  qs.set("offset", String(params.offset ?? 0));
+  return fetchAdminJSON<AdminOpportunityListResponse>(
+    `/admin/opportunities?${qs.toString()}`,
+  );
+};
+
+export const getOpportunity = (slug: string): Promise<AdminOpportunity> =>
+  fetchAdminJSON<AdminOpportunity>(
+    `/admin/opportunities/${encodeURIComponent(slug)}`,
+  );
+
+export type OpportunityPatch = {
+  title?: string;
+  description?: string;
+  issuing_entity?: string;
+  apply_url?: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  clear_fields?: string[];
+  clear_attributes?: string[];
+  set_attributes?: Record<string, unknown>;
+  hide?: boolean;
+  hidden_reason?: string;
+};
+
+export const patchOpportunity = (
+  slug: string,
+  body: OpportunityPatch,
+): Promise<AdminOpportunity> =>
+  authRuntime().fetch<AdminOpportunity>(
+    `/admin/opportunities/${encodeURIComponent(slug)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+
+export const hideOpportunity = (
+  slug: string,
+  reason?: string,
+): Promise<{ ok: boolean; slug: string; hidden: boolean }> => {
+  const q = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return authRuntime().fetch(
+    `/admin/opportunities/${encodeURIComponent(slug)}${q}`,
     { method: "DELETE" },
   );
 };
+
+export const unhideOpportunity = (
+  slug: string,
+): Promise<{ ok: boolean; slug: string; hidden: boolean }> =>
+  authRuntime().fetch(
+    `/admin/opportunities/${encodeURIComponent(slug)}/unhide`,
+    { method: "POST" },
+  );
+
+// ── Ops overview + rejections ───────────────────────────────────────
+
+export type OpsOverview = {
+  counts: {
+    active_jobs: number;
+    hidden_jobs: number;
+    sources_active: number;
+    sources_paused: number;
+    sources_total: number;
+    queue_pending: number;
+    queue_processing: number;
+    queue_dead: number;
+    rejected_24h: number;
+    published_24h: number;
+    crawl_jobs_24h: number;
+    crawl_failed_24h: number;
+    active_runs: number;
+  };
+  rejection_reasons: Record<string, number>;
+  recent: AdminOpportunity[];
+  generated_at: string;
+};
+
+export const getOpsOverview = (): Promise<OpsOverview> =>
+  fetchAdminJSON<OpsOverview>(`/admin/ops/overview`);
+
+export type RejectionRow = {
+  variant_id: string;
+  source_id: string;
+  occurred_at: string;
+  details: Record<string, unknown> | string;
+};
+
+export type RejectionListResponse = {
+  rejections: RejectionRow[];
+  count: number;
+};
+
+export const listRejections = (limit = 100): Promise<RejectionListResponse> =>
+  fetchAdminJSON<RejectionListResponse>(
+    `/admin/variants/rejected?limit=${limit}`,
+  );

@@ -203,7 +203,11 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 			issuing_entity=COALESCE(EXCLUDED.issuing_entity,opportunities.issuing_entity),
 			country=COALESCE(EXCLUDED.country,opportunities.country), region=COALESCE(EXCLUDED.region,opportunities.region),
 			city=COALESCE(EXCLUDED.city,opportunities.city), remote=EXCLUDED.remote,
-			apply_url=EXCLUDED.apply_url, posted_at=COALESCE(EXCLUDED.posted_at,opportunities.posted_at),
+			-- Prefer a non-empty new apply_url, but keep the existing one when the
+			-- incoming URL is blank. (Quality ranking of listing vs detail URLs
+			-- is enforced at accept time — we never invent base_url apply links.)
+			apply_url=COALESCE(NULLIF(EXCLUDED.apply_url,''),opportunities.apply_url),
+			posted_at=COALESCE(EXCLUDED.posted_at,opportunities.posted_at),
 			deadline=COALESCE(EXCLUDED.deadline,opportunities.deadline), currency=COALESCE(EXCLUDED.currency,opportunities.currency),
 			amount_min=GREATEST(COALESCE(EXCLUDED.amount_min,0),COALESCE(opportunities.amount_min,0)),
 			amount_max=GREATEST(COALESCE(EXCLUDED.amount_max,0),COALESCE(opportunities.amount_max,0)),

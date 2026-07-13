@@ -78,9 +78,15 @@ export default function Dashboard() {
   useEffect(() => {
     if (state !== 'authenticated') return;
     if (subQ.isLoading) return;
-    if (subQ.data?.status !== 'active') {
-      window.location.assign('/onboarding/');
+    if (subQ.data?.status === 'active') return;
+    // Allow the dashboard to host PendingCheckoutPoller while a payment
+    // rail (e.g. M-Pesa) is still confirming — bouncing to onboarding
+    // mid-poll leaves the user stuck unpaid after a successful charge.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('billing') === 'pending' && params.get('prompt_id')) {
+      return;
     }
+    window.location.assign('/onboarding/');
   }, [state, subQ.isLoading, subQ.data?.status]);
 
   useEffect(() => {

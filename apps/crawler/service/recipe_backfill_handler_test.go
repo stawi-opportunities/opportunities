@@ -49,7 +49,7 @@ func TestRecipeBackfillHandler_EnqueuesOnlyEligible(t *testing.T) {
 	emit := func(_ context.Context, id string) error { queued = append(queued, id); return nil }
 
 	h := RecipeBackfillHandler(RecipeBackfillDeps{
-		Sources: lister, Enabled: true, Targets: UniversalRecipeTargets, Emit: emit, Limit: 100,
+		Sources: lister, Enabled: true, Targets: RecipeBackfillTargets, Emit: emit, Limit: 100,
 	})
 	rec := httptest.NewRecorder()
 	h(rec, httptest.NewRequest(http.MethodPost, "/admin/recipes/backfill", nil))
@@ -64,7 +64,7 @@ func TestRecipeBackfillHandler_DisabledNoOps(t *testing.T) {
 	emit := func(_ context.Context, id string) error { queued = append(queued, id); return nil }
 	h := RecipeBackfillHandler(RecipeBackfillDeps{
 		Sources: fakeLister{srcs: []*domain.Source{bfSource("a", "brightermonday", "{}", false)}},
-		Enabled: false, Targets: UniversalRecipeTargets, Emit: emit,
+		Enabled: false, Targets: RecipeBackfillTargets, Emit: emit,
 	})
 	rec := httptest.NewRecorder()
 	h(rec, httptest.NewRequest(http.MethodPost, "/admin/recipes/backfill", nil))

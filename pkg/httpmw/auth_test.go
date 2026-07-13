@@ -41,12 +41,27 @@ func TestCandidateAuth_PrefersClaimsSubject(t *testing.T) {
 		"claims subject must take precedence over the X-Candidate-ID header")
 }
 
-func TestCandidateAuth_FallsBackToHeader(t *testing.T) {
+func TestCandidateAuth_HeaderRejectedInStrictMode(t *testing.T) {
 	t.Parallel()
 	h := httpmw.CandidateAuth(http.HandlerFunc(echoCandidate))
 
 	r := httptest.NewRequest(http.MethodGet, "/me/x", nil)
 	r.Header.Set("X-Candidate-ID", "header-id")
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code,
+		"strict mode must not accept X-Candidate-ID without JWT claims")
+}
+
+func TestCandidateAuth_HeaderAllowedWhenModeSet(t *testing.T) {
+	t.Parallel()
+	h := httpmw.CandidateAuth(http.HandlerFunc(echoCandidate))
+
+	r := httptest.NewRequest(http.MethodGet, "/me/x", nil)
+	r.Header.Set("X-Candidate-ID", "header-id")
+	r = r.WithContext(httpmw.WithAuthMode(r.Context(), httpmw.AuthModeAllowHeader))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
@@ -80,4 +95,16 @@ func TestNewCandidateAuth_NilAuthenticator_HeaderOnlyPath(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "cand_1", rec.Body.String())
+}
+
+func TestNewCandidateAuth_NilAuthenticator_NoHeaderIs401(t *testing.T) {
+	t.Parallel()
+	mw := httpmw.NewCandidateAuth(nil)
+	h := mw(http.HandlerFunc(echoCandidate))
+
+	r := httptest.NewRequest(http.MethodGet, "/me/x", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }

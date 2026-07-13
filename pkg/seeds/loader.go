@@ -47,6 +47,10 @@ type SeedEntry struct {
 	Region           string        `json:"region"`
 	CrawlIntervalSec int           `json:"crawl_interval_sec"`
 	Priority         priorityLabel `json:"priority"`
+	// Status when set ("active", "paused", …) overrides the default
+	// active seed status. Use "paused" for hostile boards that must not
+	// crawl until a recipe + compliance review exist.
+	Status string `json:"status,omitempty"`
 	// Kinds declares which opportunity kinds this seeded source emits.
 	// Blank entries default to ["job"].
 	Kinds []string `json:"kinds,omitempty"`
@@ -112,14 +116,31 @@ func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.Source
 			if lang == "" {
 				lang = "en"
 			}
+			status := domain.SourceActive
+			switch strings.ToLower(strings.TrimSpace(e.Status)) {
+			case "paused":
+				status = domain.SourcePaused
+			case "pending":
+				status = domain.SourcePending
+			case "degraded":
+				status = domain.SourceDegraded
+			case "active", "":
+				status = domain.SourceActive
+			}
+			// Cap seed intervals to the production min crawl floor (12h)
+			// so overdue sweeps and Trustage schedules stay aligned.
+			interval := e.CrawlIntervalSec
+			if interval > 0 && interval < 12*3600 {
+				interval = 12 * 3600
+			}
 			src := &domain.Source{
 				Type:                     e.SourceType,
 				BaseURL:                  e.BaseURL,
 				Country:                  e.Country,
 				Language:                 lang,
-				Status:                   domain.SourceActive,
+				Status:                   status,
 				Priority:                 prio,
-				CrawlIntervalSec:         e.CrawlIntervalSec,
+				CrawlIntervalSec:         interval,
 				HealthScore:              1.0,
 				Config:                   "{}",
 				NextCrawlAt:              now,

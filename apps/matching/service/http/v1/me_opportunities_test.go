@@ -38,7 +38,7 @@ func TestOpportunitiesHandler_DefaultFilter(t *testing.T) {
 		},
 		NextCursor: "next-cur",
 	}}
-	h := httpmw.CandidateAuth(v1.OpportunitiesHandler(v1.OpportunitiesDeps{Store: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OpportunitiesHandler(v1.OpportunitiesDeps{Store: store}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/me/opportunities", nil)
@@ -74,7 +74,7 @@ func TestOpportunitiesHandler_DefaultFilter(t *testing.T) {
 func TestOpportunitiesHandler_FilterPropagates(t *testing.T) {
 	t.Parallel()
 	store := &fakeFeedStore{}
-	h := httpmw.CandidateAuth(v1.OpportunitiesHandler(v1.OpportunitiesDeps{Store: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OpportunitiesHandler(v1.OpportunitiesDeps{Store: store}))
 
 	for raw, want := range map[string]matching.FeedFilter{
 		"":        matching.FilterAll,
@@ -96,7 +96,7 @@ func TestOpportunitiesHandler_FilterPropagates(t *testing.T) {
 func TestOpportunitiesHandler_StoreErrorIs502(t *testing.T) {
 	t.Parallel()
 	store := &fakeFeedStore{err: errors.New("db wedged")}
-	h := httpmw.CandidateAuth(v1.OpportunitiesHandler(v1.OpportunitiesDeps{Store: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OpportunitiesHandler(v1.OpportunitiesDeps{Store: store}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/me/opportunities", nil)

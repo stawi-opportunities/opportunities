@@ -19,7 +19,7 @@ import (
 // store into the test binary.
 type ApplicationStarter interface {
 	// StartApplication creates an `applications` row in the
-	// 'applied' state for the given (candidate, opportunity, method)
+	// submitted state for the given (candidate, opportunity, method)
 	// triple. Returns the new application ID and the canonical
 	// applied_at timestamp the dashboard will display.
 	StartApplication(ctx context.Context, candidateID, opportunityID, method string) (applicationID string, appliedAt time.Time, err error)
@@ -73,6 +73,7 @@ func ApplicationsHandler(deps ApplicationsDeps) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		// "applied" is the dashboard-facing label; storage uses submitted.
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"application_id": appID,
 			"status":         "applied",
