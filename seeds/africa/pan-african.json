@@ -8,7 +8,9 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "schema_org"
+    "source_type": "generic_html",
+    "recipe": "myjobmag-co-ke",
+    "status": "active"
   },
   {
     "base_url": "https://www.myjobmag.co.za",
@@ -19,7 +21,9 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "schema_org"
+    "source_type": "generic_html",
+    "recipe": "myjobmag-co-za",
+    "status": "active"
   },
   {
     "base_url": "https://www.myjobmagghana.com",
@@ -30,7 +34,9 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "schema_org"
+    "source_type": "generic_html",
+    "recipe": "myjobmagghana-com",
+    "status": "active"
   },
   {
     "base_url": "https://www.iworkinafrika.com",
@@ -41,7 +47,8 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused"
   },
   {
     "base_url": "https://careerlinkafrica.com",
@@ -52,6 +59,7 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused"
   }
 ]

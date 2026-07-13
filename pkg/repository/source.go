@@ -23,7 +23,11 @@ func NewSourceRepository(db func(ctx context.Context, readOnly bool) *gorm.DB) *
 	return &SourceRepository{db: db}
 }
 
-// Upsert inserts or updates a source on conflict of (source_type, base_url).
+// Upsert inserts or updates a source on conflict of (type, base_url).
+// On conflict it refreshes seed metadata only — status, health_score,
+// last_seen_at, and next_crawl_at are operational state owned by the
+// crawler/operator and must survive pod restarts (seed load on boot
+// must not re-activate paused boards or reset crawl schedules).
 func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 	return r.db(ctx, false).
 		Clauses(clause.OnConflict{
@@ -32,9 +36,8 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 				{Name: "base_url"},
 			},
 			DoUpdates: clause.AssignmentColumns([]string{
-				"name", "country", "language", "status", "priority",
-				"crawl_interval_sec", "health_score", "config",
-				"last_seen_at", "next_crawl_at", "updated_at",
+				"name", "country", "language", "priority",
+				"crawl_interval_sec", "config", "updated_at",
 				"kinds", "required_attributes_by_kind",
 				"auto_approve", "listing_path",
 			}),

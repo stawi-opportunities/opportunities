@@ -9,6 +9,7 @@
     "language": "fr",
     "priority": "hot",
     "region": "north_africa",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused"
   }
 ]

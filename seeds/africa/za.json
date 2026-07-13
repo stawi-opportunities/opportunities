@@ -9,7 +9,9 @@
     "listing_path": "/jobs",
     "priority": "hot",
     "region": "africa",
-    "source_type": "schema_org"
+    "source_type": "generic_html",
+    "recipe": "careers24-za",
+    "status": "active"
   },
   {
     "base_url": "https://www.pnet.co.za",
@@ -20,6 +22,7 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "schema_org"
+    "source_type": "schema_org",
+    "status": "paused"
   }
 ]

@@ -9,7 +9,8 @@
     "listing_path": "/jobs",
     "priority": "hot",
     "region": "africa",
-    "source_type": "schema_org"
+    "source_type": "schema_org",
+    "status": "paused"
   },
   {
     "base_url": "https://www.myjobmag.com",
@@ -20,7 +21,10 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "schema_org"
+    "source_type": "generic_html",
+    "recipe": "myjobmag-com",
+    "status": "active",
+    "listing_path": ""
   },
   {
     "base_url": "https://www.jobberman.com",
@@ -31,6 +35,7 @@
     ],
     "priority": "hot",
     "region": "west_africa",
-    "source_type": "sitemap"
+    "source_type": "sitemap",
+    "status": "active"
   }
 ]
