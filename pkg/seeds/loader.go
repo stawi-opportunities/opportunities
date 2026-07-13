@@ -151,14 +151,10 @@ func LoadAndUpsertWithRecipes(ctx context.Context, seedsDir string, repo *reposi
 			if interval > 0 && interval < 12*3600 {
 				interval = 12 * 3600
 			}
-			// Prefer engine types for new seeds; legacy types still accepted.
-			srcType := e.SourceType
-			if domain.EngineType(srcType) == domain.SourceAPI && srcType != domain.SourceAPI {
-				// Keep explicit "api" when seed already says so; leave legacy
-				// type for DB uniqueness with existing rows, crawl maps via EngineType.
-			}
+			// Prefer engine types for new seeds; legacy types still accepted
+			// (crawl maps them via domain.EngineType / stock recipes).
 			src := &domain.Source{
-				Type:                     srcType,
+				Type:                     e.SourceType,
 				Name:                     e.Name,
 				BaseURL:                  e.BaseURL,
 				Country:                  e.Country,
