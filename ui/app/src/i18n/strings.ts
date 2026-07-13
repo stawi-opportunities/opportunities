@@ -256,6 +256,18 @@ export interface Strings {
   'onboard.profileSaved': string;
   'dash.breadcrumbDashboard': string;
 
+  // ---- Profile completeness ----
+  'dash.compTitle': string;
+  'dash.compCountries': string;
+  'dash.compLanguages': string;
+  'dash.compLink': string;
+
+  // ---- Quick actions ----
+  'dash.qaBrowseDesc': string;
+  'dash.qaSavedDesc': string;
+  'dash.qaPrefsDesc': string;
+  'dash.qaSettingsDesc': string;
+
   // ---- Plan change modal ----
   'plan.changeTitle': string;
   'plan.currentPlan': string;
@@ -804,6 +816,14 @@ const en: Strings = {
   'dash.celebrationDismiss': 'Got it, show me my dashboard',
   'onboard.profileSaved': 'Profile saved!',
   'dash.breadcrumbDashboard': 'Dashboard',
+  'dash.compTitle': 'Add target job title',
+  'dash.compCountries': 'Set preferred countries',
+  'dash.compLanguages': 'Add languages',
+  'dash.compLink': 'Complete profile →',
+  'dash.qaBrowseDesc': 'Search all opportunities',
+  'dash.qaSavedDesc': 'View bookmarked items',
+  'dash.qaPrefsDesc': 'Update match settings',
+  'dash.qaSettingsDesc': 'Profile & account',
 
   'plan.changeTitle': 'Change your plan',
   'plan.currentPlan': 'Current plan',

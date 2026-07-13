@@ -1,36 +1,39 @@
+import { useI18n } from '@/i18n/I18nProvider';
+
 interface Action {
   href: string;
   label: string;
   description: string;
 }
 
-const ACTIONS: Action[] = [
-  {
-    href: '/jobs/',
-    label: 'Browse jobs',
-    description: 'Search all opportunities',
-  },
-  {
-    href: '/dashboard/#saved',
-    label: 'Saved',
-    description: 'View bookmarked items',
-  },
-  {
-    href: '/dashboard/#preferences',
-    label: 'Preferences',
-    description: 'Update match settings',
-  },
-  {
-    href: '/dashboard/#settings',
-    label: 'Settings',
-    description: 'Profile & account',
-  },
-];
-
 export function QuickActions() {
+  const { t } = useI18n();
+  const actions: Action[] = [
+    {
+      href: '/jobs/',
+      label: t('dash.browseJobs'),
+      description: t('dash.qaBrowseDesc'),
+    },
+    {
+      href: '/dashboard/#saved',
+      label: t('nav.saved'),
+      description: t('dash.qaSavedDesc'),
+    },
+    {
+      href: '/dashboard/#preferences',
+      label: t('nav.preferences'),
+      description: t('dash.qaPrefsDesc'),
+    },
+    {
+      href: '/dashboard/#settings',
+      label: t('nav.settings'),
+      description: t('dash.qaSettingsDesc'),
+    },
+  ];
+
   return (
     <div className="flex flex-wrap gap-3">
-      {ACTIONS.map((a) => (
+      {actions.map((a) => (
         <a
           key={a.href}
           href={a.href}

@@ -1,9 +1,16 @@
-import { useEffect, useState } from 'react';
-import { fetchOpportunities, type FeedItem } from '@/api/candidates';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  fetchOpportunities,
+  starOpportunity,
+  unstarOpportunity,
+  applyToOpportunity,
+  type FeedItem,
+} from '@/api/candidates';
 import { fetchSnapshot } from '@/api/snapshot';
 import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
 import { OpportunityCard, type OpportunitySnapshot } from '@/components/OpportunityCard';
 import { useI18n } from '@/i18n/I18nProvider';
+import { useToast } from '@/hooks/useToast';
 
 function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
   if (!snap) return null;
@@ -38,10 +45,12 @@ function statusRank(s: string): number {
 
 export function ApplicationsPanel() {
   const { t } = useI18n();
+  const { push: toast } = useToast();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [snapshots, setSnapshots] = useState<Record<string, OpportunitySnapshot | null>>({});
+  const [pendingItems, setPendingItems] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let mounted = true;
@@ -85,6 +94,91 @@ export function ApplicationsPanel() {
       cancelled = true;
     };
   }, [items]);
+
+  const onStar = useCallback(
+    async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
+      const snapshot = items;
+      setItems((prev) =>
+        prev.map((it) => (it.opportunity_id === id ? { ...it, starred: true } : it))
+      );
+      try {
+        await starOpportunity(id);
+        toast('Saved.', 'success');
+      } catch {
+        setItems(snapshot);
+        toast('Failed to save.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [items, toast]
+  );
+
+  const onUnstar = useCallback(
+    async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
+      const snapshot = items;
+      setItems((prev) =>
+        prev.map((it) => (it.opportunity_id === id ? { ...it, starred: false } : it))
+      );
+      try {
+        await unstarOpportunity(id);
+        toast('Removed from saved.', 'success');
+      } catch {
+        setItems(snapshot);
+        toast('Failed to remove.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [items, toast]
+  );
+
+  const onApply = useCallback(
+    async (id: string) => {
+      setPendingItems((prev) => new Set(prev).add(id));
+      const snapshot = items;
+      const now = new Date().toISOString();
+      setItems((prev) =>
+        prev.map((it) =>
+          it.opportunity_id === id
+            ? {
+                ...it,
+                application: {
+                  status: 'applied',
+                  applied_at: now,
+                  last_event_at: now,
+                  method: 'manual',
+                },
+              }
+            : it
+        )
+      );
+      try {
+        await applyToOpportunity(id, 'manual');
+        toast('Applied successfully.', 'success');
+      } catch {
+        setItems(snapshot);
+        toast('Failed to apply.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [items, toast]
+  );
 
   const sorted = [...items].sort(
     (a, b) => statusRank(a.application?.status ?? '') - statusRank(b.application?.status ?? '')
@@ -144,9 +238,10 @@ export function ApplicationsPanel() {
             key={it.opportunity_id}
             item={it}
             snapshot={snapshots[it.opportunity_id] ?? null}
-            onStar={() => {}}
-            onUnstar={() => {}}
-            onApply={() => {}}
+            onStar={onStar}
+            onUnstar={onUnstar}
+            onApply={onApply}
+            isPending={pendingItems.has(it.opportunity_id)}
           />
         ))}
       </ul>
