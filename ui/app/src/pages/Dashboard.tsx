@@ -17,7 +17,6 @@ import { OverviewPanel } from '@/components/dashboard/OverviewPanel';
 import { GuidedTour, isTourCompleted } from '@/components/dashboard/GuidedTour';
 import { CompletePaymentPanel } from '@/components/dashboard/CompletePaymentPanel';
 import { PendingCheckoutPoller } from '@/components/dashboard/PendingCheckoutPoller';
-import { WelcomeBanner } from '@/components/dashboard/WelcomeBanner';
 import { MatchesPanel } from '@/components/dashboard/MatchesPanel';
 import { OpportunitiesFeed } from '@/components/OpportunitiesFeed';
 import { DashboardSidebar, type SectionId } from '@/components/dashboard/DashboardSidebar';
@@ -28,6 +27,8 @@ import { SettingsPage } from '@/components/settings/SettingsPage';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { ProfileCompleteness } from '@/components/dashboard/ProfileCompleteness';
 import { QuickActions } from '@/components/dashboard/QuickActions';
+import { DashboardBanner } from '@/components/dashboard/DashboardBanner';
+import { StatsRow } from '@/components/dashboard/StatsRow';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTheme } from '@/providers/ThemeProvider';
@@ -123,7 +124,7 @@ export default function Dashboard() {
       <PendingCheckoutPoller />
       {isActive && (
         <div className="mt-4">
-          <WelcomeBanner t={t} onStartTour={() => setShowTour(true)} />
+          <DashboardBanner onStartTour={() => setShowTour(true)} />
         </div>
       )}
 
@@ -167,7 +168,10 @@ export default function Dashboard() {
             <>
               {activeSection === 'overview' && (
                 <ErrorBoundary>
-                  <OverviewPanel />
+                  <StatsRow />
+                  <div className="mt-6">
+                    <OverviewPanel />
+                  </div>
                 </ErrorBoundary>
               )}
               {activeSection === 'feed' && (

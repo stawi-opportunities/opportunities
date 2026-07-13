@@ -23,7 +23,7 @@ export function ProfileCompleteness() {
   if (!data?.languages) missing.push(t('dash.compLanguages'));
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-900">
+    <div className="rounded-xl border-0 bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-navy-900 dark:ring-navy-700">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           Profile completeness
