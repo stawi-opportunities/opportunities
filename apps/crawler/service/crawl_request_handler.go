@@ -285,8 +285,16 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		}
 	}
 	if !usedRecipe {
-		if domain.RequiresRecipe(src.Type) {
-			log.WithField("source_type", src.Type).
+		engine := src.Type
+		if !domain.IsKnownSourceType(engine) {
+			if remapped, ok := domain.RemapLegacySourceType(engine); ok {
+				log.WithField("legacy_type", engine).WithField("engine", remapped).
+					Warn("crawl.request: remapping legacy site-specific source type")
+				engine = remapped
+			}
+		}
+		if domain.RequiresRecipe(engine) {
+			log.WithField("source_type", src.Type).WithField("engine", engine).
 				Warn("crawl.request: engine requires a recipe; none installed")
 			if h.deps.StatusSetter != nil {
 				_ = h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused)
@@ -299,7 +307,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			})
 			return nil
 		}
-		c, ok := h.deps.Registry.Get(src.Type)
+		c, ok := h.deps.Registry.Get(engine)
 		if !ok {
 			if h.deps.StatusSetter != nil {
 				if perr := h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused); perr != nil {

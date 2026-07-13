@@ -229,13 +229,13 @@ func TestExternalToVariantLanguage(t *testing.T) {
 		IssuingEntity: "ACME",
 		Description:   longFR,
 	}
-	v := ExternalToVariant(ext, "src_test_1", "FR", "greenhouse", "en", time.Now())
+	v := ExternalToVariant(ext, "src_test_1", "FR", "generic_html", "en", time.Now())
 	if v.Language != "fr" {
 		t.Errorf("Language = %q, want %q (whatlanggo should override)", v.Language, "fr")
 	}
 
 	vShort := ExternalToVariant(domain.ExternalOpportunity{Kind: "job", ExternalID: "j", Title: "Dev", IssuingEntity: "ACME", Description: "Short"},
-		"src_test_1", "FR", "greenhouse", "fr", time.Now())
+		"src_test_1", "FR", "generic_html", "fr", time.Now())
 	if vShort.Language != "fr" {
 		t.Errorf("Language = %q, want %q (short text should inherit source)", vShort.Language, "fr")
 	}

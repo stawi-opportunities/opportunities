@@ -223,6 +223,71 @@ func (r *SourceRepository) ListAll(ctx context.Context) ([]*domain.Source, error
 	return sources, err
 }
 
+// RemapLegacySourceTypes rewrites historical site-specific sources.type
+// values to crawl engines. When an engine-typed row already exists for the
+// same base_url, recipes on the site-typed row are re-pointed to the engine
+// row (when that engine row has no active recipe), then the site-typed row
+// is deleted.
+//
+// Safe to call on every boot: no-op when no legacy rows remain.
+func (r *SourceRepository) RemapLegacySourceTypes(ctx context.Context) (updated, deleted int64, err error) {
+	db := r.db(ctx, false)
+	err = db.Transaction(func(tx *gorm.DB) error {
+		for oldType, newType := range domain.LegacySourceTypeMap {
+			// Move recipe history onto the keep row when the engine row has none active.
+			if res := tx.Exec(`
+				UPDATE source_recipes AS sr
+				SET source_id = keep.id
+				FROM sources AS s
+				JOIN sources AS keep
+				  ON keep.base_url = s.base_url AND keep.type = ? AND keep.id <> s.id
+				WHERE s.type = ?
+				  AND sr.source_id = s.id
+				  AND NOT EXISTS (
+				    SELECT 1 FROM source_recipes ar
+				    WHERE ar.source_id = keep.id AND ar.status = 'active'
+				  )
+			`, newType, oldType); res.Error != nil {
+				return fmt.Errorf("repoint recipes %s → %s: %w", oldType, newType, res.Error)
+			}
+
+			// Drop remaining recipes on colliding site-typed rows (keep already has active).
+			if res := tx.Exec(`
+				DELETE FROM source_recipes AS sr
+				USING sources AS s, sources AS keep
+				WHERE s.type = ?
+				  AND keep.base_url = s.base_url AND keep.type = ? AND keep.id <> s.id
+				  AND sr.source_id = s.id
+			`, oldType, newType); res.Error != nil {
+				return fmt.Errorf("drop colliding recipes for %s: %w", oldType, res.Error)
+			}
+
+			// Drop site-typed rows that collide with an engine row for the same URL.
+			res := tx.Exec(`
+				DELETE FROM sources AS s
+				USING sources AS keep
+				WHERE s.type = ?
+				  AND keep.base_url = s.base_url
+				  AND keep.type = ?
+				  AND keep.id <> s.id
+			`, oldType, newType)
+			if res.Error != nil {
+				return fmt.Errorf("delete legacy %s colliding with %s: %w", oldType, newType, res.Error)
+			}
+			deleted += res.RowsAffected
+
+			// Remaining site-typed rows (no engine twin) become the engine type.
+			res = tx.Exec(`UPDATE sources SET type = ?, updated_at = NOW() WHERE type = ?`, newType, oldType)
+			if res.Error != nil {
+				return fmt.Errorf("remap %s → %s: %w", oldType, newType, res.Error)
+			}
+			updated += res.RowsAffected
+		}
+		return nil
+	})
+	return updated, deleted, err
+}
+
 // UpdateNextCrawl updates scheduling fields after a crawl run.
 func (r *SourceRepository) UpdateNextCrawl(ctx context.Context, id string, nextCrawlAt time.Time, lastSeenAt time.Time, healthScore float64) error {
 	return r.db(ctx, false).

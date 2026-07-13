@@ -54,6 +54,38 @@ func RequiresRecipe(t SourceType) bool {
 	}
 }
 
+// LegacySourceTypeMap maps historical site-specific source.type values
+// onto engines. Used only to repair rows written before the engines-only
+// model; new sources must use KnownEngineTypes.
+var LegacySourceTypeMap = map[SourceType]SourceType{
+	"remoteok":              SourceAPI,
+	"arbeitnow":             SourceAPI,
+	"jobicy":                SourceAPI,
+	"themuse":               SourceAPI,
+	"himalayas":             SourceAPI,
+	"findwork":              SourceAPI,
+	"brightermonday":        SourceSchemaOrg,
+	"jobberman":             SourceSchemaOrg,
+	"myjobmag":              SourceSchemaOrg,
+	"njorku":                SourceSchemaOrg,
+	"careers24":             SourceSchemaOrg,
+	"pnet":                  SourceSchemaOrg,
+	"hosted_boards":         SourceSchemaOrg,
+	"smartrecruiters_page":  SourceSmartRecruitersAPI,
+	"greenhouse":            SourceGenericHTML,
+	"lever":                 SourceGenericHTML,
+}
+
+// RemapLegacySourceType returns the engine for a historical site type.
+// ok is false when t is already an engine or unknown.
+func RemapLegacySourceType(t SourceType) (engine SourceType, ok bool) {
+	if IsKnownSourceType(t) {
+		return t, false
+	}
+	engine, ok = LegacySourceTypeMap[SourceType(strings.ToLower(string(t)))]
+	return engine, ok
+}
+
 // SourceStatus tracks the operational state of a source.
 type SourceStatus string
 

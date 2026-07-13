@@ -107,6 +107,15 @@ func main() {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")
 		}
+		// Repair site-specific sources.type rows left from older deploys
+		// (capability SQL is not always re-applied on existing clusters).
+		srcRepo := repository.NewSourceRepository(dbFn)
+		if u, d, rerr := srcRepo.RemapLegacySourceTypes(ctx); rerr != nil {
+			log.WithError(rerr).Fatal("remap legacy source types failed")
+		} else if u > 0 || d > 0 {
+			log.WithField("updated", u).WithField("deleted", d).
+				Info("remapped legacy site-specific source types to engines")
+		}
 		// Sync Trustage workflow definitions from the mounted ConfigMap.
 		if cfg.TrustageURL != "" && cfg.TrustageWorkflowsDir != "" {
 			trustageCli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL)
@@ -124,6 +133,15 @@ func main() {
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
 	recipeRepo := repository.NewRecipeRepository(dbFn)
+	// Site-specific source.type values are legacy data — rewrite to engines
+	// before seeds so upserts hit the remapped rows instead of minting
+	// parallel engine-typed sources for the same base_url.
+	if u, d, rerr := sourceRepo.RemapLegacySourceTypes(ctx); rerr != nil {
+		log.WithError(rerr).Warn("remap legacy source types failed")
+	} else if u > 0 || d > 0 {
+		log.WithField("updated", u).WithField("deleted", d).
+			Info("remapped legacy site-specific source types to engines")
+	}
 	// Bundled stock recipes for common public API boards.
 	if serr := stock.LoadDefault(); serr != nil {
 		log.WithError(serr).Warn("stock recipes: not loaded (STOCK_RECIPES_DIR / definitions/stock-recipes)")
