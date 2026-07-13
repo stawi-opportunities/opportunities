@@ -5,6 +5,7 @@ import { AppGate } from "@/components/AppGate";
 import { Layout } from "@/components/Layout";
 import { SourceList } from "@/pages/SourceList";
 import { SourceTrace } from "@/pages/SourceTrace";
+import { SourceCreate } from "@/pages/SourceCreate";
 import { VariantTrace } from "@/pages/VariantTrace";
 import { OpportunityTrace } from "@/pages/OpportunityTrace";
 import { SeedDigest } from "@/pages/SeedDigest";
@@ -26,6 +27,7 @@ createRoot(container).render(
           <Route path="/" element={<Layout />}>
             <Route index element={<OpsOverview />} />
             <Route path="sources" element={<SourceList />} />
+            <Route path="sources/new" element={<SourceCreate />} />
             <Route path="sources/:id" element={<SourceTrace />} />
             <Route path="jobs" element={<JobsList />} />
             <Route path="rejections" element={<Rejections />} />

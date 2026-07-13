@@ -275,7 +275,20 @@ func main() {
 			}
 			return 1, "", nil
 		}
-		registerSourcesAdmin(ctx, mux, &cfg, reg, loader, emitSchedulingChanged, dispatchCrawl)
+		generateRecipe := func(emitCtx context.Context, sourceID string, sampleURLs []string, reason string) error {
+			mgr := svc.EventsManager()
+			if mgr == nil {
+				return fmt.Errorf("events manager unavailable")
+			}
+			env := eventsv1.NewEnvelope(eventsv1.TopicRecipeGenerate, eventsv1.RecipeGenerateV1{
+				SourceID:   sourceID,
+				SampleURLs: sampleURLs,
+				Reason:     reason,
+				Attempt:    1,
+			})
+			return mgr.Emit(emitCtx, eventsv1.TopicRecipeGenerate, env)
+		}
+		registerSourcesAdmin(ctx, mux, &cfg, reg, loader, emitSchedulingChanged, dispatchCrawl, generateRecipe)
 		registerFlagsAdmin(ctx, mux, jm)
 	}
 

@@ -141,6 +141,42 @@ export type DefinitionEntry = {
 // listDefinitionsByType for that shape.
 export type DefinitionsListResponse = Record<string, DefinitionEntry[]>;
 
+/** Connector / source types the platform knows how to crawl. */
+export const SOURCE_TYPES = [
+  "remoteok",
+  "arbeitnow",
+  "jobicy",
+  "themuse",
+  "himalayas",
+  "workday",
+  "smartrecruiters_api",
+  "smartrecruiters_page",
+  "schema_org",
+  "sitemap",
+  "generic_html",
+  "brightermonday",
+  "jobberman",
+  "myjobmag",
+  "njorku",
+  "careers24",
+  "pnet",
+  "hosted_boards",
+] as const;
+
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
+export const SOURCE_STATUSES = [
+  "pending",
+  "verifying",
+  "verified",
+  "rejected",
+  "active",
+  "degraded",
+  "paused",
+  "blocked",
+  "disabled",
+] as const;
+
 export type SourceListItem = {
   id: string;
   type: string;
@@ -148,15 +184,53 @@ export type SourceListItem = {
   base_url?: string;
   status: string;
   country: string;
+  language?: string;
   health_score: number;
+  kinds?: string[];
+  listing_path?: string;
+  crawl_interval_sec?: number;
+  needs_tuning?: boolean;
+  frontier_enabled?: boolean;
+  auto_approve?: boolean;
+  extraction_recipe?: string;
   // Adaptive recrawl (Plan D3). Score is 0.0–1.0, 1.0 = crawl at
   // min_interval. next_crawl_at is the scheduler's derived target.
-  // Optional because older API responses (pre-D3) may not include
-  // them; the UI falls back to existing fixed-interval columns.
   score?: number;
   next_crawl_at?: string;
   min_interval_minutes?: number;
   max_interval_minutes?: number;
+  verification_report?: VerificationReport;
+  rejection_reason?: string;
+};
+
+export type VerificationReport = {
+  started_at?: string;
+  completed_at?: string;
+  url_valid?: boolean;
+  blocklist_clean?: boolean;
+  kinds_known?: boolean;
+  reachable?: boolean;
+  reachable_status?: number;
+  robots_allowed?: boolean;
+  sample_extracted?: boolean;
+  sample_verify_pass?: boolean;
+  sample_reasons?: string[];
+  sample_title?: string;
+  overall_pass?: boolean;
+  errors?: string[];
+};
+
+/** Full source row from GET /admin/sources/{id}. */
+export type AdminSource = SourceListItem & {
+  priority?: number;
+  config?: string;
+  extraction_prompt_extension?: string;
+  required_attributes_by_kind?: Record<string, string[]>;
+  last_seen_at?: string;
+  approved_at?: string;
+  approved_by?: string;
+  last_stopped_at?: string;
+  last_stopped_by?: string;
 };
 
 // Response shape for POST /admin/sources/{id}/rescore. The handler
@@ -244,20 +318,96 @@ export const deleteDefinition = async (
   );
 };
 
-export const listSources = async (
-  limit: number = 100,
-  offset: number = 0,
-): Promise<SourceListResponse> => {
-  return fetchAdminJSON<SourceListResponse>(
-    `/admin/sources?limit=${limit}&offset=${offset}`,
-  );
+export type ListSourcesParams = {
+  limit?: number;
+  offset?: number;
+  status?: string;
+  type?: string;
+  country?: string;
+  kind?: string;
 };
 
+export const listSources = async (
+  params: ListSourcesParams | number = 100,
+  offset: number = 0,
+): Promise<SourceListResponse> => {
+  // Back-compat: listSources(limit, offset)
+  const p: ListSourcesParams =
+    typeof params === "number"
+      ? { limit: params, offset }
+      : { limit: 100, offset: 0, ...params };
+  const qs = new URLSearchParams();
+  qs.set("limit", String(p.limit ?? 100));
+  qs.set("offset", String(p.offset ?? 0));
+  if (p.status) qs.set("status", p.status);
+  if (p.type) qs.set("type", p.type);
+  if (p.country) qs.set("country", p.country);
+  if (p.kind) qs.set("kind", p.kind);
+  return fetchAdminJSON<SourceListResponse>(`/admin/sources?${qs.toString()}`);
+};
+
+export const listDiscoveredSources = (
+  limit = 100,
+): Promise<{ sources: AdminSource[]; count: number }> =>
+  fetchAdminJSON(`/admin/sources/discovered?limit=${limit}`);
+
+export const getSource = (id: string): Promise<AdminSource> =>
+  fetchAdminJSON<AdminSource>(`/admin/sources/${encodeURIComponent(id)}`);
+
+export type CreateSourceRequest = {
+  type: string;
+  base_url: string;
+  name?: string;
+  country?: string;
+  language?: string;
+  kinds?: string[];
+  crawl_interval_sec?: number;
+  listing_path?: string;
+  auto_approve?: boolean;
+  priority?: number;
+};
+
+export const createSource = (body: CreateSourceRequest): Promise<AdminSource> =>
+  authRuntime().fetch<AdminSource>(`/admin/sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+export type UpdateSourceRequest = {
+  name?: string;
+  country?: string;
+  language?: string;
+  priority?: number;
+  crawl_interval_sec?: number;
+  kinds?: string[];
+  listing_path?: string;
+  auto_approve?: boolean;
+  extraction_prompt_extension?: string;
+  frontier_enabled?: boolean;
+};
+
+export const updateSource = (
+  id: string,
+  body: UpdateSourceRequest,
+): Promise<AdminSource> =>
+  authRuntime().fetch<AdminSource>(`/admin/sources/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+export const deleteSource = (
+  id: string,
+  hard = false,
+): Promise<{ ok: boolean; id: string; hard: boolean }> =>
+  authRuntime().fetch(
+    `/admin/sources/${encodeURIComponent(id)}${hard ? "?hard=true" : ""}`,
+    { method: "DELETE" },
+  );
+
 // rescoreSource force-recomputes a source's freshness score +
-// next_crawl_at from the latest crawl_signals view. Useful when an
-// operator changes a source's min/max interval and wants the new
-// bounds applied immediately rather than waiting for the next
-// scheduler tick.
+// next_crawl_at from the latest crawl_signals view.
 export const rescoreSource = (id: string): Promise<RescoreResponse> =>
   authRuntime().fetch<RescoreResponse>(
     `/admin/sources/${encodeURIComponent(id)}/rescore`,
@@ -302,6 +452,161 @@ export const startSource = (id: string): Promise<SourceActionResponse> =>
     `/admin/sources/${encodeURIComponent(id)}/start`,
     { method: "POST" },
   );
+
+export const verifySource = (id: string): Promise<VerificationReport> =>
+  authRuntime().fetch<VerificationReport>(
+    `/admin/sources/${encodeURIComponent(id)}/verify`,
+    { method: "POST" },
+  );
+
+export const approveSource = (id: string): Promise<SourceActionResponse> =>
+  authRuntime().fetch<SourceActionResponse>(
+    `/admin/sources/${encodeURIComponent(id)}/approve`,
+    { method: "POST" },
+  );
+
+export const rejectSource = (
+  id: string,
+  reason?: string,
+): Promise<SourceActionResponse> =>
+  authRuntime().fetch<SourceActionResponse>(
+    `/admin/sources/${encodeURIComponent(id)}/reject`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason || "rejected via admin" }),
+    },
+  );
+
+// ── Recipes ─────────────────────────────────────────────────────────
+
+export type ActiveRecipeResponse = {
+  source_id: string;
+  has_recipe: boolean;
+  recipe: Record<string, unknown> | null;
+  listing_path?: string;
+  needs_tuning?: boolean;
+};
+
+export type RecipeHistoryRow = {
+  id: string;
+  version: number;
+  status: string;
+  pass_rate: number;
+  model: string;
+  validation_report?: unknown;
+  recipe: unknown;
+  created_at: string;
+};
+
+export type RecipeTestReport = {
+  source_id: string;
+  mode?: string;
+  acquisition?: string;
+  threshold?: number;
+  structural?: string;
+  verified?: boolean;
+  pass_rate?: number;
+  gate?: string;
+  page?: {
+    http_status?: number;
+    item_count?: number;
+    more_pages?: boolean;
+    verify_passed?: number;
+    error?: string;
+    items?: Array<{
+      title?: string;
+      issuing_entity?: string;
+      apply_url?: string;
+      kind?: string;
+      verify_ok?: boolean;
+      missing?: string[];
+      hard_key?: string;
+    }>;
+  };
+  validation?: {
+    samples: number;
+    passed: number;
+    pass_rate: number;
+    per_sample?: Array<{
+      url: string;
+      ok: boolean;
+      missing?: string[];
+      error?: string;
+    }>;
+  };
+  found?: number;
+  accepted?: number;
+  rejected?: number;
+  items?: Array<Record<string, unknown>>;
+  rejections?: Array<Record<string, unknown>>;
+  message?: string;
+};
+
+export const getActiveRecipe = (id: string): Promise<ActiveRecipeResponse> =>
+  fetchAdminJSON(`/admin/sources/${encodeURIComponent(id)}/recipe`);
+
+export const listRecipeHistory = (
+  id: string,
+): Promise<{ source_id: string; versions: RecipeHistoryRow[]; count: number }> =>
+  fetchAdminJSON(`/admin/sources/${encodeURIComponent(id)}/recipes`);
+
+export const putRecipe = (
+  id: string,
+  recipe: unknown,
+  activate = true,
+): Promise<{ ok: boolean; activated: boolean; recipe?: unknown }> =>
+  authRuntime().fetch(`/admin/sources/${encodeURIComponent(id)}/recipe`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recipe, activate }),
+  });
+
+export const testRecipe = (
+  id: string,
+  recipe?: unknown,
+  samples = 3,
+): Promise<RecipeTestReport> =>
+  authRuntime().fetch(`/admin/sources/${encodeURIComponent(id)}/recipe/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(recipe ? { recipe, samples } : { samples }),
+  });
+
+export const generateRecipe = (
+  id: string,
+  sampleURLs?: string[],
+): Promise<{ ok: boolean; queued: boolean; message?: string }> =>
+  authRuntime().fetch(
+    `/admin/sources/${encodeURIComponent(id)}/recipe/generate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sample_urls: sampleURLs,
+        reason: "admin_manual",
+      }),
+    },
+  );
+
+export const rollbackRecipe = (
+  id: string,
+  version: number,
+): Promise<{ ok: boolean; version: number; recipe?: unknown }> =>
+  authRuntime().fetch(
+    `/admin/sources/${encodeURIComponent(id)}/recipe/rollback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version }),
+    },
+  );
+
+/** Dry-run extract without enqueueing (recipe if present, else connector). */
+export const testSourceExtract = (id: string): Promise<RecipeTestReport> =>
+  authRuntime().fetch(`/admin/sources/${encodeURIComponent(id)}/test`, {
+    method: "POST",
+  });
 
 // ── Crawl runs (resumable slice state machine) ──────────────────────
 

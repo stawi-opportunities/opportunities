@@ -43,7 +43,8 @@ function useBreadcrumbs(): Breadcrumb[] {
 
   if (segs[0] === "sources") {
     crumbs.push({ label: "Sources", path: "/sources" });
-    if (segs[1]) crumbs.push({ label: segs[1] });
+    if (segs[1] === "new") crumbs.push({ label: "Add source" });
+    else if (segs[1]) crumbs.push({ label: segs[1] });
     return crumbs;
   }
 
