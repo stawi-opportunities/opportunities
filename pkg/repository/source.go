@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/freshness"
@@ -23,26 +22,34 @@ func NewSourceRepository(db func(ctx context.Context, readOnly bool) *gorm.DB) *
 	return &SourceRepository{db: db}
 }
 
-// Upsert inserts or updates a source on conflict of (type, base_url).
-// On conflict it refreshes seed metadata only — status, health_score,
-// last_seen_at, and next_crawl_at are operational state owned by the
-// crawler/operator and must survive pod restarts (seed load on boot
-// must not re-activate paused boards or reset crawl schedules).
+// Upsert inserts a new source, or refreshes seed metadata when
+// (type, base_url) already exists. Operational fields — status,
+// health_score, last_seen_at, next_crawl_at — are never overwritten on
+// conflict so seed load on boot cannot re-activate paused boards or
+// reset crawl schedules.
 func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
-	return r.db(ctx, false).
-		Clauses(clause.OnConflict{
-			Columns: []clause.Column{
-				{Name: "type"},
-				{Name: "base_url"},
-			},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"name", "country", "language", "priority",
-				"crawl_interval_sec", "config", "updated_at",
-				"kinds", "required_attributes_by_kind",
-				"auto_approve", "listing_path",
-			}),
-		}).
-		Create(s).Error
+	existing, err := r.GetByTypeAndURL(ctx, s.Type, s.BaseURL)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return r.db(ctx, false).Create(s).Error
+	}
+	// Existing row: metadata only. Preserve operator/crawler state.
+	fields := map[string]any{
+		"name":                       s.Name,
+		"country":                    s.Country,
+		"language":                   s.Language,
+		"priority":                   s.Priority,
+		"crawl_interval_sec":         s.CrawlIntervalSec,
+		"config":                     s.Config,
+		"kinds":                      s.Kinds,
+		"required_attributes_by_kind": s.RequiredAttributesByKind,
+		"auto_approve":               s.AutoApprove,
+		"listing_path":               s.ListingPath,
+		"updated_at":                 time.Now().UTC(),
+	}
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", existing.ID).Updates(fields).Error
 }
 
 // Create inserts a new source row. Unlike Upsert this returns an error on
