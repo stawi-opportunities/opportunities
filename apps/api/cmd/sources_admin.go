@@ -40,9 +40,15 @@ import (
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/jobicy"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/remoteok"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/structured"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
@@ -128,7 +134,7 @@ func (a *sourcesAdmin) notifyScheduling(ctx context.Context, sourceID string) {
 // up its own (which would double-poll R2 and ignore broadcast events).
 // nil means R2 isn't configured — the /admin/definitions/* block stays
 // disabled in that case.
-func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader, emitScheduling schedulingEmitFn, dispatchCrawl crawlDispatchFn) {
+func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader, emitScheduling schedulingEmitFn, dispatchCrawl crawlDispatchFn, generateRecipe recipeGenerateFn) {
 	log := util.Log(ctx)
 
 	fc, err := fconfig.FromEnv[fconfig.ConfigurationDefault]()
@@ -148,6 +154,7 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 		return
 	}
 	repo := repository.NewSourceRepository(pool.DB)
+	recipeRepo := repository.NewRecipeRepository(pool.DB)
 
 	// Frame-managed HTTP client (OTEL trace propagation + retry hooks).
 	// Both the connector retry path and the verifier's raw HEAD/GET probes
@@ -181,6 +188,12 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	}
 
 	// Order matters: more specific patterns first.
+	// Recipe routes must be registered before bare /admin/sources/{id} patterns
+	// that could otherwise steal the path (Go 1.22+ ServeMux is specific-first
+	// for method+path, but keep recipe paths registered via registerRecipesAdmin).
+	registerRecipesAdmin(mux, repo, recipeRepo, reg, connClient, connReg, generateRecipe)
+	log.Info("source admin: recipe + test-crawl endpoints wired")
+
 	mux.HandleFunc("GET /admin/sources/discovered", requireAdmin(a.handleListDiscovered))
 	mux.HandleFunc("POST /admin/sources/{id}/verify", requireAdmin(a.handleVerify))
 	mux.HandleFunc("POST /admin/sources/{id}/approve", requireAdmin(a.handleApprove))
@@ -243,16 +256,26 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 }
 
 // buildAdminConnectorRegistry returns a connectors.Registry suitable for
-// the verifier. It registers every API connector unconditionally; HTML
-// connectors that need the AI extractor are skipped since the api does
-// not have an LLM wired (verification will record SampleExtracted=false
-// for those source types — operators can still review the rest of the
-// report and approve manually).
+// source verification and dry-run test crawls on the api. Covers free JSON
+// APIs, ATS, sitemap, and HTML JSON-LD boards — no LLM required.
 func buildAdminConnectorRegistry(client *httpx.Client) *connectors.Registry {
 	reg := connectors.NewRegistry()
+	reg.Register(remoteok.New())
+	reg.Register(arbeitnow.New())
+	reg.Register(jobicy.New())
+	reg.Register(themuse.New())
+	reg.Register(himalayas.New())
 	reg.Register(workday.New(client))
 	reg.Register(smartrecruiters.New(client))
 	reg.Register(sitemapcrawler.New(client))
+	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceSchemaOrg))
+	for _, st := range []domain.SourceType{
+		domain.SourceBrighterMonday, domain.SourceJobberman, domain.SourceMyJobMag,
+		domain.SourceNjorku, domain.SourceCareers24, domain.SourcePNet,
+		domain.SourceHostedBoards, domain.SourceGenericHTML, domain.SourceSmartRecruitersPage,
+	} {
+		reg.Register(structured.NewHTMLJSONLD(client, st))
+	}
 	return reg
 }
 
