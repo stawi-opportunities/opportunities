@@ -207,9 +207,14 @@ func fetchStructuredJob(ctx context.Context, client *httpx.Client, pageURL strin
 	if strings.TrimSpace(opp.ExternalID) == "" {
 		opp.ExternalID = pageURL
 	}
-	// Require the core fields a job needs; drop incomplete JSON-LD.
-	if strings.TrimSpace(opp.Title) == "" || strings.TrimSpace(opp.IssuingEntity) == "" {
+	// Title is required. IssuingEntity is filled by @graph resolution in
+	// ExtractJobPostings; when still empty (sparse publishers) use a
+	// placeholder so valid JobPostings are not dropped entirely.
+	if strings.TrimSpace(opp.Title) == "" {
 		return nil, body, status, false
+	}
+	if strings.TrimSpace(opp.IssuingEntity) == "" {
+		opp.IssuingEntity = "Unknown"
 	}
 	return opp, body, status, true
 }

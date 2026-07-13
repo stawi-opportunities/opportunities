@@ -61,3 +61,38 @@ func TestHTMLJSONLD_NoJSONLD_Empty(t *testing.T) {
 	// No structured postings → Next returns false (no stubs).
 	require.False(t, iter.Next(context.Background()))
 }
+
+func TestHTMLJSONLD_UsesListingPath(t *testing.T) {
+	t.Parallel()
+	html := `<!doctype html><html><head>
+<script type="application/ld+json">
+{"@type":"JobPosting","title":"Listing Role",
+ "hiringOrganization":{"@type":"Organization","name":"List Co"},
+ "url":"https://example.com/jobs/9"}
+</script></head><body></body></html>`
+
+	var hitPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitPath = r.URL.Path
+		if r.URL.Path != "/jobs" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(html))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := httpx.NewClient(10*time.Second, "test")
+	c := structured.NewHTMLJSONLD(client, domain.SourceSchemaOrg)
+	src := domain.Source{
+		Type:        domain.SourceSchemaOrg,
+		BaseURL:     srv.URL,
+		ListingPath: "/jobs",
+	}
+	src.ID = "src_listing"
+	iter := c.Crawl(context.Background(), src)
+	require.True(t, iter.Next(context.Background()))
+	require.Equal(t, "/jobs", hitPath)
+	require.Equal(t, "Listing Role", iter.Items()[0].Title)
+}

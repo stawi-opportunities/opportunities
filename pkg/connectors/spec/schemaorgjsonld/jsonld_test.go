@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,6 +117,82 @@ func TestMapJobPosting_StringHiringOrg(t *testing.T) {
 	}
 	if opp.Title != "PM" {
 		t.Errorf("Title = %q; want PM", opp.Title)
+	}
+}
+
+// TestExtractJobPostings_GraphIDRefs covers BrighterMonday/Jobberman-style
+// JSON-LD where JobPosting.hiringOrganization is a pure {"@id":...} ref into
+// an @graph Organization node. Without resolution, IssuingEntity is empty and
+// sitemap/schema_org crawls drop every posting.
+func TestExtractJobPostings_GraphIDRefs(t *testing.T) {
+	html := []byte(`<!doctype html><html><head>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "JobPosting",
+      "@id": "https://board.example/#/schema/JobPosting/1",
+      "title": "Accountant",
+      "description": "Keep the books",
+      "hiringOrganization": {"@id": "https://board.example/#/schema/Organization/agency-1"},
+      "jobLocation": {
+        "@id": "https://board.example/#/schema/Place/loc-1",
+        "address": {"addressCountry": "UG", "addressRegion": "Uganda"}
+      },
+      "url": "https://board.example/listings/accountant-1"
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://board.example/#/schema/Organization/agency-1",
+      "name": "SPYTECH International"
+    },
+    {
+      "@type": "Place",
+      "@id": "https://board.example/#/schema/Place/loc-1",
+      "name": "Kampala"
+    }
+  ]
+}
+</script></head><body></body></html>`)
+
+	posts := schemaorgjsonld.ExtractJobPostings(html)
+	if len(posts) != 1 {
+		t.Fatalf("ExtractJobPostings = %d; want 1", len(posts))
+	}
+	opp, err := schemaorgjsonld.MapJobPosting(posts[0])
+	if err != nil {
+		t.Fatalf("MapJobPosting: %v", err)
+	}
+	if opp.Title != "Accountant" {
+		t.Errorf("Title = %q; want Accountant", opp.Title)
+	}
+	if opp.IssuingEntity != "SPYTECH International" {
+		t.Errorf("IssuingEntity = %q; want SPYTECH International (graph @id must resolve)", opp.IssuingEntity)
+	}
+	if opp.AnchorLocation == nil || opp.AnchorLocation.Country != "UG" {
+		t.Errorf("AnchorLocation = %+v; want Country=UG from inline address overlay", opp.AnchorLocation)
+	}
+}
+
+func TestExtractJobPostings_BrighterMondayFixture(t *testing.T) {
+	body := loadFixture(t, "brightermonday_graph.html")
+	posts := schemaorgjsonld.ExtractJobPostings(body)
+	if len(posts) != 1 {
+		t.Fatalf("ExtractJobPostings = %d; want 1", len(posts))
+	}
+	opp, err := schemaorgjsonld.MapJobPosting(posts[0])
+	if err != nil {
+		t.Fatalf("MapJobPosting: %v", err)
+	}
+	if opp.Title != "Accountant" {
+		t.Errorf("Title = %q; want Accountant", opp.Title)
+	}
+	if strings.TrimSpace(opp.IssuingEntity) == "" {
+		t.Errorf("IssuingEntity empty after graph resolve; raw keys should include hiring org name")
+	}
+	if opp.IssuingEntity != "SPYTECH international Limited" {
+		t.Errorf("IssuingEntity = %q; want SPYTECH international Limited", opp.IssuingEntity)
 	}
 }
 

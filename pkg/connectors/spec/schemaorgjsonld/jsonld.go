@@ -100,8 +100,12 @@ func (it *iter) Content() *content.Extracted { return nil }
 // ExtractJobPostings walks every <script type="application/ld+json">
 // block in an HTML body, JSON-parses each, and recursively collects
 // JobPosting entries. JobPostings buried in @graph arrays are
-// discovered too. Exported so the sitemap connector can reuse it as
-// its default detail-fetch fallback.
+// discovered too. When publishers emit a JSON-LD @graph with
+// cross-node @id references (BrighterMonday, Jobberman, etc.), those
+// refs are resolved before the posting is returned so MapJobPosting
+// sees inline hiringOrganization.name / jobLocation.address rather
+// than pure {"@id":"..."} stubs. Exported so the sitemap connector
+// can reuse it as its default detail-fetch fallback.
 func ExtractJobPostings(html []byte) []json.RawMessage {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(html)))
 	if err != nil {
@@ -117,34 +121,114 @@ func ExtractJobPostings(html []byte) []json.RawMessage {
 		if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 			return
 		}
-		out = append(out, walkForJobPostings(parsed)...)
+		index := map[string]map[string]any{}
+		collectGraphIndex(parsed, index)
+		out = append(out, walkForJobPostings(parsed, index)...)
 	})
 	return out
 }
 
+// collectGraphIndex indexes every object that carries an @id so later
+// pure-reference nodes ({"@id": "..."}) can be expanded against it.
+func collectGraphIndex(v any, index map[string]map[string]any) {
+	switch x := v.(type) {
+	case map[string]any:
+		if id, ok := x["@id"].(string); ok && id != "" {
+			// First writer wins so a fully-populated node is not
+			// overwritten by a later sparse reference to the same id.
+			if _, exists := index[id]; !exists {
+				index[id] = x
+			} else if len(x) > len(index[id]) {
+				index[id] = x
+			}
+		}
+		for _, child := range x {
+			collectGraphIndex(child, index)
+		}
+	case []any:
+		for _, child := range x {
+			collectGraphIndex(child, index)
+		}
+	}
+}
+
 // walkForJobPostings descends arbitrary JSON-LD structures looking for
 // objects with @type=="JobPosting" (or arrays of types containing it).
-// Each match is re-encoded as a json.RawMessage for downstream
-// MapJobPosting consumption.
-func walkForJobPostings(v any) []json.RawMessage {
+// Each match is reference-resolved against index and re-encoded as a
+// json.RawMessage for downstream MapJobPosting consumption.
+func walkForJobPostings(v any, index map[string]map[string]any) []json.RawMessage {
 	var out []json.RawMessage
 	switch x := v.(type) {
 	case map[string]any:
 		if isJobPostingType(x["@type"]) {
-			if b, err := json.Marshal(x); err == nil {
-				out = append(out, b)
+			resolved := resolveJSONLD(x, index, map[string]bool{})
+			if m, ok := resolved.(map[string]any); ok {
+				if b, err := json.Marshal(m); err == nil {
+					out = append(out, b)
+				}
 			}
 		}
 		// Recurse into nested values, e.g. @graph arrays.
 		for _, child := range x {
-			out = append(out, walkForJobPostings(child)...)
+			out = append(out, walkForJobPostings(child, index)...)
 		}
 	case []any:
 		for _, child := range x {
-			out = append(out, walkForJobPostings(child)...)
+			out = append(out, walkForJobPostings(child, index)...)
 		}
 	}
 	return out
+}
+
+// resolveJSONLD expands {"@id": "..."} references against index and
+// merges referenced node fields under the local object. Cycle-safe via
+// seen. Used so JobPosting.hiringOrganization that only carries an @id
+// gains Organization.name from the sibling @graph node.
+func resolveJSONLD(v any, index map[string]map[string]any, seen map[string]bool) any {
+	switch x := v.(type) {
+	case map[string]any:
+		id, hasID := x["@id"].(string)
+		if hasID && id != "" {
+			if seen[id] {
+				// Cycle: return a shallow copy without further expansion.
+				cp := make(map[string]any, len(x))
+				for k, vv := range x {
+					cp[k] = vv
+				}
+				return cp
+			}
+			seen[id] = true
+			defer delete(seen, id)
+		}
+
+		// Start from the indexed node when present so pure refs expand,
+		// then overlay local keys (local wins — e.g. jobLocation may
+		// carry address inline while @id points at a Place node).
+		base := map[string]any{}
+		if hasID && id != "" {
+			if ref, ok := index[id]; ok {
+				for k, vv := range ref {
+					base[k] = vv
+				}
+			}
+		}
+		for k, vv := range x {
+			base[k] = vv
+		}
+		out := make(map[string]any, len(base))
+		for k, vv := range base {
+			out[k] = resolveJSONLD(vv, index, seen)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, child := range x {
+			out[i] = resolveJSONLD(child, index, seen)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // isJobPostingType reports whether a JSON-LD @type value names
