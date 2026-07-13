@@ -1,0 +1,93 @@
+{
+  "acquisition": "structured_data",
+  "kind": {
+    "mode": "fixed",
+    "fixed": "job"
+  },
+  "list": {
+    "mode": "selector",
+    "endpoint": "/jobs",
+    "link_pattern": "/listings/",
+    "pagination": {
+      "mode": "page_param",
+      "param": "page",
+      "max_pages": 3
+    }
+  },
+  "detail": {
+    "record_source": "json_ld",
+    "title": {
+      "from": [
+        "json_ld",
+        "meta",
+        "selector"
+      ],
+      "json_path": "$.title",
+      "meta": "og:title",
+      "selector": "h1",
+      "transform": [
+        "trim"
+      ]
+    },
+    "description": {
+      "from": [
+        "json_ld",
+        "meta"
+      ],
+      "json_path": "$.description",
+      "meta": "og:description",
+      "transform": [
+        "html_to_text"
+      ]
+    },
+    "issuing_entity": {
+      "from": [
+        "json_ld"
+      ],
+      "json_path": "$.hiringOrganization.name",
+      "transform": [
+        "trim"
+      ]
+    },
+    "apply_url": {
+      "from": [
+        "json_ld",
+        "page_url"
+      ],
+      "json_path": "$.url"
+    },
+    "anchor_country": {
+      "from": [
+        "json_ld",
+        "const"
+      ],
+      "json_path": "$.jobLocation.address.addressCountry",
+      "const": "GH"
+    },
+    "location_text": {
+      "from": [
+        "json_ld"
+      ],
+      "json_path": "$.jobLocation.address.addressLocality"
+    },
+    "posted_at": {
+      "from": [
+        "json_ld"
+      ],
+      "json_path": "$.datePosted",
+      "transform": [
+        "parse_date"
+      ]
+    },
+    "deadline": {
+      "from": [
+        "json_ld"
+      ],
+      "json_path": "$.validThrough",
+      "transform": [
+        "parse_date"
+      ]
+    }
+  },
+  "version": 1
+}

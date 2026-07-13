@@ -9,7 +9,8 @@
     "language": "en",
     "priority": "hot",
     "region": "north_africa",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused"
   },
   {
     "base_url": "https://forasna.com",
@@ -21,6 +22,7 @@
     "language": "ar",
     "priority": "hot",
     "region": "north_africa",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused"
   }
 ]

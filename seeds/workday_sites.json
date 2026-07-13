@@ -8,6 +8,7 @@
     ],
     "priority": "normal",
     "region": "",
-    "source_type": "workday"
+    "source_type": "workday",
+    "status": "paused"
   }
 ]

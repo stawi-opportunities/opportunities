@@ -9,7 +9,8 @@
     "listing_path": "/jobs",
     "priority": "hot",
     "region": "east_africa",
-    "source_type": "schema_org"
+    "source_type": "schema_org",
+    "status": "paused"
   },
   {
     "base_url": "https://www.brightermonday.co.ug",
@@ -20,7 +21,8 @@
     ],
     "priority": "hot",
     "region": "east_africa",
-    "source_type": "sitemap"
+    "source_type": "sitemap",
+    "status": "active"
   },
   {
     "base_url": "https://www.careerjet.ug",
@@ -31,6 +33,7 @@
     ],
     "priority": "hot",
     "region": "east_africa",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused"
   }
 ]
