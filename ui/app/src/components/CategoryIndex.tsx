@@ -75,11 +75,10 @@ export default function CategoryIndex() {
       {/* Page header */}
       <div className="border-b border-gray-100 bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900">Browse by category</h1>
-          <p className="mt-3 text-lg text-gray-500">
-            Discover opportunities across jobs, scholarships, tenders, deals and funding ΓÇö all in
-            one place.
-          </p>
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
+            {t('category.browseByCategory')}
+          </h1>
+          <p className="mt-3 text-lg text-gray-500">{t('category.discover')}</p>
           <div className="mt-6 flex justify-center">
             <a
               href="/search/"
@@ -95,19 +94,17 @@ export default function CategoryIndex() {
                 <circle cx="11" cy="11" r="8" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35" />
               </svg>
-              Advanced search
+              {t('category.advancedSearch')}
             </a>
           </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-        {/* Opportunity types ΓÇö always shown */}
+        {/* Opportunity types — always shown */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Opportunity types</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Choose the kind of opportunity you are looking for.
-          </p>
+          <h2 className="text-xl font-semibold text-gray-900">{t('category.opportunityTypes')}</h2>
+          <p className="mt-1 text-sm text-gray-500">{t('category.chooseKind')}</p>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {OPPORTUNITY_TYPES.map(
               ({ iconName, href, label, description, color, badge, comingSoon }) =>
@@ -185,8 +182,10 @@ export default function CategoryIndex() {
 
         {!q.isLoading && cats.length > 0 && (
           <div className="mt-14">
-            <h2 className="text-xl font-semibold text-gray-900">Browse by industry</h2>
-            <p className="mt-1 text-sm text-gray-500">Refine your search by sector or field.</p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {t('category.browseByIndustry')}
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">{t('category.refineBySector')}</p>
             <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
               {cats.map((c) => (
                 <a
@@ -195,10 +194,11 @@ export default function CategoryIndex() {
                   className="group flex flex-col justify-between rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-navy-300 hover:shadow-sm"
                 >
                   <div className="font-medium capitalize text-gray-900 group-hover:text-navy-900">
-                    {c.key || 'Uncategorised'}
+                    {c.key || t('category.uncategorised')}
                   </div>
                   <div className="mt-1 text-xs text-gray-400">
-                    {c.count.toLocaleString()} {c.count === 1 ? 'opportunity' : 'opportunities'}
+                    {c.count.toLocaleString()}{' '}
+                    {c.count === 1 ? t('category.opportunity') : t('category.opportunities')}
                   </div>
                 </a>
               ))}
