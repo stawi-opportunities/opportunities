@@ -30,9 +30,11 @@ func NewHTMLJSONLD(client *httpx.Client, st domain.SourceType) *HTMLJSONLD {
 // Type implements connectors.Connector.
 func (c *HTMLJSONLD) Type() domain.SourceType { return c.srcType }
 
-// Crawl fetches the source base URL once and maps all JobPostings.
+// Crawl fetches the source listing URL once and maps all JobPostings.
+// Prefer BaseURL+ListingPath when ListingPath is set (board home pages
+// rarely embed JobPosting JSON-LD; listing pages sometimes do).
 func (c *HTMLJSONLD) Crawl(ctx context.Context, source domain.Source) connectors.CrawlIterator {
-	url := strings.TrimSpace(source.BaseURL)
+	url := listingURL(source)
 	if url == "" {
 		return connectors.NewSinglePageIterator(nil, nil, 0, nil)
 	}
@@ -52,8 +54,13 @@ func (c *HTMLJSONLD) Crawl(ctx context.Context, source domain.Source) connectors
 		if mapErr != nil || opp == nil {
 			continue
 		}
-		if strings.TrimSpace(opp.Title) == "" || strings.TrimSpace(opp.IssuingEntity) == "" {
+		// Title is required. IssuingEntity is preferred but not mandatory
+		// after @graph resolution — some boards still omit the employer.
+		if strings.TrimSpace(opp.Title) == "" {
 			continue
+		}
+		if strings.TrimSpace(opp.IssuingEntity) == "" {
+			opp.IssuingEntity = "Unknown"
 		}
 		opp.Source = c.srcType
 		opp.SourceURL = url
@@ -63,6 +70,22 @@ func (c *HTMLJSONLD) Crawl(ctx context.Context, source domain.Source) connectors
 		items = append(items, *opp)
 	}
 	return &pageIter{items: items, raw: body, status: status}
+}
+
+// listingURL joins BaseURL with ListingPath when the path is relative.
+func listingURL(source domain.Source) string {
+	base := strings.TrimSpace(source.BaseURL)
+	path := strings.TrimSpace(source.ListingPath)
+	if path == "" {
+		return base
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	if base == "" {
+		return path
+	}
+	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(path, "/")
 }
 
 type pageIter struct {
