@@ -226,18 +226,12 @@ func openIterator(
 		exec := recipe.NewExecutor(rec, recipe.NewHTTPFetcher(client))
 		return recipeconn.NewConnectorIterator(exec, *src), "stock:" + name, nil
 	}
-	engine := src.Type
-	if !domain.IsKnownSourceType(engine) {
-		if remapped, ok := domain.RemapLegacySourceType(engine); ok {
-			engine = remapped
-		}
+	if domain.RequiresRecipe(src.Type) {
+		return nil, "", fmt.Errorf("engine %s requires a recipe", src.Type)
 	}
-	if domain.RequiresRecipe(engine) {
-		return nil, "", fmt.Errorf("engine %s requires a recipe", engine)
-	}
-	conn, ok := connReg.Get(engine)
+	conn, ok := connReg.Get(src.Type)
 	if !ok {
-		return nil, "", fmt.Errorf("no engine for type %s", engine)
+		return nil, "", fmt.Errorf("no engine for type %s", src.Type)
 	}
-	return conn.Crawl(ctx, *src), "engine:" + string(engine), nil
+	return conn.Crawl(ctx, *src), "engine:" + string(src.Type), nil
 }

@@ -63,7 +63,7 @@ Never invent apply URLs from the board homepage. Never emit title-empty URL stub
 
 `seeds/**/*.json` load at crawler boot into `sources`. `source_type` must be an engine (`api`, `schema_org`, `sitemap`, `generic_html`, `workday`, `smartrecruiters_api`). Optional `"recipe": "remoteok"` installs a stock recipe after upsert.
 
-Historical site-named types (`jobberman`, `remoteok`, …) are **legacy data**. Crawler boot and the migrate job remap them to engines (and drop duplicates when an engine-typed row already exists for the same `base_url`).
+Any stored source whose `type` is not an engine is **deleted** (recipes and crawl runs for that source go with it). There is no type remapping — seeds and admin create reload the correct engine-typed rows.
 
 ## Admin
 
