@@ -12,7 +12,7 @@ import (
 	fconfig "github.com/pitabwire/frame/v2/config"
 	"github.com/pitabwire/frame/v2/datastore"
 	"github.com/pitabwire/frame/v2/events"
-	securityhttp "github.com/pitabwire/frame/v2/security/interceptors/httptor"
+	"github.com/pitabwire/frame/v2/security"
 	"github.com/pitabwire/util"
 
 	"github.com/antinvestor/service-trustage/client/workflows"
@@ -26,6 +26,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
+	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -413,18 +414,26 @@ func main() {
 	// Build admin HTTP mux. Frame mounts this at "/" via WithHTTPHandler.
 	adminMux := http.NewServeMux()
 
-	// Wrap admin mux with authentication if SecurityManager is configured.
+	// Auth: shared secret (Trustage / machine) and/or JWT via Frame authenticator.
+	// RequireAdmin accepts X-Admin-Token before JWT so Trustage crons work
+	// without an admin-role JWT.
 	var adminHandler http.Handler = adminMux
-
+	var authenticator security.Authenticator
 	if secMgr := svc.SecurityManager(); secMgr != nil {
-		if authenticator := secMgr.GetAuthenticator(ctx); authenticator != nil {
-			adminHandler = securityhttp.AuthenticationMiddleware(adminMux, authenticator)
-			log.Info("admin endpoints protected with JWT authentication")
+		authenticator = secMgr.GetAuthenticator(ctx)
+	}
+	if authenticator != nil || cfg.AdminToken != "" {
+		adminHandler = httpmw.RequireAdmin(httpmw.AdminAuthConfig{
+			Authenticator: authenticator,
+			SharedSecret:  cfg.AdminToken,
+		}, adminMux)
+		if cfg.AdminToken != "" {
+			log.Info("admin endpoints protected with JWT and/or ADMIN_TOKEN")
 		} else {
-			log.Warn("SecurityManager present but no authenticator configured — admin endpoints are UNPROTECTED")
+			log.Info("admin endpoints protected with JWT authentication")
 		}
 	} else {
-		log.Warn("no SecurityManager configured — admin endpoints are UNPROTECTED")
+		log.Warn("no SecurityManager authenticator or ADMIN_TOKEN — admin endpoints are UNPROTECTED")
 	}
 
 	// ensureSchedule / removeSchedule are nil-safe no-ops when scheduling is
@@ -684,6 +693,13 @@ func main() {
 		service.CrawlJobsAdminHandler(crawlRepo))
 
 	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
+
+	// In-process overdue sweep: keep crawls moving when Trustage schedule
+	// reconcile or HTTP callbacks are broken (auth outages, missing workflows).
+	if cfg.InternalOverdueInterval > 0 {
+		go service.RunInternalOverdueLoop(ctx, svc, sourceRepo, sourceRepo, crawlAdmitter,
+			cfg.CrawlOverdueBatch, cfg.InternalOverdueInterval)
+	}
 
 	// Register a named health checker that reports source state counts.
 	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo})
