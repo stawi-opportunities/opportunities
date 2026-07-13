@@ -58,6 +58,14 @@ BEGIN
                               if_not_exists => TRUE,
                               migrate_data => TRUE,
                               chunk_time_interval => INTERVAL '7 days');
+    -- Ops telemetry only — keep 90d; compress after 7d.
+    PERFORM add_retention_policy('match_run_events', INTERVAL '90 days',
+                                 if_not_exists => TRUE);
+    EXECUTE 'ALTER TABLE match_run_events SET (
+               timescaledb.compress,
+               timescaledb.compress_segmentby = ''path'')';
+    PERFORM add_compression_policy('match_run_events', INTERVAL '7 days',
+                                   if_not_exists => TRUE);
 
     IF to_regprocedure('append_only_guard()') IS NULL THEN
         EXECUTE $fn$

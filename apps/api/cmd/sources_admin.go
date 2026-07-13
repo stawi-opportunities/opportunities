@@ -90,6 +90,11 @@ type adminVerifier interface {
 // the handlers guard before calling.
 type schedulingEmitFn func(ctx context.Context, sourceID string)
 
+// crawlDispatchFn emits one crawl.requests.v1 for a source. Returns
+// (dispatched, reason, err). reason is non-empty when dispatched=false
+// without error (source not active, backpressure, etc.).
+type crawlDispatchFn func(ctx context.Context, sourceID string) (dispatched int, reason string, err error)
+
 // sourcesAdmin bundles the dependencies the admin handlers need.
 type sourcesAdmin struct {
 	repo       sourceAdminRepo
@@ -99,6 +104,9 @@ type sourcesAdmin struct {
 	// Trustage crawl schedule after a lifecycle mutation. nil when scheduling
 	// events aren't wired (events plugin unavailable).
 	emitScheduling schedulingEmitFn
+	// dispatchCrawl lets operators kick a crawl from the SPA without talking
+	// to the crawler service directly. nil → POST …/crawl returns 503.
+	dispatchCrawl crawlDispatchFn
 }
 
 // notifyScheduling fires the scheduling-changed event for a source, if wired.
@@ -120,7 +128,7 @@ func (a *sourcesAdmin) notifyScheduling(ctx context.Context, sourceID string) {
 // up its own (which would double-poll R2 and ignore broadcast events).
 // nil means R2 isn't configured — the /admin/definitions/* block stays
 // disabled in that case.
-func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader, emitScheduling schedulingEmitFn) {
+func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfig, reg *opportunity.Registry, loader *definitions.R2Loader, emitScheduling schedulingEmitFn, dispatchCrawl crawlDispatchFn) {
 	log := util.Log(ctx)
 
 	fc, err := fconfig.FromEnv[fconfig.ConfigurationDefault]()
@@ -169,6 +177,7 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 		dispatcher:     dispatcher,
 		registry:       reg,
 		emitScheduling: emitScheduling,
+		dispatchCrawl:  dispatchCrawl,
 	}
 
 	// Order matters: more specific patterns first.
@@ -181,6 +190,7 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	mux.HandleFunc("POST /admin/sources/{id}/stop", requireAdmin(a.handleStop))
 	mux.HandleFunc("POST /admin/sources/{id}/start", requireAdmin(a.handleStart))
 	mux.HandleFunc("POST /admin/sources/{id}/rescore", requireAdmin(a.handleRescore))
+	mux.HandleFunc("POST /admin/sources/{id}/crawl", requireAdmin(a.handleCrawl))
 	mux.HandleFunc("GET /admin/sources/{id}", requireAdmin(a.handleGet))
 	mux.HandleFunc("PUT /admin/sources/{id}", requireAdmin(a.handleUpdate))
 	mux.HandleFunc("DELETE /admin/sources/{id}", requireAdmin(a.handleDelete))
@@ -207,6 +217,10 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	registerFrontierAdmin(mux, frontierRepo)
 	log.Info("source admin: /admin/frontier wired")
 
+	// Opportunity browse + sanitize (hide, clear fields/attributes).
+	registerJobsAdmin(mux, pool.DB)
+	log.Info("source admin: /admin/opportunities + /admin/ops/overview wired")
+
 	// /admin/definitions/* — pluggable-definitions CRUD over R2. Reuses
 	// the loader main.go already started so this surface, the per-replica
 	// in-memory cache, and the broadcast subscriber all share one cache
@@ -225,7 +239,7 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 		log.Warn("source admin: R2 not configured; /admin/definitions/* disabled")
 	}
 
-	log.Info("source admin: endpoints registered under /admin/sources, /admin/trace, /admin/definitions")
+	log.Info("source admin: endpoints registered under /admin/sources, /admin/trace, /admin/opportunities, /admin/definitions")
 }
 
 // buildAdminConnectorRegistry returns a connectors.Registry suitable for
@@ -798,6 +812,53 @@ func (a *sourcesAdmin) handleRescore(w http.ResponseWriter, r *http.Request) {
 		"id":            id,
 		"score":         score,
 		"next_crawl_at": next,
+	})
+}
+
+// handleCrawl is POST /admin/sources/{id}/crawl — operator-triggered
+// crawl dispatch. Mirrors the crawler's SourceCrawlHandler so the SPA
+// only needs the api base URL. Emits crawl.requests.v1 for the crawler
+// consumer to pick up.
+func (a *sourcesAdmin) handleCrawl(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "bad_request", "source id required")
+		return
+	}
+	if a.dispatchCrawl == nil {
+		writeError(w, http.StatusServiceUnavailable, "crawl_dispatch_unavailable",
+			"crawl dispatch is not wired on this api instance")
+		return
+	}
+	src, err := a.repo.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load_failed", err.Error())
+		return
+	}
+	if src == nil {
+		writeError(w, http.StatusNotFound, "not_found", "source not found")
+		return
+	}
+	if src.Status != domain.SourceActive && src.Status != domain.SourceDegraded {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "dispatched": 0, "reason": "source not active",
+			"status": src.Status, "source_id": id,
+		})
+		return
+	}
+	n, reason, err := a.dispatchCrawl(r.Context(), id)
+	if err != nil {
+		if reason == "backpressure" {
+			w.Header().Set("Retry-After", "30")
+			writeError(w, http.StatusTooManyRequests, "backpressure", err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "dispatch_failed", err.Error())
+		return
+	}
+	logAction(r, "crawl", id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "dispatched": n, "reason": reason, "source_id": id,
 	})
 }
 

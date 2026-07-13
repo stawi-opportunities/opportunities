@@ -25,7 +25,6 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
-	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
@@ -126,39 +125,7 @@ func main() {
 	}
 	httpClient := httpx.NewClientFromDoer(doer, cfg.UserAgent)
 
-	// AI extractor — same wiring as apps/crawler.
-	var extractor *extraction.Extractor
-	infBase, infModel, infKey := extraction.ResolveInference(
-		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
-	)
-	if infBase != "" {
-		embBase, embModel, embKey := extraction.ResolveEmbedding(
-			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
-		)
-		// Dedicated inference client with a generous timeout. The fetch
-		// client (httpDoer) is intentionally short (HTTP_TIMEOUT_SEC=20s)
-		// for pulling job pages, but the shared llama fleet queues
-		// requests internally well beyond its parallel slots — a 20s
-		// deadline cancels LLM calls that would have answered in 60-180s
-		// (observed: "context deadline exceeded ... awaiting headers").
-		// Mirrors apps/crawler's HTTP_CLIENT_TIMEOUT=5m. Reusing httpDoer
-		// here was the bug.
-		inferenceDoer := &http.Client{Timeout: 5 * time.Minute}
-		extractor = extraction.New(extraction.Config{
-			BaseURL:             infBase,
-			APIKey:              infKey,
-			Model:               infModel,
-			EmbeddingBaseURL:    embBase,
-			EmbeddingAPIKey:     embKey,
-			EmbeddingModel:      embModel,
-			EmbeddingDimensions: cfg.EmbeddingDimensions,
-			Registry:            reg,
-			HTTPClient:          inferenceDoer,
-		})
-		log.WithField("url", infBase).WithField("model", infModel).Info("AI extraction enabled")
-	}
-
-	// Geocoder + normalizer mirror apps/crawler.
+	// Geocoder + normalizer (no LLM on this path).
 	geocoder := geocode.New()
 	normalizer := normalize.New(geocoder)
 
@@ -170,13 +137,13 @@ func main() {
 		Frontier:           pf,
 		Sources:            sourceRepo,
 		Kinds:              reg,
-		Extractor:          extractor,
 		Normalizer:         normalizer,
 		Fetcher:            httpClient,
 		DequeueBatch:       cfg.DequeueBatch,
 		MaxAttempts:        cfg.MaxAttempts,
 		IdleTick:           time.Duration(cfg.IdleTickSeconds) * time.Second,
 	})
+	log.Info("frontier-worker: schema.org JobPosting extract only")
 
 	// Definitions broadcast — same live-reload pattern as the
 	// rest of the apps. Plug in alongside the URL-enqueued

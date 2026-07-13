@@ -36,7 +36,7 @@ func TestMeCVHandlerArchivesAndEnqueues(t *testing.T) {
 	go func() { _ = svc.Run(ctx, "") }()
 	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVExtract, 2*time.Second)
 
-	handler := httpmw.CandidateAuth(MeCVHandler(UploadDeps{
+	handler := httpmw.NewCandidateAuth(nil)(MeCVHandler(UploadDeps{
 		Svc:     svc,
 		Archive: archive.NewFakeArchive(),
 		Text:    &fakeTextExtractor{out: "resume plain text content long enough to pass"},
@@ -91,7 +91,7 @@ func TestMeCVHandlerRejectsMissingFilePart(t *testing.T) {
 	)
 	defer svc.Stop(context.Background())
 
-	handler := httpmw.CandidateAuth(MeCVHandler(UploadDeps{
+	handler := httpmw.NewCandidateAuth(nil)(MeCVHandler(UploadDeps{
 		Svc:     svc,
 		Archive: archive.NewFakeArchive(),
 		Text:    &fakeTextExtractor{out: "x"},

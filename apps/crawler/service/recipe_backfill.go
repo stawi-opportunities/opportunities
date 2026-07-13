@@ -35,9 +35,9 @@ func BackfillRecipes(ctx context.Context, sources []domain.Source, targets map[d
 	return queued, nil
 }
 
-// UniversalRecipeTargets is the set of source types that currently use the
-// per-page-LLM universal connector — the backfill's default targets.
-var UniversalRecipeTargets = map[domain.SourceType]bool{
+// RecipeBackfillTargets are HTML / listing source types that benefit from
+// deterministic extraction recipes (JSON-LD alone is often incomplete).
+var RecipeBackfillTargets = map[domain.SourceType]bool{
 	domain.SourceBrighterMonday:      true,
 	domain.SourceJobberman:           true,
 	domain.SourceMyJobMag:            true,

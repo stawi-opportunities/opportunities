@@ -77,3 +77,33 @@ func NormalizePlan(raw string) (PlanID, bool) {
 	}
 	return "", false
 }
+
+// Entitlements are the server-enforced limits for a paid plan.
+// Matches marketing copy in ui/app/src/utils/plans.ts.
+type Entitlements struct {
+	// DailyCap / WeeklyCap bound match generation (candidate_match_indexes).
+	// WeeklyCap 0 means uncapped (managed agent).
+	DailyCap  int
+	WeeklyCap int
+	// AutoApply enables automated apply for the candidate when paid.
+	// Starter is matches-only; Pro and Managed unlock auto-apply rules.
+	AutoApply bool
+	// Priority is a qualitative queue hint for future scheduling.
+	Priority string
+}
+
+// EntitlementsFor returns server-side entitlements for a plan.
+// Unknown / empty plan IDs get Starter-safe defaults (not free unlimited).
+func EntitlementsFor(plan PlanID) Entitlements {
+	switch plan {
+	case PlanPro:
+		return Entitlements{DailyCap: 10, WeeklyCap: 25, AutoApply: true, Priority: "priority"}
+	case PlanManaged:
+		// Uncapped for agent-managed search; daily still bounds automated fan-out.
+		return Entitlements{DailyCap: 50, WeeklyCap: 0, AutoApply: true, Priority: "agent"}
+	case PlanStarter:
+		fallthrough
+	default:
+		return Entitlements{DailyCap: 2, WeeklyCap: 5, AutoApply: false, Priority: "standard"}
+	}
+}

@@ -1,51 +1,76 @@
 # Crawl pipeline
 
-The opportunity pipeline has one durable processing boundary: PostgreSQL.
+One durable processing boundary: **PostgreSQL**. Crawl never writes `opportunities` directly.
+
+## Flow
 
 ```text
-Trustage source schedule
-  -> crawl request
-  -> resumable connector/recipe pages
-  -> verify and normalize source record
-  -> job_ingest_queue
-  -> PostgreSQL worker
-  -> opportunities + opportunity_sources
-  -> PostgreSQL search/detail API
+Trustage per-source schedule
+  → POST /admin/sources/{id}/crawl  (backpressure admitter)
+  → crawl.requests.v1
+  → apps/crawler  (resumable crawl_runs slice)
+       structured connector | recipe | schema.org
+  → pkg/crawlaccept  (prepare → verify → normalize → pack)
+  → job_ingest_queue
+  → apps/worker  (claim, merge, ack)
+  → opportunities + opportunity_sources
+  → apps/api search / detail
 ```
+
+Optional branch: source with `frontier_enabled` enqueues detail URLs; **apps/frontier-worker** fetches each URL and extracts schema.org JobPosting JSON-LD only (no AI stubs).
+
+## What counts as a storable job
+
+`pkg/crawlaccept` + `definitions/opportunity-kinds/job.yaml`:
+
+| Field | Rule |
+|-------|------|
+| title | non-empty |
+| description | ≥ 50 characters |
+| issuing_entity | non-empty |
+| apply_url | non-empty (never invent source base URL) |
+
+Rejections are written to the append-only ingest events ledger; they do not enter the queue.
+
+## Structured extract paths
+
+| Path | Package / service |
+|------|-------------------|
+| JSON APIs | `pkg/connectors/{remoteok,arbeitnow,jobicy,themuse,himalayas,…}` |
+| ATS | workday, smartrecruiters |
+| Sitemap + JobPosting JSON-LD | `pkg/connectors/sitemapcrawler` |
+| HTML JSON-LD | `pkg/connectors/structured` |
+| Recipes | `pkg/recipe` + `recipeconn` when `RECIPE_ENABLED` and an active recipe exist |
+| Spec YAML | R2 `definitions/connector/*` |
+
+There is **no** universal AI connector and **no** crawl-time LLM enrichment of URL stubs.
 
 ## Backpressure
 
-`INGEST_MAX_PENDING` is a hard producer credit limit. Crawler replicas reserve
-capacity under a PostgreSQL transaction advisory lock, so concurrent producers
-cannot exceed it. `INGEST_MAX_OLDEST_AGE` closes crawl admission when the oldest
-unfinished item exceeds the processing-time budget. The URL frontier checks the
-same limits before it fetches another page.
+- `INGEST_MAX_PENDING` — hard outstanding queue ceiling (advisory-locked)
+- `INGEST_MAX_OLDEST_AGE` — stop admitting when the oldest unfinished item is too old
+- Frontier dequeue respects the same limits
 
-When admission closes, a crawl run yields without advancing past an incomplete
-page. Previously inserted rows are idempotent, so the watchdog can resume the
-same page after capacity becomes available without loss or duplication.
+When admission closes, a crawl run **yields** after the current page; the run watchdog resumes later. Ingest keys are idempotent.
 
-## Processing
+## Processing (worker)
 
-Workers claim batches with `FOR UPDATE SKIP LOCKED` and a bounded lease. Expired
-leases are reclaimable. Identity resolution, canonical merge, source-lineage
-update, queue acknowledgement, and the append-only processed event commit in a
-single transaction. Failures use bounded exponential retry and end in `dead`;
-they are never silently acknowledged.
+Workers claim with `FOR UPDATE SKIP LOCKED` and a bounded lease. One transaction:
+
+1. Resolve `opportunity_identities.hard_key`
+2. Upsert `opportunities`
+3. Upsert `opportunity_sources` lineage
+4. Refresh visibility (`hidden` if no active lineage)
+5. Ack queue row + append event
+
+Failures use bounded exponential retry, then `dead`.
 
 ## Full-crawl reconciliation
 
-After an iterator is exhausted, source lineage not observed since that run
-started becomes inactive. An opportunity is hidden only when it has no active
-source. Delayed work from an older run cannot reactivate stale lineage because
-each lineage row records its reconciliation boundary.
+After the iterator exhausts, lineage not seen since the run started becomes inactive. An opportunity is hidden only when it has no active source.
 
-## TimescaleDB usage
+## TimescaleDB
 
-`job_ingest_events` is append-only and protected by database triggers against
-update, delete, and truncate. It uses daily chunks, seven-day compression, and
-90-day retention. Mutable queue and canonical tables remain ordinary
-PostgreSQL tables.
+`job_ingest_events` is append-only (daily chunks, compression, retention). Mutable queue and serving tables are ordinary PostgreSQL.
 
-Raw HTTP bodies are parsed in memory and discarded. Only parsed queue records,
-canonical opportunities, compact lineage, and operational events are persisted.
+Raw HTTP bodies are parsed in memory and discarded. Only queue payloads, canonical rows, lineage, and operational events persist.

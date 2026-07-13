@@ -10,11 +10,13 @@ import (
 
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/frame/v2/datastore"
+	"github.com/pitabwire/frame/v2/security"
 	"github.com/pitabwire/util"
 
 	appsconfig "github.com/stawi-opportunities/opportunities/apps/applications/config"
 	v1 "github.com/stawi-opportunities/opportunities/apps/applications/service/http/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/applications"
+	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
 func main() {
@@ -58,7 +60,20 @@ func main() {
 		}
 		blobs = r2
 		log.WithField("bucket", cfg.R2AttachmentsBucket).Info("applications: R2 blob store enabled")
+	} else {
+		log.Warn("applications: R2 not configured — using in-memory blob store (attachments will not survive restarts)")
 	}
+
+	var authenticator security.Authenticator
+	if secMgr := svc.SecurityManager(); secMgr != nil {
+		authenticator = secMgr.GetAuthenticator(ctx)
+	}
+	if authenticator != nil {
+		log.Info("applications: /api/me/* protected with JWT authentication")
+	} else {
+		log.Warn("applications: no JWT authenticator — /api/me/* accepts X-Candidate-ID only (dev/test)")
+	}
+	authMW := httpmw.NewCandidateAuth(authenticator)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -78,6 +93,7 @@ func main() {
 			AttachmentsStore: attachments,
 			BlobStore:        blobs,
 			Idempotency:      idem,
+			Auth:             authMW,
 		})
 		log.Info("applications: HTTP routes mounted")
 	} else {

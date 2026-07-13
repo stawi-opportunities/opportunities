@@ -26,22 +26,34 @@ function useBreadcrumbs(): Breadcrumb[] {
     opportunities: "Opportunities",
     seeds: "Seeds",
     digest: "Digest",
-    raw_payloads: "Raw Payloads",
+    jobs: "Jobs",
+    rejections: "Rejections",
   };
 
-  const crumbs: Breadcrumb[] = [{ label: "Sources", path: "/" }];
+  const crumbs: Breadcrumb[] = [{ label: "Ops", path: "/" }];
 
   if (segs.length === 0) return crumbs;
 
   if (segs[0] === "definitions") {
-    crumbs[crumbs.length - 1] = { label: "Definitions", path: "/definitions" };
+    crumbs.push({ label: "Definitions", path: "/definitions" });
     if (segs[1]) crumbs.push({ label: segs[1] });
     if (segs[2]) crumbs.push({ label: segs[2] });
     return crumbs;
   }
 
-  if (segs[0] === "sources" && segs[1]) {
-    crumbs.push({ label: segs[1] });
+  if (segs[0] === "sources") {
+    crumbs.push({ label: "Sources", path: "/sources" });
+    if (segs[1]) crumbs.push({ label: segs[1] });
+    return crumbs;
+  }
+
+  if (segs[0] === "jobs") {
+    crumbs.push({ label: "Jobs", path: "/jobs" });
+    return crumbs;
+  }
+
+  if (segs[0] === "rejections") {
+    crumbs.push({ label: "Rejections", path: "/rejections" });
     return crumbs;
   }
 
@@ -57,11 +69,6 @@ function useBreadcrumbs(): Breadcrumb[] {
 
   if (segs[0] === "seeds" && segs[1]) {
     crumbs.push({ label: "Seeds" }, { label: segs[1] }, { label: "Digest" });
-    return crumbs;
-  }
-
-  if (segs[0] === "raw_payloads" && segs[1]) {
-    crumbs.push({ label: "Raw Payloads" }, { label: segs[1] });
     return crumbs;
   }
 
@@ -251,7 +258,39 @@ export function Layout() {
               style={navLinkStyle(location.pathname === "/")}
               aria-current={location.pathname === "/" ? "page" : undefined}
             >
+              Ops
+            </Link>
+            <Link
+              to="/sources"
+              style={navLinkStyle(
+                location.pathname === "/sources" ||
+                  location.pathname.startsWith("/sources/"),
+              )}
+              aria-current={
+                location.pathname.startsWith("/sources") ? "page" : undefined
+              }
+            >
               Sources
+            </Link>
+            <Link
+              to="/jobs"
+              style={navLinkStyle(location.pathname.startsWith("/jobs"))}
+              aria-current={
+                location.pathname.startsWith("/jobs") ? "page" : undefined
+              }
+            >
+              Jobs
+            </Link>
+            <Link
+              to="/rejections"
+              style={navLinkStyle(location.pathname.startsWith("/rejections"))}
+              aria-current={
+                location.pathname.startsWith("/rejections")
+                  ? "page"
+                  : undefined
+              }
+            >
+              Rejections
             </Link>
             <Link
               to="/definitions"

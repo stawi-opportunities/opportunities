@@ -111,8 +111,54 @@ func TestExternalToVariant(t *testing.T) {
 	}
 }
 
-// TestGeneratedIDWhenMissing verifies that an empty ExternalID is replaced by
-// the first 16 characters of the content hash.
+func TestExternalToVariant_ExtractedCountryWins(t *testing.T) {
+	scrapedAt := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
+	ext := domain.ExternalOpportunity{
+		ExternalID:    "job-99",
+		Title:         "Engineer",
+		IssuingEntity: "Acme",
+		Description:   "A solid description for language detection and storage.",
+		ApplyURL:      "https://jobs.example.com/roles/99",
+		AnchorLocation: &domain.Location{
+			Country: "ng", City: "Lagos", Region: "Lagos",
+		},
+	}
+	// Source fallback is KE — extracted NG must win.
+	v := ExternalToVariant(ext, "src", "ke", "remoteok", "en", scrapedAt)
+	if v.Country != "NG" {
+		t.Fatalf("country: got %q want NG", v.Country)
+	}
+	if v.City != "Lagos" {
+		t.Fatalf("city: got %q", v.City)
+	}
+}
+
+func TestApplyURLIdentity(t *testing.T) {
+	got := ApplyURLIdentity("https://Jobs.Example.COM/careers/abc/?utm=1#x")
+	if got != "jobs.example.com/careers/abc" {
+		t.Fatalf("got %q", got)
+	}
+	if ApplyURLIdentity("https://jobs.example.com/") != "" {
+		t.Fatal("root listing URL must not be an identity")
+	}
+}
+
+func TestExternalToVariant_SyntheticIDFromApplyURL(t *testing.T) {
+	scrapedAt := time.Now().UTC()
+	ext := domain.ExternalOpportunity{
+		Title: "Engineer", IssuingEntity: "Acme",
+		Description: "A solid description for language detection and storage.",
+		ApplyURL:    "https://boards.example.com/jobs/unique-role",
+		// no ExternalID
+	}
+	v := ExternalToVariant(ext, "src", "US", "generic_html", "en", scrapedAt)
+	if v.ExternalID != "boards.example.com/jobs/unique-role" {
+		t.Fatalf("external_id from apply URL: got %q", v.ExternalID)
+	}
+}
+
+// TestGeneratedIDWhenMissing verifies that an empty ExternalID falls back to
+// the content-hash prefix when no apply-URL identity is available.
 func TestGeneratedIDWhenMissing(t *testing.T) {
 	ext := domain.ExternalOpportunity{
 		Kind:          "job",
@@ -121,6 +167,7 @@ func TestGeneratedIDWhenMissing(t *testing.T) {
 		IssuingEntity: "BigCo",
 		LocationText:  "Lagos",
 		Description:   "Analyse data.",
+		// No ApplyURL → cannot use ApplyURLIdentity; use hash[:16].
 	}
 
 	v := ExternalToVariant(ext, "src_test_1", "NG", "jobberman", "en", time.Now())

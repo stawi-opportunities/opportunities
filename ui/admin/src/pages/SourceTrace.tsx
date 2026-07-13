@@ -1,34 +1,34 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
-  clearCheckpoint,
-  fetchAdminJSON,
-  listCheckpoints,
-  type CheckpointRow,
+  crawlSource,
+  listCrawlRuns,
+  pauseSource,
+  resetCrawlRun,
+  resumeSource,
+  type CrawlRunRow,
   type SourceTraceResponse,
+  fetchAdminJSON,
 } from "@/api/admin-client";
+import { Button, useToast } from "@/components/ui";
 
-// Renders GET /admin/trace/sources/{id}?since=24h as a 24-hour summary
-// plus a recent-crawls table. The endpoint is implemented in
-// apps/api/cmd/trace_admin.go and tested in trace_admin_test.go.
 export function SourceTrace() {
   const { id } = useParams<{ id: string }>();
+  const { toast } = useToast();
   const [data, setData] = useState<SourceTraceResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [checkpoints, setCheckpoints] = useState<CheckpointRow[]>([]);
-  const [cpBusy, setCpBusy] = useState<string | null>(null);
+  const [runs, setRuns] = useState<CrawlRunRow[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const reloadCheckpoints = useCallback(() => {
+  const reloadRuns = useCallback(() => {
     if (!id) return;
-    listCheckpoints(id)
-      .then((res) => setCheckpoints(res.checkpoints))
-      .catch(() => setCheckpoints([])); // soft-fail: trace UI keeps rendering
+    listCrawlRuns(id, 20)
+      .then((res) => setRuns(res.runs ?? []))
+      .catch(() => setRuns([]));
   }, [id]);
 
-  useEffect(() => {
+  const reloadTrace = useCallback(() => {
     if (!id) return;
-    setData(null);
-    setErr(null);
     fetchAdminJSON<SourceTraceResponse>(
       `/admin/trace/sources/${encodeURIComponent(id)}?since=24h`,
     )
@@ -36,29 +36,37 @@ export function SourceTrace() {
       .catch((e: unknown) =>
         setErr(e instanceof Error ? e.message : String(e)),
       );
-    reloadCheckpoints();
-  }, [id, reloadCheckpoints]);
+  }, [id]);
 
-  const onReset = async (connectorType: string) => {
+  useEffect(() => {
     if (!id) return;
-    if (
-      !window.confirm(
-        `Reset checkpoint for ${id}/${connectorType}? Next crawl will start from page 1.`,
-      )
-    ) {
-      return;
-    }
-    setCpBusy(connectorType);
+    setData(null);
+    setErr(null);
+    reloadTrace();
+    reloadRuns();
+  }, [id, reloadTrace, reloadRuns]);
+
+  const act = async (
+    label: string,
+    fn: () => Promise<unknown>,
+    reload = true,
+  ) => {
+    if (!id) return;
+    setBusy(label);
     try {
-      await clearCheckpoint(id, connectorType);
-      reloadCheckpoints();
+      await fn();
+      toast(`${label} ok`, { type: "success" });
+      if (reload) {
+        reloadTrace();
+        reloadRuns();
+      }
     } catch (e: unknown) {
-      window.alert(
-        "Failed to clear checkpoint: " +
-          (e instanceof Error ? e.message : String(e)),
+      toast(
+        `${label} failed: ${e instanceof Error ? e.message : String(e)}`,
+        { type: "error" },
       );
     } finally {
-      setCpBusy(null);
+      setBusy(null);
     }
   };
 
@@ -66,29 +74,63 @@ export function SourceTrace() {
   if (!data) return <p>Loading source trace…</p>;
 
   const { source, summary, recent_crawls } = data;
+  const activeRun = runs.find(
+    (r) => r.status === "running" || r.status === "paused",
+  );
 
   return (
     <div>
-      <header>
-        <h1>
+      <header style={{ marginBottom: "1.25rem" }}>
+        <h1 style={{ marginBottom: "0.35rem" }}>
           {source.id}{" "}
           <small style={{ color: "#666", fontWeight: "normal" }}>
             ({source.type})
           </small>
         </h1>
-        <p>
-          <strong>{source.base_url}</strong> · {source.country} · status{" "}
+        <p style={{ margin: "0 0 0.75rem" }}>
+          <strong>{source.base_url}</strong> · {source.country || "—"} · status{" "}
           <code>{source.status}</code> · health{" "}
           <code>{source.health_score.toFixed(2)}</code>
         </p>
         {source.next_crawl_at && (
-          <p style={{ color: "#666" }}>
+          <p style={{ color: "#666", marginTop: 0 }}>
             Next crawl at {new Date(source.next_crawl_at).toLocaleString()}
           </p>
         )}
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          <Button
+            disabled={!!busy}
+            onClick={() =>
+              act("Crawl", () => crawlSource(id!), true)
+            }
+          >
+            {busy === "Crawl" ? "Dispatching…" : "Crawl now"}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!!busy}
+            onClick={() => act("Pause", () => pauseSource(id!))}
+          >
+            Pause
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!!busy}
+            onClick={() => act("Resume", () => resumeSource(id!))}
+          >
+            Resume
+          </Button>
+          <Link to={`/seeds/${encodeURIComponent(id!)}/digest`}>
+            <Button variant="outline">Day digest</Button>
+          </Link>
+          <Link to={`/jobs?q=${encodeURIComponent(id!)}`}>
+            <Button variant="outline">Jobs from source</Button>
+          </Link>
+        </div>
       </header>
 
-      <section>
+      <section style={{ marginBottom: "1.5rem" }}>
         <h2>24-hour summary</h2>
         <table>
           <tbody>
@@ -112,7 +154,7 @@ export function SourceTrace() {
             </tr>
           </tbody>
         </table>
-        {Object.keys(summary.rejection_reasons).length > 0 && (
+        {Object.keys(summary.rejection_reasons ?? {}).length > 0 && (
           <>
             <h3>Rejection reasons</h3>
             <ul>
@@ -128,50 +170,66 @@ export function SourceTrace() {
         )}
       </section>
 
-      <section>
-        <h2>Iterator checkpoints</h2>
-        {checkpoints.length === 0 ? (
-          <p style={{ color: "#666" }}>
-            No active checkpoints — last crawl completed cleanly (or the
-            connector doesn't participate in resume).
-          </p>
+      <section style={{ marginBottom: "1.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.75rem",
+          }}
+        >
+          <h2 style={{ margin: 0 }}>Crawl runs</h2>
+          {activeRun && (
+            <Button
+              variant="outline"
+              disabled={!!busy}
+              onClick={() =>
+                act("Reset run", () => resetCrawlRun(id!), true)
+              }
+            >
+              {busy === "Reset run" ? "Resetting…" : "Reset active run"}
+            </Button>
+          )}
+        </div>
+        <p style={{ color: "#666", fontSize: "0.88rem" }}>
+          Resumable slice state machine. Reset fails a wedged run so the next
+          tick can start fresh.
+        </p>
+        {runs.length === 0 ? (
+          <p style={{ color: "#666" }}>No crawl runs recorded for this source.</p>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>Connector</th>
-                <th>Page</th>
-                <th>Last URL</th>
-                <th>Updated</th>
-                <th></th>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Found</th>
+                <th>Stored</th>
+                <th>Rejected</th>
+                <th>Error</th>
               </tr>
             </thead>
             <tbody>
-              {checkpoints.map((c) => (
-                <tr key={`${c.source_id}/${c.connector_type}`}>
+              {runs.map((r) => (
+                <tr key={r.id}>
                   <td>
-                    <code>{c.connector_type}</code>
+                    <code>{r.id.slice(0, 10)}…</code>
                   </td>
-                  <td>{c.page_idx}</td>
-                  <td
-                    style={{
-                      maxWidth: 320,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {c.last_url ?? ""}
-                  </td>
-                  <td>{new Date(c.last_checkpoint_at).toLocaleString()}</td>
                   <td>
-                    <button
-                      onClick={() => onReset(c.connector_type)}
-                      disabled={cpBusy === c.connector_type}
-                    >
-                      {cpBusy === c.connector_type
-                        ? "Clearing…"
-                        : "Reset checkpoint"}
-                    </button>
+                    <code>{r.status}</code>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {r.started_at
+                      ? new Date(r.started_at).toLocaleString()
+                      : "—"}
+                  </td>
+                  <td>{r.jobs_found ?? 0}</td>
+                  <td>{r.jobs_stored ?? 0}</td>
+                  <td>{r.jobs_rejected ?? 0}</td>
+                  <td style={{ maxWidth: 240 }}>
+                    {r.error_code || r.error_message || ""}
                   </td>
                 </tr>
               ))}
@@ -199,8 +257,12 @@ export function SourceTrace() {
             <tbody>
               {recent_crawls.map((c) => (
                 <tr key={c.crawl_job_id}>
-                  <td>{new Date(c.scheduled_at).toLocaleString()}</td>
-                  <td>{c.status}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {new Date(c.scheduled_at).toLocaleString()}
+                  </td>
+                  <td>
+                    <code>{c.status}</code>
+                  </td>
                   <td>{c.jobs_found}</td>
                   <td>{c.jobs_stored}</td>
                   <td>{c.duration_ms}</td>

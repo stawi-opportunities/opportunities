@@ -5,13 +5,18 @@ import (
 )
 
 // Mount registers every Phase-3 route onto the given mux with the
-// standard middleware stack: CandidateAuth applies to every /api/me/*
-// route; Idempotency wraps mutating routes.
+// standard middleware stack: CandidateAuth (or JWT via deps.Auth)
+// applies to every /api/me/* route; Idempotency wraps mutating routes.
 func Mount(mux *http.ServeMux, deps *Deps) {
 	idem := func(group string, h http.Handler) http.Handler {
 		return Idempotency(IdempotencyConfig{Store: deps.Idempotency, RouteGroup: group}, h)
 	}
-	auth := CandidateAuth
+	// Production injects NewCandidateAuth(authenticator); tests leave Auth
+	// nil and get header-only CandidateAuth via NewCandidateAuth(nil).
+	auth := deps.Auth
+	if auth == nil {
+		auth = CandidateAuth
+	}
 
 	mux.Handle("POST /api/me/applications",
 		auth(idem("applications.create", createApplication(deps))))

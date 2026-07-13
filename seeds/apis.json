@@ -2,8 +2,10 @@
   {
     "base_url": "https://remoteok.com",
     "country": "",
-    "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "crawl_interval_sec": 43200,
+    "kinds": [
+      "job"
+    ],
     "priority": "hot",
     "region": "",
     "source_type": "remoteok"
@@ -11,8 +13,10 @@
   {
     "base_url": "https://arbeitnow.com",
     "country": "",
-    "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "crawl_interval_sec": 43200,
+    "kinds": [
+      "job"
+    ],
     "priority": "hot",
     "region": "europe",
     "source_type": "arbeitnow"
@@ -20,8 +24,10 @@
   {
     "base_url": "https://jobicy.com",
     "country": "",
-    "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "crawl_interval_sec": 43200,
+    "kinds": [
+      "job"
+    ],
     "priority": "hot",
     "region": "",
     "source_type": "jobicy"
@@ -29,8 +35,10 @@
   {
     "base_url": "https://www.themuse.com",
     "country": "",
-    "crawl_interval_sec": 7200,
-    "kinds": ["job"],
+    "crawl_interval_sec": 43200,
+    "kinds": [
+      "job"
+    ],
     "priority": "normal",
     "region": "",
     "source_type": "themuse"
@@ -38,8 +46,10 @@
   {
     "base_url": "https://himalayas.app",
     "country": "",
-    "crawl_interval_sec": 7200,
-    "kinds": ["job"],
+    "crawl_interval_sec": 43200,
+    "kinds": [
+      "job"
+    ],
     "priority": "normal",
     "region": "",
     "source_type": "himalayas"

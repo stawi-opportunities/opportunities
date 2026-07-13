@@ -1,13 +1,13 @@
 SHELL := /bin/bash
 
-APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching
+APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching apps/applications
 
 # Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
 HUGO_VERSION := 0.160.1
 HUGO_BIN     := $(CURDIR)/bin/hugo
 
 .PHONY: deps build test test-integration run-crawler run-api run-worker \
-        infra-up infra-down \
+        crawl-once infra-up infra-down \
         ui-deps ui-build ui-dev \
         opportunity-kinds-link
 
@@ -35,6 +35,13 @@ run-api:
 
 run-worker:
 	go run ./apps/worker/cmd
+
+# One-shot structured crawl into job_ingest_queue (worker drains to opportunities).
+# Examples:
+#   make crawl-once ARGS='-all-apis -max-items 100'
+#   make crawl-once ARGS='-type remoteok'
+crawl-once:
+	go run ./cmd/crawl-once $(ARGS)
 
 infra-up:
 	docker compose -f deploy/docker-compose.yml up -d

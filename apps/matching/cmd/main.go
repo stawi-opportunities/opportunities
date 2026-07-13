@@ -202,10 +202,17 @@ func main() {
 	// Skip when extractor is unconfigured so the binary still serves
 	// the upload + preferences + match endpoints in a degraded mode
 	// (uploads archive but don't enrich).
+	// Shared matching.Store for persisting KNN hits into candidate_matches
+	// (dashboard feed) and for Path C wiring below.
+	var persistStore *matching.Store
+	if sqlDB != nil {
+		persistStore = matching.NewStore(sqlDB)
+	}
 	prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
 		Svc:      svc,
 		Match:    matchSvc,
 		Matchers: matcherReg,
+		Persist:  persistStore,
 		TopK:     50,
 	})
 	if extractor != nil {
@@ -354,10 +361,19 @@ func main() {
 	}
 	if authenticator != nil {
 		log.Info("matching: /me/* routes protected with JWT authentication")
+	} else if cfg.AuthRequireJWT {
+		log.Fatal("matching: AUTH_REQUIRE_JWT=true but no OIDC authenticator configured — refusing to start (would fail open to header spoofing)")
 	} else {
-		log.Warn("matching: no JWT authenticator configured — /me/* routes accept X-Candidate-ID header only")
+		log.Warn("matching: no JWT authenticator configured — /me/* routes accept X-Candidate-ID header only (set AUTH_REQUIRE_JWT=true in production)")
 	}
 	authMW := httpmw.NewCandidateAuth(authenticator)
+	adminAuth := httpmw.AdminAuthConfig{
+		Authenticator: authenticator,
+		SharedSecret:  cfg.AdminSharedSecret,
+	}
+	if authenticator == nil && cfg.AdminSharedSecret == "" {
+		log.Warn("matching: /_admin/* has no authenticator and no ADMIN_SHARED_SECRET — admin routes will reject all requests (fail closed)")
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -375,7 +391,9 @@ func main() {
 		Archive: arch,
 		Text:    textExtractor{},
 	}
-	mux.HandleFunc("POST /candidates/cv/upload", httpv1.UploadHandler(uploadDeps))
+	// Legacy upload/preferences/match paths require auth — identity from JWT
+	// subject (or X-Candidate-ID only when OIDC is unset in dev).
+	mux.Handle("POST /candidates/cv/upload", authMW(httpv1.UploadHandler(uploadDeps)))
 
 	// PUT /me/cv — the dashboard CV upload. The gateway strips the
 	// /matching prefix → PUT /me/cv. The auth-runtime upload() helper
@@ -384,12 +402,13 @@ func main() {
 	// archive → cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill
 	// pipeline as POST /candidates/cv/upload.
 	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
-	mux.HandleFunc("POST /candidates/preferences", httpv1.PreferencesHandler(svc, sqlDB))
-	mux.HandleFunc("GET /candidates/match", httpv1.MatchHandler(httpv1.MatchDeps{
-		Svc:    svc,
-		Store:  candStore,
-		Search: search,
-	}))
+	mux.Handle("POST /candidates/preferences", authMW(httpv1.PreferencesHandler(svc, sqlDB)))
+	mux.Handle("GET /candidates/match", authMW(httpv1.MatchHandler(httpv1.MatchDeps{
+		Svc:     svc,
+		Store:   candStore,
+		Search:  search,
+		Persist: persistStore,
+	})))
 
 	// --- /me/subscription (dashboard summary) ---
 	// The gateway HTTPRoute forwards /me/* unchanged to this backend.
@@ -578,7 +597,7 @@ func main() {
 	// Trustage-driven reconciler sweep — the safety net behind the webhook.
 	if checkoutStore != nil && billingActivator != nil {
 		billingReconciler := billing.NewReconciler(checkoutStore, billingGateway, billingActivator, cfg.BillingReconcileBatch)
-		mux.HandleFunc("POST /_admin/billing/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("POST /_admin/billing/reconcile", httpmw.RequireAdmin(adminAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			res, recErr := billingReconciler.Run(r.Context())
 			if recErr != nil {
 				log.WithError(recErr).Error("_admin/billing/reconcile: sweep failed")
@@ -587,20 +606,20 @@ func main() {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(res)
-		})
+		})))
 	} else {
 		log.Warn("_admin/billing/reconcile: store/activator unavailable; reconcile route not registered")
 	}
 
-	// --- Trustage admin endpoints ---
-	mux.HandleFunc("POST /_admin/cv/stale_nudge",
-		adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
+	// --- Trustage admin endpoints (shared secret or admin JWT) ---
+	mux.Handle("POST /_admin/cv/stale_nudge",
+		httpmw.RequireAdmin(adminAuth, adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
 			Svc:        svc,
 			Lister:     staleLister,
 			StaleAfter: 60 * 24 * time.Hour,
-		}))
-	mux.HandleFunc("POST /_admin/candidates/weekly_jobs_digest",
-		adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
+		})))
+	mux.Handle("POST /_admin/candidates/weekly_jobs_digest",
+		httpmw.RequireAdmin(adminAuth, adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
 			Svc:      svc,
 			Lister:   unpaidLister,
 			Jobs:     newJobsLister,
@@ -608,7 +627,7 @@ func main() {
 			PlansURL: cfg.PlansURL,
 			Window:   7 * 24 * time.Hour,
 			JobLimit: 10,
-		}))
+		})))
 
 	// POST /_admin/matches/weekly_digest — Monday-morning Trustage cron.
 	// Re-runs the gap-fill match pipeline for every ACTIVE candidate so
@@ -630,8 +649,8 @@ func main() {
 					}
 					return ids, nil
 				}, 5000)
-			mux.HandleFunc("POST /_admin/matches/weekly_digest",
-				adminv1.MatchesWeeklyDigestHandler(adminv1.MatchesWeeklyDigestDeps{
+			mux.Handle("POST /_admin/matches/weekly_digest",
+				httpmw.RequireAdmin(adminAuth, adminv1.MatchesWeeklyDigestHandler(adminv1.MatchesWeeklyDigestDeps{
 					Svc:      svc,
 					Active:   activeLister,
 					Index:    matching.NewIndexStore(sqlDB),
@@ -641,7 +660,7 @@ func main() {
 					Reranker: matching.NoopReranker{},
 					Weights:  matching.DefaultWeights(),
 					Since:    30 * 24 * time.Hour,
-				}))
+				})))
 		} else {
 			log.WithError(dbErr).Warn("_admin/matches/weekly_digest: sql.DB unwrap failed; route not registered")
 		}
@@ -855,6 +874,10 @@ func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candida
 // submitted_at rather than 409-ing. This mirrors the idempotent style
 // the rest of the /me/* surface uses.
 //
+// Status is applications.StatusSubmitted (valid state machine), not the
+// invalid "applied" string. candidate_matches is flipped to applied when
+// a match row exists for the pair.
+//
 // match_id is NOT NULL in the schema. We do a best-effort lookup of an
 // existing match_id from candidate_matches for the pair; if nothing is
 // found we synthesise one ("manual_"+xid) so the insert can proceed.
@@ -880,7 +903,7 @@ func (a *directApplicationStarter) StartApplication(ctx context.Context, candida
 		CandidateID:   candidateID,
 		OpportunityID: opportunityID,
 		MatchID:       matchID,
-		Status:        applications.Status("applied"),
+		Status:        applications.StatusSubmitted,
 		Metadata:      map[string]any{"method": method},
 	})
 	if errors.Is(err, applications.ErrAlreadyExists) {
@@ -898,7 +921,15 @@ func (a *directApplicationStarter) StartApplication(ctx context.Context, candida
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("applications: create: %w", err)
 	}
-	appliedAt := app.CreatedAt
+	// Stamp submitted_at (Create does not set it) and mark the match applied.
+	now := time.Now().UTC()
+	_, _ = a.db.ExecContext(ctx,
+		`UPDATE applications SET submitted_at = COALESCE(submitted_at, $2) WHERE application_id = $1`,
+		app.ApplicationID, now)
+	matchStore := matching.NewStore(a.db)
+	_ = matchStore.MarkApplied(ctx, candidateID, opportunityID)
+
+	appliedAt := now
 	if app.SubmittedAt != nil {
 		appliedAt = *app.SubmittedAt
 	}

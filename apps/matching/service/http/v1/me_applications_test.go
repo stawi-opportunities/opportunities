@@ -32,7 +32,7 @@ func TestApplicationsHandler_PostApplies(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC().Truncate(time.Second)
 	s := &fakeStarter{appID: "app_xyz", appliedAt: now}
-	h := httpmw.CandidateAuth(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/me/applications", bytes.NewBufferString(`{"opportunity_id":"opp_42","method":"manual"}`))
@@ -51,7 +51,7 @@ func TestApplicationsHandler_PostApplies(t *testing.T) {
 func TestApplicationsHandler_DefaultsMethodToManual(t *testing.T) {
 	t.Parallel()
 	s := &fakeStarter{appID: "app_y", appliedAt: time.Now()}
-	h := httpmw.CandidateAuth(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/me/applications", bytes.NewBufferString(`{"opportunity_id":"opp_42"}`))
@@ -66,7 +66,7 @@ func TestApplicationsHandler_DefaultsMethodToManual(t *testing.T) {
 func TestApplicationsHandler_RejectsMissingID(t *testing.T) {
 	t.Parallel()
 	s := &fakeStarter{}
-	h := httpmw.CandidateAuth(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
 
 	for _, body := range []string{`{}`, `{"opportunity_id":""}`, `not json`} {
 		rec := httptest.NewRecorder()
@@ -82,7 +82,7 @@ func TestApplicationsHandler_RejectsMissingID(t *testing.T) {
 func TestApplicationsHandler_StarterErrorIs502(t *testing.T) {
 	t.Parallel()
 	s := &fakeStarter{err: errors.New("db wedged")}
-	h := httpmw.CandidateAuth(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/me/applications", bytes.NewBufferString(`{"opportunity_id":"opp_42"}`))
@@ -96,7 +96,7 @@ func TestApplicationsHandler_StarterErrorIs502(t *testing.T) {
 func TestApplicationsHandler_MethodOther(t *testing.T) {
 	t.Parallel()
 	s := &fakeStarter{}
-	h := httpmw.CandidateAuth(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
+	h := httpmw.NewCandidateAuth(nil)(v1.ApplicationsHandler(v1.ApplicationsDeps{Starter: s}))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/me/applications", nil)

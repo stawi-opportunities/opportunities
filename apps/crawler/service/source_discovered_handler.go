@@ -132,12 +132,10 @@ func (h *SourceDiscoveredHandler) Execute(ctx context.Context, payload any) erro
 		return nil
 	}
 
-	// Intake research: recognise hosted-ATS boards (lever / greenhouse /
-	// smartrecruiters) and type them for their structured connector — the
-	// most effective extraction path (JSON API / structured page, no LLM,
-	// no recipe). The ATS BaseURL keeps the company segment the connector
-	// needs; everything else falls back to generic_html on scheme://host.
-	srcType := domain.SourceGenericHTML
+	// Prefer structured types: hosted ATS boards map to their connectors;
+	// everything else is schema_org (JSON-LD extract, no AI stubs). generic_html
+	// is reserved for operator-curated HTML sources with recipes.
+	srcType := domain.SourceSchemaOrg
 	baseURL := fmt.Sprintf("%s://%s", target.Scheme, target.Host)
 	if t, atsURL, ok := classifyATS(target); ok {
 		srcType, baseURL = t, atsURL

@@ -9,9 +9,12 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
-// CandidateAuth pulls the candidate identity from the X-Candidate-ID header.
-// Delegates to pkg/httpmw.CandidateAuth.
-func CandidateAuth(next http.Handler) http.Handler { return httpmw.CandidateAuth(next) }
+// CandidateAuth pulls the candidate identity from a verified JWT subject,
+// or (in tests / local without OIDC) from the X-Candidate-ID header via
+// NewCandidateAuth(nil).
+func CandidateAuth(next http.Handler) http.Handler {
+	return httpmw.NewCandidateAuth(nil)(next)
+}
 
 // CandidateFromContext returns the authenticated candidate ID from the context.
 // Delegates to pkg/httpmw.CandidateFromContext.

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -55,6 +56,8 @@ type JobVariant struct {
 	Company          string
 	LocationText     string
 	Country          string
+	Region           string
+	City             string
 	Language         string
 	RemoteType       string
 	EmploymentType   string
@@ -220,6 +223,27 @@ func contentHash(externalID, title, company, location, description string) strin
 	return hex.EncodeToString(h[:])
 }
 
+// ApplyURLIdentity returns a stable, low-cardinality identity string from an
+// apply URL (lowercase host + path, no query/fragment). Empty on parse failure
+// or listing-root URLs that would collide every job from a board.
+func ApplyURLIdentity(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	path := strings.TrimRight(u.EscapedPath(), "/")
+	if path == "" || path == "/" {
+		// Root listing URL is not a per-job identity.
+		return ""
+	}
+	return host + path
+}
+
 // ExternalToVariant converts a raw ExternalOpportunity into a normalised JobVariant
 // ready for deduplication and storage.
 //
@@ -252,8 +276,34 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 	// 3. Normalize company name.
 	company = normalizeCompany(company)
 
-	// 4. Case normalization.
-	country = strings.ToUpper(strings.TrimSpace(country))
+	// 4. Geo: prefer fields extracted from the page (AnchorLocation), then
+	// free-text location, then the source-declared country fallback.
+	// Overwriting extracted country with the source stamp was a frequent
+	// quality bug (every job from a multi-country board looked local).
+	city := ""
+	region := ""
+	resolvedCountry := strings.ToUpper(strings.TrimSpace(country))
+	if ext.AnchorLocation != nil {
+		if c := strings.ToUpper(strings.TrimSpace(ext.AnchorLocation.Country)); c != "" {
+			resolvedCountry = c
+		}
+		region = strings.TrimSpace(ext.AnchorLocation.Region)
+		city = strings.TrimSpace(ext.AnchorLocation.City)
+	}
+	if region == "" {
+		region = DetectRegion(resolvedCountry)
+	}
+	if location == "" && (city != "" || region != "" || resolvedCountry != "") {
+		parts := make([]string, 0, 3)
+		for _, p := range []string{city, region, resolvedCountry} {
+			if p != "" {
+				parts = append(parts, p)
+			}
+		}
+		location = strings.Join(parts, ", ")
+	}
+	country = resolvedCountry
+
 	currency := strings.ToUpper(ext.Currency)
 	remoteType := strings.ToLower(ext.AttrString("remote_type"))
 	if remoteType == "" && ext.Remote {
@@ -264,20 +314,28 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 	// 5. Compute SHA-256 content hash.
 	hash := contentHash(externalID, title, company, location, description)
 
-	// 6. Generate externalID from first 16 chars of hash if missing.
+	// 6. Stable external identity. Prefer board-provided IDs; when missing,
+	// use a canonical apply-URL identity (unique per posting) instead of a
+	// content hash slice — hash IDs cause false merges when titles match.
 	if externalID == "" {
-		externalID = hash[:16]
+		if id := ApplyURLIdentity(applyURL); id != "" {
+			externalID = id
+		} else {
+			externalID = hash[:16]
+		}
 	}
 
-	// 7. Compute hard key.
-	hardKey := domain.BuildHardKey(company, title, location, externalID)
+	// 7. Hard key — include apply-URL identity so two postings with the same
+	// title/company/location but different apply links stay distinct.
+	postingKey := externalID
+	if applyID := ApplyURLIdentity(applyURL); applyID != "" && applyID != externalID {
+		postingKey = externalID + "|" + applyID
+	}
+	hardKey := domain.BuildHardKey(company, title, location, postingKey)
 
-	// 8. Assign region.
-	_ = sourceBoard // sourceBoard is stored on the source record; passed here for future use
-	region := DetectRegion(country)
-	_ = region // region will be used once JobVariant has a Region field
+	_ = sourceBoard // reserved for future board-level provenance
 
-	// 8b. Resolve language. Prefer a reliable whatlanggo detection when
+	// 8. Resolve language. Prefer a reliable whatlanggo detection when
 	// description is long enough; otherwise inherit from source.
 	lang := detectLanguage(description, language)
 
@@ -307,6 +365,8 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 		Company:          company,
 		LocationText:     location,
 		Country:          country,
+		Region:           region,
+		City:             city,
 		Language:         lang,
 		RemoteType:       remoteType,
 		EmploymentType:   employmentType,

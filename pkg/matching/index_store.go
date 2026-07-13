@@ -37,6 +37,26 @@ type IndexStore struct {
 // NewIndexStore constructs an IndexStore backed by db.
 func NewIndexStore(db *sql.DB) *IndexStore { return &IndexStore{db: db} }
 
+// CandidatePlanID returns the plan_id on candidate_profiles for entitlement
+// mapping. Empty string when the row is missing (caller uses defaults).
+func (s *IndexStore) CandidatePlanID(ctx context.Context, candidateID string) (string, error) {
+	if s == nil || s.db == nil {
+		return "", nil
+	}
+	var plan string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(plan_id, '') FROM candidate_profiles WHERE id = $1`,
+		candidateID,
+	).Scan(&plan)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return plan, nil
+}
+
 const upsertIndexSQL = `
 INSERT INTO candidate_match_indexes
     (candidate_id, embedding, min_score, daily_cap, weekly_cap,

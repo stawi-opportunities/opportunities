@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,10 +19,10 @@ import (
 	"github.com/rs/xid"
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
-	"github.com/stawi-opportunities/opportunities/pkg/content"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/spec/schemaorgjsonld"
+	"github.com/stawi-opportunities/opportunities/pkg/crawlaccept"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
-	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
@@ -38,7 +39,6 @@ type Deps struct {
 	Frontier           frontier.Frontier
 	Sources            *repository.SourceRepository
 	Kinds              *opportunity.Registry
-	Extractor          *extraction.Extractor
 	Normalizer         *normalize.Normalizer
 	Fetcher            *httpx.Client
 
@@ -222,45 +222,31 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		return
 	}
 
-	// Run the AI extractor when configured. The frontier-worker
-	// path is single-URL — we run one Extract per URL and emit
-	// one VariantIngestedV1.
+	// Structured extract only: schema.org JobPosting JSON-LD. No AI stubs.
 	var items []domain.ExternalOpportunity
-	if h.deps.Extractor != nil {
-		kinds := src.Kinds
-		if len(kinds) == 0 {
-			kinds = []string{"job"}
+	postings := schemaorgjsonld.ExtractJobPostings(body)
+	for _, raw := range postings {
+		opp, mapErr := schemaorgjsonld.MapJobPosting(raw)
+		if mapErr != nil || opp == nil {
+			continue
 		}
-		// Convert raw HTML to clean markdown before extraction — the
-		// extractor sends its document straight to the LLM with no
-		// stripping, so a 500 KB listing page is ~150 K tokens and
-		// blows past the model context window (observed: "request
-		// (152253 tokens) exceeds the available context size (4096
-		// tokens)"). Mirrors apps/crawler enrichOne, which runs the
-		// same content.ExtractFromHTML pass before Extract.
-		docText := string(body)
-		if ext, _ := content.ExtractFromHTML(docText); ext != nil && ext.Markdown != "" {
-			docText = ext.Markdown
+		if strings.TrimSpace(opp.Title) == "" || strings.TrimSpace(opp.IssuingEntity) == "" {
+			continue
 		}
-		extracted, exErr := h.deps.Extractor.Extract(ctx, docText, kinds, src.ExtractionPromptExtension)
-		if exErr != nil {
-			log.WithError(exErr).Warn("frontier-worker: extractor failed")
-			if failErr := h.deps.Frontier.Fail(ctx, u.URLID, exErr, h.deps.MaxAttempts); failErr != nil {
-				log.WithError(failErr).Warn("frontier-worker: Fail failed")
-			}
-			return
+		opp.Source = src.Type
+		opp.SourceURL = u.CanonicalURL
+		if strings.TrimSpace(opp.ApplyURL) == "" {
+			opp.ApplyURL = u.CanonicalURL
 		}
-		if extracted != nil {
-			items = []domain.ExternalOpportunity{*extracted}
+		items = append(items, *opp)
+	}
+	if len(items) == 0 {
+		// No structured job data — complete URL without inventing a stub.
+		log.Debug("frontier-worker: no structured JobPosting; completing without emit")
+		if err := h.deps.Frontier.Complete(ctx, u.URLID); err != nil {
+			log.WithError(err).Warn("frontier-worker: complete failed")
 		}
-	} else {
-		// No extractor configured — emit a URL stub. Verify
-		// will likely reject it, but the audit row still lands.
-		items = []domain.ExternalOpportunity{{
-			Source:    src.Type,
-			SourceURL: u.CanonicalURL,
-			ApplyURL:  u.CanonicalURL,
-		}}
+		return
 	}
 
 	var emitErr error
@@ -270,74 +256,35 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 		if opp.ApplyURL == "" {
 			opp.ApplyURL = u.CanonicalURL
 		}
-		// Country fallback — same chain the crawler runs.
-		if src.Country != "" {
-			if opp.AnchorLocation == nil {
-				opp.AnchorLocation = &domain.Location{Country: src.Country}
-			} else if opp.AnchorLocation.Country == "" {
-				opp.AnchorLocation.Country = src.Country
+
+		// Same prepare→verify→normalize→pack path as apps/crawler so
+		// frontier and source-level extracts cannot diverge on what is
+		// storable. Rejections are audited via RecordRejected when queue is wired.
+		accepted := crawlaccept.Accept(crawlaccept.Input{
+			Opp:        opp,
+			Source:     src,
+			Kinds:      h.deps.Kinds,
+			Normalizer: h.deps.Normalizer,
+		})
+		if accepted.Rejected != nil {
+			log.WithField("kind", accepted.Rejected.Kind).
+				WithField("title", opp.Title).
+				WithField("reason", accepted.Rejected.Reason).
+				Debug("frontier-worker: verify rejected")
+			if h.deps.IngestQueue != nil {
+				rej := eventsv1.VariantRejectedV1{
+					VariantID:  xid.New().String(),
+					SourceID:   src.ID,
+					Kind:       accepted.Rejected.Kind,
+					Title:      opp.Title,
+					Reasons:    []string{accepted.Rejected.Detail},
+					RejectedAt: time.Now().UTC(),
+				}
+				_ = h.deps.IngestQueue.RecordRejected(ctx, rej.VariantID, src.ID, rej)
 			}
+			continue
 		}
-		kind := opp.Kind
-		if kind == "" && len(src.Kinds) > 0 {
-			kind = src.Kinds[0]
-			opp.Kind = kind
-		}
-
-		// Run Verify if the registry is wired. Rejections are
-		// emitted but don't block other items.
-		if h.deps.Kinds != nil {
-			if res := opportunity.Verify(&opp, src, h.deps.Kinds); !res.OK {
-				log.WithField("kind", kind).
-					WithField("title", opp.Title).
-					Debug("frontier-worker: verify rejected")
-				continue
-			}
-		}
-
-		now := time.Now().UTC()
-		var variant normalize.JobVariant
-		if h.deps.Normalizer != nil {
-			variant = h.deps.Normalizer.Normalize(&opp, src.ID, src.Country, string(src.Type), src.Language, now)
-		} else {
-			variant = normalize.ExternalToVariant(opp, src.ID, src.Country, string(src.Type), src.Language, now)
-		}
-		if kind == "" {
-			kind = "job"
-		}
-
-		attrs := opp.Attributes
-		if attrs == nil {
-			attrs = map[string]any{}
-		}
-		attrs["description"] = variant.Description
-		attrs["language"] = variant.Language
-		attrs["remote_type"] = variant.RemoteType
-		attrs["employment_type"] = variant.EmploymentType
-		attrs["location_text"] = variant.LocationText
-		attrs["content_hash"] = variant.ContentHash
-		if variant.PostedAt != nil {
-			attrs["posted_at"] = variant.PostedAt.Format(time.RFC3339)
-		}
-
-		eventPayload := eventsv1.VariantIngestedV1{
-			VariantID:     xid.New().String(),
-			SourceID:      src.ID,
-			ExternalID:    variant.ExternalID,
-			HardKey:       variant.HardKey,
-			Kind:          kind,
-			Stage:         string(domain.StageRaw),
-			Title:         variant.Title,
-			ApplyURL:      variant.ApplyURL,
-			IssuingEntity: variant.Company,
-			AnchorCountry: variant.Country,
-			Remote:        variant.RemoteType == "remote",
-			Currency:      variant.Currency,
-			AmountMin:     variant.SalaryMin,
-			AmountMax:     variant.SalaryMax,
-			Attributes:    attrs,
-			ScrapedAt:     now,
-		}
+		eventPayload := *accepted.Accepted
 
 		body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))
 		if mErr != nil {

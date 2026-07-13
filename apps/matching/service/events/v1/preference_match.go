@@ -21,6 +21,9 @@ type PreferenceMatchDeps struct {
 	Svc      *frame.Service
 	Match    *httpv1.MatchService
 	Matchers *matchers.Registry
+	// Persist writes results into candidate_matches so the dashboard feed
+	// sees preference-triggered matches (not only MatchesReady events).
+	Persist httpv1.MatchPersister
 	// TopK caps the matches emitted per candidate-kind pair (default 50).
 	TopK int
 }
@@ -114,6 +117,13 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 
 		if h.deps.TopK > 0 && len(res.Matches) > h.deps.TopK {
 			res.Matches = res.Matches[:h.deps.TopK]
+		}
+
+		// Persist into candidate_matches before emit so the dashboard feed
+		// and notification service stay aligned on the same row set.
+		if err := httpv1.PersistMatchResult(ctx, h.deps.Persist, res, "preference"); err != nil {
+			log.WithError(err).WithField("kind", kind).
+				Warn("preference-match: persist candidate_matches failed")
 		}
 
 		rows := make([]eventsv1.MatchRow, 0, len(res.Matches))

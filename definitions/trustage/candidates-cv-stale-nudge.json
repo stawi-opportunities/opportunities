@@ -25,7 +25,8 @@
           "url": "http://opportunities-matching.product-opportunities.svc/_admin/cv/stale_nudge",
           "method": "POST",
           "headers": {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "X-Admin-Token": "${ADMIN_SHARED_SECRET}"
           },
           "body": {}
         },

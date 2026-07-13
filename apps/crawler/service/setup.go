@@ -6,75 +6,66 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/jobicy"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/remoteok"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/spec"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/structured"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
 	// Blank imports register each spec-driven impl into spec's
-	// internal type→impl table via init(). NewFromYAML then resolves
-	// every uploaded YAML to the right Impl without the registry call
-	// site knowing about per-type packages.
+	// internal type→impl table via init().
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/htmllisting"
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/jsonfeed"
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/rssfeed"
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/schemaorgjsonld"
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/sitemap"
 	_ "github.com/stawi-opportunities/opportunities/pkg/connectors/spec/xmlfeed"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/universal"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
-	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 )
 
-// BuildRegistry creates a connector Registry with all available connectors
-// registered: the hand-coded ones (workday, smartrecruiters) plus any
-// declarative spec-driven connectors loaded from R2 via the
-// definitions service.
-//
-// When extractor is non-nil the universal AI connector is registered
-// for every HTML-based source type; otherwise those types are skipped
-// (they cannot work without AI link discovery).
-//
-// When loader is nil (dev/OSS path without R2) the spec-driven
-// connectors are skipped — only the hand-coded ones are registered.
-func BuildRegistry(ctx context.Context, client *httpx.Client, extractor *extraction.Extractor, loader *definitions.R2Loader) *connectors.Registry {
+// BuildRegistry creates a connector Registry with structured extractors only:
+// JSON APIs, ATS, sitemap+schema.org JobPosting, HTML JSON-LD, and R2 specs.
+// There is no universal AI / stub connector path.
+func BuildRegistry(ctx context.Context, client *httpx.Client, loader *definitions.R2Loader) *connectors.Registry {
 	reg := connectors.NewRegistry()
 
-	// ATS / structured-data connectors (require httpx.Client). The free JSON
-	// API boards (remoteok, arbeitnow, jobicy, themuse, himalayas) and the
-	// Greenhouse multi-tenant board are now generic `api` recipes — see
-	// docs/ops/crawl-framework.md. workday/smartrecruiters remain hand-coded
-	// pending migration.
+	// Free public JSON job boards — complete records.
+	reg.Register(remoteok.New())
+	reg.Register(arbeitnow.New())
+	reg.Register(jobicy.New())
+	reg.Register(themuse.New())
+	reg.Register(himalayas.New())
+
+	// ATS structured connectors.
 	reg.Register(workday.New(client))
 	reg.Register(smartrecruiters.New(client))
 
-	// Sitemap crawler — discovers job URLs from robots.txt sitemaps.
+	// Sitemap → schema.org JobPosting detail fetch.
 	reg.Register(sitemapcrawler.New(client))
 
-	// Universal AI connector for all HTML-based source types.
-	if extractor != nil {
-		for _, st := range []domain.SourceType{
-			domain.SourceBrighterMonday,
-			domain.SourceJobberman,
-			domain.SourceMyJobMag,
-			domain.SourceNjorku,
-			domain.SourceCareers24,
-			domain.SourcePNet,
-			domain.SourceSchemaOrg,
-			domain.SourceHostedBoards,
-			domain.SourceGenericHTML,
-			domain.SourceSmartRecruitersPage,
-		} {
-			reg.Register(universal.NewTyped(client, extractor, st))
-		}
+	// schema.org on listing/detail pages (no LLM).
+	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceSchemaOrg))
+	for _, st := range []domain.SourceType{
+		domain.SourceBrighterMonday,
+		domain.SourceJobberman,
+		domain.SourceMyJobMag,
+		domain.SourceNjorku,
+		domain.SourceCareers24,
+		domain.SourcePNet,
+		domain.SourceHostedBoards,
+		domain.SourceGenericHTML,
+		domain.SourceSmartRecruitersPage,
+	} {
+		reg.Register(structured.NewHTMLJSONLD(client, st))
 	}
 
-	// Declarative spec-driven connectors live in R2 under
-	// definitions/connector/. Walk the active set at boot, then keep
-	// the registry live by subscribing to type=connector changes —
-	// new uploads (and re-uploads with edits) propagate within
-	// seconds of the broadcast event.
+	// Declarative spec-driven connectors from R2.
 	if loader != nil {
 		registerSpecConnectors(ctx, reg, loader, client)
 		loader.Subscribe(definitions.TypeConnector, func(name, _ string) {
@@ -86,11 +77,6 @@ func BuildRegistry(ctx context.Context, client *httpx.Client, extractor *extract
 	return reg
 }
 
-// registerSpecConnectors lists every active spec under
-// definitions/connector/, parses each one, and (re-)registers it on
-// the supplied connector registry. Registry.Register overwrites on
-// duplicate key, so calling this from the loader subscriber rebuilds
-// in place — no stop-the-world swap needed.
 func registerSpecConnectors(ctx context.Context, reg *connectors.Registry, loader *definitions.R2Loader, client *httpx.Client) {
 	entries, err := loader.List(ctx, definitions.TypeConnector)
 	if err != nil {

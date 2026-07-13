@@ -206,7 +206,8 @@ func main() {
 	}
 
 	// Connector registry.
-	registry := service.BuildRegistry(ctx, httpClient, extractor, loader)
+	registry := service.BuildRegistry(ctx, httpClient, loader)
+	log.Info("connectors: structured extracts only (APIs, schema.org JSON-LD, recipes, specs)")
 
 	// Archive R2 client + raw_ref repository. Same R2 account token
 	// as the public content bucket — Cloudflare R2 IAM scopes the
@@ -288,11 +289,8 @@ func main() {
 		StatusSetter:        sourceRepo,
 		Registry:            registry,
 		Kinds:               reg,
-		Extractor:           extractor,
 		Normalizer:          normalizer,
 		PageFetcher:         httpClient,
-		EnrichConcurrency:   cfg.EnrichConcurrency,
-		DiscoverSample:      0.05, // roughly 1-in-20 pages get DiscoverSites
 		CrawlRepo:           crawlRepo,
 		RunRepo:             crawlRunRepo,
 		Admitter:            crawlAdmitter,
@@ -644,7 +642,7 @@ func main() {
 		service.RecipeBackfillHandler(service.RecipeBackfillDeps{
 			Sources: sourceRepo,
 			Enabled: cfg.RecipeEnabled,
-			Targets: service.UniversalRecipeTargets,
+			Targets: service.RecipeBackfillTargets,
 			Limit:   cfg.RecipeBackfillLimit,
 			Emit: func(emitCtx context.Context, sourceID string) error {
 				evtMgr := svc.EventsManager()

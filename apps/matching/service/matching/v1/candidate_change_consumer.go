@@ -10,6 +10,7 @@ import (
 
 	util "github.com/pitabwire/util"
 
+	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 )
@@ -139,20 +140,25 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	// Auto-populate / refresh candidate_match_indexes from the embedding event
 	// (folds in what the standalone indexer did) so the index always has a
 	// current vector for fan-out + future preference-change passes. Preserve
-	// any existing prefs; default a brand-new row.
+	// any existing prefs; default a brand-new row using plan entitlements.
 	if len(vector) > 0 {
+		ent := planEntitlements(ctx, c.deps.IndexStore, candidateID)
 		ci := matching.CandidateIndex{
 			CandidateID: candidateID,
 			Embedding:   vector,
 			MinScore:    0.5,
-			DailyCap:    25,
-			WeeklyCap:   100,
+			DailyCap:    ent.DailyCap,
+			WeeklyCap:   ent.WeeklyCap,
 			Kinds:       []string{"job"},
 			Enabled:     true,
 		}
 		if existing, gErr := c.deps.IndexStore.Get(ctx, candidateID); gErr == nil && existing != nil {
+			// Preserve rules-tuned prefs; only fill caps from plan when unset.
 			ci.MinScore = existing.MinScore
-			ci.DailyCap = existing.DailyCap
+			if existing.DailyCap > 0 {
+				ci.DailyCap = existing.DailyCap
+			}
+			// WeeklyCap 0 is meaningful (uncapped managed); preserve always when row exists.
 			ci.WeeklyCap = existing.WeeklyCap
 			ci.Kinds = existing.Kinds
 			ci.Countries = existing.Countries
@@ -218,6 +224,22 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		return nil
 	}
 	return err
+}
+
+// planEntitlements loads the candidate's plan_id and returns billing
+// entitlements. Falls back to Starter-safe caps when the profile is missing.
+func planEntitlements(ctx context.Context, idx *matching.IndexStore, candidateID string) billing.Entitlements {
+	ent := billing.EntitlementsFor(billing.PlanStarter)
+	if idx == nil {
+		return ent
+	}
+	// IndexStore.DB is unexported; use a lightweight query via ReverseKNN's
+	// underlying handle by reading plan from a tiny helper on IndexStore.
+	planID, err := idx.CandidatePlanID(ctx, candidateID)
+	if err != nil || planID == "" {
+		return ent
+	}
+	return billing.EntitlementsFor(billing.PlanID(planID))
 }
 
 // decodeCandidateChange extracts the candidate_id, a TriggeredBy label, and

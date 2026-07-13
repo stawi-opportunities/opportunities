@@ -12,15 +12,45 @@ import (
 
 type candidateKey struct{}
 
+type authModeKey struct{}
+
+// AuthMode controls whether CandidateAuth accepts the X-Candidate-ID
+// header as a fallback when OIDC claims are absent.
+type AuthMode int
+
+const (
+	// AuthModeStrict requires a verified JWT subject. Header spoofing
+	// is rejected. This is the production default when an authenticator
+	// is configured.
+	AuthModeStrict AuthMode = iota
+	// AuthModeAllowHeader permits X-Candidate-ID when claims are absent.
+	// Used by unit tests and local dev without OIDC.
+	AuthModeAllowHeader
+)
+
+// WithAuthMode stores the auth mode on the request context.
+func WithAuthMode(ctx context.Context, mode AuthMode) context.Context {
+	return context.WithValue(ctx, authModeKey{}, mode)
+}
+
+func authModeFromContext(ctx context.Context) AuthMode {
+	if v, ok := ctx.Value(authModeKey{}).(AuthMode); ok {
+		return v
+	}
+	// Default strict: never silently trust a client-supplied identity.
+	return AuthModeStrict
+}
+
 // CandidateAuth pulls the candidate identity from the OIDC subject
-// claim when Frame's AuthenticationMiddleware has run upstream, and
-// falls back to the X-Candidate-ID header for internal / test callers.
-// The OIDC subject IS the candidate ID — it's the same identity Hydra
-// issues to the profile service. Missing both → 401 problem+json.
+// claim when Frame's AuthenticationMiddleware has run upstream.
 //
-// This is the inner middleware; it does NOT validate JWTs itself.
-// Production callers wrap it with NewCandidateAuth(authenticator) so
-// the Bearer token is verified before claims are trusted.
+// When AuthModeAllowHeader is on the context (or the request was
+// wrapped with NewCandidateAuth(nil) / NewCandidateAuthAllowHeader),
+// it also accepts X-Candidate-ID for tests and local dev. Production
+// paths MUST use NewCandidateAuth(authenticator) so JWT verification
+// runs and header spoofing is impossible.
+//
+// Missing identity → 401 problem+json.
 func CandidateAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -28,7 +58,7 @@ func CandidateAuth(next http.Handler) http.Handler {
 		if claims := security.ClaimsFromContext(ctx); claims != nil {
 			id = claims.Subject
 		}
-		if id == "" {
+		if id == "" && authModeFromContext(ctx) == AuthModeAllowHeader {
 			id = r.Header.Get("X-Candidate-ID")
 		}
 		if id == "" {
@@ -44,18 +74,36 @@ func CandidateAuth(next http.Handler) http.Handler {
 // NewCandidateAuth returns the full authentication chain a public
 // /me/* route needs: outer JWT verification via Frame's
 // securityhttp.AuthenticationMiddleware, inner subject-extraction via
-// CandidateAuth. When authenticator is nil (unit tests, or a service
-// started without OIDC env vars), only the inner middleware runs and
-// CandidateAuth falls back to the X-Candidate-ID header — so existing
-// tests that set the header continue to work unchanged.
+// CandidateAuth.
+//
+// When authenticator is non-nil, identity comes only from verified JWT
+// claims (strict mode — X-Candidate-ID is ignored).
+// When authenticator is nil (unit tests, local without OIDC), the
+// header fallback is enabled so existing tests keep working. Callers
+// that must never accept header auth without a JWT should refuse to
+// boot when authenticator is nil (see AUTH_REQUIRE_JWT).
 func NewCandidateAuth(authenticator security.Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		inner := CandidateAuth(next)
+		// Inject allow-header only when no JWT verifier is present.
+		mode := AuthModeStrict
+		if authenticator == nil {
+			mode = AuthModeAllowHeader
+		}
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := WithAuthMode(r.Context(), mode)
+			CandidateAuth(next).ServeHTTP(w, r.WithContext(ctx))
+		})
 		if authenticator == nil {
 			return inner
 		}
 		return securityhttp.AuthenticationMiddleware(inner, authenticator)
 	}
+}
+
+// NewCandidateAuthAllowHeader is an explicit header-auth wrapper for
+// tests. Prefer NewCandidateAuth(nil) for the same behaviour.
+func NewCandidateAuthAllowHeader() func(http.Handler) http.Handler {
+	return NewCandidateAuth(nil)
 }
 
 // CandidateFromContext returns the authenticated candidate ID. Panics
@@ -66,4 +114,14 @@ func CandidateFromContext(ctx context.Context) string {
 		panic("httpmw: CandidateFromContext called outside CandidateAuth")
 	}
 	return v
+}
+
+// CandidateFromContextOptional returns the candidate ID when CandidateAuth
+// has run, or ("", false) otherwise. Safe to call from dual-path handlers.
+func CandidateFromContextOptional(ctx context.Context) (string, bool) {
+	v, _ := ctx.Value(candidateKey{}).(string)
+	if v == "" {
+		return "", false
+	}
+	return v, true
 }

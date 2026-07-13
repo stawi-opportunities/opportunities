@@ -41,6 +41,13 @@ func PreferencesHandler(svc *frame.Service, database ...*sql.DB) http.HandlerFun
 			return
 		}
 		body.CandidateID = strings.TrimSpace(body.CandidateID)
+		if authID, ok := candidateIDFromAuth(ctx); ok {
+			if body.CandidateID != "" && body.CandidateID != authID {
+				http.Error(w, `{"error":"candidate_id does not match authenticated subject"}`, http.StatusForbidden)
+				return
+			}
+			body.CandidateID = authID
+		}
 		if body.CandidateID == "" {
 			http.Error(w, `{"error":"candidate_id is required"}`, http.StatusBadRequest)
 			return

@@ -47,7 +47,7 @@ func TestOnboardingHandler_GetReturnsDraft(t *testing.T) {
 	t.Parallel()
 	draft := []byte(`{"step":2,"fields":{"target_job_title":"PM"},"updated_at":"2026-05-23T10:00:00Z"}`)
 	store := &fakeDraftStore{getResp: draft}
-	h := httpmw.CandidateAuth(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, reqWithCandidate(t, http.MethodGet, "/me/onboarding", ""))
@@ -60,7 +60,7 @@ func TestOnboardingHandler_GetReturnsDraft(t *testing.T) {
 func TestOnboardingHandler_GetEmptyDraftRendersDefault(t *testing.T) {
 	t.Parallel()
 	store := &fakeDraftStore{getResp: []byte(`{}`)}
-	h := httpmw.CandidateAuth(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, reqWithCandidate(t, http.MethodGet, "/me/onboarding", ""))
@@ -78,7 +78,7 @@ func TestOnboardingHandler_GetEmptyDraftRendersDefault(t *testing.T) {
 func TestOnboardingHandler_GetStoreErrorReturnsProblemJSON(t *testing.T) {
 	t.Parallel()
 	store := &fakeDraftStore{getErr: errors.New("db down")}
-	h := httpmw.CandidateAuth(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, reqWithCandidate(t, http.MethodGet, "/me/onboarding", ""))
@@ -91,7 +91,7 @@ func TestOnboardingHandler_GetStoreErrorReturnsProblemJSON(t *testing.T) {
 func TestOnboardingHandler_PutPersistsDraft(t *testing.T) {
 	t.Parallel()
 	store := &fakeDraftStore{}
-	h := httpmw.CandidateAuth(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
 
 	body := `{"step":2,"fields":{"target_job_title":"PM","experience_level":"mid"}}`
 	rec := httptest.NewRecorder()
@@ -111,7 +111,7 @@ func TestOnboardingHandler_PutPersistsDraft(t *testing.T) {
 func TestOnboardingHandler_PutRejectsInvalidStep(t *testing.T) {
 	t.Parallel()
 	store := &fakeDraftStore{}
-	h := httpmw.CandidateAuth(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
 
 	for _, badBody := range []string{
 		`{"step":0,"fields":{}}`,     // below range
@@ -130,7 +130,7 @@ func TestOnboardingHandler_PutRejectsInvalidStep(t *testing.T) {
 func TestOnboardingHandler_PutPersistFailureReturnsProblemJSON(t *testing.T) {
 	t.Parallel()
 	store := &fakeDraftStore{setErr: errors.New("disk full")}
-	h := httpmw.CandidateAuth(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, reqWithCandidate(t, http.MethodPut, "/me/onboarding",
@@ -143,7 +143,7 @@ func TestOnboardingHandler_PutPersistFailureReturnsProblemJSON(t *testing.T) {
 func TestOnboardingHandler_MethodOther(t *testing.T) {
 	t.Parallel()
 	store := &fakeDraftStore{}
-	h := httpmw.CandidateAuth(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, reqWithCandidate(t, http.MethodPost, "/me/onboarding", `{}`))

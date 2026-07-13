@@ -383,6 +383,23 @@ func (a *flagsAdmin) handleResolve(w http.ResponseWriter, r *http.Request) {
 		"note":   req.Note,
 	}
 
+	// hide: actually remove the opportunity from public serving.
+	if req.Action == domain.FlagActionHide && a.hider != nil {
+		reason := "flag_resolved_hide"
+		if strings.TrimSpace(req.Note) != "" {
+			reason = "flag_resolved_hide: " + strings.TrimSpace(req.Note)
+		}
+		if err := a.hider.Hide(r.Context(), flag.OpportunitySlug, reason); err != nil {
+			util.Log(r.Context()).WithError(err).
+				WithField("slug", flag.OpportunitySlug).
+				Warn("flag resolve hide: opportunity hide failed")
+			resp["hidden"] = false
+			resp["hide_error"] = err.Error()
+		} else {
+			resp["hidden"] = true
+		}
+	}
+
 	// ban_source: stop the source AND resolve every flag for the slug.
 	// The source ID is supplied explicitly in the request body. When
 	// SourceID is empty the action still resolves the lead flag and

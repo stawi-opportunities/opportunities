@@ -2,23 +2,23 @@
   {
     "base_url": "https://www.indeed.com",
     "country": "",
-    "crawl_interval_sec": 3600,
-    "kinds": [
-      "job"
-    ],
-    "priority": "hot",
+    "crawl_interval_sec": 43200,
+    "kinds": ["job"],
+    "priority": "low",
     "region": "global",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused",
+    "note": "Paused: ToS/WAF hostile without dedicated recipe + unblocker. Re-enable only after compliance review."
   },
   {
     "base_url": "https://www.linkedin.com/jobs",
     "country": "",
-    "crawl_interval_sec": 3600,
-    "kinds": [
-      "job"
-    ],
-    "priority": "hot",
+    "crawl_interval_sec": 43200,
+    "kinds": ["job"],
+    "priority": "low",
     "region": "global",
-    "source_type": "generic_html"
+    "source_type": "generic_html",
+    "status": "paused",
+    "note": "Paused: ToS/WAF hostile without dedicated recipe + unblocker. Re-enable only after compliance review."
   }
 ]

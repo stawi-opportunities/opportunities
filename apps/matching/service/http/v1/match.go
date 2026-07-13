@@ -12,6 +12,7 @@ import (
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
 // CandidateStore is the read-only interface the match handler needs.
@@ -55,10 +56,14 @@ type SearchIndex interface {
 
 // MatchDeps bundles collaborators.
 type MatchDeps struct {
-	Svc    *frame.Service
-	Store  CandidateStore
-	Search SearchIndex
-	TopK   int // default 20
+	Svc      *frame.Service
+	Store    CandidateStore
+	Search   SearchIndex
+	Persist  MatchPersister // optional; when set, results land in candidate_matches
+	TopK     int            // default 20
+	// RequireAuthCandidate when non-empty forces the query candidate_id to
+	// match the authenticated identity (prevents IDOR on the legacy route).
+	RequireAuthCandidate string
 }
 
 // matchResponse is the JSON body returned from the handler.
@@ -83,10 +88,14 @@ type matchResponseRow struct {
 //
 //	GET /candidates/match?candidate_id=cnd_X
 //
-// Reads the candidate's latest embedding + preferences from R2, runs
-// a pgvector KNN-with-filters query for up to 200 candidates against
-// the opportunities table, takes the top-K by score, emits
-// MatchesReadyV1, returns JSON.
+// Prefer wrapping with CandidateAuth and omitting candidate_id so the
+// JWT subject is used. When candidate_id is supplied it must match the
+// authenticated subject (when RequireAuthCandidate is set via auth MW
+// context, or when both are present).
+//
+// Reads the candidate's latest embedding + preferences, runs
+// a pgvector KNN-with-filters query, takes the top-K by score, persists
+// into candidate_matches, emits MatchesReadyV1, returns JSON.
 func MatchHandler(deps MatchDeps) http.HandlerFunc {
 	svcPipeline := NewMatchService(deps.Store, deps.Search, deps.TopK)
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +107,14 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 			return
 		}
 		candidateID := strings.TrimSpace(r.URL.Query().Get("candidate_id"))
+		// Prefer authenticated identity when available.
+		if authID, ok := candidateIDFromAuth(ctx); ok {
+			if candidateID != "" && candidateID != authID {
+				http.Error(w, `{"error":"candidate_id does not match authenticated subject"}`, http.StatusForbidden)
+				return
+			}
+			candidateID = authID
+		}
 		if candidateID == "" {
 			http.Error(w, `{"error":"candidate_id is required"}`, http.StatusBadRequest)
 			return
@@ -112,6 +129,10 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 			log.WithError(err).Error("match: RunMatch failed")
 			http.Error(w, `{"error":"search failed"}`, http.StatusBadGateway)
 			return
+		}
+
+		if err := PersistMatchResult(ctx, deps.Persist, res, "http_match"); err != nil {
+			log.WithError(err).Warn("match: persist candidate_matches failed")
 		}
 
 		rows := make([]matchResponseRow, 0, len(res.Matches))
@@ -140,4 +161,9 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 			}
 		}()
 	}
+}
+
+// candidateIDFromAuth returns the candidate id if CandidateAuth has run.
+func candidateIDFromAuth(ctx context.Context) (string, bool) {
+	return httpmw.CandidateFromContextOptional(ctx)
 }

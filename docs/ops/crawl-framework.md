@@ -1,216 +1,95 @@
-# Crawl Framework — how a source gets crawled
+# Crawl framework — onboarding sources
 
-The single rule this framework exists to enforce:
+Contract for adding coverage:
 
-> **Onboarding a new source is a DATA change (a recipe), never a code change.**
-> Go code exists only for the small, fixed set of *extraction categories*.
-> If you find yourself writing a `pkg/connectors/<somesite>/` package, stop —
-> that source is almost certainly one recipe away from working.
+> **Onboarding a new source is a DATA change (recipe / seed / spec), not a new Go package.**  
+> Prefer free structured data (JSON API, sitemap + JobPosting JSON-LD) before HTML recipes.
 
-This document is the contract. It defines the two layers, the extraction
-vocabulary, the method-selection decision tree, the Go interfaces, and the
-exact onboarding workflow. Read it before adding any crawl code.
+## Extract policy
 
----
+**Structured only.** Incomplete records fail `pkg/crawlaccept` and are not stored.
 
-## 1. Two layers: generic engine (Go) vs. per-source recipe (data)
+| Prefer | Mechanism |
+|--------|-----------|
+| 1. Official JSON API | Hand connector or `api` recipe |
+| 2. Sitemap of job URLs | `sitemap` source type — detail pages must expose schema.org JobPosting |
+| 3. JobPosting JSON-LD on listing/detail | `schema_org` or HTML board type via `pkg/connectors/structured` |
+| 4. Stable HTML listing + detail | Extraction **recipe** (`pkg/recipe`) |
+| 5. Declarative feed/spec | R2 connector YAML under `definitions/connector/` |
 
-```
-                    ┌─────────────────────────────────────────┐
-   per source  →    │  RECIPE (JSON, stored on the source)    │   ← data, no deploy
-                    │  picks an extractor + field mappings    │
-                    └───────────────────┬─────────────────────┘
-                                        │ configures
-                    ┌───────────────────▼─────────────────────┐
-   per category →   │  GENERIC EXTRACTOR (Go, pkg/recipe)      │   ← code, rarely changes
-                    │  api · sitemap · html-listing           │
-                    └─────────────────────────────────────────┘
-```
+LLM is for **recipe generation** (optional offline/ops path), not for live job inventing.
 
-There is **one generic extractor per *category of how a site exposes jobs*** —
-not one per site. The categories are closed; adding a site never adds one.
+## Services involved
 
-| Category | Recipe selector | Engine path | Use when |
-|---|---|---|---|
-| **JSON API** | `acquisition: "api"` | `executor.apiPaged` | The board has an official/JSON endpoint returning postings (any ATS: Greenhouse, Lever, Workday; or a site's own `/api/jobs`). |
-| **Sitemap** | `list.mode: "sitemap"` | `executor.sitemapPaged` | The site publishes a sitemap that enumerates job-detail URLs. Pulls the **whole** board, not just listing page 1. |
-| **HTML listing → detail** | `list.mode: "selector"` + `link_pattern` | `executor.htmlPaged` | A listing page links to detail pages; extract each detail page. |
+| Service | Role |
+|---------|------|
+| Trustage | Per-source crawl cron + fleet watchdogs |
+| `apps/crawler` | Execute crawl, accept, enqueue |
+| `apps/frontier-worker` | Polite per-URL JSON-LD extract when frontier is enabled |
+| `apps/worker` | Materialize queue → serving tables |
 
-(There is also a parallel set of declarative **spec connectors** —
-`pkg/connectors/spec/{jsonfeed,schemaorgjsonld,sitemap,rssfeed,xmlfeed,htmllisting}`
-— loaded from YAML in R2. Same philosophy: generic impl + per-source config.
-New work should prefer recipes; the spec connectors remain for sources already
-configured that way.)
+## Recipes (generic engine + per-source data)
 
-### Multi-tenant ATS platforms (Greenhouse, Lever, Ashby) — ONE source, many boards
-
-These platforms host thousands of company boards under one API
-(`boards-api.greenhouse.io/v1/boards/{tenant}/jobs`,
-`api.lever.co/v0/postings/{tenant}`,
-`api.ashbyhq.com/posting-api/job-board/{tenant}`). None exposes a global
-"all jobs" firehose — you must address each board. **Do not create a
-source row per company.** Instead, one `api` recipe carries the tenant
-list and the engine crawls each in turn:
-
-```json
-"list": { "mode":"api", "endpoint":"https://…/{tenant}/jobs",
-          "tenants":["airbnb","stripe", …], "items_path":"$.jobs" }
+```text
+per source  →  RECIPE JSON on the source row
+                    │
+                    ▼
+              pkg/recipe Executor
+              api | sitemap | html-listing
 ```
 
-- `{tenant}` is substituted per board; one page == one tenant; dead
-  boards (404) are skipped, not fatal.
-- The company name comes from the record (`$.company_name`, Greenhouse)
-  or, when the platform omits it (Lever/Ashby), the
-  **`{"from":["tenant"]}`** source yields the board token.
-- Adding/removing a board edits the tenant list — **data, never code**.
+Field extraction vocabulary (order, first non-empty wins):  
+`json_ld`, `next_data`, `microdata`, `selector`, `xpath`, `meta`, `record`, `const`, `page_url`, `tenant`  
+plus transforms (`trim`, `absolute_url`, `parse_date`, …).
 
-**Discovering tenants** (so you never hand-maintain the list):
-`cmd/ats-tenants -platform greenhouse|lever|ashby` harvests every board
-token from the free **Common Crawl** URL index, then validates each
-against the board API and prints the live set. (Greenhouse ≈ 1k+, Ashby
-≈ 2k+ live boards from a few CC pages.) Feed that into the recipe's
-`tenants`. The existing `sources.discovered.v1` pipeline also adds boards
-it sees while crawling.
+Multi-tenant ATS boards (Greenhouse / Lever / Ashby style): **one** source with a tenant list in the recipe — do not mint one source per company board.
 
----
+## Method selection
 
-## 2. The extraction vocabulary — `FieldExtractor`
-
-Every field (title, company, etc.) is pulled by a `FieldExtractor` that tries
-data planes **in order, first non-empty wins**, then runs transforms. This is
-the whole vocabulary — there is nothing site-specific in Go:
-
-```json
-{"from": ["json_ld","next_data","microdata","selector","xpath","meta","record","const","page_url","tenant"],
- "json_path": "$.title",        // json_ld / next_data / record
- "microdata": "title",          // schema.org itemprop
- "selector": "h1", "attr": "href",   // CSS
- "xpath": "//h1[@id='t']",      // XPath (antchfx/htmlquery)
- "meta": "og:title",            // <meta property/name>
- "const": "KE",                 // literal fallback
- "transform": ["trim","lower","collapse_ws","html_to_text","absolute_url","parse_money","parse_date"]}
+```text
+1. Official JSON API?     → API connector or acquisition:"api" recipe
+2. Sitemap of jobs?       → sitemap type (structured detail only)
+3. Detail JSON-LD?        → schema_org / structured HTMLJSONLD
+4. Stable HTML only?      → recipe (list + detail field maps)
+5. None of the above?     → do not crawl until a recipe/spec exists
 ```
 
-Two engine behaviours make recipes robust and reusable:
-- **JSON-LD `@id` resolution**: `hiringOrganization` is often a bare
-  `{"@id":…}` pointing to a sibling `Organization` node; the engine resolves it
-  so `$.hiringOrganization.name` works (standard schema.org, every compliant
-  board).
-- **`list.link_pattern`**: the URL substring that *defines a job*
-  (`/listings/`, `/jobs/adverts/`). The engine harvests every same-host link
-  containing it. The URL contract is far more stable than presentation classes
-  (`data-cy`, hashed CSS modules) — prefer it over `item_selector`+`link`.
+Never invent apply URLs from the board homepage. Never emit title-empty URL stubs.
 
----
-
-## 3. Method-selection decision tree — most FREE and ROBUST first
-
-When onboarding a source, pick the **first** method that works:
-
-```
-1. Official JSON API?            → acquisition:"api"      (free, structured, complete)
-       greenhouse-api / lever / workday-cxs / a site /api/jobs
-2. Sitemap enumerating jobs?     → list.mode:"sitemap"    (free, complete board)
-       /robots.txt → Sitemap:, or /sitemap.xml
-3. Detail pages have JSON-LD?    → structured_data + link_pattern   (free, standard)
-       schema.org JobPosting (Google-for-Jobs ⇒ near-universal)
-4. Static HTML only?             → selector/xpath + link_pattern     (free, brittle-er)
-5. JS-rendered, no sitemap/API?  → scrape.do render=true / headless  (PAID — last resort)
-```
-
-Never skip a free tier for a paid one. scrape.do (and `render`/`super`) costs
-credits; browser-header emulation and the free tiers above handle the large
-majority. See `docs/ops/crawl-pipeline.md` for the unblocker fallback order
-(direct browser-emulated fetch → scrape.do → headless).
-
----
-
-## 4. The interfaces (Go contracts)
-
-Stable seams — implement against these, do not reach around them.
+## Go contracts
 
 ```go
-// pkg/connectors — the connector contract (hand-coded connectors + the
-// recipe adapter both satisfy it). One Connector per SourceType.
+// pkg/connectors
 type Connector interface {
     Type() domain.SourceType
     Crawl(ctx, src) CrawlIterator
 }
-type CrawlIterator interface {           // page-at-a-time pull
+type CrawlIterator interface {
     Next(ctx) bool
     Items() []domain.ExternalOpportunity
-    RawPayload() []byte
-    HTTPStatus() int
-    Err() error
-    Cursor() json.RawMessage
-    Content() *content.Extracted
+    // …
 }
 
-// pkg/recipe — the generic engine. Recipe sources route through this via
-// the recipeconn adapter (a CrawlIterator wrapping an Executor).
-type Fetcher interface { Get(ctx, url) (body []byte, status int, err error) }
-func NewExecutor(*Recipe, Fetcher) *Executor
-func (e *Executor) Page(ctx, src, PageState) (items, raw, status, next, done, err)
-func (e *Executor) ListDetailURLs(ctx, src) ([]string, error)   // the source's job URLs
-func (e *Executor) ListProbe(ctx, src) (int, error)             // count, for the gate
-
-// pkg/recipe/recipecheck — the single verification authority. Everything
-// (CLIs, fixture tests) calls this; nothing re-implements "is this correct".
-func Check(ctx, Fetcher, *Registry, src, *Recipe, samples) Report
+// pkg/crawlaccept — single gate after extract
+func Accept(Input) Result  // Accepted payload or Reject
 ```
 
-The HTTP layer (`pkg/connectors/httpx`) is shared by every method: browser
-emulation, retry/backoff, compression, and the scrape.do/proxy unblocker
-fallback. Connectors and the recipe `Fetcher` both use it, so anti-bot
-handling is solved once.
+## Seeds
 
----
+`seeds/**/*.json` load at crawler boot into `sources`. Use structured `source_type` values that have connectors (see `apps/crawler/service/setup.go`). Hostile or unstructured boards should stay `status: "paused"` until a recipe/spec is ready.
 
-## 5. Onboarding a source — the workflow
+## Trustage maintenance
 
-1. **Pick the method** (§3). Probe it: `curl robots.txt`/`sitemap.xml`, hit the
-   ATS API, or check a detail page for `application/ld+json`.
-2. **Record the definite listing**: set `sources.listing_path` (the exact jobs
-   listing relative to `base_url`, or the sitemap/API URL). Never guessed — a
-   homepage's prominent links are usually categories, not jobs.
-3. **Author the recipe** — `cmd/recipe-gen` (LLM, follows §3 ordering) or by
-   hand from the markup. Prefer `link_pattern` + standard JSON-LD paths.
-4. **Verify against the live site**:
-   - `go run ./cmd/recipe-verify -recipe r.json -base-url <url>` — runs the
-     full gate (structural · detail extraction + `opportunity.Verify` · list
-     rule · a real page-1 crawl). Must print `VERIFIED`.
-   - Add a fixture under `tests/recipes/fixtures/<name>/` and
-     `go test ./tests/recipes -update` to pin it (recorded pages → CI replays
-     offline on every commit). Skip the fixture only for huge sitemaps; rely on
-     `recipe-verify` there.
-5. **Activate**: write the recipe to `source_recipes` (active) + mirror onto
-   `sources.extraction_recipe`, clear `needs_tuning`.
+| Workflow | Purpose |
+|----------|---------|
+| per-source crawl schedule | Dispatch crawl |
+| source-crawl-overdue | Catch-up |
+| crawl-runs-sweep | Resume/fail stuck runs |
+| crawl-watchdog | Stall detection |
+| sources-recipe-backfill | Queue recipe generation for HTML boards |
 
-Generated recipes follow the same gate automatically via the recipe-backfill
-cron and the activation pass-rate threshold.
+## Related
 
----
-
-## 6. When Go code IS warranted (and when it is NOT)
-
-**NOT** (these are recipes):
-- A new job board, of any kind — API, sitemap, HTML, schema.org.
-- A board on a known ATS (Greenhouse/Lever/Workday) — `acquisition:"api"`.
-- A field that needs a different selector/path — change the recipe's
-  `FieldExtractor`.
-
-**YES** (rare, and reviewed):
-- A genuinely new *extraction category* the engine can't express — e.g. a
-  GraphQL-paginated API needing a new pagination mode, or a binary feed format.
-  Add it as a generic mode in `pkg/recipe` (or a spec connector), driven by
-  recipe config — never hardcode one site's fields.
-- A new transform or `From` source in the vocabulary (§2).
-
-**Deprecated**: the per-source hand-coded connectors predate this framework.
-`greenhouse`, `remoteok`, `jobicy`, `themuse`, `arbeitnow`, `himalayas` and
-`lever` have all been migrated to `acquisition:"api"` recipes and their Go
-packages deleted — Greenhouse is now the single multi-tenant "all boards"
-source. Only `pkg/connectors/{workday,smartrecruiters}` remain: Workday is a
-POST-bodied API the engine can't yet express (a real new extraction category —
-see §6) and its only source is dead; SmartRecruiters has no live source to
-verify a recipe against. New sources must not add to this list.
+- [crawl-pipeline.md](./crawl-pipeline.md) — queue, worker, identity merge
+- [first-deploy-runbook.md](./first-deploy-runbook.md)
+- [capacity-planning.md](./capacity-planning.md)

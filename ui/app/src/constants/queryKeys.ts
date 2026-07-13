@@ -16,7 +16,7 @@ export const QUERY_KEYS = {
   // Tiered discovery feed (/api/feed)
   FEED: (params: Record<string, unknown>) => ['feed', params] as const,
 
-  // Per-job snapshot (R2 fetch)
+  // Per-job snapshot (Postgres via /api/jobs/{slug})
   SNAPSHOT: (prefix: string, slug: string, lang: string) =>
     ['snapshot', prefix, slug, lang] as const,
 

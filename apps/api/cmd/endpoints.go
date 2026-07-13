@@ -43,12 +43,11 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 		if v := strings.TrimSpace(qs.Get("employment_type")); v != "" {
 			filter = append(filter, map[string]any{"equals": map[string]any{"employment_type": v}})
 		}
-		// `category` (singular) → `categories` (multi64). The schema
-		// stores category IDs as int64, so the query-string value is
-		// hashed through opportunity.HashCategory at the handler edge.
+		// Category labels live under attributes.categories (string array).
+		// Match the public slug case-insensitively via the equals path.
 		if v := strings.TrimSpace(qs.Get("category")); v != "" {
 			filter = append(filter, map[string]any{
-				"equals": map[string]any{"categories": opportunity.HashCategory(v)},
+				"equals": map[string]any{"categories": v},
 			})
 		}
 		if v := strings.TrimSpace(qs.Get("seniority")); v != "" {
@@ -264,17 +263,74 @@ func categoriesHandler(jm JobsBackend) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		type bucket struct {
-			Slug  string `json:"slug"`
-			Count int    `json:"count"`
+		// SPA FacetEntry expects {key, count}. Prefer attributes-derived
+		// "categories"; fall back to empty list when none are stored yet.
+		raw := facets["categories"]
+		out := make([]facetEntry, 0, len(raw))
+		for k, n := range raw {
+			out = append(out, facetEntry{Key: k, Count: n})
 		}
-		out := make([]bucket, 0, len(facets["category"]))
-		for k, n := range facets["category"] {
-			out = append(out, bucket{Slug: k, Count: n})
+		// Stable order by count desc.
+		for i := 0; i < len(out); i++ {
+			for j := i + 1; j < len(out); j++ {
+				if out[j].Count > out[i].Count || (out[j].Count == out[i].Count && out[j].Key < out[i].Key) {
+					out[i], out[j] = out[j], out[i]
+				}
+			}
 		}
 		w.Header().Set("Cache-Control", "public, max-age=60")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"categories": out})
+	}
+}
+
+// categoryJobsHandler serves GET /api/categories/{slug}/jobs — jobs filtered
+// by attributes.categories containing the slug (case-insensitive).
+func categoryJobsHandler(jm JobsBackend) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		slug := strings.TrimSpace(req.PathValue("slug"))
+		if slug == "" {
+			http.Error(w, `{"error":"missing category"}`, http.StatusBadRequest)
+			return
+		}
+		limit := parseLimit(req.URL.Query().Get("limit"), 20, 100)
+		// Fetch one extra to signal has_more. Cursor is last_seen_at ISO for simplicity.
+		filter := []map[string]any{
+			{"equals": map[string]any{"categories": slug}},
+		}
+		if cur := strings.TrimSpace(req.URL.Query().Get("cursor")); cur != "" {
+			if t, err := time.Parse(time.RFC3339, cur); err == nil {
+				filter = append(filter, map[string]any{
+					"range": map[string]any{"last_seen_at": map[string]any{"lte": t.UTC().Format(time.RFC3339)}},
+				})
+			}
+		}
+		rows, err := jm.SearchFiltered(req.Context(), filter, limit+1, "last_seen_at")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		hasMore := len(rows) > limit
+		if hasMore {
+			rows = rows[:limit]
+		}
+		cursorNext := ""
+		if hasMore && len(rows) > 0 {
+			// Approximate next page: last row's posted/last_seen isn't on job;
+			// use posted_at when present else empty (client stops).
+			last := rows[len(rows)-1]
+			if last.PostedAt != nil {
+				cursorNext = last.PostedAt.UTC().Format(time.RFC3339)
+			}
+		}
+		w.Header().Set("Cache-Control", "public, max-age=30")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"category":    slug,
+			"results":     toSearchResults(rows, nil),
+			"has_more":    hasMore,
+			"cursor_next": cursorNext,
+		})
 	}
 }
 

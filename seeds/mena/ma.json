@@ -2,8 +2,10 @@
   {
     "base_url": "https://www.rekrute.com",
     "country": "MA",
-    "crawl_interval_sec": 3600,
-    "kinds": ["job"],
+    "crawl_interval_sec": 43200,
+    "kinds": [
+      "job"
+    ],
     "language": "fr",
     "priority": "hot",
     "region": "north_africa",

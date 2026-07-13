@@ -75,10 +75,10 @@ type CandidatesConfig struct {
 	// for dev/test but does not survive restarts or span multiple replicas.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
 
-	// Phase-2 continuous matching pipeline feature flags (spec §5.5).
-	// All default to false so the binary is safe to deploy before the
-	// pipeline is validated in staging.
-	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"false"`
+	// Phase-2 continuous matching pipeline. Defaults ON so a paid user
+	// gets gap-fill matches after CV embed without an extra config flip.
+	// Set MATCHING_CANDIDATE_CHANGE_ENABLED=false to disable in emergency.
+	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"true"`
 	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
 	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
 	MatchingDebounceTTLSeconds     int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
@@ -87,8 +87,18 @@ type CandidatesConfig struct {
 	// hardcoded 1s timed out → reranker silently fell back to bi-encoder).
 	MatchingRerankerTimeoutSeconds int `env:"MATCHING_RERANKER_TIMEOUT_SECONDS" envDefault:"30"`
 	MatchingRerankerConcurrency    int `env:"MATCHING_RERANKER_CONCURRENCY"     envDefault:"8"`
-	// Phase-4 extension-facing /api/me/* routes (spec §5.5).
-	MatchingExtensionEnabled bool `env:"MATCHING_EXTENSION_ENABLED" envDefault:"false"`
+	// Phase-4 extension-facing /api/me/* routes (rules, matches poll).
+	MatchingExtensionEnabled bool `env:"MATCHING_EXTENSION_ENABLED" envDefault:"true"`
+
+	// AuthRequireJWT refuses to boot when no OIDC authenticator is
+	// configured. Production must set this true so /me/* never falls
+	// open to X-Candidate-ID spoofing.
+	AuthRequireJWT bool `env:"AUTH_REQUIRE_JWT" envDefault:"false"`
+
+	// AdminSharedSecret authenticates Trustage / machine callers of
+	// /_admin/* via X-Admin-Token (or Authorization: Bearer). Required
+	// in production alongside or instead of admin-role JWTs.
+	AdminSharedSecret string `env:"ADMIN_SHARED_SECRET" envDefault:""`
 
 	// Billing / payments. BillingServiceURI points at the co-deployed
 	// service-payment + service-billing pod (set live to
