@@ -107,14 +107,12 @@ func main() {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")
 		}
-		// Repair site-specific sources.type rows left from older deploys
-		// (capability SQL is not always re-applied on existing clusters).
+		// Drop non-engine sources (clean slate for engines-only; seeds reload later).
 		srcRepo := repository.NewSourceRepository(dbFn)
-		if u, d, rerr := srcRepo.RemapLegacySourceTypes(ctx); rerr != nil {
-			log.WithError(rerr).Fatal("remap legacy source types failed")
-		} else if u > 0 || d > 0 {
-			log.WithField("updated", u).WithField("deleted", d).
-				Info("remapped legacy site-specific source types to engines")
+		if n, derr := srcRepo.DeleteNonEngineSources(ctx); derr != nil {
+			log.WithError(derr).Fatal("delete non-engine sources failed")
+		} else if n > 0 {
+			log.WithField("deleted", n).Info("deleted non-engine sources")
 		}
 		// Sync Trustage workflow definitions from the mounted ConfigMap.
 		if cfg.TrustageURL != "" && cfg.TrustageWorkflowsDir != "" {
@@ -133,14 +131,11 @@ func main() {
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
 	recipeRepo := repository.NewRecipeRepository(dbFn)
-	// Site-specific source.type values are legacy data — rewrite to engines
-	// before seeds so upserts hit the remapped rows instead of minting
-	// parallel engine-typed sources for the same base_url.
-	if u, d, rerr := sourceRepo.RemapLegacySourceTypes(ctx); rerr != nil {
-		log.WithError(rerr).Warn("remap legacy source types failed")
-	} else if u > 0 || d > 0 {
-		log.WithField("updated", u).WithField("deleted", d).
-			Info("remapped legacy site-specific source types to engines")
+	// Non-engine types are not supported — delete them, then reseed engines.
+	if n, derr := sourceRepo.DeleteNonEngineSources(ctx); derr != nil {
+		log.WithError(derr).Warn("delete non-engine sources failed")
+	} else if n > 0 {
+		log.WithField("deleted", n).Info("deleted non-engine sources")
 	}
 	// Bundled stock recipes for common public API boards.
 	if serr := stock.LoadDefault(); serr != nil {

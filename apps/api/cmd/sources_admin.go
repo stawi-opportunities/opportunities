@@ -152,12 +152,11 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	}
 	repo := repository.NewSourceRepository(pool.DB)
 	recipeRepo := repository.NewRecipeRepository(pool.DB)
-	// Repair site-specific sources.type rows so admin never surfaces them.
-	if u, d, rerr := repo.RemapLegacySourceTypes(ctx); rerr != nil {
-		log.WithError(rerr).Warn("source admin: remap legacy source types failed")
-	} else if u > 0 || d > 0 {
-		log.WithField("updated", u).WithField("deleted", d).
-			Info("source admin: remapped legacy site-specific source types to engines")
+	// Non-engine types are unsupported — drop them so admin only lists engines.
+	if n, derr := repo.DeleteNonEngineSources(ctx); derr != nil {
+		log.WithError(derr).Warn("source admin: delete non-engine sources failed")
+	} else if n > 0 {
+		log.WithField("deleted", n).Info("source admin: deleted non-engine sources")
 	}
 
 	// Frame-managed HTTP client (OTEL trace propagation + retry hooks).

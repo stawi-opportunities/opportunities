@@ -10,6 +10,7 @@ func TestIsKnownSourceType_EnginesOnly(t *testing.T) {
 	for _, e := range KnownEngineTypes {
 		assert.True(t, IsKnownSourceType(e), e)
 	}
+	// Site names are not engines — they must not be accepted as types.
 	assert.False(t, IsKnownSourceType("remoteok"))
 	assert.False(t, IsKnownSourceType("jobberman"))
 	assert.False(t, IsKnownSourceType("brightermonday"))
@@ -17,31 +18,11 @@ func TestIsKnownSourceType_EnginesOnly(t *testing.T) {
 	assert.False(t, IsKnownSourceType(""))
 }
 
-func TestRemapLegacySourceType(t *testing.T) {
-	// Engines are not remapped (ok=false).
-	eng, ok := RemapLegacySourceType(SourceAPI)
-	assert.Equal(t, SourceAPI, eng)
-	assert.False(t, ok)
-
-	// Historical site types map to engines.
-	cases := map[SourceType]SourceType{
-		"remoteok":             SourceAPI,
-		"arbeitnow":            SourceAPI,
-		"brightermonday":       SourceSchemaOrg,
-		"jobberman":            SourceSchemaOrg,
-		"myjobmag":             SourceSchemaOrg,
-		"careers24":            SourceSchemaOrg,
-		"greenhouse":           SourceGenericHTML,
-		"lever":                SourceGenericHTML,
-		"smartrecruiters_page": SourceSmartRecruitersAPI,
-	}
-	for old, want := range cases {
-		got, ok := RemapLegacySourceType(old)
-		assert.True(t, ok, old)
-		assert.Equal(t, want, got, old)
-	}
-
-	// Unknown stays unmapped.
-	_, ok = RemapLegacySourceType("not_a_real_board")
-	assert.False(t, ok)
+func TestRequiresRecipe(t *testing.T) {
+	assert.True(t, RequiresRecipe(SourceAPI))
+	assert.True(t, RequiresRecipe(SourceGenericHTML))
+	assert.False(t, RequiresRecipe(SourceSchemaOrg))
+	assert.False(t, RequiresRecipe(SourceSitemap))
+	assert.False(t, RequiresRecipe(SourceWorkday))
+	assert.False(t, RequiresRecipe(SourceSmartRecruitersAPI))
 }
