@@ -109,13 +109,15 @@ func main() {
 			log.WithError(err).Fatal("database migration failed")
 		}
 		// Sync Trustage workflow definitions from the mounted ConfigMap.
+		// Soft-fail: Trustage read/Keto outages must not block schema
+		// migrations or Helm upgrades. Per-source schedules fall back to
+		// the in-process overdue loop when Trustage is down.
 		if cfg.TrustageURL != "" && cfg.TrustageWorkflowsDir != "" {
 			trustageCli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL)
 			if cliErr != nil {
-				log.WithError(cliErr).Fatal("trustage workflow client init failed")
-			}
-			if syncErr := workflows.SyncFromDir(ctx, trustageCli, cfg.TrustageWorkflowsDir); syncErr != nil {
-				log.WithError(syncErr).Fatal("trustage workflow sync failed")
+				log.WithError(cliErr).Warn("trustage workflow client init failed; continuing after DB migrate")
+			} else if syncErr := workflows.SyncFromDir(ctx, trustageCli, cfg.TrustageWorkflowsDir); syncErr != nil {
+				log.WithError(syncErr).Warn("trustage workflow sync failed; continuing after DB migrate")
 			}
 		}
 		log.Info("migration complete")
