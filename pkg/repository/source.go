@@ -23,10 +23,12 @@ func NewSourceRepository(db func(ctx context.Context, readOnly bool) *gorm.DB) *
 }
 
 // Upsert inserts a new source, or refreshes seed metadata when
-// (type, base_url) already exists. Operational fields — status,
-// health_score, last_seen_at, next_crawl_at — are never overwritten on
-// conflict so seed load on boot cannot re-activate paused boards or
-// reset crawl schedules.
+// (type, base_url) already exists.
+//
+// On conflict, status / health_score / next_crawl_at / last_seen_at are
+// preserved so operator pauses and crawl schedules survive pod restarts.
+// Exception: when the seed explicitly sets Status=paused (or pending),
+// that intentional seed policy is applied — hostile boards stay off.
 func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 	existing, err := r.GetByTypeAndURL(ctx, s.Type, s.BaseURL)
 	if err != nil {
@@ -37,17 +39,21 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 	}
 	// Existing row: metadata only. Preserve operator/crawler state.
 	fields := map[string]any{
-		"name":                       s.Name,
-		"country":                    s.Country,
-		"language":                   s.Language,
-		"priority":                   s.Priority,
-		"crawl_interval_sec":         s.CrawlIntervalSec,
-		"config":                     s.Config,
-		"kinds":                      s.Kinds,
+		"name":                        s.Name,
+		"country":                     s.Country,
+		"language":                    s.Language,
+		"priority":                    s.Priority,
+		"crawl_interval_sec":          s.CrawlIntervalSec,
+		"kinds":                       s.Kinds,
 		"required_attributes_by_kind": s.RequiredAttributesByKind,
-		"auto_approve":               s.AutoApprove,
-		"listing_path":               s.ListingPath,
-		"updated_at":                 time.Now().UTC(),
+		"auto_approve":                s.AutoApprove,
+		"listing_path":                s.ListingPath,
+		"updated_at":                  time.Now().UTC(),
+	}
+	// Seed-declared pause/pending is authoritative (hostile boards, etc.).
+	// Never force status back to active from seeds.
+	if s.Status == domain.SourcePaused || s.Status == domain.SourcePending {
+		fields["status"] = s.Status
 	}
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", existing.ID).Updates(fields).Error
 }
