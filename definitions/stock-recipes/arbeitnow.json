@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "acquisition": "api",
+  "kind": { "mode": "fixed", "fixed": "job" },
+  "list": {
+    "mode": "api",
+    "endpoint": "https://www.arbeitnow.com/api/job-board-api",
+    "method": "GET",
+    "headers": { "Accept": "application/json" },
+    "items_path": "$.data",
+    "pagination": {
+      "mode": "page_param",
+      "param": "page",
+      "max_pages": 50,
+      "delay_ms": 200
+    }
+  },
+  "detail": {
+    "record_source": "record",
+    "title": { "from": ["record"], "json_path": "$.title", "required": true },
+    "description": { "from": ["record"], "json_path": "$.description", "required": true },
+    "issuing_entity": { "from": ["record"], "json_path": "$.company_name", "required": true },
+    "apply_url": {
+      "from": ["record"],
+      "json_path": "$.url",
+      "required": true,
+      "transform": ["absolute_url"]
+    },
+    "location_text": { "from": ["record"], "json_path": "$.location" },
+    "remote": { "from": ["record"], "json_path": "$.remote" },
+    "attributes": {
+      "external_id": { "from": ["record"], "json_path": "$.slug" }
+    }
+  }
+}

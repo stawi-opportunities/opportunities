@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "acquisition": "api",
+  "kind": { "mode": "fixed", "fixed": "job" },
+  "list": {
+    "mode": "api",
+    "endpoint": "https://www.themuse.com/api/public/jobs",
+    "method": "GET",
+    "headers": { "Accept": "application/json" },
+    "items_path": "$.results",
+    "pagination": {
+      "mode": "page_param",
+      "param": "page",
+      "first_page": 0,
+      "max_pages": 50,
+      "delay_ms": 150
+    }
+  },
+  "detail": {
+    "record_source": "record",
+    "title": { "from": ["record"], "json_path": "$.name", "required": true },
+    "description": { "from": ["record"], "json_path": "$.contents", "required": true },
+    "issuing_entity": { "from": ["record"], "json_path": "$.company.name", "required": true },
+    "apply_url": {
+      "from": ["record"],
+      "json_path": "$.refs.landing_page",
+      "required": true,
+      "transform": ["absolute_url"]
+    },
+    "location_text": { "from": ["record"], "json_path": "$.locations[0].name" },
+    "attributes": {
+      "employment_type": { "from": ["record"], "json_path": "$.type" },
+      "external_id": { "from": ["record"], "json_path": "$.id" }
+    }
+  }
+}

@@ -13,33 +13,70 @@ import (
 type SourceType string
 
 const (
-	// Free JSON API connectors
-	SourceRemoteOK  SourceType = "remoteok"
-	SourceArbeitnow SourceType = "arbeitnow"
-	SourceJobicy    SourceType = "jobicy"
-	SourceTheMuse   SourceType = "themuse"
-	SourceHimalayas SourceType = "himalayas"
-	SourceFindwork  SourceType = "findwork"
+	// Engine types — crawl behaviour is data (recipe / listing URL), not a
+	// per-board Go package. Prefer these for all new sources.
+	SourceAPI                SourceType = "api"                // requires recipe (acquisition:api)
+	SourceSchemaOrg          SourceType = "schema_org"         // JobPosting JSON-LD
+	SourceSitemap            SourceType = "sitemap"            // sitemap + structured detail
+	SourceGenericHTML        SourceType = "generic_html"       // HTML list+detail via recipe
+	SourceWorkday            SourceType = "workday"            // Workday ATS engine
+	SourceSmartRecruitersAPI SourceType = "smartrecruiters_api"
 
-	// African job board connectors
-	SourceBrighterMonday SourceType = "brightermonday"
-	SourceJobberman      SourceType = "jobberman"
-	SourceMyJobMag       SourceType = "myjobmag"
-	SourceNjorku         SourceType = "njorku"
-	SourceCareers24      SourceType = "careers24"
-	SourcePNet           SourceType = "pnet"
-
-	// Existing connectors
+	// Legacy site-specific types — accepted on existing rows; mapped to
+	// engines / stock recipes at runtime. Do not add new site-specific types.
+	SourceRemoteOK            SourceType = "remoteok"
+	SourceArbeitnow           SourceType = "arbeitnow"
+	SourceJobicy              SourceType = "jobicy"
+	SourceTheMuse             SourceType = "themuse"
+	SourceHimalayas           SourceType = "himalayas"
+	SourceFindwork            SourceType = "findwork"
+	SourceBrighterMonday      SourceType = "brightermonday"
+	SourceJobberman           SourceType = "jobberman"
+	SourceMyJobMag            SourceType = "myjobmag"
+	SourceNjorku              SourceType = "njorku"
+	SourceCareers24           SourceType = "careers24"
+	SourcePNet                SourceType = "pnet"
 	SourceGreenhouse          SourceType = "greenhouse"
 	SourceLever               SourceType = "lever"
-	SourceWorkday             SourceType = "workday"
-	SourceSmartRecruitersAPI  SourceType = "smartrecruiters_api"
 	SourceSmartRecruitersPage SourceType = "smartrecruiters_page"
-	SourceSchemaOrg           SourceType = "schema_org"
-	SourceSitemap             SourceType = "sitemap"
 	SourceHostedBoards        SourceType = "hosted_boards"
-	SourceGenericHTML         SourceType = "generic_html"
 )
+
+// EngineType normalizes a stored source type to the crawl engine family.
+// Site-specific legacy types map onto engines so the registry stays generic.
+func EngineType(t SourceType) SourceType {
+	switch t {
+	case SourceAPI, SourceRemoteOK, SourceArbeitnow, SourceJobicy,
+		SourceTheMuse, SourceHimalayas, SourceFindwork:
+		return SourceAPI
+	case SourceSchemaOrg, SourceBrighterMonday, SourceJobberman, SourceMyJobMag,
+		SourceNjorku, SourceCareers24, SourcePNet, SourceHostedBoards,
+		SourceSmartRecruitersPage:
+		return SourceSchemaOrg
+	case SourceGenericHTML, SourceGreenhouse, SourceLever:
+		return SourceGenericHTML
+	case SourceSitemap:
+		return SourceSitemap
+	case SourceWorkday:
+		return SourceWorkday
+	case SourceSmartRecruitersAPI:
+		return SourceSmartRecruitersAPI
+	default:
+		return t
+	}
+}
+
+// RequiresRecipe reports whether the engine needs a recipe before crawl
+// can produce jobs (API + HTML). Schema.org / sitemap / ATS engines can
+// run without a per-source recipe.
+func RequiresRecipe(t SourceType) bool {
+	switch EngineType(t) {
+	case SourceAPI, SourceGenericHTML:
+		return true
+	default:
+		return false
+	}
+}
 
 // SourceStatus tracks the operational state of a source.
 type SourceStatus string

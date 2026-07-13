@@ -1,10 +1,11 @@
 // crawl-once runs a single structured crawl for one or more sources and
-// enqueues accepted jobs into job_ingest_queue. Intended for local ops and
-// bootstrap when Trustage schedules / JWT admin aren't wired.
+// enqueues accepted jobs into job_ingest_queue. Prefers the source's active
+// (or stock) recipe; falls back to engine connectors (schema_org/sitemap).
 //
 // Usage:
 //
-//	DATABASE_URL=... OPPORTUNITY_KINDS_DIR=... go run ./cmd/crawl-once -type remoteok
+//	DATABASE_URL=... OPPORTUNITY_KINDS_DIR=... STOCK_RECIPES_DIR=definitions/stock-recipes \
+//	  go run ./cmd/crawl-once -type api
 //	DATABASE_URL=... go run ./cmd/crawl-once -id d9aeoecpf2td4j9p7dj0
 //	DATABASE_URL=... go run ./cmd/crawl-once -all-apis
 package main
@@ -26,26 +27,21 @@ import (
 	"github.com/stawi-opportunities/opportunities/apps/crawler/service"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
+	"github.com/stawi-opportunities/opportunities/pkg/connectors/recipeconn"
 	"github.com/stawi-opportunities/opportunities/pkg/crawlaccept"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe/stock"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
-var apiTypes = map[domain.SourceType]bool{
-	domain.SourceRemoteOK:  true,
-	domain.SourceArbeitnow: true,
-	domain.SourceJobicy:    true,
-	domain.SourceTheMuse:   true,
-	domain.SourceHimalayas: true,
-}
-
 func main() {
-	typeFilter := flag.String("type", "", "crawl all active sources of this type")
+	typeFilter := flag.String("type", "", "crawl all active sources of this type (e.g. api)")
 	idFilter := flag.String("id", "", "crawl a single source id")
-	allAPIs := flag.Bool("all-apis", false, "crawl all free JSON API sources")
+	allAPIs := flag.Bool("all-apis", false, "crawl all sources with engine type api (or legacy API board types)")
 	limit := flag.Int("limit", 0, "max sources to crawl (0 = no limit)")
 	maxItems := flag.Int("max-items", 500, "stop after this many accepted items per source")
 	flag.Parse()
@@ -54,7 +50,7 @@ func main() {
 	log := util.Log(ctx)
 
 	if *typeFilter == "" && *idFilter == "" && !*allAPIs {
-		fmt.Fprintln(os.Stderr, "usage: crawl-once -type remoteok | -id <source_id> | -all-apis")
+		fmt.Fprintln(os.Stderr, "usage: crawl-once -type api | -id <source_id> | -all-apis")
 		os.Exit(2)
 	}
 
@@ -70,6 +66,9 @@ func main() {
 	if err != nil {
 		log.WithError(err).Fatal("load opportunity kinds")
 	}
+	if serr := stock.LoadDefault(); serr != nil {
+		log.WithError(serr).Warn("stock recipes not loaded")
+	}
 
 	ctx, svc := frame.NewServiceWithContext(ctx, frame.WithConfig(&cfg), frame.WithDatastore())
 	defer svc.Stop(ctx)
@@ -79,6 +78,7 @@ func main() {
 	}
 	db := pool.DB
 	sourceRepo := repository.NewSourceRepository(db)
+	recipeRepo := repository.NewRecipeRepository(db)
 	queue := jobqueue.NewProducer(db, 100_000)
 
 	client := httpx.NewClient(30*time.Second, "stawi-crawl-once/1.0 (+https://opportunities.stawi.org)")
@@ -104,7 +104,7 @@ func main() {
 			log.WithError(lerr).Fatal("list sources")
 		}
 		for _, s := range all {
-			if *allAPIs && !apiTypes[s.Type] {
+			if *allAPIs && domain.EngineType(s.Type) != domain.SourceAPI {
 				continue
 			}
 			sources = append(sources, s)
@@ -119,7 +119,7 @@ func main() {
 
 	var totalFound, totalEnqueued, totalRejected int
 	for _, src := range sources {
-		found, enq, rej, cerr := crawlSource(ctx, src, connReg, reg, queue, *maxItems)
+		found, enq, rej, cerr := crawlSource(ctx, src, connReg, recipeRepo, reg, client, queue, *maxItems)
 		totalFound += found
 		totalEnqueued += enq
 		totalRejected += rej
@@ -139,15 +139,18 @@ func crawlSource(
 	ctx context.Context,
 	src *domain.Source,
 	connReg *connectors.Registry,
+	recipes *repository.RecipeRepository,
 	kinds *opportunity.Registry,
+	client *httpx.Client,
 	queue *jobqueue.Store,
 	maxItems int,
 ) (found, enqueued, rejected int, err error) {
-	conn, ok := connReg.Get(src.Type)
-	if !ok {
-		return 0, 0, 0, fmt.Errorf("no connector for type %s", src.Type)
+	iter, mode, err := openIterator(ctx, src, connReg, recipes, client)
+	if err != nil {
+		return 0, 0, 0, err
 	}
-	iter := conn.Crawl(ctx, *src)
+	util.Log(ctx).WithField("source_id", src.ID).WithField("mode", mode).Info("crawl-once: iterator open")
+
 	for iter.Next(ctx) {
 		for _, opp := range iter.Items() {
 			found++
@@ -201,4 +204,45 @@ func crawlSource(
 		return found, enqueued, rejected, err
 	}
 	return found, enqueued, rejected, nil
+}
+
+func openIterator(
+	ctx context.Context,
+	src *domain.Source,
+	connReg *connectors.Registry,
+	recipes *repository.RecipeRepository,
+	client *httpx.Client,
+) (connectors.CrawlIterator, string, error) {
+	if recipes != nil {
+		if rec, err := recipes.Active(ctx, src.ID); err == nil && rec != nil {
+			exec := recipe.NewExecutor(rec, recipe.NewHTTPFetcher(client))
+			return recipeconn.NewConnectorIterator(exec, *src), "recipe", nil
+		}
+	}
+	if name, rec := stock.LookupLegacyType(string(src.Type)); rec != nil {
+		if recipes != nil {
+			_ = recipes.Activate(ctx, src.ID, rec, 1.0, "stock:"+name, map[string]any{"source": "crawl-once"})
+		}
+		exec := recipe.NewExecutor(rec, recipe.NewHTTPFetcher(client))
+		return recipeconn.NewConnectorIterator(exec, *src), "stock:" + name, nil
+	}
+	if name, rec := stock.LookupByBaseURL(src.BaseURL); rec != nil {
+		if recipes != nil {
+			_ = recipes.Activate(ctx, src.ID, rec, 1.0, "stock:"+name, map[string]any{"source": "crawl-once"})
+		}
+		exec := recipe.NewExecutor(rec, recipe.NewHTTPFetcher(client))
+		return recipeconn.NewConnectorIterator(exec, *src), "stock:" + name, nil
+	}
+	engine := domain.EngineType(src.Type)
+	if domain.RequiresRecipe(engine) {
+		return nil, "", fmt.Errorf("engine %s requires a recipe (source type %s)", engine, src.Type)
+	}
+	conn, ok := connReg.Get(engine)
+	if !ok {
+		conn, ok = connReg.Get(src.Type)
+	}
+	if !ok {
+		return nil, "", fmt.Errorf("no engine for type %s", src.Type)
+	}
+	return conn.Crawl(ctx, *src), "engine:" + string(engine), nil
 }

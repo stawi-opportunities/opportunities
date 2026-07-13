@@ -67,12 +67,11 @@ func (e *Executor) apiPage(ctx context.Context, src domain.Source, pageURL, tena
 	if err = json.Unmarshal(raw, &root); err != nil {
 		return nil, raw, status, nil, fmt.Errorf("api page %s: invalid JSON: %w", pageURL, err)
 	}
-	recsVal, err := jsonpath.Get(e.recipe.List.ItemsPath, root)
+	recs, err := extractAPIRecords(root, e.recipe.List.ItemsPath)
 	if err != nil {
 		return nil, raw, status, root, fmt.Errorf("api page %s: items_path %q: %w", pageURL, e.recipe.List.ItemsPath, err)
 	}
-	recs, ok := recsVal.([]any)
-	if !ok {
+	if recs == nil {
 		return nil, raw, status, root, nil
 	}
 	for _, rv := range recs {
@@ -92,6 +91,37 @@ func (e *Executor) apiPage(ctx context.Context, src domain.Source, pageURL, tena
 		items = append(items, opp)
 	}
 	return items, raw, status, root, nil
+}
+
+// extractAPIRecords resolves list.items_path against a JSON root. Special-case
+// "$" / "" for a root JSON array (RemoteOK-style feeds) so stock recipes need
+// no site-specific Go code for that shape.
+func extractAPIRecords(root any, itemsPath string) ([]any, error) {
+	path := strings.TrimSpace(itemsPath)
+	if path == "" || path == "$" {
+		switch v := root.(type) {
+		case []any:
+			return v, nil
+		case []map[string]any:
+			out := make([]any, len(v))
+			for i := range v {
+				out[i] = v[i]
+			}
+			return out, nil
+		}
+	}
+	if path == "" {
+		path = "$"
+	}
+	recsVal, err := jsonpath.Get(path, root)
+	if err != nil {
+		return nil, err
+	}
+	recs, ok := recsVal.([]any)
+	if !ok {
+		return nil, nil
+	}
+	return recs, nil
 }
 
 // htmlPage fetches one listing page, enumerates detail URLs via the recipe's
@@ -454,9 +484,11 @@ func (e *Executor) ListDetailURLs(ctx context.Context, src domain.Source) ([]str
 }
 
 func (e *Executor) apiPaged(ctx context.Context, src domain.Source, st PageState) ([]domain.ExternalOpportunity, []byte, int, PageState, bool, error) {
+	p := e.recipe.List.Pagination
+	// Zero PageState means "start": use FirstPage (default 1; 0 for 0-based APIs).
 	pg := st.page
-	if pg == 0 {
-		pg = 1
+	if pg == 0 && st.cursor == "" && st.url == "" {
+		pg = paginationFirstPage(p)
 	}
 
 	// Multi-tenant: one page == one tenant. Crawl every board token in
@@ -481,9 +513,9 @@ func (e *Executor) apiPaged(ctx context.Context, src domain.Source, st PageState
 		return items, raw, status, PageState{page: pg + 1}, done, nil
 	}
 
-	p := e.recipe.List.Pagination
 	// Politeness pacing between pages of a deep paginated API.
-	if pg > 1 && p.DelayMs > 0 {
+	first := paginationFirstPage(p)
+	if pg > first && p.DelayMs > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, nil, 0, PageState{}, true, ctx.Err()
@@ -574,6 +606,13 @@ func (e *Executor) htmlPaged(ctx context.Context, src domain.Source, st PageStat
 	default:
 		return items, raw, status, PageState{}, true, nil
 	}
+}
+
+func paginationFirstPage(p Pagination) int {
+	if p.FirstPage != nil {
+		return *p.FirstPage
+	}
+	return 1
 }
 
 // apiURL builds the endpoint URL for an api page, applying static params plus

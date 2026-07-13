@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   createSource,
   SOURCE_TYPES,
+  STOCK_RECIPES,
   type CreateSourceRequest,
 } from "@/api/admin-client";
 import {
@@ -34,7 +35,7 @@ export function SourceCreate() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [form, setForm] = useState<CreateSourceRequest>({
-    type: "generic_html",
+    type: "api",
     base_url: "",
     name: "",
     country: "",
@@ -45,6 +46,7 @@ export function SourceCreate() {
     auto_approve: false,
   });
   const [kindsText, setKindsText] = useState("job");
+  const [stockRecipe, setStockRecipe] = useState("");
 
   const mut = useMutation({
     mutationFn: createSource,
@@ -72,6 +74,7 @@ export function SourceCreate() {
       country: form.country?.trim().toUpperCase() || undefined,
       listing_path: form.listing_path?.trim() || undefined,
       kinds: kinds.length ? kinds : ["job"],
+      recipe: stockRecipe || undefined,
     });
   };
 
@@ -120,10 +123,43 @@ export function SourceCreate() {
                 color: "var(--c-text-secondary)",
               }}
             >
-              JSON APIs (remoteok, arbeitnow, …) extract without recipes. HTML
-              boards typically need a recipe or schema.org JSON-LD.
+              Engines only — board-specific extract is a recipe, not a type.{" "}
+              <code>api</code> / <code>generic_html</code> require a recipe;{" "}
+              <code>schema_org</code> / <code>sitemap</code> work without one when
+              the site exposes structured data.
             </p>
           </div>
+
+          {form.type === "api" && (
+            <div style={{ marginBottom: "0.85rem" }}>
+              <label style={labelStyle} htmlFor="stock">
+                Stock recipe (optional)
+              </label>
+              <select
+                id="stock"
+                value={stockRecipe}
+                onChange={(e) => setStockRecipe(e.target.value)}
+                style={fieldStyle}
+              >
+                <option value="">— none (install recipe after create) —</option>
+                {STOCK_RECIPES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <p
+                style={{
+                  margin: "0.25rem 0 0",
+                  fontSize: "0.78rem",
+                  color: "var(--c-text-secondary)",
+                }}
+              >
+                Bundled recipes for well-known public APIs. Host match also
+                auto-applies stock recipes on first crawl.
+              </p>
+            </div>
+          )}
 
           <div style={{ marginBottom: "0.85rem" }}>
             <label style={labelStyle} htmlFor="base_url">
