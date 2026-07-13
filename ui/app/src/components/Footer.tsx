@@ -91,7 +91,7 @@ export default function Footer() {
                   href="/faq/"
                   className="text-sm text-gray-400 transition-colors hover:text-white"
                 >
-                  FAQ
+                  {t('footer.faq')}
                 </a>
               </li>
               <li>

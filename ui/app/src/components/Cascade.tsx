@@ -63,6 +63,7 @@ export interface CascadeProps {
 }
 
 export default function Cascade(props: CascadeProps) {
+  const { t } = useI18n();
   const {
     filters = {},
     preferredCountries = [],
@@ -125,17 +126,18 @@ export default function Cascade(props: CascadeProps) {
   }, [q.data?.facets, props.onFacets]);
 
   if (q.isLoading && !q.data) return <CascadeSkeleton />;
-  if (q.data && q.data.tiers.length === 0) return null;
+  if (q.data && q.data.tiers.length === 0)
+    return <p className="mt-8 text-center text-sm text-gray-500">{t('search.noResults')}</p>;
   if (q.isError || !q.data) {
     return (
       <div className="mt-8 text-center">
-        <p className="mb-3 text-sm text-gray-500">Failed to load feed.</p>
+        <p className="mb-3 text-sm text-gray-500">{t('error.feedLoad')}</p>
         <button
           type="button"
           onClick={() => q.refetch()}
           className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
         >
-          Retry
+          {t('cta.retry')}
         </button>
       </div>
     );

@@ -1,13 +1,7 @@
 import { categoryLabel } from '@/utils/format';
 import type { FacetEntry, Facets, SearchParams } from '@/types/search';
 import { SortPicker } from '@/components/ui/SortPicker';
-
-const REMOTE_FACET_LABELS: Record<string, string> = {
-  remote: 'Remote',
-  hybrid: 'Hybrid',
-  onsite: 'On-site',
-  on_site: 'On-site',
-};
+import { useI18n } from '@/i18n/I18nProvider';
 
 export function FiltersPanel({
   params,
@@ -22,6 +16,13 @@ export function FiltersPanel({
   hasActiveFilters: boolean;
   onClear: () => void;
 }) {
+  const { t } = useI18n();
+  const REMOTE_FACET_LABELS: Record<string, string> = {
+    remote: t('search.remote'),
+    hybrid: t('search.hybrid'),
+    onsite: t('search.onSite'),
+    on_site: t('search.onSite'),
+  };
   return (
     <div className="md:sticky md:top-20">
       <div className="mb-4 flex items-center justify-between">
@@ -35,40 +36,40 @@ export function FiltersPanel({
             onClick={onClear}
             className="hidden text-sm text-gray-600 hover:text-gray-900 md:inline"
           >
-            Clear
+            {t('search.clear')}
           </button>
         )}
       </div>
       {facets && (
         <>
           <FacetBlock
-            label="Category"
+            label={t('search.category')}
             entries={facets.category}
             selected={params.category}
             labeller={categoryLabel}
             onSelect={(v) => setParams({ ...params, category: v, offset: 0 })}
           />
           <FacetBlock
-            label="Remote"
+            label={t('search.remote')}
             entries={facets.remote_type}
             selected={params.remote_type}
             labeller={(k) => REMOTE_FACET_LABELS[k] ?? k}
             onSelect={(v) => setParams({ ...params, remote_type: v, offset: 0 })}
           />
           <FacetBlock
-            label="Employment type"
+            label={t('search.employmentType')}
             entries={facets.employment_type}
             selected={params.employment_type}
             onSelect={(v) => setParams({ ...params, employment_type: v, offset: 0 })}
           />
           <FacetBlock
-            label="Seniority"
+            label={t('search.seniority')}
             entries={facets.seniority}
             selected={params.seniority}
             onSelect={(v) => setParams({ ...params, seniority: v, offset: 0 })}
           />
           <FacetBlock
-            label="Country"
+            label={t('search.country')}
             entries={facets.country}
             selected={params.country}
             onSelect={(v) => setParams({ ...params, country: v, offset: 0 })}

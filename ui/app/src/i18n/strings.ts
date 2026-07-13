@@ -79,6 +79,7 @@ export interface Strings {
   'error.couldNotLoad': string;
   'error.categoryLoad': string;
   'error.submitFlag': string;
+  'error.feedLoad': string;
 
   // ---- Opportunity kind labels ----
   'kind.job': string;
@@ -171,6 +172,14 @@ export interface Strings {
   'category.latestRoles': string;
   'category.noRolesOpen': string;
   'category.browseAllJobs': string;
+  'category.browseByIndustry': string;
+  'category.refineBySector': string;
+  'category.discover': string;
+  'category.advancedSearch': string;
+  'category.opportunityTypes': string;
+  'category.chooseKind': string;
+  'category.opportunity': string;
+  'category.opportunities': string;
 
   // ---- Opportunity card / status ----
   'status.applied': string;
@@ -564,6 +573,7 @@ const en: Strings = {
   'error.couldNotLoad': "We couldn't load this listing right now.",
   'error.categoryLoad': "We couldn't load this category.",
   'error.submitFlag': 'Could not submit flag:',
+  'error.feedLoad': 'Failed to load feed.',
 
   'kind.job': 'Jobs',
   'kind.scholarship': 'Scholarships',
@@ -646,6 +656,15 @@ const en: Strings = {
     'Latest roles in {category} — filtered by category and sorted by recency.',
   'category.noRolesOpen': 'No {category} roles are open right now.',
   'category.browseAllJobs': 'Browse all jobs →',
+  'category.browseByIndustry': 'Browse by industry',
+  'category.refineBySector': 'Refine your search by sector or field.',
+  'category.discover':
+    'Discover opportunities across jobs, scholarships, tenders, deals and funding — all in one place.',
+  'category.advancedSearch': 'Advanced search',
+  'category.opportunityTypes': 'Opportunity types',
+  'category.chooseKind': 'Choose the kind of opportunity you are looking for.',
+  'category.opportunity': 'opportunity',
+  'category.opportunities': 'opportunities',
 
   'status.applied': 'Applied',
   'status.responded': 'Responded',
