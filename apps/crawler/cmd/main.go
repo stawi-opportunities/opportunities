@@ -107,13 +107,6 @@ func main() {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")
 		}
-		// Drop non-engine sources (clean slate for engines-only; seeds reload later).
-		srcRepo := repository.NewSourceRepository(dbFn)
-		if n, derr := srcRepo.DeleteNonEngineSources(ctx); derr != nil {
-			log.WithError(derr).Fatal("delete non-engine sources failed")
-		} else if n > 0 {
-			log.WithField("deleted", n).Info("deleted non-engine sources")
-		}
 		// Sync Trustage workflow definitions from the mounted ConfigMap.
 		if cfg.TrustageURL != "" && cfg.TrustageWorkflowsDir != "" {
 			trustageCli, cliErr := services.NewTrustageWorkflowClient(ctx, &cfg, cfg.TrustageURL)
@@ -131,12 +124,6 @@ func main() {
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
 	recipeRepo := repository.NewRecipeRepository(dbFn)
-	// Non-engine types are not supported — delete them, then reseed engines.
-	if n, derr := sourceRepo.DeleteNonEngineSources(ctx); derr != nil {
-		log.WithError(derr).Warn("delete non-engine sources failed")
-	} else if n > 0 {
-		log.WithField("deleted", n).Info("deleted non-engine sources")
-	}
 	// Bundled stock recipes for common public API boards.
 	if serr := stock.LoadDefault(); serr != nil {
 		log.WithError(serr).Warn("stock recipes: not loaded (STOCK_RECIPES_DIR / definitions/stock-recipes)")
