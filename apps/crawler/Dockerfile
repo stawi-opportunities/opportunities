@@ -20,6 +20,7 @@ COPY ./apps/crawler ./apps/crawler
 COPY ./pkg ./pkg
 COPY ./seeds ./seeds
 COPY ./definitions/trustage ./definitions/trustage
+COPY ./definitions/stock-recipes ./definitions/stock-recipes
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
@@ -52,5 +53,8 @@ COPY --from=builder /app/binary /crawler
 COPY --from=builder /app/apps/crawler/migrations /migrations
 COPY --from=builder /app/seeds /seeds
 COPY --from=builder /app/definitions/trustage /workflows
+# Bundled stock extraction recipes (public API boards). LoadDefault()
+# probes /etc/stock-recipes when STOCK_RECIPES_DIR is unset.
+COPY --from=builder /app/definitions/stock-recipes /etc/stock-recipes
 
 ENTRYPOINT ["/crawler"]

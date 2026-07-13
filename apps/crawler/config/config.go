@@ -140,9 +140,18 @@ type CrawlerConfig struct {
 	// TrustageURL is configured, source lifecycle mutations emit
 	// sources.scheduling.changed.v1 and the crawler creates/archives a
 	// per-source Trustage schedule to match the source's live status; a boot
-	// reconcile + reconcile backstop heal drift. Defaults on — this is the only
-	// crawl driver.
+	// reconcile + reconcile backstop heal drift. Defaults on.
 	SourceSchedulesEnabled bool `env:"SOURCE_SCHEDULES_ENABLED" envDefault:"true"`
+
+	// InternalOverdueInterval runs an in-process overdue crawl sweep so job
+	// ingestion continues even when Trustage schedule reconcile or HTTP
+	// callbacks fail (auth outages, missing workflows). Zero disables.
+	// Default 15m matches definitions/trustage/source-crawl-overdue.json.
+	InternalOverdueInterval time.Duration `env:"INTERNAL_OVERDUE_INTERVAL" envDefault:"15m"`
+
+	// AdminToken is a shared secret accepted via X-Admin-Token (or Bearer)
+	// for machine callers such as Trustage crons. Empty = JWT-only.
+	AdminToken string `env:"ADMIN_TOKEN" envDefault:""`
 
 	// Recipe generation knobs. RECIPE_ENABLED defaults on so active
 	// extraction recipes (structured, deterministic) are preferred over

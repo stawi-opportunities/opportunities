@@ -142,74 +142,94 @@ const OverdueSlack = time.Hour
 // by a static-synced Trustage cron (definitions/trustage/
 // source-crawl-overdue.json) — static workflows fire even when dynamic
 // per-source ones don't, which is exactly the failure mode this guards.
+// OverdueResult is the outcome of one overdue catch-up sweep.
+type OverdueResult struct {
+	Dispatched int  `json:"dispatched"`
+	Due        int  `json:"due"`
+	Throttled  bool `json:"throttled"`
+}
+
+// DispatchOverdue lists sources past due and emits one crawl.requests.v1
+// per source (backpressure-gated). Safe to call from HTTP handlers and
+// from the in-process overdue loop.
+//
+// slack is how far past next_crawl_at a source must be (OverdueSlack for
+// Trustage catch-up; 0 for the in-process boot/tick so newly seeded
+// sources are eligible immediately).
+func DispatchOverdue(ctx context.Context, svc *frame.Service, lister CrawlOverdueLister, bumper NextCrawlBumper, admit Admitter, batch int, slack time.Duration) (OverdueResult, error) {
+	now := time.Now().UTC()
+	if batch <= 0 {
+		batch = 25
+	}
+	log := util.Log(ctx)
+
+	due, err := lister.ListDue(ctx, now.Add(-slack), batch)
+	if err != nil {
+		return OverdueResult{}, err
+	}
+	evtMgr := svc.EventsManager()
+	if evtMgr == nil {
+		return OverdueResult{}, fmt.Errorf("events manager unavailable")
+	}
+
+	res := OverdueResult{Due: len(due)}
+	for _, src := range due {
+		if !scheduleActive(src) {
+			telemetry.RecordCrawlDispatch("skipped", "overdue")
+			continue
+		}
+		if granted, _ := admit.Admit(ctx, eventsv1.TopicCrawlRequests, 1); granted < 1 {
+			telemetry.RecordCrawlDispatch("denied", "overdue")
+			res.Throttled = true
+			break // pipeline saturated — leave the rest for the next tick
+		}
+		tickMinute := now.Truncate(time.Minute).Format(time.RFC3339)
+		env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
+			RequestID:      xid.New().String(),
+			SourceID:       src.ID,
+			IdempotencyKey: fmt.Sprintf("%s:%s", src.ID, tickMinute),
+			ScheduledAt:    now,
+			Mode:           "auto",
+			Attempt:        1,
+		})
+		if emitErr := evtMgr.Emit(ctx, eventsv1.TopicCrawlRequests, env); emitErr != nil {
+			log.WithError(emitErr).WithField("source_id", src.ID).Error("crawl-overdue: emit failed")
+			continue
+		}
+		telemetry.RecordCrawlDispatch("emitted", "overdue")
+		// Optimistic lease: floor at MinCrawlIntervalHours so a slow or
+		// failed crawl can't be re-dispatched every tick.
+		intervalSec := max(src.CrawlIntervalSec, MinCrawlIntervalHours*3600)
+		next := now.Add(time.Duration(intervalSec) * time.Second)
+		if uerr := bumper.Update(ctx, src.ID, map[string]any{"next_crawl_at": next}); uerr != nil {
+			log.WithError(uerr).WithField("source_id", src.ID).Warn("crawl-overdue: bump next_crawl_at failed")
+		}
+		res.Dispatched++
+	}
+
+	if res.Dispatched > 0 {
+		// Overdue dispatches mean the primary per-source schedules lost
+		// ticks — surface loudly so it can't silently become the norm.
+		log.WithField("dispatched", res.Dispatched).WithField("due", res.Due).
+			Error("crawl-overdue: per-source schedules lost ticks; catch-up sweep dispatched")
+	}
+	return res, nil
+}
+
 func CrawlOverdueHandler(svc *frame.Service, lister CrawlOverdueLister, bumper NextCrawlBumper, admit Admitter, batch int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
 		}
-		ctx := r.Context()
-		log := util.Log(ctx)
-		now := time.Now().UTC()
-		if batch <= 0 {
-			batch = 25
-		}
-
-		due, err := lister.ListDue(ctx, now.Add(-OverdueSlack), batch)
+		res, err := DispatchOverdue(r.Context(), svc, lister, bumper, admit, batch, OverdueSlack)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
 		}
-		evtMgr := svc.EventsManager()
-		if evtMgr == nil {
-			http.Error(w, `{"error":"events manager unavailable"}`, http.StatusServiceUnavailable)
-			return
-		}
-
-		dispatched, throttled := 0, false
-		for _, src := range due {
-			if !scheduleActive(src) {
-				telemetry.RecordCrawlDispatch("skipped", "overdue")
-				continue
-			}
-			if granted, _ := admit.Admit(ctx, eventsv1.TopicCrawlRequests, 1); granted < 1 {
-				telemetry.RecordCrawlDispatch("denied", "overdue")
-				throttled = true
-				break // pipeline saturated — leave the rest for the next tick
-			}
-			tickMinute := now.Truncate(time.Minute).Format(time.RFC3339)
-			env := eventsv1.NewEnvelope(eventsv1.TopicCrawlRequests, eventsv1.CrawlRequestV1{
-				RequestID:      xid.New().String(),
-				SourceID:       src.ID,
-				IdempotencyKey: fmt.Sprintf("%s:%s", src.ID, tickMinute),
-				ScheduledAt:    now,
-				Mode:           "auto",
-				Attempt:        1,
-			})
-			if emitErr := evtMgr.Emit(ctx, eventsv1.TopicCrawlRequests, env); emitErr != nil {
-				log.WithError(emitErr).WithField("source_id", src.ID).Error("crawl-overdue: emit failed")
-				continue
-			}
-			telemetry.RecordCrawlDispatch("emitted", "overdue")
-			// Optimistic lease: floor at MinCrawlIntervalHours so a slow or
-			// failed crawl can't be re-dispatched every tick.
-			intervalSec := max(src.CrawlIntervalSec, MinCrawlIntervalHours*3600)
-			next := now.Add(time.Duration(intervalSec) * time.Second)
-			if uerr := bumper.Update(ctx, src.ID, map[string]any{"next_crawl_at": next}); uerr != nil {
-				log.WithError(uerr).WithField("source_id", src.ID).Warn("crawl-overdue: bump next_crawl_at failed")
-			}
-			dispatched++
-		}
-
-		if dispatched > 0 {
-			// Overdue dispatches mean the primary per-source schedules lost
-			// ticks — surface loudly so it can't silently become the norm.
-			log.WithField("dispatched", dispatched).WithField("due", len(due)).
-				Error("crawl-overdue: per-source schedules lost ticks; catch-up sweep dispatched")
-		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok": true, "dispatched": dispatched, "due": len(due), "throttled": throttled,
+			"ok": true, "dispatched": res.Dispatched, "due": res.Due, "throttled": res.Throttled,
 		})
 	}
 }
