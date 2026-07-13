@@ -152,6 +152,13 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	}
 	repo := repository.NewSourceRepository(pool.DB)
 	recipeRepo := repository.NewRecipeRepository(pool.DB)
+	// Repair site-specific sources.type rows so admin never surfaces them.
+	if u, d, rerr := repo.RemapLegacySourceTypes(ctx); rerr != nil {
+		log.WithError(rerr).Warn("source admin: remap legacy source types failed")
+	} else if u > 0 || d > 0 {
+		log.WithField("updated", u).WithField("deleted", d).
+			Info("source admin: remapped legacy site-specific source types to engines")
+	}
 
 	// Frame-managed HTTP client (OTEL trace propagation + retry hooks).
 	// Both the connector retry path and the verifier's raw HEAD/GET probes

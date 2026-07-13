@@ -39,7 +39,7 @@ func TestRecipeBackfillHandler_EnqueuesOnlyEligible(t *testing.T) {
 	lister := fakeLister{srcs: []*domain.Source{
 		bfSource("a", "schema_org", "{}", false),                  // eligible -> queue
 		bfSource("b", "schema_org", `{"acquisition":"x"}`, false), // has recipe -> skip
-		bfSource("c", "greenhouse", "{}", false),                      // not a target type -> skip
+		bfSource("c", "workday", "{}", false), // not a backfill target -> skip
 		bfSource("d", "generic_html", "{}", true),                        // fresh needs_tuning -> skip
 		bfSource("e", "generic_html", "", false),                         // eligible -> queue
 		expired,                                                       // expired needs_tuning -> queue
