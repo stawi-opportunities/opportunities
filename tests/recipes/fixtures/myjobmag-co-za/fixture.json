@@ -1,18 +1,18 @@
 {
- "source": {
-  "type": "myjobmag",
-  "base_url": "https://www.myjobmag.co.za",
-  "country": "ZA",
-  "language": "en",
-  "status": "active",
-  "kinds": [
-   "job"
-  ],
-  "listing_path": "/jobs"
- },
- "sample_urls": [
-  "https://www.myjobmag.co.za/job/phlebotomist-vergelegen-ampath-1",
-  "https://www.myjobmag.co.za/job/phlebotomist-night-shift-entabeni-ampath",
-  "https://www.myjobmag.co.za/job/phlebotomist-polokwane-ampath-3"
- ]
+  "source": {
+    "type": "schema_org",
+    "base_url": "https://www.myjobmag.co.za",
+    "country": "ZA",
+    "language": "en",
+    "status": "active",
+    "kinds": [
+      "job"
+    ],
+    "listing_path": "/jobs"
+  },
+  "sample_urls": [
+    "https://www.myjobmag.co.za/job/phlebotomist-vergelegen-ampath-1",
+    "https://www.myjobmag.co.za/job/phlebotomist-night-shift-entabeni-ampath",
+    "https://www.myjobmag.co.za/job/phlebotomist-polokwane-ampath-3"
+  ]
 }

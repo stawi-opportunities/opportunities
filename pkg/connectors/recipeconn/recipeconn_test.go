@@ -55,7 +55,7 @@ func TestIterator_DrivesExecutorLikeThePipeline(t *testing.T) {
 		Detail: recipe.DetailRule{RecordSource: "record", Title: rec("$.title"), Description: rec("$.description"),
 			IssuingEntity: rec("$.company"), ApplyURL: rec("$.apply"), AnchorCountry: rec("$.country")},
 	}
-	src := domain.Source{Type: "brightermonday", BaseURL: srv.URL, Country: "NG"}
+	src := domain.Source{Type: "schema_org", BaseURL: srv.URL, Country: "NG"}
 	src.ID = "src_1"
 	src.Kinds = []string{"job"}
 

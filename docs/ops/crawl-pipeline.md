@@ -36,11 +36,12 @@ Rejections are written to the append-only ingest events ledger; they do not ente
 
 | Path | Package / service |
 |------|-------------------|
-| JSON APIs | `pkg/connectors/{remoteok,arbeitnow,jobicy,themuse,himalayas,…}` |
-| ATS | workday, smartrecruiters |
+| JSON APIs | engine `api` + recipe (`pkg/recipe` / stock recipes) |
+| ATS | engines `workday`, `smartrecruiters_api` |
 | Sitemap + JobPosting JSON-LD | `pkg/connectors/sitemapcrawler` |
-| HTML JSON-LD | `pkg/connectors/structured` |
-| Recipes | `pkg/recipe` + `recipeconn` when `RECIPE_ENABLED` and an active recipe exist |
+| HTML JSON-LD | engine `schema_org` (`pkg/connectors/structured`) |
+| HTML list+detail | engine `generic_html` + recipe |
+| Recipes | `pkg/recipe` + `recipeconn` when an active recipe exists |
 | Spec YAML | R2 `definitions/connector/*` |
 
 There is **no** universal AI connector and **no** crawl-time LLM enrichment of URL stubs.

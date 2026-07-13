@@ -36,7 +36,7 @@ func jobDetailRule() DetailRule {
 }
 
 func jobSource() domain.Source {
-	s := domain.Source{Type: "brightermonday", BaseURL: "https://x.io", Country: "NG"}
+	s := domain.Source{Type: "schema_org", BaseURL: "https://x.io", Country: "NG"}
 	s.ID = "src_1"
 	s.Kinds = []string{"job"}
 	return s
@@ -57,7 +57,7 @@ func TestBuildOpportunity_MapsAllFields(t *testing.T) {
 	assert.Equal(t, "https://x.io/jobs/senior-go", opp.ApplyURL)
 	assert.Equal(t, "https://x.io/jobs/senior-go", opp.ExternalID)
 	assert.Equal(t, "src_1", opp.SourceID)
-	assert.EqualValues(t, "brightermonday", opp.Source)
+	assert.EqualValues(t, "schema_org", opp.Source)
 	require.NotNil(t, opp.AnchorLocation)
 	assert.Equal(t, "KE", opp.AnchorLocation.Country)
 	require.NotNil(t, opp.PostedAt)

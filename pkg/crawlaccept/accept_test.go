@@ -26,7 +26,7 @@ func jobRegistry(t *testing.T) *opportunity.Registry {
 
 func testSource() *domain.Source {
 	src := &domain.Source{
-		Type:     domain.SourceRemoteOK,
+		Type:     domain.SourceAPI,
 		Country:  "KE",
 		Language: "en",
 		Kinds:    []string{"job"},

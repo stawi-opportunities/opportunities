@@ -6,9 +6,10 @@
     "kinds": [
       "job"
     ],
+    "listing_path": "/jobs",
     "priority": "hot",
     "region": "east_africa",
-    "source_type": "brightermonday"
+    "source_type": "schema_org"
   },
   {
     "base_url": "https://www.brightermonday.co.ug",

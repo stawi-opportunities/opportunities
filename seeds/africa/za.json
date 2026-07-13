@@ -6,9 +6,10 @@
     "kinds": [
       "job"
     ],
+    "listing_path": "/jobs",
     "priority": "hot",
     "region": "africa",
-    "source_type": "careers24"
+    "source_type": "schema_org"
   },
   {
     "base_url": "https://www.pnet.co.za",
@@ -19,6 +20,6 @@
     ],
     "priority": "hot",
     "region": "africa",
-    "source_type": "pnet"
+    "source_type": "schema_org"
   }
 ]

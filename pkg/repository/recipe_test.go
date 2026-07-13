@@ -32,7 +32,7 @@ func dbFn(g *gorm.DB) func(context.Context, bool) *gorm.DB {
 
 func seedSource(t *testing.T, g *gorm.DB, ctx context.Context, id string) {
 	t.Helper()
-	s := &domain.Source{Type: "brightermonday", BaseURL: "https://x.io/" + id, Country: "KE"}
+	s := &domain.Source{Type: "schema_org", BaseURL: "https://x.io/" + id, Country: "KE"}
 	s.ID = id
 	s.Kinds = []string{"job"}
 	require.NoError(t, g.WithContext(ctx).Create(s).Error)

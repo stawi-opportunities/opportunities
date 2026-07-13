@@ -17,12 +17,12 @@ func mkSource(id string, typ domain.SourceType, recipe string) domain.Source {
 
 func TestBackfillRecipes_QueuesOnlyRecipelessTargetedSources(t *testing.T) {
 	sources := []domain.Source{
-		mkSource("a", "brightermonday", "{}"),
-		mkSource("b", "brightermonday", `{"acquisition":"x"}`),
-		mkSource("c", "greenhouse", "{}"),
-		mkSource("d", "jobberman", ""),
+		mkSource("a", "schema_org", "{}"),
+		mkSource("b", "schema_org", `{"acquisition":"x"}`),
+		mkSource("c", "workday", "{}"),
+		mkSource("d", "generic_html", ""),
 	}
-	targets := map[domain.SourceType]bool{"brightermonday": true, "jobberman": true}
+	targets := map[domain.SourceType]bool{"schema_org": true, "generic_html": true}
 
 	var queued []string
 	emit := func(_ context.Context, sourceID string) error {
@@ -37,8 +37,8 @@ func TestBackfillRecipes_QueuesOnlyRecipelessTargetedSources(t *testing.T) {
 }
 
 func TestBackfillRecipes_EmitErrorStopsAndReports(t *testing.T) {
-	sources := []domain.Source{mkSource("a", "brightermonday", "{}")}
-	targets := map[domain.SourceType]bool{"brightermonday": true}
+	sources := []domain.Source{mkSource("a", "schema_org", "{}")}
+	targets := map[domain.SourceType]bool{"schema_org": true}
 	emit := func(_ context.Context, _ string) error { return assert.AnError }
 	n, err := BackfillRecipes(context.Background(), sources, targets, 0, emit)
 	require.Error(t, err)
@@ -49,12 +49,12 @@ func TestBackfillRecipes_MaxQueueCapsEligibleNotScanned(t *testing.T) {
 	// Cap applies to QUEUED sources (post-filter): with maxQueue=2 and an
 	// ineligible source first, the two eligible ones still both queue.
 	sources := []domain.Source{
-		mkSource("x", "greenhouse", "{}"), // not a target — skipped, doesn't consume the cap
-		mkSource("a", "brightermonday", "{}"),
-		mkSource("b", "jobberman", "{}"),
-		mkSource("c", "brightermonday", "{}"), // over the cap — not queued
+		mkSource("x", "workday", "{}"), // not a target — skipped, doesn't consume the cap
+		mkSource("a", "schema_org", "{}"),
+		mkSource("b", "generic_html", "{}"),
+		mkSource("c", "schema_org", "{}"), // over the cap — not queued
 	}
-	targets := map[domain.SourceType]bool{"brightermonday": true, "jobberman": true}
+	targets := map[domain.SourceType]bool{"schema_org": true, "generic_html": true}
 	var queued []string
 	emit := func(_ context.Context, id string) error { queued = append(queued, id); return nil }
 	n, err := BackfillRecipes(context.Background(), sources, targets, 2, emit)

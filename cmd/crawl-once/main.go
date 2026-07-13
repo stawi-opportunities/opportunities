@@ -41,7 +41,7 @@ import (
 func main() {
 	typeFilter := flag.String("type", "", "crawl all active sources of this type (e.g. api)")
 	idFilter := flag.String("id", "", "crawl a single source id")
-	allAPIs := flag.Bool("all-apis", false, "crawl all sources with engine type api (or legacy API board types)")
+	allAPIs := flag.Bool("all-apis", false, "crawl all sources with engine type api")
 	limit := flag.Int("limit", 0, "max sources to crawl (0 = no limit)")
 	maxItems := flag.Int("max-items", 500, "stop after this many accepted items per source")
 	flag.Parse()
@@ -104,7 +104,7 @@ func main() {
 			log.WithError(lerr).Fatal("list sources")
 		}
 		for _, s := range all {
-			if *allAPIs && domain.EngineType(s.Type) != domain.SourceAPI {
+			if *allAPIs && s.Type != domain.SourceAPI {
 				continue
 			}
 			sources = append(sources, s)
@@ -219,13 +219,6 @@ func openIterator(
 			return recipeconn.NewConnectorIterator(exec, *src), "recipe", nil
 		}
 	}
-	if name, rec := stock.LookupLegacyType(string(src.Type)); rec != nil {
-		if recipes != nil {
-			_ = recipes.Activate(ctx, src.ID, rec, 1.0, "stock:"+name, map[string]any{"source": "crawl-once"})
-		}
-		exec := recipe.NewExecutor(rec, recipe.NewHTTPFetcher(client))
-		return recipeconn.NewConnectorIterator(exec, *src), "stock:" + name, nil
-	}
 	if name, rec := stock.LookupByBaseURL(src.BaseURL); rec != nil {
 		if recipes != nil {
 			_ = recipes.Activate(ctx, src.ID, rec, 1.0, "stock:"+name, map[string]any{"source": "crawl-once"})
@@ -233,16 +226,12 @@ func openIterator(
 		exec := recipe.NewExecutor(rec, recipe.NewHTTPFetcher(client))
 		return recipeconn.NewConnectorIterator(exec, *src), "stock:" + name, nil
 	}
-	engine := domain.EngineType(src.Type)
-	if domain.RequiresRecipe(engine) {
-		return nil, "", fmt.Errorf("engine %s requires a recipe (source type %s)", engine, src.Type)
+	if domain.RequiresRecipe(src.Type) {
+		return nil, "", fmt.Errorf("engine %s requires a recipe", src.Type)
 	}
-	conn, ok := connReg.Get(engine)
-	if !ok {
-		conn, ok = connReg.Get(src.Type)
-	}
+	conn, ok := connReg.Get(src.Type)
 	if !ok {
 		return nil, "", fmt.Errorf("no engine for type %s", src.Type)
 	}
-	return conn.Crawl(ctx, *src), "engine:" + string(engine), nil
+	return conn.Crawl(ctx, *src), "engine:" + string(src.Type), nil
 }

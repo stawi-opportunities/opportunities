@@ -317,7 +317,7 @@ func TestSourcesAdmin_CreateAndGet(t *testing.T) {
 	_, repo, _, mux := adminTestHarness(t)
 
 	body := map[string]any{
-		"type":     "remoteok",
+		"type":     "api",
 		"base_url": "https://remoteok.com",
 		"kinds":    []string{"job"},
 	}
@@ -359,7 +359,7 @@ func TestSourcesAdmin_CreateRejectsUnknownKind(t *testing.T) {
 	_, _, _, mux := adminTestHarness(t)
 
 	body := map[string]any{
-		"type":     "remoteok",
+		"type":     "api",
 		"base_url": "https://example.com",
 		"kinds":    []string{"definitely-not-a-kind"},
 	}
@@ -407,7 +407,7 @@ func TestSourcesAdmin_Verify(t *testing.T) {
 	_, repo, disp, mux := adminTestHarness(t)
 	repo.rows["s1"] = &domain.Source{
 		BaseModel: domain.BaseModel{ID: "s1"},
-		Type:      domain.SourceRemoteOK,
+		Type:      domain.SourceAPI,
 		BaseURL:   "https://remoteok.com",
 		Status:    domain.SourcePending,
 		Kinds:     pq.StringArray{"job"},
@@ -670,7 +670,7 @@ func TestSourcesAdmin_Update_ExtractionPromptExtension(t *testing.T) {
 	_, repo, _, mux := adminTestHarness(t)
 	repo.rows["src-prompt-1"] = &domain.Source{
 		BaseModel: domain.BaseModel{ID: "src-prompt-1"},
-		Type:      domain.SourceType("greenhouse"),
+		Type:      domain.SourceGenericHTML,
 		BaseURL:   "https://x",
 		Country:   "US",
 		Status:    domain.SourceActive,
@@ -698,7 +698,7 @@ func TestSourcesAdmin_Update_ExtensionTooLong(t *testing.T) {
 	_, repo, _, mux := adminTestHarness(t)
 	repo.rows["src-prompt-2"] = &domain.Source{
 		BaseModel: domain.BaseModel{ID: "src-prompt-2"},
-		Type:      domain.SourceType("greenhouse"),
+		Type:      domain.SourceGenericHTML,
 		BaseURL:   "https://x",
 		Country:   "US",
 		Status:    domain.SourceActive,

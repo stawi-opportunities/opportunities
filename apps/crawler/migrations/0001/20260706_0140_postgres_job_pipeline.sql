@@ -112,5 +112,59 @@ BEGIN
             REFRESH MATERIALIZED VIEW CONCURRENTLY crawl_signals
         $body$
     $fn$;
+
+    -- Engines only: remap historical site-specific source types.
+    -- Drop site-type rows that would collide with an already-engine-typed row
+    -- for the same base_url (unique index is type+base_url).
+    EXECUTE $sql$
+        WITH map(old_type, new_type) AS (
+            VALUES
+                ('remoteok', 'api'),
+                ('arbeitnow', 'api'),
+                ('jobicy', 'api'),
+                ('themuse', 'api'),
+                ('himalayas', 'api'),
+                ('findwork', 'api'),
+                ('brightermonday', 'schema_org'),
+                ('jobberman', 'schema_org'),
+                ('myjobmag', 'schema_org'),
+                ('njorku', 'schema_org'),
+                ('careers24', 'schema_org'),
+                ('pnet', 'schema_org'),
+                ('hosted_boards', 'schema_org'),
+                ('smartrecruiters_page', 'smartrecruiters_api'),
+                ('greenhouse', 'generic_html'),
+                ('lever', 'generic_html')
+        )
+        DELETE FROM sources s
+        USING map m, sources keep
+        WHERE s.type = m.old_type
+          AND keep.base_url = s.base_url
+          AND keep.type = m.new_type
+          AND keep.id <> s.id
+    $sql$;
+    EXECUTE $sql$
+        UPDATE sources AS s SET type = m.new_type
+        FROM (
+            VALUES
+                ('remoteok', 'api'),
+                ('arbeitnow', 'api'),
+                ('jobicy', 'api'),
+                ('themuse', 'api'),
+                ('himalayas', 'api'),
+                ('findwork', 'api'),
+                ('brightermonday', 'schema_org'),
+                ('jobberman', 'schema_org'),
+                ('myjobmag', 'schema_org'),
+                ('njorku', 'schema_org'),
+                ('careers24', 'schema_org'),
+                ('pnet', 'schema_org'),
+                ('hosted_boards', 'schema_org'),
+                ('smartrecruiters_page', 'smartrecruiters_api'),
+                ('greenhouse', 'generic_html'),
+                ('lever', 'generic_html')
+        ) AS m(old_type, new_type)
+        WHERE s.type = m.old_type
+    $sql$;
 END
 $mig$;

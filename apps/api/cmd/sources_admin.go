@@ -257,8 +257,8 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	log.Info("source admin: endpoints registered under /admin/sources, /admin/trace, /admin/opportunities, /admin/definitions")
 }
 
-// buildAdminConnectorRegistry returns crawl ENGINES for verification and
-// dry-run tests. Site-specific boards use recipes (tested via recipe/test).
+// buildAdminConnectorRegistry returns crawl engines for verification and
+// dry-run tests. Boards that need custom extract use recipes (recipe/test).
 func buildAdminConnectorRegistry(client *httpx.Client) *connectors.Registry {
 	reg := connectors.NewRegistry()
 	reg.Register(workday.New(client))
@@ -266,13 +266,6 @@ func buildAdminConnectorRegistry(client *httpx.Client) *connectors.Registry {
 	reg.Register(sitemapcrawler.New(client))
 	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceSchemaOrg))
 	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceGenericHTML))
-	for _, st := range []domain.SourceType{
-		domain.SourceBrighterMonday, domain.SourceJobberman, domain.SourceMyJobMag,
-		domain.SourceNjorku, domain.SourceCareers24, domain.SourcePNet,
-		domain.SourceHostedBoards, domain.SourceSmartRecruitersPage,
-	} {
-		reg.Register(structured.NewHTMLJSONLD(client, st))
-	}
 	return reg
 }
 
@@ -371,6 +364,11 @@ func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Type == "" || req.BaseURL == "" {
 		writeError(w, http.StatusBadRequest, "missing_field", "type and base_url are required")
+		return
+	}
+	if !domain.IsKnownSourceType(req.Type) {
+		writeError(w, http.StatusBadRequest, "unknown_type",
+			fmt.Sprintf("type %q is not a crawl engine (known: %v)", req.Type, domain.KnownEngineTypes))
 		return
 	}
 	if len(req.Kinds) == 0 {

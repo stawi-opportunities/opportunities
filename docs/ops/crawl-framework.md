@@ -29,7 +29,7 @@ LLM is for **recipe generation** (optional ops path), not for live job inventing
 | `generic_html` | Requires recipe for list+detail |
 | `workday` / `smartrecruiters_api` | ATS engines |
 
-There are **no** per-board packages (`remoteok`, `arbeitnow`, …). Public APIs ship as **stock recipes** under `definitions/stock-recipes/` and attach by seed `recipe` field, host match, or admin create.
+There are **no** site-specific packages. Public APIs ship as **stock recipes** under `definitions/stock-recipes/` and attach by seed `recipe` field, host match, or admin create.
 
 ## Recipes (generic engine + per-source data)
 
@@ -61,7 +61,7 @@ Never invent apply URLs from the board homepage. Never emit title-empty URL stub
 
 ## Seeds
 
-`seeds/**/*.json` load at crawler boot into `sources`. Prefer engine `source_type` values (`api`, `schema_org`, …). Optional `"recipe": "remoteok"` installs a stock recipe after upsert.
+`seeds/**/*.json` load at crawler boot into `sources`. `source_type` must be an engine (`api`, `schema_org`, `sitemap`, `generic_html`, `workday`, `smartrecruiters_api`). Optional `"recipe": "remoteok"` installs a stock recipe after upsert.
 
 ## Admin
 

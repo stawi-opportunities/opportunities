@@ -27,15 +27,13 @@ var managedATSHosts = map[string]bool{
 // multi-tenant ATS platform owned by an aggregate source.
 func isManagedATSHost(host string) bool { return managedATSHosts[host] }
 
-// classifyATS recognises hosted-ATS job-board URLs and returns the connector
-// type that extracts them most effectively (structured API/page connectors —
-// no LLM, no recipe) plus the canonical BaseURL including the company segment
-// the connector needs. ok=false means "not a known ATS" and the caller should
-// fall back to the generic-HTML flow (whose BaseURL is scheme://host only).
+// classifyATS recognises hosted-ATS job-board URLs and returns the engine
+// type plus the canonical BaseURL including the company segment. ok=false
+// means "not a known ATS" and the caller should fall back to the generic
+// HTML flow (whose BaseURL is scheme://host only).
 //
-// This is the intake "research" step: a discovered jobs.lever.co/acme link
-// must become a lever source for https://jobs.lever.co/acme — typing it
-// generic_html would burn LLM/recipe effort on a board with a free JSON API.
+// Lever/Greenhouse company boards use generic_html + recipe (no dedicated
+// engine). SmartRecruiters uses the smartrecruiters_api engine.
 func classifyATS(target *url.URL) (domain.SourceType, string, bool) {
 	host := strings.ToLower(strings.TrimPrefix(target.Hostname(), "www."))
 	segs := strings.Split(strings.Trim(target.EscapedPath(), "/"), "/")
@@ -53,11 +51,11 @@ func classifyATS(target *url.URL) (domain.SourceType, string, bool) {
 
 	switch host {
 	case "jobs.lever.co", "jobs.eu.lever.co":
-		return withCompany(domain.SourceLever)
+		return withCompany(domain.SourceGenericHTML)
 	case "boards.greenhouse.io", "job-boards.greenhouse.io", "job-boards.eu.greenhouse.io":
-		return withCompany(domain.SourceGreenhouse)
+		return withCompany(domain.SourceGenericHTML)
 	case "careers.smartrecruiters.com", "jobs.smartrecruiters.com":
-		return withCompany(domain.SourceSmartRecruitersPage)
+		return withCompany(domain.SourceSmartRecruitersAPI)
 	}
 	return "", "", false
 }
