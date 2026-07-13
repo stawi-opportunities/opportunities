@@ -40,21 +40,17 @@ import (
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/stawi-opportunities/opportunities/pkg/connectors"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/arbeitnow"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/himalayas"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/jobicy"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/remoteok"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/sitemapcrawler"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/smartrecruiters"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/structured"
-	"github.com/stawi-opportunities/opportunities/pkg/connectors/themuse"
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/workday"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/freshness"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe/stock"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/sourceverify"
 )
@@ -106,6 +102,7 @@ type sourcesAdmin struct {
 	repo       sourceAdminRepo
 	dispatcher adminVerifier
 	registry   *opportunity.Registry
+	recipes    *repository.RecipeRepository
 	// emitScheduling signals the crawler to (re)sync a source's per-source
 	// Trustage crawl schedule after a lifecycle mutation. nil when scheduling
 	// events aren't wired (events plugin unavailable).
@@ -179,10 +176,15 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	dispatcher := sourceverify.NewDispatcher(verifier, repo, svc.WorkManager())
 
 	_ = verifier // retained for future direct invocation; dispatcher wraps it for now.
+	// Stock recipes (optional at api boot — same dir as crawler).
+	if serr := stock.LoadDefault(); serr != nil {
+		log.WithError(serr).Warn("source admin: stock recipes not loaded")
+	}
 	a := &sourcesAdmin{
 		repo:           repo,
 		dispatcher:     dispatcher,
 		registry:       reg,
+		recipes:        recipeRepo,
 		emitScheduling: emitScheduling,
 		dispatchCrawl:  dispatchCrawl,
 	}
@@ -255,24 +257,19 @@ func registerSourcesAdmin(ctx context.Context, mux *http.ServeMux, cfg *apiConfi
 	log.Info("source admin: endpoints registered under /admin/sources, /admin/trace, /admin/opportunities, /admin/definitions")
 }
 
-// buildAdminConnectorRegistry returns a connectors.Registry suitable for
-// source verification and dry-run test crawls on the api. Covers free JSON
-// APIs, ATS, sitemap, and HTML JSON-LD boards — no LLM required.
+// buildAdminConnectorRegistry returns crawl ENGINES for verification and
+// dry-run tests. Site-specific boards use recipes (tested via recipe/test).
 func buildAdminConnectorRegistry(client *httpx.Client) *connectors.Registry {
 	reg := connectors.NewRegistry()
-	reg.Register(remoteok.New())
-	reg.Register(arbeitnow.New())
-	reg.Register(jobicy.New())
-	reg.Register(themuse.New())
-	reg.Register(himalayas.New())
 	reg.Register(workday.New(client))
 	reg.Register(smartrecruiters.New(client))
 	reg.Register(sitemapcrawler.New(client))
 	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceSchemaOrg))
+	reg.Register(structured.NewHTMLJSONLD(client, domain.SourceGenericHTML))
 	for _, st := range []domain.SourceType{
 		domain.SourceBrighterMonday, domain.SourceJobberman, domain.SourceMyJobMag,
 		domain.SourceNjorku, domain.SourceCareers24, domain.SourcePNet,
-		domain.SourceHostedBoards, domain.SourceGenericHTML, domain.SourceSmartRecruitersPage,
+		domain.SourceHostedBoards, domain.SourceSmartRecruitersPage,
 	} {
 		reg.Register(structured.NewHTMLJSONLD(client, st))
 	}
@@ -360,6 +357,10 @@ type createSourceRequest struct {
 	// base_url ("" = base_url itself). Recipe generation learns the list
 	// rule from this exact page — it is never guessed.
 	ListingPath string `json:"listing_path"`
+	// Recipe is a stock recipe name (definitions/stock-recipes/{name}.json).
+	// When set (or when base_url host matches a stock recipe), the recipe is
+	// activated after create so the source is crawl-ready without a deploy.
+	Recipe string `json:"recipe,omitempty"`
 }
 
 func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
@@ -433,6 +434,22 @@ func (a *sourcesAdmin) handleCreate(w http.ResponseWriter, r *http.Request) {
 	if err := a.repo.Create(r.Context(), src); err != nil {
 		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
+	}
+	// Attach stock recipe when named or host-matched so API boards are crawl-ready.
+	if a.recipes != nil {
+		name := strings.TrimSpace(req.Recipe)
+		rec := stock.Get(name)
+		if rec == nil {
+			name, rec = stock.LookupByBaseURL(src.BaseURL)
+		}
+		if rec != nil {
+			if aerr := a.recipes.Activate(r.Context(), src.ID, rec, 1.0, "stock:"+name, map[string]any{
+				"source": "admin_create", "stock": name,
+			}); aerr != nil {
+				util.Log(r.Context()).WithError(aerr).WithField("source_id", src.ID).
+					Warn("source admin: stock recipe activate failed")
+			}
+		}
 	}
 	// Operator-created sources land in SourcePending, but guard on live status
 	// in case a future path creates one already active — only then does the

@@ -23,6 +23,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/recipe"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe/stock"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
@@ -134,6 +135,28 @@ func useRecipePath(enabled bool, rec *recipe.Recipe) bool {
 	return enabled && rec != nil
 }
 
+// bootstrapStockRecipe persists a bundled stock recipe onto the source so
+// subsequent crawls use the DB row (data) rather than re-resolving by type/URL.
+// Best-effort: activation failure does not block this crawl (rec is already in hand).
+func (h *CrawlRequestHandler) bootstrapStockRecipe(ctx context.Context, sourceID, name string, rec *recipe.Recipe) {
+	if h.deps.RecipeRepo == nil || rec == nil {
+		return
+	}
+	// Skip if already has a recipe (race with concurrent bootstrap).
+	if active, err := h.deps.RecipeRepo.Active(ctx, sourceID); err == nil && active != nil {
+		return
+	}
+	if err := h.deps.RecipeRepo.Activate(ctx, sourceID, rec, 1.0, "stock:"+name, map[string]any{
+		"source": "stock_bootstrap", "stock": name,
+	}); err != nil {
+		util.Log(ctx).WithError(err).WithField("source_id", sourceID).WithField("stock", name).
+			Warn("crawl.request: stock recipe activate failed")
+		return
+	}
+	util.Log(ctx).WithField("source_id", sourceID).WithField("stock", name).
+		Info("crawl.request: stock recipe activated")
+}
+
 // CrawlRequestHandler consumes jobs.crawl.requests.v1, runs the
 // connector iterator for the source, parses content in memory, optionally
 // extracts structured jobs and enqueues accepted records.
@@ -236,9 +259,10 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		return nil
 	}
 
-	// Resolve the crawl path: a source with an active extraction recipe runs
-	// via the deterministic recipe Executor; otherwise its registered
-	// connector. Both drive the same crawl_runs state machine below.
+	// Resolve the crawl path: prefer the source's active extraction recipe
+	// (data-driven). If none, fall back to a bundled stock recipe for known
+	// public APIs, else a generic engine connector (schema.org / sitemap /
+	// ATS). Site-specific Go packages are not used.
 	var (
 		rec        *recipe.Recipe
 		usedRecipe bool
@@ -247,29 +271,53 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 	if h.deps.RecipeEnabled && h.deps.RecipeRepo != nil {
 		r, rErr := h.deps.RecipeRepo.Active(ctx, src.ID)
 		if rErr != nil {
-			log.WithError(rErr).Warn("crawl.request: recipe lookup failed; using connector")
+			log.WithError(rErr).Warn("crawl.request: recipe lookup failed")
 		} else if useRecipePath(h.deps.RecipeEnabled, r) {
 			rec = r
 			usedRecipe = true
 		}
 	}
+	if !usedRecipe && h.deps.RecipeEnabled {
+		if name, stockRec := stock.LookupLegacyType(string(src.Type)); stockRec != nil {
+			rec = stockRec
+			usedRecipe = true
+			h.bootstrapStockRecipe(ctx, src.ID, name, stockRec)
+		} else if name, stockRec := stock.LookupByBaseURL(src.BaseURL); stockRec != nil {
+			rec = stockRec
+			usedRecipe = true
+			h.bootstrapStockRecipe(ctx, src.ID, name, stockRec)
+		}
+	}
 	if !usedRecipe {
-		c, ok := h.deps.Registry.Get(src.Type)
+		engine := domain.EngineType(src.Type)
+		if domain.RequiresRecipe(engine) {
+			log.WithField("source_type", src.Type).WithField("engine", engine).
+				Warn("crawl.request: engine requires a recipe; none installed")
+			if h.deps.StatusSetter != nil {
+				_ = h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused)
+			}
+			h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
+				RequestID: req.RequestID,
+				SourceID:  req.SourceID,
+				URL:       src.BaseURL,
+				ErrorCode: "recipe_required",
+			})
+			return nil
+		}
+		c, ok := h.deps.Registry.Get(engine)
 		if !ok {
-			// No connector AND no recipe → this source can't be crawled. The
-			// common case is an individual ATS board (greenhouse/lever) whose
-			// connector was migrated to an aggregate recipe; left active it
-			// burns a dispatch on every tick. Auto-pause it so it self-heals
-			// (an operator or the aggregate owns its coverage), then ack.
+			c, ok = h.deps.Registry.Get(src.Type)
+		}
+		if !ok {
 			if h.deps.StatusSetter != nil {
 				if perr := h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused); perr != nil {
-					log.WithError(perr).Warn("crawl.request: auto-pause of connector-less source failed")
+					log.WithError(perr).Warn("crawl.request: auto-pause of engine-less source failed")
 				} else {
 					log.WithField("source_type", src.Type).
-						Warn("crawl.request: no connector — paused source to stop futile dispatch")
+						Warn("crawl.request: no engine — paused source")
 				}
 			} else {
-				log.WithField("source_type", src.Type).Warn("crawl.request: no connector")
+				log.WithField("source_type", src.Type).Warn("crawl.request: no engine")
 			}
 			h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
 				RequestID: req.RequestID,

@@ -108,6 +108,10 @@ type Pagination struct {
 	Cursor   FieldExtractor `json:"cursor,omitzero"`
 	Next     FieldExtractor `json:"next,omitzero"`
 	MaxPages int            `json:"max_pages,omitempty"`
+	// FirstPage is the page index used for the first request (default 1).
+	// 0-based APIs (e.g. The Muse) set this to 0. Pointer so omitempty
+	// still allows an explicit zero.
+	FirstPage *int `json:"first_page,omitempty"`
 	// DelayMs paces a paginated api crawl (politeness). Deep APIs
 	// (himalayas: 1700+ pages) rate-limit an undelayed loop; this sleeps
 	// between pages. A 429 deep into pagination is then treated as "you

@@ -36,7 +36,7 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 				"crawl_interval_sec", "health_score", "config",
 				"last_seen_at", "next_crawl_at", "updated_at",
 				"kinds", "required_attributes_by_kind",
-				"auto_approve",
+				"auto_approve", "listing_path",
 			}),
 		}).
 		Create(s).Error
@@ -173,6 +173,19 @@ func (r *SourceRepository) ListByStatuses(ctx context.Context, statuses []domain
 // the row does not exist — callers should check src == nil for the
 // deleted/paused case and not treat it as an error. This matches
 // JobRepository.FindByHardKey and the wider repository convention.
+// GetByTypeAndURL returns the source matching the unique (type, base_url) pair.
+func (r *SourceRepository) GetByTypeAndURL(ctx context.Context, t domain.SourceType, baseURL string) (*domain.Source, error) {
+	var s domain.Source
+	err := r.db(ctx, true).Where("type = ? AND base_url = ?", t, baseURL).First(&s).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
 func (r *SourceRepository) GetByID(ctx context.Context, id string) (*domain.Source, error) {
 	var s domain.Source
 	// GORM's `First(&s, id)` form treats a non-numeric string second

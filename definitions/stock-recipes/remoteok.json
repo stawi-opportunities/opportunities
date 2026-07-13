@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "acquisition": "api",
+  "kind": { "mode": "fixed", "fixed": "job" },
+  "list": {
+    "mode": "api",
+    "endpoint": "https://remoteok.com/api",
+    "method": "GET",
+    "headers": { "Accept": "application/json" },
+    "items_path": "$",
+    "pagination": { "mode": "none" }
+  },
+  "detail": {
+    "record_source": "record",
+    "title": { "from": ["record"], "json_path": "$.position", "required": true },
+    "description": { "from": ["record"], "json_path": "$.description", "required": true },
+    "issuing_entity": { "from": ["record"], "json_path": "$.company", "required": true },
+    "apply_url": {
+      "from": ["record"],
+      "json_path": "$.url",
+      "required": true,
+      "transform": ["absolute_url"]
+    },
+    "location_text": { "from": ["record"], "json_path": "$.location" },
+    "remote": { "from": ["const"], "const": "true" },
+    "currency": { "from": ["const"], "const": "USD" },
+    "attributes": {
+      "remote_type": { "from": ["const"], "const": "remote" },
+      "external_id": { "from": ["record"], "json_path": "$.slug" }
+    }
+  }
+}

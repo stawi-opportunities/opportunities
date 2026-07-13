@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "acquisition": "api",
+  "kind": { "mode": "fixed", "fixed": "job" },
+  "list": {
+    "mode": "api",
+    "endpoint": "https://himalayas.app/jobs/api",
+    "method": "GET",
+    "headers": { "Accept": "application/json" },
+    "params": { "limit": "50" },
+    "items_path": "$.jobs",
+    "pagination": {
+      "mode": "page_param",
+      "param": "page",
+      "max_pages": 100,
+      "delay_ms": 250
+    }
+  },
+  "detail": {
+    "record_source": "record",
+    "title": { "from": ["record"], "json_path": "$.title", "required": true },
+    "description": { "from": ["record"], "json_path": "$.excerpt", "required": true },
+    "issuing_entity": { "from": ["record"], "json_path": "$.companyName", "required": true },
+    "apply_url": {
+      "from": ["record"],
+      "json_path": "$.applicationLink",
+      "required": true,
+      "transform": ["absolute_url"]
+    },
+    "location_text": { "from": ["record"], "json_path": "$.locationRestrictions" },
+    "currency": { "from": ["record"], "json_path": "$.currency" },
+    "amount_min": { "from": ["record"], "json_path": "$.minSalary" },
+    "amount_max": { "from": ["record"], "json_path": "$.maxSalary" },
+    "remote": { "from": ["const"], "const": "true" },
+    "attributes": {
+      "employment_type": { "from": ["record"], "json_path": "$.employmentType" },
+      "seniority": { "from": ["record"], "json_path": "$.seniority" },
+      "remote_type": { "from": ["const"], "const": "remote" },
+      "external_id": { "from": ["record"], "json_path": "$.id" }
+    }
+  }
+}

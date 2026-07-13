@@ -30,6 +30,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/normalize"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/recipe"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe/stock"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
@@ -122,10 +123,17 @@ func main() {
 
 	// Repositories.
 	sourceRepo := repository.NewSourceRepository(dbFn)
+	recipeRepo := repository.NewRecipeRepository(dbFn)
+	// Bundled stock recipes replace per-board Go connectors for public APIs.
+	if serr := stock.LoadDefault(); serr != nil {
+		log.WithError(serr).Warn("stock recipes: not loaded (STOCK_RECIPES_DIR / definitions/stock-recipes)")
+	} else {
+		log.WithField("recipes", stock.Names()).Info("stock recipes loaded")
+	}
 	// Load seed sources. The registry is consulted to validate every
 	// seed's declared kinds — boot fails fast on a typo or a kind YAML
-	// that was disabled.
-	n, seedErr := seeds.LoadAndUpsert(ctx, cfg.SeedsDir, sourceRepo, reg)
+	// that was disabled. Stock recipes named in seeds are activated.
+	n, seedErr := seeds.LoadAndUpsertWithRecipes(ctx, cfg.SeedsDir, sourceRepo, reg, recipeRepo)
 	if seedErr != nil {
 		log.WithError(seedErr).WithField("loaded", n).Warn("seed loading incomplete")
 	} else {
@@ -252,7 +260,6 @@ func main() {
 	// the cursor that lets a millions-of-jobs board resume instead of
 	// restarting. Supersedes the old crawl_checkpoints store.
 	crawlRunRepo := repository.NewCrawlRunRepository(dbFn)
-	recipeRepo := repository.NewRecipeRepository(dbFn)
 
 	// URL frontier (D2) — discovered URLs from frontier-enabled
 	// sources land here; apps/frontier-worker pulls + fetches them.

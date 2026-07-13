@@ -141,26 +141,26 @@ export type DefinitionEntry = {
 // listDefinitionsByType for that shape.
 export type DefinitionsListResponse = Record<string, DefinitionEntry[]>;
 
-/** Connector / source types the platform knows how to crawl. */
+/**
+ * Crawl engines only. Site-specific boards are data: source row + recipe.
+ * Legacy type strings still appear on old rows but new sources use these.
+ */
 export const SOURCE_TYPES = [
+  "api",
+  "schema_org",
+  "sitemap",
+  "generic_html",
+  "workday",
+  "smartrecruiters_api",
+] as const;
+
+/** Bundled stock recipes (definitions/stock-recipes) for common public APIs. */
+export const STOCK_RECIPES = [
   "remoteok",
   "arbeitnow",
   "jobicy",
   "themuse",
   "himalayas",
-  "workday",
-  "smartrecruiters_api",
-  "smartrecruiters_page",
-  "schema_org",
-  "sitemap",
-  "generic_html",
-  "brightermonday",
-  "jobberman",
-  "myjobmag",
-  "njorku",
-  "careers24",
-  "pnet",
-  "hosted_boards",
 ] as const;
 
 export type SourceType = (typeof SOURCE_TYPES)[number];
@@ -365,6 +365,8 @@ export type CreateSourceRequest = {
   listing_path?: string;
   auto_approve?: boolean;
   priority?: number;
+  /** Stock recipe name (definitions/stock-recipes/{name}.json). */
+  recipe?: string;
 };
 
 export const createSource = (body: CreateSourceRequest): Promise<AdminSource> =>

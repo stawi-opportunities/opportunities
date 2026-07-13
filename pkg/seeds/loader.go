@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/recipe/stock"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
@@ -40,7 +42,9 @@ func (p priorityLabel) toDomain() (domain.Priority, error) {
 type SeedEntry struct {
 	SourceType domain.SourceType `json:"source_type"`
 	BaseURL    string            `json:"base_url"`
-	Country    string            `json:"country"`
+	// Name is an optional operator-facing label.
+	Name    string `json:"name,omitempty"`
+	Country string `json:"country"`
 	// Language is the ISO 639-1 code of postings served by this source
 	// (e.g. "en", "fr", "ja"). Blank entries default to "en".
 	Language         string        `json:"language"`
@@ -57,6 +61,12 @@ type SeedEntry struct {
 	// RequiredAttributesByKind tightens Spec.KindRequired for this source.
 	// Optional; blank entries default to {}.
 	RequiredAttributesByKind map[string][]string `json:"required_attributes_by_kind,omitempty"`
+	// Recipe is a stock recipe name under definitions/stock-recipes/
+	// (e.g. "remoteok"). When set (or when host matches a stock recipe),
+	// the seed path installs that recipe onto the source after upsert.
+	Recipe string `json:"recipe,omitempty"`
+	// ListingPath is the definite jobs listing relative to BaseURL.
+	ListingPath string `json:"listing_path,omitempty"`
 }
 
 // LoadAndUpsert walks seedsDir recursively, reads every .json file, unmarshals
@@ -66,7 +76,15 @@ type SeedEntry struct {
 // reg may be nil — when nil, kind validation is skipped (useful for tests
 // that don't load the opportunity registry). In production reg should
 // always be non-nil so seeds with unknown kinds are caught at boot.
+//
+// recipes may be nil; when non-nil, stock recipes named in the seed (or
+// matched by base_url host) are activated onto the source.
 func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.SourceRepository, reg *opportunity.Registry) (int, error) {
+	return LoadAndUpsertWithRecipes(ctx, seedsDir, repo, reg, nil)
+}
+
+// LoadAndUpsertWithRecipes is LoadAndUpsert plus optional stock-recipe attach.
+func LoadAndUpsertWithRecipes(ctx context.Context, seedsDir string, repo *repository.SourceRepository, reg *opportunity.Registry, recipes *repository.RecipeRepository) (int, error) {
 	total := 0
 
 	err := filepath.WalkDir(seedsDir, func(path string, d fs.DirEntry, walkErr error) error {
@@ -133,8 +151,11 @@ func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.Source
 			if interval > 0 && interval < 12*3600 {
 				interval = 12 * 3600
 			}
+			// Prefer engine types for new seeds; legacy types still accepted
+			// (crawl maps them via domain.EngineType / stock recipes).
 			src := &domain.Source{
 				Type:                     e.SourceType,
+				Name:                     e.Name,
 				BaseURL:                  e.BaseURL,
 				Country:                  e.Country,
 				Language:                 lang,
@@ -146,11 +167,17 @@ func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.Source
 				NextCrawlAt:              now,
 				Kinds:                    pq.StringArray(kinds),
 				RequiredAttributesByKind: reqByKind,
+				ListingPath:              e.ListingPath,
 			}
 
 			if err := repo.Upsert(ctx, src); err != nil {
 				return fmt.Errorf("upsert %s entry %d (%s %s): %w",
 					path, i, e.SourceType, e.BaseURL, err)
+			}
+			if recipes != nil {
+				if err := attachSeedRecipe(ctx, recipes, repo, src, e.Recipe); err != nil {
+					return fmt.Errorf("%s entry %d recipe: %w", path, i, err)
+				}
 			}
 			total++
 		}
@@ -161,4 +188,43 @@ func LoadAndUpsert(ctx context.Context, seedsDir string, repo *repository.Source
 		return total, err
 	}
 	return total, nil
+}
+
+// attachSeedRecipe installs a stock recipe when the source has none yet.
+// Recipe name comes from the seed field, then host lookup.
+func attachSeedRecipe(ctx context.Context, recipes *repository.RecipeRepository, sources *repository.SourceRepository, seed *domain.Source, recipeName string) error {
+	// Resolve the row id after upsert (unique on type+base_url).
+	row, err := sources.GetByTypeAndURL(ctx, seed.Type, seed.BaseURL)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return nil
+	}
+	active, err := recipes.Active(ctx, row.ID)
+	if err != nil {
+		return err
+	}
+	if active != nil {
+		return nil
+	}
+	name := strings.TrimSpace(recipeName)
+	var rec = stock.Get(name)
+	if rec == nil {
+		name, rec = stock.LookupByBaseURL(seed.BaseURL)
+	}
+	if rec == nil {
+		name, rec = stock.LookupLegacyType(string(seed.Type))
+	}
+	if rec == nil {
+		return nil
+	}
+	if err := recipes.Activate(ctx, row.ID, rec, 1.0, "stock:"+name, map[string]any{
+		"source": "seed", "stock": name,
+	}); err != nil {
+		return err
+	}
+	util.Log(ctx).WithField("source_id", row.ID).WithField("stock", name).
+		Info("seeds: stock recipe activated")
+	return nil
 }
