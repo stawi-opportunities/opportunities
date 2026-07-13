@@ -168,7 +168,7 @@ func (r *TraceRepository) rejectionReasons(ctx context.Context, sourceID string,
 	if err != nil {
 		return out, fmt.Errorf("rejectionReasons: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var reason string
 		var n int64

@@ -460,7 +460,7 @@ func (a *jobsAdmin) handleOpsOverview(w http.ResponseWriter, r *http.Request) {
 		 GROUP BY 1 ORDER BY 2 DESC LIMIT 20
 	`).Rows()
 	if rerr == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var reason string
 			var n int64
