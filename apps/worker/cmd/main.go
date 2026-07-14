@@ -11,6 +11,7 @@ import (
 
 	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
 	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 )
 
@@ -31,6 +32,22 @@ func main() {
 	processor := workersvc.NewPostgresProcessor(jobqueue.New(pool.DB), "",
 		cfg.PostgresBatchSize, cfg.PostgresConcurrency, cfg.PostgresPollInterval,
 		cfg.PostgresLease, cfg.PostgresMaxAttempts)
+	if cfg.EmbeddingBaseURL != "" {
+		embBase, embModel, embKey := extraction.ResolveEmbedding(
+			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
+		)
+		ex := extraction.New(extraction.Config{
+			EmbeddingBaseURL:    embBase,
+			EmbeddingAPIKey:     embKey,
+			EmbeddingModel:      embModel,
+			EmbeddingDimensions: cfg.EmbeddingDimensions,
+		})
+		processor.WithEmbedder(ex)
+		util.Log(ctx).WithField("model", embModel).WithField("dims", cfg.EmbeddingDimensions).
+			Info("worker: opportunity embedding enabled")
+	} else {
+		util.Log(ctx).Warn("worker: EMBEDDING_BASE_URL empty — opportunities stored without vectors")
+	}
 	go processor.Run(ctx)
 	util.Log(ctx).Info("worker: PostgreSQL ingestion processor started")
 
