@@ -62,6 +62,7 @@ func main() {
 			EmbeddingAPIKey:     embKey,
 			EmbeddingModel:      embModel,
 			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			EmbeddingInputType:  cfg.EmbeddingInputType,
 			HTTPClient:          svc.HTTPClientManager().Client(ctx),
 		})
 		embedH := workersvc.NewEmbedHandler(store, ex)

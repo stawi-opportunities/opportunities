@@ -70,6 +70,11 @@ type Config struct {
 	// Qwen3-Embedding family) emit a fixed-width vector matching the
 	// pgvector column. 0 omits it (native width — e5-large is 1024).
 	EmbeddingDimensions int
+	// EmbeddingInputType, when set (e.g. "passage" / "query"), is sent as
+	// NVIDIA NIM / asymmetric-E5 `input_type`. Required by nv-embedqa-e5-v5
+	// on integrate.api.nvidia.com; omit for providers that reject unknown
+	// fields (TEI, SiliconFlow).
+	EmbeddingInputType string
 	// EmbeddingMaxConcurrency bounds simultaneous embedding HTTP calls made by
 	// this process. 0 disables the in-process semaphore.
 	EmbeddingMaxConcurrency int
@@ -338,6 +343,11 @@ func (e *Extractor) embed(ctx context.Context, text string) ([]float32, error) {
 	// dimension differs can't silently break the dim guard.
 	if e.embeddingDimensions > 0 {
 		body["dimensions"] = e.embeddingDimensions
+	}
+	// NVIDIA nv-embedqa-e5-v5 (and other asymmetric E5 NIMs) require
+	// input_type; TEI/OpenAI-compat hosts typically ignore or omit it.
+	if e.embeddingInputType != "" {
+		body["input_type"] = e.embeddingInputType
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

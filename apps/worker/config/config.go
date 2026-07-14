@@ -23,6 +23,10 @@ type Config struct {
 	EmbeddingAPIKey     string `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel      string `env:"EMBEDDING_MODEL" envDefault:""`
 	EmbeddingDimensions int    `env:"EMBEDDING_DIMENSIONS" envDefault:"1024"`
+	// EmbeddingInputType is required by NVIDIA asymmetric E5 NIMs
+	// ("passage" for opportunity documents, "query" for search). Empty
+	// omits the field for TEI/OpenAI-compat hosts that reject it.
+	EmbeddingInputType string `env:"EMBEDDING_INPUT_TYPE" envDefault:""`
 	// WorkerEmbedQueueURL is the Frame Queue DSN for SubjectWorkerEmbed
 	// (svc.opportunities.worker.embed.v1). Required together with
 	// EMBEDDING_BASE_URL to enable opportunity vectors.
