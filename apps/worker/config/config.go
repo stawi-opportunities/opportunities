@@ -16,13 +16,17 @@ type Config struct {
 	PostgresLease        time.Duration `env:"POSTGRES_LEASE" envDefault:"2m"`
 	PostgresMaxAttempts  int           `env:"POSTGRES_MAX_ATTEMPTS" envDefault:"10"`
 
-	// Embeddings — optional. When EMBEDDING_BASE_URL is empty, rows are
-	// stored without vectors (filter search only). Dimensions must match
-	// opportunities.embedding vector(1024).
+	// Embeddings — optional. Dimensions must match opportunities.embedding
+	// vector(1024). Live path: Complete → Frame Queue (WorkerEmbedQueueURL)
+	// → EmbedHandler → SetEmbedding.
 	EmbeddingBaseURL    string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey     string `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel      string `env:"EMBEDDING_MODEL" envDefault:""`
 	EmbeddingDimensions int    `env:"EMBEDDING_DIMENSIONS" envDefault:"1024"`
+	// WorkerEmbedQueueURL is the Frame Queue DSN for SubjectWorkerEmbed
+	// (svc.opportunities.worker.embed.v1). Required together with
+	// EMBEDDING_BASE_URL to enable opportunity vectors.
+	WorkerEmbedQueueURL string `env:"WORKER_EMBED_QUEUE_URL" envDefault:""`
 }
 
 func Load() (Config, error) { return fconfig.FromEnv[Config]() }

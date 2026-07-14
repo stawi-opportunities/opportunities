@@ -70,4 +70,10 @@ const (
 	// SubjectMatchingDeadletter receives matching events that exceeded the
 	// redelivery budget. Admin /api/admin/dlq/replay re-publishes them.
 	SubjectMatchingDeadletter = "svc.opportunities.matching.deadletter"
+
+	// Opportunity pipeline stages that call external services (Frame Queue).
+	// SubjectWorkerEmbed: after postgres Complete, the ingest worker publishes
+	// OpportunityEmbedV1 here; EmbedHandler computes the vector and writes
+	// opportunities.embedding. Durable + retried (external embedding HTTP).
+	SubjectWorkerEmbed = "svc.opportunities.worker.embed.v1"
 )
