@@ -29,7 +29,37 @@ func TestOnboardingChatHandler_HeuristicReady(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "senior", fields["experience_level"])
 	require.Equal(t, "KE", fields["country"])
-	require.Equal(t, true, out["ready"])
+	require.Equal(t, "actively_looking", fields["job_search_status"])
+	// regions default from country or explicit Africa
+	regions, _ := fields["preferred_regions"].([]any)
+	require.NotEmpty(t, regions)
+	require.Equal(t, true, out["ready"], "missing=%v fields=%v", out["missing"], fields)
+}
+
+func TestOnboardingChatHandler_MergesDraftAcrossTurns(t *testing.T) {
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingChatHandler(v1.OnboardingChatDeps{}))
+	// Turn 1: title only
+	body1 := `{"message":"Looking for a data analyst role","draft":{}}`
+	req1 := httptest.NewRequest(http.MethodPost, "/me/onboarding/chat", bytes.NewBufferString(body1))
+	req1.Header.Set("X-Candidate-ID", "cand_chat_2")
+	rec1 := httptest.NewRecorder()
+	h.ServeHTTP(rec1, req1)
+	require.Equal(t, http.StatusOK, rec1.Code)
+	var out1 map[string]any
+	require.NoError(t, json.Unmarshal(rec1.Body.Bytes(), &out1))
+	require.Equal(t, false, out1["ready"])
+	fields1, _ := out1["fields"].(map[string]any)
+
+	// Turn 2: remaining details + prior draft
+	draftJSON, _ := json.Marshal(map[string]any{"message": "Based in Uganda, senior, full-time, English, Africa, actively looking", "draft": fields1})
+	req2 := httptest.NewRequest(http.MethodPost, "/me/onboarding/chat", bytes.NewReader(draftJSON))
+	req2.Header.Set("X-Candidate-ID", "cand_chat_2")
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+	require.Equal(t, http.StatusOK, rec2.Code, rec2.Body.String())
+	var out2 map[string]any
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &out2))
+	require.Equal(t, true, out2["ready"], "missing=%v", out2["missing"])
 }
 
 func TestOnboardingChatHandler_EmptyMessage(t *testing.T) {

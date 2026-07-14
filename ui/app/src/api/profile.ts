@@ -35,14 +35,31 @@ export interface OnboardingPayload {
  * the text fields. CV upload is a separate PUT /me/cv call (required
  * because the v1 runtime can't send multipart-with-text-fields).
  */
+function isNotFound(err: unknown): boolean {
+  const code =
+    err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+  const msg = err instanceof Error ? err.message : String(err);
+  return code === 'API_NOT_FOUND' || /404|not found/i.test(msg);
+}
+
 export async function submitOnboarding(
   payload: OnboardingPayload
 ): Promise<{ id: string; profile_id: string }> {
-  return authRuntime().fetch('/candidates/onboard', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  // Prefer the canonical /matching prefix; fall back to legacy top-level path.
+  try {
+    return await authRuntime().fetch('/matching/candidates/onboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    return authRuntime().fetch('/candidates/onboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
 }
 
 /**
@@ -51,8 +68,14 @@ export async function submitOnboarding(
  * response carries the updated candidate row.
  */
 export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: number }> {
-  return authRuntime().upload('/me/cv', file);
+  try {
+    return await authRuntime().upload('/matching/me/cv', file);
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    return authRuntime().upload('/me/cv', file);
+  }
 }
+
 
 // ── Candidate profile ─────────────────────────────────────────────
 

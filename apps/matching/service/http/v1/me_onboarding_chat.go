@@ -207,12 +207,7 @@ Latest user message:
 	if err != nil {
 		return onboardingChatFields{}, "", err
 	}
-	// Tolerate fenced JSON.
-	raw = strings.TrimSpace(raw)
-	raw = strings.TrimPrefix(raw, "```json")
-	raw = strings.TrimPrefix(raw, "```")
-	raw = strings.TrimSuffix(raw, "```")
-	raw = strings.TrimSpace(raw)
+	raw = extractJSONObject(raw)
 
 	var parsed struct {
 		Fields  onboardingChatFields `json:"fields"`
@@ -264,11 +259,44 @@ func mergeChatFields(base, overlay onboardingChatFields) onboardingChatFields {
 	if v := strings.TrimSpace(overlay.ExtraInfo); v != "" {
 		out.ExtraInfo = v
 	}
-	// Defaults for search status when still empty after merge heuristics.
+	// Defaults once we know something about the candidate.
 	if out.JobSearchStatus == "" && out.TargetJobTitle != "" {
 		out.JobSearchStatus = "actively_looking"
 	}
+	if len(out.PreferredLanguages) == 0 && (out.TargetJobTitle != "" || len(out.ExtraInfo) > 80) {
+		out.PreferredLanguages = []string{"English"}
+	}
+	if len(out.PreferredRegions) == 0 && strings.TrimSpace(out.Country) != "" {
+		out.PreferredRegions = regionForCountry(out.Country)
+	}
+	if len(out.JobTypes) == 0 && out.TargetJobTitle != "" {
+		out.JobTypes = []string{"Full-time"}
+	}
 	return out
+}
+
+func regionForCountry(cc string) []string {
+	c := strings.ToUpper(strings.TrimSpace(cc))
+	africa := map[string]struct{}{
+		"KE": {}, "UG": {}, "NG": {}, "GH": {}, "ZA": {}, "RW": {}, "TZ": {}, "ET": {}, "EG": {}, "MA": {},
+	}
+	if _, ok := africa[c]; ok {
+		return []string{"Africa"}
+	}
+	switch c {
+	case "US", "CA", "MX":
+		return []string{"North America"}
+	case "GB", "DE", "FR", "NL", "IE", "ES", "IT", "SE", "NO", "CH":
+		return []string{"Europe"}
+	case "IN", "PH", "SG", "JP", "CN", "AE", "SA":
+		return []string{"Asia"}
+	case "BR", "AR", "CL", "CO":
+		return []string{"South America"}
+	case "AU", "NZ":
+		return []string{"Oceania"}
+	default:
+		return []string{"Anywhere"}
+	}
 }
 
 func missingChatFields(f onboardingChatFields) []string {
@@ -417,29 +445,41 @@ func heuristicExtract(msg string) onboardingChatFields {
 
 func guessTitle(msg string) string {
 	low := strings.ToLower(msg)
+	// Prefer identity phrases before "looking for …" (avoids matching
+	// "actively looking for full-time roles").
 	markers := []string{
-		"looking for a ", "looking for an ", "looking for ",
-		"seeking a ", "seeking an ", "seeking ",
-		"target role is ", "role as a ", "role as an ",
 		"i am a ", "i'm a ", "i am an ", "i'm an ",
 		"work as a ", "work as an ",
+		"role as a ", "role as an ",
+		"target role is ", "title: ", "position: ",
+		"seeking a ", "seeking an ",
+		"looking for a ", "looking for an ",
 	}
 	for _, m := range markers {
 		if i := strings.Index(low, m); i >= 0 {
 			rest := strings.TrimSpace(msg[i+len(m):])
-			// Take until punctuation or newline.
 			for _, sep := range []string{"\n", ".", ",", ";", " in ", " based", " with ", " who "} {
 				if j := strings.Index(strings.ToLower(rest), sep); j > 0 {
 					rest = rest[:j]
 				}
 			}
 			rest = strings.TrimSpace(rest)
-			if len(rest) >= 2 && len(rest) <= 80 {
+			if len(rest) >= 2 && len(rest) <= 80 && !junkTitle(rest) {
 				return rest
 			}
 		}
 	}
 	return ""
+}
+
+func junkTitle(s string) bool {
+	low := strings.ToLower(strings.TrimSpace(s))
+	for _, p := range []string{"full-time", "full time", "part-time", "remote", "contract", "roles", "jobs", "opportunities"} {
+		if strings.HasPrefix(low, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeExperience(s string) string {
@@ -519,4 +559,36 @@ func truncateRunes(s string, n int) string {
 		return s
 	}
 	return string(r[:n])
+}
+
+// extractJSONObject strips markdown fences and leading prose so we can
+// decode model output that wraps JSON in ```json … ``` or chatter.
+func extractJSONObject(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```json")
+		s = strings.TrimPrefix(s, "```JSON")
+		s = strings.TrimPrefix(s, "```")
+		if i := strings.LastIndex(s, "```"); i >= 0 {
+			s = s[:i]
+		}
+		s = strings.TrimSpace(s)
+	}
+	if i := strings.Index(s, "{"); i >= 0 {
+		// Find matching closing brace at top level (best-effort).
+		depth := 0
+		for j := i; j < len(s); j++ {
+			switch s[j] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					return strings.TrimSpace(s[i : j+1])
+				}
+			}
+		}
+		return strings.TrimSpace(s[i:])
+	}
+	return s
 }

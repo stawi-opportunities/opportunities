@@ -82,6 +82,9 @@ export default defineConfig(({ command }) => ({
         target: 'https://api.stawi.org',
         changeOrigin: true,
         secure: true,
+        // Onboarding chat may hit inference (30–90s).
+        timeout: 120_000,
+        proxyTimeout: 120_000,
         rewrite: (path: string) => path.replace(/^\/candidates-api/, ''),
       },
     },

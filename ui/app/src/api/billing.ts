@@ -64,16 +64,29 @@ export interface CheckoutCreateInput {
 
 /** POST /billing/checkout — auth'd. */
 export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
-  return authRuntime().fetch('/billing/checkout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      plan_id: input.plan_id,
-      email: input.email ?? '',
-      phone: input.phone ?? '',
-      route_hint: input.route_hint ?? '',
-    }),
+  const body = JSON.stringify({
+    plan_id: input.plan_id,
+    email: input.email ?? '',
+    phone: input.phone ?? '',
+    route_hint: input.route_hint ?? '',
   });
+  try {
+    return await authRuntime().fetch('/matching/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  } catch (err) {
+    const code =
+      err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+    const msg = err instanceof Error ? err.message : String(err);
+    if (code !== 'API_NOT_FOUND' && !/404|not found/i.test(msg)) throw err;
+    return authRuntime().fetch('/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  }
 }
 
 export interface CheckoutStatusResponse {

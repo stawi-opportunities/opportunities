@@ -277,21 +277,43 @@ export interface OnboardingChatResponse {
  * POST /matching/me/onboarding/chat — one conversational turn.
  * Server merges free-text (or pasted CV) into structured fields via AI
  * when inference is configured, otherwise a heuristic parser.
+ *
+ * Falls back to a client-side heuristic when the matching binary is older
+ * (404) or temporarily unavailable so onboarding still completes locally.
  */
 export async function sendOnboardingChat(input: {
   message: string;
   history?: OnboardingChatMessage[];
   draft?: OnboardingChatFields;
 }): Promise<OnboardingChatResponse> {
-  return authRuntime().fetch('/matching/me/onboarding/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: input.message,
-      history: input.history ?? [],
-      draft: input.draft ?? {},
-    }),
-  });
+  try {
+    return await authRuntime().fetch<OnboardingChatResponse>('/matching/me/onboarding/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: input.message,
+        history: input.history ?? [],
+        draft: input.draft ?? {},
+      }),
+      // LLM turns can be slow on free-tier inference.
+      timeoutMs: 90_000,
+    });
+  } catch (err) {
+    // Local fallback when matching hasn't been redeployed yet, or inference
+    // is briefly unavailable. Auth errors still surface to the UI.
+    const code =
+      err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+    const msg = err instanceof Error ? err.message : String(err);
+    const fallbackable =
+      code === 'API_NOT_FOUND' ||
+      code === 'API_SERVER_ERROR' ||
+      code === 'NETWORK_ERROR' ||
+      code === 'NETWORK_TIMEOUT' ||
+      /404|502|503|504|Failed to fetch|not found|timeout/i.test(msg);
+    if (!fallbackable) throw err;
+    const { localChatTurn } = await import('@/onboarding/chatHeuristic');
+    return localChatTurn(input.message, input.draft ?? {});
+  }
 }
 
 // ΓöÇΓöÇ /me/opportunities ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

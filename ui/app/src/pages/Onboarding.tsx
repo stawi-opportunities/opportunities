@@ -14,6 +14,7 @@ import {
   type OnboardingChatMessage,
   type OnboardingDraftFields,
 } from '@/api/candidates';
+import { isChatReady } from '@/onboarding/chatHeuristic';
 
 type Phase = 'chat' | 'plan';
 
@@ -61,15 +62,7 @@ function draftToChatFields(d: OnboardingDraftFields): OnboardingChatFields {
 }
 
 function isReady(f: OnboardingChatFields): boolean {
-  return Boolean(
-    f.target_job_title?.trim() &&
-      f.experience_level &&
-      f.job_search_status &&
-      f.country?.trim() &&
-      (f.preferred_regions?.length ?? 0) > 0 &&
-      (f.preferred_languages?.length ?? 0) > 0 &&
-      (f.job_types?.length ?? 0) > 0
-  );
+  return isChatReady(f);
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -192,16 +185,20 @@ export default function Onboarding() {
         history,
         draft: fields,
       });
+      // Recompute readiness client-side so defaults (region from country, etc.)
+      // stay consistent even if an older server omits them.
+      const ready = isChatReady(res.fields) || res.ready;
+      const miss = ready ? [] : (res.missing ?? []);
       setFields(res.fields);
-      setMissing(res.missing ?? []);
+      setMissing(miss);
       setMessages((prev) => [...prev, { role: 'assistant', content: res.reply }]);
       const draftFields = fieldsToDraft(res.fields, plan);
       try {
-        await saveOnboardingDraft(res.ready ? 2 : 1, draftFields);
+        await saveOnboardingDraft(ready ? 2 : 1, draftFields);
       } catch {
         // non-blocking
       }
-      if (res.ready) {
+      if (ready) {
         setPhase('plan');
       }
     } catch (e) {
