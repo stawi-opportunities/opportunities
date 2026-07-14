@@ -244,6 +244,56 @@ export async function saveOnboardingDraft(
   });
 }
 
+// ── /me/onboarding/chat ───────────────────────────────────────────────────
+
+export interface OnboardingChatFields {
+  target_job_title?: string;
+  experience_level?: string;
+  job_search_status?: string;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  currency?: string;
+  preferred_regions?: string[];
+  preferred_timezones?: string[];
+  preferred_languages?: string[];
+  job_types?: string[];
+  country?: string;
+  extra_info?: string;
+}
+
+export interface OnboardingChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface OnboardingChatResponse {
+  reply: string;
+  fields: OnboardingChatFields;
+  missing: string[];
+  ready: boolean;
+}
+
+/**
+ * POST /matching/me/onboarding/chat — one conversational turn.
+ * Server merges free-text (or pasted CV) into structured fields via AI
+ * when inference is configured, otherwise a heuristic parser.
+ */
+export async function sendOnboardingChat(input: {
+  message: string;
+  history?: OnboardingChatMessage[];
+  draft?: OnboardingChatFields;
+}): Promise<OnboardingChatResponse> {
+  return authRuntime().fetch('/matching/me/onboarding/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: input.message,
+      history: input.history ?? [],
+      draft: input.draft ?? {},
+    }),
+  });
+}
+
 // ΓöÇΓöÇ /me/opportunities ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export type OpportunityFilter = 'all' | 'matches' | 'starred' | 'applied';

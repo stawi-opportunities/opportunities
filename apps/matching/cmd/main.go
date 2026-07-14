@@ -442,6 +442,16 @@ func main() {
 	}))
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
+	// Conversational onboarding: free-text / CV paste → structured draft.
+	// Uses the shared extractor when inference is configured; otherwise a
+	// deterministic heuristic still drives the chat wizard.
+	var onboardChatLLM httpv1.OnboardingChatLLM
+	if extractor != nil {
+		onboardChatLLM = extractor
+	}
+	mux.Handle("POST /me/onboarding/chat", authMW(
+		httpv1.OnboardingChatHandler(httpv1.OnboardingChatDeps{LLM: onboardChatLLM}),
+	))
 
 	// /candidates/onboard — wizard final submit. Promotes the draft
 	// into the canonical profile columns and clears the draft in one
