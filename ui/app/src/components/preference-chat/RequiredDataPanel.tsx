@@ -81,10 +81,7 @@ export function RequiredDataPanel({
           const value = status?.value || valueForKey(key, fields);
           const reason = status?.reason;
           return (
-            <li
-              key={key}
-              className="flex items-start gap-2 text-sm"
-            >
+            <li key={key} className="flex items-start gap-2 text-sm">
               <span
                 className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
                   ok

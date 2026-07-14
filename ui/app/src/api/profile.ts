@@ -123,7 +123,6 @@ export async function fetchMeCV(): Promise<MeCVDocument | null> {
   }
 }
 
-
 // ── Candidate profile ─────────────────────────────────────────────
 
 /** Subset of CandidateProfile the UI consumes. */

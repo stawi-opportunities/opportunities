@@ -12,11 +12,7 @@ import {
   type OnboardingChatMessage,
 } from '@/api/candidates';
 import { isChatReady } from '@/onboarding/chatHeuristic';
-import {
-  PreferenceChat,
-  draftToChatFields,
-  summaryChips,
-} from '@/components/preference-chat';
+import { PreferenceChat, draftToChatFields, summaryChips } from '@/components/preference-chat';
 
 type Phase = 'chat' | 'plan';
 
@@ -122,12 +118,11 @@ export default function Onboarding() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const opportunityCountries =
-        fields.preferred_countries?.length
-          ? fields.preferred_countries
-          : fields.country
-            ? [fields.country]
-            : [];
+      const opportunityCountries = fields.preferred_countries?.length
+        ? fields.preferred_countries
+        : fields.country
+          ? [fields.country]
+          : [];
       await submitOnboarding({
         target_job_title: fields.target_job_title!,
         experience_level: fields.experience_level!,
@@ -234,124 +229,123 @@ export default function Onboarding() {
       </header>
 
       <div className="space-y-6">
-          <button
-            type="button"
-            onClick={openChat}
-            className="text-sm font-medium text-gray-600 hover:text-gray-900"
-          >
-            ← Back to chat
-          </button>
+        <button
+          type="button"
+          onClick={openChat}
+          className="text-sm font-medium text-gray-600 hover:text-gray-900"
+        >
+          ← Back to chat
+        </button>
 
-          {chips.length > 0 && (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Your profile snapshot
-              </p>
-              <ul className="mt-2 space-y-1 text-sm text-gray-800">
-                {chips.map((c) => (
-                  <li key={c.key}>
-                    <span className="text-gray-500">{c.label}:</span> {c.value}
-                  </li>
-                ))}
-              </ul>
+        {chips.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Your profile snapshot
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-gray-800">
+              {chips.map((c) => (
+                <li key={c.key}>
+                  <span className="text-gray-500">{c.label}:</span> {c.value}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={openChat}
+              className="mt-2 text-xs font-medium text-navy-800 underline-offset-2 hover:underline"
+            >
+              Tweak in chat
+            </button>
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          {PLANS.map((p) => {
+            const selected = plan === p.id;
+            return (
               <button
+                key={p.id}
                 type="button"
-                onClick={openChat}
-                className="mt-2 text-xs font-medium text-navy-800 underline-offset-2 hover:underline"
+                onClick={() => setPlan(p.id)}
+                className={`rounded-2xl border p-4 text-left transition-shadow ${
+                  selected
+                    ? 'border-navy-900 bg-navy-900 text-white shadow-md'
+                    : 'border-gray-200 bg-white text-gray-900 hover:border-gray-300'
+                } ${p.highlight && !selected ? 'ring-2 ring-accent-400/40' : ''}`}
               >
-                Tweak in chat
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-lg font-semibold">{p.name}</span>
+                  <span
+                    className={`text-sm font-medium ${selected ? 'text-white/90' : 'text-gray-600'}`}
+                  >
+                    ${p.price}/mo
+                  </span>
+                </div>
+                <p className={`mt-1 text-sm ${selected ? 'text-white/80' : 'text-gray-600'}`}>
+                  {p.tagline}
+                </p>
               </button>
-            </div>
-          )}
+            );
+          })}
+        </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            {PLANS.map((p) => {
-              const selected = plan === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPlan(p.id)}
-                  className={`rounded-2xl border p-4 text-left transition-shadow ${
-                    selected
-                      ? 'border-navy-900 bg-navy-900 text-white shadow-md'
-                      : 'border-gray-200 bg-white text-gray-900 hover:border-gray-300'
-                  } ${p.highlight && !selected ? 'ring-2 ring-accent-400/40' : ''}`}
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-lg font-semibold">{p.name}</span>
-                    <span
-                      className={`text-sm font-medium ${selected ? 'text-white/90' : 'text-gray-600'}`}
-                    >
-                      ${p.price}/mo
-                    </span>
-                  </div>
-                  <p className={`mt-1 text-sm ${selected ? 'text-white/80' : 'text-gray-600'}`}>
-                    {p.tagline}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
-            <label className="block text-sm font-medium text-gray-900">
-              Optional: upload CV file
-            </label>
-            <p className="mt-0.5 text-xs text-gray-500">
-              If you only pasted text above, a PDF/DOCX helps matching quality.
-            </p>
-            <input
-              type="file"
-              accept=".pdf,.doc,.docx,.rtf,.txt"
-              className="mt-2 block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
-              onChange={(e) => setCv(e.target.files?.[0] ?? undefined)}
-            />
-            {cv && (
-              <p className="mt-1 truncate text-xs text-gray-600">
-                {cv.name} ({(cv.size / 1024).toFixed(0)} KB)
-              </p>
-            )}
-          </div>
-
-          <label className="flex items-start gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={agreeTerms}
-              onChange={(e) => setAgreeTerms(e.target.checked)}
-              className="mt-1 rounded border-gray-300 text-navy-900 focus:ring-navy-900"
-            />
-            <span>
-              I agree to the{' '}
-              <a href="/terms/" className="underline" target="_blank" rel="noreferrer">
-                terms of service
-              </a>{' '}
-              and{' '}
-              <a href="/privacy/" className="underline" target="_blank" rel="noreferrer">
-                privacy policy
-              </a>
-              .
-            </span>
+        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+          <label className="block text-sm font-medium text-gray-900">
+            Optional: upload CV file
           </label>
-
-          {submitError && (
-            <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
-              {submitError}
+          <p className="mt-0.5 text-xs text-gray-500">
+            If you only pasted text above, a PDF/DOCX helps matching quality.
+          </p>
+          <input
+            type="file"
+            accept=".pdf,.doc,.docx,.rtf,.txt"
+            className="mt-2 block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
+            onChange={(e) => setCv(e.target.files?.[0] ?? undefined)}
+          />
+          {cv && (
+            <p className="mt-1 truncate text-xs text-gray-600">
+              {cv.name} ({(cv.size / 1024).toFixed(0)} KB)
             </p>
           )}
+        </div>
 
-          <button
-            type="button"
-            disabled={submitting || !agreeTerms}
-            onClick={() => void finishOnboarding()}
-            className="w-full rounded-xl bg-navy-900 px-6 py-3 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50 sm:w-auto"
-          >
-            {submitting
-              ? t('onboard.submitting')
-              : `${t('onboard.continueToPayment')} · $${planById(plan).price}${t('dash.perMonth')}`}
-          </button>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={agreeTerms}
+            onChange={(e) => setAgreeTerms(e.target.checked)}
+            className="mt-1 rounded border-gray-300 text-navy-900 focus:ring-navy-900"
+          />
+          <span>
+            I agree to the{' '}
+            <a href="/terms/" className="underline" target="_blank" rel="noreferrer">
+              terms of service
+            </a>{' '}
+            and{' '}
+            <a href="/privacy/" className="underline" target="_blank" rel="noreferrer">
+              privacy policy
+            </a>
+            .
+          </span>
+        </label>
+
+        {submitError && (
+          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            {submitError}
+          </p>
+        )}
+
+        <button
+          type="button"
+          disabled={submitting || !agreeTerms}
+          onClick={() => void finishOnboarding()}
+          className="w-full rounded-xl bg-navy-900 px-6 py-3 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50 sm:w-auto"
+        >
+          {submitting
+            ? t('onboard.submitting')
+            : `${t('onboard.continueToPayment')} · $${planById(plan).price}${t('dash.perMonth')}`}
+        </button>
       </div>
     </div>
   );
 }
-

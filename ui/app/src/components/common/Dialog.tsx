@@ -18,14 +18,7 @@ const sizeClass: Record<NonNullable<DialogProps['size']>, string> = {
   xl: 'max-w-2xl',
 };
 
-export function Dialog({
-  open,
-  onClose,
-  title,
-  description,
-  children,
-  size = 'md',
-}: DialogProps) {
+export function Dialog({ open, onClose, title, description, children, size = 'md' }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleId = useRef(`dialog-title-${crypto.randomUUID()}`);
   const descId = useRef(`dialog-desc-${crypto.randomUUID()}`);

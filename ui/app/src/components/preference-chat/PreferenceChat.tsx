@@ -235,10 +235,7 @@ async function readTextFile(file: File): Promise<string> {
 function isPlainTextCV(file: File): boolean {
   const n = file.name.toLowerCase();
   return (
-    n.endsWith('.txt') ||
-    n.endsWith('.md') ||
-    n.endsWith('.text') ||
-    file.type.startsWith('text/')
+    n.endsWith('.txt') || n.endsWith('.md') || n.endsWith('.text') || file.type.startsWith('text/')
   );
 }
 
@@ -350,8 +347,7 @@ export function PreferenceChat({
   }, [messages, sending]);
 
   const hasConversation = messages.some((m) => m.role === 'user');
-  const ctaLabel =
-    completeLabel ?? (mode === 'intake' ? 'Continue to plans' : 'Apply updates');
+  const ctaLabel = completeLabel ?? (mode === 'intake' ? 'Continue to plans' : 'Apply updates');
 
   const doneCount = REQUIRED_KEYS.filter((k) => {
     if (fieldStatus?.[k]) return fieldStatus[k]!.ok;
@@ -373,9 +369,7 @@ export function PreferenceChat({
     setTouched(true);
     const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
     const display =
-      opts.display ||
-      message ||
-      (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
+      opts.display || message || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
     setWaitingText(display);
     setMessages((prev) => [...prev, { role: 'user', content: display }]);
     setInput('');
@@ -387,13 +381,8 @@ export function PreferenceChat({
         cv_text: opts.cv_text,
         cv_filename: opts.cv_filename,
       });
-      const isReady =
-        typeof res.ready === 'boolean' ? res.ready : isChatReady(res.fields);
-      const miss = isReady
-        ? []
-        : res.missing?.length
-          ? res.missing
-          : missingChatFields(res.fields);
+      const isReady = typeof res.ready === 'boolean' ? res.ready : isChatReady(res.fields);
+      const miss = isReady ? [] : res.missing?.length ? res.missing : missingChatFields(res.fields);
       setFields(res.fields);
       setMissing(miss);
       setReady(isReady);
@@ -614,7 +603,10 @@ export function PreferenceChat({
 
   /** Thread: fixed to viewport bottom — paperclip + Ask a question + send. */
   const threadComposer = (
-    <form onSubmit={onSubmit} className="mx-auto w-full max-w-2xl px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2">
+    <form
+      onSubmit={onSubmit}
+      className="mx-auto w-full max-w-2xl px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2"
+    >
       {error && (
         <p className="mb-2 text-center text-xs text-red-600" role="alert">
           {error}

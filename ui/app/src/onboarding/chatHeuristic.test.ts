@@ -38,9 +38,7 @@ describe('chatHeuristic', () => {
       {}
     );
     expect(res.ready).toBe(false);
-    expect(res.missing).toEqual(
-      expect.arrayContaining(['capabilities', 'salary_expectation'])
-    );
+    expect(res.missing).toEqual(expect.arrayContaining(['capabilities', 'salary_expectation']));
   });
 
   it('asks a follow-up when only a greeting is provided', () => {

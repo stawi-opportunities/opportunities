@@ -96,10 +96,9 @@ describe('AuthCallback', () => {
 
     render(<AuthCallback />);
 
-    await waitFor(
-      () => expect(screen.getByText(/sign-in session expired/i)).toBeInTheDocument(),
-      { timeout: 3000 }
-    );
+    await waitFor(() => expect(screen.getByText(/sign-in session expired/i)).toBeInTheDocument(), {
+      timeout: 3000,
+    });
     expect(replaceSpy).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /sign in again/i }));
     expect(login).toHaveBeenCalled();

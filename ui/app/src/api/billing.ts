@@ -78,7 +78,9 @@ export async function createCheckout(input: CheckoutCreateInput): Promise<Checko
     });
   } catch (err) {
     const code =
-      err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: unknown }).code)
+        : '';
     const msg = err instanceof Error ? err.message : String(err);
     if (code !== 'API_NOT_FOUND' && !/404|not found/i.test(msg)) throw err;
     return authRuntime().fetch('/billing/checkout', {

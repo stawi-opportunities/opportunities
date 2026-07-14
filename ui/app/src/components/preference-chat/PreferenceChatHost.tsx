@@ -3,14 +3,7 @@
  * PreferencesPanel, ProfileCompleteness, etc.
  */
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   fetchOnboardingDraft,
@@ -72,10 +65,7 @@ export function PreferenceChatHost({ children }: { children: ReactNode }) {
 
   const close = useCallback(() => setOpen(false), []);
 
-  const value = useMemo(
-    () => ({ openRefine, close, isOpen: open }),
-    [openRefine, close, open]
-  );
+  const value = useMemo(() => ({ openRefine, close, isOpen: open }), [openRefine, close, open]);
 
   return (
     <PreferenceChatHostContext.Provider value={value}>

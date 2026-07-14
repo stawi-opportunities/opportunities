@@ -161,8 +161,7 @@ export function mergeChatFields(
   if (overlay.salary_min != null) out.salary_min = overlay.salary_min;
   if (overlay.salary_max != null) out.salary_max = overlay.salary_max;
   if (overlay.currency?.trim()) out.currency = overlay.currency.trim().toUpperCase();
-  if (overlay.preferred_regions?.length)
-    out.preferred_regions = unique(overlay.preferred_regions);
+  if (overlay.preferred_regions?.length) out.preferred_regions = unique(overlay.preferred_regions);
   if (overlay.preferred_countries?.length)
     out.preferred_countries = unique(overlay.preferred_countries.map((c) => c.toUpperCase()));
   if (overlay.preferred_timezones?.length)
@@ -182,7 +181,10 @@ export function mergeChatFields(
   if (!out.job_search_status && out.target_job_title) {
     out.job_search_status = 'actively_looking';
   }
-  if (!out.preferred_languages?.length && (out.target_job_title || (out.extra_info?.length ?? 0) > 80)) {
+  if (
+    !out.preferred_languages?.length &&
+    (out.target_job_title || (out.extra_info?.length ?? 0) > 80)
+  ) {
     out.preferred_languages = ['English'];
   }
   if (!out.preferred_regions?.length && out.country) {
@@ -207,7 +209,8 @@ export function heuristicExtract(msg: string): OnboardingChatFields {
   else if (/\b(senior|sr\.?)\b/i.test(msg)) f.experience_level = 'senior';
   else if (/\b(mid[- ]?level|intermediate)\b/i.test(msg)) f.experience_level = 'mid';
   else if (/\b(junior|jr\.?)\b/i.test(msg)) f.experience_level = 'junior';
-  else if (/\b(entry[- ]?level|intern|graduate|new grad)\b/i.test(msg)) f.experience_level = 'entry';
+  else if (/\b(entry[- ]?level|intern|graduate|new grad)\b/i.test(msg))
+    f.experience_level = 'entry';
   else if (/\b(\d+)\+?\s*years?\b/i.test(msg)) {
     const m = msg.match(/\b(\d+)\+?\s*years?\b/i);
     const n = m ? parseInt(m[1]!, 10) : 0;
@@ -218,7 +221,8 @@ export function heuristicExtract(msg: string): OnboardingChatFields {
   }
 
   if (/\bactively\s+(looking|seeking)\b/i.test(msg)) f.job_search_status = 'actively_looking';
-  else if (/\bopen\s+to\s+(offers?|opportunities)\b/i.test(msg)) f.job_search_status = 'open_to_offers';
+  else if (/\bopen\s+to\s+(offers?|opportunities)\b/i.test(msg))
+    f.job_search_status = 'open_to_offers';
   else if (/\b(casually|just browsing)\b/i.test(msg)) f.job_search_status = 'casually_browsing';
 
   const types: string[] = [];
@@ -326,7 +330,11 @@ function extractLinkedIn(msg: string): string | undefined {
 
 function normalizeLinkedIn(s?: string): string | undefined {
   if (!s?.trim()) return undefined;
-  let v = s.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+  let v = s
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/+$/, '');
   if (/linkedin\.com\/in\//i.test(v)) return `https://${v.toLowerCase()}`;
   v = v.replace(/^@/, '');
   if (v.length < 2 || v.length > 100 || /\s/.test(v)) return undefined;

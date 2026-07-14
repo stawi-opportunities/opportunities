@@ -30,12 +30,8 @@ describe('PreferenceChat', () => {
   });
 
   it('renders Meta-style landing with journey title, upload resume, and chips', () => {
-    render(
-      <PreferenceChat mode="intake" userName="Peter" showCompleteAction={false} />
-    );
-    expect(
-      screen.getByText(/Hi Peter, let's start your opportunity journey/i)
-    ).toBeInTheDocument();
+    render(<PreferenceChat mode="intake" userName="Peter" showCompleteAction={false} />);
+    expect(screen.getByText(/Hi Peter, let's start your opportunity journey/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Share what you are looking for and be exact enough/i)
     ).toBeInTheDocument();
@@ -86,7 +82,9 @@ describe('PreferenceChat', () => {
     // Thread shows slim matching-profile control + bottom ask bar.
     expect(screen.getByText(/Matching profile/i)).toBeInTheDocument();
     expect(
-      screen.getByPlaceholderText(/Ask a question|role|resume|salary|countries|What role|experience/i)
+      screen.getByPlaceholderText(
+        /Ask a question|role|resume|salary|countries|What role|experience/i
+      )
     ).toBeInTheDocument();
     expect(onFieldsChange).toHaveBeenCalledWith(
       { target_job_title: 'Engineer' },

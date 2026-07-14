@@ -21,10 +21,7 @@ export const FIELD_LABELS: Record<string, string> = {
   linkedin: 'LinkedIn',
 };
 
-export function fieldsToDraft(
-  f: OnboardingChatFields,
-  plan?: PlanId
-): OnboardingDraftFields {
+export function fieldsToDraft(f: OnboardingChatFields, plan?: PlanId): OnboardingDraftFields {
   const salary =
     f.salary_min != null || f.salary_max != null
       ? `${f.currency ?? 'USD'} ${f.salary_min ?? f.salary_max ?? ''}`
@@ -85,32 +82,32 @@ export function profileToChatFields(
     ...fromDraft,
     target_job_title: fromDraft.target_job_title || profile.current_title || undefined,
     country: fromDraft.country || countries[0] || undefined,
-    preferred_countries:
-      fromDraft.preferred_countries?.length
-        ? fromDraft.preferred_countries
-        : countries.length
-          ? countries
-          : undefined,
-    preferred_regions:
-      fromDraft.preferred_regions?.length ? fromDraft.preferred_regions : regions.length ? regions : undefined,
-    preferred_languages:
-      fromDraft.preferred_languages?.length
-        ? fromDraft.preferred_languages
-        : languages.length
-          ? languages
-          : undefined,
+    preferred_countries: fromDraft.preferred_countries?.length
+      ? fromDraft.preferred_countries
+      : countries.length
+        ? countries
+        : undefined,
+    preferred_regions: fromDraft.preferred_regions?.length
+      ? fromDraft.preferred_regions
+      : regions.length
+        ? regions
+        : undefined,
+    preferred_languages: fromDraft.preferred_languages?.length
+      ? fromDraft.preferred_languages
+      : languages.length
+        ? languages
+        : undefined,
   };
 }
 
 /** Map chat fields into the polymorphic job preferences envelope. */
 export function chatFieldsToJobPreferences(f: OnboardingChatFields): JobPreferences {
   const employment = (f.job_types ?? []).map(normalizeEmploymentType).filter(Boolean);
-  const countries =
-    f.preferred_countries?.length
-      ? f.preferred_countries.map((c) => c.toUpperCase())
-      : f.country?.trim()
-        ? [f.country.trim().toUpperCase()]
-        : [];
+  const countries = f.preferred_countries?.length
+    ? f.preferred_countries.map((c) => c.toUpperCase())
+    : f.country?.trim()
+      ? [f.country.trim().toUpperCase()]
+      : [];
   return {
     target_roles: f.target_job_title?.trim() ? [f.target_job_title.trim()] : [],
     employment_types: employment,
@@ -131,10 +128,8 @@ export function summaryChips(
   f: OnboardingChatFields
 ): { key: string; label: string; value: string }[] {
   const chips: { key: string; label: string; value: string }[] = [];
-  if (f.target_job_title)
-    chips.push({ key: 'title', label: 'Role', value: f.target_job_title });
-  if (f.experience_level)
-    chips.push({ key: 'lvl', label: 'Level', value: f.experience_level });
+  if (f.target_job_title) chips.push({ key: 'title', label: 'Role', value: f.target_job_title });
+  if (f.experience_level) chips.push({ key: 'lvl', label: 'Level', value: f.experience_level });
   if (f.job_types?.length)
     chips.push({ key: 'jt', label: 'Notify', value: f.job_types.join(', ') });
   if (f.salary_min != null || f.salary_max != null) {

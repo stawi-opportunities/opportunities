@@ -347,7 +347,9 @@ export async function sendMeChat(input: SendMeChatInput): Promise<OnboardingChat
     // Local fallback when matching hasn't been redeployed yet, or inference
     // is briefly unavailable. Auth errors still surface to the UI.
     const code =
-      err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: unknown }).code)
+        : '';
     const msg = err instanceof Error ? err.message : String(err);
     const fallbackable =
       code === 'API_NOT_FOUND' ||
@@ -375,11 +377,7 @@ export async function sendMeChat(input: SendMeChatInput): Promise<OnboardingChat
     // Best-effort persist so the next page load can resume the same thread.
     try {
       const { fieldsToDraft } = await import('@/components/preference-chat/mapFields');
-      await saveOnboardingDraft(
-        res.ready ? 2 : 1,
-        fieldsToDraft(res.fields),
-        res.messages
-      );
+      await saveOnboardingDraft(res.ready ? 2 : 1, fieldsToDraft(res.fields), res.messages);
     } catch {
       // non-blocking
     }

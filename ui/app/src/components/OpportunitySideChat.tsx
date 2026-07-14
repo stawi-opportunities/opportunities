@@ -75,7 +75,9 @@ async function readTextFile(file: File): Promise<string> {
 
 function isPlainTextCV(file: File): boolean {
   const n = file.name.toLowerCase();
-  return n.endsWith('.txt') || n.endsWith('.md') || n.endsWith('.text') || file.type.startsWith('text/');
+  return (
+    n.endsWith('.txt') || n.endsWith('.md') || n.endsWith('.text') || file.type.startsWith('text/')
+  );
 }
 
 function PetalMark() {
@@ -164,9 +166,7 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
       if ((!raw && !hasCv) || sending) return;
 
       const display =
-        opts.display ||
-        raw ||
-        (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
+        opts.display || raw || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
 
       // Include opportunity context for the model without cluttering the UI bubble.
       const contextPrefix = `[Viewing opportunity: "${snap.title}" at ${snap.issuing_entity}${
@@ -281,9 +281,7 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
         aria-live="polite"
         aria-label="Opportunity assistant"
       >
-        {!hydrated && (
-          <p className="text-center text-sm text-stone-400">Loading conversation…</p>
-        )}
+        {!hydrated && <p className="text-center text-sm text-stone-400">Loading conversation…</p>}
         {messages.map((m, i) => {
           if (m.role === 'user') {
             const cvName = cvFilenameFromContent(m.content);

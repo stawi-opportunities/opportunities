@@ -39,7 +39,7 @@ func (s *GormStore) Upsert(ctx context.Context, doc Document) (int, error) {
 	version := 1
 	switch {
 	case err == gorm.ErrRecordNotFound:
-		version = 1
+		// first version remains 1
 	case err != nil:
 		return 0, fmt.Errorf("placement: load prior: %w", err)
 	default:

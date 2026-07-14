@@ -1,4 +1,8 @@
-export { PreferenceChat, type PreferenceChatMode, type PreferenceChatProps } from './PreferenceChat';
+export {
+  PreferenceChat,
+  type PreferenceChatMode,
+  type PreferenceChatProps,
+} from './PreferenceChat';
 export { PreferenceChatDialog, type PreferenceChatDialogProps } from './PreferenceChatDialog';
 export {
   PreferenceChatHost,
