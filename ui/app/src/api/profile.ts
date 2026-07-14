@@ -63,16 +63,59 @@ export async function submitOnboarding(
 }
 
 /**
- * PUT /me/cv — uploads the CV file as the raw request body. The
- * server re-extracts text + scores the CV in the background; the
- * response carries the updated candidate row.
+ * PUT /me/cv — uploads the CV via multipart `file`.
+ * Server: extract text → files service (or archive) → local CV index →
+ * async extract/embed for matching. Response includes extracted_text
+ * for immediate chat inference plus file_id when files service stored it.
  */
-export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: number }> {
+export interface UploadCVResult {
+  ok: boolean;
+  cv_length: number;
+  filename?: string;
+  /** Plain text extracted server-side — feed into chat inference. */
+  extracted_text?: string;
+  cv_version?: number;
+  /** Platform files-service media id when storage is "files". */
+  file_id?: string;
+  content_uri?: string;
+  content_hash?: string;
+  /** "files" | "archive" */
+  storage?: string;
+}
+
+export async function uploadCV(file: File): Promise<UploadCVResult> {
   try {
     return await authRuntime().upload('/matching/me/cv', file);
   } catch (err) {
     if (!isNotFound(err)) throw err;
     return authRuntime().upload('/me/cv', file);
+  }
+}
+
+/** Current CV document from the local index (files pointer + extracted text). */
+export interface MeCVDocument {
+  ok: boolean;
+  present: boolean;
+  cv_version?: number;
+  file_id?: string;
+  content_uri?: string;
+  content_hash?: string;
+  filename?: string;
+  storage?: string;
+  cv_length?: number;
+  extracted_text?: string;
+}
+
+export async function fetchMeCV(): Promise<MeCVDocument | null> {
+  try {
+    return await authRuntime().fetch<MeCVDocument>('/matching/me/cv');
+  } catch (err) {
+    if (!isNotFound(err)) return null;
+    try {
+      return await authRuntime().fetch<MeCVDocument>('/me/cv');
+    } catch {
+      return null;
+    }
   }
 }
 

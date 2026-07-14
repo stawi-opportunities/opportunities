@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pitabwire/frame/v2"
@@ -36,7 +37,9 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
+	"github.com/stawi-opportunities/opportunities/pkg/cvstore"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
@@ -387,22 +390,75 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
+	// CV pipeline: files service (preferred) + local document index + R2 archive fallback.
+	var cvBlob cvstore.BlobStore = &cvstore.ArchiveBlobStore{Archive: arch}
+	cvIndex := &cvstore.SQLIndexStore{DB: sqlDB}
+	if err := cvIndex.EnsureSchema(ctx); err != nil {
+		log.WithError(err).Warn("cvstore: ensure schema failed; uploads may fail until migrations run")
+	}
+	cvProfiles := &cvstore.SQLProfilePointers{DB: sqlDB}
+	// Dial files service early so CV uploads use platform content IDs when configured.
+	if cfg.FileServiceURI != "" {
+		fileClients, fileErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+			FileURI:    cfg.FileServiceURI,
+			HTTPClient: svc.HTTPClientManager().Client(ctx),
+		})
+		if fileErr != nil {
+			log.WithError(fileErr).Warn("cvstore: files client init error; will use R2 archive for CVs")
+		}
+		if fileClients != nil && fileClients.Files != nil {
+			cvBlob = &cvstore.FilesBlobStore{Client: fileClients.Files}
+			log.WithField("uri", cfg.FileServiceURI).Info("cvstore: CV uploads via platform files service")
+		} else {
+			log.Warn("cvstore: FILE_SERVICE_URI set but files client unavailable — using R2 archive")
+		}
+	} else {
+		log.Info("cvstore: FILE_SERVICE_URI unset — CV uploads use R2 archive; local text index still written")
+	}
+
+	// Placement profile: combined qualifications + preferences → vector match index.
+	placementStore := &placement.SQLStore{DB: sqlDB}
+	if err := placementStore.EnsureSchema(ctx); err != nil {
+		log.WithError(err).Warn("placement: ensure schema failed; summaries may not persist until migrations run")
+	}
+	var matchIndexStore *matching.IndexStore
+	if sqlDB != nil {
+		matchIndexStore = matching.NewIndexStore(sqlDB)
+	}
+	var placementEmbedder placement.Embedder
+	if extractor != nil {
+		placementEmbedder = extractor
+	}
+	placementSvc := &placement.Service{
+		Store:        placementStore,
+		CV:           cvIndex,
+		Embedder:     placementEmbedder,
+		Index:        matchIndexStore,
+		Svc:          svc,
+		EmbedQueue:   cfg.CandidateEmbeddingQueueName,
+		ModelVersion: cfg.EmbeddingModel,
+	}
+
 	uploadDeps := httpv1.UploadDeps{
-		Svc:     svc,
-		Archive: arch,
-		Text:    textExtractor{},
+		Svc:       svc,
+		Archive:   arch,
+		Text:      textExtractor{},
+		Blob:      cvBlob,
+		Index:     cvIndex,
+		Profiles:  cvProfiles,
+		Placement: placementSvc,
+		Drafts:    candidateRepo,
 	}
 	// Legacy upload/preferences/match paths require auth — identity from JWT
 	// subject (or X-Candidate-ID only when OIDC is unset in dev).
 	mux.Handle("POST /candidates/cv/upload", authMW(httpv1.UploadHandler(uploadDeps)))
 
-	// PUT /me/cv — the dashboard CV upload. The gateway strips the
-	// /matching prefix → PUT /me/cv. The auth-runtime upload() helper
-	// sends the CV as a multipart "file" part (method PUT); the handler
-	// derives the candidate from the JWT subject and runs the SAME
-	// archive → cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill
-	// pipeline as POST /candidates/cv/upload.
+	// /me/cv — dashboard + chat CV. Pipeline on PUT:
+	// extract text → files service (or archive) → local candidate_cv_documents
+	// index → profile pointers → cv-extract → embed → match index.
+	// GET returns the local index for resume without re-upload.
 	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
+	mux.Handle("GET /me/cv", authMW(httpv1.MeCVGetHandler(uploadDeps)))
 	mux.Handle("POST /candidates/preferences", authMW(httpv1.PreferencesHandler(svc, sqlDB)))
 	mux.Handle("GET /candidates/match", authMW(httpv1.MatchHandler(httpv1.MatchDeps{
 		Svc:     svc,
@@ -442,16 +498,19 @@ func main() {
 	}))
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
-	// Conversational onboarding: free-text / CV paste → structured draft.
+	// POST /me/chat — shared preference / intake conversation (onboarding,
+	// dashboard refine, opportunity side-chat all embed the same widget).
 	// Uses the shared extractor when inference is configured; otherwise a
-	// deterministic heuristic still drives the chat wizard.
-	var onboardChatLLM httpv1.OnboardingChatLLM
+	// deterministic heuristic still drives structured field extraction.
+	var chatLLM httpv1.MeChatLLM
 	if extractor != nil {
-		onboardChatLLM = extractor
+		chatLLM = extractor
 	}
-	mux.Handle("POST /me/onboarding/chat", authMW(
-		httpv1.OnboardingChatHandler(httpv1.OnboardingChatDeps{LLM: onboardChatLLM}),
-	))
+	mux.Handle("POST /me/chat", authMW(httpv1.MeChatHandler(httpv1.MeChatDeps{
+		LLM:       chatLLM,
+		Drafts:    candidateRepo, // persist transcript + fields for resume/refine
+		Placement: placementSvc,  // qualifications+prefs summary → vector index
+	})))
 
 	// /candidates/onboard — wizard final submit. Promotes the draft
 	// into the canonical profile columns and clears the draft in one
@@ -875,11 +934,79 @@ func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candida
 		if err := txRepo.Update(ctx, cand); err != nil {
 			return fmt.Errorf("candidate update: %w", err)
 		}
-		if err := txRepo.ClearOnboardingDraft(ctx, candidateID); err != nil {
-			return fmt.Errorf("draft clear: %w", err)
+		// Keep the preference-chat transcript available for later refine.
+		// Wizard step advances to 3; fields stay as a snapshot for resume.
+		if err := preserveChatAfterOnboard(ctx, txRepo, candidateID, cand); err != nil {
+			return fmt.Errorf("preserve chat session: %w", err)
 		}
 		return nil
 	})
+}
+
+// preserveChatAfterOnboard writes a completed-session envelope so the
+// conversation remains available after profile promotion (refine later).
+func preserveChatAfterOnboard(ctx context.Context, repo *repository.CandidateRepository, candidateID string, cand *domain.CandidateProfile) error {
+	raw, err := repo.GetOnboardingDraft(ctx, candidateID)
+	if err != nil {
+		return err
+	}
+	type msg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	var prior struct {
+		Messages []msg `json:"messages"`
+	}
+	if len(raw) > 0 && string(raw) != "{}" {
+		_ = json.Unmarshal(raw, &prior)
+	}
+	fields := map[string]any{
+		"target_job_title":    cand.TargetJobTitle,
+		"experience_level":    cand.ExperienceLevel,
+		"job_search_status":   cand.JobSearchStatus,
+		"preferred_regions":   decodeStringList(cand.PreferredRegions),
+		"preferred_languages": decodeStringList(cand.Languages),
+		"job_types":           decodeStringList(cand.PreferredRoles),
+		"country":             strings.TrimSpace(cand.PreferredCountries),
+		"plan":                cand.PlanID,
+	}
+	env := map[string]any{
+		"step":       3,
+		"fields":     fields,
+		"messages":   prior.Messages,
+		"updated_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	out, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	return repo.SetOnboardingDraft(ctx, candidateID, out)
+}
+
+// decodeStringList parses JSON arrays or comma/semicolon-separated text
+// used on candidate_profiles preference columns.
+func decodeStringList(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	if strings.HasPrefix(s, "[") {
+		var arr []string
+		if err := json.Unmarshal([]byte(s), &arr); err == nil {
+			return arr
+		}
+	}
+	sep := ","
+	if strings.Contains(s, ";") && !strings.Contains(s, ",") {
+		sep = ";"
+	}
+	var out []string
+	for _, p := range strings.Split(s, sep) {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // directApplicationStarter is the pragmatic ApplicationStarter while

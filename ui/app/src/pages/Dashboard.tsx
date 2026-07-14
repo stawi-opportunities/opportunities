@@ -29,6 +29,7 @@ import { ProfileCompleteness } from '@/components/dashboard/ProfileCompleteness'
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { DashboardBanner } from '@/components/dashboard/DashboardBanner';
 import { StatsRow } from '@/components/dashboard/StatsRow';
+import { PreferenceChatHost } from '@/components/preference-chat';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTheme } from '@/providers/ThemeProvider';
@@ -120,143 +121,145 @@ export default function Dashboard() {
   const subscription = sub?.status ?? 'none';
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <DashboardHeader
-        plan={plan}
-        status={subscription}
-        onOpenPlanChange={() => setShowPlanChange(true)}
-        t={t}
-      />
-      <PendingCheckoutPoller />
-      {isActive && (
-        <div className="mt-4">
-          <DashboardBanner onStartTour={() => setShowTour(true)} />
-        </div>
-      )}
-
-      {isActive && (
-        <div className="mt-4">
-          <QuickActions />
-        </div>
-      )}
-      <div className="sticky top-0 z-10 -mx-4 bg-white px-4 pb-2 dark:bg-navy-900 sm:static sm:mx-0 sm:px-0 sm:pb-0">
-        <DashboardBreadcrumbs active={activeSection} t={t} />
-      </div>
-
-      <div className="mt-4 lg:hidden">
-        <DashboardSidebar
-          active={activeSection}
-          onNavigate={navigate}
+    <PreferenceChatHost>
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <DashboardHeader
+          plan={plan}
+          status={subscription}
+          onOpenPlanChange={() => setShowPlanChange(true)}
           t={t}
-          matchCount={sub?.queued_matches}
         />
-      </div>
+        <PendingCheckoutPoller />
+        {isActive && (
+          <div className="mt-4">
+            <DashboardBanner onStartTour={() => setShowTour(true)} />
+          </div>
+        )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[240px_1fr]">
-        <aside className="hidden lg:block">
+        {isActive && (
+          <div className="mt-4">
+            <QuickActions />
+          </div>
+        )}
+        <div className="sticky top-0 z-10 -mx-4 bg-white px-4 pb-2 dark:bg-navy-900 sm:static sm:mx-0 sm:px-0 sm:pb-0">
+          <DashboardBreadcrumbs active={activeSection} t={t} />
+        </div>
+
+        <div className="mt-4 lg:hidden">
           <DashboardSidebar
             active={activeSection}
             onNavigate={navigate}
             t={t}
             matchCount={sub?.queued_matches}
           />
-          <div className="mt-6">
-            <ProfileCompleteness />
-          </div>
-          <div className="mt-6">
-            <ProfileMount />
-          </div>
-        </aside>
-        <section className="space-y-6">
-          {plan === null || !isActive ? (
-            <CompletePaymentPanel plan={plan} status={subscription} />
-          ) : (
-            <>
-              {activeSection === 'overview' && (
-                <ErrorBoundary>
-                  <StatsRow />
-                  <div className="mt-6">
-                    <OverviewPanel />
-                  </div>
-                </ErrorBoundary>
-              )}
-              {activeSection === 'feed' && (
-                <ErrorBoundary>
-                  {plan === 'managed' && sub?.agent && <AgentCard agent={sub.agent} />}
-                  <OpportunitiesFeed />
-                </ErrorBoundary>
-              )}
-              {activeSection === 'matches' && (
-                <ErrorBoundary>
-                  <MatchesPanel
-                    plan={plan}
-                    queued={sub?.queued_matches ?? null}
-                    delivered={sub?.delivered_this_week ?? null}
-                    subQueryError={subQ.isError}
-                    onUpgrade={() => setShowPlanChange(true)}
-                  />
-                </ErrorBoundary>
-              )}
-              {activeSection === 'saved' && (
-                <ErrorBoundary>
-                  <SavedJobsPanel />
-                </ErrorBoundary>
-              )}
-              {activeSection === 'applications' && (
-                <ErrorBoundary>
-                  <ApplicationsPanel />
-                </ErrorBoundary>
-              )}
-              {activeSection === 'preferences' && (
-                <ErrorBoundary>
-                  <PreferencesPanel />
-                </ErrorBoundary>
-              )}
-              {activeSection === 'billing' && plan && isActive && (
-                <ErrorBoundary>
-                  <BillingPanel
-                    plan={plan}
-                    renewsAt={sub?.renews_at}
-                    onOpenPlanChange={() => setShowPlanChange(true)}
-                    onOpenCancel={() => setShowCancel(true)}
-                    t={t}
-                  />
-                </ErrorBoundary>
-              )}
-              {activeSection === 'settings' && (
-                <ErrorBoundary>
-                  <SettingsPage t={t} />
-                </ErrorBoundary>
-              )}
-            </>
-          )}
-        </section>
+        </div>
+
+        <div className="mt-8 grid gap-8 lg:grid-cols-[240px_1fr]">
+          <aside className="hidden lg:block">
+            <DashboardSidebar
+              active={activeSection}
+              onNavigate={navigate}
+              t={t}
+              matchCount={sub?.queued_matches}
+            />
+            <div className="mt-6">
+              <ProfileCompleteness />
+            </div>
+            <div className="mt-6">
+              <ProfileMount />
+            </div>
+          </aside>
+          <section className="space-y-6">
+            {plan === null || !isActive ? (
+              <CompletePaymentPanel plan={plan} status={subscription} />
+            ) : (
+              <>
+                {activeSection === 'overview' && (
+                  <ErrorBoundary>
+                    <StatsRow />
+                    <div className="mt-6">
+                      <OverviewPanel />
+                    </div>
+                  </ErrorBoundary>
+                )}
+                {activeSection === 'feed' && (
+                  <ErrorBoundary>
+                    {plan === 'managed' && sub?.agent && <AgentCard agent={sub.agent} />}
+                    <OpportunitiesFeed />
+                  </ErrorBoundary>
+                )}
+                {activeSection === 'matches' && (
+                  <ErrorBoundary>
+                    <MatchesPanel
+                      plan={plan}
+                      queued={sub?.queued_matches ?? null}
+                      delivered={sub?.delivered_this_week ?? null}
+                      subQueryError={subQ.isError}
+                      onUpgrade={() => setShowPlanChange(true)}
+                    />
+                  </ErrorBoundary>
+                )}
+                {activeSection === 'saved' && (
+                  <ErrorBoundary>
+                    <SavedJobsPanel />
+                  </ErrorBoundary>
+                )}
+                {activeSection === 'applications' && (
+                  <ErrorBoundary>
+                    <ApplicationsPanel />
+                  </ErrorBoundary>
+                )}
+                {activeSection === 'preferences' && (
+                  <ErrorBoundary>
+                    <PreferencesPanel />
+                  </ErrorBoundary>
+                )}
+                {activeSection === 'billing' && plan && isActive && (
+                  <ErrorBoundary>
+                    <BillingPanel
+                      plan={plan}
+                      renewsAt={sub?.renews_at}
+                      onOpenPlanChange={() => setShowPlanChange(true)}
+                      onOpenCancel={() => setShowCancel(true)}
+                      t={t}
+                    />
+                  </ErrorBoundary>
+                )}
+                {activeSection === 'settings' && (
+                  <ErrorBoundary>
+                    <SettingsPage t={t} />
+                  </ErrorBoundary>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+
+        {/* Mobile profile — below lg */}
+        <div className="mt-8 lg:hidden">
+          <ProfileMount />
+        </div>
+
+        {showTour && <GuidedTour onDismiss={() => setShowTour(false)} />}
+
+        {showPlanChange && plan && (
+          <PlanChangeModal
+            currentPlan={plan}
+            onClose={() => setShowPlanChange(false)}
+            t={t}
+            onSuccess={handlePlanChangeSuccess}
+          />
+        )}
+
+        {showCancel && (
+          <CancelSubscriptionModal
+            onClose={() => setShowCancel(false)}
+            t={t}
+            onSuccess={handleCancelSuccess}
+          />
+        )}
       </div>
-
-      {/* Mobile profile — below lg */}
-      <div className="mt-8 lg:hidden">
-        <ProfileMount />
-      </div>
-
-      {showTour && <GuidedTour onDismiss={() => setShowTour(false)} />}
-
-      {showPlanChange && plan && (
-        <PlanChangeModal
-          currentPlan={plan}
-          onClose={() => setShowPlanChange(false)}
-          t={t}
-          onSuccess={handlePlanChangeSuccess}
-        />
-      )}
-
-      {showCancel && (
-        <CancelSubscriptionModal
-          onClose={() => setShowCancel(false)}
-          t={t}
-          onSuccess={handleCancelSuccess}
-        />
-      )}
-    </div>
+    </PreferenceChatHost>
   );
 }
 

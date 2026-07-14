@@ -198,30 +198,44 @@ export interface OnboardingDraftFields {
   experience_level?: 'entry' | 'junior' | 'mid' | 'senior' | 'lead' | 'executive';
   job_search_status?: 'actively_looking' | 'open_to_offers' | 'casually_browsing';
   salary_range?: string;
+  salary_min?: number;
+  salary_max?: number;
+  currency?: string;
   wants_ats_report?: boolean;
   preferred_regions?: string[];
+  preferred_countries?: string[];
   preferred_timezones?: string[];
   preferred_languages?: string[];
   job_types?: string[];
   country?: string;
+  linkedin?: string;
+  extra_info?: string;
   plan?: 'starter' | 'pro' | 'managed';
+}
+
+export interface OnboardingChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 export interface OnboardingDraft {
   step: 1 | 2 | 3;
   fields: OnboardingDraftFields;
+  /** Persisted preference-chat transcript (always available for resume/refine). */
+  messages?: OnboardingChatMessage[];
   updated_at?: string;
 }
 
-/** GET /matching/me/onboarding ΓÇö never throws; returns the canonical
+/** GET /matching/me/onboarding — never throws; returns the canonical
  *  empty draft on any failure so the wizard mount is non-blocking. */
 export async function fetchOnboardingDraft(): Promise<OnboardingDraft> {
-  const empty: OnboardingDraft = { step: 1, fields: {} };
+  const empty: OnboardingDraft = { step: 1, fields: {}, messages: [] };
   try {
     const body = await authRuntime().fetch<OnboardingDraft>('/matching/me/onboarding');
     return {
       step: body.step ?? 1,
       fields: body.fields ?? {},
+      messages: Array.isArray(body.messages) ? body.messages : [],
       updated_at: body.updated_at,
     };
   } catch {
@@ -229,22 +243,27 @@ export async function fetchOnboardingDraft(): Promise<OnboardingDraft> {
   }
 }
 
-/** PUT /matching/me/onboarding ΓÇö fire-and-forget autosave. Errors are
- *  surfaced via the returned promise so the caller can show a
- *  non-blocking warning; we do NOT throw to the caller's `await` in
- *  the happy path. */
+/** PUT /matching/me/onboarding — fire-and-forget autosave. When messages
+ *  are omitted the server keeps the stored transcript. */
 export async function saveOnboardingDraft(
   step: 1 | 2 | 3,
-  fields: OnboardingDraftFields
+  fields: OnboardingDraftFields,
+  messages?: OnboardingChatMessage[]
 ): Promise<void> {
   await authRuntime().fetch('/matching/me/onboarding', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ step, fields }),
+    body: JSON.stringify({
+      step,
+      fields,
+      ...(messages ? { messages } : {}),
+    }),
   });
 }
 
-// ── /me/onboarding/chat ───────────────────────────────────────────────────
+// ── /me/chat ──────────────────────────────────────────────────────────────
+// Shared preference / intake conversation. Onboarding, dashboard refine, and
+// opportunity side-chat all embed the same widget and hit this endpoint.
 
 export interface OnboardingChatFields {
   target_job_title?: string;
@@ -254,16 +273,23 @@ export interface OnboardingChatFields {
   salary_max?: number | null;
   currency?: string;
   preferred_regions?: string[];
+  /** Countries to source / notify opportunities from. */
+  preferred_countries?: string[];
   preferred_timezones?: string[];
   preferred_languages?: string[];
+  /** Kinds of jobs to notify about (Full-time, Contract, …). */
   job_types?: string[];
   country?: string;
+  /** LinkedIn URL or handle — optional only; does not unlock readiness. */
+  linkedin?: string;
+  /** CV paste / skills summary (required for capabilities). */
   extra_info?: string;
 }
 
-export interface OnboardingChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
+export interface OnboardingChatFieldStatus {
+  ok: boolean;
+  value?: string;
+  reason?: string;
 }
 
 export interface OnboardingChatResponse {
@@ -271,29 +297,48 @@ export interface OnboardingChatResponse {
   fields: OnboardingChatFields;
   missing: string[];
   ready: boolean;
+  /** Full transcript after this turn (server-persisted when Drafts are wired). */
+  messages?: OnboardingChatMessage[];
+  /** Per-required-field assessment from the server (authoritative). */
+  field_status?: Record<string, OnboardingChatFieldStatus>;
+  /** How fields were filled: llm | heuristic | llm+heuristic */
+  source?: string;
+  /** Combined qualifications + preferences document used for matching. */
+  placement_summary?: string;
+  placement_ready?: boolean;
 }
 
+export type SendMeChatInput = {
+  message: string;
+  history?: OnboardingChatMessage[];
+  draft?: OnboardingChatFields;
+  /** Structured LinkedIn from composer (optional). */
+  linkedin?: string;
+  /** Extracted CV plain text from file picker (optional). */
+  cv_text?: string;
+  cv_filename?: string;
+};
+
 /**
- * POST /matching/me/onboarding/chat — one conversational turn.
+ * POST /matching/me/chat — one conversational turn.
  * Server merges free-text (or pasted CV) into structured fields via AI
  * when inference is configured, otherwise a heuristic parser.
  *
  * Falls back to a client-side heuristic when the matching binary is older
- * (404) or temporarily unavailable so onboarding still completes locally.
+ * (404) or temporarily unavailable so the embedded chat still works.
  */
-export async function sendOnboardingChat(input: {
-  message: string;
-  history?: OnboardingChatMessage[];
-  draft?: OnboardingChatFields;
-}): Promise<OnboardingChatResponse> {
+export async function sendMeChat(input: SendMeChatInput): Promise<OnboardingChatResponse> {
   try {
-    return await authRuntime().fetch<OnboardingChatResponse>('/matching/me/onboarding/chat', {
+    return await authRuntime().fetch<OnboardingChatResponse>('/matching/me/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: input.message,
         history: input.history ?? [],
         draft: input.draft ?? {},
+        linkedin: input.linkedin ?? '',
+        cv_text: input.cv_text ?? '',
+        cv_filename: input.cv_filename ?? '',
       }),
       // LLM turns can be slow on free-tier inference.
       timeoutMs: 90_000,
@@ -312,11 +357,37 @@ export async function sendOnboardingChat(input: {
       /404|502|503|504|Failed to fetch|not found|timeout/i.test(msg);
     if (!fallbackable) throw err;
     const { localChatTurn } = await import('@/onboarding/chatHeuristic');
-    return localChatTurn(input.message, input.draft ?? {});
+    const seed: OnboardingChatFields = { ...(input.draft ?? {}) };
+    if (input.linkedin?.trim()) seed.linkedin = input.linkedin.trim();
+    if (input.cv_text?.trim()) {
+      seed.extra_info = seed.extra_info
+        ? `${seed.extra_info}\n\n${input.cv_text.trim()}`
+        : input.cv_text.trim();
+    }
+    const message =
+      input.message?.trim() ||
+      (input.cv_text
+        ? `I've attached my CV (${input.cv_filename || 'CV'}).`
+        : input.linkedin
+          ? `My LinkedIn is ${input.linkedin}`
+          : '');
+    const res = localChatTurn(message, seed, input.history ?? []);
+    // Best-effort persist so the next page load can resume the same thread.
+    try {
+      const { fieldsToDraft } = await import('@/components/preference-chat/mapFields');
+      await saveOnboardingDraft(
+        res.ready ? 2 : 1,
+        fieldsToDraft(res.fields),
+        res.messages
+      );
+    } catch {
+      // non-blocking
+    }
+    return res;
   }
 }
 
-// ΓöÇΓöÇ /me/opportunities ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── /me/opportunities ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export type OpportunityFilter = 'all' | 'matches' | 'starred' | 'applied';
 

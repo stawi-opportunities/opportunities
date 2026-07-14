@@ -16,7 +16,9 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
+	"github.com/stawi-opportunities/opportunities/pkg/cvstore"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
 )
 
 // TextExtractor abstracts plain-text extraction for PDF / DOCX bytes.
@@ -32,6 +34,17 @@ type UploadDeps struct {
 	Svc     *frame.Service
 	Archive archive.Archive
 	Text    TextExtractor
+
+	// Blob prefers the platform files service; when nil falls back to Archive.
+	Blob cvstore.BlobStore
+	// Index is the local CV document index (extracted text + file pointers).
+	Index cvstore.IndexStore
+	// Profiles optionally writes candidate_profiles CV columns.
+	Profiles cvstore.ProfilePointers
+	// Placement rebuilds the match summary after a new CV lands.
+	Placement *placement.Service
+	// Drafts optional: merge chat preferences when re-indexing after CV upload.
+	Drafts OnboardingDraftStore
 
 	// MaxBytes caps the size of the uploaded file. 0 → 10 MiB default.
 	MaxBytes int64
@@ -109,55 +122,203 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 			return
 		}
 
-		// Archive raw bytes.
-		hash, size, err := deps.Archive.PutRaw(ctx, body)
+		result, err := processCVUpload(ctx, deps, cvUploadInput{
+			CandidateID: candidateID,
+			Filename:    hdr.Filename,
+			ContentType: hdr.Header.Get("Content-Type"),
+			Body:        body,
+		})
 		if err != nil {
-			log.WithError(err).Error("upload: PutRaw failed")
-			http.Error(w, `{"error":"archive failed"}`, http.StatusInternalServerError)
-			return
-		}
-
-		text, err := extractText(deps.Text, hdr.Filename, body)
-		if err != nil {
-			log.WithError(err).Warn("upload: text extraction failed")
-			http.Error(w, fmt.Sprintf(`{"error":"text extraction: %s"}`, err.Error()), http.StatusUnprocessableEntity)
-			return
-		}
-		if strings.TrimSpace(text) == "" {
-			http.Error(w, `{"error":"extracted text is empty"}`, http.StatusUnprocessableEntity)
-			return
-		}
-
-		cvVersion := 1 // v1 shortcut; Phase 6 computes the real next version
-		if err := enqueueCVExtract(ctx, deps.Svc, cvUploadInput{
-			CandidateID:   candidateID,
-			CVVersion:     cvVersion,
-			RawArchiveRef: archive.RawKey(hash),
-			Filename:      hdr.Filename,
-			ContentType:   hdr.Header.Get("Content-Type"),
-			SizeBytes:     size,
-			ExtractedText: text,
-		}); err != nil {
-			log.WithError(err).Error("upload: enqueue cv-extract failed")
-			http.Error(w, `{"error":"publish failed"}`, http.StatusInternalServerError)
+			log.WithError(err).Warn("upload: process failed")
+			writeUploadProcessError(w, err)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"accepted":     true,
-			"candidate_id": candidateID,
-			"cv_version":   cvVersion,
+			"accepted":      true,
+			"candidate_id":  candidateID,
+			"cv_version":    result.Version,
+			"file_id":       result.FileID,
+			"content_uri":   result.ContentURI,
+			"content_hash":  result.ContentHash,
+			"storage":       result.Storage,
+			"cv_length":     result.TextLength,
+			"extracted_text": truncateRunesForResponse(result.ExtractedText, 40_000),
 		})
 	}
 }
 
-// cvUploadInput carries the fields enqueueCVExtract folds into a
-// CVUploadedV1 envelope. Shared by POST /candidates/cv/upload (multipart)
-// and PUT /me/cv (raw body) so both entry points drive the identical
-// cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill pipeline.
+// cvUploadInput is the shared payload for processCVUpload.
 type cvUploadInput struct {
+	CandidateID string
+	Filename    string
+	ContentType string
+	Body        []byte
+}
+
+// cvUploadResult is returned after blob store + local index + queue enqueue.
+type cvUploadResult struct {
+	Version       int
+	FileID        string
+	ContentURI    string
+	ContentHash   string
+	Storage       string
+	SizeBytes     int64
+	ExtractedText string
+	TextLength    int
+}
+
+// processErr classifies failures for HTTP mapping.
+type processErr struct {
+	Code    string // archive_failed | text_extraction_failed | empty_cv | index_failed | publish_failed
+	Message string
+	Err     error
+}
+
+func (e *processErr) Error() string {
+	if e.Err != nil {
+		return e.Message + ": " + e.Err.Error()
+	}
+	return e.Message
+}
+
+// processCVUpload:
+//  1. Extract plain text from the file
+//  2. Store bytes in files service (or archive fallback)
+//  3. Upsert local candidate_cv_documents index
+//  4. Best-effort profile CV pointers
+//  5. Enqueue cv-extract for LLM embed / match index
+func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*cvUploadResult, error) {
+	log := util.Log(ctx)
+	text, err := extractText(deps.Text, in.Filename, in.Body)
+	if err != nil {
+		return nil, &processErr{Code: "text_extraction_failed", Message: err.Error(), Err: err}
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, &processErr{Code: "empty_cv", Message: "extracted cv text is empty"}
+	}
+	textLen := len([]rune(text))
+
+	// Prefer files service; fall back to R2 archive.
+	blob := deps.Blob
+	if blob == nil && deps.Archive != nil {
+		blob = &cvstore.ArchiveBlobStore{Archive: deps.Archive}
+	}
+	if blob == nil {
+		return nil, &processErr{Code: "archive_failed", Message: "no blob store configured"}
+	}
+	ref, err := blob.Put(ctx, cvstore.BlobPut{
+		CandidateID: in.CandidateID,
+		Filename:    in.Filename,
+		ContentType: in.ContentType,
+		Body:        in.Body,
+	})
+	if err != nil {
+		// If files service failed but archive is available, try archive.
+		if deps.Archive != nil && ref.Storage != "archive" {
+			log.WithError(err).Warn("upload: files blob failed; falling back to archive")
+			ref, err = (&cvstore.ArchiveBlobStore{Archive: deps.Archive}).Put(ctx, cvstore.BlobPut{
+				CandidateID: in.CandidateID,
+				Filename:    in.Filename,
+				ContentType: in.ContentType,
+				Body:        in.Body,
+			})
+		}
+		if err != nil {
+			return nil, &processErr{Code: "archive_failed", Message: "could not store cv", Err: err}
+		}
+	}
+
+	// Local index: full text capped for PG row size (keep enough for matching/chat).
+	storeText := cvstore.TruncateRunes(text, 100_000)
+	version := 1
+	if deps.Index != nil {
+		v, idxErr := deps.Index.UpsertDocument(ctx, cvstore.Document{
+			CandidateID:   in.CandidateID,
+			FileID:        ref.FileID,
+			ContentURI:    ref.ContentURI,
+			ContentHash:   ref.ContentHash,
+			Filename:      in.Filename,
+			ContentType:   in.ContentType,
+			SizeBytes:     ref.SizeBytes,
+			ExtractedText: storeText,
+			TextLength:    textLen,
+			Storage:       ref.Storage,
+		})
+		if idxErr != nil {
+			log.WithError(idxErr).WithField("candidate_id", in.CandidateID).
+				Error("upload: local cv index upsert failed")
+			return nil, &processErr{Code: "index_failed", Message: "could not index cv text", Err: idxErr}
+		}
+		version = v
+	}
+
+	if deps.Profiles != nil {
+		cvURL := ref.ContentURI
+		if ref.FileID != "" {
+			cvURL = ref.ContentURI
+		}
+		if err := deps.Profiles.SetCVPointers(ctx, in.CandidateID, ref.ContentURI, ref.ContentHash, cvURL); err != nil {
+			// Profile may not exist yet during chat-first onboarding.
+			log.WithError(err).WithField("candidate_id", in.CandidateID).
+				Warn("upload: profile cv pointers not updated")
+		}
+	}
+
+	rawRef := ref.ContentURI
+	if ref.Storage == "archive" {
+		rawRef = ref.ContentURI
+	}
+	if err := enqueueCVExtract(ctx, deps.Svc, cvUploadEnqueue{
+		CandidateID:   in.CandidateID,
+		CVVersion:     version,
+		RawArchiveRef: rawRef,
+		Filename:      in.Filename,
+		ContentType:   in.ContentType,
+		SizeBytes:     ref.SizeBytes,
+		ExtractedText: text,
+		FileID:        ref.FileID,
+		ContentURI:    ref.ContentURI,
+		ContentHash:   ref.ContentHash,
+		Storage:       ref.Storage,
+	}); err != nil {
+		return nil, &processErr{Code: "publish_failed", Message: "could not enqueue cv for processing", Err: err}
+	}
+
+	// Refresh placement summary: merge prior chat preferences + new CV text.
+	if deps.Placement != nil {
+		pf := placement.Fields{ExtraInfo: text}
+		if deps.Drafts != nil {
+			if env, eErr := loadOnboardingEnvelope(ctx, deps.Drafts, in.CandidateID); eErr == nil {
+				pf = toPlacementFields(fieldsFromEnvelope(env))
+				// Prefer the just-extracted CV as qualifications corpus.
+				pf.ExtraInfo = text
+			}
+		}
+		if _, pErr := deps.Placement.Rebuild(ctx, placement.RebuildInput{
+			CandidateID: in.CandidateID,
+			Fields:      pf,
+		}); pErr != nil {
+			log.WithError(pErr).WithField("candidate_id", in.CandidateID).
+				Warn("upload: placement rebuild after CV failed")
+		}
+	}
+
+	return &cvUploadResult{
+		Version:       version,
+		FileID:        ref.FileID,
+		ContentURI:    ref.ContentURI,
+		ContentHash:   ref.ContentHash,
+		Storage:       ref.Storage,
+		SizeBytes:     ref.SizeBytes,
+		ExtractedText: text,
+		TextLength:    textLen,
+	}, nil
+}
+
+type cvUploadEnqueue struct {
 	CandidateID   string
 	CVVersion     int
 	RawArchiveRef string
@@ -165,13 +326,15 @@ type cvUploadInput struct {
 	ContentType   string
 	SizeBytes     int64
 	ExtractedText string
+	FileID        string
+	ContentURI    string
+	ContentHash   string
+	Storage       string
 }
 
 // enqueueCVExtract marshals a CVUploadedV1 envelope and publishes it onto
-// the durable cv-extract queue subject. The extract handler is a Frame
-// Queue subscriber (external LLM call), not a Frame Event handler, so it
-// survives restarts + retries with backoff if the AI Gateway is flaky.
-func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadInput) error {
+// the durable cv-extract queue subject.
+func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadEnqueue) error {
 	payload := eventsv1.CVUploadedV1{
 		CandidateID:   in.CandidateID,
 		CVVersion:     in.CVVersion,
@@ -179,6 +342,10 @@ func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadInput)
 		Filename:      in.Filename,
 		ContentType:   in.ContentType,
 		SizeBytes:     in.SizeBytes,
+		FileID:        in.FileID,
+		ContentURI:    in.ContentURI,
+		ContentHash:   in.ContentHash,
+		Storage:       in.Storage,
 		ExtractedText: in.ExtractedText,
 	}
 	env := eventsv1.NewEnvelope(eventsv1.TopicCVUploaded, payload)
@@ -190,6 +357,32 @@ func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadInput)
 		return fmt.Errorf("upload: publish cv-extract: %w", err)
 	}
 	return nil
+}
+
+func writeUploadProcessError(w http.ResponseWriter, err error) {
+	pe, ok := err.(*processErr)
+	if !ok {
+		http.Error(w, `{"error":"upload failed"}`, http.StatusInternalServerError)
+		return
+	}
+	switch pe.Code {
+	case "text_extraction_failed":
+		http.Error(w, fmt.Sprintf(`{"error":"text extraction: %s"}`, pe.Message), http.StatusUnprocessableEntity)
+	case "empty_cv":
+		http.Error(w, `{"error":"extracted text is empty"}`, http.StatusUnprocessableEntity)
+	case "archive_failed":
+		http.Error(w, `{"error":"archive failed"}`, http.StatusBadGateway)
+	case "index_failed":
+		http.Error(w, `{"error":"index failed"}`, http.StatusBadGateway)
+	case "publish_failed":
+		http.Error(w, `{"error":"publish failed"}`, http.StatusInternalServerError)
+	default:
+		http.Error(w, `{"error":"upload failed"}`, http.StatusInternalServerError)
+	}
+}
+
+func truncateRunesForResponse(s string, max int) string {
+	return cvstore.TruncateRunes(s, max)
 }
 
 // errTooLarge signals that the uploaded file exceeded the byte cap.
@@ -209,7 +402,7 @@ func readBounded(r io.Reader, maxBytes int64) ([]byte, error) {
 	return body, nil
 }
 
-// extractText picks PDF or DOCX extraction based on filename suffix.
+// extractText picks PDF / DOCX / plain-text extraction based on filename.
 // Rejects any other suffix.
 func extractText(ex TextExtractor, filename string, body []byte) (string, error) {
 	lower := strings.ToLower(filename)
@@ -218,7 +411,35 @@ func extractText(ex TextExtractor, filename string, body []byte) (string, error)
 		return ex.FromPDF(body)
 	case strings.HasSuffix(lower, ".docx"):
 		return ex.FromDOCX(body)
+	case strings.HasSuffix(lower, ".txt"), strings.HasSuffix(lower, ".text"), strings.HasSuffix(lower, ".md"):
+		return string(body), nil
+	case strings.HasSuffix(lower, ".rtf"):
+		// Best-effort: strip common RTF control words for chat intake.
+		return stripRTF(string(body)), nil
 	default:
-		return "", errors.New("unsupported file type (only .pdf and .docx accepted)")
+		return "", errors.New("unsupported file type (pdf, docx, txt, rtf accepted)")
 	}
+}
+
+func stripRTF(s string) string {
+	// Minimal stripper — enough for plain CVs saved as .rtf.
+	var b strings.Builder
+	inCtrl := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\':
+			inCtrl = true
+		case inCtrl && (c == ' ' || c == '\n' || c == '\r' || c == '{' || c == '}'):
+			inCtrl = false
+			if c == ' ' || c == '\n' || c == '\r' {
+				b.WriteByte(' ')
+			}
+		case c == '{' || c == '}':
+			// group markers
+		case !inCtrl:
+			b.WriteByte(c)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }

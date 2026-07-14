@@ -100,6 +100,47 @@ FROM candidate_match_indexes
 WHERE candidate_id = $1
 `
 
+// IndexFilters are preference filters applied without replacing the embedding.
+type IndexFilters struct {
+	Countries      []string
+	Kinds          []string
+	SalaryFloorUSD *int
+	RemoteOnly     bool
+}
+
+// UpsertFilters updates countries/kinds/salary filters when an index row
+// already exists (embedding is NOT NULL so we cannot create a filter-only row).
+func (s *IndexStore) UpsertFilters(ctx context.Context, candidateID string, f IndexFilters) error {
+	if s == nil || s.db == nil || candidateID == "" {
+		return nil
+	}
+	var floor any
+	if f.SalaryFloorUSD != nil {
+		floor = *f.SalaryFloorUSD
+	}
+	kinds := f.Kinds
+	if len(kinds) == 0 {
+		kinds = []string{"job"}
+	}
+	res, err := s.db.ExecContext(ctx, `
+UPDATE candidate_match_indexes SET
+    kinds = $2,
+    countries = $3,
+    salary_floor_usd = COALESCE($4, salary_floor_usd),
+    remote_only = $5,
+    updated_at = now()
+WHERE candidate_id = $1
+`, candidateID, pq.Array(kinds), pq.Array(f.Countries), floor, f.RemoteOnly)
+	if err != nil {
+		return fmt.Errorf("matching: index filter upsert: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Get returns the CandidateIndex for candidateID, or ErrNotFound if absent.
 func (s *IndexStore) Get(ctx context.Context, candidateID string) (*CandidateIndex, error) {
 	row := s.db.QueryRowContext(ctx, getIndexSQL, candidateID)
