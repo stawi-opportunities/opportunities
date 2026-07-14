@@ -1,36 +1,14 @@
 /**
  * Post-login destination resolution.
  *
- * @stawi/auth-runtime stashes the path the user was on when they clicked
- * Sign in (`returnTo`) and returns it from `completeRedirect()`. We combine
- * that with subscription status so:
+ * After a successful sign-in (or when a signed-in user hits the marketing
+ * home), the only application landings are:
  *
- *  - paid users resume where they left off (or land on the dashboard)
- *  - unpaid users finish onboarding unless they were on a public content page
- *  - auth/callback itself is never a final landing
+ *  - `/dashboard/`  — active subscription
+ *  - `/onboarding/` — everyone else (preserve `?plan=` when mid-onboarding)
+ *
+ * Public content pages (/jobs, /search, …) are never post-login targets.
  */
-
-/** Paths that do not require an active subscription to view. */
-const PUBLIC_PREFIXES = [
-  '/jobs',
-  '/job/',
-  '/search',
-  '/scholarships',
-  '/scholarship/',
-  '/tenders',
-  '/tender/',
-  '/deals',
-  '/deal/',
-  '/funding',
-  '/funding-detail',
-  '/categories',
-  '/l/',
-  '/about',
-  '/pricing',
-  '/faq',
-  '/terms',
-  '/privacy',
-] as const;
 
 /**
  * Sanitize a stashed return path. Only same-origin relative paths are
@@ -40,7 +18,6 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
   if (!raw || typeof raw !== 'string') return '/';
   const trimmed = raw.trim();
   if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return '/';
-  // Keep search (e.g. /onboarding/?plan=pro) and hash (e.g. /dashboard/#matches).
   try {
     const u = new URL(trimmed, 'http://local.invalid');
     return (u.pathname || '/') + (u.search || '') + (u.hash || '');
@@ -49,16 +26,14 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
   }
 }
 
-export function isPublicContentPath(path: string): boolean {
-  const p = sanitizeReturnTo(path);
-  if (p === '/') return false; // marketing home is not "resume here" for unpaid
-  return PUBLIC_PREFIXES.some((prefix) => p === prefix || p.startsWith(prefix));
-}
-
 export type SubscriptionStatus = 'active' | 'none' | 'canceled' | 'past_due' | string;
 
 /**
- * Decide where to send the browser after a successful OIDC code exchange.
+ * Decide where to send the browser after a successful OIDC code exchange
+ * (or when bouncing an already-authenticated user off the marketing home).
+ *
+ * `returnTo` is only used to preserve onboarding query params (e.g. ?plan=pro)
+ * or a dashboard section hash (e.g. #matches). It never restores public pages.
  */
 export function resolvePostLoginPath(
   returnTo: string | null | undefined,
@@ -67,26 +42,15 @@ export function resolvePostLoginPath(
   const dest = sanitizeReturnTo(returnTo);
   const active = subscriptionStatus === 'active';
 
-  // Never land on the callback (or any /auth/*) page.
-  if (dest.startsWith('/auth/') || dest.startsWith('/auth?')) {
-    return active ? '/dashboard/' : '/onboarding/';
-  }
-
   if (active) {
-    // Paid: resume deep link; treat home / onboarding as "go to dashboard".
-    if (dest === '/' || dest.startsWith('/onboarding')) {
-      return '/dashboard/';
-    }
-    return dest;
+    // Resume a dashboard section hash when they signed in from there.
+    if (dest.startsWith('/dashboard')) return dest;
+    return '/dashboard/';
   }
 
-  // Unpaid / unknown: finish onboarding unless they were browsing public content.
+  // Unpaid / unknown: always onboarding. Keep plan query if they were mid-flow.
   if (dest.startsWith('/onboarding')) {
-    return dest; // preserve ?plan=
-  }
-  if (isPublicContentPath(dest)) {
     return dest;
   }
-  // Home, dashboard, settings, unknown gated surfaces → onboarding.
   return '/onboarding/';
 }

@@ -11,9 +11,9 @@ import { useAuth } from '@/providers/AuthProvider';
  * Flow:
  *  1. `completeRedirect()` exchanges ?code=&state= and returns the path the
  *     user was on when they clicked Sign in (`returnTo`).
- *  2. We load subscription status once and pick a final destination via
- *     `resolvePostLoginPath` (paid → resume/dashboard; unpaid → onboarding
- *     unless they were on a public content page).
+ *  2. We load subscription status once and route via `resolvePostLoginPath`
+ *     (active → /dashboard/; otherwise → /onboarding/). Never lands on
+ *     public marketing/content pages.
  *  3. `location.replace` (not assign) so Back does not re-run the exchange.
  */
 export default function AuthCallback() {
