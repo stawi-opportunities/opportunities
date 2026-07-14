@@ -83,17 +83,24 @@ ui-build: $(HUGO_BIN)
 	cd ui       && npm run css:build
 	cd ui       && $(HUGO_BIN) --minify
 
-# Vite on :5173 + Hugo on :5170 concurrently. ^C stops both. OIDC env vars
-# swap in the Development partition client so local sign-in doesn't hit the
-# production realm.
-ui-dev:
+# Vite :5173 (app) / :5174 (admin) + Hugo :5171 + CF-redirects proxy :5170.
+# Browser entrypoint is always http://localhost:5170/ (proxy applies the
+# same splat rewrites as Cloudflare Pages `_redirects` so /jobs/<slug>
+# hydrates the detail shell).
+# - OIDC: Development partition SPA client (not production d7is…qlp0).
+# - API: Vite dev proxy (ui/app/vite.config.ts) avoids browser CORS.
+ui-dev: $(HUGO_BIN)
 	@trap 'kill 0' EXIT INT TERM; \
 		(cd ui/app   && npm run dev) & \
 		(cd ui/admin && npm run dev) & \
-		HUGO_PARAMS_oidcClientID=opportunities-web-dev \
-		HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqrhg \
-		HUGO_PARAMS_oidcRedirectURI=http://localhost:5170/auth/callback/ \
-		(cd ui && hugo server --bind 0.0.0.0 --port 5170 --disableFastRender) & \
+		(cd ui && \
+			HUGO_PARAMS_oidcClientID=d7is2kspf2t7cl19qlpg \
+			HUGO_PARAMS_oidcInstallationID=d7gi6lkpf2t67dlsqrhg \
+			HUGO_PARAMS_oidcRedirectURI=http://localhost:5170/auth/callback/ \
+			HUGO_PARAMS_apiURL=http://localhost:5173/jobs-api \
+			HUGO_PARAMS_candidatesAPIURL=http://localhost:5173/candidates-api \
+			$(HUGO_BIN) server --bind 127.0.0.1 --port 5171 --disableFastRender) & \
+		(cd ui && HUGO_ORIGIN=http://127.0.0.1:5171 LISTEN_PORT=5170 node scripts/local-redirects.mjs) & \
 		wait
 
 # ---- Opportunity kinds ----------------------------------------------------

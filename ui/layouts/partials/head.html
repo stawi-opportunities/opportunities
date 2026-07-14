@@ -101,20 +101,20 @@
      server (HMR); in production we load the hashed bundle recorded in
      data/app_manifest.json by the Vite build. -->
 {{ if hugo.IsServer }}
-  <!-- All three URLs include the /app/ prefix because vite.config.ts
-       sets base: "/app/" — Vite v6 dev server routes resources under it
-       the same way production does. -->
-  <script type="module" src="http://localhost:5173/app/@vite/client"></script>
+  <!-- Vite dev uses base: "/" (see ui/app/vite.config.ts). Production
+       builds use base: "/app/" and load from the hashed manifest below.
+       Do not prefix these with /app/ — that 404s in dev. -->
+  <script type="module" src="http://localhost:5173/@vite/client"></script>
   <!-- @vitejs/plugin-react preamble. When Vite itself serves the HTML it
        injects this automatically; under Hugo we have to do it ourselves. -->
   <script type="module">
-    import RefreshRuntime from "http://localhost:5173/app/@react-refresh";
+    import RefreshRuntime from "http://localhost:5173/@react-refresh";
     RefreshRuntime.injectIntoGlobalHook(window);
     window.$RefreshReg$ = () => {};
     window.$RefreshSig$ = () => (type) => type;
     window.__vite_plugin_react_preamble_installed__ = true;
   </script>
-  <script type="module" src="http://localhost:5173/app/src/main.tsx"></script>
+  <script type="module" src="http://localhost:5173/src/main.tsx"></script>
 {{ else }}
   {{ with (index hugo.Data "app_manifest") }}
     {{ with (index . "main.css") }}<link rel="stylesheet" href="/{{ . }}">{{ end }}

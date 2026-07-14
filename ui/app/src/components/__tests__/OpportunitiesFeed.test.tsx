@@ -29,7 +29,9 @@ describe('OpportunitiesFeed', () => {
   it("fetches with the default 'all' filter on mount", async () => {
     render(<OpportunitiesFeed />);
     await waitFor(() => expect(api.fetchOpportunities).toHaveBeenCalled());
-    expect(api.fetchOpportunities).toHaveBeenCalledWith({ filter: 'all' });
+    expect(api.fetchOpportunities).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: 'all', sort: 'recent' })
+    );
   });
 
   it('clicking the Starred chip refetches with filter=starred and updates the URL', async () => {
@@ -37,7 +39,9 @@ describe('OpportunitiesFeed', () => {
     await waitFor(() => screen.getByRole('button', { name: /save opportunity/i }));
     fireEvent.click(screen.getByRole('tab', { name: /^starred$/i }));
     await waitFor(() =>
-      expect(api.fetchOpportunities).toHaveBeenLastCalledWith({ filter: 'starred' })
+      expect(api.fetchOpportunities).toHaveBeenLastCalledWith(
+        expect.objectContaining({ filter: 'starred', sort: 'recent' })
+      )
     );
     expect(window.location.search).toBe('?filter=starred');
   });
