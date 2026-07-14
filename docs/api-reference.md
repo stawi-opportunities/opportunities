@@ -26,7 +26,10 @@ Requires JWT (OIDC). Gateway may strip a `/matching` prefix.
 |---------|---------|
 | `GET /me/subscription` | Plan / paid status |
 | `GET /me/opportunities` | Unified feed (matches + saved + applications) |
-| `PUT /me/cv` | CV upload |
+| `POST /me/chat` | Shared placement chat (prefs + qualifications intake) |
+| `GET/PUT /me/onboarding` | Onboarding draft + message transcript |
+| `PUT /me/cv` | CV → files service + sync placement summary |
+| `GET /me/cv` | File-id ref + qualifications from placement summary |
 | `POST /billing/checkout` | Start payment |
 | `GET /billing/plans` | Plan catalog (public) |
 
