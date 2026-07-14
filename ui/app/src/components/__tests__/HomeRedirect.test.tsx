@@ -1,18 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import type { AuthState } from '@stawi/auth-runtime';
 import HomeRedirect from '../HomeRedirect';
 
 let authState: AuthState = 'initializing';
+let subStatus: 'active' | 'none' = 'active';
 
 vi.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ state: authState, login: vi.fn(), logout: vi.fn(), runtime: {} }),
+}));
+
+vi.mock('@/api/candidates', () => ({
+  fetchMeSubscription: vi.fn(async () => ({
+    status: subStatus,
+    plan: null,
+    renews_at: null,
+    cancel_at: null,
+  })),
 }));
 
 let replaceSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   replaceSpy = vi.fn();
+  subStatus = 'active';
   Object.defineProperty(window, 'location', {
     configurable: true,
     value: { replace: replaceSpy, assign: vi.fn(), href: 'http://localhost/' },
@@ -32,11 +43,19 @@ describe('HomeRedirect hero gating', () => {
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
-  it('hides the hero and redirects to /dashboard/ when authenticated', () => {
+  it('hides the hero and redirects paid users to /dashboard/', async () => {
     authState = 'authenticated';
+    subStatus = 'active';
     render(<HomeRedirect />);
     expect(hero().style.display).toBe('none');
-    expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
+    await waitFor(() => expect(replaceSpy).toHaveBeenCalledWith('/dashboard/'));
+  });
+
+  it('sends unpaid authenticated users to /onboarding/', async () => {
+    authState = 'authenticated';
+    subStatus = 'none';
+    render(<HomeRedirect />);
+    await waitFor(() => expect(replaceSpy).toHaveBeenCalledWith('/onboarding/'));
   });
 
   it('reveals the hero (correcting a stale hint) when unauthenticated', () => {
