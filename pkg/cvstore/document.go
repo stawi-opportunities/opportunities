@@ -13,8 +13,8 @@ import (
 
 // Document is one CV version for a candidate — the local index row.
 type Document struct {
-	CandidateID   string
-	Version       int
+	CandidateID string
+	Version     int
 	// FileID is the platform files-service media id when uploaded there.
 	FileID string
 	// ContentURI is the durable content URI (files service) or archive key.

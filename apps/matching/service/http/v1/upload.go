@@ -137,14 +137,14 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"accepted":      true,
-			"candidate_id":  candidateID,
-			"cv_version":    result.Version,
-			"file_id":       result.FileID,
-			"content_uri":   result.ContentURI,
-			"content_hash":  result.ContentHash,
-			"storage":       result.Storage,
-			"cv_length":     result.TextLength,
+			"accepted":       true,
+			"candidate_id":   candidateID,
+			"cv_version":     result.Version,
+			"file_id":        result.FileID,
+			"content_uri":    result.ContentURI,
+			"content_hash":   result.ContentHash,
+			"storage":        result.Storage,
+			"cv_length":      result.TextLength,
 			"extracted_text": truncateRunesForResponse(result.ExtractedText, 40_000),
 		})
 	}

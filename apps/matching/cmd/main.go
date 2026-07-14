@@ -39,13 +39,13 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
 	"github.com/stawi-opportunities/opportunities/pkg/cvstore"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
-	"github.com/stawi-opportunities/opportunities/pkg/placement"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
@@ -391,12 +391,10 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
 	// CV pipeline: files service (preferred) + local document index + R2 archive fallback.
+	// Storage uses GORM models registered in matching.Schema() + capability SQL migrations.
 	var cvBlob cvstore.BlobStore = &cvstore.ArchiveBlobStore{Archive: arch}
-	cvIndex := &cvstore.SQLIndexStore{DB: sqlDB}
-	if err := cvIndex.EnsureSchema(ctx); err != nil {
-		log.WithError(err).Warn("cvstore: ensure schema failed; uploads may fail until migrations run")
-	}
-	cvProfiles := &cvstore.SQLProfilePointers{DB: sqlDB}
+	cvIndex := cvstore.NewGormIndexStore(dbFn)
+	cvProfiles := cvstore.NewGormProfilePointers(dbFn)
 	// Dial files service early so CV uploads use platform content IDs when configured.
 	if cfg.FileServiceURI != "" {
 		fileClients, fileErr := services.NewClients(ctx, &cfg, services.ClientConfig{
@@ -416,11 +414,9 @@ func main() {
 		log.Info("cvstore: FILE_SERVICE_URI unset — CV uploads use R2 archive; local text index still written")
 	}
 
-	// Placement profile: combined qualifications + preferences → vector match index.
-	placementStore := &placement.SQLStore{DB: sqlDB}
-	if err := placementStore.EnsureSchema(ctx); err != nil {
-		log.WithError(err).Warn("placement: ensure schema failed; summaries may not persist until migrations run")
-	}
+	// Placement profile (business layer): qualifications + preferences → vector match index.
+	// Persistence is GORM (matching.CandidatePlacementProfileRecord); vectors use IndexStore.
+	placementStore := placement.NewGormStore(dbFn)
 	var matchIndexStore *matching.IndexStore
 	if sqlDB != nil {
 		matchIndexStore = matching.NewIndexStore(sqlDB)

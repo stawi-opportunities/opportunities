@@ -109,6 +109,41 @@ type EngagementEventRecord struct {
 
 func (EngagementEventRecord) TableName() string { return "engagement_events" }
 
+// CandidateCVDocumentRecord is the local CV text index (files/archive pointer
+// + extracted text). Binary bytes live in the files service or R2 archive.
+// One row per candidate (current version).
+type CandidateCVDocumentRecord struct {
+	CandidateID   string    `gorm:"primaryKey;type:text"`
+	Version       int       `gorm:"not null;default:1"`
+	FileID        string    `gorm:"type:text;not null;default:''"`
+	ContentURI    string    `gorm:"type:text;not null;default:''"`
+	ContentHash   string    `gorm:"type:text;not null;default:'';index:candidate_cv_documents_hash_idx,where:content_hash <> ''"`
+	Filename      string    `gorm:"type:text;not null;default:''"`
+	ContentType   string    `gorm:"type:text;not null;default:''"`
+	SizeBytes     int64     `gorm:"not null;default:0"`
+	ExtractedText string    `gorm:"type:text;not null;default:''"`
+	TextLength    int       `gorm:"not null;default:0"`
+	Storage       string    `gorm:"type:text;not null;default:'archive'"`
+	UpdatedAt     time.Time `gorm:"not null;default:now()"`
+}
+
+func (CandidateCVDocumentRecord) TableName() string { return "candidate_cv_documents" }
+
+// CandidatePlacementProfileRecord stores the combined qualifications +
+// preferences summary used for agent guidance and vector matching.
+type CandidatePlacementProfileRecord struct {
+	CandidateID        string         `gorm:"primaryKey;type:text"`
+	Version            int            `gorm:"not null;default:1"`
+	SummaryText        string         `gorm:"type:text;not null;default:''"`
+	QualificationsText string         `gorm:"type:text;not null;default:''"`
+	PreferencesText    string         `gorm:"type:text;not null;default:''"`
+	Missing            pq.StringArray `gorm:"type:text[];not null;default:'{}'"`
+	Ready              bool           `gorm:"not null;default:false"`
+	UpdatedAt          time.Time      `gorm:"not null;default:now()"`
+}
+
+func (CandidatePlacementProfileRecord) TableName() string { return "candidate_placement_profiles" }
+
 // Schema returns the ordinary matching tables owned by GORM.
 func Schema() []any {
 	return []any{
@@ -119,5 +154,7 @@ func Schema() []any {
 		&CandidateMatchEventRecord{},
 		&MatchRunEventRecord{},
 		&EngagementEventRecord{},
+		&CandidateCVDocumentRecord{},
+		&CandidatePlacementProfileRecord{},
 	}
 }
