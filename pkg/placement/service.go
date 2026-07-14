@@ -9,7 +9,6 @@ import (
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
-	"github.com/stawi-opportunities/opportunities/pkg/cvstore"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
@@ -20,21 +19,20 @@ type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-// CVSource loads the latest CV plain text for a candidate.
-type CVSource interface {
-	GetCurrent(ctx context.Context, candidateID string) (*cvstore.Document, error)
-}
-
 // Service rebuilds placement profiles and refreshes the match index vector.
+// CV binaries live in the files service; this layer only holds the summary.
 type Service struct {
-	Store    Store
-	CV       CVSource
+	Store Store
+	// Files optional: used only by HTTP upload (not by Rebuild itself).
+	Files FileStore
+	// Profiles optional: persist file-id reference on candidate_profiles.
+	Profiles ProfileStore
 	Embedder Embedder
 	// Index optional: patch filters + embedding when available.
 	Index *matching.IndexStore
 	// Svc + EmbedQueue publish CandidateEmbeddingV1 for gap-fill consumers.
 	Svc        *frame.Service
-	EmbedQueue string // eventsv1.TopicCandidateEmbedding or queue name
+	EmbedQueue string
 	// ModelVersion stamped on embedding events.
 	ModelVersion string
 }
@@ -63,13 +61,12 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 		return nil, fmt.Errorf("placement: candidate_id required")
 	}
 	fields := in.Fields
-	// Prefer longer CV from local document index.
-	if s.CV != nil {
-		if doc, err := s.CV.GetCurrent(ctx, in.CandidateID); err == nil && doc != nil {
-			if looksLikeCV(doc.ExtractedText) {
-				if !looksLikeCV(fields.ExtraInfo) || len(doc.ExtractedText) > len(fields.ExtraInfo) {
-					fields.ExtraInfo = doc.ExtractedText
-				}
+	// If this turn has no CV text, keep prior qualifications from the last summary.
+	if !looksLikeCV(fields.ExtraInfo) && s.Store != nil {
+		if prior, err := s.Store.Get(ctx, in.CandidateID); err == nil && prior != nil {
+			if looksLikeCV(prior.QualificationsText) {
+				// Strip the "## Qualifications" header if present for ExtraInfo reuse.
+				fields.ExtraInfo = stripQualHeader(prior.QualificationsText)
 			}
 		}
 	}
@@ -167,4 +164,10 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 	}
 
 	return &RebuildResult{Document: doc, Version: version, Embedded: embedded}, nil
+}
+
+func stripQualHeader(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "## Qualifications")
+	return strings.TrimSpace(s)
 }

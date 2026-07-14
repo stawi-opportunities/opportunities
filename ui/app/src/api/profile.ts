@@ -72,15 +72,19 @@ export interface UploadCVResult {
   ok: boolean;
   cv_length: number;
   filename?: string;
-  /** Plain text extracted server-side — feed into chat inference. */
+  /** Plain text extracted server-side — feed into chat inference immediately. */
   extracted_text?: string;
   cv_version?: number;
-  /** Platform files-service media id when storage is "files". */
+  /** Platform files-service media id (preferred storage). */
   file_id?: string;
   content_uri?: string;
   content_hash?: string;
   /** "files" | "archive" */
   storage?: string;
+  /** Combined qualifications + preferences summary after sync rebuild. */
+  placement_summary?: string;
+  placement_ready?: boolean;
+  missing?: string[];
 }
 
 export async function uploadCV(file: File): Promise<UploadCVResult> {

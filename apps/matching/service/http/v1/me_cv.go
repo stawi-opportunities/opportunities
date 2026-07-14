@@ -3,15 +3,15 @@ package v1
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
-// MeCVGetHandler serves GET /me/cv — returns the current local CV document
-// index (file pointers + extracted text) so chat and settings can resume
-// without re-uploading.
+// MeCVGetHandler serves GET /me/cv — file-id reference from the profile plus
+// qualifications text from the placement summary (no separate CV document store).
 func MeCVGetHandler(deps UploadDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -20,54 +20,63 @@ func MeCVGetHandler(deps UploadDeps) http.HandlerFunc {
 				"method_not_allowed", "use GET")
 			return
 		}
-		candidateID := httpmw.CandidateFromContext(r.Context())
-		if deps.Index == nil {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "present": false})
-			return
+		ctx := r.Context()
+		candidateID := httpmw.CandidateFromContext(ctx)
+
+		fileID, contentURI, contentHash := "", "", ""
+		if deps.Profiles != nil {
+			ref, err := deps.Profiles.GetCVFileRef(ctx, candidateID)
+			if err != nil {
+				util.Log(ctx).WithError(err).Warn("me/cv GET: profile read failed")
+			} else {
+				fileID = ref.FileID
+				contentURI = ref.ContentURI
+				contentHash = ref.ContentHash
+			}
 		}
-		doc, err := deps.Index.GetCurrent(r.Context(), candidateID)
-		if err != nil {
-			util.Log(r.Context()).WithError(err).Warn("me/cv GET: index read failed")
-			httpmw.ProblemJSON(w, http.StatusBadGateway, "index_read_failed", "could not load cv index")
-			return
+
+		extracted := ""
+		version := 0
+		ready := false
+		if deps.Placement != nil && deps.Placement.Store != nil {
+			if doc, err := deps.Placement.Store.Get(ctx, candidateID); err == nil && doc != nil {
+				version = doc.Version
+				ready = doc.Ready
+				// Qualifications section is the CV corpus used for capabilities.
+				extracted = strings.TrimSpace(strings.TrimPrefix(doc.QualificationsText, "## Qualifications"))
+				extracted = strings.TrimSpace(extracted)
+				if extracted == "(CV not yet provided)" {
+					extracted = ""
+				}
+			}
 		}
-		if doc == nil {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "present": false})
-			return
-		}
+
+		present := fileID != "" || contentURI != "" || extracted != ""
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":             true,
-			"present":        true,
-			"cv_version":     doc.Version,
-			"file_id":        doc.FileID,
-			"content_uri":    doc.ContentURI,
-			"content_hash":   doc.ContentHash,
-			"filename":       doc.Filename,
-			"content_type":   doc.ContentType,
-			"size_bytes":     doc.SizeBytes,
-			"storage":        doc.Storage,
-			"cv_length":      doc.TextLength,
-			"extracted_text": truncateRunesForResponse(doc.ExtractedText, 40_000),
-			"updated_at":     doc.UpdatedAt,
+			"ok":              true,
+			"present":         present,
+			"cv_version":      version,
+			"file_id":         fileID,
+			"content_uri":     contentURI,
+			"content_hash":    contentHash,
+			"cv_length":       len([]rune(extracted)),
+			"extracted_text":  truncateRunesForResponse(extracted, 40_000),
+			"placement_ready": ready,
 		})
 	}
 }
 
-// MeCVHandler serves PUT /me/cv — the logged-in candidate's CV upload
-// from the dashboard / chat. Unlike POST /candidates/cv/upload (multipart
-// with a candidate_id FORM field), this route derives the candidate from
-// the JWT subject and accepts the CV as the `file` part the auth-runtime's
-// upload() helper sends (FormData with a single "file" field; method PUT).
+// MeCVHandler serves PUT /me/cv — the logged-in candidate's CV upload.
 //
-// Pipeline:
-//  1. Extract plain text (PDF/DOCX/txt/rtf)
-//  2. Store raw bytes in the platform files service (or R2 archive fallback)
-//  3. Upsert local candidate_cv_documents index from extracted text
-//  4. Best-effort profile CV pointers (cv_storage_uri / cv_content_hash)
-//  5. Enqueue cv-extract → embed → candidate_match_indexes gap-fill
+// Synchronous path (required for chat to continue immediately):
+//  1. Extract plain text
+//  2. Store binary in the files service (archive fallback)
+//  3. Save file-id on candidate_profiles
+//  4. Rebuild placement summary (qualifications + preferences)
+//  5. Persist CV text into chat draft for readiness
+//
+// Async: enqueue cv-extract for LLM enrichment only.
 func MeCVHandler(deps UploadDeps) http.HandlerFunc {
 	maxBytes := deps.MaxBytes
 	if maxBytes <= 0 {
@@ -128,15 +137,18 @@ func MeCVHandler(deps UploadDeps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":             true,
-			"cv_length":      result.TextLength,
-			"filename":       hdr.Filename,
-			"extracted_text": truncateRunesForResponse(result.ExtractedText, 40_000),
-			"cv_version":     result.Version,
-			"file_id":        result.FileID,
-			"content_uri":    result.ContentURI,
-			"content_hash":   result.ContentHash,
-			"storage":        result.Storage,
+			"ok":                true,
+			"cv_length":         result.TextLength,
+			"filename":          hdr.Filename,
+			"extracted_text":    truncateRunesForResponse(result.ExtractedText, 40_000),
+			"cv_version":        result.Version,
+			"file_id":           result.FileID,
+			"content_uri":       result.ContentURI,
+			"content_hash":      result.ContentHash,
+			"storage":           result.Storage,
+			"placement_summary": result.PlacementSummary,
+			"placement_ready":   result.PlacementReady,
+			"missing":           result.Missing,
 		})
 	}
 }
@@ -152,12 +164,8 @@ func writeMeCVProcessError(w http.ResponseWriter, err error) {
 		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "text_extraction_failed", pe.Message)
 	case "empty_cv":
 		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "empty_cv", pe.Message)
-	case "archive_failed":
-		httpmw.ProblemJSON(w, http.StatusBadGateway, "archive_failed", pe.Message)
-	case "index_failed":
-		httpmw.ProblemJSON(w, http.StatusBadGateway, "index_failed", pe.Message)
-	case "publish_failed":
-		httpmw.ProblemJSON(w, http.StatusBadGateway, "publish_failed", pe.Message)
+	case "store_failed":
+		httpmw.ProblemJSON(w, http.StatusBadGateway, "store_failed", pe.Message)
 	default:
 		httpmw.ProblemJSON(w, http.StatusBadGateway, "upload_failed", pe.Message)
 	}

@@ -109,28 +109,10 @@ type EngagementEventRecord struct {
 
 func (EngagementEventRecord) TableName() string { return "engagement_events" }
 
-// CandidateCVDocumentRecord is the local CV text index (files/archive pointer
-// + extracted text). Binary bytes live in the files service or R2 archive.
-// One row per candidate (current version).
-type CandidateCVDocumentRecord struct {
-	CandidateID   string    `gorm:"primaryKey;type:text"`
-	Version       int       `gorm:"not null;default:1"`
-	FileID        string    `gorm:"type:text;not null;default:''"`
-	ContentURI    string    `gorm:"type:text;not null;default:''"`
-	ContentHash   string    `gorm:"type:text;not null;default:'';index:candidate_cv_documents_hash_idx,where:content_hash <> ''"`
-	Filename      string    `gorm:"type:text;not null;default:''"`
-	ContentType   string    `gorm:"type:text;not null;default:''"`
-	SizeBytes     int64     `gorm:"not null;default:0"`
-	ExtractedText string    `gorm:"type:text;not null;default:''"`
-	TextLength    int       `gorm:"not null;default:0"`
-	Storage       string    `gorm:"type:text;not null;default:'archive'"`
-	UpdatedAt     time.Time `gorm:"not null;default:now()"`
-}
-
-func (CandidateCVDocumentRecord) TableName() string { return "candidate_cv_documents" }
-
 // CandidatePlacementProfileRecord stores the combined qualifications +
 // preferences summary used for agent guidance and vector matching.
+// CV binary lives in the files service; candidate_profiles holds the file-id
+// reference. Extracted CV text is folded into qualifications_text/summary_text.
 type CandidatePlacementProfileRecord struct {
 	CandidateID        string         `gorm:"primaryKey;type:text"`
 	Version            int            `gorm:"not null;default:1"`
@@ -154,7 +136,6 @@ func Schema() []any {
 		&CandidateMatchEventRecord{},
 		&MatchRunEventRecord{},
 		&EngagementEventRecord{},
-		&CandidateCVDocumentRecord{},
 		&CandidatePlacementProfileRecord{},
 	}
 }

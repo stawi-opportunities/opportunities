@@ -37,7 +37,6 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
-	"github.com/stawi-opportunities/opportunities/pkg/cvstore"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
@@ -390,33 +389,31 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
-	// CV pipeline: files service (preferred) + local document index + R2 archive fallback.
-	// Storage uses GORM models registered in matching.Schema() + capability SQL migrations.
-	var cvBlob cvstore.BlobStore = &cvstore.ArchiveBlobStore{Archive: arch}
-	cvIndex := cvstore.NewGormIndexStore(dbFn)
-	cvProfiles := cvstore.NewGormProfilePointers(dbFn)
-	// Dial files service early so CV uploads use platform content IDs when configured.
+	// CV binary → files service (preferred) or R2 archive fallback.
+	// Only a file-id reference is kept on candidate_profiles; extracted text
+	// updates the placement summary synchronously for chat/matching.
+	var cvFiles placement.FileStore = &placement.ArchiveFileStore{Archive: arch}
 	if cfg.FileServiceURI != "" {
 		fileClients, fileErr := services.NewClients(ctx, &cfg, services.ClientConfig{
 			FileURI:    cfg.FileServiceURI,
 			HTTPClient: svc.HTTPClientManager().Client(ctx),
 		})
 		if fileErr != nil {
-			log.WithError(fileErr).Warn("cvstore: files client init error; will use R2 archive for CVs")
+			log.WithError(fileErr).Warn("placement: files client init error; CV uploads use R2 archive")
 		}
 		if fileClients != nil && fileClients.Files != nil {
-			cvBlob = &cvstore.FilesBlobStore{Client: fileClients.Files}
-			log.WithField("uri", cfg.FileServiceURI).Info("cvstore: CV uploads via platform files service")
+			cvFiles = &placement.FilesServiceStore{Client: fileClients.Files}
+			log.WithField("uri", cfg.FileServiceURI).Info("placement: CV binaries via platform files service")
 		} else {
-			log.Warn("cvstore: FILE_SERVICE_URI set but files client unavailable — using R2 archive")
+			log.Warn("placement: FILE_SERVICE_URI set but files client unavailable — using R2 archive")
 		}
 	} else {
-		log.Info("cvstore: FILE_SERVICE_URI unset — CV uploads use R2 archive; local text index still written")
+		log.Info("placement: FILE_SERVICE_URI unset — CV binaries use R2 archive fallback")
 	}
 
-	// Placement profile (business layer): qualifications + preferences → vector match index.
-	// Persistence is GORM (matching.CandidatePlacementProfileRecord); vectors use IndexStore.
+	// Placement profile (business): qualifications + preferences → summary + vector.
 	placementStore := placement.NewGormStore(dbFn)
+	profileCV := placement.NewGormProfileStore(dbFn)
 	var matchIndexStore *matching.IndexStore
 	if sqlDB != nil {
 		matchIndexStore = matching.NewIndexStore(sqlDB)
@@ -427,7 +424,8 @@ func main() {
 	}
 	placementSvc := &placement.Service{
 		Store:        placementStore,
-		CV:           cvIndex,
+		Files:        cvFiles,
+		Profiles:     profileCV,
 		Embedder:     placementEmbedder,
 		Index:        matchIndexStore,
 		Svc:          svc,
@@ -439,9 +437,8 @@ func main() {
 		Svc:       svc,
 		Archive:   arch,
 		Text:      textExtractor{},
-		Blob:      cvBlob,
-		Index:     cvIndex,
-		Profiles:  cvProfiles,
+		Files:     cvFiles,
+		Profiles:  profileCV,
 		Placement: placementSvc,
 		Drafts:    candidateRepo,
 	}
@@ -450,9 +447,9 @@ func main() {
 	mux.Handle("POST /candidates/cv/upload", authMW(httpv1.UploadHandler(uploadDeps)))
 
 	// /me/cv — dashboard + chat CV. Pipeline on PUT:
-	// extract text → files service (or archive) → local candidate_cv_documents
-	// index → profile pointers → cv-extract → embed → match index.
-	// GET returns the local index for resume without re-upload.
+	// extract text → files service (file-id on profile) → placement summary (sync)
+
+	// GET returns file-id + qualifications from placement summary.
 	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
 	mux.Handle("GET /me/cv", authMW(httpv1.MeCVGetHandler(uploadDeps)))
 	mux.Handle("POST /candidates/preferences", authMW(httpv1.PreferencesHandler(svc, sqlDB)))

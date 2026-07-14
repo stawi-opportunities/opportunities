@@ -46,15 +46,14 @@ type CandidateProfile struct {
 	Subscription SubscriptionTier `gorm:"type:varchar(20);not null;default:'free'" json:"subscription"`
 	AutoApply    bool             `gorm:"not null;default:false" json:"auto_apply"`
 
-	// CV storage
-	CVUrl string `gorm:"type:text" json:"cv_url"`
-	// CV durable storage — raw text lives in R2 at
-	// candidates/{candidate_id}/cv-raw.txt.gz. The row carries the
-	// pointer + sha256 for change-detection. Both empty until the
-	// CV-upload path is rewired through R2 (follow-up; the columns
-	// are pre-created so the next iteration can land without
-	// another migration).
-	CVStorageURI  string `gorm:"type:text" json:"-"`
+	// CV storage — binary in the platform files service; we keep only a
+	// reference here. CVStorageURI is the files media id (preferred) or
+	// archive key fallback; CVUrl is the content URI for download/display;
+	// CVContentHash is sha256 of the uploaded bytes for change detection.
+	// Extracted text is not stored on the profile — it is folded into the
+	// placement summary (candidate_placement_profiles) for matching/chat.
+	CVUrl         string `gorm:"type:text" json:"cv_url"`
+	CVStorageURI  string `gorm:"type:text" json:"-"` // file id
 	CVContentHash string `gorm:"type:varchar(64)" json:"-"`
 
 	// AI-extracted profile fields
@@ -65,10 +64,10 @@ type CandidateProfile struct {
 	StrongSkills    pq.StringArray `gorm:"type:text[]" json:"strong_skills"`
 	WorkingSkills   pq.StringArray `gorm:"type:text[]" json:"working_skills"`
 	ToolsFrameworks pq.StringArray `gorm:"type:text[]" json:"tools_frameworks"`
-	Certifications  string `gorm:"type:text" json:"certifications"`
-	PreferredRoles  string `gorm:"type:text" json:"preferred_roles"`
-	Industries      string `gorm:"type:text" json:"industries"`
-	Education       string `gorm:"type:text" json:"education"`
+	Certifications  string         `gorm:"type:text" json:"certifications"`
+	PreferredRoles  string         `gorm:"type:text" json:"preferred_roles"`
+	Industries      string         `gorm:"type:text" json:"industries"`
+	Education       string         `gorm:"type:text" json:"education"`
 
 	// Job preferences
 	PreferredLocations string  `gorm:"type:text" json:"preferred_locations"`
@@ -113,10 +112,10 @@ type CandidateProfile struct {
 	// panel has an authoritative number without a fresh LLM round
 	// trip on each page load. Empty CVReportJSON means the candidate
 	// has never been scored (or the CV couldn't be parsed).
-	CVScore           int        `gorm:"not null;default:0" json:"cv_score"`
-	CVReportJSON      string     `gorm:"type:jsonb;default:'{}'" json:"-"`
-	CVScoredAt        *time.Time `json:"cv_scored_at"`
-	CVScoredVersion   string     `gorm:"type:varchar(32)" json:"cv_scored_version"`
+	CVScore         int        `gorm:"not null;default:0" json:"cv_score"`
+	CVReportJSON    string     `gorm:"type:jsonb;default:'{}'" json:"-"`
+	CVScoredAt      *time.Time `json:"cv_scored_at"`
+	CVScoredVersion string     `gorm:"type:varchar(32)" json:"cv_scored_version"`
 
 	// OnboardingDraft persists the multi-step wizard state between
 	// sessions. The wizard writes here on every step; POST
