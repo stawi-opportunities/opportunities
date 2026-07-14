@@ -281,6 +281,26 @@ export async function fetchOpportunities(
   return await authRuntime().fetch<FeedPage>(path);
 }
 
+/** Paywalled application instructions for one opportunity (auth required). */
+export interface ApplyDetails {
+  opportunity_id: string;
+  slug: string;
+  apply_url: string;
+  how_to_apply?: string;
+  /** True when authenticated but not on an active/trial plan. */
+  locked?: boolean;
+}
+
+/**
+ * GET /matching/me/opportunities/{id}/apply — returns how_to_apply only for
+ * active subscribers; free/cancelled candidates get `{ locked: true }`.
+ */
+export async function fetchApplyDetails(idOrSlug: string): Promise<ApplyDetails> {
+  return authRuntime().fetch<ApplyDetails>(
+    `/matching/me/opportunities/${encodeURIComponent(idOrSlug)}/apply`
+  );
+}
+
 export async function starOpportunity(opportunityId: string): Promise<void> {
   await authRuntime().fetch('/matching/me/saved-jobs', {
     method: 'POST',

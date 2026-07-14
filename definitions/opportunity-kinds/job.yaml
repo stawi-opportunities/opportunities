@@ -10,7 +10,12 @@ categories: [Programming, Design, Marketing, Sales, Operations, Finance, HR, Cus
 search_facets: [employment_type, remote_type, seniority]
 extraction_prompt: |
   Extract job posting details from the page. Output JSON with fields:
-  title, description (markdown), issuing_entity (the hiring company),
+  title, description (markdown of the role ONLY — responsibilities, requirements,
+  benefits, company; do NOT include application instructions),
+  how_to_apply (markdown application instructions only: email-to-apply, portal steps,
+  documents to submit, contact for applications; omit if the page only has an apply
+  button/URL with no instructional text),
+  issuing_entity (the hiring company),
   apply_url, anchor_country (ISO 3166-1 alpha-2 of hiring country),
   anchor_region, anchor_city, remote (bool), employment_type
   (one of: full-time, part-time, contract, internship, freelance),

@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "name": "opportunities.how-to-apply.backfill",
+  "description": "Every 15 min — peels paywalled application instructions from opportunity descriptions via NVIDIA Build (INFERENCE_* on the crawler: integrate.api.nvidia.com / meta/llama-3.1-8b-instruct). Processes a small batch (limit=25) of active rows that lack how_to_apply. Idempotent: rows already peeld (how_to_apply set or attributes.how_to_apply_peel in none|ok) are skipped. Scales by raising limit or firing more often; uses the same inference tier as recipe generation.",
+  "input": {},
+  "config": {},
+  "timeout": "15m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "how_to_apply_backfill",
+      "type": "call",
+      "name": "Peel how_to_apply batch via NVIDIA Build",
+      "timeout": "12m",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "30s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "http://opportunities-crawler.product-opportunities.svc/admin/how-to-apply/backfill?limit=25",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {}
+        }
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.how-to-apply.backfill.default",
+      "cron_expr": "*/15 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

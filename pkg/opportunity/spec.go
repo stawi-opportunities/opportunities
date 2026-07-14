@@ -36,11 +36,12 @@ var urlPrefixRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 var universalKeys = map[string]struct{}{
 	"title":          {},
 	"description":    {},
+	"how_to_apply":   {},
 	"issuing_entity": {},
 	"apply_url":      {},
 	"deadline":       {},
-	"anchor_country": {},
 	"anchor_region":  {},
+	"anchor_country": {},
 	"anchor_city":    {},
 }
 

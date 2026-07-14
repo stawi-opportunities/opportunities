@@ -66,6 +66,9 @@ type CrawlRequestDeps struct {
 	Registry   *connectors.Registry
 	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
 	Normalizer *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
+	// HowToApply peels application instructions via inference after Accept.
+	// nil skips peeling (connector-supplied HowToApply still works).
+	HowToApply crawlaccept.HowToApplyPeeler
 	// PageFetcher is the HTTP client used by the recipe executor for
 	// structured page fetches. Not used for LLM enrichment.
 	PageFetcher *httpx.Client
@@ -529,6 +532,14 @@ pages:
 				continue
 			}
 			eventPayload := *accepted.Accepted
+			// Inference peel: public description vs paywalled how_to_apply.
+			// Fail-open — a model outage must not drop the listing.
+			if h.deps.HowToApply != nil {
+				if perr := crawlaccept.PeelAccepted(ctx, &eventPayload, h.deps.HowToApply); perr != nil {
+					util.Log(ctx).WithError(perr).WithField("title", eventPayload.Title).
+						Debug("crawl.request: how_to_apply peel failed; storing full description")
+				}
+			}
 			kind := eventPayload.Kind
 
 			body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))

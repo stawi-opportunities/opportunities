@@ -32,6 +32,12 @@ type CrawlerConfig struct {
 	// inference. The cron fires every 15 min, so N here ≈ N recipes per 15 min.
 	RecipeBackfillLimit int `env:"RECIPE_BACKFILL_LIMIT" envDefault:"25"`
 
+	// HowToApplyBackfillLimit caps rows peeld per Trustage tick
+	// (POST /admin/how-to-apply/backfill). Each row is one NVIDIA Build
+	// chat call (meta/llama-3.1-8b-instruct). Keep small to share quota
+	// with recipe generation.
+	HowToApplyBackfillLimit int `env:"HOW_TO_APPLY_BACKFILL_LIMIT" envDefault:"25"`
+
 	// CrawlOverdueBatch caps how many overdue sources the catch-up sweep
 	// (POST /admin/sources/crawl-overdue) dispatches per tick. The sweep
 	// only sees sources ≥1h past due — ticks the per-source schedules
@@ -88,7 +94,8 @@ type CrawlerConfig struct {
 	ScrapeDoGeoCode string `env:"SCRAPEDO_GEOCODE"`
 
 	// Inference back-end (OpenAI-compatible). Used for recipe generation
-	// only — not for crawl-time job extraction.
+	// and for peeling how_to_apply from opportunity descriptions after
+	// crawl accept (paywall field). Empty disables both.
 	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
 	InferenceAPIKey  string `env:"INFERENCE_API_KEY" envDefault:""`
 	InferenceModel   string `env:"INFERENCE_MODEL" envDefault:""`

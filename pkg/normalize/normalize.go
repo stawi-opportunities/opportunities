@@ -65,6 +65,10 @@ type JobVariant struct {
 	SalaryMax        float64
 	Currency         string
 	Description      string
+	// HowToApply is application instructions peeled from the body (or set
+	// explicitly by a connector). Stored separately and only returned to
+	// subscribed candidates — never on the public jobs API.
+	HowToApply       string
 	Seniority        string
 	Skills           string
 	Roles            string
@@ -273,6 +277,11 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 	// 2. Sanitize description (null bytes + whitespace collapse).
 	description = sanitizeDescription(description)
 
+	// 2b. HowToApply is peeld by inference (extraction.PeelHowToApply /
+	// crawlaccept.PeelAccepted) or returned by kind extraction — never by
+	// heading regex. Normalize only cleans an already-separated value.
+	howToApply := sanitizeDescription(content.ToCleanText(strings.TrimSpace(ext.HowToApply)))
+
 	// 3. Normalize company name.
 	company = normalizeCompany(company)
 
@@ -374,6 +383,7 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 		SalaryMax:        ext.AmountMax,
 		Currency:         currency,
 		Description:      description,
+		HowToApply:       howToApply,
 		Seniority:        strings.ToLower(strings.TrimSpace(ext.AttrString("seniority"))),
 		Skills:           skills,
 		Roles:            roles,

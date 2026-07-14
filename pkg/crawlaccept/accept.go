@@ -97,6 +97,9 @@ func Accept(in Input) Result {
 		attrs = map[string]any{}
 	}
 	attrs["description"] = variant.Description
+	// Never put how_to_apply into Attributes — attributes are returned on the
+	// public jobs API. The paywalled body rides on the envelope field only.
+	delete(attrs, "how_to_apply")
 	attrs["language"] = variant.Language
 	attrs["remote_type"] = variant.RemoteType
 	attrs["employment_type"] = variant.EmploymentType
@@ -140,6 +143,7 @@ func Accept(in Input) Result {
 		Stage:         string(domain.StageRaw),
 		Title:         variant.Title,
 		ApplyURL:      variant.ApplyURL,
+		HowToApply:    variant.HowToApply,
 		IssuingEntity: variant.Company,
 		AnchorCountry: variant.Country,
 		AnchorRegion:  variant.Region,

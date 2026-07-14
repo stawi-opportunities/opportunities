@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -178,10 +179,18 @@ func (p *PostgresProcessor) process(ctx context.Context, item jobqueue.Item) err
 		return fmt.Errorf("invalid variant payload: apply_url is required")
 	}
 	a := n.Attributes
+	// Prefer envelope HowToApply; fall back only for legacy payloads that
+	// may have stashed it under attributes (then strip so it never persists
+	// in the public attributes JSON).
+	howToApply := strings.TrimSpace(in.HowToApply)
+	if howToApply == "" {
+		howToApply = attrString(a, "how_to_apply")
+	}
+	delete(a, "how_to_apply")
 	c := jobqueue.Canonical{
 		CandidateID: xid.New().String(), HardKey: in.HardKey, Kind: defaultString(in.Kind, "job"),
 		SourceID: in.SourceID, ExternalID: in.ExternalID, Title: in.Title,
-		Description: attrString(a, "description"), IssuingEntity: in.IssuingEntity,
+		Description: attrString(a, "description"), HowToApply: howToApply, IssuingEntity: in.IssuingEntity,
 		Country: in.AnchorCountry, Region: in.AnchorRegion, City: in.AnchorCity,
 		ApplyURL: n.ApplyURL, Currency: in.Currency,
 		EmploymentType: attrString(a, "employment_type"), Seniority: attrString(a, "seniority"),

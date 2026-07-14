@@ -205,16 +205,30 @@ func jobByIDHandler(jm JobsBackend) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		attrs := j.Attributes
+		if attrs != nil {
+			// Copy so we never mutate the cached map; strip paywalled keys.
+			cp := make(map[string]any, len(attrs))
+			for k, v := range attrs {
+				if k == "how_to_apply" {
+					continue
+				}
+				cp[k] = v
+			}
+			attrs = cp
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"schema_version": 1,
 			"id":             j.CanonicalID, "slug": j.Slug, "kind": j.Kind,
 			"title": j.Title, "description": j.Description,
-			"issuing_entity": j.IssuingEntity, "apply_url": j.ApplyURL,
+			// Public flag only — how_to_apply body is on GET /me/opportunities/{id}/apply.
+			"has_how_to_apply": j.HasHowToApply,
+			"issuing_entity":   j.IssuingEntity, "apply_url": j.ApplyURL,
 			"posted_at": j.PostedAt, "deadline": j.Deadline,
 			"anchor_location": map[string]any{"country": j.Country, "region": j.Region, "city": j.City},
 			"remote":          j.Remote, "geo_scope": j.GeoScope,
 			"amount_min": j.AmountMin, "amount_max": j.AmountMax, "currency": j.Currency,
-			"attributes": j.Attributes,
+			"attributes": attrs,
 		})
 	}
 }

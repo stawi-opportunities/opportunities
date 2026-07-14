@@ -159,7 +159,8 @@ func (s *Store) DeactivateSource(ctx context.Context, sourceID, reason string) e
 
 type Canonical struct {
 	CandidateID, HardKey, Kind, SourceID, ExternalID, Title string
-	Description, IssuingEntity, Country, Region, City       string
+	Description, HowToApply, IssuingEntity                  string
+	Country, Region, City                                   string
 	ApplyURL, Currency, EmploymentType, Seniority, GeoScope string
 	Remote                                                  bool
 	AmountMin, AmountMax                                    float64
@@ -221,18 +222,33 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 			RETURNING canonical_id`, c.HardKey, c.CandidateID).Scan(&canonicalID).Error; err != nil {
 			return fmt.Errorf("resolve identity: %w", err)
 		}
+		// Drop any leaked paywalled body from attributes before persist —
+		// attributes are returned on the public jobs API.
+		if c.Attributes != nil {
+			delete(c.Attributes, "how_to_apply")
+			attrs, err = json.Marshal(c.Attributes)
+			if err != nil {
+				return fmt.Errorf("marshal attributes: %w", err)
+			}
+		}
 		slug := makeSlug(c.Kind, c.Title, c.IssuingEntity, canonicalID)
 		if err := tx.Exec(`INSERT INTO opportunities (
-			canonical_id, slug, kind, source_id, title, description, issuing_entity,
+			canonical_id, slug, kind, source_id, title, description, how_to_apply, issuing_entity,
 			country, region, city, remote, apply_url, posted_at, deadline, currency,
 			amount_min, amount_max, employment_type, seniority, geo_scope, status,
 			first_seen_at, last_seen_at, attributes, hidden)
-		VALUES (?, ?, ?, ?, ?, NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), NULLIF(?,''),
+		VALUES (?, ?, ?, ?, ?, NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), NULLIF(?,''),
 			NULLIF(?,''), ?, ?, ?, ?, NULLIF(?,''), NULLIF(?,0), NULLIF(?,0),
 			NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), 'active', ?, ?, ?::jsonb, false)
 		ON CONFLICT (canonical_id) DO UPDATE SET
 			title=COALESCE(NULLIF(EXCLUDED.title,''),opportunities.title),
 			description=CASE WHEN length(COALESCE(EXCLUDED.description,'')) > length(COALESCE(opportunities.description,'')) THEN EXCLUDED.description ELSE opportunities.description END,
+			-- Prefer a longer/non-empty how_to_apply when re-crawled; keep existing when incoming is blank.
+			how_to_apply=CASE
+				WHEN length(COALESCE(EXCLUDED.how_to_apply,'')) > length(COALESCE(opportunities.how_to_apply,''))
+				THEN EXCLUDED.how_to_apply
+				ELSE COALESCE(NULLIF(EXCLUDED.how_to_apply,''), opportunities.how_to_apply)
+			END,
 			issuing_entity=COALESCE(EXCLUDED.issuing_entity,opportunities.issuing_entity),
 			country=COALESCE(EXCLUDED.country,opportunities.country), region=COALESCE(EXCLUDED.region,opportunities.region),
 			city=COALESCE(EXCLUDED.city,opportunities.city), remote=EXCLUDED.remote,
@@ -248,7 +264,7 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 			seniority=COALESCE(EXCLUDED.seniority,opportunities.seniority), geo_scope=COALESCE(EXCLUDED.geo_scope,opportunities.geo_scope),
 			last_seen_at=GREATEST(EXCLUDED.last_seen_at,opportunities.last_seen_at), status='active',
 			attributes=opportunities.attributes || EXCLUDED.attributes, hidden=false, hidden_reason=NULL, updated_at=now()`,
-			canonicalID, slug, c.Kind, c.SourceID, c.Title, c.Description, c.IssuingEntity,
+			canonicalID, slug, c.Kind, c.SourceID, c.Title, c.Description, c.HowToApply, c.IssuingEntity,
 			c.Country, c.Region, c.City, c.Remote, c.ApplyURL, c.PostedAt, c.Deadline, c.Currency,
 			c.AmountMin, c.AmountMax, c.EmploymentType, c.Seniority, c.GeoScope,
 			c.SeenAt, c.SeenAt, string(attrs)).Error; err != nil {

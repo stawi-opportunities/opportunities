@@ -25,6 +25,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/connectors/httpx"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
@@ -125,9 +126,24 @@ func main() {
 	}
 	httpClient := httpx.NewClientFromDoer(doer, cfg.UserAgent)
 
-	// Geocoder + normalizer (no LLM on this path).
+	// Geocoder + normalizer.
 	geocoder := geocode.New()
 	normalizer := normalize.New(geocoder)
+
+	// Optional inference for how_to_apply peel (same INFERENCE_* as crawler).
+	var howToApply *extraction.Extractor
+	infBase, infModel, infKey := extraction.ResolveInference(
+		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
+	)
+	if infBase != "" {
+		howToApply = extraction.New(extraction.Config{
+			BaseURL:    infBase,
+			APIKey:     infKey,
+			Model:      infModel,
+			HTTPClient: &http.Client{Timeout: time.Duration(cfg.InferenceTimeoutSec) * time.Second},
+		})
+		log.WithField("url", infBase).WithField("model", infModel).Info("frontier-worker: how_to_apply peel enabled")
+	}
 
 	handler := frontiersvc.NewHandler(frontiersvc.Deps{
 		Svc:                svc,
@@ -138,12 +154,13 @@ func main() {
 		Sources:            sourceRepo,
 		Kinds:              reg,
 		Normalizer:         normalizer,
+		HowToApply:         howToApply,
 		Fetcher:            httpClient,
 		DequeueBatch:       cfg.DequeueBatch,
 		MaxAttempts:        cfg.MaxAttempts,
 		IdleTick:           time.Duration(cfg.IdleTickSeconds) * time.Second,
 	})
-	log.Info("frontier-worker: schema.org JobPosting extract only")
+	log.Info("frontier-worker: schema.org JobPosting extract + optional how_to_apply peel")
 
 	// Definitions broadcast — same live-reload pattern as the
 	// rest of the apps. Plug in alongside the URL-enqueued

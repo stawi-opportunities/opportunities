@@ -483,6 +483,12 @@ func main() {
 	if gdb := dbFn(ctx, true); gdb != nil {
 		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
 			oppFeedStore := matching.NewStore(sqlDB)
+			mux.Handle("GET /me/opportunities/{id}/apply", authMW(
+				httpv1.ApplyDetailsHandler(httpv1.ApplyDetailsDeps{
+					Candidates: candidateRepo,
+					Store:      &httpv1.SQLApplyDetails{DB: sqlDB},
+				}),
+			))
 			mux.Handle("GET /me/opportunities", authMW(
 				httpv1.OpportunitiesHandler(httpv1.OpportunitiesDeps{Store: oppFeedStore}),
 			))

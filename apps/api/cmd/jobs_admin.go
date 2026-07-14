@@ -47,6 +47,7 @@ type adminOpportunity struct {
 	SourceID       string         `json:"source_id,omitempty"`
 	Title          string         `json:"title"`
 	Description    string         `json:"description,omitempty"`
+	HowToApply     string         `json:"how_to_apply,omitempty"`
 	IssuingEntity  string         `json:"issuing_entity,omitempty"`
 	Country        string         `json:"country,omitempty"`
 	Region         string         `json:"region,omitempty"`
@@ -119,7 +120,7 @@ func (a *jobsAdmin) handleList(w http.ResponseWriter, r *http.Request) {
 	listArgs := append(append([]any{}, args...), limit, offset)
 	var rows []jobqueue.OpportunityRecord
 	if err := a.db(r.Context(), true).Raw(
-		`SELECT canonical_id, slug, kind, source_id, title, description, issuing_entity,
+		`SELECT canonical_id, slug, kind, source_id, title, description, how_to_apply, issuing_entity,
 		        country, region, city, remote, apply_url, posted_at, deadline, currency,
 		        amount_min, amount_max, employment_type, seniority, geo_scope, status,
 		        first_seen_at, last_seen_at, attributes, hidden, hidden_reason,
@@ -473,7 +474,7 @@ func (a *jobsAdmin) handleOpsOverview(w http.ResponseWriter, r *http.Request) {
 	// Recent opportunities for the ops dashboard feed.
 	var recent []jobqueue.OpportunityRecord
 	_ = a.db(r.Context(), true).Raw(`
-		SELECT canonical_id, slug, kind, source_id, title, description, issuing_entity,
+		SELECT canonical_id, slug, kind, source_id, title, description, how_to_apply, issuing_entity,
 		       country, region, city, remote, apply_url, posted_at, deadline, currency,
 		       amount_min, amount_max, employment_type, seniority, geo_scope, status,
 		       first_seen_at, last_seen_at, attributes, hidden, hidden_reason,
@@ -498,7 +499,7 @@ func (a *jobsAdmin) handleOpsOverview(w http.ResponseWriter, r *http.Request) {
 func (a *jobsAdmin) loadBySlug(ctx context.Context, slug string) (*jobqueue.OpportunityRecord, error) {
 	var row jobqueue.OpportunityRecord
 	err := a.db(ctx, true).Raw(`
-		SELECT canonical_id, slug, kind, source_id, title, description, issuing_entity,
+		SELECT canonical_id, slug, kind, source_id, title, description, how_to_apply, issuing_entity,
 		       country, region, city, remote, apply_url, posted_at, deadline, currency,
 		       amount_min, amount_max, employment_type, seniority, geo_scope, status,
 		       first_seen_at, last_seen_at, attributes, hidden, hidden_reason,
@@ -534,6 +535,9 @@ func toAdminOpportunity(r *jobqueue.OpportunityRecord) adminOpportunity {
 	}
 	if r.Description != nil {
 		out.Description = *r.Description
+	}
+	if r.HowToApply != nil {
+		out.HowToApply = *r.HowToApply
 	}
 	if r.IssuingEntity != nil {
 		out.IssuingEntity = *r.IssuingEntity

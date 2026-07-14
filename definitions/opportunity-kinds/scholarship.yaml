@@ -10,7 +10,10 @@ categories: [STEM, Humanities, Arts, Business, Medicine, Law, Other]
 search_facets: [field_of_study, degree_level]
 extraction_prompt: |
   Extract scholarship details from the page. Output JSON with fields:
-  title, description (markdown), issuing_entity (the awarding body),
+  title, description (markdown of the award ONLY — eligibility, benefits,
+  study programme; no application steps),
+  how_to_apply (markdown application process / portal / email steps; omit if none),
+  issuing_entity (the awarding body),
   apply_url, anchor_country (ISO 3166-1 alpha-2 of where the scholarship
   is held; empty if global), deadline (RFC3339), field_of_study,
   degree_level (one of: undergraduate, masters, doctoral, postdoc),

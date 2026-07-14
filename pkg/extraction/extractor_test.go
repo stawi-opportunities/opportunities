@@ -113,6 +113,7 @@ func TestParseExtractionJSON_SplitsEnvelopeFromAttributes(t *testing.T) {
 	raw := `{
 		"title": "Senior Go Engineer",
 		"description": "Build scalable services.",
+		"how_to_apply": "Email jobs@acme.example",
 		"issuing_entity": "Acme Corp",
 		"apply_url": "https://acme.example/apply",
 		"anchor_country": "KE",
@@ -133,6 +134,9 @@ func TestParseExtractionJSON_SplitsEnvelopeFromAttributes(t *testing.T) {
 	}
 	if opp.Title != "Senior Go Engineer" {
 		t.Errorf("Title=%q", opp.Title)
+	}
+	if opp.HowToApply != "Email jobs@acme.example" {
+		t.Errorf("HowToApply=%q", opp.HowToApply)
 	}
 	if opp.IssuingEntity != "Acme Corp" {
 		t.Errorf("IssuingEntity=%q", opp.IssuingEntity)

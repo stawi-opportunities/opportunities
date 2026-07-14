@@ -21,7 +21,11 @@ export interface OpportunitySnapshot {
   id: string;
   slug: string;
   title: string;
-  description?: string; // markdown body
+  description?: string; // markdown body (public details only)
+  /** True when application instructions exist; body is not on the public API. */
+  has_how_to_apply?: boolean;
+  /** Paywalled Markdown; only present after a successful subscriber fetch. */
+  how_to_apply?: string;
   issuing_entity: string; // was company.name on JobSnapshot
   apply_url: string;
   posted_at?: string; // RFC3339
