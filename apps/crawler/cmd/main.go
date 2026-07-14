@@ -198,6 +198,7 @@ func main() {
 			EmbeddingAPIKey:     embKey,
 			EmbeddingModel:      embModel,
 			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			EmbeddingInputType:  cfg.EmbeddingInputType,
 			RerankBaseURL:       cfg.RerankBaseURL,
 			RerankAPIKey:        cfg.RerankAPIKey,
 			RerankModel:         cfg.RerankModel,

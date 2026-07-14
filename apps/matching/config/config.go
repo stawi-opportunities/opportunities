@@ -30,6 +30,8 @@ type CandidatesConfig struct {
 	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
 	// 0 omits it. Must equal EMBEDDING_DIM.
 	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
+	// EmbeddingInputType: "passage"/"query" for NVIDIA asymmetric E5; empty omits.
+	EmbeddingInputType string `env:"EMBEDDING_INPUT_TYPE" envDefault:""`
 
 	// Reranker (cross-encoder, e.g. BAAI/bge-reranker-v2-m3 via TEI).
 	// Matcher falls back to retrieval-order when unset.

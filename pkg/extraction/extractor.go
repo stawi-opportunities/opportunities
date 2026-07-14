@@ -71,6 +71,7 @@ type Extractor struct {
 	// a fixed-width vector matching the pgvector column. 0 = omit (the
 	// model's native width, e.g. e5-large's 1024).
 	embeddingDimensions  int
+	embeddingInputType   string // "passage"/"query" for NVIDIA asymmetric E5
 	embeddingSlots       chan struct{}
 	embeddingMinInterval time.Duration
 	embeddingMu          sync.Mutex
@@ -116,6 +117,7 @@ func New(cfg Config) *Extractor {
 		embeddingAPIKey:      cfg.EmbeddingAPIKey,
 		embeddingModel:       cfg.EmbeddingModel,
 		embeddingDimensions:  cfg.EmbeddingDimensions,
+		embeddingInputType:   strings.TrimSpace(cfg.EmbeddingInputType),
 		embeddingSlots:       embeddingSlots,
 		embeddingMinInterval: cfg.EmbeddingMinInterval,
 		rerankBaseURL:        strings.TrimRight(cfg.RerankBaseURL, "/"),
@@ -512,7 +514,10 @@ func stripAllTags(s string) string {
 	return tagRe.ReplaceAllString(s, " ")
 }
 
-const maxEmbedChars = 2000
+// maxEmbedChars keeps the passage under asymmetric-E5's 512-token window
+// (NVIDIA nv-embedqa-e5-v5 rejects longer input with HTTP 400). ~1200
+// runes ≈ safe headroom including the "passage: " prefix.
+const maxEmbedChars = 1200
 
 // e5 retrieval prefixes. The intfloat/multilingual-e5-* models are trained
 // with asymmetric "query: " / "passage: " instructions. We index the

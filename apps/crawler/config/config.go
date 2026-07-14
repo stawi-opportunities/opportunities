@@ -102,6 +102,8 @@ type CrawlerConfig struct {
 	// EmbeddingDimensions pins the embeddings API "dimensions" field for
 	// Matryoshka models (Qwen3-Embedding); 0 omits it. Must equal EMBEDDING_DIM.
 	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
+	// EmbeddingInputType: "passage"/"query" for NVIDIA asymmetric E5; empty omits.
+	EmbeddingInputType string `env:"EMBEDDING_INPUT_TYPE" envDefault:""`
 
 	// Reranker — carried for consistency with the other apps. Crawler
 	// doesn't currently rerank, but having the knobs in one config struct
