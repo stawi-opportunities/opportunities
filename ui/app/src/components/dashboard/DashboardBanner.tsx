@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
+import { useAuth } from '@/providers/AuthProvider';
 import { useI18n } from '@/i18n/I18nProvider';
 
 const VISIT_KEY = 'stawi.welcome_visits';
@@ -23,8 +24,10 @@ function incrementVisit() {
 
 export function DashboardBanner({ onStartTour }: { onStartTour?: () => void }) {
   const { t } = useI18n();
+  const { runtime } = useAuth();
   const { data: profile, isLoading } = useCandidateProfile();
   const [visible, setVisible] = useState(false);
+  const [initial, setInitial] = useState<string | null>(null);
 
   useEffect(() => {
     if (getVisitCount() < MAX_VISITS) {
@@ -32,6 +35,16 @@ export function DashboardBanner({ onStartTour }: { onStartTour?: () => void }) {
       incrementVisit();
     }
   }, []);
+
+  useEffect(() => {
+    runtime
+      .getClaims()
+      .then((claims) => {
+        const name = String(claims.name ?? claims.preferred_username ?? '');
+        setInitial(name ? name.charAt(0).toUpperCase() : null);
+      })
+      .catch(() => setInitial(null));
+  }, [runtime]);
 
   if (!visible || isLoading) return null;
 
@@ -63,25 +76,40 @@ export function DashboardBanner({ onStartTour }: { onStartTour?: () => void }) {
             {t('dash.welcomeTitle')}
           </h2>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-            {title || (
-              <>
-                {t('dash.welcomeBody')}{' '}
-                <button
-                  type="button"
-                  onClick={onStartTour}
-                  className="font-medium text-navy-700 underline underline-offset-2 hover:text-navy-900 dark:text-navy-300 dark:hover:text-white"
-                >
-                  {t('dash.welcomeTour')}
-                </button>
-              </>
-            )}
+            {title && <span>{title} &middot; </span>}
+            <button
+              type="button"
+              onClick={onStartTour}
+              className="font-medium text-navy-700 underline underline-offset-2 hover:text-navy-900 dark:text-navy-300 dark:hover:text-white"
+            >
+              {t('dash.welcomeTour')}
+            </button>
           </p>
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-bold text-navy-800 shadow-sm ring-2 ring-navy-200 dark:bg-navy-700 dark:text-white dark:ring-navy-600">
-            {'S'}
-          </div>
+          {initial ? (
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-bold text-navy-800 shadow-sm ring-2 ring-navy-200 dark:bg-navy-700 dark:text-white dark:ring-navy-600">
+              {initial}
+            </div>
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-400 shadow-sm ring-2 ring-navy-200 dark:bg-navy-700 dark:text-gray-500 dark:ring-navy-600">
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
+                />
+              </svg>
+            </div>
+          )}
         </div>
       </div>
     </div>

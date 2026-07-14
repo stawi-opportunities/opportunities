@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import type { IconName } from '@/components/ui/Icon';
 
@@ -45,12 +46,22 @@ export function StatCard({
   color?: StatColor;
   index?: number;
 }) {
+  const [prefersReduced, setPrefersReduced] = useState(false);
   const c = COLOR_MAPS[color];
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReduced(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
   return (
     <a
       href={href}
-      className={`group block rounded-xl border-0 bg-white p-5 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:bg-navy-900 dark:ring-navy-700 dark:hover:bg-navy-800 ${c.hover} animate-fade-up`}
-      style={{ animationDelay: `${index * 80}ms` }}
+      className={`group block rounded-xl border-0 bg-white p-5 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:bg-navy-900 dark:ring-navy-700 dark:hover:bg-navy-800 ${c.hover} ${prefersReduced ? '' : 'animate-fade-up'}`}
+      style={prefersReduced ? undefined : { animationDelay: `${index * 80}ms` }}
     >
       <div className="flex items-start gap-4">
         <span

@@ -279,6 +279,18 @@ export interface Strings {
   'dash.qaSavedDesc': string;
   'dash.qaPrefsDesc': string;
   'dash.qaSettingsDesc': string;
+  'dash.statTotal': string;
+  'dash.statsError': string;
+  'dash.profileCompleteness': string;
+  'dash.gettingStarted': string;
+  'dash.gsStep1a': string;
+  'dash.gsProfile': string;
+  'dash.gsStep1b': string;
+  'dash.gsStep2a': string;
+  'dash.gsPreferences': string;
+  'dash.gsStep2b': string;
+  'dash.gsBrowse': string;
+  'dash.gsStep3b': string;
 
   // ---- Plan change modal ----
   'plan.changeTitle': string;
@@ -850,6 +862,18 @@ const en: Strings = {
   'dash.qaSavedDesc': 'View bookmarked items',
   'dash.qaPrefsDesc': 'Update match settings',
   'dash.qaSettingsDesc': 'Profile & account',
+  'dash.statTotal': 'Total',
+  'dash.statsError': "Couldn't load dashboard stats.",
+  'dash.profileCompleteness': 'Profile completeness',
+  'dash.gettingStarted': 'Getting started',
+  'dash.gsStep1a': 'Complete your',
+  'dash.gsProfile': 'profile',
+  'dash.gsStep1b': 'to improve your matches.',
+  'dash.gsStep2a': 'Set your',
+  'dash.gsPreferences': 'preferences',
+  'dash.gsStep2b': 'so we match you with the right opportunities.',
+  'dash.gsBrowse': 'Browse',
+  'dash.gsStep3b': 'your feed and save or apply to opportunities.',
 
   'plan.changeTitle': 'Change your plan',
   'plan.currentPlan': 'Current plan',
