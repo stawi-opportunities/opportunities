@@ -36,6 +36,9 @@ type OpportunityRecord struct {
 	SourceID       *string    `gorm:"type:varchar(20);index"`
 	Title          string     `gorm:"type:text;not null"`
 	Description    *string    `gorm:"type:text"`
+	// HowToApply holds paywalled application instructions (Markdown).
+	// Omitted from the public jobs API; served only to subscribed members.
+	HowToApply     *string    `gorm:"type:text"`
 	IssuingEntity  *string    `gorm:"type:text"`
 	Country        *string    `gorm:"type:text;index"`
 	Region         *string    `gorm:"type:text"`

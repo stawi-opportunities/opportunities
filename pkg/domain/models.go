@@ -280,6 +280,10 @@ type ExternalOpportunity struct {
 	// Universal core
 	Title         string `json:"title"`
 	Description   string `json:"description"`
+	// HowToApply is optional application instructions (email steps, portal
+	// notes). When empty, normalize peels a recognised "How to apply" section
+	// out of Description. Always stored separately for paywall gating.
+	HowToApply    string `json:"how_to_apply,omitempty"`
 	IssuingEntity string `json:"issuing_entity"`
 	ApplyURL      string `json:"apply_url"`
 

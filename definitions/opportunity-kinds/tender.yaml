@@ -10,7 +10,10 @@ categories: [Construction, IT, Consulting, Healthcare, Transport, Energy, Educat
 search_facets: [procurement_domain]
 extraction_prompt: |
   Extract tender / RFP details from the page. Output JSON with fields:
-  title, description (markdown), issuing_entity (the issuing agency),
+  title, description (markdown of the tender scope ONLY — work package,
+  requirements; no bid-submission steps),
+  how_to_apply (markdown bid submission process / portal / documents; omit if none),
+  issuing_entity (the issuing agency),
   apply_url (submission portal), anchor_country, deadline (RFC3339),
   procurement_domain, amount_min, amount_max (contract budget range),
   currency, bidder_eligibility (free text), certifications_required

@@ -22,6 +22,7 @@ import {
 } from '@/types/snapshot';
 import { Icon } from '@/components/ui/Icon';
 import { getTypeMeta } from '@/constants/opportunityTypes';
+import HowToApplySection from '@/components/HowToApplySection';
 
 const JobBody = lazy(() => import('@/components/bodies/JobBody'));
 const ScholarshipBody = lazy(() => import('@/components/bodies/ScholarshipBody'));
@@ -178,6 +179,12 @@ export default function OpportunityDetail() {
         {isDeal(snap) && <DealBody snap={snap} />}
         {isFunding(snap) && <FundingBody snap={snap} />}
       </Suspense>
+
+      <HowToApplySection
+        opportunityId={snap.id}
+        slug={snap.slug}
+        hasHowToApply={snap.has_how_to_apply}
+      />
 
       {canApply && (
         <div className="mt-12 flex justify-center">

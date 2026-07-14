@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -301,6 +302,7 @@ func main() {
 		Registry:            registry,
 		Kinds:               reg,
 		Normalizer:          normalizer,
+		HowToApply:          extractor, // nil when INFERENCE_* unset — peel skipped
 		PageFetcher:         httpClient,
 		CrawlRepo:           crawlRepo,
 		RunRepo:             crawlRunRepo,
@@ -671,6 +673,21 @@ func main() {
 				env := eventsv1.NewEnvelope(eventsv1.TopicRecipeGenerate, eventsv1.RecipeGenerateV1{SourceID: sourceID})
 				return evtMgr.Emit(emitCtx, eventsv1.TopicRecipeGenerate, env)
 			},
+		}))
+
+	// Admin: peel how_to_apply via NVIDIA Build (same INFERENCE_* as recipes).
+	// Trustage: definitions/trustage/how-to-apply-backfill.json every 15m.
+	var howToApplySQL *sql.DB
+	if gdb := dbFn(ctx, false); gdb != nil {
+		if sdb, err := gdb.DB(); err == nil {
+			howToApplySQL = sdb
+		}
+	}
+	adminMux.HandleFunc("POST /admin/how-to-apply/backfill",
+		service.HowToApplyBackfillHandler(service.HowToApplyBackfillDeps{
+			DB:     howToApplySQL,
+			Peeler: extractor,
+			Limit:  cfg.HowToApplyBackfillLimit,
 		}))
 
 	// Admin: authoritative PostgreSQL ingestion pressure.

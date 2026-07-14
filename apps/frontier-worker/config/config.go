@@ -38,6 +38,13 @@ type Config struct {
 	IdleTickSeconds int           `env:"IDLE_TICK_SECONDS" envDefault:"5"`
 	IngestMaxPending   int64         `env:"INGEST_MAX_PENDING" envDefault:"100000"`
 	IngestMaxOldestAge time.Duration `env:"INGEST_MAX_OLDEST_AGE" envDefault:"30m"`
+
+	// Inference back-end for peeling how_to_apply after accept. Empty
+	// disables peel (listings keep a combined description until backfill).
+	InferenceBaseURL    string `env:"INFERENCE_BASE_URL" envDefault:""`
+	InferenceAPIKey     string `env:"INFERENCE_API_KEY" envDefault:""`
+	InferenceModel      string `env:"INFERENCE_MODEL" envDefault:""`
+	InferenceTimeoutSec int    `env:"INFERENCE_TIMEOUT_SEC" envDefault:"120"`
 }
 
 // Load parses env into Config using Frame's env loader.

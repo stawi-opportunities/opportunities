@@ -40,7 +40,9 @@ type Deps struct {
 	Sources            *repository.SourceRepository
 	Kinds              *opportunity.Registry
 	Normalizer         *normalize.Normalizer
-	Fetcher            *httpx.Client
+	// HowToApply peels application instructions via inference after Accept.
+	HowToApply crawlaccept.HowToApplyPeeler
+	Fetcher    *httpx.Client
 
 	// DequeueBatch caps the URLs claimed per Dequeue call.
 	DequeueBatch int
@@ -285,6 +287,12 @@ func (h *Handler) runOne(ctx context.Context, u frontier.URL) {
 			continue
 		}
 		eventPayload := *accepted.Accepted
+		if h.deps.HowToApply != nil {
+			if perr := crawlaccept.PeelAccepted(ctx, &eventPayload, h.deps.HowToApply); perr != nil {
+				log.WithError(perr).WithField("title", eventPayload.Title).
+					Debug("frontier-worker: how_to_apply peel failed; storing full description")
+			}
+		}
 
 		body, mErr := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicVariantsIngested, eventPayload))
 		if mErr != nil {

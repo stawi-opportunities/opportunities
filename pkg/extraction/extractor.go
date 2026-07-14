@@ -40,7 +40,11 @@ fields should be omitted (not "" or null) unless the schema explicitly
 requires them. Use ISO 3166-1 alpha-2 for country codes and ISO 4217 for
 currency codes. Dates are RFC3339 timestamps in UTC. apply_url is always
 required; return the direct application link, or the opportunity detail-page
-URL when no separate application link exists.`
+URL when no separate application link exists.
+When the page has application instructions (email-to-apply, portal steps,
+documents to submit, contact for applications), put them in how_to_apply
+and keep description free of those instructions. Omit how_to_apply when
+the page only has an apply button/URL with no instructional text.`
 
 const maxContentChars = 4000
 const extractionTimeout = 10 * time.Minute // was 120s — let AI finish on CPU
@@ -659,7 +663,7 @@ func truncateText(s string, n int) string {
 // onto ExternalOpportunity envelope fields. Anything not in this set is
 // stashed under Attributes for the kind-specific schema.
 var universalEnvelopeKeys = map[string]struct{}{
-	"title": {}, "description": {}, "issuing_entity": {}, "apply_url": {},
+	"title": {}, "description": {}, "how_to_apply": {}, "issuing_entity": {}, "apply_url": {},
 	"anchor_country": {}, "anchor_region": {}, "anchor_city": {},
 	"remote": {}, "geo_scope": {}, "currency": {}, "amount_min": {}, "amount_max": {},
 	"deadline": {}, "categories": {}, "lat": {}, "lon": {},
@@ -702,6 +706,8 @@ func assignUniversal(opp *domain.ExternalOpportunity, k string, v any) {
 		opp.Title, _ = v.(string)
 	case "description":
 		opp.Description, _ = v.(string)
+	case "how_to_apply":
+		opp.HowToApply, _ = v.(string)
 	case "issuing_entity":
 		opp.IssuingEntity, _ = v.(string)
 	case "apply_url":

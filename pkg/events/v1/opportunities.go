@@ -21,6 +21,9 @@ type VariantIngestedV1 struct {
 	// don't want to JSON-decode Attributes).
 	Title         string `json:"title"`
 	ApplyURL      string `json:"apply_url"`
+	// HowToApply is paywalled application instructions. Carried on the
+	// envelope (not Attributes) so public attribute dumps cannot leak it.
+	HowToApply    string `json:"how_to_apply,omitempty"`
 	IssuingEntity string `json:"issuing_entity,omitempty"`
 	AnchorCountry string `json:"anchor_country,omitempty"` // ISO 3166-1 alpha-2
 	AnchorRegion  string `json:"anchor_region,omitempty"`

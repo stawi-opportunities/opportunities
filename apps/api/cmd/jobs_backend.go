@@ -31,6 +31,9 @@ type job struct {
 	Kind              string         `json:"kind,omitempty"`
 	Title             string         `json:"title,omitempty"`
 	Description       string         `json:"description,omitempty"`
+	// HasHowToApply is true when paywalled application instructions exist.
+	// The body itself is never loaded on this public read path.
+	HasHowToApply     bool           `json:"has_how_to_apply,omitempty"`
 	IssuingEntity     string         `json:"issuing_entity,omitempty"`
 	Categories        []int64        `json:"categories,omitempty"`
 	Country           string         `json:"country,omitempty"`
@@ -172,9 +175,10 @@ func scanJob(rows *sql.Rows) (job, error) {
 		attrsRaw    sql.RawBytes
 		categoryRaw sql.RawBytes
 	)
+	var hasHowToApply bool
 	if err := rows.Scan(
 		&j.CanonicalID, &j.Slug, &j.Kind,
-		&j.Title, &desc, &issuer,
+		&j.Title, &desc, &hasHowToApply, &issuer,
 		&country, &region, &city,
 		&remote, &apply,
 		&postedAt, &deadline,
@@ -184,6 +188,7 @@ func scanJob(rows *sql.Rows) (job, error) {
 		return j, err
 	}
 	j.Description = desc.String
+	j.HasHowToApply = hasHowToApply
 	j.IssuingEntity = issuer.String
 	j.Country = country.String
 	j.Region = region.String
@@ -206,6 +211,7 @@ func scanJob(rows *sql.Rows) (job, error) {
 	if len(attrsRaw) > 0 {
 		var attrs map[string]any
 		if err := json.Unmarshal(attrsRaw, &attrs); err == nil {
+			delete(attrs, "how_to_apply")
 			j.Attributes = attrs
 			if v, ok := attrs["employment_type"].(string); ok {
 				j.EmploymentType = v
@@ -246,7 +252,9 @@ func scanJob(rows *sql.Rows) (job, error) {
 }
 
 const selectColumns = `canonical_id, slug, kind,
-	title, description, issuing_entity,
+	title, description,
+	(how_to_apply IS NOT NULL AND btrim(how_to_apply) <> '') AS has_how_to_apply,
+	issuing_entity,
 	country, region, city,
 	remote, apply_url,
 	posted_at, deadline,

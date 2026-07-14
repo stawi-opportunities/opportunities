@@ -14,9 +14,40 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-// ResolveInference returns the configured chat-completion backend. baseURL is empty when no backend
-// is configured — callers treat that as "AI extraction disabled".
+// Production NVIDIA Build (build.nvidia.com) defaults — used by crawler,
+// frontier-worker, matching, recipe-gen, how-to-apply peel/backfill.
+// Deploy sets these via Helm env; CLI tools may fall back when env is partial.
+const (
+	// NVIDIABuildBaseURL is the OpenAI-compatible root for hosted NIM.
+	NVIDIABuildBaseURL = "https://integrate.api.nvidia.com"
+	// NVIDIABuildChatModel is the default instruct model for extraction,
+	// recipe generation, CV parse, and how_to_apply peel.
+	NVIDIABuildChatModel = "meta/llama-3.1-8b-instruct"
+	// NVIDIABuildEmbedModel is the default embedding model (native 1024-d).
+	NVIDIABuildEmbedModel = "nvidia/nv-embedqa-e5-v5"
+)
+
+// ResolveInference returns the configured chat-completion backend.
+// Empty baseURL means "AI extraction disabled". Callers that want the
+// production NVIDIA Build endpoint must set INFERENCE_BASE_URL (deploy
+// already pins https://integrate.api.nvidia.com + meta/llama-3.1-8b-instruct).
 func ResolveInference(inferenceURL, inferenceModel, inferenceKey string) (string, string, string) {
+	return inferenceURL, inferenceModel, inferenceKey
+}
+
+// ResolveInferenceOrNVIDIA returns the configured chat backend, falling
+// back to NVIDIA Build URL/model when baseURL or model are empty but a
+// key is present (CLI tools: how-to-apply-backfill, recipe-gen).
+func ResolveInferenceOrNVIDIA(inferenceURL, inferenceModel, inferenceKey string) (string, string, string) {
+	if inferenceKey == "" && inferenceURL == "" {
+		return "", "", ""
+	}
+	if inferenceURL == "" {
+		inferenceURL = NVIDIABuildBaseURL
+	}
+	if inferenceModel == "" {
+		inferenceModel = NVIDIABuildChatModel
+	}
 	return inferenceURL, inferenceModel, inferenceKey
 }
 

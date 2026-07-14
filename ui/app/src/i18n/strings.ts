@@ -59,6 +59,9 @@ export interface Strings {
   'job.skillsRequired': string;
   'job.skillsNiceToHave': string;
   'job.translatedNotice': string;
+  'job.howToApply': string;
+  'job.howToApplyLocked': string;
+  'job.howToApplyEmpty': string;
 
   // ---- Deadline labels ----
   'deadline.closes': string;
@@ -556,6 +559,10 @@ const en: Strings = {
   'job.skillsRequired': 'Required skills',
   'job.skillsNiceToHave': 'Nice to have',
   'job.translatedNotice': 'Automatically translated from the original posting.',
+  'job.howToApply': 'How to apply',
+  'job.howToApplyLocked':
+    'Application instructions are available to members. Subscribe to unlock email steps, contacts, and portal notes for this listing.',
+  'job.howToApplyEmpty': 'No extra application steps on file — use the Apply button above.',
 
   'deadline.closes': 'Closes',
   'deadline.expires': 'Expires',

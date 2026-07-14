@@ -8,6 +8,29 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
+func TestExternalToVariant_PreservesExplicitHowToApply(t *testing.T) {
+	ext := domain.ExternalOpportunity{
+		Kind:          "job",
+		ExternalID:    "job-apply-split",
+		Title:         "Engineer",
+		IssuingEntity: "Acme",
+		Description:   "## Role\n\nBuild things.",
+		HowToApply:    "Email jobs@acme.test",
+		ApplyURL:      "https://acme.test/apply",
+	}
+	v := ExternalToVariant(ext, "src", "KE", "api", "en", time.Now().UTC())
+	if !strings.Contains(v.Description, "Build things") {
+		t.Fatalf("description missing role body: %q", v.Description)
+	}
+	if !strings.Contains(v.HowToApply, "jobs@acme.test") {
+		t.Fatalf("how_to_apply missing email: %q", v.HowToApply)
+	}
+	// Does not heuristically peel when HowToApply was already provided.
+	if strings.Contains(v.Description, "jobs@acme.test") {
+		t.Fatalf("description should not contain apply email: %q", v.Description)
+	}
+}
+
 // TestExternalToVariant verifies the main conversion: trimming, company
 // normalisation, country/currency casing, content hash, hard key and that
 // the sourceBoard value does not panic.
