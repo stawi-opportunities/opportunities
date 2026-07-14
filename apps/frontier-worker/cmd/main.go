@@ -162,8 +162,31 @@ func main() {
 		log.WithField("topic", eventsv1.TopicDefinitionsChanged).Info("definitions: broadcast consumer wired")
 	}
 
+	// Heartbeat ticker — fires Dequeue every IdleTick even when
+	// no NATS wake-up arrives. Frame BackgroundConsumer owns the
+	// goroutine (not a bare go) and cancels with service shutdown.
+	idleTick := time.Duration(cfg.IdleTickSeconds) * time.Second
+	if idleTick <= 0 {
+		idleTick = 30 * time.Second
+	}
+	log.WithField("worker_id", handler.WorkerID()).
+		WithField("idle_tick", idleTick).
+		Info("frontier-worker: heartbeat via Frame BackgroundConsumer")
+
 	svc.Init(ctx,
 		frame.WithRegisterEvents(handlers...),
+		frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
+			t := time.NewTicker(idleTick)
+			defer t.Stop()
+			for {
+				select {
+				case <-bgCtx.Done():
+					return nil
+				case <-t.C:
+					handler.Tick(bgCtx)
+				}
+			}
+		}),
 	)
 
 	// Loose mode — the worker subscribes to the catch-all
@@ -172,25 +195,6 @@ func main() {
 	if mgr := svc.EventsManager(); mgr != nil {
 		mgr.SetStrict(false)
 	}
-
-	// Heartbeat ticker — fires Dequeue every IdleTick even when
-	// no NATS wake-up arrives. Ensures progress under JetStream
-	// rebalances and during initial backlog drain.
-	log.WithField("worker_id", handler.WorkerID()).
-		WithField("idle_tick", cfg.IdleTickSeconds).
-		Info("frontier-worker: heartbeat ticker starting")
-	go func() {
-		t := time.NewTicker(time.Duration(cfg.IdleTickSeconds) * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				handler.Tick(ctx)
-			}
-		}
-	}()
 
 	if err := svc.Run(ctx, ""); err != nil {
 		log.WithError(err).Fatal("frontier-worker: frame.Run failed")
