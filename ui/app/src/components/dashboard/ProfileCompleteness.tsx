@@ -26,7 +26,7 @@ export function ProfileCompleteness() {
     <div className="rounded-xl border-0 bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-navy-900 dark:ring-navy-700">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          Profile completeness
+          {t('dash.profileCompleteness')}
         </span>
         <span className="text-sm font-semibold text-gray-900 dark:text-white">{score}%</span>
       </div>
@@ -40,7 +40,7 @@ export function ProfileCompleteness() {
           aria-valuenow={score}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="Profile completeness"
+          aria-label={t('dash.profileCompleteness')}
         />
       </div>
       {missing.length > 0 && (
