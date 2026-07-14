@@ -6,16 +6,16 @@ import (
 )
 
 // CVUploadedV1 is emitted by the candidates HTTP upload handler after
-// the raw bytes have been archived to R2 and the plain-text has been
-// extracted. It is the entry point of the candidate lifecycle.
+// the raw bytes have been stored (files service or R2 archive) and the
+// plain-text has been extracted + indexed locally. It is the entry point
+// of the candidate lifecycle.
 //
 // CVVersion is monotonic per candidate (increments on every successful
-// upload). The first upload is version 1.
+// upload with new content). The first upload is version 1.
 //
-// RawArchiveRef is the R2 object key (e.g. "raw/abc123") returned by
-// pkg/archive.PutRaw. Downstream cv-extract re-reads the raw bytes
-// from this key; the extracted plain text is also carried inline for
-// handler convenience in the normal path.
+// RawArchiveRef / ContentURI point at durable binary storage.
+// FileID is set when the platform files service accepted the upload.
+// ExtractedText is folded into the placement summary for chat/matching.
 type CVUploadedV1 struct {
 	CandidateID   string `json:"candidate_id"   `
 	CVVersion     int    `json:"cv_version"     `
@@ -23,6 +23,15 @@ type CVUploadedV1 struct {
 	Filename      string `json:"filename,omitempty"    `
 	ContentType   string `json:"content_type,omitempty"`
 	SizeBytes     int64  `json:"size_bytes,omitempty"  `
+
+	// FileID is the platform files-service media id when Storage is "files".
+	FileID string `json:"file_id,omitempty"`
+	// ContentURI is the durable content URI (files) or archive key.
+	ContentURI string `json:"content_uri,omitempty"`
+	// ContentHash is sha256 of the raw bytes.
+	ContentHash string `json:"content_hash,omitempty"`
+	// Storage is "files" or "archive".
+	Storage string `json:"storage,omitempty"`
 
 	// ExtractedText is the plain-text conversion of the uploaded PDF/DOCX.
 	ExtractedText string `json:"extracted_text"`

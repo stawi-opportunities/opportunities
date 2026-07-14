@@ -11,9 +11,11 @@
     {{ block "main" . }}{{ end }}
   </main>
 
-  {{/* The homepage already leads with its own hero CTA, so skip the global
-       get-started banner there to keep it a clean single screen. */}}
-  {{ if not .IsHome }}{{ partial "get-started-cta.html" . }}{{ end }}
+  {{/* Homepage has its own hero CTA; onboarding chat is dense enough without
+       the global get-started banner. Footer stays on every page. */}}
+  {{ if and (not .IsHome) (not (eq .Section "onboarding")) }}
+    {{ partial "get-started-cta.html" . }}
+  {{ end }}
   {{ partial "footer.html" . }}
   <div id="mount-scroll-top"></div>
   {{ block "scripts" . }}{{ end }}

@@ -55,6 +55,15 @@
     outline: 2px solid #0c1226;
     outline-offset: 2px;
   }
+  /* Chat composers own their chrome; suppress default form focus ring */
+  .preference-chat-input:focus,
+  .preference-chat-input:focus-visible {
+    outline: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+  }
   body {
     @apply bg-slate-50 text-gray-800 antialiased;
   }

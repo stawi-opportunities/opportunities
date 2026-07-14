@@ -52,11 +52,13 @@ func (d *OnboardingDeps) now() time.Time {
 
 // onboardingEnvelope is the wire shape both endpoints use. Fields
 // stays a raw JSON value so the wizard can evolve its schema without
-// any backend code change.
+// any backend code change. Messages holds the preference-chat transcript
+// so conversations remain available across sessions and post-onboard refine.
 type onboardingEnvelope struct {
-	Step      int             `json:"step"`
-	Fields    json.RawMessage `json:"fields"`
-	UpdatedAt *time.Time      `json:"updated_at,omitempty"`
+	Step      int                     `json:"step"`
+	Fields    json.RawMessage         `json:"fields"`
+	Messages  []onboardingChatMessage `json:"messages,omitempty"`
+	UpdatedAt *time.Time              `json:"updated_at,omitempty"`
 }
 
 // OnboardingHandler dispatches GET and PUT on the same path. Wrap
@@ -113,7 +115,8 @@ func handleOnboardingPut(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 	log := util.Log(ctx)
 	candidateID := httpmw.CandidateFromContext(ctx)
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+	// Larger limit: fields + multi-turn chat transcript.
+	body, err := io.ReadAll(io.LimitReader(r.Body, 256*1024))
 	if err != nil {
 		httpmw.ProblemJSON(w, http.StatusBadRequest,
 			"body_read_failed", "could not read request body")
@@ -134,6 +137,14 @@ func handleOnboardingPut(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 		in.Fields = json.RawMessage(`{}`)
 	}
 
+	// Preserve stored chat when the client only updates fields/step.
+	if len(in.Messages) == 0 {
+		if prior, err := loadOnboardingEnvelope(ctx, deps.Drafts, candidateID); err == nil {
+			in.Messages = prior.Messages
+		}
+	}
+	in.Messages = clampChatMessages(in.Messages, 80)
+
 	now := deps.now()
 	in.UpdatedAt = &now
 	out, err := json.Marshal(in)
@@ -151,4 +162,26 @@ func handleOnboardingPut(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// loadOnboardingEnvelope reads the stored draft, returning a default when empty.
+func loadOnboardingEnvelope(ctx context.Context, drafts OnboardingDraftStore, candidateID string) (onboardingEnvelope, error) {
+	out := onboardingEnvelope{Step: 1, Fields: json.RawMessage(`{}`)}
+	if drafts == nil {
+		return out, nil
+	}
+	raw, err := drafts.GetOnboardingDraft(ctx, candidateID)
+	if err != nil {
+		return out, err
+	}
+	if len(raw) == 0 || string(raw) == "{}" {
+		return out, nil
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return onboardingEnvelope{Step: 1, Fields: json.RawMessage(`{}`)}, nil
+	}
+	if len(out.Fields) == 0 {
+		out.Fields = json.RawMessage(`{}`)
+	}
+	return out, nil
 }

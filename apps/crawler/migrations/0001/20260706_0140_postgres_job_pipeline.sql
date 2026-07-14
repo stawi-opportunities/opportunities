@@ -8,6 +8,13 @@ BEGIN
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS timescaledb';
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS vector';
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_trgm';
+    -- ParadeDB full-text search (BM25). No-op if the extension is already
+    -- installed cluster-wide; fails soft on images that don't ship it.
+    BEGIN
+        EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_search';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'pg_search extension unavailable: %', SQLERRM;
+    END;
 
     EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_source_recipes_active
                ON source_recipes (source_id) WHERE status = ''active''';
@@ -35,6 +42,11 @@ BEGIN
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_embedding_hnsw
                ON opportunities USING hnsw (embedding vector_cosine_ops)
                WHERE embedding IS NOT NULL AND hidden=false AND status=''active''';
+    -- ParadeDB pg_search BM25 for GET /api/search?q=… (apps/api jobsPostgres.Search).
+    -- Requires CREATE EXTENSION pg_search (shipped on the CNPG image).
+    EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_bm25 ON opportunities
+               USING bm25 (canonical_id, title, description, issuing_entity, slug, city, region, country, employment_type, seniority)
+               WITH (key_field=''canonical_id'')';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_active_recent_idx ON opportunities(last_seen_at DESC) WHERE hidden=false AND status=''active''';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_kind_country_idx ON opportunities(kind,country,last_seen_at DESC) WHERE hidden=false AND status=''active''';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_employment_type_idx ON opportunities(employment_type) WHERE hidden=false AND status=''active'' AND employment_type IS NOT NULL';

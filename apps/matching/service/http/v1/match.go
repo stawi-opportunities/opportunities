@@ -56,11 +56,11 @@ type SearchIndex interface {
 
 // MatchDeps bundles collaborators.
 type MatchDeps struct {
-	Svc      *frame.Service
-	Store    CandidateStore
-	Search   SearchIndex
-	Persist  MatchPersister // optional; when set, results land in candidate_matches
-	TopK     int            // default 20
+	Svc     *frame.Service
+	Store   CandidateStore
+	Search  SearchIndex
+	Persist MatchPersister // optional; when set, results land in candidate_matches
+	TopK    int            // default 20
 	// RequireAuthCandidate when non-empty forces the query candidate_id to
 	// match the authenticated identity (prevents IDOR on the legacy route).
 	RequireAuthCandidate string

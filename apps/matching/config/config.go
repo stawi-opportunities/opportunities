@@ -108,6 +108,10 @@ type CandidatesConfig struct {
 	// routes serve the plan catalog + degrade checkout to a 503 (NopGateway)
 	// so the binary still boots without a payment backend in dev/test.
 	BillingServiceURI string `env:"BILLING_SERVICE_URI" envDefault:""`
+	// FileServiceURI is the antinvestor files Connect endpoint. When set,
+	// CV uploads are stored via the platform files service; when empty,
+	// matching falls back to the product R2 archive bucket.
+	FileServiceURI string `env:"FILE_SERVICE_URI" envDefault:""`
 	// BillingWebhookSecret enables HMAC-SHA256 verification of the
 	// service-payment completion webhook (X-Payment-Signature header over
 	// the raw body). Empty disables verification (dev/test only).

@@ -23,6 +23,7 @@ import {
 import { Icon } from '@/components/ui/Icon';
 import { getTypeMeta } from '@/constants/opportunityTypes';
 import HowToApplySection from '@/components/HowToApplySection';
+import { OpportunitySideChat } from '@/components/OpportunitySideChat';
 
 const JobBody = lazy(() => import('@/components/bodies/JobBody'));
 const ScholarshipBody = lazy(() => import('@/components/bodies/ScholarshipBody'));
@@ -116,82 +117,89 @@ export default function OpportunityDetail() {
   const primaryCategory = snap.categories?.[0];
 
   return (
-    <article className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <script ref={ldRef} type="application/ld+json" />
 
-      <Breadcrumbs prefix={route.prefix} category={primaryCategory} t={t} />
+      {/* Meta-style split: listing left, outlined chat rail right (xl+) */}
+      <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:gap-8 xl:gap-x-12">
+        <article className="min-w-0 flex-1 xl:max-w-3xl xl:pr-2">
+          <Breadcrumbs prefix={route.prefix} category={primaryCategory} t={t} />
 
-      {expired && (
-        <div
-          className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900"
-          role="status"
-        >
-          {expiredMessage(snap.kind, t)}
-        </div>
-      )}
+          {expired && (
+            <div
+              className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900"
+              role="status"
+            >
+              {expiredMessage(snap.kind, t)}
+            </div>
+          )}
 
-      <header className="mt-4 flex items-start gap-4">
-        <IssuingEntityAvatar snap={snap} />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
-            {snap.title}
-            {snap.kind && getTypeMeta(snap.kind) && (
-              <span className="ml-3 inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 align-middle">
-                <Icon name={getTypeMeta(snap.kind)!.iconName} size={12} />
-                {t(getTypeMeta(snap.kind)!.labelKey)}
-              </span>
-            )}
-          </h1>
-          <p className="mt-1 text-sm text-gray-700">
-            <span className="font-medium">{snap.issuing_entity}</span>
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
-            {snap.anchor_location?.city && <span>{snap.anchor_location.city}</span>}
-            {snap.anchor_location?.region && <span>{snap.anchor_location.region}</span>}
-            {snap.anchor_location?.country && <span>{snap.anchor_location.country}</span>}
-            {snap.remote && (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
-                {t('job.remote')}
-              </span>
-            )}
-            {snap.posted_at && (
-              <span className="text-gray-500">
-                {t('job.postedOn')} {timeAgo(snap.posted_at)}
-              </span>
-            )}
-            {snap.deadline && !expired && (
-              <span className="text-orange-700">
-                {deadlineLabel(snap.kind, t)} {new Date(snap.deadline).toLocaleDateString()}
-              </span>
-            )}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            {canApply && <ApplyLink snap={snap} mountedAtRef={mountedAtRef} t={t} />}
-            <ShareButton title={snap.title} subtitle={snap.issuing_entity} t={t} />
-          </div>
-        </div>
-      </header>
+          <header className="mt-4 flex items-start gap-4">
+            <IssuingEntityAvatar snap={snap} />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+                {snap.title}
+                {snap.kind && getTypeMeta(snap.kind) && (
+                  <span className="ml-3 inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 align-middle">
+                    <Icon name={getTypeMeta(snap.kind)!.iconName} size={12} />
+                    {t(getTypeMeta(snap.kind)!.labelKey)}
+                  </span>
+                )}
+              </h1>
+              <p className="mt-1 text-sm text-gray-700">
+                <span className="font-medium">{snap.issuing_entity}</span>
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+                {snap.anchor_location?.city && <span>{snap.anchor_location.city}</span>}
+                {snap.anchor_location?.region && <span>{snap.anchor_location.region}</span>}
+                {snap.anchor_location?.country && <span>{snap.anchor_location.country}</span>}
+                {snap.remote && (
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
+                    {t('job.remote')}
+                  </span>
+                )}
+                {snap.posted_at && (
+                  <span className="text-gray-500">
+                    {t('job.postedOn')} {timeAgo(snap.posted_at)}
+                  </span>
+                )}
+                {snap.deadline && !expired && (
+                  <span className="text-orange-700">
+                    {deadlineLabel(snap.kind, t)} {new Date(snap.deadline).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {canApply && <ApplyLink snap={snap} mountedAtRef={mountedAtRef} t={t} />}
+                <ShareButton title={snap.title} subtitle={snap.issuing_entity} t={t} />
+              </div>
+            </div>
+          </header>
 
-      <Suspense fallback={<BodyFallback />}>
-        {isJob(snap) && <JobBody snap={snap} />}
-        {isScholarship(snap) && <ScholarshipBody snap={snap} />}
-        {isTender(snap) && <TenderBody snap={snap} />}
-        {isDeal(snap) && <DealBody snap={snap} />}
-        {isFunding(snap) && <FundingBody snap={snap} />}
-      </Suspense>
+          <Suspense fallback={<BodyFallback />}>
+            {isJob(snap) && <JobBody snap={snap} />}
+            {isScholarship(snap) && <ScholarshipBody snap={snap} />}
+            {isTender(snap) && <TenderBody snap={snap} />}
+            {isDeal(snap) && <DealBody snap={snap} />}
+            {isFunding(snap) && <FundingBody snap={snap} />}
+          </Suspense>
 
-      <HowToApplySection
-        opportunityId={snap.id}
-        slug={snap.slug}
-        hasHowToApply={snap.has_how_to_apply}
-      />
+          <HowToApplySection
+            opportunityId={snap.id}
+            slug={snap.slug}
+            hasHowToApply={snap.has_how_to_apply}
+          />
 
-      {canApply && (
-        <div className="mt-12 flex justify-center">
-          <ApplyLink snap={snap} mountedAtRef={mountedAtRef} t={t} large />
-        </div>
-      )}
-    </article>
+          {canApply && (
+            <div className="mt-12 flex justify-center">
+              <ApplyLink snap={snap} mountedAtRef={mountedAtRef} t={t} large />
+            </div>
+          )}
+        </article>
+
+        <OpportunitySideChat snap={snap} />
+      </div>
+    </div>
   );
 }
 

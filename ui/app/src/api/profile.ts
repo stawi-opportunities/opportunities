@@ -35,23 +35,92 @@ export interface OnboardingPayload {
  * the text fields. CV upload is a separate PUT /me/cv call (required
  * because the v1 runtime can't send multipart-with-text-fields).
  */
+function isNotFound(err: unknown): boolean {
+  const code =
+    err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+  const msg = err instanceof Error ? err.message : String(err);
+  return code === 'API_NOT_FOUND' || /404|not found/i.test(msg);
+}
+
 export async function submitOnboarding(
   payload: OnboardingPayload
 ): Promise<{ id: string; profile_id: string }> {
-  return authRuntime().fetch('/candidates/onboard', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  // Prefer the canonical /matching prefix; fall back to legacy top-level path.
+  try {
+    return await authRuntime().fetch('/matching/candidates/onboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    return authRuntime().fetch('/candidates/onboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
 }
 
 /**
- * PUT /me/cv — uploads the CV file as the raw request body. The
- * server re-extracts text + scores the CV in the background; the
- * response carries the updated candidate row.
+ * PUT /me/cv — uploads the CV via multipart `file`.
+ * Server: extract text → files service (or archive) → local CV index →
+ * async extract/embed for matching. Response includes extracted_text
+ * for immediate chat inference plus file_id when files service stored it.
  */
-export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: number }> {
-  return authRuntime().upload('/me/cv', file);
+export interface UploadCVResult {
+  ok: boolean;
+  cv_length: number;
+  filename?: string;
+  /** Plain text extracted server-side — feed into chat inference immediately. */
+  extracted_text?: string;
+  cv_version?: number;
+  /** Platform files-service media id (preferred storage). */
+  file_id?: string;
+  content_uri?: string;
+  content_hash?: string;
+  /** "files" | "archive" */
+  storage?: string;
+  /** Combined qualifications + preferences summary after sync rebuild. */
+  placement_summary?: string;
+  placement_ready?: boolean;
+  missing?: string[];
+}
+
+export async function uploadCV(file: File): Promise<UploadCVResult> {
+  try {
+    return await authRuntime().upload('/matching/me/cv', file);
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    return authRuntime().upload('/me/cv', file);
+  }
+}
+
+/** Current CV document from the local index (files pointer + extracted text). */
+export interface MeCVDocument {
+  ok: boolean;
+  present: boolean;
+  cv_version?: number;
+  file_id?: string;
+  content_uri?: string;
+  content_hash?: string;
+  filename?: string;
+  storage?: string;
+  cv_length?: number;
+  extracted_text?: string;
+}
+
+export async function fetchMeCV(): Promise<MeCVDocument | null> {
+  try {
+    return await authRuntime().fetch<MeCVDocument>('/matching/me/cv');
+  } catch (err) {
+    if (!isNotFound(err)) return null;
+    try {
+      return await authRuntime().fetch<MeCVDocument>('/me/cv');
+    } catch {
+      return null;
+    }
+  }
 }
 
 // ── Candidate profile ─────────────────────────────────────────────

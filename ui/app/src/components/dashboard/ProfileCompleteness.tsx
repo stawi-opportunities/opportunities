@@ -1,5 +1,6 @@
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { useI18n } from '@/i18n/I18nProvider';
+import { usePreferenceChatOptional } from '@/components/preference-chat';
 
 function computeCompleteness(
   data:
@@ -15,6 +16,7 @@ function computeCompleteness(
 export function ProfileCompleteness() {
   const { t } = useI18n();
   const { data, isLoading } = useCandidateProfile();
+  const preferenceChat = usePreferenceChatOptional();
   if (isLoading) return null;
   const score = computeCompleteness(data);
   const missing = [];
@@ -56,14 +58,25 @@ export function ProfileCompleteness() {
           ))}
         </ul>
       )}
-      {score < 100 && (
-        <a
-          href="/dashboard/#settings"
-          className="mt-3 inline-block text-xs font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400"
-        >
-          {t('dash.compLink')}
-        </a>
-      )}
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
+        {preferenceChat && (
+          <button
+            type="button"
+            onClick={() => preferenceChat.openRefine()}
+            className="text-xs font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400"
+          >
+            Tweak in chat
+          </button>
+        )}
+        {score < 100 && (
+          <a
+            href="/dashboard/#settings"
+            className="text-xs font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400"
+          >
+            {t('dash.compLink')}
+          </a>
+        )}
+      </div>
     </div>
   );
 }

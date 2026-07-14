@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pitabwire/frame/v2"
@@ -43,6 +44,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
@@ -387,22 +389,69 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
+	// CV binary → files service (preferred) or R2 archive fallback.
+	// Only a file-id reference is kept on candidate_profiles; extracted text
+	// updates the placement summary synchronously for chat/matching.
+	var cvFiles placement.FileStore = &placement.ArchiveFileStore{Archive: arch}
+	if cfg.FileServiceURI != "" {
+		fileClients, fileErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+			FileURI:    cfg.FileServiceURI,
+			HTTPClient: svc.HTTPClientManager().Client(ctx),
+		})
+		if fileErr != nil {
+			log.WithError(fileErr).Warn("placement: files client init error; CV uploads use R2 archive")
+		}
+		if fileClients != nil && fileClients.Files != nil {
+			cvFiles = &placement.FilesServiceStore{Client: fileClients.Files}
+			log.WithField("uri", cfg.FileServiceURI).Info("placement: CV binaries via platform files service")
+		} else {
+			log.Warn("placement: FILE_SERVICE_URI set but files client unavailable — using R2 archive")
+		}
+	} else {
+		log.Info("placement: FILE_SERVICE_URI unset — CV binaries use R2 archive fallback")
+	}
+
+	// Placement profile (business): qualifications + preferences → summary + vector.
+	placementStore := placement.NewGormStore(dbFn)
+	profileCV := placement.NewGormProfileStore(dbFn)
+	var matchIndexStore *matching.IndexStore
+	if sqlDB != nil {
+		matchIndexStore = matching.NewIndexStore(sqlDB)
+	}
+	var placementEmbedder placement.Embedder
+	if extractor != nil {
+		placementEmbedder = extractor
+	}
+	placementSvc := &placement.Service{
+		Store:        placementStore,
+		Files:        cvFiles,
+		Profiles:     profileCV,
+		Embedder:     placementEmbedder,
+		Index:        matchIndexStore,
+		Svc:          svc,
+		EmbedQueue:   cfg.CandidateEmbeddingQueueName,
+		ModelVersion: cfg.EmbeddingModel,
+	}
+
 	uploadDeps := httpv1.UploadDeps{
-		Svc:     svc,
-		Archive: arch,
-		Text:    textExtractor{},
+		Svc:       svc,
+		Archive:   arch,
+		Text:      textExtractor{},
+		Files:     cvFiles,
+		Profiles:  profileCV,
+		Placement: placementSvc,
+		Drafts:    candidateRepo,
 	}
 	// Legacy upload/preferences/match paths require auth — identity from JWT
 	// subject (or X-Candidate-ID only when OIDC is unset in dev).
 	mux.Handle("POST /candidates/cv/upload", authMW(httpv1.UploadHandler(uploadDeps)))
 
-	// PUT /me/cv — the dashboard CV upload. The gateway strips the
-	// /matching prefix → PUT /me/cv. The auth-runtime upload() helper
-	// sends the CV as a multipart "file" part (method PUT); the handler
-	// derives the candidate from the JWT subject and runs the SAME
-	// archive → cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill
-	// pipeline as POST /candidates/cv/upload.
+	// /me/cv — dashboard + chat CV. Pipeline on PUT:
+	// extract text → files service (file-id on profile) → placement summary (sync)
+
+	// GET returns file-id + qualifications from placement summary.
 	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
+	mux.Handle("GET /me/cv", authMW(httpv1.MeCVGetHandler(uploadDeps)))
 	mux.Handle("POST /candidates/preferences", authMW(httpv1.PreferencesHandler(svc, sqlDB)))
 	mux.Handle("GET /candidates/match", authMW(httpv1.MatchHandler(httpv1.MatchDeps{
 		Svc:     svc,
@@ -442,6 +491,19 @@ func main() {
 	}))
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
+	// POST /me/chat — shared preference / intake conversation (onboarding,
+	// dashboard refine, opportunity side-chat all embed the same widget).
+	// Uses the shared extractor when inference is configured; otherwise a
+	// deterministic heuristic still drives structured field extraction.
+	var chatLLM httpv1.MeChatLLM
+	if extractor != nil {
+		chatLLM = extractor
+	}
+	mux.Handle("POST /me/chat", authMW(httpv1.MeChatHandler(httpv1.MeChatDeps{
+		LLM:       chatLLM,
+		Drafts:    candidateRepo, // persist transcript + fields for resume/refine
+		Placement: placementSvc,  // qualifications+prefs summary → vector index
+	})))
 
 	// /candidates/onboard — wizard final submit. Promotes the draft
 	// into the canonical profile columns and clears the draft in one
@@ -865,11 +927,79 @@ func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candida
 		if err := txRepo.Update(ctx, cand); err != nil {
 			return fmt.Errorf("candidate update: %w", err)
 		}
-		if err := txRepo.ClearOnboardingDraft(ctx, candidateID); err != nil {
-			return fmt.Errorf("draft clear: %w", err)
+		// Keep the preference-chat transcript available for later refine.
+		// Wizard step advances to 3; fields stay as a snapshot for resume.
+		if err := preserveChatAfterOnboard(ctx, txRepo, candidateID, cand); err != nil {
+			return fmt.Errorf("preserve chat session: %w", err)
 		}
 		return nil
 	})
+}
+
+// preserveChatAfterOnboard writes a completed-session envelope so the
+// conversation remains available after profile promotion (refine later).
+func preserveChatAfterOnboard(ctx context.Context, repo *repository.CandidateRepository, candidateID string, cand *domain.CandidateProfile) error {
+	raw, err := repo.GetOnboardingDraft(ctx, candidateID)
+	if err != nil {
+		return err
+	}
+	type msg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	var prior struct {
+		Messages []msg `json:"messages"`
+	}
+	if len(raw) > 0 && string(raw) != "{}" {
+		_ = json.Unmarshal(raw, &prior)
+	}
+	fields := map[string]any{
+		"target_job_title":    cand.TargetJobTitle,
+		"experience_level":    cand.ExperienceLevel,
+		"job_search_status":   cand.JobSearchStatus,
+		"preferred_regions":   decodeStringList(cand.PreferredRegions),
+		"preferred_languages": decodeStringList(cand.Languages),
+		"job_types":           decodeStringList(cand.PreferredRoles),
+		"country":             strings.TrimSpace(cand.PreferredCountries),
+		"plan":                cand.PlanID,
+	}
+	env := map[string]any{
+		"step":       3,
+		"fields":     fields,
+		"messages":   prior.Messages,
+		"updated_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	out, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	return repo.SetOnboardingDraft(ctx, candidateID, out)
+}
+
+// decodeStringList parses JSON arrays or comma/semicolon-separated text
+// used on candidate_profiles preference columns.
+func decodeStringList(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	if strings.HasPrefix(s, "[") {
+		var arr []string
+		if err := json.Unmarshal([]byte(s), &arr); err == nil {
+			return arr
+		}
+	}
+	sep := ","
+	if strings.Contains(s, ";") && !strings.Contains(s, ",") {
+		sep = ";"
+	}
+	var out []string
+	for _, p := range strings.Split(s, sep) {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // directApplicationStarter is the pragmatic ApplicationStarter while

@@ -109,6 +109,23 @@ type EngagementEventRecord struct {
 
 func (EngagementEventRecord) TableName() string { return "engagement_events" }
 
+// CandidatePlacementProfileRecord stores the combined qualifications +
+// preferences summary used for agent guidance and vector matching.
+// CV binary lives in the files service; candidate_profiles holds the file-id
+// reference. Extracted CV text is folded into qualifications_text/summary_text.
+type CandidatePlacementProfileRecord struct {
+	CandidateID        string         `gorm:"primaryKey;type:text"`
+	Version            int            `gorm:"not null;default:1"`
+	SummaryText        string         `gorm:"type:text;not null;default:''"`
+	QualificationsText string         `gorm:"type:text;not null;default:''"`
+	PreferencesText    string         `gorm:"type:text;not null;default:''"`
+	Missing            pq.StringArray `gorm:"type:text[];not null;default:'{}'"`
+	Ready              bool           `gorm:"not null;default:false"`
+	UpdatedAt          time.Time      `gorm:"not null;default:now()"`
+}
+
+func (CandidatePlacementProfileRecord) TableName() string { return "candidate_placement_profiles" }
+
 // Schema returns the ordinary matching tables owned by GORM.
 func Schema() []any {
 	return []any{
@@ -119,5 +136,6 @@ func Schema() []any {
 		&CandidateMatchEventRecord{},
 		&MatchRunEventRecord{},
 		&EngagementEventRecord{},
+		&CandidatePlacementProfileRecord{},
 	}
 }

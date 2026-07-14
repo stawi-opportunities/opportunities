@@ -24,7 +24,7 @@ function hero() {
   return document.getElementById('home-hero') as HTMLElement;
 }
 
-describe('HomeRedirect hero gating', () => {
+describe('HomeRedirect', () => {
   it('leaves the hero visible and does not redirect while initializing', () => {
     authState = 'initializing';
     render(<HomeRedirect />);
@@ -32,7 +32,7 @@ describe('HomeRedirect hero gating', () => {
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
-  it('hides the hero and redirects to /dashboard/ when authenticated', () => {
+  it('hides the hero and redirects any authenticated user to /dashboard/', () => {
     authState = 'authenticated';
     render(<HomeRedirect />);
     expect(hero().style.display).toBe('none');

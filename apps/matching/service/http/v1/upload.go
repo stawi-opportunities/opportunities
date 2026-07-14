@@ -17,6 +17,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
 )
 
 // TextExtractor abstracts plain-text extraction for PDF / DOCX bytes.
@@ -30,8 +31,18 @@ type TextExtractor interface {
 // UploadDeps bundles the collaborators for the upload handler.
 type UploadDeps struct {
 	Svc     *frame.Service
-	Archive archive.Archive
+	Archive archive.Archive // fallback when Files is nil
 	Text    TextExtractor
+
+	// Files stores the CV binary (platform files service preferred).
+	Files placement.FileStore
+	// Profiles writes the file-id reference on candidate_profiles.
+	Profiles placement.ProfileStore
+	// Placement rebuilds the match summary synchronously after extract.
+	Placement *placement.Service
+	// Drafts merges chat preferences and persists CV text into the draft
+	// so the next chat turn can assess capabilities without re-upload.
+	Drafts OnboardingDraftStore
 
 	// MaxBytes caps the size of the uploaded file. 0 → 10 MiB default.
 	MaxBytes int64
@@ -40,26 +51,9 @@ type UploadDeps struct {
 // UploadHandler returns an http.HandlerFunc implementing:
 //
 //	POST /candidates/cv/upload
-//	Content-Type: multipart/form-data
-//	Fields:
-//	  candidate_id (optional when authenticated; must match JWT subject)
-//	  cv           (required, file; .pdf or .docx)
 //
-// MUST be wrapped with CandidateAuth in production. Identity is taken
-// from the JWT subject when present; a form candidate_id that disagrees
-// is rejected.
-//
-// Flow:
-//  1. Resolve candidate identity (auth subject preferred).
-//  2. Read file bytes (bounded by MaxBytes).
-//  3. Archive raw bytes via pkg/archive → raw_archive_ref.
-//  4. Extract plain text (PDF or DOCX branch based on filename).
-//  5. Pick cv_version by counting existing candidates_cv_current/ rows
-//     for the candidate (always +1). For v1 we take a shortcut and
-//     stamp 1 unconditionally; Phase 6 reads the store to pick the
-//     real next version.
-//  6. Emit CVUploadedV1 via Frame.
-//  7. Return 202 Accepted with a JSON body echoing candidate_id + cv_version.
+// Flow: extract text → store file → profile file ref → placement summary
+// (sync) → optional async cv-extract for LLM enrichment.
 func UploadHandler(deps UploadDeps) http.HandlerFunc {
 	maxBytes := deps.MaxBytes
 	if maxBytes <= 0 {
@@ -109,55 +103,206 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 			return
 		}
 
-		// Archive raw bytes.
-		hash, size, err := deps.Archive.PutRaw(ctx, body)
+		result, err := processCVUpload(ctx, deps, cvUploadInput{
+			CandidateID: candidateID,
+			Filename:    hdr.Filename,
+			ContentType: hdr.Header.Get("Content-Type"),
+			Body:        body,
+		})
 		if err != nil {
-			log.WithError(err).Error("upload: PutRaw failed")
-			http.Error(w, `{"error":"archive failed"}`, http.StatusInternalServerError)
-			return
-		}
-
-		text, err := extractText(deps.Text, hdr.Filename, body)
-		if err != nil {
-			log.WithError(err).Warn("upload: text extraction failed")
-			http.Error(w, fmt.Sprintf(`{"error":"text extraction: %s"}`, err.Error()), http.StatusUnprocessableEntity)
-			return
-		}
-		if strings.TrimSpace(text) == "" {
-			http.Error(w, `{"error":"extracted text is empty"}`, http.StatusUnprocessableEntity)
-			return
-		}
-
-		cvVersion := 1 // v1 shortcut; Phase 6 computes the real next version
-		if err := enqueueCVExtract(ctx, deps.Svc, cvUploadInput{
-			CandidateID:   candidateID,
-			CVVersion:     cvVersion,
-			RawArchiveRef: archive.RawKey(hash),
-			Filename:      hdr.Filename,
-			ContentType:   hdr.Header.Get("Content-Type"),
-			SizeBytes:     size,
-			ExtractedText: text,
-		}); err != nil {
-			log.WithError(err).Error("upload: enqueue cv-extract failed")
-			http.Error(w, `{"error":"publish failed"}`, http.StatusInternalServerError)
+			log.WithError(err).Warn("upload: process failed")
+			writeUploadProcessError(w, err)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"accepted":     true,
-			"candidate_id": candidateID,
-			"cv_version":   cvVersion,
+			"accepted":          true,
+			"candidate_id":      candidateID,
+			"cv_version":        result.Version,
+			"file_id":           result.FileID,
+			"content_uri":       result.ContentURI,
+			"content_hash":      result.ContentHash,
+			"storage":           result.Storage,
+			"cv_length":         result.TextLength,
+			"extracted_text":    truncateRunesForResponse(result.ExtractedText, 40_000),
+			"placement_summary": result.PlacementSummary,
+			"placement_ready":   result.PlacementReady,
+			"missing":           result.Missing,
 		})
 	}
 }
 
-// cvUploadInput carries the fields enqueueCVExtract folds into a
-// CVUploadedV1 envelope. Shared by POST /candidates/cv/upload (multipart)
-// and PUT /me/cv (raw body) so both entry points drive the identical
-// cv-extract → cv-embed → CandidateEmbeddingV1 → gap-fill pipeline.
 type cvUploadInput struct {
+	CandidateID string
+	Filename    string
+	ContentType string
+	Body        []byte
+}
+
+type cvUploadResult struct {
+	Version          int
+	FileID           string
+	ContentURI       string
+	ContentHash      string
+	Storage          string
+	SizeBytes        int64
+	ExtractedText    string
+	TextLength       int
+	PlacementSummary string
+	PlacementReady   bool
+	Missing          []string
+}
+
+type processErr struct {
+	Code    string
+	Message string
+	Err     error
+}
+
+func (e *processErr) Error() string {
+	if e.Err != nil {
+		return e.Message + ": " + e.Err.Error()
+	}
+	return e.Message
+}
+
+// processCVUpload (synchronous path for chat):
+//  1. Extract plain text from the file
+//  2. Store bytes in the files service (archive fallback)
+//  3. Save file-id reference on candidate_profiles
+//  4. Merge prefs from chat draft + CV text → placement summary (sync)
+//  5. Persist CV text into onboarding draft so chat readiness works
+//  6. Best-effort enqueue async LLM cv-extract (enrichment only)
+func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*cvUploadResult, error) {
+	log := util.Log(ctx)
+
+	// 1. Extract text — required for immediate chat / placement.
+	text, err := extractText(deps.Text, in.Filename, in.Body)
+	if err != nil {
+		return nil, &processErr{Code: "text_extraction_failed", Message: err.Error(), Err: err}
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, &processErr{Code: "empty_cv", Message: "extracted cv text is empty"}
+	}
+	textLen := len([]rune(text))
+
+	// 2. Store binary in files service (or archive fallback).
+	files := deps.Files
+	if files == nil && deps.Archive != nil {
+		files = &placement.ArchiveFileStore{Archive: deps.Archive}
+	}
+	if files == nil {
+		return nil, &processErr{Code: "store_failed", Message: "no file store configured"}
+	}
+	ref, err := files.Put(ctx, in.CandidateID, in.Filename, in.ContentType, in.Body)
+	if err != nil {
+		if deps.Archive != nil && ref.Storage != "archive" {
+			log.WithError(err).Warn("upload: files service failed; falling back to archive")
+			ref, err = (&placement.ArchiveFileStore{Archive: deps.Archive}).Put(
+				ctx, in.CandidateID, in.Filename, in.ContentType, in.Body)
+		}
+		if err != nil {
+			return nil, &processErr{Code: "store_failed", Message: "could not store cv in files service", Err: err}
+		}
+	}
+
+	// 3. Profile file-id reference (best-effort if profile not created yet).
+	if deps.Profiles != nil {
+		if err := deps.Profiles.SetCVFileRef(ctx, in.CandidateID, placement.ProfileCV{
+			FileID:      ref.FileID,
+			ContentURI:  ref.ContentURI,
+			ContentHash: ref.ContentHash,
+			CVURL:       ref.ContentURI,
+		}); err != nil {
+			log.WithError(err).WithField("candidate_id", in.CandidateID).
+				Warn("upload: profile file ref not updated")
+		}
+	}
+
+	// 4. Placement summary — merge chat preferences + CV text (synchronous).
+	pf := placement.Fields{ExtraInfo: text}
+	var stored onboardingEnvelope
+	if deps.Drafts != nil {
+		if env, eErr := loadOnboardingEnvelope(ctx, deps.Drafts, in.CandidateID); eErr == nil {
+			stored = env
+			pf = toPlacementFields(fieldsFromEnvelope(env))
+			pf.ExtraInfo = text
+		}
+	}
+
+	version := 1
+	placementSummary := ""
+	placementReady := false
+	var missing []string
+	if deps.Placement != nil {
+		res, pErr := deps.Placement.Rebuild(ctx, placement.RebuildInput{
+			CandidateID: in.CandidateID,
+			Fields:      pf,
+		})
+		if pErr != nil {
+			log.WithError(pErr).WithField("candidate_id", in.CandidateID).
+				Warn("upload: placement rebuild failed")
+		} else if res != nil {
+			version = res.Version
+			placementSummary = res.Document.SummaryText
+			placementReady = res.Document.Ready
+			missing = res.Document.Missing
+		}
+	}
+	if missing == nil {
+		missing = placement.MissingRequired(pf)
+	}
+
+	// 5. Persist CV into onboarding draft so chat field_status sees capabilities.
+	if deps.Drafts != nil {
+		mergedFields := fieldsFromEnvelope(stored)
+		mergedFields.ExtraInfo = truncateRunes(text, 8000)
+		if err := persistChatSession(ctx, MeChatDeps{Drafts: deps.Drafts, Now: nil},
+			in.CandidateID, stored, mergedFields, stored.Messages, placementReady); err != nil {
+			log.WithError(err).WithField("candidate_id", in.CandidateID).
+				Warn("upload: draft CV text persist failed")
+		}
+	}
+
+	// 6. Async LLM enrich (non-blocking for chat). Failure is logged only after
+	// the sync placement path already succeeded.
+	if deps.Svc != nil {
+		if err := enqueueCVExtract(ctx, deps.Svc, cvUploadEnqueue{
+			CandidateID:   in.CandidateID,
+			CVVersion:     version,
+			RawArchiveRef: ref.ContentURI,
+			Filename:      in.Filename,
+			ContentType:   in.ContentType,
+			SizeBytes:     ref.SizeBytes,
+			ExtractedText: text,
+			FileID:        ref.FileID,
+			ContentURI:    ref.ContentURI,
+			ContentHash:   ref.ContentHash,
+			Storage:       ref.Storage,
+		}); err != nil {
+			log.WithError(err).WithField("candidate_id", in.CandidateID).
+				Warn("upload: async cv-extract enqueue failed (sync path ok)")
+		}
+	}
+
+	return &cvUploadResult{
+		Version:          version,
+		FileID:           ref.FileID,
+		ContentURI:       ref.ContentURI,
+		ContentHash:      ref.ContentHash,
+		Storage:          ref.Storage,
+		SizeBytes:        ref.SizeBytes,
+		ExtractedText:    text,
+		TextLength:       textLen,
+		PlacementSummary: placementSummary,
+		PlacementReady:   placementReady,
+		Missing:          missing,
+	}, nil
+}
+
+type cvUploadEnqueue struct {
 	CandidateID   string
 	CVVersion     int
 	RawArchiveRef string
@@ -165,13 +310,13 @@ type cvUploadInput struct {
 	ContentType   string
 	SizeBytes     int64
 	ExtractedText string
+	FileID        string
+	ContentURI    string
+	ContentHash   string
+	Storage       string
 }
 
-// enqueueCVExtract marshals a CVUploadedV1 envelope and publishes it onto
-// the durable cv-extract queue subject. The extract handler is a Frame
-// Queue subscriber (external LLM call), not a Frame Event handler, so it
-// survives restarts + retries with backoff if the AI Gateway is flaky.
-func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadInput) error {
+func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadEnqueue) error {
 	payload := eventsv1.CVUploadedV1{
 		CandidateID:   in.CandidateID,
 		CVVersion:     in.CVVersion,
@@ -179,6 +324,10 @@ func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadInput)
 		Filename:      in.Filename,
 		ContentType:   in.ContentType,
 		SizeBytes:     in.SizeBytes,
+		FileID:        in.FileID,
+		ContentURI:    in.ContentURI,
+		ContentHash:   in.ContentHash,
+		Storage:       in.Storage,
 		ExtractedText: in.ExtractedText,
 	}
 	env := eventsv1.NewEnvelope(eventsv1.TopicCVUploaded, payload)
@@ -192,12 +341,38 @@ func enqueueCVExtract(ctx context.Context, svc *frame.Service, in cvUploadInput)
 	return nil
 }
 
+func writeUploadProcessError(w http.ResponseWriter, err error) {
+	pe, ok := err.(*processErr)
+	if !ok {
+		http.Error(w, `{"error":"upload failed"}`, http.StatusInternalServerError)
+		return
+	}
+	switch pe.Code {
+	case "text_extraction_failed":
+		http.Error(w, fmt.Sprintf(`{"error":"text extraction: %s"}`, pe.Message), http.StatusUnprocessableEntity)
+	case "empty_cv":
+		http.Error(w, `{"error":"extracted text is empty"}`, http.StatusUnprocessableEntity)
+	case "store_failed":
+		http.Error(w, `{"error":"store failed"}`, http.StatusBadGateway)
+	default:
+		http.Error(w, `{"error":"upload failed"}`, http.StatusInternalServerError)
+	}
+}
+
+func truncateRunesForResponse(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
+}
+
 // errTooLarge signals that the uploaded file exceeded the byte cap.
 var errTooLarge = errors.New("file too large")
 
-// readBounded reads up to maxBytes from r, returning errTooLarge if the
-// source has more bytes than the cap. Shared by the multipart upload
-// handler and the PUT /me/cv handler.
 func readBounded(r io.Reader, maxBytes int64) ([]byte, error) {
 	body, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
 	if err != nil {
@@ -209,8 +384,6 @@ func readBounded(r io.Reader, maxBytes int64) ([]byte, error) {
 	return body, nil
 }
 
-// extractText picks PDF or DOCX extraction based on filename suffix.
-// Rejects any other suffix.
 func extractText(ex TextExtractor, filename string, body []byte) (string, error) {
 	lower := strings.ToLower(filename)
 	switch {
@@ -218,7 +391,32 @@ func extractText(ex TextExtractor, filename string, body []byte) (string, error)
 		return ex.FromPDF(body)
 	case strings.HasSuffix(lower, ".docx"):
 		return ex.FromDOCX(body)
+	case strings.HasSuffix(lower, ".txt"), strings.HasSuffix(lower, ".text"), strings.HasSuffix(lower, ".md"):
+		return string(body), nil
+	case strings.HasSuffix(lower, ".rtf"):
+		return stripRTF(string(body)), nil
 	default:
-		return "", errors.New("unsupported file type (only .pdf and .docx accepted)")
+		return "", errors.New("unsupported file type (pdf, docx, txt, rtf accepted)")
 	}
+}
+
+func stripRTF(s string) string {
+	var b strings.Builder
+	inCtrl := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\':
+			inCtrl = true
+		case inCtrl && (c == ' ' || c == '\n' || c == '\r' || c == '{' || c == '}'):
+			inCtrl = false
+			if c == ' ' || c == '\n' || c == '\r' {
+				b.WriteByte(' ')
+			}
+		case c == '{' || c == '}':
+		case !inCtrl:
+			b.WriteByte(c)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }

@@ -8,9 +8,17 @@ interface DialogProps {
   title: string;
   children: ReactNode;
   description?: string;
+  /** Content width. Default md. xl suits embedded chat widgets. */
+  size?: 'md' | 'lg' | 'xl';
 }
 
-export function Dialog({ open, onClose, title, description, children }: DialogProps) {
+const sizeClass: Record<NonNullable<DialogProps['size']>, string> = {
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-2xl',
+};
+
+export function Dialog({ open, onClose, title, description, children, size = 'md' }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleId = useRef(`dialog-title-${crypto.randomUUID()}`);
   const descId = useRef(`dialog-desc-${crypto.randomUUID()}`);
@@ -64,7 +72,8 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
       <div
         ref={dialogRef}
         className={clsx(
-          'w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl transition-all duration-200 dark:bg-navy-900',
+          'w-full max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl transition-all duration-200 dark:bg-navy-900',
+          sizeClass[size],
           exiting ? 'scale-95 opacity-0 translate-y-2' : 'scale-100 opacity-100 animate-slide-down'
         )}
       >

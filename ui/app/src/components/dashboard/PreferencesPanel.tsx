@@ -4,6 +4,7 @@ import { OnboardingRouter } from '@/onboarding/router';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { Icon } from '@/components/ui/Icon';
 import { getTypeMeta } from '@/constants/opportunityTypes';
+import { usePreferenceChatOptional } from '@/components/preference-chat';
 import { Panel } from './Panel';
 
 // Per-kind onboarding tabs — each entry maps a kind id to the flow id
@@ -22,6 +23,7 @@ export function PreferencesPanel() {
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [enabledKinds, setEnabledKinds] = useState<string[] | null>(null);
+  const preferenceChat = usePreferenceChatOptional();
 
   const profileQ = useCandidateProfile();
 
@@ -98,6 +100,25 @@ export function PreferencesPanel() {
         Opt into the kinds of opportunities you want matched. We'll only run matchers for kinds
         you've configured.
       </p>
+
+      {preferenceChat && (
+        <div className="mt-4 rounded-xl border border-navy-100 bg-navy-50/60 p-4 dark:border-navy-700 dark:bg-navy-800/50">
+          <p className="text-sm font-medium text-navy-900 dark:text-white">
+            Prefer to describe it?
+          </p>
+          <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+            Chat in plain language to tweak role, region, languages, and more — same assistant as
+            onboarding.
+          </p>
+          <button
+            type="button"
+            onClick={() => preferenceChat.openRefine()}
+            className="mt-3 inline-flex items-center rounded-lg bg-navy-900 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 dark:bg-accent-600 dark:hover:bg-accent-500"
+          >
+            Open preference chat
+          </button>
+        </div>
+      )}
 
       {pills.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
