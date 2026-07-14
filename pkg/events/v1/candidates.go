@@ -15,7 +15,7 @@ import (
 //
 // RawArchiveRef / ContentURI point at durable binary storage.
 // FileID is set when the platform files service accepted the upload.
-// ExtractedText is also written to candidate_cv_documents for local use.
+// ExtractedText is folded into the placement summary for chat/matching.
 type CVUploadedV1 struct {
 	CandidateID   string `json:"candidate_id"   `
 	CVVersion     int    `json:"cv_version"     `
