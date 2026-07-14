@@ -7,7 +7,7 @@ export function OverviewPanel() {
       <h2 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
         {t('dash.gettingStarted')}
       </h2>
-      <ul className="mt-4 space-y-3">
+      <ul className="mt-4 space-y-2 sm:space-y-3">
         <li className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-300">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-400 to-accent-600 text-xs font-bold text-white">
             1

@@ -108,7 +108,7 @@ export function SettingsProfile({ t }: { t: (k: StringKey, fallback?: string) =>
         <div>
           <p className="text-sm font-medium text-gray-700">{t('settings.cv')}</p>
           <p className="mt-1 text-sm text-gray-500">{t('settings.cvUploaded')}</p>
-          <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <label className="mt-2 inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
             {t('settings.cvUploadNew')}
             <input
               type="file"
@@ -132,7 +132,7 @@ export function SettingsProfile({ t }: { t: (k: StringKey, fallback?: string) =>
             type="button"
             onClick={handleSave}
             disabled={saveMutation.isPending}
-            className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50"
+            className="min-h-[44px] rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50"
           >
             {saveMutation.isPending ? t('common.loading') : t('settings.saveProfile')}
           </button>

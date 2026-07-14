@@ -58,9 +58,9 @@ export function DashboardHeader({
           <span>{tagline}</span>
         </p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="group relative inline-flex" title="No notifications">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:hover:bg-navy-800 dark:hover:text-gray-300">
+          <span className="flex h-10 w-10 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:hover:bg-navy-800 dark:hover:text-gray-300">
             <svg
               className="h-5 w-5"
               fill="none"

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type ReactElement } from 'react';
 import type { StringKey } from '@/i18n/strings';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 export type SectionId =
   | 'overview'
@@ -202,7 +203,7 @@ function SidebarNav({
             key={s.id}
             type="button"
             onClick={() => onNavigate(s.id)}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
+            className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
               isActive
                 ? 'bg-gradient-to-r from-navy-50 to-transparent text-navy-900 dark:from-navy-800 dark:to-transparent dark:text-white'
                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white'
@@ -241,20 +242,23 @@ export function DashboardSidebar({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(drawerRef, drawerOpen, () => setDrawerOpen(false));
 
   useEffect(() => {
     if (!drawerOpen) return;
-    const close = (e: MouseEvent) => {
+    const close = (e: PointerEvent) => {
       if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
         setDrawerOpen(false);
       }
     };
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setDrawerOpen(false);
-    document.addEventListener('mousedown', close);
+    document.addEventListener('pointerdown', close);
     document.addEventListener('keydown', esc);
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('mousedown', close);
+      document.removeEventListener('pointerdown', close);
       document.removeEventListener('keydown', esc);
+      document.body.style.overflow = '';
     };
   }, [drawerOpen]);
 
@@ -265,10 +269,10 @@ export function DashboardSidebar({
 
   return (
     <>
-      {/* Mobile hamburger — visible below lg */}
+      {/* Mobile hamburger — visible below md */}
       <button
         type="button"
-        className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800 lg:hidden"
+        className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800 md:hidden min-h-[44px]"
         aria-label="Open dashboard navigation"
         aria-expanded={drawerOpen}
         onClick={() => setDrawerOpen((o) => !o)}
@@ -306,12 +310,12 @@ export function DashboardSidebar({
       </button>
 
       {/* Mobile drawer overlay */}
-      {drawerOpen && <div className="fixed inset-0 z-50 bg-black/30 lg:hidden" />}
+      {drawerOpen && <div className="fixed inset-0 z-50 bg-black/30 md:hidden" />}
 
       {/* Mobile drawer */}
       <div
         ref={drawerRef}
-        className={`fixed left-0 top-0 z-50 h-full w-64 transform bg-white shadow-xl transition-transform duration-200 ease-in-out lg:hidden dark:bg-navy-900 ${
+        className={`fixed left-0 top-0 z-50 h-full w-64 max-w-[85vw] transform bg-white shadow-xl transition-transform duration-200 ease-in-out md:hidden dark:bg-navy-900 ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -321,7 +325,7 @@ export function DashboardSidebar({
           </span>
           <button
             type="button"
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-navy-800 dark:hover:text-gray-300"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-navy-800 dark:hover:text-gray-300"
             aria-label="Close dashboard navigation"
             onClick={() => setDrawerOpen(false)}
           >
@@ -331,6 +335,7 @@ export function DashboardSidebar({
               viewBox="0 0 24 24"
               strokeWidth={2}
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -341,8 +346,8 @@ export function DashboardSidebar({
         </div>
       </div>
 
-      {/* Desktop sidebar — visible from lg up */}
-      <div className="hidden lg:block">
+      {/* Desktop sidebar — visible from md up */}
+      <div className="hidden md:block">
         <div className="sticky top-[88px]">
           <SidebarNav active={active} onNavigate={handleNav} t={t} matchCount={matchCount} />
         </div>

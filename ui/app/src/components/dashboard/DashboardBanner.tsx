@@ -55,7 +55,7 @@ export function DashboardBanner({ onStartTour }: { onStartTour?: () => void }) {
       <button
         type="button"
         onClick={() => setVisible(false)}
-        className="absolute right-3 top-3 rounded p-1 text-gray-400 transition-colors hover:bg-white/50 hover:text-gray-600 dark:hover:bg-navy-700 dark:hover:text-gray-300"
+        className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/50 hover:text-gray-600 dark:hover:bg-navy-700 dark:hover:text-gray-300"
         aria-label={t('cta.dismiss')}
       >
         <svg

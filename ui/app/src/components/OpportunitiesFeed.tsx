@@ -253,7 +253,7 @@ export function OpportunitiesFeed() {
                 aria-selected={active}
                 type="button"
                 onClick={() => onSelectFilter(f.id)}
-                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                className={`min-h-[44px] rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
                   active
                     ? 'bg-navy-900 text-white'
                     : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
@@ -327,7 +327,7 @@ export function OpportunitiesFeed() {
                 <button
                   type="button"
                   onClick={() => void load(filter, nextCursor)}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700"
+                  className="min-h-[44px] rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700"
                   disabled={loading}
                 >
                   {loading ? t('common.loading') : t('cta.loadMore')}

@@ -223,7 +223,7 @@ export default function Nav() {
           {/* Mobile hamburger */}
           <button
             type="button"
-            className="flex items-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-navy-900 md:hidden"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-navy-900 md:hidden"
             aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((o) => !o)}

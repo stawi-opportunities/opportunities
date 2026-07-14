@@ -55,7 +55,7 @@ export function FilterChips({ filters, onChange, t }: Props) {
       <button
         type="button"
         onClick={toggleRemote}
-        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+        className={`min-h-[36px] rounded-full px-3 py-1 text-xs font-medium transition-colors ${
           filters.remote !== null
             ? 'bg-navy-900 text-white'
             : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
@@ -79,7 +79,7 @@ export function FilterChips({ filters, onChange, t }: Props) {
               writeFiltersToURL(newFilters);
               onChange(newFilters);
             }}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`min-h-[36px] rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               active
                 ? 'bg-navy-900 text-white'
                 : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'

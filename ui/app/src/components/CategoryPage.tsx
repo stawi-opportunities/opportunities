@@ -94,7 +94,7 @@ export default function CategoryPage() {
               <button
                 type="button"
                 disabled={q.isFetching}
-                className="rounded-md border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60"
+                className="min-h-[44px] rounded-md border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60"
                 onClick={() => setCursor(q.data.cursor_next)}
               >
                 {q.isFetching ? t('common.loading') : t('cta.loadMore')}
@@ -124,7 +124,7 @@ function NotFound({ t }: { t: (k: import('@/i18n/strings').StringKey) => string 
       <p className="mt-2 text-gray-600">{t('category.notFoundMessage')}</p>
       <a
         href="/categories/"
-        className="mt-6 inline-block rounded-md bg-navy-900 px-5 py-2 text-sm font-medium text-white hover:bg-navy-800"
+        className="mt-6 inline-block min-h-[44px] rounded-md bg-navy-900 px-5 py-2 text-sm font-medium text-white hover:bg-navy-800"
       >
         {t('category.backToAll')}
       </a>

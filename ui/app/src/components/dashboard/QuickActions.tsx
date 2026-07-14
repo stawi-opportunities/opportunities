@@ -37,7 +37,7 @@ export function QuickActions() {
         <a
           key={a.href}
           href={a.href}
-          className="rounded-xl border-0 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition-all hover:-translate-y-0.5 hover:shadow-md hover:text-gray-900 dark:bg-navy-900 dark:text-gray-300 dark:ring-navy-700 dark:hover:bg-navy-800 dark:hover:text-white"
+          className="min-h-[44px] rounded-xl border-0 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition-all hover:-translate-y-0.5 hover:shadow-md hover:text-gray-900 dark:bg-navy-900 dark:text-gray-300 dark:ring-navy-700 dark:hover:bg-navy-800 dark:hover:text-white"
         >
           <span>{a.label}</span>
           <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{a.description}</span>

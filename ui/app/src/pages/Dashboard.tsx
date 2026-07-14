@@ -137,7 +137,7 @@ export default function Dashboard() {
         <DashboardBreadcrumbs active={activeSection} t={t} />
       </div>
 
-      <div className="mt-4 lg:hidden">
+      <div className="mt-4 md:hidden">
         <DashboardSidebar
           active={activeSection}
           onNavigate={navigate}
@@ -147,7 +147,7 @@ export default function Dashboard() {
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[240px_1fr]">
-        <aside className="hidden lg:block">
+        <aside className="hidden md:block">
           <DashboardSidebar
             active={activeSection}
             onNavigate={navigate}
@@ -161,7 +161,7 @@ export default function Dashboard() {
             <ProfileMount />
           </div>
         </aside>
-        <section className="space-y-6">
+        <section className="space-y-4 sm:space-y-6">
           {plan === null || !isActive ? (
             <CompletePaymentPanel plan={plan} status={subscription} />
           ) : (
@@ -227,8 +227,8 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* Mobile profile — below lg */}
-      <div className="mt-8 lg:hidden">
+      {/* Mobile profile — below md */}
+      <div className="mt-8 md:hidden">
         <ProfileMount />
       </div>
 

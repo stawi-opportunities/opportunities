@@ -43,7 +43,7 @@ export function SettingsAccount({ t }: { t: (k: StringKey, fallback?: string) =>
           type="button"
           onClick={handleDataExport}
           disabled={dataExportMutation.isPending}
-          className="mt-3 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="mt-3 min-h-[44px] rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           {dataExportMutation.isPending ? t('common.loading') : t('settings.dataExport')}
         </button>
@@ -56,7 +56,7 @@ export function SettingsAccount({ t }: { t: (k: StringKey, fallback?: string) =>
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="mt-3 rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+              className="mt-3 min-h-[44px] rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
             >
               {t('settings.deleteAccount')}
             </button>
@@ -81,7 +81,7 @@ export function SettingsAccount({ t }: { t: (k: StringKey, fallback?: string) =>
                 type="button"
                 onClick={handleDeleteAccount}
                 disabled={deleteMutation.isPending}
-                className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
+                className="min-h-[44px] rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? t('common.loading') : t('settings.deleteAccount')}
               </button>
@@ -92,7 +92,7 @@ export function SettingsAccount({ t }: { t: (k: StringKey, fallback?: string) =>
                   setDeleteReason('');
                 }}
                 disabled={deleteMutation.isPending}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="min-h-[44px] rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>

@@ -96,7 +96,7 @@ export function SettingsSecurity({ t }: { t: (k: StringKey, fallback?: string) =
               type="button"
               onClick={handleChangePassword}
               disabled={changePwMutation.isPending}
-              className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50"
+              className="min-h-[44px] rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50"
             >
               {changePwMutation.isPending ? t('common.loading') : t('settings.changePassword')}
             </button>
@@ -108,7 +108,7 @@ export function SettingsSecurity({ t }: { t: (k: StringKey, fallback?: string) =
         <p className="text-sm text-gray-500">{t('settings.twoFactorDisabled')}</p>
         <button
           type="button"
-          className="mt-3 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 opacity-50"
+          className="mt-3 min-h-[44px] rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 opacity-50"
           disabled
         >
           {t('settings.enable2FA')}

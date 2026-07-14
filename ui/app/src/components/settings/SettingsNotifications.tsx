@@ -109,7 +109,7 @@ export function SettingsNotifications({ t }: { t: (k: StringKey, fallback?: stri
             type="button"
             onClick={handleSave}
             disabled={mutation.isPending}
-            className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50"
+            className="min-h-[44px] rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50"
           >
             {mutation.isPending ? t('common.loading') : t('settings.saveNotifications')}
           </button>
