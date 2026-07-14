@@ -12,8 +12,16 @@ import (
 	"github.com/rs/xid"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 )
+
+// Embedder produces a dense vector for opportunity text. Optional —
+// when nil, rows are stored without embeddings (search degrades to
+// non-ANN filters).
+type Embedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
 
 // PostgresProcessor drains the durable queue directly into canonical serving
 // tables.
@@ -25,6 +33,7 @@ type PostgresProcessor struct {
 	poll        time.Duration
 	lease       time.Duration
 	maxAttempts int
+	embedder    Embedder
 }
 
 func NewPostgresProcessor(store *jobqueue.Store, owner string, batch, concurrency int, poll, lease time.Duration, maxAttempts int) *PostgresProcessor {
@@ -44,6 +53,12 @@ func NewPostgresProcessor(store *jobqueue.Store, owner string, batch, concurrenc
 		lease = 2 * time.Minute
 	}
 	return &PostgresProcessor{store: store, owner: owner, batch: batch, concurrency: concurrency, poll: poll, lease: lease, maxAttempts: maxAttempts}
+}
+
+// WithEmbedder enables post-complete vector writes for ANN search.
+func (p *PostgresProcessor) WithEmbedder(e Embedder) *PostgresProcessor {
+	p.embedder = e
+	return p
 }
 
 func (p *PostgresProcessor) Run(ctx context.Context) {
@@ -112,8 +127,29 @@ func (p *PostgresProcessor) process(ctx context.Context, item jobqueue.Item) err
 	}
 	c.PostedAt = attrTime(a, "posted_at")
 	c.Deadline = attrTime(a, "deadline")
-	_, err := p.store.Complete(ctx, item, c)
-	return err
+	canonicalID, err := p.store.Complete(ctx, item, c)
+	if err != nil {
+		return err
+	}
+	// Embed after the durable write so a slow/failed embedding API never
+	// blocks or rolls back ingest. Fail-open: missing vectors leave the
+	// row searchable by filters; embed-backfill heals historical NULLs.
+	if p.embedder != nil && canonicalID != "" {
+		text := extraction.EmbedInput(c.Title, c.IssuingEntity, c.Description)
+		vec, embErr := p.embedder.Embed(ctx, text)
+		if embErr != nil {
+			util.Log(ctx).WithError(embErr).WithField("canonical_id", canonicalID).
+				Warn("postgres worker: embed failed; row stored without vector")
+			return nil
+		}
+		if len(vec) > 0 {
+			if setErr := p.store.SetEmbedding(ctx, canonicalID, vec); setErr != nil {
+				util.Log(ctx).WithError(setErr).WithField("canonical_id", canonicalID).
+					Warn("postgres worker: set embedding failed")
+			}
+		}
+	}
+	return nil
 }
 
 func attrString(a map[string]any, key string) string {

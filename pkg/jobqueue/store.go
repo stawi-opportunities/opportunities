@@ -168,6 +168,39 @@ type Canonical struct {
 	Attributes                                              map[string]any
 }
 
+// SetEmbedding writes a pgvector embedding for an opportunity. Fail-open
+// callers should log and continue when this returns an error — a missing
+// vector degrades search to non-ANN paths rather than blocking ingest.
+// vec must match the column width (vector(1024)).
+func (s *Store) SetEmbedding(ctx context.Context, canonicalID string, vec []float32) error {
+	if s == nil || s.db == nil {
+		return errors.New("jobqueue: database is not configured")
+	}
+	if canonicalID == "" || len(vec) == 0 {
+		return errors.New("jobqueue: invalid embedding write")
+	}
+	lit := vectorLiteral(vec)
+	return s.db(ctx, false).WithContext(ctx).Exec(
+		`UPDATE opportunities SET embedding = ?::vector, updated_at = now()
+		 WHERE canonical_id = ?`,
+		lit, canonicalID,
+	).Error
+}
+
+// vectorLiteral renders a float32 slice as a pgvector text literal.
+func vectorLiteral(v []float32) string {
+	b := make([]byte, 0, 2+len(v)*12)
+	b = append(b, '[')
+	for i, f := range v {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = append(b, []byte(fmt.Sprintf("%g", f))...)
+	}
+	b = append(b, ']')
+	return string(b)
+}
+
 // Complete resolves identity, merges the serving row and source lineage, and
 // acknowledges queue work in one database transaction.
 func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, error) {
