@@ -46,7 +46,7 @@ export default function Search() {
         <button
           type="button"
           onClick={() => setFiltersOpen(true)}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm"
         >
           <svg
             className="h-4 w-4"
@@ -122,14 +122,14 @@ export default function Search() {
             <button
               type="button"
               onClick={clearAll}
-              className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700"
+              className="min-h-[44px] flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700"
             >
               {t('search.clearAll')}
             </button>
             <button
               type="button"
               onClick={() => setFiltersOpen(false)}
-              className="flex-1 rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white"
+              className="min-h-[44px] flex-1 rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white"
             >
               {t('search.showResults')}
             </button>

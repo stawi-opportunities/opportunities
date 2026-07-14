@@ -52,7 +52,7 @@ export function SearchForm({
               onChange({ ...value, q: undefined, offset: 0 });
             }}
             aria-label={t('search.clear')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-600"
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded p-1 text-gray-400 hover:text-gray-600"
           >
             <svg
               className="h-4 w-4"
@@ -73,7 +73,7 @@ export function SearchForm({
       </div>
       <button
         type="submit"
-        className="rounded-md bg-navy-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
+        className="min-h-[44px] rounded-md bg-navy-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
       >
         {t('search.searchButton')}
       </button>

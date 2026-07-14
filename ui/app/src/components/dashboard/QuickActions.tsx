@@ -58,7 +58,7 @@ export function QuickActions() {
   ];
 
   const chipClass =
-    'rounded-xl border-0 bg-white px-4 py-2.5 text-left text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition-all hover:-translate-y-0.5 hover:shadow-md hover:text-gray-900 dark:bg-navy-900 dark:text-gray-300 dark:ring-navy-700 dark:hover:bg-navy-800 dark:hover:text-white';
+    'min-h-[44px] rounded-xl border-0 bg-white px-4 py-2.5 text-left text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition-all hover:-translate-y-0.5 hover:shadow-md hover:text-gray-900 dark:bg-navy-900 dark:text-gray-300 dark:ring-navy-700 dark:hover:bg-navy-800 dark:hover:text-white';
 
   return (
     <div className="flex flex-wrap gap-3">

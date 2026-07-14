@@ -127,7 +127,7 @@ export default function JobList() {
                 <button
                   type="button"
                   onClick={() => setActive({})}
-                  className="w-full rounded-md border border-gray-200 py-1.5 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-900 transition-colors"
+                  className="w-full min-h-[44px] rounded-md border border-gray-200 py-1.5 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-900 transition-colors"
                 >
                   Clear all filters
                 </button>

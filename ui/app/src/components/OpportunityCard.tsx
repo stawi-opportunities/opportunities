@@ -99,7 +99,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               type="button"
               onClick={() => onApply(item.opportunity_id)}
               disabled={isPending}
-              className="rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800 disabled:opacity-50"
+              className="min-h-[44px] rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800 disabled:opacity-50"
             >
               {t('cta.apply')}
             </button>
@@ -110,7 +110,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               onClick={() => onUnstar(item.opportunity_id)}
               aria-label="Remove from saved"
               disabled={isPending}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-amber-300 dark:hover:bg-amber-900/20"
+              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-amber-300 dark:hover:bg-amber-900/20"
             >
               ★ {t('cta.saved')}
             </button>
@@ -120,7 +120,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               onClick={() => onStar(item.opportunity_id)}
               aria-label="Save opportunity"
               disabled={isPending}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-300 dark:hover:bg-navy-800"
+              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-300 dark:hover:bg-navy-800"
             >
               ☆ {t('cta.save')}
             </button>

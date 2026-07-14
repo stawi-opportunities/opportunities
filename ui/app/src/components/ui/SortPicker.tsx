@@ -16,7 +16,7 @@ export function SortPicker({ value, onChange }: SortPickerProps) {
       <select
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value as SearchParams['sort'])}
-        className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+        className="mt-1 min-h-[44px] rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
       >
         <option value="relevance">{t('search.sortRelevance')}</option>
         <option value="recent">{t('search.sortRecent')}</option>
