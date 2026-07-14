@@ -13,8 +13,12 @@ import (
 // driver for healthy per-source schedules; this loop is the resilience
 // path when schedules never activate or Trustage cannot call the admin API.
 //
-// interval <= 0 disables the loop. The first tick runs after a short boot
-// delay so migration/seed/reconcile finish first.
+// Intended as a Frame WithBackgroundConsumer: Frame owns the goroutine and
+// service shutdown cancels ctx. Returns nil on clean stop; non-nil would
+// tear down the whole service (we never return transient sweep errors).
+//
+// interval <= 0 disables the loop (immediate return). The first tick runs
+// after a short boot delay so migration/seed/reconcile finish first.
 func RunInternalOverdueLoop(
 	ctx context.Context,
 	svc *frame.Service,
@@ -23,10 +27,10 @@ func RunInternalOverdueLoop(
 	admit Admitter,
 	batch int,
 	interval time.Duration,
-) {
+) error {
 	if interval <= 0 {
 		util.Log(ctx).Info("internal-overdue: disabled")
-		return
+		return nil
 	}
 	if batch <= 0 {
 		batch = 25
@@ -59,7 +63,7 @@ func RunInternalOverdueLoop(
 		select {
 		case <-ctx.Done():
 			log.Info("internal-overdue: stopped")
-			return
+			return nil
 		case <-boot.C:
 			// Zero slack on first boot tick so seeds with next_crawl_at=now are eligible.
 			runOnce(0)

@@ -8,32 +8,39 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 	"github.com/rs/xid"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
-	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 )
 
-// Embedder produces a dense vector for opportunity text. Optional —
-// when nil, rows are stored without embeddings (search degrades to
-// non-ANN filters).
-type Embedder interface {
-	Embed(ctx context.Context, text string) ([]float32, error)
+// EmbedPublisher publishes durable embed jobs onto Frame Queue.
+// Implemented by *frame.Service via QueueManager().Publish.
+type EmbedPublisher interface {
+	PublishEmbed(ctx context.Context, job eventsv1.OpportunityEmbedV1) error
 }
 
-// PostgresProcessor drains the durable queue directly into canonical serving
-// tables.
+// PostgresProcessor drains the durable PostgreSQL job_ingest_queue into
+// canonical serving tables.
+//
+// Lifecycle: Run is intended as a Frame WithBackgroundConsumer — Frame
+// owns the goroutine and ties exit to service shutdown. Concurrent item
+// processing uses the Frame workerpool (ants), not ad-hoc goroutines.
+// Embedding is NOT done inline (external HTTP): after Complete, an
+// OpportunityEmbedV1 is published to SubjectWorkerEmbed for the Queue
+// subscriber.
 type PostgresProcessor struct {
 	store       *jobqueue.Store
+	svc         *frame.Service
 	owner       string
 	batch       int
 	concurrency int
 	poll        time.Duration
 	lease       time.Duration
 	maxAttempts int
-	embedder    Embedder
+	embeds      EmbedPublisher
 }
 
 func NewPostgresProcessor(store *jobqueue.Store, owner string, batch, concurrency int, poll, lease time.Duration, maxAttempts int) *PostgresProcessor {
@@ -55,23 +62,45 @@ func NewPostgresProcessor(store *jobqueue.Store, owner string, batch, concurrenc
 	return &PostgresProcessor{store: store, owner: owner, batch: batch, concurrency: concurrency, poll: poll, lease: lease, maxAttempts: maxAttempts}
 }
 
-// WithEmbedder enables post-complete vector writes for ANN search.
-func (p *PostgresProcessor) WithEmbedder(e Embedder) *PostgresProcessor {
-	p.embedder = e
+// WithService wires Frame's workerpool for concurrent drain.
+func (p *PostgresProcessor) WithService(svc *frame.Service) *PostgresProcessor {
+	p.svc = svc
 	return p
 }
 
-func (p *PostgresProcessor) Run(ctx context.Context) {
+// WithEmbedPublisher enables post-complete publish of OpportunityEmbedV1
+// onto the durable embed queue.
+func (p *PostgresProcessor) WithEmbedPublisher(pub EmbedPublisher) *PostgresProcessor {
+	p.embeds = pub
+	return p
+}
+
+// Run is the Frame background consumer loop. Returns nil on clean
+// shutdown (ctx cancelled); non-nil errors stop the whole service.
+// Never return transient drain errors — log and keep polling.
+func (p *PostgresProcessor) Run(ctx context.Context) error {
+	log := util.Log(ctx)
+	log.WithField("poll", p.poll.String()).WithField("batch", p.batch).
+		WithField("concurrency", p.concurrency).
+		Info("postgres worker: background drain started")
+
 	ticker := time.NewTicker(p.poll)
 	defer ticker.Stop()
+
+	// Immediate first drain so we don't wait a full poll interval after boot.
+	if err := p.drain(ctx); err != nil {
+		log.WithError(err).Warn("postgres worker: drain failed")
+	}
+
 	for {
-		if err := p.drain(ctx); err != nil {
-			util.Log(ctx).WithError(err).Warn("postgres worker: drain failed")
-		}
 		select {
 		case <-ctx.Done():
-			return
+			log.Info("postgres worker: background drain stopped")
+			return nil
 		case <-ticker.C:
+			if err := p.drain(ctx); err != nil {
+				log.WithError(err).Warn("postgres worker: drain failed")
+			}
 		}
 	}
 }
@@ -81,21 +110,55 @@ func (p *PostgresProcessor) drain(ctx context.Context) error {
 	if err != nil || len(items) == 0 {
 		return err
 	}
-	sem := make(chan struct{}, p.concurrency)
+
+	// Prefer Frame workerpool (managed ants pool + service lifecycle).
+	if p.svc != nil && p.svc.WorkManager() != nil {
+		if pool, poolErr := p.svc.WorkManager().GetPool(); poolErr == nil && pool != nil {
+			return p.drainWithPool(ctx, pool, items)
+		}
+	}
+	// Fallback: sequential (tests without a full Frame service).
+	for _, item := range items {
+		if processErr := p.process(ctx, item); processErr != nil {
+			if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil {
+				util.Log(ctx).WithError(retryErr).WithField("ingest_id", item.ID).
+					Error("postgres worker: retry persistence failed")
+			}
+		}
+	}
+	return nil
+}
+
+// poolSubmitter is the Frame WorkerPool surface we need (testable).
+type poolSubmitter interface {
+	Submit(ctx context.Context, task func()) error
+}
+
+func (p *PostgresProcessor) drainWithPool(ctx context.Context, pool poolSubmitter, items []jobqueue.Item) error {
 	var wg sync.WaitGroup
 	for _, item := range items {
 		item := item
-		sem <- struct{}{}
 		wg.Add(1)
-		go func() {
+		submitErr := pool.Submit(ctx, func() {
 			defer wg.Done()
-			defer func() { <-sem }()
 			if processErr := p.process(ctx, item); processErr != nil {
 				if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil {
-					util.Log(ctx).WithError(retryErr).WithField("ingest_id", item.ID).Error("postgres worker: retry persistence failed")
+					util.Log(ctx).WithError(retryErr).WithField("ingest_id", item.ID).
+						Error("postgres worker: retry persistence failed")
 				}
 			}
-		}()
+		})
+		if submitErr != nil {
+			// Pool saturated / closed — process synchronously so the claim
+			// is not abandoned until lease expiry.
+			wg.Done()
+			if processErr := p.process(ctx, item); processErr != nil {
+				if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil {
+					util.Log(ctx).WithError(retryErr).WithField("ingest_id", item.ID).
+						Error("postgres worker: retry persistence failed")
+				}
+			}
+		}
 	}
 	wg.Wait()
 	return nil
@@ -131,22 +194,19 @@ func (p *PostgresProcessor) process(ctx context.Context, item jobqueue.Item) err
 	if err != nil {
 		return err
 	}
-	// Embed after the durable write so a slow/failed embedding API never
-	// blocks or rolls back ingest. Fail-open: missing vectors leave the
-	// row searchable by filters; embed-backfill heals historical NULLs.
-	if p.embedder != nil && canonicalID != "" {
-		text := extraction.EmbedInput(c.Title, c.IssuingEntity, c.Description)
-		vec, embErr := p.embedder.Embed(ctx, text)
-		if embErr != nil {
-			util.Log(ctx).WithError(embErr).WithField("canonical_id", canonicalID).
-				Warn("postgres worker: embed failed; row stored without vector")
-			return nil
+	// External embedding HTTP → Frame Queue (not inline, not Events).
+	if p.embeds != nil && canonicalID != "" {
+		job := eventsv1.OpportunityEmbedV1{
+			OpportunityID: canonicalID,
+			Title:         c.Title,
+			IssuingEntity: c.IssuingEntity,
+			Description:   c.Description,
 		}
-		if len(vec) > 0 {
-			if setErr := p.store.SetEmbedding(ctx, canonicalID, vec); setErr != nil {
-				util.Log(ctx).WithError(setErr).WithField("canonical_id", canonicalID).
-					Warn("postgres worker: set embedding failed")
-			}
+		if pubErr := p.embeds.PublishEmbed(ctx, job); pubErr != nil {
+			// Ingest already committed; log and rely on embed-backfill /
+			// redelivery if the queue accept failed hard.
+			util.Log(ctx).WithError(pubErr).WithField("canonical_id", canonicalID).
+				Warn("postgres worker: publish embed job failed")
 		}
 	}
 	return nil

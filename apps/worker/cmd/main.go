@@ -1,5 +1,13 @@
 // Command worker drains PostgreSQL job ingestion work into the canonical
-// PostgreSQL serving tables.
+// PostgreSQL serving tables, then embeds opportunities via Frame Queue.
+//
+// Long-running process model (Frame async decision tree):
+//
+//   - Postgres drain loop → frame.WithBackgroundConsumer
+//     Frame owns the goroutine and ties exit to service shutdown.
+//   - Concurrent claim processing → Frame workerpool (WorkManager ants pool).
+//   - Opportunity embedding (external HTTP) → Frame Queue subscriber
+//     (WORKER_EMBED_QUEUE_URL) with durable retry — not inline, not Events.
 package main
 
 import (
@@ -11,6 +19,7 @@ import (
 
 	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
 	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
+	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 )
@@ -22,17 +31,29 @@ func main() {
 		util.Log(ctx).WithError(err).Fatal("worker: load config")
 	}
 
-	ctx, svc := frame.NewServiceWithContext(ctx, frame.WithConfig(&cfg), frame.WithDatastore())
+	ctx, svc := frame.NewServiceWithContext(ctx,
+		frame.WithConfig(&cfg),
+		frame.WithDatastore(),
+	)
 	defer svc.Stop(ctx)
+
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	if pool == nil {
 		util.Log(ctx).Fatal("worker: DATABASE_URL is required")
 	}
-
-	processor := workersvc.NewPostgresProcessor(jobqueue.New(pool.DB), "",
+	store := jobqueue.New(pool.DB)
+	processor := workersvc.NewPostgresProcessor(store, "",
 		cfg.PostgresBatchSize, cfg.PostgresConcurrency, cfg.PostgresPollInterval,
-		cfg.PostgresLease, cfg.PostgresMaxAttempts)
-	if cfg.EmbeddingBaseURL != "" {
+		cfg.PostgresLease, cfg.PostgresMaxAttempts,
+	).WithService(svc)
+
+	// BackgroundConsumer is registered at Init so Frame starts it inside
+	// Run() under managed lifecycle (never a bare go processor.Run).
+	initOpts := []frame.Option{
+		frame.WithBackgroundConsumer(processor.Run),
+	}
+
+	if cfg.EmbeddingBaseURL != "" && cfg.WorkerEmbedQueueURL != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
 			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
 		)
@@ -41,17 +62,28 @@ func main() {
 			EmbeddingAPIKey:     embKey,
 			EmbeddingModel:      embModel,
 			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			HTTPClient:          svc.HTTPClientManager().Client(ctx),
 		})
-		processor.WithEmbedder(ex)
+		embedH := workersvc.NewEmbedHandler(store, ex)
+		processor.WithEmbedPublisher(workersvc.NewFrameEmbedPublisher(svc, eventsv1.SubjectWorkerEmbed))
+		initOpts = append(initOpts,
+			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
+			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, embedH),
+		)
 		util.Log(ctx).WithField("model", embModel).WithField("dims", cfg.EmbeddingDimensions).
-			Info("worker: opportunity embedding enabled")
+			WithField("queue", eventsv1.SubjectWorkerEmbed).
+			Info("worker: opportunity embedding via Frame Queue")
 	} else {
-		util.Log(ctx).Warn("worker: EMBEDDING_BASE_URL empty — opportunities stored without vectors")
+		util.Log(ctx).Warn("worker: embedding disabled (need EMBEDDING_BASE_URL + WORKER_EMBED_QUEUE_URL)")
 	}
-	go processor.Run(ctx)
-	util.Log(ctx).Info("worker: PostgreSQL ingestion processor started")
 
-	svc.Init(ctx)
+	svc.Init(ctx, initOpts...)
+	// Catch-all events stream: ack-and-skip unknown topics (loose mode).
+	if mgr := svc.EventsManager(); mgr != nil {
+		mgr.SetStrict(false)
+	}
+
+	util.Log(ctx).Info("worker: starting (BackgroundConsumer=postgres drain)")
 	if err := svc.Run(ctx, ""); err != nil {
 		util.Log(ctx).WithError(err).Fatal("worker: frame.Run failed")
 	}

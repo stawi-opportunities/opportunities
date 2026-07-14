@@ -694,14 +694,21 @@ func main() {
 	adminMux.HandleFunc("GET /admin/crawl_jobs",
 		service.CrawlJobsAdminHandler(crawlRepo))
 
-	svc.Init(ctx, frame.WithHTTPHandler(adminHandler))
-
-	// In-process overdue sweep: keep crawls moving when Trustage schedule
-	// reconcile or HTTP callbacks are broken (auth outages, missing workflows).
+	// Init options: HTTP admin + optional BackgroundConsumer for overdue
+	// sweeps. Frame owns the background goroutine (do not use bare go).
+	initOpts := []frame.Option{frame.WithHTTPHandler(adminHandler)}
 	if cfg.InternalOverdueInterval > 0 {
-		go service.RunInternalOverdueLoop(ctx, svc, sourceRepo, sourceRepo, crawlAdmitter,
-			cfg.CrawlOverdueBatch, cfg.InternalOverdueInterval)
+		// Long-running resilience loop when Trustage schedules are down.
+		// Frame.WithBackgroundConsumer ties lifecycle to svc.Run / stop.
+		batch := cfg.CrawlOverdueBatch
+		interval := cfg.InternalOverdueInterval
+		initOpts = append(initOpts, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
+			return service.RunInternalOverdueLoop(bgCtx, svc, sourceRepo, sourceRepo, crawlAdmitter, batch, interval)
+		}))
+		log.WithField("interval", interval.String()).Info("crawler: internal-overdue via Frame BackgroundConsumer")
 	}
+
+	svc.Init(ctx, initOpts...)
 
 	// Register a named health checker that reports source state counts.
 	svc.AddHealthCheck(&sourceStateChecker{repo: sourceRepo})
