@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/providers/AuthProvider';
-import { fetchMeCV, submitOnboarding, uploadCV } from '@/api/profile';
+import { fetchMeCV, submitOnboarding } from '@/api/profile';
 import { createCheckout } from '@/api/billing';
 import { PLANS, planById, type PlanId } from '@/utils/plans';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -67,7 +67,6 @@ export default function Onboarding() {
   const [messages, setMessages] = useState<OnboardingChatMessage[]>([]);
   const [plan, setPlan] = useState<PlanId>(readPlanFromQuery);
   const [agreeTerms, setAgreeTerms] = useState(false);
-  const [cv, setCv] = useState<File | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -207,18 +206,7 @@ export default function Onboarding() {
         agree_terms: true,
       });
 
-      // Only upload a *new* file pick; never re-require when cv is already on file.
-      if (cv instanceof File) {
-        try {
-          await uploadCV(cv);
-          setCvOnFile(true);
-        } catch {
-          setSubmitError(
-            'Your profile was saved, but the CV file failed to upload. You can re-upload it later from Settings.'
-          );
-        }
-      }
-
+      // Plan step is payment-only. CV is collected in chat (or later in Settings).
       try {
         const checkout = await createCheckout({ plan_id: plan });
         if (checkout.status === 'redirect' && checkout.redirect_url) {
@@ -359,28 +347,6 @@ export default function Onboarding() {
               </button>
             );
           })}
-        </div>
-
-        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
-          <label className="block text-sm font-medium text-gray-900">
-            {cvOnFile ? 'CV on file' : 'Optional: upload CV file'}
-          </label>
-          <p className="mt-0.5 text-xs text-gray-500">
-            {cvOnFile
-              ? 'You already uploaded a resume — no need to upload again. Optionally replace it below.'
-              : 'If you only pasted text above, a PDF/DOCX helps matching quality.'}
-          </p>
-          <input
-            type="file"
-            accept=".pdf,.doc,.docx,.rtf,.txt"
-            className="mt-2 block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-navy-900 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
-            onChange={(e) => setCv(e.target.files?.[0] ?? undefined)}
-          />
-          {cv && (
-            <p className="mt-1 truncate text-xs text-gray-600">
-              {cv.name} ({(cv.size / 1024).toFixed(0)} KB)
-            </p>
-          )}
         </div>
 
         <label className="flex items-start gap-2 text-sm text-gray-700">
