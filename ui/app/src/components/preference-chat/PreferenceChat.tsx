@@ -24,7 +24,7 @@ import {
   type OnboardingChatMessage,
 } from '@/api/candidates';
 import { uploadCV } from '@/api/profile';
-import { isChatReady, missingChatFields } from '@/onboarding/chatHeuristic';
+import { missingChatFields } from '@/onboarding/chatHeuristic';
 import type { PlanId } from '@/utils/plans';
 import { FIELD_LABELS } from './mapFields';
 
@@ -47,9 +47,14 @@ export interface PreferenceChatProps {
       field_status?: Record<string, OnboardingChatFieldStatus>;
     }
   ) => void;
-  onComplete?: (fields: OnboardingChatFields) => void | Promise<void>;
+  onComplete?: (
+    fields: OnboardingChatFields,
+    meta?: { messages: OnboardingChatMessage[] }
+  ) => void | Promise<void>;
   persistDraft?: boolean;
   plan?: PlanId;
+  /** CV already stored server-side — never re-require upload for capabilities. */
+  cvOnFile?: boolean;
   showCompleteAction?: boolean;
   completeLabel?: string;
   compact?: boolean;
@@ -248,8 +253,20 @@ function valueForRequired(
   switch (key) {
     case 'target_job_title':
       return fields.target_job_title?.trim() || '';
-    case 'capabilities':
-      return fields.extra_info && fields.extra_info.length >= 80 ? 'CV provided' : '';
+    case 'capabilities': {
+      const t = fields.extra_info?.trim() ?? '';
+      if (!t) return '';
+      const low = t.toLowerCase();
+      if (
+        t.length >= 80 ||
+        low.includes('cv on file') ||
+        low.includes('uploaded cv') ||
+        low.includes('resume document stored')
+      ) {
+        return 'CV provided';
+      }
+      return '';
+    }
     case 'job_types':
       return fields.job_types?.join(', ') || '';
     case 'salary_expectation': {
@@ -268,6 +285,25 @@ function valueForRequired(
   }
 }
 
+function applyCvOnFile(
+  f: OnboardingChatFields,
+  onFile: boolean
+): { fields: OnboardingChatFields; missing: string[]; ready: boolean } {
+  let fields = f;
+  if (onFile && !f.extra_info?.trim()) {
+    fields = {
+      ...f,
+      extra_info:
+        'Uploaded CV on file. Resume document stored for matching (experience, education, skills).',
+    };
+  }
+  let missing = missingChatFields(fields);
+  if (onFile) {
+    missing = missing.filter((k) => k !== 'capabilities');
+  }
+  return { fields, missing, ready: missing.length === 0 };
+}
+
 export function PreferenceChat({
   mode = 'intake',
   initialFields = {},
@@ -280,20 +316,22 @@ export function PreferenceChat({
   onComplete,
   showCompleteAction = true,
   completeLabel,
+  cvOnFile = false,
   compact: _compact = false,
 }: PreferenceChatProps) {
   void _minHeightClass;
   void _compact;
   const greeting = welcome ?? landingTitle(userName, mode);
+  const seed = applyCvOnFile(initialFields, cvOnFile);
   const [messages, setMessages] = useState<OnboardingChatMessage[]>(() =>
     initialMessages?.length ? initialMessages : []
   );
-  const [fields, setFields] = useState<OnboardingChatFields>(initialFields);
-  const [missing, setMissing] = useState<string[]>(() => missingChatFields(initialFields));
+  const [fields, setFields] = useState<OnboardingChatFields>(seed.fields);
+  const [missing, setMissing] = useState<string[]>(() => seed.missing);
   const [fieldStatus, setFieldStatus] = useState<
     Record<string, OnboardingChatFieldStatus> | undefined
   >();
-  const [ready, setReady] = useState(() => isChatReady(initialFields));
+  const [ready, setReady] = useState(() => seed.ready);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -317,27 +355,26 @@ export function PreferenceChat({
     );
     const hasMsgs = Boolean(initialMessages?.length);
     // Wait until parent finished loading when both still empty on first paint.
-    if (!hasFields && !hasMsgs) return;
+    if (!hasFields && !hasMsgs && !cvOnFile) return;
     seededRef.current = true;
-    if (hasFields) {
-      setFields(initialFields);
-      setMissing(missingChatFields(initialFields));
-      setReady(isChatReady(initialFields));
+    if (hasFields || cvOnFile) {
+      const next = applyCvOnFile(initialFields, cvOnFile);
+      setFields(next.fields);
+      setMissing(next.missing);
+      setReady(next.ready);
     }
     if (hasMsgs && initialMessages?.length) {
       setMessages(initialMessages);
     }
-  }, [initialFields, initialMessages]);
+  }, [initialFields, initialMessages, cvOnFile]);
 
   // If messages arrive after mount (async draft fetch), adopt them when we
-  // still have no user turns locally — continuity without clobbering an
-  // in-progress send.
+  // still have no local turns — continuity without clobbering an in-progress send.
   useEffect(() => {
     if (sending) return;
     if (!initialMessages?.length) return;
     setMessages((prev) => {
-      const prevHasUser = prev.some((m) => m.role === 'user');
-      if (prevHasUser) return prev;
+      if (prev.length > 0) return prev;
       return initialMessages;
     });
   }, [initialMessages, sending]);
@@ -346,7 +383,9 @@ export function PreferenceChat({
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages, sending]);
 
-  const hasConversation = messages.some((m) => m.role === 'user');
+  // Any prior transcript (user or assistant) restores the thread — never
+  // drop back to the landing screen after the seeker has progressed.
+  const hasConversation = messages.length > 0;
   const ctaLabel = completeLabel ?? (mode === 'intake' ? 'Continue to plans' : 'Apply updates');
 
   const doneCount = REQUIRED_KEYS.filter((k) => {
@@ -381,9 +420,18 @@ export function PreferenceChat({
         cv_text: opts.cv_text,
         cv_filename: opts.cv_filename,
       });
-      const isReady = typeof res.ready === 'boolean' ? res.ready : isChatReady(res.fields);
-      const miss = isReady ? [] : res.missing?.length ? res.missing : missingChatFields(res.fields);
-      setFields(res.fields);
+      let nextFields = res.fields;
+      if (cvOnFile && !nextFields.extra_info?.trim()) {
+        nextFields = applyCvOnFile(nextFields, true).fields;
+      }
+      let miss = res.missing?.length ? [...res.missing] : missingChatFields(nextFields);
+      if (cvOnFile) miss = miss.filter((k) => k !== 'capabilities');
+      const isReady =
+        typeof res.ready === 'boolean'
+          ? res.ready || (cvOnFile && miss.length === 0)
+          : miss.length === 0;
+      if (isReady) miss = [];
+      setFields(nextFields);
       setMissing(miss);
       setReady(isReady);
       setFieldStatus(res.field_status);
@@ -400,7 +448,7 @@ export function PreferenceChat({
       const nextMsgs: OnboardingChatMessage[] =
         res.messages && res.messages.length >= appended.length ? res.messages : appended;
       setMessages(nextMsgs);
-      onFieldsChange?.(res.fields, {
+      onFieldsChange?.(nextFields, {
         ready: isReady,
         missing: miss,
         messages: nextMsgs,
@@ -408,7 +456,7 @@ export function PreferenceChat({
       });
 
       if (mode === 'intake' && isReady && onComplete && !showCompleteAction) {
-        await onComplete(res.fields);
+        await onComplete(nextFields, { messages: nextMsgs });
       }
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : 'Something went wrong');
@@ -490,7 +538,7 @@ export function PreferenceChat({
     setCompleting(true);
     setError(null);
     try {
-      await onComplete(fields);
+      await onComplete(fields, { messages });
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : 'Could not save preferences');
     } finally {

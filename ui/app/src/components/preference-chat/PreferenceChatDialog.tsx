@@ -15,6 +15,8 @@ export interface PreferenceChatDialogProps {
   mode?: PreferenceChatMode;
   initialFields?: OnboardingChatFields;
   initialMessages?: OnboardingChatMessage[];
+  /** CV already stored — refine must not re-demand upload. */
+  cvOnFile?: boolean;
   welcome?: string;
   userName?: string;
   title?: string;
@@ -29,6 +31,7 @@ export function PreferenceChatDialog({
   mode = 'refine',
   initialFields,
   initialMessages,
+  cvOnFile = false,
   welcome,
   userName,
   title = 'Tweak what you want',
@@ -68,6 +71,7 @@ export function PreferenceChatDialog({
           mode={mode}
           initialFields={initialFields}
           initialMessages={initialMessages}
+          cvOnFile={cvOnFile}
           welcome={welcome}
           userName={userName}
           compact

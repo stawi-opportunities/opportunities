@@ -42,6 +42,65 @@ describe('PreferenceChat', () => {
     expect(screen.getByText(/Help me find suitable roles/i)).toBeInTheDocument();
   });
 
+  it('restores thread from initialMessages instead of landing', () => {
+    render(
+      <PreferenceChat
+        mode="intake"
+        initialMessages={[
+          { role: 'user', content: 'I am a product manager' },
+          { role: 'assistant', content: 'What salary works for you?' },
+        ]}
+        initialFields={{ target_job_title: 'Product Manager' }}
+        showCompleteAction
+      />
+    );
+    expect(screen.getByText(/What salary works for you/i)).toBeInTheDocument();
+    expect(screen.getByText(/Matching profile/i)).toBeInTheDocument();
+    expect(screen.queryByText(/start your opportunity journey/i)).not.toBeInTheDocument();
+  });
+
+  it('with cvOnFile does not list capabilities as missing when other fields complete', async () => {
+    sendMeChat.mockReset();
+    sendMeChat.mockResolvedValue({
+      reply: 'You are ready for a plan.',
+      fields: {
+        target_job_title: 'Engineer',
+        experience_level: 'senior',
+        job_types: ['Full-time'],
+        salary_min: 90000,
+        preferred_countries: ['KE'],
+      },
+      missing: ['capabilities'],
+      ready: false,
+      source: 'heuristic',
+      messages: [
+        { role: 'user', content: 'Ready' },
+        { role: 'assistant', content: 'You are ready for a plan.' },
+      ],
+    });
+    const onFieldsChange = vi.fn();
+    render(
+      <PreferenceChat
+        mode="intake"
+        cvOnFile
+        showCompleteAction
+        completeLabel="Continue to plans"
+        onFieldsChange={onFieldsChange}
+        initialMessages={[
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: 'hello' },
+        ]}
+      />
+    );
+    const box = screen.getByRole('textbox', { name: /Describe what you want/i });
+    fireEvent.change(box, { target: { value: 'All set' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/i }));
+    await waitFor(() => expect(onFieldsChange).toHaveBeenCalled());
+    const last = onFieldsChange.mock.calls.at(-1);
+    expect(last?.[1]?.ready).toBe(true);
+    expect(last?.[1]?.missing ?? []).not.toContain('capabilities');
+  });
+
   it('sends a turn, shows wait spinner, then Meta thread layout', async () => {
     let resolveChat!: (v: unknown) => void;
     sendMeChat.mockImplementationOnce(

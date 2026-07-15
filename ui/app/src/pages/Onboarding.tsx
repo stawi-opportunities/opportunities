@@ -8,11 +8,17 @@ import { useI18n } from '@/i18n/I18nProvider';
 import {
   fetchMeSubscription,
   fetchOnboardingDraft,
+  saveOnboardingDraft,
   type OnboardingChatFields,
   type OnboardingChatMessage,
 } from '@/api/candidates';
-import { isChatReady } from '@/onboarding/chatHeuristic';
-import { PreferenceChat, draftToChatFields, summaryChips } from '@/components/preference-chat';
+import { missingChatFields } from '@/onboarding/chatHeuristic';
+import {
+  PreferenceChat,
+  draftToChatFields,
+  fieldsToDraft,
+  summaryChips,
+} from '@/components/preference-chat';
 
 type Phase = 'chat' | 'plan';
 
@@ -65,8 +71,18 @@ export default function Onboarding() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  /** True when a CV file (or extracted text) already exists server-side. */
+  const [cvOnFile, setCvOnFile] = useState(false);
+  /** Highest wizard step seen this session (never write a lower step). */
+  const wizardStepRef = useRef<1 | 2 | 3>(1);
   /** Bumps when re-entering chat so PreferenceChat remounts with latest session. */
   const [chatSession, setChatSession] = useState(0);
+
+  function bumpWizardStep(min: 1 | 2 | 3): 1 | 2 | 3 {
+    const next = (wizardStepRef.current > min ? wizardStepRef.current : min) as 1 | 2 | 3;
+    wizardStepRef.current = next;
+    return next;
+  }
 
   // Resume draft + full conversation (always available server-side).
   useEffect(() => {
@@ -76,21 +92,45 @@ export default function Onboarding() {
       const draft = await fetchOnboardingDraft();
       if (cancelled) return;
       let f = draftToChatFields(draft.fields);
-      // Hydrate capabilities from the local CV document index when chat draft
-      // lacks CV text (e.g. uploaded earlier via settings / side chat).
-      if (!f.extra_info || f.extra_info.length < 80) {
-        const cv = await fetchMeCV();
-        if (!cancelled && cv?.present && cv.extracted_text?.trim()) {
-          f = { ...f, extra_info: cv.extracted_text.trim() };
+      let msgs = draft.messages ?? [];
+      // Hydrate capabilities from stored CV / placement when draft is thin.
+      const cv = await fetchMeCV();
+      if (!cancelled && cv?.present) {
+        setCvOnFile(true);
+        if (cv.extracted_text?.trim()) {
+          const text = cv.extracted_text.trim();
+          if (!f.extra_info || f.extra_info.length < text.length) {
+            f = { ...f, extra_info: text };
+          }
+        } else if (!f.extra_info?.trim()) {
+          // File exists without extractable text in GET — still count as done.
+          f = {
+            ...f,
+            extra_info:
+              'Uploaded CV on file. Resume document stored for matching (experience, education, skills).',
+          };
         }
       }
-      setFields(f);
-      setMessages(draft.messages ?? []);
-      if (draft.fields.plan) setPlan(draft.fields.plan);
-      // Resume to plan only when ready AND the user already left chat (step ≥ 2).
-      if (draft.step >= 2 && isChatReady(f)) {
+      const step = (draft.step === 2 || draft.step === 3 ? draft.step : 1) as 1 | 2 | 3;
+      wizardStepRef.current = step;
+      // If the seeker already left chat (plan/payment step), stay there —
+      // never force them back to CV upload because of a thin field snapshot.
+      if (step >= 2) {
+        // Ensure thread exists so "Back to chat" restores history, not landing.
+        if (msgs.length === 0) {
+          msgs = [
+            {
+              role: 'assistant',
+              content:
+                'Your profile is saved. Tweak anything below, or continue to plans when you are ready.',
+            },
+          ];
+        }
         setPhase('plan');
       }
+      setFields(f);
+      setMessages(msgs);
+      if (draft.fields.plan) setPlan(draft.fields.plan);
       setDraftLoaded(true);
     })();
     return () => {
@@ -103,6 +143,19 @@ export default function Onboarding() {
     setPhase('chat');
   }
 
+  async function goToPlan(f: OnboardingChatFields, msgs: OnboardingChatMessage[]) {
+    setFields(f);
+    setMessages(msgs);
+    setPhase('plan');
+    const step = bumpWizardStep(2);
+    // Persist step + transcript so refresh never drops subscription stage.
+    try {
+      await saveOnboardingDraft(step, fieldsToDraft(f, plan), msgs);
+    } catch {
+      // non-blocking — local phase already advanced
+    }
+  }
+
   const chips = useMemo(() => summaryChips(fields), [fields]);
 
   async function finishOnboarding() {
@@ -110,14 +163,27 @@ export default function Onboarding() {
       setSubmitError(t('onboard.validationTerms'));
       return;
     }
-    if (!isChatReady(fields)) {
+    // Never re-block on CV if one is already stored; only real gaps bounce to chat.
+    const miss = missingChatFields(fields).filter((k) => !(k === 'capabilities' && cvOnFile));
+    if (miss.length > 0) {
       setPhase('chat');
-      setSubmitError('A few profile details are still missing — answer the assistant first.');
+      setSubmitError(
+        miss.includes('capabilities')
+          ? 'Please attach or paste your CV so we can match opportunities.'
+          : 'A few profile details are still missing — answer the assistant first.'
+      );
       return;
     }
     setSubmitting(true);
     setSubmitError(null);
     try {
+      // Keep step at payment so refresh stays on subscription.
+      const payStep = bumpWizardStep(3);
+      try {
+        await saveOnboardingDraft(payStep, fieldsToDraft(fields, plan), messages);
+      } catch {
+        /* non-blocking */
+      }
       const opportunityCountries = fields.preferred_countries?.length
         ? fields.preferred_countries
         : fields.country
@@ -141,9 +207,11 @@ export default function Onboarding() {
         agree_terms: true,
       });
 
+      // Only upload a *new* file pick; never re-require when cv is already on file.
       if (cv instanceof File) {
         try {
           await uploadCV(cv);
+          setCvOnFile(true);
         } catch {
           setSubmitError(
             'Your profile was saved, but the CV file failed to upload. You can re-upload it later from Settings.'
@@ -197,17 +265,21 @@ export default function Onboarding() {
             initialFields={fields}
             initialMessages={messages}
             plan={plan}
+            cvOnFile={cvOnFile}
             showCompleteAction
             completeLabel="Continue to plans"
             className="flex min-h-0 flex-1 flex-col"
             onFieldsChange={(f, meta) => {
               setFields(f);
               setMessages(meta.messages);
+              // Keep draft warm; never write a step lower than wizardStep
+              // (user may already be on plan and only tweaking chat).
+              const step = bumpWizardStep(meta.ready ? 2 : 1);
+              void saveOnboardingDraft(step, fieldsToDraft(f, plan), meta.messages).catch(
+                () => undefined
+              );
             }}
-            onComplete={(f) => {
-              setFields(f);
-              setPhase('plan');
-            }}
+            onComplete={(f, meta) => goToPlan(f, meta?.messages ?? messages)}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-stone-400">
@@ -291,10 +363,12 @@ export default function Onboarding() {
 
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
           <label className="block text-sm font-medium text-gray-900">
-            Optional: upload CV file
+            {cvOnFile ? 'CV on file' : 'Optional: upload CV file'}
           </label>
           <p className="mt-0.5 text-xs text-gray-500">
-            If you only pasted text above, a PDF/DOCX helps matching quality.
+            {cvOnFile
+              ? 'You already uploaded a resume — no need to upload again. Optionally replace it below.'
+              : 'If you only pasted text above, a PDF/DOCX helps matching quality.'}
           </p>
           <input
             type="file"

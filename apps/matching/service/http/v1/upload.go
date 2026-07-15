@@ -256,11 +256,14 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 	}
 
 	// 5. Persist CV into onboarding draft so chat field_status sees capabilities.
+	// Use chat readiness (not placementReady alone) so a complete profile that
+	// just gained a CV can advance step, and an incomplete one never drops step.
 	if deps.Drafts != nil {
 		mergedFields := fieldsFromEnvelope(stored)
 		mergedFields.ExtraInfo = truncateRunes(text, 8000)
+		chatReady := len(missingFromStatus(assessFieldStatus(mergedFields))) == 0
 		if err := persistChatSession(ctx, MeChatDeps{Drafts: deps.Drafts, Now: nil},
-			in.CandidateID, stored, mergedFields, stored.Messages, placementReady); err != nil {
+			in.CandidateID, stored, mergedFields, stored.Messages, chatReady); err != nil {
 			log.WithError(err).WithField("candidate_id", in.CandidateID).
 				Warn("upload: draft CV text persist failed")
 		}

@@ -314,6 +314,41 @@ func TestMeChatHandler_LLMFieldsMergedAndAssessed(t *testing.T) {
 	require.Equal(t, "KE", fields["country"])
 }
 
+func TestMeChatHandler_StoredCVOnFileSatisfiesCapabilities(t *testing.T) {
+	// Prior draft already has a file-backed CV marker (from hydrate or upload).
+	// A short follow-up must not re-demand capabilities.
+	store := &fakeDraftStore{getResp: []byte(`{
+	  "step": 2,
+	  "fields": {
+	    "target_job_title": "Engineer",
+	    "experience_level": "senior",
+	    "job_types": ["Full-time"],
+	    "salary_min": 90000,
+	    "currency": "USD",
+	    "preferred_countries": ["KE"],
+	    "extra_info": "Uploaded CV on file. Resume document stored for matching (experience, education, skills)."
+	  },
+	  "messages": [
+	    {"role":"user","content":"I am an engineer"},
+	    {"role":"assistant","content":"Got it."}
+	  ]
+	}`)}
+	h := httpmw.NewCandidateAuth(nil)(v1.MeChatHandler(v1.MeChatDeps{Drafts: store}))
+	rec := chatPOST(t, h, `{"message":"Yes, full-time remote is fine"}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	require.Equal(t, true, out["ready"], "missing=%v fields=%v", out["missing"], out["fields"])
+	miss, _ := out["missing"].([]any)
+	for _, m := range miss {
+		require.NotEqual(t, "capabilities", m)
+	}
+	// Step stays at 2 (plan) — never forced back.
+	var env map[string]any
+	require.NoError(t, json.Unmarshal(store.setBody, &env))
+	require.EqualValues(t, 2, env["step"])
+}
+
 func TestMeChatHandler_PersistsConversationAndResumes(t *testing.T) {
 	store := &fakeDraftStore{}
 	h := httpmw.NewCandidateAuth(nil)(v1.MeChatHandler(v1.MeChatDeps{Drafts: store}))

@@ -10,6 +10,7 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
 )
 
 // OnboardingDraftReader returns the persisted draft as raw JSON, or
@@ -38,6 +39,10 @@ type OnboardingDraftStore interface {
 // OnboardingDeps bundles the inputs the handler needs.
 type OnboardingDeps struct {
 	Drafts OnboardingDraftStore
+	// Placement / Profiles optional: rehydrate CV capabilities on GET so
+	// resume never loses a past upload when draft.extra_info is thin.
+	Placement *placement.Service
+	Profiles  placement.ProfileStore
 	// Now lets tests pin the server timestamp the handler embeds in
 	// the draft envelope on Put. Defaults to time.Now in production.
 	Now func() time.Time
@@ -106,6 +111,18 @@ func handleOnboardingGet(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 		}
 	}
 
+	// Rehydrate CV text into fields so the client doesn't re-demand upload.
+	fields := fieldsFromEnvelope(out)
+	fields = hydrateCapabilities(ctx, MeChatDeps{
+		Placement: deps.Placement,
+		Profiles:  deps.Profiles,
+	}, candidateID, fields)
+	if hasCapabilities(fields) {
+		if b, mErr := json.Marshal(fields); mErr == nil {
+			out.Fields = mergeRawFields(out.Fields, b)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
 }
@@ -137,11 +154,19 @@ func handleOnboardingPut(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 		in.Fields = json.RawMessage(`{}`)
 	}
 
+	// Load prior once for messages + monotonic step.
+	prior, priorErr := loadOnboardingEnvelope(ctx, deps.Drafts, candidateID)
+	if priorErr != nil {
+		log.WithError(priorErr).WithField("candidate_id", candidateID).
+			Warn("me/onboarding: prior load failed; continuing with request body")
+	}
+	// Never regress plan/payment stage — clients mid-chat may still POST step=1.
+	if prior.Step > in.Step {
+		in.Step = prior.Step
+	}
 	// Preserve stored chat when the client only updates fields/step.
 	if len(in.Messages) == 0 {
-		if prior, err := loadOnboardingEnvelope(ctx, deps.Drafts, candidateID); err == nil {
-			in.Messages = prior.Messages
-		}
+		in.Messages = prior.Messages
 	}
 	in.Messages = clampChatMessages(in.Messages, 80)
 
