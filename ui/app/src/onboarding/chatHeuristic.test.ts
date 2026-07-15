@@ -81,6 +81,25 @@ describe('chatHeuristic', () => {
     expect(r.missing.length).toBeGreaterThan(0);
   });
 
+  it('treats stored CV-on-file markers as capabilities without re-upload', () => {
+    const f = {
+      target_job_title: 'Engineer',
+      experience_level: 'senior',
+      job_types: ['Full-time'],
+      salary_min: 90000,
+      preferred_countries: ['KE'],
+      extra_info:
+        'Uploaded CV on file. Resume document stored for matching (experience, education, skills).',
+    };
+    expect(missingChatFields(f)).not.toContain('capabilities');
+    expect(isChatReady(f)).toBe(true);
+  });
+
+  it('treats substantial free-form resume text as capabilities', () => {
+    const long = 'A'.repeat(400) + ' professional background summary for matching.';
+    expect(missingChatFields({ extra_info: long })).not.toContain('capabilities');
+  });
+
   it('merges multi-turn answers until ready', () => {
     let draft = {};
     let r = localChatTurn('Looking for a product manager role', draft);

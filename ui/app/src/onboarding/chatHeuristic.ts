@@ -33,7 +33,21 @@ export function isChatReady(f: OnboardingChatFields): boolean {
 
 function hasCapabilities(f: OnboardingChatFields): boolean {
   // CV only — LinkedIn is optional and does not unlock readiness.
-  return looksLikeCV(f.extra_info);
+  const t = (f.extra_info ?? '').trim();
+  if (looksLikeCV(t)) return true;
+  // File-backed resume already stored (server hydrate marker).
+  const low = t.toLowerCase();
+  if (
+    t.length >= 40 &&
+    (low.includes('cv on file') ||
+      low.includes('uploaded cv') ||
+      low.includes('resume document stored'))
+  ) {
+    return true;
+  }
+  // Substantial free-form work history without standard section headers.
+  if (t.length >= 400) return true;
+  return false;
 }
 
 function looksLikeCV(s?: string): boolean {

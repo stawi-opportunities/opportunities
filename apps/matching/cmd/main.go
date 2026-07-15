@@ -487,7 +487,9 @@ func main() {
 	// extraction; the inner middleware populates the candidate ID
 	// into the request context.
 	onboardingHandler := authMW(httpv1.OnboardingHandler(httpv1.OnboardingDeps{
-		Drafts: candidateRepo,
+		Drafts:    candidateRepo,
+		Placement: placementSvc,
+		Profiles:  profileCV,
 	}))
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
@@ -503,6 +505,7 @@ func main() {
 		LLM:       chatLLM,
 		Drafts:    candidateRepo, // persist transcript + fields for resume/refine
 		Placement: placementSvc,  // qualifications+prefs summary → vector index
+		Profiles:  profileCV,     // file-id rehydration so past CV uploads stick
 	})))
 
 	// /candidates/onboard — wizard final submit. Promotes the draft

@@ -127,6 +127,28 @@ func TestOnboardingHandler_PutRejectsInvalidStep(t *testing.T) {
 	require.Zero(t, store.setCalls, "no Set call should land for bad bodies")
 }
 
+func TestOnboardingHandler_PutNeverRegressesStep(t *testing.T) {
+	t.Parallel()
+	// Seeker already at plan selection (step 2); a chat autosave with step=1
+	// must not push them back.
+	prior := []byte(`{"step":2,"fields":{"target_job_title":"Engineer"},"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}`)
+	store := &fakeDraftStore{getResp: prior}
+	h := httpmw.NewCandidateAuth(nil)(v1.OnboardingHandler(v1.OnboardingDeps{Drafts: store}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, reqWithCandidate(t, http.MethodPut, "/me/onboarding",
+		`{"step":1,"fields":{"target_job_title":"Engineer","country":"KE"}}`))
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	var env map[string]any
+	require.NoError(t, json.Unmarshal(store.setBody, &env))
+	require.EqualValues(t, 2, env["step"], "step must stay at plan stage")
+	// Messages preserved when omitted from body.
+	msgs, ok := env["messages"].([]any)
+	require.True(t, ok)
+	require.GreaterOrEqual(t, len(msgs), 2)
+}
+
 func TestOnboardingHandler_PutPersistFailureReturnsProblemJSON(t *testing.T) {
 	t.Parallel()
 	store := &fakeDraftStore{setErr: errors.New("disk full")}

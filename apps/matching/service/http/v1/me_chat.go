@@ -30,8 +30,13 @@ type MeChatDeps struct {
 	// the seeker can resume any time (including after onboard).
 	Drafts OnboardingDraftStore
 	// Placement rebuilds qualifications+preferences summary + vector index.
+	// Also used to rehydrate CV text from prior placement when the draft
+	// lost capabilities so a past upload is never demanded again.
 	Placement *placement.Service
-	Now       func() time.Time
+	// Profiles optional (falls back to Placement.Profiles): file-id on
+	// candidate_profiles proves a CV was stored even when text is thin.
+	Profiles placement.ProfileStore
+	Now      func() time.Time
 }
 
 func (d MeChatDeps) now() time.Time {
@@ -213,7 +218,11 @@ func MeChatHandler(deps MeChatDeps) http.HandlerFunc {
 		}
 		history := mergeChatHistory(stored.Messages, in.History)
 		priorFields := fieldsFromEnvelope(stored)
+		// Rehydrate CV / capabilities from placement or file-id so a past
+		// upload survives refresh and never forces the seeker back to step 1.
+		priorFields = hydrateCapabilities(ctx, deps, candidateID, priorFields)
 		merged := mergeChatFields(sanitizeFields(priorFields), sanitizeFields(in.Draft))
+		merged = hydrateCapabilities(ctx, deps, candidateID, merged)
 
 		// Structured composer inputs — apply before inference.
 		if li := normalizeLinkedIn(in.LinkedIn); li != "" {
@@ -430,6 +439,8 @@ func persistChatSession(
 	if err != nil {
 		return err
 	}
+	// Step is monotonic: once the seeker reaches plan selection (2) or
+	// payment (3), never push them back to chat-only (1) on a later turn.
 	step := prior.Step
 	if step < 1 {
 		step = 1
@@ -830,7 +841,63 @@ func assessFieldStatus(f onboardingChatFields) map[string]fieldStatus {
 }
 
 func hasCapabilities(f onboardingChatFields) bool {
-	return looksLikeCV(f.ExtraInfo)
+	s := strings.TrimSpace(f.ExtraInfo)
+	if looksLikeCV(s) {
+		return true
+	}
+	// Already-uploaded resume pointer (file-backed) written by hydrateCapabilities.
+	low := strings.ToLower(s)
+	if len(s) >= 40 && (strings.Contains(low, "cv on file") ||
+		strings.Contains(low, "uploaded cv") ||
+		strings.Contains(low, "resume document stored")) {
+		return true
+	}
+	// Substantial free-form work history without standard section headers.
+	if len(s) >= 400 {
+		return true
+	}
+	return false
+}
+
+// hydrateCapabilities fills ExtraInfo from placement qualifications or a
+// stored CV file-id so readiness is not lost after refresh / plan stage.
+func hydrateCapabilities(
+	ctx context.Context,
+	deps MeChatDeps,
+	candidateID string,
+	f onboardingChatFields,
+) onboardingChatFields {
+	if hasCapabilities(f) || candidateID == "" {
+		return f
+	}
+	// Prefer prior placement qualifications (full extracted CV text).
+	if deps.Placement != nil && deps.Placement.Store != nil {
+		if prior, err := deps.Placement.Store.Get(ctx, candidateID); err == nil && prior != nil {
+			q := strings.TrimSpace(strings.TrimPrefix(prior.QualificationsText, "## Qualifications"))
+			q = strings.TrimSpace(q)
+			if q != "" && q != "(CV not yet provided)" {
+				if looksLikeCV(q) || len(q) >= 120 {
+					f.ExtraInfo = q
+					return f
+				}
+			}
+		}
+	}
+	// File-id on candidate_profiles: seeker already uploaded a binary.
+	profiles := deps.Profiles
+	if profiles == nil && deps.Placement != nil {
+		profiles = deps.Placement.Profiles
+	}
+	if profiles != nil {
+		if ref, err := profiles.GetCVFileRef(ctx, candidateID); err == nil {
+			if strings.TrimSpace(ref.FileID) != "" || strings.TrimSpace(ref.ContentURI) != "" {
+				if strings.TrimSpace(f.ExtraInfo) == "" {
+					f.ExtraInfo = "Uploaded CV on file. Resume document stored for matching (experience, education, skills)."
+				}
+			}
+		}
+	}
+	return f
 }
 
 func looksLikeCV(s string) bool {
