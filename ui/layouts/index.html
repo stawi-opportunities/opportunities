@@ -1,9 +1,12 @@
 {{ define "main" }}
 
+{{/* HomeRedirect island: signed-in visitors go straight to /dashboard/. */}}
+<div id="mount-home-redirect"></div>
+
 {{/* G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
      HERO G�� cinematic dark, animated orbs, inline search
      G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */}}
-<section class="relative min-h-screen overflow-hidden bg-[#060b18] text-white flex items-center">
+<section id="home-hero" class="relative min-h-screen overflow-hidden bg-[#060b18] text-white flex items-center">
 
   {{/* Animated gradient orbs */}}
   <div class="pointer-events-none absolute inset-0" aria-hidden="true">
@@ -603,6 +606,23 @@
     setTimeout(function() { if (toastEl && toastEl.parentNode) { document.body.removeChild(toastEl); toastEl = null; } }, 4000);
   });
 })();
+</script>
+
+<script>
+  // Synchronously hide the hero for visitors who were authenticated last
+  // session, so returning users don't flash the marketing hero before the
+  // HomeRedirect island moves them to /dashboard/. Runs during parse,
+  // before paint. The 'stawi.authed' hint is set/cleared by AuthProvider;
+  // if it's stale (session already gone), HomeRedirect reveals the hero
+  // once auth resolves to unauthenticated.
+  try {
+    if (localStorage.getItem('stawi.authed') === '1') {
+      var hero = document.getElementById('home-hero');
+      if (hero) hero.style.display = 'none';
+    }
+  } catch (e) {
+    /* private mode / storage blocked — fall through and show the hero */
+  }
 </script>
 
 {{ end }}
