@@ -96,7 +96,7 @@ export async function uploadCV(file: File): Promise<UploadCVResult> {
   }
 }
 
-/** Current CV document from the local index (files pointer + extracted text). */
+/** Current CV from files service + placement summary (no separate document index). */
 export interface MeCVDocument {
   ok: boolean;
   present: boolean;
@@ -104,10 +104,10 @@ export interface MeCVDocument {
   file_id?: string;
   content_uri?: string;
   content_hash?: string;
-  filename?: string;
-  storage?: string;
   cv_length?: number;
   extracted_text?: string;
+  /** Placement summary is complete enough for matching. */
+  placement_ready?: boolean;
 }
 
 export async function fetchMeCV(): Promise<MeCVDocument | null> {

@@ -1,8 +1,23 @@
 import type { FeedItem } from '@/api/candidates';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
+import { useAuth } from '@/providers/AuthProvider';
+import { useSubscription } from '@/hooks/useSubscription';
 import { Icon } from '@/components/ui/Icon';
 import { getTypeMeta } from '@/constants/opportunityTypes';
+
+const KIND_PATH: Record<string, string> = {
+  job: 'jobs',
+  scholarship: 'scholarships',
+  tender: 'tenders',
+  deal: 'deals',
+  funding: 'funding',
+};
+
+function detailUrl(snapshot: OpportunitySnapshot): string {
+  const path = KIND_PATH[snapshot.kind ?? ''] ?? snapshot.kind;
+  return snapshot.slug && path ? `/${path}/${snapshot.slug}/` : '';
+}
 
 export interface OpportunitySnapshot {
   title: string;
@@ -13,6 +28,10 @@ export interface OpportunitySnapshot {
   salary_max?: number;
   currency?: string;
   kind?: string;
+  id?: string;
+  slug?: string;
+  has_how_to_apply?: boolean;
+  apply_url?: string;
 }
 
 interface Props {
@@ -35,6 +54,9 @@ const STATUS_KEYS: Record<string, StringKey> = {
 
 export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isPending }: Props) {
   const { t } = useI18n();
+  const { state } = useAuth();
+  const sub = useSubscription();
+  const active = state === 'authenticated' && sub.data?.status === 'active';
   const title = snapshot?.title ?? item.opportunity_id;
   const company = snapshot?.company ?? '';
   const location = snapshot?.location ?? '';
@@ -95,14 +117,25 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
                 : item.application.status}
             </span>
           ) : (
-            <button
-              type="button"
-              onClick={() => onApply(item.opportunity_id)}
-              disabled={isPending}
-              className="min-h-[44px] rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800 disabled:opacity-50"
-            >
-              {t('cta.apply')}
-            </button>
+            <>
+              {active && snapshot?.has_how_to_apply && detailUrl(snapshot) ? (
+                <a
+                  href={detailUrl(snapshot)}
+                  className="min-h-[44px] rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800"
+                >
+                  {t('card.howToApply')}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onApply(item.opportunity_id)}
+                  disabled={isPending}
+                  className="min-h-[44px] rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800 disabled:opacity-50"
+                >
+                  {t('cta.apply')}
+                </button>
+              )}
+            </>
           )}
           {item.starred ? (
             <button

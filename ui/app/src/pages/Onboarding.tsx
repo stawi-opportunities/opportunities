@@ -108,6 +108,10 @@ export default function Onboarding() {
               'Uploaded CV on file. Resume document stored for matching (experience, education, skills).',
           };
         }
+        // Skip chat phase entirely when placement is already ready.
+        if (!cancelled && cv?.placement_ready && isChatReady(f)) {
+          setPhase('plan');
+        }
       }
       const step = (draft.step === 2 || draft.step === 3 ? draft.step : 1) as 1 | 2 | 3;
       wizardStepRef.current = step;

@@ -59,6 +59,10 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
     salary_max: snap.amount_max,
     currency: snap.currency,
     kind: snap.kind,
+    id: snap.id,
+    slug: snap.slug,
+    has_how_to_apply: snap.has_how_to_apply,
+    apply_url: snap.apply_url,
   };
 }
 

@@ -49,6 +49,8 @@ export interface Strings {
   'cta.close': string;
   'cta.dismiss': string;
   'cta.retry': string;
+  'card.howToApply': string;
+  'card.apply': string;
 
   // ---- Job detail ----
   'job.postedOn': string;
@@ -62,6 +64,8 @@ export interface Strings {
   'job.howToApply': string;
   'job.howToApplyLocked': string;
   'job.howToApplyEmpty': string;
+  'howToApply.retry': string;
+  'howToApply.fetchError': string;
 
   // ---- Deadline labels ----
   'deadline.closes': string;
@@ -557,6 +561,8 @@ const en: Strings = {
   'cta.close': 'Close',
   'cta.dismiss': 'Dismiss',
   'cta.retry': 'Retry',
+  'card.howToApply': 'How to apply',
+  'card.apply': 'Apply externally',
   'cta.twoMinutes': 'Two minutes to set up.',
   'cta.twoMinutesHint': 'Upload your CV, tell us what you want, we take it from there.',
   'cta.getStarted': 'Get started',
@@ -575,6 +581,8 @@ const en: Strings = {
   'job.howToApplyLocked':
     'Application instructions are available to members. Subscribe to unlock email steps, contacts, and portal notes for this listing.',
   'job.howToApplyEmpty': 'No extra application steps on file — use the Apply button above.',
+  'howToApply.retry': 'Retry',
+  'howToApply.fetchError': 'Failed to load application instructions.',
 
   'deadline.closes': 'Closes',
   'deadline.expires': 'Expires',

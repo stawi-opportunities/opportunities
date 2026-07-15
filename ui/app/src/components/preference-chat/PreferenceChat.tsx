@@ -513,6 +513,20 @@ export function PreferenceChat({
             'Could not read text from that file. Try PDF/DOCX/TXT, or paste your CV.'
           );
         }
+        if (up.placement_ready) {
+          setReady(true);
+          setPendingCV(null);
+          setPlacementSummary(up.placement_summary ?? null);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: 'Great — your CV is processed and your profile is ready for matching.',
+            },
+          ]);
+          setCvBusy(false);
+          return;
+        }
       }
       if (text.trim().length < 40) {
         throw new Error('That file looks empty. Paste your CV or try another file.');

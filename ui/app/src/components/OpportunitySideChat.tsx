@@ -231,6 +231,19 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
         const up = await uploadCV(file);
         text = up.extracted_text ?? '';
         if (!text.trim()) throw new Error('Could not read that file. Try PDF, DOCX, or TXT.');
+        if (up.placement_ready) {
+          setMessages((prev) => [
+            ...prev,
+            { role: 'user', content: `Attached CV: ${file.name}` },
+            {
+              role: 'assistant',
+              content:
+                'Your CV is processed and your profile is ready for matching. What would you like to refine?',
+            },
+          ]);
+          setSending(false);
+          return;
+        }
       }
       if (text.trim().length < 40) throw new Error('That file looks empty.');
       await runTurn({
