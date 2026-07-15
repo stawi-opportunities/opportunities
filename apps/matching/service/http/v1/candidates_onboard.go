@@ -126,9 +126,16 @@ func CandidatesOnboardHandler(deps CandidatesOnboardDeps) http.HandlerFunc {
 			c.Languages = joinJSONArray(in.PreferredLanguages)
 			c.PreferredRoles = joinJSONArray(in.JobTypes)
 			c.PreferredCountries = in.Country
-			c.PlanID = in.Plan
+			// Prefer the plan the seeker just chose; keep an existing paid plan
+			// if a concurrent checkout already activated them.
+			if c.Subscription != domain.SubscriptionPaid || c.PlanID == "" {
+				c.PlanID = in.Plan
+			}
 			c.Status = domain.CandidateActive
-			c.Subscription = domain.SubscriptionFree
+			// Never downgrade a paid subscription if checkout finished first.
+			if c.Subscription != domain.SubscriptionPaid {
+				c.Subscription = domain.SubscriptionFree
+			}
 			if in.SalaryMin != nil {
 				c.SalaryMin = *in.SalaryMin
 			}

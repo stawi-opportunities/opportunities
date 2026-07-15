@@ -18,6 +18,7 @@ import (
 
 type fakeOnboardStore struct {
 	txErr        error
+	seed         *domain.CandidateProfile
 	updatedCand  *domain.CandidateProfile
 	draftCleared bool
 }
@@ -28,6 +29,11 @@ func (f *fakeOnboardStore) OnboardAtomically(_ context.Context, candidateID stri
 	}
 	c := &domain.CandidateProfile{ProfileID: candidateID}
 	c.ID = candidateID
+	if f.seed != nil {
+		*c = *f.seed
+		c.ProfileID = candidateID
+		c.ID = candidateID
+	}
 	mutate(c)
 	f.updatedCand = c
 	f.draftCleared = true
@@ -157,6 +163,27 @@ func TestCandidatesOnboardHandler_MatchTriggerErrorIsNonFatal(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, "a trigger failure must not fail the onboard response")
 	require.True(t, trigger.called)
+}
+
+func TestCandidatesOnboardHandler_DoesNotDowngradePaidSubscription(t *testing.T) {
+	t.Parallel()
+	store := &fakeOnboardStore{
+		seed: &domain.CandidateProfile{
+			Subscription: domain.SubscriptionPaid,
+			PlanID:       "pro",
+		},
+	}
+	h := httpmw.NewCandidateAuth(nil)(v1.CandidatesOnboardHandler(v1.CandidatesOnboardDeps{Store: store}))
+
+	// Concurrent late onboard after checkout activated — must keep paid + plan.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, reqOnboard(t, validBody)) // validBody plan is starter
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, store.updatedCand)
+	require.Equal(t, domain.SubscriptionPaid, store.updatedCand.Subscription)
+	require.Equal(t, "pro", store.updatedCand.PlanID)
+	require.Equal(t, "Backend Engineer", store.updatedCand.TargetJobTitle)
 }
 
 func TestCandidatesOnboardHandler_StoreErrorReturnsProblemJSON(t *testing.T) {

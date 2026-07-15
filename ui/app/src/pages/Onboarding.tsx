@@ -12,7 +12,6 @@ import {
   type OnboardingChatFields,
   type OnboardingChatMessage,
 } from '@/api/candidates';
-import { missingChatFields } from '@/onboarding/chatHeuristic';
 import {
   PreferenceChat,
   draftToChatFields,
@@ -162,35 +161,19 @@ export default function Onboarding() {
       setSubmitError(t('onboard.validationTerms'));
       return;
     }
-    // Never re-block on CV if one is already stored; only real gaps bounce to chat.
-    const miss = missingChatFields(fields).filter((k) => !(k === 'capabilities' && cvOnFile));
-    if (miss.length > 0) {
-      setPhase('chat');
-      setSubmitError(
-        miss.includes('capabilities')
-          ? 'Please attach or paste your CV so we can match opportunities.'
-          : 'A few profile details are still missing — answer the assistant first.'
-      );
-      return;
-    }
     setSubmitting(true);
     setSubmitError(null);
     try {
-      // Keep step at payment so refresh stays on subscription.
+      // Mark payment stage so refresh stays on plan (not chat).
       const payStep = bumpWizardStep(3);
-      try {
-        await saveOnboardingDraft(payStep, fieldsToDraft(fields, plan), messages);
-      } catch {
-        /* non-blocking */
-      }
       const opportunityCountries = fields.preferred_countries?.length
         ? fields.preferred_countries
         : fields.country
           ? [fields.country]
           : [];
-      await submitOnboarding({
-        target_job_title: fields.target_job_title!,
-        experience_level: fields.experience_level!,
+      const profilePayload = {
+        target_job_title: fields.target_job_title?.trim() || '',
+        experience_level: fields.experience_level?.trim() || '',
         job_search_status: fields.job_search_status ?? 'actively_looking',
         salary_min: fields.salary_min ?? undefined,
         salary_max: fields.salary_max ?? fields.salary_min ?? undefined,
@@ -200,32 +183,35 @@ export default function Onboarding() {
         preferred_timezones: fields.preferred_timezones ?? [],
         preferred_languages: fields.preferred_languages ?? [],
         job_types: fields.job_types ?? [],
-        // Primary country for profile; full list is also in regions/job prefs.
-        country: opportunityCountries[0] ?? fields.country!,
+        country: opportunityCountries[0] ?? fields.country ?? '',
         plan,
-        agree_terms: true,
-      });
+        agree_terms: true as const,
+      };
 
-      // Plan step is payment-only. CV is collected in chat (or later in Settings).
-      try {
-        const checkout = await createCheckout({ plan_id: plan });
-        if (checkout.status === 'redirect' && checkout.redirect_url) {
-          window.location.href = checkout.redirect_url;
-          return;
-        }
-        if (checkout.status === 'pending' && checkout.prompt_id) {
-          window.location.href = `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(checkout.prompt_id)}`;
-          return;
-        }
-        if (checkout.status === 'paid') {
-          window.location.href = '/dashboard/?billing=success';
-          return;
-        }
-        throw new Error(checkout.error || 'Checkout did not complete.');
-      } catch {
-        window.location.href = '/dashboard/?billing=failed';
+      // Profile + draft: best-effort in the background. Checkout is the
+      // critical path and must not wait on onboard success or chat completeness.
+      void saveOnboardingDraft(payStep, fieldsToDraft(fields, plan), messages).catch(
+        () => undefined
+      );
+      void submitOnboarding(profilePayload).catch(() => undefined);
+
+      // Open the payment provider (or STK pending) immediately.
+      const checkout = await createCheckout({ plan_id: plan });
+      if (checkout.status === 'redirect' && checkout.redirect_url) {
+        window.location.assign(checkout.redirect_url);
         return;
       }
+      if (checkout.status === 'pending' && checkout.prompt_id) {
+        window.location.assign(
+          `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(checkout.prompt_id)}`
+        );
+        return;
+      }
+      if (checkout.status === 'paid') {
+        window.location.assign('/dashboard/?billing=success');
+        return;
+      }
+      setSubmitError(checkout.error || 'Could not start checkout. Please try again.');
     } catch (e) {
       setSubmitError(e instanceof Error && e.message ? e.message : t('error.somethingWrong'));
     } finally {
