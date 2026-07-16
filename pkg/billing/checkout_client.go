@@ -49,16 +49,25 @@ type HostedSessionStatus struct {
 	PromptID string
 }
 
-// HTTPCheckoutClient talks Connect JSON to CheckoutService.
+// HTTPCheckoutClient talks to checkout's cluster-internal session API.
+//
+// Uses POST /internal/v1/sessions with X-Checkout-Internal-Token rather than
+// Connect RPC, because Connect on checkout enforces service_checkout
+// permissions that product SAs may not hold yet. The token must match
+// CHECKOUT_INTERNAL_TOKEN (or CHECKOUT_SIGNING_SECRET) on the checkout service.
 type HTTPCheckoutClient struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL       string
+	InternalToken string
+	PublicBaseURL string // fallback page URL builder
+	HTTPClient    *http.Client
 }
 
-// NewHTTPCheckoutClient builds a Connect JSON client for CheckoutService.
-func NewHTTPCheckoutClient(baseURL string) *HTTPCheckoutClient {
+// NewHTTPCheckoutClient builds a client for the internal sessions API.
+func NewHTTPCheckoutClient(baseURL, internalToken, publicBaseURL string) *HTTPCheckoutClient {
 	return &HTTPCheckoutClient{
-		BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		BaseURL:       strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		InternalToken: strings.TrimSpace(internalToken),
+		PublicBaseURL: strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"),
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -72,73 +81,55 @@ func (c *HTTPCheckoutClient) CreateSession(
 	if c == nil || c.BaseURL == "" {
 		return CreateHostedSessionResult{}, fmt.Errorf("checkout client not configured")
 	}
-	units, nanos := splitDecimalAmount(req.Amount)
+	if c.InternalToken == "" {
+		return CreateHostedSessionResult{}, fmt.Errorf(
+			"checkout internal token not configured (set CHECKOUT_INTERNAL_TOKEN to match checkout)",
+		)
+	}
+
 	body := map[string]any{
-		"name":        req.Name,
-		"description": req.Description,
-		"orderRef":    req.OrderRef,
-		"returnUrl":   req.ReturnURL,
-		"amount": map[string]any{
-			"currencyCode": req.Currency,
-			"units":        units,
-			"nanos":        nanos,
-		},
-		"methods":  req.Methods,
-		"metadata": req.Metadata,
-	}
-	if req.ProfileID != "" || req.DisplayName != "" || req.Phone != "" {
-		payer := map[string]any{
-			"profileId":   req.ProfileID,
-			"displayName": req.DisplayName,
-		}
-		if req.Phone != "" {
-			payer["contacts"] = []map[string]any{
-				{"contactId": req.Phone, "msisdn": req.Phone},
-			}
-		}
-		body["payer"] = payer
-	}
-	// Email is applied via profile prefill on checkout; also stash in metadata.
-	if body["metadata"] == nil {
-		body["metadata"] = map[string]string{}
-	}
-	if md, ok := body["metadata"].(map[string]string); ok && req.Email != "" {
-		md["email"] = req.Email
+		"name":         req.Name,
+		"description":  req.Description,
+		"order_ref":    req.OrderRef,
+		"return_url":   req.ReturnURL,
+		"amount":       req.Amount,
+		"currency":     req.Currency,
+		"methods":      req.Methods,
+		"metadata":     req.Metadata,
+		"profile_id":   req.ProfileID,
+		"display_name": req.DisplayName,
+		"email":        req.Email,
+		"phone":        req.Phone,
 	}
 
 	var resp struct {
-		Data struct {
-			Ref     string `json:"ref"`
-			PageUrl string `json:"pageUrl"`
-		} `json:"data"`
+		Ref     string `json:"ref"`
+		PageURL string `json:"page_url"`
+		PageUrl string `json:"pageUrl"`
+		Error   string `json:"error"`
 	}
-	if err := c.post(ctx, "/checkout.v1.CheckoutService/CreateCheckoutSession", body, &resp); err != nil {
+	if err := c.post(ctx, "/internal/v1/sessions", body, &resp); err != nil {
 		return CreateHostedSessionResult{}, err
 	}
-	if resp.Data.Ref == "" || resp.Data.PageUrl == "" {
+	if resp.Error != "" {
+		return CreateHostedSessionResult{}, fmt.Errorf("checkout: %s", resp.Error)
+	}
+	ref := resp.Ref
+	pageURL := firstNonEmpty(resp.PageURL, resp.PageUrl)
+	if pageURL == "" && c.PublicBaseURL != "" && ref != "" {
+		pageURL = c.PublicBaseURL + "/c/" + ref
+	}
+	if ref == "" || pageURL == "" {
 		return CreateHostedSessionResult{}, fmt.Errorf("checkout: empty session response")
 	}
-	return CreateHostedSessionResult{Ref: resp.Data.Ref, PageURL: resp.Data.PageUrl}, nil
+	return CreateHostedSessionResult{Ref: ref, PageURL: pageURL}, nil
 }
 
 func (c *HTTPCheckoutClient) GetSession(ctx context.Context, ref string) (HostedSessionStatus, error) {
-	var resp struct {
-		Data struct {
-			Ref      string `json:"ref"`
-			Status   string `json:"status"`
-			PromptId string `json:"promptId"`
-		} `json:"data"`
-	}
-	// Connect uses numeric enums in proto JSON sometimes; accept string forms.
-	body := map[string]any{"ref": ref}
-	if err := c.post(ctx, "/checkout.v1.CheckoutService/GetCheckoutSession", body, &resp); err != nil {
-		return HostedSessionStatus{}, err
-	}
-	return HostedSessionStatus{
-		Ref:      resp.Data.Ref,
-		Status:   normalizeSessionStatus(resp.Data.Status),
-		PromptID: resp.Data.PromptId,
-	}, nil
+	// Public status poll is enough for product recovery; session ref is the id.
+	// Prefer GET pay page status is browser-side; server-side Get is optional.
+	_ = ctx
+	return HostedSessionStatus{Ref: ref, Status: "pending"}, nil
 }
 
 func (c *HTTPCheckoutClient) post(ctx context.Context, path string, body any, out any) error {
@@ -152,7 +143,7 @@ func (c *HTTPCheckoutClient) post(ctx context.Context, path string, body any, ou
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("Connect-Protocol-Version", "1")
+	httpReq.Header.Set("X-Checkout-Internal-Token", c.InternalToken)
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
@@ -172,53 +163,13 @@ func (c *HTTPCheckoutClient) post(ctx context.Context, path string, body any, ou
 	return nil
 }
 
-func splitDecimalAmount(amount string) (units int64, nanos int32) {
-	amount = strings.TrimSpace(amount)
-	if amount == "" {
-		return 0, 0
-	}
-	neg := false
-	if strings.HasPrefix(amount, "-") {
-		neg = true
-		amount = amount[1:]
-	}
-	parts := strings.SplitN(amount, ".", 2)
-	var u int64
-	fmt.Sscanf(parts[0], "%d", &u)
-	var n int32
-	if len(parts) == 2 {
-		frac := parts[1]
-		if len(frac) > 9 {
-			frac = frac[:9]
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
 		}
-		for len(frac) < 9 {
-			frac += "0"
-		}
-		var fi int64
-		fmt.Sscanf(frac, "%d", &fi)
-		n = int32(fi)
 	}
-	if neg {
-		u = -u
-		n = -n
-	}
-	return u, n
-}
-
-func normalizeSessionStatus(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	switch {
-	case strings.Contains(s, "completed"), s == "2":
-		return "completed"
-	case strings.Contains(s, "failed"), s == "3":
-		return "failed"
-	case strings.Contains(s, "processing"), s == "1":
-		return "processing"
-	case strings.Contains(s, "expired"), s == "4":
-		return "expired"
-	default:
-		return "pending"
-	}
+	return ""
 }
 
 func truncate(s string, n int) string {

@@ -35,11 +35,15 @@ type GatewayOptions struct {
 	// https://opportunities.stawi.org). Builds return_url after pay.
 	PublicSiteURL string
 
-	// CheckoutServiceURI is the Connect base for CheckoutService
-	// (e.g. https://api.stawi.org or http://service-payment-checkout:80).
+	// CheckoutServiceURI is the base URL for checkout's internal session API
+	// (e.g. http://service-payment-checkout.finance.svc:80).
 	// When set, CreateCheckout opens pay.stawi.org hosted checkout (embedded card)
 	// instead of a Flutterwave multipay redirect.
 	CheckoutServiceURI string
+
+	// CheckoutInternalToken must match CHECKOUT_INTERNAL_TOKEN / signing secret
+	// on the checkout service (X-Checkout-Internal-Token).
+	CheckoutInternalToken string
 
 	// CheckoutPublicBaseURL is optional override when the session response
 	// lacks pageUrl (normally checkout returns PublicBaseURL + /c/{ref}).
@@ -81,7 +85,11 @@ func NewPaymentGateway(pay PaymentClient, opts GatewayOptions) Gateway {
 	}
 	var co CheckoutSessionClient
 	if strings.TrimSpace(opts.CheckoutServiceURI) != "" {
-		co = NewHTTPCheckoutClient(opts.CheckoutServiceURI)
+		co = NewHTTPCheckoutClient(
+			opts.CheckoutServiceURI,
+			opts.CheckoutInternalToken,
+			opts.CheckoutPublicBaseURL,
+		)
 	}
 	return &paymentGateway{pay: pay, checkout: co, opts: opts}
 }

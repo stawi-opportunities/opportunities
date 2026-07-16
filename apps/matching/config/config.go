@@ -122,10 +122,14 @@ type CandidatesConfig struct {
 	// PublicSiteURL is the candidate SPA origin used as return_url after
 	// hosted checkout (…/dashboard/?billing=success).
 	PublicSiteURL string `env:"PUBLIC_SITE_URL" envDefault:"https://opportunities.stawi.org"`
-	// CheckoutServiceURI is the Connect base for service-payment CheckoutService.
+	// CheckoutServiceURI is the base for checkout's internal session API
+	// (cluster DNS, e.g. http://service-payment-checkout.finance.svc:80).
 	// When set, CreateCheckout opens pay.stawi.org embedded card checkout
 	// (Stripe Link style) instead of a Flutterwave multipay redirect.
 	CheckoutServiceURI string `env:"CHECKOUT_SERVICE_URI" envDefault:""`
+	// CheckoutInternalToken authenticates POST /internal/v1/sessions on checkout.
+	// Must match CHECKOUT_INTERNAL_TOKEN or CHECKOUT_SIGNING_SECRET there.
+	CheckoutInternalToken string `env:"CHECKOUT_INTERNAL_TOKEN" envDefault:""`
 	// CheckoutPublicBaseURL is the public pay page origin (page URL fallback).
 	CheckoutPublicBaseURL string `env:"CHECKOUT_PUBLIC_BASE_URL" envDefault:"https://pay.stawi.org"`
 }

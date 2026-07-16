@@ -609,21 +609,25 @@ func main() {
 		billingGateway = billing.NewPaymentGateway(clients.Payment, billing.GatewayOptions{
 			PublicSiteURL:         cfg.PublicSiteURL,
 			CheckoutServiceURI:    cfg.CheckoutServiceURI,
+			CheckoutInternalToken:  cfg.CheckoutInternalToken,
 			CheckoutPublicBaseURL: cfg.CheckoutPublicBaseURL,
 		})
 		log.WithField("payment_uri", cfg.BillingServiceURI).
 			WithField("checkout_uri", cfg.CheckoutServiceURI).
-			Info("billing: payment gateway enabled (hosted checkout preferred, flutterwave adapter)")
+			WithField("checkout_token_set", strings.TrimSpace(cfg.CheckoutInternalToken) != "").
+			Info("billing: payment gateway enabled (hosted checkout preferred)")
 	} else {
 		// Still allow hosted checkout alone when only CHECKOUT_SERVICE_URI is set.
 		if strings.TrimSpace(cfg.CheckoutServiceURI) != "" {
 			billingGateway = billing.NewPaymentGateway(nil, billing.GatewayOptions{
 				PublicSiteURL:         cfg.PublicSiteURL,
 				CheckoutServiceURI:    cfg.CheckoutServiceURI,
+				CheckoutInternalToken:  cfg.CheckoutInternalToken,
 				CheckoutPublicBaseURL: cfg.CheckoutPublicBaseURL,
 			})
 			billingEnabled = true
 			log.WithField("checkout_uri", cfg.CheckoutServiceURI).
+				WithField("checkout_token_set", strings.TrimSpace(cfg.CheckoutInternalToken) != "").
 				Info("billing: hosted checkout gateway enabled without payment client")
 		} else {
 			log.Warn("billing: BILLING_SERVICE_URI/CHECKOUT_SERVICE_URI unset — checkout degraded (plans still served)")
