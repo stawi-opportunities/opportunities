@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,8 +18,8 @@ import (
 )
 
 // PaymentClient is the subset of the antinvestor PaymentServiceClient the
-// gateway uses. Declaring it locally lets tests substitute a fake without
-// the full Connect client surface; the real client satisfies it.
+// legacy direct-prompt path uses. Declaring it locally lets tests substitute a
+// fake without the full Connect client surface.
 type PaymentClient interface {
 	CreatePaymentLink(ctx context.Context, req *connect.Request[paymentv1.CreatePaymentLinkRequest]) (*connect.Response[paymentv1.CreatePaymentLinkResponse], error)
 	InitiatePrompt(ctx context.Context, req *connect.Request[paymentv1.InitiatePromptRequest]) (*connect.Response[paymentv1.InitiatePromptResponse], error)
@@ -31,57 +32,168 @@ var _ PaymentClient = (paymentv1connect.PaymentServiceClient)(nil)
 // GatewayOptions configures the production payment gateway.
 type GatewayOptions struct {
 	// PublicSiteURL is the candidate-facing origin (e.g.
-	// https://opportunities.stawi.org). Builds success_url after pay.
+	// https://opportunities.stawi.org). Builds return_url after pay.
 	PublicSiteURL string
+
+	// CheckoutServiceURI is the Connect base for CheckoutService
+	// (e.g. https://api.stawi.org or http://service-payment-checkout:80).
+	// When set, CreateCheckout opens pay.stawi.org hosted checkout (embedded card)
+	// instead of a Flutterwave multipay redirect.
+	CheckoutServiceURI string
+
+	// CheckoutPublicBaseURL is optional override when the session response
+	// lacks pageUrl (normally checkout returns PublicBaseURL + /c/{ref}).
+	CheckoutPublicBaseURL string
+
+	// PreferCard restricts hosted methods to card (embedded) when true.
+	// Default true for opportunities subscriptions.
+	PreferCard *bool
+
 	// RedirectPollAttempts short-polls Status after InitiatePrompt for
-	// checkout_url. 0 uses default (~10s total).
+	// checkout_url (legacy path only). 0 uses default (~10s total).
 	RedirectPollAttempts int
 	// RedirectPollInterval is the sleep between short-polls. 0 uses default.
 	RedirectPollInterval time.Duration
 }
 
-// paymentGateway implements the Flutterwave-only checkout path:
+// paymentGateway implements collection via:
 //
-//  1. InitiatePrompt(route=flutterwave, id=chk_…)
-//  2. Short-poll Status until a real pay URL (checkout_url) appears
-//  3. Return StatusRedirect + RedirectURL so the SPA navigates there
-//  4. Flutterwave returns the browser to success_url
-//     (…/dashboard/?billing=success&prompt_id=chk_…)
-//  5. Webhook / status poll / reconciler activate the subscription
+//  1. Preferred: CheckoutService.CreateCheckoutSession → pay.stawi.org/c/{ref}
+//     (embedded Flutterwave v4 card on our domain; provider-switchable route)
+//  2. Fallback: InitiatePrompt(route=flutterwave) + short-poll for hosted URL
+//
+// On success the browser returns to PublicSiteURL/dashboard/?billing=success&session=…
+// and Activate still reconciles via prompt/session status.
 type paymentGateway struct {
-	pay  PaymentClient
-	opts GatewayOptions
+	pay      PaymentClient
+	checkout CheckoutSessionClient
+	opts     GatewayOptions
 }
 
-// NewPaymentGateway builds a Gateway backed by a PaymentServiceClient.
+// NewPaymentGateway builds a Gateway. When opts.CheckoutServiceURI is set,
+// sessions are created on the hosted checkout page (Stripe Link style).
 func NewPaymentGateway(pay PaymentClient, opts GatewayOptions) Gateway {
 	if opts.RedirectPollAttempts <= 0 {
-		// Flutterwave processes prompts asynchronously on a queue worker.
-		// ~10s covers typical queue + provider latency.
 		opts.RedirectPollAttempts = 40
 	}
 	if opts.RedirectPollInterval <= 0 {
 		opts.RedirectPollInterval = 250 * time.Millisecond
 	}
-	return &paymentGateway{pay: pay, opts: opts}
+	var co CheckoutSessionClient
+	if strings.TrimSpace(opts.CheckoutServiceURI) != "" {
+		co = NewHTTPCheckoutClient(opts.CheckoutServiceURI)
+	}
+	return &paymentGateway{pay: pay, checkout: co, opts: opts}
+}
+
+// NewPaymentGatewayWithCheckout injects a custom checkout client (tests).
+func NewPaymentGatewayWithCheckout(pay PaymentClient, checkout CheckoutSessionClient, opts GatewayOptions) Gateway {
+	if opts.RedirectPollAttempts <= 0 {
+		opts.RedirectPollAttempts = 40
+	}
+	if opts.RedirectPollInterval <= 0 {
+		opts.RedirectPollInterval = 250 * time.Millisecond
+	}
+	return &paymentGateway{pay: pay, checkout: checkout, opts: opts}
+}
+
+func (g *paymentGateway) preferCard() bool {
+	if g.opts.PreferCard == nil {
+		return true
+	}
+	return *g.opts.PreferCard
 }
 
 func (g *paymentGateway) CreateCheckout(ctx context.Context, req CheckoutRequest) (CheckoutResult, error) {
+	// Preferred path: pre-create hosted session so collection systems are ready
+	// the moment the user commits (session row + prefill + method catalog).
+	if g.checkout != nil {
+		return g.createHostedCheckout(ctx, req)
+	}
+	// Legacy: direct Flutterwave prompt (hosted multipay / orchestrator).
+	return g.createLegacyPromptCheckout(ctx, req)
+}
+
+func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutRequest) (CheckoutResult, error) {
+	sessionID := "chk_" + xid.New().String()
+	returnURL := g.successURL(sessionID)
+	amount := formatPlanAmount(req.Plan)
+
+	methods := []string{"card"}
+	if !g.preferCard() {
+		methods = nil // all methods for currency
+	}
+
+	meta := map[string]string{
+		"source":       "opportunities",
+		"plan_id":      string(req.Plan.ID),
+		"candidate_id": req.CandidateID,
+		"prompt_id":    sessionID,
+	}
+	if req.Email != "" {
+		meta["email"] = req.Email
+	}
+	if req.Country != "" {
+		meta["country"] = req.Country
+	}
+
+	created, err := g.checkout.CreateSession(ctx, CreateHostedSessionRequest{
+		Name:        "Stawi " + string(req.Plan.ID),
+		Description: "Subscription — " + string(req.Plan.ID),
+		Amount:      amount,
+		Currency:    req.Plan.Currency,
+		OrderRef:    sessionID,
+		ReturnURL:   returnURL,
+		ProfileID:   req.CandidateID,
+		Email:       req.Email,
+		Phone:       req.Phone,
+		Methods:     methods,
+		Metadata:    meta,
+	})
+	if err != nil {
+		// Fall back to direct prompt if checkout is temporarily unavailable.
+		if g.pay != nil {
+			res, legacyErr := g.createLegacyPromptCheckout(ctx, req)
+			if legacyErr == nil {
+				return res, nil
+			}
+		}
+		return CheckoutResult{}, fmt.Errorf("billing: create checkout session: %w", err)
+	}
+
+	pageURL := created.PageURL
+	if pageURL == "" && g.opts.CheckoutPublicBaseURL != "" && created.Ref != "" {
+		pageURL = strings.TrimRight(g.opts.CheckoutPublicBaseURL, "/") + "/c/" + created.Ref
+	}
+	if pageURL == "" {
+		return CheckoutResult{
+			Status:   StatusFailed,
+			Route:    RouteFlutterwave,
+			PromptID: sessionID,
+			Error:    "checkout page url missing",
+		}, nil
+	}
+
+	return CheckoutResult{
+		Status:      StatusRedirect,
+		Route:       RouteFlutterwave,
+		PromptID:    sessionID,
+		RedirectURL: pageURL,
+	}, nil
+}
+
+func (g *paymentGateway) createLegacyPromptCheckout(ctx context.Context, req CheckoutRequest) (CheckoutResult, error) {
 	res, err := g.initiateFlutterwave(ctx, req)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
-	// Already have a pay URL or a terminal state on the first hop.
 	if res.RedirectURL != "" || res.Status == StatusPaid || res.Status == StatusFailed {
 		return res, nil
 	}
-	// Materialise checkout_url in-process so the SPA gets one redirect hop.
 	res, err = g.awaitRedirect(ctx, res)
 	if err != nil {
 		return res, err
 	}
-	// Without a pay URL the SPA cannot redirect. Surface a clear failure
-	// instead of stranding the user on a pending dashboard poller.
 	if res.RedirectURL == "" && res.Status != StatusPaid && res.Status != StatusFailed {
 		res.Status = StatusFailed
 		if res.Error == "" {
@@ -92,8 +204,6 @@ func (g *paymentGateway) CreateCheckout(ctx context.Context, req CheckoutRequest
 }
 
 func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRequest) (CheckoutResult, error) {
-	// Correlation id — also embedded in success_url so the return landing
-	// can activate without relying on localStorage alone.
 	promptID := "chk_" + xid.New().String()
 	amount := &money.Money{
 		CurrencyCode: req.Plan.Currency,
@@ -103,7 +213,6 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 
 	phone := strings.TrimSpace(req.Phone)
 	email := strings.TrimSpace(req.Email)
-	// Prefer email as source detail so empty phone does not dominate.
 	sourceDetail := email
 	if sourceDetail == "" {
 		sourceDetail = phone
@@ -111,18 +220,14 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 
 	success := g.successURL(promptID)
 	extras := map[string]any{
-		"plan_id": string(req.Plan.ID),
-		// Hosted multipayment page (Flutterwave Standard). Must be "card"
-		// or "hosted" — "bank_transfer" is rejected by v4 orchestrator
-		// (Invalid value 'bank_transfer' for PaymentMethodIn).
-		"payment_method_type": "hosted",
+		"plan_id":             string(req.Plan.ID),
+		"payment_method_type": "card",
 	}
 	if email != "" {
 		extras["customer_email"] = email
 		extras["email"] = email
 	}
 	if success != "" {
-		// Browser return after pay (NOT the pay page itself).
 		extras["success_url"] = success
 		extras["redirect_url"] = success
 	}
@@ -131,21 +236,17 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 		return CheckoutResult{}, fmt.Errorf("billing: build prompt extras: %w", err)
 	}
 
-	// Avoid empty recipient account number — service-payment always
-	// resolves an Account row for InitiatePrompt.
 	accountRef := "stawi-" + req.CandidateID
 	if len(accountRef) > 40 {
 		accountRef = accountRef[:40]
 	}
 
 	in := paymentv1.InitiatePromptRequest_builder{
-		Id:    promptID,
-		Route: "flutterwave",
+		Id:     promptID,
+		Route:  "flutterwave",
 		Amount: amount,
 		Source: commonv1.ContactLink_builder{
 			ProfileId: req.CandidateID,
-			// Leave ContactId empty unless we have a real phone — a non-empty
-			// ContactId makes Flutterwave prefer MoMo corridors over hosted card.
 			ContactId: phone,
 			Detail:    sourceDetail,
 		}.Build(),
@@ -166,8 +267,6 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 		return CheckoutResult{}, fmt.Errorf("billing: initiate prompt: %w", err)
 	}
 	data := resp.Msg.GetData()
-	// Status.ToAPI returns EntityID (= prompt id). Keep our chk_ unless the
-	// provider rewrote it to something else.
 	if id := data.GetId(); id != "" {
 		promptID = id
 	}
@@ -190,7 +289,7 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 	}, nil
 }
 
-// successURL is the fixed return target after Flutterwave payment.
+// successURL is the fixed return target after payment (hosted checkout or FW).
 func (g *paymentGateway) successURL(promptID string) string {
 	site := strings.TrimRight(strings.TrimSpace(g.opts.PublicSiteURL), "/")
 	if site == "" {
@@ -202,84 +301,95 @@ func (g *paymentGateway) successURL(promptID string) string {
 	}
 	q := u.Query()
 	q.Set("billing", "success")
-	if promptID != "" {
-		q.Set("prompt_id", promptID)
-	}
+	q.Set("prompt_id", promptID)
+	q.Set("session", promptID)
 	u.RawQuery = q.Encode()
 	return u.String()
 }
 
-// awaitRedirect short-polls Status until Flutterwave materialises a pay URL
-// (or we hit the attempt budget / a terminal state).
-func (g *paymentGateway) awaitRedirect(ctx context.Context, res CheckoutResult) (CheckoutResult, error) {
-	success := g.successURL(res.PromptID)
-	for i := 0; i < g.opts.RedirectPollAttempts; i++ {
-		select {
-		case <-ctx.Done():
-			return res, ctx.Err()
-		case <-time.After(g.opts.RedirectPollInterval):
+func (g *paymentGateway) CheckoutStatus(ctx context.Context, promptID string) (StatusResult, error) {
+	// Prefer checkout session status when we have a checkout client and the id
+	// looks like a session order ref we minted.
+	if g.checkout != nil && promptID != "" {
+		// Try as session ref first when GetSession works with orderRef mapping —
+		// our CreateSession uses OrderRef=chk_*; Get uses session ref from PageURL.
+		// Products poll with PromptID we returned (= sessionID / order ref).
+		// GetCheckoutSession needs the ref; we store orderRef=promptID but
+		// PageURL uses session.Ref. Status via payment Status still works when
+		// checkout has set prompt_id on the session.
+		if st, err := g.checkout.GetSession(ctx, promptID); err == nil && st.Ref != "" {
+			return mapHostedStatus(st), nil
 		}
-		st, err := g.CheckoutStatus(ctx, res.PromptID)
+	}
+	if g.pay == nil {
+		return StatusResult{Status: StatusPending}, nil
+	}
+	return g.paymentStatus(ctx, promptID)
+}
+
+func mapHostedStatus(st HostedSessionStatus) StatusResult {
+	switch st.Status {
+	case "completed":
+		return StatusResult{Status: StatusPaid, SubscriptionID: st.PromptID}
+	case "failed", "expired":
+		return StatusResult{Status: StatusFailed}
+	case "processing":
+		return StatusResult{Status: StatusPending}
+	default:
+		return StatusResult{Status: StatusPending}
+	}
+}
+
+func (g *paymentGateway) paymentStatus(ctx context.Context, promptID string) (StatusResult, error) {
+	// service-payment Status expects entity_type=prompt for collection prompts.
+	extras, _ := structpb.NewStruct(map[string]any{"entity_type": "prompt"})
+	resp, err := g.pay.Status(ctx, connect.NewRequest(&commonv1.StatusRequest{
+		Id:     promptID,
+		Extras: extras,
+	}))
+	if err != nil {
+		return StatusResult{}, fmt.Errorf("billing: payment status: %w", err)
+	}
+	msg := resp.Msg
+	st := mapStatus(msg.GetStatus())
+	redirect := payURLFromExtras(msg.GetExtras(), "")
+	errMsg := extraString(msg.GetExtras(), "error")
+	if redirect != "" && st != StatusFailed && st != StatusPaid {
+		st = StatusRedirect
+	}
+	return StatusResult{
+		Status:         st,
+		RedirectURL:    redirect,
+		SubscriptionID: msg.GetExternalId(),
+		Error:          errMsg,
+	}, nil
+}
+
+func (g *paymentGateway) awaitRedirect(ctx context.Context, res CheckoutResult) (CheckoutResult, error) {
+	for i := 0; i < g.opts.RedirectPollAttempts; i++ {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		st, err := g.paymentStatus(ctx, res.PromptID)
 		if err != nil {
+			// Soft-fail polls; keep waiting.
+			time.Sleep(g.opts.RedirectPollInterval)
 			continue
 		}
-		// Prefer live status extras; fall back to any URL already on the result.
-		payURL := st.RedirectURL
-		if payURL == "" {
-			payURL = res.RedirectURL
-		}
-		// Filter out our own success URL if it leaked into status extras.
-		if payURL != "" && !isReturnURL(payURL, success) {
+		if st.RedirectURL != "" {
 			res.Status = StatusRedirect
-			res.RedirectURL = payURL
-			if st.SubscriptionID != "" {
-				res.SubscriptionID = st.SubscriptionID
-			}
+			res.RedirectURL = st.RedirectURL
 			return res, nil
 		}
 		if st.Status == StatusPaid || st.Status == StatusFailed {
 			res.Status = st.Status
-			res.SubscriptionID = st.SubscriptionID
 			res.Error = st.Error
+			res.SubscriptionID = st.SubscriptionID
 			return res, nil
 		}
-		if st.Error != "" {
-			res.Error = st.Error
-		}
+		time.Sleep(g.opts.RedirectPollInterval)
 	}
-	res.Route = RouteFlutterwave
 	return res, nil
-}
-
-func (g *paymentGateway) CheckoutStatus(ctx context.Context, promptID string) (StatusResult, error) {
-	extras, err := structpb.NewStruct(map[string]any{"entity_type": "prompt"})
-	if err != nil {
-		return StatusResult{}, fmt.Errorf("billing: status extras: %w", err)
-	}
-	in := commonv1.StatusRequest_builder{
-		Id:     promptID,
-		Extras: extras,
-	}.Build()
-	resp, err := g.pay.Status(ctx, connect.NewRequest(in))
-	if err != nil {
-		return StatusResult{}, fmt.Errorf("billing: payment status: %w", err)
-	}
-	data := resp.Msg
-	st := mapStatus(data.GetStatus())
-	success := g.successURL(promptID)
-	redirect := payURLFromExtras(data.GetExtras(), success)
-	// Keep status as pending while a hosted URL exists so pollers that only
-	// look at status keep going — the RedirectURL field is what triggers
-	// browser navigation.
-	if st == StatusRedirect {
-		st = StatusPending
-	}
-	return StatusResult{
-		Status:         st,
-		SubscriptionID: data.GetExternalId(),
-		RedirectURL:    redirect,
-		Error:          firstNonEmpty(extraString(data.GetExtras(), "error"), extraString(data.GetExtras(), "payment_instruction")),
-	}, nil
 }
 
 func mapStatus(s commonv1.STATUS) Status {
@@ -293,52 +403,41 @@ func mapStatus(s commonv1.STATUS) Status {
 	}
 }
 
-// payURLFromExtras extracts the Flutterwave hosted pay page URL.
-// Never returns our own success/return URL (those live in the same extras
-// keys on some provider echoes).
-func payURLFromExtras(s *structpb.Struct, successURL string) string {
-	for _, key := range []string{"checkout_url", "payment_link", "link", "hosted_link"} {
-		if u := extraString(s, key); u != "" && !isReturnURL(u, successURL) {
+func payURLFromExtras(extras *structpb.Struct, successURL string) string {
+	if extras == nil {
+		return ""
+	}
+	for _, k := range []string{"checkout_url", "auth_redirect_url", "link", "payment_link"} {
+		if u := extraString(extras, k); u != "" && !isOurReturnURL(u, successURL) {
 			return u
 		}
-	}
-	// Some providers put the pay page under redirect_url — only accept it
-	// when it is not our return landing.
-	if u := extraString(s, "redirect_url"); u != "" && !isReturnURL(u, successURL) {
-		return u
 	}
 	return ""
 }
 
-func isReturnURL(u, successURL string) bool {
-	if u == "" {
-		return false
+func extraString(extras *structpb.Struct, key string) string {
+	if extras == nil {
+		return ""
 	}
-	if successURL != "" && (u == successURL || strings.HasPrefix(u, successURL)) {
+	f, ok := extras.GetFields()[key]
+	if !ok || f == nil {
+		return ""
+	}
+	return f.GetStringValue()
+}
+
+func isOurReturnURL(u, success string) bool {
+	if success != "" && strings.HasPrefix(u, success) {
 		return true
 	}
-	// Our SPA return markers.
 	return strings.Contains(u, "billing=success") ||
 		strings.Contains(u, "/dashboard/?billing=") ||
 		strings.Contains(u, "/dashboard?billing=")
 }
 
-func extraString(s *structpb.Struct, key string) string {
-	if s == nil {
-		return ""
-	}
-	v, ok := s.GetFields()[key]
-	if !ok {
-		return ""
-	}
-	return v.GetStringValue()
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
+func formatPlanAmount(plan Plan) string {
+	// USDCents → major units with 2 decimal places.
+	major := plan.USDCents / 100
+	minor := plan.USDCents % 100
+	return strconv.FormatInt(int64(major), 10) + "." + fmt.Sprintf("%02d", minor)
 }

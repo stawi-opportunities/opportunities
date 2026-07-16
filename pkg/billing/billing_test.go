@@ -155,7 +155,7 @@ func TestPaymentGateway_FlutterwaveUsesInitiatePromptAndPollsCheckoutURL(t *test
 	require.True(t, fp.sawPrompt)
 	require.False(t, fp.sawLink)
 	require.Equal(t, "flutterwave", fp.lastPrompt.GetRoute())
-	require.Equal(t, "hosted", fp.lastPrompt.GetExtra().GetFields()["payment_method_type"].GetStringValue())
+	require.Equal(t, "card", fp.lastPrompt.GetExtra().GetFields()["payment_method_type"].GetStringValue())
 	require.Equal(t, "a@b.co", fp.lastPrompt.GetExtra().GetFields()["customer_email"].GetStringValue())
 	successURL := fp.lastPrompt.GetExtra().GetFields()["success_url"].GetStringValue()
 	require.Contains(t, successURL, "/dashboard/")
@@ -260,6 +260,49 @@ func TestPaymentGateway_StatusReadsCheckoutURL(t *testing.T) {
 	got, err := g.CheckoutStatus(context.Background(), "p")
 	require.NoError(t, err)
 	require.Equal(t, "https://polar.sh/c/1", got.RedirectURL)
+}
+
+func TestPaymentGateway_HostedCheckoutPreferred(t *testing.T) {
+	t.Parallel()
+	// When CheckoutService is configured, open pay.stawi.org instead of FW multipay.
+	fc := &fakeCheckout{
+		create: billing.CreateHostedSessionResult{
+			Ref:     "sess_abc",
+			PageURL: "https://pay.stawi.org/c/sess_abc",
+		},
+	}
+	fp := &fakePayment{}
+	g := billing.NewPaymentGatewayWithCheckout(fp, fc, billing.GatewayOptions{
+		PublicSiteURL: "https://opportunities.stawi.org",
+	})
+	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
+		CandidateID: "cand_h", Plan: proPlan(t), Email: "h@b.co", Phone: "254700000000",
+	})
+	require.NoError(t, err)
+	require.False(t, fp.sawPrompt, "must not InitiatePrompt when hosted checkout succeeds")
+	require.Equal(t, billing.StatusRedirect, res.Status)
+	require.Equal(t, "https://pay.stawi.org/c/sess_abc", res.RedirectURL)
+	require.Equal(t, []string{"card"}, fc.last.Methods)
+	require.Equal(t, "cand_h", fc.last.ProfileID)
+	require.Contains(t, fc.last.ReturnURL, "billing=success")
+}
+
+type fakeCheckout struct {
+	create billing.CreateHostedSessionResult
+	last   billing.CreateHostedSessionRequest
+	err    error
+}
+
+func (f *fakeCheckout) CreateSession(_ context.Context, req billing.CreateHostedSessionRequest) (billing.CreateHostedSessionResult, error) {
+	f.last = req
+	if f.err != nil {
+		return billing.CreateHostedSessionResult{}, f.err
+	}
+	return f.create, nil
+}
+
+func (f *fakeCheckout) GetSession(_ context.Context, ref string) (billing.HostedSessionStatus, error) {
+	return billing.HostedSessionStatus{Ref: ref, Status: "pending"}, nil
 }
 
 func TestEntitlementsFor(t *testing.T) {

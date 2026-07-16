@@ -119,7 +119,13 @@ type CandidatesConfig struct {
 	// BillingReconcileBatch bounds how many pending checkouts one
 	// POST /_admin/billing/reconcile sweep examines.
 	BillingReconcileBatch int `env:"BILLING_RECONCILE_BATCH" envDefault:"200"`
-	// PublicSiteURL is the candidate SPA origin used for Flutterwave
-	// success_url (…/dashboard/?billing=success) after hosted checkout.
+	// PublicSiteURL is the candidate SPA origin used as return_url after
+	// hosted checkout (…/dashboard/?billing=success).
 	PublicSiteURL string `env:"PUBLIC_SITE_URL" envDefault:"https://opportunities.stawi.org"`
+	// CheckoutServiceURI is the Connect base for service-payment CheckoutService.
+	// When set, CreateCheckout opens pay.stawi.org embedded card checkout
+	// (Stripe Link style) instead of a Flutterwave multipay redirect.
+	CheckoutServiceURI string `env:"CHECKOUT_SERVICE_URI" envDefault:""`
+	// CheckoutPublicBaseURL is the public pay page origin (page URL fallback).
+	CheckoutPublicBaseURL string `env:"CHECKOUT_PUBLIC_BASE_URL" envDefault:"https://pay.stawi.org"`
 }

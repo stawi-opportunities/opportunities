@@ -607,12 +607,27 @@ func main() {
 	billingEnabled := clients != nil && clients.Payment != nil
 	if billingEnabled {
 		billingGateway = billing.NewPaymentGateway(clients.Payment, billing.GatewayOptions{
-			PublicSiteURL: cfg.PublicSiteURL,
+			PublicSiteURL:         cfg.PublicSiteURL,
+			CheckoutServiceURI:    cfg.CheckoutServiceURI,
+			CheckoutPublicBaseURL: cfg.CheckoutPublicBaseURL,
 		})
-		log.WithField("uri", cfg.BillingServiceURI).
-			Info("billing: payment gateway enabled (flutterwave only)")
+		log.WithField("payment_uri", cfg.BillingServiceURI).
+			WithField("checkout_uri", cfg.CheckoutServiceURI).
+			Info("billing: payment gateway enabled (hosted checkout preferred, flutterwave adapter)")
 	} else {
-		log.Warn("billing: BILLING_SERVICE_URI unset or payment client unavailable — checkout degraded (plans still served)")
+		// Still allow hosted checkout alone when only CHECKOUT_SERVICE_URI is set.
+		if strings.TrimSpace(cfg.CheckoutServiceURI) != "" {
+			billingGateway = billing.NewPaymentGateway(nil, billing.GatewayOptions{
+				PublicSiteURL:         cfg.PublicSiteURL,
+				CheckoutServiceURI:    cfg.CheckoutServiceURI,
+				CheckoutPublicBaseURL: cfg.CheckoutPublicBaseURL,
+			})
+			billingEnabled = true
+			log.WithField("checkout_uri", cfg.CheckoutServiceURI).
+				Info("billing: hosted checkout gateway enabled without payment client")
+		} else {
+			log.Warn("billing: BILLING_SERVICE_URI/CHECKOUT_SERVICE_URI unset — checkout degraded (plans still served)")
+		}
 	}
 
 	// Checkout ledger + activation share one *sql.DB-backed store. When the
