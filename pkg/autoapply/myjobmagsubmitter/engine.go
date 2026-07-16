@@ -94,8 +94,10 @@ func (s *Submitter) httpClient() *http.Client {
 	return &http.Client{Timeout: s.timeout, Jar: jar}
 }
 
-// Name implements autoapply.Submitter.
-func (s *Submitter) Name() string { return "myjobmag_email" }
+// Name implements autoapply.Submitter. It is the submitter's identity in
+// logs/metrics; the per-attempt SubmitResult.Method distinguishes the two
+// modes ("myjobmag_email" vs "myjobmag_form").
+func (s *Submitter) Name() string { return "myjobmag" }
 
 // CanHandle claims MyJobMag listings across every edition. The flow is
 // stateless, so one submitter covers the whole family — we only need the
@@ -164,7 +166,7 @@ func (s *Submitter) Submit(ctx context.Context, req autoapply.SubmitRequest) (au
 			return autoapply.SubmitResult{}, fmt.Errorf("myjobmag: send: %w", err)
 		}
 		log.WithField("recipient", email).WithField("subject", title).Info("myjobmag: application email queued")
-		return autoapply.SubmitResult{Method: s.Name()}, nil
+		return autoapply.SubmitResult{Method: "myjobmag_email"}, nil
 	}
 
 	// No email — try the on-site application form.

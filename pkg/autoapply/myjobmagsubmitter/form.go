@@ -18,6 +18,11 @@ import (
 
 const maxCVFileSize = "2097152" // 2 MiB, mirrors the form's MAX_FILE_SIZE
 
+// debugResponseSink, when non-nil, receives the raw apply POST response
+// body. Wired only by live/diagnostic tests to capture MyJobMag's real
+// success/error page; nil (no-op) in production.
+var debugResponseSink func([]byte)
+
 var (
 	// sitekeyRE pulls the reCAPTCHA v2 site key from the apply page.
 	sitekeyRE = regexp.MustCompile(`data-sitekey="([^"]+)"`)
@@ -141,12 +146,23 @@ func (s *Submitter) submitViaForm(
 	}
 	defer func() { _ = resp.Body.Close() }()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if debugResponseSink != nil {
+		debugResponseSink(respBody)
+	}
 
 	log.WithField("post_status", resp.StatusCode).WithField("position", positionID).
+		WithField("final_url", resp.Request.URL.String()).
+		WithField("body_preview", previewBody(respBody)).
 		Info("myjobmag: apply POST complete")
 
 	if resp.StatusCode >= 400 {
 		return autoapply.SubmitResult{Method: "skipped", SkipReason: "form_changed"}, nil
+	}
+	// MyJobMag returns 200 and re-renders a page for BOTH a duplicate and a
+	// validation failure, so status alone can't confirm a submission.
+	if alreadyApplied(respBody) {
+		log.Info("myjobmag: listing reports the candidate already applied")
+		return autoapply.SubmitResult{Method: "skipped", SkipReason: "already_applied"}, nil
 	}
 	if looksLikeFormError(respBody) {
 		log.Warn("myjobmag: apply POST returned a validation/captcha error")
@@ -292,6 +308,23 @@ func originOf(rawURL string) string {
 	return u.Scheme + "://" + u.Host
 }
 
+// alreadyApplied reports whether the response is MyJobMag's duplicate
+// notice ("It seems you have applied for this job before."). This is a 200
+// re-render, not a fresh submission, so it must not be recorded as applied.
+func alreadyApplied(body []byte) bool {
+	lower := bytes.ToLower(body)
+	for _, m := range [][]byte{
+		[]byte("have applied for this job before"),
+		[]byte("you have applied for this"),
+		[]byte("already applied"),
+	} {
+		if bytes.Contains(lower, m) {
+			return true
+		}
+	}
+	return false
+}
+
 // looksLikeFormError detects explicit failure signals in a 2xx response so
 // a silent rejection isn't recorded as a success. Markers are kept
 // specific — the apply form itself contains "recaptcha", so only
@@ -310,6 +343,17 @@ func looksLikeFormError(body []byte) bool {
 		}
 	}
 	return false
+}
+
+// previewBody returns the first ~600 chars of a response as a printable
+// single line, for diagnosing the POST outcome (e.g. the real success or
+// error copy MyJobMag renders).
+func previewBody(b []byte) string {
+	const max = 600
+	if len(b) > max {
+		b = b[:max]
+	}
+	return strings.Join(strings.Fields(string(b)), " ")
 }
 
 func firstSubmatch(re *regexp.Regexp, body []byte) string {
