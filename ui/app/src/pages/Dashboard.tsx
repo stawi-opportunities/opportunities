@@ -104,15 +104,7 @@ export default function Dashboard() {
       /* private mode */
     }
     window.location.assign('/onboarding/');
-  }, [
-    hasSession,
-    ready,
-    state,
-    subQ.isLoading,
-    subQ.isFetching,
-    subQ.isError,
-    subQ.data?.status,
-  ]);
+  }, [hasSession, ready, state, subQ.isLoading, subQ.isFetching, subQ.isError, subQ.data?.status]);
 
   useEffect(() => {
     if (!isTourCompleted()) {

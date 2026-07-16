@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  isAuthPending,
-  isAuthSettled,
-  isDefinitelySignedOut,
-  isSessionPresent,
-} from './session';
+import { isAuthPending, isAuthSettled, isDefinitelySignedOut, isSessionPresent } from './session';
 
 describe('auth session helpers', () => {
   it('treats refreshing as a live session (no sign-out flicker)', () => {
