@@ -27,7 +27,9 @@ function readPlanFromQuery(): PlanId {
   if (p === 'starter' || p === 'pro' || p === 'managed') return p;
   return 'starter';
 }
-
+function isChatReady(f: { extra_info?: string | null }): boolean {
+  return Boolean(f.extra_info?.trim());
+}
 export default function Onboarding() {
   const { t } = useI18n();
   const { state, login } = useAuth();
