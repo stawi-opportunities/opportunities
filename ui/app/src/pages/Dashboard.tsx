@@ -86,7 +86,9 @@ export default function Dashboard() {
     // Never bounce on a failed subscription fetch — paid users must not be
     // sent back to onboarding because of a transient API error.
     if (subQ.isError) return;
-    if (subQ.data?.status === 'active') return;
+    // Entitled: active, past_due (dunning grace), trial.
+    const st = subQ.data?.status;
+    if (st === 'active' || st === 'past_due' || st === 'trial') return;
     // Allow the dashboard to host PendingCheckoutPoller while Flutterwave
     // is still confirming, after return (?billing=success), or when the
     // user needs to retry (?billing=failed). Bouncing to onboarding
@@ -134,7 +136,9 @@ export default function Dashboard() {
   if (!hasSession) return <SignedOut onSignIn={login} />;
   const sub = subQ.data;
   const plan = normalizePlan(sub?.plan ?? null);
-  const isActive = sub?.status === 'active';
+  // past_due / trial keep full product access (grace / trial entitlement).
+  const isActive =
+    sub?.status === 'active' || sub?.status === 'past_due' || sub?.status === 'trial';
   const subscription = sub?.status ?? 'none';
 
   return (

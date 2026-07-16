@@ -93,7 +93,7 @@ export function StatsRow() {
     {
       label: t('nav.matches'),
       value: stats?.matches ?? 0,
-      href: '/dashboard/#feed?filter=matches',
+      href: '/dashboard/#matches',
       icon: 'heart' as const,
       color: 'teal' as const,
     },

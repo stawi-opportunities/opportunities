@@ -159,7 +159,7 @@ export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStat
 
 export interface MeSubscription {
   plan: string | null;
-  status: 'none' | 'active' | 'past_due' | 'cancelled';
+  status: 'none' | 'active' | 'past_due' | 'cancelled' | 'trial';
   renews_at?: string;
   agent?: { name: string; email: string } | null;
   queued_matches: number;
@@ -394,10 +394,25 @@ export interface ApplicationSummary {
 
 export interface FeedItem {
   opportunity_id: string;
+  apply_url?: string;
   score?: number;
   starred: boolean;
   application?: ApplicationSummary;
   created_at: string;
+  /** Card enrichment from matching feed join (preferred over public snapshot). */
+  slug?: string;
+  title?: string;
+  kind?: string;
+  company?: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  remote?: boolean;
+  posted_at?: string;
+  salary_min?: number;
+  salary_max?: number;
+  currency?: string;
+  has_how_to_apply?: boolean;
 }
 
 export interface FeedPage {

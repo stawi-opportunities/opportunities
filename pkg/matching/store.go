@@ -394,6 +394,8 @@ type ApplicationSummary struct {
 // OpportunityFeedItem is one row of the unified opportunities feed.
 // Score is only meaningful when the opportunity has a match row;
 // the handler omits it when Score is the zero value.
+// Card fields (slug/title/…) come from the opportunities join so the SPA
+// does not need a second public-API lookup by slug.
 type OpportunityFeedItem struct {
 	OpportunityID string
 	ApplyURL      string
@@ -401,6 +403,19 @@ type OpportunityFeedItem struct {
 	Starred       bool
 	Application   *ApplicationSummary
 	CreatedAt     time.Time
+	Slug          string
+	Title         string
+	Kind          string
+	IssuingEntity string
+	Country       string
+	Region        string
+	City          string
+	Remote        bool
+	PostedAt      *time.Time
+	AmountMin     *float64
+	AmountMax     *float64
+	Currency      string
+	HasHowToApply bool
 }
 
 // ListOpportunitiesParams configures the unified opportunities feed query.
@@ -498,10 +513,16 @@ WITH base AS (
 
 	q := baseCTE + `
 SELECT b.opportunity_id, b.score, b.created_at,
-       o.apply_url,
+       COALESCE(o.apply_url, ''),
        (s.opportunity_id IS NOT NULL) AS starred,
        a.status, COALESCE(a.submitted_at, a.created_at) AS applied_at, a.updated_at,
-       a.metadata->>'method' AS method
+       a.metadata->>'method' AS method,
+       COALESCE(o.slug, ''), COALESCE(o.title, ''), COALESCE(o.kind, 'job'),
+       COALESCE(o.issuing_entity, ''),
+       COALESCE(o.country, ''), COALESCE(o.region, ''), COALESCE(o.city, ''),
+       COALESCE(o.remote, false),
+       o.posted_at, o.amount_min, o.amount_max, COALESCE(o.currency, ''),
+       (COALESCE(o.how_to_apply, '') <> '') AS has_how_to_apply
 FROM base b
 JOIN opportunities o ON o.canonical_id = b.opportunity_id
 LEFT JOIN candidate_saved_jobs s
@@ -526,10 +547,30 @@ LIMIT $` + fmt.Sprint(len(args))
 			appAt      sql.NullTime
 			appUpdated sql.NullTime
 			appMethod  sql.NullString
+			postedAt   sql.NullTime
+			amtMin     sql.NullFloat64
+			amtMax     sql.NullFloat64
 		)
-		if err := rows.Scan(&item.OpportunityID, &item.Score, &item.CreatedAt, &item.ApplyURL,
-			&item.Starred, &appStatus, &appAt, &appUpdated, &appMethod); err != nil {
+		if err := rows.Scan(
+			&item.OpportunityID, &item.Score, &item.CreatedAt, &item.ApplyURL,
+			&item.Starred, &appStatus, &appAt, &appUpdated, &appMethod,
+			&item.Slug, &item.Title, &item.Kind, &item.IssuingEntity,
+			&item.Country, &item.Region, &item.City, &item.Remote,
+			&postedAt, &amtMin, &amtMax, &item.Currency, &item.HasHowToApply,
+		); err != nil {
 			return ListOpportunitiesPage{}, fmt.Errorf("matching: scan opportunity feed: %w", err)
+		}
+		if postedAt.Valid {
+			t := postedAt.Time
+			item.PostedAt = &t
+		}
+		if amtMin.Valid {
+			v := amtMin.Float64
+			item.AmountMin = &v
+		}
+		if amtMax.Valid {
+			v := amtMax.Float64
+			item.AmountMax = &v
 		}
 		if appStatus.Valid {
 			method := "manual"

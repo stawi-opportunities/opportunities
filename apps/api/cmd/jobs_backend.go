@@ -28,9 +28,9 @@ type job struct {
 	// CanonicalID is the xid that worker.canonical assigns.
 	CanonicalID string `json:"canonical_id,omitempty"`
 	// Polymorphic discriminator: job, scholarship, tender, deal, funding.
-	Kind              string         `json:"kind,omitempty"`
-	Title             string         `json:"title,omitempty"`
-	Description       string         `json:"description,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
 	// HasHowToApply is true when paywalled application instructions exist.
 	// The body itself is never loaded on this public read path.
 	HasHowToApply     bool           `json:"has_how_to_apply,omitempty"`
@@ -262,7 +262,8 @@ const selectColumns = `canonical_id, slug, kind,
 	quality_score, attributes, NULL::text AS categories_placeholder`
 
 // GetBySlug fetches one row by opportunities.slug. Postgres-side this
-// is a unique-index hit, so latency is ~0.5ms.
+// is a unique-index hit, so latency is ~0.5ms. Also accepts canonical_id
+// so dashboard feed cards that only hold opportunity_id still resolve.
 func (p *jobsPostgres) GetBySlug(ctx context.Context, slug string) (*job, error) {
 	if slug == "" {
 		return nil, nil
@@ -271,7 +272,8 @@ func (p *jobsPostgres) GetBySlug(ctx context.Context, slug string) (*job, error)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: pool: %w", err)
 	}
-	q := `SELECT ` + selectColumns + ` FROM opportunities WHERE slug = $1 LIMIT 1`
+	// Prefer slug (public URLs); fall back to canonical_id for feed IDs.
+	q := `SELECT ` + selectColumns + ` FROM opportunities WHERE slug = $1 OR canonical_id = $1 LIMIT 1`
 	rows, err := db.QueryContext(ctx, q, slug)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: get by slug: %w", err)

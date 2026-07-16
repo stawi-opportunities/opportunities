@@ -28,7 +28,8 @@ export default function HowToApplySection({
   const { hasSession } = useAuth();
   const authed = hasSession;
   const sub = useSubscription();
-  const active = sub.data?.status === 'active';
+  const st = sub.data?.status;
+  const active = st === 'active' || st === 'past_due' || st === 'trial';
 
   const q = useQuery({
     queryKey: ['apply-details', opportunityId || slug],

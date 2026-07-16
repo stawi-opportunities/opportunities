@@ -264,7 +264,7 @@ export async function deleteAccount(reason?: string): Promise<{ ok: boolean }> {
 
 export interface MeSubscription {
   plan: string | null;
-  status: 'none' | 'active' | 'past_due' | 'cancelled';
+  status: 'none' | 'active' | 'past_due' | 'cancelled' | 'trial';
   renews_at?: string;
   /** True when user cancelled; access remains until renews_at / period end. */
   cancel_at_period_end?: boolean;

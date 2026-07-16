@@ -31,6 +31,20 @@ type feedItemDTO struct {
 	Starred       bool                   `json:"starred"`
 	Application   *applicationSummaryDTO `json:"application,omitempty"`
 	CreatedAt     time.Time              `json:"created_at"`
+	// Card enrichment from opportunities join (avoids public slug lookup by id).
+	Slug          string     `json:"slug,omitempty"`
+	Title         string     `json:"title,omitempty"`
+	Kind          string     `json:"kind,omitempty"`
+	Company       string     `json:"company,omitempty"`
+	Country       string     `json:"country,omitempty"`
+	Region        string     `json:"region,omitempty"`
+	City          string     `json:"city,omitempty"`
+	Remote        bool       `json:"remote,omitempty"`
+	PostedAt      *time.Time `json:"posted_at,omitempty"`
+	SalaryMin     *float64   `json:"salary_min,omitempty"`
+	SalaryMax     *float64   `json:"salary_max,omitempty"`
+	Currency      string     `json:"currency,omitempty"`
+	HasHowToApply bool       `json:"has_how_to_apply,omitempty"`
 }
 
 type applicationSummaryDTO struct {
@@ -90,6 +104,19 @@ func OpportunitiesHandler(deps OpportunitiesDeps) http.HandlerFunc {
 				Score:         it.Score,
 				Starred:       it.Starred,
 				CreatedAt:     it.CreatedAt,
+				Slug:          it.Slug,
+				Title:         it.Title,
+				Kind:          it.Kind,
+				Company:       it.IssuingEntity,
+				Country:       it.Country,
+				Region:        it.Region,
+				City:          it.City,
+				Remote:        it.Remote,
+				PostedAt:      it.PostedAt,
+				SalaryMin:     it.AmountMin,
+				SalaryMax:     it.AmountMax,
+				Currency:      it.Currency,
+				HasHowToApply: it.HasHowToApply,
 			}
 			if it.Application != nil {
 				dto.Application = &applicationSummaryDTO{

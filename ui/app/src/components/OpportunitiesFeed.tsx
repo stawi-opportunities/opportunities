@@ -44,6 +44,19 @@ function writeFilterToURL(filter: OpportunityFilter) {
   window.history.pushState({}, '', url.toString());
 }
 
+function locationFromParts(
+  city?: string,
+  region?: string,
+  country?: string,
+  remote?: boolean
+): string | undefined {
+  const parts = [city, region, country].filter(Boolean);
+  if (remote && !parts.some((p) => /remote/i.test(String(p)))) {
+    parts.push('Remote');
+  }
+  return parts.length ? parts.join(', ') : remote ? 'Remote' : undefined;
+}
+
 function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
   if (!snap) return null;
   return {
@@ -53,7 +66,9 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
       ? [snap.anchor_location.city, snap.anchor_location.region, snap.anchor_location.country]
           .filter(Boolean)
           .join(', ')
-      : undefined,
+      : snap.remote
+        ? 'Remote'
+        : undefined,
     posted_at: snap.posted_at,
     salary_min: snap.amount_min,
     salary_max: snap.amount_max,
@@ -63,6 +78,25 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
     slug: snap.slug,
     has_how_to_apply: snap.has_how_to_apply,
     apply_url: snap.apply_url,
+  };
+}
+
+/** Prefer feed-join enrichment so cards never depend on public slug-only lookup. */
+function feedItemToSnapshot(it: FeedItem): OpportunitySnapshot | null {
+  if (!it.title && !it.slug) return null;
+  return {
+    title: it.title || it.opportunity_id,
+    company: it.company,
+    location: locationFromParts(it.city, it.region, it.country, it.remote),
+    posted_at: it.posted_at,
+    salary_min: it.salary_min,
+    salary_max: it.salary_max,
+    currency: it.currency,
+    kind: it.kind,
+    id: it.opportunity_id,
+    slug: it.slug,
+    has_how_to_apply: it.has_how_to_apply,
+    apply_url: it.apply_url,
   };
 }
 
@@ -100,17 +134,20 @@ export function OpportunitiesFeed({
     let result = items;
     if (feedFilters.remote === true) {
       result = result.filter((it) => {
+        if (it.remote) return true;
         const snap = snapshots[it.opportunity_id];
         return snap?.location?.toLowerCase().includes('remote') ?? false;
       });
     } else if (feedFilters.remote === false) {
       result = result.filter((it) => {
+        if (it.remote) return false;
         const snap = snapshots[it.opportunity_id];
-        return snap && !snap.location?.toLowerCase().includes('remote');
+        return snap ? !snap.location?.toLowerCase().includes('remote') : true;
       });
     }
     if (feedFilters.kind) {
       result = result.filter((it) => {
+        if (it.kind) return it.kind === feedFilters.kind;
         const snap = snapshots[it.opportunity_id];
         return snap?.kind === feedFilters.kind;
       });
@@ -126,6 +163,12 @@ export function OpportunitiesFeed({
         const page = await fetchOpportunities({ filter: f, cursor, sort });
         setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
         setNextCursor(page.next_cursor);
+        // Seed cards from feed join immediately — no public API hop required.
+        const map: Record<string, OpportunitySnapshot | null> = {};
+        for (const it of page.items) {
+          map[it.opportunity_id] = feedItemToSnapshot(it);
+        }
+        setSnapshots((prev) => (cursor ? { ...prev, ...map } : map));
       } catch {
         setHasError(true);
       } finally {
@@ -139,27 +182,31 @@ export function OpportunitiesFeed({
     void load(filter);
   }, [filter, sort, load]);
 
+  // Optional enrichment: when feed lacked title/slug, resolve by id (API accepts slug or canonical_id).
   useEffect(() => {
-    const ids = items
-      .filter((it) => !(it.opportunity_id in snapshots))
-      .map((it) => it.opportunity_id);
-    if (ids.length === 0) return;
+    const need = items.filter(
+      (it) =>
+        !it.title && (!(it.opportunity_id in snapshots) || snapshots[it.opportunity_id] === null)
+    );
+    if (need.length === 0) return;
     let cancelled = false;
     (async () => {
-      const results = await Promise.allSettled(ids.map((id) => fetchSnapshot(id)));
+      const results = await Promise.allSettled(
+        need.map((it) => fetchSnapshot(it.slug || it.opportunity_id))
+      );
       if (cancelled) return;
       const map: Record<string, OpportunitySnapshot | null> = {};
-      ids.forEach((id, i) => {
+      need.forEach((it, i) => {
         const r = results[i] as PromiseFulfilledResult<ApiSnapshot | null> | PromiseRejectedResult;
         const snap = r.status === 'fulfilled' ? r.value : null;
-        map[id] = toCardSnapshot(snap);
+        map[it.opportunity_id] = toCardSnapshot(snap);
       });
       setSnapshots((prev) => ({ ...prev, ...map }));
     })();
     return () => {
       cancelled = true;
     };
-  }, [items]);
+  }, [items, snapshots]);
 
   const onSelectFilter = (id: OpportunityFilter) => {
     if (id === filter) return;

@@ -56,7 +56,8 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
   const { t } = useI18n();
   const { hasSession } = useAuth();
   const sub = useSubscription();
-  const active = hasSession && sub.data?.status === 'active';
+  const st = sub.data?.status;
+  const active = hasSession && (st === 'active' || st === 'past_due' || st === 'trial');
   const title = snapshot?.title ?? item.opportunity_id;
   const company = snapshot?.company ?? '';
   const location = snapshot?.location ?? '';
