@@ -90,6 +90,17 @@ export function PendingCheckoutPoller() {
           window.history.replaceState(null, '', u.toString());
           return;
         }
+        // Polar (and peers) may materialise a hosted checkout URL after the
+        // first InitiatePrompt hop — navigate as soon as status exposes it.
+        if (res.redirect_url) {
+          try {
+            localStorage.setItem(PENDING_PROMPT_KEY, promptId);
+          } catch {
+            /* ignore */
+          }
+          window.location.assign(res.redirect_url);
+          return;
+        }
       } catch {
         // Transient — keep polling until the budget expires.
       }

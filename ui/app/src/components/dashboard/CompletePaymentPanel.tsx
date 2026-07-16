@@ -55,16 +55,25 @@ function RetryCheckoutButton({ plan }: { plan: PlanId }) {
     setErr(null);
     try {
       const res = await createCheckout({ plan_id: plan });
+      if (res.prompt_id) {
+        try {
+          localStorage.setItem('stawi.billing.pending_prompt_id', res.prompt_id);
+        } catch {
+          /* private mode */
+        }
+      }
       if (res.status === 'redirect' && res.redirect_url) {
-        window.location.href = res.redirect_url;
+        window.location.assign(res.redirect_url);
         return;
       }
       if (res.status === 'pending' && res.prompt_id) {
-        window.location.href = `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(res.prompt_id)}`;
+        window.location.assign(
+          `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(res.prompt_id)}`
+        );
         return;
       }
       if (res.status === 'paid') {
-        window.location.href = '/dashboard/?billing=success';
+        window.location.assign('/dashboard/?billing=success');
         return;
       }
       throw new Error(res.error || 'Checkout did not complete.');

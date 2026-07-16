@@ -100,7 +100,18 @@ export interface CheckoutStatusResponse {
 
 /** GET /billing/checkout/status?prompt_id=… — auth'd long-poll. */
 export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
-  return authRuntime().fetch(`/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`);
+  const path = `/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`;
+  try {
+    return await authRuntime().fetch(`/matching${path}`);
+  } catch (err) {
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: unknown }).code)
+        : '';
+    const msg = err instanceof Error ? err.message : String(err);
+    if (code !== 'API_NOT_FOUND' && !/404|not found/i.test(msg)) throw err;
+    return authRuntime().fetch(path);
+  }
 }
 
 // ── Plan change ──────────────────────────────────────────────────

@@ -203,6 +203,13 @@ export default function Onboarding() {
 
       // Open the payment provider (or STK pending) immediately.
       const checkout = await createCheckout({ plan_id: plan });
+      if (checkout.prompt_id) {
+        try {
+          localStorage.setItem('stawi.billing.pending_prompt_id', checkout.prompt_id);
+        } catch {
+          /* private mode */
+        }
+      }
       if (checkout.status === 'redirect' && checkout.redirect_url) {
         window.location.assign(checkout.redirect_url);
         return;

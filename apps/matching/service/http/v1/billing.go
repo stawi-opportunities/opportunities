@@ -293,10 +293,15 @@ func CheckoutStatusHandler(deps CheckoutStatusDeps) http.HandlerFunc {
 		if redirect == "" && haveStored {
 			redirect = stored.RedirectURL
 		}
+		// Prefer provider subscription id; fall back to ledger.
+		subID := st.SubscriptionID
+		if subID == "" && haveStored {
+			subID = stored.SubscriptionID
+		}
 		writeStatus(w, checkoutStatusResponse{
 			Status:         string(st.Status),
 			RedirectURL:    redirect,
-			SubscriptionID: st.SubscriptionID,
+			SubscriptionID: subID,
 			Error:          st.Error,
 		})
 	}

@@ -1,139 +1,125 @@
 # Billing provisioning
 
-Stawi.jobs delegates payment + subscription lifecycle to the
-antinvestor `service_payment` (owns rails + gateways) and
-`service_billing` (owns catalog + subscriptions + invoices). This
-document describes the one-time setup needed per environment
-(staging / production) so `/billing/checkout` works end-to-end.
+Stawi Opportunities delegates payment rails to antinvestor
+`service_payment` (+ integrations polar/mpesa/airtel/mtn/…). Subscription
+entitlement lives on `candidate_profiles` (flipped free→paid by matching's
+activator). Matching owns a local checkout ledger (`candidate_checkouts`)
+for poll/webhook/reconcile.
 
-## Flow recap
+## Happy path
 
 ```
-Website (stawi.opportunities)
-    │ POST /billing/checkout
+SPA (opportunities.stawi.org)
+    │ POST /matching/billing/checkout  { plan_id, email?, phone? }
     ▼
-candidates service
-    │ 1. BillingService.CreateSubscription   (PENDING)
-    │ 2. PaymentService.InitiatePrompt       (extras: subscription_id, product_id, success_url)
-    │ 3. short-poll Status(prompt_id) for checkout_url OR SUCCESSFUL
+opportunities-matching
+    │ 1. Validate plan (starter|pro|managed)
+    │ 2. Gateway.CreateCheckout
+    │    • route = RouteForCountry(CF-IPCountry)  # KE→mpesa, US→polar, …
+    │    • PaymentService.InitiatePrompt(
+    │        route=mpesa|polar|…,                # service-payment route keys
+    │        id=chk_…,
+    │        extra={ product_id?, success_url, customer_email, plan_id },
+    │        source.contact_id = phone           # M-Pesa reads ContactId
+    │      )
+    │    • Polar: short-poll Status(entity_type=prompt) for checkout_url
+    │ 3. Persist candidate_checkouts row (pending)
+    │ 4. Return { status: redirect|pending|paid, prompt_id, redirect_url }
     ▼
-service_payment
-    │ routes by `route` string (POLAR / M-PESA / AIRTEL / MTN)
+service-payment
+    │ publishes InitiatePrompt to INITIATE_PROMPT_ROUTE_URIS[route]
+    │   polar  → svc.payment.integration.polar.prompts
+    │   mpesa  → svc.payment.integration.mpesa.prompts
     ▼
-integration app (apps/integrations/polar,mpesa,airtel,mtn)
-    │ creates real provider session (Polar hosted checkout / M-Pesa STK push / …)
-    │ on webhook — updates prompt Status via StatusUpdate
+integration (polar / mpesa / …)
+    │ Polar: CreateCheckout session → StatusUpdate(checkout_url)
+    │ M-Pesa: STK push → webhook → StatusUpdate(SUCCESSFUL|FAILED)
     ▼
-candidates reconciler (every 30s, also inline when status flips to "paid")
-    │ GetSubscription(subscription_id)
-    │ if state=SUBSCRIPTION_ACTIVE → candidate.Subscription="paid", AutoApply=true
+matching activation (any of)
+    │ GET  /matching/billing/checkout/status  (inline Activate on paid)
+    │ POST /matching/billing/webhook          (HMAC X-Payment-Signature)
+    │ POST /_admin/billing/reconcile          (Trustage sweep)
+    ▼
+candidate_profiles.subscription = paid, plan_id set, AutoApply from entitlements
 ```
 
-## One-time catalog bootstrap (service_billing)
+## UI
 
-Run once per environment, ideally via a seed job. Requires a
-`service_billing:catalog_manage` role.
+| Step | Behaviour |
+|------|-----------|
+| Onboarding “Continue to payment” | `createCheckout` → redirect URL or `/dashboard/?billing=pending&prompt_id=` |
+| Dashboard `PendingCheckoutPoller` | Polls status every 4s; opens `redirect_url` if Polar is late; celebrates on paid |
+| `CompletePaymentPanel` | Retry checkout for unpaid / past_due |
 
-1. Create a CatalogVersion:
-
-   ```
-   BillingService.CreateCatalogVersion({
-     id: "opportunities-v1",       // matches env BILLING_CATALOG_VERSION_ID
-     catalog_id: "opportunities",
-     name: "Stawi Jobs v1",
-     currency: "USD"
-   })
-   ```
-
-2. Create three Plans with `external_id` = tier id (this is what
-   stawi passes as `plan_id` in CreateSubscriptionRequest):
-
-   | external_id | name    | amount (USD) |
-   | ----------- | ------- | ------------ |
-   | `starter`   | Starter | 10           |
-   | `pro`       | Pro     | 50           |
-   | `managed`   | Managed | 200          |
-
-3. Publish the catalog version (`PublishCatalogVersion`).
-
-Plans currently ship without usage components — the MVP is flat-fee
-monthly. Usage components can be added later for future "per-CV-score"
-or "per-match-delivered" pricing without changing stawi code.
-
-## Per-environment configuration (candidates service)
+## Matching env (production)
 
 ```yaml
-# Candidates-service env (staging → k8s Secret; prod → Vault)
-BILLING_SERVICE_URI: payment.antinvestor.svc.cluster.local:50051
-BILLING_CATALOG_VERSION_ID: opportunities-v1
-BILLING_RECIPIENT_PROFILE_ID: <profile id of the stawi.opportunities merchant in service_profile>
-
-# Polar.sh — one product per tier created in polar.sh dashboard.
-# See https://docs.polar.sh/api/products
+BILLING_SERVICE_URI: http://service-payment.finance.svc:80
+BILLING_WEBHOOK_SECRET: <vault billing-credentials-opportunities>
+PUBLIC_SITE_URL: https://opportunities.stawi.org
+# Required for card/Polar countries (prod_… from Polar dashboard)
 POLAR_PRODUCT_STARTER: prod_xxx
 POLAR_PRODUCT_PRO: prod_yyy
 POLAR_PRODUCT_MANAGED: prod_zzz
-
-# Public site used for redirect URLs.
-PUBLIC_SITE_URL: https://opportunities.stawi.org
-
-# Reconciler — how often to sync PENDING candidates from service_billing.
-# 0 disables the reconciler (not recommended for production).
-BILLING_RECONCILE_INTERVAL: 30s
 ```
 
-## Per-provider configuration (service_payment)
+OAuth: matching requests `/payment` (and `/billing`) audiences so the
+service-to-service JWT is accepted by service-payment.
 
-These are NOT on stawi's side — they live with the payment service.
-For completeness:
+## service-payment env (finance)
 
-- **Polar.sh**: `POLAR_API_KEY`, `POLAR_WEBHOOK_SECRET`,
-  `POLAR_ORGANIZATION_ID` on the polar integration app. The
-  webhook URL registered in the Polar dashboard points at
-  `service_payment`'s `/webhook/polar` handler, not stawi.
-- **M-Pesa / Airtel / MTN**: per-telco creds in each integration app;
-  same pattern.
+```yaml
+INITIATE_PROMPT_TOPIC_URI: …mpesa.prompts   # default rail
+INITIATE_PROMPT_ROUTE_URIS: |
+  {
+    "mpesa": "…mpesa.prompts",
+    "m-pesa": "…mpesa.prompts",
+    "polar": "…polar.prompts",
+    "mtn": "…mtn.prompts",
+    "airtel": "…airtel.prompts",
+    ...
+  }
+```
 
-Stawi never sees these secrets. The `route` string on InitiatePrompt
-is the only selector.
+Matching sends provider route keys (`mpesa`, `polar`, …). UI responses
+still use display routes (`M-PESA`, `POLAR`).
 
-## What ops must watch
+## Polar products
 
-- `stawi.opportunities.candidates` logs for `billing-reconciler` events —
-  steady-state is "no pending" most ticks. A growing pending count
-  means service_payment → stawi subscription sync is broken.
-- service_payment prompt dashboard — checkout_url materialisation
-  should land within ~2s of the InitiatePrompt. If it stalls,
-  stawi returns `status: "pending"` to the frontend and the user
-  sees a spinner.
-- Duplicate subscription rows — stawi upserts by profile_id, but if
-  a user repeatedly clicks "Subscribe" while pending, fresh
-  service_billing subscriptions are created each time. The
-  reconciler will activate the most-recent one, but cancelled
-  stale rows pile up. Consider a janitor job later.
+Create one Polar product per tier (monthly USD). Put product ids in
+matching env (or Vault later). Without them, card-country checkouts
+reach Polar without `product_id` and the integration fails.
 
 ## Smoke test
 
 ```bash
-# 1. Get JWT for a test profile
-TOKEN=$(…)
+# Plans (public)
+curl -s https://api.stawi.org/matching/billing/plans | jq
 
-# 2. Hit plans catalog (unauthenticated)
-curl -s https://api.stawi.org/billing/plans | jq
-
-# 3. Trigger checkout
-curl -s -X POST https://api.stawi.org/billing/checkout \
+# Checkout (auth'd) — Kenya STK
+curl -s -X POST https://api.stawi.org/matching/billing/checkout \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -H "CF-IPCountry: KE" \
-  -d '{"plan_id":"pro","phone":"+254712345678","route_hint":"mpesa"}' | jq
+  -d '{"plan_id":"pro","phone":"+254712345678"}' | jq
+# expect status=pending, prompt_id=chk_…
 
-# Expect status=pending, prompt_id=…
-# User's phone receives M-Pesa STK push.
+# Checkout — card country (needs POLAR_PRODUCT_*)
+curl -s -X POST https://api.stawi.org/matching/billing/checkout \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "CF-IPCountry: US" \
+  -d '{"plan_id":"pro","email":"you@example.com"}' | jq
+# expect status=redirect + redirect_url, or pending then poll
 
-# 4. Poll status (frontend does this automatically)
-curl -s "https://api.stawi.org/billing/checkout/status?prompt_id=<id>" \
+# Poll
+curl -s "https://api.stawi.org/matching/billing/checkout/status?prompt_id=$PID" \
   -H "Authorization: Bearer $TOKEN" | jq
-
-# Expect status=paid within ~90s of user confirming the prompt.
 ```
+
+## Ops watch
+
+- Matching log: `billing: payment gateway enabled`
+- Growing `candidate_checkouts` pending count → integration/webhook gap
+- Polar: `checkout_url` should appear within ~2s of InitiatePrompt
+- M-Pesa: STK on phone; confirm shortcode credentials in settings

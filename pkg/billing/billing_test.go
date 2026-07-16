@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	commonv1 "buf.build/gen/go/antinvestor/common/protocolbuffers/go/common/v1"
 	paymentv1 "buf.build/gen/go/antinvestor/payment/protocolbuffers/go/v1"
@@ -73,10 +74,15 @@ type fakePayment struct {
 	linkResp   *commonv1.StatusResponse
 	promptResp *commonv1.StatusResponse
 	statusResp *commonv1.StatusResponse
-	err        error
+	// statusSequence lets Polar short-poll tests return evolving statuses.
+	statusSequence []*commonv1.StatusResponse
+	statusCalls    int
+	err            error
 
-	sawLink   bool
-	sawPrompt bool
+	sawLink    bool
+	sawPrompt  bool
+	lastPrompt *paymentv1.InitiatePromptRequest
+	lastStatus *commonv1.StatusRequest
 }
 
 func (f *fakePayment) CreatePaymentLink(_ context.Context, _ *connect.Request[paymentv1.CreatePaymentLinkRequest]) (*connect.Response[paymentv1.CreatePaymentLinkResponse], error) {
@@ -87,17 +93,27 @@ func (f *fakePayment) CreatePaymentLink(_ context.Context, _ *connect.Request[pa
 	return connect.NewResponse(paymentv1.CreatePaymentLinkResponse_builder{Data: f.linkResp}.Build()), nil
 }
 
-func (f *fakePayment) InitiatePrompt(_ context.Context, _ *connect.Request[paymentv1.InitiatePromptRequest]) (*connect.Response[paymentv1.InitiatePromptResponse], error) {
+func (f *fakePayment) InitiatePrompt(_ context.Context, req *connect.Request[paymentv1.InitiatePromptRequest]) (*connect.Response[paymentv1.InitiatePromptResponse], error) {
 	f.sawPrompt = true
+	f.lastPrompt = req.Msg
 	if f.err != nil {
 		return nil, f.err
 	}
 	return connect.NewResponse(paymentv1.InitiatePromptResponse_builder{Data: f.promptResp}.Build()), nil
 }
 
-func (f *fakePayment) Status(_ context.Context, _ *connect.Request[commonv1.StatusRequest]) (*connect.Response[commonv1.StatusResponse], error) {
+func (f *fakePayment) Status(_ context.Context, req *connect.Request[commonv1.StatusRequest]) (*connect.Response[commonv1.StatusResponse], error) {
+	f.lastStatus = req.Msg
+	f.statusCalls++
 	if f.err != nil {
 		return nil, f.err
+	}
+	if len(f.statusSequence) > 0 {
+		idx := f.statusCalls - 1
+		if idx >= len(f.statusSequence) {
+			idx = len(f.statusSequence) - 1
+		}
+		return connect.NewResponse(f.statusSequence[idx]), nil
 	}
 	return connect.NewResponse(f.statusResp), nil
 }
@@ -109,27 +125,44 @@ func proPlan(t *testing.T) billing.Plan {
 	return p
 }
 
-func TestPaymentGateway_CardRouteCreatesRedirect(t *testing.T) {
+func TestPaymentGateway_PolarUsesInitiatePromptAndPollsCheckoutURL(t *testing.T) {
 	t.Parallel()
-	fields, err := structFields(map[string]string{"redirect_url": "https://pay.example/checkout/abc"})
-	require.NoError(t, err)
-	fp := &fakePayment{linkResp: commonv1.StatusResponse_builder{
-		Id:     "provider-link-1",
+	queued := commonv1.StatusResponse_builder{
+		Id:     "chk_polar_1",
 		Status: commonv1.STATUS_QUEUED,
-		Extras: fields,
-	}.Build()}
-	g := billing.NewPaymentGateway(fp)
+	}.Build()
+	urlFields, err := structFields(map[string]string{"checkout_url": "https://polar.sh/checkout/abc"})
+	require.NoError(t, err)
+	ready := commonv1.StatusResponse_builder{
+		Id:     "chk_polar_1",
+		Status: commonv1.STATUS_IN_PROCESS,
+		Extras: urlFields,
+	}.Build()
+	fp := &fakePayment{
+		promptResp:     queued,
+		statusSequence: []*commonv1.StatusResponse{queued, ready},
+	}
+	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
+		PublicSiteURL:        "https://opportunities.stawi.org",
+		PolarProducts:        map[billing.PlanID]string{billing.PlanPro: "prod_pro_1"},
+		RedirectPollAttempts: 5,
+		RedirectPollInterval: time.Millisecond,
+	})
 
 	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
-		CandidateID: "cand_1", Plan: proPlan(t), Country: "US",
+		CandidateID: "cand_1", Plan: proPlan(t), Country: "US", Email: "a@b.co",
 	})
 	require.NoError(t, err)
-	require.True(t, fp.sawLink)
-	require.False(t, fp.sawPrompt)
+	require.True(t, fp.sawPrompt)
+	require.False(t, fp.sawLink)
+	require.Equal(t, "polar", fp.lastPrompt.GetRoute())
+	require.Equal(t, "prod_pro_1", fp.lastPrompt.GetExtra().GetFields()["product_id"].GetStringValue())
+	require.Equal(t, "a@b.co", fp.lastPrompt.GetExtra().GetFields()["customer_email"].GetStringValue())
+	require.Contains(t, fp.lastPrompt.GetExtra().GetFields()["success_url"].GetStringValue(), "/dashboard/?billing=success")
 	require.Equal(t, billing.RoutePolar, res.Route)
 	require.Equal(t, billing.StatusRedirect, res.Status)
-	require.Equal(t, "https://pay.example/checkout/abc", res.RedirectURL)
-	require.Equal(t, "provider-link-1", res.PromptID)
+	require.Equal(t, "https://polar.sh/checkout/abc", res.RedirectURL)
+	require.Equal(t, "chk_polar_1", res.PromptID)
 }
 
 func TestPaymentGateway_MobileMoneyRouteIsPending(t *testing.T) {
@@ -138,7 +171,7 @@ func TestPaymentGateway_MobileMoneyRouteIsPending(t *testing.T) {
 		Id:     "stk-1",
 		Status: commonv1.STATUS_IN_PROCESS,
 	}.Build()}
-	g := billing.NewPaymentGateway(fp)
+	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{})
 
 	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
 		CandidateID: "cand_2", Plan: proPlan(t), Country: "KE", Phone: "+254700000000",
@@ -146,6 +179,9 @@ func TestPaymentGateway_MobileMoneyRouteIsPending(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, fp.sawPrompt)
 	require.False(t, fp.sawLink)
+	require.Equal(t, "mpesa", fp.lastPrompt.GetRoute())
+	require.Equal(t, "+254700000000", fp.lastPrompt.GetSource().GetContactId())
+	require.Equal(t, "+254700000000", fp.lastPrompt.GetRecipient().GetContactId())
 	require.Equal(t, billing.RouteMpesa, res.Route)
 	require.Equal(t, billing.StatusPending, res.Status)
 	require.Equal(t, "stk-1", res.PromptID)
@@ -167,12 +203,27 @@ func TestPaymentGateway_StatusMapping(t *testing.T) {
 		fp := &fakePayment{statusResp: commonv1.StatusResponse_builder{
 			Id: "p", Status: tc.in, ExternalId: "sub-9",
 		}.Build()}
-		g := billing.NewPaymentGateway(fp)
+		g := billing.NewPaymentGateway(fp, billing.GatewayOptions{})
 		got, err := g.CheckoutStatus(context.Background(), "p")
 		require.NoError(t, err)
 		require.Equal(t, tc.want, got.Status)
 		require.Equal(t, "sub-9", got.SubscriptionID)
+		// Status requests must carry entity_type=prompt for service-payment.
+		require.Equal(t, "prompt", fp.lastStatus.GetExtras().GetFields()["entity_type"].GetStringValue())
 	}
+}
+
+func TestPaymentGateway_StatusReadsCheckoutURL(t *testing.T) {
+	t.Parallel()
+	fields, err := structFields(map[string]string{"checkout_url": "https://polar.sh/c/1"})
+	require.NoError(t, err)
+	fp := &fakePayment{statusResp: commonv1.StatusResponse_builder{
+		Id: "p", Status: commonv1.STATUS_IN_PROCESS, Extras: fields,
+	}.Build()}
+	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{})
+	got, err := g.CheckoutStatus(context.Background(), "p")
+	require.NoError(t, err)
+	require.Equal(t, "https://polar.sh/c/1", got.RedirectURL)
 }
 
 func TestEntitlementsFor(t *testing.T) {
