@@ -88,6 +88,38 @@ RETURNING prompt_id, candidate_id, plan_id, route, status, subscription_id,
 	return s.scanOne(s.db.QueryRowContext(ctx, q, promptID, string(status), subscriptionID, errMsg))
 }
 
+// ListByCandidate returns recent checkouts for history (newest first).
+func (s *Store) ListByCandidate(ctx context.Context, candidateID string, limit int) ([]Checkout, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	const q = `
+SELECT prompt_id, candidate_id, plan_id, route, status, subscription_id,
+       amount_cents, currency, country, redirect_url, error, created_at, updated_at
+FROM candidate_checkouts
+WHERE candidate_id = $1
+ORDER BY created_at DESC
+LIMIT $2
+`
+	rows, err := s.db.QueryContext(ctx, q, candidateID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("billing: list by candidate: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]Checkout, 0, 16)
+	for rows.Next() {
+		c, scanErr := scanRow(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("billing: list by candidate rows: %w", err)
+	}
+	return out, nil
+}
+
 // ListPending returns pending checkouts, oldest first, up to limit. Drives
 // the reconciler sweep.
 func (s *Store) ListPending(ctx context.Context, limit int) ([]Checkout, error) {

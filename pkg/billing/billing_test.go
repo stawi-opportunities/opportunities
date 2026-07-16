@@ -297,6 +297,7 @@ func TestPaymentGateway_HostedCheckoutPreferred(t *testing.T) {
 	require.False(t, fp.sawPrompt, "must not InitiatePrompt when hosted checkout succeeds")
 	require.Equal(t, billing.StatusRedirect, res.Status)
 	require.Equal(t, "https://pay.stawi.org/c/sess_abc", res.RedirectURL)
+	require.Equal(t, "sess_abc", res.PromptID, "ledger prompt_id must be session ref for status polls")
 	require.Equal(t, []string{"card"}, fc.last.Methods)
 	require.Equal(t, "cand_h", fc.last.ProfileID)
 	require.Contains(t, fc.last.ReturnURL, "billing=success")

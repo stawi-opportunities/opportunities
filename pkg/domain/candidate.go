@@ -87,9 +87,13 @@ type CandidateProfile struct {
 	NeedsSponsorship   *bool  `gorm:"type:bool" json:"needs_sponsorship"`
 	WantsATSReport     bool   `gorm:"not null;default:false" json:"wants_ats_report"`
 
-	// Subscription billing (links to service-payment)
+	// Subscription billing (links to service-payment / product ledger)
 	SubscriptionID string `gorm:"type:varchar(255)" json:"subscription_id"`
 	PlanID         string `gorm:"type:varchar(100)" json:"plan_id"`
+	// CurrentPeriodEnd is when the paid period ends (renewal or cancel effective).
+	CurrentPeriodEnd *time.Time `json:"current_period_end,omitempty"`
+	// CancelAtPeriodEnd means the user cancelled; stay paid until CurrentPeriodEnd.
+	CancelAtPeriodEnd bool `gorm:"not null;default:false" json:"cancel_at_period_end"`
 
 	// Additional profile fields
 	Languages   string `gorm:"type:text" json:"languages"`

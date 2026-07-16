@@ -10,6 +10,7 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
@@ -71,6 +72,9 @@ type CheckoutDeps struct {
 	// the gateway but skips persistence (degraded: the reconciler/poller
 	// can't see the checkout). Production always wires it.
 	Store *billing.Store
+	// Candidates is optional; when set, already-paid users are refused a
+	// new checkout so the dashboard never re-prompts payment after success.
+	Candidates CandidateProfileReader
 }
 
 // checkoutInput is the SPA body for POST /billing/checkout.
@@ -109,6 +113,17 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 		ctx := r.Context()
 		log := util.Log(ctx)
 		candidateID := httpmw.CandidateFromContext(ctx)
+
+		// Never start a second payment while the candidate is already paid.
+		if deps.Candidates != nil {
+			if cand, cerr := deps.Candidates.GetByID(ctx, candidateID); cerr == nil && cand != nil {
+				if cand.Subscription == domain.SubscriptionPaid || cand.Subscription == domain.SubscriptionTrial {
+					httpmw.ProblemJSON(w, http.StatusConflict, "already_subscribed",
+						"you already have an active subscription; manage it under Billing")
+					return
+				}
+			}
+		}
 
 		body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024))
 		if err != nil {

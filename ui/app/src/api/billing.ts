@@ -126,11 +126,22 @@ export interface ChangePlanResponse {
 
 /** POST /billing/change-plan — auth'd. */
 export async function changePlan(input: ChangePlanInput): Promise<ChangePlanResponse> {
-  return authRuntime().fetch('/billing/change-plan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  const body = JSON.stringify(input);
+  try {
+    return await authRuntime().fetch('/matching/billing/change-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/404|not found/i.test(msg)) throw err;
+    return authRuntime().fetch('/billing/change-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  }
 }
 
 // ── Cancellation ─────────────────────────────────────────────────
@@ -145,13 +156,24 @@ export interface CancelResponse {
   effective_date: string;
 }
 
-/** POST /billing/cancel — auth'd. */
+/** POST /billing/cancel — auth'd. Cancels at end of current period. */
 export async function cancelSubscription(input: CancelInput): Promise<CancelResponse> {
-  return authRuntime().fetch('/billing/cancel', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  const body = JSON.stringify(input);
+  try {
+    return await authRuntime().fetch('/matching/billing/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/404|not found/i.test(msg)) throw err;
+    return authRuntime().fetch('/billing/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  }
 }
 
 // ── Pause / Reactivate ───────────────────────────────────────────
@@ -192,9 +214,15 @@ export interface Invoice {
   pdf_url?: string;
 }
 
-/** GET /billing/invoices — auth'd. */
+/** GET /billing/invoices — auth'd payment / subscription history. */
 export async function fetchInvoices(): Promise<Invoice[]> {
-  return authRuntime().fetch('/billing/invoices');
+  try {
+    return await authRuntime().fetch('/matching/billing/invoices');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/404|not found/i.test(msg)) throw err;
+    return authRuntime().fetch('/billing/invoices');
+  }
 }
 
 // ── Usage history ────────────────────────────────────────────────
@@ -207,7 +235,13 @@ export interface UsageEntry {
 
 /** GET /billing/usage-history — auth'd. */
 export async function fetchUsageHistory(): Promise<UsageEntry[]> {
-  return authRuntime().fetch('/billing/usage-history');
+  try {
+    return await authRuntime().fetch('/matching/billing/usage-history');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/404|not found/i.test(msg)) throw err;
+    return authRuntime().fetch('/billing/usage-history');
+  }
 }
 
 // ── Internal helper ───────────────────────────────────────────────

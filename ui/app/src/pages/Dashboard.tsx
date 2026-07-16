@@ -79,7 +79,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (state !== 'authenticated') return;
-    if (subQ.isLoading) return;
+    if (subQ.isLoading || subQ.isFetching) return;
+    // Never bounce on a failed subscription fetch — paid users must not be
+    // sent back to onboarding because of a transient API error.
+    if (subQ.isError) return;
     if (subQ.data?.status === 'active') return;
     // Allow the dashboard to host PendingCheckoutPoller while Flutterwave
     // is still confirming, after return (?billing=success), or when the
@@ -98,7 +101,7 @@ export default function Dashboard() {
       /* private mode */
     }
     window.location.assign('/onboarding/');
-  }, [state, subQ.isLoading, subQ.data?.status]);
+  }, [state, subQ.isLoading, subQ.isFetching, subQ.isError, subQ.data?.status]);
 
   useEffect(() => {
     if (!isTourCompleted()) {

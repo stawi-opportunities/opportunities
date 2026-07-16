@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -117,9 +118,12 @@ func (r *CandidateRepository) Count(ctx context.Context) (int64, error) {
 // AutoApply is set from plan entitlements (Pro/Managed true, Starter false)
 // so higher tiers unlock automated apply without a separate flag write.
 func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidateID, subID, planID string) (bool, error) {
+	periodEnd := time.Now().UTC().AddDate(0, 1, 0) // monthly period
 	updates := map[string]interface{}{
-		"subscription":    domain.SubscriptionPaid,
-		"subscription_id": subID,
+		"subscription":         domain.SubscriptionPaid,
+		"subscription_id":      subID,
+		"current_period_end":   periodEnd,
+		"cancel_at_period_end": false,
 	}
 	if planID != "" {
 		updates["plan_id"] = planID
@@ -133,13 +137,88 @@ func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidat
 	}
 	res := r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).
-		Where("id = ? AND NOT (subscription = ? AND subscription_id = ?)",
-			candidateID, domain.SubscriptionPaid, subID).
+		Where("id = ? AND NOT (subscription = ? AND subscription_id = ? AND cancel_at_period_end = ?)",
+			candidateID, domain.SubscriptionPaid, subID, false).
 		Updates(updates)
 	if res.Error != nil {
 		return false, res.Error
 	}
 	return res.RowsAffected > 0, nil
+}
+
+// ScheduleCancelAtPeriodEnd marks a paid subscription to end at current_period_end
+// without immediate entitlement loss. Returns the effective end time.
+func (r *CandidateRepository) ScheduleCancelAtPeriodEnd(ctx context.Context, candidateID string) (time.Time, error) {
+	cand, err := r.GetByID(ctx, candidateID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if cand.Subscription != domain.SubscriptionPaid {
+		return time.Time{}, fmt.Errorf("no active paid subscription")
+	}
+	end := time.Now().UTC().AddDate(0, 1, 0)
+	if cand.CurrentPeriodEnd != nil && cand.CurrentPeriodEnd.After(time.Now().UTC()) {
+		end = cand.CurrentPeriodEnd.UTC()
+	}
+	res := r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("id = ?", candidateID).
+		Updates(map[string]interface{}{
+			"cancel_at_period_end": true,
+			"current_period_end":   end,
+		})
+	if res.Error != nil {
+		return time.Time{}, res.Error
+	}
+	return end, nil
+}
+
+// ChangePlan updates plan_id + entitlements for an active subscriber.
+// Downgrades take effect at period end (pending_plan stored via plan_id now for
+// simplicity after end; upgrades apply immediately).
+func (r *CandidateRepository) ChangePlan(ctx context.Context, candidateID, newPlanID string, immediate bool) error {
+	updates := map[string]interface{}{
+		"plan_id": newPlanID,
+	}
+	if immediate {
+		updates["cancel_at_period_end"] = false
+		switch newPlanID {
+		case "pro", "managed":
+			updates["auto_apply"] = true
+		case "starter":
+			updates["auto_apply"] = false
+		}
+	}
+	res := r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("id = ? AND subscription = ?", candidateID, domain.SubscriptionPaid).
+		Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("no active paid subscription")
+	}
+	return nil
+}
+
+// FinalizeExpiredCancellations flips paid→cancelled when cancel_at_period_end
+// and current_period_end are past. Safe for cron/reconcile.
+func (r *CandidateRepository) FinalizeExpiredCancellations(ctx context.Context, limit int) (int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	res := r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("subscription = ? AND cancel_at_period_end = ? AND current_period_end IS NOT NULL AND current_period_end < ?",
+			domain.SubscriptionPaid, true, time.Now().UTC()).
+		Limit(limit).
+		Updates(map[string]interface{}{
+			"subscription":         domain.SubscriptionCancelled,
+			"cancel_at_period_end": false,
+			"auto_apply":           false,
+		})
+	return res.RowsAffected, res.Error
 }
 
 // ListPendingSubscriptions returns candidates with a SubscriptionID

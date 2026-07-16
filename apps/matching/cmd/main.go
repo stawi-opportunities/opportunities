@@ -659,8 +659,9 @@ func main() {
 	mux.HandleFunc("GET /billing/plans", httpv1.PlansHandler())
 	mux.Handle("POST /billing/checkout", authMW(
 		httpv1.CheckoutHandler(httpv1.CheckoutDeps{
-			Gateway: billingGateway,
-			Store:   checkoutStore,
+			Gateway:    billingGateway,
+			Store:      checkoutStore,
+			Candidates: candidateRepo,
 		}),
 	))
 	// Status enforces ownership via the stored checkout, so it requires the
@@ -676,6 +677,17 @@ func main() {
 	} else {
 		log.Warn("billing/checkout/status: checkout store unavailable; route not registered")
 	}
+
+	// Subscription lifecycle (cancel end-of-period, change plan, history).
+	lifecycle := httpv1.BillingLifecycleDeps{
+		Candidates: candidateRepo,
+		Store:      checkoutStore,
+	}
+	mux.Handle("POST /billing/cancel", authMW(httpv1.CancelHandler(lifecycle)))
+	mux.Handle("POST /billing/change-plan", authMW(httpv1.ChangePlanHandler(lifecycle)))
+	mux.Handle("GET /billing/invoices", authMW(httpv1.InvoicesHandler(lifecycle)))
+	// Usage history reuses the same match summarizer as /me/subscription.
+	mux.Handle("GET /billing/usage-history", authMW(httpv1.UsageHistoryHandler(meSubMatches)))
 	// Webhook carries no candidate JWT (the provider can't); it is gated
 	// SOLELY by the mandatory HMAC signature, so register it only when the
 	// secret is configured (and we fail boot above if billing is live without

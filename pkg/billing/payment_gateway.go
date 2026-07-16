@@ -134,7 +134,6 @@ func (g *paymentGateway) CreateCheckout(ctx context.Context, req CheckoutRequest
 
 func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutRequest) (CheckoutResult, error) {
 	sessionID := "chk_" + xid.New().String()
-	returnURL := g.successURL(sessionID)
 	amount := formatPlanAmount(req.Plan)
 
 	methods := []string{"card"}
@@ -154,6 +153,11 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 	if req.Country != "" {
 		meta["country"] = req.Country
 	}
+
+	// Return URL uses order_ref (chk_*) so SPA can poll even if session ref
+	// is unknown; GetSession resolves by order_ref. After create we rewrite
+	// success URL to prefer the session ref when available.
+	returnURL := g.successURL(sessionID)
 
 	created, err := g.checkout.CreateSession(ctx, CreateHostedSessionRequest{
 		Name:        "Stawi " + string(req.Plan.ID),
@@ -187,10 +191,16 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		}, nil
 	}
 
+	// Ledger + SPA poll with session ref (primary) so status is authoritative.
+	// order_ref (chk_*) is still on the session for recovery by product id.
+	promptID := created.Ref
+	if promptID == "" {
+		promptID = sessionID
+	}
 	return CheckoutResult{
 		Status:      StatusRedirect,
 		Route:       RouteFlutterwave,
-		PromptID:    sessionID,
+		PromptID:    promptID,
 		RedirectURL: pageURL,
 	}, nil
 }

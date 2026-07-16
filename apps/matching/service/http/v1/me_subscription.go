@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pitabwire/util"
 
@@ -20,6 +21,7 @@ type MeSubscription struct {
 	Plan              *string  `json:"plan"`
 	Status            string   `json:"status"`
 	RenewsAt          *string  `json:"renews_at,omitempty"`
+	CancelAtPeriodEnd bool     `json:"cancel_at_period_end,omitempty"`
 	Agent             *MeAgent `json:"agent,omitempty"`
 	QueuedMatches     int      `json:"queued_matches"`
 	DeliveredThisWeek int      `json:"delivered_this_week"`
@@ -82,8 +84,13 @@ func SubscriptionHandler(deps SubscriptionDeps) http.HandlerFunc {
 		}
 
 		resp := MeSubscription{
-			Plan:   planValue(cand),
-			Status: statusFromCandidate(cand),
+			Plan:              planValue(cand),
+			Status:            statusFromCandidate(cand),
+			CancelAtPeriodEnd: cand != nil && cand.CancelAtPeriodEnd,
+		}
+		if cand != nil && cand.CurrentPeriodEnd != nil {
+			s := cand.CurrentPeriodEnd.UTC().Format(time.RFC3339)
+			resp.RenewsAt = &s
 		}
 		if deps.Matches != nil {
 			queued, delivered, sumErr := deps.Matches.SubscriptionSummary(ctx, candidateID)
@@ -122,16 +129,15 @@ func planValue(c *domain.CandidateProfile) *string {
 
 // statusFromCandidate flattens the candidate's SubscriptionTier (which
 // also encodes the trial vs. paid distinction) into the four-state
-// enum the dashboard understands. `past_due` is intentionally
-// unreachable today — there's no source-of-truth field on the
-// candidate row for it; surface it once service-payment publishes a
-// past-due event we can persist.
+// enum the dashboard understands. Paid with cancel_at_period_end stays
+// "active" until the period ends (access until then).
 func statusFromCandidate(c *domain.CandidateProfile) string {
 	if c == nil {
 		return "none"
 	}
 	switch c.Subscription {
 	case domain.SubscriptionPaid, domain.SubscriptionTrial:
+		// Soft-cancel still has access until period end.
 		return "active"
 	case domain.SubscriptionCancelled:
 		return "cancelled"

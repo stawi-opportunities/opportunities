@@ -25,7 +25,8 @@ export function BillingPanel({
   const [usageHistory, setUsageHistory] = useState<UsageEntry[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showUsage, setShowUsage] = useState(false);
-  const [showInvoices, setShowInvoices] = useState(false);
+  // Payment / subscription history is the primary billing record — open by default.
+  const [showInvoices, setShowInvoices] = useState(true);
 
   useEffect(() => {
     fetchUsageHistory()
@@ -50,6 +51,10 @@ export function BillingPanel({
                 {t('dash.renewsOn')} {new Date(renewsAt).toLocaleDateString()}
               </p>
             )}
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Upgrade or cancel anytime here. Cancellation takes effect at the end of the current
+              billing period — you keep access until then.
+            </p>
           </div>
           <div className="text-right text-sm font-medium text-gray-900 dark:text-white">
             <p>${info.price}</p>
@@ -79,7 +84,7 @@ export function BillingPanel({
             onClick={() => setShowInvoices(!showInvoices)}
             className="text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
           >
-            {showInvoices ? t('common.loading') : t('invoice.title')} {showInvoices ? '▲' : '▼'}
+            {showInvoices ? t('invoice.title') : t('invoice.title')} {showInvoices ? '▲' : '▼'}
           </button>
         </div>
 
@@ -91,6 +96,9 @@ export function BillingPanel({
 
         {showInvoices && (
           <div className="mt-4 border-t border-gray-100 pt-4 dark:border-navy-700">
+            <h3 className="mb-2 text-sm font-medium text-gray-900 dark:text-white">
+              Subscription &amp; payment history
+            </h3>
             <InvoiceHistory invoices={invoices} t={t} />
           </div>
         )}

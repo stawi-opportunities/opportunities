@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -16,7 +17,7 @@ import (
 // card collection and routes to whatever payment method.route is configured.
 type CheckoutSessionClient interface {
 	CreateSession(ctx context.Context, req CreateHostedSessionRequest) (CreateHostedSessionResult, error)
-	GetSession(ctx context.Context, ref string) (HostedSessionStatus, error)
+	GetSession(ctx context.Context, refOrOrderRef string) (HostedSessionStatus, error)
 }
 
 // CreateHostedSessionRequest is the portable session create payload.
@@ -47,6 +48,7 @@ type HostedSessionStatus struct {
 	Ref      string
 	Status   string // pending | processing | completed | failed | expired
 	PromptID string
+	OrderRef string
 }
 
 // HTTPCheckoutClient talks to checkout's cluster-internal session API.
@@ -108,7 +110,7 @@ func (c *HTTPCheckoutClient) CreateSession(
 		PageUrl string `json:"pageUrl"`
 		Error   string `json:"error"`
 	}
-	if err := c.post(ctx, "/internal/v1/sessions", body, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/internal/v1/sessions", body, &resp); err != nil {
 		return CreateHostedSessionResult{}, err
 	}
 	if resp.Error != "" {
@@ -125,27 +127,96 @@ func (c *HTTPCheckoutClient) CreateSession(
 	return CreateHostedSessionResult{Ref: ref, PageURL: pageURL}, nil
 }
 
-func (c *HTTPCheckoutClient) GetSession(ctx context.Context, ref string) (HostedSessionStatus, error) {
-	// Public status poll is enough for product recovery; session ref is the id.
-	// Prefer GET pay page status is browser-side; server-side Get is optional.
-	_ = ctx
-	return HostedSessionStatus{Ref: ref, Status: "pending"}, nil
+// GetSession loads session status by session ref or product order_ref (chk_*).
+// This is how matching detects completed payments and activates subscriptions.
+func (c *HTTPCheckoutClient) GetSession(ctx context.Context, refOrOrderRef string) (HostedSessionStatus, error) {
+	if c == nil || c.BaseURL == "" {
+		return HostedSessionStatus{}, fmt.Errorf("checkout client not configured")
+	}
+	id := strings.TrimSpace(refOrOrderRef)
+	if id == "" {
+		return HostedSessionStatus{}, fmt.Errorf("checkout: empty session id")
+	}
+
+	var resp struct {
+		Ref      string `json:"ref"`
+		Status   string `json:"status"`
+		PromptID string `json:"prompt_id"`
+		OrderRef string `json:"order_ref"`
+		Error    string `json:"error"`
+	}
+
+	// Prefer order_ref lookup when the id looks like our minted chk_* key.
+	if strings.HasPrefix(id, "chk_") {
+		path := "/internal/v1/sessions?order_ref=" + url.QueryEscape(id)
+		if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err == nil && resp.Ref != "" {
+			return HostedSessionStatus{
+				Ref: resp.Ref, Status: resp.Status, PromptID: resp.PromptID, OrderRef: resp.OrderRef,
+			}, nil
+		}
+	}
+
+	// Session ref path (and fallback if order_ref route is older).
+	path := "/internal/v1/sessions/" + url.PathEscape(id)
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		// Last resort: public status endpoint (works when id is the session ref).
+		if st, pubErr := c.publicStatus(ctx, id); pubErr == nil {
+			return st, nil
+		}
+		return HostedSessionStatus{}, err
+	}
+	if resp.Error != "" {
+		return HostedSessionStatus{}, fmt.Errorf("checkout: %s", resp.Error)
+	}
+	if resp.Ref == "" {
+		resp.Ref = id
+	}
+	return HostedSessionStatus{
+		Ref: resp.Ref, Status: resp.Status, PromptID: resp.PromptID, OrderRef: resp.OrderRef,
+	}, nil
 }
 
-func (c *HTTPCheckoutClient) post(ctx context.Context, path string, body any, out any) error {
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("checkout marshal: %w", err)
+func (c *HTTPCheckoutClient) publicStatus(ctx context.Context, ref string) (HostedSessionStatus, error) {
+	path := "/c/" + url.PathEscape(ref) + "/status"
+	var resp struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(raw))
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return HostedSessionStatus{}, err
+	}
+	if resp.Error == "not_found" || resp.Status == "" {
+		return HostedSessionStatus{}, fmt.Errorf("checkout: session not found")
+	}
+	return HostedSessionStatus{Ref: ref, Status: resp.Status}, nil
+}
+
+func (c *HTTPCheckoutClient) doJSON(ctx context.Context, method, path string, body any, out any) error {
+	var rdr io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("checkout marshal: %w", err)
+		}
+		rdr = bytes.NewReader(raw)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, rdr)
 	if err != nil {
 		return err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
 	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("X-Checkout-Internal-Token", c.InternalToken)
+	if c.InternalToken != "" {
+		httpReq.Header.Set("X-Checkout-Internal-Token", c.InternalToken)
+	}
 
-	resp, err := c.HTTPClient.Do(httpReq)
+	client := c.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("checkout request: %w", err)
 	}
