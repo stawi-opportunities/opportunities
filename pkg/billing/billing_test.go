@@ -155,7 +155,7 @@ func TestPaymentGateway_FlutterwaveUsesInitiatePromptAndPollsCheckoutURL(t *test
 	require.True(t, fp.sawPrompt)
 	require.False(t, fp.sawLink)
 	require.Equal(t, "flutterwave", fp.lastPrompt.GetRoute())
-	require.Equal(t, "card", fp.lastPrompt.GetExtra().GetFields()["payment_method_type"].GetStringValue())
+	require.Equal(t, "hosted", fp.lastPrompt.GetExtra().GetFields()["payment_method_type"].GetStringValue())
 	require.Equal(t, "a@b.co", fp.lastPrompt.GetExtra().GetFields()["customer_email"].GetStringValue())
 	successURL := fp.lastPrompt.GetExtra().GetFields()["success_url"].GetStringValue()
 	require.Contains(t, successURL, "/dashboard/")

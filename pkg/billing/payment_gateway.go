@@ -112,10 +112,10 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 	success := g.successURL(promptID)
 	extras := map[string]any{
 		"plan_id": string(req.Plan.ID),
-		// Force a hosted-collection path. Flutterwave's default
-		// bank_transfer (v4) only returns payment_instruction with no
-		// browser URL; "card" / Standard hosted payment emits checkout_url.
-		"payment_method_type": "card",
+		// Hosted multipayment page (Flutterwave Standard). Must be "card"
+		// or "hosted" — "bank_transfer" is rejected by v4 orchestrator
+		// (Invalid value 'bank_transfer' for PaymentMethodIn).
+		"payment_method_type": "hosted",
 	}
 	if email != "" {
 		extras["customer_email"] = email
