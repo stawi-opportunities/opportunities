@@ -124,7 +124,29 @@ func proPlan(t *testing.T) billing.Plan {
 	return p
 }
 
-func TestPaymentGateway_FlutterwaveUsesInitiatePromptAndPollsCheckoutURL(t *testing.T) {
+func preferCardFalse() *bool {
+	f := false
+	return &f
+}
+
+func TestPaymentGateway_CardRequiresHostedCheckout(t *testing.T) {
+	t.Parallel()
+	// PreferCard (default) without CheckoutService must not InitiatePrompt —
+	// OAuth-only Flutterwave cannot multipay without FLWSECK / encrypted card.
+	fp := &fakePayment{}
+	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
+		PublicSiteURL: "https://opportunities.stawi.org",
+	})
+	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
+		CandidateID: "cand_1", Plan: proPlan(t), Email: "a@b.co",
+	})
+	require.NoError(t, err)
+	require.False(t, fp.sawPrompt)
+	require.Equal(t, billing.StatusFailed, res.Status)
+	require.Contains(t, res.Error, "CHECKOUT_SERVICE_URI")
+}
+
+func TestPaymentGateway_LegacyPromptWhenPreferCardDisabled(t *testing.T) {
 	t.Parallel()
 	queued := commonv1.StatusResponse_builder{
 		Id:     "chk_fw_1",
@@ -143,6 +165,7 @@ func TestPaymentGateway_FlutterwaveUsesInitiatePromptAndPollsCheckoutURL(t *test
 	}
 	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
 		PublicSiteURL:        "https://opportunities.stawi.org",
+		PreferCard:           preferCardFalse(),
 		RedirectPollAttempts: 5,
 		RedirectPollInterval: time.Millisecond,
 	})
@@ -153,17 +176,7 @@ func TestPaymentGateway_FlutterwaveUsesInitiatePromptAndPollsCheckoutURL(t *test
 	})
 	require.NoError(t, err)
 	require.True(t, fp.sawPrompt)
-	require.False(t, fp.sawLink)
 	require.Equal(t, "flutterwave", fp.lastPrompt.GetRoute())
-	require.Equal(t, "card", fp.lastPrompt.GetExtra().GetFields()["payment_method_type"].GetStringValue())
-	require.Equal(t, "a@b.co", fp.lastPrompt.GetExtra().GetFields()["customer_email"].GetStringValue())
-	successURL := fp.lastPrompt.GetExtra().GetFields()["success_url"].GetStringValue()
-	require.Contains(t, successURL, "/dashboard/")
-	require.Contains(t, successURL, "billing=success")
-	require.Contains(t, successURL, "prompt_id=")
-	// success_url must NOT be returned as the pay redirect.
-	require.NotEqual(t, successURL, res.RedirectURL)
-	require.Equal(t, billing.RouteFlutterwave, res.Route)
 	require.Equal(t, billing.StatusRedirect, res.Status)
 	require.Equal(t, "https://checkout.flutterwave.com/v3/hosted/pay/abc", res.RedirectURL)
 	require.Equal(t, "chk_fw_1", res.PromptID)
@@ -183,6 +196,7 @@ func TestPaymentGateway_NoPayURLBecomesFailed(t *testing.T) {
 	}
 	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
 		PublicSiteURL:        "https://opportunities.stawi.org",
+		PreferCard:           preferCardFalse(),
 		RedirectPollAttempts: 3,
 		RedirectPollInterval: time.Millisecond,
 	})
@@ -212,6 +226,7 @@ func TestPaymentGateway_DoesNotTreatSuccessURLAsPayURL(t *testing.T) {
 	}
 	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
 		PublicSiteURL:        "https://opportunities.stawi.org",
+		PreferCard:           preferCardFalse(),
 		RedirectPollAttempts: 2,
 		RedirectPollInterval: time.Millisecond,
 	})

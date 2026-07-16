@@ -105,12 +105,22 @@ func (g *paymentGateway) preferCard() bool {
 }
 
 func (g *paymentGateway) CreateCheckout(ctx context.Context, req CheckoutRequest) (CheckoutResult, error) {
-	// Preferred path: pre-create hosted session so collection systems are ready
-	// the moment the user commits (session row + prefill + method catalog).
+	// Card-first products must use hosted pay.* (embedded AES-GCM card → v4 OAuth).
+	// Direct InitiatePrompt without encrypted card fields cannot charge with
+	// OAuth-only credentials and must not fall back to FLWSECK multipay.
 	if g.checkout != nil {
 		return g.createHostedCheckout(ctx, req)
 	}
-	// Legacy: direct Flutterwave prompt (hosted multipay / orchestrator).
+	if g.preferCard() {
+		return CheckoutResult{
+			Status: StatusFailed,
+			Route:  RouteFlutterwave,
+			Error: "checkout is not configured: set CHECKOUT_SERVICE_URI so payers " +
+				"open pay.stawi.org (embedded card). OAuth-only Flutterwave cannot " +
+				"open Standard multipay without FLWSECK_*",
+		}, nil
+	}
+	// Non-card (e.g. MoMo-only) may still use direct prompts.
 	return g.createLegacyPromptCheckout(ctx, req)
 }
 
@@ -151,13 +161,8 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		Metadata:    meta,
 	})
 	if err != nil {
-		// Fall back to direct prompt if checkout is temporarily unavailable.
-		if g.pay != nil {
-			res, legacyErr := g.createLegacyPromptCheckout(ctx, req)
-			if legacyErr == nil {
-				return res, nil
-			}
-		}
+		// Never fall back to naked card InitiatePrompt under OAuth — that path
+		// only works with FLWSECK multipay or encrypted card extras.
 		return CheckoutResult{}, fmt.Errorf("billing: create checkout session: %w", err)
 	}
 
