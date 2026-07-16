@@ -24,6 +24,8 @@ const (
 	SubscriptionTrial     SubscriptionTier = "trial"
 	SubscriptionPaid      SubscriptionTier = "paid"
 	SubscriptionCancelled SubscriptionTier = "cancelled"
+	// SubscriptionPastDue is set when rebill fails after dunning (billing SoT).
+	SubscriptionPastDue SubscriptionTier = "past_due"
 )
 
 // MatchStatus tracks the delivery and engagement state of a job match.

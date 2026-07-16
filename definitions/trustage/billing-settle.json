@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "name": "opportunities.billing.settle",
+  "description": "Every 2 minutes: trigger service-billing settlement sweeper (auto-confirm completed hosted checkout sessions when the browser abandon return path). Complements matching billing-reconcile.",
+  "input": {},
+  "config": {},
+  "timeout": "3m",
+  "on_error": {
+    "action": "abort"
+  },
+  "steps": [
+    {
+      "id": "billing_settle",
+      "type": "call",
+      "name": "Sweep open invoices with checkout sessions",
+      "timeout": "2m",
+      "retry": {
+        "max_attempts": 2,
+        "backoff_strategy": "exponential",
+        "initial_backoff": "15s"
+      },
+      "call": {
+        "action": "http.request",
+        "input": {
+          "url": "${BILLING_INTERNAL_URL}/_internal/billing/settle",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Admin-Token": "${BILLING_INTERNAL_ADMIN_TOKEN}"
+          },
+          "body": {}
+        },
+        "output_var": "settle_result"
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "name": "opportunities.billing.settle.default",
+      "cron_expr": "*/2 * * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

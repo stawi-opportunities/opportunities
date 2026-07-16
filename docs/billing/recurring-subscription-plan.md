@@ -1,7 +1,21 @@
 # Extensible plan: automatic recurring subscriptions via service-billing
 
-**Status:** design  
-**Goal:** Make recurrent payments **trivial for product services** (Opportunities, future products) by owning schedule + invoices in **service-billing**, charging through **checkout/payment/Flutterwave**, and treating product DBs as an **entitlement cache** only.
+**Status:** implemented (core path)  
+**Goal:** Make recurrent payments **trivial for product services** (Opportunities, future products) by owning schedule + invoices in **service-billing**, charging through **checkout/payment/Flutterwave v4 only**, and treating product DBs as an **entitlement cache** only.
+
+### Implementation notes (live code)
+
+| Piece | Location |
+|-------|----------|
+| COF collector (v4 flutterwave only) | `payment_collect.go` |
+| **Per-sub Trustage scheduler** | `renewal_scheduler.go` + `renewal_plan.go` — one workflow per subscription |
+| Process one sub | `POST /_internal/billing/subscriptions/{id}/renew` → `ProcessSubscription` |
+| Dunning | retry CSV `0,24,72,168`; max attempts **archives** Trustage workflow |
+| Soft cancel | Reschedule to period-end finalize; archive after hard cancel |
+| Bulk renew | **Removed** — only `ProcessSubscription(id)` via Trustage one-shot |
+| Instrument pin + first schedule | `ConfirmPayment` → pin COF + **Ensure** Trustage one-shot |
+| Flutterwave | v4 OAuth only for token charges |
+| Product | `pkg/billing` Collection + lifecycle mirror |
 
 ---
 

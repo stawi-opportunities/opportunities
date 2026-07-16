@@ -221,6 +221,47 @@ func (r *CandidateRepository) FinalizeExpiredCancellations(ctx context.Context, 
 	return res.RowsAffected, res.Error
 }
 
+// MarkPastDue sets subscription=past_due for dunning UX after rebill failures.
+// Idempotent for an already past_due row with the same subscription_id.
+func (r *CandidateRepository) MarkPastDue(ctx context.Context, candidateID, subID string) error {
+	updates := map[string]interface{}{
+		"subscription": domain.SubscriptionPastDue,
+	}
+	if subID != "" {
+		updates["subscription_id"] = subID
+	}
+	res := r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("id = ?", candidateID).
+		Updates(updates)
+	return res.Error
+}
+
+// ExtendPaidPeriod refreshes current_period_end after a successful rebill
+// (lifecycle subscription.billed). Keeps subscription=paid.
+func (r *CandidateRepository) ExtendPaidPeriod(ctx context.Context, candidateID, subID, planID string, periodEnd *time.Time) error {
+	updates := map[string]interface{}{
+		"subscription":         domain.SubscriptionPaid,
+		"cancel_at_period_end": false,
+	}
+	if subID != "" {
+		updates["subscription_id"] = subID
+	}
+	if planID != "" {
+		updates["plan_id"] = planID
+	}
+	if periodEnd != nil {
+		updates["current_period_end"] = periodEnd.UTC()
+	} else {
+		updates["current_period_end"] = time.Now().UTC().AddDate(0, 1, 0)
+	}
+	res := r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("id = ?", candidateID).
+		Updates(updates)
+	return res.Error
+}
+
 // ListPendingSubscriptions returns candidates with a SubscriptionID
 // that are not yet marked as paid. The billing reconciler uses this
 // to poll service_billing for state transitions so the candidate row
