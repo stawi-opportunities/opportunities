@@ -93,6 +93,8 @@ type CandidateChangeConsumerDeps struct {
 	// 0 falls back to 0.45 so paid users still receive quality matches without
 	// starving the queue on a too-high default.
 	DefaultMinScore float64
+	// DailyCapQuery enforces plan daily limits during GapFill (optional).
+	DailyCapQuery matching.DailyCapQuery
 }
 
 // CandidateChangeConsumer subscribes to one trigger topic and runs Path C.
@@ -190,6 +192,8 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		change.Kinds = idx.Kinds
 		change.SalaryFloorUSD = idx.SalaryFloorUSD
 		change.MinScore = idx.MinScore
+		change.DailyCap = idx.DailyCap
+		change.WeeklyCap = idx.WeeklyCap
 		if change.MinScore <= 0 {
 			change.MinScore = defaultMin
 		}
@@ -202,6 +206,9 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		change.Embedding = vector
 		change.MinScore = defaultMin
 		change.Kinds = []string{"job"}
+		ent := planEntitlements(ctx, c.deps.IndexStore, candidateID)
+		change.DailyCap = ent.DailyCap
+		change.WeeklyCap = ent.WeeklyCap
 	case errors.Is(err, matching.ErrNotFound):
 		util.Log(ctx).WithField("candidate_id", candidateID).
 			Info("candidate_change: no index row yet; skip")
@@ -230,6 +237,7 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 			EventLog: c.deps.EventLog,
 			Reranker: c.deps.Reranker,
 			Weights:  c.deps.Weights,
+			DailyCap: c.deps.DailyCapQuery,
 		},
 	})
 	if errors.Is(err, matching.ErrDebounced) {

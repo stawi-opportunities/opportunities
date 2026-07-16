@@ -34,6 +34,8 @@ type CandidateChange struct {
 	Kinds          []string
 	SalaryFloorUSD *int
 	MinScore       float64
+	DailyCap       int
+	WeeklyCap      int
 	TriggeredBy    string // rules_changed | cv_changed | admin
 	// QueryText is the candidate-side text (CV summary / skills) fed to the
 	// cross-encoder as the rerank query. Empty disables reranking for this run.
@@ -66,6 +68,8 @@ func RunCandidateChange(ctx context.Context, in CandidateChange, deps CandidateC
 		SalaryFloorUSD: in.SalaryFloorUSD,
 		Since:          since,
 		MinScore:       in.MinScore,
+		DailyCap:       in.DailyCap,
+		WeeklyCap:      in.WeeklyCap,
 		QueryText:      in.QueryText,
 	}, deps.GapFill)
 }

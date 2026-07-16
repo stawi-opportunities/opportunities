@@ -445,6 +445,8 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			SalaryFloorUSD: idx.SalaryFloorUSD,
 			Since:          since,
 			MinScore:       minScore,
+			DailyCap:       idx.DailyCap,
+			WeeklyCap:      idx.WeeklyCap,
 		}, matching.GapFillDeps{
 			KNN:      d.KNN,
 			Store:    d.Matches,

@@ -207,6 +207,8 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 				SalaryFloorUSD: idx.SalaryFloorUSD,
 				Since:          cutoff,
 				MinScore:       digestMinScore(idx.MinScore, deps.DefaultMinScore),
+				DailyCap:       idx.DailyCap,
+				WeeklyCap:      idx.WeeklyCap,
 			}, gapDeps)
 			if runErr != nil {
 				log.WithError(runErr).WithField("candidate_id", m.ID).
@@ -215,11 +217,34 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 				continue
 			}
 
+			// Enrich MatchesReady with top card fields so email templates
+			// don't depend on a second DB hop in the notification service.
+			var rows []eventsv1.MatchRow
+			if deps.Store != nil {
+				if top, lErr := deps.Store.ListTopMatchesForDigest(ctx, m.ID, 10); lErr != nil {
+					log.WithError(lErr).WithField("candidate_id", m.ID).
+						Warn("matches-digest: list top matches failed; emitting batch only")
+				} else {
+					rows = make([]eventsv1.MatchRow, 0, len(top))
+					for _, t := range top {
+						rows = append(rows, eventsv1.MatchRow{
+							CanonicalID: t.OpportunityID,
+							ApplyURL:    t.ApplyURL,
+							Score:       t.Score,
+							Title:       t.Title,
+							Company:     t.Company,
+							Slug:        t.Slug,
+						})
+					}
+				}
+			}
+
 			env := eventsv1.NewEnvelope(
 				eventsv1.TopicCandidateMatchesReady,
 				eventsv1.MatchesReadyV1{
 					CandidateID:  m.ID,
 					MatchBatchID: res.RunID,
+					Matches:      rows,
 				},
 			)
 			if emitErr := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, env); emitErr != nil {

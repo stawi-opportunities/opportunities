@@ -302,6 +302,67 @@ LIMIT $` + fmt.Sprint(len(args))
 	return ListByCandidatePage{Items: out, NextCursor: nextCur, HasMore: hasMore}, nil
 }
 
+// DigestMatch is a compact row for notification emails.
+type DigestMatch struct {
+	OpportunityID string
+	ApplyURL      string
+	Score         float64
+	Title         string
+	Company       string
+	Slug          string
+}
+
+// ListTopMatchesForDigest returns the highest-scoring non-overflow matches
+// with opportunity card fields for MatchesReadyV1.matches[].
+func (s *Store) ListTopMatchesForDigest(ctx context.Context, candidateID string, limit int) ([]DigestMatch, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	const q = `
+SELECT m.opportunity_id,
+       COALESCE(o.apply_url, ''),
+       m.score,
+       COALESCE(o.title, ''),
+       COALESCE(o.issuing_entity, ''),
+       COALESCE(o.slug, '')
+FROM candidate_matches m
+JOIN opportunities o ON o.canonical_id = m.opportunity_id
+WHERE m.candidate_id = $1
+  AND m.status NOT IN ('overflow', 'dismissed')
+ORDER BY m.score DESC, m.created_at DESC
+LIMIT $2`
+	rows, err := s.db.QueryContext(ctx, q, candidateID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("matching: list digest matches: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]DigestMatch, 0, limit)
+	for rows.Next() {
+		var d DigestMatch
+		if err := rows.Scan(&d.OpportunityID, &d.ApplyURL, &d.Score, &d.Title, &d.Company, &d.Slug); err != nil {
+			return nil, fmt.Errorf("matching: scan digest match: %w", err)
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// ApplyPlanCaps updates daily/weekly caps on the match index for a plan.
+// No-ops when no index row exists yet (embed will create one later).
+func (s *Store) ApplyPlanCaps(ctx context.Context, candidateID string, dailyCap, weeklyCap int) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE candidate_match_indexes
+SET daily_cap = $2, weekly_cap = $3, updated_at = now()
+WHERE candidate_id = $1`, candidateID, dailyCap, weeklyCap)
+	if err != nil {
+		return fmt.Errorf("matching: apply plan caps: %w", err)
+	}
+	return nil
+}
+
 // SubscriptionSummary returns the two match-volume counts the
 // candidate dashboard surfaces alongside subscription state:
 //

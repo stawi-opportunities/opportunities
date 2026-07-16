@@ -157,6 +157,8 @@ func (r *CandidateRepository) Count(ctx context.Context) (int64, error) {
 //
 // AutoApply is set from plan entitlements (Pro/Managed true, Starter false)
 // so higher tiers unlock automated apply without a separate flag write.
+// Match-index daily/weekly caps are synced from billing.EntitlementsFor
+// when an index row already exists.
 func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidateID, subID, planID string) (bool, error) {
 	periodEnd := time.Now().UTC().AddDate(0, 1, 0) // monthly period
 	updates := map[string]interface{}{
@@ -183,7 +185,25 @@ func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidat
 	if res.Error != nil {
 		return false, res.Error
 	}
+	// Sync match-index caps to plan entitlements (best-effort; no index yet is fine).
+	daily, weekly := planCaps(planID)
+	_ = r.db(ctx, false).Exec(`
+UPDATE candidate_match_indexes
+SET daily_cap = ?, weekly_cap = ?, updated_at = now()
+WHERE candidate_id = ?`, daily, weekly, candidateID).Error
 	return res.RowsAffected > 0, nil
+}
+
+// planCaps maps plan_id → daily/weekly match caps (Starter-safe defaults).
+func planCaps(planID string) (daily, weekly int) {
+	switch planID {
+	case "pro":
+		return 10, 25
+	case "managed":
+		return 50, 0 // 0 = uncapped weekly
+	default: // starter / empty
+		return 2, 5
+	}
 }
 
 // ScheduleCancelAtPeriodEnd marks a paid subscription to end at current_period_end
@@ -238,6 +258,13 @@ func (r *CandidateRepository) ChangePlan(ctx context.Context, candidateID, newPl
 	}
 	if res.RowsAffected == 0 {
 		return fmt.Errorf("no active paid subscription")
+	}
+	if immediate {
+		daily, weekly := planCaps(newPlanID)
+		_ = r.db(ctx, false).Exec(`
+UPDATE candidate_match_indexes
+SET daily_cap = ?, weekly_cap = ?, updated_at = now()
+WHERE candidate_id = ?`, daily, weekly, candidateID).Error
 	}
 	return nil
 }

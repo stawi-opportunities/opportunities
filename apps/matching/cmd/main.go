@@ -345,6 +345,7 @@ func main() {
 				Topic:           eventsv1.TopicCandidateEmbedding,
 				CandText:        candText,
 				DefaultMinScore: cfg.MatchingMinScore,
+				DailyCapQuery:   matching.NewPGDailyCapQuery(sqlDB),
 			})
 			svc.Init(ctx, frame.WithRegisterSubscriber(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI, cc))
 			log.Info("matching: candidate-change (Path C) enabled — embedding queue → gap-fill + rerank")
@@ -770,13 +771,14 @@ func main() {
 					}
 					return out, nil
 				}, 5000)
+			matchStoreAdmin := matching.NewStore(sqlDB)
 			mux.Handle("POST /_admin/matches/weekly_digest",
 				httpmw.RequireAdmin(adminAuth, adminv1.MatchesWeeklyDigestHandler(adminv1.MatchesWeeklyDigestDeps{
 					Svc:             svc,
 					Active:          activeLister,
 					Index:           matching.NewIndexStore(sqlDB),
 					KNN:             matching.NewKNN(sqlDB),
-					Store:           matching.NewStore(sqlDB),
+					Store:           matchStoreAdmin,
 					EventLog:        matching.NewEventLog(sqlDB),
 					Reranker:        matching.NoopReranker{},
 					Weights:         matching.DefaultWeights(),

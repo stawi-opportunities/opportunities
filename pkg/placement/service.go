@@ -109,11 +109,12 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 		} else if len(vec) > 0 {
 			embedded = true
 			if s.Index != nil {
-				entDaily, entWeekly := 25, 100
+				// Starter-safe defaults until ActivateSubscription rewrites caps.
+				entDaily, entWeekly := 2, 5
 				ci := matching.CandidateIndex{
 					CandidateID:    in.CandidateID,
 					Embedding:      vec,
-					MinScore:       0.5,
+					MinScore:       0.45,
 					DailyCap:       entDaily,
 					WeeklyCap:      entWeekly,
 					Kinds:          filters.Kinds,

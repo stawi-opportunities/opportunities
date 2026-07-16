@@ -3,6 +3,7 @@ package matching
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	util "github.com/pitabwire/util"
@@ -15,8 +16,14 @@ type GapFillDeps struct {
 	EventLog matchEventWriter
 	Reranker Reranker
 	Weights  Weights
+	// DailyCap optional — when set with input DailyCap > 0, excess rows are overflow.
+	DailyCap dailyCapCounter
 	Now      func() time.Time
 	NewID    func() string
+}
+
+type dailyCapCounter interface {
+	TodayCount(ctx context.Context, candidateID string) (int, error)
 }
 
 type reverseSearcher interface {
@@ -33,6 +40,10 @@ type GapFillInput struct {
 	SalaryFloorUSD *int
 	Since          time.Time
 	MinScore       float64
+	// DailyCap / WeeklyCap enforce plan entitlements. 0 = uncapped.
+	// DailyCap uses deps.DailyCap when non-nil; WeeklyCap truncates this run.
+	DailyCap  int
+	WeeklyCap int
 	// QueryText is the candidate-side text (CV summary / skills) used as the
 	// cross-encoder query. Empty disables reranking for this run.
 	QueryText string
@@ -136,8 +147,26 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 		runEvt.RerankerStatus = "skipped"
 	}
 
+	// Plan caps: keep highest scores. WeeklyCap truncates this run;
+	// DailyCap marks overflow when today's generated count is full.
+	sort.Slice(scoredHits, func(i, j int) bool { return scoredHits[i].tot > scoredHits[j].tot })
+	if in.WeeklyCap > 0 && len(scoredHits) > in.WeeklyCap {
+		scoredHits = scoredHits[:in.WeeklyCap]
+	}
+
+	todayUsed := 0
+	if deps.DailyCap != nil && in.DailyCap > 0 {
+		if n, cErr := deps.DailyCap.TodayCount(ctx, in.CandidateID); cErr == nil {
+			todayUsed = n
+		}
+	}
+
 	matches := make([]Match, 0, len(scoredHits))
-	for _, s := range scoredHits {
+	for i, s := range scoredHits {
+		status := StatusNew
+		if in.DailyCap > 0 && todayUsed+i >= in.DailyCap {
+			status = StatusOverflow
+		}
 		var rp *float64
 		if v, ok := rerankByID[s.hit.OpportunityID]; ok {
 			rp = &v
@@ -146,7 +175,7 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 			MatchID:       idgen(),
 			CandidateID:   in.CandidateID,
 			OpportunityID: s.hit.OpportunityID,
-			Status:        StatusNew,
+			Status:        status,
 			Score:         s.tot,
 			RerankScore:   rp,
 			RerankerUsed:  used && rp != nil,

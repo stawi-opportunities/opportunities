@@ -151,11 +151,16 @@ type PreferencesUpdatedV1 struct {
 }
 
 // MatchRow is one candidate-to-job match, carried inside MatchesReadyV1.
+// Title/Company/Slug are optional enrichment for email digests so the
+// notification service need not re-query opportunities.
 type MatchRow struct {
-	CanonicalID string  `json:"canonical_id"          `
-	ApplyURL    string  `json:"apply_url"             `
-	Score       float64 `json:"score"                 `
+	CanonicalID string  `json:"canonical_id"`
+	ApplyURL    string  `json:"apply_url"`
+	Score       float64 `json:"score"`
 	RerankScore float64 `json:"rerank_score,omitempty"`
+	Title       string  `json:"title,omitempty"`
+	Company     string  `json:"company,omitempty"`
+	Slug        string  `json:"slug,omitempty"`
 }
 
 // MatchesReadyV1 is emitted by the match endpoint (or the Trustage
