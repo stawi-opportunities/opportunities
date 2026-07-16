@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.candidates.matches.weekly-digest",
-  "description": "Every Monday 09:00 UTC: run the match pipeline for every active candidate and emit candidates.matches.ready.v1 per candidate. A downstream notification service delivers the digest by email.",
+  "description": "Every Monday 09:00 UTC: run gap-fill matching for entitled subscribers (subscription=paid|past_due|trial), refresh candidate_matches above MATCHING_MIN_SCORE (default 0.45), and emit candidates.matches.ready.v1 for the notification service weekly email summary. Free/cancelled candidates use weekly-jobs-digest instead.",
   "input": {},
   "config": {},
   "timeout": "30m",

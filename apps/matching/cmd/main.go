@@ -334,16 +334,17 @@ func main() {
 			// stay on the PreferenceMatchHandler (events.EventI) — a separate
 			// flow on the events bus.
 			cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
-				IndexStore: matchIdx,
-				KNN:        matchKNN,
-				Store:      matchStore,
-				EventLog:   matchEvents,
-				Reranker:   rerank,
-				Weights:    matching.DefaultWeights(),
-				Debouncer:  deb,
-				DLQ:        dlq,
-				Topic:      eventsv1.TopicCandidateEmbedding,
-				CandText:   candText,
+				IndexStore:      matchIdx,
+				KNN:             matchKNN,
+				Store:           matchStore,
+				EventLog:        matchEvents,
+				Reranker:        rerank,
+				Weights:         matching.DefaultWeights(),
+				Debouncer:       deb,
+				DLQ:             dlq,
+				Topic:           eventsv1.TopicCandidateEmbedding,
+				CandText:        candText,
+				DefaultMinScore: cfg.MatchingMinScore,
 			})
 			svc.Init(ctx, frame.WithRegisterSubscriber(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI, cc))
 			log.Info("matching: candidate-change (Path C) enabled — embedding queue → gap-fill + rerank")
@@ -609,7 +610,7 @@ func main() {
 		billingGateway = billing.NewPaymentGateway(clients.Payment, billing.GatewayOptions{
 			PublicSiteURL:         cfg.PublicSiteURL,
 			CheckoutServiceURI:    cfg.CheckoutServiceURI,
-			CheckoutInternalToken:  cfg.CheckoutInternalToken,
+			CheckoutInternalToken: cfg.CheckoutInternalToken,
 			CheckoutPublicBaseURL: cfg.CheckoutPublicBaseURL,
 		})
 		log.WithField("payment_uri", cfg.BillingServiceURI).
@@ -622,7 +623,7 @@ func main() {
 			billingGateway = billing.NewPaymentGateway(nil, billing.GatewayOptions{
 				PublicSiteURL:         cfg.PublicSiteURL,
 				CheckoutServiceURI:    cfg.CheckoutServiceURI,
-				CheckoutInternalToken:  cfg.CheckoutInternalToken,
+				CheckoutInternalToken: cfg.CheckoutInternalToken,
 				CheckoutPublicBaseURL: cfg.CheckoutPublicBaseURL,
 			})
 			billingEnabled = true
@@ -737,16 +738,15 @@ func main() {
 		})))
 
 	// POST /_admin/matches/weekly_digest — Monday-morning Trustage cron.
-	// Re-runs the gap-fill match pipeline for every ACTIVE candidate so
-	// each gets refreshed candidate_matches + a candidates.matches.ready.v1
-	// envelope for the notification service. Skip-wires gracefully if the
-	// DB pool is unavailable (route not registered → cron logs a 404,
-	// same degraded behaviour as the other DB-gated routes).
+	// Re-runs gap-fill for paid/past_due/trial subscribers so each gets
+	// refreshed candidate_matches above MATCHING_MIN_SCORE + a
+	// candidates.matches.ready.v1 envelope for the notification service.
+	// Free/unpaid use weekly_jobs_digest instead.
 	if gdb := dbFn(ctx, false); gdb != nil {
 		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
 			activeLister := adminv1.NewRepoActiveCandidateLister(
 				func(ctx context.Context, limit int) ([]string, error) {
-					rows, lErr := candidateRepo.ListActive(ctx, limit)
+					rows, lErr := candidateRepo.ListPaidActive(ctx, limit)
 					if lErr != nil {
 						return nil, lErr
 					}
@@ -758,15 +758,16 @@ func main() {
 				}, 5000)
 			mux.Handle("POST /_admin/matches/weekly_digest",
 				httpmw.RequireAdmin(adminAuth, adminv1.MatchesWeeklyDigestHandler(adminv1.MatchesWeeklyDigestDeps{
-					Svc:      svc,
-					Active:   activeLister,
-					Index:    matching.NewIndexStore(sqlDB),
-					KNN:      matching.NewKNN(sqlDB),
-					Store:    matching.NewStore(sqlDB),
-					EventLog: matching.NewEventLog(sqlDB),
-					Reranker: matching.NoopReranker{},
-					Weights:  matching.DefaultWeights(),
-					Since:    30 * 24 * time.Hour,
+					Svc:             svc,
+					Active:          activeLister,
+					Index:           matching.NewIndexStore(sqlDB),
+					KNN:             matching.NewKNN(sqlDB),
+					Store:           matching.NewStore(sqlDB),
+					EventLog:        matching.NewEventLog(sqlDB),
+					Reranker:        matching.NoopReranker{},
+					Weights:         matching.DefaultWeights(),
+					Since:           30 * 24 * time.Hour,
+					DefaultMinScore: cfg.MatchingMinScore,
 				})))
 		} else {
 			log.WithError(dbErr).Warn("_admin/matches/weekly_digest: sql.DB unwrap failed; route not registered")
@@ -795,9 +796,13 @@ func main() {
 			Weights:          matching.DefaultWeights(),
 			Debouncer:        deb,
 			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
+			DefaultMinScore:  cfg.MatchingMinScore,
 		}
 		meV1.Mount(mux, extDeps, authMW)
-		log.Info("matching: /api/me/* routes enabled")
+		// Gateway-visible alias: SPA calls /matching/me/matches/refresh
+		// (same path shape as /me/subscription, /me/opportunities).
+		mux.Handle("POST /me/matches/refresh", authMW(meV1.RefreshMatchesHandler(extDeps)))
+		log.Info("matching: /api/me/* routes enabled + /me/matches/refresh")
 	}
 
 	// definitions.changed.v1 broadcast — invalidates the loader cache

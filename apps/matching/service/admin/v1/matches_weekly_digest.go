@@ -42,6 +42,19 @@ type MatchesWeeklyDigestDeps struct {
 	Weights  matching.Weights
 	// Since bounds the gap-fill look-back window. Defaults to 30 days.
 	Since time.Duration
+	// DefaultMinScore floors gap-fill when the index has no per-candidate
+	// threshold (MATCHING_MIN_SCORE). 0 → 0.45.
+	DefaultMinScore float64
+}
+
+func digestMinScore(indexScore, defaultScore float64) float64 {
+	if indexScore > 0 && indexScore <= 1 {
+		return indexScore
+	}
+	if defaultScore > 0 && defaultScore <= 1 {
+		return defaultScore
+	}
+	return 0.45
 }
 
 type matchesWeeklyDigestResponse struct {
@@ -53,11 +66,11 @@ type matchesWeeklyDigestResponse struct {
 }
 
 // MatchesWeeklyDigestHandler serves POST /_admin/matches/weekly_digest —
-// the Monday-morning Trustage cron. For every ACTIVE candidate it runs
-// the gap-fill match pipeline (reusing pkg/matching) so the candidate's
-// candidate_matches are refreshed, then emits one
-// candidates.matches.ready.v1 envelope per candidate for the downstream
-// notification service to deliver.
+// the Monday-morning Trustage cron. For every entitled subscriber (paid /
+// past_due / trial — see ListPaidActive) it runs the gap-fill match
+// pipeline (reusing pkg/matching) so candidate_matches are refreshed above
+// the quality threshold, then emits one candidates.matches.ready.v1
+// envelope per candidate for the downstream notification service weekly email.
 //
 // Per-candidate failures are logged + counted but do NOT abort the
 // sweep. Candidates without an embedding/index row are skipped — there's
@@ -123,7 +136,7 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 				Kinds:          idx.Kinds,
 				SalaryFloorUSD: idx.SalaryFloorUSD,
 				Since:          cutoff,
-				MinScore:       idx.MinScore,
+				MinScore:       digestMinScore(idx.MinScore, deps.DefaultMinScore),
 			}, gapDeps)
 			if runErr != nil {
 				log.WithError(runErr).WithField("candidate_id", id).

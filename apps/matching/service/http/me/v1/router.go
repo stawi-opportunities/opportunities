@@ -24,6 +24,7 @@ func Mount(mux *http.ServeMux, deps *Deps, auth func(http.Handler) http.Handler)
 	mux.Handle("GET /api/me", auth(meHandler(deps)))
 
 	mux.Handle("GET /api/me/matches", auth(listMatches(deps)))
+	mux.Handle("POST /api/me/matches/refresh", auth(idem("matches.refresh", refreshMatches(deps))))
 	mux.Handle("GET /api/me/matches/{match_id}", auth(getMatch(deps)))
 	mux.Handle("POST /api/me/matches/{match_id}/dismiss",
 		auth(idem("matches.dismiss", dismissMatch(deps))))

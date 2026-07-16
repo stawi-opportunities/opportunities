@@ -66,10 +66,17 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
   };
 }
 
-export function OpportunitiesFeed() {
+export function OpportunitiesFeed({
+  initialFilter,
+}: {
+  /** When set (e.g. matches section), prefer this over the URL on first paint. */
+  initialFilter?: OpportunityFilter;
+} = {}) {
   const { t } = useI18n();
   const { push: toast } = useToast();
-  const [filter, setFilter] = useState<OpportunityFilter>(readFilterFromURL);
+  const [filter, setFilter] = useState<OpportunityFilter>(
+    () => initialFilter ?? readFilterFromURL()
+  );
   const [feedFilters, setFeedFilters] = useState<FeedFilters>(readFiltersFromURL);
   const [sort, setSort] = useState<SearchParams['sort']>('recent');
   const [items, setItems] = useState<FeedItem[]>([]);

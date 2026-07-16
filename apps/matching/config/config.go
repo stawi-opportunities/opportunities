@@ -81,9 +81,13 @@ type CandidatesConfig struct {
 	// gets gap-fill matches after CV embed without an extra config flip.
 	// Set MATCHING_CANDIDATE_CHANGE_ENABLED=false to disable in emergency.
 	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"true"`
-	MatchingRerankerEnabled        bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
-	MatchingDLQThreshold           int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
-	MatchingDebounceTTLSeconds     int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
+	// MatchingMinScore is the default cosine-combined score floor for new
+	// candidate_match_indexes rows (0–1). Only opportunities scoring at or
+	// above this threshold become matches. Per-candidate rules can raise it.
+	MatchingMinScore           float64 `env:"MATCHING_MIN_SCORE" envDefault:"0.45"`
+	MatchingRerankerEnabled    bool    `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
+	MatchingDLQThreshold       int     `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
+	MatchingDebounceTTLSeconds int     `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
 	// PooledReranker bounds: a cloud cross-encoder over RERANK_TOP_K docs
 	// takes seconds, so the per-call timeout must be generous (the old
 	// hardcoded 1s timed out → reranker silently fell back to bi-encoder).

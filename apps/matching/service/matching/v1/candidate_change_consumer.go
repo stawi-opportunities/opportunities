@@ -89,6 +89,10 @@ type CandidateChangeConsumerDeps struct {
 	// CandText composes the cross-encoder query text from candidate_profiles.
 	// Optional: nil disables reranking (QueryText stays "").
 	CandText candidateTextLookup
+	// DefaultMinScore floors automatic match generation (MATCHING_MIN_SCORE).
+	// 0 falls back to 0.45 so paid users still receive quality matches without
+	// starving the queue on a too-high default.
+	DefaultMinScore float64
 }
 
 // CandidateChangeConsumer subscribes to one trigger topic and runs Path C.
@@ -141,12 +145,17 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	// (folds in what the standalone indexer did) so the index always has a
 	// current vector for fan-out + future preference-change passes. Preserve
 	// any existing prefs; default a brand-new row using plan entitlements.
+	defaultMin := c.deps.DefaultMinScore
+	if defaultMin <= 0 || defaultMin > 1 {
+		defaultMin = 0.45
+	}
+
 	if len(vector) > 0 {
 		ent := planEntitlements(ctx, c.deps.IndexStore, candidateID)
 		ci := matching.CandidateIndex{
 			CandidateID: candidateID,
 			Embedding:   vector,
-			MinScore:    0.5,
+			MinScore:    defaultMin,
 			DailyCap:    ent.DailyCap,
 			WeeklyCap:   ent.WeeklyCap,
 			Kinds:       []string{"job"},
@@ -154,7 +163,9 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		}
 		if existing, gErr := c.deps.IndexStore.Get(ctx, candidateID); gErr == nil && existing != nil {
 			// Preserve rules-tuned prefs; only fill caps from plan when unset.
-			ci.MinScore = existing.MinScore
+			if existing.MinScore > 0 {
+				ci.MinScore = existing.MinScore
+			}
 			if existing.DailyCap > 0 {
 				ci.DailyCap = existing.DailyCap
 			}
@@ -179,6 +190,9 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		change.Kinds = idx.Kinds
 		change.SalaryFloorUSD = idx.SalaryFloorUSD
 		change.MinScore = idx.MinScore
+		if change.MinScore <= 0 {
+			change.MinScore = defaultMin
+		}
 	case errors.Is(err, matching.ErrNotFound) && len(vector) > 0:
 		// Race: the index row hasn't been written yet but the embedding event
 		// carries the vector. Run with sensible defaults so the candidate still
@@ -186,7 +200,7 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		util.Log(ctx).WithField("candidate_id", candidateID).
 			Debug("candidate_change: no index row yet; using event vector + default prefs")
 		change.Embedding = vector
-		change.MinScore = 0.5
+		change.MinScore = defaultMin
 		change.Kinds = []string{"job"}
 	case errors.Is(err, matching.ErrNotFound):
 		util.Log(ctx).WithField("candidate_id", candidateID).

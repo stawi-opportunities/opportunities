@@ -31,9 +31,23 @@ type Deps struct {
 	Weights          matching.Weights
 	Debouncer        matching.Debouncer
 	IdempotencyStore *applications.IdempotencyStore
+	// DefaultMinScore floors on-demand gap-fill when the index has no
+	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.45.
+	DefaultMinScore float64
 
 	Now   func() time.Time
 	NewID func() string
+}
+
+// effectiveMinScore returns a usable 0–1 threshold.
+func effectiveMinScore(indexScore, defaultScore float64) float64 {
+	if indexScore > 0 && indexScore <= 1 {
+		return indexScore
+	}
+	if defaultScore > 0 && defaultScore <= 1 {
+		return defaultScore
+	}
+	return 0.45
 }
 
 func (d *Deps) now() time.Time {
@@ -368,6 +382,88 @@ func putRules(d *Deps) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rr.Document)
+	}
+}
+
+// ---- POST /api/me/matches/refresh (and /me/matches/refresh) ----
+// On-demand gap-fill for a paid active candidate so the dashboard can
+// collect matches immediately after payment / CV upload without waiting
+// for the Monday Trustage digest.
+
+// RefreshMatchesHandler is the exported form used for the gateway-visible
+// /me/matches/refresh alias in main.
+func RefreshMatchesHandler(d *Deps) http.HandlerFunc {
+	return refreshMatches(d)
+}
+
+func refreshMatches(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			httpmw.ProblemJSON(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST")
+			return
+		}
+		ctx := r.Context()
+		cand := httpmw.CandidateFromContext(ctx)
+		if d.DB == nil || d.IndexStore == nil || d.KNN == nil || d.Matches == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "matching_unavailable", "match pipeline not configured")
+			return
+		}
+		// Paid (or past_due still entitled) only — free users use public search.
+		var sub string
+		if err := d.DB.QueryRowContext(ctx,
+			`SELECT COALESCE(subscription,'') FROM candidate_profiles WHERE id = $1`, cand,
+		).Scan(&sub); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
+				return
+			}
+			ProblemFromError(w, err)
+			return
+		}
+		switch strings.ToLower(strings.TrimSpace(sub)) {
+		case "paid", "past_due", "trial":
+			// ok
+		default:
+			httpmw.ProblemJSON(w, http.StatusPaymentRequired, "subscription_required",
+				"active subscription required to refresh matches")
+			return
+		}
+
+		idx, err := d.IndexStore.Get(ctx, cand)
+		if err != nil || idx == nil || len(idx.Embedding) == 0 {
+			httpmw.ProblemJSON(w, http.StatusConflict, "no_embedding",
+				"upload a CV and wait for embedding before refreshing matches")
+			return
+		}
+		minScore := effectiveMinScore(idx.MinScore, d.DefaultMinScore)
+		since := time.Now().UTC().Add(-30 * 24 * time.Hour)
+		res, runErr := matching.GapFill(ctx, matching.GapFillInput{
+			CandidateID:    cand,
+			Embedding:      idx.Embedding,
+			Countries:      idx.Countries,
+			Kinds:          idx.Kinds,
+			SalaryFloorUSD: idx.SalaryFloorUSD,
+			Since:          since,
+			MinScore:       minScore,
+		}, matching.GapFillDeps{
+			KNN:      d.KNN,
+			Store:    d.Matches,
+			EventLog: d.MatchEvents,
+			Reranker: d.Reranker,
+			Weights:  d.Weights,
+		})
+		if runErr != nil {
+			ProblemFromError(w, runErr)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":              true,
+			"matches_written": res.MatchesWritten,
+			"opps_scanned":    res.OppsScanned,
+			"run_id":          res.RunID,
+			"min_score":       minScore,
+		})
 	}
 }
 

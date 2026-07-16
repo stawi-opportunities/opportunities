@@ -463,6 +463,45 @@ export async function applyToOpportunity(
   });
 }
 
+/** Response from POST /matching/me/matches/refresh (on-demand gap-fill). */
+export interface MatchRefreshResult {
+  ok: boolean;
+  matches_written: number;
+  opps_scanned: number;
+  run_id?: string;
+  min_score?: number;
+}
+
+/**
+ * POST /matching/me/matches/refresh — re-run reverse-KNN gap-fill for the
+ * authenticated paid candidate. Powers "Find matches now" on the dashboard.
+ */
+export async function refreshMyMatches(): Promise<MatchRefreshResult> {
+  try {
+    return await authRuntime().fetch<MatchRefreshResult>('/matching/me/matches/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+      timeoutMs: 60_000,
+    });
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    return authRuntime().fetch<MatchRefreshResult>('/matching/api/me/matches/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+      timeoutMs: 60_000,
+    });
+  }
+}
+
+function isNotFound(err: unknown): boolean {
+  const code =
+    err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+  const msg = err instanceof Error ? err.message : String(err);
+  return code === 'API_NOT_FOUND' || /404|not found/i.test(msg);
+}
+
 // ΓöÇΓöÇ helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function getCandidatesOrigin(): string {

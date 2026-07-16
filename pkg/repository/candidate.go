@@ -89,6 +89,27 @@ func (r *CandidateRepository) ListActive(ctx context.Context, limit int) ([]*dom
 	return candidates, err
 }
 
+// ListPaidActive returns ACTIVE candidates entitled to match digests:
+// paid, past_due (dunning grace), and trial. Free/cancelled are excluded —
+// they use the unpaid weekly jobs digest instead.
+func (r *CandidateRepository) ListPaidActive(ctx context.Context, limit int) ([]*domain.CandidateProfile, error) {
+	if limit <= 0 {
+		limit = 5000
+	}
+	var candidates []*domain.CandidateProfile
+	err := r.db(ctx, true).
+		Where("status = ?", domain.CandidateActive).
+		Where("subscription IN ?", []domain.SubscriptionTier{
+			domain.SubscriptionPaid,
+			domain.SubscriptionPastDue,
+			domain.SubscriptionTrial,
+		}).
+		Order("id ASC").
+		Limit(limit).
+		Find(&candidates).Error
+	return candidates, err
+}
+
 // ListAll returns all candidate profiles with pagination.
 func (r *CandidateRepository) ListAll(ctx context.Context, limit, offset int) ([]*domain.CandidateProfile, error) {
 	var candidates []*domain.CandidateProfile
