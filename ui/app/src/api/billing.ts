@@ -1,11 +1,9 @@
 import type { PlanId } from '@/utils/plans';
 import { authRuntime } from '@/auth/runtime';
 
-// Billing API calls. Two payment routes exist depending on the
-// user's geography: Polar.sh (card / international) and mobile money
-// (M-PESA / Airtel / MTN). The backend selects the route at checkout
-// creation time using CF-IPCountry; the UI just follows the
-// redirect_url or polls on a prompt_id for STK-push flows.
+// Billing API — Flutterwave-only checkout.
+// Happy path: createCheckout → redirect_url → Flutterwave →
+// /dashboard/?billing=success&prompt_id=… → activation + celebrate.
 
 // ── Plans ─────────────────────────────────────────────────────────
 
@@ -19,7 +17,7 @@ export interface BillingPlan {
   usd_cents: number;
 }
 
-export type BillingRoute = 'POLAR' | 'M-PESA' | 'AIRTEL' | 'MTN';
+export type BillingRoute = 'FLUTTERWAVE';
 
 export interface BillingPlansResponse {
   country: string;
@@ -59,7 +57,6 @@ export interface CheckoutCreateInput {
   plan_id: PlanId;
   email?: string;
   phone?: string;
-  route_hint?: string;
 }
 
 /** POST /billing/checkout — auth'd. */
@@ -68,7 +65,6 @@ export async function createCheckout(input: CheckoutCreateInput): Promise<Checko
     plan_id: input.plan_id,
     email: input.email ?? '',
     phone: input.phone ?? '',
-    route_hint: input.route_hint ?? '',
   });
   try {
     return await authRuntime().fetch('/matching/billing/checkout', {

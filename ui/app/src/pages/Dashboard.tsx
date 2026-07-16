@@ -81,12 +81,21 @@ export default function Dashboard() {
     if (state !== 'authenticated') return;
     if (subQ.isLoading) return;
     if (subQ.data?.status === 'active') return;
-    // Allow the dashboard to host PendingCheckoutPoller while a payment
-    // rail (e.g. M-Pesa) is still confirming — bouncing to onboarding
-    // mid-poll leaves the user stuck unpaid after a successful charge.
+    // Allow the dashboard to host PendingCheckoutPoller while Flutterwave
+    // is still confirming, after return (?billing=success), or when the
+    // user needs to retry (?billing=failed). Bouncing to onboarding
+    // mid-poll leaves the user stuck unpaid after a charge.
     const params = new URLSearchParams(window.location.search);
-    if (params.get('billing') === 'pending' && params.get('prompt_id')) {
+    const billing = params.get('billing');
+    if (billing === 'pending' || billing === 'success' || billing === 'failed') {
       return;
+    }
+    try {
+      if (localStorage.getItem('stawi.billing.pending_prompt_id')) {
+        return;
+      }
+    } catch {
+      /* private mode */
     }
     window.location.assign('/onboarding/');
   }, [state, subQ.isLoading, subQ.data?.status]);

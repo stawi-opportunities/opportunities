@@ -35,16 +35,15 @@ type billingPlansResponse struct {
 
 // PlansHandler serves GET /billing/plans. Public (no auth) — the UI fetches
 // it with credentials omitted. Returns the static plan catalog plus the
-// route the caller's country would take, so the pricing page can show the
-// right CTA copy (card vs mobile money) up front. country is sniffed from
-// CF-IPCountry; route falls back to POLAR.
+// payment route (always Flutterwave). country is sniffed from CF-IPCountry
+// for display only.
 func PlansHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		country := strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 		plans := billing.Catalog()
 		out := billingPlansResponse{
 			Country: country,
-			Route:   string(billing.RouteForCountry(country, "")),
+			Route:   string(billing.RouteFlutterwave),
 			Plans:   make([]billingPlan, 0, len(plans)),
 		}
 		for _, p := range plans {
@@ -74,33 +73,32 @@ type CheckoutDeps struct {
 	Store *billing.Store
 }
 
-// checkoutInput mirrors ui/app/src/api/billing.ts CheckoutCreateInput.
+// checkoutInput is the SPA body for POST /billing/checkout.
 type checkoutInput struct {
-	PlanID    string `json:"plan_id"`
-	Email     string `json:"email"`
-	Phone     string `json:"phone"`
-	RouteHint string `json:"route_hint"`
+	PlanID string `json:"plan_id"`
+	Email  string `json:"email"`
+	Phone  string `json:"phone"`
 }
 
-// checkoutResponse mirrors ui/app/src/api/billing.ts CheckoutResponse.
+// checkoutResponse is the SPA envelope for POST /billing/checkout.
+// Happy path: status=redirect + redirect_url → browser goes to Flutterwave.
 type checkoutResponse struct {
 	Status         string `json:"status"`
 	Route          string `json:"route"`
 	RedirectURL    string `json:"redirect_url"`
 	PromptID       string `json:"prompt_id"`
 	SubscriptionID string `json:"subscription_id"`
-	Amount         int    `json:"amount"`
-	Currency       string `json:"currency"`
-	Country        string `json:"country"`
 	PlanID         string `json:"plan_id"`
 	Error          string `json:"error"`
 }
 
-// CheckoutHandler serves POST /billing/checkout. Authenticated: the
-// candidate is read from the JWT subject (wrap with httpmw.CandidateAuth).
-// It validates the plan against the server catalog, asks the gateway to
-// create a payment, persists a pending checkout row, and returns the
-// redirect|pending|paid|failed envelope billing.ts expects.
+// CheckoutHandler serves POST /billing/checkout (auth'd).
+//
+// Required steps:
+//  1. Validate plan
+//  2. Gateway.CreateCheckout (Flutterwave prompt + short-poll URL)
+//  3. Persist checkout ledger row (best-effort)
+//  4. Return {status, redirect_url, prompt_id} for the SPA
 func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -136,7 +134,6 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			Country:     country,
 			Email:       in.Email,
 			Phone:       in.Phone,
-			RouteHint:   in.RouteHint,
 		})
 		if errors.Is(err, billing.ErrGatewayUnavailable) {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "billing_unavailable", "payment provider is not configured")
@@ -148,10 +145,7 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			return
 		}
 
-		// Persist a pending row so the poller, webhook and reconciler can
-		// converge on it. Best-effort: a persistence failure must not lose
-		// the in-flight payment, so we log and still return the gateway
-		// result. Non-pending terminal results are also recorded.
+		// Ledger for ownership (status poll), webhook activation, reconciler.
 		if deps.Store != nil && res.PromptID != "" {
 			persistStatus := res.Status
 			if persistStatus == billing.StatusRedirect {
@@ -182,9 +176,6 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			RedirectURL:    res.RedirectURL,
 			PromptID:       res.PromptID,
 			SubscriptionID: res.SubscriptionID,
-			Amount:         plan.Amount,
-			Currency:       plan.Currency,
-			Country:        country,
 			PlanID:         string(plan.ID),
 			Error:          res.Error,
 		})

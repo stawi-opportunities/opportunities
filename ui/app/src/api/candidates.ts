@@ -90,7 +90,7 @@ export interface BillingPlan {
   usd_cents: number;
 }
 
-export type BillingRoute = 'POLAR' | 'M-PESA' | 'AIRTEL' | 'MTN';
+export type BillingRoute = 'FLUTTERWAVE';
 
 export interface BillingPlansResponse {
   country: string;
@@ -126,10 +126,9 @@ export interface CheckoutCreateInput {
   plan_id: PlanId;
   email?: string;
   phone?: string;
-  route_hint?: string;
 }
 
-/** POST /billing/checkout ΓÇö auth'd. */
+/** POST /billing/checkout — auth'd. */
 export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
   return authRuntime().fetch('/matching/billing/checkout', {
     method: 'POST',
@@ -138,7 +137,6 @@ export async function createCheckout(input: CheckoutCreateInput): Promise<Checko
       plan_id: input.plan_id,
       email: input.email ?? '',
       phone: input.phone ?? '',
-      route_hint: input.route_hint ?? '',
     }),
   });
 }

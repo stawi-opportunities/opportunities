@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { createCheckout } from '@/api/billing';
+import { startCheckoutAndNavigate } from '@/utils/checkout';
 import { planById, type PlanId } from '@/utils/plans';
 
 export function CompletePaymentPanel({ plan, status }: { plan: PlanId | null; status: string }) {
@@ -54,29 +54,7 @@ function RetryCheckoutButton({ plan }: { plan: PlanId }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await createCheckout({ plan_id: plan });
-      if (res.prompt_id) {
-        try {
-          localStorage.setItem('stawi.billing.pending_prompt_id', res.prompt_id);
-        } catch {
-          /* private mode */
-        }
-      }
-      if (res.status === 'redirect' && res.redirect_url) {
-        window.location.assign(res.redirect_url);
-        return;
-      }
-      if (res.status === 'pending' && res.prompt_id) {
-        window.location.assign(
-          `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(res.prompt_id)}`
-        );
-        return;
-      }
-      if (res.status === 'paid') {
-        window.location.assign('/dashboard/?billing=success');
-        return;
-      }
-      throw new Error(res.error || 'Checkout did not complete.');
+      await startCheckoutAndNavigate({ plan_id: plan });
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Checkout failed. Please try again.');
       setBusy(false);

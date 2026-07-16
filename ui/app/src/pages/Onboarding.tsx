@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/providers/AuthProvider';
 import { fetchMeCV, submitOnboarding } from '@/api/profile';
-import { createCheckout } from '@/api/billing';
 import { PLANS, planById, type PlanId } from '@/utils/plans';
+import { startCheckoutAndNavigate } from '@/utils/checkout';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
   fetchMeSubscription,
@@ -201,33 +201,10 @@ export default function Onboarding() {
       );
       void submitOnboarding(profilePayload).catch(() => undefined);
 
-      // Open the payment provider (or STK pending) immediately.
-      const checkout = await createCheckout({ plan_id: plan });
-      if (checkout.prompt_id) {
-        try {
-          localStorage.setItem('stawi.billing.pending_prompt_id', checkout.prompt_id);
-        } catch {
-          /* private mode */
-        }
-      }
-      if (checkout.status === 'redirect' && checkout.redirect_url) {
-        window.location.assign(checkout.redirect_url);
-        return;
-      }
-      if (checkout.status === 'pending' && checkout.prompt_id) {
-        window.location.assign(
-          `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(checkout.prompt_id)}`
-        );
-        return;
-      }
-      if (checkout.status === 'paid') {
-        window.location.assign('/dashboard/?billing=success');
-        return;
-      }
-      setSubmitError(checkout.error || 'Could not start checkout. Please try again.');
+      // Steps 1–3: create checkout → redirect to Flutterwave (or pending recovery).
+      await startCheckoutAndNavigate({ plan_id: plan });
     } catch (e) {
       setSubmitError(e instanceof Error && e.message ? e.message : t('error.somethingWrong'));
-    } finally {
       setSubmitting(false);
     }
   }

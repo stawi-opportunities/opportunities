@@ -57,15 +57,14 @@ func TestPlanByID_And_Normalize(t *testing.T) {
 
 // --- route selection ---------------------------------------------------
 
-func TestRouteForCountry(t *testing.T) {
+func TestRouteForCountry_AlwaysFlutterwave(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, billing.RouteMpesa, billing.RouteForCountry("KE", ""))
-	require.Equal(t, billing.RouteMTN, billing.RouteForCountry("ug", ""))
-	require.Equal(t, billing.RoutePolar, billing.RouteForCountry("US", ""))
-	// explicit hint overrides country
-	require.Equal(t, billing.RoutePolar, billing.RouteForCountry("KE", "POLAR"))
-	// invalid hint falls back to country mapping
-	require.Equal(t, billing.RouteMpesa, billing.RouteForCountry("KE", "garbage"))
+	// No geo-routing / multi-rail evaluation — always Flutterwave.
+	for _, country := range []string{"", "KE", "UG", "US", "GH"} {
+		require.Equal(t, billing.RouteFlutterwave, billing.RouteForCountry(country, ""))
+		require.Equal(t, billing.RouteFlutterwave, billing.RouteForCountry(country, "MTN"))
+		require.Equal(t, billing.RouteFlutterwave, billing.RouteForCountry(country, "POLAR"))
+	}
 }
 
 // --- payment gateway adapter ------------------------------------------
@@ -74,7 +73,7 @@ type fakePayment struct {
 	linkResp   *commonv1.StatusResponse
 	promptResp *commonv1.StatusResponse
 	statusResp *commonv1.StatusResponse
-	// statusSequence lets Polar short-poll tests return evolving statuses.
+	// statusSequence lets short-poll tests return evolving statuses.
 	statusSequence []*commonv1.StatusResponse
 	statusCalls    int
 	err            error
@@ -125,16 +124,16 @@ func proPlan(t *testing.T) billing.Plan {
 	return p
 }
 
-func TestPaymentGateway_PolarUsesInitiatePromptAndPollsCheckoutURL(t *testing.T) {
+func TestPaymentGateway_FlutterwaveUsesInitiatePromptAndPollsCheckoutURL(t *testing.T) {
 	t.Parallel()
 	queued := commonv1.StatusResponse_builder{
-		Id:     "chk_polar_1",
+		Id:     "chk_fw_1",
 		Status: commonv1.STATUS_QUEUED,
 	}.Build()
-	urlFields, err := structFields(map[string]string{"checkout_url": "https://polar.sh/checkout/abc"})
+	urlFields, err := structFields(map[string]string{"checkout_url": "https://checkout.flutterwave.com/v3/hosted/pay/abc"})
 	require.NoError(t, err)
 	ready := commonv1.StatusResponse_builder{
-		Id:     "chk_polar_1",
+		Id:     "chk_fw_1",
 		Status: commonv1.STATUS_IN_PROCESS,
 		Extras: urlFields,
 	}.Build()
@@ -144,47 +143,27 @@ func TestPaymentGateway_PolarUsesInitiatePromptAndPollsCheckoutURL(t *testing.T)
 	}
 	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
 		PublicSiteURL:        "https://opportunities.stawi.org",
-		PolarProducts:        map[billing.PlanID]string{billing.PlanPro: "prod_pro_1"},
 		RedirectPollAttempts: 5,
 		RedirectPollInterval: time.Millisecond,
 	})
 
 	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
-		CandidateID: "cand_1", Plan: proPlan(t), Country: "US", Email: "a@b.co",
+		CandidateID: "cand_1", Plan: proPlan(t), Country: "KE",
+		Email: "a@b.co", Phone: "+254700000000",
 	})
 	require.NoError(t, err)
 	require.True(t, fp.sawPrompt)
 	require.False(t, fp.sawLink)
-	require.Equal(t, "polar", fp.lastPrompt.GetRoute())
-	require.Equal(t, "prod_pro_1", fp.lastPrompt.GetExtra().GetFields()["product_id"].GetStringValue())
+	require.Equal(t, "flutterwave", fp.lastPrompt.GetRoute())
 	require.Equal(t, "a@b.co", fp.lastPrompt.GetExtra().GetFields()["customer_email"].GetStringValue())
-	require.Contains(t, fp.lastPrompt.GetExtra().GetFields()["success_url"].GetStringValue(), "/dashboard/?billing=success")
-	require.Equal(t, billing.RoutePolar, res.Route)
+	successURL := fp.lastPrompt.GetExtra().GetFields()["success_url"].GetStringValue()
+	require.Contains(t, successURL, "/dashboard/")
+	require.Contains(t, successURL, "billing=success")
+	require.Contains(t, successURL, "prompt_id=")
+	require.Equal(t, billing.RouteFlutterwave, res.Route)
 	require.Equal(t, billing.StatusRedirect, res.Status)
-	require.Equal(t, "https://polar.sh/checkout/abc", res.RedirectURL)
-	require.Equal(t, "chk_polar_1", res.PromptID)
-}
-
-func TestPaymentGateway_MobileMoneyRouteIsPending(t *testing.T) {
-	t.Parallel()
-	fp := &fakePayment{promptResp: commonv1.StatusResponse_builder{
-		Id:     "stk-1",
-		Status: commonv1.STATUS_IN_PROCESS,
-	}.Build()}
-	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{})
-
-	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
-		CandidateID: "cand_2", Plan: proPlan(t), Country: "KE", Phone: "+254700000000",
-	})
-	require.NoError(t, err)
-	require.True(t, fp.sawPrompt)
-	require.False(t, fp.sawLink)
-	require.Equal(t, "mpesa", fp.lastPrompt.GetRoute())
-	require.Equal(t, "+254700000000", fp.lastPrompt.GetSource().GetContactId())
-	require.Equal(t, "+254700000000", fp.lastPrompt.GetRecipient().GetContactId())
-	require.Equal(t, billing.RouteMpesa, res.Route)
-	require.Equal(t, billing.StatusPending, res.Status)
-	require.Equal(t, "stk-1", res.PromptID)
+	require.Equal(t, "https://checkout.flutterwave.com/v3/hosted/pay/abc", res.RedirectURL)
+	require.Equal(t, "chk_fw_1", res.PromptID)
 }
 
 func TestPaymentGateway_StatusMapping(t *testing.T) {

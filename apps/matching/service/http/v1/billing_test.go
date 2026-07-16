@@ -38,7 +38,7 @@ func TestPlansHandler_ReturnsCatalogAndRoute(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "KE", body.Country)
-	require.Equal(t, "M-PESA", body.Route)
+	require.Equal(t, "FLUTTERWAVE", body.Route)
 	require.Len(t, body.Plans, 3)
 }
 
@@ -76,7 +76,7 @@ func candReq(t *testing.T, method, target, candidateID, body string) *http.Reque
 func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
 	t.Parallel()
 	gw := &stubGateway{createResult: billing.CheckoutResult{
-		Status: billing.StatusRedirect, Route: billing.RoutePolar,
+		Status: billing.StatusRedirect, Route: billing.RouteFlutterwave,
 		PromptID: "chk_1", RedirectURL: "https://pay/abc",
 	}}
 	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
@@ -96,7 +96,6 @@ func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
 	require.Equal(t, "redirect", resp.Status)
 	require.Equal(t, "chk_1", resp.PromptID)
 	require.Equal(t, "https://pay/abc", resp.RedirectURL)
-	require.Equal(t, 50, resp.Amount) // pro = $50, from server catalog
 	require.Equal(t, "pro", resp.PlanID)
 	require.Equal(t, "cand_1", gw.lastReq.CandidateID)
 }

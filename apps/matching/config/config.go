@@ -119,12 +119,7 @@ type CandidatesConfig struct {
 	// BillingReconcileBatch bounds how many pending checkouts one
 	// POST /_admin/billing/reconcile sweep examines.
 	BillingReconcileBatch int `env:"BILLING_RECONCILE_BATCH" envDefault:"200"`
-	// PublicSiteURL is the candidate SPA origin used for Polar success_url
-	// (…/dashboard/?billing=success) after hosted checkout.
+	// PublicSiteURL is the candidate SPA origin used for Flutterwave
+	// success_url (…/dashboard/?billing=success) after hosted checkout.
 	PublicSiteURL string `env:"PUBLIC_SITE_URL" envDefault:"https://opportunities.stawi.org"`
-	// Polar product ids (prod_…) per tier — required for card/Polar checkout.
-	// Provisioned in Polar dashboard; empty means Polar initiate has no product.
-	PolarProductStarter string `env:"POLAR_PRODUCT_STARTER" envDefault:""`
-	PolarProductPro     string `env:"POLAR_PRODUCT_PRO" envDefault:""`
-	PolarProductManaged string `env:"POLAR_PRODUCT_MANAGED" envDefault:""`
 }

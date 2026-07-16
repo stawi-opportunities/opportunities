@@ -606,23 +606,11 @@ func main() {
 	}
 	billingEnabled := clients != nil && clients.Payment != nil
 	if billingEnabled {
-		polarProducts := map[billing.PlanID]string{}
-		if v := strings.TrimSpace(cfg.PolarProductStarter); v != "" {
-			polarProducts[billing.PlanStarter] = v
-		}
-		if v := strings.TrimSpace(cfg.PolarProductPro); v != "" {
-			polarProducts[billing.PlanPro] = v
-		}
-		if v := strings.TrimSpace(cfg.PolarProductManaged); v != "" {
-			polarProducts[billing.PlanManaged] = v
-		}
 		billingGateway = billing.NewPaymentGateway(clients.Payment, billing.GatewayOptions{
 			PublicSiteURL: cfg.PublicSiteURL,
-			PolarProducts: polarProducts,
 		})
 		log.WithField("uri", cfg.BillingServiceURI).
-			WithField("polar_products", len(polarProducts)).
-			Info("billing: payment gateway enabled")
+			Info("billing: payment gateway enabled (flutterwave only)")
 	} else {
 		log.Warn("billing: BILLING_SERVICE_URI unset or payment client unavailable — checkout degraded (plans still served)")
 	}
