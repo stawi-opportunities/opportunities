@@ -13,7 +13,8 @@
 | Dunning | retry CSV `0,24,72,168`; max attempts **archives** Trustage workflow |
 | Soft cancel | Reschedule to period-end finalize; archive after hard cancel |
 | Bulk renew | **Removed** — only `ProcessSubscription(id)` via Trustage one-shot |
-| Instrument pin + first schedule | `ConfirmPayment` → pin COF + **Ensure** Trustage one-shot |
+| Settlement | Per-invoice Trustage `billing.invoice.settle.{id}` — no bulk invoice scan |
+| Instrument pin + first schedule | `ConfirmPayment` → pin COF + **Ensure** Trustage renew one-shot |
 | Flutterwave | v4 OAuth only for token charges |
 | Product | `pkg/billing` Collection + lifecycle mirror |
 

@@ -9,36 +9,41 @@ reconciliation, crawl-run/watchdog recovery, source health and quality, and
 recipe backfill (for deterministic extraction recipes — not crawl-time AI
 stubs). Candidate workflows cover CV freshness and weekly match/job digests.
 
-### Billing (automatic recurring)
+### Billing (automatic recurring + settlement)
 
-**Preferred model: one Trustage reminder per subscription** (created by
-service-billing — not a global “scan all subs” cron).
+**Per-entity Trustage one-shots** created by service-billing — **no bulk scans**.
+
+#### Renewals (`billing.subscription.renew.{subscriptionId}`)
 
 | When | What billing does |
 |------|-------------------|
-| First successful pay | Create/activate `billing.subscription.renew.{id}` one-shot at `periodEnd − lead` |
-| COF success | Advance period; re-arm one-shot for next period |
-| COF failure | Increment attempt; re-arm at next dunning slot (`0,24,72,168`h) |
-| Soft cancel | Replace rebill with finalize one-shot at `periodEnd` |
-| Max attempts / hard cancel | **Archive** the Trustage workflow (no more fires) |
+| First successful pay | Ensure one-shot at `periodEnd − lead` |
+| COF success | Re-arm for next period |
+| COF failure | Re-arm at next dunning slot (`0,24,72,168`h) |
+| Soft cancel | Finalize one-shot at `periodEnd` |
+| Max attempts / hard cancel | **Archive** workflow |
 
-Trustage fires → `POST {BILLING_INTERNAL_URL}/_internal/billing/subscriptions/{id}/renew`
-(processes **only that** subscription, then re-plans from properties).
+Fire → `POST …/subscriptions/{id}/renew` (that sub only).
+
+#### Settlement (`billing.invoice.settle.{invoiceId}`)
+
+| When | What billing does |
+|------|-------------------|
+| Checkout opens | Ensure first poll (~2m; configurable) |
+| Session not completed | Re-arm next delay (`2,5,15,30,60,120`m) |
+| Settled / paid / voided | **Archive** workflow |
+| Max attempts | **Archive** (stop polling) |
+
+Fire → `POST …/invoices/{id}/settle` (that invoice only).
 
 | Static definition | Schedule | Target |
 |-------------------|----------|--------|
-| `billing-reconcile.json` | `*/2 * * * *` | Matching pending checkout activation safety net |
-| `billing-settle.json` | `*/2 * * * *` | Billing settle abandoned hosted sessions |
+| `billing-reconcile.json` | `*/2 * * * *` | Matching pending **product** checkout activation |
+| `billing-settle.json` | *(none)* | Doc-only; real settle workflows are dynamic per invoice |
 
-There is **no** bulk subscription renew cron. Every rebill is a per-sub Trustage
-workflow created by service-billing.
-
-Settlement (hosted checkout abandon recovery) may use an in-process ticker
-(default 60s) or Trustage settle — that path is invoice/session scoped, not
-“scan all subscriptions”.
-
-Dunning: `BILLING_RENEWAL_RETRY_DELAYS_HOURS` (default `0,24,72,168`) and
-`BILLING_RENEWAL_MAX_ATTEMPTS` (default 4). Flutterwave **v4 OAuth only** for COF.
+Dunning renew: `BILLING_RENEWAL_RETRY_DELAYS_HOURS` / `BILLING_RENEWAL_MAX_ATTEMPTS`.  
+Settle polls: `BILLING_SETTLEMENT_RETRY_DELAYS_MINUTES` / `BILLING_SETTLEMENT_MAX_ATTEMPTS`.  
+Flutterwave **v4 OAuth only** for COF renewals.
 
 The crawler migration job synchronizes every JSON definition in this directory
 through Trustage. Definitions and their schedules are idempotent.

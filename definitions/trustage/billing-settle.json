@@ -1,28 +1,23 @@
 {
   "version": "1.0",
-  "name": "opportunities.billing.settle",
-  "description": "Every 2 minutes: trigger service-billing settlement sweeper (auto-confirm completed hosted checkout sessions when the browser abandon return path). Complements matching billing-reconcile.",
+  "name": "opportunities.billing.settle.note",
+  "description": "DOCUMENTATION ONLY — settlement is no longer a bulk Trustage cron. service-billing creates one Trustage workflow per open checkout invoice (billing.invoice.settle.{invoiceId}) when checkout opens, and POSTs /_internal/billing/invoices/{id}/settle on each fire. This static definition has no schedule so it does not run.",
   "input": {},
   "config": {},
-  "timeout": "3m",
+  "timeout": "1m",
   "on_error": {
     "action": "abort"
   },
   "steps": [
     {
-      "id": "billing_settle",
+      "id": "noop",
       "type": "call",
-      "name": "Sweep open invoices with checkout sessions",
-      "timeout": "2m",
-      "retry": {
-        "max_attempts": 2,
-        "backoff_strategy": "exponential",
-        "initial_backoff": "15s"
-      },
+      "name": "No-op placeholder (do not schedule)",
+      "timeout": "30s",
       "call": {
         "action": "http.request",
         "input": {
-          "url": "${BILLING_INTERNAL_URL}/_internal/billing/settle",
+          "url": "${BILLING_INTERNAL_URL}/_internal/billing/invoices/__none__/settle",
           "method": "POST",
           "headers": {
             "Content-Type": "application/json",
@@ -30,15 +25,9 @@
           },
           "body": {}
         },
-        "output_var": "settle_result"
+        "output_var": "unused"
       }
     }
   ],
-  "schedules": [
-    {
-      "name": "opportunities.billing.settle.default",
-      "cron_expr": "*/2 * * * *",
-      "timezone": "UTC"
-    }
-  ]
+  "schedules": []
 }
