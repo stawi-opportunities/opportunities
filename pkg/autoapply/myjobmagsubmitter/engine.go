@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"strings"
@@ -36,6 +37,10 @@ import (
 
 const defaultTimeout = 30 * time.Second
 
+// userAgent mirrors a real Chrome navigation so MyJobMag serves the full
+// server-rendered page (and the apply form) rather than a bot-stripped one.
+const userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+
 // methodMarker anchors the "Method of Application" section. MyJobMag
 // renders it as a heading; we match case-insensitively on the text.
 const methodMarker = "method of application"
@@ -44,16 +49,31 @@ const methodMarker = "method of application"
 // of the Method of Application prose.
 var emailRE = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 
+// RecaptchaSolver solves the reCAPTCHA v2 checkbox on the on-site
+// /job-application form from its site key + page URL, returning the
+// g-recaptcha-response token to replay in the POST. Satisfied by
+// captcha.TwoCaptcha (a proxyless 2captcha HTTP client) — no browser. The
+// interface is declared here, at the point of use, so this submitter stays
+// pure-HTTP and depends on neither the browser nor the captcha package.
+type RecaptchaSolver interface {
+	SolveRecaptchaV2(ctx context.Context, siteKey, pageURL string) (token string, err error)
+}
+
 // Submitter implements autoapply.Submitter for MyJobMag listings.
 type Submitter struct {
-	sender autoapply.EmailSender
-	client *http.Client
+	sender  autoapply.EmailSender
+	captcha RecaptchaSolver
+	timeout time.Duration
 }
 
 // Config bundles the constructor arguments.
 type Config struct {
+	// Sender delivers the email path (Method of Application names an email).
 	Sender autoapply.EmailSender
-	// HTTPTimeout caps the listing GET. Default 30s.
+	// Captcha solves the reCAPTCHA on the on-site /job-application form.
+	// When nil, listings that only offer the on-site form are skipped.
+	Captcha RecaptchaSolver
+	// HTTPTimeout caps each GET/POST. Default 30s.
 	HTTPTimeout time.Duration
 }
 
@@ -63,7 +83,15 @@ func New(cfg Config) *Submitter {
 	if t == 0 {
 		t = defaultTimeout
 	}
-	return &Submitter{sender: cfg.Sender, client: &http.Client{Timeout: t}}
+	return &Submitter{sender: cfg.Sender, captcha: cfg.Captcha, timeout: t}
+}
+
+// httpClient builds a per-Submit client with its own cookie jar so the
+// PHPSESSID seeded by the form GET persists into the POST. A fresh jar per
+// call avoids leaking cookies across candidates.
+func (s *Submitter) httpClient() *http.Client {
+	jar, _ := cookiejar.New(nil)
+	return &http.Client{Timeout: s.timeout, Jar: jar}
 }
 
 // Name implements autoapply.Submitter.
@@ -96,56 +124,80 @@ func isMyJobMagHost(host string) bool {
 
 // Submit implements autoapply.Submitter.
 //
-// Flow: GET the public listing → parse the Method of Application block for
-// an email + the job title → queue the application email via the sender.
-// No email in the block ⇒ skip "no_email" (the listing applies off-site).
+// Flow: GET the apply URL, then route by how the listing accepts
+// applications:
+//   - Method of Application names an email ⇒ queue the application email
+//     via the sender (CV by reference).
+//   - otherwise an on-site /job-application/<id> form ⇒ scrape it, solve
+//     its reCAPTCHA via 2captcha, and POST the application (CV uploaded).
+//   - neither ⇒ skip "no_email" (applies off-site, e.g. external link).
 func (s *Submitter) Submit(ctx context.Context, req autoapply.SubmitRequest) (autoapply.SubmitResult, error) {
 	log := util.Log(ctx).WithField("submitter", s.Name()).WithField("candidate_id", req.CandidateID)
 
-	if s.sender == nil || !s.sender.Configured() {
-		return autoapply.SubmitResult{Method: "skipped", SkipReason: "no_sender"}, nil
-	}
 	if strings.TrimSpace(req.ApplyURL) == "" {
 		return autoapply.SubmitResult{Method: "skipped", SkipReason: "no_apply_url"}, nil
 	}
 
-	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, req.ApplyURL, nil)
-	if err != nil {
-		return autoapply.SubmitResult{Method: "skipped", SkipReason: "no_apply_url"}, nil
-	}
-	getReq.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
-	getReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-
-	resp, err := s.client.Do(getReq)
+	// One client+jar for the whole flow so the PHPSESSID from this GET
+	// carries into a later form POST on the same edition.
+	client := s.httpClient()
+	body, status, err := s.get(ctx, client, req.ApplyURL, "")
 	if err != nil {
 		// Transient — propagate so the queue redelivers.
 		return autoapply.SubmitResult{}, fmt.Errorf("myjobmag: listing GET: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 {
-		log.WithField("status", resp.StatusCode).Warn("myjobmag: listing GET non-2xx")
+	if status >= 400 {
+		log.WithField("status", status).Warn("myjobmag: listing GET non-2xx")
 		return autoapply.SubmitResult{Method: "skipped", SkipReason: "listing_unavailable"}, nil
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		return autoapply.SubmitResult{}, fmt.Errorf("myjobmag: listing read: %w", err)
+
+	// Email path takes priority when the listing names an address.
+	email, title := parseMethodOfApplication(body)
+	if email != "" {
+		if s.sender == nil || !s.sender.Configured() {
+			return autoapply.SubmitResult{Method: "skipped", SkipReason: "no_sender"}, nil
+		}
+		// MyJobMag listings typically ask for the position as the email
+		// subject; use the scraped job title (sender falls back to a
+		// generic subject when empty).
+		if err := s.sender.Send(ctx, email, title, req); err != nil {
+			return autoapply.SubmitResult{}, fmt.Errorf("myjobmag: send: %w", err)
+		}
+		log.WithField("recipient", email).WithField("subject", title).Info("myjobmag: application email queued")
+		return autoapply.SubmitResult{Method: s.Name()}, nil
 	}
 
-	email, title := parseMethodOfApplication(body)
-	if email == "" {
-		log.Debug("myjobmag: no application email in Method of Application; skipping")
+	// No email — try the on-site application form.
+	formURL := findApplyFormURL(body, req.ApplyURL)
+	if formURL == "" {
+		log.Debug("myjobmag: no application email and no on-site form; skipping")
 		return autoapply.SubmitResult{Method: "skipped", SkipReason: "no_email"}, nil
 	}
+	return s.submitViaForm(ctx, client, formURL, body, req)
+}
 
-	// MyJobMag listings typically ask for the position as the email
-	// subject; use the scraped job title, falling back to a generic
-	// subject inside the sender when empty.
-	if err := s.sender.Send(ctx, email, title, req); err != nil {
-		return autoapply.SubmitResult{}, fmt.Errorf("myjobmag: send: %w", err)
+// get fetches url with browser-like headers and returns the (limited) body
+// and status code. referer is set when non-empty.
+func (s *Submitter) get(ctx context.Context, client *http.Client, url, referer string) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, err
 	}
-
-	log.WithField("recipient", email).WithField("subject", title).Info("myjobmag: application email queued")
-	return autoapply.SubmitResult{Method: s.Name()}, nil
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return nil, resp.StatusCode, err
+	}
+	return body, resp.StatusCode, nil
 }
 
 // parseMethodOfApplication extracts the application email and the job

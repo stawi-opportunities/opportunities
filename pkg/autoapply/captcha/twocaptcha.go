@@ -52,6 +52,19 @@ func (c *TwoCaptcha) WithTimeout(d time.Duration) *TwoCaptcha {
 	return c
 }
 
+// SolveRecaptchaV2 returns a g-recaptcha-response token for a standard
+// reCAPTCHA v2 checkbox, given only its site key and page URL. It is
+// proxyless — purely 2captcha's HTTP API, no browser — so HTTP-form
+// submitters can solve a challenge without importing the browser package
+// or its CaptchaTask type.
+func (c *TwoCaptcha) SolveRecaptchaV2(ctx context.Context, siteKey, pageURL string) (string, error) {
+	return c.Solve(ctx, browser.CaptchaTask{
+		Type:    browser.CaptchaRecaptchaV2,
+		SiteKey: siteKey,
+		PageURL: pageURL,
+	})
+}
+
 // Solve implements browser.CaptchaSolver.
 func (c *TwoCaptcha) Solve(ctx context.Context, task browser.CaptchaTask) (string, error) {
 	if c.apiKey == "" {

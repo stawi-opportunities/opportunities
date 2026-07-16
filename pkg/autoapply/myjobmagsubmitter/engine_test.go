@@ -32,11 +32,11 @@ func TestCanHandle(t *testing.T) {
 	s := New(Config{Sender: &stubSender{configured: true}})
 	// Every edition is claimed.
 	for _, u := range []string{
-		"https://www.myjobmag.com/job/x",          // Nigeria / flagship
-		"https://www.myjobmag.co.ke/job/x",        // Kenya
-		"https://www.myjobmag.co.za/job/x",        // South Africa
-		"https://www.myjobmagghana.com/job/x",     // Ghana (different domain shape)
-		"https://www.myjobmag.co.uk/job/x",        // UK
+		"https://www.myjobmag.com/job/x",      // Nigeria / flagship
+		"https://www.myjobmag.co.ke/job/x",    // Kenya
+		"https://www.myjobmag.co.za/job/x",    // South Africa
+		"https://www.myjobmagghana.com/job/x", // Ghana (different domain shape)
+		"https://www.myjobmag.co.uk/job/x",    // UK
 	} {
 		assert.True(t, s.CanHandle(domain.SourceMyJobMag, u), u)
 	}
@@ -121,10 +121,17 @@ func TestSubmit_SkipsWhenNoEmail(t *testing.T) {
 }
 
 func TestSubmit_SkipsWhenSenderUnconfigured(t *testing.T) {
+	// A listing that names an email takes the email path, which needs a
+	// configured sender; without one it skips no_sender.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(listingWithEmail))
+	}))
+	defer srv.Close()
+
 	s := New(Config{Sender: &stubSender{configured: false}})
 	res, err := s.Submit(context.Background(), autoapply.SubmitRequest{
 		SourceType: domain.SourceMyJobMag,
-		ApplyURL:   "https://www.myjobmag.co.ke/job/x",
+		ApplyURL:   srv.URL,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "skipped", res.Method)

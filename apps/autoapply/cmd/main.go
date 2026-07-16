@@ -87,9 +87,15 @@ func main() {
 	// solved via the service instead of skipping the application. Attached
 	// to every browser pool below.
 	var captchaSolver browser.CaptchaSolver
+	// recaptchaSolver is the same 2captcha client typed for the MyJobMag
+	// HTTP-form path (SolveRecaptchaV2 by site key + URL). Nil when no
+	// provider is configured, in which case MyJobMag skips form-only jobs.
+	var recaptchaSolver myjobmagsubmitter.RecaptchaSolver
 	if cfg.CaptchaProvider == "2captcha" && cfg.CaptchaAPIKey != "" {
-		captchaSolver = captcha.NewTwoCaptcha(cfg.CaptchaAPIKey).
+		tc := captcha.NewTwoCaptcha(cfg.CaptchaAPIKey).
 			WithTimeout(time.Duration(cfg.CaptchaSolveTimeoutSec) * time.Second)
+		captchaSolver = tc
+		recaptchaSolver = tc
 		log.Info("autoapply: 2captcha solver enabled")
 	}
 
@@ -190,9 +196,15 @@ func main() {
 	if llm != nil {
 		tiers = append(tiers, autoapply.NewLLMFormSubmitter(browserClient, llm))
 	}
-	// MyJobMag (email-by-listing) before the generic mailto: fallback.
+	// MyJobMag before the generic mailto: fallback. Email path when the
+	// listing names an address; otherwise the on-site /job-application form
+	// (reCAPTCHA solved via the same 2captcha solver as the ATS tiers).
 	tiers = append(tiers,
-		myjobmagsubmitter.New(myjobmagsubmitter.Config{Sender: emailSender, HTTPTimeout: 30 * time.Second}),
+		myjobmagsubmitter.New(myjobmagsubmitter.Config{
+			Sender:      emailSender,
+			Captcha:     recaptchaSolver,
+			HTTPTimeout: 30 * time.Second,
+		}),
 		autoapply.NewEmailFallback(emailSender),
 	)
 
