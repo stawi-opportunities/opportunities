@@ -31,14 +31,13 @@ export function clearPendingPrompt(): void {
 }
 
 /**
- * Start checkout and leave the SPA for Flutterwave (happy path).
+ * Start checkout and leave the SPA for Flutterwave.
  *
- * Required SPA steps only:
- *   1. POST /billing/checkout
- *   2. If redirect_url → assign (Flutterwave)
- *   3. Else if pending + prompt_id → dashboard poller (rare recovery)
- *   4. Else if paid → dashboard success
- *   5. Else throw
+ * Navigation priority (strict):
+ *   1. Any non-empty redirect_url → Flutterwave pay page (always)
+ *   2. paid → dashboard success
+ *   3. failed / missing URL → throw so the caller can show the error
+ *   4. pending without URL → dashboard poller (last-resort recovery only)
  */
 export async function startCheckoutAndNavigate(
   input: CheckoutCreateInput
@@ -50,22 +49,15 @@ export async function startCheckoutAndNavigate(
     stashPendingPrompt(res.prompt_id);
   }
 
-  // Step 2 — happy path: one hop to Flutterwave.
-  if (res.redirect_url && (res.status === 'redirect' || res.status === 'pending')) {
-    window.location.assign(res.redirect_url);
+  // Normalize possible response shapes from the gateway / auth runtime.
+  const payURL = (res.redirect_url || '').trim();
+
+  // 1. Happy path — always prefer a pay URL when present, regardless of status.
+  if (payURL && !isOurReturnURL(payURL)) {
+    window.location.assign(payURL);
     return res;
   }
-  if (res.status === 'redirect' && !res.redirect_url) {
-    throw new Error(res.error || 'Checkout URL was not ready. Please try again.');
-  }
-  // Step 3 — rare: URL still materialising; poller opens it when ready.
-  if (res.status === 'pending' && res.prompt_id) {
-    window.location.assign(
-      `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(res.prompt_id)}`
-    );
-    return res;
-  }
-  // Step 4 — already paid (edge case).
+
   if (res.status === 'paid') {
     clearPendingPrompt();
     const q = res.prompt_id
@@ -75,6 +67,28 @@ export async function startCheckoutAndNavigate(
     return res;
   }
 
+  if (res.status === 'failed' || res.error) {
+    clearPendingPrompt();
+    throw new Error(res.error || 'Checkout failed. Please try again.');
+  }
+
+  // 2. Rare recovery — URL still materialising after the server short-poll.
+  if (res.status === 'pending' && res.prompt_id) {
+    window.location.assign(
+      `/dashboard/?billing=pending&prompt_id=${encodeURIComponent(res.prompt_id)}`
+    );
+    return res;
+  }
+
   clearPendingPrompt();
-  throw new Error(res.error || 'Checkout did not complete.');
+  throw new Error(res.error || 'Payment page was not ready. Please try again.');
+}
+
+/** True when the URL is our SPA return landing, not Flutterwave's pay page. */
+function isOurReturnURL(u: string): boolean {
+  return (
+    u.includes('billing=success') ||
+    u.includes('/dashboard/?billing=') ||
+    u.includes('/dashboard?billing=')
+  );
 }

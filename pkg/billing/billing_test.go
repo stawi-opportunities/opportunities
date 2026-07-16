@@ -149,21 +149,78 @@ func TestPaymentGateway_FlutterwaveUsesInitiatePromptAndPollsCheckoutURL(t *test
 
 	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
 		CandidateID: "cand_1", Plan: proPlan(t), Country: "KE",
-		Email: "a@b.co", Phone: "+254700000000",
+		Email: "a@b.co",
 	})
 	require.NoError(t, err)
 	require.True(t, fp.sawPrompt)
 	require.False(t, fp.sawLink)
 	require.Equal(t, "flutterwave", fp.lastPrompt.GetRoute())
+	require.Equal(t, "card", fp.lastPrompt.GetExtra().GetFields()["payment_method_type"].GetStringValue())
 	require.Equal(t, "a@b.co", fp.lastPrompt.GetExtra().GetFields()["customer_email"].GetStringValue())
 	successURL := fp.lastPrompt.GetExtra().GetFields()["success_url"].GetStringValue()
 	require.Contains(t, successURL, "/dashboard/")
 	require.Contains(t, successURL, "billing=success")
 	require.Contains(t, successURL, "prompt_id=")
+	// success_url must NOT be returned as the pay redirect.
+	require.NotEqual(t, successURL, res.RedirectURL)
 	require.Equal(t, billing.RouteFlutterwave, res.Route)
 	require.Equal(t, billing.StatusRedirect, res.Status)
 	require.Equal(t, "https://checkout.flutterwave.com/v3/hosted/pay/abc", res.RedirectURL)
 	require.Equal(t, "chk_fw_1", res.PromptID)
+}
+
+func TestPaymentGateway_NoPayURLBecomesFailed(t *testing.T) {
+	t.Parallel()
+	// Worker never materialises checkout_url → fail closed so the SPA
+	// does not land on a stranded pending poller with nowhere to go.
+	fp := &fakePayment{
+		promptResp: commonv1.StatusResponse_builder{
+			Id: "chk_stuck", Status: commonv1.STATUS_QUEUED,
+		}.Build(),
+		statusResp: commonv1.StatusResponse_builder{
+			Id: "chk_stuck", Status: commonv1.STATUS_IN_PROCESS,
+		}.Build(),
+	}
+	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
+		PublicSiteURL:        "https://opportunities.stawi.org",
+		RedirectPollAttempts: 3,
+		RedirectPollInterval: time.Millisecond,
+	})
+	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
+		CandidateID: "cand_x", Plan: proPlan(t), Email: "a@b.co",
+	})
+	require.NoError(t, err)
+	require.Equal(t, billing.StatusFailed, res.Status)
+	require.Empty(t, res.RedirectURL)
+	require.Contains(t, res.Error, "not ready")
+}
+
+func TestPaymentGateway_DoesNotTreatSuccessURLAsPayURL(t *testing.T) {
+	t.Parallel()
+	// Provider echoes our success_url under redirect_url — must not navigate there.
+	successFields, err := structFields(map[string]string{
+		"redirect_url": "https://opportunities.stawi.org/dashboard/?billing=success&prompt_id=chk_echo",
+	})
+	require.NoError(t, err)
+	fp := &fakePayment{
+		promptResp: commonv1.StatusResponse_builder{
+			Id: "chk_echo", Status: commonv1.STATUS_QUEUED,
+		}.Build(),
+		statusResp: commonv1.StatusResponse_builder{
+			Id: "chk_echo", Status: commonv1.STATUS_IN_PROCESS, Extras: successFields,
+		}.Build(),
+	}
+	g := billing.NewPaymentGateway(fp, billing.GatewayOptions{
+		PublicSiteURL:        "https://opportunities.stawi.org",
+		RedirectPollAttempts: 2,
+		RedirectPollInterval: time.Millisecond,
+	})
+	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
+		CandidateID: "cand_e", Plan: proPlan(t), Email: "a@b.co",
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.RedirectURL)
+	require.Equal(t, billing.StatusFailed, res.Status)
 }
 
 func TestPaymentGateway_StatusMapping(t *testing.T) {
