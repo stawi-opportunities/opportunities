@@ -220,7 +220,7 @@ func (c *HTTPCheckoutClient) doJSON(ctx context.Context, method, path string, bo
 	if err != nil {
 		return fmt.Errorf("checkout request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("checkout http %d: %s", resp.StatusCode, truncate(string(respBody), 256))
