@@ -1,6 +1,16 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { AuthRuntime, AuthState } from '@stawi/auth-runtime';
 import { authRuntime } from '@/auth/runtime';
+import { isSessionPresent } from '@/auth/session';
 import { setAnalyticsUser } from '@/analytics/posthog';
 
 // Thin context around the module-level runtime singleton. Every React
@@ -8,7 +18,16 @@ import { setAnalyticsUser } from '@/analytics/posthog';
 // non-React modules (api clients) can read it via authRuntime().
 
 interface AuthCtx {
+  /** Raw runtime state machine value. */
   state: AuthState;
+  /**
+   * Sticky session flag: true once we've seen authenticated (or are mid-refresh).
+   * Only clears on a definitive unauthenticated transition. Prefer this for
+   * "show avatar vs Sign in" decisions so token refresh never flickers UI.
+   */
+  hasSession: boolean;
+  /** True until the runtime leaves initializing (first paint of definitive UI). */
+  ready: boolean;
   runtime: AuthRuntime;
   login: () => Promise<void>;
   logout: () => Promise<void>;
@@ -16,27 +35,44 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+function writeAuthedHint(hasSession: boolean) {
+  try {
+    if (hasSession) localStorage.setItem('stawi.authed', '1');
+    else localStorage.removeItem('stawi.authed');
+  } catch {
+    // private mode / storage blocked
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const runtime = useMemo(() => authRuntime(), []);
-  const [state, setState] = useState<AuthState>(runtime.getState());
+  const [state, setState] = useState<AuthState>(() => runtime.getState());
+  // Seed sticky session from the sync localStorage hint so returning users
+  // don't flash "Sign in" before IndexedDB session restore finishes.
+  const [hasSession, setHasSession] = useState<boolean>(() => {
+    const s = runtime.getState();
+    if (isSessionPresent(s)) return true;
+    try {
+      return localStorage.getItem('stawi.authed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const hasSessionRef = useRef(hasSession);
+  hasSessionRef.current = hasSession;
 
-  useEffect(() => {
-    const unsub = runtime.onAuthStateChange((next) => {
+  const applyState = useCallback(
+    (next: AuthState) => {
       setState(next);
-      // Thread identity into OpenObserve so RUM + logs are joinable
-      // back to the profile_id. The 1.0 runtime doesn't expose a
-      // synchronous getUser() — use getClaims() once authenticated.
-      // Synchronous hint read by the homepage's inline script to hide the
-      // marketing hero before paint for returning users (avoids a flash
-      // before HomeRedirect navigates to /dashboard/). Kept in localStorage
-      // because the auth runtime persists its session in IndexedDB, which
-      // can't be read synchronously during initial HTML parse.
-      try {
-        if (next === 'authenticated') localStorage.setItem('stawi.authed', '1');
-        else if (next === 'unauthenticated') localStorage.removeItem('stawi.authed');
-      } catch {
-        // private mode / storage blocked — hero just shows normally
+
+      if (isSessionPresent(next)) {
+        setHasSession(true);
+        writeAuthedHint(true);
+      } else if (next === 'unauthenticated') {
+        setHasSession(false);
+        writeAuthedHint(false);
       }
+      // initializing / error: keep sticky hasSession (no flicker)
 
       if (next === 'authenticated') {
         runtime.getClaims().then(
@@ -55,30 +91,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (next === 'unauthenticated') {
         setAnalyticsUser(null);
       }
+    },
+    [runtime]
+  );
+
+  useEffect(() => {
+    // Sync immediately — onAuthStateChange only fires *future* transitions,
+    // so if the worker already restored tokens before this island mounted we
+    // would otherwise stay stuck on the useState() snapshot.
+    applyState(runtime.getState());
+
+    const unsub = runtime.onAuthStateChange((next) => {
+      applyState(next);
     });
 
-    // Warm the OIDC discovery cache and let the runtime move out of
-    // "initializing" on mount. prefetchDiscovery is cheap (single GET
-    // to /.well-known/openid-configuration) and fires a state
-    // transition so the listener above updates React.
+    // Warm OIDC discovery. Does not change auth state by itself.
     if (runtime.getState() === 'initializing') {
       runtime.prefetchDiscovery().catch(() => {
-        // Discovery fetch failure surfaces via the normal auth-state
-        // path — don't double-log.
+        /* discovery failure surfaces via normal auth path */
       });
     }
 
     return unsub;
-  }, [runtime]);
+  }, [runtime, applyState]);
+
+  const ready = state !== 'initializing';
 
   const value = useMemo<AuthCtx>(
     () => ({
       state,
+      hasSession,
+      ready,
       runtime,
       login: () => runtime.ensureAuthenticated(),
       logout: () => runtime.logout(),
     }),
-    [state, runtime]
+    [state, hasSession, ready, runtime]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -54,9 +54,9 @@ const STATUS_KEYS: Record<string, StringKey> = {
 
 export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isPending }: Props) {
   const { t } = useI18n();
-  const { state } = useAuth();
+  const { hasSession } = useAuth();
   const sub = useSubscription();
-  const active = state === 'authenticated' && sub.data?.status === 'active';
+  const active = hasSession && sub.data?.status === 'active';
   const title = snapshot?.title ?? item.opportunity_id;
   const company = snapshot?.company ?? '';
   const location = snapshot?.location ?? '';

@@ -32,36 +32,37 @@ function isChatReady(f: { extra_info?: string | null }): boolean {
 }
 export default function Onboarding() {
   const { t } = useI18n();
-  const { state, login } = useAuth();
-  const wasAuthenticated = useRef(state === 'authenticated');
+  const { state, hasSession, ready, login } = useAuth();
+  const wasAuthenticated = useRef(hasSession);
   const subQ = useQuery({
     queryKey: ['me-subscription'],
     queryFn: fetchMeSubscription,
-    enabled: state === 'authenticated',
+    enabled: hasSession,
     staleTime: 60_000,
+    placeholderData: (prev) => prev,
   });
 
   useEffect(() => {
-    if (state !== 'authenticated') return;
+    if (!hasSession) return;
     if (subQ.isLoading) return;
     if (subQ.data?.status === 'active') {
       window.location.assign('/dashboard/');
     }
-  }, [state, subQ.isLoading, subQ.data?.status]);
+  }, [hasSession, subQ.isLoading, subQ.data?.status]);
 
   useEffect(() => {
-    if (state === 'authenticated') {
+    if (hasSession) {
       wasAuthenticated.current = true;
       return;
     }
-    if (state === 'unauthenticated') {
-      if (wasAuthenticated.current) {
-        window.location.replace('/');
-        return;
-      }
-      void login();
+    // Wait for auth to settle — never treat initializing/refresh as signed-out.
+    if (!ready || state !== 'unauthenticated') return;
+    if (wasAuthenticated.current) {
+      window.location.replace('/');
+      return;
     }
-  }, [state, login]);
+    void login();
+  }, [hasSession, ready, state, login]);
 
   const [phase, setPhase] = useState<Phase>('chat');
   const [fields, setFields] = useState<OnboardingChatFields>({});
@@ -86,7 +87,7 @@ export default function Onboarding() {
 
   // Resume draft + full conversation (always available server-side).
   useEffect(() => {
-    if (state !== 'authenticated' || draftLoaded) return;
+    if (!hasSession || draftLoaded) return;
     let cancelled = false;
     (async () => {
       const draft = await fetchOnboardingDraft();
@@ -209,7 +210,9 @@ export default function Onboarding() {
     }
   }
 
-  if (state === 'unauthenticated' || state === 'initializing') {
+  // Keep a stable loading shell until auth settles — never flash the wizard
+  // then tear it down when session restore finishes (or vice versa).
+  if (!ready || !hasSession) {
     return (
       <div className="mx-auto flex min-h-[40vh] max-w-md items-center justify-center px-4 py-16 text-center">
         <p className="text-sm text-gray-600">{t('onboard.openingSignIn')}</p>

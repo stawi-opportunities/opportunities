@@ -118,7 +118,7 @@ export function __resetAuthCallbackCompletionForTests(): void {
 }
 
 export default function AuthCallback() {
-  const { login, state } = useAuth();
+  const { login, state, hasSession } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -146,7 +146,8 @@ export default function AuthCallback() {
   };
 
   if (error) {
-    const showContinue = state === 'authenticated';
+    // Prefer sticky session so a mid-refresh state doesn't flip Continue ↔ Sign in again.
+    const showContinue = hasSession || state === 'authenticated' || state === 'refreshing';
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
         <div className="w-full max-w-md text-center">

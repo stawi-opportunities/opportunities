@@ -166,23 +166,21 @@ export interface MeSubscription {
   delivered_this_week: number;
 }
 
-/** GET /me/subscription ΓÇö auth'd.  Fallback shape on any failure so
- *  the dashboard renders the "choose a plan" nudge instead of
- *  breaking. */
+/**
+ * GET /me/subscription — auth'd.
+ * Throws on failure so callers can distinguish unpaid from network errors
+ * (mapping errors to status "none" re-prompted paid users to pay again).
+ */
 export async function fetchMeSubscription(): Promise<MeSubscription> {
-  const fallback: MeSubscription = {
-    plan: null,
-    status: 'none',
-    queued_matches: 0,
-    delivered_this_week: 0,
-    agent: null,
+  const body = await authRuntime().fetch<MeSubscription>('/matching/me/subscription');
+  return {
+    plan: body.plan ?? null,
+    status: body.status ?? 'none',
+    renews_at: body.renews_at,
+    agent: body.agent ?? null,
+    queued_matches: body.queued_matches ?? 0,
+    delivered_this_week: body.delivered_this_week ?? 0,
   };
-  try {
-    const body = await authRuntime().fetch<MeSubscription>('/matching/me/subscription');
-    return { ...fallback, ...body };
-  } catch {
-    return fallback;
-  }
 }
 
 // ΓöÇΓöÇ /me/onboarding ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

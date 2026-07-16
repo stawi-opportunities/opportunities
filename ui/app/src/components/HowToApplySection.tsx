@@ -25,8 +25,8 @@ export default function HowToApplySection({
   hasHowToApply?: boolean;
 }) {
   const { t } = useI18n();
-  const { state } = useAuth();
-  const authed = state === 'authenticated';
+  const { hasSession } = useAuth();
+  const authed = hasSession;
   const sub = useSubscription();
   const active = sub.data?.status === 'active';
 

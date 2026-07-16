@@ -3,9 +3,10 @@ import { useAuth } from '@/providers/AuthProvider';
 
 export default function GetStartedCta() {
   const { t } = useI18n();
-  const { state, login } = useAuth();
+  const { hasSession, login } = useAuth();
 
-  if (state === 'authenticated') return null;
+  // Sticky session: hide while signed in *and* during token refresh.
+  if (hasSession) return null;
 
   const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     // login() is a full-page redirect to the IdP; after sign-in,

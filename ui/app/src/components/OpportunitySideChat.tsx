@@ -118,7 +118,7 @@ function SendSpinner() {
 }
 
 export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
-  const { state } = useAuth();
+  const { state, hasSession } = useAuth();
   const profileQ = useCandidateProfile();
   const [openMobile, setOpenMobile] = useState(false);
   const [messages, setMessages] = useState<OnboardingChatMessage[]>([]);
@@ -270,7 +270,8 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
     }
   }
 
-  const needsAuth = state === 'unauthenticated';
+  // Only prompt sign-in when definitively signed out (not during init/refresh).
+  const needsAuth = !hasSession && state === 'unauthenticated';
 
   /**
    * Panel chrome: intentional outer outline + inner padding so the chat reads

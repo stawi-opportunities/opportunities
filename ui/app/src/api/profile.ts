@@ -241,11 +241,11 @@ export interface MeSubscription {
 export async function fetchMeSubscription(): Promise<MeSubscription> {
   const body = await authRuntime().fetch<MeSubscription>('/me/subscription');
   return {
-    plan: null,
-    status: 'none',
-    queued_matches: 0,
-    delivered_this_week: 0,
-    agent: null,
-    ...body,
+    plan: body.plan ?? null,
+    status: body.status ?? 'none',
+    renews_at: body.renews_at,
+    agent: body.agent ?? null,
+    queued_matches: body.queued_matches ?? 0,
+    delivered_this_week: body.delivered_this_week ?? 0,
   };
 }

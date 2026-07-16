@@ -33,13 +33,14 @@ export interface CandidateProfileResult {
  *   has no preference data yet.
  */
 export function useCandidateProfile(): CandidateProfileResult {
-  const { state } = useAuth();
+  const { hasSession } = useAuth();
 
   const query = useQuery({
     queryKey: QUERY_KEYS.CANDIDATE_PROFILE,
     queryFn: fetchCandidate,
-    enabled: state === 'authenticated',
+    enabled: hasSession,
     staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
   });
 
   const preferredCountries = useMemo(

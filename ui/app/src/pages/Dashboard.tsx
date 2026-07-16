@@ -50,7 +50,7 @@ function getSectionFromHash(): SectionId {
 }
 
 export default function Dashboard() {
-  const { state, login } = useAuth();
+  const { state, hasSession, ready, login } = useAuth();
   const { t } = useI18n();
   const [activeSection, setActiveSection] = useState<SectionId>(getSectionFromHash);
   const [showPlanChange, setShowPlanChange] = useState(false);
@@ -78,7 +78,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (state !== 'authenticated') return;
+    // Only gate once we have a settled session. Never bounce during refresh
+    // or while auth is still restoring from IndexedDB.
+    if (!hasSession || !ready) return;
+    if (state === 'refreshing') return;
     if (subQ.isLoading || subQ.isFetching) return;
     // Never bounce on a failed subscription fetch — paid users must not be
     // sent back to onboarding because of a transient API error.
@@ -101,7 +104,15 @@ export default function Dashboard() {
       /* private mode */
     }
     window.location.assign('/onboarding/');
-  }, [state, subQ.isLoading, subQ.isFetching, subQ.isError, subQ.data?.status]);
+  }, [
+    hasSession,
+    ready,
+    state,
+    subQ.isLoading,
+    subQ.isFetching,
+    subQ.isError,
+    subQ.data?.status,
+  ]);
 
   useEffect(() => {
     if (!isTourCompleted()) {
@@ -124,9 +135,11 @@ export default function Dashboard() {
     subQ.refetch();
   }, [subQ]);
 
-  if (state === 'initializing') return <Skeleton />;
-  if (state !== 'authenticated') return <SignedOut onSignIn={login} />;
-
+  // Pending session restore / sticky session: keep dashboard chrome stable.
+  if (!ready && hasSession) return <Skeleton />;
+  if (!ready && !hasSession) return <Skeleton />;
+  // Definitive signed-out only — never during token refresh.
+  if (!hasSession) return <SignedOut onSignIn={login} />;
   const sub = subQ.data;
   const plan = normalizePlan(sub?.plan ?? null);
   const isActive = sub?.status === 'active';

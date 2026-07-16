@@ -6,21 +6,18 @@ import { QUERY_KEYS } from '@/constants/queryKeys';
 /**
  * Fetches the authenticated candidate's subscription status.
  *
- * Returns the full React Query result so callers can branch on
- * `.data`, `.isLoading`, and `.isError` as needed. The underlying
- * `fetchMeSubscription` never throws — it returns a fallback shape
- * on any error — so callers only need to check `.isError` for UI
- * degradation signals, not for error recovery.
- *
- * Only fires when the user is authenticated.
+ * Enabled whenever we have a live session — including `refreshing` — so a
+ * token refresh does not disable the query and wipe dashboard data.
  */
 export function useSubscription(): UseQueryResult<MeSubscription> {
-  const { state } = useAuth();
+  const { hasSession } = useAuth();
 
   return useQuery({
     queryKey: QUERY_KEYS.SUBSCRIPTION,
     queryFn: fetchMeSubscription,
-    enabled: state === 'authenticated',
+    enabled: hasSession,
     staleTime: 60_000,
+    // Keep prior data while refetching / during brief auth transitions.
+    placeholderData: (prev) => prev,
   });
 }
