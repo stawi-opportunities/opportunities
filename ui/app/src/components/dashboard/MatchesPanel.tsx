@@ -140,7 +140,11 @@ export function MatchesPanel({
             {refreshing ? 'Searching…' : 'Find matches now'}
           </Button>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            We only surface roles above your quality threshold. Weekly email digests run Mondays.
+            Roles above your quality threshold only. Email summaries follow your schedule in{' '}
+            <a href="/dashboard/#settings" className="underline hover:text-accent-600">
+              Settings → Notifications
+            </a>{' '}
+            (daily or weekly).
           </p>
         </div>
 

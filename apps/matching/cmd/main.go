@@ -726,35 +726,49 @@ func main() {
 			Lister:     staleLister,
 			StaleAfter: 60 * 24 * time.Hour,
 		})))
+	digestLoc := matching.LoadLocationOrUTC(cfg.DigestTimezone)
+	digestWeekday := matching.ParseWeekday(cfg.DigestWeeklyWeekday)
 	mux.Handle("POST /_admin/candidates/weekly_jobs_digest",
 		httpmw.RequireAdmin(adminAuth, adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
-			Svc:      svc,
-			Lister:   unpaidLister,
-			Jobs:     newJobsLister,
-			Stats:    weeklyStats,
-			PlansURL: cfg.PlansURL,
-			Window:   7 * 24 * time.Hour,
-			JobLimit: 10,
+			Svc:            svc,
+			Lister:         unpaidLister,
+			Jobs:           newJobsLister,
+			Stats:          weeklyStats,
+			PlansURL:       cfg.PlansURL,
+			Window:         7 * 24 * time.Hour,
+			JobLimit:       10,
+			DefaultCadence: cfg.DigestDefaultCadence,
+			WeeklyWeekday:  digestWeekday,
+			Location:       digestLoc,
 		})))
 
-	// POST /_admin/matches/weekly_digest — Monday-morning Trustage cron.
-	// Re-runs gap-fill for paid/past_due/trial subscribers so each gets
-	// refreshed candidate_matches above MATCHING_MIN_SCORE + a
-	// candidates.matches.ready.v1 envelope for the notification service.
-	// Free/unpaid use weekly_jobs_digest instead.
+	// POST /_admin/matches/weekly_digest — Trustage digest cron (schedule
+	// is configurable in definitions/trustage/*-digest.json). Filters
+	// recipients by each user's email_digest preference (daily/weekly/off)
+	// and DIGEST_* env (weekday + timezone). Free/unpaid → weekly_jobs_digest.
 	if gdb := dbFn(ctx, false); gdb != nil {
 		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
 			activeLister := adminv1.NewRepoActiveCandidateLister(
-				func(ctx context.Context, limit int) ([]string, error) {
+				func(ctx context.Context, limit int) ([]adminv1.DigestAudienceMember, error) {
 					rows, lErr := candidateRepo.ListPaidActive(ctx, limit)
 					if lErr != nil {
 						return nil, lErr
 					}
-					ids := make([]string, 0, len(rows))
+					out := make([]adminv1.DigestAudienceMember, 0, len(rows))
 					for _, c := range rows {
-						ids = append(ids, c.ID)
+						digest := matching.NormalizeDigestCadence(c.EmailDigest)
+						ws, ce := c.WeeklySummary, c.CommEmail
+						if strings.TrimSpace(c.EmailDigest) == "" {
+							ws, ce = true, true
+						}
+						out = append(out, adminv1.DigestAudienceMember{
+							ID:            c.ID,
+							EmailDigest:   digest,
+							WeeklySummary: ws,
+							CommEmail:     ce,
+						})
 					}
-					return ids, nil
+					return out, nil
 				}, 5000)
 			mux.Handle("POST /_admin/matches/weekly_digest",
 				httpmw.RequireAdmin(adminAuth, adminv1.MatchesWeeklyDigestHandler(adminv1.MatchesWeeklyDigestDeps{
@@ -768,6 +782,10 @@ func main() {
 					Weights:         matching.DefaultWeights(),
 					Since:           30 * 24 * time.Hour,
 					DefaultMinScore: cfg.MatchingMinScore,
+					DefaultCadence:  cfg.DigestDefaultCadence,
+					WeeklyWeekday:   digestWeekday,
+					Location:        digestLoc,
+					Toucher:         candidateRepo,
 				})))
 		} else {
 			log.WithError(dbErr).Warn("_admin/matches/weekly_digest: sql.DB unwrap failed; route not registered")
@@ -799,10 +817,12 @@ func main() {
 			DefaultMinScore:  cfg.MatchingMinScore,
 		}
 		meV1.Mount(mux, extDeps, authMW)
-		// Gateway-visible alias: SPA calls /matching/me/matches/refresh
-		// (same path shape as /me/subscription, /me/opportunities).
+		// Gateway-visible aliases: SPA calls /matching/me/* (same shape as
+		// /me/subscription, /me/opportunities).
 		mux.Handle("POST /me/matches/refresh", authMW(meV1.RefreshMatchesHandler(extDeps)))
-		log.Info("matching: /api/me/* routes enabled + /me/matches/refresh")
+		mux.Handle("GET /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
+		mux.Handle("PUT /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
+		log.Info("matching: /api/me/* routes + /me/matches/refresh + /me/notifications")
 	}
 
 	// definitions.changed.v1 broadcast — invalidates the loader cache

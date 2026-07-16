@@ -450,6 +450,7 @@ export interface Strings {
   'settings.managedByIdp': string;
   'settings.notifications': string;
   'settings.emailDigest': string;
+  'settings.emailDigestHint': string;
   'settings.daily': string;
   'settings.weekly': string;
   'settings.off': string;
@@ -944,13 +945,16 @@ const en: Strings = {
   'settings.managedByIdp': 'Managed by your identity provider',
   'settings.notifications': 'Notifications',
   'settings.emailDigest': 'Email digest frequency',
+  'settings.emailDigestHint':
+    'How often we email your match or jobs summary. Daily users get every run; weekly users get the summary on the configured weekly day (default Monday).',
   'settings.daily': 'Daily',
   'settings.weekly': 'Weekly',
   'settings.off': 'Off',
   'settings.matchAlerts': 'Match alerts',
   'settings.matchAlertsHint': 'Get notified when a new match is found.',
-  'settings.weeklySummary': 'Weekly summary',
-  'settings.weeklySummaryHint': 'Receive a weekly summary of your account activity.',
+  'settings.weeklySummary': 'Job / match summaries',
+  'settings.weeklySummaryHint':
+    'Receive scheduled email summaries of matches (subscribers) or new jobs (free accounts). Turn off to stop all digests.',
   'settings.marketingEmails': 'Marketing emails',
   'settings.marketingEmailsHint': 'Tips, product updates, and job market insights.',
   'settings.saveNotifications': 'Save preferences',

@@ -72,6 +72,17 @@ type CandidatesConfig struct {
 	// host. Defaults to production; preview deploys override via env.
 	PlansURL string `env:"PLANS_URL" envDefault:"https://jobs.stawi.org/pricing/"`
 
+	// Digest schedule (who receives summaries on each Trustage fire).
+	// Trustage cron_expr in definitions/trustage/*-digest.json is the
+	// wall-clock schedule (edit those JSON schedules to change when the
+	// job runs). These env vars control recipient filtering:
+	//   DIGEST_DEFAULT_CADENCE = auto|daily|weekly
+	//   DIGEST_WEEKLY_WEEKDAY  = monday…sunday (or 0–6, Sunday=0)
+	//   DIGEST_TIMEZONE        = IANA zone for weekday evaluation
+	DigestDefaultCadence string `env:"DIGEST_DEFAULT_CADENCE" envDefault:"auto"`
+	DigestWeeklyWeekday  string `env:"DIGEST_WEEKLY_WEEKDAY"  envDefault:"monday"`
+	DigestTimezone       string `env:"DIGEST_TIMEZONE"        envDefault:"UTC"`
+
 	// ValkeyURL is the Valkey/Redis connection URL for the distributed debouncer.
 	// When empty (default) the in-memory MemoryDebouncer is used, which is safe
 	// for dev/test but does not survive restarts or span multiple replicas.

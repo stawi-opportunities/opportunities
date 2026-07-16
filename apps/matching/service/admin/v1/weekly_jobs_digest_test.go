@@ -104,8 +104,8 @@ func TestWeeklyJobsDigestEmitsOneEnvelopePerCandidate(t *testing.T) {
 	_, svc, col := newDigestSvc(t)
 
 	lister := &fakeUnpaidLister{rows: []UnpaidCandidate{
-		{ID: "cnd_1", Country: "KE", Locale: "en", Kinds: []string{"job"}},
-		{ID: "cnd_2", Country: "NG", Locale: "en", Kinds: []string{"job", "scholarship"}},
+		{ID: "cnd_1", Country: "KE", Locale: "en", Kinds: []string{"job"}, EmailDigest: "weekly", WeeklySummary: true, CommEmail: true},
+		{ID: "cnd_2", Country: "NG", Locale: "en", Kinds: []string{"job", "scholarship"}, EmailDigest: "weekly", WeeklySummary: true, CommEmail: true},
 	}}
 	jobs := &fakeNewJobsLister{byCountry: map[string][]eventsv1.DigestJob{
 		"KE": {{CanonicalID: "j1", Title: "Engineer KE", Country: "KE", Kind: "job", Slug: "engineer-ke"}},
@@ -114,11 +114,13 @@ func TestWeeklyJobsDigestEmitsOneEnvelopePerCandidate(t *testing.T) {
 	stats := &fakeWeeklyStats{out: eventsv1.DigestStats{TotalNewThisWeek: 42}}
 
 	handler := WeeklyJobsDigestHandler(WeeklyJobsDigestDeps{
-		Svc:      svc,
-		Lister:   lister,
-		Jobs:     jobs,
-		Stats:    stats,
-		PlansURL: "https://example.test/pricing/",
+		Svc:            svc,
+		Lister:         lister,
+		Jobs:           jobs,
+		Stats:          stats,
+		DefaultCadence: "weekly",
+		WeeklyWeekday:  time.Monday,
+		PlansURL:       "https://example.test/pricing/",
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/_admin/candidates/weekly_jobs_digest", nil)
@@ -147,10 +149,11 @@ func TestWeeklyJobsDigestSkipsCandidatesWithNoJobs(t *testing.T) {
 	handler := WeeklyJobsDigestHandler(WeeklyJobsDigestDeps{
 		Svc: svc,
 		Lister: &fakeUnpaidLister{rows: []UnpaidCandidate{
-			{ID: "cnd_1", Country: "ZW", Kinds: []string{"job"}},
+			{ID: "cnd_1", Country: "ZW", Kinds: []string{"job"}, EmailDigest: "weekly", WeeklySummary: true, CommEmail: true},
 		}},
-		Jobs:  &fakeNewJobsLister{byCountry: map[string][]eventsv1.DigestJob{}},
-		Stats: &fakeWeeklyStats{},
+		Jobs:           &fakeNewJobsLister{byCountry: map[string][]eventsv1.DigestJob{}},
+		Stats:          &fakeWeeklyStats{},
+		DefaultCadence: "weekly",
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/_admin/candidates/weekly_jobs_digest", nil)
@@ -169,8 +172,8 @@ func TestWeeklyJobsDigestPerCandidateFailureDoesNotAbortSweep(t *testing.T) {
 	handler := WeeklyJobsDigestHandler(WeeklyJobsDigestDeps{
 		Svc: svc,
 		Lister: &fakeUnpaidLister{rows: []UnpaidCandidate{
-			{ID: "cnd_a", Country: "KE", Kinds: []string{"job"}},
-			{ID: "cnd_b", Country: "NG", Kinds: []string{"job"}},
+			{ID: "cnd_a", Country: "KE", Kinds: []string{"job"}, EmailDigest: "weekly", WeeklySummary: true, CommEmail: true},
+			{ID: "cnd_b", Country: "NG", Kinds: []string{"job"}, EmailDigest: "weekly", WeeklySummary: true, CommEmail: true},
 		}},
 		Jobs: &fakeNewJobsLister{
 			byCountry: map[string][]eventsv1.DigestJob{
@@ -178,7 +181,8 @@ func TestWeeklyJobsDigestPerCandidateFailureDoesNotAbortSweep(t *testing.T) {
 			},
 			failOn: "KE",
 		},
-		Stats: &fakeWeeklyStats{},
+		Stats:          &fakeWeeklyStats{},
+		DefaultCadence: "weekly",
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/_admin/candidates/weekly_jobs_digest", nil)
@@ -197,12 +201,13 @@ func TestWeeklyJobsDigestEmitsEvenWhenStatsErrors(t *testing.T) {
 	handler := WeeklyJobsDigestHandler(WeeklyJobsDigestDeps{
 		Svc: svc,
 		Lister: &fakeUnpaidLister{rows: []UnpaidCandidate{
-			{ID: "cnd_x", Country: "KE", Kinds: []string{"job"}},
+			{ID: "cnd_x", Country: "KE", Kinds: []string{"job"}, EmailDigest: "weekly", WeeklySummary: true, CommEmail: true},
 		}},
 		Jobs: &fakeNewJobsLister{byCountry: map[string][]eventsv1.DigestJob{
 			"KE": {{CanonicalID: "j1", Title: "T", Country: "KE", Kind: "job", Slug: "t"}},
 		}},
-		Stats: &fakeWeeklyStats{err: errors.New("weekly stats down")},
+		Stats:          &fakeWeeklyStats{err: errors.New("weekly stats down")},
+		DefaultCadence: "weekly",
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/_admin/candidates/weekly_jobs_digest", nil)

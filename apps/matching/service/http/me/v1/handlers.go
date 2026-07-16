@@ -467,6 +467,121 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 	}
 }
 
+// ---- GET/PUT /api/me/notifications (and /me/notifications) ----
+
+type notificationPrefsResp struct {
+	EmailDigest     string `json:"email_digest"`
+	MatchAlerts     bool   `json:"match_alerts"`
+	WeeklySummary   bool   `json:"weekly_summary"`
+	MarketingEmails bool   `json:"marketing_emails"`
+}
+
+// NotificationsHandler serves GET+PUT for gateway-visible /me/notifications.
+func NotificationsHandler(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getNotifications(d)(w, r)
+		case http.MethodPut:
+			putNotifications(d)(w, r)
+		default:
+			httpmw.ProblemJSON(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET or PUT")
+		}
+	}
+}
+
+func getNotifications(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cand := httpmw.CandidateFromContext(r.Context())
+		if d.DB == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "unavailable", "database not configured")
+			return
+		}
+		var (
+			digest   string
+			matchAl  bool
+			weekly   bool
+			market   bool
+			commMail bool
+		)
+		err := d.DB.QueryRowContext(r.Context(), `
+SELECT COALESCE(email_digest, 'weekly'),
+       COALESCE(match_alerts, true),
+       COALESCE(weekly_summary, true),
+       COALESCE(marketing_emails, false),
+       COALESCE(comm_email, true)
+FROM candidate_profiles WHERE id = $1`, cand).Scan(&digest, &matchAl, &weekly, &market, &commMail)
+		if errors.Is(err, sql.ErrNoRows) {
+			// New account defaults — still return a valid prefs object.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(notificationPrefsResp{
+				EmailDigest: matching.DigestWeekly, MatchAlerts: true, WeeklySummary: true,
+			})
+			return
+		}
+		if err != nil {
+			// Columns may not exist yet on a lagging migrate — fall back to defaults.
+			if strings.Contains(err.Error(), "email_digest") || strings.Contains(err.Error(), "does not exist") {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(notificationPrefsResp{
+					EmailDigest: matching.DigestWeekly, MatchAlerts: true, WeeklySummary: true,
+				})
+				return
+			}
+			ProblemFromError(w, err)
+			return
+		}
+		_ = commMail // channel reserved for multi-channel digests
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(notificationPrefsResp{
+			EmailDigest:     matching.NormalizeDigestCadence(digest),
+			MatchAlerts:     matchAl,
+			WeeklySummary:   weekly,
+			MarketingEmails: market,
+		})
+	}
+}
+
+func putNotifications(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cand := httpmw.CandidateFromContext(r.Context())
+		if d.DB == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "unavailable", "database not configured")
+			return
+		}
+		var body notificationPrefsResp
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			httpmw.ProblemJSON(w, http.StatusBadRequest, "invalid_json", "invalid notification preferences body")
+			return
+		}
+		digest := matching.NormalizeDigestCadence(body.EmailDigest)
+		res, err := d.DB.ExecContext(r.Context(), `
+UPDATE candidate_profiles SET
+  email_digest = $2,
+  match_alerts = $3,
+  weekly_summary = $4,
+  marketing_emails = $5,
+  updated_at = NOW()
+WHERE id = $1`, cand, digest, body.MatchAlerts, body.WeeklySummary, body.MarketingEmails)
+		if err != nil {
+			ProblemFromError(w, err)
+			return
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":               true,
+			"email_digest":     digest,
+			"match_alerts":     body.MatchAlerts,
+			"weekly_summary":   body.WeeklySummary,
+			"marketing_emails": body.MarketingEmails,
+		})
+	}
+}
+
 // ---- GET /api/me/profile-fields ----
 
 func profileFields(d *Deps) http.HandlerFunc {

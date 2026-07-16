@@ -110,6 +110,25 @@ func (r *CandidateRepository) ListPaidActive(ctx context.Context, limit int) ([]
 	return candidates, err
 }
 
+// UpdateNotificationPrefs persists digest/notification settings for a candidate.
+func (r *CandidateRepository) UpdateNotificationPrefs(ctx context.Context, candidateID, emailDigest string, matchAlerts, weeklySummary, marketingEmails bool) error {
+	return r.db(ctx, false).Model(&domain.CandidateProfile{}).
+		Where("id = ?", candidateID).
+		Updates(map[string]any{
+			"email_digest":     emailDigest,
+			"match_alerts":     matchAlerts,
+			"weekly_summary":   weeklySummary,
+			"marketing_emails": marketingEmails,
+		}).Error
+}
+
+// TouchLastDigestAt records when a summary digest was successfully emitted.
+func (r *CandidateRepository) TouchLastDigestAt(ctx context.Context, candidateID string, at time.Time) error {
+	return r.db(ctx, false).Model(&domain.CandidateProfile{}).
+		Where("id = ?", candidateID).
+		Update("last_digest_at", at).Error
+}
+
 // ListAll returns all candidate profiles with pagination.
 func (r *CandidateRepository) ListAll(ctx context.Context, limit, offset int) ([]*domain.CandidateProfile, error) {
 	var candidates []*domain.CandidateProfile

@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.candidates.weekly-jobs-digest",
-  "description": "Every Monday 08:00 UTC: emit one candidates.weekly_jobs_digest.v1 event per logged-in candidate who has not finished checkout. Each event carries the top-10 freshest jobs filtered by the candidate's country + opted-in kinds plus headline analytics for the past 7 days. The notification service consumes the topic and sends the re-engagement email.",
+  "description": "Configurable re-engagement job summary for unpaid candidates. Fires on the cron below; matching filters by email_digest + DIGEST_WEEKLY_WEEKDAY/DIGEST_TIMEZONE. Emits candidates.weekly_jobs_digest.v1 for the notification service. Change cron_expr/timezone to retarget the wall-clock schedule.",
   "input": {},
   "config": {},
   "timeout": "15m",
@@ -10,9 +10,9 @@
   },
   "steps": [
     {
-      "id": "weekly_jobs_digest",
+      "id": "jobs_digest",
       "type": "call",
-      "name": "Invoke weekly jobs digest for unpaid candidates",
+      "name": "Invoke unpaid jobs digest (auto cadence)",
       "timeout": "12m",
       "retry": {
         "max_attempts": 2,
@@ -28,7 +28,9 @@
             "Content-Type": "application/json",
             "X-Admin-Token": "${ADMIN_SHARED_SECRET}"
           },
-          "body": {}
+          "body": {
+            "cadence": "auto"
+          }
         },
         "output_var": "digest_result"
       }
@@ -36,8 +38,8 @@
   ],
   "schedules": [
     {
-      "name": "opportunities.candidates.weekly-jobs-digest.default",
-      "cron_expr": "0 8 * * 1",
+      "name": "opportunities.candidates.jobs.digest.daily",
+      "cron_expr": "0 8 * * *",
       "timezone": "UTC"
     }
   ]

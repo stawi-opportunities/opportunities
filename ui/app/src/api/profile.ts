@@ -180,14 +180,54 @@ export async function updateProfile(payload: ProfilePayload): Promise<{ ok: bool
 }
 
 /**
- * PUT /me/notifications — updates notification preferences.
+ * GET /me/notifications — current digest / alert preferences.
+ */
+export async function fetchNotificationPrefs(): Promise<NotificationPrefs> {
+  try {
+    return await authRuntime().fetch<NotificationPrefs>('/me/notifications', {
+      method: 'GET',
+    });
+  } catch (err) {
+    // Fallback path if gateway only exposes /matching/api/me/*
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: unknown }).code)
+        : '';
+    const msg = err instanceof Error ? err.message : String(err);
+    if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) {
+      return authRuntime().fetch<NotificationPrefs>('/matching/api/me/notifications', {
+        method: 'GET',
+      });
+    }
+    throw err;
+  }
+}
+
+/**
+ * PUT /me/notifications — updates notification preferences (digest schedule).
  */
 export async function updateNotificationPrefs(prefs: NotificationPrefs): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me/notifications', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(prefs),
-  });
+  try {
+    return await authRuntime().fetch('/me/notifications', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prefs),
+    });
+  } catch (err) {
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: unknown }).code)
+        : '';
+    const msg = err instanceof Error ? err.message : String(err);
+    if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) {
+      return authRuntime().fetch('/matching/api/me/notifications', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs),
+      });
+    }
+    throw err;
+  }
 }
 
 /**

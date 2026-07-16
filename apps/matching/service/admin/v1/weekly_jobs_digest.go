@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/matching"
 )
 
 // UnpaidCandidate is the projection of a CandidateProfile that the
@@ -26,6 +28,10 @@ type UnpaidCandidate struct {
 	// falls back to []string{"job"} so the digest still has
 	// something to show.
 	Kinds []string
+	// Digest prefs (email_digest / weekly_summary / comm_email).
+	EmailDigest   string
+	WeeklySummary bool
+	CommEmail     bool
 }
 
 // UnpaidCandidateLister enumerates the candidates targeted by the
@@ -60,28 +66,32 @@ type WeeklyJobsDigestDeps struct {
 	Window time.Duration
 	// JobLimit caps the per-candidate job list. Defaults to 10.
 	JobLimit int
+	// DefaultCadence: auto | daily | weekly. Empty → auto.
+	DefaultCadence string
+	// WeeklyWeekday for auto mode (default Monday).
+	WeeklyWeekday time.Weekday
+	// Location for weekday evaluation. Default UTC.
+	Location *time.Location
+	Now      func() time.Time
 }
 
 type weeklyJobsDigestResponse struct {
-	OK       bool `json:"ok"`
-	Emitted  int  `json:"emitted"`
-	Skipped  int  `json:"skipped"`
-	Failed   int  `json:"failed"`
-	Audience int  `json:"audience"`
+	OK       bool   `json:"ok"`
+	Cadence  string `json:"cadence"`
+	Emitted  int    `json:"emitted"`
+	Skipped  int    `json:"skipped"`
+	Failed   int    `json:"failed"`
+	Audience int    `json:"audience"`
 }
 
-// WeeklyJobsDigestHandler returns the HTTP handler Trustage hits on
-// the Monday morning cron. Algorithm:
+// WeeklyJobsDigestHandler is invoked by Trustage on a configurable cron.
+// Algorithm:
 //
-//  1. List all unpaid candidates with completed onboarding.
-//  2. Compute the global stats block once (cheap aggregate).
-//  3. For each candidate, query top-N new jobs filtered by their
-//     country + opted-in kinds, build the digest payload, emit one
-//     `candidates.weekly_jobs_digest.v1` envelope.
+//  1. List unpaid candidates with completed onboarding.
+//  2. Filter by each user's digest cadence preference.
+//  3. Compute global stats once; per candidate emit jobs digests.
 //
-// Per-candidate failures (jobs query, emit) are logged and counted
-// but do not abort the sweep. The notification service is the sole
-// consumer and is responsible for rate-limiting / unsubscribe logic.
+// Body: optional {"cadence":"auto"|"daily"|"weekly"}.
 func WeeklyJobsDigestHandler(deps WeeklyJobsDigestDeps) http.HandlerFunc {
 	window := deps.Window
 	if window <= 0 {
@@ -95,6 +105,18 @@ func WeeklyJobsDigestHandler(deps WeeklyJobsDigestDeps) http.HandlerFunc {
 	if plansURL == "" {
 		plansURL = "https://jobs.stawi.org/pricing/"
 	}
+	loc := deps.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+	nowFn := deps.Now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	defaultCadence := strings.ToLower(strings.TrimSpace(deps.DefaultCadence))
+	if defaultCadence == "" {
+		defaultCadence = "auto"
+	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -104,7 +126,19 @@ func WeeklyJobsDigestHandler(deps WeeklyJobsDigestDeps) http.HandlerFunc {
 			return
 		}
 
-		since := time.Now().UTC().Add(-window)
+		cadence := defaultCadence
+		if r.Body != nil {
+			raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			if len(raw) > 0 {
+				var req digestRunRequest
+				if err := json.Unmarshal(raw, &req); err == nil && strings.TrimSpace(req.Cadence) != "" {
+					cadence = strings.ToLower(strings.TrimSpace(req.Cadence))
+				}
+			}
+		}
+
+		now := nowFn().UTC()
+		since := now.Add(-window)
 
 		candidates, err := deps.Lister.ListUnpaid(ctx)
 		if err != nil {
@@ -123,8 +157,20 @@ func WeeklyJobsDigestHandler(deps WeeklyJobsDigestDeps) http.HandlerFunc {
 			stats = eventsv1.DigestStats{}
 		}
 
-		resp := weeklyJobsDigestResponse{OK: true, Audience: len(candidates)}
+		resp := weeklyJobsDigestResponse{OK: true, Cadence: cadence, Audience: len(candidates)}
 		for _, c := range candidates {
+			prefs := matching.DigestPrefs{
+				EmailDigest:   c.EmailDigest,
+				WeeklySummary: c.WeeklySummary,
+				CommEmail:     c.CommEmail,
+			}
+			// Unset WeeklySummary on zero-value older rows: default true via GORM.
+			// For rows where WeeklySummary is false zero because not selected,
+			// production always loads full profile. Fakes should set true.
+			if !matching.ShouldSendDigest(prefs, cadence, now, loc, deps.WeeklyWeekday) {
+				resp.Skipped++
+				continue
+			}
 			kinds := c.Kinds
 			if len(kinds) == 0 {
 				kinds = []string{"job"}
@@ -198,11 +244,20 @@ func (l *RepoUnpaidCandidateLister) ListUnpaid(ctx context.Context) ([]UnpaidCan
 	out := make([]UnpaidCandidate, 0, len(rows))
 	for _, r := range rows {
 		country := primaryCountry(r)
+		// Empty email_digest ⇒ pre-preference row: product defaults.
+		digest := matching.NormalizeDigestCadence(r.EmailDigest)
+		ws, ce := r.WeeklySummary, r.CommEmail
+		if strings.TrimSpace(r.EmailDigest) == "" {
+			ws, ce = true, true
+		}
 		out = append(out, UnpaidCandidate{
-			ID:      r.ID,
-			Country: country,
-			Locale:  deriveLocale(r),
-			Kinds:   inferKinds(r),
+			ID:            r.ID,
+			Country:       country,
+			Locale:        deriveLocale(r),
+			Kinds:         inferKinds(r),
+			EmailDigest:   digest,
+			WeeklySummary: ws,
+			CommEmail:     ce,
 		})
 	}
 	return out, nil
