@@ -11,12 +11,14 @@ import type { StringKey } from '@/i18n/strings';
 export function BillingPanel({
   plan,
   renewsAt,
+  cancelAtPeriodEnd,
   onOpenPlanChange,
   onOpenCancel,
   t,
 }: {
   plan: PlanId;
   renewsAt?: string;
+  cancelAtPeriodEnd?: boolean;
   onOpenPlanChange: () => void;
   onOpenCancel: () => void;
   t: (k: StringKey, fallback?: string) => string;
@@ -25,40 +27,85 @@ export function BillingPanel({
   const [usageHistory, setUsageHistory] = useState<UsageEntry[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showUsage, setShowUsage] = useState(false);
-  // Payment / subscription history is the primary billing record — open by default.
   const [showInvoices, setShowInvoices] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   useEffect(() => {
-    fetchUsageHistory()
-      .then(setUsageHistory)
-      .catch(() => setUsageHistory([]));
-    fetchInvoices()
-      .then(setInvoices)
-      .catch(() => setInvoices([]));
+    let cancelled = false;
+    setHistoryLoading(true);
+    Promise.all([
+      fetchUsageHistory().catch(() => [] as UsageEntry[]),
+      fetchInvoices().catch(() => [] as Invoice[]),
+    ]).then(([usage, inv]) => {
+      if (cancelled) return;
+      setUsageHistory(usage);
+      setInvoices(inv);
+      setHistoryLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const periodLabel = renewsAt
+    ? new Date(renewsAt).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : null;
 
   return (
     <div className="space-y-4">
       <Panel title={t('nav.billing')}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              <span className="font-medium">{info.name}</span> · ${info.price}/{t('dash.perMonth')}{' '}
-              · <span className="text-emerald-700 dark:text-emerald-400">{t('dash.active')}</span>
+        {cancelAtPeriodEnd && (
+          <div
+            className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+            role="status"
+          >
+            <p className="font-medium">Cancellation scheduled</p>
+            <p className="mt-0.5">
+              You keep full access
+              {periodLabel ? ` until ${periodLabel}` : ' until the end of your billing period'}. No
+              further charges after that.
             </p>
-            {renewsAt && (
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              <span className="font-medium text-gray-900 dark:text-white">{info.name}</span>
+              <span className="text-gray-500 dark:text-gray-400">
+                {' '}
+                · ${info.price}/{t('dash.perMonth')}
+              </span>
+              {' · '}
+              {cancelAtPeriodEnd ? (
+                <span className="font-medium text-amber-700 dark:text-amber-300">
+                  Ends {periodLabel ?? 'this period'}
+                </span>
+              ) : (
+                <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                  {t('dash.active')}
+                </span>
+              )}
+            </p>
+            {periodLabel && !cancelAtPeriodEnd && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {t('dash.renewsOn')} {new Date(renewsAt).toLocaleDateString()}
+                {t('dash.renewsOn')} {periodLabel}
               </p>
             )}
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Upgrade or cancel anytime here. Cancellation takes effect at the end of the current
-              billing period — you keep access until then.
+            <p className="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              Manage your plan here. Upgrades apply immediately. If you cancel, access continues
+              until the end of the period you already paid for.
             </p>
           </div>
           <div className="text-right text-sm font-medium text-gray-900 dark:text-white">
-            <p>${info.price}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{t('dash.perMonth')}</p>
+            <p className="text-2xl font-semibold">${info.price}</p>
+            <p className="text-xs font-normal text-gray-500 dark:text-gray-400">
+              {t('dash.perMonth')}
+            </p>
           </div>
         </div>
 
@@ -66,25 +113,27 @@ export function BillingPanel({
           <Button variant="primary" size="sm" type="button" onClick={onOpenPlanChange}>
             {t('dash.changePlan')}
           </Button>
-          <Button variant="secondary" size="sm" type="button" onClick={onOpenCancel}>
-            {t('cancel.title')}
-          </Button>
+          {!cancelAtPeriodEnd && (
+            <Button variant="secondary" size="sm" type="button" onClick={onOpenCancel}>
+              {t('cancel.title')}
+            </Button>
+          )}
         </div>
 
-        <div className="mt-4 flex gap-4 border-t border-gray-100 pt-4 dark:border-navy-700">
+        <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-100 pt-4 dark:border-navy-700">
           <button
             type="button"
             onClick={() => setShowUsage(!showUsage)}
             className="text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
           >
-            {showUsage ? t('common.loading') : t('usage.title')} {showUsage ? '▲' : '▼'}
+            {t('usage.title')} {showUsage ? '▲' : '▼'}
           </button>
           <button
             type="button"
             onClick={() => setShowInvoices(!showInvoices)}
             className="text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
           >
-            {showInvoices ? t('invoice.title') : t('invoice.title')} {showInvoices ? '▲' : '▼'}
+            Payment history {showInvoices ? '▲' : '▼'}
           </button>
         </div>
 
@@ -97,9 +146,16 @@ export function BillingPanel({
         {showInvoices && (
           <div className="mt-4 border-t border-gray-100 pt-4 dark:border-navy-700">
             <h3 className="mb-2 text-sm font-medium text-gray-900 dark:text-white">
-              Subscription &amp; payment history
+              Payment history
             </h3>
-            <InvoiceHistory invoices={invoices} t={t} />
+            <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              Every subscription checkout and payment attempt for your account.
+            </p>
+            {historyLoading ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('common.loading')}</p>
+            ) : (
+              <InvoiceHistory invoices={invoices} t={t} />
+            )}
           </div>
         )}
       </Panel>

@@ -35,6 +35,7 @@ export function CancelSubscriptionModal({
   const [detail, setDetail] = useState('');
   const [checked, setChecked] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState('');
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   useFocusTrap(dialogRef, true, onClose);
@@ -57,7 +58,21 @@ export function CancelSubscriptionModal({
 
   const handleCancel = async () => {
     try {
-      await cancelSubscription({ reason: selectedReason, detail });
+      const res = await cancelSubscription({ reason: selectedReason, detail });
+      if (res.effective_date) {
+        const d = new Date(res.effective_date);
+        setEffectiveDate(
+          Number.isNaN(d.getTime())
+            ? res.effective_date
+            : d.toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })
+        );
+      } else {
+        setEffectiveDate('the end of your billing period');
+      }
       setStep('success');
       onSuccess();
     } catch {
@@ -130,7 +145,10 @@ export function CancelSubscriptionModal({
               {t('cancel.confirmTitle')}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              {t('cancel.confirmBody').replace('{date}', 'the end of your billing period')}
+              {t('cancel.confirmBody').replace(
+                '{date}',
+                'the end of your current billing period (you keep access until then)'
+              )}
             </p>
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
               {detail}
@@ -180,7 +198,11 @@ export function CancelSubscriptionModal({
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {t('cancel.success')}
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{t('dash.reactivateHint')}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              You keep access
+              {effectiveDate ? ` until ${effectiveDate}` : ' until the end of your billing period'}.
+              Matching continues until then — no further charges after.
+            </p>
             <Button variant="primary" size="md" type="button" onClick={onClose}>
               {t('cta.close')}
             </Button>

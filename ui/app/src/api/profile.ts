@@ -226,6 +226,8 @@ export interface MeSubscription {
   plan: string | null;
   status: 'none' | 'active' | 'past_due' | 'cancelled';
   renews_at?: string;
+  /** True when user cancelled; access remains until renews_at / period end. */
+  cancel_at_period_end?: boolean;
   agent?: { name: string; email: string } | null;
   queued_matches: number;
   delivered_this_week: number;
@@ -244,6 +246,7 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
     plan: body.plan ?? null,
     status: body.status ?? 'none',
     renews_at: body.renews_at,
+    cancel_at_period_end: Boolean(body.cancel_at_period_end),
     agent: body.agent ?? null,
     queued_matches: body.queued_matches ?? 0,
     delivered_this_week: body.delivered_this_week ?? 0,

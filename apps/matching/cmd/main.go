@@ -702,7 +702,8 @@ func main() {
 	}
 	// Trustage-driven reconciler sweep — the safety net behind the webhook.
 	if checkoutStore != nil && billingActivator != nil {
-		billingReconciler := billing.NewReconciler(checkoutStore, billingGateway, billingActivator, cfg.BillingReconcileBatch)
+		billingReconciler := billing.NewReconciler(checkoutStore, billingGateway, billingActivator, cfg.BillingReconcileBatch).
+			WithFinalizer(candidateRepo)
 		mux.Handle("POST /_admin/billing/reconcile", httpmw.RequireAdmin(adminAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			res, recErr := billingReconciler.Run(r.Context())
 			if recErr != nil {

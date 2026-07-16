@@ -6,6 +6,12 @@ import (
 	"github.com/pitabwire/util"
 )
 
+// SubscriptionFinalizer applies cancel-at-period-end when the paid period
+// has elapsed. Optional — when nil, Run only reconciles payment checkouts.
+type SubscriptionFinalizer interface {
+	FinalizeExpiredCancellations(ctx context.Context, limit int) (int64, error)
+}
+
 // Reconciler polls the payment provider for pending checkouts and drives
 // confirmed ones through the Activator. It is the safety net behind the
 // webhook: webhooks drop, and a status the UI never polled to completion
@@ -13,10 +19,11 @@ import (
 // invoked from a Trustage cron (POST /_admin/billing/reconcile) or a
 // periodic goroutine.
 type Reconciler struct {
-	store     CheckoutStore
-	gateway   Gateway
-	activator *Activator
-	batch     int
+	store      CheckoutStore
+	gateway    Gateway
+	activator  *Activator
+	finalizer  SubscriptionFinalizer
+	batch      int
 }
 
 // NewReconciler builds a Reconciler. batch bounds how many pending
@@ -28,12 +35,19 @@ func NewReconciler(store CheckoutStore, gateway Gateway, activator *Activator, b
 	return &Reconciler{store: store, gateway: gateway, activator: activator, batch: batch}
 }
 
+// WithFinalizer attaches cancel-at-period-end processing to each Run.
+func (r *Reconciler) WithFinalizer(f SubscriptionFinalizer) *Reconciler {
+	r.finalizer = f
+	return r
+}
+
 // ReconcileResult summarises one Run.
 type ReconcileResult struct {
-	Examined  int
-	Activated int
-	Failed    int
-	Errors    int
+	Examined    int   `json:"examined"`
+	Activated   int   `json:"activated"`
+	Failed      int   `json:"failed"`
+	Errors      int   `json:"errors"`
+	Cancellations int64 `json:"cancellations_finalized"`
 }
 
 // Run sweeps pending checkouts once. Per-checkout errors are logged and
@@ -76,9 +90,21 @@ func (r *Reconciler) Run(ctx context.Context) (ReconcileResult, error) {
 			// still pending — leave it for the next sweep.
 		}
 	}
+
+	if r.finalizer != nil {
+		n, finErr := r.finalizer.FinalizeExpiredCancellations(ctx, r.batch)
+		if finErr != nil {
+			res.Errors++
+			log.WithError(finErr).Warn("billing: reconcile: cancel finalization failed")
+		} else {
+			res.Cancellations = n
+		}
+	}
+
 	log.WithField("examined", res.Examined).
 		WithField("activated", res.Activated).
 		WithField("failed", res.Failed).
+		WithField("cancellations", res.Cancellations).
 		WithField("errors", res.Errors).
 		Info("billing: reconcile sweep complete")
 	return res, nil

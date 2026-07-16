@@ -57,6 +57,14 @@ export function PendingCheckoutPoller() {
         }
         if (!cancelled) {
           await qc.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTION });
+          // Clean URL so a refresh doesn't re-enter the success poller loop.
+          const u = new URL(window.location.href);
+          if (u.searchParams.has('billing') || u.searchParams.has('prompt_id')) {
+            u.searchParams.delete('billing');
+            u.searchParams.delete('prompt_id');
+            u.searchParams.delete('session');
+            window.history.replaceState(null, '', u.pathname + u.hash + (u.search || ''));
+          }
         }
       })();
       return () => {

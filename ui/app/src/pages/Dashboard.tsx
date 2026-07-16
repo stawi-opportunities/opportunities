@@ -243,6 +243,7 @@ export default function Dashboard() {
                     <BillingPanel
                       plan={plan}
                       renewsAt={sub?.renews_at}
+                      cancelAtPeriodEnd={sub?.cancel_at_period_end}
                       onOpenPlanChange={() => setShowPlanChange(true)}
                       onOpenCancel={() => setShowCancel(true)}
                       t={t}

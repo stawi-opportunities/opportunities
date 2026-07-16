@@ -43,7 +43,19 @@ export async function startCheckoutAndNavigate(
   input: CheckoutCreateInput
 ): Promise<CheckoutResponse> {
   const email = input.email?.trim() || (await checkoutEmailFromAuth());
-  const res = await createCheckout({ ...input, email: email || undefined });
+  let res: CheckoutResponse;
+  try {
+    res = await createCheckout({ ...input, email: email || undefined });
+  } catch (e) {
+    // Already subscribed → send them to the dashboard, not a new pay page.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/already_subscribed|already have an active/i.test(msg)) {
+      clearPendingPrompt();
+      window.location.assign('/dashboard/#billing');
+      throw e;
+    }
+    throw e;
+  }
 
   if (res.prompt_id) {
     stashPendingPrompt(res.prompt_id);
