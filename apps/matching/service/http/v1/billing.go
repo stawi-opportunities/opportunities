@@ -17,6 +17,8 @@ import (
 // --- GET /billing/plans (public) ---------------------------------------
 
 // billingPlan mirrors ui/app/src/api/billing.ts BillingPlan.
+// Amount is major units (10 = US$10); USDCents is minor units (1000 = US$10).
+// Pricing pages must format with usd_cents/100 (or amount as-is) — never amount/100.
 type billingPlan struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`

@@ -8,7 +8,7 @@
     <header class="pb-5">
       <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Starter</h3>
       <p class="mt-4 flex flex-wrap items-baseline gap-x-1" data-role="price">
-        <span class="text-3xl font-bold tracking-tight text-navy-900 sm:text-4xl" data-role="amount">$10</span>
+        <span class="text-3xl font-bold tracking-tight text-navy-900 sm:text-4xl" data-role="amount">US$10</span>
         <span class="text-sm text-gray-500">/month</span>
       </p>
       <p class="mt-1 hidden text-xs text-gray-500" data-role="usd-note"></p>
@@ -46,7 +46,7 @@
     <header class="pb-5 pt-1">
       <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Managed</h3>
       <p class="mt-4 flex flex-wrap items-baseline gap-x-1" data-role="price">
-        <span class="text-3xl font-bold tracking-tight text-navy-900 sm:text-4xl" data-role="amount">$200</span>
+        <span class="text-3xl font-bold tracking-tight text-navy-900 sm:text-4xl" data-role="amount">US$200</span>
         <span class="text-sm text-gray-500">/month</span>
       </p>
       <p class="mt-1 hidden text-xs text-gray-500" data-role="usd-note"></p>
@@ -99,28 +99,33 @@
       body.plans.forEach(function (p) {
         var card = document.querySelector('article[data-plan="' + p.id + '"]');
         if (!card) return;
-        var amount = card.querySelector('[data-role="amount"]');
+        var amountEl = card.querySelector('[data-role="amount"]');
         var note   = card.querySelector('[data-role="usd-note"]');
-        if (!amount) return;
-        var minor = p.amount;
+        if (!amountEl) return;
+        // Catalog: amount = major units (10 = $10); usd_cents = minor units.
+        // Prefer usd_cents so we never treat major as cents (which showed $0 / $2).
+        var cents = typeof p.usd_cents === "number" && p.usd_cents > 0
+          ? p.usd_cents
+          : (typeof p.amount === "number" ? p.amount * 100 : 0);
         var currency = p.currency || "USD";
+        var major = cents / 100;
         var formatted;
         try {
           formatted = new Intl.NumberFormat(undefined, {
             style: "currency",
             currency: currency,
             maximumFractionDigits: 0,
-          }).format(minor / 100);
+          }).format(major);
         } catch (e) {
-          formatted = currency + " " + (minor / 100).toFixed(0);
+          formatted = "US$" + major.toFixed(0);
         }
-        amount.textContent = formatted;
-        if (currency !== "USD" && note) {
+        amountEl.textContent = formatted;
+        if (currency !== "USD" && note && typeof p.usd_cents === "number") {
           note.textContent = "\u2248 US$" + (p.usd_cents / 100).toFixed(0) + " / month";
           note.classList.remove("hidden");
         }
       });
     })
-    .catch(function () { /* keep USD defaults */ });
+    .catch(function () { /* keep USD defaults $10 / $200 */ });
 })();
 </script>

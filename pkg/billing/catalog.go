@@ -34,11 +34,13 @@ type Plan struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Interval    string `json:"interval"`
-	// Amount is the major-unit price (e.g. 10 for $10) for display.
+	// Amount is the major-unit price for display (10 = US$10, 200 = US$200).
+	// Callers must not treat this as cents — use USDCents for charge/display math.
 	Amount int `json:"amount"`
 	// Currency is the display/charge currency code.
 	Currency string `json:"currency"`
-	// USDCents is the authoritative charge amount in USD cents.
+	// USDCents is the authoritative charge amount in USD cents
+	// (1000 = US$10, 20000 = US$200). Prefer this for any /100 formatting.
 	USDCents int `json:"usd_cents"`
 }
 
