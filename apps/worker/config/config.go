@@ -31,6 +31,10 @@ type Config struct {
 	// (svc.opportunities.worker.embed.v1). Required together with
 	// EMBEDDING_BASE_URL to enable opportunity vectors.
 	WorkerEmbedQueueURL string `env:"WORKER_EMBED_QUEUE_URL" envDefault:""`
+	// MatchingFanOutQueueURL is the Frame Queue DSN for
+	// SubjectOpportunityFanOut. When set (with embeddings), the embed
+	// worker publishes vectors so matching can run Path A FanOut live.
+	MatchingFanOutQueueURL string `env:"MATCHING_FANOUT_QUEUE_URL" envDefault:""`
 }
 
 func Load() (Config, error) { return fconfig.FromEnv[Config]() }

@@ -26,6 +26,10 @@ type PreferenceMatchDeps struct {
 	Persist httpv1.MatchPersister
 	// TopK caps the matches emitted per candidate-kind pair (default 50).
 	TopK int
+	// WantsAlerts returns true when the candidate opted into every-match
+	// notifications (match_alerts). When nil/false, we still collect matches
+	// but skip MatchesReady emit (digests cover summaries).
+	WantsAlerts func(ctx context.Context, candidateID string) bool
 }
 
 // PreferenceMatchHandler subscribes to TopicCandidatePreferencesUpdated
@@ -119,11 +123,21 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 			res.Matches = res.Matches[:h.deps.TopK]
 		}
 
-		// Persist into candidate_matches before emit so the dashboard feed
-		// and notification service stay aligned on the same row set.
+		// Always collect matches for the dashboard.
 		if err := httpv1.PersistMatchResult(ctx, h.deps.Persist, res, "preference"); err != nil {
 			log.WithError(err).WithField("kind", kind).
 				Warn("preference-match: persist candidate_matches failed")
+		}
+
+		// Notify only when the user opted into every-match alerts.
+		notify := h.deps.WantsAlerts != nil && h.deps.WantsAlerts(ctx, in.CandidateID)
+		if !notify || h.deps.Svc == nil {
+			telemetry.RecordPreferenceTriggeredRun(kind)
+			log.WithField("kind", kind).
+				WithField("matches", len(res.Matches)).
+				WithField("notify", false).
+				Info("preference-match: matches collected (no per-match notify)")
+			continue
 		}
 
 		rows := make([]eventsv1.MatchRow, 0, len(res.Matches))

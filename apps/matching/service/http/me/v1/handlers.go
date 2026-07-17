@@ -508,7 +508,7 @@ func getNotifications(d *Deps) http.HandlerFunc {
 		)
 		err := d.DB.QueryRowContext(r.Context(), `
 SELECT COALESCE(email_digest, 'weekly'),
-       COALESCE(match_alerts, true),
+       COALESCE(match_alerts, false),
        COALESCE(weekly_summary, true),
        COALESCE(marketing_emails, false),
        COALESCE(comm_email, true)
@@ -517,7 +517,7 @@ FROM candidate_profiles WHERE id = $1`, cand).Scan(&digest, &matchAl, &weekly, &
 			// New account defaults — still return a valid prefs object.
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(notificationPrefsResp{
-				EmailDigest: matching.DigestWeekly, MatchAlerts: true, WeeklySummary: true,
+				EmailDigest: matching.DigestWeekly, MatchAlerts: false, WeeklySummary: true,
 			})
 			return
 		}
@@ -526,7 +526,7 @@ FROM candidate_profiles WHERE id = $1`, cand).Scan(&digest, &matchAl, &weekly, &
 			if strings.Contains(err.Error(), "email_digest") || strings.Contains(err.Error(), "does not exist") {
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(notificationPrefsResp{
-					EmailDigest: matching.DigestWeekly, MatchAlerts: true, WeeklySummary: true,
+					EmailDigest: matching.DigestWeekly, MatchAlerts: false, WeeklySummary: true,
 				})
 				return
 			}

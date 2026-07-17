@@ -115,10 +115,7 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 			FirstSeenAt: h.FirstSeenAt,
 		}
 		res := Score(candSig, oppSig, deps.Weights, now())
-		res.Cosine = 1.0 - h.Distance/2.0
-		if res.Cosine < 0 {
-			res.Cosine = 0
-		}
+		res.Cosine = CosineFromPGDistance(h.Distance)
 		res.Total = deps.Weights.Cosine*res.Cosine +
 			deps.Weights.Skills*res.SkillsOverlap +
 			deps.Weights.Geo*res.GeoMatch +

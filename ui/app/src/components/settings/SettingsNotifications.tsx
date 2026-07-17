@@ -13,7 +13,7 @@ export function SettingsNotifications({ t }: { t: (k: StringKey, fallback?: stri
   const { push } = useToast();
 
   const [digest, setDigest] = useState<'daily' | 'weekly' | 'off'>('weekly');
-  const [matchAlerts, setMatchAlerts] = useState(true);
+  const [matchAlerts, setMatchAlerts] = useState(false);
   const [weeklySummary, setWeeklySummary] = useState(true);
   const [marketing, setMarketing] = useState(false);
   const [loaded, setLoaded] = useState(false);

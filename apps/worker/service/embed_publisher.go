@@ -38,3 +38,30 @@ func (p *FrameEmbedPublisher) PublishEmbed(ctx context.Context, job eventsv1.Opp
 	}
 	return p.svc.QueueManager().Publish(ctx, p.ref, body)
 }
+
+// FrameFanOutPublisher publishes OpportunityFanOutV1 for matching Path A.
+type FrameFanOutPublisher struct {
+	svc *frame.Service
+	ref string
+}
+
+// NewFrameFanOutPublisher builds a publisher for SubjectOpportunityFanOut.
+func NewFrameFanOutPublisher(svc *frame.Service, ref string) *FrameFanOutPublisher {
+	if ref == "" {
+		ref = eventsv1.SubjectOpportunityFanOut
+	}
+	return &FrameFanOutPublisher{svc: svc, ref: ref}
+}
+
+// PublishFanOut implements FanOutPublisher.
+func (p *FrameFanOutPublisher) PublishFanOut(ctx context.Context, job eventsv1.OpportunityFanOutV1) error {
+	if p == nil || p.svc == nil || p.svc.QueueManager() == nil {
+		return fmt.Errorf("fanout publisher: queue manager not configured")
+	}
+	env := eventsv1.NewEnvelope(eventsv1.SubjectOpportunityFanOut, job)
+	body, err := json.Marshal(env)
+	if err != nil {
+		return fmt.Errorf("fanout publisher: marshal: %w", err)
+	}
+	return p.svc.QueueManager().Publish(ctx, p.ref, body)
+}

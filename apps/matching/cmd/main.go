@@ -211,12 +211,24 @@ func main() {
 	if sqlDB != nil {
 		persistStore = matching.NewStore(sqlDB)
 	}
+	wantsMatchAlerts := func(ctx context.Context, candidateID string) bool {
+		if sqlDB == nil || candidateID == "" {
+			return false
+		}
+		var alerts bool
+		err := sqlDB.QueryRowContext(ctx,
+			`SELECT COALESCE(match_alerts, false) FROM candidate_profiles WHERE id = $1`,
+			candidateID,
+		).Scan(&alerts)
+		return err == nil && alerts
+	}
 	prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
-		Svc:      svc,
-		Match:    matchSvc,
-		Matchers: matcherReg,
-		Persist:  persistStore,
-		TopK:     50,
+		Svc:         svc,
+		Match:       matchSvc,
+		Matchers:    matcherReg,
+		Persist:     persistStore,
+		TopK:        50,
+		WantsAlerts: wantsMatchAlerts,
 	})
 	if extractor != nil {
 		scorer := cv.NewScorer(extractor)
@@ -350,6 +362,34 @@ func main() {
 			svc.Init(ctx, frame.WithRegisterSubscriber(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI, cc))
 			log.Info("matching: candidate-change (Path C) enabled — embedding queue → gap-fill + rerank")
 		}
+
+		// Path A: new opportunity embeddings → FanOut into candidate_matches.
+		// Notifications fire only for users with match_alerts=true.
+		if cfg.MatchingFanOutEnabled {
+			foURI := cfg.OpportunityFanOutQueueURI
+			foName := cfg.OpportunityFanOutQueueName
+			if foName == "" {
+				foName = eventsv1.SubjectOpportunityFanOut
+			}
+			// Prefer canonical subject as the queue ref when using external DSN.
+			foRef := eventsv1.SubjectOpportunityFanOut
+			if strings.HasPrefix(foURI, "mem://") {
+				foRef = foName
+			}
+			foConsumer := matchingv1.NewOpportunityFanOutConsumer(matchingv1.OpportunityFanOutConsumerDeps{
+				KNN:             matchKNN,
+				Store:           matchStore,
+				EventLog:        matchEvents,
+				Reranker:        rerank,
+				Weights:         matching.DefaultWeights(),
+				DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
+				Svc:             svc,
+				DB:              sqlDB,
+				DefaultMinScore: cfg.MatchingMinScore,
+			})
+			svc.Init(ctx, frame.WithRegisterSubscriber(foRef, foURI, foConsumer))
+			log.WithField("queue", foRef).Info("matching: Path A fan-out enabled — new jobs → candidate_matches")
+		}
 	}
 
 	// --- HTTP mux ---
@@ -456,10 +496,11 @@ func main() {
 	mux.Handle("GET /me/cv", authMW(httpv1.MeCVGetHandler(uploadDeps)))
 	mux.Handle("POST /candidates/preferences", authMW(httpv1.PreferencesHandler(svc, sqlDB)))
 	mux.Handle("GET /candidates/match", authMW(httpv1.MatchHandler(httpv1.MatchDeps{
-		Svc:     svc,
-		Store:   candStore,
-		Search:  search,
-		Persist: persistStore,
+		Svc:         svc,
+		Store:       candStore,
+		Search:      search,
+		Persist:     persistStore,
+		WantsAlerts: wantsMatchAlerts,
 	})))
 
 	// --- /me/subscription (dashboard summary) ---

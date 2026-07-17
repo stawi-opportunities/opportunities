@@ -111,8 +111,10 @@ type CandidateProfile struct {
 	// Notification / digest preferences (settings UI + Trustage digest cron).
 	// EmailDigest: daily | weekly | off. WeeklySummary gates the summary email;
 	// MatchAlerts gates real-time match push; MarketingEmails is promotional.
-	EmailDigest     string     `gorm:"type:varchar(20);not null;default:'weekly'" json:"email_digest"`
-	MatchAlerts     bool       `gorm:"not null;default:true" json:"match_alerts"`
+	EmailDigest string `gorm:"type:varchar(20);not null;default:'weekly'" json:"email_digest"`
+	// MatchAlerts: opt-in every-match notifications. Default false — digests
+	// are the default summary path unless the user enables real-time alerts.
+	MatchAlerts     bool       `gorm:"not null;default:false" json:"match_alerts"`
 	WeeklySummary   bool       `gorm:"not null;default:true" json:"weekly_summary"`
 	MarketingEmails bool       `gorm:"not null;default:false" json:"marketing_emails"`
 	LastDigestAt    *time.Time `json:"last_digest_at,omitempty"`

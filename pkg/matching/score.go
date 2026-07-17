@@ -31,6 +31,42 @@ func DefaultWeights() Weights {
 	}
 }
 
+// CosineFromPGDistance converts pgvector cosine distance (typically 0–2)
+// to a similarity in [0,1]. Shared by FanOut, GapFill, and legacy KNN so
+// all paths use the same cosine term.
+func CosineFromPGDistance(distance float64) float64 {
+	c := 1.0 - distance/2.0
+	if c < 0 {
+		return 0
+	}
+	if c > 1 {
+		return 1
+	}
+	return c
+}
+
+// BlendFromCosine applies DefaultWeights (or w) to a cosine similarity
+// with neutral skills/geo/salary (1.0) and zero stale penalty — used when
+// the legacy KNN path only has a cosine/similarity score so totals land
+// on the same scale as FanOut/GapFill.
+func BlendFromCosine(cosine float64, w Weights) float64 {
+	if w == (Weights{}) {
+		w = DefaultWeights()
+	}
+	if cosine < 0 {
+		cosine = 0
+	}
+	if cosine > 1 {
+		cosine = 1
+	}
+	// Neutral non-cosine terms = 1.0 (same as Score when one side missing).
+	total := w.Cosine*cosine + w.Skills*1.0 + w.Geo*1.0 + w.Salary*1.0
+	if total < 0 {
+		return 0
+	}
+	return total
+}
+
 // CandidateSignal is the per-candidate input to scoring. Comes from
 // candidate_match_indexes.
 type CandidateSignal struct {

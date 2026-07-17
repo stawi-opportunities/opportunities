@@ -210,6 +210,15 @@ func (p *PostgresProcessor) process(ctx context.Context, item jobqueue.Item) err
 			Title:         c.Title,
 			IssuingEntity: c.IssuingEntity,
 			Description:   c.Description,
+			Kind:          c.Kind,
+			Country:       c.Country,
+		}
+		if c.AmountMax > 0 {
+			v := c.AmountMax
+			job.AmountMax = &v
+		}
+		if c.PostedAt != nil {
+			job.PostedAt = c.PostedAt.UTC().Format(time.RFC3339)
 		}
 		if pubErr := p.embeds.PublishEmbed(ctx, job); pubErr != nil {
 			// Ingest already committed; log and rely on embed-backfill /

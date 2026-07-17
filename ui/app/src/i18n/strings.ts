@@ -950,8 +950,9 @@ const en: Strings = {
   'settings.daily': 'Daily',
   'settings.weekly': 'Weekly',
   'settings.off': 'Off',
-  'settings.matchAlerts': 'Match alerts',
-  'settings.matchAlertsHint': 'Get notified when a new match is found.',
+  'settings.matchAlerts': 'Notify on every match',
+  'settings.matchAlertsHint':
+    'Optional. When off (default), we only send your scheduled digest summary — not a message for each new role.',
   'settings.weeklySummary': 'Job / match summaries',
   'settings.weeklySummaryHint':
     'Receive scheduled email summaries of matches (subscribers) or new jobs (free accounts). Turn off to stop all digests.',

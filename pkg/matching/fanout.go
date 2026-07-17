@@ -66,6 +66,9 @@ type FanOutResult struct {
 	Overflowed        int
 	RerankerStatus    string
 	LatencyMS         int
+	// NewMatches are rows written with status=new (not overflow) — used
+	// for optional per-match notifications.
+	NewMatches []Match
 }
 
 // FanOut runs Path A end-to-end. Idempotent at the DB level (UpsertMatches
@@ -140,13 +143,8 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 			FirstSeenAt:  in.FirstSeenAt,
 		}
 		res := Score(candSig, oppSig, deps.Weights, now())
-		// Override the cosine term with the distance the index returned
-		// (the candidate's full embedding isn't materialized in the hit;
-		// pgvector did the cosine for us).
-		res.Cosine = 1.0 - h.Distance/2.0
-		if res.Cosine < 0 {
-			res.Cosine = 0
-		}
+		// Override cosine from pgvector distance (shared helper).
+		res.Cosine = CosineFromPGDistance(h.Distance)
 		res.Total = deps.Weights.Cosine*res.Cosine +
 			deps.Weights.Skills*res.SkillsOverlap +
 			deps.Weights.Geo*res.GeoMatch +
@@ -229,8 +227,14 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 		return FanOutResult{RunID: runID}, fmt.Errorf("matching: fanout upsert: %w", err)
 	}
 	runEvt.MatchesWritten = len(matches)
+	newMatches := make([]Match, 0, len(matches))
+	for _, m := range matches {
+		if m.Status == StatusNew {
+			newMatches = append(newMatches, m)
+		}
+	}
 
-	// 6. Per-match events.
+	// 6. Per-match events (audit trail — not user notifications).
 	for _, m := range matches {
 		rerankPtr := m.RerankScore
 		kind := overflowEventKinds[m.CandidateID]
@@ -273,6 +277,7 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 		Overflowed:        overflowCount,
 		RerankerStatus:    runEvt.RerankerStatus,
 		LatencyMS:         runEvt.LatencyMS,
+		NewMatches:        newMatches,
 	}, nil
 }
 

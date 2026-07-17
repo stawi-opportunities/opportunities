@@ -39,7 +39,7 @@ func TestPlansHandler_ReturnsCatalogAndRoute(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "KE", body.Country)
 	require.Equal(t, "FLUTTERWAVE", body.Route)
-	require.Len(t, body.Plans, 3)
+	require.Len(t, body.Plans, 2) // starter + managed
 }
 
 // --- POST /billing/checkout --------------------------------------------
@@ -81,7 +81,7 @@ func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
 	}}
 	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, candReq(t, http.MethodPost, "/billing/checkout", "cand_1", `{"plan_id":"pro"}`))
+	h.ServeHTTP(rec, candReq(t, http.MethodPost, "/billing/checkout", "cand_1", `{"plan_id":"managed"}`))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp struct {
@@ -96,7 +96,7 @@ func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
 	require.Equal(t, "redirect", resp.Status)
 	require.Equal(t, "chk_1", resp.PromptID)
 	require.Equal(t, "https://pay/abc", resp.RedirectURL)
-	require.Equal(t, "pro", resp.PlanID)
+	require.Equal(t, "managed", resp.PlanID)
 	require.Equal(t, "cand_1", gw.lastReq.CandidateID)
 }
 

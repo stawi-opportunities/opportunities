@@ -76,4 +76,9 @@ const (
 	// OpportunityEmbedV1 here; EmbedHandler computes the vector and writes
 	// opportunities.embedding. Durable + retried (external embedding HTTP).
 	SubjectWorkerEmbed = "svc.opportunities.worker.embed.v1"
+
+	// SubjectOpportunityFanOut: after embed succeeds, the worker publishes
+	// OpportunityFanOutV1 with the vector; matching runs Path A FanOut so
+	// new jobs land in candidate_matches as they arrive.
+	SubjectOpportunityFanOut = "svc.opportunities.matching.opportunity.fanout.v1"
 )

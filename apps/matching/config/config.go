@@ -67,6 +67,13 @@ type CandidatesConfig struct {
 	CandidateEmbeddingQueueURI  string `env:"CANDIDATE_EMBEDDING_QUEUE_URI"  envDefault:"mem://candidate_embedding"`
 	CandidateEmbeddingQueueName string `env:"CANDIDATE_EMBEDDING_QUEUE_NAME" envDefault:"candidate_embedding"`
 
+	// Opportunity fan-out (Path A): worker publishes OpportunityFanOutV1 after
+	// embed; this consumer runs FanOut so matches collect as jobs arrive.
+	OpportunityFanOutQueueURI  string `env:"OPPORTUNITY_FANOUT_QUEUE_URI"  envDefault:"mem://opportunity_fanout"`
+	OpportunityFanOutQueueName string `env:"OPPORTUNITY_FANOUT_QUEUE_NAME" envDefault:"opportunity_fanout"`
+	// MatchingFanOutEnabled defaults ON. Set false to stop live Path A.
+	MatchingFanOutEnabled bool `env:"MATCHING_FANOUT_ENABLED" envDefault:"true"`
+
 	// PlansURL is embedded into the weekly-jobs-digest event so the
 	// notification service's email template doesn't have to assume the
 	// host. Defaults to production; preview deploys override via env.

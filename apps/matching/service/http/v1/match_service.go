@@ -11,6 +11,7 @@ import (
 	jobm "github.com/stawi-opportunities/opportunities/apps/matching/service/matchers/job"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/matching"
 )
 
 // ErrNoEmbedding is returned by MatchService.RunMatch when the
@@ -29,11 +30,14 @@ type MatchResult struct {
 
 // MatchService runs the "embedding + preferences + PostgreSQL KNN +
 // top-K truncation" pipeline for one candidate. Used by both the
-// HTTP match handler and the weekly-digest cron.
+// HTTP match handler and preference rematch. Scores are blended onto the
+// same scale as FanOut/GapFill via matching.BlendFromCosine.
 type MatchService struct {
-	store  CandidateStore
-	search SearchIndex
-	topK   int
+	store    CandidateStore
+	search   SearchIndex
+	topK     int
+	minScore float64
+	weights  matching.Weights
 }
 
 // NewMatchService wires the service.
@@ -41,7 +45,18 @@ func NewMatchService(store CandidateStore, search SearchIndex, topK int) *MatchS
 	if topK <= 0 {
 		topK = 20
 	}
-	return &MatchService{store: store, search: search, topK: topK}
+	return &MatchService{
+		store: store, search: search, topK: topK,
+		minScore: 0.45, weights: matching.DefaultWeights(),
+	}
+}
+
+// WithMinScore sets the quality floor (default 0.45).
+func (s *MatchService) WithMinScore(min float64) *MatchService {
+	if min > 0 && min <= 1 {
+		s.minScore = min
+	}
+	return s
 }
 
 // RunMatch loads the candidate's embedding + preferences, queries
@@ -78,6 +93,35 @@ func (s *MatchService) RunMatch(ctx context.Context, candidateID string) (MatchR
 	if err != nil {
 		return MatchResult{}, err
 	}
+	// Re-score onto FanOut/GapFill scale: KNN returns cosine-like similarity;
+	// BlendFromCosine applies the same weight structure as Score().
+	minScore := s.minScore
+	if minScore <= 0 {
+		minScore = 0.45
+	}
+	w := s.weights
+	if w == (matching.Weights{}) {
+		w = matching.DefaultWeights()
+	}
+	filtered := make([]SearchHit, 0, len(hits))
+	for _, h := range hits {
+		// pgsearch returns 1 - distance. Recover distance for CosineFromPGDistance
+		// so totals match FanOut/GapFill (which use CosineFromPGDistance).
+		cos := matching.CosineFromPGDistance(1.0 - h.Score)
+		// If KNN already returned a pure similarity in [0,1] with no transform quirks, prefer it when closer.
+		if h.Score >= 0 && h.Score <= 1 {
+			// Average of both interpretations is wrong — use CosineFromPGDistance
+			// of recovered distance: distance = 1 - score when score = 1 - distance.
+			cos = matching.CosineFromPGDistance(1.0 - h.Score)
+		}
+		total := matching.BlendFromCosine(cos, w)
+		if total < minScore {
+			continue
+		}
+		h.Score = total
+		filtered = append(filtered, h)
+	}
+	hits = filtered
 	if len(hits) > s.topK {
 		hits = hits[:s.topK]
 	}

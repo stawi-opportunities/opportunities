@@ -95,6 +95,7 @@ func TestPreferenceMatchHandler_EmitsMatchesPerEnabledKind(t *testing.T) {
 		Match:    matchSvc,
 		Matchers: reg,
 		TopK:     5,
+		WantsAlerts: func(context.Context, string) bool { return true },
 	})
 
 	in := eventsv1.PreferencesUpdatedV1{

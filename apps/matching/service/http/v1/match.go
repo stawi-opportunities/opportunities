@@ -64,6 +64,9 @@ type MatchDeps struct {
 	// RequireAuthCandidate when non-empty forces the query candidate_id to
 	// match the authenticated identity (prevents IDOR on the legacy route).
 	RequireAuthCandidate string
+	// WantsAlerts gates MatchesReady emit (every-match notifications).
+	// When nil, emit is skipped (collect-only). Digests remain the default.
+	WantsAlerts func(ctx context.Context, candidateID string) bool
 }
 
 // matchResponse is the JSON body returned from the handler.
@@ -131,6 +134,7 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 			return
 		}
 
+		// Always collect matches for the dashboard / API response.
 		if err := PersistMatchResult(ctx, deps.Persist, res, "http_match"); err != nil {
 			log.WithError(err).Warn("match: persist candidate_matches failed")
 		}
@@ -147,9 +151,14 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 
-		// Emit MatchesReadyV1 out-of-band so a slow event bus doesn't
-		// add latency to the HTTP response, and a client disconnect
-		// doesn't cancel the emit.
+		// Per-match notification only when the user opted into match_alerts.
+		// Default is digest-only; on-demand HTTP already returns the rows.
+		if deps.WantsAlerts != nil && !deps.WantsAlerts(ctx, res.CandidateID) {
+			return
+		}
+		if deps.Svc == nil {
+			return
+		}
 		env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
 			CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: eventRows,
 		})

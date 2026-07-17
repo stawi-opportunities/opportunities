@@ -71,6 +71,17 @@ func main() {
 			frame.WithRegisterPublisher(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL),
 			frame.WithRegisterSubscriber(eventsv1.SubjectWorkerEmbed, cfg.WorkerEmbedQueueURL, embedH),
 		)
+		if cfg.MatchingFanOutQueueURL != "" {
+			// Path A: after embed, publish to matching so new jobs fan out live.
+			embedH.WithFanOutPublisher(workersvc.NewFrameFanOutPublisher(svc, eventsv1.SubjectOpportunityFanOut))
+			initOpts = append(initOpts,
+				frame.WithRegisterPublisher(eventsv1.SubjectOpportunityFanOut, cfg.MatchingFanOutQueueURL),
+			)
+			util.Log(ctx).WithField("queue", eventsv1.SubjectOpportunityFanOut).
+				Info("worker: opportunity fan-out publish enabled")
+		} else {
+			util.Log(ctx).Warn("worker: MATCHING_FANOUT_QUEUE_URL unset — Path A fan-out not published")
+		}
 		util.Log(ctx).WithField("model", embModel).WithField("dims", cfg.EmbeddingDimensions).
 			WithField("queue", eventsv1.SubjectWorkerEmbed).
 			Info("worker: opportunity embedding via Frame Queue")
