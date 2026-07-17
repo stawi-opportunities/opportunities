@@ -83,6 +83,8 @@ export default function Cascade(props: CascadeProps) {
   const feedParams = useMemo<FeedParams>(() => {
     const p: FeedParams = {
       ...filters,
+      // Default newest-first so cascade tiers surface fresh roles.
+      sort: filters.sort ?? 'recent',
       tier_limit: tierLimit,
     };
     if (effectiveCountry) p.country = effectiveCountry;
@@ -173,7 +175,7 @@ function TierSection({
       remote_type: filters.remote_type,
       employment_type: filters.employment_type,
       seniority: filters.seniority,
-      sort: filters.sort,
+      sort: filters.sort ?? 'recent',
       country: tier.country ?? '',
       countries: tier.countries?.join(',') ?? '',
       language: tier.language ?? '',

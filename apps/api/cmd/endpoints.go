@@ -77,16 +77,14 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 			boolQ["must"] = []map[string]any{{"match": map[string]any{"*": q}}}
 		}
 
-		sort := qs.Get("sort")
-		var sortSpec []any
-		switch sort {
-		case "recent", "quality":
-			// Quality currently falls back to recency until ranking incorporates
-			// the stored quality score.
-			sortSpec = []any{map[string]any{"posted_at": "desc"}}
-		default:
-			if q == "" {
-				sortSpec = []any{map[string]any{"posted_at": "desc"}}
+		// Default sort is newest-first so browse and filtered lists surface
+		// fresh roles. Explicit "relevance" is only meaningful with a query.
+		sort := strings.TrimSpace(qs.Get("sort"))
+		if sort == "" {
+			if q != "" {
+				sort = "relevance"
+			} else {
+				sort = "recent"
 			}
 		}
 
@@ -102,14 +100,8 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 			"field_of_study":  map[string]any{"terms": map[string]any{"field": "field_of_study", "size": 32}},
 			"degree_level":    map[string]any{"terms": map[string]any{"field": "degree_level", "size": 8}},
 		}
-		sortKey := ""
-		if sortSpec != nil {
-			// jobs_backend.Search takes a single sort key; preserve the
-			// posted_at-desc semantic the old handler had.
-			sortKey = "posted_at"
-		}
 		_ = boolQ // composed into the backend Search via filter slice below
-		hits, total, rawFacets, err := jm.Search(ctx, q, filter, sortKey, limit, aggs)
+		hits, total, rawFacets, err := jm.Search(ctx, q, filter, sort, limit, aggs)
 		if err != nil {
 			http.Error(w, `{"error":"search failed: `+err.Error()+`"}`, http.StatusBadGateway)
 			return
@@ -323,7 +315,8 @@ func categoryJobsHandler(jm JobsBackend) http.HandlerFunc {
 				})
 			}
 		}
-		rows, err := jm.SearchFiltered(req.Context(), filter, limit+1, "last_seen_at")
+		// Newest postings first (posted_at), not crawl last_seen.
+		rows, err := jm.SearchFiltered(req.Context(), filter, limit+1, "posted_at")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return

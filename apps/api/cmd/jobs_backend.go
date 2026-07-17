@@ -322,7 +322,8 @@ func (p *jobsPostgres) CountCompanies(ctx context.Context) (int, error) {
 // Top returns up-to-limit recent rows. minScore is ignored (kept for
 // JobsBackend signature parity).
 func (p *jobsPostgres) Top(ctx context.Context, _ float64, limit int) ([]job, error) {
-	return p.list(ctx, nil, limit, "last_seen_at")
+	// Prefer posted_at so "top" surfaces the freshest listings for users.
+	return p.list(ctx, nil, limit, "posted_at")
 }
 
 // Latest returns up-to-limit rows by posted_at desc within the 1-month
@@ -343,10 +344,11 @@ func (p *jobsPostgres) list(ctx context.Context, filter []map[string]any, limit 
 	}
 	sortField = sanitizeSortField(sortField)
 	where, args := postgresWhere(filter)
+	// Newest first; last_seen_at breaks ties when posted_at is missing/null.
 	q := `SELECT ` + selectColumns + `
 	      FROM opportunities
 	      WHERE ` + activePred() + where + `
-	      ORDER BY ` + sortField + ` DESC NULLS LAST
+	      ORDER BY ` + sortField + ` DESC NULLS LAST, last_seen_at DESC NULLS LAST
 	      LIMIT $` + intToStr(len(args)+1)
 	args = append(args, limit)
 	rows, err := db.QueryContext(ctx, q, args...)
@@ -497,15 +499,14 @@ func (p *jobsPostgres) Search(
 	)
 
 	if q == "" {
-		// Listing fallback — same as Latest/Top but with the user's
-		// filter on top of the active predicate.
+		// Browse / filter listing — newest first by default (posted_at).
 		sortField := sanitizeSortField(sort)
 		args = append(args, limit)
 		limitIdx := len(args)
 		query := `SELECT ` + selectColumns + `
 		         FROM opportunities
 		         WHERE ` + activePred() + where + ` ` + windowed + `
-		         ORDER BY ` + sortField + ` DESC NULLS LAST
+		         ORDER BY ` + sortField + ` DESC NULLS LAST, last_seen_at DESC NULLS LAST
 		         LIMIT $` + intToStr(limitIdx)
 		rows, err = db.QueryContext(ctx, query, args...)
 	} else {
@@ -513,15 +514,22 @@ func (p *jobsPostgres) Search(
 		qIdx := len(args)
 		args = append(args, limit)
 		limitIdx := len(args)
-		// pg_search BM25: `canonical_id @@@ paradedb.parse('…')`. The
-		// parser handles AND/OR/quoted phrases natively — pass the
-		// user's q through verbatim.
+		// Text search: when the user asks for recency, lead with posted_at;
+		// otherwise BM25 first with recency as a stable tie-breaker so
+		// fresher matches float above equally-relevant stale ones.
+		orderBy := `paradedb.score(canonical_id) DESC, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST`
+		switch sort {
+		case "recent", "posted_at", "quality":
+			orderBy = `posted_at DESC NULLS LAST, paradedb.score(canonical_id) DESC, last_seen_at DESC NULLS LAST`
+		case "salary_high", "amount_max":
+			orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
+		}
 		query := `SELECT ` + selectColumns + `,
 		                 paradedb.score(canonical_id) AS bm25_score
 		          FROM opportunities
 		          WHERE canonical_id @@@ paradedb.parse($` + intToStr(qIdx) + `)
 		            AND ` + activePred() + where + ` ` + windowed + `
-		          ORDER BY bm25_score DESC
+		          ORDER BY ` + orderBy + `
 		          LIMIT $` + intToStr(limitIdx)
 		rows, err = db.QueryContext(ctx, query, args...)
 	}
@@ -750,16 +758,22 @@ func quoteSafeCol(col string) string {
 }
 
 // sanitizeSortField maps a caller-supplied sort key to a known column.
-// Anything else defaults to last_seen_at — keeps the SPA's "Sort by:
-// quality" working without exposing a sort-injection vector.
+// Default is posted_at so browse lists show the latest jobs first.
+// SPA values "recent" / "quality" / "relevance" map onto safe columns.
 func sanitizeSortField(s string) string {
-	switch s {
+	switch strings.TrimSpace(strings.ToLower(s)) {
 	case "posted_at", "last_seen_at", "first_seen_at", "deadline", "amount_max", "amount_min":
 		return s
-	case "quality", "score", "":
-		return "last_seen_at"
+	case "recent", "quality", "score", "":
+		return "posted_at"
+	case "salary_high":
+		return "amount_max"
+	case "relevance":
+		// Relevance only applies when q is set (BM25 path); for empty-q
+		// listings fall back to newest-first.
+		return "posted_at"
 	default:
-		return "last_seen_at"
+		return "posted_at"
 	}
 }
 

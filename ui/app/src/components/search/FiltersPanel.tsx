@@ -27,7 +27,7 @@ export function FiltersPanel({
     <div className="md:sticky md:top-20">
       <div className="mb-4 flex items-center justify-between">
         <SortPicker
-          value={params.sort ?? (params.q ? 'relevance' : 'recent')}
+          value={params.sort ?? 'recent'}
           onChange={(sort) => setParams({ ...params, sort })}
         />
         {hasActiveFilters && (

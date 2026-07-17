@@ -97,7 +97,7 @@ export default function Search() {
               remote_type: params.remote_type,
               employment_type: params.employment_type,
               seniority: params.seniority,
-              sort: params.sort,
+              sort: params.sort ?? 'recent',
             }}
             preferredCountries={preferredCountries}
             preferredLanguages={preferredLanguages}
