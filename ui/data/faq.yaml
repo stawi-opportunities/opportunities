@@ -4,9 +4,9 @@ categories:
       - q: "What is Stawi Jobs?"
         a: "Stawi Jobs is an AI-powered opportunity matching platform. We aggregate jobs, scholarships, tenders, deals, and funding from thousands of sources worldwide, run them through a quality gate, and surface the ones most relevant to you."
       - q: "Is Stawi Jobs free?"
-        a: "Search and browsing are always free, with or without an account. Premium features like unlimited matches, near-real-time notifications, and priority support are available on paid plans."
+        a: "Search and browsing are always free, with or without an account. Paid plans unlock AI matching: Starter ($10) for digests you apply to yourself, or Managed ($200) for unlimited discovery, auto applications, and interview prep."
       - q: "Do I need an account to search?"
-        a: "No. You can browse and search all opportunities without signing up. Creating an account lets you save favourites, set preferences, and receive weekly digests."
+        a: "No. You can browse and search all opportunities without signing up. Creating an account lets you save favourites, set preferences, and subscribe for match digests."
       - q: "How do I create an account?"
         a: "Click 'Get started' and sign up with your email or Google account. The process takes under a minute."
 
@@ -17,20 +17,20 @@ categories:
       - q: "What counts as a 'match'?"
         a: "A role our matching engine believes fits your CV, target title, seniority, region, and salary. You see them on your dashboard and in your weekly digest."
       - q: "How fast are matches delivered?"
-        a: "Free accounts receive a weekly digest. Premium subscribers jump the queue and receive near-real-time notifications as new opportunities are indexed."
+        a: "Starter subscribers get email digests on a schedule you choose (daily or weekly). Managed includes unlimited discovery plus proactive notifications when strong roles open."
       - q: "Can I filter by country or region?"
         a: "Yes. Set your preferred regions in your profile. You can also use the advanced search to filter by country, type, salary range, and more."
 
   - category: "Billing & Plans"
     questions:
+      - q: "What's the difference between Starter and Managed?"
+        a: "Starter ($10/month) gives AI-matched jobs and digests — you apply yourself. Managed ($200/month) includes unlimited discovery, auto applications on your behalf, job notifications, interview preparation, and a dedicated agent."
       - q: "Can I cancel any time?"
-        a: "Yes. Starter and Pro are month-to-month with no long-term commitment. Managed is a rolling engagement you pause or cancel when your search wraps up."
-      - q: "Does Pro get priority support?"
-        a: "Starter and Pro both receive email support. Only Managed includes a direct line and same-day responses."
+        a: "Yes. Both plans are month-to-month. Cancel from the dashboard; access continues through the paid period."
       - q: "What payment methods are accepted?"
-        a: "In Kenya & Tanzania you pay via M-Pesa (STK push). In Uganda, Ghana, Rwanda, Nigeria, Cameroon, Côte d'Ivoire & Benin, via MTN MoMo. In Malawi and Zambia, via Airtel Money. Everywhere else, Polar handles card, Apple Pay, and PayPal in USD."
+        a: "Card and mobile money via Flutterwave (including M-Pesa and other regional wallets where available)."
       - q: "Do you apply to jobs for me?"
-        a: "Only on Managed. Starter and Pro surface matches; every listing links to the employer's own application page so you control what gets sent."
+        a: "Only on Managed. Starter surfaces matches and you apply from the dashboard or employer page. Managed auto-applies and supports interview prep."
 
   - category: "Listings & Quality"
     questions:

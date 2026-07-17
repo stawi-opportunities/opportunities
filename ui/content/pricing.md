@@ -1,5 +1,5 @@
 ---
 title: "Pricing"
-description: "Starter $10 for AI matches and digests. Managed $200 for unlimited discovery, auto applications, and interview prep."
+description: "Starter $10 — AI matches and digests you apply to yourself. Managed $200 — unlimited discovery, auto applications, and interview prep."
 type: pricing
 ---
