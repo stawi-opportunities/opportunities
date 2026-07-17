@@ -26,8 +26,8 @@ export function PlanSelector({ value, onChange, t }: Props) {
             }`}
           >
             {p.highlight && (
-              <span className="absolute -top-2.5 right-3 rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                Most popular
+              <span className="absolute -top-2.5 right-3 rounded-full bg-navy-900 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-white dark:bg-accent-600">
+                Full service
               </span>
             )}
 
@@ -38,9 +38,11 @@ export function PlanSelector({ value, onChange, t }: Props) {
               onClick={() => onChange(p.id)}
               className="flex flex-col items-start gap-1 text-left"
             >
-              <span className="text-lg font-bold text-gray-900 dark:text-white">{p.name}</span>
+              <span className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                {p.name}
+              </span>
               <span className="text-xl font-bold text-gray-900 dark:text-white">
-                ${p.price}
+                US${p.price}
                 <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
                   {t('dash.perMonth')}
                 </span>

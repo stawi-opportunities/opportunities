@@ -12,8 +12,10 @@ export interface BillingPlan {
   name: string;
   description: string;
   interval: string;
+  /** Major currency units (10 = US$10). Not cents. */
   amount: number;
   currency: string;
+  /** Authoritative price in USD cents (1000 = US$10). Prefer this for display math. */
   usd_cents: number;
 }
 
