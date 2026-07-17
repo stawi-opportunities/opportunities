@@ -510,6 +510,24 @@ export async function refreshMyMatches(): Promise<MatchRefreshResult> {
   }
 }
 
+/** POST /matching/api/me/matches/{match_id}/dismiss — hide weak fits from feed/digests. */
+export async function dismissMatch(matchId: string): Promise<void> {
+  try {
+    await authRuntime().fetch(`/matching/api/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    await authRuntime().fetch(`/matching/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+  }
+}
+
 function isNotFound(err: unknown): boolean {
   const code =
     err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';

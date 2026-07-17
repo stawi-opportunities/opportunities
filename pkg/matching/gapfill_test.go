@@ -27,7 +27,9 @@ func TestGapFill_FiltersBelowMinScore(t *testing.T) {
 		CandidateID: "u",
 		Embedding:   unitVec(1024, 0),
 		Since:       time.Now().Add(-time.Hour),
-		MinScore:    0.4,
+		// With neutral skills/geo/salary, floor total ≈ 0.40 + 0.6·cos.
+		// MinScore 0.45 rejects pure-orthogonal neighbors (cos≈0).
+		MinScore: 0.45,
 	}, matching.GapFillDeps{
 		KNN: knn, Store: store, EventLog: el,
 		Reranker: matching.NoopReranker{},

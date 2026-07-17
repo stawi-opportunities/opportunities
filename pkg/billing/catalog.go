@@ -48,12 +48,12 @@ type Plan struct {
 var catalog = []Plan{
 	{
 		ID: PlanStarter, Name: "Starter",
-		Description: "AI-matched jobs and digests. Manual applications — no auto-apply or interview prep.",
+		Description: "AI-matched jobs and digests — review and apply yourself from the dashboard.",
 		Interval:    "month", Amount: 10, Currency: "USD", USDCents: 1000,
 	},
 	{
 		ID: PlanManaged, Name: "Managed",
-		Description: "Unlimited discovery, auto applications, and job notifications — we run the search for you.",
+		Description: "Unlimited AI discovery, priority match alerts, and uncapped match feed.",
 		Interval:    "month", Amount: 200, Currency: "USD", USDCents: 20000,
 	},
 }
@@ -109,12 +109,12 @@ type Entitlements struct {
 func EntitlementsFor(plan PlanID) Entitlements {
 	switch plan {
 	case PlanManaged, PlanPro:
-		// Unlimited discovery; auto applications + notifications for jobs.
-		return Entitlements{DailyCap: 50, WeeklyCap: 0, AutoApply: true, Priority: "agent"}
+		// Unlimited discovery + higher daily generation budget.
+		// AutoApply remains false until a real apply automation product ships.
+		return Entitlements{DailyCap: 50, WeeklyCap: 0, AutoApply: false, Priority: "agent"}
 	case PlanStarter:
 		fallthrough
 	default:
-		// Discovery digests only — no auto-apply, no interview-prep entitlement.
 		return Entitlements{DailyCap: 2, WeeklyCap: 5, AutoApply: false, Priority: "standard"}
 	}
 }

@@ -331,14 +331,15 @@ func TestEntitlementsFor(t *testing.T) {
 	require.Equal(t, 5, starter.WeeklyCap)
 	require.False(t, starter.AutoApply)
 
-	// Legacy pro inherits managed entitlements.
+	// Legacy pro inherits managed entitlements (unlimited weekly).
+	// AutoApply stays false until real apply automation ships.
 	pro := billing.EntitlementsFor(billing.PlanPro)
 	require.Equal(t, 0, pro.WeeklyCap)
-	require.True(t, pro.AutoApply)
+	require.False(t, pro.AutoApply)
 
 	managed := billing.EntitlementsFor(billing.PlanManaged)
 	require.Equal(t, 0, managed.WeeklyCap)
-	require.True(t, managed.AutoApply)
+	require.False(t, managed.AutoApply)
 
 	// Unknown → starter-safe defaults
 	unknown := billing.EntitlementsFor(billing.PlanID("free"))

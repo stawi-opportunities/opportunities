@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  applyToOpportunity,
   fetchOpportunities,
   starOpportunity,
   unstarOpportunity,
@@ -21,6 +20,7 @@ import type { StringKey } from '@/i18n/strings';
 import { useToast } from '@/hooks/useToast';
 import { SortPicker } from '@/components/ui/SortPicker';
 import type { SearchParams } from '@/types/search';
+import { openApplyAndTrack } from '@/utils/apply';
 
 const FILTER_KEYS: { id: OpportunityFilter; labelKey: StringKey }[] = [
   { id: 'all', labelKey: 'feed.all' },
@@ -263,36 +263,35 @@ export function OpportunitiesFeed({
   const onApply = useCallback(
     async (id: string) => {
       setPendingItems((prev) => new Set(prev).add(id));
+      const row = items.find((it) => it.opportunity_id === id);
       const snapshot = items;
       const now = new Date().toISOString();
-      setItems((prev) =>
-        prev.map((it) =>
-          it.opportunity_id === id
-            ? {
-                ...it,
-                application: {
-                  status: 'applied',
-                  applied_at: now,
-                  last_event_at: now,
-                  method: 'manual',
-                },
-              }
-            : it
-        )
-      );
-      try {
-        await applyToOpportunity(id, 'manual');
-        toast('Applied successfully.', 'success');
-      } catch {
-        setItems(snapshot);
-        toast('Failed to apply.', 'error');
-      } finally {
-        setPendingItems((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }
+      await openApplyAndTrack(id, row?.apply_url, {
+        toast: (msg, kind) => toast(msg, kind),
+        onTracked: () => {
+          setItems((prev) =>
+            prev.map((it) =>
+              it.opportunity_id === id
+                ? {
+                    ...it,
+                    application: {
+                      status: 'applied',
+                      applied_at: now,
+                      last_event_at: now,
+                      method: 'manual',
+                    },
+                  }
+                : it
+            )
+          );
+        },
+        onTrackFailed: () => setItems(snapshot),
+      });
+      setPendingItems((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
     [items, toast]
   );

@@ -11,12 +11,13 @@ import (
 )
 
 func TestScore_CosineOnly(t *testing.T) {
-	// Two identical normalized vectors → cosine = 1, score == w1.
+	// Two identical normalized vectors → cosine = 1; missing skills/geo/salary neutral.
 	cand := matching.CandidateSignal{Embedding: []float32{1, 0, 0}}
 	opp := matching.OpportunitySignal{Embedding: []float32{1, 0, 0}}
 	w := matching.DefaultWeights()
 	got := matching.Score(cand, opp, w, time.Now())
-	require.InDelta(t, w.Cosine, got.Total, 1e-6)
+	want := w.Cosine + w.Skills + w.Geo + w.Salary
+	require.InDelta(t, want, got.Total, 1e-6)
 	require.InDelta(t, 1.0, got.Cosine, 1e-6)
 }
 
@@ -40,7 +41,9 @@ func TestScore_SkillsOverlap(t *testing.T) {
 	got := matching.Score(cand, opp, w, time.Now())
 	// 2 of 3 candidate skills present → 0.666...
 	require.InDelta(t, 2.0/3.0, got.SkillsOverlap, 1e-6)
-	require.InDelta(t, w.Cosine*1.0+w.Skills*(2.0/3.0), got.Total, 1e-6)
+	// Missing geo/salary are neutral (1.0), cosine=1.
+	want := w.Cosine*1.0 + w.Skills*(2.0/3.0) + w.Geo*1.0 + w.Salary*1.0
+	require.InDelta(t, want, got.Total, 1e-6)
 }
 
 func TestScore_GeoMatch(t *testing.T) {

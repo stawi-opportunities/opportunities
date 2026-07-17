@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   fetchOpportunities,
   unstarOpportunity,
-  applyToOpportunity,
   type FeedItem,
 } from '@/api/candidates';
 import { fetchSnapshot } from '@/api/snapshot';
@@ -10,6 +9,7 @@ import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
 import { OpportunityCard, type OpportunitySnapshot } from '@/components/OpportunityCard';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useToast } from '@/hooks/useToast';
+import { openApplyAndTrack } from '@/utils/apply';
 
 function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
   if (!snap) return null;
@@ -102,38 +102,40 @@ export function SavedJobsPanel() {
   const onApply = useCallback(
     async (id: string) => {
       setPendingItems((prev) => new Set(prev).add(id));
+      const row = items.find((it) => it.opportunity_id === id);
       const snapshot = items;
       const now = new Date().toISOString();
-      setItems((prev) =>
-        prev.map((it) =>
-          it.opportunity_id === id
-            ? {
-                ...it,
-                application: {
-                  status: 'applied',
-                  applied_at: now,
-                  last_event_at: now,
-                  method: 'manual',
-                },
-              }
-            : it
-        )
-      );
-      try {
-        await applyToOpportunity(id, 'manual');
-        toast('Applied successfully.', 'success');
-      } catch {
-        setItems(snapshot);
-        toast('Failed to apply.', 'error');
-      } finally {
-        setPendingItems((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+      const result = await openApplyAndTrack(id, row?.apply_url, {
+        toast: (msg, kind) => toast(msg, kind),
+        onTracked: () => {
+          setItems((prev) =>
+            prev.map((it) =>
+              it.opportunity_id === id
+                ? {
+                    ...it,
+                    application: {
+                      status: 'applied',
+                      applied_at: now,
+                      last_event_at: now,
+                      method: 'manual',
+                    },
+                  }
+                : it
+            )
+          );
+        },
+        onTrackFailed: () => setItems(snapshot),
+      });
+      if (result === 'no_url') {
+        /* toast already shown */
       }
+      setPendingItems((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
-    [items, toast, t]
+    [items, toast]
   );
 
   if (hasError) {

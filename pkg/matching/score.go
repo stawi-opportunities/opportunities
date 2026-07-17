@@ -139,11 +139,9 @@ func cosineSimilarity(a, b []float32) float64 {
 }
 
 // skillsOverlap = |cand ∩ opp| / |cand|. Case-insensitive on the skill
-// label. Returns 0 when both sides unspecified, 1.0 when one side unspecified (neutral).
+// label. Missing data is neutral (1.0) so Path A/C (often without skill
+// bags) stay on the same scale as BlendFromCosine.
 func skillsOverlap(cand, opp []string) float64 {
-	if len(cand) == 0 && len(opp) == 0 {
-		return 0.0
-	}
 	if len(cand) == 0 || len(opp) == 0 {
 		return 1.0
 	}
@@ -161,11 +159,8 @@ func skillsOverlap(cand, opp []string) float64 {
 }
 
 // geoMatch is 1 when the candidate accepts this country or "remote".
-// 0 when both sides unspecified, 1.0 when one side unspecified (neutral).
+// Missing data is neutral (1.0); only a hard country mismatch scores 0.
 func geoMatch(candCountries []string, oppCountry string) float64 {
-	if len(candCountries) == 0 && oppCountry == "" {
-		return 0.0
-	}
 	if len(candCountries) == 0 || oppCountry == "" {
 		return 1.0
 	}
@@ -178,11 +173,8 @@ func geoMatch(candCountries []string, oppCountry string) float64 {
 }
 
 // salaryFit is 1 when the opportunity meets or exceeds the candidate's
-// floor. 0 when both sides unknown, 1.0 when one side unknown (neutral).
+// floor. Missing data is neutral (1.0); only a known miss scores 0.
 func salaryFit(candFloor, oppMax *int) float64 {
-	if candFloor == nil && oppMax == nil {
-		return 0.0
-	}
 	if candFloor == nil || oppMax == nil {
 		return 1.0
 	}
