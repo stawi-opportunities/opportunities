@@ -256,8 +256,9 @@ export default function Dashboard() {
           </section>
         </div>
 
-        {/* Mobile profile — below md */}
-        <div className="mt-8 md:hidden">
+        {/* Mobile profile + completeness — below md */}
+        <div className="mt-8 space-y-4 md:hidden">
+          <ProfileCompleteness />
           <ProfileMount />
         </div>
 
