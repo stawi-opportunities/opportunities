@@ -299,7 +299,7 @@ export default function Onboarding() {
           </div>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           {PLANS.map((p) => {
             const selected = plan === p.id;
             return (
