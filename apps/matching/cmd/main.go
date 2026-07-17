@@ -366,29 +366,30 @@ func main() {
 		// Path A: new opportunity embeddings → FanOut into candidate_matches.
 		// Notifications fire only for users with match_alerts=true.
 		if cfg.MatchingFanOutEnabled {
-			foURI := cfg.OpportunityFanOutQueueURI
-			foName := cfg.OpportunityFanOutQueueName
-			if foName == "" {
-				foName = eventsv1.SubjectOpportunityFanOut
+			foURI := strings.TrimSpace(cfg.OpportunityFanOutQueueURI)
+			if foURI == "" {
+				log.Warn("matching: MATCHING_FANOUT_ENABLED but OPPORTUNITY_FANOUT_QUEUE_URI empty; Path A not registered")
+			} else {
+				// Same pattern as candidate-embedding: register name = subject.
+				foRef := strings.TrimSpace(cfg.OpportunityFanOutQueueName)
+				if foRef == "" {
+					foRef = eventsv1.SubjectOpportunityFanOut
+				}
+				foConsumer := matchingv1.NewOpportunityFanOutConsumer(matchingv1.OpportunityFanOutConsumerDeps{
+					KNN:             matchKNN,
+					Store:           matchStore,
+					EventLog:        matchEvents,
+					Reranker:        rerank,
+					Weights:         matching.DefaultWeights(),
+					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
+					Svc:             svc,
+					DB:              sqlDB,
+					DefaultMinScore: cfg.MatchingMinScore,
+				})
+				svc.Init(ctx, frame.WithRegisterSubscriber(foRef, foURI, foConsumer))
+				log.WithField("queue", foRef).
+					Info("matching: Path A fan-out enabled — new jobs → candidate_matches")
 			}
-			// Prefer canonical subject as the queue ref when using external DSN.
-			foRef := eventsv1.SubjectOpportunityFanOut
-			if strings.HasPrefix(foURI, "mem://") {
-				foRef = foName
-			}
-			foConsumer := matchingv1.NewOpportunityFanOutConsumer(matchingv1.OpportunityFanOutConsumerDeps{
-				KNN:             matchKNN,
-				Store:           matchStore,
-				EventLog:        matchEvents,
-				Reranker:        rerank,
-				Weights:         matching.DefaultWeights(),
-				DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
-				Svc:             svc,
-				DB:              sqlDB,
-				DefaultMinScore: cfg.MatchingMinScore,
-			})
-			svc.Init(ctx, frame.WithRegisterSubscriber(foRef, foURI, foConsumer))
-			log.WithField("queue", foRef).Info("matching: Path A fan-out enabled — new jobs → candidate_matches")
 		}
 	}
 

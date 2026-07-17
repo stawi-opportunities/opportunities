@@ -69,8 +69,10 @@ type CandidatesConfig struct {
 
 	// Opportunity fan-out (Path A): worker publishes OpportunityFanOutV1 after
 	// embed; this consumer runs FanOut so matches collect as jobs arrive.
-	OpportunityFanOutQueueURI  string `env:"OPPORTUNITY_FANOUT_QUEUE_URI"  envDefault:"mem://opportunity_fanout"`
-	OpportunityFanOutQueueName string `env:"OPPORTUNITY_FANOUT_QUEUE_NAME" envDefault:"opportunity_fanout"`
+	// Production sets OPPORTUNITY_FANOUT_QUEUE_URI to the NATS workqueue DSN.
+	// Default mem:// is for local/dev only.
+	OpportunityFanOutQueueURI  string `env:"OPPORTUNITY_FANOUT_QUEUE_URI"  envDefault:"mem://svc.opportunities.matching.opportunity.fanout.v1"`
+	OpportunityFanOutQueueName string `env:"OPPORTUNITY_FANOUT_QUEUE_NAME" envDefault:"svc.opportunities.matching.opportunity.fanout.v1"`
 	// MatchingFanOutEnabled defaults ON. Set false to stop live Path A.
 	MatchingFanOutEnabled bool `env:"MATCHING_FANOUT_ENABLED" envDefault:"true"`
 
