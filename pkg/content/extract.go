@@ -11,7 +11,11 @@ import (
 )
 
 // Extracted holds parsed content used by extraction.
+// HTML is the preferred body form (sanitized later at normalize via
+// publish.DescriptionHTML). Markdown is retained for callers that still
+// want a text-oriented view of the same extract.
 type Extracted struct {
+	HTML     string
 	Markdown string
 }
 
@@ -71,15 +75,19 @@ func ExtractFromHTML(rawHTML string) (*Extracted, error) {
 
 	extracted, err := trafilatura.Extract(strings.NewReader(rawHTML), opts)
 	if err != nil || extracted == nil {
-		// Fallback: use the raw HTML as the clean HTML.
+		// Fallback: use the raw HTML body.
+		result.HTML = strings.TrimSpace(rawHTML)
 		result.Markdown = htmlToMarkdownOrStrip(rawHTML)
 		return result, nil
 	}
 
-	// Render ContentNode back to an HTML string.
+	// Prefer main-content HTML; keep markdown as a secondary text view.
 	if extracted.ContentNode != nil {
-		result.Markdown = htmlToMarkdownOrStrip(dom.OuterHTML(extracted.ContentNode))
+		htmlBody := dom.OuterHTML(extracted.ContentNode)
+		result.HTML = strings.TrimSpace(htmlBody)
+		result.Markdown = htmlToMarkdownOrStrip(htmlBody)
 	} else {
+		result.HTML = ""
 		result.Markdown = extracted.ContentText
 	}
 
@@ -102,26 +110,18 @@ func htmlToMarkdownOrStrip(htmlContent string) string {
 }
 
 // ToCleanText converts a description fragment that may be raw HTML, or
-// entity-escaped HTML, into clean Markdown suitable for both human display
-// and the search snippet. ATS APIs (greenhouse j.Content), feeds, and
-// JSON-LD descriptions arrive as HTML — sometimes DOUBLE-encoded, e.g.
-// "&lt;div class=&quot;content-intro&quot;&gt;" — and were previously stored
-// verbatim, so the UI showed literal tags / entities.
-//
-// Steps: (1) HTML-unescape so double-encoded markup becomes real tags
-// ("&lt;div&gt;" -> "<div>"); (2) if the result still contains tags, convert
-// to Markdown (falling back to a plain-text strip on failure); (3) input that
-// is already plain text passes through untouched. Idempotent: re-running on
-// already-clean Markdown leaves it unchanged.
+// entity-escaped HTML, into plain text (tags stripped). Prefer
+// publish.DescriptionHTML for storage/display; use this for embeddings,
+// language detection, and search snippets.
 func ToCleanText(s string) string {
 	if strings.TrimSpace(s) == "" {
 		return ""
 	}
 	decoded := html.UnescapeString(s)
-	if !strings.Contains(decoded, "<") {
-		return strings.TrimSpace(decoded)
+	if strings.Contains(decoded, "<") {
+		return strings.TrimSpace(stripToText(decoded))
 	}
-	return strings.TrimSpace(htmlToMarkdownOrStrip(decoded))
+	return strings.TrimSpace(decoded)
 }
 
 // stripToText removes all HTML tags and collapses whitespace, providing a plain

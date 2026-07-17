@@ -14,28 +14,28 @@ import (
 
 // CVFields holds the structured profile fields extracted from a CV.
 type CVFields struct {
-	Name               string            `json:"name"`
-	Email              string            `json:"email"`
-	Phone              string            `json:"phone"`
-	Location           string            `json:"location"`
-	CurrentTitle       string            `json:"current_title"`
-	Bio                string            `json:"bio"`
-	Seniority          string            `json:"seniority"`
-	YearsExperience    int               `json:"years_experience"`
-	PrimaryIndustry    string            `json:"primary_industry"`
-	StrongSkills       []string          `json:"strong_skills"`
-	WorkingSkills      []string          `json:"working_skills"`
-	ToolsFrameworks    []string          `json:"tools_frameworks"`
-	Certifications     []string          `json:"certifications"`
-	PreferredRoles     []string          `json:"preferred_roles"`
-	Languages          []string          `json:"languages"`
-	Education          string            `json:"education"`
+	Name               string             `json:"name"`
+	Email              string             `json:"email"`
+	Phone              string             `json:"phone"`
+	Location           string             `json:"location"`
+	CurrentTitle       string             `json:"current_title"`
+	Bio                string             `json:"bio"`
+	Seniority          string             `json:"seniority"`
+	YearsExperience    int                `json:"years_experience"`
+	PrimaryIndustry    string             `json:"primary_industry"`
+	StrongSkills       []string           `json:"strong_skills"`
+	WorkingSkills      []string           `json:"working_skills"`
+	ToolsFrameworks    []string           `json:"tools_frameworks"`
+	Certifications     []string           `json:"certifications"`
+	PreferredRoles     []string           `json:"preferred_roles"`
+	Languages          []string           `json:"languages"`
+	Education          string             `json:"education"`
 	WorkHistory        []WorkHistoryEntry `json:"work_history"`
-	PreferredLocations []string          `json:"preferred_locations"`
-	RemotePreference   string            `json:"remote_preference"`
-	SalaryMin          string            `json:"salary_min"`
-	SalaryMax          string            `json:"salary_max"`
-	Currency           string            `json:"currency"`
+	PreferredLocations []string           `json:"preferred_locations"`
+	RemotePreference   string             `json:"remote_preference"`
+	SalaryMin          string             `json:"salary_min"`
+	SalaryMax          string             `json:"salary_max"`
+	Currency           string             `json:"currency"`
 }
 
 // WorkHistoryEntry represents a single position in a candidate's work history.

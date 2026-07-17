@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/content"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/geocode"
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
 // Normalizer holds optional collaborators (currently a geocoder) that
@@ -47,24 +47,24 @@ func (n *Normalizer) Normalize(ext *domain.ExternalOpportunity, sourceID, countr
 // Postgres directly. Downstream callers map its fields into event payloads
 // (e.g. eventsv1.VariantIngestedV1) for PostgreSQL ingestion.
 type JobVariant struct {
-	ExternalID       string
-	SourceID         string
-	HardKey          string
-	SourceURL        string
-	ApplyURL         string
-	Title            string
-	Company          string
-	LocationText     string
-	Country          string
-	Region           string
-	City             string
-	Language         string
-	RemoteType       string
-	EmploymentType   string
-	SalaryMin        float64
-	SalaryMax        float64
-	Currency         string
-	Description      string
+	ExternalID     string
+	SourceID       string
+	HardKey        string
+	SourceURL      string
+	ApplyURL       string
+	Title          string
+	Company        string
+	LocationText   string
+	Country        string
+	Region         string
+	City           string
+	Language       string
+	RemoteType     string
+	EmploymentType string
+	SalaryMin      float64
+	SalaryMax      float64
+	Currency       string
+	Description    string
 	// HowToApply is application instructions peeled from the body (or set
 	// explicitly by a connector). Stored separately and only returned to
 	// subscribed candidates — never on the public jobs API.
@@ -201,23 +201,10 @@ func normalizeCompany(name string) string {
 	return strings.Join(strings.Fields(name), " ")
 }
 
-var hspaceRe = regexp.MustCompile(`[ \t]+`)
-var blankLinesRe = regexp.MustCompile(`\n{3,}`)
-
-// sanitizeDescription removes null bytes and tidies whitespace while
-// PRESERVING line structure — descriptions are now clean Markdown (see
-// content.ToCleanText) whose paragraph + list breaks carry meaning, so we
-// must not flatten newlines into spaces. Collapses horizontal whitespace,
-// caps blank-line runs at one, strips trailing spaces per line, and trims.
+// sanitizeDescription removes null bytes from stored description HTML
+// without flattening structure (tags and whitespace between elements matter).
 func sanitizeDescription(s string) string {
-	s = strings.ReplaceAll(s, "\x00", "")
-	s = hspaceRe.ReplaceAllString(s, " ")
-	s = blankLinesRe.ReplaceAllString(s, "\n\n")
-	lines := strings.Split(s, "\n")
-	for i := range lines {
-		lines[i] = strings.TrimRight(lines[i], " ")
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
 }
 
 // contentHash computes a SHA-256 hex digest over the canonical identity fields.
@@ -265,22 +252,18 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 	title := strings.TrimSpace(ext.Title)
 	company := strings.TrimSpace(ext.IssuingEntity)
 	location := strings.TrimSpace(ext.LocationText)
-	// Descriptions arrive from connectors as raw or entity-escaped HTML
-	// (greenhouse j.Content, JSON-LD description, feeds). Convert to clean
-	// Markdown here — the single point every variant passes through — so we
-	// don't store literal "<div>" / "&lt;div&gt;" markup the UI can't render.
-	description := content.ToCleanText(ext.Description)
+	// Descriptions arrive as HTML, entity-escaped HTML, markdown, or plain
+	// text. Convert once to sanitized HTML so every display surface renders
+	// the same (no client markdown dialect).
+	description := sanitizeDescription(publish.DescriptionHTML(ext.Description))
 	applyURL := strings.TrimSpace(ext.ApplyURL)
 	sourceURL := strings.TrimSpace(ext.SourceURL)
 	externalID := strings.TrimSpace(ext.ExternalID)
 
-	// 2. Sanitize description (null bytes + whitespace collapse).
-	description = sanitizeDescription(description)
-
-	// 2b. HowToApply is peeld by inference (extraction.PeelHowToApply /
+	// 2b. HowToApply is peeled by inference (extraction.PeelHowToApply /
 	// crawlaccept.PeelAccepted) or returned by kind extraction — never by
-	// heading regex. Normalize only cleans an already-separated value.
-	howToApply := sanitizeDescription(content.ToCleanText(strings.TrimSpace(ext.HowToApply)))
+	// heading regex. Store as sanitized HTML like description.
+	howToApply := sanitizeDescription(publish.DescriptionHTML(strings.TrimSpace(ext.HowToApply)))
 
 	// 3. Normalize company name.
 	company = normalizeCompany(company)
@@ -344,9 +327,8 @@ func ExternalToVariant(ext domain.ExternalOpportunity, sourceID string, country,
 
 	_ = sourceBoard // reserved for future board-level provenance
 
-	// 8. Resolve language. Prefer a reliable whatlanggo detection when
-	// description is long enough; otherwise inherit from source.
-	lang := detectLanguage(description, language)
+	// 8. Resolve language from plain text of the description (not HTML tags).
+	lang := detectLanguage(content.ToCleanText(description), language)
 
 	// Serialize array fields to comma-separated strings for storage.
 	skills := strings.Join(ext.AttrStringSlice("skills"), ", ")

@@ -1,5 +1,6 @@
 import { dealDiscountPercent, type OpportunitySnapshot } from '@/types/snapshot';
 import { useI18n } from '@/i18n/I18nProvider';
+import DescriptionBody from '@/components/common/DescriptionBody';
 
 export default function DealBody({ snap }: { snap: OpportunitySnapshot }) {
   const { t } = useI18n();
@@ -7,8 +8,6 @@ export default function DealBody({ snap }: { snap: OpportunitySnapshot }) {
   const couponCode = stringAttr(snap, 'coupon_code');
   const expiry = stringAttr(snap, 'expiry') ?? snap.deadline;
   const redemptionCountries = stringArrayAttr(snap, 'redemption_countries');
-
-  const description = snap.description ?? '';
 
   return (
     <>
@@ -33,14 +32,10 @@ export default function DealBody({ snap }: { snap: OpportunitySnapshot }) {
         )}
       </dl>
 
-      {description && (
-        <section
-          className="prose prose-slate mt-8 max-w-none whitespace-pre-line"
-          aria-label="Deal description"
-        >
-          {description}
-        </section>
-      )}
+      <DescriptionBody
+        html={snap.description_html ?? snap.description}
+        ariaLabel="Deal description"
+      />
     </>
   );
 }

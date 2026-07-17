@@ -21,10 +21,11 @@ export interface OpportunitySnapshot {
   id: string;
   slug: string;
   title: string;
-  description?: string; // markdown body (public details only)
+  /** Public description body as sanitized HTML (stored via publish.DescriptionHTML). */
+  description?: string;
   /** True when application instructions exist; body is not on the public API. */
   has_how_to_apply?: boolean;
-  /** Paywalled Markdown; only present after a successful subscriber fetch. */
+  /** Paywalled application instructions as sanitized HTML; subscriber fetch only. */
   how_to_apply?: string;
   issuing_entity: string; // was company.name on JobSnapshot
   apply_url: string;
@@ -45,7 +46,7 @@ export interface OpportunitySnapshot {
   // Kind-specific extension
   attributes?: Record<string, unknown>;
 
-  // Optional pre-rendered HTML (legacy jobs path); preferred is `description` markdown.
+  // Legacy alias; prefer `description` (HTML). Kept for older payloads.
   description_html?: string;
   expires_at?: string;
   is_featured?: boolean;

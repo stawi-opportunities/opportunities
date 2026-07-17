@@ -1,6 +1,7 @@
 import { tenderProcurementDomain, type OpportunitySnapshot } from '@/types/snapshot';
 import { fmtMoney } from '@/utils/format';
 import { useI18n } from '@/i18n/I18nProvider';
+import DescriptionBody from '@/components/common/DescriptionBody';
 
 export default function TenderBody({ snap }: { snap: OpportunitySnapshot }) {
   const { t } = useI18n();
@@ -8,8 +9,6 @@ export default function TenderBody({ snap }: { snap: OpportunitySnapshot }) {
   const bidderEligibility = stringAttr(snap, 'bidder_eligibility');
   const submissionMethod = stringAttr(snap, 'submission_method');
   const budget = fmtMoney(snap.amount_min, snap.amount_max, snap.currency, '');
-
-  const description = snap.description ?? '';
 
   return (
     <>
@@ -33,14 +32,10 @@ export default function TenderBody({ snap }: { snap: OpportunitySnapshot }) {
         )}
       </dl>
 
-      {description && (
-        <section
-          className="prose prose-slate mt-8 max-w-none whitespace-pre-line"
-          aria-label="Tender description"
-        >
-          {description}
-        </section>
-      )}
+      <DescriptionBody
+        html={snap.description_html ?? snap.description}
+        ariaLabel="Tender description"
+      />
     </>
   );
 }

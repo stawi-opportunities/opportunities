@@ -5,6 +5,7 @@ import {
 } from '@/types/snapshot';
 import { fmtMoney } from '@/utils/format';
 import { useI18n } from '@/i18n/I18nProvider';
+import DescriptionBody from '@/components/common/DescriptionBody';
 
 export default function ScholarshipBody({ snap }: { snap: OpportunitySnapshot }) {
   const { t } = useI18n();
@@ -13,8 +14,6 @@ export default function ScholarshipBody({ snap }: { snap: OpportunitySnapshot })
   const gpaMin = numberAttr(snap, 'gpa_min');
   const eligible = stringArrayAttr(snap, 'eligible_nationalities');
   const stipend = fmtMoney(snap.amount_min, snap.amount_max, snap.currency, 'year');
-
-  const description = snap.description ?? '';
 
   return (
     <>
@@ -35,14 +34,10 @@ export default function ScholarshipBody({ snap }: { snap: OpportunitySnapshot })
         )}
       </dl>
 
-      {description && (
-        <section
-          className="prose prose-slate mt-8 max-w-none whitespace-pre-line"
-          aria-label="Scholarship description"
-        >
-          {description}
-        </section>
-      )}
+      <DescriptionBody
+        html={snap.description_html ?? snap.description}
+        ariaLabel="Scholarship description"
+      />
     </>
   );
 }

@@ -96,12 +96,16 @@ func TestExternalToVariant(t *testing.T) {
 		t.Errorf("employment_type not lowercased: got %q", v.EmploymentType)
 	}
 
-	// Description: null bytes removed, whitespace collapsed
+	// Description stored as sanitized HTML (null bytes removed).
 	if strings.Contains(v.Description, "\x00") {
 		t.Error("description still contains null bytes")
 	}
-	if strings.Contains(v.Description, "  ") {
-		t.Errorf("description has double spaces: %q", v.Description)
+	if !strings.Contains(v.Description, "Great role") {
+		t.Errorf("description lost body: %q", v.Description)
+	}
+	// Plain text becomes HTML (goldmark wraps paragraphs).
+	if !strings.Contains(v.Description, "<") {
+		t.Errorf("description should be HTML, got plain: %q", v.Description)
 	}
 
 	// Content hash must be a 64-char hex string

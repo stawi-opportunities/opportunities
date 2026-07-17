@@ -30,13 +30,13 @@ type QueueRecord struct {
 func (QueueRecord) TableName() string { return "job_ingest_queue" }
 
 type OpportunityRecord struct {
-	CanonicalID    string     `gorm:"primaryKey;type:varchar(20)"`
-	Slug           string     `gorm:"type:text;not null;uniqueIndex"`
-	Kind           string     `gorm:"type:text;not null;index"`
-	SourceID       *string    `gorm:"type:varchar(20);index"`
-	Title          string     `gorm:"type:text;not null"`
-	Description    *string    `gorm:"type:text"`
-	// HowToApply holds paywalled application instructions (Markdown).
+	CanonicalID string  `gorm:"primaryKey;type:varchar(20)"`
+	Slug        string  `gorm:"type:text;not null;uniqueIndex"`
+	Kind        string  `gorm:"type:text;not null;index"`
+	SourceID    *string `gorm:"type:varchar(20);index"`
+	Title       string  `gorm:"type:text;not null"`
+	Description *string `gorm:"type:text"`
+	// HowToApply holds paywalled application instructions (sanitized HTML).
 	// Omitted from the public jobs API; served only to subscribed members.
 	HowToApply     *string    `gorm:"type:text"`
 	IssuingEntity  *string    `gorm:"type:text"`

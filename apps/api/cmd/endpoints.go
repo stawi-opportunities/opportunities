@@ -14,6 +14,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/counters"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
+	"github.com/stawi-opportunities/opportunities/pkg/publish"
 )
 
 // (universalFacets was removed when the search response moved to the
@@ -217,10 +218,13 @@ func jobByIDHandler(jm JobsBackend) http.HandlerFunc {
 			}
 			attrs = cp
 		}
+		// Ensure description is sanitized HTML for consistent client rendering
+		// (new rows stored as HTML; legacy markdown/plain converted at read).
+		descHTML := publish.DescriptionHTML(j.Description)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"schema_version": 1,
 			"id":             j.CanonicalID, "slug": j.Slug, "kind": j.Kind,
-			"title": j.Title, "description": j.Description,
+			"title": j.Title, "description": descHTML,
 			// Public flag only — how_to_apply body is on GET /me/opportunities/{id}/apply.
 			"has_how_to_apply": j.HasHowToApply,
 			"issuing_entity":   j.IssuingEntity, "apply_url": j.ApplyURL,

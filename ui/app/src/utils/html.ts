@@ -3,8 +3,8 @@
  * children to a target element. Never assigns innerHTML and never
  * executes scripts — DOMParser with "text/html" produces inert nodes.
  *
- * Used for OpportunitySnapshot.description_html which has already passed through
- * bluemonday's UGC policy server-side (pkg/publish/html.go).
+ * Used for OpportunitySnapshot.description which is stored as sanitized
+ * HTML (pkg/publish.DescriptionHTML / bluemonday UGC).
  */
 export function mountSanitisedHTML(target: Element, html: string | undefined) {
   if (!html) return;

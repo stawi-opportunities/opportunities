@@ -5,6 +5,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"time"
 )
@@ -116,7 +117,9 @@ func deriveRemoteType(j job) string {
 }
 
 // buildSnippet trims description to ~280 chars on a word boundary.
+// Descriptions are stored as HTML; strip tags for plain-text snippets.
 func buildSnippet(desc string) string {
+	desc = stripTagsForSnippet(desc)
 	const max = 280
 	if len(desc) <= max {
 		return desc
@@ -126,6 +129,16 @@ func buildSnippet(desc string) string {
 		cut = cut[:i]
 	}
 	return cut + "…"
+}
+
+var snippetTagRe = regexp.MustCompile(`(?s)<[^>]*>`)
+
+func stripTagsForSnippet(s string) string {
+	if s == "" {
+		return ""
+	}
+	plain := snippetTagRe.ReplaceAllString(s, " ")
+	return strings.Join(strings.Fields(plain), " ")
 }
 
 // facetEntry matches FacetEntry in ui/app/src/types/search.ts.

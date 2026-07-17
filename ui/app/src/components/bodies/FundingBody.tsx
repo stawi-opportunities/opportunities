@@ -1,6 +1,7 @@
 import { fundingFocusArea, type OpportunitySnapshot } from '@/types/snapshot';
 import { fmtMoney } from '@/utils/format';
 import { useI18n } from '@/i18n/I18nProvider';
+import DescriptionBody from '@/components/common/DescriptionBody';
 
 export default function FundingBody({ snap }: { snap: OpportunitySnapshot }) {
   const { t } = useI18n();
@@ -8,8 +9,6 @@ export default function FundingBody({ snap }: { snap: OpportunitySnapshot }) {
   const orgEligibility = stringAttr(snap, 'organisation_eligibility');
   const targetRegions = stringArrayAttr(snap, 'target_regions');
   const grant = fmtMoney(snap.amount_min, snap.amount_max, snap.currency, '');
-
-  const description = snap.description ?? '';
 
   return (
     <>
@@ -31,14 +30,10 @@ export default function FundingBody({ snap }: { snap: OpportunitySnapshot }) {
         )}
       </dl>
 
-      {description && (
-        <section
-          className="prose prose-slate mt-8 max-w-none whitespace-pre-line"
-          aria-label="Funding description"
-        >
-          {description}
-        </section>
-      )}
+      <DescriptionBody
+        html={snap.description_html ?? snap.description}
+        ariaLabel="Funding description"
+      />
     </>
   );
 }

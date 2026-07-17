@@ -546,7 +546,10 @@ const (
 // token window (TEI --auto-truncate enforces the 512-token cap
 // server-side) happens inside Embed.
 func EmbedInput(title, issuingEntity, description string) string {
-	return EmbedPassagePrefix + strings.Join([]string{title, issuingEntity, description}, " · ")
+	// Descriptions are stored as HTML; strip tags so the embedding model
+	// sees prose, not markup noise.
+	plain := stripHTML(description)
+	return EmbedPassagePrefix + strings.Join([]string{title, issuingEntity, plain}, " · ")
 }
 
 // Embed generates an embedding vector for the given text via the OpenAI-

@@ -14,11 +14,11 @@ import (
 type SourceType string
 
 const (
-	SourceAPI                SourceType = "api"                // requires recipe (acquisition:api)
-	SourceSchemaOrg          SourceType = "schema_org"         // JobPosting JSON-LD
-	SourceSitemap            SourceType = "sitemap"            // sitemap + structured detail
-	SourceGenericHTML        SourceType = "generic_html"       // HTML list+detail via recipe
-	SourceWorkday            SourceType = "workday"            // Workday ATS engine
+	SourceAPI                SourceType = "api"          // requires recipe (acquisition:api)
+	SourceSchemaOrg          SourceType = "schema_org"   // JobPosting JSON-LD
+	SourceSitemap            SourceType = "sitemap"      // sitemap + structured detail
+	SourceGenericHTML        SourceType = "generic_html" // HTML list+detail via recipe
+	SourceWorkday            SourceType = "workday"      // Workday ATS engine
 	SourceSmartRecruitersAPI SourceType = "smartrecruiters_api"
 )
 
@@ -278,11 +278,12 @@ type ExternalOpportunity struct {
 	SourceURL  string `json:"source_url,omitempty"`
 
 	// Universal core
-	Title         string `json:"title"`
-	Description   string `json:"description"`
+	Title string `json:"title"`
+	// Description is the public body stored as sanitized HTML
+	// (publish.DescriptionHTML at normalize).
+	Description string `json:"description"`
 	// HowToApply is optional application instructions (email steps, portal
-	// notes). When empty, normalize peels a recognised "How to apply" section
-	// out of Description. Always stored separately for paywall gating.
+	// notes), stored as sanitized HTML and separated for paywall gating.
 	HowToApply    string `json:"how_to_apply,omitempty"`
 	IssuingEntity string `json:"issuing_entity"`
 	ApplyURL      string `json:"apply_url"`

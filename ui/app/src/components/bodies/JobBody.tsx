@@ -1,27 +1,19 @@
-import { useEffect, useRef } from 'react';
 import { jobEmploymentType, jobSeniority, type OpportunitySnapshot } from '@/types/snapshot';
 import { fmtMoney } from '@/utils/format';
-import { mountSanitisedHTML } from '@/utils/html';
 import { useI18n } from '@/i18n/I18nProvider';
 import FlagModal from '@/components/FlagModal';
 import StatsLine from '@/components/StatsLine';
+import DescriptionBody from '@/components/common/DescriptionBody';
 
 /**
  * JobBody renders the kind=job-specific portion of an OpportunityDetail
  * page: employment-type / seniority badges, salary, skills, and the
- * sanitised HTML description. The universal header (title, issuing
- * entity, deadline, anchor location, apply CTA) is already painted
- * upstream in OpportunityDetail.
- *
- * Inputs come from snap.attributes (employment_type, seniority, skills,
- * skills_nice_to_have, salary period). The description is preferred
- * from snap.description_html (legacy job snapshots, already passed
- * through bluemonday server-side) and falls back to plain-text
- * snap.description with whitespace preserved.
+ * sanitized HTML description. Descriptions are stored as HTML
+ * (pkg/publish.DescriptionHTML); legacy markdown rows still render via
+ * the same path after client-side detection.
  */
 export default function JobBody({ snap }: { snap: OpportunitySnapshot }) {
   const { t } = useI18n();
-  const descRef = useRef<HTMLDivElement | null>(null);
 
   const employmentType = jobEmploymentType(snap);
   const seniority = jobSeniority(snap);
@@ -35,19 +27,8 @@ export default function JobBody({ snap }: { snap: OpportunitySnapshot }) {
       : 'year';
   const money = fmtMoney(snap.amount_min, snap.amount_max, snap.currency, period);
 
-  useEffect(() => {
-    const el = descRef.current;
-    if (!el) return;
-    el.replaceChildren();
-    if (snap.description_html) {
-      mountSanitisedHTML(el, snap.description_html);
-    } else if (snap.description) {
-      // Treat snap.description as plain text — DOM textContent assignment
-      // never parses HTML, so we cannot inject script. Whitespace-pre-line
-      // on the wrapper preserves paragraph breaks.
-      el.textContent = snap.description;
-    }
-  }, [snap.description_html, snap.description]);
+  // Prefer description (HTML stored at normalize); description_html is legacy.
+  const descriptionHTML = snap.description_html ?? snap.description;
 
   return (
     <>
@@ -98,11 +79,7 @@ export default function JobBody({ snap }: { snap: OpportunitySnapshot }) {
         </section>
       )}
 
-      <section
-        ref={descRef}
-        className="prose prose-slate mt-8 max-w-none whitespace-pre-line"
-        aria-label="Job description"
-      />
+      <DescriptionBody html={descriptionHTML} ariaLabel="Job description" />
 
       <StatsLine slug={snap.slug} />
       <FlagModal slug={snap.slug} />
