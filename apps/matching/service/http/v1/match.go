@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
+	notificationv1 "buf.build/gen/go/antinvestor/notification/protocolbuffers/go/notification/v1"
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
@@ -65,10 +67,16 @@ type MatchDeps struct {
 	// RequireAuthCandidate when non-empty forces the query candidate_id to
 	// match the authenticated identity (prevents IDOR on the legacy route).
 	RequireAuthCandidate string
-	// WantsAlerts sets delivery=immediate on notification service payloads.
+	// WantsAlerts gates every-match notification (match_alerts). Digests cover summaries.
 	WantsAlerts func(ctx context.Context, candidateID string) bool
-	// Notifier delivers via service-notification (required path for user mail).
-	Notifier *notify.Notifier
+	// NotificationCli is the platform notification service client (profile-style).
+	NotificationCli notificationv1connect.NotificationServiceClient
+	// Templates are MESSAGE_TEMPLATE_* names from config.
+	Templates notify.Templates
+	// ProfileID resolves candidate_id → platform profile_id. Nil → use candidate_id.
+	ProfileID func(ctx context.Context, candidateID string) string
+	// PublicSiteURL for dashboard links in template variables.
+	PublicSiteURL string
 }
 
 // matchResponse is the JSON body returned from the handler.
@@ -153,21 +161,21 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 
-		immediate := deps.WantsAlerts != nil && deps.WantsAlerts(ctx, res.CandidateID)
-		items := make([]notify.MatchItem, 0, len(res.Matches))
+		wants := deps.WantsAlerts != nil && deps.WantsAlerts(ctx, res.CandidateID)
+		matchVars := make([]any, 0, len(res.Matches))
 		for _, h := range res.Matches {
-			items = append(items, notify.MatchItem{
-				CanonicalID: h.CanonicalID, Title: h.Title, Company: h.Company,
-				ApplyURL: h.ApplyURL, Slug: h.Slug, Score: h.Score,
+			matchVars = append(matchVars, map[string]any{
+				"canonical_id": h.CanonicalID,
+				"title":        h.Title,
+				"company":      h.Company,
+				"apply_url":    h.ApplyURL,
+				"slug":         h.Slug,
+				"score":        h.Score,
 			})
 		}
 		go func() {
 			emitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			// Always queue via service-notification.
-			if deps.Notifier != nil && len(items) > 0 {
-				deps.Notifier.MatchesReady(emitCtx, res.CandidateID, res.MatchBatchID, items, immediate)
-			}
 			if deps.Svc != nil {
 				env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
 					CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: eventRows,
@@ -175,6 +183,27 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 				if err := deps.Svc.EventsManager().Emit(emitCtx, eventsv1.TopicCandidateMatchesReady, env); err != nil {
 					util.Log(emitCtx).WithError(err).Debug("match: domain event emit failed")
 				}
+			}
+			// User notify only when match_alerts; always via NotificationService.Send.
+			if wants && len(matchVars) > 0 && deps.NotificationCli != nil {
+				profileID := res.CandidateID
+				if deps.ProfileID != nil {
+					profileID = deps.ProfileID(emitCtx, res.CandidateID)
+				}
+				site := strings.TrimRight(deps.PublicSiteURL, "/")
+				_ = notify.Send(emitCtx, deps.NotificationCli, notify.Message{
+					Template:  deps.Templates.Ready(),
+					ProfileID: profileID,
+					Variables: map[string]any{
+						"candidate_id":   res.CandidateID,
+						"match_batch_id": res.MatchBatchID,
+						"count":          float64(len(matchVars)),
+						"dashboard_url":  site + "/dashboard/#matches",
+						"matches":        matchVars,
+					},
+					Priority:    notificationv1.PRIORITY_HIGH,
+					PrioritySet: true,
+				})
 			}
 		}()
 	}

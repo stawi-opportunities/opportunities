@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
@@ -30,8 +32,11 @@ type CVStaleNudgeDeps struct {
 	Svc        *frame.Service
 	Lister     StaleLister
 	StaleAfter time.Duration // default 60 days
-	// Notifier delivers via service-notification.
-	Notifier *notify.Notifier
+	// NotificationCli is the platform notification service client.
+	NotificationCli notificationv1connect.NotificationServiceClient
+	Templates       notify.Templates
+	ProfileID       func(ctx context.Context, candidateID string) string
+	PublicSiteURL   string
 }
 
 type cvStaleNudgeResponse struct {
@@ -47,14 +52,14 @@ type cvStaleNudgePayload struct {
 }
 
 // CVStaleNudgeHandler returns an http.HandlerFunc fired by Trustage
-// daily. It emits one CV-stale-nudge event per candidate whose most
-// recent upload is older than StaleAfter. The external notification
-// service consumes the topic and sends the nudge email.
+// daily. It queues one CV-stale-nudge notification per candidate whose
+// most recent upload is older than StaleAfter (via NotificationService.Send).
 func CVStaleNudgeHandler(deps CVStaleNudgeDeps) http.HandlerFunc {
 	staleAfter := deps.StaleAfter
 	if staleAfter <= 0 {
 		staleAfter = 60 * 24 * time.Hour
 	}
+	site := strings.TrimRight(deps.PublicSiteURL, "/")
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := util.Log(ctx)
@@ -80,11 +85,24 @@ func CVStaleNudgeHandler(deps CVStaleNudgeDeps) http.HandlerFunc {
 				LastUploadAt:    c.LastUploadAt,
 				DaysSinceUpload: days,
 			}
-			if deps.Notifier != nil {
-				deps.Notifier.CVStaleNudge(ctx, c.CandidateID, payload)
+			if deps.NotificationCli != nil {
+				profileID := c.CandidateID
+				if deps.ProfileID != nil {
+					profileID = deps.ProfileID(ctx, c.CandidateID)
+				}
+				_ = notify.Send(ctx, deps.NotificationCli, notify.Message{
+					Template:  deps.Templates.CVStale(),
+					ProfileID: profileID,
+					Variables: map[string]any{
+						"candidate_id":      c.CandidateID,
+						"days_since_upload": float64(days),
+						"last_upload_at":    c.LastUploadAt.Format(time.RFC3339),
+						"dashboard_url":     site + "/dashboard/#preferences",
+					},
+				})
 			} else {
 				log.WithField("candidate_id", c.CandidateID).
-					Warn("stale-nudge: notifier nil — not queued to service-notification")
+					Warn("stale-nudge: notification client nil — not queued")
 			}
 			if deps.Svc != nil {
 				env := eventsv1.NewEnvelope(eventsv1.TopicCandidateCVStaleNudge, payload)

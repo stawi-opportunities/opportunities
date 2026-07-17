@@ -36,10 +36,13 @@ type Clients struct {
 // ClientConfig holds the URIs for each service.
 type ClientConfig struct {
 	NotificationURI string
-	FileURI         string
-	RedirectURI     string
-	BillingURI      string
-	ProfileURI      string
+	// NotificationWorkloadAPITargetPath is optional SPIFFE path for
+	// service-notification (profile uses the same field).
+	NotificationWorkloadAPITargetPath string
+	FileURI                           string
+	RedirectURI                       string
+	BillingURI                        string
+	ProfileURI                        string
 
 	// HTTPClient overrides the http.Client backing the redirect REST
 	// client. Production callers should pass
@@ -64,7 +67,8 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 
 	if cc.NotificationURI != "" {
 		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
-			Endpoint:  cc.NotificationURI,
+			Endpoint:              cc.NotificationURI,
+			WorkloadAPITargetPath: cc.NotificationWorkloadAPITargetPath,
 			ServiceID:             servicecatalog.ServiceNotification,
 		}, notificationv1connect.NewNotificationServiceClient)
 		if err != nil {
@@ -77,7 +81,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	if cc.FileURI != "" {
 		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.FileURI,
-			ServiceID:             servicecatalog.ServiceFiles,
+			ServiceID: servicecatalog.ServiceFiles,
 		}, filesv1connect.NewFilesServiceClient)
 		if err != nil {
 			record("files", err)
@@ -97,7 +101,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	if cc.BillingURI != "" {
 		payCli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.BillingURI,
-			ServiceID:             servicecatalog.ServicePayment,
+			ServiceID: servicecatalog.ServicePayment,
 		}, paymentv1connect.NewPaymentServiceClient)
 		if err != nil {
 			record("payment", err)
@@ -107,7 +111,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 
 		billCli, billErr := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.BillingURI,
-			ServiceID:             servicecatalog.ServiceBilling,
+			ServiceID: servicecatalog.ServiceBilling,
 		}, billingv1connect.NewBillingServiceClient)
 		if billErr != nil {
 			record("billing", billErr)
@@ -119,7 +123,7 @@ func NewClients(ctx context.Context, cfg any, cc ClientConfig) (*Clients, error)
 	if cc.ProfileURI != "" {
 		cli, err := connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 			Endpoint:  cc.ProfileURI,
-			ServiceID:             servicecatalog.ServiceProfile,
+			ServiceID: servicecatalog.ServiceProfile,
 		}, profilev1connect.NewProfileServiceClient)
 		if err != nil {
 			record("profile", err)
@@ -141,6 +145,6 @@ func NewTrustageWorkflowClient(
 ) (workflowv1connect.WorkflowServiceClient, error) {
 	return connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
 		Endpoint:  trustageURL,
-		ServiceID:             servicecatalog.ServiceTrustage,
+		ServiceID: servicecatalog.ServiceTrustage,
 	}, workflowv1connect.NewWorkflowServiceClient)
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
@@ -74,8 +75,11 @@ type WeeklyJobsDigestDeps struct {
 	// Location for weekday evaluation. Default UTC.
 	Location *time.Location
 	Now      func() time.Time
-	// Notifier delivers digests via service-notification.
-	Notifier *notify.Notifier
+	// NotificationCli is the platform notification service client.
+	NotificationCli notificationv1connect.NotificationServiceClient
+	Templates       notify.Templates
+	ProfileID       func(ctx context.Context, candidateID string) string
+	PublicSiteURL   string
 }
 
 type weeklyJobsDigestResponse struct {
@@ -198,12 +202,42 @@ func WeeklyJobsDigestHandler(deps WeeklyJobsDigestDeps) http.HandlerFunc {
 				Stats:       stats,
 				PlansURL:    plansURL,
 			}
-			// Primary: service-notification.
-			if deps.Notifier != nil {
-				deps.Notifier.WeeklyJobsDigest(ctx, c.ID, payload)
+			// Primary: NotificationService.Send (profile-style template + payload).
+			if deps.NotificationCli != nil {
+				profileID := c.ID
+				if deps.ProfileID != nil {
+					profileID = deps.ProfileID(ctx, c.ID)
+				}
+				jobVars := make([]any, 0, len(jobs))
+				for _, j := range jobs {
+					jobVars = append(jobVars, map[string]any{
+						"canonical_id": j.CanonicalID,
+						"title":        j.Title,
+						"company":      j.Company,
+						"apply_url":    j.ApplyURL,
+						"slug":         j.Slug,
+					})
+				}
+				site := strings.TrimRight(deps.PublicSiteURL, "/")
+				plans := plansURL
+				if plans == "" && site != "" {
+					plans = site + "/pricing/"
+				}
+				_ = notify.Send(ctx, deps.NotificationCli, notify.Message{
+					Template:  deps.Templates.WeeklyJobs(),
+					ProfileID: profileID,
+					Language:  c.Locale,
+					Variables: map[string]any{
+						"candidate_id": c.ID,
+						"country":      c.Country,
+						"jobs":         jobVars,
+						"plans_url":    plans,
+						"count":        float64(len(jobVars)),
+					},
+				})
 			} else {
 				log.WithField("candidate_id", c.ID).
-					Warn("weekly-jobs-digest: notifier nil — not queued to service-notification")
+					Warn("weekly-jobs-digest: notification client nil — not queued")
 			}
 			// Domain event for bus/analytics.
 			if deps.Svc != nil {

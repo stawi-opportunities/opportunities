@@ -12,6 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
+	apis "github.com/antinvestor/common/v2"
+	"github.com/antinvestor/common/v2/connection"
+	"github.com/antinvestor/common/v2/servicecatalog"
 	"github.com/pitabwire/frame/v2"
 	frameclient "github.com/pitabwire/frame/v2/client"
 	fconfig "github.com/pitabwire/frame/v2/config"
@@ -213,27 +217,28 @@ func main() {
 		persistStore = matching.NewStore(sqlDB)
 	}
 
-	// All candidate-facing messages go through service-notification.
-	// match_alerts only controls delivery=immediate vs digest on the payload.
-	var notifier *notify.Notifier
+	// Notification client — same constructs as service-profile:
+	// connection.NewServiceClient → NotificationServiceClient → Send(template+payload).
+	var notificationCli notificationv1connect.NotificationServiceClient
 	if uri := strings.TrimSpace(cfg.NotificationServiceURI); uri != "" {
-		nClients, nErr := services.NewClients(ctx, &cfg, services.ClientConfig{
-			NotificationURI: uri,
-			HTTPClient:      svc.HTTPClientManager().Client(ctx),
-		})
+		cli, nErr := setupNotificationClient(ctx, &cfg)
 		if nErr != nil {
-			log.WithError(nErr).Warn("notify: notification client init error; user mail degraded until fixed")
-		}
-		if nClients != nil && nClients.Notification != nil {
-			notifier = notify.New(nClients.Notification, sqlDB, cfg.PublicSiteURL)
-			log.WithField("uri", uri).Info("notify: service-notification client enabled")
+			log.WithError(nErr).Warn("notify: notification client init failed; user mail degraded until fixed")
 		} else {
-			log.Warn("notify: NOTIFICATION_SERVICE_URI set but client unavailable — messages will not be delivered")
-			notifier = notify.New(nil, sqlDB, cfg.PublicSiteURL)
+			notificationCli = cli
+			log.WithField("uri", uri).Info("notify: service-notification client enabled")
 		}
 	} else {
 		log.Warn("notify: NOTIFICATION_SERVICE_URI unset — candidate notifications will not be queued")
-		notifier = notify.New(nil, sqlDB, cfg.PublicSiteURL)
+	}
+	notifyTemplates := notify.Templates{
+		MatchesReady:     cfg.MessageTemplateMatchesReady,
+		MatchesDigest:    cfg.MessageTemplateMatchesDigest,
+		WeeklyJobsDigest: cfg.MessageTemplateWeeklyJobsDigest,
+		CVStaleNudge:     cfg.MessageTemplateCVStaleNudge,
+	}
+	profileIDForCandidate := func(ctx context.Context, candidateID string) string {
+		return notify.ProfileID(ctx, sqlDB, candidateID)
 	}
 
 	wantsMatchAlerts := func(ctx context.Context, candidateID string) bool {
@@ -248,13 +253,16 @@ func main() {
 		return err == nil && alerts
 	}
 	prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
-		Svc:         svc,
-		Match:       matchSvc,
-		Matchers:    matcherReg,
-		Persist:     persistStore,
-		TopK:        50,
-		WantsAlerts: wantsMatchAlerts,
-		Notifier:    notifier,
+		Svc:             svc,
+		Match:           matchSvc,
+		Matchers:        matcherReg,
+		Persist:         persistStore,
+		TopK:            50,
+		WantsAlerts:     wantsMatchAlerts,
+		NotificationCli: notificationCli,
+		Templates:       notifyTemplates,
+		ProfileID:       profileIDForCandidate,
+		PublicSiteURL:   cfg.PublicSiteURL,
 	})
 	if extractor != nil {
 		scorer := cv.NewScorer(extractor)
@@ -410,7 +418,9 @@ func main() {
 					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
 					Svc:             svc,
 					DB:              sqlDB,
-					Notifier:        notifier,
+					NotificationCli: notificationCli,
+					Templates:       notifyTemplates,
+					PublicSiteURL:   cfg.PublicSiteURL,
 					DefaultMinScore: cfg.MatchingMinScore,
 				})
 				svc.Init(ctx, frame.WithRegisterSubscriber(foRef, foURI, foConsumer))
@@ -524,12 +534,15 @@ func main() {
 	mux.Handle("GET /me/cv", authMW(httpv1.MeCVGetHandler(uploadDeps)))
 	mux.Handle("POST /candidates/preferences", authMW(httpv1.PreferencesHandler(svc, sqlDB)))
 	mux.Handle("GET /candidates/match", authMW(httpv1.MatchHandler(httpv1.MatchDeps{
-		Svc:         svc,
-		Store:       candStore,
-		Search:      search,
-		Persist:     persistStore,
-		WantsAlerts: wantsMatchAlerts,
-		Notifier:    notifier,
+		Svc:             svc,
+		Store:           candStore,
+		Search:          search,
+		Persist:         persistStore,
+		WantsAlerts:     wantsMatchAlerts,
+		NotificationCli: notificationCli,
+		Templates:       notifyTemplates,
+		ProfileID:       profileIDForCandidate,
+		PublicSiteURL:   cfg.PublicSiteURL,
 	})))
 
 	// --- /me/subscription (dashboard summary) ---
@@ -793,26 +806,32 @@ func main() {
 	// --- Trustage admin endpoints (shared secret or admin JWT) ---
 	mux.Handle("POST /_admin/cv/stale_nudge",
 		httpmw.RequireAdmin(adminAuth, adminv1.CVStaleNudgeHandler(adminv1.CVStaleNudgeDeps{
-			Svc:        svc,
-			Lister:     staleLister,
-			StaleAfter: 60 * 24 * time.Hour,
-			Notifier:   notifier,
+			Svc:             svc,
+			Lister:          staleLister,
+			StaleAfter:      60 * 24 * time.Hour,
+			NotificationCli: notificationCli,
+			Templates:       notifyTemplates,
+			ProfileID:       profileIDForCandidate,
+			PublicSiteURL:   cfg.PublicSiteURL,
 		})))
 	digestLoc := matching.LoadLocationOrUTC(cfg.DigestTimezone)
 	digestWeekday := matching.ParseWeekday(cfg.DigestWeeklyWeekday)
 	mux.Handle("POST /_admin/candidates/weekly_jobs_digest",
 		httpmw.RequireAdmin(adminAuth, adminv1.WeeklyJobsDigestHandler(adminv1.WeeklyJobsDigestDeps{
-			Svc:            svc,
-			Lister:         unpaidLister,
-			Jobs:           newJobsLister,
-			Stats:          weeklyStats,
-			PlansURL:       cfg.PlansURL,
-			Window:         7 * 24 * time.Hour,
-			JobLimit:       10,
-			DefaultCadence: cfg.DigestDefaultCadence,
-			WeeklyWeekday:  digestWeekday,
-			Location:       digestLoc,
-			Notifier:       notifier,
+			Svc:             svc,
+			Lister:          unpaidLister,
+			Jobs:            newJobsLister,
+			Stats:           weeklyStats,
+			PlansURL:        cfg.PlansURL,
+			Window:          7 * 24 * time.Hour,
+			JobLimit:        10,
+			DefaultCadence:  cfg.DigestDefaultCadence,
+			WeeklyWeekday:   digestWeekday,
+			Location:        digestLoc,
+			NotificationCli: notificationCli,
+			Templates:       notifyTemplates,
+			ProfileID:       profileIDForCandidate,
+			PublicSiteURL:   cfg.PublicSiteURL,
 		})))
 
 	// POST /_admin/matches/weekly_digest — Trustage digest cron (schedule
@@ -860,7 +879,10 @@ func main() {
 					WeeklyWeekday:   digestWeekday,
 					Location:        digestLoc,
 					Toucher:         candidateRepo,
-					Notifier:        notifier,
+					NotificationCli: notificationCli,
+					Templates:       notifyTemplates,
+					ProfileID:       profileIDForCandidate,
+					PublicSiteURL:   cfg.PublicSiteURL,
 				})))
 		} else {
 			log.WithError(dbErr).Warn("_admin/matches/weekly_digest: sql.DB unwrap failed; route not registered")
@@ -1209,4 +1231,17 @@ func (a *directApplicationStarter) StartApplication(ctx context.Context, candida
 		appliedAt = *app.SubmittedAt
 	}
 	return app.ApplicationID, appliedAt, nil
+}
+
+// setupNotificationClient dials service-notification the same way profile
+// does: connection.NewServiceClient + ServiceNotification catalog id.
+func setupNotificationClient(
+	ctx context.Context,
+	cfg *candidatesconfig.CandidatesConfig,
+) (notificationv1connect.NotificationServiceClient, error) {
+	return connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
+		Endpoint:              cfg.NotificationServiceURI,
+		WorkloadAPITargetPath: cfg.NotificationServiceWorkloadAPITargetPath,
+		ServiceID:             servicecatalog.ServiceNotification,
+	}, notificationv1connect.NewNotificationServiceClient)
 }

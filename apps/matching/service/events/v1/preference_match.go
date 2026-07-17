@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
+	notificationv1 "buf.build/gen/go/antinvestor/notification/protocolbuffers/go/notification/v1"
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
@@ -28,11 +31,17 @@ type PreferenceMatchDeps struct {
 	// TopK caps the matches emitted per candidate-kind pair (default 50).
 	TopK int
 	// WantsAlerts returns true when the candidate opted into every-match
-	// notifications (match_alerts). Always queues via Notifier; immediate
-	// delivery flag follows WantsAlerts.
+	// notifications (match_alerts). Digests cover the default summary path.
 	WantsAlerts func(ctx context.Context, candidateID string) bool
-	// Notifier delivers via service-notification.
-	Notifier *notify.Notifier
+	// NotificationCli is the platform notification service client.
+	NotificationCli notificationv1connect.NotificationServiceClient
+	// Templates are MESSAGE_TEMPLATE_* names from config.
+	Templates notify.Templates
+	// ProfileID resolves candidate_id → platform profile_id for ContactLink.
+	// When nil, candidate_id is used as ProfileId.
+	ProfileID func(ctx context.Context, candidateID string) string
+	// PublicSiteURL for dashboard links in template variables.
+	PublicSiteURL string
 }
 
 // PreferenceMatchHandler subscribes to TopicCandidatePreferencesUpdated
@@ -132,20 +141,20 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 				Warn("preference-match: persist candidate_matches failed")
 		}
 
-		immediate := h.deps.WantsAlerts != nil && h.deps.WantsAlerts(ctx, in.CandidateID)
-		items := make([]notify.MatchItem, 0, len(res.Matches))
 		rows := make([]eventsv1.MatchRow, 0, len(res.Matches))
+		matchVars := make([]any, 0, len(res.Matches))
 		for _, m := range res.Matches {
-			items = append(items, notify.MatchItem{
-				CanonicalID: m.CanonicalID, Title: m.Title, Company: m.Company,
-				ApplyURL: m.ApplyURL, Slug: m.Slug, Score: m.Score,
-			})
 			rows = append(rows, eventsv1.MatchRow{CanonicalID: m.CanonicalID, ApplyURL: m.ApplyURL, Score: m.Score})
+			matchVars = append(matchVars, map[string]any{
+				"canonical_id": m.CanonicalID,
+				"title":        m.Title,
+				"company":      m.Company,
+				"apply_url":    m.ApplyURL,
+				"slug":         m.Slug,
+				"score":        m.Score,
+			})
 		}
-		// Always via service-notification.
-		if h.deps.Notifier != nil && len(items) > 0 {
-			h.deps.Notifier.MatchesReady(ctx, res.CandidateID, res.MatchBatchID, items, immediate)
-		}
+
 		if h.deps.Svc != nil && len(rows) > 0 {
 			readyEnv := eventsv1.NewEnvelope(
 				eventsv1.TopicCandidateMatchesReady,
@@ -160,11 +169,35 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 					Debug("preference-match: domain event emit failed")
 			}
 		}
+
+		// User notify only when match_alerts; always via NotificationService.Send.
+		wants := h.deps.WantsAlerts != nil && h.deps.WantsAlerts(ctx, in.CandidateID)
+		if wants && len(matchVars) > 0 && h.deps.NotificationCli != nil {
+			profileID := res.CandidateID
+			if h.deps.ProfileID != nil {
+				profileID = h.deps.ProfileID(ctx, res.CandidateID)
+			}
+			site := strings.TrimRight(h.deps.PublicSiteURL, "/")
+			_ = notify.Send(ctx, h.deps.NotificationCli, notify.Message{
+				Template:  h.deps.Templates.Ready(),
+				ProfileID: profileID,
+				Variables: map[string]any{
+					"candidate_id":   res.CandidateID,
+					"match_batch_id": res.MatchBatchID,
+					"count":          float64(len(matchVars)),
+					"dashboard_url":  site + "/dashboard/#matches",
+					"matches":        matchVars,
+				},
+				Priority:    notificationv1.PRIORITY_HIGH,
+				PrioritySet: true,
+			})
+		}
+
 		telemetry.RecordPreferenceTriggeredRun(kind)
 		log.WithField("kind", kind).
 			WithField("matches", len(rows)).
-			WithField("immediate", immediate).
-			Info("preference-match: matches collected; notified via service-notification")
+			WithField("notify", wants).
+			Info("preference-match: matches collected")
 	}
 	return nil
 }

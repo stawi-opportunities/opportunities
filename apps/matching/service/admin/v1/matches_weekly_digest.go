@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
@@ -69,8 +70,11 @@ type MatchesWeeklyDigestDeps struct {
 	Location *time.Location
 	// Toucher optional — stamps last_digest_at after emit.
 	Toucher DigestTouch
-	// Notifier delivers digests via service-notification (required path for user mail).
-	Notifier *notify.Notifier
+	// NotificationCli is the platform notification service client.
+	NotificationCli notificationv1connect.NotificationServiceClient
+	Templates       notify.Templates
+	ProfileID       func(ctx context.Context, candidateID string) string
+	PublicSiteURL   string
 	// Now injectable for tests.
 	Now func() time.Time
 }
@@ -242,19 +246,38 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 				}
 			}
 
-			// Primary delivery: service-notification (never product-side email).
-			if deps.Notifier != nil && len(rows) > 0 {
-				items := make([]notify.MatchItem, 0, len(rows))
+			// Primary delivery: NotificationService.Send (profile-style).
+			if deps.NotificationCli != nil && len(rows) > 0 {
+				profileID := m.ID
+				if deps.ProfileID != nil {
+					profileID = deps.ProfileID(ctx, m.ID)
+				}
+				matchVars := make([]any, 0, len(rows))
 				for _, r := range rows {
-					items = append(items, notify.MatchItem{
-						CanonicalID: r.CanonicalID, Title: r.Title, Company: r.Company,
-						ApplyURL: r.ApplyURL, Slug: r.Slug, Score: r.Score,
+					matchVars = append(matchVars, map[string]any{
+						"canonical_id": r.CanonicalID,
+						"title":        r.Title,
+						"company":      r.Company,
+						"apply_url":    r.ApplyURL,
+						"slug":         r.Slug,
+						"score":        r.Score,
 					})
 				}
-				deps.Notifier.MatchesDigest(ctx, m.ID, res.RunID, items)
-			} else if deps.Notifier == nil {
+				site := strings.TrimRight(deps.PublicSiteURL, "/")
+				_ = notify.Send(ctx, deps.NotificationCli, notify.Message{
+					Template:  deps.Templates.Digest(),
+					ProfileID: profileID,
+					Variables: map[string]any{
+						"candidate_id":   m.ID,
+						"match_batch_id": res.RunID,
+						"count":          float64(len(matchVars)),
+						"dashboard_url":  site + "/dashboard/#matches",
+						"matches":        matchVars,
+					},
+				})
+			} else if deps.NotificationCli == nil {
 				log.WithField("candidate_id", m.ID).
-					Warn("matches-digest: notifier nil — digest not queued to service-notification")
+					Warn("matches-digest: notification client nil — digest not queued")
 			}
 
 			// Domain event for bus consumers / analytics.

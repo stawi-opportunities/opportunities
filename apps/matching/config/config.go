@@ -136,10 +136,18 @@ type CandidatesConfig struct {
 	// CV uploads are stored via the platform files service; when empty,
 	// matching falls back to the product R2 archive bucket.
 	FileServiceURI string `env:"FILE_SERVICE_URI" envDefault:""`
-	// NotificationServiceURI is service-notification. All candidate-facing
-	// messages (match alerts, digests, CV nudges) are queued via
-	// NotificationService.Send — matching never sends email/SMS itself.
+	// NotificationServiceURI is service-notification. Candidate-facing
+	// messages use NotificationService.Send (same client setup as profile).
 	NotificationServiceURI string `env:"NOTIFICATION_SERVICE_URI" envDefault:""`
+	// NotificationServiceWorkloadAPITargetPath is the SPIFFE workload API
+	// target for service-notification (profile/fintech use the same pattern).
+	NotificationServiceWorkloadAPITargetPath string `env:"NOTIFICATION_SERVICE_WORKLOAD_API_TARGET_PATH" envDefault:"/ns/notifications/sa/service-notification"`
+	// Message templates registered in service-notification (profile-style
+	// MESSAGE_TEMPLATE_* config; override without code changes).
+	MessageTemplateMatchesReady     string `env:"MESSAGE_TEMPLATE_MATCHES_READY" envDefault:"template.opportunities.matches.ready"`
+	MessageTemplateMatchesDigest    string `env:"MESSAGE_TEMPLATE_MATCHES_DIGEST" envDefault:"template.opportunities.matches.digest"`
+	MessageTemplateWeeklyJobsDigest string `env:"MESSAGE_TEMPLATE_WEEKLY_JOBS_DIGEST" envDefault:"template.opportunities.weekly_jobs.digest"`
+	MessageTemplateCVStaleNudge     string `env:"MESSAGE_TEMPLATE_CV_STALE_NUDGE" envDefault:"template.opportunities.cv.stale_nudge"`
 	// BillingWebhookSecret enables HMAC-SHA256 verification of the
 	// service-payment completion webhook (X-Payment-Signature header over
 	// the raw body). Empty disables verification (dev/test only).

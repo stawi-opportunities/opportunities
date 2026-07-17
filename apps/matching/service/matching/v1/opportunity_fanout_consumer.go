@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
+	notificationv1 "buf.build/gen/go/antinvestor/notification/protocolbuffers/go/notification/v1"
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
@@ -24,12 +26,16 @@ type OpportunityFanOutConsumerDeps struct {
 	Reranker matching.Reranker
 	Weights  matching.Weights
 	DailyCap matching.DailyCapQuery
-	// Svc still emits domain events for bus consumers; user delivery is Notifier.
+	// Svc emits domain events for bus consumers / analytics.
 	Svc *frame.Service
 	// DB looks up match_alerts / profile_id.
 	DB *sql.DB
-	// Notifier queues all user messages via service-notification.
-	Notifier *notify.Notifier
+	// NotificationCli is the platform notification service client (profile-style).
+	NotificationCli notificationv1connect.NotificationServiceClient
+	// Templates are MESSAGE_TEMPLATE_* names from config.
+	Templates notify.Templates
+	// PublicSiteURL for dashboard links in template variables.
+	PublicSiteURL string
 	// DefaultMinScore floors when index min_score is unset (unused in FanOut —
 	// candidates carry MinScore on the KNN hit). Kept for symmetry/logging.
 	DefaultMinScore float64
@@ -120,52 +126,74 @@ func (c *OpportunityFanOutConsumer) Handle(ctx context.Context, _ map[string]str
 		WithField("new", len(res.NewMatches)).
 		Info("opportunity_fanout: path A complete")
 
-	// Collect always; deliver exclusively via service-notification.
-	// Immediate send only when match_alerts=true; otherwise digest delivery flag.
-	c.notifyViaService(ctx, res, job)
+	// Collect always; user notify only when match_alerts (digests cover the rest).
+	// Delivery is always NotificationService.Send — never product-side email.
+	c.notifyMatches(ctx, res, job)
 	return nil
 }
 
-func (c *OpportunityFanOutConsumer) notifyViaService(ctx context.Context, res matching.FanOutResult, job eventsv1.OpportunityFanOutV1) {
+func (c *OpportunityFanOutConsumer) notifyMatches(ctx context.Context, res matching.FanOutResult, job eventsv1.OpportunityFanOutV1) {
 	if len(res.NewMatches) == 0 {
 		return
 	}
+	site := strings.TrimRight(c.deps.PublicSiteURL, "/")
 	for _, m := range res.NewMatches {
-		item := notify.MatchItem{
+		row := eventsv1.MatchRow{
 			CanonicalID: m.OpportunityID,
 			Title:       job.Title,
 			Company:     job.IssuingEntity,
 			ApplyURL:    m.ApplyURL,
 			Score:       m.Score,
 		}
-		immediate := false
-		if c.deps.DB != nil {
-			if ok, err := candidateWantsMatchAlerts(ctx, c.deps.DB, m.CandidateID); err == nil {
-				immediate = ok
-			}
-		}
-		// Always queue through notification service (never product-side email).
-		if c.deps.Notifier != nil {
-			c.deps.Notifier.MatchesReady(ctx, m.CandidateID, res.RunID, []notify.MatchItem{item}, immediate)
-		}
-		// Domain event for any bus bridge / analytics (optional).
+		// Domain event for analytics / bus bridges.
 		if c.deps.Svc != nil {
 			env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
 				CandidateID:  m.CandidateID,
 				MatchBatchID: res.RunID,
-				Matches: []eventsv1.MatchRow{{
-					CanonicalID: item.CanonicalID,
-					ApplyURL:    item.ApplyURL,
-					Score:       item.Score,
-					Title:       item.Title,
-					Company:     item.Company,
-				}},
+				Matches:      []eventsv1.MatchRow{row},
 			})
 			if emitErr := c.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, env); emitErr != nil {
 				util.Log(ctx).WithError(emitErr).WithField("candidate_id", m.CandidateID).
-					Debug("opportunity_fanout: domain event emit failed (notify still via service)")
+					Debug("opportunity_fanout: domain event emit failed")
 			}
 		}
+
+		// Per-match user notification only when opted into match_alerts.
+		if c.deps.DB != nil {
+			ok, err := candidateWantsMatchAlerts(ctx, c.deps.DB, m.CandidateID)
+			if err != nil || !ok {
+				continue
+			}
+		} else {
+			continue
+		}
+		if c.deps.NotificationCli == nil {
+			util.Log(ctx).WithField("candidate_id", m.CandidateID).
+				Warn("opportunity_fanout: notification client nil — match alert not sent")
+			continue
+		}
+		profileID := notify.ProfileID(ctx, c.deps.DB, m.CandidateID)
+		_ = notify.Send(ctx, c.deps.NotificationCli, notify.Message{
+			Template:  c.deps.Templates.Ready(),
+			ProfileID: profileID,
+			Variables: map[string]any{
+				"candidate_id":   m.CandidateID,
+				"match_batch_id": res.RunID,
+				"count":          float64(1),
+				"dashboard_url":  site + "/dashboard/#matches",
+				"matches": []any{
+					map[string]any{
+						"canonical_id": row.CanonicalID,
+						"title":        row.Title,
+						"company":      row.Company,
+						"apply_url":    row.ApplyURL,
+						"score":        row.Score,
+					},
+				},
+			},
+			Priority:    notificationv1.PRIORITY_HIGH,
+			PrioritySet: true,
+		})
 	}
 }
 
@@ -178,8 +206,5 @@ func candidateWantsMatchAlerts(ctx context.Context, db *sql.DB, candidateID stri
 		`SELECT COALESCE(match_alerts, false) FROM candidate_profiles WHERE id = $1`,
 		candidateID,
 	).Scan(&alerts)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	return alerts, err
+	return err == nil && alerts, err
 }
