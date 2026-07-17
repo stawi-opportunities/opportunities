@@ -150,21 +150,21 @@ export function MatchesPanel({
 
         {plan === 'starter' && (
           <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300">
-            Want 5× the matches and priority placement in the queue?{' '}
+            Want unlimited discovery, auto applications, and interview prep?{' '}
             {onUpgrade ? (
               <button
                 type="button"
                 onClick={onUpgrade}
                 className="font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
               >
-                Upgrade to Pro →
+                Upgrade to Managed →
               </button>
             ) : (
               <a
                 href="/pricing/"
                 className="font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
               >
-                Upgrade to Pro →
+                Upgrade to Managed →
               </a>
             )}
           </div>

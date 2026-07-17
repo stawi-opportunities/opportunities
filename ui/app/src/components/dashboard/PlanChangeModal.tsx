@@ -74,7 +74,7 @@ export function PlanChangeModal({
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                {PLANS.filter((p) => p.id !== 'managed').map((p) => {
+                {PLANS.filter((p) => p.id !== currentPlan).map((p) => {
                   const isCurrent = p.id === currentPlan;
                   const isSelected = p.id === selected;
                   return (

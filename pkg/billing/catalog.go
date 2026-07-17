@@ -19,6 +19,8 @@ type PlanID string
 
 const (
 	PlanStarter PlanID = "starter"
+	// PlanPro is legacy — no longer sold. Kept so existing rows and tests
+	// still normalize; entitlements map to Managed (auto-apply + unlimited).
 	PlanPro     PlanID = "pro"
 	PlanManaged PlanID = "managed"
 )
@@ -40,15 +42,18 @@ type Plan struct {
 	USDCents int `json:"usd_cents"`
 }
 
-// catalog mirrors ui/app/src/utils/plans.ts. Kept here (not proxied from
-// service-billing) because service-billing's catalog API is a versioned
-// CreateCatalogVersion/Plan/Tier model with no simple "list plans for a
-// pricing page" RPC; this product owns its three fixed tiers. If/when the
-// catalog moves to service-billing, swap Catalog() for a proxy.
+// catalog is the sellable catalog (two tiers). Mirrors ui/app/src/utils/plans.ts.
 var catalog = []Plan{
-	{ID: PlanStarter, Name: "Starter", Description: "Five AI-matched jobs a week, delivered.", Interval: "month", Amount: 10, Currency: "USD", USDCents: 1000},
-	{ID: PlanPro, Name: "Pro", Description: "5× the matches. Priority queue. Better tools.", Interval: "month", Amount: 50, Currency: "USD", USDCents: 5000},
-	{ID: PlanManaged, Name: "Managed", Description: "A real person running your job search.", Interval: "month", Amount: 200, Currency: "USD", USDCents: 20000},
+	{
+		ID: PlanStarter, Name: "Starter",
+		Description: "AI-matched jobs and digests. Manual applications — no auto-apply or interview prep.",
+		Interval:    "month", Amount: 10, Currency: "USD", USDCents: 1000,
+	},
+	{
+		ID: PlanManaged, Name: "Managed",
+		Description: "Unlimited discovery, auto applications, and job notifications — we run the search for you.",
+		Interval:    "month", Amount: 200, Currency: "USD", USDCents: 20000,
+	},
 }
 
 // Catalog returns the plan catalog in display order.
@@ -58,7 +63,8 @@ func Catalog() []Plan {
 	return out
 }
 
-// PlanByID returns the plan for id and whether it is a known tier.
+// PlanByID returns a sellable plan for id. Legacy "pro" is not returned
+// (not sold); use EntitlementsFor for entitlement mapping of old rows.
 func PlanByID(id PlanID) (Plan, bool) {
 	for _, p := range catalog {
 		if p.ID == id {
@@ -68,10 +74,13 @@ func PlanByID(id PlanID) (Plan, bool) {
 	return Plan{}, false
 }
 
-// NormalizePlan trims + validates a raw plan string into a known tier.
-// Anything outside the current paid catalog returns false.
+// NormalizePlan trims + validates a raw plan string into a known sellable tier.
+// Legacy "pro" maps to managed for checkout/upgrade paths.
 func NormalizePlan(raw string) (PlanID, bool) {
 	id := PlanID(strings.TrimSpace(strings.ToLower(raw)))
+	if id == PlanPro {
+		return PlanManaged, true
+	}
 	if _, ok := PlanByID(id); ok {
 		return id, true
 	}
@@ -82,11 +91,11 @@ func NormalizePlan(raw string) (PlanID, bool) {
 // Matches marketing copy in ui/app/src/utils/plans.ts.
 type Entitlements struct {
 	// DailyCap / WeeklyCap bound match generation (candidate_match_indexes).
-	// WeeklyCap 0 means uncapped (managed agent).
+	// WeeklyCap 0 means uncapped (managed).
 	DailyCap  int
 	WeeklyCap int
 	// AutoApply enables automated apply for the candidate when paid.
-	// Starter is matches-only; Pro and Managed unlock auto-apply rules.
+	// Starter is matches-only; Managed unlocks auto-apply.
 	AutoApply bool
 	// Priority is a qualitative queue hint for future scheduling.
 	Priority string
@@ -94,16 +103,16 @@ type Entitlements struct {
 
 // EntitlementsFor returns server-side entitlements for a plan.
 // Unknown / empty plan IDs get Starter-safe defaults (not free unlimited).
+// Legacy "pro" inherits Managed entitlements.
 func EntitlementsFor(plan PlanID) Entitlements {
 	switch plan {
-	case PlanPro:
-		return Entitlements{DailyCap: 10, WeeklyCap: 25, AutoApply: true, Priority: "priority"}
-	case PlanManaged:
-		// Uncapped for agent-managed search; daily still bounds automated fan-out.
+	case PlanManaged, PlanPro:
+		// Unlimited discovery; auto applications + notifications for jobs.
 		return Entitlements{DailyCap: 50, WeeklyCap: 0, AutoApply: true, Priority: "agent"}
 	case PlanStarter:
 		fallthrough
 	default:
+		// Discovery digests only — no auto-apply, no interview-prep entitlement.
 		return Entitlements{DailyCap: 2, WeeklyCap: 5, AutoApply: false, Priority: "standard"}
 	}
 }

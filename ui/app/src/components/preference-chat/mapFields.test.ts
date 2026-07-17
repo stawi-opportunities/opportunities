@@ -21,9 +21,9 @@ describe('preference-chat mapFields', () => {
         salary_min: 50_000,
         currency: 'USD',
       },
-      'pro'
+      'managed'
     );
-    expect(draft.plan).toBe('pro');
+    expect(draft.plan).toBe('managed');
     expect(draft.salary_range).toContain('50000');
     const back = draftToChatFields(draft);
     expect(back.target_job_title).toBe('Engineer');

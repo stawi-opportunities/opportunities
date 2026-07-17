@@ -206,7 +206,7 @@ export interface OnboardingDraftFields {
   country?: string;
   linkedin?: string;
   extra_info?: string;
-  plan?: 'starter' | 'pro' | 'managed';
+  plan?: 'starter' | 'managed';
 }
 
 export interface OnboardingChatMessage {

@@ -30,26 +30,30 @@ func structFields(m map[string]string) (*structpb.Struct, error) {
 func TestCatalog_MirrorsPlansTs(t *testing.T) {
 	t.Parallel()
 	c := billing.Catalog()
-	require.Len(t, c, 3)
+	require.Len(t, c, 2)
 	byID := map[billing.PlanID]billing.Plan{}
 	for _, p := range c {
 		byID[p.ID] = p
 	}
 	require.Equal(t, 1000, byID[billing.PlanStarter].USDCents)
-	require.Equal(t, 5000, byID[billing.PlanPro].USDCents)
 	require.Equal(t, 20000, byID[billing.PlanManaged].USDCents)
+	_, hasPro := byID[billing.PlanPro]
+	require.False(t, hasPro, "pro is no longer sold")
 }
 
 func TestPlanByID_And_Normalize(t *testing.T) {
 	t.Parallel()
 	_, ok := billing.PlanByID("pro")
+	require.False(t, ok, "pro not in sellable catalog")
+	_, ok = billing.PlanByID("managed")
 	require.True(t, ok)
 	_, ok = billing.PlanByID("free")
 	require.False(t, ok)
 
+	// Legacy pro checkouts map to managed.
 	id, ok := billing.NormalizePlan("  Pro ")
 	require.True(t, ok)
-	require.Equal(t, billing.PlanPro, id)
+	require.Equal(t, billing.PlanManaged, id)
 
 	_, ok = billing.NormalizePlan("free")
 	require.False(t, ok)
@@ -119,7 +123,8 @@ func (f *fakePayment) Status(_ context.Context, req *connect.Request[commonv1.St
 
 func proPlan(t *testing.T) billing.Plan {
 	t.Helper()
-	p, ok := billing.PlanByID(billing.PlanPro)
+	// historical name; checkout tests use Managed ($200).
+	p, ok := billing.PlanByID(billing.PlanManaged)
 	require.True(t, ok)
 	return p
 }
@@ -326,8 +331,9 @@ func TestEntitlementsFor(t *testing.T) {
 	require.Equal(t, 5, starter.WeeklyCap)
 	require.False(t, starter.AutoApply)
 
+	// Legacy pro inherits managed entitlements.
 	pro := billing.EntitlementsFor(billing.PlanPro)
-	require.Equal(t, 25, pro.WeeklyCap)
+	require.Equal(t, 0, pro.WeeklyCap)
 	require.True(t, pro.AutoApply)
 
 	managed := billing.EntitlementsFor(billing.PlanManaged)

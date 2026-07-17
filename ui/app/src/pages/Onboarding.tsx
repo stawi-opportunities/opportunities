@@ -24,7 +24,8 @@ type Phase = 'chat' | 'plan';
 function readPlanFromQuery(): PlanId {
   if (typeof window === 'undefined') return 'starter';
   const p = new URL(window.location.href).searchParams.get('plan');
-  if (p === 'starter' || p === 'pro' || p === 'managed') return p;
+  if (p === 'starter' || p === 'managed') return p;
+  if (p === 'pro') return 'managed'; // legacy
   return 'starter';
 }
 function isChatReady(f: { extra_info?: string | null }): boolean {

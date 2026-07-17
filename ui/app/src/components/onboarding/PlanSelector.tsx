@@ -12,7 +12,7 @@ export function PlanSelector({ value, onChange, t }: Props) {
   const [expanded, setExpanded] = useState<PlanId | null>(null);
 
   return (
-    <div className="grid gap-4 sm:grid-cols-3" role="radiogroup" aria-label="Plan">
+    <div className="grid gap-4 sm:grid-cols-2" role="radiogroup" aria-label="Plan">
       {PLANS.map((p) => {
         const on = value === p.id;
         const showAll = expanded === p.id;
@@ -51,7 +51,12 @@ export function PlanSelector({ value, onChange, t }: Props) {
                   {t('onboard.matchesPerWeek').replace('{count}', String(p.matchesPerWeek))}
                 </span>
               )}
-              {p.meta.agent && (
+              {p.matchesPerWeek === null && (
+                <span className="mt-1 text-xs font-medium text-accent-700">
+                  Unlimited discovery
+                </span>
+              )}
+              {p.meta.autoApply && (
                 <span className="mt-1 text-xs font-medium text-accent-700">
                   {t('onboard.includesAgent')}
                 </span>

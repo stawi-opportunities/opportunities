@@ -32,7 +32,7 @@ vi.mock('@/providers/AuthProvider', () => ({
 vi.mock('@/api/candidates', () => ({
   fetchMeSubscription: vi.fn(async () => ({
     status: 'active',
-    plan: 'pro',
+    plan: 'managed',
     renews_at: null,
     cancel_at: null,
   })),

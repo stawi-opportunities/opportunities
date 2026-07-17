@@ -170,11 +170,11 @@ func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidat
 	if planID != "" {
 		updates["plan_id"] = planID
 	}
-	// Entitlements: auto-apply for pro/managed; starter is matches-only.
+	// Entitlements: auto-apply only for managed (and legacy pro → managed).
 	switch planID {
-	case "pro", "managed":
+	case "managed", "pro":
 		updates["auto_apply"] = true
-	case "starter":
+	default: // starter
 		updates["auto_apply"] = false
 	}
 	res := r.db(ctx, false).
@@ -195,11 +195,10 @@ WHERE candidate_id = ?`, daily, weekly, candidateID).Error
 }
 
 // planCaps maps plan_id → daily/weekly match caps (Starter-safe defaults).
+// Managed (and legacy pro) = unlimited weekly discovery.
 func planCaps(planID string) (daily, weekly int) {
 	switch planID {
-	case "pro":
-		return 10, 25
-	case "managed":
+	case "managed", "pro":
 		return 50, 0 // 0 = uncapped weekly
 	default: // starter / empty
 		return 2, 5
@@ -243,9 +242,9 @@ func (r *CandidateRepository) ChangePlan(ctx context.Context, candidateID, newPl
 	if immediate {
 		updates["cancel_at_period_end"] = false
 		switch newPlanID {
-		case "pro", "managed":
+		case "managed", "pro":
 			updates["auto_apply"] = true
-		case "starter":
+		default:
 			updates["auto_apply"] = false
 		}
 	}
