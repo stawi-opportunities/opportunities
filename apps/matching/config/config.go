@@ -136,6 +136,10 @@ type CandidatesConfig struct {
 	// CV uploads are stored via the platform files service; when empty,
 	// matching falls back to the product R2 archive bucket.
 	FileServiceURI string `env:"FILE_SERVICE_URI" envDefault:""`
+	// NotificationServiceURI is service-notification. All candidate-facing
+	// messages (match alerts, digests, CV nudges) are queued via
+	// NotificationService.Send — matching never sends email/SMS itself.
+	NotificationServiceURI string `env:"NOTIFICATION_SERVICE_URI" envDefault:""`
 	// BillingWebhookSecret enables HMAC-SHA256 verification of the
 	// service-payment completion webhook (X-Payment-Signature header over
 	// the raw body). Empty disables verification (dev/test only).

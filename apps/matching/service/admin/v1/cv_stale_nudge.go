@@ -10,6 +10,7 @@ import (
 	"github.com/pitabwire/util"
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/notify"
 )
 
 // StaleCandidate is one candidate whose most recent CV upload is older
@@ -29,6 +30,8 @@ type CVStaleNudgeDeps struct {
 	Svc        *frame.Service
 	Lister     StaleLister
 	StaleAfter time.Duration // default 60 days
+	// Notifier delivers via service-notification.
+	Notifier *notify.Notifier
 }
 
 type cvStaleNudgeResponse struct {
@@ -72,14 +75,23 @@ func CVStaleNudgeHandler(deps CVStaleNudgeDeps) http.HandlerFunc {
 		resp := cvStaleNudgeResponse{OK: true}
 		for _, c := range candidates {
 			days := int(now.Sub(c.LastUploadAt).Hours() / 24)
-			env := eventsv1.NewEnvelope(eventsv1.TopicCandidateCVStaleNudge, cvStaleNudgePayload{
+			payload := cvStaleNudgePayload{
 				CandidateID:     c.CandidateID,
 				LastUploadAt:    c.LastUploadAt,
 				DaysSinceUpload: days,
-			})
-			if err := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateCVStaleNudge, env); err != nil {
-				log.WithError(err).WithField("candidate_id", c.CandidateID).Warn("stale-nudge: emit failed")
-				continue
+			}
+			if deps.Notifier != nil {
+				deps.Notifier.CVStaleNudge(ctx, c.CandidateID, payload)
+			} else {
+				log.WithField("candidate_id", c.CandidateID).
+					Warn("stale-nudge: notifier nil — not queued to service-notification")
+			}
+			if deps.Svc != nil {
+				env := eventsv1.NewEnvelope(eventsv1.TopicCandidateCVStaleNudge, payload)
+				if err := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateCVStaleNudge, env); err != nil {
+					log.WithError(err).WithField("candidate_id", c.CandidateID).
+						Debug("stale-nudge: domain event emit failed")
+				}
 			}
 			resp.Emitted++
 		}

@@ -12,6 +12,7 @@ import (
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 	"github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
@@ -27,9 +28,11 @@ type PreferenceMatchDeps struct {
 	// TopK caps the matches emitted per candidate-kind pair (default 50).
 	TopK int
 	// WantsAlerts returns true when the candidate opted into every-match
-	// notifications (match_alerts). When nil/false, we still collect matches
-	// but skip MatchesReady emit (digests cover summaries).
+	// notifications (match_alerts). Always queues via Notifier; immediate
+	// delivery flag follows WantsAlerts.
 	WantsAlerts func(ctx context.Context, candidateID string) bool
+	// Notifier delivers via service-notification.
+	Notifier *notify.Notifier
 }
 
 // PreferenceMatchHandler subscribes to TopicCandidatePreferencesUpdated
@@ -129,38 +132,39 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 				Warn("preference-match: persist candidate_matches failed")
 		}
 
-		// Notify only when the user opted into every-match alerts.
-		notify := h.deps.WantsAlerts != nil && h.deps.WantsAlerts(ctx, in.CandidateID)
-		if !notify || h.deps.Svc == nil {
-			telemetry.RecordPreferenceTriggeredRun(kind)
-			log.WithField("kind", kind).
-				WithField("matches", len(res.Matches)).
-				WithField("notify", false).
-				Info("preference-match: matches collected (no per-match notify)")
-			continue
-		}
-
+		immediate := h.deps.WantsAlerts != nil && h.deps.WantsAlerts(ctx, in.CandidateID)
+		items := make([]notify.MatchItem, 0, len(res.Matches))
 		rows := make([]eventsv1.MatchRow, 0, len(res.Matches))
 		for _, m := range res.Matches {
+			items = append(items, notify.MatchItem{
+				CanonicalID: m.CanonicalID, Title: m.Title, Company: m.Company,
+				ApplyURL: m.ApplyURL, Slug: m.Slug, Score: m.Score,
+			})
 			rows = append(rows, eventsv1.MatchRow{CanonicalID: m.CanonicalID, ApplyURL: m.ApplyURL, Score: m.Score})
 		}
-		readyEnv := eventsv1.NewEnvelope(
-			eventsv1.TopicCandidateMatchesReady,
-			eventsv1.MatchesReadyV1{
-				CandidateID:  res.CandidateID,
-				MatchBatchID: res.MatchBatchID,
-				Matches:      rows,
-			},
-		)
-		if err := h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, readyEnv); err != nil {
-			log.WithError(err).WithField("kind", kind).
-				Warn("preference-match: emit MatchesReadyV1 failed")
-			continue
+		// Always via service-notification.
+		if h.deps.Notifier != nil && len(items) > 0 {
+			h.deps.Notifier.MatchesReady(ctx, res.CandidateID, res.MatchBatchID, items, immediate)
+		}
+		if h.deps.Svc != nil && len(rows) > 0 {
+			readyEnv := eventsv1.NewEnvelope(
+				eventsv1.TopicCandidateMatchesReady,
+				eventsv1.MatchesReadyV1{
+					CandidateID:  res.CandidateID,
+					MatchBatchID: res.MatchBatchID,
+					Matches:      rows,
+				},
+			)
+			if err := h.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, readyEnv); err != nil {
+				log.WithError(err).WithField("kind", kind).
+					Debug("preference-match: domain event emit failed")
+			}
 		}
 		telemetry.RecordPreferenceTriggeredRun(kind)
 		log.WithField("kind", kind).
 			WithField("matches", len(rows)).
-			Info("preference-match: emitted MatchesReadyV1")
+			WithField("immediate", immediate).
+			Info("preference-match: matches collected; notified via service-notification")
 	}
 	return nil
 }

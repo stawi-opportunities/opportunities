@@ -43,6 +43,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
+	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/placement"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
@@ -211,6 +212,30 @@ func main() {
 	if sqlDB != nil {
 		persistStore = matching.NewStore(sqlDB)
 	}
+
+	// All candidate-facing messages go through service-notification.
+	// match_alerts only controls delivery=immediate vs digest on the payload.
+	var notifier *notify.Notifier
+	if uri := strings.TrimSpace(cfg.NotificationServiceURI); uri != "" {
+		nClients, nErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+			NotificationURI: uri,
+			HTTPClient:      svc.HTTPClientManager().Client(ctx),
+		})
+		if nErr != nil {
+			log.WithError(nErr).Warn("notify: notification client init error; user mail degraded until fixed")
+		}
+		if nClients != nil && nClients.Notification != nil {
+			notifier = notify.New(nClients.Notification, sqlDB, cfg.PublicSiteURL)
+			log.WithField("uri", uri).Info("notify: service-notification client enabled")
+		} else {
+			log.Warn("notify: NOTIFICATION_SERVICE_URI set but client unavailable — messages will not be delivered")
+			notifier = notify.New(nil, sqlDB, cfg.PublicSiteURL)
+		}
+	} else {
+		log.Warn("notify: NOTIFICATION_SERVICE_URI unset — candidate notifications will not be queued")
+		notifier = notify.New(nil, sqlDB, cfg.PublicSiteURL)
+	}
+
 	wantsMatchAlerts := func(ctx context.Context, candidateID string) bool {
 		if sqlDB == nil || candidateID == "" {
 			return false
@@ -229,6 +254,7 @@ func main() {
 		Persist:     persistStore,
 		TopK:        50,
 		WantsAlerts: wantsMatchAlerts,
+		Notifier:    notifier,
 	})
 	if extractor != nil {
 		scorer := cv.NewScorer(extractor)
@@ -364,7 +390,7 @@ func main() {
 		}
 
 		// Path A: new opportunity embeddings → FanOut into candidate_matches.
-		// Notifications fire only for users with match_alerts=true.
+		// User delivery always via service-notification; match_alerts → immediate.
 		if cfg.MatchingFanOutEnabled {
 			foURI := strings.TrimSpace(cfg.OpportunityFanOutQueueURI)
 			if foURI == "" {
@@ -384,6 +410,7 @@ func main() {
 					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
 					Svc:             svc,
 					DB:              sqlDB,
+					Notifier:        notifier,
 					DefaultMinScore: cfg.MatchingMinScore,
 				})
 				svc.Init(ctx, frame.WithRegisterSubscriber(foRef, foURI, foConsumer))
@@ -502,6 +529,7 @@ func main() {
 		Search:      search,
 		Persist:     persistStore,
 		WantsAlerts: wantsMatchAlerts,
+		Notifier:    notifier,
 	})))
 
 	// --- /me/subscription (dashboard summary) ---
@@ -768,6 +796,7 @@ func main() {
 			Svc:        svc,
 			Lister:     staleLister,
 			StaleAfter: 60 * 24 * time.Hour,
+			Notifier:   notifier,
 		})))
 	digestLoc := matching.LoadLocationOrUTC(cfg.DigestTimezone)
 	digestWeekday := matching.ParseWeekday(cfg.DigestWeeklyWeekday)
@@ -783,6 +812,7 @@ func main() {
 			DefaultCadence: cfg.DigestDefaultCadence,
 			WeeklyWeekday:  digestWeekday,
 			Location:       digestLoc,
+			Notifier:       notifier,
 		})))
 
 	// POST /_admin/matches/weekly_digest — Trustage digest cron (schedule
@@ -830,6 +860,7 @@ func main() {
 					WeeklyWeekday:   digestWeekday,
 					Location:        digestLoc,
 					Toucher:         candidateRepo,
+					Notifier:        notifier,
 				})))
 		} else {
 			log.WithError(dbErr).Warn("_admin/matches/weekly_digest: sql.DB unwrap failed; route not registered")

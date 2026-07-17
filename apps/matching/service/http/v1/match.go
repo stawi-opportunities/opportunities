@@ -13,6 +13,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
+	"github.com/stawi-opportunities/opportunities/pkg/notify"
 )
 
 // CandidateStore is the read-only interface the match handler needs.
@@ -64,9 +65,10 @@ type MatchDeps struct {
 	// RequireAuthCandidate when non-empty forces the query candidate_id to
 	// match the authenticated identity (prevents IDOR on the legacy route).
 	RequireAuthCandidate string
-	// WantsAlerts gates MatchesReady emit (every-match notifications).
-	// When nil, emit is skipped (collect-only). Digests remain the default.
+	// WantsAlerts sets delivery=immediate on notification service payloads.
 	WantsAlerts func(ctx context.Context, candidateID string) bool
+	// Notifier delivers via service-notification (required path for user mail).
+	Notifier *notify.Notifier
 }
 
 // matchResponse is the JSON body returned from the handler.
@@ -151,22 +153,28 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 
-		// Per-match notification only when the user opted into match_alerts.
-		// Default is digest-only; on-demand HTTP already returns the rows.
-		if deps.WantsAlerts != nil && !deps.WantsAlerts(ctx, res.CandidateID) {
-			return
+		immediate := deps.WantsAlerts != nil && deps.WantsAlerts(ctx, res.CandidateID)
+		items := make([]notify.MatchItem, 0, len(res.Matches))
+		for _, h := range res.Matches {
+			items = append(items, notify.MatchItem{
+				CanonicalID: h.CanonicalID, Title: h.Title, Company: h.Company,
+				ApplyURL: h.ApplyURL, Slug: h.Slug, Score: h.Score,
+			})
 		}
-		if deps.Svc == nil {
-			return
-		}
-		env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
-			CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: eventRows,
-		})
 		go func() {
 			emitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := deps.Svc.EventsManager().Emit(emitCtx, eventsv1.TopicCandidateMatchesReady, env); err != nil {
-				util.Log(emitCtx).WithError(err).Warn("match: emit MatchesReadyV1 failed")
+			// Always queue via service-notification.
+			if deps.Notifier != nil && len(items) > 0 {
+				deps.Notifier.MatchesReady(emitCtx, res.CandidateID, res.MatchBatchID, items, immediate)
+			}
+			if deps.Svc != nil {
+				env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
+					CandidateID: res.CandidateID, MatchBatchID: res.MatchBatchID, Matches: eventRows,
+				})
+				if err := deps.Svc.EventsManager().Emit(emitCtx, eventsv1.TopicCandidateMatchesReady, env); err != nil {
+					util.Log(emitCtx).WithError(err).Debug("match: domain event emit failed")
+				}
 			}
 		}()
 	}

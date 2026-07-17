@@ -14,6 +14,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
+	"github.com/stawi-opportunities/opportunities/pkg/notify"
 )
 
 // UnpaidCandidate is the projection of a CandidateProfile that the
@@ -73,6 +74,8 @@ type WeeklyJobsDigestDeps struct {
 	// Location for weekday evaluation. Default UTC.
 	Location *time.Location
 	Now      func() time.Time
+	// Notifier delivers digests via service-notification.
+	Notifier *notify.Notifier
 }
 
 type weeklyJobsDigestResponse struct {
@@ -195,11 +198,20 @@ func WeeklyJobsDigestHandler(deps WeeklyJobsDigestDeps) http.HandlerFunc {
 				Stats:       stats,
 				PlansURL:    plansURL,
 			}
-			env := eventsv1.NewEnvelope(eventsv1.TopicCandidateWeeklyJobsDigest, payload)
-			if err := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateWeeklyJobsDigest, env); err != nil {
-				log.WithError(err).WithField("candidate_id", c.ID).Warn("weekly-jobs-digest: emit failed")
-				resp.Failed++
-				continue
+			// Primary: service-notification.
+			if deps.Notifier != nil {
+				deps.Notifier.WeeklyJobsDigest(ctx, c.ID, payload)
+			} else {
+				log.WithField("candidate_id", c.ID).
+					Warn("weekly-jobs-digest: notifier nil — not queued to service-notification")
+			}
+			// Domain event for bus/analytics.
+			if deps.Svc != nil {
+				env := eventsv1.NewEnvelope(eventsv1.TopicCandidateWeeklyJobsDigest, payload)
+				if err := deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateWeeklyJobsDigest, env); err != nil {
+					log.WithError(err).WithField("candidate_id", c.ID).
+						Debug("weekly-jobs-digest: domain event emit failed")
+				}
 			}
 			resp.Emitted++
 		}

@@ -13,6 +13,7 @@ import (
 
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
+	"github.com/stawi-opportunities/opportunities/pkg/notify"
 )
 
 // OpportunityFanOutConsumerDeps wires Path A (new opportunity → candidates).
@@ -23,10 +24,12 @@ type OpportunityFanOutConsumerDeps struct {
 	Reranker matching.Reranker
 	Weights  matching.Weights
 	DailyCap matching.DailyCapQuery
-	// Svc emits MatchesReady only for candidates with match_alerts=true.
+	// Svc still emits domain events for bus consumers; user delivery is Notifier.
 	Svc *frame.Service
-	// DB looks up match_alerts. Optional — when nil, no per-match notify.
+	// DB looks up match_alerts / profile_id.
 	DB *sql.DB
+	// Notifier queues all user messages via service-notification.
+	Notifier *notify.Notifier
 	// DefaultMinScore floors when index min_score is unset (unused in FanOut —
 	// candidates carry MinScore on the KNN hit). Kept for symmetry/logging.
 	DefaultMinScore float64
@@ -117,37 +120,51 @@ func (c *OpportunityFanOutConsumer) Handle(ctx context.Context, _ map[string]str
 		WithField("new", len(res.NewMatches)).
 		Info("opportunity_fanout: path A complete")
 
-	// Collect matches always; notify only when the user opted into match_alerts
-	// (every-match notifications). Digests remain the default summary path.
-	c.maybeNotify(ctx, res, job)
+	// Collect always; deliver exclusively via service-notification.
+	// Immediate send only when match_alerts=true; otherwise digest delivery flag.
+	c.notifyViaService(ctx, res, job)
 	return nil
 }
 
-func (c *OpportunityFanOutConsumer) maybeNotify(ctx context.Context, res matching.FanOutResult, job eventsv1.OpportunityFanOutV1) {
-	if c.deps.Svc == nil || c.deps.DB == nil || len(res.NewMatches) == 0 {
+func (c *OpportunityFanOutConsumer) notifyViaService(ctx context.Context, res matching.FanOutResult, job eventsv1.OpportunityFanOutV1) {
+	if len(res.NewMatches) == 0 {
 		return
 	}
-	// Group by candidate (FanOut is one opp → many candidates; one row each).
 	for _, m := range res.NewMatches {
-		ok, err := candidateWantsMatchAlerts(ctx, c.deps.DB, m.CandidateID)
-		if err != nil || !ok {
-			continue
-		}
-		row := eventsv1.MatchRow{
+		item := notify.MatchItem{
 			CanonicalID: m.OpportunityID,
-			ApplyURL:    m.ApplyURL,
-			Score:       m.Score,
 			Title:       job.Title,
 			Company:     job.IssuingEntity,
+			ApplyURL:    m.ApplyURL,
+			Score:       m.Score,
 		}
-		env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
-			CandidateID:  m.CandidateID,
-			MatchBatchID: res.RunID,
-			Matches:      []eventsv1.MatchRow{row},
-		})
-		if emitErr := c.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, env); emitErr != nil {
-			util.Log(ctx).WithError(emitErr).WithField("candidate_id", m.CandidateID).
-				Warn("opportunity_fanout: emit MatchesReady failed")
+		immediate := false
+		if c.deps.DB != nil {
+			if ok, err := candidateWantsMatchAlerts(ctx, c.deps.DB, m.CandidateID); err == nil {
+				immediate = ok
+			}
+		}
+		// Always queue through notification service (never product-side email).
+		if c.deps.Notifier != nil {
+			c.deps.Notifier.MatchesReady(ctx, m.CandidateID, res.RunID, []notify.MatchItem{item}, immediate)
+		}
+		// Domain event for any bus bridge / analytics (optional).
+		if c.deps.Svc != nil {
+			env := eventsv1.NewEnvelope(eventsv1.TopicCandidateMatchesReady, eventsv1.MatchesReadyV1{
+				CandidateID:  m.CandidateID,
+				MatchBatchID: res.RunID,
+				Matches: []eventsv1.MatchRow{{
+					CanonicalID: item.CanonicalID,
+					ApplyURL:    item.ApplyURL,
+					Score:       item.Score,
+					Title:       item.Title,
+					Company:     item.Company,
+				}},
+			})
+			if emitErr := c.deps.Svc.EventsManager().Emit(ctx, eventsv1.TopicCandidateMatchesReady, env); emitErr != nil {
+				util.Log(ctx).WithError(emitErr).WithField("candidate_id", m.CandidateID).
+					Debug("opportunity_fanout: domain event emit failed (notify still via service)")
+			}
 		}
 	}
 }
