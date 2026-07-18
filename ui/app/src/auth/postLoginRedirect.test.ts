@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isContentReturnPath,
-  resolvePostLoginPath,
-  sanitizeReturnTo,
-} from './postLoginRedirect';
+import { isContentReturnPath, resolvePostLoginPath, sanitizeReturnTo } from './postLoginRedirect';
 
 describe('sanitizeReturnTo', () => {
   it('defaults empty / invalid to /', () => {
@@ -32,9 +28,7 @@ describe('isContentReturnPath', () => {
 
 describe('resolvePostLoginPath', () => {
   it('restores job detail for login-to-apply (any subscription)', () => {
-    expect(resolvePostLoginPath('/jobs/rust-dev/?apply=1', 'none')).toBe(
-      '/jobs/rust-dev/?apply=1'
-    );
+    expect(resolvePostLoginPath('/jobs/rust-dev/?apply=1', 'none')).toBe('/jobs/rust-dev/?apply=1');
     expect(resolvePostLoginPath('/jobs/rust-dev/', 'active')).toBe('/jobs/rust-dev/');
     expect(resolvePostLoginPath('/jobs/rust-dev/?apply=1', 'active')).toBe(
       '/jobs/rust-dev/?apply=1'

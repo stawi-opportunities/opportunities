@@ -13,8 +13,8 @@ export function AgentCard({ agent }: { agent: { name: string; email: string } })
       </p>
       <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white">{agent.name}</h2>
       <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-        Your Managed plan includes a named support contact for match and account questions. We do not
-        auto-apply or run interview coaching from this card.
+        Your Managed plan includes a named support contact for match and account questions. We do
+        not auto-apply or run interview coaching from this card.
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
         <Button

@@ -3,6 +3,8 @@
 **Date:** 2026-07-18  
 **Verdict:** **READY WITH CONDITIONS** for Starter acquisition. Free proof + tools + honest caps/diagnostics make the product usable before pay. Scale paid ads only after Path A + notify + JWT prod config are green.
 
+**Full end-user value proof:** [end-user-value-proof.md](./end-user-value-proof.md) (journeys, trust table, automated verification, UAT checklist).
+
 ## Executive summary
 
 Users pay for **ranked shortlists + digests + honest apply handoff**. They do not pay for vapor (auto-apply, interview prep, dedicated agent theater).

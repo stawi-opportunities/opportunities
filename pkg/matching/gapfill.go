@@ -287,7 +287,7 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 		}
 	}
 
-	reason := GapReasonOK
+	var reason string
 	switch {
 	case written > 0:
 		reason = GapReasonOK
@@ -295,13 +295,11 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 		reason = GapReasonNoInventory
 	case scoredAbove == 0:
 		reason = GapReasonBelowThreshold
+	case in.DailyCap > 0 && todayUsed >= in.DailyCap:
+		// Scored hits existed but none written as non-overflow.
+		reason = GapReasonDailyCap
 	default:
-		// Had candidates above min but none non-overflow written.
-		if in.DailyCap > 0 && todayUsed >= in.DailyCap {
-			reason = GapReasonDailyCap
-		} else {
-			reason = GapReasonBelowThreshold
-		}
+		reason = GapReasonBelowThreshold
 	}
 
 	runEvt.Status = "ok"

@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  fetchOpportunities,
-  unstarOpportunity,
-  type FeedItem,
-} from '@/api/candidates';
+import { fetchOpportunities, unstarOpportunity, type FeedItem } from '@/api/candidates';
 import { fetchSnapshot } from '@/api/snapshot';
 import type { OpportunitySnapshot as ApiSnapshot } from '@/types/snapshot';
 import { OpportunityCard, type OpportunitySnapshot } from '@/components/OpportunityCard';

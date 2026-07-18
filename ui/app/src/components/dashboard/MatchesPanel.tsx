@@ -187,7 +187,10 @@ export function MatchesPanel({
                 Subscribe for more →
               </button>
             ) : (
-              <a href="/pricing/" className="font-medium text-accent-700 underline dark:text-accent-400">
+              <a
+                href="/pricing/"
+                className="font-medium text-accent-700 underline dark:text-accent-400"
+              >
                 Subscribe for more →
               </a>
             )}

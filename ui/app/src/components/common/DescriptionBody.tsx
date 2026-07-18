@@ -6,13 +6,7 @@ import { mountSanitisedHTML } from '@/utils/html';
  * Falls back to plain-text for rare legacy rows without tags.
  * Client-side mountSanitisedHTML never executes scripts (DOMParser).
  */
-export default function DescriptionBody({
-  html,
-  ariaLabel,
-}: {
-  html?: string;
-  ariaLabel: string;
-}) {
+export default function DescriptionBody({ html, ariaLabel }: { html?: string; ariaLabel: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -29,11 +23,5 @@ export default function DescriptionBody({
     }
   }, [html]);
 
-  return (
-    <section
-      ref={ref}
-      className="prose prose-slate mt-8 max-w-none"
-      aria-label={ariaLabel}
-    />
-  );
+  return <section ref={ref} className="prose prose-slate mt-8 max-w-none" aria-label={ariaLabel} />;
 }

@@ -25,8 +25,7 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
 }
 
 /** Public listing detail paths users may return to after login-to-apply. */
-const CONTENT_DETAIL =
-  /^\/(jobs|scholarships|tenders|deals|funding)\/[^/]+\/?/;
+const CONTENT_DETAIL = /^\/(jobs|scholarships|tenders|deals|funding)\/[^/]+\/?/;
 
 /**
  * True when returnTo is an opportunity detail page (or has apply intent).

@@ -31,8 +31,8 @@ export function OverviewPanel({
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
           {freeProof ? (
             <>
-              Upload a CV, run <strong>Find matches now</strong>, and review scored roles. Free tools
-              (CV score, job fit) always work. Subscribe when you want more weekly matches and
+              Upload a CV, run <strong>Find matches now</strong>, and review scored roles. Free
+              tools (CV score, job fit) always work. Subscribe when you want more weekly matches and
               digests.
             </>
           ) : (
@@ -44,8 +44,7 @@ export function OverviewPanel({
         </p>
         {(queued != null || delivered != null) && (
           <p className="mt-2 text-sm font-medium text-gray-800 dark:text-gray-200">
-            Pipeline:{' '}
-            <span className="tabular-nums">{queued ?? 0}</span> queued ·{' '}
+            Pipeline: <span className="tabular-nums">{queued ?? 0}</span> queued ·{' '}
             <span className="tabular-nums">{delivered ?? 0}</span> delivered this week
             {freeProof && ' (free proof caps apply)'}
           </p>
