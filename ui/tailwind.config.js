@@ -53,6 +53,7 @@ module.exports = {
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+        display: ['"Playfair Display"', "Georgia", "Times New Roman", "serif"],
       },
       animation: {
         'fade-in': 'fadeIn 150ms ease-out',
