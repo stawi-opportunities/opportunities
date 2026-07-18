@@ -485,8 +485,16 @@ export interface MatchRefreshResult {
   ok: boolean;
   matches_written: number;
   opps_scanned: number;
+  scored_above_min?: number;
   run_id?: string;
   min_score?: number;
+  /** ok | no_inventory | below_threshold | weekly_cap | daily_cap */
+  reason?: string;
+  weekly_used?: number;
+  weekly_cap?: number;
+  daily_cap?: number;
+  /** True when free-proof entitlements were applied. */
+  proof?: boolean;
 }
 
 /**

@@ -31,17 +31,25 @@ export function EmptyFeedState({ filter, t }: Props) {
       {showTryAll && (
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           <a
-            href="/?filter=all"
+            href="/dashboard/#feed"
             onClick={(e) => {
               e.preventDefault();
               const url = new URL(window.location.href);
+              url.hash = 'feed';
               url.searchParams.delete('filter');
               window.history.pushState({}, '', url.toString());
-              window.location.reload();
+              window.dispatchEvent(new HashChangeEvent('hashchange'));
             }}
             className="font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
           >
             {t('feed.tryAllFilter')}
+          </a>
+          {' · '}
+          <a
+            href="/dashboard/#matches"
+            className="font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
+          >
+            Find matches now
           </a>
         </p>
       )}

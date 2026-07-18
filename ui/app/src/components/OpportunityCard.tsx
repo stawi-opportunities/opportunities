@@ -113,9 +113,9 @@ export function OpportunityCard({
           {isMatched && (
             <span
               className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-              title="Match score"
+              title="Match score (CV + preferences fit)"
             >
-              {Math.round(item.score! * 100)}
+              {Math.round(Math.min(1, Math.max(0, item.score!)) * 100)}
               {t('card.match')}
             </span>
           )}

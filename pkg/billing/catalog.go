@@ -96,8 +96,8 @@ type Entitlements struct {
 	// WeeklyCap 0 means uncapped (managed).
 	DailyCap  int
 	WeeklyCap int
-	// AutoApply enables automated apply for the candidate when paid.
-	// Starter is matches-only; Managed unlocks auto-apply.
+	// AutoApply is reserved for future employer-side automation.
+	// All plans false until a reliable auto-apply product ships.
 	AutoApply bool
 	// Priority is a qualitative queue hint for future scheduling.
 	Priority string

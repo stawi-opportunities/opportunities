@@ -392,6 +392,24 @@ WHERE candidate_id = $1
 	return queued, deliveredThisWeek, nil
 }
 
+// CountNonOverflowThisWeek counts plan-billable matches created in the
+// last 7 days (excludes overflow). Used to enforce weekly caps honestly
+// across free proof (3) and Starter (5).
+func (s *Store) CountNonOverflowThisWeek(ctx context.Context, candidateID string) (int, error) {
+	const q = `
+SELECT COUNT(*)
+FROM candidate_matches
+WHERE candidate_id = $1
+  AND status <> 'overflow'
+  AND created_at > NOW() - INTERVAL '7 days'
+`
+	var n int
+	if err := s.db.QueryRowContext(ctx, q, candidateID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("matching: count week matches: %w", err)
+	}
+	return n, nil
+}
+
 type pageCursor struct {
 	Score     float64   `json:"s"`
 	CreatedAt time.Time `json:"c"`

@@ -52,7 +52,7 @@ function getSectionFromHash(): SectionId {
 }
 
 export default function Dashboard() {
-  const { state, hasSession, ready, login } = useAuth();
+  const { hasSession, ready, login } = useAuth();
   const { t } = useI18n();
   const [activeSection, setActiveSection] = useState<SectionId>(getSectionFromHash);
   const [showPlanChange, setShowPlanChange] = useState(false);
@@ -202,15 +202,24 @@ export default function Dashboard() {
             )}
             {activeSection === 'overview' && (
               <ErrorBoundary>
-                {isActive && <StatsRow />}
-                <div className={isActive ? 'mt-6' : ''}>
-                  <OverviewPanel />
+                {/* Free and paid users both see value counters — proof before pay. */}
+                <StatsRow />
+                <div className="mt-6">
+                  <OverviewPanel
+                    freeProof={!isActive}
+                    queued={sub?.queued_matches}
+                    delivered={sub?.delivered_this_week}
+                    onGoMatches={() => navigate('matches')}
+                    onGoTools={() => navigate('tools')}
+                    onGoBilling={() => navigate('billing')}
+                  />
                 </div>
               </ErrorBoundary>
             )}
             {activeSection === 'feed' && (
               <ErrorBoundary>
-                {plan === 'managed' && sub?.agent && <AgentCard agent={sub.agent} />}
+                {/* Agent card only when a real assignment exists (never invent white-glove). */}
+                {plan === 'managed' && sub?.agent?.email && <AgentCard agent={sub.agent} />}
                 <OpportunitiesFeed />
               </ErrorBoundary>
             )}

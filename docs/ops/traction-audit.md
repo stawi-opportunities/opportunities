@@ -1,88 +1,114 @@
 # Traction & product audit (capital-critical)
 
-**Date:** 2026-07-17  
-**Verdict:** Strong crawl/match infrastructure; **product surface over-promised and under-delivered**. Highest risk is trust: sell only what ships.
+**Date:** 2026-07-18  
+**Verdict:** **READY WITH CONDITIONS** for Starter acquisition. Free proof + tools + honest caps/diagnostics make the product usable before pay. Scale paid ads only after Path A + notify + JWT prod config are green.
 
 ## Executive summary
 
-Users pay for **ranked shortlists + digests + honest apply handoff**. They do not pay for vapor (auto-apply, interview prep, dedicated agent) or for a Managed plan that **hid the match feed**.
+Users pay for **ranked shortlists + digests + honest apply handoff**. They do not pay for vapor (auto-apply, interview prep, dedicated agent theater).
 
 | Layer | Status |
 |-------|--------|
 | Crawl → PG → embeddings | Real |
-| Reverse-KNN matching + digests | Real (scoring bug fixed this release) |
-| Billing Flutterwave/checkout | Real (ledger persist hard-fail on error) |
-| Dashboard match feed | Real for Starter; **Managed was blanked — fixed** |
-| Apply | Was “mark applied” without opening employer — **fixed** |
-| Auto-apply / interview prep / agent 1:1 | **Marketing only — copy removed** |
+| Reverse-KNN matching + digests | Real |
+| Free proof matches (1/day, 3/week) | Real — weekly remaining enforced |
+| Match dismiss + feed match_id | Real (v8.0.191) |
+| Vector+keyword job-fit tools | Real (v8.0.191+) |
+| Refresh empty reasons | Real (this release) |
+| Billing Flutterwave/checkout | Real (ledger persist hard-fail) |
+| Apply | Opens employer URL then tracks |
+| Auto-apply / interview prep / 1:1 agent | **Not offered** — marketing honest |
 
 ## Funnel scorecard
 
 | Stage | Grade | Notes |
 |-------|-------|-------|
-| Land | Weak | Multi-kind “coming soon”, free CTA vs paid match |
-| Browse | OK | Newest-first listings; jobs inventory is real |
-| Signup / onboarding | Weak | Chat/CV good; hard paywall before proof of value |
-| Matches | Fixed | Managed now sees same feed; empty-state guidance |
-| Apply | Fixed | Opens `apply_url` then tracks |
-| Pay | Weak–OK | Ledger failure no longer silent; value after pay is the conversion bet |
-| Digests | Ops OK | Depends on service-notification templates + match quality |
+| Land | OK | Jobs-first, free first matches, no vapor CTAs |
+| Browse | OK | Newest-first listings |
+| Signup / onboarding | OK | Free matches CTA; subscribe optional |
+| Matches | OK | Free + paid same feed; dismiss; diagnostic reasons |
+| Tools | OK | Free CV ATS + vector job-fit |
+| Apply | OK | Employer link + track |
+| Pay | OK | Honest Starter/Managed value |
+| Digests | Ops-dependent | Templates + service-notification must be live |
 
-## 2026-07-18 — Trust + free proof + tools
+## Why it makes sense to use
 
-| Change | Detail |
-|--------|--------|
-| Free first matches | Match refresh no longer requires subscription (proof caps 1/day, 3/week) |
-| Dashboard free access | Unpaid users use full dashboard; soft upgrade banner |
-| Onboarding | Primary CTA: free matches → dashboard; subscribe optional |
-| Tools section | Free CV ATS score + job fitness checker |
-| Marketing honesty | Homepage, FAQ, pricing — jobs-first, no auto-apply/agent claims |
+1. **Browse free** — real inventory, no account required to search.
+2. **Proof before pay** — capped shortlist + free tools after CV.
+3. **Honest empty states** — weekly/daily cap, no inventory, below threshold — not silent blanks.
+4. **Paid upgrade is clear** — more weekly matches, digests, priority alerts (Managed).
+5. **Apply is real** — open employer site; we track, we don't fake success.
 
-Recruiter/employer ATS posting is intentionally deferred.
+## Shipped this cycle
 
-## Shipped this cycle (P0)
+| Release | What |
+|---------|------|
+| v8.0.190 | Free proof, tools, honest marketing, dashboard free access |
+| v8.0.191 | match_id dismiss UI, vector job-fit |
+| v8.0.192 (this) | Honest weekly caps, refresh `reason` diagnostics, free Stats/Overview value, AgentCard honesty, score clamp |
 
-1. **Managed matches UI** — full feed + auto-refresh (no agent theater).
-2. **Honest apply** — open employer URL, then track; honest toasts.
-3. **Honest pricing** — Starter/Managed features match reality; AutoApply entitlement false until automation exists.
-4. **Scoring neutrality** — missing skills/geo/salary no longer zero Path A/C scores.
-5. **Billing ledger** — Create failure after gateway create returns 502.
-6. **Newest-first discovery** — posted_at default (v8.0.188).
-7. **HTML descriptions** — consistent render (v8.0.187).
+## Production readiness
+
+| Area | Status | Condition |
+|------|--------|-----------|
+| Weekly/daily caps | Enforced | Wire DailyCap + WeekCount on gap-fill (done) |
+| Auth | Config risk | **Prod must set `AUTH_REQUIRE_JWT=true`** with OIDC |
+| Path A fan-out | Config risk | Require queue + consumer in prod |
+| Notify digests | Ops | Templates registered in service-notification |
+| Matching extension | Default on | `MATCHING_EXTENSION_ENABLED=true` (default) |
+| Billing ledger | Hard-fail | Create errors surface 502 |
+| Dependabot vulns | Open | Track separately; not product-blocking |
+
+### AUTH_REQUIRE_JWT
+
+```
+# production matching service
+AUTH_REQUIRE_JWT=true
+# plus valid OIDC / authenticator config
+```
+
+Without this, `/me/*` accepts spoofable `X-Candidate-ID` when no JWT authenticator is configured.
 
 ## Kill / park list
 
 | Claim | Action |
 |-------|--------|
-| Auto applications | Park until ATS automation or staffed ops |
-| Interview prep / coaching | Remove from marketing |
-| Dedicated agent / weekly 1:1 | Park; AgentCard dead until assignment API |
-| Multi-kind homepage first-class | Keep secondary until matchers + inventory live |
-| “Free for seekers” = full product | Reframe: browse free, match paid |
-
-## Next 30 days (priority)
-
-| # | Item | Why |
-|---|------|-----|
-| 1 | Path A env required + metrics | Live matching for new jobs |
-| 2 | Notification templates registered + Send metrics | Digests actually land |
-| 3 | Post-pay first-match <60s + empty reasons API | Stops “paid empty” |
-| 4 | Match dismiss in UI + reasons chips | Personalization loop |
-| 5 | Await onboarding save before checkout | Profile ready before charge |
-| 6 | Homepage jobs-first honesty | CAC quality |
+| Auto applications | Park — AutoApply entitlement stays false |
+| Interview prep / coaching | Not marketed |
+| Dedicated agent weekly 1:1 | Not marketed; AgentCard is email support only if assigned |
+| Multi-kind homepage first-class | Secondary until inventory solid |
 
 ## Competitive position
 
-Win on **fresher, ranked, region-aware shortlists + digests**. Lose if competing on Easy Apply or free volume without better ranking. Do not fund Managed white-glove until ops exist.
+Win on **fresher, ranked, region-aware shortlists + digests + free proof**. Lose if competing on Easy Apply or free unlimited volume without ranking.
 
-## Production readiness (user-visible)
+## Go / architecture notes
 
-| Area | Status |
-|------|--------|
-| Billing paid-but-free | Improved (persist hard-fail) |
-| Path A off by env | Still a config risk — require in prod |
-| Scoring empty feeds | Improved (neutrality) |
-| Notify silence | Config + template dependency remains |
-| AUTH_REQUIRE_JWT default false | Prod must force true |
+- Matching HTTP is intentional REST behind the gateway (not Connect) — consistent with this repo's candidate SPA contract.
+- Gap-fill / store use `database/sql` + interfaces already established in `pkg/matching` (not greenfield Frame BaseRepository rewrite).
+- New logic: weekly remaining via `CountNonOverflowThisWeek`, reason codes on `GapFillResult`, util.Log for non-fatal event writes.
 
-**Overall: READY WITH CONDITIONS** — ship Starter honesty; hold Managed complexity; fix Path A/notify prod config before scaling paid acquisition.
+## Verdict
+
+```
+PRODUCTION READINESS VERIFICATION
+════════════════════════════════════════════════════
+Requirements:     PASS (core seeker journey ships)
+Assumptions:      FAIL → AUTH_REQUIRE_JWT + Path A + notify prod config
+Scalability:      PASS WITH CONDITIONS (caps protect free tier)
+Failure Modes:    PASS WITH CONDITIONS (empty reasons surface)
+Data Integrity:   PASS (idempotent upsert; weekly remaining)
+Security:         FAIL IF AUTH_REQUIRE_JWT unset in prod
+Operations:       PASS WITH CONDITIONS (digest templates)
+
+Critical Issues:  0 code-critical; 2 ops-critical (JWT, notify)
+
+VERDICT:          READY WITH CONDITIONS
+
+Blocking for paid ads scale:
+  1. AUTH_REQUIRE_JWT=true + OIDC live
+  2. Path A fan-out consumers registered
+  3. Digest templates + notification Send metrics green
+════════════════════════════════════════════════════
+```

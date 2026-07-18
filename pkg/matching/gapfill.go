@@ -18,12 +18,19 @@ type GapFillDeps struct {
 	Weights  Weights
 	// DailyCap optional — when set with input DailyCap > 0, excess rows are overflow.
 	DailyCap dailyCapCounter
-	Now      func() time.Time
-	NewID    func() string
+	// WeekCount optional — when set with WeeklyCap > 0, enforces remaining weekly budget.
+	WeekCount weekMatchCounter
+	Now       func() time.Time
+	NewID     func() string
 }
 
 type dailyCapCounter interface {
 	TodayCount(ctx context.Context, candidateID string) (int, error)
+}
+
+// weekMatchCounter returns non-overflow matches created in the last 7 days.
+type weekMatchCounter interface {
+	CountNonOverflowThisWeek(ctx context.Context, candidateID string) (int, error)
 }
 
 type reverseSearcher interface {
@@ -41,7 +48,9 @@ type GapFillInput struct {
 	Since          time.Time
 	MinScore       float64
 	// DailyCap / WeeklyCap enforce plan entitlements. 0 = uncapped.
-	// DailyCap uses deps.DailyCap when non-nil; WeeklyCap truncates this run.
+	// DailyCap uses deps.DailyCap when non-nil.
+	// WeeklyCap uses deps.WeekCount remaining budget when non-nil; otherwise
+	// truncates this run to WeeklyCap (legacy behaviour).
 	DailyCap  int
 	WeeklyCap int
 	// QueryText is the candidate-side text (CV summary / skills) used as the
@@ -49,13 +58,29 @@ type GapFillInput struct {
 	QueryText string
 }
 
+// GapFill reason codes for product empty-states (honest UX).
+const (
+	GapReasonOK             = "ok"
+	GapReasonNoInventory    = "no_inventory"
+	GapReasonBelowThreshold = "below_threshold"
+	GapReasonWeeklyCap      = "weekly_cap"
+	GapReasonDailyCap       = "daily_cap"
+)
+
 // GapFillResult summarises the read-path execution.
 type GapFillResult struct {
-	RunID          string
-	OppsScanned    int
+	RunID       string
+	OppsScanned int
+	// ScoredAboveMin is how many KNN hits cleared MinScore before caps.
+	ScoredAboveMin int
 	MatchesWritten int
 	RerankerStatus string
 	LatencyMS      int
+	// Reason explains empty/partial runs for the dashboard (ok|no_inventory|…).
+	Reason string
+	// WeeklyUsed / WeeklyCap echo plan usage when WeeklyCap > 0.
+	WeeklyUsed int
+	WeeklyCap  int
 }
 
 // GapFill runs Path B: candidate-side discovery of new opportunities
@@ -144,11 +169,38 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 		runEvt.RerankerStatus = "skipped"
 	}
 
-	// Plan caps: keep highest scores. WeeklyCap truncates this run;
-	// DailyCap marks overflow when today's generated count is full.
+	// Plan caps: keep highest scores; enforce remaining weekly budget honestly.
 	sort.Slice(scoredHits, func(i, j int) bool { return scoredHits[i].tot > scoredHits[j].tot })
-	if in.WeeklyCap > 0 && len(scoredHits) > in.WeeklyCap {
-		scoredHits = scoredHits[:in.WeeklyCap]
+	scoredAbove := len(scoredHits)
+
+	weekUsed := 0
+	if in.WeeklyCap > 0 {
+		if deps.WeekCount != nil {
+			if n, wErr := deps.WeekCount.CountNonOverflowThisWeek(ctx, in.CandidateID); wErr == nil {
+				weekUsed = n
+			}
+		}
+		remaining := in.WeeklyCap - weekUsed
+		if remaining <= 0 {
+			runEvt.Status = "ok"
+			runEvt.LatencyMS = int(time.Since(startedAt).Milliseconds())
+			finished := now()
+			runEvt.FinishedAt = &finished
+			return GapFillResult{
+				RunID:          runID,
+				OppsScanned:    len(hits),
+				ScoredAboveMin: scoredAbove,
+				MatchesWritten: 0,
+				RerankerStatus: runEvt.RerankerStatus,
+				LatencyMS:      runEvt.LatencyMS,
+				Reason:         GapReasonWeeklyCap,
+				WeeklyUsed:     weekUsed,
+				WeeklyCap:      in.WeeklyCap,
+			}, nil
+		}
+		if len(scoredHits) > remaining {
+			scoredHits = scoredHits[:remaining]
+		}
 	}
 
 	todayUsed := 0
@@ -156,6 +208,26 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 		if n, cErr := deps.DailyCap.TodayCount(ctx, in.CandidateID); cErr == nil {
 			todayUsed = n
 		}
+	}
+	// If daily budget is fully spent, do not write more non-overflow rows.
+	if in.DailyCap > 0 && todayUsed >= in.DailyCap && len(scoredHits) > 0 {
+		// Still allow writing as overflow for audit, but product counts zero delivered.
+		// Prefer empty result with reason so free users understand the limit.
+		runEvt.Status = "ok"
+		runEvt.LatencyMS = int(time.Since(startedAt).Milliseconds())
+		finished := now()
+		runEvt.FinishedAt = &finished
+		return GapFillResult{
+			RunID:          runID,
+			OppsScanned:    len(hits),
+			ScoredAboveMin: scoredAbove,
+			MatchesWritten: 0,
+			RerankerStatus: runEvt.RerankerStatus,
+			LatencyMS:      runEvt.LatencyMS,
+			Reason:         GapReasonDailyCap,
+			WeeklyUsed:     weekUsed,
+			WeeklyCap:      in.WeeklyCap,
+		}, nil
 	}
 
 	matches := make([]Match, 0, len(scoredHits))
@@ -186,7 +258,14 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 		runEvt.LatencyMS = int(time.Since(startedAt).Milliseconds())
 		return GapFillResult{RunID: runID}, fmt.Errorf("matching: gapfill upsert: %w", err)
 	}
-	runEvt.MatchesWritten = len(matches)
+	// Count only non-overflow as "written" for product UX.
+	written := 0
+	for _, m := range matches {
+		if m.Status != StatusOverflow {
+			written++
+		}
+	}
+	runEvt.MatchesWritten = written
 
 	for _, m := range matches {
 		evt := MatchEvent{
@@ -208,6 +287,23 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 		}
 	}
 
+	reason := GapReasonOK
+	switch {
+	case written > 0:
+		reason = GapReasonOK
+	case len(hits) == 0:
+		reason = GapReasonNoInventory
+	case scoredAbove == 0:
+		reason = GapReasonBelowThreshold
+	default:
+		// Had candidates above min but none non-overflow written.
+		if in.DailyCap > 0 && todayUsed >= in.DailyCap {
+			reason = GapReasonDailyCap
+		} else {
+			reason = GapReasonBelowThreshold
+		}
+	}
+
 	runEvt.Status = "ok"
 	runEvt.LatencyMS = int(time.Since(startedAt).Milliseconds())
 	finished := now()
@@ -215,8 +311,12 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 	return GapFillResult{
 		RunID:          runID,
 		OppsScanned:    len(hits),
-		MatchesWritten: len(matches),
+		ScoredAboveMin: scoredAbove,
+		MatchesWritten: written,
 		RerankerStatus: runEvt.RerankerStatus,
 		LatencyMS:      runEvt.LatencyMS,
+		Reason:         reason,
+		WeeklyUsed:     weekUsed + written,
+		WeeklyCap:      in.WeeklyCap,
 	}, nil
 }

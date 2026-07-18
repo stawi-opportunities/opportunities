@@ -929,6 +929,7 @@ func main() {
 			Weights:          matching.DefaultWeights(),
 			Debouncer:        deb,
 			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
+			DailyCap:         matching.NewPGDailyCapQuery(sqlDB),
 			DefaultMinScore:  cfg.MatchingMinScore,
 		}
 		meV1.Mount(mux, extDeps, authMW)

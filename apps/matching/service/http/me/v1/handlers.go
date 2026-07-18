@@ -32,6 +32,8 @@ type Deps struct {
 	Weights          matching.Weights
 	Debouncer        matching.Debouncer
 	IdempotencyStore *applications.IdempotencyStore
+	// DailyCap enforces plan daily generation limits during gap-fill.
+	DailyCap matching.DailyCapQuery
 	// DefaultMinScore floors on-demand gap-fill when the index has no
 	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.45.
 	DefaultMinScore float64
@@ -464,11 +466,13 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			DailyCap:       dailyCap,
 			WeeklyCap:      weeklyCap,
 		}, matching.GapFillDeps{
-			KNN:      d.KNN,
-			Store:    d.Matches,
-			EventLog: d.MatchEvents,
-			Reranker: d.Reranker,
-			Weights:  d.Weights,
+			KNN:       d.KNN,
+			Store:     d.Matches,
+			EventLog:  d.MatchEvents,
+			Reranker:  d.Reranker,
+			Weights:   d.Weights,
+			DailyCap:  d.DailyCap,
+			WeekCount: d.Matches,
 		})
 		if runErr != nil {
 			ProblemFromError(w, runErr)
@@ -476,11 +480,17 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":              true,
-			"matches_written": res.MatchesWritten,
-			"opps_scanned":    res.OppsScanned,
-			"run_id":          res.RunID,
-			"min_score":       minScore,
+			"ok":               true,
+			"matches_written":  res.MatchesWritten,
+			"opps_scanned":     res.OppsScanned,
+			"scored_above_min": res.ScoredAboveMin,
+			"run_id":           res.RunID,
+			"min_score":        minScore,
+			"reason":           res.Reason,
+			"weekly_used":      res.WeeklyUsed,
+			"weekly_cap":       res.WeeklyCap,
+			"daily_cap":        dailyCap,
+			"proof":            !paid,
 		})
 	}
 }
