@@ -234,6 +234,12 @@ WHERE match_id = $1 AND candidate_id = $2
 
 // ---- POST /api/me/matches/{match_id}/dismiss ----
 
+// DismissMatchHandler is the exported form used for the gateway-visible
+// /me/matches/{match_id}/dismiss alias in main.
+func DismissMatchHandler(d *Deps) http.HandlerFunc {
+	return dismissMatch(d)
+}
+
 func dismissMatch(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cand := httpmw.CandidateFromContext(r.Context())

@@ -170,8 +170,9 @@ export function ToolsPanel() {
 
       <Panel title="Job fitness checker">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Paste a job description to see keyword fit against your profile. Helps you decide where to
-          invest application time.
+          Paste a job description to score fit against your profile. Uses AI embeddings when
+          available, blended with keyword overlap so you know why. Helps you decide where to invest
+          application time.
         </p>
         <label className="mt-3 block text-sm">
           <span className="font-medium text-gray-700 dark:text-gray-300">Job title (optional)</span>
@@ -199,12 +200,32 @@ export function ToolsPanel() {
         </div>
         {fit && (
           <div className="mt-6 space-y-3">
-            <div className="flex items-end gap-3">
+            <div className="flex flex-wrap items-end gap-3">
               <span className="text-4xl font-bold text-navy-900 dark:text-white">{fit.score}</span>
               <span className="pb-1 text-sm capitalize text-gray-500">
                 / 100 · {fit.label} fit
               </span>
+              {fit.method && (
+                <span className="mb-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600 dark:bg-navy-800 dark:text-gray-300">
+                  {fit.method.startsWith('vector') ? 'AI + keywords' : 'Keywords only'}
+                </span>
+              )}
             </div>
+            {(fit.vector_score != null || fit.keyword_score != null) && (
+              <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
+                {fit.vector_score != null && (
+                  <span>
+                    Semantic: <strong className="text-gray-800 dark:text-gray-200">{fit.vector_score}</strong>
+                  </span>
+                )}
+                {fit.keyword_score != null && (
+                  <span>
+                    Keywords:{' '}
+                    <strong className="text-gray-800 dark:text-gray-200">{fit.keyword_score}</strong>
+                  </span>
+                )}
+              </div>
+            )}
             {fit.signals.length > 0 && (
               <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700 dark:text-gray-300">
                 {fit.signals.map((s) => (

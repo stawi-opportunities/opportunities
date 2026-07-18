@@ -25,6 +25,9 @@ type OpportunitiesDeps struct {
 }
 
 type feedItemDTO struct {
+	// MatchID is present when this row is (or joins) a candidate_matches row.
+	// Clients use it for dismiss; omit when empty.
+	MatchID       string                 `json:"match_id,omitempty"`
 	OpportunityID string                 `json:"opportunity_id"`
 	ApplyURL      string                 `json:"apply_url"`
 	Score         float64                `json:"score,omitempty"`
@@ -99,6 +102,7 @@ func OpportunitiesHandler(deps OpportunitiesDeps) http.HandlerFunc {
 		}
 		for _, it := range page.Items {
 			dto := feedItemDTO{
+				MatchID:       it.MatchID,
 				OpportunityID: it.OpportunityID,
 				ApplyURL:      it.ApplyURL,
 				Score:         it.Score,

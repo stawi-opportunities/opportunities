@@ -458,6 +458,9 @@ type ApplicationSummary struct {
 // Card fields (slug/title/…) come from the opportunities join so the SPA
 // does not need a second public-API lookup by slug.
 type OpportunityFeedItem struct {
+	// MatchID is set when the row comes from (or joins) candidate_matches.
+	// Empty for pure saved/applied rows with no match. Used for dismiss.
+	MatchID       string
 	OpportunityID string
 	ApplyURL      string
 	Score         float64
@@ -516,47 +519,56 @@ func (s *Store) ListOpportunitiesForCandidate(ctx context.Context, p ListOpportu
 		limit = maxPageLimit
 	}
 
+	// Active matches exclude overflow (cap) and dismissed (user hide).
+	const matchActive = `status NOT IN ('overflow','dismissed')`
+
 	var baseCTE string
 	switch p.Filter {
 	case FilterMatches:
 		baseCTE = `
 WITH base AS (
-  SELECT opportunity_id, score, created_at FROM candidate_matches
-  WHERE candidate_id = $1 AND status != 'overflow'
+  SELECT match_id, opportunity_id, score, created_at FROM candidate_matches
+  WHERE candidate_id = $1 AND ` + matchActive + `
 )`
 	case FilterStarred:
 		baseCTE = `
 WITH base AS (
-  SELECT s.opportunity_id, COALESCE(m.score, 0) AS score, s.created_at
+  SELECT m.match_id, s.opportunity_id, COALESCE(m.score, 0) AS score, s.created_at
   FROM candidate_saved_jobs s
   LEFT JOIN candidate_matches m
-    ON m.candidate_id = s.candidate_id AND m.opportunity_id = s.opportunity_id AND m.status != 'overflow'
+    ON m.candidate_id = s.candidate_id AND m.opportunity_id = s.opportunity_id AND m.` + matchActive + `
   WHERE s.candidate_id = $1
 )`
 	case FilterApplied:
 		baseCTE = `
 WITH base AS (
-  SELECT a.opportunity_id, COALESCE(m.score, 0) AS score, COALESCE(a.submitted_at, a.created_at) AS created_at
+  SELECT m.match_id, a.opportunity_id, COALESCE(m.score, 0) AS score, COALESCE(a.submitted_at, a.created_at) AS created_at
   FROM applications a
   LEFT JOIN candidate_matches m
-    ON m.candidate_id = a.candidate_id AND m.opportunity_id = a.opportunity_id AND m.status != 'overflow'
+    ON m.candidate_id = a.candidate_id AND m.opportunity_id = a.opportunity_id AND m.` + matchActive + `
   WHERE a.candidate_id = $1
 )`
 	default: // FilterAll
 		baseCTE = `
 WITH base AS (
-  SELECT DISTINCT ON (opportunity_id) opportunity_id, score, created_at
+  SELECT DISTINCT ON (opportunity_id) match_id, opportunity_id, score, created_at
   FROM (
-    SELECT opportunity_id, score, created_at FROM candidate_matches
-      WHERE candidate_id = $1 AND status != 'overflow'
+    SELECT match_id, opportunity_id, score, created_at FROM candidate_matches
+      WHERE candidate_id = $1 AND ` + matchActive + `
     UNION ALL
-    SELECT s.opportunity_id, 0 AS score, s.created_at FROM candidate_saved_jobs s
+    SELECT m.match_id, s.opportunity_id, 0 AS score, s.created_at
+      FROM candidate_saved_jobs s
+      LEFT JOIN candidate_matches m
+        ON m.candidate_id = s.candidate_id AND m.opportunity_id = s.opportunity_id AND m.` + matchActive + `
       WHERE s.candidate_id = $1
     UNION ALL
-    SELECT a.opportunity_id, 0 AS score, COALESCE(a.submitted_at, a.created_at) AS created_at FROM applications a
+    SELECT m.match_id, a.opportunity_id, 0 AS score, COALESCE(a.submitted_at, a.created_at) AS created_at
+      FROM applications a
+      LEFT JOIN candidate_matches m
+        ON m.candidate_id = a.candidate_id AND m.opportunity_id = a.opportunity_id AND m.` + matchActive + `
       WHERE a.candidate_id = $1
   ) combined
-  ORDER BY opportunity_id, score DESC
+  ORDER BY opportunity_id, score DESC, match_id ASC NULLS LAST
 )`
 	}
 
@@ -573,7 +585,7 @@ WITH base AS (
 	args = append(args, limit+1)
 
 	q := baseCTE + `
-SELECT b.opportunity_id, b.score, b.created_at,
+SELECT b.match_id, b.opportunity_id, b.score, b.created_at,
        COALESCE(o.apply_url, ''),
        (s.opportunity_id IS NOT NULL) AS starred,
        a.status, COALESCE(a.submitted_at, a.created_at) AS applied_at, a.updated_at,
@@ -604,6 +616,7 @@ LIMIT $` + fmt.Sprint(len(args))
 	for rows.Next() {
 		var (
 			item       OpportunityFeedItem
+			matchID    sql.NullString
 			appStatus  sql.NullString
 			appAt      sql.NullTime
 			appUpdated sql.NullTime
@@ -613,13 +626,16 @@ LIMIT $` + fmt.Sprint(len(args))
 			amtMax     sql.NullFloat64
 		)
 		if err := rows.Scan(
-			&item.OpportunityID, &item.Score, &item.CreatedAt, &item.ApplyURL,
+			&matchID, &item.OpportunityID, &item.Score, &item.CreatedAt, &item.ApplyURL,
 			&item.Starred, &appStatus, &appAt, &appUpdated, &appMethod,
 			&item.Slug, &item.Title, &item.Kind, &item.IssuingEntity,
 			&item.Country, &item.Region, &item.City, &item.Remote,
 			&postedAt, &amtMin, &amtMax, &item.Currency, &item.HasHowToApply,
 		); err != nil {
 			return ListOpportunitiesPage{}, fmt.Errorf("matching: scan opportunity feed: %w", err)
+		}
+		if matchID.Valid {
+			item.MatchID = matchID.String
 		}
 		if postedAt.Valid {
 			t := postedAt.Time

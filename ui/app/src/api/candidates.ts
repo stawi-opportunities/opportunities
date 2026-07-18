@@ -393,6 +393,8 @@ export interface ApplicationSummary {
 }
 
 export interface FeedItem {
+  /** Present when row is linked to candidate_matches — required for dismiss. */
+  match_id?: string;
   opportunity_id: string;
   apply_url?: string;
   score?: number;
@@ -510,17 +512,17 @@ export async function refreshMyMatches(): Promise<MatchRefreshResult> {
   }
 }
 
-/** POST /matching/api/me/matches/{match_id}/dismiss — hide weak fits from feed/digests. */
+/** POST /matching/me/matches/{match_id}/dismiss — hide weak fits from feed/digests. */
 export async function dismissMatch(matchId: string): Promise<void> {
   try {
-    await authRuntime().fetch(`/matching/api/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
+    await authRuntime().fetch(`/matching/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
   } catch (err) {
     if (!isNotFound(err)) throw err;
-    await authRuntime().fetch(`/matching/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
+    await authRuntime().fetch(`/matching/api/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),

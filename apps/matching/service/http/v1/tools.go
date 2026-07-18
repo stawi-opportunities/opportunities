@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strings"
 
@@ -12,12 +13,21 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
+	"github.com/stawi-opportunities/opportunities/pkg/matching"
 )
+
+// ToolsEmbedder is the narrow embed surface job-fit needs (extraction.Extractor).
+type ToolsEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
 
 // ToolsDeps wires free career tools (CV ATS score, job fitness).
 type ToolsDeps struct {
-	DB     *sql.DB
-	Scorer *cv.Scorer
+	DB       *sql.DB
+	Scorer   *cv.Scorer
+	Embedder ToolsEmbedder
+	// Index supplies the candidate's stored match embedding when present.
+	Index *matching.IndexStore
 }
 
 // CVScoreHandler serves POST /me/tools/cv-score — free for signed-in users.
@@ -65,6 +75,9 @@ func CVScoreHandler(deps ToolsDeps) http.HandlerFunc {
 }
 
 // JobFitHandler serves POST /me/tools/job-fit — free fitness score for a role.
+// Uses vector similarity when embeddings are available, blended with keyword
+// overlap for explainable signals.
+//
 // Body: { "job_text": "...", "opportunity_id": "optional", "title": "optional" }
 func JobFitHandler(deps ToolsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +87,7 @@ func JobFitHandler(deps ToolsDeps) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
+		log := util.Log(ctx)
 		candidateID := httpmw.CandidateFromContext(ctx)
 
 		var in struct {
@@ -86,11 +100,12 @@ func JobFitHandler(deps ToolsDeps) http.HandlerFunc {
 			return
 		}
 		jobText := strings.TrimSpace(in.JobText)
-		if jobText == "" && in.OpportunityID != "" && deps.DB != nil {
+		oppID := strings.TrimSpace(in.OpportunityID)
+		if jobText == "" && oppID != "" && deps.DB != nil {
 			var title, desc sql.NullString
 			err := deps.DB.QueryRowContext(ctx, `
 SELECT COALESCE(title,''), COALESCE(description,'') FROM opportunities
-WHERE canonical_id = $1 OR slug = $1 LIMIT 1`, strings.TrimSpace(in.OpportunityID)).Scan(&title, &desc)
+WHERE canonical_id = $1 OR slug = $1 LIMIT 1`, oppID).Scan(&title, &desc)
 			if err == nil {
 				jobText = strings.TrimSpace(title.String + "\n\n" + stripHTMLLite(desc.String))
 				if in.Title == "" {
@@ -106,18 +121,160 @@ WHERE canonical_id = $1 OR slug = $1 LIMIT 1`, strings.TrimSpace(in.OpportunityI
 
 		profileText := loadProfileText(ctx, deps.DB, candidateID)
 		fit := heuristicJobFit(profileText, jobText, in.Title)
+		kwScore := fit.Score
+
+		// Vector path: candidate index embedding × job embedding (stored or live).
+		if vec, method, ok := vectorJobFit(ctx, deps, candidateID, oppID, jobText); ok {
+			// Blend: 70% vector similarity, 30% keyword score for explainability.
+			blended := int(math.Round(0.70*float64(vec) + 0.30*float64(kwScore)))
+			if blended > 100 {
+				blended = 100
+			}
+			fit.Score = blended
+			fit.Label = fitLabel(blended)
+			fit.Method = method
+			fit.VectorScore = &vec
+			fit.KeywordScore = &kwScore
+			fit.Signals = append([]string{"Semantic similarity (AI embeddings) used"}, fit.Signals...)
+			if blended >= 65 && (len(fit.Suggestions) == 0 || fit.Suggestions[0] != "Strong fit — apply with a short note highlighting the shared keywords") {
+				// Prefer a semantic-aware suggestion when vector path lifted score.
+				if kwScore < 65 {
+					fit.Suggestions = append([]string{
+						"Strong semantic fit — tailor the first bullet of your summary to this role and apply",
+					}, fit.Suggestions...)
+				}
+			}
+		} else {
+			fit.Method = "keywords"
+			fit.KeywordScore = &kwScore
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(fit)
+		log.WithField("candidate_id", candidateID).WithField("score", fit.Score).
+			WithField("method", fit.Method).Debug("tools/job-fit: scored")
 	}
 }
 
 // JobFitResult is the free job-fitness tool response.
 type JobFitResult struct {
-	Score       int      `json:"score"`
-	Label       string   `json:"label"`
-	Signals     []string `json:"signals"`
-	Suggestions []string `json:"suggestions"`
-	Title       string   `json:"title,omitempty"`
+	Score        int      `json:"score"`
+	Label        string   `json:"label"`
+	Signals      []string `json:"signals"`
+	Suggestions  []string `json:"suggestions"`
+	Title        string   `json:"title,omitempty"`
+	Method       string   `json:"method,omitempty"` // "keywords" | "vector+stored" | "vector+live"
+	VectorScore  *int     `json:"vector_score,omitempty"`
+	KeywordScore *int     `json:"keyword_score,omitempty"`
+}
+
+func fitLabel(score int) string {
+	switch {
+	case score >= 65:
+		return "strong"
+	case score >= 40:
+		return "moderate"
+	default:
+		return "weak"
+	}
+}
+
+// vectorJobFit returns a 0–100 semantic score when both vectors are available.
+func vectorJobFit(
+	ctx context.Context,
+	deps ToolsDeps,
+	candidateID, opportunityID, jobText string,
+) (score int, method string, ok bool) {
+	candVec := candidateEmbedding(ctx, deps, candidateID)
+	if len(candVec) == 0 {
+		return 0, "", false
+	}
+
+	// Prefer stored opportunity embedding when opportunity_id is known.
+	if opportunityID != "" && deps.DB != nil {
+		if oppVec, err := loadOpportunityEmbedding(ctx, deps.DB, opportunityID); err == nil && len(oppVec) == len(candVec) {
+			sim := cosineSim(candVec, oppVec)
+			return int(math.Round(sim * 100)), "vector+stored", true
+		}
+	}
+
+	// Live-embed job text (passage prefix matches index convention).
+	if deps.Embedder == nil {
+		return 0, "", false
+	}
+	passage := jobText
+	if !strings.HasPrefix(passage, extraction.EmbedPassagePrefix) {
+		passage = extraction.EmbedPassagePrefix + truncateRunes(jobText, 1800)
+	}
+	jobVec, err := deps.Embedder.Embed(ctx, passage)
+	if err != nil || len(jobVec) == 0 || len(jobVec) != len(candVec) {
+		util.Log(ctx).WithError(err).Debug("tools/job-fit: live embed failed")
+		return 0, "", false
+	}
+	sim := cosineSim(candVec, jobVec)
+	return int(math.Round(sim * 100)), "vector+live", true
+}
+
+func candidateEmbedding(ctx context.Context, deps ToolsDeps, candidateID string) []float32 {
+	if deps.Index != nil {
+		if idx, err := deps.Index.Get(ctx, candidateID); err == nil && idx != nil && len(idx.Embedding) > 0 {
+			return idx.Embedding
+		}
+	}
+	// Fallback: embed profile text live.
+	if deps.Embedder == nil || deps.DB == nil {
+		return nil
+	}
+	profile := loadProfileText(ctx, deps.DB, candidateID)
+	if len(profile) < 40 {
+		return nil
+	}
+	vec, err := deps.Embedder.Embed(ctx, extraction.EmbedPassagePrefix+truncateRunes(profile, 1800))
+	if err != nil {
+		return nil
+	}
+	return vec
+}
+
+func loadOpportunityEmbedding(ctx context.Context, db *sql.DB, idOrSlug string) ([]float32, error) {
+	var embText string
+	err := db.QueryRowContext(ctx, `
+SELECT embedding::text FROM opportunities
+WHERE (canonical_id = $1 OR slug = $1) AND embedding IS NOT NULL
+LIMIT 1`, idOrSlug).Scan(&embText)
+	if err != nil {
+		return nil, err
+	}
+	vec := matching.ParseVectorLiteral(embText)
+	if len(vec) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return vec, nil
+}
+
+func cosineSim(a, b []float32) float64 {
+	if len(a) == 0 || len(a) != len(b) {
+		return 0
+	}
+	var dot, na, nb float64
+	for i := range a {
+		af, bf := float64(a[i]), float64(b[i])
+		dot += af * bf
+		na += af * af
+		nb += bf * bf
+	}
+	if na == 0 || nb == 0 {
+		return 0
+	}
+	sim := dot / (math.Sqrt(na) * math.Sqrt(nb))
+	// Clamp to [0,1] for display (cosine can be slightly negative).
+	if sim < 0 {
+		return 0
+	}
+	if sim > 1 {
+		return 1
+	}
+	return sim
 }
 
 func heuristicJobFit(profile, job, title string) JobFitResult {
@@ -125,7 +282,7 @@ func heuristicJobFit(profile, job, title string) JobFitResult {
 	j := strings.ToLower(job)
 	if p == "" {
 		return JobFitResult{
-			Score: 0, Label: "weak",
+			Score: 0, Label: "weak", Method: "keywords",
 			Signals:     []string{"No profile text — upload a CV for a better score"},
 			Suggestions: []string{"Upload your CV in Preferences", "Set a target job title"},
 			Title:       title,
@@ -134,7 +291,7 @@ func heuristicJobFit(profile, job, title string) JobFitResult {
 	pTokens := significantTokens(p)
 	jTokens := significantTokens(j)
 	if len(jTokens) == 0 {
-		return JobFitResult{Score: 0, Label: "weak", Title: title}
+		return JobFitResult{Score: 0, Label: "weak", Method: "keywords", Title: title}
 	}
 	hits := 0
 	var matched []string
@@ -161,14 +318,6 @@ func heuristicJobFit(profile, job, title string) JobFitResult {
 		score = minInt(100, score+10*titleHits)
 	}
 
-	label := "weak"
-	switch {
-	case score >= 65:
-		label = "strong"
-	case score >= 40:
-		label = "moderate"
-	}
-
 	var signals []string
 	if len(matched) > 0 {
 		signals = append(signals, "Shared keywords: "+strings.Join(matched, ", "))
@@ -193,7 +342,8 @@ func heuristicJobFit(profile, job, title string) JobFitResult {
 	}
 
 	return JobFitResult{
-		Score: score, Label: label, Signals: signals, Suggestions: suggestions, Title: title,
+		Score: score, Label: fitLabel(score), Method: "keywords",
+		Signals: signals, Suggestions: suggestions, Title: title,
 	}
 }
 
@@ -259,7 +409,6 @@ func splitCSV(s string) []string {
 }
 
 func stripHTMLLite(s string) string {
-	// Descriptions may be HTML; strip tags for fitness tokens.
 	var b strings.Builder
 	inTag := false
 	for _, r := range s {

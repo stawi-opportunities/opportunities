@@ -35,6 +35,10 @@ export interface JobFitResult {
   signals: string[];
   suggestions: string[];
   title?: string;
+  /** "keywords" | "vector+stored" | "vector+live" */
+  method?: string;
+  vector_score?: number;
+  keyword_score?: number;
 }
 
 /** POST /matching/me/tools/cv-score — free ATS-style CV report. */
@@ -50,7 +54,7 @@ export async function scoreCV(input: {
   });
 }
 
-/** POST /matching/me/tools/job-fit — free keyword fitness vs a job description. */
+/** POST /matching/me/tools/job-fit — free vector+keyword fitness vs a job description. */
 export async function fitJob(input: {
   job_text?: string;
   opportunity_id?: string;

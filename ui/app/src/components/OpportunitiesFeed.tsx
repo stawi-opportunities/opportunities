@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  dismissMatch,
   fetchOpportunities,
   starOpportunity,
   unstarOpportunity,
@@ -296,6 +297,29 @@ export function OpportunitiesFeed({
     [items, toast]
   );
 
+  const onDismiss = useCallback(
+    async (matchId: string, opportunityId: string) => {
+      setPendingItems((prev) => new Set(prev).add(opportunityId));
+      const snapshot = items;
+      // Optimistic remove
+      setItems((prev) => prev.filter((it) => it.opportunity_id !== opportunityId));
+      try {
+        await dismissMatch(matchId);
+        toast('Match dismissed — we will show fewer like this.', 'success');
+      } catch {
+        setItems(snapshot);
+        toast('Could not dismiss match. Try again.', 'error');
+      } finally {
+        setPendingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(opportunityId);
+          return next;
+        });
+      }
+    },
+    [items, toast]
+  );
+
   return (
     <section aria-label="Your opportunities">
       <div className="sticky top-0 z-10 -mx-4 bg-white px-4 pb-3 shadow-sm dark:bg-navy-900 sm:static sm:mx-0 sm:px-0 sm:pb-0 sm:shadow-none">
@@ -366,12 +390,13 @@ export function OpportunitiesFeed({
             <ul className="space-y-3">
               {filteredItems.map((it) => (
                 <OpportunityCard
-                  key={it.opportunity_id}
+                  key={it.match_id || it.opportunity_id}
                   item={it}
                   snapshot={snapshots[it.opportunity_id] ?? null}
                   onStar={onStar}
                   onUnstar={onUnstar}
                   onApply={onApply}
+                  onDismiss={filter === 'matches' || (it.score ?? 0) > 0 ? onDismiss : undefined}
                   isPending={pendingItems.has(it.opportunity_id)}
                 />
               ))}

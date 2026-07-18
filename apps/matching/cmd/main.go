@@ -570,8 +570,17 @@ func main() {
 		}),
 	))
 
-	// Free career tools — value before pay (CV ATS score + job fitness).
-	toolsDeps := httpv1.ToolsDeps{DB: sqlDB, Scorer: cvScorer}
+	// Free career tools — value before pay (CV ATS score + vector/keyword job fitness).
+	var toolsEmbedder httpv1.ToolsEmbedder
+	if extractor != nil {
+		toolsEmbedder = extractor
+	}
+	toolsDeps := httpv1.ToolsDeps{
+		DB:       sqlDB,
+		Scorer:   cvScorer,
+		Embedder: toolsEmbedder,
+		Index:    matchIndexStore,
+	}
 	mux.Handle("POST /me/tools/cv-score", authMW(httpv1.CVScoreHandler(toolsDeps)))
 	mux.Handle("POST /me/tools/job-fit", authMW(httpv1.JobFitHandler(toolsDeps)))
 
@@ -926,9 +935,10 @@ func main() {
 		// Gateway-visible aliases: SPA calls /matching/me/* (same shape as
 		// /me/subscription, /me/opportunities).
 		mux.Handle("POST /me/matches/refresh", authMW(meV1.RefreshMatchesHandler(extDeps)))
+		mux.Handle("POST /me/matches/{match_id}/dismiss", authMW(meV1.DismissMatchHandler(extDeps)))
 		mux.Handle("GET /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
 		mux.Handle("PUT /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
-		log.Info("matching: /api/me/* routes + /me/matches/refresh + /me/notifications")
+		log.Info("matching: /api/me/* routes + /me/matches/refresh|dismiss + /me/notifications")
 	}
 
 	// definitions.changed.v1 broadcast — invalidates the loader cache

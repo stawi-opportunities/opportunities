@@ -40,6 +40,8 @@ interface Props {
   onStar: (opportunityId: string) => void;
   onUnstar: (opportunityId: string) => void;
   onApply: (opportunityId: string) => void;
+  /** Hide match from feed/digests when match_id is present. */
+  onDismiss?: (matchId: string, opportunityId: string) => void;
   isPending?: boolean;
 }
 
@@ -52,7 +54,15 @@ const STATUS_KEYS: Record<string, StringKey> = {
   hired: 'status.hired',
 };
 
-export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isPending }: Props) {
+export function OpportunityCard({
+  item,
+  snapshot,
+  onStar,
+  onUnstar,
+  onApply,
+  onDismiss,
+  isPending,
+}: Props) {
   const { t } = useI18n();
   const { hasSession } = useAuth();
   const sub = useSubscription();
@@ -65,6 +75,7 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
     ? Date.now() - new Date(snapshot.posted_at).getTime() < 24 * 60 * 60 * 1000
     : false;
   const isMatched = (item.score ?? 0) > 0;
+  const canDismiss = Boolean(item.match_id && onDismiss);
 
   return (
     <li
@@ -157,6 +168,18 @@ export function OpportunityCard({ item, snapshot, onStar, onUnstar, onApply, isP
               className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-300 dark:hover:bg-navy-800"
             >
               ☆ {t('cta.save')}
+            </button>
+          )}
+          {canDismiss && (
+            <button
+              type="button"
+              onClick={() => onDismiss!(item.match_id!, item.opportunity_id)}
+              aria-label="Dismiss match"
+              disabled={isPending}
+              title="Hide this match — improves future digests"
+              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-400 dark:hover:bg-navy-800"
+            >
+              Dismiss
             </button>
           )}
         </div>
