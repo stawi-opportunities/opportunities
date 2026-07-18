@@ -30,12 +30,9 @@
     "@type": "SearchAction",
     "target": {
       "@type": "EntryPoint",
-      "urlTemplate": "{{ .Site.BaseURL }}search/?q={search_term_string}&l={search_location_string}"
+      "urlTemplate": "{{ .Site.BaseURL }}search/?q={search_term_string}"
     },
-    "query-input": [
-      "required name=search_term_string",
-      "optional name=search_location_string"
-    ]
+    "query-input": "required name=search_term_string"
   }
 }
 </script>
