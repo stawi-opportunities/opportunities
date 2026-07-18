@@ -116,10 +116,13 @@ type CandidatesConfig struct {
 	// Phase-4 extension-facing /api/me/* routes (rules, matches poll).
 	MatchingExtensionEnabled bool `env:"MATCHING_EXTENSION_ENABLED" envDefault:"true"`
 
-	// AuthRequireJWT refuses to boot when no OIDC authenticator is
-	// configured. Production must set this true so /me/* never falls
-	// open to X-Candidate-ID spoofing.
-	AuthRequireJWT bool `env:"AUTH_REQUIRE_JWT" envDefault:"false"`
+	// AuthRequireJWT requires a configured OIDC JWT authenticator at boot.
+	// Default true: private routes never fall open to X-Candidate-ID.
+	// Set AUTH_REQUIRE_JWT=false only for local/tests without OIDC (header
+	// fallback via NewCandidateAuth(nil)). Never disable in production.
+	// Public endpoints (healthz, plan catalog, webhooks) are registered
+	// without auth middleware — that is the only "open" surface.
+	AuthRequireJWT bool `env:"AUTH_REQUIRE_JWT" envDefault:"true"`
 
 	// AdminSharedSecret authenticates Trustage / machine callers of
 	// /_admin/* via X-Admin-Token (or Authorization: Bearer). Required

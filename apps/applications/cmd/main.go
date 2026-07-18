@@ -69,13 +69,16 @@ func main() {
 		authenticator = secMgr.GetAuthenticator(ctx)
 	}
 	if authenticator != nil {
-		log.Info("applications: /api/me/* protected with JWT authentication")
+		log.Info("applications: private routes require JWT (OIDC authenticator configured)")
+	} else if cfg.AuthRequireJWT {
+		log.Fatal("applications: no OIDC authenticator — private routes require JWT by default. Configure OIDC or set AUTH_REQUIRE_JWT=false only for local/tests")
 	} else {
-		log.Warn("applications: no JWT authenticator — /api/me/* accepts X-Candidate-ID only (dev/test)")
+		log.Warn("applications: AUTH_REQUIRE_JWT=false — private routes accept X-Candidate-ID (dev/test only; never in production)")
 	}
 	authMW := httpmw.NewCandidateAuth(authenticator)
 
 	mux := http.NewServeMux()
+	// Public: health only. All /api/me/* routes use authMW.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

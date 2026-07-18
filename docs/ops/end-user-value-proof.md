@@ -143,7 +143,7 @@ Use a clean browser profile.
 
 These do not block “product is valuable”; they block **paid acquisition at scale**:
 
-1. `AUTH_REQUIRE_JWT=true` + OIDC in production matching.
+1. OIDC configured on matching (JWT is required by default; binary fails closed without it).
 2. Path A fan-out consumers + queues live.
 3. Digest templates registered in service-notification; Send metrics healthy.
 

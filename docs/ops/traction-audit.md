@@ -55,22 +55,23 @@ Users pay for **ranked shortlists + digests + honest apply handoff**. They do no
 | Area | Status | Condition |
 |------|--------|-----------|
 | Weekly/daily caps | Enforced | Wire DailyCap + WeekCount on gap-fill (done) |
-| Auth | Config risk | **Prod must set `AUTH_REQUIRE_JWT=true`** with OIDC |
+| Auth | Default secure | JWT required by default (`AUTH_REQUIRE_JWT` defaults true); OIDC must be wired so the binary boots |
 | Path A fan-out | Config risk | Require queue + consumer in prod |
 | Notify digests | Ops | Templates registered in service-notification |
 | Matching extension | Default on | `MATCHING_EXTENSION_ENABLED=true` (default) |
 | Billing ledger | Hard-fail | Create errors surface 502 |
 | Dependabot vulns | Open | Track separately; not product-blocking |
 
-### AUTH_REQUIRE_JWT
+### Auth (JWT by default)
+
+Private routes always require a verified JWT. The binary **refuses to start** without an OIDC authenticator unless you explicitly set:
 
 ```
-# production matching service
-AUTH_REQUIRE_JWT=true
-# plus valid OIDC / authenticator config
+# local/tests only — never production
+AUTH_REQUIRE_JWT=false
 ```
 
-Without this, `/me/*` accepts spoofable `X-Candidate-ID` when no JWT authenticator is configured.
+Public endpoints are only those registered **without** auth middleware (e.g. `GET /healthz`, `GET /billing/plans`, payment webhooks).
 
 ## Kill / park list
 
@@ -97,19 +98,19 @@ Win on **fresher, ranked, region-aware shortlists + digests + free proof**. Lose
 PRODUCTION READINESS VERIFICATION
 ════════════════════════════════════════════════════
 Requirements:     PASS (core seeker journey ships)
-Assumptions:      FAIL → AUTH_REQUIRE_JWT + Path A + notify prod config
+Assumptions:      FAIL → OIDC must be configured (JWT required by default) + Path A + notify
 Scalability:      PASS WITH CONDITIONS (caps protect free tier)
 Failure Modes:    PASS WITH CONDITIONS (empty reasons surface)
 Data Integrity:   PASS (idempotent upsert; weekly remaining)
-Security:         FAIL IF AUTH_REQUIRE_JWT unset in prod
+Security:         PASS (JWT default; fail closed without OIDC)
 Operations:       PASS WITH CONDITIONS (digest templates)
 
-Critical Issues:  0 code-critical; 2 ops-critical (JWT, notify)
+Critical Issues:  0 code-critical; 2 ops-critical (OIDC wiring, notify)
 
 VERDICT:          READY WITH CONDITIONS
 
 Blocking for paid ads scale:
-  1. AUTH_REQUIRE_JWT=true + OIDC live
+  1. OIDC/oauth2 enabled so matching boots with JWT (default AuthRequireJWT)
   2. Path A fan-out consumers registered
   3. Digest templates + notification Send metrics green
 ════════════════════════════════════════════════════

@@ -71,20 +71,20 @@ func CandidateAuth(next http.Handler) http.Handler {
 	})
 }
 
-// NewCandidateAuth returns the full authentication chain a public
-// /me/* route needs: outer JWT verification via Frame's
-// securityhttp.AuthenticationMiddleware, inner subject-extraction via
-// CandidateAuth.
+// NewCandidateAuth returns the authentication chain for private candidate
+// routes: outer JWT verification (Frame AuthenticationMiddleware) then
+// CandidateAuth subject extraction.
 //
-// When authenticator is non-nil, identity comes only from verified JWT
-// claims (strict mode — X-Candidate-ID is ignored).
-// When authenticator is nil (unit tests, local without OIDC), the
-// header fallback is enabled so existing tests keep working. Callers
-// that must never accept header auth without a JWT should refuse to
-// boot when authenticator is nil (see AUTH_REQUIRE_JWT).
+// Default / production (authenticator non-nil): JWT only — X-Candidate-ID
+// is ignored. This is the secure default; wrap every private handler with
+// this. Public endpoints must be registered without this middleware.
+//
+// Dev/tests (authenticator nil): header fallback is enabled. Process boot
+// should refuse nil authenticator unless AUTH_REQUIRE_JWT=false so prod
+// never falls open.
 func NewCandidateAuth(authenticator security.Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		// Inject allow-header only when no JWT verifier is present.
+		// Strict JWT when verifier present; header only when tests pass nil.
 		mode := AuthModeStrict
 		if authenticator == nil {
 			mode = AuthModeAllowHeader

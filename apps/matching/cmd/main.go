@@ -435,23 +435,21 @@ func main() {
 	}
 
 	// --- HTTP mux ---
-	// Resolve Frame's JWT authenticator from the SecurityManager. With
-	// the matching HelmRelease's oauth2.enabled=true block,
-	// frame.NewServiceWithContext wires this from the OIDC env vars
-	// (OAUTH2_SERVICE_URI, OAUTH2_JWT_VERIFY_AUDIENCE, ...). If the
-	// service is started without OIDC configured (local dev, tests),
-	// authenticator stays nil and NewCandidateAuth degrades to
-	// header-only — same behaviour the existing unit tests rely on.
+	// Auth model: JWT by default. Private routes always wrap authMW.
+	// Public endpoints are registered without auth (healthz, /billing/plans,
+	// webhooks, match-kinds). Resolve OIDC JWT from Frame SecurityManager
+	// (OAUTH2_* when oauth2.enabled). Without authenticator, boot fails
+	// unless AUTH_REQUIRE_JWT=false (local/tests only — header fallback).
 	var authenticator security.Authenticator
 	if secMgr := svc.SecurityManager(); secMgr != nil {
 		authenticator = secMgr.GetAuthenticator(ctx)
 	}
 	if authenticator != nil {
-		log.Info("matching: /me/* routes protected with JWT authentication")
+		log.Info("matching: private routes require JWT (OIDC authenticator configured)")
 	} else if cfg.AuthRequireJWT {
-		log.Fatal("matching: AUTH_REQUIRE_JWT=true but no OIDC authenticator configured — refusing to start (would fail open to header spoofing)")
+		log.Fatal("matching: no OIDC authenticator configured — private routes require JWT by default. Configure OIDC or set AUTH_REQUIRE_JWT=false only for local/tests")
 	} else {
-		log.Warn("matching: no JWT authenticator configured — /me/* routes accept X-Candidate-ID header only (set AUTH_REQUIRE_JWT=true in production)")
+		log.Warn("matching: AUTH_REQUIRE_JWT=false — private routes accept X-Candidate-ID (dev/test only; never in production)")
 	}
 	authMW := httpmw.NewCandidateAuth(authenticator)
 	adminAuth := httpmw.AdminAuthConfig{
@@ -463,6 +461,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	// --- Public endpoints (explicitly unauthenticated) ---
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -759,6 +758,7 @@ func main() {
 		log.Fatal("billing: payment gateway enabled but BILLING_WEBHOOK_SECRET is empty — refusing to start (the activation webhook would be unauthenticated)")
 	}
 
+	// Public: catalog only (no identity). Checkout and the rest use authMW.
 	mux.HandleFunc("GET /billing/plans", httpv1.PlansHandler())
 	mux.Handle("POST /billing/checkout", authMW(
 		httpv1.CheckoutHandler(httpv1.CheckoutDeps{

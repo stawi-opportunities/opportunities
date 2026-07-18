@@ -8,12 +8,17 @@ import "github.com/pitabwire/frame/v2/config"
 type Config struct {
 	config.ConfigurationDefault
 
-	HTTPAddr            string `env:"HTTP_ADDR" envDefault:":8090"`
+	HTTPAddr string `env:"HTTP_ADDR" envDefault:":8090"`
 	// Enabled by default so the applications tracking API is available when
 	// the binary is deployed. Set APPLICATIONS_ENABLED=false to expose only
 	// healthz during emergency rollbacks.
-	ApplicationsEnabled bool   `env:"APPLICATIONS_ENABLED" envDefault:"true"`
-	IdempotencyTTLHours int    `env:"APPLICATIONS_IDEMPOTENCY_TTL_HOURS" envDefault:"24"`
+	ApplicationsEnabled bool `env:"APPLICATIONS_ENABLED" envDefault:"true"`
+	IdempotencyTTLHours int  `env:"APPLICATIONS_IDEMPOTENCY_TTL_HOURS" envDefault:"24"`
+
+	// AuthRequireJWT requires OIDC JWT at boot (default true). Private
+	// /api/me/* routes never fall open. Set false only for local/tests
+	// without OIDC (X-Candidate-ID fallback). Public surface is healthz only.
+	AuthRequireJWT bool `env:"AUTH_REQUIRE_JWT" envDefault:"true"`
 
 	// R2 blob storage for attachments. Empty values disable R2; the
 	// in-memory MemoryBlobStore is used for tests and local dev.
