@@ -1,9 +1,9 @@
 baseURL = "https://opportunities.stawi.org/"
 languageCode = "en"
-title = "Stawi Opportunities"
+title = "Stawi Jobs"
 
 [params]
-  description = "Browse opportunities from companies hiring worldwide across programming, design, marketing, and more. Apply to anything you're qualified for."
+  description = "Search jobs free by title and location. Upload a CV for a real match shortlist before you pay. Apply when you're ready."
   # Defaults point at the exposed Stawi cluster so `make ui-dev` works out of
   # the box against real data. For developers running the backend locally,
   # use `make ui-dev-local` (overrides apiURL/candidatesAPIURL to localhost).

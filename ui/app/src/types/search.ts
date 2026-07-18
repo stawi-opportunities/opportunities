@@ -44,7 +44,10 @@ export interface SearchResponse {
 }
 
 export interface SearchParams {
+  /** Job title, keywords, or company (Indeed-style "what"). */
   q?: string;
+  /** City, country, or remote (Indeed-style "where"); folded into full-text search. */
+  l?: string;
   category?: string;
   remote_type?: string;
   employment_type?: string;
@@ -54,6 +57,12 @@ export interface SearchParams {
   limit?: number;
   offset?: number;
   cursor?: string;
+}
+
+/** Combine what + where for the jobs API (full-text matches title and location). */
+export function searchQueryText(params: Pick<SearchParams, 'q' | 'l'>): string | undefined {
+  const parts = [params.q, params.l].map((s) => s?.trim()).filter(Boolean) as string[];
+  return parts.length ? parts.join(' ') : undefined;
 }
 
 export interface LatestJobsResponse {

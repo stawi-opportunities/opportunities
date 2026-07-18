@@ -6,6 +6,7 @@ import type { SearchParams } from '@/types/search';
 // they're runtime-only pagination state, not shareable filter state.
 const URL_KEYS = [
   'q',
+  'l',
   'category',
   'remote_type',
   'employment_type',

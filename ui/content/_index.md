@@ -1,4 +1,4 @@
 ---
-title: "Find Your Next Role"
-description: "Browse jobs from companies hiring worldwide. Programming, design, marketing, and more."
+title: "Find Your Next Job"
+description: "Search jobs free by title and location. Upload a CV for a real match shortlist before you pay."
 ---

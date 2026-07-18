@@ -1,7 +1,7 @@
 {
-  "name": "Stawi",
-  "short_name": "Stawi",
-  "description": "AI-powered opportunity matching — jobs, scholarships, tenders, deals and funding — worldwide.",
+  "name": "Stawi Jobs",
+  "short_name": "Stawi Jobs",
+  "description": "Search jobs free by title and location. AI match shortlist from your CV.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

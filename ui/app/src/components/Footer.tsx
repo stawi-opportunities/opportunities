@@ -1,21 +1,7 @@
 import { useI18n } from '@/i18n/I18nProvider';
-import { useToast } from '@/hooks/useToast';
-import { Icon } from '@/components/ui/Icon';
-import { OPPORTUNITY_TYPE_META } from '@/constants/opportunityTypes';
-import type { StringKey } from '@/i18n/strings';
-import type { OpportunityKind } from '@/types/snapshot';
-
-const FOOTER_LABEL_KEYS: Record<OpportunityKind, StringKey> = {
-  job: 'footer.jobs',
-  scholarship: 'footer.scholarships',
-  tender: 'footer.tenders',
-  deal: 'footer.deals',
-  funding: 'footer.funding',
-};
 
 export default function Footer() {
   const { t } = useI18n();
-  const { push: toast } = useToast();
   const year = new Date().getFullYear();
 
   return (
@@ -32,8 +18,8 @@ export default function Footer() {
               />
             </a>
             <p className="mt-4 text-sm leading-relaxed text-gray-500">
-              AI-powered opportunity matching &mdash; jobs, scholarships, tenders, deals and funding
-              &mdash; worldwide.
+              AI job matching — search free, get a real shortlist from your CV, subscribe only if
+              you want more.
             </p>
           </div>
           <div>
@@ -41,28 +27,30 @@ export default function Footer() {
               {t('footer.explore')}
             </h3>
             <ul className="mt-4 space-y-2.5" role="list">
-              {OPPORTUNITY_TYPE_META.map(({ kind, href, iconName, comingSoon }) => (
-                <li key={kind}>
-                  {comingSoon ? (
-                    <button
-                      type="button"
-                      onClick={() => toast(t('common.comingSoon'), 'info')}
-                      className="inline-flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white text-left"
-                    >
-                      <Icon name={iconName} size={14} />
-                      {t(FOOTER_LABEL_KEYS[kind])}
-                    </button>
-                  ) : (
-                    <a
-                      href={href}
-                      className="inline-flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white"
-                    >
-                      <Icon name={iconName} size={14} />
-                      {t(FOOTER_LABEL_KEYS[kind])}
-                    </a>
-                  )}
-                </li>
-              ))}
+              <li>
+                <a
+                  href="/search/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  {t('footer.findJobs')}
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/jobs/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  {t('footer.jobs')}
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/categories/"
+                  className="text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  {t('footer.categories')}
+                </a>
+              </li>
               <li>
                 <a
                   href="/search/"

@@ -138,6 +138,9 @@ export interface Strings {
   'search.seniority': string;
   'search.country': string;
   'search.searchPlaceholder': string;
+  'search.whatPlaceholder': string;
+  'search.wherePlaceholder': string;
+  'search.findJobs': string;
   'search.searchButton': string;
   'search.searchJobs': string;
   'search.sort': string;
@@ -185,10 +188,15 @@ export interface Strings {
   'category.refineBySector': string;
   'category.discover': string;
   'category.advancedSearch': string;
+  'category.findJobs': string;
   'category.opportunityTypes': string;
   'category.chooseKind': string;
   'category.opportunity': string;
   'category.opportunities': string;
+  'category.job': string;
+  'category.jobs': string;
+  'category.emptyTitle': string;
+  'category.emptyBody': string;
 
   // ---- Opportunity card / status ----
   'status.applied': string;
@@ -503,6 +511,7 @@ export interface Strings {
   // ---- Footer ----
   'footer.jobSeekers': string;
   'footer.browseJobs': string;
+  'footer.findJobs': string;
   'footer.categories': string;
   'footer.advancedSearch': string;
   'footer.company': string;
@@ -648,6 +657,9 @@ const en: Strings = {
   'search.seniority': 'Seniority',
   'search.country': 'Country',
   'search.searchPlaceholder': 'Search by title, skill, or company…',
+  'search.whatPlaceholder': 'Job title, keywords, or company',
+  'search.wherePlaceholder': 'City, country, or remote',
+  'search.findJobs': 'Find jobs',
   'search.searchButton': 'Search',
   'search.searchJobs': 'Search jobs',
   'search.sort': 'Sort',
@@ -690,13 +702,17 @@ const en: Strings = {
   'category.browseAllJobs': 'Browse all jobs →',
   'category.browseByIndustry': 'Browse by industry',
   'category.refineBySector': 'Refine your search by sector or field.',
-  'category.discover':
-    'Discover opportunities across jobs, scholarships, tenders, deals and funding — all in one place.',
+  'category.discover': 'Browse job categories and industries. Search free — no account required.',
   'category.advancedSearch': 'Advanced search',
+  'category.findJobs': 'Find jobs',
   'category.opportunityTypes': 'Opportunity types',
   'category.chooseKind': 'Choose the kind of opportunity you are looking for.',
   'category.opportunity': 'opportunity',
   'category.opportunities': 'opportunities',
+  'category.job': 'job',
+  'category.jobs': 'jobs',
+  'category.emptyTitle': 'Categories loading soon',
+  'category.emptyBody': 'In the meantime, search jobs by title and location.',
 
   'status.applied': 'Applied',
   'status.responded': 'Responded',
@@ -846,7 +862,7 @@ const en: Strings = {
   'dash.openingPayment': 'Opening payment…',
   'dash.payPerMonth': 'Pay',
   'dash.perMonth': '/month',
-  'dash.welcomeTitle': 'Welcome to Stawi Opportunities!',
+  'dash.welcomeTitle': 'Welcome to Stawi Jobs!',
   'dash.welcomeBody':
     'We match you with the best opportunities across Africa. Start by completing your profile and setting your preferences.',
   'dash.welcomeDismiss': 'Dismiss',
@@ -1004,6 +1020,7 @@ const en: Strings = {
 
   'footer.jobSeekers': 'Job seekers',
   'footer.browseJobs': 'Browse jobs',
+  'footer.findJobs': 'Find jobs',
   'footer.categories': 'Categories',
   'footer.advancedSearch': 'Advanced search',
   'footer.company': 'Company',

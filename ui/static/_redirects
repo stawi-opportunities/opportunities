@@ -5,23 +5,22 @@
 #
 # Order matters — first match wins. Literal section roots must come before
 # their splat siblings, otherwise the splat swallows the listing page.
+#
+# Public product is jobs-only. Non-job listing roots redirect to search;
+# detail shells stay for legacy deep links / internal tooling.
 
 /jobs/             /jobs/             200
 /jobs/*            /job/              200
 
-/scholarships/     /scholarships/     200
-/scholarships/*    /scholarship/      200
-
-/tenders/          /tenders/          200
-/tenders/*         /tender/           200
-
-/deals/            /deals/            200
-/deals/*           /deal/             200
-
-# Funding's listing path is singular (/funding/), so its detail shell
-# lives at /funding-detail/ to avoid shadowing the listing.
-/funding/          /funding/          200
-/funding/*         /funding-detail/   200
+# Non-job kinds are not marketed — send browsers to job search.
+/scholarships/     /search/           301
+/scholarships/*    /search/           301
+/tenders/          /search/           301
+/tenders/*         /search/           301
+/deals/            /search/           301
+/deals/*           /search/           301
+/funding/          /search/           301
+/funding/*         /search/           301
 
 /categories/       /categories/       200
 /categories/*      /categories/       200

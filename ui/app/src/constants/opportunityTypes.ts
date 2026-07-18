@@ -7,10 +7,15 @@ export interface OpportunityTypeMeta {
   iconName: IconName;
   emoji: string;
   href: string;
+  /** When true, kind is not marketed or linked on the public site. */
   comingSoon: boolean;
   labelKey: StringKey;
 }
 
+/**
+ * Full kind registry (detail pages, onboarding shells, legacy routes).
+ * Public marketing surfaces must use {@link PUBLIC_LIVE_TYPES} only.
+ */
 export const OPPORTUNITY_TYPE_META: OpportunityTypeMeta[] = [
   {
     kind: 'job',
@@ -53,6 +58,11 @@ export const OPPORTUNITY_TYPE_META: OpportunityTypeMeta[] = [
     labelKey: 'kind.funding',
   },
 ];
+
+/** Kinds linked and marketed on the public site. Jobs only until other inventory is ready. */
+export const PUBLIC_LIVE_TYPES: OpportunityTypeMeta[] = OPPORTUNITY_TYPE_META.filter(
+  (t) => !t.comingSoon
+);
 
 export function getTypeMeta(kind: string): OpportunityTypeMeta | undefined {
   return OPPORTUNITY_TYPE_META.find((t) => t.kind === kind);

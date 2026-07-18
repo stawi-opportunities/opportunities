@@ -1,10 +1,10 @@
-﻿<!-- Static navbar skeleton — matches Nav.tsx exactly to prevent layout shift
+<!-- Static navbar skeleton — matches Nav.tsx exactly to prevent layout shift
      before React hydrates #mount-nav. Also includes a plain-JS hamburger
      toggle so the nav is usable on mobile before React boots. -->
 <div id="mount-nav">
   <header class="sticky top-0 z-40 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur-xl">
     <div class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-      <a href="/" class="flex-shrink-0" aria-label="Stawi — Growing together">
+      <a href="/" class="flex-shrink-0" aria-label="Stawi Jobs — Growing together">
         <img src="/images/logo.svg" alt="Stawi" height="36" class="h-9 w-auto"/>
       </a>
 
@@ -16,11 +16,11 @@
       </button>
 
       <nav class="hidden items-center gap-1 md:flex" aria-label="Main navigation">
-        <span class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Browse</span>
+        <a href="/search/"     class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Find jobs</a>
+        <a href="/jobs/"       class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Browse jobs</a>
         <a href="/categories/" class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Categories</a>
         <a href="/pricing/"    class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Pricing</a>
         <a href="/about/"      class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">About</a>
-        <a href="/faq/"        class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">FAQ</a>
       </nav>
       <div class="flex items-center gap-2">
         <a href="/onboarding/" class="inline-flex items-center rounded-lg bg-navy-900 px-4 py-2 text-sm font-semibold text-white">
@@ -31,7 +31,8 @@
 
     {{/* Mobile menu — hidden by default, toggled by #nav-toggle */}}
     <div id="mobile-menu" class="hidden border-t border-gray-100 px-4 pb-4 pt-2 md:hidden" role="navigation" aria-label="Mobile navigation">
-      <a href="/browse/" class="block rounded-md px-3 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">Browse</a>
+      <a href="/search/" class="block rounded-md px-3 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">Find jobs</a>
+      <a href="/jobs/" class="block rounded-md px-3 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">Browse jobs</a>
       <a href="/categories/" class="block rounded-md px-3 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">Categories</a>
       <a href="/pricing/" class="block rounded-md px-3 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">Pricing</a>
       <a href="/about/" class="block rounded-md px-3 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">About</a>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Facets } from '@/types/search';
+import { searchQueryText } from '@/types/search';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSearchURLParams } from '@/hooks/useSearchURLParams';
@@ -28,7 +29,8 @@ export default function Search() {
     params.employment_type ||
     params.seniority ||
     params.country ||
-    params.q
+    params.q ||
+    params.l
   );
 
   function clearAll() {
@@ -92,7 +94,7 @@ export default function Search() {
         <section>
           <Cascade
             filters={{
-              q: params.q,
+              q: searchQueryText(params),
               category: params.category,
               remote_type: params.remote_type,
               employment_type: params.employment_type,
