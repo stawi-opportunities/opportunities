@@ -34,6 +34,7 @@ export interface Strings {
 
   // ---- Call-to-action buttons ----
   'cta.applyNow': string;
+  'cta.signInToApply': string;
   'cta.saveJob': string;
   'cta.loadMore': string;
   'cta.subscribe': string;
@@ -548,6 +549,7 @@ const en: Strings = {
   'nav.settings': 'Settings',
 
   'cta.applyNow': 'Apply now',
+  'cta.signInToApply': 'Sign in to apply',
   'cta.saveJob': 'Save job',
   'cta.loadMore': 'Load more',
   'cta.subscribe': 'Subscribe',

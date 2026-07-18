@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSnapshot } from '@/api/snapshot';
-import { pingJobView } from '@/api/views';
+import { pingApply, pingJobView } from '@/api/views';
 import { categoryLabel, isoInPast, timeAgo } from '@/utils/format';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
@@ -24,6 +24,7 @@ import { Icon } from '@/components/ui/Icon';
 import { getTypeMeta } from '@/constants/opportunityTypes';
 import HowToApplySection from '@/components/HowToApplySection';
 import { OpportunitySideChat } from '@/components/OpportunitySideChat';
+import { useAuth } from '@/providers/AuthProvider';
 
 const JobBody = lazy(() => import('@/components/bodies/JobBody'));
 const ScholarshipBody = lazy(() => import('@/components/bodies/ScholarshipBody'));
@@ -33,6 +34,8 @@ const FundingBody = lazy(() => import('@/components/bodies/FundingBody'));
 
 export default function OpportunityDetail() {
   const { lang, t } = useI18n();
+  const { hasSession } = useAuth();
+  const autoApplyDone = useRef(false);
 
   const route = (() => {
     if (typeof window === 'undefined') return null;
@@ -52,6 +55,31 @@ export default function OpportunityDetail() {
   const mountedAtRef = useRef<number>(
     typeof performance !== 'undefined' ? performance.now() : Date.now()
   );
+
+  // After login-to-apply (?apply=1), open the employer URL once for signed-in users.
+  useEffect(() => {
+    if (!hasSession || !q.data?.apply_url || autoApplyDone.current) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('apply') !== '1') return;
+    autoApplyDone.current = true;
+    const snap = q.data;
+    trackApplyClick({
+      canonical_job_id: snap.id,
+      slug: snap.slug,
+      company: snap.issuing_entity,
+      apply_url: snap.apply_url ?? '',
+      dwell_ms: 0,
+    });
+    pingApply(snap.slug);
+    window.open(snap.apply_url, '_blank', 'noopener,noreferrer');
+    params.delete('apply');
+    const clean =
+      window.location.pathname +
+      (params.toString() ? `?${params.toString()}` : '') +
+      window.location.hash;
+    window.history.replaceState({}, '', clean);
+  }, [hasSession, q.data]);
 
   useEffect(() => {
     if (!q.data) return;
@@ -218,34 +246,84 @@ function ApplyLink({
   t: (k: StringKey, fallback?: string) => string;
   large?: boolean;
 }) {
+  const { hasSession, ready, login } = useAuth();
   const className = large ? 'btn-primary px-8 py-3 text-base' : 'btn-primary';
+  const label = hasSession ? applyCtaLabel(snap.kind, t) : t('cta.signInToApply');
+
+  const track = () => {
+    trackApplyClick({
+      canonical_job_id: snap.id,
+      slug: snap.slug,
+      company: snap.issuing_entity,
+      apply_url: snap.apply_url ?? '',
+      dwell_ms: Math.round(
+        (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+          mountedAtRef.current
+      ),
+    });
+  };
+
+  const openEmployer = () => {
+    track();
+    pingApply(snap.slug);
+    if (snap.apply_url) {
+      window.open(snap.apply_url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const signInThenApply = () => {
+    // Stash apply intent on the current listing so OIDC returnTo restores it.
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('apply', '1');
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    } catch {
+      /* ignore */
+    }
+    void login();
+  };
+
+  // Wait for auth resolve so we don't flash "Apply" before session restore.
+  if (!ready) {
+    return (
+      <span className={`${className} pointer-events-none opacity-60`} aria-busy="true">
+        {t('cta.signInToApply')}
+      </span>
+    );
+  }
+
+  if (!hasSession) {
+    return (
+      <button type="button" onClick={signInThenApply} className={className}>
+        {label}
+        {!large && (
+          <svg className="ml-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path
+              fillRule="evenodd"
+              d="M3 4.25A2.25 2.25 0 015.25 2h5.5A2.25 2.25 0 0113 4.25v2a.75.75 0 01-1.5 0v-2a.75.75 0 00-.75-.75h-5.5a.75.75 0 00-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 00.75-.75v-2a.75.75 0 011.5 0v2A2.25 2.25 0 0110.75 18h-5.5A2.25 2.25 0 013 15.75V4.25z"
+              clipRule="evenodd"
+            />
+            <path
+              fillRule="evenodd"
+              d="M6 10a.75.75 0 01.75-.75h9.546l-1.048-.943a.75.75 0 111.004-1.114l2.5 2.25a.75.75 0 010 1.114l-2.5 2.25a.75.75 0 11-1.004-1.114l1.048-.943H6.75A.75.75 0 016 10z"
+              clipRule="evenodd"
+            />
+          </svg>
+        )}
+      </button>
+    );
+  }
+
   return (
-    <a
-      href={snap.apply_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={() => {
-        trackApplyClick({
-          canonical_job_id: snap.id,
-          slug: snap.slug,
-          company: snap.issuing_entity,
-          apply_url: snap.apply_url ?? '',
-          dwell_ms: Math.round(
-            (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
-              mountedAtRef.current
-          ),
-        });
-      }}
-      className={className}
-    >
-      {applyCtaLabel(snap.kind, t)}
+    <button type="button" onClick={openEmployer} className={className}>
+      {label}
       {!large && (
         <svg className="ml-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
           <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 100-2H5z" />
         </svg>
       )}
-    </a>
+    </button>
   );
 }
 

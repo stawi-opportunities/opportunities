@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePostLoginPath, sanitizeReturnTo } from './postLoginRedirect';
+import {
+  isContentReturnPath,
+  resolvePostLoginPath,
+  sanitizeReturnTo,
+} from './postLoginRedirect';
 
 describe('sanitizeReturnTo', () => {
   it('defaults empty / invalid to /', () => {
@@ -16,10 +20,29 @@ describe('sanitizeReturnTo', () => {
   });
 });
 
+describe('isContentReturnPath', () => {
+  it('recognizes opportunity detail paths', () => {
+    expect(isContentReturnPath('/jobs/rust-dev/')).toBe(true);
+    expect(isContentReturnPath('/jobs/rust-dev/?apply=1')).toBe(true);
+    expect(isContentReturnPath('/scholarships/foo/')).toBe(true);
+    expect(isContentReturnPath('/search/?q=rust')).toBe(false);
+    expect(isContentReturnPath('/dashboard/')).toBe(false);
+  });
+});
+
 describe('resolvePostLoginPath', () => {
-  it('always sends active users to the dashboard app surface', () => {
+  it('restores job detail for login-to-apply (any subscription)', () => {
+    expect(resolvePostLoginPath('/jobs/rust-dev/?apply=1', 'none')).toBe(
+      '/jobs/rust-dev/?apply=1'
+    );
+    expect(resolvePostLoginPath('/jobs/rust-dev/', 'active')).toBe('/jobs/rust-dev/');
+    expect(resolvePostLoginPath('/jobs/rust-dev/?apply=1', 'active')).toBe(
+      '/jobs/rust-dev/?apply=1'
+    );
+  });
+
+  it('sends active users to the dashboard by default', () => {
     expect(resolvePostLoginPath('/', 'active')).toBe('/dashboard/');
-    expect(resolvePostLoginPath('/jobs/rust-dev/', 'active')).toBe('/dashboard/');
     expect(resolvePostLoginPath('/search/?q=rust', 'active')).toBe('/dashboard/');
     expect(resolvePostLoginPath('/onboarding/?plan=pro', 'active')).toBe('/dashboard/');
     expect(resolvePostLoginPath('/auth/callback/', 'active')).toBe('/dashboard/');
@@ -30,10 +53,9 @@ describe('resolvePostLoginPath', () => {
     expect(resolvePostLoginPath('/dashboard/', 'active')).toBe('/dashboard/');
   });
 
-  it('always sends unpaid users to onboarding', () => {
+  it('sends unpaid users to onboarding when not returning to content', () => {
     expect(resolvePostLoginPath('/', 'none')).toBe('/onboarding/');
     expect(resolvePostLoginPath('/dashboard/', 'none')).toBe('/onboarding/');
-    expect(resolvePostLoginPath('/jobs/rust-dev/', 'none')).toBe('/onboarding/');
     expect(resolvePostLoginPath('/auth/callback/', 'none')).toBe('/onboarding/');
   });
 

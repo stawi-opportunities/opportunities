@@ -1,13 +1,11 @@
 /**
  * Post-login destination resolution.
  *
- * After a successful sign-in (or when a signed-in user hits the marketing
- * home), the only application landings are:
- *
- *  - `/dashboard/`  — active subscription
- *  - `/onboarding/` — everyone else (preserve `?plan=` when mid-onboarding)
- *
- * Public content pages (/jobs, /search, …) are never post-login targets.
+ * After a successful sign-in:
+ *  - Opportunity detail pages are restored when the user signed in to apply
+ *    (browse free, login-to-apply).
+ *  - `/dashboard/`  — active subscription (default app surface)
+ *  - `/onboarding/` — unpaid default when no content return path
  */
 
 /**
@@ -26,29 +24,54 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
   }
 }
 
+/** Public listing detail paths users may return to after login-to-apply. */
+const CONTENT_DETAIL =
+  /^\/(jobs|scholarships|tenders|deals|funding)\/[^/]+\/?/;
+
+/**
+ * True when returnTo is an opportunity detail page (or has apply intent).
+ * Browse is free; apply requires auth — we must restore the listing after login.
+ */
+export function isContentReturnPath(path: string): boolean {
+  const dest = sanitizeReturnTo(path);
+  if (CONTENT_DETAIL.test(dest.split('?')[0] ?? '')) return true;
+  try {
+    const u = new URL(dest, 'http://local.invalid');
+    if (u.searchParams.get('apply') === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 export type SubscriptionStatus = 'active' | 'none' | 'canceled' | 'past_due' | string;
 
 /**
- * Decide where to send the browser after a successful OIDC code exchange
- * (or when bouncing an already-authenticated user off the marketing home).
+ * Decide where to send the browser after a successful OIDC code exchange.
  *
- * `returnTo` is only used to preserve onboarding query params (e.g. ?plan=pro)
- * or a dashboard section hash (e.g. #matches). It never restores public pages.
+ * Content return paths (job detail after "Sign in to apply") win for everyone.
+ * Otherwise active → dashboard; unpaid → onboarding (preserve plan query).
  */
 export function resolvePostLoginPath(
   returnTo: string | null | undefined,
   subscriptionStatus: SubscriptionStatus
 ): string {
   const dest = sanitizeReturnTo(returnTo);
-  const active = subscriptionStatus === 'active';
+  const active =
+    subscriptionStatus === 'active' ||
+    subscriptionStatus === 'past_due' ||
+    subscriptionStatus === 'trial';
+
+  // Login-to-apply / mid-browse: always restore the listing.
+  if (isContentReturnPath(dest)) {
+    return dest;
+  }
 
   if (active) {
-    // Resume a dashboard section hash when they signed in from there.
     if (dest.startsWith('/dashboard')) return dest;
     return '/dashboard/';
   }
 
-  // Unpaid / unknown: always onboarding. Keep plan query if they were mid-flow.
   if (dest.startsWith('/onboarding')) {
     return dest;
   }

@@ -118,7 +118,7 @@ function SendSpinner() {
 }
 
 export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
-  const { state, hasSession } = useAuth();
+  const { state, hasSession, login } = useAuth();
   const profileQ = useCandidateProfile();
   const [openMobile, setOpenMobile] = useState(false);
   const [messages, setMessages] = useState<OnboardingChatMessage[]>([]);
@@ -318,15 +318,37 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
               </div>
               {showCurrentCard && i === messages.length - 1 && (
                 <a
-                  href={card.apply_url || card.href}
-                  target={card.apply_url ? '_blank' : undefined}
-                  rel={card.apply_url ? 'noopener noreferrer' : undefined}
+                  // Never deep-link apply_url for signed-out users — apply requires login.
+                  href={
+                    hasSession && card.apply_url
+                      ? card.apply_url
+                      : card.apply_url
+                        ? `${card.href}${card.href.includes('?') ? '&' : '?'}apply=1`
+                        : card.href
+                  }
+                  target={hasSession && card.apply_url ? '_blank' : undefined}
+                  rel={hasSession && card.apply_url ? 'noopener noreferrer' : undefined}
+                  onClick={(e) => {
+                    if (hasSession || !card.apply_url) return;
+                    // Signed out: stay on listing with apply intent, then OIDC.
+                    e.preventDefault();
+                    try {
+                      const url = new URL(window.location.href);
+                      url.searchParams.set('apply', '1');
+                      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+                    } catch {
+                      /* ignore */
+                    }
+                    void login();
+                  }}
                   className="block rounded-xl border border-stone-200 bg-white px-3.5 py-3 shadow-sm transition hover:border-blue-300 hover:shadow"
                 >
                   <p className="text-sm font-semibold text-stone-900">{card.title}</p>
                   <p className="mt-0.5 text-xs text-stone-500">{card.subtitle}</p>
                   {card.apply_url && (
-                    <p className="mt-1.5 text-xs font-medium text-blue-600">Apply →</p>
+                    <p className="mt-1.5 text-xs font-medium text-blue-600">
+                      {hasSession ? 'Apply →' : 'Sign in to apply →'}
+                    </p>
                   )}
                 </a>
               )}

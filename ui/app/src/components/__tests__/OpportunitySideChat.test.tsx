@@ -18,7 +18,7 @@ vi.mock('@/api/profile', () => ({
 }));
 
 vi.mock('@/providers/AuthProvider', () => ({
-  useAuth: () => ({ state: 'authenticated', login: vi.fn() }),
+  useAuth: () => ({ state: 'authenticated', hasSession: true, login: vi.fn() }),
 }));
 
 const snap: OpportunitySnapshot = {
