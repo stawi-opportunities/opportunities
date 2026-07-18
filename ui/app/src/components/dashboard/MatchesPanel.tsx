@@ -18,12 +18,15 @@ import { Button } from '@/components/ui/Button';
  */
 export function MatchesPanel({
   plan,
+  freeProof = false,
   queued,
   delivered,
   subQueryError,
   onUpgrade,
 }: {
   plan: PlanId;
+  /** Unpaid users get proof-tier matches (capped) before subscribe. */
+  freeProof?: boolean;
   queued: number | null;
   delivered: number | null;
   subQueryError: boolean;
@@ -34,8 +37,8 @@ export function MatchesPanel({
   const [refreshKey, setRefreshKey] = useState(0);
 
   const planInfo = planById(plan);
-  const unlimited = planInfo.matchesPerWeek === null;
-  const cap = planInfo.matchesPerWeek ?? 0;
+  const unlimited = !freeProof && planInfo.matchesPerWeek === null;
+  const cap = freeProof ? 3 : (planInfo.matchesPerWeek ?? 0);
   const progressPct =
     !unlimited && cap > 0 ? Math.min(100, Math.round(((delivered ?? 0) / cap) * 100)) : 0;
 
@@ -154,7 +157,25 @@ export function MatchesPanel({
           </p>
         </div>
 
-        {plan === 'starter' && (
+        {freeProof && (
+          <div className="mt-4 rounded-md border border-accent-200 bg-accent-50 p-3 text-sm text-gray-800 dark:border-accent-800 dark:bg-accent-950/40 dark:text-gray-200">
+            Free proof: up to ~3 quality matches while you evaluate us. Like what you see?{' '}
+            {onUpgrade ? (
+              <button
+                type="button"
+                onClick={onUpgrade}
+                className="font-medium text-accent-700 underline dark:text-accent-400"
+              >
+                Subscribe for more →
+              </button>
+            ) : (
+              <a href="/pricing/" className="font-medium text-accent-700 underline dark:text-accent-400">
+                Subscribe for more →
+              </a>
+            )}
+          </div>
+        )}
+        {!freeProof && plan === 'starter' && (
           <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300">
             Want unlimited discovery and priority match alerts?{' '}
             {onUpgrade ? (

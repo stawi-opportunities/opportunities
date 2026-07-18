@@ -264,18 +264,22 @@ func main() {
 		ProfileID:       profileIDForCandidate,
 		PublicSiteURL:   cfg.PublicSiteURL,
 	})
+	// CV scorer is free tools + pipeline (works when embedding/inference is configured).
+	var cvScorer *cv.Scorer
 	if extractor != nil {
-		scorer := cv.NewScorer(extractor)
+		cvScorer = cv.NewScorer(extractor)
+	}
+	if extractor != nil {
 		extractH := eventv1.NewCVExtractHandler(eventv1.CVExtractDeps{
 			Svc:                   svc,
 			Extractor:             cvExtractorAdapter{extractor},
-			Scorer:                cvScorerAdapter{scorer},
+			Scorer:                cvScorerAdapter{cvScorer},
 			ExtractorModelVersion: cfg.InferenceModel,
 			ScorerModelVersion:    "cv-scorer-v1",
 		})
 		improveH := eventv1.NewCVImproveHandler(eventv1.CVImproveDeps{
 			Svc:          svc,
-			Fixes:        cvFixAdapter{scorer: scorer},
+			Fixes:        cvFixAdapter{scorer: cvScorer},
 			ModelVersion: cfg.InferenceModel,
 		})
 		embedH := eventv1.NewCVEmbedHandler(eventv1.CVEmbedDeps{
@@ -565,6 +569,11 @@ func main() {
 			Matches:    meSubMatches,
 		}),
 	))
+
+	// Free career tools — value before pay (CV ATS score + job fitness).
+	toolsDeps := httpv1.ToolsDeps{DB: sqlDB, Scorer: cvScorer}
+	mux.Handle("POST /me/tools/cv-score", authMW(httpv1.CVScoreHandler(toolsDeps)))
+	mux.Handle("POST /me/tools/job-fit", authMW(httpv1.JobFitHandler(toolsDeps)))
 
 	// /me/onboarding — resumable wizard. Same handler serves GET +
 	// PUT; the underlying repo type implements both interfaces.

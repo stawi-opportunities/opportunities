@@ -14,6 +14,7 @@ import (
 	"github.com/rs/xid"
 
 	"github.com/stawi-opportunities/opportunities/pkg/applications"
+	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
@@ -408,11 +409,12 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "matching_unavailable", "match pipeline not configured")
 			return
 		}
-		// Paid (or past_due still entitled) only — free users use public search.
-		var sub string
+		// Free users get a proof-tier match refresh (capped). Paid/past_due/trial
+		// keep plan caps on the index. Proof is intentional — value before pay.
+		var sub, planID string
 		if err := d.DB.QueryRowContext(ctx,
-			`SELECT COALESCE(subscription,'') FROM candidate_profiles WHERE id = $1`, cand,
-		).Scan(&sub); err != nil {
+			`SELECT COALESCE(subscription,''), COALESCE(plan_id,'') FROM candidate_profiles WHERE id = $1`, cand,
+		).Scan(&sub, &planID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
 				return
@@ -420,13 +422,10 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			ProblemFromError(w, err)
 			return
 		}
+		paid := false
 		switch strings.ToLower(strings.TrimSpace(sub)) {
 		case "paid", "past_due", "trial":
-			// ok
-		default:
-			httpmw.ProblemJSON(w, http.StatusPaymentRequired, "subscription_required",
-				"active subscription required to refresh matches")
-			return
+			paid = true
 		}
 
 		idx, err := d.IndexStore.Get(ctx, cand)
@@ -436,7 +435,18 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			return
 		}
 		minScore := effectiveMinScore(idx.MinScore, d.DefaultMinScore)
+		// Free proof: wider lookback so first match is useful; tight caps.
 		since := time.Now().UTC().Add(-30 * 24 * time.Hour)
+		dailyCap, weeklyCap := idx.DailyCap, idx.WeeklyCap
+		if !paid {
+			since = time.Now().UTC().Add(-90 * 24 * time.Hour)
+			ent := billing.EntitlementsFor(billing.PlanID(planID))
+			// Empty plan → free proof caps (not starter).
+			if strings.TrimSpace(planID) == "" || strings.EqualFold(sub, "free") || sub == "" {
+				ent = billing.EntitlementsFor("")
+			}
+			dailyCap, weeklyCap = ent.DailyCap, ent.WeeklyCap
+		}
 		res, runErr := matching.GapFill(ctx, matching.GapFillInput{
 			CandidateID:    cand,
 			Embedding:      idx.Embedding,
@@ -445,8 +455,8 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			SalaryFloorUSD: idx.SalaryFloorUSD,
 			Since:          since,
 			MinScore:       minScore,
-			DailyCap:       idx.DailyCap,
-			WeeklyCap:      idx.WeeklyCap,
+			DailyCap:       dailyCap,
+			WeeklyCap:      weeklyCap,
 		}, matching.GapFillDeps{
 			KNN:      d.KNN,
 			Store:    d.Matches,

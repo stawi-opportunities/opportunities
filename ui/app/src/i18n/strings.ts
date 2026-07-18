@@ -25,6 +25,7 @@ export interface Strings {
   'nav.overview': string;
   'nav.feed': string;
   'nav.matches': string;
+  'nav.tools': string;
   'nav.saved': string;
   'nav.applications': string;
   'nav.preferences': string;
@@ -539,6 +540,7 @@ const en: Strings = {
   'nav.overview': 'Overview',
   'nav.feed': 'Feed',
   'nav.matches': 'Matches',
+  'nav.tools': 'Tools',
   'nav.saved': 'Saved',
   'nav.applications': 'Applications',
   'nav.preferences': 'Preferences',

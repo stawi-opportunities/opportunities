@@ -164,6 +164,49 @@ export default function Onboarding() {
 
   const chips = useMemo(() => summaryChips(fields), [fields]);
 
+  function profilePayload() {
+    const opportunityCountries = fields.preferred_countries?.length
+      ? fields.preferred_countries
+      : fields.country
+        ? [fields.country]
+        : [];
+    return {
+      target_job_title: fields.target_job_title?.trim() || '',
+      experience_level: fields.experience_level?.trim() || '',
+      job_search_status: fields.job_search_status ?? 'actively_looking',
+      salary_min: fields.salary_min ?? undefined,
+      salary_max: fields.salary_max ?? fields.salary_min ?? undefined,
+      currency: fields.currency ?? 'USD',
+      wants_ats_report: true,
+      preferred_regions: fields.preferred_regions ?? [],
+      preferred_timezones: fields.preferred_timezones ?? [],
+      preferred_languages: fields.preferred_languages ?? [],
+      job_types: fields.job_types ?? [],
+      country: opportunityCountries[0] ?? fields.country ?? '',
+      plan,
+      agree_terms: true as const,
+    };
+  }
+
+  /** Primary path: save profile and open dashboard for free match proof. */
+  async function goToDashboardFree() {
+    if (!agreeTerms) {
+      setSubmitError(t('onboard.validationTerms'));
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const step = bumpWizardStep(2);
+      await saveOnboardingDraft(step, fieldsToDraft(fields, plan), messages).catch(() => undefined);
+      await submitOnboarding(profilePayload()).catch(() => undefined);
+      window.location.assign('/dashboard/#matches');
+    } catch (e) {
+      setSubmitError(e instanceof Error && e.message ? e.message : t('error.somethingWrong'));
+      setSubmitting(false);
+    }
+  }
+
   async function finishOnboarding() {
     if (!agreeTerms) {
       setSubmitError(t('onboard.validationTerms'));
@@ -172,38 +215,11 @@ export default function Onboarding() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      // Mark payment stage so refresh stays on plan (not chat).
       const payStep = bumpWizardStep(3);
-      const opportunityCountries = fields.preferred_countries?.length
-        ? fields.preferred_countries
-        : fields.country
-          ? [fields.country]
-          : [];
-      const profilePayload = {
-        target_job_title: fields.target_job_title?.trim() || '',
-        experience_level: fields.experience_level?.trim() || '',
-        job_search_status: fields.job_search_status ?? 'actively_looking',
-        salary_min: fields.salary_min ?? undefined,
-        salary_max: fields.salary_max ?? fields.salary_min ?? undefined,
-        currency: fields.currency ?? 'USD',
-        wants_ats_report: true,
-        preferred_regions: fields.preferred_regions ?? [],
-        preferred_timezones: fields.preferred_timezones ?? [],
-        preferred_languages: fields.preferred_languages ?? [],
-        job_types: fields.job_types ?? [],
-        country: opportunityCountries[0] ?? fields.country ?? '',
-        plan,
-        agree_terms: true as const,
-      };
-
-      // Profile + draft: best-effort in the background. Checkout is the
-      // critical path and must not wait on onboard success or chat completeness.
       void saveOnboardingDraft(payStep, fieldsToDraft(fields, plan), messages).catch(
         () => undefined
       );
-      void submitOnboarding(profilePayload).catch(() => undefined);
-
-      // Steps 1–3: create checkout → redirect to Flutterwave (or pending recovery).
+      void submitOnboarding(profilePayload()).catch(() => undefined);
       await startCheckoutAndNavigate({ plan_id: plan });
     } catch (e) {
       setSubmitError(e instanceof Error && e.message ? e.message : t('error.somethingWrong'));
@@ -235,7 +251,7 @@ export default function Onboarding() {
             plan={plan}
             cvOnFile={cvOnFile}
             showCompleteAction
-            completeLabel="Continue to plans"
+            completeLabel="Continue — free matches next"
             className="flex min-h-0 flex-1 flex-col"
             onFieldsChange={(f, meta) => {
               setFields(f);
@@ -262,10 +278,13 @@ export default function Onboarding() {
     <div className="mx-auto flex max-w-3xl flex-col px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Step 2 of 2 · Choose a plan
+          Step 2 of 2 · Free matches first
         </p>
-        <h1 className="mt-1 text-3xl font-bold text-gray-900">{t('onboard.choosePlan')}</h1>
-        <p className="mt-1 text-gray-600">{t('onboard.choosePlanHint')}</p>
+        <h1 className="mt-1 text-3xl font-bold text-gray-900">See matches before you pay</h1>
+        <p className="mt-1 text-gray-600">
+          We&apos;ll show a free shortlist from your CV. Subscribe later if you want more weekly
+          matches and digests.
+        </p>
       </header>
 
       <div className="space-y-6">
@@ -355,16 +374,29 @@ export default function Onboarding() {
           </p>
         )}
 
-        <button
-          type="button"
-          disabled={submitting || !agreeTerms}
-          onClick={() => void finishOnboarding()}
-          className="w-full rounded-xl bg-navy-900 px-6 py-3 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50 sm:w-auto"
-        >
-          {submitting
-            ? t('onboard.submitting')
-            : `${t('onboard.continueToPayment')} · $${planById(plan).price}${t('dash.perMonth')}`}
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            disabled={submitting || !agreeTerms}
+            onClick={() => void goToDashboardFree()}
+            className="w-full rounded-xl bg-navy-900 px-6 py-3 text-sm font-medium text-white shadow-sm hover:bg-navy-800 disabled:opacity-50 sm:w-auto"
+          >
+            {submitting ? t('onboard.submitting') : 'See my free matches first →'}
+          </button>
+          <button
+            type="button"
+            disabled={submitting || !agreeTerms}
+            onClick={() => void finishOnboarding()}
+            className="w-full rounded-xl border border-gray-300 bg-white px-6 py-3 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
+          >
+            {submitting
+              ? t('onboard.submitting')
+              : `Subscribe · $${planById(plan).price}${t('dash.perMonth')}`}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">
+          Recommended: open your free match shortlist first. Pay only if the quality is worth it.
+        </p>
       </div>
     </div>
   );

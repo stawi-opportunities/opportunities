@@ -104,7 +104,7 @@ type Entitlements struct {
 }
 
 // EntitlementsFor returns server-side entitlements for a plan.
-// Unknown / empty plan IDs get Starter-safe defaults (not free unlimited).
+// Empty / unknown plan IDs get free-proof caps (value before pay).
 // Legacy "pro" inherits Managed entitlements.
 func EntitlementsFor(plan PlanID) Entitlements {
 	switch plan {
@@ -113,8 +113,9 @@ func EntitlementsFor(plan PlanID) Entitlements {
 		// AutoApply remains false until a real apply automation product ships.
 		return Entitlements{DailyCap: 50, WeeklyCap: 0, AutoApply: false, Priority: "agent"}
 	case PlanStarter:
-		fallthrough
-	default:
 		return Entitlements{DailyCap: 2, WeeklyCap: 5, AutoApply: false, Priority: "standard"}
+	default:
+		// Free proof: enough matches to prove quality before checkout.
+		return Entitlements{DailyCap: 1, WeeklyCap: 3, AutoApply: false, Priority: "proof"}
 	}
 }

@@ -5,6 +5,7 @@ const SECTION_LABELS: Record<SectionId, StringKey> = {
   overview: 'nav.overview',
   feed: 'nav.feed',
   matches: 'nav.matches',
+  tools: 'nav.tools',
   saved: 'nav.saved',
   applications: 'nav.applications',
   preferences: 'nav.preferences',

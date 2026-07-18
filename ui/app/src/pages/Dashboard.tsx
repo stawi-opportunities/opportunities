@@ -18,6 +18,7 @@ import { GuidedTour, isTourCompleted } from '@/components/dashboard/GuidedTour';
 import { CompletePaymentPanel } from '@/components/dashboard/CompletePaymentPanel';
 import { PendingCheckoutPoller } from '@/components/dashboard/PendingCheckoutPoller';
 import { MatchesPanel } from '@/components/dashboard/MatchesPanel';
+import { ToolsPanel } from '@/components/dashboard/ToolsPanel';
 import { OpportunitiesFeed } from '@/components/OpportunitiesFeed';
 import { DashboardSidebar, type SectionId } from '@/components/dashboard/DashboardSidebar';
 import { DashboardBreadcrumbs } from '@/components/dashboard/DashboardBreadcrumbs';
@@ -40,6 +41,7 @@ function getSectionFromHash(): SectionId {
     'overview',
     'feed',
     'matches',
+    'tools',
     'saved',
     'applications',
     'preferences',
@@ -63,6 +65,7 @@ export default function Dashboard() {
     overview: 'Overview',
     feed: 'Feed',
     matches: 'Matches',
+    tools: 'Tools',
     saved: 'Saved',
     applications: 'Applications',
     preferences: 'Preferences',
@@ -77,36 +80,9 @@ export default function Dashboard() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  useEffect(() => {
-    // Only gate once we have a settled session. Never bounce during refresh
-    // or while auth is still restoring from IndexedDB.
-    if (!hasSession || !ready) return;
-    if (state === 'refreshing') return;
-    if (subQ.isLoading || subQ.isFetching) return;
-    // Never bounce on a failed subscription fetch — paid users must not be
-    // sent back to onboarding because of a transient API error.
-    if (subQ.isError) return;
-    // Entitled: active, past_due (dunning grace), trial.
-    const st = subQ.data?.status;
-    if (st === 'active' || st === 'past_due' || st === 'trial') return;
-    // Allow the dashboard to host PendingCheckoutPoller while Flutterwave
-    // is still confirming, after return (?billing=success), or when the
-    // user needs to retry (?billing=failed). Bouncing to onboarding
-    // mid-poll leaves the user stuck unpaid after a charge.
-    const params = new URLSearchParams(window.location.search);
-    const billing = params.get('billing');
-    if (billing === 'pending' || billing === 'success' || billing === 'failed') {
-      return;
-    }
-    try {
-      if (localStorage.getItem('stawi.billing.pending_prompt_id')) {
-        return;
-      }
-    } catch {
-      /* private mode */
-    }
-    window.location.assign('/onboarding/');
-  }, [hasSession, ready, state, subQ.isLoading, subQ.isFetching, subQ.isError, subQ.data?.status]);
+  // Free users keep the dashboard: first-match proof + tools before pay.
+  // Only bounce if profile was never started (no onboarding draft / no CV path).
+  // Payment is optional upgrade, not a hard gate.
 
   useEffect(() => {
     if (!isTourCompleted()) {
@@ -190,68 +166,106 @@ export default function Dashboard() {
             </div>
           </aside>
           <section className="space-y-4 sm:space-y-6">
-            {plan === null || !isActive ? (
-              <CompletePaymentPanel plan={plan} status={subscription} />
-            ) : (
-              <>
-                {activeSection === 'overview' && (
-                  <ErrorBoundary>
-                    <StatsRow />
-                    <div className="mt-6">
-                      <OverviewPanel />
-                    </div>
-                  </ErrorBoundary>
+            {!isActive && (
+              <div className="rounded-xl border border-accent-200 bg-accent-50/70 p-4 dark:border-accent-800 dark:bg-accent-950/30">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Free proof mode — get real matches before you pay
+                </p>
+                <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                  Upload a CV, open Matches, and run <strong>Find matches now</strong>. Subscribe
+                  only when the shortlist is worth it. Tools (CV score &amp; job fit) stay free.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('matches')}
+                    className="rounded-md bg-navy-900 px-3 py-2 text-sm font-medium text-white hover:bg-navy-800"
+                  >
+                    See my matches →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('tools')}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-900 dark:text-gray-200"
+                  >
+                    Open free tools
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('billing')}
+                    className="rounded-md border border-transparent px-3 py-2 text-sm font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
+                  >
+                    View plans
+                  </button>
+                </div>
+              </div>
+            )}
+            {activeSection === 'overview' && (
+              <ErrorBoundary>
+                {isActive && <StatsRow />}
+                <div className={isActive ? 'mt-6' : ''}>
+                  <OverviewPanel />
+                </div>
+              </ErrorBoundary>
+            )}
+            {activeSection === 'feed' && (
+              <ErrorBoundary>
+                {plan === 'managed' && sub?.agent && <AgentCard agent={sub.agent} />}
+                <OpportunitiesFeed />
+              </ErrorBoundary>
+            )}
+            {activeSection === 'matches' && (
+              <ErrorBoundary>
+                <MatchesPanel
+                  plan={plan ?? 'starter'}
+                  freeProof={!isActive}
+                  queued={sub?.queued_matches ?? null}
+                  delivered={sub?.delivered_this_week ?? null}
+                  subQueryError={subQ.isError}
+                  onUpgrade={() => navigate('billing')}
+                />
+              </ErrorBoundary>
+            )}
+            {activeSection === 'tools' && (
+              <ErrorBoundary>
+                <ToolsPanel />
+              </ErrorBoundary>
+            )}
+            {activeSection === 'saved' && (
+              <ErrorBoundary>
+                <SavedJobsPanel />
+              </ErrorBoundary>
+            )}
+            {activeSection === 'applications' && (
+              <ErrorBoundary>
+                <ApplicationsPanel />
+              </ErrorBoundary>
+            )}
+            {activeSection === 'preferences' && (
+              <ErrorBoundary>
+                <PreferencesPanel />
+              </ErrorBoundary>
+            )}
+            {activeSection === 'billing' && (
+              <ErrorBoundary>
+                {isActive && plan ? (
+                  <BillingPanel
+                    plan={plan}
+                    renewsAt={sub?.renews_at}
+                    cancelAtPeriodEnd={sub?.cancel_at_period_end}
+                    onOpenPlanChange={() => setShowPlanChange(true)}
+                    onOpenCancel={() => setShowCancel(true)}
+                    t={t}
+                  />
+                ) : (
+                  <CompletePaymentPanel plan={plan} status={subscription} />
                 )}
-                {activeSection === 'feed' && (
-                  <ErrorBoundary>
-                    {plan === 'managed' && sub?.agent && <AgentCard agent={sub.agent} />}
-                    <OpportunitiesFeed />
-                  </ErrorBoundary>
-                )}
-                {activeSection === 'matches' && (
-                  <ErrorBoundary>
-                    <MatchesPanel
-                      plan={plan}
-                      queued={sub?.queued_matches ?? null}
-                      delivered={sub?.delivered_this_week ?? null}
-                      subQueryError={subQ.isError}
-                      onUpgrade={() => setShowPlanChange(true)}
-                    />
-                  </ErrorBoundary>
-                )}
-                {activeSection === 'saved' && (
-                  <ErrorBoundary>
-                    <SavedJobsPanel />
-                  </ErrorBoundary>
-                )}
-                {activeSection === 'applications' && (
-                  <ErrorBoundary>
-                    <ApplicationsPanel />
-                  </ErrorBoundary>
-                )}
-                {activeSection === 'preferences' && (
-                  <ErrorBoundary>
-                    <PreferencesPanel />
-                  </ErrorBoundary>
-                )}
-                {activeSection === 'billing' && plan && isActive && (
-                  <ErrorBoundary>
-                    <BillingPanel
-                      plan={plan}
-                      renewsAt={sub?.renews_at}
-                      cancelAtPeriodEnd={sub?.cancel_at_period_end}
-                      onOpenPlanChange={() => setShowPlanChange(true)}
-                      onOpenCancel={() => setShowCancel(true)}
-                      t={t}
-                    />
-                  </ErrorBoundary>
-                )}
-                {activeSection === 'settings' && (
-                  <ErrorBoundary>
-                    <SettingsPage t={t} />
-                  </ErrorBoundary>
-                )}
-              </>
+              </ErrorBoundary>
+            )}
+            {activeSection === 'settings' && (
+              <ErrorBoundary>
+                <SettingsPage t={t} />
+              </ErrorBoundary>
             )}
           </section>
         </div>

@@ -28,6 +28,18 @@ Users pay for **ranked shortlists + digests + honest apply handoff**. They do no
 | Pay | Weak–OK | Ledger failure no longer silent; value after pay is the conversion bet |
 | Digests | Ops OK | Depends on service-notification templates + match quality |
 
+## 2026-07-18 — Trust + free proof + tools
+
+| Change | Detail |
+|--------|--------|
+| Free first matches | Match refresh no longer requires subscription (proof caps 1/day, 3/week) |
+| Dashboard free access | Unpaid users use full dashboard; soft upgrade banner |
+| Onboarding | Primary CTA: free matches → dashboard; subscribe optional |
+| Tools section | Free CV ATS score + job fitness checker |
+| Marketing honesty | Homepage, FAQ, pricing — jobs-first, no auto-apply/agent claims |
+
+Recruiter/employer ATS posting is intentionally deferred.
+
 ## Shipped this cycle (P0)
 
 1. **Managed matches UI** — full feed + auto-refresh (no agent theater).

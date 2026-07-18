@@ -341,9 +341,10 @@ func TestEntitlementsFor(t *testing.T) {
 	require.Equal(t, 0, managed.WeeklyCap)
 	require.False(t, managed.AutoApply)
 
-	// Unknown → starter-safe defaults
+	// Unknown / free → proof caps (value before pay)
 	unknown := billing.EntitlementsFor(billing.PlanID("free"))
-	require.Equal(t, 5, unknown.WeeklyCap)
+	require.Equal(t, 3, unknown.WeeklyCap)
+	require.Equal(t, 1, unknown.DailyCap)
 	require.False(t, unknown.AutoApply)
 }
 
