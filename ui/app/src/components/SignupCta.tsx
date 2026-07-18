@@ -34,14 +34,12 @@ export default function SignupCta() {
 
     const onClick = async (e: MouseEvent) => {
       e.preventDefault();
-      const href = (btn as HTMLAnchorElement).href || '/onboarding/';
+      // Same path as nav Sign in — never send users to /onboarding/ first
+      // (that page dead-ends when auth is down).
       try {
         await login();
-        window.location.href = '/onboarding/';
       } catch {
-        // Auth widget not configured or user dismissed — fall back to
-        // direct navigation so the button never silently does nothing.
-        window.location.href = href;
+        // Stay on page; user can retry. Dismiss / network errors are silent.
       }
     };
 

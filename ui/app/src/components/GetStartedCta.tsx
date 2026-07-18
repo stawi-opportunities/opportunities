@@ -8,13 +8,9 @@ export default function GetStartedCta() {
   // Sticky session: hide while signed in *and* during token refresh.
   if (hasSession) return null;
 
-  const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    // login() is a full-page redirect to the IdP; after sign-in,
-    // /auth/callback/ routes to /dashboard/ or /onboarding/ based on
-    // subscription status. Going straight to login() (rather than the
-    // href fallback) skips an extra hop through /onboarding/. The href
-    // stays as the no-JS fallback.
+  const onClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
+    // Same OIDC path as nav Sign in — no hop through /onboarding/.
     void login();
   };
 
@@ -25,9 +21,9 @@ export default function GetStartedCta() {
           <h2 className="text-3xl font-bold text-navy-900 sm:text-4xl">{t('cta.twoMinutes')}</h2>
           <p className="mt-2 text-lg leading-relaxed text-gray-700">{t('cta.twoMinutesHint')}</p>
         </div>
-        <a href="/onboarding/" onClick={onClick} className="btn-primary px-7 py-3 text-base">
+        <button type="button" onClick={onClick} className="btn-primary px-7 py-3 text-base">
           {t('cta.getStarted')}
-        </a>
+        </button>
       </div>
     </section>
   );

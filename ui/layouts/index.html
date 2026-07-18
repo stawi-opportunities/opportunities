@@ -6,7 +6,6 @@
 <section id="home-hero" class="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center bg-white px-4 py-16 sm:py-20">
   <div class="mx-auto flex w-full max-w-lg flex-col items-center text-center">
 
-    {{/* Photo — torn-edge frame like the reference */}}
     <div class="home-hero-photo relative w-[min(72vw,280px)] sm:w-[300px]" aria-hidden="true">
       <img
         src="/images/hero-jobs.jpg"
@@ -27,19 +26,21 @@
       Sign in for personalized matches and connect with employers looking for candidates like you.
     </p>
 
-    <a
-      href="/onboarding/"
-      class="mt-8 inline-flex items-center gap-2 rounded-full bg-navy-900 px-8 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-navy-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-900 focus-visible:ring-offset-2"
-    >
-      Get Started
-      <span aria-hidden="true">→</span>
-    </a>
+    {{/* React island: Get Started → OIDC login (same as nav Sign in). */}}
+    <div id="mount-home-cta">
+      <a
+        href="/search/"
+        class="mt-8 inline-flex items-center gap-2 rounded-full bg-navy-900 px-8 py-3.5 text-base font-semibold text-white shadow-sm"
+      >
+        Browse jobs
+        <span aria-hidden="true">→</span>
+      </a>
+    </div>
 
   </div>
 </section>
 
 <style>
-  /* Soft torn-paper edge on the hero photo */
   .home-hero-photo {
     filter: drop-shadow(0 12px 28px rgba(12, 18, 38, 0.12));
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AuthState } from '@stawi/auth-runtime';
 import Onboarding from '../Onboarding';
@@ -42,6 +42,11 @@ vi.mock('@/api/candidates', () => ({
   fetchMeSubscription: vi.fn(() => Promise.resolve({ status: 'none' })),
 }));
 
+vi.mock('@/api/profile', () => ({
+  fetchMeCV: vi.fn(() => Promise.resolve(null)),
+  submitOnboarding: vi.fn(),
+}));
+
 function renderOnboarding() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -75,12 +80,13 @@ afterEach(() => {
 });
 
 describe('Onboarding auth handling', () => {
-  it('starts sign-in for a fresh anonymous visitor', async () => {
+  it('shows Sign in for a fresh anonymous visitor (does not auto-login)', async () => {
     authState = 'unauthenticated';
     hasSession = false;
     ready = true;
     renderOnboarding();
-    await waitFor(() => expect(login).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: /sign in/i })).toBeTruthy());
+    expect(login).not.toHaveBeenCalled();
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
@@ -89,17 +95,16 @@ describe('Onboarding auth handling', () => {
     hasSession = false;
     ready = false;
     renderOnboarding();
-    await waitFor(() => expect(login).not.toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText(/loading/i)).toBeTruthy());
+    expect(login).not.toHaveBeenCalled();
   });
 
   it('does NOT bounce back to login after the user logs out (goes home instead)', async () => {
-    // Mounted while authenticated...
     authState = 'authenticated';
     hasSession = true;
     ready = true;
     const { rerender } = renderOnboarding();
 
-    // ...then the user signs out: auth flips to unauthenticated.
     authState = 'unauthenticated';
     hasSession = false;
     ready = true;
@@ -121,5 +126,6 @@ describe('Onboarding auth handling', () => {
     renderOnboarding();
     await waitFor(() => expect(login).not.toHaveBeenCalled());
     expect(replaceSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
   });
 });

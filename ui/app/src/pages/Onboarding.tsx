@@ -58,12 +58,29 @@ export default function Onboarding() {
     }
     // Wait for auth to settle — never treat initializing/refresh as signed-out.
     if (!ready || state !== 'unauthenticated') return;
+    // User signed out while on this page → go home (do not re-prompt login).
     if (wasAuthenticated.current) {
       window.location.replace('/');
-      return;
     }
-    void login();
-  }, [hasSession, ready, state, login]);
+    // Anonymous visitors: show Sign-in CTA (same OIDC path as nav). Never
+    // auto-redirect into a hung "signing in" state when auth is down.
+  }, [hasSession, ready, state]);
+
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  async function onSignIn() {
+    if (loginBusy) return;
+    setLoginError(null);
+    setLoginBusy(true);
+    try {
+      await login();
+      // FedCM completed in-place — continue on this page after session sticks.
+    } catch {
+      setLoginError('Could not start sign-in. Try again in a moment.');
+      setLoginBusy(false);
+    }
+  }
 
   const [phase, setPhase] = useState<Phase>('chat');
   const [fields, setFields] = useState<OnboardingChatFields>({});
@@ -163,6 +180,43 @@ export default function Onboarding() {
   }
 
   const chips = useMemo(() => summaryChips(fields), [fields]);
+
+  // Auth still restoring — keep shell quiet.
+  if (!ready) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-400">
+        Loading…
+      </div>
+    );
+  }
+
+  // Signed-out: explicit Sign in (same as nav), never a stuck intermediate page.
+  if (!hasSession) {
+    return (
+      <div className="mx-auto flex max-w-sm flex-col items-center px-4 py-20 text-center">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Sign in to continue</h1>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          Use the same secure sign-in as the rest of the site.
+        </p>
+        <button
+          type="button"
+          onClick={() => void onSignIn()}
+          disabled={loginBusy}
+          className="mt-6 inline-flex items-center rounded-full bg-navy-900 px-6 py-3 text-sm font-semibold text-white hover:bg-navy-800 disabled:opacity-70"
+        >
+          {loginBusy ? 'Signing in…' : 'Sign in'}
+        </button>
+        {loginError && (
+          <p className="mt-3 text-sm text-red-600" role="alert">
+            {loginError}
+          </p>
+        )}
+        <a href="/search/" className="mt-4 text-sm text-gray-500 hover:underline">
+          Browse jobs instead
+        </a>
+      </div>
+    );
+  }
 
   function profilePayload() {
     const opportunityCountries = fields.preferred_countries?.length
