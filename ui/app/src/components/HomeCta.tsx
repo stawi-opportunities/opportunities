@@ -35,7 +35,7 @@ export default function HomeCta() {
         type="button"
         onClick={() => void onGetStarted()}
         disabled={busy || !ready}
-        className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-8 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-navy-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-900 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
+        className="inline-flex items-center gap-2 rounded-full bg-accent-500 px-8 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-accent-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
       >
         {busy ? 'Signing in…' : 'Get Started'}
         {!busy && <span aria-hidden="true">→</span>}
