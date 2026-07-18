@@ -34,16 +34,17 @@ export function DashboardHeader({
     bg: defaultBg,
     labelKey: 'dash.setupIncomplete' as StringKey,
   };
-  const planName = plan ? planById(plan).name : 'Setup incomplete';
+  const isFree = !plan || status === 'none';
+  const planName = plan ? planById(plan).name : 'Free proof';
   const tagline =
-    plan && status === 'active'
+    plan && (status === 'active' || status === 'trial')
       ? planById(plan).tagline
       : status === 'past_due'
         ? 'Update your payment details to resume matching.'
         : status === 'cancelled'
           ? 'Re-activate any time to start receiving matches again.'
-          : status === 'none'
-            ? 'Finish payment to unlock matching.'
+          : isFree
+            ? 'Free matches & tools first — subscribe when the shortlist is worth it.'
             : '';
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
@@ -51,9 +52,13 @@ export function DashboardHeader({
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('dash.title')}</h1>
         <p className="mt-1 flex items-center gap-2 text-gray-600 dark:text-gray-400">
           <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${style.bg}`}
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              isFree
+                ? 'bg-accent-50 text-accent-800 dark:bg-accent-900/30 dark:text-accent-300'
+                : style.bg
+            }`}
           >
-            {plan ? planName : t(style.labelKey)}
+            {isFree ? 'Free proof' : planName}
           </span>
           <span>{tagline}</span>
         </p>
@@ -83,8 +88,20 @@ export function DashboardHeader({
           {t('dash.browseJobs')}
         </a>
         {plan !== 'managed' && (
-          <Button variant="primary" size="sm" type="button" onClick={onOpenPlanChange}>
-            {status === 'active' ? t('dash.changePlan') : t('dash.viewPlans')}
+          <Button
+            variant="primary"
+            size="sm"
+            type="button"
+            onClick={() => {
+              // Unpaid: go to billing section (plan picker), not PlanChangeModal (needs active plan).
+              if (isFree || !plan) {
+                window.location.hash = 'billing';
+                return;
+              }
+              onOpenPlanChange?.();
+            }}
+          >
+            {status === 'active' || status === 'trial' ? t('dash.changePlan') : t('dash.viewPlans')}
           </Button>
         )}
       </div>

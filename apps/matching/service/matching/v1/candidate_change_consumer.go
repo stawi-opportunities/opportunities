@@ -244,12 +244,13 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	_, err = matching.RunCandidateChange(ctx, change, matching.CandidateChangeDeps{
 		Debouncer: c.deps.Debouncer,
 		GapFill: matching.GapFillDeps{
-			KNN:      c.deps.KNN,
-			Store:    c.deps.Store,
-			EventLog: c.deps.EventLog,
-			Reranker: c.deps.Reranker,
-			Weights:  c.deps.Weights,
-			DailyCap: c.deps.DailyCapQuery,
+			KNN:       c.deps.KNN,
+			Store:     c.deps.Store,
+			EventLog:  c.deps.EventLog,
+			Reranker:  c.deps.Reranker,
+			Weights:   c.deps.Weights,
+			DailyCap:  c.deps.DailyCapQuery,
+			WeekCount: c.deps.Store,
 		},
 	})
 	if errors.Is(err, matching.ErrDebounced) {
@@ -260,20 +261,26 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	return err
 }
 
-// planEntitlements loads the candidate's plan_id and returns billing
-// entitlements. Falls back to Starter-safe caps when the profile is missing.
+// planEntitlements maps subscription + plan_id to caps. Free/cancelled/empty
+// subscription always gets free-proof caps even if onboard stored a sellable plan_id.
 func planEntitlements(ctx context.Context, idx *matching.IndexStore, candidateID string) billing.Entitlements {
-	ent := billing.EntitlementsFor(billing.PlanStarter)
 	if idx == nil {
-		return ent
+		return billing.EntitlementsFor("")
 	}
-	// IndexStore.DB is unexported; use a lightweight query via ReverseKNN's
-	// underlying handle by reading plan from a tiny helper on IndexStore.
-	planID, err := idx.CandidatePlanID(ctx, candidateID)
-	if err != nil || planID == "" {
-		return ent
+	planID, sub, err := idx.CandidatePlanAndSubscription(ctx, candidateID)
+	if err != nil {
+		return billing.EntitlementsFor("")
 	}
-	return billing.EntitlementsFor(billing.PlanID(planID))
+	switch strings.ToLower(strings.TrimSpace(sub)) {
+	case "paid", "past_due", "trial":
+		if planID == "" {
+			return billing.EntitlementsFor(billing.PlanStarter)
+		}
+		return billing.EntitlementsFor(billing.PlanID(planID))
+	default:
+		// free, cancelled, empty — proof caps only
+		return billing.EntitlementsFor("")
+	}
 }
 
 // decodeCandidateChange extracts the candidate_id, a TriggeredBy label, and

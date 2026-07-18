@@ -1,9 +1,10 @@
 # Traction & product audit (capital-critical)
 
 **Date:** 2026-07-18  
-**Verdict:** **READY WITH CONDITIONS** for Starter acquisition. Free proof + tools + honest caps/diagnostics make the product usable before pay. Scale paid ads only after Path A + notify + JWT prod config are green.
+**Verdict:** **READY WITH CONDITIONS** for Starter GTM only. Scale paid ads only after Path A queues, notify, OIDC, billing rebill/identity, and remaining cap writers are green.
 
-**Full end-user value proof:** [end-user-value-proof.md](./end-user-value-proof.md) (journeys, trust table, automated verification, UAT checklist).
+**Full end-user value proof:** [end-user-value-proof.md](./end-user-value-proof.md)  
+**Latest adversarial re-audit:** [production-readiness-reaudit-2026-07-18.md](./production-readiness-reaudit-2026-07-18.md)
 
 ## Executive summary
 

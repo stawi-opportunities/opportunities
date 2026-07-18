@@ -43,21 +43,27 @@ func NewIndexStore(db *sql.DB) *IndexStore { return &IndexStore{db: db} }
 // CandidatePlanID returns the plan_id on candidate_profiles for entitlement
 // mapping. Empty string when the row is missing (caller uses defaults).
 func (s *IndexStore) CandidatePlanID(ctx context.Context, candidateID string) (string, error) {
+	plan, _, err := s.CandidatePlanAndSubscription(ctx, candidateID)
+	return plan, err
+}
+
+// CandidatePlanAndSubscription returns plan_id and subscription for cap honesty.
+// Free/cancelled/empty subscription → free-proof entitlements regardless of plan_id.
+func (s *IndexStore) CandidatePlanAndSubscription(ctx context.Context, candidateID string) (planID, subscription string, err error) {
 	if s == nil || s.db == nil {
-		return "", nil
+		return "", "", nil
 	}
-	var plan string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(plan_id, '') FROM candidate_profiles WHERE id = $1`,
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(plan_id, ''), COALESCE(subscription, '') FROM candidate_profiles WHERE id = $1`,
 		candidateID,
-	).Scan(&plan)
+	).Scan(&planID, &subscription)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		return "", "", nil
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return plan, nil
+	return planID, subscription, nil
 }
 
 const upsertIndexSQL = `

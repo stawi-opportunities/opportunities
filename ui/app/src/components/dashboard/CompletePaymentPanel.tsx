@@ -11,13 +11,15 @@ export function CompletePaymentPanel({ plan, status }: { plan: PlanId | null; st
         ? 'Your subscription is cancelled'
         : plan
           ? `Finish setting up your ${planById(plan).name} plan`
-          : 'Pick a plan to start matching';
+          : 'Want more matches than free proof?';
   const body =
     status === 'past_due'
       ? 'Update your payment details to resume matching.'
       : status === 'cancelled'
         ? 'Re-activate any time to start receiving matches again.'
-        : "We'll only run our matching engine on your CV once a plan is active. It takes two minutes.";
+        : plan
+          ? 'Complete checkout to unlock your plan caps and digests. Free matches still work until you pay.'
+          : 'You already get free proof matches and tools. Subscribe for higher weekly caps and email digests.';
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 dark:border-amber-700 dark:bg-amber-900/20">
       <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">

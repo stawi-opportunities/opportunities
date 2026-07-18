@@ -170,13 +170,8 @@ func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidat
 	if planID != "" {
 		updates["plan_id"] = planID
 	}
-	// Entitlements: auto-apply only for managed (and legacy pro → managed).
-	switch planID {
-	case "managed", "pro":
-		updates["auto_apply"] = true
-	default: // starter
-		updates["auto_apply"] = false
-	}
+	// Auto-apply remains off until a real automation product ships (all plans).
+	updates["auto_apply"] = false
 	res := r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).
 		Where("id = ? AND NOT (subscription = ? AND subscription_id = ? AND cancel_at_period_end = ?)",

@@ -79,17 +79,16 @@ type changePlanInput struct {
 }
 
 type changePlanResponse struct {
-	Success         bool    `json:"success"`
-	NewPlan         string  `json:"new_plan"`
-	ProratedAmount  float64 `json:"prorated_amount"`
-	ProratedCredit  float64 `json:"prorated_credit"`
-	NextBilling     string  `json:"next_billing"`
+	Success        bool    `json:"success"`
+	NewPlan        string  `json:"new_plan"`
+	ProratedAmount float64 `json:"prorated_amount"`
+	ProratedCredit float64 `json:"prorated_credit"`
+	NextBilling    string  `json:"next_billing"`
 }
 
-// ChangePlanHandler upgrades/downgrades plan for an active subscriber.
-// Upgrades apply immediately (entitlements). No extra charge is collected
-// here yet — product bills monthly catalog prices on renew; future work
-// can attach a proration checkout.
+// ChangePlanHandler handles same-tier plan metadata updates for paid users.
+// Upgrades that raise price (e.g. starter → managed) must go through checkout —
+// free entitlement upgrades without payment are rejected.
 func ChangePlanHandler(deps BillingLifecycleDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -131,6 +130,13 @@ func ChangePlanHandler(deps BillingLifecycleDeps) http.HandlerFunc {
 		}
 		if strings.EqualFold(cand.PlanID, string(planID)) {
 			httpmw.ProblemJSON(w, http.StatusBadRequest, "same_plan", "already on that plan")
+			return
+		}
+		// Block free upgrades: starter → managed must use checkout until proration exists.
+		cur, _ := billing.NormalizePlan(cand.PlanID)
+		if cur == billing.PlanStarter && (planID == billing.PlanManaged || planID == billing.PlanPro) {
+			httpmw.ProblemJSON(w, http.StatusPaymentRequired, "checkout_required",
+				"upgrade to Managed requires a new checkout — open Billing and pay for Managed")
 			return
 		}
 

@@ -219,10 +219,6 @@ func buildPreferences(f Fields) string {
 	return strings.Join(lines, "\n")
 }
 
-func composeSummary(qual, prefs string, f Fields, missing []string) string {
-	return composePersonaSummary(qual, prefs, "", f, missing)
-}
-
 func composePersonaSummary(qual, prefs, digest string, f Fields, missing []string) string {
 	var b strings.Builder
 	b.WriteString("# Matching persona v1\n")
