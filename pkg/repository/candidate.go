@@ -269,17 +269,65 @@ func (r *CandidateRepository) FinalizeExpiredCancellations(ctx context.Context, 
 	if limit <= 0 {
 		limit = 100
 	}
+	now := time.Now().UTC()
 	res := r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).
 		Where("subscription = ? AND cancel_at_period_end = ? AND current_period_end IS NOT NULL AND current_period_end < ?",
-			domain.SubscriptionPaid, true, time.Now().UTC()).
+			domain.SubscriptionPaid, true, now).
 		Limit(limit).
 		Updates(map[string]interface{}{
 			"subscription":         domain.SubscriptionCancelled,
 			"cancel_at_period_end": false,
 			"auto_apply":           false,
 		})
-	return res.RowsAffected, res.Error
+	n := res.RowsAffected
+	if res.Error != nil {
+		return n, res.Error
+	}
+	// No rebill product yet: paid/past_due past current_period_end without
+	// soft-cancel still lose paid access (honest monthly entitlements).
+	n2, err2 := r.FinalizeExpiredPaidAccess(ctx, limit)
+	return n + n2, err2
+}
+
+// FinalizeExpiredPaidAccess demotes paid/past_due to free when the paid period
+// ended and no rebill extended it. Resets plan_id and free-proof match caps.
+func (r *CandidateRepository) FinalizeExpiredPaidAccess(ctx context.Context, limit int) (int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	now := time.Now().UTC()
+	// Collect IDs first so we can reset index caps.
+	var ids []string
+	if err := r.db(ctx, true).
+		Model(&domain.CandidateProfile{}).
+		Where("subscription IN ? AND cancel_at_period_end = ? AND current_period_end IS NOT NULL AND current_period_end < ?",
+			[]string{string(domain.SubscriptionPaid), string(domain.SubscriptionPastDue)}, false, now).
+		Limit(limit).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	res := r.db(ctx, false).
+		Model(&domain.CandidateProfile{}).
+		Where("id IN ?", ids).
+		Updates(map[string]interface{}{
+			"subscription":         domain.SubscriptionFree,
+			"plan_id":              "",
+			"cancel_at_period_end": false,
+			"auto_apply":           false,
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	// Free-proof caps (1/day, 3/week).
+	_ = r.db(ctx, false).Exec(`
+UPDATE candidate_match_indexes
+SET daily_cap = 1, weekly_cap = 3, updated_at = now()
+WHERE candidate_id IN ?`, ids).Error
+	return res.RowsAffected, nil
 }
 
 // MarkPastDue sets subscription=past_due for dunning UX after rebill failures.

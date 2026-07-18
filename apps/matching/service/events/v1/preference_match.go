@@ -14,6 +14,7 @@ import (
 
 	httpv1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/v1"
 	"github.com/stawi-opportunities/opportunities/apps/matching/service/matchers"
+	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
@@ -28,6 +29,9 @@ type PreferenceMatchDeps struct {
 	// Persist writes results into candidate_matches so the dashboard feed
 	// sees preference-triggered matches (not only MatchesReady events).
 	Persist httpv1.MatchPersister
+	// WeekCount + Entitlements enforce free/paid weekly remaining on persist.
+	WeekCount    httpv1.WeekCounter
+	Entitlements func(ctx context.Context, candidateID string) billing.Entitlements
 	// TopK caps the matches emitted per candidate-kind pair (default 50).
 	TopK int
 	// WantsAlerts returns true when the candidate opted into every-match
@@ -135,8 +139,15 @@ func (h *PreferenceMatchHandler) Execute(ctx context.Context, payload any) error
 			res.Matches = res.Matches[:h.deps.TopK]
 		}
 
-		// Always collect matches for the dashboard.
-		if err := httpv1.PersistMatchResult(ctx, h.deps.Persist, res, "preference"); err != nil {
+		// Always collect matches for the dashboard (plan caps enforced).
+		var caps *httpv1.PersistCaps
+		if h.deps.Entitlements != nil {
+			ent := h.deps.Entitlements(ctx, in.CandidateID)
+			weekUsed := httpv1.LoadWeekUsed(ctx, h.deps.WeekCount, in.CandidateID)
+			c := httpv1.CapsFromEntitlements(ent, weekUsed, 0)
+			caps = &c
+		}
+		if err := httpv1.PersistMatchResult(ctx, h.deps.Persist, res, "preference", caps); err != nil {
 			log.WithError(err).WithField("kind", kind).
 				Warn("preference-match: persist candidate_matches failed")
 		}

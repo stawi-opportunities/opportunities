@@ -119,3 +119,18 @@ func EntitlementsFor(plan PlanID) Entitlements {
 		return Entitlements{DailyCap: 1, WeeklyCap: 3, AutoApply: false, Priority: "proof"}
 	}
 }
+
+// EntitlementsForProfile maps subscription + plan_id to caps.
+// Free/cancelled/empty subscription always get free-proof caps even if
+// onboard stored a sellable plan_id (value-before-pay honesty).
+func EntitlementsForProfile(subscription, planID string) Entitlements {
+	switch strings.ToLower(strings.TrimSpace(subscription)) {
+	case "paid", "past_due", "trial":
+		if strings.TrimSpace(planID) == "" {
+			return EntitlementsFor(PlanStarter)
+		}
+		return EntitlementsFor(PlanID(planID))
+	default:
+		return EntitlementsFor("")
+	}
+}

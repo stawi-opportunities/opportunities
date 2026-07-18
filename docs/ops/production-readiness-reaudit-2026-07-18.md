@@ -140,56 +140,44 @@ Paid ads promise monthly Managed with digests while Path A is dark, notify silen
 
 ---
 
-## 8. Critical residual issues (do not greenwash)
+## 8. Critical residual issues — CLOSED in v8.0.198
 
-### C1 — Billing: checkout identity split (order_ref vs session ref)
-Ledger/prompt_id may not match SPA return URL → activation races.  
-**Fix:** single ID across create, return URL, poll, webhook, reconcile.
+| ID | Issue | Resolution |
+|----|-------|------------|
+| C1 | Checkout identity split | Hosted checkout always returns/ledgers `chk_*` OrderRef (not session.Ref alone) |
+| C2 | No period expiry without rebill | `FinalizeExpiredPaidAccess` demotes paid past period_end → free + proof caps |
+| C3 | Path A coupled to Path C flag | Independent enable; shared pipeline infra when either on |
+| C4 | Uncapped persist | `PersistMatchResult` enforces weekly remaining (+ daily if set) |
+| C5 | Migrate 0022 | Still ops: migrate-before-rollout (doc only) |
+| C6 | Nil checkout store | Create returns 502 (no redirect without ledger) |
+| C7 | Digest caps | DailyCap + WeekCount on weekly digest gap-fill |
 
-### C2 — Billing: no recurring rebill
-Monthly pricing without Collection lifecycle or period_end expiry = perpetual free ride after one payment.  
-**Fix:** wire rebill **or** demote to free when period ends without payment.
-
-### C3 — Path A ops wiring
-Both worker publish URL and matching subscribe URI must be set; defaults do not join multi-service.  
-**Fix:** deploy checklist + alert if either side missing under load.
-
-### C4 — Uncapped preference / HTTP match persist
-`PersistMatchResult` can write many `status=new` without daily/weekly.  
-**Fix:** route through GapFill/caps or enforce before insert.
-
-### C5 — Migration 0022 before rollout
-`rerank_text` / `conversation_digest` required by new SQL.  
-**Fix:** migrate-first deploy gate.
+**Still ops (not code):** Path A dual-queue wiring, OIDC live, notify templates, staging dry-run.
 
 ---
 
-## 9. Fixed in this re-audit pass
+## 9. Fixed in re-audit passes (v8.0.197–198)
 
-1. CI: unused `composeSummary` (golangci unused)  
-2. Pricing page: remove auto-apply / interview prep / agent 1:1 vapor  
-3. Dashboard header: free proof copy (not “finish payment to unlock”)  
-4. View plans for unpaid → `#billing` (not dead PlanChangeModal)  
-5. CompletePaymentPanel: honest free-vs-paid copy  
-6. Free-proof caps on Path C for non-paid subscription  
-7. Path C weekly remaining  
-8. Block free Starter→Managed plan change without checkout  
-9. `auto_apply` always false on activate  
+1. Pricing vapor, free dashboard honesty  
+2. Free-proof caps + Path C weekly  
+3. Checkout chk_* identity, nil-store fail closed  
+4. Period-end demote without rebill  
+5. PersistMatchResult caps; digest caps  
+6. Path A independent of Path C flag  
+7. auto_apply false; starter→managed needs checkout  
 
 ---
 
-## 10. Minimum changes before scaled acquisition
+## 10. Remaining before scaled acquisition (ops)
 
 | Priority | Item |
 |----------|------|
-| P0 | Staging dry-run: checkout → ledger → webhook → paid + caps |
-| P0 | Path A LIVE logs both services + one end-to-end new job match |
+| P0 | Staging: checkout → ledger → webhook → paid |
+| P0 | Path A LIVE (worker URL + matching URI same queue) |
 | P0 | Digest email to a real paid user |
-| P0 | Apply C4 (cap preference persist) |
-| P1 | Checkout ID unification |
-| P1 | Recurring or period expiry |
-| P1 | Homepage multi-kind stats honesty |
-| P2 | Debounce persona re-embed; Path A/C flag decoupling |
+| P0 | Migration 0022 before matching rollout |
+| P1 | Optional: Collection rebill (period expiry is interim honest model) |
+| P2 | Homepage multi-kind stats; persona embed debounce |
 
 ---
 

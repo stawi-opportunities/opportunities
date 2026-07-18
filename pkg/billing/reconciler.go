@@ -19,11 +19,11 @@ type SubscriptionFinalizer interface {
 // invoked from a Trustage cron (POST /_admin/billing/reconcile) or a
 // periodic goroutine.
 type Reconciler struct {
-	store      CheckoutStore
-	gateway    Gateway
-	activator  *Activator
-	finalizer  SubscriptionFinalizer
-	batch      int
+	store     CheckoutStore
+	gateway   Gateway
+	activator *Activator
+	finalizer SubscriptionFinalizer
+	batch     int
 }
 
 // NewReconciler builds a Reconciler. batch bounds how many pending
@@ -43,10 +43,10 @@ func (r *Reconciler) WithFinalizer(f SubscriptionFinalizer) *Reconciler {
 
 // ReconcileResult summarises one Run.
 type ReconcileResult struct {
-	Examined    int   `json:"examined"`
-	Activated   int   `json:"activated"`
-	Failed      int   `json:"failed"`
-	Errors      int   `json:"errors"`
+	Examined      int   `json:"examined"`
+	Activated     int   `json:"activated"`
+	Failed        int   `json:"failed"`
+	Errors        int   `json:"errors"`
 	Cancellations int64 `json:"cancellations_finalized"`
 }
 

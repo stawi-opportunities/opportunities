@@ -261,8 +261,7 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	return err
 }
 
-// planEntitlements maps subscription + plan_id to caps. Free/cancelled/empty
-// subscription always gets free-proof caps even if onboard stored a sellable plan_id.
+// planEntitlements maps subscription + plan_id to caps (free-proof when unpaid).
 func planEntitlements(ctx context.Context, idx *matching.IndexStore, candidateID string) billing.Entitlements {
 	if idx == nil {
 		return billing.EntitlementsFor("")
@@ -271,16 +270,7 @@ func planEntitlements(ctx context.Context, idx *matching.IndexStore, candidateID
 	if err != nil {
 		return billing.EntitlementsFor("")
 	}
-	switch strings.ToLower(strings.TrimSpace(sub)) {
-	case "paid", "past_due", "trial":
-		if planID == "" {
-			return billing.EntitlementsFor(billing.PlanStarter)
-		}
-		return billing.EntitlementsFor(billing.PlanID(planID))
-	default:
-		// free, cancelled, empty — proof caps only
-		return billing.EntitlementsFor("")
-	}
+	return billing.EntitlementsForProfile(sub, planID)
 }
 
 // decodeCandidateChange extracts the candidate_id, a TriggeredBy label, and

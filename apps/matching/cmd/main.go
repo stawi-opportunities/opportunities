@@ -252,11 +252,27 @@ func main() {
 		).Scan(&alerts)
 		return err == nil && alerts
 	}
+	entitlementsFor := func(ctx context.Context, candidateID string) billing.Entitlements {
+		if sqlDB == nil || candidateID == "" {
+			return billing.EntitlementsFor("")
+		}
+		planID, sub, err := matching.NewIndexStore(sqlDB).CandidatePlanAndSubscription(ctx, candidateID)
+		if err != nil {
+			return billing.EntitlementsFor("")
+		}
+		return billing.EntitlementsForProfile(sub, planID)
+	}
+	var weekCounter httpv1.WeekCounter
+	if persistStore != nil {
+		weekCounter = persistStore
+	}
 	prefMatchH := eventv1.NewPreferenceMatchHandler(eventv1.PreferenceMatchDeps{
 		Svc:             svc,
 		Match:           matchSvc,
 		Matchers:        matcherReg,
 		Persist:         persistStore,
+		WeekCount:       weekCounter,
+		Entitlements:    entitlementsFor,
 		TopK:            50,
 		WantsAlerts:     wantsMatchAlerts,
 		NotificationCli: notificationCli,
@@ -334,28 +350,23 @@ func main() {
 		}
 	}
 
-	// --- Phase-2 continuous matching pipeline (flag-gated per spec §5.5) ---
-
-	if cfg.MatchingCandidateChangeEnabled {
-		// Extract *sql.DB from the existing GORM pool so the new pipeline
-		// can use database/sql directly. pool.DB returns *gorm.DB; .DB()
-		// unwraps the underlying connection pool.
+	// --- Continuous matching pipeline (Path A fan-out + Path C gap-fill) ---
+	// Path A and Path C are independent flags so killing Path C does not stop live fan-out.
+	needMatchPipeline := cfg.MatchingCandidateChangeEnabled || cfg.MatchingFanOutEnabled
+	if needMatchPipeline {
 		gdb := dbFn(ctx, false)
-		sqlDB, err := gdb.DB()
+		sqlDBPipe, err := gdb.DB()
 		if err != nil {
 			log.WithError(err).Fatal("matching: unwrap sql.DB from pool")
 		}
 
-		matchStore := matching.NewStore(sqlDB)
-		matchEvents := matching.NewEventLog(sqlDB)
-		matchIdx := matching.NewIndexStore(sqlDB)
-		matchKNN := matching.NewKNN(sqlDB)
+		matchStore := matching.NewStore(sqlDBPipe)
+		matchEvents := matching.NewEventLog(sqlDBPipe)
+		matchIdx := matching.NewIndexStore(sqlDBPipe)
+		matchKNN := matching.NewKNN(sqlDBPipe)
 
 		var rerank matching.Reranker = matching.NoopReranker{}
 		if cfg.MatchingRerankerEnabled {
-			// Drive the real cross-encoder when an extractor (with a rerank
-			// backend) is configured; otherwise fall back to the pooled noop
-			// so the rest of the wiring behaves identically.
 			rerankTimeout := time.Duration(cfg.MatchingRerankerTimeoutSeconds) * time.Second
 			rerankConc := cfg.MatchingRerankerConcurrency
 			if extractor != nil && extractor.RerankerVersion() != "" {
@@ -373,16 +384,9 @@ func main() {
 		dlqPub := &queuePublisherAdapter{svc: svc}
 		dlq := matchingv1.NewDLQGuard(dlqPub, eventsv1.SubjectMatchingDeadletter, cfg.MatchingDLQThreshold)
 
+		// Path C: embedding change → gap-fill (independent of Path A).
 		if cfg.MatchingCandidateChangeEnabled {
-			candText := matchingv1.NewSQLCandidateText(sqlDB)
-			// Path C: a CV embedding change drives gap-fill + cross-encoder
-			// rerank. cv-embed publishes CandidateEmbeddingV1 onto the dedicated
-			// durable candidate-embedding queue; this consumer drains it as a
-			// queue.SubscribeWorker (per the async decision tree: durable + slow
-			// work → Frame Queue, not the shared events bus). The consumer also
-			// folds in the candidate_match_indexes upsert. Preference changes
-			// stay on the PreferenceMatchHandler (events.EventI) — a separate
-			// flow on the events bus.
+			candText := matchingv1.NewSQLCandidateText(sqlDBPipe)
 			cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
 				IndexStore:      matchIdx,
 				KNN:             matchKNN,
@@ -395,20 +399,20 @@ func main() {
 				Topic:           eventsv1.TopicCandidateEmbedding,
 				CandText:        candText,
 				DefaultMinScore: cfg.MatchingMinScore,
-				DailyCapQuery:   matching.NewPGDailyCapQuery(sqlDB),
+				DailyCapQuery:   matching.NewPGDailyCapQuery(sqlDBPipe),
 			})
 			svc.Init(ctx, frame.WithRegisterSubscriber(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI, cc))
 			log.Info("matching: candidate-change (Path C) enabled — embedding queue → gap-fill + rerank")
+		} else {
+			log.Warn("matching: Path C gap-fill DISABLED (MATCHING_CANDIDATE_CHANGE_ENABLED=false)")
 		}
 
-		// Path A: new opportunity embeddings → FanOut into candidate_matches.
-		// User delivery always via service-notification; match_alerts → immediate.
+		// Path A: new opportunity embeddings → FanOut (independent of Path C).
 		if cfg.MatchingFanOutEnabled {
 			foURI := strings.TrimSpace(cfg.OpportunityFanOutQueueURI)
 			if foURI == "" {
 				log.Warn("matching: MATCHING_FANOUT_ENABLED but OPPORTUNITY_FANOUT_QUEUE_URI empty; Path A not registered")
 			} else {
-				// Same pattern as candidate-embedding: register name = subject.
 				foRef := strings.TrimSpace(cfg.OpportunityFanOutQueueName)
 				if foRef == "" {
 					foRef = eventsv1.SubjectOpportunityFanOut
@@ -419,9 +423,9 @@ func main() {
 					EventLog:        matchEvents,
 					Reranker:        rerank,
 					Weights:         matching.DefaultWeights(),
-					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
+					DailyCap:        matching.NewPGDailyCapQuery(sqlDBPipe),
 					Svc:             svc,
-					DB:              sqlDB,
+					DB:              sqlDBPipe,
 					NotificationCli: notificationCli,
 					Templates:       notifyTemplates,
 					PublicSiteURL:   cfg.PublicSiteURL,
@@ -543,6 +547,8 @@ func main() {
 		Store:           candStore,
 		Search:          search,
 		Persist:         persistStore,
+		WeekCount:       weekCounter,
+		Entitlements:    entitlementsFor,
 		WantsAlerts:     wantsMatchAlerts,
 		NotificationCli: notificationCli,
 		Templates:       notifyTemplates,
@@ -893,6 +899,7 @@ func main() {
 					EventLog:        matching.NewEventLog(sqlDB),
 					Reranker:        matching.NoopReranker{},
 					Weights:         matching.DefaultWeights(),
+					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
 					Since:           30 * 24 * time.Hour,
 					DefaultMinScore: cfg.MatchingMinScore,
 					DefaultCadence:  cfg.DigestDefaultCadence,

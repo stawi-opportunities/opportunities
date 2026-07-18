@@ -81,6 +81,13 @@ fed (digests/Path C still collect matches). **Production must set both** worker
 `MATCHING_FANOUT_QUEUE_URL` and matching `OPPORTUNITY_FANOUT_QUEUE_URI` to the
 same workqueue for Path A to be live.
 
+Path A and Path C flags are **independent** (`MATCHING_FANOUT_ENABLED` vs
+`MATCHING_CANDIDATE_CHANGE_ENABLED`). Disabling Path C no longer disables fan-out.
+
+**Entitlements:** unpaid subscription → free-proof caps (1/day, 3/week) even if
+`plan_id` was set at onboard. Paid period end without rebill demotes to free
+(`FinalizeExpiredPaidAccess` in billing reconcile).
+
 ## Reliability notes
 
 - Fan-out stream uses **workqueue** retention so brief matching restarts do not

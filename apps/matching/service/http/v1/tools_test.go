@@ -117,4 +117,3 @@ func TestFitLabel(t *testing.T) {
 	require.Equal(t, "moderate", fitLabel(40))
 	require.Equal(t, "weak", fitLabel(39))
 }
-

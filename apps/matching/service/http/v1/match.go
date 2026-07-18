@@ -13,6 +13,7 @@ import (
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/util"
 
+	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/notify"
@@ -63,7 +64,11 @@ type MatchDeps struct {
 	Store   CandidateStore
 	Search  SearchIndex
 	Persist MatchPersister // optional; when set, results land in candidate_matches
-	TopK    int            // default 20
+	// WeekCount optional; when set with Entitlements, enforces weekly remaining on persist.
+	WeekCount WeekCounter
+	// Entitlements returns plan caps for the candidate (free-proof when unpaid).
+	Entitlements func(ctx context.Context, candidateID string) billing.Entitlements
+	TopK         int // default 20
 	// RequireAuthCandidate when non-empty forces the query candidate_id to
 	// match the authenticated identity (prevents IDOR on the legacy route).
 	RequireAuthCandidate string
@@ -144,8 +149,15 @@ func MatchHandler(deps MatchDeps) http.HandlerFunc {
 			return
 		}
 
-		// Always collect matches for the dashboard / API response.
-		if err := PersistMatchResult(ctx, deps.Persist, res, "http_match"); err != nil {
+		// Always collect matches for the dashboard / API response (capped).
+		var caps *PersistCaps
+		if deps.Entitlements != nil {
+			ent := deps.Entitlements(ctx, candidateID)
+			weekUsed := LoadWeekUsed(ctx, deps.WeekCount, candidateID)
+			c := CapsFromEntitlements(ent, weekUsed, 0)
+			caps = &c
+		}
+		if err := PersistMatchResult(ctx, deps.Persist, res, "http_match", caps); err != nil {
 			log.WithError(err).Warn("match: persist candidate_matches failed")
 		}
 

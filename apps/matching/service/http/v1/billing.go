@@ -162,37 +162,38 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			return
 		}
 
-		// Ledger powers webhook activation + status poll. Persist failure after
-		// a successful gateway create must fail the HTTP request so users are
-		// never left "paid but free" with no row to activate.
+		// Ledger powers webhook activation + status poll. Without a store row
+		// activation is impossible — fail the request (never return redirect only).
 		if res.PromptID != "" {
 			if deps.Store == nil {
 				log.WithField("prompt_id", res.PromptID).
-					Error("billing/checkout: gateway ok but checkout store is nil — activation will fail")
-			} else {
-				persistStatus := res.Status
-				if persistStatus == billing.StatusRedirect {
-					persistStatus = billing.StatusPending
-				}
-				if perr := deps.Store.Create(ctx, billing.Checkout{
-					PromptID:       res.PromptID,
-					CandidateID:    candidateID,
-					PlanID:         string(plan.ID),
-					Route:          string(res.Route),
-					Status:         persistStatus,
-					SubscriptionID: res.SubscriptionID,
-					AmountCents:    int64(plan.USDCents),
-					Currency:       plan.Currency,
-					Country:        country,
-					RedirectURL:    res.RedirectURL,
-					Error:          res.Error,
-				}); perr != nil {
-					log.WithError(perr).WithField("prompt_id", res.PromptID).
-						Error("billing/checkout: persist pending checkout failed")
-					httpmw.ProblemJSON(w, http.StatusBadGateway, "checkout_persist_failed",
-						"could not record checkout — try again shortly")
-					return
-				}
+					Error("billing/checkout: gateway ok but checkout store is nil")
+				httpmw.ProblemJSON(w, http.StatusBadGateway, "checkout_store_unavailable",
+					"could not record checkout — try again shortly")
+				return
+			}
+			persistStatus := res.Status
+			if persistStatus == billing.StatusRedirect {
+				persistStatus = billing.StatusPending
+			}
+			if perr := deps.Store.Create(ctx, billing.Checkout{
+				PromptID:       res.PromptID,
+				CandidateID:    candidateID,
+				PlanID:         string(plan.ID),
+				Route:          string(res.Route),
+				Status:         persistStatus,
+				SubscriptionID: res.SubscriptionID,
+				AmountCents:    int64(plan.USDCents),
+				Currency:       plan.Currency,
+				Country:        country,
+				RedirectURL:    res.RedirectURL,
+				Error:          res.Error,
+			}); perr != nil {
+				log.WithError(perr).WithField("prompt_id", res.PromptID).
+					Error("billing/checkout: persist pending checkout failed")
+				httpmw.ProblemJSON(w, http.StatusBadGateway, "checkout_persist_failed",
+					"could not record checkout — try again shortly")
+				return
 			}
 		}
 

@@ -55,6 +55,8 @@ type MatchesWeeklyDigestDeps struct {
 	EventLog *matching.EventLog
 	Reranker matching.Reranker
 	Weights  matching.Weights
+	// DailyCap optional — plan daily generation budget during gap-fill.
+	DailyCap matching.DailyCapQuery
 	// Since bounds the gap-fill look-back window. Defaults to 30 days.
 	Since time.Duration
 	// DefaultMinScore floors gap-fill when the index has no per-candidate
@@ -171,11 +173,13 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 		}
 
 		gapDeps := matching.GapFillDeps{
-			KNN:      deps.KNN,
-			Store:    deps.Store,
-			EventLog: deps.EventLog,
-			Reranker: reranker,
-			Weights:  weights,
+			KNN:       deps.KNN,
+			Store:     deps.Store,
+			EventLog:  deps.EventLog,
+			Reranker:  reranker,
+			Weights:   weights,
+			DailyCap:  deps.DailyCap,
+			WeekCount: deps.Store,
 		}
 		now := nowFn().UTC()
 		cutoff := now.Add(-since)

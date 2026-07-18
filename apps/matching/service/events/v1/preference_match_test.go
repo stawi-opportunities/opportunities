@@ -91,10 +91,10 @@ func TestPreferenceMatchHandler_EmitsMatchesPerEnabledKind(t *testing.T) {
 	reg.Register(&fakeMatcher{kind: "tender", disabled: true}) // disabled — should be skipped
 
 	h := NewPreferenceMatchHandler(PreferenceMatchDeps{
-		Svc:      svc,
-		Match:    matchSvc,
-		Matchers: reg,
-		TopK:     5,
+		Svc:         svc,
+		Match:       matchSvc,
+		Matchers:    reg,
+		TopK:        5,
 		WantsAlerts: func(context.Context, string) bool { return true },
 	})
 

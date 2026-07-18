@@ -73,7 +73,7 @@ func candReq(t *testing.T, method, target, candidateID, body string) *http.Reque
 	return r
 }
 
-func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
+func TestCheckoutHandler_NilStoreFailsClosed(t *testing.T) {
 	t.Parallel()
 	gw := &stubGateway{createResult: billing.CheckoutResult{
 		Status: billing.StatusRedirect, Route: billing.RouteFlutterwave,
@@ -82,21 +82,8 @@ func TestCheckoutHandler_ValidPlanReturnsGatewayResult(t *testing.T) {
 	h := httpmw.NewCandidateAuth(nil)(v1.CheckoutHandler(v1.CheckoutDeps{Gateway: gw}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, candReq(t, http.MethodPost, "/billing/checkout", "cand_1", `{"plan_id":"managed"}`))
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var resp struct {
-		Status      string `json:"status"`
-		Route       string `json:"route"`
-		PromptID    string `json:"prompt_id"`
-		RedirectURL string `json:"redirect_url"`
-		Amount      int    `json:"amount"`
-		PlanID      string `json:"plan_id"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "redirect", resp.Status)
-	require.Equal(t, "chk_1", resp.PromptID)
-	require.Equal(t, "https://pay/abc", resp.RedirectURL)
-	require.Equal(t, "managed", resp.PlanID)
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, rec.Body.String(), "checkout_store_unavailable")
 	require.Equal(t, "cand_1", gw.lastReq.CandidateID)
 }
 
