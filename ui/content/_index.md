@@ -1,4 +1,4 @@
 ---
-title: "Find Your Next Job"
-description: "Search jobs free by title and location. Upload a CV for a real match shortlist before you pay."
+title: "Jobs Need People"
+description: "Sign in for personalized job matches and connect with employers looking for candidates like you."
 ---

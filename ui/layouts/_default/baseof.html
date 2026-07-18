@@ -3,7 +3,7 @@
 <head>
   {{ partial "head.html" . }}
 </head>
-<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+<body class="min-h-screen flex flex-col {{ if .IsHome }}bg-white{{ else }}bg-slate-50{{ end }} text-slate-900">
   {{ partial "skip-nav.html" . }}
   {{ partial "navbar.html" . }}
 
@@ -11,12 +11,21 @@
     {{ block "main" . }}{{ end }}
   </main>
 
-  {{/* Homepage has its own hero CTA; onboarding chat is dense enough without
-       the global get-started banner. Footer stays on every page. */}}
+  {{/* Homepage is a single CTA landing; skip banner + keep footer light. */}}
   {{ if and (not .IsHome) (not (eq .Section "onboarding")) }}
     {{ partial "get-started-cta.html" . }}
   {{ end }}
-  {{ partial "footer.html" . }}
+  {{ if not .IsHome }}
+    {{ partial "footer.html" . }}
+  {{ else }}
+    <footer class="bg-white py-6 text-center text-xs text-gray-400" role="contentinfo">
+      <a href="/search/" class="hover:text-gray-600">Browse jobs</a>
+      <span class="mx-2">·</span>
+      <a href="/pricing/" class="hover:text-gray-600">Pricing</a>
+      <span class="mx-2">·</span>
+      <a href="/privacy/" class="hover:text-gray-600">Privacy</a>
+    </footer>
+  {{ end }}
   <div id="mount-scroll-top"></div>
   {{ block "scripts" . }}{{ end }}
 </body>
