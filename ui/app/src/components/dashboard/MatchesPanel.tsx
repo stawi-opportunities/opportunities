@@ -110,12 +110,7 @@ export function MatchesPanel({
     return (
       <Panel title="Matches">
         <p className="text-sm text-amber-700 dark:text-amber-300">
-          We couldn&apos;t load your latest match numbers. Refresh in a few seconds — if this keeps
-          happening, drop us a line at{' '}
-          <a href="mailto:jobs@stawi.org" className="underline">
-            jobs@stawi.org
-          </a>
-          .
+          Couldn&apos;t load matches. Try again.
         </p>
       </Panel>
     );
@@ -123,105 +118,52 @@ export function MatchesPanel({
 
   return (
     <div className="space-y-6">
-      <Panel title="Your match pipeline">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {unlimited ? 'Matched this week' : 'Delivered this week'}
-            </p>
-            <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">{delivered}</span>
-              {!unlimited && (
-                <span className="text-sm text-gray-500 dark:text-gray-400">/ {cap}</span>
-              )}
-              {unlimited && (
-                <span className="text-sm font-medium text-accent-700 dark:text-accent-400">
-                  unlimited
-                </span>
-              )}
-            </div>
-            {!unlimited && (
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-navy-700">
-                <div
-                  className="h-full rounded-full bg-accent-500 transition-all duration-700 ease-out"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-            )}
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              In your queue
-            </p>
-            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{queued}</p>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+      <Panel title="Matches">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-600 dark:text-gray-300 tabular-nums">
+            {delivered}
+            {!unlimited && ` / ${cap}`} this week
+            <span className="mx-1.5 text-gray-300">·</span>
+            {queued} queued
+            {unlimited && <span className="ml-1 text-accent-700">· unlimited</span>}
+          </p>
           <Button
             type="button"
             variant="primary"
             disabled={refreshing}
             onClick={() => void runRefresh(false)}
           >
-            {refreshing ? 'Searching…' : 'Find matches now'}
+            {refreshing ? 'Searching…' : 'Find matches'}
           </Button>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Roles above your quality threshold only. Digests follow your schedule in{' '}
-            <a href="/dashboard/#settings" className="underline hover:text-accent-600">
-              Settings → Notifications
-            </a>
-            .
-          </p>
         </div>
-
-        {freeProof && (
-          <div className="mt-4 rounded-md border border-accent-200 bg-accent-50 p-3 text-sm text-gray-800 dark:border-accent-800 dark:bg-accent-950/40 dark:text-gray-200">
-            Free proof: up to ~3 quality matches while you evaluate us. Like what you see?{' '}
-            {onUpgrade ? (
-              <button
-                type="button"
-                onClick={onUpgrade}
-                className="font-medium text-accent-700 underline dark:text-accent-400"
-              >
-                Subscribe for more →
-              </button>
-            ) : (
-              <a
-                href="/pricing/"
-                className="font-medium text-accent-700 underline dark:text-accent-400"
-              >
-                Subscribe for more →
-              </a>
-            )}
+        {!unlimited && (
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-navy-700">
+            <div
+              className="h-full rounded-full bg-accent-500 transition-all"
+              style={{ width: `${progressPct}%` }}
+            />
           </div>
         )}
-        {!freeProof && plan === 'starter' && (
-          <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300">
-            Want unlimited discovery and priority match alerts?{' '}
+
+        {freeProof && (
+          <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+            Free shortlist (capped).{' '}
             {onUpgrade ? (
-              <button
-                type="button"
-                onClick={onUpgrade}
-                className="font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
-              >
-                Upgrade to Managed →
+              <button type="button" onClick={onUpgrade} className="font-medium underline">
+                Upgrade
               </button>
             ) : (
-              <a
-                href="/pricing/"
-                className="font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
-              >
-                Upgrade to Managed →
+              <a href="/pricing/" className="font-medium underline">
+                Upgrade
               </a>
             )}
-          </div>
+          </p>
         )}
         {delivered === 0 && queued === 0 && (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
             <p className="font-medium">No matches yet</p>
             {lastReason && (
-              <p className="mt-1 text-amber-800 dark:text-amber-300">
+              <p className="mt-1">
                 {emptyReasonMessage({
                   ok: true,
                   matches_written: 0,
@@ -231,38 +173,18 @@ export function MatchesPanel({
                 })}
               </p>
             )}
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-amber-800 dark:text-amber-300">
-              <li>
-                Upload a recent CV under{' '}
-                <a href="/dashboard/#preferences" className="underline">
-                  Preferences
-                </a>
-              </li>
-              <li>Set target roles and locations</li>
-              <li>
-                Tap <strong>Find matches now</strong>
-              </li>
-              <li>
-                Or check fit on any posting with{' '}
-                <a href="/dashboard/#tools" className="underline">
-                  Tools → Job fitness
-                </a>
-              </li>
-            </ol>
+            <p className="mt-2">
+              Upload a CV in{' '}
+              <a href="/dashboard/#preferences" className="underline">
+                Preferences
+              </a>
+              , then hit Find matches.
+            </p>
           </div>
         )}
       </Panel>
 
-      <div>
-        <h3 className="mb-3 text-base font-semibold text-gray-900 dark:text-white">
-          Roles matched to you
-        </h3>
-        <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-          Score reflects CV + preferences fit. Open Apply to go to the employer site; we track that
-          you applied. Dismiss weak fits so future digests stay sharp.
-        </p>
-        <OpportunitiesFeed key={refreshKey} initialFilter="matches" />
-      </div>
+      <OpportunitiesFeed key={refreshKey} initialFilter="matches" />
     </div>
   );
 }

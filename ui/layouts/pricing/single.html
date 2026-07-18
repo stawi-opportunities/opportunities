@@ -1,74 +1,14 @@
 {{ define "main" }}
 <section class="bg-white">
-  <div class="mx-auto max-w-5xl px-6 py-16 sm:px-8 lg:px-12 lg:py-20">
-    <header class="mx-auto max-w-2xl text-center">
-      <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">Pricing</p>
-      <h1 class="mt-3 text-4xl font-bold tracking-tight text-navy-900 sm:text-5xl">
-        Two clear plans.
-      </h1>
-      <p class="mt-5 text-lg leading-relaxed text-gray-700">
-        Browse jobs free. Get a free match shortlist before you pay.
-        <strong class="font-semibold text-navy-900">Starter</strong> at $10 for more AI matches and digests — you apply yourself.
-        <strong class="font-semibold text-navy-900">Managed</strong> at $200 for unlimited discovery and priority alerts.
-        Cancel any time.
-      </p>
+  <div class="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+    <header class="mx-auto max-w-xl text-center">
+      <h1 class="text-3xl font-bold tracking-tight text-navy-900">Pricing</h1>
+      <p class="mt-2 text-gray-600">Browse free. Free match shortlist. Pay for more matches.</p>
     </header>
 
-    <div class="mt-12">
+    <div class="mt-10">
       {{ partial "pricing-cards.html" . }}
     </div>
-
-    {{/* Side-by-side comparison — only features that ship today */}}
-    <section class="mt-16 overflow-hidden rounded-xl border border-gray-200" aria-labelledby="compare-heading">
-      <h2 id="compare-heading" class="border-b border-gray-200 bg-gray-50 px-6 py-4 text-base font-semibold text-navy-900">
-        Compare at a glance
-      </h2>
-      <div class="overflow-x-auto">
-        <table class="w-full min-w-[32rem] text-left text-sm">
-          <thead>
-            <tr class="border-b border-gray-200 text-gray-500">
-              <th scope="col" class="px-6 py-3 font-medium">Feature</th>
-              <th scope="col" class="px-6 py-3 font-medium">Starter · $10</th>
-              <th scope="col" class="px-6 py-3 font-medium">Managed · $200</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100 text-gray-800">
-            <tr>
-              <th scope="row" class="px-6 py-3 font-medium text-gray-600">AI match discovery</th>
-              <td class="px-6 py-3">Up to 5 / week</td>
-              <td class="px-6 py-3 font-medium text-navy-900">Unlimited</td>
-            </tr>
-            <tr>
-              <th scope="row" class="px-6 py-3 font-medium text-gray-600">Email digests</th>
-              <td class="px-6 py-3">Daily or weekly</td>
-              <td class="px-6 py-3">Daily or weekly</td>
-            </tr>
-            <tr>
-              <th scope="row" class="px-6 py-3 font-medium text-gray-600">Match feed + apply links</th>
-              <td class="px-6 py-3">Included</td>
-              <td class="px-6 py-3 font-medium text-navy-900">Included</td>
-            </tr>
-            <tr>
-              <th scope="row" class="px-6 py-3 font-medium text-gray-600">Job notifications</th>
-              <td class="px-6 py-3">Digest schedule</td>
-              <td class="px-6 py-3 font-medium text-navy-900">Priority match alerts</td>
-            </tr>
-            <tr>
-              <th scope="row" class="px-6 py-3 font-medium text-gray-600">You apply yourself</th>
-              <td class="px-6 py-3">Yes — we open employer links</td>
-              <td class="px-6 py-3 font-medium text-navy-900">Yes — we open employer links</td>
-            </tr>
-            <tr>
-              <th scope="row" class="px-6 py-3 font-medium text-gray-600">Auto-apply / interview coach / agent 1:1</th>
-              <td class="px-6 py-3 text-gray-400">Not offered</td>
-              <td class="px-6 py-3 text-gray-400">Not offered</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    {{ partial "faq-block.html" . }}
   </div>
 </section>
 {{ end }}

@@ -1,19 +1,9 @@
 {{ define "main" }}
-<!-- Rendered by ui/app/src/components/CategoryIndex.tsx. -->
 <div id="mount-category-index">
-  <!-- Static skeleton shown before React hydrates -->
-  <div class="bg-white">
-    <div class="border-b border-gray-100 bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-5xl text-center">
-        <h1 class="text-4xl font-bold tracking-tight text-gray-900">Browse by category</h1>
-        <p class="mt-3 text-lg text-gray-500">Browse job categories and industries. Search free — no account required.</p>
-      </div>
-    </div>
-    <div class="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-      <div class="h-5 w-40 animate-pulse rounded bg-gray-100"></div>
-      <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {{ range seq 5 }}<div class="h-28 animate-pulse rounded-xl bg-gray-100"></div>{{ end }}
-      </div>
+  <div class="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+    <div class="h-8 w-48 animate-pulse rounded bg-gray-100"></div>
+    <div class="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+      {{ range seq 8 }}<div class="h-16 animate-pulse rounded-lg bg-gray-100"></div>{{ end }}
     </div>
   </div>
 </div>

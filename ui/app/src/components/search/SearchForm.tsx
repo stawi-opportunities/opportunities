@@ -95,7 +95,7 @@ export function SearchForm({
             type="submit"
             className="min-h-[44px] w-full rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-navy-800 sm:w-auto"
           >
-            {t('search.findJobs')}
+            {t('search.searchButton')}
           </button>
         </div>
       </div>
