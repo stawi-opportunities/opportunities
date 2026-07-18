@@ -109,12 +109,14 @@ func (c *OpportunityFanOutConsumer) Handle(ctx context.Context, _ map[string]str
 		FirstSeenAt:   firstSeen,
 		QueryText:     queryText,
 	}, matching.FanOutDeps{
-		KNN:      c.deps.KNN,
-		Store:    c.deps.Store,
-		EventLog: c.deps.EventLog,
-		Reranker: c.deps.Reranker,
-		Weights:  c.deps.Weights,
-		DailyCap: c.deps.DailyCap,
+		KNN:              c.deps.KNN,
+		Store:            c.deps.Store,
+		EventLog:         c.deps.EventLog,
+		Reranker:         c.deps.Reranker,
+		Weights:          c.deps.Weights,
+		DailyCap:         c.deps.DailyCap,
+		WeekCount:        c.deps.Store,
+		EnforceWeeklyCap: true,
 	})
 	if err != nil {
 		return fmt.Errorf("opportunity_fanout: fanout: %w", err)

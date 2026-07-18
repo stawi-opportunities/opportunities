@@ -78,10 +78,12 @@ func (h *CVEmbedHandler) Handle(ctx context.Context, _ map[string]string, payloa
 	}
 
 	out := eventsv1.CandidateEmbeddingV1{
+		// Thin field compose — must not overwrite conversation-grounded persona vectors.
 		CandidateID:  in.CandidateID,
 		CVVersion:    in.CVVersion,
 		Vector:       vec,
 		ModelVersion: h.deps.ModelVersion,
+		Source:       eventsv1.EmbeddingSourceCVFields,
 	}
 	envOut := eventsv1.NewEnvelope(eventsv1.TopicCandidateEmbedding, out)
 	body, err := json.Marshal(envOut)

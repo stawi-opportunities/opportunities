@@ -30,6 +30,10 @@ type FanOutDeps struct {
 	// tests and for the bootstrap phase before the continuous aggregate
 	// has any data.
 	DailyCap DailyCapQuery
+	// WeekCount optional — when set, enforces remaining weekly budget like GapFill.
+	WeekCount weekMatchCounter
+	// EnforceWeeklyCap when true (default for production wiring) applies weekly remaining.
+	EnforceWeeklyCap bool
 }
 
 type fanOutSearcher interface {
@@ -177,12 +181,11 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 		runEvt.RerankerStatus = "skipped"
 	}
 
-	// 4. Daily-cap enforcement: rows beyond the candidate's daily_cap are
-	// stored with status='overflow'. The cap is checked per-candidate via
-	// the continuous aggregate on candidate_match_events (Phase 5).
+	// 4. Cap enforcement: daily (events CAGG) + weekly remaining (match rows).
 	matches := make([]Match, 0, len(scoredHits))
 	overflowCount := 0
 	overflowEventKinds := map[string]EventKind{}
+	weekUsedCache := map[string]int{}
 	for _, s := range scoredHits {
 		status := StatusNew
 		eventKind := EventKindGenerated
@@ -193,6 +196,23 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 				eventKind = EventKindOverflow
 				runEvt.Status = "ok" // not an error; just overflow
 				overflowCount++
+			}
+		}
+		// Weekly remaining (parity with gap-fill) — honest free/starter caps under live fan-out.
+		if status == StatusNew && deps.EnforceWeeklyCap && deps.WeekCount != nil && s.hit.WeeklyCap > 0 {
+			used, ok := weekUsedCache[s.hit.CandidateID]
+			if !ok {
+				if n, wErr := deps.WeekCount.CountNonOverflowThisWeek(ctx, s.hit.CandidateID); wErr == nil {
+					used = n
+				}
+				weekUsedCache[s.hit.CandidateID] = used
+			}
+			if used >= s.hit.WeeklyCap {
+				status = StatusOverflow
+				eventKind = EventKindOverflow
+				overflowCount++
+			} else {
+				weekUsedCache[s.hit.CandidateID] = used + 1
 			}
 		}
 		overflowEventKinds[s.hit.CandidateID] = eventKind

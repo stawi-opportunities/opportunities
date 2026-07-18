@@ -38,10 +38,14 @@ type Service struct {
 }
 
 // RebuildInput carries the latest chat fields; CV text is merged from CV store
-// when ExtraInfo is empty or shorter.
+// when ExtraInfo is empty or shorter. ChatTurns drive conversation digest.
 type RebuildInput struct {
 	CandidateID string
 	Fields      Fields
+	// ChatTurns optional transcript for conversation-grounded intent.
+	ChatTurns []ChatTurn
+	// Persona configures section budgets (nil → DefaultPersonaConfig).
+	Persona *PersonaConfig
 }
 
 // RebuildResult is returned for API surfaces (chat response).
@@ -71,7 +75,36 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 		}
 	}
 
-	doc := BuildDocument(in.CandidateID, fields)
+	cfg := DefaultPersonaConfig()
+	if in.Persona != nil {
+		cfg = *in.Persona
+	}
+	// Preserve prior conversation digest when this rebuild has no chat turns
+	// (e.g. CV-only refresh) so intent is not dropped.
+	turns := in.ChatTurns
+	if len(turns) == 0 && s.Store != nil {
+		if prior, err := s.Store.Get(ctx, in.CandidateID); err == nil && prior != nil &&
+			strings.TrimSpace(prior.ConversationDigest) != "" {
+			// Synthetic user turn carrying prior digest for BuildConversationDigest skip —
+			// inject digest after build instead.
+			doc := BuildPersonaDocument(in.CandidateID, fields, nil, cfg)
+			doc.ConversationDigest = prior.ConversationDigest
+			doc.SummaryText = composePersonaSummary(doc.QualificationsText, doc.PreferencesText, prior.ConversationDigest, fields, doc.Missing)
+			doc.SummaryText = truncateRunes(doc.SummaryText, cfg.MaxRunes)
+			doc.RerankText = RerankText(matchHeadline(fields), doc.PreferencesText, prior.ConversationDigest, 1800)
+			doc.ContentHash = ContentHash(doc.SummaryText)
+			return s.finishRebuild(ctx, in.CandidateID, fields, doc, cfg)
+		}
+	}
+	doc := BuildPersonaDocument(in.CandidateID, fields, turns, cfg)
+	return s.finishRebuild(ctx, in.CandidateID, fields, doc, cfg)
+}
+
+func (s *Service) finishRebuild(ctx context.Context, candidateID string, fields Fields, doc Document, cfg PersonaConfig) (*RebuildResult, error) {
+	if doc.CandidateID == "" {
+		doc.CandidateID = candidateID
+	}
+
 	version := 1
 	if s.Store != nil {
 		v, err := s.Store.Upsert(ctx, doc)
@@ -85,34 +118,55 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 	// Always try to keep match-index filters in sync with preferences.
 	filters := FiltersFromFields(fields)
 	if s.Index != nil {
-		if err := s.Index.UpsertFilters(ctx, in.CandidateID, matching.IndexFilters{
+		if err := s.Index.UpsertFilters(ctx, candidateID, matching.IndexFilters{
 			Countries:      filters.Countries,
 			Kinds:          filters.Kinds,
 			SalaryFloorUSD: filters.SalaryFloorUSD,
 			RemoteOnly:     filters.RemoteOnly,
 		}); err != nil && err != matching.ErrNotFound {
-			util.Log(ctx).WithError(err).WithField("candidate_id", in.CandidateID).
+			util.Log(ctx).WithError(err).WithField("candidate_id", candidateID).
 				Debug("placement: filter upsert skipped")
 		}
 	}
 
 	embedded := false
-	// Embed when we have meaningful signal (at least a role or a CV).
-	if s.Embedder != nil && (strings.TrimSpace(fields.TargetJobTitle) != "" || looksLikeCV(fields.ExtraInfo)) {
+	// Embed when we have meaningful signal (role, CV, or conversation intent).
+	hasSignal := strings.TrimSpace(fields.TargetJobTitle) != "" ||
+		looksLikeCV(fields.ExtraInfo) ||
+		strings.TrimSpace(doc.ConversationDigest) != ""
+	if s.Embedder != nil && hasSignal {
 		text := extraction.EmbedQueryPrefix + doc.SummaryText
-		// Token-ish budget: keep under ~512-ish words for e5 models.
-		text = truncateRunes(text, 3500)
-		vec, err := s.Embedder.Embed(ctx, text)
-		if err != nil {
-			util.Log(ctx).WithError(err).WithField("candidate_id", in.CandidateID).
-				Warn("placement: embed failed (summary still stored)")
-		} else if len(vec) > 0 {
+		text = truncateRunes(text, cfg.MaxRunes)
+		// Skip re-embed when index already has this persona (stable rerank text).
+		skipEmbed := false
+		if s.Index != nil {
+			if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil &&
+				len(existing.Embedding) > 0 && existing.RerankText != "" &&
+				existing.RerankText == doc.RerankText {
+				skipEmbed = true
+				embedded = true
+			}
+		}
+		var vec []float32
+		var err error
+		if !skipEmbed {
+			vec, err = s.Embedder.Embed(ctx, text)
+			if err != nil {
+				util.Log(ctx).WithError(err).WithField("candidate_id", candidateID).
+					Warn("placement: embed failed (summary still stored)")
+			}
+		} else if s.Index != nil {
+			if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil {
+				vec = existing.Embedding
+			}
+		}
+		if err == nil && len(vec) > 0 {
 			embedded = true
 			if s.Index != nil {
-				// Starter-safe defaults until ActivateSubscription rewrites caps.
-				entDaily, entWeekly := 2, 5
+				// Free-proof-safe defaults until ActivateSubscription rewrites caps.
+				entDaily, entWeekly := 1, 3
 				ci := matching.CandidateIndex{
-					CandidateID:    in.CandidateID,
+					CandidateID:    candidateID,
 					Embedding:      vec,
 					MinScore:       0.45,
 					DailyCap:       entDaily,
@@ -121,9 +175,10 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 					Countries:      filters.Countries,
 					SalaryFloorUSD: filters.SalaryFloorUSD,
 					RemoteOnly:     filters.RemoteOnly,
+					RerankText:     doc.RerankText,
 					Enabled:        true,
 				}
-				if existing, gErr := s.Index.Get(ctx, in.CandidateID); gErr == nil && existing != nil {
+				if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil {
 					ci.MinScore = existing.MinScore
 					if existing.DailyCap > 0 {
 						ci.DailyCap = existing.DailyCap
@@ -140,23 +195,24 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 					}
 				}
 				if uErr := s.Index.Upsert(ctx, ci); uErr != nil {
-					util.Log(ctx).WithError(uErr).WithField("candidate_id", in.CandidateID).
+					util.Log(ctx).WithError(uErr).WithField("candidate_id", candidateID).
 						Warn("placement: match index upsert failed")
 				}
 			}
-			// Fan-out gap-fill via existing candidate-embedding consumer.
-			if s.Svc != nil && s.EmbedQueue != "" {
+			// Path C gap-fill; source=persona protects against thin CV overwrites.
+			if !skipEmbed && s.Svc != nil && s.EmbedQueue != "" {
 				out := eventsv1.CandidateEmbeddingV1{
-					CandidateID:  in.CandidateID,
+					CandidateID:  candidateID,
 					CVVersion:    version,
 					Vector:       vec,
 					ModelVersion: s.ModelVersion,
+					Source:       eventsv1.EmbeddingSourcePersona,
 				}
 				env := eventsv1.NewEnvelope(eventsv1.TopicCandidateEmbedding, out)
 				body, mErr := json.Marshal(env)
 				if mErr == nil {
 					if pErr := s.Svc.QueueManager().Publish(ctx, s.EmbedQueue, body, nil); pErr != nil {
-						util.Log(ctx).WithError(pErr).WithField("candidate_id", in.CandidateID).
+						util.Log(ctx).WithError(pErr).WithField("candidate_id", candidateID).
 							Warn("placement: publish embedding event failed")
 					}
 				}

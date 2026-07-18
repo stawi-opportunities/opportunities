@@ -28,7 +28,7 @@ type Fields struct {
 	ExtraInfo string
 }
 
-// Document is the stored placement profile.
+// Document is the stored placement profile / matching persona.
 type Document struct {
 	CandidateID string
 	Version     int
@@ -38,6 +38,12 @@ type Document struct {
 	QualificationsText string
 	// PreferencesText is the wants / constraints portion.
 	PreferencesText string
+	// ConversationDigest is rolling chat intent for semantic matching.
+	ConversationDigest string
+	// RerankText is a short persona slice for Path A cross-encoder.
+	RerankText string
+	// ContentHash fingerprints SummaryText for embed skip.
+	ContentHash string
 	// Missing is required keys still incomplete for high-quality matching.
 	Missing []string
 	// Ready is true when all required matching signals are present.
@@ -117,16 +123,35 @@ func MissingRequired(f Fields) []string {
 }
 
 // BuildDocument composes qualifications + preferences into one summary.
+// Prefer BuildPersonaDocument when chat turns are available.
 func BuildDocument(candidateID string, f Fields) Document {
+	return BuildPersonaDocument(candidateID, f, nil, DefaultPersonaConfig())
+}
+
+// BuildPersonaDocument builds the matching persona from structured fields
+// plus optional chat turns (conversation-grounded intent).
+func BuildPersonaDocument(candidateID string, f Fields, turns []ChatTurn, cfg PersonaConfig) Document {
+	if cfg.MaxRunes <= 0 {
+		cfg = DefaultPersonaConfig()
+	}
 	qual := buildQualifications(f)
 	prefs := buildPreferences(f)
 	missing := MissingRequired(f)
-	summary := composeSummary(qual, prefs, f, missing)
+	digest := ""
+	if cfg.IncludeConversation && len(turns) > 0 {
+		digest = BuildConversationDigest(turns, cfg.DigestMaxRunes)
+	}
+	summary := composePersonaSummary(qual, prefs, digest, f, missing)
+	summary = truncateRunes(summary, cfg.MaxRunes)
+	headline := matchHeadline(f)
 	return Document{
 		CandidateID:        candidateID,
 		SummaryText:        summary,
 		QualificationsText: qual,
 		PreferencesText:    prefs,
+		ConversationDigest: digest,
+		RerankText:         RerankText(headline, prefs, digest, 1800),
+		ContentHash:        ContentHash(summary),
 		Missing:            missing,
 		Ready:              len(missing) == 0,
 	}
@@ -195,10 +220,13 @@ func buildPreferences(f Fields) string {
 }
 
 func composeSummary(qual, prefs string, f Fields, missing []string) string {
+	return composePersonaSummary(qual, prefs, "", f, missing)
+}
+
+func composePersonaSummary(qual, prefs, digest string, f Fields, missing []string) string {
 	var b strings.Builder
-	b.WriteString("# Candidate placement profile\n")
-	b.WriteString("This document combines qualifications and preferences for opportunity matching.\n\n")
-	// Compact headline for dense embedding signal.
+	b.WriteString("# Matching persona v1\n")
+	b.WriteString("Unified document for opportunity matching: intent + preferences + CV.\n\n")
 	b.WriteString("## Match headline\n")
 	headline := matchHeadline(f)
 	if headline != "" {
@@ -208,6 +236,11 @@ func composeSummary(qual, prefs string, f Fields, missing []string) string {
 		b.WriteString("(incomplete profile)\n")
 	}
 	b.WriteByte('\n')
+	if d := strings.TrimSpace(digest); d != "" {
+		b.WriteString("## Intent (conversation-grounded)\n")
+		b.WriteString(d)
+		b.WriteString("\n\n")
+	}
 	b.WriteString(prefs)
 	b.WriteString("\n\n")
 	b.WriteString(qual)

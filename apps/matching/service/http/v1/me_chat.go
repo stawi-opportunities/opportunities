@@ -309,9 +309,15 @@ func MeChatHandler(deps MeChatDeps) http.HandlerFunc {
 		var placementSummary string
 		placementReady := ready
 		if deps.Placement != nil && candidateID != "" {
+			// Conversation-grounded persona: fold chat turns into matching digest.
+			turns := make([]placement.ChatTurn, 0, len(nextMessages))
+			for _, m := range nextMessages {
+				turns = append(turns, placement.ChatTurn{Role: m.Role, Content: m.Content})
+			}
 			res, pErr := deps.Placement.Rebuild(ctx, placement.RebuildInput{
 				CandidateID: candidateID,
 				Fields:      toPlacementFields(merged),
+				ChatTurns:   turns,
 			})
 			if pErr != nil {
 				log.WithError(pErr).WithField("candidate_id", candidateID).

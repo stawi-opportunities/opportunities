@@ -120,13 +120,21 @@ type CVImprovedV1 struct {
 	OccurredAt time.Time `json:"-"`
 }
 
-// CandidateEmbeddingV1 is emitted by the cv-embed handler after a
-// successful Embed() call on the CV text.
+// Embedding source labels for CandidateEmbeddingV1.Source.
+const (
+	EmbeddingSourcePersona  = "persona"   // conversation-grounded placement rebuild
+	EmbeddingSourceCVFields = "cv_fields" // thin async CV field compose
+)
+
+// CandidateEmbeddingV1 is emitted after a successful Embed() on candidate text.
+// Source discriminates writers so thin CV-field embeds cannot clobber persona vectors.
 type CandidateEmbeddingV1 struct {
 	CandidateID  string    `json:"candidate_id"`
 	CVVersion    int       `json:"cv_version"  `
 	Vector       []float32 `json:"vector"      `
 	ModelVersion string    `json:"model_version,omitempty"`
+	// Source is "persona" | "cv_fields" | empty (legacy).
+	Source string `json:"source,omitempty"`
 
 	EventID    string    `json:"-"`
 	OccurredAt time.Time `json:"-"`

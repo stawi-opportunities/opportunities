@@ -153,34 +153,46 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	}
 
 	if len(vector) > 0 {
-		ent := planEntitlements(ctx, c.deps.IndexStore, candidateID)
-		ci := matching.CandidateIndex{
-			CandidateID: candidateID,
-			Embedding:   vector,
-			MinScore:    defaultMin,
-			DailyCap:    ent.DailyCap,
-			WeeklyCap:   ent.WeeklyCap,
-			Kinds:       []string{"job"},
-			Enabled:     true,
-		}
-		if existing, gErr := c.deps.IndexStore.Get(ctx, candidateID); gErr == nil && existing != nil {
-			// Preserve rules-tuned prefs; only fill caps from plan when unset.
-			if existing.MinScore > 0 {
-				ci.MinScore = existing.MinScore
+		// Dual-writer protection: persona (conversation+CV) owns the index vector.
+		// Thin async CV-field embeds must not clobber rerank_text-backed personas.
+		var embEnv eventsv1.Envelope[eventsv1.CandidateEmbeddingV1]
+		_ = json.Unmarshal(payload, &embEnv)
+		src := strings.TrimSpace(embEnv.Payload.Source)
+		existing, gErr := c.deps.IndexStore.Get(ctx, candidateID)
+		personaOwned := gErr == nil && existing != nil && strings.TrimSpace(existing.RerankText) != ""
+		skipVectorUpsert := personaOwned && src != eventsv1.EmbeddingSourcePersona
+		if skipVectorUpsert {
+			util.Log(ctx).WithField("candidate_id", candidateID).WithField("source", src).
+				Info("candidate_change: skip thin embed overwrite of persona index")
+		} else {
+			ent := planEntitlements(ctx, c.deps.IndexStore, candidateID)
+			ci := matching.CandidateIndex{
+				CandidateID: candidateID,
+				Embedding:   vector,
+				MinScore:    defaultMin,
+				DailyCap:    ent.DailyCap,
+				WeeklyCap:   ent.WeeklyCap,
+				Kinds:       []string{"job"},
+				Enabled:     true,
 			}
-			if existing.DailyCap > 0 {
-				ci.DailyCap = existing.DailyCap
+			if gErr == nil && existing != nil {
+				if existing.MinScore > 0 {
+					ci.MinScore = existing.MinScore
+				}
+				if existing.DailyCap > 0 {
+					ci.DailyCap = existing.DailyCap
+				}
+				ci.WeeklyCap = existing.WeeklyCap
+				ci.Kinds = existing.Kinds
+				ci.Countries = existing.Countries
+				ci.SalaryFloorUSD = existing.SalaryFloorUSD
+				ci.RemoteOnly = existing.RemoteOnly
+				ci.RerankText = existing.RerankText
 			}
-			// WeeklyCap 0 is meaningful (uncapped managed); preserve always when row exists.
-			ci.WeeklyCap = existing.WeeklyCap
-			ci.Kinds = existing.Kinds
-			ci.Countries = existing.Countries
-			ci.SalaryFloorUSD = existing.SalaryFloorUSD
-			ci.RemoteOnly = existing.RemoteOnly
-		}
-		if uErr := c.deps.IndexStore.Upsert(ctx, ci); uErr != nil {
-			util.Log(ctx).WithError(uErr).WithField("candidate_id", candidateID).
-				Warn("candidate_change: index upsert failed (non-fatal)")
+			if uErr := c.deps.IndexStore.Upsert(ctx, ci); uErr != nil {
+				util.Log(ctx).WithError(uErr).WithField("candidate_id", candidateID).
+					Warn("candidate_change: index upsert failed (non-fatal)")
+			}
 		}
 	}
 

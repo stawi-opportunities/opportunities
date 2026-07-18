@@ -18,9 +18,11 @@ type CandidateMatchIndexRecord struct {
 	Kinds          pq.StringArray `gorm:"type:text[];not null;default:'{job}'"`
 	Countries      pq.StringArray `gorm:"type:text[];not null;default:'{}'"`
 	SalaryFloorUSD *int
-	RemoteOnly     bool      `gorm:"not null;default:false"`
-	Enabled        bool      `gorm:"not null;default:true"`
-	UpdatedAt      time.Time `gorm:"not null;default:now()"`
+	RemoteOnly     bool `gorm:"not null;default:false"`
+	// RerankText is a short conversation-grounded persona for Path A stage-2.
+	RerankText string    `gorm:"type:text;not null;default:''"`
+	Enabled    bool      `gorm:"not null;default:true"`
+	UpdatedAt  time.Time `gorm:"not null;default:now()"`
 }
 
 func (CandidateMatchIndexRecord) TableName() string { return "candidate_match_indexes" }
@@ -114,11 +116,13 @@ func (EngagementEventRecord) TableName() string { return "engagement_events" }
 // CV binary lives in the files service; candidate_profiles holds the file-id
 // reference. Extracted CV text is folded into qualifications_text/summary_text.
 type CandidatePlacementProfileRecord struct {
-	CandidateID        string         `gorm:"primaryKey;type:text"`
-	Version            int            `gorm:"not null;default:1"`
-	SummaryText        string         `gorm:"type:text;not null;default:''"`
-	QualificationsText string         `gorm:"type:text;not null;default:''"`
-	PreferencesText    string         `gorm:"type:text;not null;default:''"`
+	CandidateID        string `gorm:"primaryKey;type:text"`
+	Version            int    `gorm:"not null;default:1"`
+	SummaryText        string `gorm:"type:text;not null;default:''"`
+	QualificationsText string `gorm:"type:text;not null;default:''"`
+	PreferencesText    string `gorm:"type:text;not null;default:''"`
+	// ConversationDigest is rolling intent from AI chat (not full transcript).
+	ConversationDigest string         `gorm:"type:text;not null;default:''"`
 	Missing            pq.StringArray `gorm:"type:text[];not null;default:'{}'"`
 	Ready              bool           `gorm:"not null;default:false"`
 	UpdatedAt          time.Time      `gorm:"not null;default:now()"`

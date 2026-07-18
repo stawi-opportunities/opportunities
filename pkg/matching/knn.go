@@ -28,20 +28,19 @@ type CandidateHit struct {
 	Distance       float64
 	MinScore       float64
 	DailyCap       int
+	WeeklyCap      int
 	Kinds          []string
 	Countries      []string
 	SalaryFloorUSD *int
-	// Text is the candidate's document text for cross-encoder reranking.
-	// The denormalized candidate_match_indexes table carries no title/skill
-	// columns, so this is empty today; the reranker degrades to a no-op.
+	// Text is short conversation-grounded persona (rerank_text) for stage-2.
 	Text string
 }
 
 const fanOutKNNSQL = `
 SELECT candidate_id,
        embedding <=> $1::vector AS distance,
-       min_score, daily_cap, kinds, countries, salary_floor_usd,
-       '' AS text
+       min_score, daily_cap, weekly_cap, kinds, countries, salary_floor_usd,
+       COALESCE(rerank_text, '') AS text
 FROM candidate_match_indexes
 WHERE enabled = TRUE
   AND $2 = ANY(kinds)
@@ -75,7 +74,7 @@ func (k *KNN) FanOutKNN(ctx context.Context, p FanOutKNNParams) ([]CandidateHit,
 			floor     sql.NullInt64
 		)
 		if err := rows.Scan(&h.CandidateID, &h.Distance, &h.MinScore,
-			&h.DailyCap, &kinds, &countries, &floor, &h.Text); err != nil {
+			&h.DailyCap, &h.WeeklyCap, &kinds, &countries, &floor, &h.Text); err != nil {
 			return nil, fmt.Errorf("matching: fan-out knn scan: %w", err)
 		}
 		h.Kinds = []string(kinds)

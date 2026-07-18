@@ -4,8 +4,23 @@
 
 | Path | Trigger | Action | User notification |
 |------|---------|--------|-------------------|
-| **A FanOut** | Opportunity embed succeeds | Reverse-KNN → score → `candidate_matches` | `NotificationService.Send` when `match_alerts=true` |
-| **C Gap-fill** | CV/candidate embedding | Reverse-KNN for one candidate | Collect only (digests cover summaries) |
+| **A FanOut** | Opportunity embed succeeds | Reverse-KNN on **conversation-grounded persona** vectors → score → caps → `candidate_matches` | `NotificationService.Send` when `match_alerts=true` |
+| **C Gap-fill** | Persona/CV embedding event | Reverse-KNN for one candidate | Collect only (digests cover summaries) |
+
+### Matching persona (candidate side)
+
+Every chat turn rebuilds a **Matching persona v1** document:
+
+1. **Intent** — rolling conversation digest (user turns, not full transcript)
+2. **Preferences** — structured fields (role, markets, salary, types)
+3. **Qualifications** — CV / skills
+
+Stored on `candidate_placement_profiles` (`summary_text`, `conversation_digest`).  
+Embedded into `candidate_match_indexes` with `rerank_text` for Path A stage-2.
+
+**Dual-writer rule:** persona embeds (`source=persona`) own the index. Thin async CV-field embeds (`source=cv_fields`) cannot overwrite when `rerank_text` is set.
+
+**Caps on Path A:** daily (events) + weekly remaining (non-overflow rows) — free proof and Starter stay honest under live job ingest.
 | **Preference** | Preferences updated | KNN rematch (blended score) | `Send` when `match_alerts=true` |
 | **HTTP match** | `GET /candidates/match` | On-demand KNN | `Send` when `match_alerts=true` |
 | **Digest** | Trustage cron | Gap-fill + summary | Always `Send` (`matches.digest` / `weekly_jobs.digest`) |
@@ -62,7 +77,9 @@ All paths use the same cosine term (`CosineFromPGDistance` / blend weights):
 | `MATCHING_FANOUT_QUEUE_URL` | Publish `OpportunityFanOutV1` after embed |
 
 If `MATCHING_FANOUT_QUEUE_URL` is unset, embeds still work but Path A is not
-fed (digests/Path C still collect matches).
+fed (digests/Path C still collect matches). **Production must set both** worker
+`MATCHING_FANOUT_QUEUE_URL` and matching `OPPORTUNITY_FANOUT_QUEUE_URI` to the
+same workqueue for Path A to be live.
 
 ## Reliability notes
 

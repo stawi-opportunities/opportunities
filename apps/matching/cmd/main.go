@@ -428,9 +428,11 @@ func main() {
 					DefaultMinScore: cfg.MatchingMinScore,
 				})
 				svc.Init(ctx, frame.WithRegisterSubscriber(foRef, foURI, foConsumer))
-				log.WithField("queue", foRef).
-					Info("matching: Path A fan-out enabled — new jobs → candidate_matches")
+				log.WithField("queue", foRef).WithField("uri", foURI).
+					Info("matching: Path A fan-out LIVE — new jobs → conversation-grounded candidate_matches (weekly+daily caps)")
 			}
+		} else {
+			log.Warn("matching: Path A fan-out DISABLED (MATCHING_FANOUT_ENABLED=false)")
 		}
 	}
 

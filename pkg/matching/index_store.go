@@ -25,8 +25,11 @@ type CandidateIndex struct {
 	Countries      []string
 	SalaryFloorUSD *int
 	RemoteOnly     bool
-	Enabled        bool
-	UpdatedAt      time.Time
+	// RerankText is short persona text for Path A cross-encoder stage-2.
+	// Non-empty also marks the row as persona-owned for dual-writer protection.
+	RerankText string
+	Enabled    bool
+	UpdatedAt  time.Time
 }
 
 // IndexStore persists and retrieves CandidateIndex rows.
@@ -60,8 +63,8 @@ func (s *IndexStore) CandidatePlanID(ctx context.Context, candidateID string) (s
 const upsertIndexSQL = `
 INSERT INTO candidate_match_indexes
     (candidate_id, embedding, min_score, daily_cap, weekly_cap,
-     kinds, countries, salary_floor_usd, remote_only, enabled, updated_at)
-VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9, $10, now())
+     kinds, countries, salary_floor_usd, remote_only, rerank_text, enabled, updated_at)
+VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
 ON CONFLICT (candidate_id) DO UPDATE
    SET embedding        = EXCLUDED.embedding,
        min_score        = EXCLUDED.min_score,
@@ -71,6 +74,10 @@ ON CONFLICT (candidate_id) DO UPDATE
        countries        = EXCLUDED.countries,
        salary_floor_usd = EXCLUDED.salary_floor_usd,
        remote_only      = EXCLUDED.remote_only,
+       rerank_text      = CASE
+                            WHEN EXCLUDED.rerank_text <> '' THEN EXCLUDED.rerank_text
+                            ELSE candidate_match_indexes.rerank_text
+                          END,
        enabled          = EXCLUDED.enabled,
        updated_at       = now()
 `
@@ -85,7 +92,7 @@ func (s *IndexStore) Upsert(ctx context.Context, ci CandidateIndex) error {
 		ci.CandidateID, vectorLiteral(ci.Embedding),
 		ci.MinScore, ci.DailyCap, ci.WeeklyCap,
 		pq.Array(ci.Kinds), pq.Array(ci.Countries),
-		floor, ci.RemoteOnly, ci.Enabled,
+		floor, ci.RemoteOnly, ci.RerankText, ci.Enabled,
 	)
 	if err != nil {
 		return fmt.Errorf("matching: index upsert: %w", err)
@@ -95,7 +102,8 @@ func (s *IndexStore) Upsert(ctx context.Context, ci CandidateIndex) error {
 
 const getIndexSQL = `
 SELECT candidate_id, embedding::text, min_score, daily_cap, weekly_cap,
-       kinds, countries, salary_floor_usd, remote_only, enabled, updated_at
+       kinds, countries, salary_floor_usd, remote_only,
+       COALESCE(rerank_text, ''), enabled, updated_at
 FROM candidate_match_indexes
 WHERE candidate_id = $1
 `
@@ -153,7 +161,7 @@ func (s *IndexStore) Get(ctx context.Context, candidateID string) (*CandidateInd
 	)
 	err := row.Scan(
 		&ci.CandidateID, &embText, &ci.MinScore, &ci.DailyCap, &ci.WeeklyCap,
-		&kinds, &countries, &floor, &ci.RemoteOnly, &ci.Enabled, &ci.UpdatedAt,
+		&kinds, &countries, &floor, &ci.RemoteOnly, &ci.RerankText, &ci.Enabled, &ci.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
