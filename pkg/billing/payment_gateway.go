@@ -13,7 +13,6 @@ import (
 	paymentv1 "buf.build/gen/go/antinvestor/payment/protocolbuffers/go/v1"
 	"connectrpc.com/connect"
 	"github.com/rs/xid"
-	"google.golang.org/genproto/googleapis/type/money"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -224,11 +223,11 @@ func (g *paymentGateway) createLegacyPromptCheckout(ctx context.Context, req Che
 
 func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRequest) (CheckoutResult, error) {
 	promptID := "chk_" + xid.New().String()
-	amount := &money.Money{
+	amount := commonv1.Money_builder{
 		CurrencyCode: req.Plan.Currency,
 		Units:        int64(req.Plan.USDCents / 100),
 		Nanos:        int32((req.Plan.USDCents % 100) * 10_000_000),
-	}
+	}.Build()
 
 	phone := strings.TrimSpace(req.Phone)
 	email := strings.TrimSpace(req.Email)
