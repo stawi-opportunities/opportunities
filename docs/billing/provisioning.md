@@ -47,13 +47,13 @@ matching. Matching only needs the payment service URI + webhook secret.
 ## Smoke test
 
 ```bash
-curl -s -X POST https://matching.stawi.org/billing/checkout \
+curl -s -X POST https://api.stawi.org/matching/billing/checkout \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"plan_id":"managed","email":"you@example.com"}' | jq
 # expect: status=redirect, redirect_url=https://…, prompt_id=chk_…
 
-curl -s "https://matching.stawi.org/billing/checkout/status?prompt_id=$PID" \
+curl -s "https://api.stawi.org/matching/billing/checkout/status?prompt_id=$PID" \
   -H "Authorization: Bearer $TOKEN" | jq
 ```
 

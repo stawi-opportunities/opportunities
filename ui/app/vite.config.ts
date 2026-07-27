@@ -73,13 +73,13 @@ export default defineConfig(({ command }) => ({
     // and HUGO_PARAMS_candidatesAPIURL=http://localhost:5173/candidates-api.
     proxy: {
       '/jobs-api': {
-        target: 'https://jobs.stawi.org',
+        target: 'https://api.stawi.org',
         changeOrigin: true,
         secure: true,
-        rewrite: (path: string) => path.replace(/^\/jobs-api/, ''),
+        rewrite: (path: string) => path.replace(/^\/jobs-api/, '/jobs'),
       },
       '/candidates-api': {
-        target: 'https://matching.stawi.org',
+        target: 'https://api.stawi.org',
         changeOrigin: true,
         secure: true,
         // Onboarding chat may hit inference (30–90s).
