@@ -19,10 +19,8 @@ export function authRuntime(): AuthRuntime {
     clientId: cfg.oidcClientID,
     installationId: cfg.oidcInstallationID,
     idpBaseUrl: cfg.oidcIssuer,
-    // Admin /admin/trace/* is served by the
-    // api service at the bare api.stawi.org root (alongside /jobs/*).
-    // candidatesAPIURL is the bare root by convention; the matching
-    // service's /matching/* prefix is added inline by call sites.
+    // Prefer matching.stawi.org (mux at /). Legacy api.stawi.org still
+    // works when call sites use the /matching path prefix.
     apiBaseUrl: cfg.candidatesAPIURL,
     redirectUri: cfg.oidcRedirectURI,
     scopes: [...opportunitiesAdminAuthScopes],
