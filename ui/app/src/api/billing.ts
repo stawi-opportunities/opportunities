@@ -1,6 +1,5 @@
 import type { PlanId } from '@/utils/plans';
 import { authRuntime } from '@/auth/runtime';
-import { matchingPath } from './matching-path';
 
 // Billing API — Flutterwave-only checkout.
 // Happy path: createCheckout → redirect_url → Flutterwave →
@@ -70,14 +69,11 @@ export async function createCheckout(input: CheckoutCreateInput): Promise<Checko
     phone: input.phone ?? '',
   });
   try {
-    return await authRuntime().fetch(
-      matchingPath('/matching/billing/checkout', getCandidatesOrigin()),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      }
-    );
+    return await authRuntime().fetch('/matching/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
   } catch (err) {
     const code =
       err && typeof err === 'object' && 'code' in err
@@ -104,7 +100,7 @@ export interface CheckoutStatusResponse {
 export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
   const path = `/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`;
   try {
-    return await authRuntime().fetch(matchingPath(path, getCandidatesOrigin()));
+    return await authRuntime().fetch(`/matching${path}`);
   } catch (err) {
     const code =
       err && typeof err === 'object' && 'code' in err
@@ -134,14 +130,11 @@ export interface ChangePlanResponse {
 export async function changePlan(input: ChangePlanInput): Promise<ChangePlanResponse> {
   const body = JSON.stringify(input);
   try {
-    return await authRuntime().fetch(
-      matchingPath('/matching/billing/change-plan', getCandidatesOrigin()),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      }
-    );
+    return await authRuntime().fetch('/matching/billing/change-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!/404|not found/i.test(msg)) throw err;
@@ -169,14 +162,11 @@ export interface CancelResponse {
 export async function cancelSubscription(input: CancelInput): Promise<CancelResponse> {
   const body = JSON.stringify(input);
   try {
-    return await authRuntime().fetch(
-      matchingPath('/matching/billing/cancel', getCandidatesOrigin()),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      }
-    );
+    return await authRuntime().fetch('/matching/billing/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!/404|not found/i.test(msg)) throw err;
@@ -229,9 +219,7 @@ export interface Invoice {
 /** GET /billing/invoices — auth'd payment / subscription history. */
 export async function fetchInvoices(): Promise<Invoice[]> {
   try {
-    return await authRuntime().fetch(
-      matchingPath('/matching/billing/invoices', getCandidatesOrigin())
-    );
+    return await authRuntime().fetch('/matching/billing/invoices');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!/404|not found/i.test(msg)) throw err;
@@ -250,9 +238,7 @@ export interface UsageEntry {
 /** GET /billing/usage-history — auth'd. */
 export async function fetchUsageHistory(): Promise<UsageEntry[]> {
   try {
-    return await authRuntime().fetch(
-      matchingPath('/matching/billing/usage-history', getCandidatesOrigin())
-    );
+    return await authRuntime().fetch('/matching/billing/usage-history');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!/404|not found/i.test(msg)) throw err;
@@ -280,5 +266,5 @@ export function getCandidatesOrigin(): string {
       /* fall through */
     }
   }
-  return 'https://matching.stawi.org';
+  return 'https://api.stawi.org';
 }
