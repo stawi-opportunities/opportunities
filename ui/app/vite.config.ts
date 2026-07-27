@@ -73,10 +73,10 @@ export default defineConfig(({ command }) => ({
     // and HUGO_PARAMS_candidatesAPIURL=http://localhost:5173/candidates-api.
     proxy: {
       '/jobs-api': {
-        target: 'https://matching.stawi.org',
+        target: 'https://jobs.stawi.org',
         changeOrigin: true,
         secure: true,
-        rewrite: (path: string) => path.replace(/^\/jobs-api/, '/jobs'),
+        rewrite: (path: string) => path.replace(/^\/jobs-api/, ''),
       },
       '/candidates-api': {
         target: 'https://matching.stawi.org',
