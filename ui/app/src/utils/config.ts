@@ -8,7 +8,7 @@
 export interface SiteConfig {
   /** Jobs API origin, may include a /jobs path prefix. */
   apiURL: string;
-  /** Candidates / profile API origin (unified api.stawi.org root). */
+  /** Candidates / matching API origin (subdomain preferred). */
   candidatesAPIURL: string;
   /** OIDC issuer (Ory Hydra). */
   oidcIssuer: string;
@@ -26,13 +26,11 @@ export interface SiteConfig {
 }
 
 const DEFAULTS: SiteConfig = {
-  apiURL: 'https://api.stawi.org/jobs',
-  // Bare base URL — the matching service's /matching/* prefix is added
-  // inline by each candidate-API call site (see api/candidates.ts and
-  // Dashboard.tsx). Kept bare because the shared @stawi/profile widget
-  // also uses this runtime and calls /profile.v1.*. See
-  // api-gateway-path-prefix-convention memory for the org-wide rule.
-  candidatesAPIURL: 'https://api.stawi.org',
+  apiURL: 'https://jobs.stawi.org',
+  // Matching service origin. Prefer https://matching.stawi.org (mux at /).
+  // Legacy gateway form https://api.stawi.org still works when paths keep
+  // the /matching prefix (see matchingPathPrefix in api helpers).
+  candidatesAPIURL: 'https://matching.stawi.org',
   oidcIssuer: 'https://oauth2.stawi.org',
   // Production SPA client + partition. Keep in sync with ui/hugo.toml and
   // the tenancy greenfield seed (client d7is2kspf2t7cl19qlp0).

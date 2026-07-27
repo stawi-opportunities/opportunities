@@ -1,5 +1,6 @@
 import type { PlanId } from '@/utils/plans';
 import { authRuntime } from '@/auth/runtime';
+import { matchingPath, matchingPathPrefix } from './matching-path';
 
 // All auth'd candidate-service API calls go through the shared runtime.
 // @stawi/auth-runtime 1.0+ owns the token (no getAccessToken export),
@@ -38,7 +39,7 @@ export interface OnboardingPayload {
 export async function submitOnboarding(
   payload: OnboardingPayload
 ): Promise<{ id: string; profile_id: string }> {
-  return authRuntime().fetch('/matching/candidates/onboard', {
+  return authRuntime().fetch(matchingPath('/matching/candidates/onboard', getCandidatesOrigin()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -51,7 +52,7 @@ export async function submitOnboarding(
  * response carries the updated candidate row.
  */
 export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: number }> {
-  return authRuntime().upload('/matching/me/cv', file);
+  return authRuntime().upload(matchingPath('/matching/me/cv', getCandidatesOrigin()), file);
 }
 
 /** Subset of CandidateProfile the UI consumes. */
@@ -71,7 +72,7 @@ export interface CandidateSummary {
  *  null on any failure so callers can render anon fallback. */
 export async function fetchCandidate(): Promise<CandidateSummary | null> {
   try {
-    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>('/matching/me');
+    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>(matchingPath('/matching/me', getCandidatesOrigin()));
     return body.candidate ?? null;
   } catch {
     return null;
@@ -102,7 +103,7 @@ export interface BillingPlansResponse {
  *  consistency with the R2-origin calls that don't need a token. */
 export async function fetchBillingPlans(): Promise<BillingPlansResponse> {
   const base = getCandidatesOrigin();
-  const res = await fetch(`${base}/matching/billing/plans`, { credentials: 'omit' });
+  const res = await fetch(`${base}${matchingPathPrefix(base)}/billing/plans`, { credentials: 'omit' });
   if (!res.ok) throw new Error(`fetchBillingPlans: HTTP ${res.status}`);
   return (await res.json()) as BillingPlansResponse;
 }
@@ -130,7 +131,7 @@ export interface CheckoutCreateInput {
 
 /** POST /billing/checkout — auth'd. */
 export async function createCheckout(input: CheckoutCreateInput): Promise<CheckoutResponse> {
-  return authRuntime().fetch('/matching/billing/checkout', {
+  return authRuntime().fetch(matchingPath('/matching/billing/checkout', getCandidatesOrigin()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -151,7 +152,7 @@ export interface CheckoutStatusResponse {
 /** GET /billing/checkout/status?prompt_id=ΓÇª ΓÇö auth'd long-poll. */
 export async function pollCheckoutStatus(promptId: string): Promise<CheckoutStatusResponse> {
   return authRuntime().fetch(
-    `/matching/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`
+    matchingPath(`/matching/billing/checkout/status?prompt_id=${encodeURIComponent(promptId)}`, getCandidatesOrigin())
   );
 }
 
@@ -172,7 +173,7 @@ export interface MeSubscription {
  * (mapping errors to status "none" re-prompted paid users to pay again).
  */
 export async function fetchMeSubscription(): Promise<MeSubscription> {
-  const body = await authRuntime().fetch<MeSubscription>('/matching/me/subscription');
+  const body = await authRuntime().fetch<MeSubscription>(matchingPath('/matching/me/subscription', getCandidatesOrigin()));
   return {
     plan: body.plan ?? null,
     status: body.status ?? 'none',
@@ -227,7 +228,7 @@ export interface OnboardingDraft {
 export async function fetchOnboardingDraft(): Promise<OnboardingDraft> {
   const empty: OnboardingDraft = { step: 1, fields: {}, messages: [] };
   try {
-    const body = await authRuntime().fetch<OnboardingDraft>('/matching/me/onboarding');
+    const body = await authRuntime().fetch<OnboardingDraft>(matchingPath('/matching/me/onboarding', getCandidatesOrigin()));
     return {
       step: body.step ?? 1,
       fields: body.fields ?? {},
@@ -246,7 +247,7 @@ export async function saveOnboardingDraft(
   fields: OnboardingDraftFields,
   messages?: OnboardingChatMessage[]
 ): Promise<void> {
-  await authRuntime().fetch('/matching/me/onboarding', {
+  await authRuntime().fetch(matchingPath('/matching/me/onboarding', getCandidatesOrigin()), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -325,7 +326,7 @@ export type SendMeChatInput = {
  */
 export async function sendMeChat(input: SendMeChatInput): Promise<OnboardingChatResponse> {
   try {
-    return await authRuntime().fetch<OnboardingChatResponse>('/matching/me/chat', {
+    return await authRuntime().fetch<OnboardingChatResponse>(matchingPath('/matching/me/chat', getCandidatesOrigin()), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -431,7 +432,7 @@ export async function fetchOpportunities(
   if (opts.limit) params.set('limit', String(opts.limit));
   if (opts.sort) params.set('sort', opts.sort);
   const query = params.toString();
-  const path = `/matching/me/opportunities${query ? `?${query}` : ''}`;
+  const path = matchingPath(`/matching/me/opportunities${query ? `?${query}` : ''}`, getCandidatesOrigin());
   return await authRuntime().fetch<FeedPage>(path);
 }
 
@@ -451,12 +452,12 @@ export interface ApplyDetails {
  */
 export async function fetchApplyDetails(idOrSlug: string): Promise<ApplyDetails> {
   return authRuntime().fetch<ApplyDetails>(
-    `/matching/me/opportunities/${encodeURIComponent(idOrSlug)}/apply`
+    matchingPath(`/matching/me/opportunities/${encodeURIComponent(idOrSlug)}/apply`, getCandidatesOrigin())
   );
 }
 
 export async function starOpportunity(opportunityId: string): Promise<void> {
-  await authRuntime().fetch('/matching/me/saved-jobs', {
+  await authRuntime().fetch(matchingPath('/matching/me/saved-jobs', getCandidatesOrigin()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ opportunity_id: opportunityId }),
@@ -464,7 +465,7 @@ export async function starOpportunity(opportunityId: string): Promise<void> {
 }
 
 export async function unstarOpportunity(opportunityId: string): Promise<void> {
-  await authRuntime().fetch(`/matching/me/saved-jobs/${encodeURIComponent(opportunityId)}`, {
+  await authRuntime().fetch(matchingPath(`/matching/me/saved-jobs/${encodeURIComponent(opportunityId)}`, getCandidatesOrigin()), {
     method: 'DELETE',
   });
 }
@@ -473,7 +474,7 @@ export async function applyToOpportunity(
   opportunityId: string,
   method: 'manual' | 'auto' = 'manual'
 ): Promise<{ application_id: string; status: string; applied_at: string }> {
-  return await authRuntime().fetch('/matching/me/applications', {
+  return await authRuntime().fetch(matchingPath('/matching/me/applications', getCandidatesOrigin()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ opportunity_id: opportunityId, method }),
@@ -503,7 +504,7 @@ export interface MatchRefreshResult {
  */
 export async function refreshMyMatches(): Promise<MatchRefreshResult> {
   try {
-    return await authRuntime().fetch<MatchRefreshResult>('/matching/me/matches/refresh', {
+    return await authRuntime().fetch<MatchRefreshResult>(matchingPath('/matching/me/matches/refresh', getCandidatesOrigin()), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -511,7 +512,7 @@ export async function refreshMyMatches(): Promise<MatchRefreshResult> {
     });
   } catch (err) {
     if (!isNotFound(err)) throw err;
-    return authRuntime().fetch<MatchRefreshResult>('/matching/api/me/matches/refresh', {
+    return authRuntime().fetch<MatchRefreshResult>(matchingPath('/matching/api/me/matches/refresh', getCandidatesOrigin()), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -523,14 +524,14 @@ export async function refreshMyMatches(): Promise<MatchRefreshResult> {
 /** POST /matching/me/matches/{match_id}/dismiss — hide weak fits from feed/digests. */
 export async function dismissMatch(matchId: string): Promise<void> {
   try {
-    await authRuntime().fetch(`/matching/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
+    await authRuntime().fetch(matchingPath(`/matching/me/matches/${encodeURIComponent(matchId)}/dismiss`, getCandidatesOrigin()), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
   } catch (err) {
     if (!isNotFound(err)) throw err;
-    await authRuntime().fetch(`/matching/api/me/matches/${encodeURIComponent(matchId)}/dismiss`, {
+    await authRuntime().fetch(matchingPath(`/matching/api/me/matches/${encodeURIComponent(matchId)}/dismiss`, getCandidatesOrigin()), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -563,5 +564,5 @@ function getCandidatesOrigin(): string {
       /* fall through */
     }
   }
-  return 'https://api.stawi.org';
+  return 'https://matching.stawi.org';
 }

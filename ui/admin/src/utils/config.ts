@@ -6,8 +6,7 @@
 // HUGO_PARAMS_* at Hugo build time.
 
 export interface SiteConfig {
-  /** Admin trace API origin (bare api.stawi.org root). The admin
-   *  /admin/* routes live on the api service alongside /jobs/*. */
+  /** Admin / matching API origin (subdomain preferred). */
   candidatesAPIURL: string;
   /** OIDC issuer (Ory Hydra). */
   oidcIssuer: string;
@@ -20,7 +19,7 @@ export interface SiteConfig {
 }
 
 const DEFAULTS: SiteConfig = {
-  candidatesAPIURL: "https://api.stawi.org",
+  candidatesAPIURL: "https://matching.stawi.org",
   oidcIssuer: "https://oauth2.stawi.org",
   // Production SPA client + partition (same as ui/app).
   oidcClientID: "d7is2kspf2t7cl19qlp0",
