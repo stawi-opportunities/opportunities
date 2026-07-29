@@ -8,12 +8,13 @@ BEGIN
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS timescaledb';
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS vector';
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_trgm';
-    -- ParadeDB full-text search (BM25). No-op if the extension is already
-    -- installed cluster-wide; fails soft on images that don't ship it.
+    -- Full-text: lakebase_text (BM25) when available (Neon Lakebase Search).
+    -- pg_search / ParadeDB is retired. Tests use search_tsv + ts_rank without
+    -- lakebase_text; production enables lakebase_bm25 when the extension loads.
     BEGIN
-        EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_search';
+        EXECUTE 'CREATE EXTENSION IF NOT EXISTS lakebase_text';
     EXCEPTION WHEN OTHERS THEN
-        RAISE NOTICE 'pg_search extension unavailable: %', SQLERRM;
+        RAISE NOTICE 'lakebase_text extension unavailable (expected on non-Neon test DBs): %', SQLERRM;
     END;
 
     EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_source_recipes_active
@@ -21,13 +22,22 @@ BEGIN
     EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS idx_crawl_runs_active
                ON crawl_runs (source_id) WHERE status IN (''running'', ''paused'')';
 
-    PERFORM create_hypertable('crawl_jobs','scheduled_at',if_not_exists=>true,migrate_data=>true,chunk_time_interval=>interval '1 day');
+    BEGIN
+      PERFORM create_hypertable('crawl_jobs','scheduled_at',if_not_exists=>true,migrate_data=>true,chunk_time_interval=>interval '1 day');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'hypertable crawl_jobs: %', SQLERRM;
+    END;
     EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS crawl_jobs_idempotency_idx ON crawl_jobs(idempotency_key,scheduled_at)';
     EXECUTE 'CREATE INDEX IF NOT EXISTS crawl_jobs_source_time_idx ON crawl_jobs(source_id,scheduled_at DESC)';
-    EXECUTE 'ALTER TABLE crawl_jobs SET (timescaledb.compress,
-               timescaledb.compress_segmentby = ''source_id'')';
-    PERFORM add_compression_policy('crawl_jobs', interval '14 days', if_not_exists=>true);
-    PERFORM add_retention_policy('crawl_jobs',interval '90 days',if_not_exists=>true);
+    -- Compression/retention are community features; skip on Neon Apache / soft license.
+    BEGIN
+      EXECUTE 'ALTER TABLE crawl_jobs SET (timescaledb.compress,
+                 timescaledb.compress_segmentby = ''source_id'')';
+      PERFORM add_compression_policy('crawl_jobs', interval '14 days', if_not_exists=>true);
+      PERFORM add_retention_policy('crawl_jobs',interval '90 days',if_not_exists=>true);
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'crawl_jobs timescale policies skipped: %', SQLERRM;
+    END;
 
     EXECUTE 'CREATE INDEX IF NOT EXISTS job_ingest_queue_claim_idx
                ON job_ingest_queue (available_at, created_at)
@@ -42,11 +52,46 @@ BEGIN
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_embedding_hnsw
                ON opportunities USING hnsw (embedding vector_cosine_ops)
                WHERE embedding IS NOT NULL AND hidden=false AND status=''active''';
-    -- ParadeDB pg_search BM25 for GET /api/search?q=… (apps/api jobsPostgres.Search).
-    -- Requires CREATE EXTENSION pg_search (shipped on the CNPG image).
-    EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_bm25 ON opportunities
-               USING bm25 (canonical_id, title, description, issuing_entity, slug, city, region, country, employment_type, seniority)
-               WITH (key_field=''canonical_id'')';
+    -- search_tsv for lakebase_text / ts_rank (apps/api SEARCH_BACKEND=lakebase_text).
+    BEGIN
+        EXECUTE $q$
+          ALTER TABLE opportunities
+            ADD COLUMN IF NOT EXISTS search_tsv tsvector
+            GENERATED ALWAYS AS (
+              to_tsvector(
+                'english',
+                coalesce(title, '') || ' ' ||
+                coalesce(description, '') || ' ' ||
+                coalesce(issuing_entity, '') || ' ' ||
+                coalesce(city, '') || ' ' ||
+                coalesce(region, '') || ' ' ||
+                coalesce(country, '') || ' ' ||
+                coalesce(employment_type, '') || ' ' ||
+                coalesce(seniority, '') || ' ' ||
+                coalesce(slug, '')
+              )
+            ) STORED
+        $q$;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'search_tsv: %', SQLERRM;
+    END;
+    -- GIN supports ts_rank path (tests / without lakebase_bm25).
+    EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_search_tsv_gin
+               ON opportunities USING GIN (search_tsv)';
+    -- lakebase_bm25 when extension present (Neon).
+    BEGIN
+        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'lakebase_text') THEN
+            EXECUTE $q$
+              CREATE INDEX IF NOT EXISTS opportunities_search_bm25
+                ON opportunities USING lakebase_bm25 (search_tsv)
+                WITH (default_limit = 50)
+            $q$;
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'opportunities_search_bm25: %', SQLERRM;
+    END;
+    -- Drop retired ParadeDB index if present.
+    EXECUTE 'DROP INDEX IF EXISTS opportunities_bm25';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_active_recent_idx ON opportunities(last_seen_at DESC) WHERE hidden=false AND status=''active''';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_kind_country_idx ON opportunities(kind,country,last_seen_at DESC) WHERE hidden=false AND status=''active''';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_employment_type_idx ON opportunities(employment_type) WHERE hidden=false AND status=''active'' AND employment_type IS NOT NULL';
@@ -54,16 +99,24 @@ BEGIN
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunities_geo_scope_idx ON opportunities(geo_scope) WHERE hidden=false AND status=''active'' AND geo_scope IS NOT NULL';
     EXECUTE 'CREATE INDEX IF NOT EXISTS opportunity_sources_source_idx
                ON opportunity_sources (source_id, last_seen_at DESC)';
-    PERFORM create_hypertable('job_ingest_events', 'occurred_at',
-                              if_not_exists => TRUE,
-                              migrate_data => TRUE,
-                              chunk_time_interval => INTERVAL '1 day');
+    BEGIN
+      PERFORM create_hypertable('job_ingest_events', 'occurred_at',
+                                if_not_exists => TRUE,
+                                migrate_data => TRUE,
+                                chunk_time_interval => INTERVAL '1 day');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'hypertable job_ingest_events: %', SQLERRM;
+    END;
     EXECUTE 'CREATE INDEX IF NOT EXISTS job_ingest_events_ingest_time_idx
                ON job_ingest_events (ingest_id, occurred_at DESC)';
-    EXECUTE 'ALTER TABLE job_ingest_events SET (timescaledb.compress,
-               timescaledb.compress_segmentby = ''source_id,event_type'')';
-    PERFORM add_compression_policy('job_ingest_events', INTERVAL '7 days', if_not_exists => TRUE);
-    PERFORM add_retention_policy('job_ingest_events', INTERVAL '90 days', if_not_exists => TRUE);
+    BEGIN
+      EXECUTE 'ALTER TABLE job_ingest_events SET (timescaledb.compress,
+                 timescaledb.compress_segmentby = ''source_id,event_type'')';
+      PERFORM add_compression_policy('job_ingest_events', INTERVAL '7 days', if_not_exists => TRUE);
+      PERFORM add_retention_policy('job_ingest_events', INTERVAL '90 days', if_not_exists => TRUE);
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'job_ingest_events timescale policies skipped: %', SQLERRM;
+    END;
 
     IF to_regprocedure('append_only_guard()') IS NULL THEN
         EXECUTE $fn$

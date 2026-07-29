@@ -19,6 +19,9 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	// Cloud Run matching fan-out uses Pub/Sub (gcppubsub://…).
+	_ "gocloud.dev/pubsub/gcppubsub"
+
 	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
 	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"

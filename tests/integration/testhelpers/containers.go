@@ -101,6 +101,8 @@ func ValkeyContainer(t *testing.T, ctx context.Context) string {
 
 // PostgresContainerNoMigrate boots TimescaleDB + pgvector (the official ha image
 // ships both) and returns a connected *sql.DB without applying any migrations.
+// Full-text uses search_tsv (lakebase_text path); lakebase_bm25 is not on this
+// image so API ranking falls back to ts_rank. pg_search is not used.
 //
 // Use this when you need to interleave database setup steps (e.g., creating stub tables
 // before running migrations). The container is torn down via t.Cleanup.
@@ -168,8 +170,8 @@ func ApplyCapabilitySQLDir(t *testing.T, ctx context.Context, db *sql.DB, dir st
 
 // ApplyGreenfieldSchema mirrors production migration jobs: GORM creates
 // ordinary PostgreSQL tables, then the app-specific capability SQL enables
-// TimescaleDB hypertables, pgvector indexes, append-only triggers, partial
-// indexes, and continuous aggregates.
+// TimescaleDB hypertables, pgvector indexes, search_tsv (lakebase_text /
+// ts_rank path — no pg_search), append-only triggers, and partial indexes.
 func ApplyGreenfieldSchema(t *testing.T, ctx context.Context, db *sql.DB) {
 	t.Helper()
 	g, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{})

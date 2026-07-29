@@ -24,8 +24,9 @@ After strip_prefix, handlers are relative to the service root:
 Every opportunity returned by discovery includes a non-empty `apply_url` when
 present in the serving row.
 
-`SEARCH_BACKEND=lakebase_text` (Cloud Run / Neon). Cluster may still use
-`pg_search` until decommissioned.
+`SEARCH_BACKEND=lakebase_text` (default). Ranking uses `lakebase_bm25` when
+the extension is present; otherwise `ts_rank` on the same `search_tsv` column
+(tests / local Timescale). `pg_search` is retired.
 
 ## Candidate surface (`apps/matching`)
 
