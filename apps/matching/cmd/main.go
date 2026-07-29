@@ -44,6 +44,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
@@ -117,10 +118,15 @@ func main() {
 	// ordinary tables; capability SQL adds pgvector support. The job exits after
 	// migration instead of starting the service.
 	if cfg.DoDatabaseMigrate() {
+		// Product Neon schema: catalog serving tables + candidate/matching/billing.
+		// Do NOT AutoMigrate crawl queue tables here (those stay on cluster CNPG).
 		models := []any{
 			&domain.CandidateProfile{},
 			&domain.CandidateApplication{},
 			&domain.OpportunityFlag{},
+			&jobqueue.OpportunityRecord{},
+			&jobqueue.OpportunityIdentityRecord{},
+			&jobqueue.OpportunitySourceRecord{},
 		}
 		models = append(models, matching.Schema()...)
 		models = append(models, applications.Schema()...)

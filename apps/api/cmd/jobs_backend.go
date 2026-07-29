@@ -105,18 +105,34 @@ type JobsBackend interface {
 // Postgres backend
 // ---------------------------------------------------------------------------
 
-// jobsPostgres satisfies JobsBackend against the CNPG cluster's
-// opportunities table populated by the PostgreSQL ingestion worker.
+// jobsPostgres satisfies JobsBackend against the product opportunities
+// table (CNPG or Neon) populated by the ingestion worker.
 //
 // We hold Frame's GORM pool factory (same shape pkg/variantstate uses)
 // and pull a *sql.DB out of it per call. Read-only queries go through
 // the ro pool when one is configured.
 type jobsPostgres struct {
-	pool func(ctx context.Context, readOnly bool) *gorm.DB
+	pool          func(ctx context.Context, readOnly bool) *gorm.DB
+	searchBackend string // lakebase_text | pg_search | plain
 }
 
 func newJobsPostgres(pool func(ctx context.Context, readOnly bool) *gorm.DB) *jobsPostgres {
-	return &jobsPostgres{pool: pool}
+	return &jobsPostgres{pool: pool, searchBackend: "pg_search"}
+}
+
+func (p *jobsPostgres) withSearchBackend(backend string) *jobsPostgres {
+	if p == nil {
+		return p
+	}
+	switch strings.ToLower(strings.TrimSpace(backend)) {
+	case "lakebase_text", "lakebase", "bm25":
+		p.searchBackend = "lakebase_text"
+	case "plain", "none", "off":
+		p.searchBackend = "plain"
+	default:
+		p.searchBackend = "pg_search"
+	}
+	return p
 }
 
 // sqlDB returns the underlying *sql.DB for the read-only or read-write
@@ -469,9 +485,12 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 }
 
 // Search runs a full-text BM25 query + filters + facets in one pass.
-// Empty q falls back to the listing path; non-empty q uses pg_search's
-// `@@@` operator with paradedb.parse(). Hybrid scoring (BM25 +
-// embedding cosine) lands in a follow-up.
+// Empty q falls back to the listing path.
+// Non-empty q:
+//   - SEARCH_BACKEND=lakebase_text → lakebase_bm25 on search_tsv (Neon)
+//   - SEARCH_BACKEND=pg_search     → ParadeDB @@@ (legacy CNPG)
+//   - SEARCH_BACKEND=plain         → ILIKE/browse fallback (no BM25)
+// Hybrid scoring (BM25 + embedding cosine) lands in a follow-up.
 func (p *jobsPostgres) Search(
 	ctx context.Context,
 	q string,
@@ -498,9 +517,18 @@ func (p *jobsPostgres) Search(
 		total int
 	)
 
-	if q == "" {
+	if q == "" || p.searchBackend == "plain" {
 		// Browse / filter listing — newest first by default (posted_at).
+		// plain backend also uses this for non-empty q (no BM25).
 		sortField := sanitizeSortField(sort)
+		if q != "" {
+			// Cheap fallback: title/description/issuing_entity substring.
+			args = append(args, "%"+q+"%")
+			likeIdx := len(args)
+			where = where + ` AND (title ILIKE $` + intToStr(likeIdx) +
+				` OR description ILIKE $` + intToStr(likeIdx) +
+				` OR issuing_entity ILIKE $` + intToStr(likeIdx) + `)`
+		}
 		args = append(args, limit)
 		limitIdx := len(args)
 		query := `SELECT ` + selectColumns + `
@@ -509,14 +537,43 @@ func (p *jobsPostgres) Search(
 		         ORDER BY ` + sortField + ` DESC NULLS LAST, last_seen_at DESC NULLS LAST
 		         LIMIT $` + intToStr(limitIdx)
 		rows, err = db.QueryContext(ctx, query, args...)
-	} else {
+	} else if p.searchBackend == "lakebase_text" {
+		// Neon lakebase_text: filter with @@ + rank with <@> (negative scores → ASC).
 		args = append(args, q)
 		qIdx := len(args)
 		args = append(args, limit)
 		limitIdx := len(args)
-		// Text search: when the user asks for recency, lead with posted_at;
-		// otherwise BM25 first with recency as a stable tie-breaker so
-		// fresher matches float above equally-relevant stale ones.
+		// Filter with websearch_to_tsquery; rank with to_bm25query(to_tsvector(...)).
+		// lakebase_text scores are negative → ORDER BY ASC (lower = better).
+		bm25 := `search_tsv <@> to_bm25query(to_tsvector('english', $` + intToStr(qIdx) + `), 'opportunities_search_bm25')`
+		orderBy := bm25 + ` ASC, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST`
+		switch sort {
+		case "recent", "posted_at", "quality":
+			orderBy = `posted_at DESC NULLS LAST, ` + bm25 + ` ASC, last_seen_at DESC NULLS LAST`
+		case "salary_high", "amount_max":
+			orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
+		}
+		query := `SELECT ` + selectColumns + `,
+		                 (` + bm25 + `) AS bm25_score
+		          FROM opportunities
+		          WHERE search_tsv @@ websearch_to_tsquery('english', $` + intToStr(qIdx) + `)
+		            AND ` + activePred() + where + ` ` + windowed + `
+		          ORDER BY ` + orderBy + `
+		          LIMIT $` + intToStr(limitIdx)
+		// Session GUCs: top-K pushdown ≈ limit; prefilter for facet filters.
+		if _, gerr := db.ExecContext(ctx, `SELECT set_config('lakebase_bm25.default_limit', $1, true)`, intToStr(limit)); gerr != nil {
+			util.Log(ctx).WithError(gerr).Debug("lakebase_text: set default_limit failed")
+		}
+		if _, gerr := db.ExecContext(ctx, `SELECT set_config('lakebase_bm25.prefilter', 'on', true)`); gerr != nil {
+			util.Log(ctx).WithError(gerr).Debug("lakebase_text: set prefilter failed")
+		}
+		rows, err = db.QueryContext(ctx, query, args...)
+	} else {
+		// Legacy pg_search / ParadeDB.
+		args = append(args, q)
+		qIdx := len(args)
+		args = append(args, limit)
+		limitIdx := len(args)
 		orderBy := `paradedb.score(canonical_id) DESC, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST`
 		switch sort {
 		case "recent", "posted_at", "quality":

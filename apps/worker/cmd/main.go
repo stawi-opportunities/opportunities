@@ -16,6 +16,8 @@ import (
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/frame/v2/datastore"
 	"github.com/pitabwire/util"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	workercfg "github.com/stawi-opportunities/opportunities/apps/worker/config"
 	workersvc "github.com/stawi-opportunities/opportunities/apps/worker/service"
@@ -42,6 +44,14 @@ func main() {
 		util.Log(ctx).Fatal("worker: DATABASE_URL is required")
 	}
 	store := jobqueue.New(pool.DB)
+	if cfg.ProductDatabaseURL != "" {
+		productGorm, err := gorm.Open(postgres.Open(cfg.ProductDatabaseURL), &gorm.Config{})
+		if err != nil {
+			util.Log(ctx).WithError(err).Fatal("worker: PRODUCT_DATABASE_URL open failed")
+		}
+		store = store.WithProductDB(func(context.Context, bool) *gorm.DB { return productGorm })
+		util.Log(ctx).Info("worker: dual-DB mode (crawl DATABASE_URL + product PRODUCT_DATABASE_URL)")
+	}
 	processor := workersvc.NewPostgresProcessor(store, "",
 		cfg.PostgresBatchSize, cfg.PostgresConcurrency, cfg.PostgresPollInterval,
 		cfg.PostgresLease, cfg.PostgresMaxAttempts,

@@ -10,6 +10,12 @@ import (
 type Config struct {
 	fconfig.ConfigurationDefault
 
+	// ProductDatabaseURL is the Neon (or other) product SoT for opportunities
+	// catalog writes. When set, queue claim/ack stay on DATABASE_URL (crawl)
+	// and Complete/SetEmbedding/ReconcileSource use this URL. Empty keeps
+	// legacy single-database mode.
+	ProductDatabaseURL string `env:"PRODUCT_DATABASE_URL" envDefault:""`
+
 	PostgresBatchSize    int           `env:"POSTGRES_BATCH_SIZE" envDefault:"100"`
 	PostgresConcurrency  int           `env:"POSTGRES_CONCURRENCY" envDefault:"8"`
 	PostgresPollInterval time.Duration `env:"POSTGRES_POLL_INTERVAL" envDefault:"1s"`
