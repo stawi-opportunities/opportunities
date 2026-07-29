@@ -11,6 +11,10 @@ import type { AuthState } from '@stawi/auth-runtime';
  * (or a mid-flight `initializing` after we already knew the user was signed
  * in) as signed-out — that produces the Sign-in / avatar flicker on every
  * token refresh and during island remounts.
+ *
+ * This mirrors @stawi/profile's AuthGate display FSM (v1.3.4+): login only
+ * when definitely unauthenticated, profile while a session is present
+ * (authenticated/refreshing), nothing while initializing.
  */
 
 /** True while we still have a live session (including silent token refresh). */
