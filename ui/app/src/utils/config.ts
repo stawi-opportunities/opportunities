@@ -6,7 +6,7 @@
 // or local dev by just changing HUGO_PARAMS_* at build time.
 
 export interface SiteConfig {
-  /** Jobs API origin, may include a /jobs path prefix. */
+  /** Public discovery API origin (/opportunities path prefix on api.stawi.org). */
   apiURL: string;
   /** Candidates / profile API origin (unified api.stawi.org root). */
   candidatesAPIURL: string;
@@ -26,7 +26,7 @@ export interface SiteConfig {
 }
 
 const DEFAULTS: SiteConfig = {
-  apiURL: 'https://api.stawi.org/jobs',
+  apiURL: 'https://api.stawi.org/opportunities',
   // Bare base URL — the matching service's /matching/* prefix is added
   // inline by each candidate-API call site (see api/candidates.ts and
   // Dashboard.tsx). Kept bare because the shared @stawi/profile widget

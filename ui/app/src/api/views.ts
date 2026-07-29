@@ -14,7 +14,7 @@ import { getConfig } from '@/utils/config';
  */
 export function pingJobView(slug: string): void {
   if (!slug || typeof window === 'undefined') return;
-  const url = `${getConfig().apiURL}/jobs/${encodeURIComponent(slug)}/view`;
+  const url = `${getConfig().apiURL}/opportunities/${encodeURIComponent(slug)}/view`;
 
   try {
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
