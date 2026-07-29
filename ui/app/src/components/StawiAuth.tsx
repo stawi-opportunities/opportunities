@@ -5,10 +5,15 @@ import { authRuntime } from '@/auth/runtime';
 import { profileWidgetTokens, profileWidgetCSS } from '@/theme/profile-widget';
 
 /**
- * Mounts @stawi/profile 1.x with stawi.opportunities visual tokens.
- * Unauthenticated → renders the pill/navy Sign-in button; authed →
- * avatar + profile popover. We pass our singleton auth runtime so
- * the widget's token store and our API client stay in sync.
+ * Mounts @stawi/profile (≥1.3.4) with stawi.opportunities visual tokens.
+ *
+ * The widget owns an auth display FSM (no host-side chrome branching):
+ *   initializing          → nothing (avoids Sign-in flash during restore)
+ *   authenticated|refreshing → avatar + profile popover
+ *   unauthenticated|error → Sign-in button
+ *
+ * We pass the shared auth runtime singleton so the widget's token store
+ * and our API client stay in sync.
  */
 export function StawiAuth() {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -48,8 +53,10 @@ export function StawiAuth() {
     };
   }, []);
 
+  // Host is intentionally empty-sized: while auth is initializing the
+  // widget renders nothing, so we must not reserve a Sign-in-shaped slot.
   return (
-    <div className="relative" aria-label="Account" role="region">
+    <div className="relative flex items-center" aria-label="Account" role="region">
       <div ref={hostRef} />
     </div>
   );
