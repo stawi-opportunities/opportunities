@@ -59,10 +59,10 @@ type apiConfig struct {
 	SourceAdminEnabled bool `env:"SOURCE_ADMIN_ENABLED" envDefault:"false"`
 
 	// SearchBackend selects full-text ranking implementation:
-	//   lakebase_text — Neon lakebase_bm25 (SEARCH_BACKEND for Cloud Run)
-	//   pg_search     — ParadeDB @@@ (legacy cluster CNPG)
-	//   plain         — filter/browse only (no BM25; empty-q path for all queries)
-	SearchBackend string `env:"SEARCH_BACKEND" envDefault:"pg_search"`
+	//   lakebase_text — tsvector + lakebase_bm25 ranking when available; ts_rank otherwise
+	//   plain         — filter/browse only (ILIKE fallback for non-empty q)
+	// pg_search / ParadeDB is removed; all environments use search_tsv.
+	SearchBackend string `env:"SEARCH_BACKEND" envDefault:"lakebase_text"`
 
 	// HTTPTimeoutSec controls outbound HTTP timeout for the
 	// source-verifier (reachability + robots probes). Sane default of

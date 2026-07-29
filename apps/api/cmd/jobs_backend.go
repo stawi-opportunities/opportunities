@@ -113,11 +113,11 @@ type JobsBackend interface {
 // the ro pool when one is configured.
 type jobsPostgres struct {
 	pool          func(ctx context.Context, readOnly bool) *gorm.DB
-	searchBackend string // lakebase_text | pg_search | plain
+	searchBackend string // lakebase_text | plain
 }
 
 func newJobsPostgres(pool func(ctx context.Context, readOnly bool) *gorm.DB) *jobsPostgres {
-	return &jobsPostgres{pool: pool, searchBackend: "pg_search"}
+	return &jobsPostgres{pool: pool, searchBackend: "lakebase_text"}
 }
 
 func (p *jobsPostgres) withSearchBackend(backend string) *jobsPostgres {
@@ -125,12 +125,14 @@ func (p *jobsPostgres) withSearchBackend(backend string) *jobsPostgres {
 		return p
 	}
 	switch strings.ToLower(strings.TrimSpace(backend)) {
-	case "lakebase_text", "lakebase", "bm25":
-		p.searchBackend = "lakebase_text"
 	case "plain", "none", "off":
 		p.searchBackend = "plain"
+	case "pg_search", "paradedb":
+		// Deprecated: map to lakebase_text path (search_tsv). Never use @@@.
+		util.Log(context.Background()).Warn("SEARCH_BACKEND=pg_search is retired; using lakebase_text")
+		p.searchBackend = "lakebase_text"
 	default:
-		p.searchBackend = "pg_search"
+		p.searchBackend = "lakebase_text"
 	}
 	return p
 }
@@ -484,13 +486,13 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 	return out, nil
 }
 
-// Search runs a full-text BM25 query + filters + facets in one pass.
+// Search runs a full-text query + filters + facets in one pass.
 // Empty q falls back to the listing path.
-// Non-empty q:
-//   - SEARCH_BACKEND=lakebase_text → lakebase_bm25 on search_tsv (Neon)
-//   - SEARCH_BACKEND=pg_search     → ParadeDB @@@ (legacy CNPG)
-//   - SEARCH_BACKEND=plain         → ILIKE/browse fallback (no BM25)
-// Hybrid scoring (BM25 + embedding cosine) lands in a follow-up.
+// Non-empty q (SEARCH_BACKEND=lakebase_text, default):
+//   filter: search_tsv @@ websearch_to_tsquery
+//   rank:   lakebase_bm25 (<@>) when available, else ts_rank (tests / no extension)
+// plain: ILIKE substring fallback.
+// pg_search / ParadeDB is not used.
 func (p *jobsPostgres) Search(
 	ctx context.Context,
 	q string,
@@ -518,11 +520,8 @@ func (p *jobsPostgres) Search(
 	)
 
 	if q == "" || p.searchBackend == "plain" {
-		// Browse / filter listing — newest first by default (posted_at).
-		// plain backend also uses this for non-empty q (no BM25).
 		sortField := sanitizeSortField(sort)
 		if q != "" {
-			// Cheap fallback: title/description/issuing_entity substring.
 			args = append(args, "%"+q+"%")
 			likeIdx := len(args)
 			where = where + ` AND (title ILIKE $` + intToStr(likeIdx) +
@@ -537,54 +536,47 @@ func (p *jobsPostgres) Search(
 		         ORDER BY ` + sortField + ` DESC NULLS LAST, last_seen_at DESC NULLS LAST
 		         LIMIT $` + intToStr(limitIdx)
 		rows, err = db.QueryContext(ctx, query, args...)
-	} else if p.searchBackend == "lakebase_text" {
-		// Neon lakebase_text: filter with @@ + rank with <@> (negative scores → ASC).
+	} else {
+		// lakebase_text path: always filter on search_tsv (standard tsvector).
 		args = append(args, q)
 		qIdx := len(args)
 		args = append(args, limit)
 		limitIdx := len(args)
-		// Filter with websearch_to_tsquery; rank with to_bm25query(to_tsvector(...)).
-		// lakebase_text scores are negative → ORDER BY ASC (lower = better).
-		bm25 := `search_tsv <@> to_bm25query(to_tsvector('english', $` + intToStr(qIdx) + `), 'opportunities_search_bm25')`
-		orderBy := bm25 + ` ASC, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST`
-		switch sort {
-		case "recent", "posted_at", "quality":
-			orderBy = `posted_at DESC NULLS LAST, ` + bm25 + ` ASC, last_seen_at DESC NULLS LAST`
-		case "salary_high", "amount_max":
-			orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
+
+		// Prefer lakebase_bm25 ranking; fall back to ts_rank if extension/index missing.
+		useLakebaseRank := p.lakebaseBM25Available(ctx, db)
+		var orderBy, scoreExpr string
+		if useLakebaseRank {
+			if _, gerr := db.ExecContext(ctx, `SELECT set_config('lakebase_bm25.default_limit', $1, true)`, intToStr(limit)); gerr != nil {
+				util.Log(ctx).WithError(gerr).Debug("lakebase_text: set default_limit failed")
+			}
+			if _, gerr := db.ExecContext(ctx, `SELECT set_config('lakebase_bm25.prefilter', 'on', true)`); gerr != nil {
+				util.Log(ctx).WithError(gerr).Debug("lakebase_text: set prefilter failed")
+			}
+			// Negative BM25 scores → ASC is most relevant first.
+			scoreExpr = `search_tsv <@> to_bm25query(to_tsvector('english', $` + intToStr(qIdx) + `), 'opportunities_search_bm25')`
+			orderBy = scoreExpr + ` ASC, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST`
+			switch sort {
+			case "recent", "posted_at", "quality":
+				orderBy = `posted_at DESC NULLS LAST, ` + scoreExpr + ` ASC, last_seen_at DESC NULLS LAST`
+			case "salary_high", "amount_max":
+				orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
+			}
+		} else {
+			// Test DBs / CNPG without lakebase_text: same search_tsv, ts_rank DESC.
+			scoreExpr = `ts_rank(search_tsv, websearch_to_tsquery('english', $` + intToStr(qIdx) + `))`
+			orderBy = scoreExpr + ` DESC, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST`
+			switch sort {
+			case "recent", "posted_at", "quality":
+				orderBy = `posted_at DESC NULLS LAST, ` + scoreExpr + ` DESC, last_seen_at DESC NULLS LAST`
+			case "salary_high", "amount_max":
+				orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
+			}
 		}
 		query := `SELECT ` + selectColumns + `,
-		                 (` + bm25 + `) AS bm25_score
+		                 (` + scoreExpr + `) AS bm25_score
 		          FROM opportunities
 		          WHERE search_tsv @@ websearch_to_tsquery('english', $` + intToStr(qIdx) + `)
-		            AND ` + activePred() + where + ` ` + windowed + `
-		          ORDER BY ` + orderBy + `
-		          LIMIT $` + intToStr(limitIdx)
-		// Session GUCs: top-K pushdown ≈ limit; prefilter for facet filters.
-		if _, gerr := db.ExecContext(ctx, `SELECT set_config('lakebase_bm25.default_limit', $1, true)`, intToStr(limit)); gerr != nil {
-			util.Log(ctx).WithError(gerr).Debug("lakebase_text: set default_limit failed")
-		}
-		if _, gerr := db.ExecContext(ctx, `SELECT set_config('lakebase_bm25.prefilter', 'on', true)`); gerr != nil {
-			util.Log(ctx).WithError(gerr).Debug("lakebase_text: set prefilter failed")
-		}
-		rows, err = db.QueryContext(ctx, query, args...)
-	} else {
-		// Legacy pg_search / ParadeDB.
-		args = append(args, q)
-		qIdx := len(args)
-		args = append(args, limit)
-		limitIdx := len(args)
-		orderBy := `paradedb.score(canonical_id) DESC, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST`
-		switch sort {
-		case "recent", "posted_at", "quality":
-			orderBy = `posted_at DESC NULLS LAST, paradedb.score(canonical_id) DESC, last_seen_at DESC NULLS LAST`
-		case "salary_high", "amount_max":
-			orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
-		}
-		query := `SELECT ` + selectColumns + `,
-		                 paradedb.score(canonical_id) AS bm25_score
-		          FROM opportunities
-		          WHERE canonical_id @@@ paradedb.parse($` + intToStr(qIdx) + `)
 		            AND ` + activePred() + where + ` ` + windowed + `
 		          ORDER BY ` + orderBy + `
 		          LIMIT $` + intToStr(limitIdx)
@@ -596,11 +588,7 @@ func (p *jobsPostgres) Search(
 	defer func() { _ = rows.Close() }()
 	hits := make([]job, 0, limit)
 	for rows.Next() {
-		// The BM25 query has one extra column; scanJob's known shape
-		// covers the leading columns and rows.Next continues to the
-		// next row without us reading bm25_score. We rely on
-		// rows.Scan-then-discard via a wrapper.
-		jrow, scanErr := scanJobMaybeBM25(rows, q != "")
+		jrow, scanErr := scanJobMaybeBM25(rows, q != "" && p.searchBackend != "plain")
 		if scanErr != nil {
 			util.Log(ctx).WithError(scanErr).Warn("postgres: scan row failed")
 			continue
@@ -611,38 +599,56 @@ func (p *jobsPostgres) Search(
 		return nil, 0, nil, err
 	}
 
-	// Total via a parallel count — cheap because the partial index
-	// covers the predicate. We re-derive args (filter + since) without
-	// the q/limit pair to keep the placeholder numbering sane.
 	cwhere, cargs := postgresWhere(filter)
 	cargs = append(cargs, defaultSince())
 	csinceIdx := len(cargs)
 	var countQ string
-	if q == "" {
+	if q == "" || p.searchBackend == "plain" {
 		countQ = `SELECT count(*) FROM opportunities WHERE ` + activePred() + cwhere + `
 		          AND last_seen_at >= $` + intToStr(csinceIdx)
+		if q != "" {
+			cargs = append(cargs, "%"+q+"%")
+			likeIdx := len(cargs)
+			countQ = `SELECT count(*) FROM opportunities WHERE ` + activePred() + cwhere + `
+			          AND last_seen_at >= $` + intToStr(csinceIdx) + `
+			          AND (title ILIKE $` + intToStr(likeIdx) +
+				` OR description ILIKE $` + intToStr(likeIdx) +
+				` OR issuing_entity ILIKE $` + intToStr(likeIdx) + `)`
+		}
 	} else {
 		cargs = append(cargs, q)
 		cqIdx := len(cargs)
 		countQ = `SELECT count(*) FROM opportunities
-		          WHERE canonical_id @@@ paradedb.parse($` + intToStr(cqIdx) + `)
+		          WHERE search_tsv @@ websearch_to_tsquery('english', $` + intToStr(cqIdx) + `)
 		            AND ` + activePred() + cwhere + `
 		            AND last_seen_at >= $` + intToStr(csinceIdx)
 	}
 	if cerr := db.QueryRowContext(ctx, countQ, cargs...).Scan(&total); cerr != nil {
-		// Soft-fail on the total — return hits with an approximate total
-		// rather than 502 the whole search.
 		util.Log(ctx).WithError(cerr).Warn("postgres: search count failed; using hit count")
 		total = len(hits)
 	}
 
-	// Facets — same shape as Facets() but constrained to the current
-	// filter so the SPA's sidebar reflects "what's still available
-	// given my filters". We reuse Facets() for v1 (filter-naive); a
-	// follow-up can specialise.
 	facets, _ := p.Facets(ctx)
-
 	return hits, total, facets, nil
+}
+
+// lakebaseBM25Available reports whether lakebase_text ranking can be used.
+// Cached per process is fine; extension state does not change at runtime.
+func (p *jobsPostgres) lakebaseBM25Available(ctx context.Context, db *sql.DB) bool {
+	var ok bool
+	err := db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM pg_extension WHERE extname = 'lakebase_text'
+		) AND EXISTS (
+			SELECT 1 FROM pg_class c
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE c.relname = 'opportunities_search_bm25' AND n.nspname = 'public'
+		)`).Scan(&ok)
+	if err != nil {
+		util.Log(ctx).WithError(err).Debug("lakebase_text availability probe failed")
+		return false
+	}
+	return ok
 }
 
 // scanJobMaybeBM25 reads the same column set as scanJob, optionally
@@ -653,27 +659,28 @@ func scanJobMaybeBM25(rows *sql.Rows, hasScore bool) (job, error) {
 		return scanJob(rows)
 	}
 	var (
-		j           job
-		desc        sql.NullString
-		issuer      sql.NullString
-		country     sql.NullString
-		region      sql.NullString
-		city        sql.NullString
-		remote      sql.NullBool
-		apply       sql.NullString
-		postedAt    sql.NullTime
-		deadline    sql.NullTime
-		currency    sql.NullString
-		amountMin   sql.NullFloat64
-		amountMax   sql.NullFloat64
-		quality     sql.NullFloat64
-		attrsRaw    sql.RawBytes
-		categoryRaw sql.RawBytes
-		score       float64
+		j             job
+		desc          sql.NullString
+		hasHowToApply bool
+		issuer        sql.NullString
+		country       sql.NullString
+		region        sql.NullString
+		city          sql.NullString
+		remote        sql.NullBool
+		apply         sql.NullString
+		postedAt      sql.NullTime
+		deadline      sql.NullTime
+		currency      sql.NullString
+		amountMin     sql.NullFloat64
+		amountMax     sql.NullFloat64
+		quality       sql.NullFloat64
+		attrsRaw      sql.RawBytes
+		categoryRaw   sql.RawBytes
+		score         float64
 	)
 	if err := rows.Scan(
 		&j.CanonicalID, &j.Slug, &j.Kind,
-		&j.Title, &desc, &issuer,
+		&j.Title, &desc, &hasHowToApply, &issuer,
 		&country, &region, &city,
 		&remote, &apply,
 		&postedAt, &deadline,
@@ -684,6 +691,7 @@ func scanJobMaybeBM25(rows *sql.Rows, hasScore bool) (job, error) {
 		return j, err
 	}
 	j.Description = desc.String
+	j.HasHowToApply = hasHowToApply
 	j.IssuingEntity = issuer.String
 	j.Country = country.String
 	j.Region = region.String
@@ -692,7 +700,8 @@ func scanJobMaybeBM25(rows *sql.Rows, hasScore bool) (job, error) {
 	j.Currency = currency.String
 	j.AmountMin = amountMin.Float64
 	j.AmountMax = amountMax.Float64
-	_ = apply.String
+	j.ApplyURL = apply.String
+	_ = score
 	if postedAt.Valid {
 		t := postedAt.Time.UTC()
 		j.PostedAt = &t
