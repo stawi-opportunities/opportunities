@@ -9,14 +9,23 @@ surfaces only.
 
 ## Public discovery (`apps/api`)
 
+Gateway prefix (Cloud Run): **`/opportunities`** on `api.stawi.org` (replaces `/jobs`).
+After strip_prefix, handlers are relative to the service root:
+
 | Surface | Purpose |
 |---------|---------|
-| `GET /api/search` | Opportunity search |
-| `GET /api/jobs/{slug}` | Job detail by slug |
+| `GET /api/search` | Opportunity search (BM25 via `lakebase_text` on Neon) |
+| `GET /api/opportunities/{slug}` | Opportunity detail by slug (**canonical**) |
+| `GET /api/opportunities/top` | Top listings |
+| `GET /api/opportunities/latest` | Latest listings |
+| `GET /api/jobs/{slug}` | **Legacy alias** of detail (compat during cutover) |
 | `GET /healthz` | Liveness |
 
 Every opportunity returned by discovery includes a non-empty `apply_url` when
 present in the serving row.
+
+`SEARCH_BACKEND=lakebase_text` (Cloud Run / Neon). Cluster may still use
+`pg_search` until decommissioned.
 
 ## Candidate surface (`apps/matching`)
 

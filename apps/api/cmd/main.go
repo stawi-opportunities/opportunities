@@ -55,8 +55,14 @@ type apiConfig struct {
 	// SourceAdminEnabled gates the /admin/sources/* endpoints. Defaults
 	// off so plain api deployments (no DB credentials) keep working
 	// unchanged. Set to true in clusters where api should also serve
-	// the source-management surface.
+	// the source-management surface. Cloud Run product deploys keep this false.
 	SourceAdminEnabled bool `env:"SOURCE_ADMIN_ENABLED" envDefault:"false"`
+
+	// SearchBackend selects full-text ranking implementation:
+	//   lakebase_text — Neon lakebase_bm25 (SEARCH_BACKEND for Cloud Run)
+	//   pg_search     — ParadeDB @@@ (legacy cluster CNPG)
+	//   plain         — filter/browse only (no BM25; empty-q path for all queries)
+	SearchBackend string `env:"SEARCH_BACKEND" envDefault:"pg_search"`
 
 	// HTTPTimeoutSec controls outbound HTTP timeout for the
 	// source-verifier (reachability + robots probes). Sane default of
@@ -152,8 +158,8 @@ func main() {
 	if pool == nil {
 		log.Fatal("api: DATABASE_URL required")
 	}
-	jm := newJobsPostgres(pool.DB)
-	log.Info("api: jobs backend = postgres")
+	jm := newJobsPostgres(pool.DB).withSearchBackend(cfg.SearchBackend)
+	log.WithField("search_backend", cfg.SearchBackend).Info("api: opportunities backend = postgres")
 
 	// Frame-managed HTTP client (OTEL trace propagation + retry policy)
 	// for analytics.
@@ -199,7 +205,15 @@ func main() {
 
 	// Flat /api/* endpoints. Search results are post-decorated
 	// with view/apply counters when Valkey is configured.
+	// Canonical public gateway prefix is /opportunities (not /jobs).
+	// Handler paths remain under /api/* after strip_prefix.
 	mux.HandleFunc("GET /api/search", searchHandler(jm, reg, countersClient))
+	// Canonical opportunity detail/list paths.
+	mux.HandleFunc("GET /api/opportunities/{id}", jobByIDHandler(jm))
+	mux.HandleFunc("GET /api/opportunities/top", topHandler(jm))
+	mux.HandleFunc("GET /api/opportunities/latest", latestHandler(jm))
+	mux.HandleFunc("GET /api/categories/{slug}/opportunities", categoryJobsHandler(jm))
+	// Legacy /api/jobs/* aliases (compat during SPA cutover).
 	mux.HandleFunc("GET /api/jobs/{id}", jobByIDHandler(jm))
 	mux.HandleFunc("GET /api/jobs/top", topHandler(jm))
 	mux.HandleFunc("GET /api/jobs/latest", latestHandler(jm))
@@ -299,6 +313,9 @@ func main() {
 	// OpenObserve event so analytics queries can dedup by profile_id
 	// downstream. Both writes are best-effort; the response is always
 	// 204 so a slow Valkey can't add user-facing latency.
+	mux.HandleFunc("OPTIONS /opportunities/{slug}/view", corsBeaconPreflight)
+	mux.HandleFunc("POST /opportunities/{slug}/view", viewBeaconHandler(analyticsClient, countersClient))
+	// Legacy beacons.
 	mux.HandleFunc("OPTIONS /jobs/{slug}/view", corsBeaconPreflight)
 	mux.HandleFunc("POST /jobs/{slug}/view", viewBeaconHandler(analyticsClient, countersClient))
 

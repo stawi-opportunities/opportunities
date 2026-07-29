@@ -18,10 +18,34 @@ type DBFunc func(context.Context, bool) *gorm.DB
 
 type Store struct {
 	db         DBFunc
+	productDB  DBFunc // optional product SoT (Neon); nil → same as db
 	maxPending int64
 }
 
 func New(db DBFunc) *Store { return &Store{db: db} }
+
+// WithProductDB sets a separate database for catalog/serving writes
+// (opportunities, identities, lineage, embeddings). Queue claim/ack and
+// ingest events stay on the crawl DB (db). When productDB is nil, Complete
+// uses a single transaction on db (legacy single-database mode).
+func (s *Store) WithProductDB(product DBFunc) *Store {
+	if s == nil {
+		return s
+	}
+	s.productDB = product
+	return s
+}
+
+func (s *Store) product() DBFunc {
+	if s != nil && s.productDB != nil {
+		return s.productDB
+	}
+	return s.db
+}
+
+func (s *Store) dualDB() bool {
+	return s != nil && s.productDB != nil
+}
 
 // NewProducer adds a hard queue-credit ceiling for crawler processes.
 func NewProducer(db DBFunc, maxPending int64) *Store {
@@ -181,7 +205,7 @@ func (s *Store) SetEmbedding(ctx context.Context, canonicalID string, vec []floa
 		return errors.New("jobqueue: invalid embedding write")
 	}
 	lit := vectorLiteral(vec)
-	return s.db(ctx, false).WithContext(ctx).Exec(
+	return s.product()(ctx, false).WithContext(ctx).Exec(
 		`UPDATE opportunities SET embedding = ?::vector, updated_at = now()
 		 WHERE canonical_id = ?`,
 		lit, canonicalID,
@@ -203,7 +227,10 @@ func vectorLiteral(v []float32) string {
 }
 
 // Complete resolves identity, merges the serving row and source lineage, and
-// acknowledges queue work in one database transaction.
+// acknowledges queue work. Single-DB mode uses one transaction. Dual-DB mode
+// (WithProductDB) commits product tables first, then acks the crawl queue —
+// never ack on crawl before product commit. Product upserts are idempotent so
+// redelivery after a failed crawl ack is safe.
 func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, error) {
 	if c.CandidateID == "" || c.HardKey == "" || c.Kind == "" || c.Title == "" || c.ApplyURL == "" {
 		return "", errors.New("jobqueue: canonical record misses required fields")
@@ -215,21 +242,22 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 	if c.SeenAt.IsZero() {
 		c.SeenAt = time.Now().UTC()
 	}
+	// Drop any leaked paywalled body from attributes before persist —
+	// attributes are returned on the public opportunities API.
+	if c.Attributes != nil {
+		delete(c.Attributes, "how_to_apply")
+		attrs, err = json.Marshal(c.Attributes)
+		if err != nil {
+			return "", fmt.Errorf("marshal attributes: %w", err)
+		}
+	}
+
 	var canonicalID string
-	err = s.db(ctx, false).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	productWrite := func(tx *gorm.DB) error {
 		if err := tx.Raw(`INSERT INTO opportunity_identities (hard_key, canonical_id) VALUES (?, ?)
 			ON CONFLICT (hard_key) DO UPDATE SET hard_key=EXCLUDED.hard_key
 			RETURNING canonical_id`, c.HardKey, c.CandidateID).Scan(&canonicalID).Error; err != nil {
 			return fmt.Errorf("resolve identity: %w", err)
-		}
-		// Drop any leaked paywalled body from attributes before persist —
-		// attributes are returned on the public jobs API.
-		if c.Attributes != nil {
-			delete(c.Attributes, "how_to_apply")
-			attrs, err = json.Marshal(c.Attributes)
-			if err != nil {
-				return fmt.Errorf("marshal attributes: %w", err)
-			}
 		}
 		slug := makeSlug(c.Kind, c.Title, c.IssuingEntity, canonicalID)
 		if err := tx.Exec(`INSERT INTO opportunities (
@@ -243,7 +271,6 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 		ON CONFLICT (canonical_id) DO UPDATE SET
 			title=COALESCE(NULLIF(EXCLUDED.title,''),opportunities.title),
 			description=CASE WHEN length(COALESCE(EXCLUDED.description,'')) > length(COALESCE(opportunities.description,'')) THEN EXCLUDED.description ELSE opportunities.description END,
-			-- Prefer a longer/non-empty how_to_apply when re-crawled; keep existing when incoming is blank.
 			how_to_apply=CASE
 				WHEN length(COALESCE(EXCLUDED.how_to_apply,'')) > length(COALESCE(opportunities.how_to_apply,''))
 				THEN EXCLUDED.how_to_apply
@@ -252,9 +279,6 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 			issuing_entity=COALESCE(EXCLUDED.issuing_entity,opportunities.issuing_entity),
 			country=COALESCE(EXCLUDED.country,opportunities.country), region=COALESCE(EXCLUDED.region,opportunities.region),
 			city=COALESCE(EXCLUDED.city,opportunities.city), remote=EXCLUDED.remote,
-			-- Prefer a non-empty new apply_url, but keep the existing one when the
-			-- incoming URL is blank. (Quality ranking of listing vs detail URLs
-			-- is enforced at accept time — we never invent base_url apply links.)
 			apply_url=COALESCE(NULLIF(EXCLUDED.apply_url,''),opportunities.apply_url),
 			posted_at=COALESCE(EXCLUDED.posted_at,opportunities.posted_at),
 			deadline=COALESCE(EXCLUDED.deadline,opportunities.deadline), currency=COALESCE(EXCLUDED.currency,opportunities.currency),
@@ -291,6 +315,10 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 			WHERE o.canonical_id=?`, canonicalID).Error; err != nil {
 			return fmt.Errorf("refresh opportunity visibility: %w", err)
 		}
+		return nil
+	}
+
+	ackCrawl := func(tx *gorm.DB) error {
 		result := tx.Exec(`UPDATE job_ingest_queue SET status='processed', processed_at=now(),
 			lease_expires_at=NULL, claimed_by=NULL, last_error=NULL, updated_at=now()
 			WHERE id=? AND status='processing'`, item.ID)
@@ -299,6 +327,23 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 		}
 		return appendEvent(tx, item.ID, item.VariantID, item.SourceID, "processed", item.Attempt,
 			fmt.Sprintf(`{"canonical_id":%q}`, canonicalID))
+	}
+
+	if s.dualDB() {
+		if err := s.product()(ctx, false).WithContext(ctx).Transaction(productWrite); err != nil {
+			return "", err
+		}
+		if err := s.db(ctx, false).WithContext(ctx).Transaction(ackCrawl); err != nil {
+			return canonicalID, fmt.Errorf("product committed; crawl ack failed (safe to retry): %w", err)
+		}
+		return canonicalID, nil
+	}
+
+	err = s.db(ctx, false).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := productWrite(tx); err != nil {
+			return err
+		}
+		return ackCrawl(tx)
 	})
 	return canonicalID, err
 }
@@ -306,7 +351,7 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 // ReconcileSource marks listings not observed in a completed full crawl as
 // inactive, then hides canonicals with no remaining active source.
 func (s *Store) ReconcileSource(ctx context.Context, sourceID string, crawlStartedAt time.Time) error {
-	return s.db(ctx, false).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return s.product()(ctx, false).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(`UPDATE opportunity_sources SET active=false, inactive_after=?
 			WHERE source_id=? AND last_seen_at < ?`, crawlStartedAt, sourceID, crawlStartedAt).Error; err != nil {
 			return err
