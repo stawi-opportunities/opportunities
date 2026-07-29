@@ -42,7 +42,7 @@ export default function FlagModal({ slug }: { slug: string }) {
     if (state.kind === 'submitting') return;
     setState({ kind: 'submitting' });
     try {
-      await authRuntime().fetch(`/jobs/opportunities/${encodeURIComponent(slug)}/flag`, {
+      await authRuntime().fetch(`/opportunities/${encodeURIComponent(slug)}/flag`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason, description: description.trim() }),

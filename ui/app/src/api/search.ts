@@ -17,7 +17,7 @@ export function searchJobs(params: SearchParams): Promise<SearchResponse> {
 }
 
 export function latestJobs(limit = 20): Promise<LatestJobsResponse> {
-  return jobsApiGet<LatestJobsResponse>('/api/jobs/latest', { limit });
+  return jobsApiGet<LatestJobsResponse>('/api/opportunities/latest', { limit });
 }
 
 export function statsSummary(): Promise<StatsSummary> {
@@ -32,7 +32,7 @@ export function categoryJobs(
   slug: string,
   opts: { cursor?: string; limit?: number; sort?: SearchParams['sort'] } = {}
 ): Promise<CategoryJobsResponse> {
-  return jobsApiGet<CategoryJobsResponse>(`/api/categories/${encodeURIComponent(slug)}/jobs`, opts);
+  return jobsApiGet<CategoryJobsResponse>(`/api/categories/${encodeURIComponent(slug)}/opportunities`, opts);
 }
 
 /**
