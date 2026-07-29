@@ -48,5 +48,7 @@ LABEL org.opencontainers.image.source=$REPOSITORY
 WORKDIR /
 COPY --from=builder /app/binary /matching
 COPY --from=builder /app/apps/matching/migrations /migrations
+# Cloud Run has no ConfigMap; ship stock kinds for product boot without R2.
+COPY ./definitions/opportunity-kinds /etc/opportunity-kinds
 
 ENTRYPOINT ["/matching"]
