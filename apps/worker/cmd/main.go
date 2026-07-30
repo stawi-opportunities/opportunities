@@ -92,7 +92,7 @@ func main() {
 
 	if cfg.EmbeddingBaseURL != "" && embedURL != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
-			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
+			cfg.EmbeddingProvider, cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey,
 		)
 		ex := extraction.New(extraction.Config{
 			EmbeddingBaseURL:    embBase,

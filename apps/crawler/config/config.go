@@ -96,16 +96,22 @@ type CrawlerConfig struct {
 	// Inference back-end (OpenAI-compatible). Used for recipe generation
 	// and for peeling how_to_apply from opportunity descriptions after
 	// crawl accept (paywall field). Empty disables both.
-	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
-	InferenceAPIKey  string `env:"INFERENCE_API_KEY" envDefault:""`
-	InferenceModel   string `env:"INFERENCE_MODEL" envDefault:""`
+	// InferenceProvider: nvidia | google | custom. When set, fills default
+	// BASE_URL/MODEL if those env vars are empty (see pkg/extraction).
+	InferenceProvider string `env:"INFERENCE_PROVIDER" envDefault:""`
+	InferenceBaseURL  string `env:"INFERENCE_BASE_URL" envDefault:""`
+	InferenceAPIKey   string `env:"INFERENCE_API_KEY" envDefault:""`
+	InferenceModel    string `env:"INFERENCE_MODEL" envDefault:""`
 
 	// Embeddings. When EMBEDDING_BASE_URL is empty, Extract.Embed() returns
 	// an empty slice and the pipeline skips storing the vector — matching
 	// degrades to skills+keyword scoring without the embedding term.
-	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL" envDefault:""`
-	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY" envDefault:""`
-	EmbeddingModel   string `env:"EMBEDDING_MODEL" envDefault:""`
+	// EmbeddingProvider: nvidia | google | custom (same as inference).
+	// Prefer keeping NVIDIA/e5-1024 for product HNSW unless the column is changed.
+	EmbeddingProvider string `env:"EMBEDDING_PROVIDER" envDefault:""`
+	EmbeddingBaseURL  string `env:"EMBEDDING_BASE_URL" envDefault:""`
+	EmbeddingAPIKey   string `env:"EMBEDDING_API_KEY" envDefault:""`
+	EmbeddingModel    string `env:"EMBEDDING_MODEL" envDefault:""`
 	// EmbeddingDimensions pins the embeddings API "dimensions" field for
 	// Matryoshka models (Qwen3-Embedding); 0 omits it. Must equal EMBEDDING_DIM.
 	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`

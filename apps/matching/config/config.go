@@ -19,14 +19,18 @@ type CandidatesConfig struct {
 	R2ArchiveBucket   string `env:"R2_ARCHIVE_BUCKET"    envDefault:"product-opportunities-archive"`
 
 	// AI inference back-end (OpenAI-compatible).
-	InferenceBaseURL string `env:"INFERENCE_BASE_URL" envDefault:""`
-	InferenceAPIKey  string `env:"INFERENCE_API_KEY"  envDefault:""`
-	InferenceModel   string `env:"INFERENCE_MODEL"    envDefault:""`
+	// InferenceProvider: nvidia | google | custom (see pkg/extraction).
+	InferenceProvider string `env:"INFERENCE_PROVIDER" envDefault:""`
+	InferenceBaseURL  string `env:"INFERENCE_BASE_URL" envDefault:""`
+	InferenceAPIKey   string `env:"INFERENCE_API_KEY"  envDefault:""`
+	InferenceModel    string `env:"INFERENCE_MODEL"    envDefault:""`
 
 	// Embeddings — optional, graceful no-op when empty.
-	EmbeddingBaseURL string `env:"EMBEDDING_BASE_URL" envDefault:""`
-	EmbeddingAPIKey  string `env:"EMBEDDING_API_KEY"  envDefault:""`
-	EmbeddingModel   string `env:"EMBEDDING_MODEL"    envDefault:""`
+	// EmbeddingProvider: nvidia | google | custom.
+	EmbeddingProvider string `env:"EMBEDDING_PROVIDER" envDefault:""`
+	EmbeddingBaseURL  string `env:"EMBEDDING_BASE_URL" envDefault:""`
+	EmbeddingAPIKey   string `env:"EMBEDDING_API_KEY"  envDefault:""`
+	EmbeddingModel    string `env:"EMBEDDING_MODEL"    envDefault:""`
 	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
 	// 0 omits it. Must equal EMBEDDING_DIM.
 	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`

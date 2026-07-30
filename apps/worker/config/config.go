@@ -25,6 +25,8 @@ type Config struct {
 	// Embeddings — optional. Dimensions must match opportunities.embedding
 	// vector(1024). Live path: Complete → Frame Queue (WorkerEmbedQueueURL)
 	// → EmbedHandler → SetEmbedding.
+	// EmbeddingProvider: nvidia | google | custom (see pkg/extraction).
+	EmbeddingProvider   string `env:"EMBEDDING_PROVIDER" envDefault:""`
 	EmbeddingBaseURL    string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey     string `env:"EMBEDDING_API_KEY" envDefault:""`
 	EmbeddingModel      string `env:"EMBEDDING_MODEL" envDefault:""`

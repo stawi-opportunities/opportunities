@@ -14,9 +14,8 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 )
 
-// Production NVIDIA Build (build.nvidia.com) defaults — used by crawler,
-// frontier-worker, matching, recipe-gen, how-to-apply peel/backfill.
-// Deploy sets these via Helm env; CLI tools may fall back when env is partial.
+// Production provider defaults. Deploy selects via INFERENCE_PROVIDER /
+// EMBEDDING_PROVIDER (nvidia | google | custom) or sets BASE_URL explicitly.
 const (
 	// NVIDIABuildBaseURL is the OpenAI-compatible root for hosted NIM.
 	NVIDIABuildBaseURL = "https://integrate.api.nvidia.com"
@@ -25,13 +24,52 @@ const (
 	NVIDIABuildChatModel = "meta/llama-3.1-8b-instruct"
 	// NVIDIABuildEmbedModel is the default embedding model (native 1024-d).
 	NVIDIABuildEmbedModel = "nvidia/nv-embedqa-e5-v5"
+
+	// GoogleAIBaseURL is Gemini via Google's OpenAI-compatible surface
+	// (https://ai.google.dev/gemini-api/docs/openai).
+	GoogleAIBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+	// GoogleAIChatModel is a fast default for peel/recipes/CV chat.
+	GoogleAIChatModel = "gemini-2.0-flash"
+	// GoogleAIEmbedModel is the OpenAI-compat embedding id (native 768-d;
+	// set EMBEDDING_DIMENSIONS only if the product column matches).
+	GoogleAIEmbedModel = "text-embedding-004"
+)
+
+// Provider names for INFERENCE_PROVIDER / EMBEDDING_PROVIDER.
+const (
+	ProviderNVIDIA = "nvidia"
+	ProviderGoogle = "google"
+	ProviderCustom = "custom"
 )
 
 // ResolveInference returns the configured chat-completion backend.
-// Empty baseURL means "AI extraction disabled". Callers that want the
-// production NVIDIA Build endpoint must set INFERENCE_BASE_URL (deploy
-// already pins https://integrate.api.nvidia.com + meta/llama-3.1-8b-instruct).
-func ResolveInference(inferenceURL, inferenceModel, inferenceKey string) (string, string, string) {
+// Empty baseURL means "AI extraction disabled" unless provider presets apply.
+//
+// provider is nvidia | google | custom | "" (alias of custom when URL set).
+// When provider is nvidia/google and baseURL is empty, defaults are filled.
+// Key is still required for a usable backend (except local/custom without auth).
+func ResolveInference(provider, inferenceURL, inferenceModel, inferenceKey string) (string, string, string) {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	switch p {
+	case ProviderNVIDIA, "nim", "build.nvidia":
+		if inferenceURL == "" {
+			inferenceURL = NVIDIABuildBaseURL
+		}
+		if inferenceModel == "" {
+			inferenceModel = NVIDIABuildChatModel
+		}
+	case ProviderGoogle, "gemini", "google-ai":
+		if inferenceURL == "" {
+			inferenceURL = GoogleAIBaseURL
+		}
+		if inferenceModel == "" {
+			inferenceModel = GoogleAIChatModel
+		}
+	case "", ProviderCustom:
+		// explicit URL/model only
+	default:
+		// unknown provider: treat as custom (use URL as-is)
+	}
 	return inferenceURL, inferenceModel, inferenceKey
 }
 
@@ -42,18 +80,42 @@ func ResolveInferenceOrNVIDIA(inferenceURL, inferenceModel, inferenceKey string)
 	if inferenceKey == "" && inferenceURL == "" {
 		return "", "", ""
 	}
-	if inferenceURL == "" {
-		inferenceURL = NVIDIABuildBaseURL
+	return ResolveInference(ProviderNVIDIA, inferenceURL, inferenceModel, inferenceKey)
+}
+
+// ResolveInferenceOrProvider is ResolveInference with a named provider fallback
+// when URL/model empty but key is set (CLI + deploy helpers).
+func ResolveInferenceOrProvider(provider, inferenceURL, inferenceModel, inferenceKey string) (string, string, string) {
+	if inferenceKey == "" && inferenceURL == "" {
+		return "", "", ""
 	}
-	if inferenceModel == "" {
-		inferenceModel = NVIDIABuildChatModel
+	if provider == "" {
+		provider = ProviderNVIDIA
 	}
-	return inferenceURL, inferenceModel, inferenceKey
+	return ResolveInference(provider, inferenceURL, inferenceModel, inferenceKey)
 }
 
 // ResolveEmbedding returns the configured embedding backend. baseURL is empty when embeddings are
 // disabled — callers skip storing the vector.
-func ResolveEmbedding(embedURL, embedModel, embedKey string) (string, string, string) {
+// provider is nvidia | google | custom | "".
+func ResolveEmbedding(provider, embedURL, embedModel, embedKey string) (string, string, string) {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	switch p {
+	case ProviderNVIDIA, "nim", "build.nvidia":
+		if embedURL == "" {
+			embedURL = NVIDIABuildBaseURL
+		}
+		if embedModel == "" {
+			embedModel = NVIDIABuildEmbedModel
+		}
+	case ProviderGoogle, "gemini", "google-ai":
+		if embedURL == "" {
+			embedURL = GoogleAIBaseURL
+		}
+		if embedModel == "" {
+			embedModel = GoogleAIEmbedModel
+		}
+	}
 	return embedURL, embedModel, embedKey
 }
 
