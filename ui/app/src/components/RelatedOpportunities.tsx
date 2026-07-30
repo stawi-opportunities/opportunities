@@ -61,10 +61,7 @@ export function RelatedOpportunities({
   }
   if (!items.length) return null;
 
-  const label =
-    snap.kind === 'job' || !snap.kind
-      ? 'Similar jobs'
-      : 'Related opportunities';
+  const label = snap.kind === 'job' || !snap.kind ? 'Similar jobs' : 'Related opportunities';
 
   return (
     <section className="mt-14 border-t border-slate-200 pt-10" aria-labelledby="related-heading">

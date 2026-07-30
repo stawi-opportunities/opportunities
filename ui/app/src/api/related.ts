@@ -10,10 +10,7 @@ export type RelatedResponse = {
  * GET /opportunities/api/opportunities/{slug}/related — similar listings.
  * Gateway may strip prefixes; discovery API is under /opportunities after CF.
  */
-export async function fetchRelated(
-  slug: string,
-  limit = 8
-): Promise<SearchResult[]> {
+export async function fetchRelated(slug: string, limit = 8): Promise<SearchResult[]> {
   const base =
     (typeof import.meta !== 'undefined' &&
       (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE) ||
