@@ -40,13 +40,14 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
+	"github.com/stawi-opportunities/opportunities/pkg/chatagentclient"
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
 	"github.com/stawi-opportunities/opportunities/pkg/definitions"
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
-	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
+	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
@@ -611,18 +612,44 @@ func main() {
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
 	// POST /me/chat — shared preference / intake conversation (onboarding,
 	// dashboard refine, opportunity side-chat all embed the same widget).
-	// Uses the shared extractor when inference is configured; otherwise a
-	// deterministic heuristic still drives structured field extraction.
+	// Prefer platform chat-agent when configured; local MeChatHandler is
+	// the fallback (and sole path when CHAT_AGENT_SERVICE_URI is empty).
 	var chatLLM httpv1.MeChatLLM
 	if extractor != nil {
 		chatLLM = extractor
 	}
-	mux.Handle("POST /me/chat", authMW(httpv1.MeChatHandler(httpv1.MeChatDeps{
+	localChat := httpv1.MeChatHandler(httpv1.MeChatDeps{
 		LLM:       chatLLM,
-		Drafts:    candidateRepo, // persist transcript + fields for resume/refine
-		Placement: placementSvc,  // qualifications+prefs summary → vector index
-		Profiles:  profileCV,     // file-id rehydration so past CV uploads stick
-	})))
+		Drafts:    candidateRepo,
+		Placement: placementSvc,
+		Profiles:  profileCV,
+	})
+	chatHandler := localChat
+	if cfg.ChatAgentEnabled && strings.TrimSpace(cfg.ChatAgentServiceURI) != "" {
+		agentClient := chatagentclient.New(
+			strings.TrimSpace(cfg.ChatAgentServiceURI),
+			svc.HTTPClientManager().Client(ctx),
+		)
+		// Prefer authenticated S2S HTTP (OAuth audience /chat-agent) when config allows.
+		if opts, oerr := apis.ClientOptions(ctx, &cfg, apis.ServiceTarget{
+			Endpoint:  strings.TrimSpace(cfg.ChatAgentServiceURI),
+			ServiceID: servicecatalog.ServiceID("chat-agent"),
+		}); oerr != nil {
+			util.Log(ctx).WithError(oerr).Warn("me/chat: chat-agent auth options unavailable; using plain HTTP client")
+		} else if base, berr := connection.NewConnectClientBase(ctx, opts...); berr != nil {
+			util.Log(ctx).WithError(berr).Warn("me/chat: chat-agent connect base failed; using plain HTTP client")
+		} else if base != nil && base.Client() != nil {
+			agentClient = chatagentclient.New(base.Endpoint(), base.Client())
+		}
+		chatHandler = httpv1.MeChatAgentHandler(&httpv1.MeChatAgentDeps{
+			Client:    agentClient,
+			Drafts:    candidateRepo,
+			Placement: placementSvc,
+			Profiles:  profileCV,
+		}, localChat)
+		util.Log(ctx).WithField("uri", cfg.ChatAgentServiceURI).Info("me/chat: using platform chat-agent")
+	}
+	mux.Handle("POST /me/chat", authMW(chatHandler))
 
 	// /candidates/onboard — wizard final submit. Promotes the draft
 	// into the canonical profile columns and clears the draft in one

@@ -171,4 +171,12 @@ type CandidatesConfig struct {
 	CheckoutInternalToken string `env:"CHECKOUT_INTERNAL_TOKEN" envDefault:""`
 	// CheckoutPublicBaseURL is the public pay page origin (page URL fallback).
 	CheckoutPublicBaseURL string `env:"CHECKOUT_PUBLIC_BASE_URL" envDefault:"https://pay.stawi.org"`
+
+	// ChatAgentServiceURI is the platform chat-agent Connect base
+	// (e.g. https://api.stawi.org/chat-agent). When empty, /me/chat uses
+	// the local MeChatHandler only.
+	ChatAgentServiceURI string `env:"CHAT_AGENT_SERVICE_URI" envDefault:""`
+	// ChatAgentEnabled routes /me/chat through chat-agent when URI is set.
+	// Falls back to local handler on agent errors so SPA stays usable.
+	ChatAgentEnabled bool `env:"CHAT_AGENT_ENABLED" envDefault:"false"`
 }

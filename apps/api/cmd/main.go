@@ -210,13 +210,17 @@ func main() {
 	mux.HandleFunc("GET /api/search", searchHandler(jm, reg, countersClient))
 	// Canonical opportunity detail/list paths.
 	mux.HandleFunc("GET /api/opportunities/{id}", jobByIDHandler(jm))
+	mux.HandleFunc("GET /api/opportunities/{id}/related", relatedHandler(jm))
 	mux.HandleFunc("GET /api/opportunities/top", topHandler(jm))
 	mux.HandleFunc("GET /api/opportunities/latest", latestHandler(jm))
+
 	mux.HandleFunc("GET /api/categories/{slug}/opportunities", categoryJobsHandler(jm))
 	// Legacy /api/jobs/* aliases (compat during SPA cutover).
 	mux.HandleFunc("GET /api/jobs/{id}", jobByIDHandler(jm))
+	mux.HandleFunc("GET /api/jobs/{id}/related", relatedHandler(jm))
 	mux.HandleFunc("GET /api/jobs/top", topHandler(jm))
 	mux.HandleFunc("GET /api/jobs/latest", latestHandler(jm))
+
 	mux.HandleFunc("GET /api/categories", categoriesHandler(jm))
 	mux.HandleFunc("GET /api/categories/{slug}/jobs", categoryJobsHandler(jm))
 	mux.HandleFunc("GET /api/stats", jobStatsHandler(jm))
