@@ -59,6 +59,7 @@ func (s *sessionStore) set(key, sessionID string) {
 }
 
 // MeChatAgentDeps wires the platform chat-agent consumer path.
+// Pass by pointer — contains sync.Once and must not be copied.
 type MeChatAgentDeps struct {
 	Client    *chatagentclient.Client
 	Drafts    OnboardingDraftStore
@@ -66,14 +67,14 @@ type MeChatAgentDeps struct {
 	Profiles  placement.ProfileStore
 	// Sessions caches session ids (optional; nil uses ephemeral per request create).
 	Sessions *sessionStore
-	// EnsureContexts registers product contexts once (best-effort).
+	// ensureOnce registers product contexts once (best-effort).
 	ensureOnce sync.Once
 }
 
 // MeChatAgentHandler is POST /me/chat when CHAT_AGENT_ENABLED.
 // SPA contract matches MeChatHandler; opportunity side-chat passes opportunity{}.
-func MeChatAgentHandler(deps MeChatAgentDeps, fallback http.HandlerFunc) http.HandlerFunc {
-	if deps.Client == nil {
+func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.HandlerFunc {
+	if deps == nil || deps.Client == nil {
 		return fallback
 	}
 	if deps.Sessions == nil {
