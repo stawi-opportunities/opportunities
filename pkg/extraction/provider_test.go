@@ -12,7 +12,7 @@ func TestResolveInference_Providers(t *testing.T) {
 		t.Fatalf("nvidia defaults: url=%q model=%q", u, m)
 	}
 	// Explicit URL wins over provider defaults for model only when set.
-	u, m, _ = ResolveInference("nvidia", "", "", "nv")
+	u, m, _ = ResolveInference("nvidia", "https://custom.example", "my-model", "nv")
 	if u != "https://custom.example" || m != "my-model" {
 		t.Fatalf("explicit override: url=%q model=%q", u, m)
 	}
