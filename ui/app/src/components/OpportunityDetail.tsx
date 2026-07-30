@@ -516,6 +516,7 @@ function buildJobPostingLd(snap: OpportunitySnapshot): Record<string, unknown> {
     description: snap.description_html ?? snap.description,
     datePosted: snap.posted_at,
     validThrough: snap.expires_at ?? snap.deadline,
+    url: window.location.href,
     employmentType:
       typeof snap.attributes?.employment_type === 'string'
         ? snap.attributes.employment_type
@@ -526,6 +527,9 @@ function buildJobPostingLd(snap: OpportunitySnapshot): Record<string, unknown> {
       logo: typeof snap.attributes?.logo_url === 'string' ? snap.attributes.logo_url : undefined,
     },
   };
+  if (typeof snap.attributes?.logo_url === 'string') {
+    ld.image = snap.attributes.logo_url;
+  }
   if (snap.anchor_location) {
     ld.jobLocation = {
       '@type': 'Place',

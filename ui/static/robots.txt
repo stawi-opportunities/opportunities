@@ -12,6 +12,13 @@ Disallow: /onboarding/
 # /r/{slug} response itself as a belt-and-braces measure.
 Disallow: /r/
 
+# Query-parameter variants (sort, filter, page, search) produce duplicate
+# or thin content. Allow bots to hit the clean canonical URL only.
+Disallow: /*?sort=
+Disallow: /*?filter=
+Disallow: /*?page=
+Disallow: /*?q=
+
 # R2 snapshot JSON is API-shaped and not a user destination. Indexing it
 # produces confusing search results pointing at raw JobSnapshot blobs.
 Disallow: /jobs/*.json$
