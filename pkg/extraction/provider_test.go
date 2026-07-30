@@ -7,12 +7,12 @@ func TestResolveInference_Providers(t *testing.T) {
 	if u != GoogleAIBaseURL || m != GoogleAIChatModel || k != "key" {
 		t.Fatalf("google defaults: url=%q model=%q key=%q", u, m, k)
 	}
-	u, m, k = ResolveInference("nvidia", "", "", "nv")
+	u, m, _ = ResolveInference("nvidia", "", "", "nv")
 	if u != NVIDIABuildBaseURL || m != NVIDIABuildChatModel {
 		t.Fatalf("nvidia defaults: url=%q model=%q", u, m)
 	}
 	// Explicit URL wins over provider defaults for model only when set.
-	u, m, k = ResolveInference("google", "https://custom.example", "my-model", "k")
+	u, m, _ = ResolveInference("nvidia", "", "", "nv")
 	if u != "https://custom.example" || m != "my-model" {
 		t.Fatalf("explicit override: url=%q model=%q", u, m)
 	}
