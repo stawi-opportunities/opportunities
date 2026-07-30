@@ -33,13 +33,15 @@ type Config struct {
 	// ("passage" for opportunity documents, "query" for search). Empty
 	// omits the field for TEI/OpenAI-compat hosts that reject it.
 	EmbeddingInputType string `env:"EMBEDDING_INPUT_TYPE" envDefault:""`
-	// WorkerEmbedQueueURL is the Frame Queue DSN for SubjectWorkerEmbed
-	// (svc.opportunities.worker.embed.v1). Required together with
-	// EMBEDDING_BASE_URL to enable opportunity vectors.
+	// WorkerEmbedQueueURL publishes SubjectWorkerEmbed jobs. Prefer:
+	//   gcppubsub://stawi-opportunities/opportunities-worker-embed
 	WorkerEmbedQueueURL string `env:"WORKER_EMBED_QUEUE_URL" envDefault:""`
-	// MatchingFanOutQueueURL is the Frame Queue DSN for
-	// SubjectOpportunityFanOut. When set (with embeddings), the embed
-	// worker publishes vectors so matching can run Path A FanOut live.
+	// WorkerEmbedSubscribeURL consumes embed jobs. Prefer pull subscription:
+	//   gcppubsub://stawi-opportunities/opportunities-worker-embed-pull
+	// Empty → reuse WorkerEmbedQueueURL (mem://).
+	WorkerEmbedSubscribeURL string `env:"WORKER_EMBED_SUBSCRIBE_URL" envDefault:""`
+	// MatchingFanOutQueueURL publishes SubjectOpportunityFanOut. Prefer:
+	//   gcppubsub://stawi-opportunities/opportunities-fanout
 	MatchingFanOutQueueURL string `env:"MATCHING_FANOUT_QUEUE_URL" envDefault:""`
 }
 

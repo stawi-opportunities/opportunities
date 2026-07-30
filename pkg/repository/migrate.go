@@ -13,14 +13,13 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/jobqueue"
 )
 
-// Migrate AutoMigrates ordinary PostgreSQL table shape, then applies the
-// capability SQL from migrationsDirPath.
+// Migrate AutoMigrates crawl-plane table shape, then applies capability SQL.
 //
-// crawl_jobs is a TimescaleDB hypertable. Immutable operational events use
-// append-only hypertables; parsed current state uses ordinary PostgreSQL.
+// Crawl Neon owns sources, frontier, ingest queue/events, and crawl_jobs.
+// Product catalog tables (opportunities, identities, lineage) are migrated by
+// apps/matching against product Neon — not here.
 //
-// pool.Migrate AutoMigrates the models before applying PostgreSQL-specific
-// capabilities that GORM cannot express.
+// pool.Migrate AutoMigrates models before applying PostgreSQL-specific SQL.
 func Migrate(ctx context.Context, dbManager datastore.Manager, migrationsDirPath string) error {
 	dbPool := dbManager.GetPool(ctx, datastore.DefaultPoolName)
 	return migratePool(ctx, dbPool, migrationsDirPath)
@@ -28,18 +27,15 @@ func Migrate(ctx context.Context, dbManager datastore.Manager, migrationsDirPath
 
 func migratePool(ctx context.Context, dbPool pool.Pool, migrationsDirPath string) error {
 	log := util.Log(ctx)
-	log.WithField("path", migrationsDirPath).Info("running database migrations")
+	log.WithField("path", migrationsDirPath).Info("running crawl database migrations")
 
+	// Crawl control + durable ingest only. No product catalog models.
 	models := []any{
 		&domain.Source{},
 		&domain.CrawlJob{},
 		&SourceRecipe{},
-		&domain.Company{},
 		&domain.CrawlRun{},
 		&jobqueue.QueueRecord{},
-		&jobqueue.OpportunityRecord{},
-		&jobqueue.OpportunityIdentityRecord{},
-		&jobqueue.OpportunitySourceRecord{},
 		&jobqueue.IngestEventRecord{},
 	}
 	models = append(models, frontier.Schema()...)
