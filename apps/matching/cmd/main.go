@@ -624,7 +624,7 @@ func main() {
 		Placement: placementSvc,
 		Profiles:  profileCV,
 	})
-	var chatHandler http.HandlerFunc = localChat
+	chatHandler := localChat
 	if cfg.ChatAgentEnabled && strings.TrimSpace(cfg.ChatAgentServiceURI) != "" {
 		agentClient := chatagentclient.New(
 			strings.TrimSpace(cfg.ChatAgentServiceURI),
@@ -641,7 +641,7 @@ func main() {
 		} else if base != nil && base.Client() != nil {
 			agentClient = chatagentclient.New(base.Endpoint(), base.Client())
 		}
-		chatHandler = httpv1.MeChatAgentHandler(httpv1.MeChatAgentDeps{
+		chatHandler = httpv1.MeChatAgentHandler(&httpv1.MeChatAgentDeps{
 			Client:    agentClient,
 			Drafts:    candidateRepo,
 			Placement: placementSvc,

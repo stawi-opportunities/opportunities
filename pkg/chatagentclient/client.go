@@ -210,7 +210,7 @@ func (c *Client) call(ctx context.Context, method string, body any, out any) err
 	if err != nil {
 		return fmt.Errorf("chatagentclient: do: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("chatagentclient: %s status %d: %s", method, resp.StatusCode, string(b))
