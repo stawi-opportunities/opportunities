@@ -304,6 +304,18 @@ export interface OnboardingChatResponse {
   placement_ready?: boolean;
 }
 
+/** Optional job-in-view context for opportunity side-chat. */
+export type OpportunityChatContext = {
+  id?: string;
+  slug?: string;
+  title?: string;
+  issuing_entity?: string;
+  location?: string;
+  description?: string;
+  kind?: string;
+  apply_url?: string;
+};
+
 export type SendMeChatInput = {
   message: string;
   history?: OnboardingChatMessage[];
@@ -313,6 +325,10 @@ export type SendMeChatInput = {
   /** Extracted CV plain text from file picker (optional). */
   cv_text?: string;
   cv_filename?: string;
+  /** "placement" (default) or "opportunity" for listing side-chat. */
+  context?: 'placement' | 'opportunity';
+  /** When context=opportunity, the listing currently in view. */
+  opportunity?: OpportunityChatContext;
 };
 
 /**
@@ -335,6 +351,8 @@ export async function sendMeChat(input: SendMeChatInput): Promise<OnboardingChat
         linkedin: input.linkedin ?? '',
         cv_text: input.cv_text ?? '',
         cv_filename: input.cv_filename ?? '',
+        context: input.context ?? 'placement',
+        opportunity: input.opportunity ?? undefined,
       }),
       // LLM turns can be slow on free-tier inference.
       timeoutMs: 90_000,

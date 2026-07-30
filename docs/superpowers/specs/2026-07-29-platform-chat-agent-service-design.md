@@ -69,11 +69,24 @@ Real-time room messaging already exists as `chat-drone` / `chat-gateway` (`stawi
 
 | Item | Value |
 |------|--------|
-| Catalog ID | `chat-agent` |
+| Catalog ID | `chat-agent` (`servicecatalog.ServiceChatAgent`) |
 | Audience path | `/chat-agent` |
 | Stack | Go, Frame, Connect RPC, PostgreSQL, NATS |
-| Suggested repo | `antinvestor/service-chat-agent` (or stawi-branded equivalent) |
+| **Implementation home** | `antinvestor/service-profile` → **`apps/chatagent`** |
 | Distinct from | `chat-drone`, `chat-gateway` |
+
+### Product model (evidence-first tool)
+
+Chat agent is **not** a free-form chatbot. It is a tool that, given a context
+definition (required fields + purpose), collects missing data through
+conversation while **always re-evaluating evidence already in the system**:
+
+- seed fields (prior draft / profile properties)
+- documents (CV text, uploads already extracted)
+- prior conversation turns
+- structured inputs this turn
+
+Products only change the **context**. They do not fork the engine.
 
 ### Boundaries
 

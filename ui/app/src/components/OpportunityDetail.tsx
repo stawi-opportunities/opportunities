@@ -24,6 +24,7 @@ import { Icon } from '@/components/ui/Icon';
 import { getTypeMeta } from '@/constants/opportunityTypes';
 import HowToApplySection from '@/components/HowToApplySection';
 import { OpportunitySideChat } from '@/components/OpportunitySideChat';
+import { RelatedOpportunities } from '@/components/RelatedOpportunities';
 import { useAuth } from '@/providers/AuthProvider';
 
 const JobBody = lazy(() => import('@/components/bodies/JobBody'));
@@ -223,6 +224,8 @@ export default function OpportunityDetail() {
               <ApplyLink snap={snap} mountedAtRef={mountedAtRef} t={t} large />
             </div>
           )}
+
+          <RelatedOpportunities snap={snap} />
         </article>
 
         <OpportunitySideChat snap={snap} />
