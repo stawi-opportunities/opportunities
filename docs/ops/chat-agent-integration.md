@@ -73,6 +73,47 @@ candidate + context + opportunity slug so listing-specific threads stay separate
 similar listings. The detail page renders them under **Similar jobs** via
 `RelatedOpportunities`.
 
+## Omnichannel (Notification)
+
+ChatAgent is **channel-agnostic**. The engine only produces text; **Notification**
+delivers non-web replies (SMS, WhatsApp, email, push, in-app, USSD).
+
+| Surface | How |
+|---------|-----|
+| Web SPA | `CreateSession` / `Turn` without `channel` — reply on RPC |
+| SMS / WhatsApp / … | Set `channel` on `CreateSession`; replies auto-`Notification.Send` |
+| Inbound adapter | `IngestChannelMessage` with channel binding + message |
+
+```go
+// Outbound-capable SMS session
+cli.CreateSession(ctx, chatagentclient.CreateSessionRequest{
+    SubjectID:  profileID,
+    ContextKey: chatagentclient.ContextPlacementIntake,
+    Channel: &chatagentclient.ChannelBinding{
+        Channel:   chatagentclient.ChannelSMS,
+        ContactID: phoneContactID,
+        ProfileID: profileID,
+        Language:  "en",
+    },
+})
+
+// Inbound WhatsApp message from a channel adapter
+cli.IngestChannelMessage(ctx, chatagentclient.IngestChannelMessageRequest{
+    SubjectID:       profileID,
+    ContextKey:      chatagentclient.ContextPlacementIntake,
+    CreateIfMissing: true,
+    Message:         userText,
+    Channel: chatagentclient.ChannelBinding{
+        Channel:   chatagentclient.ChannelWhatsApp,
+        ContactID: waContactID,
+        ProfileID: profileID,
+    },
+})
+```
+
+Requires `NOTIFICATION_SERVICE_URI` on platform-chat-agent (wired in OpenTofu)
+and `notification` in catalog `requestedRecipients` for chat-agent.
+
 ## Deploy checklist
 
 1. Merge `service-profile` feat/chatagent-app + tag release → image + `ship-platform-chat-agent`
@@ -83,3 +124,4 @@ similar listings. The detail page renders them under **Similar jobs** via
    - `POST /chat-agent/chatagent.v1.ChatAgentService/ListContexts`
    - `POST /matching/me/chat` onboarding turn
    - Opportunity page: side-chat + related grid
+   - (optional) `IngestChannelMessage` with `CHANNEL_SMS` + notification client live

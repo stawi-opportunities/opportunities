@@ -83,6 +83,34 @@ type FieldStatus struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// Channel enum values (chatagent.v1.Channel).
+const (
+	ChannelUnspecified = "CHANNEL_UNSPECIFIED"
+	ChannelWeb         = "CHANNEL_WEB"
+	ChannelSMS         = "CHANNEL_SMS"
+	ChannelEmail       = "CHANNEL_EMAIL"
+	ChannelPush        = "CHANNEL_PUSH"
+	ChannelInApp       = "CHANNEL_IN_APP"
+	ChannelWhatsApp    = "CHANNEL_WHATSAPP"
+	ChannelUSSD        = "CHANNEL_USSD"
+)
+
+// ChannelBinding attaches a session to Notification-backed delivery.
+// Non-web channels get assistant replies via Notification.Send automatically.
+type ChannelBinding struct {
+	Channel         string         `json:"channel,omitempty"` // CHANNEL_SMS, CHANNEL_WHATSAPP, …
+	ContactID       string         `json:"contact_id,omitempty"`
+	ProfileID       string         `json:"profile_id,omitempty"`
+	ProfileType     string         `json:"profile_type,omitempty"`
+	Language        string         `json:"language,omitempty"`
+	SkipDelivery    bool           `json:"skip_delivery,omitempty"`
+	Template        string         `json:"template,omitempty"`
+	SourceContactID string         `json:"source_contact_id,omitempty"`
+	SourceProfileID string         `json:"source_profile_id,omitempty"`
+	TemplatePayload map[string]any `json:"template_payload,omitempty"`
+	RouteID         string         `json:"route_id,omitempty"`
+}
+
 // ChatSession is session state returned by the service.
 type ChatSession struct {
 	ID             string                 `json:"id"`
@@ -96,6 +124,7 @@ type ChatSession struct {
 	Missing        []string               `json:"missing"`
 	FieldStatus    map[string]FieldStatus `json:"field_status"`
 	Runtime        map[string]any         `json:"runtime"`
+	Channel        *ChannelBinding        `json:"channel,omitempty"`
 }
 
 // UpsertContext registers a versioned context definition.
@@ -134,17 +163,33 @@ type CreateSessionRequest struct {
 	SeedMessages     []ChatMessage      `json:"seed_messages,omitempty"`
 	Runtime          map[string]any     `json:"runtime,omitempty"`
 	EvaluateEvidence bool               `json:"evaluate_evidence,omitempty"`
+	// Channel binds the session for omnichannel delivery via Notification.
+	Channel *ChannelBinding `json:"channel,omitempty"`
+}
+
+// CreateSessionResponse is the create outcome (session + optional first reply).
+type CreateSessionResponse struct {
+	Session   *ChatSession `json:"session"`
+	Reply     string       `json:"reply,omitempty"`
+	Delivered bool         `json:"delivered,omitempty"`
 }
 
 // CreateSession starts a session.
 func (c *Client) CreateSession(ctx context.Context, req CreateSessionRequest) (*ChatSession, error) {
-	var out struct {
-		Session ChatSession `json:"session"`
+	out, err := c.CreateSessionFull(ctx, req)
+	if err != nil {
+		return nil, err
 	}
+	return out.Session, nil
+}
+
+// CreateSessionFull starts a session and returns delivery metadata.
+func (c *Client) CreateSessionFull(ctx context.Context, req CreateSessionRequest) (*CreateSessionResponse, error) {
+	var out CreateSessionResponse
 	if err := c.call(ctx, "CreateSession", req, &out); err != nil {
 		return nil, err
 	}
-	return &out.Session, nil
+	return &out, nil
 }
 
 // GetSession loads session state.
@@ -168,15 +213,49 @@ type TurnRequest struct {
 
 // TurnResponse is the turn outcome.
 type TurnResponse struct {
-	Session *ChatSession `json:"session"`
-	Reply   string       `json:"reply"`
-	Source  string       `json:"source"`
+	Session   *ChatSession `json:"session"`
+	Reply     string       `json:"reply"`
+	Source    string       `json:"source"`
+	Delivered bool         `json:"delivered,omitempty"`
 }
 
 // Turn runs one collection step.
 func (c *Client) Turn(ctx context.Context, req TurnRequest) (*TurnResponse, error) {
 	var out TurnResponse
 	if err := c.call(ctx, "Turn", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// IngestChannelMessageRequest maps an inbound SMS/WhatsApp/email/… onto a Turn
+// and delivers the assistant reply via Notification on the same channel.
+type IngestChannelMessageRequest struct {
+	SessionID        string             `json:"session_id,omitempty"`
+	SubjectID        string             `json:"subject_id,omitempty"`
+	ContextKey       string             `json:"context_key,omitempty"`
+	Channel          ChannelBinding     `json:"channel"`
+	Message          string             `json:"message"`
+	CreateIfMissing  bool               `json:"create_if_missing,omitempty"`
+	InlineConfig     *ContextDefinition `json:"inline_config,omitempty"`
+	SeedFields       map[string]any     `json:"seed_fields,omitempty"`
+	Runtime          map[string]any     `json:"runtime,omitempty"`
+	EvaluateEvidence bool               `json:"evaluate_evidence,omitempty"`
+}
+
+// IngestChannelMessageResponse is the inbound channel outcome.
+type IngestChannelMessageResponse struct {
+	Session        *ChatSession `json:"session"`
+	Reply          string       `json:"reply"`
+	Source         string       `json:"source"`
+	Delivered      bool         `json:"delivered"`
+	SessionCreated bool         `json:"session_created"`
+}
+
+// IngestChannelMessage runs a turn for an inbound channel message (omnichannel entry).
+func (c *Client) IngestChannelMessage(ctx context.Context, req IngestChannelMessageRequest) (*IngestChannelMessageResponse, error) {
+	var out IngestChannelMessageResponse
+	if err := c.call(ctx, "IngestChannelMessage", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
