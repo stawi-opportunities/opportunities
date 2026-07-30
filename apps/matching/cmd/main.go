@@ -144,7 +144,7 @@ func main() {
 		log.WithError(err).Warn("candidates: telemetry init failed")
 	}
 
-	// --- Archive (raw CV bytes → R2) ---
+	// --- Archive (raw CV bytes ΓåÆ R2) ---
 	// Same R2 account token used by the rest of the platform; only
 	// the bucket name differs.
 	arch := archive.NewR2Archive(archive.R2Config{
@@ -183,9 +183,9 @@ func main() {
 			Registry:            reg,
 			// External inference (SiliconFlow) authenticates with its own API
 			// key in the Authorization header. The manager normally auto-attaches
-			// this service's OAuth bearer, which would clobber that header → SF
+			// this service's OAuth bearer, which would clobber that header ΓåÆ SF
 			// 401. client.WithHTTPNoAuth() (frame v1.97.8+) hands us the full
-			// manager client — OTEL spans, retry, connection pooling — but with
+			// manager client ΓÇö OTEL spans, retry, connection pooling ΓÇö but with
 			// NO bearer, so the SF key survives. Per-call context deadlines
 			// (PooledReranker, Embed/Prompt) bound each request.
 			HTTPClient: svc.HTTPClientManager().Client(ctx, frameclient.WithHTTPNoAuth()),
@@ -199,7 +199,7 @@ func main() {
 	search := httpv1.NewPostgresSearch(dbFn)
 	matchSvc := httpv1.NewMatchService(candStore, search, 20)
 	staleLister := adminv1.NewRepoStaleLister(candidateRepo, 500)
-	// Weekly jobs digest collaborators — non-personalised email for
+	// Weekly jobs digest collaborators ΓÇö non-personalised email for
 	// candidates who completed signup but not checkout. The same
 	// pgsearch.Search backs the match service; we reuse its handle
 	// rather than redial.
@@ -224,8 +224,8 @@ func main() {
 		persistStore = matching.NewStore(sqlDB)
 	}
 
-	// Notification client — same constructs as service-profile:
-	// connection.NewServiceClient → NotificationServiceClient → Send(template+payload).
+	// Notification client ΓÇö same constructs as service-profile:
+	// connection.NewServiceClient ΓåÆ NotificationServiceClient ΓåÆ Send(template+payload).
 	var notificationCli notificationv1connect.NotificationServiceClient
 	if uri := strings.TrimSpace(cfg.NotificationServiceURI); uri != "" {
 		cli, nErr := setupNotificationClient(ctx, &cfg)
@@ -236,7 +236,7 @@ func main() {
 			log.WithField("uri", uri).Info("notify: service-notification client enabled")
 		}
 	} else {
-		log.Warn("notify: NOTIFICATION_SERVICE_URI unset — candidate notifications will not be queued")
+		log.Warn("notify: NOTIFICATION_SERVICE_URI unset ΓÇö candidate notifications will not be queued")
 	}
 	notifyTemplates := notify.Templates{
 		MatchesReady:     cfg.MessageTemplateMatchesReady,
@@ -332,13 +332,13 @@ func main() {
 		// call). The upload handler still needs the cv-extract publisher
 		// registered so POST /candidates/cv/upload doesn't fail; with no
 		// subscriber the message lands and is dropped (or retained for
-		// later replay) — explicitly degraded mode.
+		// later replay) ΓÇö explicitly degraded mode.
 		svc.Init(ctx,
 			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
 			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterEvents(prefMatchH),
 		)
-		log.Warn("candidates: no extractor configured — cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
+		log.Warn("candidates: no extractor configured ΓÇö cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
 
 	// --- Debouncer (shared by Phase-2 and Phase-4 paths) ---
@@ -384,14 +384,14 @@ func main() {
 					Info("matching: cross-encoder reranker enabled")
 			} else {
 				rerank = matching.NewPooledReranker(matching.NoopReranker{}, rerankConc, rerankTimeout)
-				log.Warn("matching: reranker enabled but no rerank backend configured — using no-op")
+				log.Warn("matching: reranker enabled but no rerank backend configured ΓÇö using no-op")
 			}
 		}
 
 		dlqPub := &queuePublisherAdapter{svc: svc}
 		dlq := matchingv1.NewDLQGuard(dlqPub, eventsv1.SubjectMatchingDeadletter, cfg.MatchingDLQThreshold)
 
-		// Path C: embedding change → gap-fill (independent of Path A).
+		// Path C: embedding change ΓåÆ gap-fill (independent of Path A).
 		if cfg.MatchingCandidateChangeEnabled {
 			candText := matchingv1.NewSQLCandidateText(sqlDBPipe)
 			cc := matchingv1.NewCandidateChangeConsumer(matchingv1.CandidateChangeConsumerDeps{
@@ -409,12 +409,12 @@ func main() {
 				DailyCapQuery:   matching.NewPGDailyCapQuery(sqlDBPipe),
 			})
 			svc.Init(ctx, frame.WithRegisterSubscriber(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI, cc))
-			log.Info("matching: candidate-change (Path C) enabled — embedding queue → gap-fill + rerank")
+			log.Info("matching: candidate-change (Path C) enabled ΓÇö embedding queue ΓåÆ gap-fill + rerank")
 		} else {
 			log.Warn("matching: Path C gap-fill DISABLED (MATCHING_CANDIDATE_CHANGE_ENABLED=false)")
 		}
 
-		// Path A: new opportunity embeddings → FanOut (independent of Path C).
+		// Path A: new opportunity embeddings ΓåÆ FanOut (independent of Path C).
 		if cfg.MatchingFanOutEnabled {
 			foURI := strings.TrimSpace(cfg.OpportunityFanOutQueueURI)
 			if foURI == "" {
@@ -440,7 +440,7 @@ func main() {
 				})
 				svc.Init(ctx, frame.WithRegisterSubscriber(foRef, foURI, foConsumer))
 				log.WithField("queue", foRef).WithField("uri", foURI).
-					Info("matching: Path A fan-out LIVE — new jobs → conversation-grounded candidate_matches (weekly+daily caps)")
+					Info("matching: Path A fan-out LIVE ΓÇö new jobs ΓåÆ conversation-grounded candidate_matches (weekly+daily caps)")
 			}
 		} else {
 			log.Warn("matching: Path A fan-out DISABLED (MATCHING_FANOUT_ENABLED=false)")
@@ -452,7 +452,7 @@ func main() {
 	// Public endpoints are registered without auth (healthz, /billing/plans,
 	// webhooks, match-kinds). Resolve OIDC JWT from Frame SecurityManager
 	// (OAUTH2_* when oauth2.enabled). Without authenticator, boot fails
-	// unless AUTH_REQUIRE_JWT=false (local/tests only — header fallback).
+	// unless AUTH_REQUIRE_JWT=false (local/tests only ΓÇö header fallback).
 	var authenticator security.Authenticator
 	if secMgr := svc.SecurityManager(); secMgr != nil {
 		authenticator = secMgr.GetAuthenticator(ctx)
@@ -460,9 +460,9 @@ func main() {
 	if authenticator != nil {
 		log.Info("matching: private routes require JWT (OIDC authenticator configured)")
 	} else if cfg.AuthRequireJWT {
-		log.Fatal("matching: no OIDC authenticator configured — private routes require JWT by default. Configure OIDC or set AUTH_REQUIRE_JWT=false only for local/tests")
+		log.Fatal("matching: no OIDC authenticator configured ΓÇö private routes require JWT by default. Configure OIDC or set AUTH_REQUIRE_JWT=false only for local/tests")
 	} else {
-		log.Warn("matching: AUTH_REQUIRE_JWT=false — private routes accept X-Candidate-ID (dev/test only; never in production)")
+		log.Warn("matching: AUTH_REQUIRE_JWT=false ΓÇö private routes accept X-Candidate-ID (dev/test only; never in production)")
 	}
 	authMW := httpmw.NewCandidateAuth(authenticator)
 	adminAuth := httpmw.AdminAuthConfig{
@@ -470,7 +470,7 @@ func main() {
 		SharedSecret:  cfg.AdminSharedSecret,
 	}
 	if authenticator == nil && cfg.AdminSharedSecret == "" {
-		log.Warn("matching: /_admin/* has no authenticator and no ADMIN_SHARED_SECRET — admin routes will reject all requests (fail closed)")
+		log.Warn("matching: /_admin/* has no authenticator and no ADMIN_SHARED_SECRET ΓÇö admin routes will reject all requests (fail closed)")
 	}
 
 	mux := http.NewServeMux()
@@ -485,7 +485,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
-	// CV binary → files service (preferred) or R2 archive fallback.
+	// CV binary ΓåÆ files service (preferred) or R2 archive fallback.
 	// Only a file-id reference is kept on candidate_profiles; extracted text
 	// updates the placement summary synchronously for chat/matching.
 	var cvFiles placement.FileStore = &placement.ArchiveFileStore{Archive: arch}
@@ -501,13 +501,13 @@ func main() {
 			cvFiles = &placement.FilesServiceStore{Client: fileClients.Files}
 			log.WithField("uri", cfg.FileServiceURI).Info("placement: CV binaries via platform files service")
 		} else {
-			log.Warn("placement: FILE_SERVICE_URI set but files client unavailable — using R2 archive")
+			log.Warn("placement: FILE_SERVICE_URI set but files client unavailable ΓÇö using R2 archive")
 		}
 	} else {
-		log.Info("placement: FILE_SERVICE_URI unset — CV binaries use R2 archive fallback")
+		log.Info("placement: FILE_SERVICE_URI unset ΓÇö CV binaries use R2 archive fallback")
 	}
 
-	// Placement profile (business): qualifications + preferences → summary + vector.
+	// Placement profile (business): qualifications + preferences ΓåÆ summary + vector.
 	placementStore := placement.NewGormStore(dbFn)
 	profileCV := placement.NewGormProfileStore(dbFn)
 	var matchIndexStore *matching.IndexStore
@@ -538,12 +538,12 @@ func main() {
 		Placement: placementSvc,
 		Drafts:    candidateRepo,
 	}
-	// Legacy upload/preferences/match paths require auth — identity from JWT
+	// Legacy upload/preferences/match paths require auth ΓÇö identity from JWT
 	// subject (or X-Candidate-ID only when OIDC is unset in dev).
 	mux.Handle("POST /candidates/cv/upload", authMW(httpv1.UploadHandler(uploadDeps)))
 
-	// /me/cv — dashboard + chat CV. Pipeline on PUT:
-	// extract text → files service (file-id on profile) → placement summary (sync)
+	// /me/cv ΓÇö dashboard + chat CV. Pipeline on PUT:
+	// extract text ΓåÆ files service (file-id on profile) ΓåÆ placement summary (sync)
 
 	// GET returns file-id + qualifications from placement summary.
 	mux.Handle("PUT /me/cv", authMW(httpv1.MeCVHandler(uploadDeps)))
@@ -567,7 +567,7 @@ func main() {
 	// The gateway HTTPRoute forwards /me/* unchanged to this backend.
 	// The Phase-4 router uses /api/me/* paths which aren't exposed
 	// through the gateway today, so register on the gateway-visible
-	// path. A nil MatchSummarizer is acceptable — the handler returns
+	// path. A nil MatchSummarizer is acceptable ΓÇö the handler returns
 	// zero counts and the dashboard renders its setup-incomplete state.
 	var meSubMatches httpv1.MatchSummarizer
 	if gdb := dbFn(ctx, true); gdb != nil {
@@ -584,7 +584,7 @@ func main() {
 		}),
 	))
 
-	// Free career tools — value before pay (CV ATS score + vector/keyword job fitness).
+	// Free career tools ΓÇö value before pay (CV ATS score + vector/keyword job fitness).
 	var toolsEmbedder httpv1.ToolsEmbedder
 	if extractor != nil {
 		toolsEmbedder = extractor
@@ -598,7 +598,7 @@ func main() {
 	mux.Handle("POST /me/tools/cv-score", authMW(httpv1.CVScoreHandler(toolsDeps)))
 	mux.Handle("POST /me/tools/job-fit", authMW(httpv1.JobFitHandler(toolsDeps)))
 
-	// /me/onboarding — resumable wizard. Same handler serves GET +
+	// /me/onboarding ΓÇö resumable wizard. Same handler serves GET +
 	// PUT; the underlying repo type implements both interfaces.
 	// authMW wraps the registration with JWT verification + subject
 	// extraction; the inner middleware populates the candidate ID
@@ -610,7 +610,7 @@ func main() {
 	}))
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
-	// POST /me/chat — shared preference / intake conversation (onboarding,
+	// POST /me/chat ΓÇö shared preference / intake conversation (onboarding,
 	// dashboard refine, opportunity side-chat all embed the same widget).
 	// Prefer platform chat-agent when configured; local MeChatHandler is
 	// the fallback (and sole path when CHAT_AGENT_SERVICE_URI is empty).
@@ -651,7 +651,7 @@ func main() {
 	}
 	mux.Handle("POST /me/chat", authMW(chatHandler))
 
-	// /candidates/onboard — wizard final submit. Promotes the draft
+	// /candidates/onboard ΓÇö wizard final submit. Promotes the draft
 	// into the canonical profile columns and clears the draft in one
 	// transaction. The candidate's subscription tier stays "free"
 	// here; service-payment flips it to "active" via webhook when
@@ -667,7 +667,7 @@ func main() {
 		}),
 	))
 
-	// /me/saved-jobs — star/unstar. Both verbs share the same handler;
+	// /me/saved-jobs ΓÇö star/unstar. Both verbs share the same handler;
 	// the handler dispatches on r.Method internally.
 	var savedJobsStore *savedjobs.Store
 	if gdb := dbFn(ctx, false); gdb != nil {
@@ -683,10 +683,10 @@ func main() {
 	mux.Handle("POST /me/saved-jobs", savedJobsHandler)
 	mux.Handle("DELETE /me/saved-jobs/{opportunity_id}", savedJobsHandler)
 
-	// /me/opportunities — unified feed (joins matches + saved + applications).
+	// /me/opportunities ΓÇö unified feed (joins matches + saved + applications).
 	// Constructs a fresh *matching.Store from the same pool the subscription
 	// handler uses. Guard against nil: if the DB is unavailable, skip the
-	// route rather than panic on first request — the dashboard degrades
+	// route rather than panic on first request ΓÇö the dashboard degrades
 	// gracefully without the feed.
 	if gdb := dbFn(ctx, true); gdb != nil {
 		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
@@ -707,7 +707,7 @@ func main() {
 		log.Warn("me/opportunities: DB pool unavailable; GET /me/opportunities not registered")
 	}
 
-	// /me/applications — manual apply. Writes directly to the applications
+	// /me/applications ΓÇö manual apply. Writes directly to the applications
 	// table via directApplicationStarter; the standalone apps/applications
 	// service isn't deployed yet (see paid-flow spec, "Reality check on
 	// what's already shipped").
@@ -725,11 +725,11 @@ func main() {
 
 	// --- Billing / payments + subscription ---------------------------------
 	// The gateway strips /matching, so the UI's /billing/* calls land here.
-	//   GET  /billing/plans            (public)  — plan catalog
-	//   POST /billing/checkout         (auth'd)  — start a payment
-	//   GET  /billing/checkout/status  (auth'd)  — poll a checkout
-	//   POST /billing/webhook          (public)  — service-payment callback
-	//   POST /_admin/billing/reconcile (Trustage)— reconcile pending checkouts
+	//   GET  /billing/plans            (public)  ΓÇö plan catalog
+	//   POST /billing/checkout         (auth'd)  ΓÇö start a payment
+	//   GET  /billing/checkout/status  (auth'd)  ΓÇö poll a checkout
+	//   POST /billing/webhook          (public)  ΓÇö service-payment callback
+	//   POST /_admin/billing/reconcile (Trustage)ΓÇö reconcile pending checkouts
 	//
 	// Construct the payment gateway from BILLING_SERVICE_URI via
 	// services.NewClients (co-deployed service-payment + service-billing pod,
@@ -773,7 +773,7 @@ func main() {
 				WithField("checkout_token_set", strings.TrimSpace(cfg.CheckoutInternalToken) != "").
 				Info("billing: hosted checkout gateway enabled without payment client")
 		} else {
-			log.Warn("billing: BILLING_SERVICE_URI/CHECKOUT_SERVICE_URI unset — checkout degraded (plans still served)")
+			log.Warn("billing: BILLING_SERVICE_URI/CHECKOUT_SERVICE_URI unset ΓÇö checkout degraded (plans still served)")
 		}
 	}
 
@@ -796,7 +796,7 @@ func main() {
 	// subscriptions to paid) MUST be authenticated. Refuse to boot rather
 	// than expose a forgeable, unauthenticated activation endpoint.
 	if billingEnabled && cfg.BillingWebhookSecret == "" {
-		log.Fatal("billing: payment gateway enabled but BILLING_WEBHOOK_SECRET is empty — refusing to start (the activation webhook would be unauthenticated)")
+		log.Fatal("billing: payment gateway enabled but BILLING_WEBHOOK_SECRET is empty ΓÇö refusing to start (the activation webhook would be unauthenticated)")
 	}
 
 	// Public: catalog only (no identity). Checkout and the rest use authMW.
@@ -809,7 +809,7 @@ func main() {
 		}),
 	))
 	// Status enforces ownership via the stored checkout, so it requires the
-	// store; without it the handler 503s — don't register it at all.
+	// store; without it the handler 503s ΓÇö don't register it at all.
 	if checkoutStore != nil {
 		mux.Handle("GET /billing/checkout/status", authMW(
 			httpv1.CheckoutStatusHandler(httpv1.CheckoutStatusDeps{
@@ -844,7 +844,7 @@ func main() {
 	} else {
 		log.Warn("billing/webhook: BILLING_WEBHOOK_SECRET unset; webhook route not registered")
 	}
-	// Trustage-driven reconciler sweep — the safety net behind the webhook.
+	// Trustage-driven reconciler sweep ΓÇö the safety net behind the webhook.
 	if checkoutStore != nil && billingActivator != nil {
 		billingReconciler := billing.NewReconciler(checkoutStore, billingGateway, billingActivator, cfg.BillingReconcileBatch).
 			WithFinalizer(candidateRepo)
@@ -893,10 +893,10 @@ func main() {
 			PublicSiteURL:   cfg.PublicSiteURL,
 		})))
 
-	// POST /_admin/matches/weekly_digest — Trustage digest cron (schedule
+	// POST /_admin/matches/weekly_digest ΓÇö Trustage digest cron (schedule
 	// is configurable in definitions/trustage/*-digest.json). Filters
 	// recipients by each user's email_digest preference (daily/weekly/off)
-	// and DIGEST_* env (weekday + timezone). Free/unpaid → weekly_jobs_digest.
+	// and DIGEST_* env (weekday + timezone). Free/unpaid ΓåÆ weekly_jobs_digest.
 	if gdb := dbFn(ctx, false); gdb != nil {
 		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
 			activeLister := adminv1.NewRepoActiveCandidateLister(
@@ -951,7 +951,7 @@ func main() {
 		log.Warn("_admin/matches/weekly_digest: DB pool unavailable; route not registered")
 	}
 
-	// --- Phase-4 extension-facing /api/me/* routes (flag-gated per spec §5.5) ---
+	// --- Phase-4 extension-facing /api/me/* routes (flag-gated per spec ┬º5.5) ---
 	if cfg.MatchingExtensionEnabled {
 		// Open *sql.DB for the new pkg/matching stores. The same pattern
 		// already used by the Phase-2 fan-out wiring above.
@@ -984,7 +984,7 @@ func main() {
 		log.Info("matching: /api/me/* routes + /me/matches/refresh|dismiss + /me/notifications")
 	}
 
-	// definitions.changed.v1 broadcast — invalidates the loader cache
+	// definitions.changed.v1 broadcast ΓÇö invalidates the loader cache
 	// and live-rebuilds the kind registry on admin edits. Registered as
 	// a separate Init pass so it doesn't tangle with the flag-gated CV
 	// subscriber wiring above.
@@ -1012,7 +1012,7 @@ func main() {
 	}
 }
 
-// --- Adapters — wire concrete pkg/* types to the v1 handler interfaces. ---
+// --- Adapters ΓÇö wire concrete pkg/* types to the v1 handler interfaces. ---
 
 // queuePublisherAdapter bridges *frame.Service to matchingv1.DeadLetterPublisher.
 // It publishes raw bytes directly onto the named queue subject so the DLQGuard
@@ -1027,9 +1027,9 @@ func (a *queuePublisherAdapter) Publish(ctx context.Context, subject string, pay
 // PreferencesUpdatedV1 event onto the preferences-updated topic. The
 // PreferenceMatchHandler (a Frame Events subscriber) consumes it and runs
 // the match pipeline for each opted-in kind, so a candidate gets initial
-// gap-fill matches immediately after onboarding — even before a CV lands.
+// gap-fill matches immediately after onboarding ΓÇö even before a CV lands.
 //
-// OptIns is keyed by the candidate's selected kinds (empty job_types →
+// OptIns is keyed by the candidate's selected kinds (empty job_types ΓåÆ
 // fall back to "job"); the values are empty JSON objects since onboarding
 // doesn't collect kind-specific preference blobs yet.
 type onboardMatchTrigger struct{ svc *frame.Service }
@@ -1062,7 +1062,7 @@ func (a cvExtractorAdapter) ExtractCV(ctx context.Context, text string) (*extrac
 	return a.e.ExtractCV(ctx, text)
 }
 
-// cvScorerAdapter bridges cv.Scorer → eventv1.CVScorer.
+// cvScorerAdapter bridges cv.Scorer ΓåÆ eventv1.CVScorer.
 // cv.Scorer.Score returns *cv.CVStrengthReport; we map its Components +
 // OverallScore into the handler's local ScoreComponents type.
 type cvScorerAdapter struct{ s *cv.Scorer }
@@ -1079,7 +1079,7 @@ func (a cvScorerAdapter) Score(ctx context.Context, cvText string, fields *extra
 	}
 }
 
-// cvFixAdapter bridges cv.Scorer → eventv1.FixGenerator.
+// cvFixAdapter bridges cv.Scorer ΓåÆ eventv1.FixGenerator.
 // detectPriorityFixes is unexported in pkg/cv; we call Scorer.Score
 // which already runs it and returns the fixes in report.PriorityFixes.
 type cvFixAdapter struct{ scorer *cv.Scorer }
@@ -1123,7 +1123,7 @@ func (a embedderAdapter) Embed(ctx context.Context, text string) ([]float32, err
 // candidateOnboardAdapter satisfies httpv1.CandidatesOnboardStore by
 // running the wizard-finalisation work inside a single
 // CandidateRepository.Transaction. The transaction guarantees the
-// canonical profile update and the draft clear commit together — a
+// canonical profile update and the draft clear commit together ΓÇö a
 // crash between them otherwise leaves a "completed onboarding but
 // the draft still says step 2" state that confuses the resume path.
 type candidateOnboardAdapter struct {

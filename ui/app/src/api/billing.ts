@@ -178,33 +178,6 @@ export async function cancelSubscription(input: CancelInput): Promise<CancelResp
   }
 }
 
-// ── Pause / Reactivate ───────────────────────────────────────────
-
-export interface PauseResponse {
-  success: boolean;
-  resume_date: string;
-}
-
-/** POST /billing/pause — auth'd. */
-export async function pauseSubscription(): Promise<PauseResponse> {
-  return authRuntime().fetch('/billing/pause', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-export interface ReactivateResponse {
-  success: boolean;
-}
-
-/** POST /billing/reactivate — auth'd. */
-export async function reactivateSubscription(): Promise<ReactivateResponse> {
-  return authRuntime().fetch('/billing/reactivate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
 // ── Invoice history ──────────────────────────────────────────────
 
 export interface Invoice {

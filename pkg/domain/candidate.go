@@ -58,6 +58,11 @@ type CandidateProfile struct {
 	CVStorageURI  string `gorm:"type:text" json:"-"` // file id
 	CVContentHash string `gorm:"type:varchar(64)" json:"-"`
 
+	// User-visible profile info (managed here for settings UI convenience;
+	// the auth/Frame service is the canonical source for name + email).
+	Name  string `gorm:"type:varchar(255)" json:"name"`
+	Phone string `gorm:"type:varchar(50)" json:"phone"`
+
 	// AI-extracted profile fields
 	CurrentTitle    string         `gorm:"type:text" json:"current_title"`
 	Seniority       string         `gorm:"type:varchar(30)" json:"seniority"`

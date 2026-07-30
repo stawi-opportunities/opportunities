@@ -40,7 +40,7 @@ function getSectionFromHash(): SectionId {
     'billing',
     'settings',
   ];
-  // Legacy #overview → matches
+  // Legacy #overview ΓåÆ matches
   if (hash === 'overview' || !hash) return 'matches';
   return valid.includes(hash as SectionId) ? (hash as SectionId) : 'matches';
 }

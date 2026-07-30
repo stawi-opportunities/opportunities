@@ -54,30 +54,6 @@ export async function uploadCV(file: File): Promise<{ ok: boolean; cv_length: nu
   return authRuntime().upload('/matching/me/cv', file);
 }
 
-/** Subset of CandidateProfile the UI consumes. */
-export interface CandidateSummary {
-  profile_id: string;
-  status: string;
-  current_title: string;
-  preferred_countries: string;
-  preferred_regions: string;
-  remote_preference: string;
-  languages: string;
-  plan_id: string;
-  subscription: string;
-}
-
-/** GET /me ΓÇö authed user identity + CandidateProfile row.  Returns
- *  null on any failure so callers can render anon fallback. */
-export async function fetchCandidate(): Promise<CandidateSummary | null> {
-  try {
-    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>('/matching/me');
-    return body.candidate ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // ΓöÇΓöÇ Billing ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface BillingPlan {

@@ -10,7 +10,7 @@ interface Stats {
   applied: number;
 }
 
-export function StatsRow() {
+export function StatsRow({ compact }: { compact?: boolean }) {
   const { t } = useI18n();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,9 @@ export function StatsRow() {
 
   if (loading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+      <div
+        className={`grid gap-4 ${compact ? 'grid-cols-2' : 'sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}
+      >
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
@@ -114,7 +116,9 @@ export function StatsRow() {
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+    <div
+      className={`grid gap-4 ${compact ? 'grid-cols-2' : 'sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}
+    >
       {cards.map((c, i) => (
         <StatCard key={c.label} {...c} index={i} />
       ))}

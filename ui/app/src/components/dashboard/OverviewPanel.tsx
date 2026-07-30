@@ -23,7 +23,7 @@ export function OverviewPanel({
         <h2 className="text-base font-semibold text-gray-900 dark:text-white">Overview</h2>
         {(queued != null || delivered != null) && (
           <p className="text-sm text-gray-500 tabular-nums">
-            {queued ?? 0} queued · {delivered ?? 0} this week
+            {queued ?? 0} queued ┬╖ {delivered ?? 0} this week
           </p>
         )}
       </div>

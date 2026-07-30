@@ -139,16 +139,11 @@ export interface CandidateSummary {
 }
 
 /**
- * GET /me — authed user identity + CandidateProfile row. Returns
- * null on any failure so callers can render anon fallback.
+ * GET /me — authed user identity + CandidateProfile row.
  */
 export async function fetchCandidate(): Promise<CandidateSummary | null> {
-  try {
-    const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>('/me');
-    return body.candidate ?? null;
-  } catch {
-    return null;
-  }
+  const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>('/me');
+  return body.candidate ?? null;
 }
 
 // ── Subscription ──────────────────────────────────────────────────
