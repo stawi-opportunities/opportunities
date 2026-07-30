@@ -73,46 +73,52 @@ candidate + context + opportunity slug so listing-specific threads stay separate
 similar listings. The detail page renders them under **Similar jobs** via
 `RelatedOpportunities`.
 
-## Omnichannel (Notification)
+## Omnichannel = reuse Notification service
 
-ChatAgent is **channel-agnostic**. The engine only produces text; **Notification**
-delivers non-web replies (SMS, WhatsApp, email, push, in-app, USSD).
+ChatAgent does **not** invent channels. It reuses the existing
+`NotificationService.Send` client (same pattern as profile contact verification).
+Channel routing lives in service-notification.
 
 | Surface | How |
 |---------|-----|
-| Web SPA | `CreateSession` / `Turn` without `channel` — reply on RPC |
-| SMS / WhatsApp / … | Set `channel` on `CreateSession`; replies auto-`Notification.Send` |
-| Inbound adapter | `IngestChannelMessage` with channel binding + message |
+| Web SPA | `CreateSession` / `Turn` without `notification` — reply on RPC |
+| SMS / email / … | Set `notification` (`type` + `recipient` ContactLink); replies → `Notification.Send` |
+| Inbound adapter | `IngestMessage` with `NotificationTarget` + message |
 
 ```go
-// Outbound-capable SMS session
+// SMS via Notification service (type/recipient match notification.v1.Notification)
 cli.CreateSession(ctx, chatagentclient.CreateSessionRequest{
     SubjectID:  profileID,
     ContextKey: chatagentclient.ContextPlacementIntake,
-    Channel: &chatagentclient.ChannelBinding{
-        Channel:   chatagentclient.ChannelSMS,
-        ContactID: phoneContactID,
-        ProfileID: profileID,
-        Language:  "en",
+    Notification: &chatagentclient.NotificationTarget{
+        Type: chatagentclient.NotificationTypeSMS,
+        Recipient: &chatagentclient.ContactLink{
+            ContactID:   phoneContactID,
+            ProfileID:   profileID,
+            ProfileType: "Profile",
+        },
+        Language: "en",
     },
 })
 
-// Inbound WhatsApp message from a channel adapter
-cli.IngestChannelMessage(ctx, chatagentclient.IngestChannelMessageRequest{
+// Inbound message from a Notification adapter
+cli.IngestMessage(ctx, chatagentclient.IngestMessageRequest{
     SubjectID:       profileID,
     ContextKey:      chatagentclient.ContextPlacementIntake,
     CreateIfMissing: true,
     Message:         userText,
-    Channel: chatagentclient.ChannelBinding{
-        Channel:   chatagentclient.ChannelWhatsApp,
-        ContactID: waContactID,
-        ProfileID: profileID,
+    Notification: chatagentclient.NotificationTarget{
+        Type: chatagentclient.NotificationTypeWhatsApp,
+        Recipient: &chatagentclient.ContactLink{
+            ContactID: waContactID,
+            ProfileID: profileID,
+        },
     },
 })
 ```
 
-Requires `NOTIFICATION_SERVICE_URI` on platform-chat-agent (wired in OpenTofu)
-and `notification` in catalog `requestedRecipients` for chat-agent.
+Requires `NOTIFICATION_SERVICE_URI` on platform-chat-agent and `notification` in
+catalog `requestedRecipients` for chat-agent.
 
 ## Deploy checklist
 
