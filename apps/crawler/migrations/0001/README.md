@@ -1,23 +1,18 @@
-# Opportunities database
+# Crawl Neon database
 
-PostgreSQL is the only structured data store for opportunities.
+PostgreSQL (Neon) is the durable store for crawl control and ingest queues.
 
-GORM models own ordinary tables, columns, constraints, and conventional
-indexes. SQL is reserved for PostgreSQL/TimescaleDB capabilities GORM cannot
-represent: extensions, hypertable policies, append-only triggers, partial
-indexes, scheduled cleanup, and the crawl-signals materialized view.
+GORM models own ordinary tables. SQL is reserved for capabilities GORM cannot
+express (partial indexes, optional Timescale hypertables, append-only triggers).
 
-- `job_ingest_queue`: mutable, leased work queue. Pending work has no TTL.
-- `opportunities`: current canonical rows used by search and detail APIs.
-- `opportunity_identities`: atomic `hard_key` to canonical ID mapping.
-- `opportunity_sources`: per-source lineage and full-crawl presence state.
-- `job_ingest_events`: append-only TimescaleDB audit ledger, compressed after
-  seven days and retained for 90 days.
-- `crawl_jobs`: time-partitioned operational crawl history.
+**Owned here (crawl plane):**
 
-The queue is intentionally not a hypertable because workers update leases,
-attempts, and terminal state. TimescaleDB is limited to time-series records
-whose row identity is append-only. Raw HTTP bodies are not persisted.
+- `sources`, `source_recipes`, `crawl_runs`, `host_state`
+- `url_frontier`
+- `job_ingest_queue`, `job_ingest_events`
+- `crawl_jobs`
 
-The single capability migration is executed as one prepared statement, so its
-operations live in one `DO` block.
+**Not owned here:** product catalog (`opportunities`, candidates, matching).
+Those migrate via `apps/matching` against product Neon.
+
+Timescale compression / retention / `add_job` are soft-failed on Neon Apache-2.

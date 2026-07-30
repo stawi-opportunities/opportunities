@@ -41,6 +41,8 @@ type Config struct {
 
 	// Inference back-end for peeling how_to_apply after accept. Empty
 	// disables peel (listings keep a combined description until backfill).
+	// InferenceProvider: nvidia | google | custom (see pkg/extraction).
+	InferenceProvider   string `env:"INFERENCE_PROVIDER" envDefault:""`
 	InferenceBaseURL    string `env:"INFERENCE_BASE_URL" envDefault:""`
 	InferenceAPIKey     string `env:"INFERENCE_API_KEY" envDefault:""`
 	InferenceModel      string `env:"INFERENCE_MODEL" envDefault:""`

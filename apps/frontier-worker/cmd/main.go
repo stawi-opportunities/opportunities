@@ -133,7 +133,7 @@ func main() {
 	// Optional inference for how_to_apply peel (same INFERENCE_* as crawler).
 	var howToApply *extraction.Extractor
 	infBase, infModel, infKey := extraction.ResolveInference(
-		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
+		cfg.InferenceProvider, cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey,
 	)
 	if infBase != "" {
 		howToApply = extraction.New(extraction.Config{

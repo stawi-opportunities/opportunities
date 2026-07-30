@@ -1,7 +1,13 @@
--- Paywalled application instructions, stored separately from the public
--- description so free users never receive how-to-apply content on the
--- public jobs API. GORM AutoMigrate also adds this column; this file
--- keeps capability/cluster deploys that only run SQL migrations aligned.
+-- how_to_apply lives on product Neon (matching / product catalog).
+-- Kept as a no-op on crawl Neon so historical migration versions remain
+-- idempotent when re-applied against either database.
 
-ALTER TABLE opportunities
-    ADD COLUMN IF NOT EXISTS how_to_apply text;
+DO $mig$
+BEGIN
+  IF to_regclass('public.opportunities') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS how_to_apply text';
+  ELSE
+    RAISE NOTICE 'opportunities table absent (crawl Neon) — how_to_apply skipped';
+  END IF;
+END
+$mig$;

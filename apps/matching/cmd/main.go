@@ -163,10 +163,10 @@ func main() {
 	// --- AI extractor ---
 	var extractor *extraction.Extractor
 	infBase, infModel, infKey := extraction.ResolveInference(
-		cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey)
+		cfg.InferenceProvider, cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey)
 	if infBase != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
-			cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey)
+			cfg.EmbeddingProvider, cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey)
 		extractor = extraction.New(extraction.Config{
 			BaseURL:             infBase,
 			APIKey:              infKey,
