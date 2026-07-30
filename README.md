@@ -13,6 +13,8 @@ Job and opportunity discovery platform: structured crawl → PostgreSQL → matc
 | `apps/matching` | Candidates, CV pipeline, matching, billing, digests |
 | `apps/applications` | Application tracking API (optional deploy) |
 
+**Production topology:** two Neon projects — product (matching owns) and crawl (crawler owns). Cloud Run hosts `api` + `matching` (+ crawler migrate Job). Cluster hosts crawl jobs (`crawler`, `frontier-worker`, `worker` dual-DB). See [docs/ops/db-boundaries.md](docs/ops/db-boundaries.md).
+
 Scheduling and maintenance run via **Trustage** workflows (`definitions/trustage/`).
 
 ## Extraction policy
