@@ -83,32 +83,37 @@ type FieldStatus struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// Channel enum values (chatagent.v1.Channel).
+// Notification type strings match notification.v1.Notification.type
+// (channels are owned by the Notification service, not ChatAgent).
 const (
-	ChannelUnspecified = "CHANNEL_UNSPECIFIED"
-	ChannelWeb         = "CHANNEL_WEB"
-	ChannelSMS         = "CHANNEL_SMS"
-	ChannelEmail       = "CHANNEL_EMAIL"
-	ChannelPush        = "CHANNEL_PUSH"
-	ChannelInApp       = "CHANNEL_IN_APP"
-	ChannelWhatsApp    = "CHANNEL_WHATSAPP"
-	ChannelUSSD        = "CHANNEL_USSD"
+	NotificationTypeSMS      = "sms"
+	NotificationTypeEmail    = "email"
+	NotificationTypePush     = "push"
+	NotificationTypeInApp    = "in-app"
+	NotificationTypeWhatsApp = "whatsapp"
+	NotificationTypeUSSD     = "ussd"
 )
 
-// ChannelBinding attaches a session to Notification-backed delivery.
-// Non-web channels get assistant replies via Notification.Send automatically.
-type ChannelBinding struct {
-	Channel         string         `json:"channel,omitempty"` // CHANNEL_SMS, CHANNEL_WHATSAPP, …
-	ContactID       string         `json:"contact_id,omitempty"`
-	ProfileID       string         `json:"profile_id,omitempty"`
-	ProfileType     string         `json:"profile_type,omitempty"`
-	Language        string         `json:"language,omitempty"`
-	SkipDelivery    bool           `json:"skip_delivery,omitempty"`
-	Template        string         `json:"template,omitempty"`
-	SourceContactID string         `json:"source_contact_id,omitempty"`
-	SourceProfileID string         `json:"source_profile_id,omitempty"`
-	TemplatePayload map[string]any `json:"template_payload,omitempty"`
-	RouteID         string         `json:"route_id,omitempty"`
+// ContactLink mirrors common.v1.ContactLink (Notification.recipient / source).
+type ContactLink struct {
+	ProfileName    string `json:"profile_name,omitempty"`
+	ProfileType    string `json:"profile_type,omitempty"`
+	ProfileID      string `json:"profile_id,omitempty"`
+	ProfileImageID string `json:"profile_image_id,omitempty"`
+	ContactID      string `json:"contact_id,omitempty"`
+}
+
+// NotificationTarget is a thin binding to NotificationService.Send.
+// Field meanings match notification.v1.Notification — ChatAgent does not invent channels.
+type NotificationTarget struct {
+	Type      string         `json:"type,omitempty"` // sms, email, push, in-app, …
+	Recipient *ContactLink   `json:"recipient,omitempty"`
+	Source    *ContactLink   `json:"source,omitempty"`
+	Language  string         `json:"language,omitempty"`
+	Template  string         `json:"template,omitempty"`
+	Payload   map[string]any `json:"payload,omitempty"`
+	RouteID   string         `json:"route_id,omitempty"`
+	Skip      bool           `json:"skip,omitempty"`
 }
 
 // ChatSession is session state returned by the service.
@@ -124,7 +129,7 @@ type ChatSession struct {
 	Missing        []string               `json:"missing"`
 	FieldStatus    map[string]FieldStatus `json:"field_status"`
 	Runtime        map[string]any         `json:"runtime"`
-	Channel        *ChannelBinding        `json:"channel,omitempty"`
+	Notification   *NotificationTarget    `json:"notification,omitempty"`
 }
 
 // UpsertContext registers a versioned context definition.
@@ -163,8 +168,8 @@ type CreateSessionRequest struct {
 	SeedMessages     []ChatMessage      `json:"seed_messages,omitempty"`
 	Runtime          map[string]any     `json:"runtime,omitempty"`
 	EvaluateEvidence bool               `json:"evaluate_evidence,omitempty"`
-	// Channel binds the session for omnichannel delivery via Notification.
-	Channel *ChannelBinding `json:"channel,omitempty"`
+	// Notification reuses NotificationService.Send for assistant replies (optional).
+	Notification *NotificationTarget `json:"notification,omitempty"`
 }
 
 // CreateSessionResponse is the create outcome (session + optional first reply).
@@ -228,23 +233,23 @@ func (c *Client) Turn(ctx context.Context, req TurnRequest) (*TurnResponse, erro
 	return &out, nil
 }
 
-// IngestChannelMessageRequest maps an inbound SMS/WhatsApp/email/… onto a Turn
-// and delivers the assistant reply via Notification on the same channel.
-type IngestChannelMessageRequest struct {
-	SessionID        string             `json:"session_id,omitempty"`
-	SubjectID        string             `json:"subject_id,omitempty"`
-	ContextKey       string             `json:"context_key,omitempty"`
-	Channel          ChannelBinding     `json:"channel"`
-	Message          string             `json:"message"`
-	CreateIfMissing  bool               `json:"create_if_missing,omitempty"`
-	InlineConfig     *ContextDefinition `json:"inline_config,omitempty"`
-	SeedFields       map[string]any     `json:"seed_fields,omitempty"`
-	Runtime          map[string]any     `json:"runtime,omitempty"`
-	EvaluateEvidence bool               `json:"evaluate_evidence,omitempty"`
+// IngestMessageRequest maps an inbound message onto a Turn and replies via
+// NotificationService.Send using the same NotificationTarget.
+type IngestMessageRequest struct {
+	SessionID        string              `json:"session_id,omitempty"`
+	SubjectID        string              `json:"subject_id,omitempty"`
+	ContextKey       string              `json:"context_key,omitempty"`
+	Notification     NotificationTarget  `json:"notification"`
+	Message          string              `json:"message"`
+	CreateIfMissing  bool                `json:"create_if_missing,omitempty"`
+	InlineConfig     *ContextDefinition  `json:"inline_config,omitempty"`
+	SeedFields       map[string]any      `json:"seed_fields,omitempty"`
+	Runtime          map[string]any      `json:"runtime,omitempty"`
+	EvaluateEvidence bool                `json:"evaluate_evidence,omitempty"`
 }
 
-// IngestChannelMessageResponse is the inbound channel outcome.
-type IngestChannelMessageResponse struct {
+// IngestMessageResponse is the inbound message outcome.
+type IngestMessageResponse struct {
 	Session        *ChatSession `json:"session"`
 	Reply          string       `json:"reply"`
 	Source         string       `json:"source"`
@@ -252,10 +257,10 @@ type IngestChannelMessageResponse struct {
 	SessionCreated bool         `json:"session_created"`
 }
 
-// IngestChannelMessage runs a turn for an inbound channel message (omnichannel entry).
-func (c *Client) IngestChannelMessage(ctx context.Context, req IngestChannelMessageRequest) (*IngestChannelMessageResponse, error) {
-	var out IngestChannelMessageResponse
-	if err := c.call(ctx, "IngestChannelMessage", req, &out); err != nil {
+// IngestMessage runs a turn for an inbound message (typically from a Notification adapter).
+func (c *Client) IngestMessage(ctx context.Context, req IngestMessageRequest) (*IngestMessageResponse, error) {
+	var out IngestMessageResponse
+	if err := c.call(ctx, "IngestMessage", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
