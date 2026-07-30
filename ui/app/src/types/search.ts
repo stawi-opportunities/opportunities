@@ -6,10 +6,14 @@ export interface SearchResult {
   title: string;
   apply_url: string;
   company: string;
+  /** Alias used by some list endpoints (same as company). */
+  issuing_entity?: string;
   location_text: string;
   country: string;
   remote_type: string;
   category: string;
+  /** Opportunity kind: job, scholarship, tender, deal, funding. */
+  kind?: string;
   salary_min: number;
   salary_max: number;
   currency: string;

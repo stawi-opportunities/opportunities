@@ -189,6 +189,18 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
           draft: fields,
           cv_text: opts.cv_text,
           cv_filename: opts.cv_filename,
+          context: 'opportunity',
+          opportunity: {
+            id: snap.id,
+            slug: snap.slug,
+            title: snap.title,
+            issuing_entity: snap.issuing_entity,
+            location: locationLine(snap),
+            description:
+              typeof snap.description === 'string' ? snap.description.slice(0, 4000) : '',
+            kind: snap.kind,
+            apply_url: snap.apply_url ?? undefined,
+          },
         });
         setFields(res.fields);
         const appended: OnboardingChatMessage[] = [

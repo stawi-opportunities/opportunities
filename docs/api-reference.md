@@ -16,6 +16,7 @@ After strip_prefix, handlers are relative to the service root:
 |---------|---------|
 | `GET /api/search` | Opportunity search (BM25 via `lakebase_text` on Neon) |
 | `GET /api/opportunities/{slug}` | Opportunity detail by slug (**canonical**) |
+| `GET /api/opportunities/{slug}/related` | Similar / related listings (same kind + title tokens; excludes self) |
 | `GET /api/opportunities/top` | Top listings |
 | `GET /api/opportunities/latest` | Latest listings |
 | `GET /api/jobs/{slug}` | **Legacy alias** of detail (compat during cutover) |
@@ -36,7 +37,7 @@ Requires JWT (OIDC). Gateway may strip a `/matching` prefix.
 |---------|---------|
 | `GET /me/subscription` | Plan / paid status |
 | `GET /me/opportunities` | Unified feed (matches + saved + applications) |
-| `POST /me/chat` | Shared placement chat (prefs + qualifications intake) |
+| `POST /me/chat` | Shared placement chat (prefs + qualifications intake). Body may include `context` (`placement` \| `opportunity`) and `opportunity{…}` for listing side-chat. When `CHAT_AGENT_ENABLED`, matching delegates turns to platform **chat-agent** (`/chat-agent`). |
 | `GET/PUT /me/onboarding` | Onboarding draft + message transcript |
 | `PUT /me/cv` | CV → files service + sync placement summary |
 | `GET /me/cv` | File-id ref + qualifications from placement summary |
