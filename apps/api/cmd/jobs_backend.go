@@ -828,32 +828,11 @@ func quoteSafeCol(col string) string {
 	return `"_invalid_` + col + `"`
 }
 
-// sanitizeSortField maps a caller-supplied sort key to a known column.
-// Prefer orderByClause for full ORDER BY expressions (handles ASC deadline).
-// Default is posted_at so browse lists show the latest jobs first.
-// SPA values "recent" / "quality" / "relevance" / "closing_soon" map onto safe columns.
-func sanitizeSortField(s string) string {
-	switch strings.TrimSpace(strings.ToLower(s)) {
-	case "posted_at", "last_seen_at", "first_seen_at", "deadline", "amount_max", "amount_min":
-		return s
-	case "closing_soon", "deadline_asc":
-		return "deadline"
-	case "recent", "quality", "score", "":
-		return "posted_at"
-	case "salary_high":
-		return "amount_max"
-	case "relevance":
-		// Relevance only applies when q is set (BM25 path); for empty-q
-		// listings fall back to newest-first.
-		return "posted_at"
-	default:
-		return "posted_at"
-	}
-}
-
 // orderByClause returns a full ORDER BY expression (column + direction +
 // tie-breakers). closing_soon puts the soonest deadline first so users
 // act on expiring opportunities before they age out of the catalog.
+// SPA values "recent" / "quality" / "relevance" / "closing_soon" map onto
+// safe columns; unknown keys fall back to newest posted_at.
 func orderByClause(s string) string {
 	switch strings.TrimSpace(strings.ToLower(s)) {
 	case "closing_soon", "deadline_asc":

@@ -23,9 +23,7 @@ describe('resolveDeadlineIso', () => {
   });
 
   it('falls back to expires_at then attributes.expiry', () => {
-    expect(resolveDeadlineIso({ expires_at: '2026-09-01T00:00:00Z' })).toBe(
-      '2026-09-01T00:00:00Z'
-    );
+    expect(resolveDeadlineIso({ expires_at: '2026-09-01T00:00:00Z' })).toBe('2026-09-01T00:00:00Z');
     expect(resolveDeadlineIso({ attributes: { expiry: '2026-10-01T00:00:00Z' } })).toBe(
       '2026-10-01T00:00:00Z'
     );
@@ -86,12 +84,12 @@ describe('primaryDate', () => {
   });
 
   it('uses Closes for tenders and Expires for deals', () => {
-    expect(
-      primaryDate({ deadline: '2026-07-20T00:00:00Z', kind: 'tender', now: NOW }).verb
-    ).toBe('Closes');
-    expect(
-      primaryDate({ deadline: '2026-07-20T00:00:00Z', kind: 'deal', now: NOW }).verb
-    ).toBe('Expires');
+    expect(primaryDate({ deadline: '2026-07-20T00:00:00Z', kind: 'tender', now: NOW }).verb).toBe(
+      'Closes'
+    );
+    expect(primaryDate({ deadline: '2026-07-20T00:00:00Z', kind: 'deal', now: NOW }).verb).toBe(
+      'Expires'
+    );
   });
 
   it('falls back to posted_at when no deadline', () => {

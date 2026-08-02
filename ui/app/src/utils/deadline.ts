@@ -201,8 +201,7 @@ export function primaryDate(opts: {
         : deadlineVerbKey(opts.kind) === 'deadline.expires'
           ? L.expires
           : L.applyBy;
-    const shortLabel =
-      urgency === 'expired' ? L.closed : formatDeadlineShort(dl, now);
+    const shortLabel = urgency === 'expired' ? L.closed : formatDeadlineShort(dl, now);
     const label =
       urgency === 'expired'
         ? `${verb} ${absolute} · ${L.closed.toLowerCase()}`
