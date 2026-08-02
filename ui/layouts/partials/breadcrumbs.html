@@ -1,16 +1,16 @@
 {{ if not .IsHome }}
-<nav aria-label="Breadcrumb" class="mx-auto max-w-7xl rounded-full bg-white/90 px-4 py-3 shadow-sm ring-1 ring-gray-200 sm:px-6 lg:px-8">
-  <ol class="flex items-center gap-2 text-sm text-gray-500" role="list">
-    <li><a href="/" class="hover:text-navy-900">Home</a></li>
+<nav aria-label="Breadcrumb" class="mx-auto max-w-7xl rounded-full bg-surface/90 px-4 py-3 shadow-sm ring-1 ring-muted sm:px-6 lg:px-8">
+  <ol class="flex items-center gap-2 text-sm text-secondary" role="list">
+    <li><a href="/" class="hover:text-main">Home</a></li>
     {{ if .Parent }}
     <li class="flex items-center gap-2">
       <span aria-hidden="true">/</span>
-      <a href="{{ .Parent.Permalink }}" class="hover:text-navy-900">{{ .Parent.Title }}</a>
+      <a href="{{ .Parent.Permalink }}" class="hover:text-main">{{ .Parent.Title }}</a>
     </li>
     {{ end }}
     <li class="flex items-center gap-2" aria-current="page">
       <span aria-hidden="true">/</span>
-      <span class="font-medium text-gray-900">{{ .Title }}</span>
+      <span class="font-medium text-main">{{ .Title }}</span>
     </li>
   </ol>
 </nav>

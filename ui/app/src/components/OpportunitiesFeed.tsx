@@ -322,7 +322,7 @@ export function OpportunitiesFeed({
 
   return (
     <section aria-label="Your opportunities">
-      <div className="sticky top-0 z-10 -mx-4 bg-white px-4 pb-3 shadow-sm dark:bg-navy-900 sm:static sm:mx-0 sm:px-0 sm:pb-0 sm:shadow-none">
+      <div className="sticky top-0 z-10 -mx-4 bg-page px-4 pb-3 shadow-sm sm:static sm:mx-0 sm:px-0 sm:pb-0 sm:shadow-none">
         <div className="flex flex-wrap items-center gap-2 pt-2" role="tablist">
           {FILTER_KEYS.map((f) => {
             const active = f.id === filter;

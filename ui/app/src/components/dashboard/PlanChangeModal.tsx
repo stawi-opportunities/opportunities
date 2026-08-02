@@ -88,7 +88,7 @@ export function PlanChangeModal({
                           ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60 dark:border-navy-600 dark:bg-navy-800'
                           : isSelected
                             ? 'border-accent-500 bg-accent-50 ring-1 ring-accent-500 dark:border-accent-600 dark:bg-accent-900/20'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-navy-700 dark:hover:border-navy-600 dark:hover:bg-navy-800'
+                            : 'border-muted hover:border-muted-strong hover:bg-surface-hover'
                       }`}
                     >
                       <div>
@@ -141,7 +141,7 @@ export function PlanChangeModal({
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {t('plan.confirmChange')}
             </h2>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-navy-700 dark:bg-navy-800">
+            <div className="rounded-lg border border-muted bg-surface-muted p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600 dark:text-gray-400">{t('plan.currentPlan')}</span>
                 <span className="font-medium text-gray-900 dark:text-white">
@@ -239,7 +239,7 @@ export function PlanChangeModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div
         ref={dialogRef}
-        className="w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-navy-900"
+        className="w-full max-w-lg rounded-xl border border-muted bg-surface shadow-xl"
       >
         <div className="px-6 py-5">{renderContent()}</div>
       </div>

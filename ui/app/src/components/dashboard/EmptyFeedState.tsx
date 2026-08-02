@@ -10,7 +10,7 @@ export function EmptyFeedState({ filter, t }: Props) {
   const showTryAll = filter !== 'all';
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 text-center dark:border-navy-700 dark:bg-navy-900">
+    <div className="rounded-lg border border-muted bg-surface p-6 text-center">
       <svg
         className="mx-auto h-24 w-24 text-gray-300 dark:text-navy-600"
         fill="none"
@@ -57,7 +57,7 @@ export function EmptyFeedState({ filter, t }: Props) {
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <a
           href="/onboarding/"
-          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-navy-700 dark:hover:border-navy-600 dark:hover:bg-navy-800"
+          className="rounded-lg border border-muted p-4 text-left transition-colors hover:border-accent-500/40 hover:bg-surface-hover"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,7 +84,7 @@ export function EmptyFeedState({ filter, t }: Props) {
             const panel = document.getElementById('match-preferences');
             if (panel) panel.scrollIntoView({ behavior: 'smooth' });
           }}
-          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-navy-700 dark:hover:border-navy-600 dark:hover:bg-navy-800"
+          className="rounded-lg border border-muted p-4 text-left transition-colors hover:border-accent-500/40 hover:bg-surface-hover"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -112,7 +112,7 @@ export function EmptyFeedState({ filter, t }: Props) {
 
         <a
           href="/jobs/"
-          className="rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-navy-700 dark:hover:border-navy-600 dark:hover:bg-navy-800"
+          className="rounded-lg border border-muted p-4 text-left transition-colors hover:border-accent-500/40 hover:bg-surface-hover"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

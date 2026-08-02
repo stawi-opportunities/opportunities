@@ -57,8 +57,8 @@ export function FilterChips({ filters, onChange, t }: Props) {
         onClick={toggleRemote}
         className={`min-h-[36px] rounded-full px-3 py-1 text-xs font-medium transition-colors ${
           filters.remote !== null
-            ? 'bg-navy-900 text-white'
-            : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
+            ? 'bg-accent-500 text-navy-950'
+            : 'border border-muted-strong bg-surface text-secondary hover:bg-surface-hover'
         }`}
       >
         {filters.remote === true
@@ -81,8 +81,8 @@ export function FilterChips({ filters, onChange, t }: Props) {
             }}
             className={`min-h-[36px] rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               active
-                ? 'bg-navy-900 text-white'
-                : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
+                ? 'bg-accent-500 text-navy-950'
+                : 'border border-muted-strong bg-surface text-secondary hover:bg-surface-hover'
             }`}
           >
             {value && getTypeMeta(value) && (

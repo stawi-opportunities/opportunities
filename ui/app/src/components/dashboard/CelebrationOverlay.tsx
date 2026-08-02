@@ -17,7 +17,7 @@ export function CelebrationOverlay({ t, onDismiss }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4">
-      <div className="relative max-w-md rounded-xl bg-white p-6 text-center shadow-2xl animate-fade-in dark:bg-navy-900">
+      <div className="relative max-w-md rounded-xl border border-muted bg-surface p-6 text-center shadow-2xl animate-fade-in">
         {/* Confetti dots */}
         <div
           className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"

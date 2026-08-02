@@ -132,10 +132,7 @@ export function ToolsPanel() {
                   ['Clarity', report.components.clarity],
                 ] as const
               ).map(([label, n]) => (
-                <div
-                  key={label}
-                  className="rounded-lg border border-gray-200 p-3 text-center dark:border-navy-700"
-                >
+                <div key={label} className="rounded-lg border border-muted p-3 text-center">
                   <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
                   <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{n}</p>
                 </div>
@@ -150,7 +147,7 @@ export function ToolsPanel() {
                   {report.priority_fixes.slice(0, 7).map((f) => (
                     <li
                       key={f.id}
-                      className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm dark:border-navy-700 dark:bg-navy-800"
+                      className="rounded-md border border-muted bg-surface-muted p-3 text-sm"
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-gray-900 dark:text-white">{f.title}</span>

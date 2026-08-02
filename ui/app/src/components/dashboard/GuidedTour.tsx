@@ -68,7 +68,7 @@ export function GuidedTour({ onDismiss }: { onDismiss: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl dark:bg-navy-900">
+      <div className="mx-4 w-full max-w-sm rounded-xl border border-muted bg-surface p-6 shadow-xl">
         <div className="mb-6 flex items-center justify-between">
           <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
             {step + 1} of {STEPS.length}

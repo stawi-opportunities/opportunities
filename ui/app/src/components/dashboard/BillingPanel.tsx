@@ -120,7 +120,7 @@ export function BillingPanel({
           )}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-100 pt-4 dark:border-navy-700">
+        <div className="mt-4 flex flex-wrap gap-4 border-t border-muted pt-4">
           <button
             type="button"
             onClick={() => setShowUsage(!showUsage)}
@@ -138,13 +138,13 @@ export function BillingPanel({
         </div>
 
         {showUsage && (
-          <div className="mt-4 border-t border-gray-100 pt-4 dark:border-navy-700">
+          <div className="mt-4 border-t border-muted pt-4">
             <UsageChart history={usageHistory} t={t} />
           </div>
         )}
 
         {showInvoices && (
-          <div className="mt-4 border-t border-gray-100 pt-4 dark:border-navy-700">
+          <div className="mt-4 border-t border-muted pt-4">
             <h3 className="mb-2 text-sm font-medium text-gray-900 dark:text-white">
               Payment history
             </h3>

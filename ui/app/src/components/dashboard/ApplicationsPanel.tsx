@@ -198,10 +198,7 @@ export function ApplicationsPanel() {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="animate-pulse rounded-lg border border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-900"
-          >
+          <div key={i} className="animate-pulse rounded-lg border border-muted bg-surface p-4">
             <div className="h-4 w-3/4 rounded bg-gray-100 dark:bg-navy-800" />
             <div className="mt-2 h-3 w-1/2 rounded bg-gray-100 dark:bg-navy-800" />
           </div>
@@ -212,7 +209,7 @@ export function ApplicationsPanel() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-8 text-center dark:border-navy-700 dark:bg-navy-900">
+      <div className="rounded-lg border border-muted bg-surface p-8 text-center">
         <p className="text-sm text-gray-600 dark:text-gray-400">
           You haven't applied to any opportunities yet.
         </p>

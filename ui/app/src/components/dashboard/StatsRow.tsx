@@ -54,13 +54,13 @@ export function StatsRow({ compact }: { compact?: boolean }) {
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="animate-pulse rounded-xl border-0 bg-white p-5 shadow-sm ring-1 ring-gray-200 dark:bg-navy-900 dark:ring-navy-700"
+            className="animate-pulse rounded-xl border border-muted bg-surface p-5 shadow-sm"
           >
             <div className="flex items-start gap-4">
-              <div className="h-10 w-10 rounded-xl bg-gray-100 dark:bg-navy-800" />
+              <div className="h-10 w-10 rounded-xl bg-surface-hover" />
               <div className="space-y-2">
-                <div className="h-3 w-16 rounded bg-gray-100 dark:bg-navy-800" />
-                <div className="h-8 w-12 rounded bg-gray-100 dark:bg-navy-800" />
+                <div className="h-3 w-16 rounded bg-surface-hover" />
+                <div className="h-8 w-12 rounded bg-surface-hover" />
               </div>
             </div>
           </div>

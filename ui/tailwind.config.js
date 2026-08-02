@@ -11,11 +11,14 @@ module.exports = {
       colors: {
         // Semantic aliases backed by CSS custom properties for theme switching.
         // Usage: bg-surface, text-main, border-muted, etc.
+        page: 'rgb(var(--color-bg) / <alpha-value>)',
         surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        'surface-hover': 'rgb(var(--color-surface-hover) / <alpha-value>)',
         'surface-muted': 'rgb(var(--color-muted) / <alpha-value>)',
         main: 'rgb(var(--color-text) / <alpha-value>)',
         secondary: 'rgb(var(--color-text-secondary) / <alpha-value>)',
         muted: 'rgb(var(--color-border) / <alpha-value>)',
+        'muted-strong': 'rgb(var(--color-border-strong) / <alpha-value>)',
         'nav-bg': 'rgb(var(--color-nav-bg) / <alpha-value>)',
         inverse: 'rgb(var(--color-inverse) / <alpha-value>)',
 

@@ -51,11 +51,11 @@ export function DashboardBanner({ onStartTour }: { onStartTour?: () => void }) {
   const title = profile?.current_title;
 
   return (
-    <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-navy-50 to-blue-50 p-5 shadow-sm ring-1 ring-navy-100 dark:from-navy-800 dark:to-navy-900 dark:ring-navy-700 sm:p-6">
+    <div className="relative overflow-hidden rounded-xl border border-accent-500/20 bg-gradient-to-r from-accent-500/10 via-surface to-surface p-5 shadow-sm sm:p-6">
       <button
         type="button"
         onClick={() => setVisible(false)}
-        className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded text-gray-400 transition-colors hover:bg-white/50 hover:text-gray-600 dark:hover:bg-navy-700 dark:hover:text-gray-300"
+        className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded text-secondary transition-colors hover:bg-surface-hover hover:text-main"
         aria-label={t('cta.dismiss')}
       >
         <svg
@@ -72,15 +72,15 @@ export function DashboardBanner({ onStartTour }: { onStartTour?: () => void }) {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
+          <h2 className="text-xl font-semibold tracking-tight text-main">
             {t('dash.welcomeTitle')}
           </h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          <p className="mt-1 text-sm text-secondary">
             {title && <span>{title} &middot; </span>}
             <button
               type="button"
               onClick={onStartTour}
-              className="font-medium text-navy-700 underline underline-offset-2 hover:text-navy-900 dark:text-navy-300 dark:hover:text-white"
+              className="font-medium text-accent-400 underline underline-offset-2 hover:text-accent-300"
             >
               {t('dash.welcomeTour')}
             </button>
@@ -89,11 +89,11 @@ export function DashboardBanner({ onStartTour }: { onStartTour?: () => void }) {
 
         <div className="flex shrink-0 items-center gap-3">
           {initial ? (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-bold text-navy-800 shadow-sm ring-2 ring-navy-200 dark:bg-navy-700 dark:text-white dark:ring-navy-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500/15 text-sm font-bold text-accent-400 ring-1 ring-accent-500/30">
               {initial}
             </div>
           ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-400 shadow-sm ring-2 ring-navy-200 dark:bg-navy-700 dark:text-gray-500 dark:ring-navy-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-hover text-secondary ring-1 ring-muted-strong">
               <svg
                 className="h-5 w-5"
                 fill="none"

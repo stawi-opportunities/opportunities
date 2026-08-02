@@ -58,7 +58,7 @@ export function QuickActions() {
   ];
 
   const chipClass =
-    'min-h-[44px] rounded-xl border-0 bg-white px-4 py-2.5 text-left text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition-all hover:-translate-y-0.5 hover:shadow-md hover:text-gray-900 dark:bg-navy-900 dark:text-gray-300 dark:ring-navy-700 dark:hover:bg-navy-800 dark:hover:text-white';
+    'min-h-[44px] rounded-xl border border-muted bg-surface px-4 py-2.5 text-left text-sm font-medium text-main transition-all hover:-translate-y-0.5 hover:border-muted-strong hover:bg-surface-hover hover:shadow-md';
 
   return (
     <div className="flex flex-wrap gap-3">
@@ -66,12 +66,12 @@ export function QuickActions() {
         a.kind === 'link' ? (
           <a key={a.href} href={a.href} className={chipClass}>
             <span>{a.label}</span>
-            <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{a.description}</span>
+            <span className="ml-1.5 text-xs text-secondary">{a.description}</span>
           </a>
         ) : (
           <button key={a.id} type="button" onClick={a.onClick} className={chipClass}>
             <span>{a.label}</span>
-            <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{a.description}</span>
+            <span className="ml-1.5 text-xs text-secondary">{a.description}</span>
           </button>
         )
       )}

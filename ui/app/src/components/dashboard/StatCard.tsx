@@ -8,26 +8,22 @@ const COLOR_MAPS: Record<StatColor, { circle: string; text: string; hover: strin
   blue: {
     circle: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
     text: 'text-blue-600 dark:text-blue-400',
-    hover:
-      'group-hover:border-blue-200 group-hover:shadow-blue-100 dark:group-hover:border-blue-800',
+    hover: 'group-hover:border-accent-500/40',
   },
   teal: {
     circle: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
     text: 'text-teal-600 dark:text-teal-400',
-    hover:
-      'group-hover:border-teal-200 group-hover:shadow-teal-100 dark:group-hover:border-teal-800',
+    hover: 'group-hover:border-accent-500/40',
   },
   purple: {
     circle: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
     text: 'text-purple-600 dark:text-purple-400',
-    hover:
-      'group-hover:border-purple-200 group-hover:shadow-purple-100 dark:group-hover:border-purple-800',
+    hover: 'group-hover:border-accent-500/40',
   },
   emerald: {
     circle: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     text: 'text-emerald-600 dark:text-emerald-400',
-    hover:
-      'group-hover:border-emerald-200 group-hover:shadow-emerald-100 dark:group-hover:border-emerald-800',
+    hover: 'group-hover:border-accent-500/40',
   },
 };
 
@@ -60,7 +56,7 @@ export function StatCard({
   return (
     <a
       href={href}
-      className={`group block rounded-xl border-0 bg-white p-5 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:bg-navy-900 dark:ring-navy-700 dark:hover:bg-navy-800 ${c.hover} ${prefersReduced ? '' : 'animate-fade-up'}`}
+      className={`group block rounded-xl border border-muted bg-surface p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-muted-strong hover:bg-surface-hover hover:shadow-md ${c.hover} ${prefersReduced ? '' : 'animate-fade-up'}`}
       style={prefersReduced ? undefined : { animationDelay: `${index * 80}ms` }}
     >
       <div className="flex items-start gap-4">
@@ -70,10 +66,8 @@ export function StatCard({
           <Icon name={icon} size={20} />
         </span>
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            {label}
-          </p>
-          <p className="mt-0.5 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <p className="text-xs font-medium uppercase tracking-wider text-secondary">{label}</p>
+          <p className="mt-0.5 text-3xl font-bold tracking-tight text-main">
             {value.toLocaleString()}
           </p>
         </div>

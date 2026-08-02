@@ -58,7 +58,20 @@
 <link rel="apple-touch-icon" href="/favicon.svg">
 <link rel="mask-icon" href="/favicon.svg" color="#45b739">
 <link rel="manifest" href="/site.webmanifest">
-<meta name="theme-color" content="#0c1226">
+<meta name="theme-color" content="#090b10">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#0c1226">
+
+{{/* Apply theme class before first paint to avoid dark-mode flash.
+      Mirrors ui/app/src/providers/ThemeProvider.tsx. */}}
+<script>
+  (function () {
+    try {
+      var v = localStorage.getItem('stawi-theme');
+      var dark = v === 'dark' || (!v && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.classList.add('dark');
+    } catch (e) {}
+  })();
+</script>
 
 {{/* Visitor locale — set on per-country shards (/l/<CC>/) so the
       Cascade picks up country/languages before navigator.languages is

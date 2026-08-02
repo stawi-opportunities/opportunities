@@ -102,7 +102,7 @@ export function PreferencesPanel() {
       </p>
 
       {preferenceChat && (
-        <div className="mt-4 rounded-xl border border-navy-100 bg-navy-50/60 p-4 dark:border-navy-700 dark:bg-navy-800/50">
+        <div className="mt-4 rounded-xl border border-muted bg-surface-muted p-4">
           <p className="text-sm font-medium text-navy-900 dark:text-white">
             Prefer to describe it?
           </p>
@@ -134,7 +134,7 @@ export function PreferencesPanel() {
       )}
 
       <nav
-        className="mt-4 flex flex-wrap gap-1 border-b border-gray-200 dark:border-navy-700"
+        className="mt-4 flex flex-wrap gap-1 border-b border-muted"
         role="tablist"
         aria-label="Opportunity kinds"
       >

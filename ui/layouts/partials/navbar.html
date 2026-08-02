@@ -1,25 +1,25 @@
 <div id="mount-nav">
-  <header class="sticky top-0 z-40 border-b border-gray-100 bg-white/95 backdrop-blur-xl">
+  <header class="sticky top-0 z-40 border-b border-muted bg-nav-bg/95 backdrop-blur-xl">
     <div class="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
       <a href="/" class="flex-shrink-0" aria-label="Stawi Jobs">
         <img src="/images/logo.svg" alt="Stawi" height="32" class="h-8 w-auto"/>
       </a>
 
-      <button id="nav-toggle" class="ml-auto inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 md:hidden" type="button" aria-controls="mobile-menu" aria-expanded="false" aria-label="Menu">
+      <button id="nav-toggle" class="ml-auto inline-flex items-center justify-center rounded-md p-2 text-secondary hover:bg-surface-hover md:hidden" type="button" aria-controls="mobile-menu" aria-expanded="false" aria-label="Menu">
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
       </button>
 
       <nav class="hidden items-center gap-1 md:flex" aria-label="Main">
-        <a href="/search/" class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Jobs</a>
-        <a href="/pricing/" class="rounded-md px-3 py-2 text-sm font-medium text-gray-600">Pricing</a>
+        <a href="/search/" class="rounded-md px-3 py-2 text-sm font-medium text-secondary hover:text-main">Jobs</a>
+        <a href="/pricing/" class="rounded-md px-3 py-2 text-sm font-medium text-secondary hover:text-main">Pricing</a>
       </nav>
       {{/* StawiAuth (React) replaces this skeleton with Sign in / avatar */}}
       <div class="hidden min-w-[5rem] md:block" aria-hidden="true"></div>
     </div>
 
-    <div id="mobile-menu" class="hidden border-t border-gray-100 px-4 pb-3 pt-2 md:hidden">
-      <a href="/search/" class="block rounded-md px-3 py-2 text-sm text-gray-600">Jobs</a>
-      <a href="/pricing/" class="block rounded-md px-3 py-2 text-sm text-gray-600">Pricing</a>
+    <div id="mobile-menu" class="hidden border-t border-muted px-4 pb-3 pt-2 md:hidden">
+      <a href="/search/" class="block rounded-md px-3 py-2 text-sm text-secondary">Jobs</a>
+      <a href="/pricing/" class="block rounded-md px-3 py-2 text-sm text-secondary">Pricing</a>
     </div>
   </header>
 </div>

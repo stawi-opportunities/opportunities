@@ -207,17 +207,11 @@ function SidebarNav({
             onClick={() => onNavigate(s.id)}
             className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
               isActive
-                ? 'bg-gradient-to-r from-navy-50 to-transparent text-navy-900 dark:from-navy-800 dark:to-transparent dark:text-white'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white'
+                ? 'border border-accent-500/30 bg-accent-500/10 text-white'
+                : 'text-secondary hover:bg-surface-hover hover:text-main'
             }`}
           >
-            <span
-              className={
-                isActive ? 'text-navy-700 dark:text-navy-300' : 'text-gray-400 dark:text-gray-500'
-              }
-            >
-              {s.icon}
-            </span>
+            <span className={isActive ? 'text-accent-400' : 'text-secondary/60'}>{s.icon}</span>
             <span>{t(s.labelKey)}</span>
             {s.badge != null && (
               <span className="ml-auto inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-700">
@@ -274,7 +268,7 @@ export function DashboardSidebar({
       {/* Mobile hamburger — visible below md */}
       <button
         type="button"
-        className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-navy-800 md:hidden min-h-[44px]"
+        className="flex min-h-[44px] items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium text-main hover:bg-surface-hover md:hidden"
         aria-label="Open dashboard navigation"
         aria-expanded={drawerOpen}
         onClick={() => setDrawerOpen((o) => !o)}
@@ -317,17 +311,15 @@ export function DashboardSidebar({
       {/* Mobile drawer */}
       <div
         ref={drawerRef}
-        className={`fixed left-0 top-0 z-50 h-full w-64 max-w-[85vw] transform bg-white shadow-xl transition-transform duration-200 ease-in-out md:hidden dark:bg-navy-900 ${
+        className={`fixed left-0 top-0 z-50 h-full w-64 max-w-[85vw] transform border-r border-muted bg-nav-bg shadow-xl transition-transform duration-200 ease-in-out md:hidden ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4 dark:border-navy-700">
-          <span className="text-sm font-semibold text-gray-900 dark:text-white">
-            {t('nav.dashboard')}
-          </span>
+        <div className="flex items-center justify-between border-b border-muted px-4 py-4">
+          <span className="text-sm font-semibold text-main">{t('nav.dashboard')}</span>
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-navy-800 dark:hover:text-gray-300"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-secondary hover:bg-surface-hover hover:text-main"
             aria-label="Close dashboard navigation"
             onClick={() => setDrawerOpen(false)}
           >

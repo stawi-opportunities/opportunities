@@ -15,7 +15,7 @@ export function UsageChart({
 }) {
   if (!history.length) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400">
+      <div className="rounded-lg border border-muted bg-surface-muted p-6 text-center text-sm text-secondary">
         {t('usage.noData')}
       </div>
     );

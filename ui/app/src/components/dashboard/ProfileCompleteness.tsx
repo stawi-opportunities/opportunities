@@ -25,14 +25,14 @@ export function ProfileCompleteness() {
   if (!data?.languages) missing.push(t('dash.compLanguages'));
 
   return (
-    <div className="rounded-xl border-0 bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:bg-navy-900 dark:ring-navy-700">
+    <div className="rounded-xl border border-muted bg-surface p-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-semibold uppercase tracking-wide text-secondary">
           {t('dash.profileCompleteness')}
         </span>
-        <span className="text-sm font-semibold text-gray-900 dark:text-white">{score}%</span>
+        <span className="text-sm font-semibold text-main">{score}%</span>
       </div>
-      <div className="mt-2 h-2 w-full rounded-full bg-gray-100 dark:bg-navy-800">
+      <div className="mt-2 h-2 w-full rounded-full bg-surface-hover">
         <div
           className={`h-2 rounded-full transition-all ${
             score === 100 ? 'bg-emerald-500' : score >= 50 ? 'bg-accent-500' : 'bg-amber-500'
@@ -48,10 +48,7 @@ export function ProfileCompleteness() {
       {missing.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {missing.map((label) => (
-            <li
-              key={label}
-              className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-            >
+            <li key={label} className="flex items-center gap-1.5 text-xs text-secondary">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
               {label}
             </li>
@@ -63,7 +60,7 @@ export function ProfileCompleteness() {
           <button
             type="button"
             onClick={() => preferenceChat.openRefine()}
-            className="text-xs font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400"
+            className="text-xs font-medium text-accent-500 hover:text-accent-400"
           >
             Tweak in chat
           </button>
@@ -71,7 +68,7 @@ export function ProfileCompleteness() {
         {score < 100 && (
           <a
             href="/dashboard/#settings"
-            className="text-xs font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400"
+            className="text-xs font-medium text-accent-500 hover:text-accent-400"
           >
             {t('dash.compLink')}
           </a>

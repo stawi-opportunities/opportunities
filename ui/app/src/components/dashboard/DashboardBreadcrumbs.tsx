@@ -38,7 +38,7 @@ export function DashboardBreadcrumbs({
             <li key={crumb.href} className="flex items-center gap-1.5">
               {i > 0 && (
                 <svg
-                  className="h-3.5 w-3.5 flex-shrink-0 text-gray-300 dark:text-navy-600"
+                  className="h-3.5 w-3.5 flex-shrink-0 text-muted-strong"
                   fill="none"
                   viewBox="0 0 24 24"
                   strokeWidth={2}
@@ -48,14 +48,11 @@ export function DashboardBreadcrumbs({
                 </svg>
               )}
               {isLast ? (
-                <span className="font-medium text-gray-700 dark:text-gray-300" aria-current="page">
+                <span className="font-medium text-main" aria-current="page">
                   {crumb.label}
                 </span>
               ) : (
-                <a
-                  href={crumb.href}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                >
+                <a href={crumb.href} className="text-secondary hover:text-main">
                   {crumb.label}
                 </a>
               )}

@@ -97,7 +97,7 @@ export function CancelSubscriptionModal({
                   className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
                     selectedReason === r.id
                       ? 'border-accent-500 bg-accent-50 dark:border-accent-600 dark:bg-accent-900/20'
-                      : 'border-gray-200 hover:bg-gray-50 dark:border-navy-700 dark:hover:bg-navy-800'
+                      : 'border-muted hover:bg-surface-hover'
                   }`}
                 >
                   <input
@@ -184,7 +184,7 @@ export function CancelSubscriptionModal({
       case 'success':
         return (
           <div className="space-y-4 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-navy-700">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-hover">
               <svg
                 className="h-6 w-6 text-gray-600 dark:text-gray-300"
                 fill="none"
@@ -244,7 +244,7 @@ export function CancelSubscriptionModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div
         ref={dialogRef}
-        className="w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-navy-900"
+        className="w-full max-w-lg rounded-xl border border-muted bg-surface shadow-xl"
       >
         <div className="px-6 py-5">{renderContent()}</div>
       </div>

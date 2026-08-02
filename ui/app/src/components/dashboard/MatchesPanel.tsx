@@ -137,7 +137,7 @@ export function MatchesPanel({
           </Button>
         </div>
         {!unlimited && (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-navy-700">
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
             <div
               className="h-full rounded-full bg-accent-500 transition-all"
               style={{ width: `${progressPct}%` }}

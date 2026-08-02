@@ -3,7 +3,7 @@
 <head>
   {{ partial "head.html" . }}
 </head>
-<body class="min-h-screen flex flex-col {{ if .IsHome }}bg-white{{ else }}bg-slate-50{{ end }} text-slate-900">
+<body class="min-h-screen flex flex-col bg-page text-main">
   {{ partial "skip-nav.html" . }}
   {{ partial "navbar.html" . }}
 
@@ -18,7 +18,7 @@
   {{ if not .IsHome }}
     {{ partial "footer.html" . }}
   {{ else }}
-    <footer class="bg-white py-6 text-center text-xs text-gray-400" role="contentinfo">
+    <footer class="bg-page py-6 text-center text-xs text-secondary" role="contentinfo">
       <a href="/search/" class="hover:text-gray-600">Browse jobs</a>
       <span class="mx-2">·</span>
       <a href="/pricing/" class="hover:text-gray-600">Pricing</a>

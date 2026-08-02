@@ -19,16 +19,13 @@ export function DashboardHeader({
   return (
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Dashboard</h1>
-        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-navy-700 dark:text-gray-200">
+        <h1 className="text-xl font-semibold tracking-tight text-main">Dashboard</h1>
+        <span className="rounded-full bg-accent-500/15 px-2.5 py-0.5 text-xs font-medium text-accent-400 ring-1 ring-accent-500/30">
           {isFree ? 'Free' : planName}
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <a
-          href="/search/"
-          className="text-sm font-medium text-gray-600 hover:text-navy-900 dark:text-gray-300"
-        >
+        <a href="/search/" className="text-sm font-medium text-secondary hover:text-accent-400">
           Jobs
         </a>
         {plan !== 'managed' && (

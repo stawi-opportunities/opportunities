@@ -8,9 +8,9 @@ const variantStyles: Record<Variant, string> = {
   primary:
     'bg-[#219c3f] text-white shadow-sm hover:bg-[#45b739] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#219c3f]/50',
   secondary:
-    'border border-gray-300 bg-white text-[#0c1226] hover:border-gray-400 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300',
+    'border border-muted-strong bg-surface text-main hover:border-accent-500/50 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
   ghost:
-    'text-gray-600 hover:bg-gray-100 hover:text-navy-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 dark:text-gray-300 dark:hover:bg-navy-800 dark:hover:text-white',
+    'text-secondary hover:bg-surface-hover hover:text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
   danger:
     'bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50',
 };

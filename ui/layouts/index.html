@@ -3,7 +3,7 @@
 {{/* HomeRedirect island: signed-in visitors go straight to /dashboard/. */}}
 <div id="mount-home-redirect"></div>
 
-<section id="home-hero" class="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center bg-white px-4 py-16 sm:py-20">
+<section id="home-hero" class="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center bg-page px-4 py-16 sm:py-20">
   <div class="mx-auto flex w-full max-w-2xl flex-col items-center text-center">
 
     <div class="home-hero-photo relative w-[min(72vw,280px)] sm:w-[300px]" aria-hidden="true">
@@ -18,11 +18,11 @@
       />
     </div>
 
-    <h1 class="mt-10 max-w-2xl font-display text-[clamp(2.75rem,9vw,4.75rem)] font-semibold leading-[1.08] tracking-tight text-navy-900">
+    <h1 class="mt-10 max-w-2xl font-display text-[clamp(2.75rem,9vw,4.75rem)] font-semibold leading-[1.08] tracking-tight text-main">
       Find your opportunity
     </h1>
 
-    <p class="mt-4 max-w-md text-base leading-relaxed text-gray-600 sm:text-lg">
+    <p class="mt-4 max-w-md text-base leading-relaxed text-secondary sm:text-lg">
       Sign in for personalized matches and connect with employers looking for candidates like you.
     </p>
 
@@ -30,7 +30,7 @@
     <div id="mount-home-cta">
       <a
         href="/search/"
-        class="mt-8 inline-flex items-center gap-2 rounded-full bg-navy-900 px-8 py-3.5 text-base font-semibold text-white shadow-sm"
+        class="mt-8 inline-flex items-center gap-2 rounded-full bg-accent-500 px-8 py-3.5 text-base font-semibold text-navy-950 shadow-sm transition-colors hover:bg-accent-400"
       >
         Browse jobs
         <span aria-hidden="true">→</span>

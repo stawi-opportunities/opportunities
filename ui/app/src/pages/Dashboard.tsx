@@ -99,6 +99,7 @@ export default function Dashboard() {
   return (
     <PreferenceChatHost>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+        {' '}
         <DashboardHeader
           plan={plan}
           status={subscription}
@@ -106,7 +107,6 @@ export default function Dashboard() {
           t={t}
         />
         <PendingCheckoutPoller />
-
         <div className="mt-4 md:hidden">
           <DashboardSidebar
             active={activeSection}
@@ -115,7 +115,6 @@ export default function Dashboard() {
             matchCount={sub?.queued_matches}
           />
         </div>
-
         <div className="mt-6 grid gap-6 lg:grid-cols-[200px_1fr]">
           <aside className="hidden md:block">
             <DashboardSidebar
@@ -190,11 +189,9 @@ export default function Dashboard() {
             )}
           </section>
         </div>
-
         <div className="mt-8 md:hidden">
           <ProfileMount />
         </div>
-
         {showPlanChange && plan && (
           <PlanChangeModal
             currentPlan={plan}
@@ -203,7 +200,6 @@ export default function Dashboard() {
             onSuccess={handlePlanChangeSuccess}
           />
         )}
-
         {showCancel && (
           <CancelSubscriptionModal
             onClose={() => setShowCancel(false)}
@@ -250,8 +246,8 @@ function ProfileMount() {
 function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {
   return (
     <div className="mx-auto max-w-sm py-16 text-center">
-      <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Sign in</h1>
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Access matches and tools.</p>
+      <h1 className="text-xl font-semibold text-main">Sign in</h1>
+      <p className="mt-2 text-sm text-secondary">Access matches and tools.</p>
       <Button className="mt-6" variant="primary" onClick={() => void onSignIn()}>
         Sign in
       </Button>
@@ -262,8 +258,8 @@ function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {
 function Skeleton() {
   return (
     <div className="mx-auto max-w-6xl animate-pulse px-4 py-8">
-      <div className="h-8 w-40 rounded bg-gray-100" />
-      <div className="mt-8 h-64 rounded bg-gray-100" />
+      <div className="h-8 w-40 rounded bg-surface-hover" />
+      <div className="mt-8 h-64 rounded bg-surface-hover" />
     </div>
   );
 }

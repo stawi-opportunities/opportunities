@@ -22,7 +22,7 @@ export function InvoiceHistory({
 }) {
   if (!invoices.length) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-navy-700 dark:bg-navy-800 dark:text-gray-400">
+      <div className="rounded-lg border border-muted bg-surface-muted p-6 text-center text-sm text-secondary">
         {t('invoice.empty')}
       </div>
     );
@@ -34,7 +34,7 @@ export function InvoiceHistory({
       <div className="hidden sm:block overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-navy-700 dark:text-gray-400">
+            <tr className="border-b border-muted text-xs font-medium uppercase tracking-wide text-secondary">
               <th className="pb-2 pr-4">{t('invoice.date')}</th>
               <th className="pb-2 pr-4">{t('invoice.amount')}</th>
               <th className="pb-2 pr-4">{t('invoice.status')}</th>
@@ -43,7 +43,7 @@ export function InvoiceHistory({
           </thead>
           <tbody>
             {invoices.map((inv) => (
-              <tr key={inv.id} className="border-b border-gray-100 dark:border-navy-700">
+              <tr key={inv.id} className="border-b border-muted">
                 <td className="py-2.5 pr-4 text-gray-900 dark:text-white">
                   {new Date(inv.date).toLocaleDateString()}
                 </td>
@@ -77,10 +77,7 @@ export function InvoiceHistory({
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
         {invoices.map((inv) => (
-          <div
-            key={inv.id}
-            className="rounded-lg border border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-900"
-          >
+          <div key={inv.id} className="rounded-lg border border-muted bg-surface p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-900 dark:text-white">
                 {new Date(inv.date).toLocaleDateString()}
