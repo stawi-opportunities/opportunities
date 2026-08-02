@@ -4,7 +4,9 @@ import type { StringKey } from '@/i18n/strings';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSubscription } from '@/hooks/useSubscription';
 import { Icon } from '@/components/ui/Icon';
+import { DeadlineDate } from '@/components/ui/DeadlineDate';
 import { getTypeMeta } from '@/constants/opportunityTypes';
+import { urgencyForDeadline } from '@/utils/deadline';
 
 const KIND_PATH: Record<string, string> = {
   job: 'jobs',
@@ -24,6 +26,7 @@ export interface OpportunitySnapshot {
   company?: string;
   location?: string;
   posted_at?: string;
+  deadline?: string;
   salary_min?: number;
   salary_max?: number;
   currency?: string;
@@ -74,6 +77,9 @@ export function OpportunityCard({
   const isNew = snapshot?.posted_at
     ? Date.now() - new Date(snapshot.posted_at).getTime() < 24 * 60 * 60 * 1000
     : false;
+  const closingUrgency = urgencyForDeadline(snapshot?.deadline);
+  const isClosingSoon =
+    closingUrgency === 'today' || closingUrgency === 'urgent' || closingUrgency === 'soon';
   const isMatched = (item.score ?? 0) > 0;
   const canDismiss = Boolean(item.match_id && onDismiss);
 
@@ -95,6 +101,11 @@ export function OpportunityCard({
                   {t('card.new')}
                 </span>
               )}
+              {isClosingSoon && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                  {t('deadline.closingSoon')}
+                </span>
+              )}
               {snapshot?.kind && getTypeMeta(snapshot.kind) && (
                 <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-navy-800 dark:text-gray-300">
                   <Icon name={getTypeMeta(snapshot.kind)!.iconName} size={10} />
@@ -109,6 +120,13 @@ export function OpportunityCard({
                 {location}
               </p>
             )}
+            <DeadlineDate
+              deadline={snapshot?.deadline}
+              posted_at={snapshot?.posted_at}
+              kind={snapshot?.kind}
+              variant="full"
+              className="mt-1 block text-sm"
+            />
           </div>
           {isMatched && (
             <span

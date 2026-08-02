@@ -18,6 +18,8 @@ export interface SearchResult {
   salary_max: number;
   currency: string;
   posted_at: string | null;
+  /** Application / closing / expiry deadline (primary user-facing date). */
+  deadline: string | null;
   quality_score: number;
   snippet: string;
   is_featured: boolean;
@@ -44,7 +46,7 @@ export interface SearchResponse {
   has_more: boolean;
   cursor_next: string;
   facets: Facets;
-  sort: 'relevance' | 'recent' | 'quality' | 'salary_high';
+  sort: 'relevance' | 'recent' | 'closing_soon' | 'quality' | 'salary_high';
 }
 
 export interface SearchParams {
@@ -57,7 +59,7 @@ export interface SearchParams {
   employment_type?: string;
   seniority?: string;
   country?: string;
-  sort?: 'relevance' | 'recent' | 'quality' | 'salary_high';
+  sort?: 'relevance' | 'recent' | 'closing_soon' | 'quality' | 'salary_high';
   limit?: number;
   offset?: number;
   cursor?: string;
@@ -117,7 +119,7 @@ export interface FeedResponse {
   context: FeedContext;
   tiers: FeedTier[];
   facets: Facets;
-  sort: 'relevance' | 'recent' | 'quality' | 'salary_high';
+  sort: 'relevance' | 'recent' | 'closing_soon' | 'quality' | 'salary_high';
 }
 
 export interface FeedParams extends SearchParams {

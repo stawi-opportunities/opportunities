@@ -42,10 +42,12 @@ type searchResult struct {
 	SalaryMax      float64    `json:"salary_max"`
 	Currency       string     `json:"currency"`
 	PostedAt       *time.Time `json:"posted_at"`
-	QualityScore   float64    `json:"quality_score"`
-	Snippet        string     `json:"snippet"`
-	IsFeatured     bool       `json:"is_featured"`
-	Kind           string     `json:"kind,omitempty"`
+	// Deadline is the primary user-facing date (apply-by / closes / expires).
+	Deadline     *time.Time `json:"deadline"`
+	QualityScore float64    `json:"quality_score"`
+	Snippet      string     `json:"snippet"`
+	IsFeatured   bool       `json:"is_featured"`
+	Kind         string     `json:"kind,omitempty"`
 }
 
 // toSearchResult converts an internal job into the SPA-facing wire shape.
@@ -67,6 +69,7 @@ func toSearchResult(j job, categoryLabel func(int64) string) searchResult {
 		SalaryMax:      j.AmountMax,
 		Currency:       j.Currency,
 		PostedAt:       j.PostedAt,
+		Deadline:       j.Deadline,
 		Snippet:        buildSnippet(j.Description),
 		Kind:           j.Kind,
 	}

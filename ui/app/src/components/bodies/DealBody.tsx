@@ -6,7 +6,6 @@ export default function DealBody({ snap }: { snap: OpportunitySnapshot }) {
   const { t } = useI18n();
   const discount = dealDiscountPercent(snap);
   const couponCode = stringAttr(snap, 'coupon_code');
-  const expiry = stringAttr(snap, 'expiry') ?? snap.deadline;
   const redemptionCountries = stringArrayAttr(snap, 'redemption_countries');
 
   return (
@@ -16,11 +15,6 @@ export default function DealBody({ snap }: { snap: OpportunitySnapshot }) {
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
             {discount}
             {t('deal.percentOff')}
-          </span>
-        )}
-        {expiry && (
-          <span className="text-orange-700">
-            {t('deadline.expires')} {new Date(expiry).toLocaleDateString()}
           </span>
         )}
       </div>

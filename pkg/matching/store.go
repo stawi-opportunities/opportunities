@@ -494,6 +494,7 @@ type OpportunityFeedItem struct {
 	City          string
 	Remote        bool
 	PostedAt      *time.Time
+	Deadline      *time.Time
 	AmountMin     *float64
 	AmountMax     *float64
 	Currency      string
@@ -612,7 +613,7 @@ SELECT b.match_id, b.opportunity_id, b.score, b.created_at,
        COALESCE(o.issuing_entity, ''),
        COALESCE(o.country, ''), COALESCE(o.region, ''), COALESCE(o.city, ''),
        COALESCE(o.remote, false),
-       o.posted_at, o.amount_min, o.amount_max, COALESCE(o.currency, ''),
+       o.posted_at, o.deadline, o.amount_min, o.amount_max, COALESCE(o.currency, ''),
        (COALESCE(o.how_to_apply, '') <> '') AS has_how_to_apply
 FROM base b
 JOIN opportunities o ON o.canonical_id = b.opportunity_id
@@ -640,6 +641,7 @@ LIMIT $` + fmt.Sprint(len(args))
 			appUpdated sql.NullTime
 			appMethod  sql.NullString
 			postedAt   sql.NullTime
+			deadline   sql.NullTime
 			amtMin     sql.NullFloat64
 			amtMax     sql.NullFloat64
 		)
@@ -648,7 +650,7 @@ LIMIT $` + fmt.Sprint(len(args))
 			&item.Starred, &appStatus, &appAt, &appUpdated, &appMethod,
 			&item.Slug, &item.Title, &item.Kind, &item.IssuingEntity,
 			&item.Country, &item.Region, &item.City, &item.Remote,
-			&postedAt, &amtMin, &amtMax, &item.Currency, &item.HasHowToApply,
+			&postedAt, &deadline, &amtMin, &amtMax, &item.Currency, &item.HasHowToApply,
 		); err != nil {
 			return ListOpportunitiesPage{}, fmt.Errorf("matching: scan opportunity feed: %w", err)
 		}
@@ -658,6 +660,10 @@ LIMIT $` + fmt.Sprint(len(args))
 		if postedAt.Valid {
 			t := postedAt.Time
 			item.PostedAt = &t
+		}
+		if deadline.Valid {
+			t := deadline.Time
+			item.Deadline = &t
 		}
 		if amtMin.Valid {
 			v := amtMin.Float64

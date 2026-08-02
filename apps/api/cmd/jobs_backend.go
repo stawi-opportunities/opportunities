@@ -360,13 +360,14 @@ func (p *jobsPostgres) list(ctx context.Context, filter []map[string]any, limit 
 	if err != nil {
 		return nil, err
 	}
-	sortField = sanitizeSortField(sortField)
+	orderBy := orderByClause(sortField)
 	where, args := postgresWhere(filter)
-	// Newest first; last_seen_at breaks ties when posted_at is missing/null.
+	// Default: newest posted first; last_seen_at breaks ties when posted_at is null.
+	// closing_soon: soonest deadline first (expiry-primary browse).
 	q := `SELECT ` + selectColumns + `
 	      FROM opportunities
 	      WHERE ` + activePred() + where + `
-	      ORDER BY ` + sortField + ` DESC NULLS LAST, last_seen_at DESC NULLS LAST
+	      ORDER BY ` + orderBy + `
 	      LIMIT $` + intToStr(len(args)+1)
 	args = append(args, limit)
 	rows, err := db.QueryContext(ctx, q, args...)
@@ -520,7 +521,7 @@ func (p *jobsPostgres) Search(
 	)
 
 	if q == "" || p.searchBackend == "plain" {
-		sortField := sanitizeSortField(sort)
+		orderBy := orderByClause(sort)
 		if q != "" {
 			args = append(args, "%"+q+"%")
 			likeIdx := len(args)
@@ -533,7 +534,7 @@ func (p *jobsPostgres) Search(
 		query := `SELECT ` + selectColumns + `
 		         FROM opportunities
 		         WHERE ` + activePred() + where + ` ` + windowed + `
-		         ORDER BY ` + sortField + ` DESC NULLS LAST, last_seen_at DESC NULLS LAST
+		         ORDER BY ` + orderBy + `
 		         LIMIT $` + intToStr(limitIdx)
 		rows, err = db.QueryContext(ctx, query, args...)
 	} else {
@@ -559,6 +560,8 @@ func (p *jobsPostgres) Search(
 			switch sort {
 			case "recent", "posted_at", "quality":
 				orderBy = `posted_at DESC NULLS LAST, ` + scoreExpr + ` ASC, last_seen_at DESC NULLS LAST`
+			case "closing_soon", "deadline_asc":
+				orderBy = `deadline ASC NULLS LAST, ` + scoreExpr + ` ASC, posted_at DESC NULLS LAST`
 			case "salary_high", "amount_max":
 				orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
 			}
@@ -569,6 +572,8 @@ func (p *jobsPostgres) Search(
 			switch sort {
 			case "recent", "posted_at", "quality":
 				orderBy = `posted_at DESC NULLS LAST, ` + scoreExpr + ` DESC, last_seen_at DESC NULLS LAST`
+			case "closing_soon", "deadline_asc":
+				orderBy = `deadline ASC NULLS LAST, ` + scoreExpr + ` DESC, posted_at DESC NULLS LAST`
 			case "salary_high", "amount_max":
 				orderBy = `amount_max DESC NULLS LAST, posted_at DESC NULLS LAST`
 			}
@@ -824,12 +829,15 @@ func quoteSafeCol(col string) string {
 }
 
 // sanitizeSortField maps a caller-supplied sort key to a known column.
+// Prefer orderByClause for full ORDER BY expressions (handles ASC deadline).
 // Default is posted_at so browse lists show the latest jobs first.
-// SPA values "recent" / "quality" / "relevance" map onto safe columns.
+// SPA values "recent" / "quality" / "relevance" / "closing_soon" map onto safe columns.
 func sanitizeSortField(s string) string {
 	switch strings.TrimSpace(strings.ToLower(s)) {
 	case "posted_at", "last_seen_at", "first_seen_at", "deadline", "amount_max", "amount_min":
 		return s
+	case "closing_soon", "deadline_asc":
+		return "deadline"
 	case "recent", "quality", "score", "":
 		return "posted_at"
 	case "salary_high":
@@ -840,6 +848,29 @@ func sanitizeSortField(s string) string {
 		return "posted_at"
 	default:
 		return "posted_at"
+	}
+}
+
+// orderByClause returns a full ORDER BY expression (column + direction +
+// tie-breakers). closing_soon puts the soonest deadline first so users
+// act on expiring opportunities before they age out of the catalog.
+func orderByClause(s string) string {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "closing_soon", "deadline_asc":
+		return "deadline ASC NULLS LAST, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST"
+	case "deadline":
+		return "deadline DESC NULLS LAST, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST"
+	case "salary_high", "amount_max":
+		return "amount_max DESC NULLS LAST, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST"
+	case "amount_min":
+		return "amount_min DESC NULLS LAST, posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST"
+	case "last_seen_at":
+		return "last_seen_at DESC NULLS LAST"
+	case "first_seen_at":
+		return "first_seen_at DESC NULLS LAST"
+	default:
+		// recent / quality / relevance / posted_at / empty
+		return "posted_at DESC NULLS LAST, last_seen_at DESC NULLS LAST"
 	}
 }
 

@@ -8,7 +8,7 @@ import type { OpportunitySnapshot } from '@/types/snapshot';
 import type { SearchResult } from '@/types/search';
 import { getTypeMeta } from '@/constants/opportunityTypes';
 import { Icon } from '@/components/ui/Icon';
-import { timeAgo } from '@/utils/format';
+import { DeadlineDate } from '@/components/ui/DeadlineDate';
 
 function hrefFor(r: SearchResult): string {
   const kind = (r.kind || 'job').toLowerCase();
@@ -104,7 +104,12 @@ export function RelatedOpportunities({
                   {r.remote_type && r.remote_type !== 'onsite' && (
                     <span className="rounded-full bg-slate-100 px-1.5 py-0.5">{r.remote_type}</span>
                   )}
-                  {r.posted_at && <span>{timeAgo(r.posted_at)}</span>}
+                  <DeadlineDate
+                    deadline={r.deadline}
+                    posted_at={r.posted_at}
+                    kind={r.kind}
+                    variant="short"
+                  />
                 </div>
               </a>
             </li>

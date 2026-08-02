@@ -405,6 +405,7 @@ export interface FeedItem {
   city?: string;
   remote?: boolean;
   posted_at?: string;
+  deadline?: string;
   salary_min?: number;
   salary_max?: number;
   currency?: string;
