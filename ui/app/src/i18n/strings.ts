@@ -73,6 +73,9 @@ export interface Strings {
   'deadline.closes': string;
   'deadline.expires': string;
   'deadline.applyBy': string;
+  'deadline.posted': string;
+  'deadline.closed': string;
+  'deadline.closingSoon': string;
 
   // ---- Expired messages ----
   'expired.scholarship': string;
@@ -146,6 +149,7 @@ export interface Strings {
   'search.sort': string;
   'search.sortRelevance': string;
   'search.sortRecent': string;
+  'search.sortClosingSoon': string;
   'search.sortQuality': string;
   'search.sortSalary': string;
   'search.uncategorised': string;
@@ -601,6 +605,9 @@ const en: Strings = {
   'deadline.closes': 'Closes',
   'deadline.expires': 'Expires',
   'deadline.applyBy': 'Apply by',
+  'deadline.posted': 'Posted',
+  'deadline.closed': 'Closed',
+  'deadline.closingSoon': 'Closing soon',
 
   'expired.scholarship': 'This scholarship is no longer accepting applications.',
   'expired.tender': "This tender's submission window has closed.",
@@ -665,6 +672,7 @@ const en: Strings = {
   'search.sort': 'Sort',
   'search.sortRelevance': 'Relevance',
   'search.sortRecent': 'Most recent',
+  'search.sortClosingSoon': 'Closing soon',
   'search.sortQuality': 'Highest quality',
   'search.sortSalary': 'Salary: high to low',
   'search.uncategorised': '(uncategorised)',

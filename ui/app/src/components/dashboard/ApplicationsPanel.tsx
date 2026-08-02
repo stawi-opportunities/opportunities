@@ -23,6 +23,7 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
           .join(', ')
       : undefined,
     posted_at: snap.posted_at,
+    deadline: snap.deadline,
     salary_min: snap.amount_min,
     salary_max: snap.amount_max,
     currency: snap.currency,

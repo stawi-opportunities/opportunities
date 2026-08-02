@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSnapshot } from '@/api/snapshot';
 import { pingApply, pingJobView } from '@/api/views';
-import { categoryLabel, isoInPast, timeAgo } from '@/utils/format';
+import { categoryLabel, isoInPast } from '@/utils/format';
+import { resolveDeadlineIso } from '@/utils/deadline';
+import { DeadlineDate } from '@/components/ui/DeadlineDate';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
 import {
@@ -140,7 +142,12 @@ export default function OpportunityDetail() {
   if (!q.data) return <NotFound kind={inferKindFromPrefix(route.prefix)} t={t} />;
 
   const snap = q.data;
-  const expired = isoInPast(snap.deadline) || isoInPast(snap.expires_at);
+  const actionDeadline = resolveDeadlineIso({
+    deadline: snap.deadline,
+    expires_at: snap.expires_at,
+    attributes: snap.attributes,
+  });
+  const expired = isoInPast(actionDeadline);
   const canApply = !!snap.apply_url && !expired;
 
   const primaryCategory = snap.categories?.[0];
@@ -187,16 +194,15 @@ export default function OpportunityDetail() {
                     {t('job.remote')}
                   </span>
                 )}
-                {snap.posted_at && (
-                  <span className="text-gray-500">
-                    {t('job.postedOn')} {timeAgo(snap.posted_at)}
-                  </span>
-                )}
-                {snap.deadline && !expired && (
-                  <span className="text-orange-700">
-                    {deadlineLabel(snap.kind, t)} {new Date(snap.deadline).toLocaleDateString()}
-                  </span>
-                )}
+                <DeadlineDate
+                  deadline={snap.deadline}
+                  expires_at={snap.expires_at}
+                  posted_at={snap.posted_at}
+                  kind={snap.kind}
+                  attributes={snap.attributes}
+                  variant="full"
+                  className="text-sm"
+                />
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 {canApply && <ApplyLink snap={snap} mountedAtRef={mountedAtRef} t={t} />}
@@ -351,20 +357,6 @@ function applyCtaLabel(
   }
 }
 
-function deadlineLabel(
-  kind: OpportunityKind,
-  t: (k: StringKey, fallback?: string) => string
-): string {
-  switch (kind) {
-    case 'tender':
-      return t('deadline.closes');
-    case 'deal':
-      return t('deadline.expires');
-    default:
-      return t('deadline.applyBy');
-  }
-}
-
 function expiredMessage(
   kind: OpportunityKind,
   t: (k: StringKey, fallback?: string) => string
@@ -515,7 +507,11 @@ function buildJobPostingLd(snap: OpportunitySnapshot): Record<string, unknown> {
     title: snap.title,
     description: snap.description_html ?? snap.description,
     datePosted: snap.posted_at,
-    validThrough: snap.expires_at ?? snap.deadline,
+    validThrough: resolveDeadlineIso({
+      deadline: snap.deadline,
+      expires_at: snap.expires_at,
+      attributes: snap.attributes,
+    }),
     url: window.location.href,
     employmentType:
       typeof snap.attributes?.employment_type === 'string'

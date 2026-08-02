@@ -71,6 +71,7 @@ function toCardSnapshot(snap: ApiSnapshot | null): OpportunitySnapshot | null {
         ? 'Remote'
         : undefined,
     posted_at: snap.posted_at,
+    deadline: snap.deadline,
     salary_min: snap.amount_min,
     salary_max: snap.amount_max,
     currency: snap.currency,
@@ -90,6 +91,7 @@ function feedItemToSnapshot(it: FeedItem): OpportunitySnapshot | null {
     company: it.company,
     location: locationFromParts(it.city, it.region, it.country, it.remote),
     posted_at: it.posted_at,
+    deadline: it.deadline,
     salary_min: it.salary_min,
     salary_max: it.salary_max,
     currency: it.currency,

@@ -44,6 +44,7 @@ type feedItemDTO struct {
 	City          string     `json:"city,omitempty"`
 	Remote        bool       `json:"remote,omitempty"`
 	PostedAt      *time.Time `json:"posted_at,omitempty"`
+	Deadline      *time.Time `json:"deadline,omitempty"`
 	SalaryMin     *float64   `json:"salary_min,omitempty"`
 	SalaryMax     *float64   `json:"salary_max,omitempty"`
 	Currency      string     `json:"currency,omitempty"`
@@ -117,6 +118,7 @@ func OpportunitiesHandler(deps OpportunitiesDeps) http.HandlerFunc {
 				City:          it.City,
 				Remote:        it.Remote,
 				PostedAt:      it.PostedAt,
+				Deadline:      it.Deadline,
 				SalaryMin:     it.AmountMin,
 				SalaryMax:     it.AmountMax,
 				Currency:      it.Currency,

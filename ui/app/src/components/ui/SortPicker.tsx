@@ -20,6 +20,7 @@ export function SortPicker({ value, onChange }: SortPickerProps) {
       >
         <option value="relevance">{t('search.sortRelevance')}</option>
         <option value="recent">{t('search.sortRecent')}</option>
+        <option value="closing_soon">{t('search.sortClosingSoon')}</option>
         <option value="quality">{t('search.sortQuality')}</option>
         <option value="salary_high">{t('search.sortSalary')}</option>
       </select>

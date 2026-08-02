@@ -1,4 +1,7 @@
 {{ $kind := .Params.kind | default "job" }}
+{{/* Primary date: deadline/expiry. Never surface crawl/.Date as the hero date. */}}
+{{ $deadline := .Params.deadline | default .Params.expiry }}
+{{ $posted := .Params.posted_at }}
 <article class="card">
   <a href="{{ .Permalink }}" class="block group">
     <div class="flex flex-col gap-6 sm:gap-8">
@@ -38,29 +41,17 @@
               {{ with .Params.field_of_study }}
               <span class="badge-type">{{ . }}</span>
               {{ end }}
-              {{ with .Params.deadline }}
-              <span class="text-sm text-orange-700">Apply by {{ dateFormat "Jan 2, 2006" . }}</span>
-              {{ end }}
             {{ else if eq $kind "tender" }}
               {{ with .Params.procurement_domain }}
               <span class="badge-type">{{ . }}</span>
-              {{ end }}
-              {{ with .Params.deadline }}
-              <span class="text-sm text-orange-700">Closes {{ dateFormat "Jan 2, 2006" . }}</span>
               {{ end }}
             {{ else if eq $kind "deal" }}
               {{ with .Params.discount_percent }}
               <span class="badge-type">{{ . }}% off</span>
               {{ end }}
-              {{ with .Params.expiry }}
-              <span class="text-sm text-orange-700">Expires {{ dateFormat "Jan 2, 2006" . }}</span>
-              {{ end }}
             {{ else if eq $kind "funding" }}
               {{ with .Params.focus_area }}
               <span class="badge-type">{{ . }}</span>
-              {{ end }}
-              {{ with .Params.deadline }}
-              <span class="text-sm text-orange-700">Apply by {{ dateFormat "Jan 2, 2006" . }}</span>
               {{ end }}
             {{ end }}
           </div>
@@ -81,10 +72,22 @@
           {{ if .Params.is_featured }}
           <span class="badge-featured">Featured</span>
           {{ end }}
-          {{ if .Date }}
-          <time datetime="{{ .Date.Format "2006-01-02" }}" class="text-xs text-secondary">
-            {{ .Date | time.Format ":date_medium" }}
-          </time>
+          {{ if $deadline }}
+            {{/* Kind-aware expiry label is the primary date. */}}
+            <time datetime="{{ $deadline }}" class="text-sm font-medium text-orange-700">
+              {{ if eq $kind "tender" }}Closes
+              {{ else if eq $kind "deal" }}Expires
+              {{ else }}Apply by
+              {{ end }}
+              {{ dateFormat "Jan 2, 2006" $deadline }}
+            </time>
+            {{ with $posted }}
+            <span class="text-xs text-secondary">Posted {{ dateFormat "Jan 2, 2006" . }}</span>
+            {{ end }}
+          {{ else if $posted }}
+            <time datetime="{{ $posted }}" class="text-xs text-secondary">
+              Posted {{ dateFormat "Jan 2, 2006" $posted }}
+            </time>
           {{ end }}
         </div>
       </div>

@@ -1,13 +1,25 @@
 import type { SearchResult } from '@/types/search';
-import { categoryLabel, fmtMoney, timeAgo } from '@/utils/format';
+import { categoryLabel, fmtMoney } from '@/utils/format';
 import { useI18n } from '@/i18n/I18nProvider';
+import { DeadlineDate } from '@/components/ui/DeadlineDate';
 
 /** Shared row renderer used by search results, category lists, home feed. */
 export function JobRow({ result }: { result: SearchResult }) {
   const { t } = useI18n();
   const money = fmtMoney(result.salary_min, result.salary_max, result.currency);
   const hasSlug = !!result.slug;
-  const href = hasSlug ? `/jobs/${encodeURIComponent(result.slug)}/` : undefined;
+  const kind = result.kind ?? 'job';
+  const path =
+    kind === 'scholarship'
+      ? 'scholarships'
+      : kind === 'tender'
+        ? 'tenders'
+        : kind === 'deal'
+          ? 'deals'
+          : kind === 'funding'
+            ? 'funding'
+            : 'jobs';
+  const href = hasSlug ? `/${path}/${encodeURIComponent(result.slug)}/` : undefined;
 
   const remoteLabel = (key: string) => {
     switch (key) {
@@ -56,9 +68,13 @@ export function JobRow({ result }: { result: SearchResult }) {
           )}
         </div>
       </div>
-      <time className="shrink-0 whitespace-nowrap text-xs text-gray-500">
-        {timeAgo(result.posted_at)}
-      </time>
+      <DeadlineDate
+        deadline={result.deadline}
+        posted_at={result.posted_at}
+        kind={result.kind}
+        variant="short"
+        className="shrink-0"
+      />
     </div>
   );
 
