@@ -226,11 +226,7 @@ export default function OpportunityDetail() {
             hasHowToApply={snap.has_how_to_apply}
           />
 
-          <JobFitPanel
-            opportunityId={snap.id}
-            title={snap.title}
-            description={snap.description}
-          />
+          <JobFitPanel opportunityId={snap.id} title={snap.title} description={snap.description} />
 
           {canApply && (
             <div className="mt-12 flex justify-center">

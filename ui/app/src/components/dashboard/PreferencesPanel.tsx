@@ -97,8 +97,8 @@ export function PreferencesPanel() {
   return (
     <Panel title="Match preferences" id="match-preferences">
       <p className="text-sm text-secondary">
-        Extend how we use your CV: opt into opportunity kinds and filters. We'll only run matchers for kinds
-        you've configured.
+        Extend how we use your CV: opt into opportunity kinds and filters. We'll only run matchers
+        for kinds you've configured.
       </p>
 
       {preferenceChat && (
