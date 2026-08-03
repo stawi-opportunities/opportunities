@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon';
 import { DeadlineDate } from '@/components/ui/DeadlineDate';
 import { getTypeMeta } from '@/constants/opportunityTypes';
 import { urgencyForDeadline } from '@/utils/deadline';
+import { scoreToPercent, whyMatched } from '@/utils/matchScore';
 
 const KIND_PATH: Record<string, string> = {
   job: 'jobs',
@@ -80,7 +81,9 @@ export function OpportunityCard({
   const closingUrgency = urgencyForDeadline(snapshot?.deadline);
   const isClosingSoon =
     closingUrgency === 'today' || closingUrgency === 'urgent' || closingUrgency === 'soon';
-  const isMatched = (item.score ?? 0) > 0;
+  const matchPct = scoreToPercent(item.score);
+  const isMatched = matchPct != null && matchPct > 0;
+  const why = whyMatched(item.score);
   const canDismiss = Boolean(item.match_id && onDismiss);
 
   return (
@@ -127,13 +130,21 @@ export function OpportunityCard({
               variant="full"
               className="mt-1 block text-sm"
             />
+            {why && (
+              <p
+                className="mt-1.5 text-xs text-emerald-800 dark:text-emerald-300/90"
+                data-testid="why-matched"
+              >
+                {why}
+              </p>
+            )}
           </div>
-          {isMatched && (
+          {isMatched && matchPct != null && (
             <span
-              className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               title="Match score (CV + preferences fit)"
             >
-              {Math.round(Math.min(1, Math.max(0, item.score!)) * 100)}
+              {matchPct}
               {t('card.match')}
             </span>
           )}

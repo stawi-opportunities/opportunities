@@ -16,4 +16,13 @@ describe('buildCVHtmlDocument', () => {
     expect(html).toContain('2026-08-03');
     expect(html).not.toContain('<script>');
   });
+
+  it('supports modern template class markers', () => {
+    const html = buildCVHtmlDocument({
+      bodyText: 'Hello',
+      template: 'modern',
+    });
+    expect(html).toContain('system-ui');
+    expect(html).toContain('modern');
+  });
 });

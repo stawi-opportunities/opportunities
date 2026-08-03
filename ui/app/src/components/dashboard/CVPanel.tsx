@@ -6,7 +6,14 @@ import { useToast } from '@/hooks/useToast';
 import { Button } from '@/components/ui/Button';
 import { Panel } from './Panel';
 import { PreferencesPanel } from './PreferencesPanel';
-import { buildCVHtmlDocument, downloadCVHtml, openCVPrintWindow } from '@/utils/cvExport';
+import {
+  buildCVHtmlDocument,
+  CV_TEMPLATES,
+  downloadCVHtml,
+  openCVPrintWindow,
+  type CVTemplateId,
+} from '@/utils/cvExport';
+import { loadATSHistory, pushATSHistory, type ATSHistoryEntry } from '@/utils/atsHistory';
 
 /**
  * CV hub: document, ATS score + rewrite diffs, export, match preferences.
@@ -25,6 +32,8 @@ export function CVPanel() {
   const [cvPaste, setCvPaste] = useState('');
   const [report, setReport] = useState<CVStrengthReport | null>(null);
   const [scoring, setScoring] = useState(false);
+  const [history, setHistory] = useState<ATSHistoryEntry[]>(() => loadATSHistory());
+  const [exportTemplate, setExportTemplate] = useState<CVTemplateId>('classic');
 
   const reloadCV = useCallback(async () => {
     setCvLoading(true);
@@ -69,6 +78,15 @@ export function CVPanel() {
         cv_text: cvPaste.trim() || undefined,
       });
       setReport(res);
+      setHistory(
+        pushATSHistory({
+          at: new Date().toISOString(),
+          overall: res.overall_score,
+          components: res.components,
+          target_role: res.target_role,
+          cv_version: res.cv_version,
+        })
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/cv_text_required/i.test(msg)) {
@@ -97,8 +115,9 @@ export function CVPanel() {
       candidateName: profileQ.data?.current_title || undefined,
       targetRole: targetRole || report?.target_role,
       bodyText: body,
+      template: exportTemplate,
     });
-    downloadCVHtml('stawi-cv.html', html);
+    downloadCVHtml(`stawi-cv-${exportTemplate}.html`, html);
     toast('HTML CV downloaded.', 'success');
   }
 
@@ -112,8 +131,36 @@ export function CVPanel() {
       candidateName: profileQ.data?.current_title || undefined,
       targetRole: targetRole || report?.target_role,
       bodyText: body,
+      template: exportTemplate,
     });
     openCVPrintWindow(html);
+  }
+
+  function applyRewrite(before: string, after: string) {
+    setCvPaste((prev) => {
+      const src = prev || cvDoc?.extracted_text || '';
+      if (src.includes(before)) {
+        toast('Applied rewrite into the editor. Re-score to measure progress.', 'success');
+        return src.split(before).join(after);
+      }
+      // Append if exact before-text not found (LLM paraphrases).
+      toast(
+        'Could not find exact “before” text — appended improved line for you to place.',
+        'info'
+      );
+      return `${src.trim()}\n\n${after}`.trim();
+    });
+  }
+
+  function applyAllRewrites() {
+    if (!report?.rewrites?.length) return;
+    let text = cvPaste || cvDoc?.extracted_text || '';
+    for (const r of report.rewrites) {
+      if (text.includes(r.before)) text = text.split(r.before).join(r.after);
+      else text = `${text.trim()}\n\n${r.after}`;
+    }
+    setCvPaste(text);
+    toast('Applied suggested rewrites into the editor. Re-score when ready.', 'success');
   }
 
   const present = Boolean(cvDoc?.present || cvDoc?.extracted_text || cvPaste.trim());
@@ -283,7 +330,12 @@ export function CVPanel() {
 
             {report.rewrites && report.rewrites.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-main">Suggested rewrites</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-main">Suggested rewrites</h3>
+                  <Button type="button" size="sm" variant="secondary" onClick={applyAllRewrites}>
+                    Apply all to editor
+                  </Button>
+                </div>
                 <ul className="mt-2 space-y-3">
                   {report.rewrites.slice(0, 6).map((r, i) => (
                     <li key={i} className="overflow-hidden rounded-lg border border-muted text-sm">
@@ -301,17 +353,52 @@ export function CVPanel() {
                           <p className="mt-1 whitespace-pre-wrap text-main">{r.after}</p>
                         </div>
                       </div>
-                      {r.reason && (
-                        <p className="border-t border-muted bg-surface-muted px-3 py-2 text-xs text-secondary">
-                          {r.reason}
-                        </p>
-                      )}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-muted bg-surface-muted px-3 py-2">
+                        {r.reason ? <p className="text-xs text-secondary">{r.reason}</p> : <span />}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => applyRewrite(r.before, r.after)}
+                        >
+                          Apply to editor
+                        </Button>
+                      </div>
                     </li>
                   ))}
                 </ul>
                 <p className="mt-2 text-xs text-secondary">
-                  Copy improved lines into your CV file, re-upload, then re-score to track progress.
+                  Applied text updates the editor only. Re-upload a file when you are happy, then
+                  re-score to track progress over time.
                 </p>
+              </div>
+            )}
+
+            {history.length > 1 && (
+              <div>
+                <h3 className="text-sm font-semibold text-main">Score history</h3>
+                <p className="mt-0.5 text-xs text-secondary">
+                  Stored on this device so you can see improvement across re-scores.
+                </p>
+                <ul className="mt-2 divide-y divide-muted rounded-lg border border-muted text-sm">
+                  {history.slice(0, 8).map((h, i) => (
+                    <li
+                      key={`${h.at}-${i}`}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                    >
+                      <span className="text-secondary">
+                        {new Date(h.at).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                        {h.target_role ? ` · ${h.target_role}` : ''}
+                      </span>
+                      <span className="font-semibold tabular-nums text-main">{h.overall}/100</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -324,6 +411,23 @@ export function CVPanel() {
           print dialog (Save as PDF).
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
+          {CV_TEMPLATES.map((tpl) => (
+            <button
+              key={tpl.id}
+              type="button"
+              onClick={() => setExportTemplate(tpl.id)}
+              className={`rounded-lg border px-3 py-2 text-left text-sm ${
+                exportTemplate === tpl.id
+                  ? 'border-accent-500 bg-accent-500/10 text-main'
+                  : 'border-muted text-secondary hover:border-muted-strong'
+              }`}
+            >
+              <span className="font-medium">{tpl.label}</span>
+              <span className="mt-0.5 block text-xs opacity-80">{tpl.hint}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
           <Button type="button" variant="primary" size="sm" onClick={handleExportHtml}>
             Download HTML
           </Button>
@@ -333,7 +437,14 @@ export function CVPanel() {
         </div>
       </Panel>
 
-      <PreferencesPanel />
+      <div>
+        <h3 className="mb-2 text-base font-semibold text-main">Match preferences</h3>
+        <p className="mb-3 text-sm text-secondary">
+          Extends your CV for matching: which opportunity kinds and filters we should run. This is
+          not account profile (name/phone) — that lives under Settings.
+        </p>
+        <PreferencesPanel />
+      </div>
     </div>
   );
 }

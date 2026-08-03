@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/useToast';
 import { SortPicker } from '@/components/ui/SortPicker';
 import type { SearchParams } from '@/types/search';
 import { openApplyAndTrack } from '@/utils/apply';
+import { compareScoreDesc } from '@/utils/matchScore';
 
 const FILTER_KEYS: { id: OpportunityFilter; labelKey: StringKey }[] = [
   { id: 'all', labelKey: 'feed.all' },
@@ -105,9 +106,15 @@ function feedItemToSnapshot(it: FeedItem): OpportunitySnapshot | null {
 
 export function OpportunitiesFeed({
   initialFilter,
+  preferScoreSort = false,
+  hideFilterChips = false,
 }: {
   /** When set (e.g. matches section), prefer this over the URL on first paint. */
   initialFilter?: OpportunityFilter;
+  /** Sort client-side by match score descending (matches view). */
+  preferScoreSort?: boolean;
+  /** Hide all/matches/starred/applied chips when parent owns mode. */
+  hideFilterChips?: boolean;
 } = {}) {
   const { t } = useI18n();
   const { push: toast } = useToast();
@@ -155,8 +162,11 @@ export function OpportunitiesFeed({
         return snap?.kind === feedFilters.kind;
       });
     }
+    if (preferScoreSort) {
+      result = [...result].sort((a, b) => compareScoreDesc(a.score, b.score));
+    }
     return result;
-  }, [items, snapshots, feedFilters]);
+  }, [items, snapshots, feedFilters, preferScoreSort]);
 
   const load = useCallback(
     async (f: OpportunityFilter, cursor?: string) => {
@@ -325,34 +335,39 @@ export function OpportunitiesFeed({
   return (
     <section aria-label="Your opportunities">
       <div className="sticky top-0 z-10 -mx-4 bg-page px-4 pb-3 shadow-sm sm:static sm:mx-0 sm:px-0 sm:pb-0 sm:shadow-none">
-        <div className="flex flex-wrap items-center gap-2 pt-2" role="tablist">
-          {FILTER_KEYS.map((f) => {
-            const active = f.id === filter;
-            const count = counts[f.id];
-            return (
-              <button
-                key={f.id}
-                role="tab"
-                aria-selected={active}
-                type="button"
-                onClick={() => onSelectFilter(f.id)}
-                className={`min-h-[44px] rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-navy-900 text-white'
-                    : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
-                }`}
-              >
-                {t(f.labelKey)}
-                {count > 0 && <span className="ml-1.5 text-xs opacity-70">({count})</span>}
-              </button>
-            );
-          })}
-        </div>
+        {!hideFilterChips && (
+          <div className="flex flex-wrap items-center gap-2 pt-2" role="tablist">
+            {FILTER_KEYS.map((f) => {
+              const active = f.id === filter;
+              const count = counts[f.id];
+              return (
+                <button
+                  key={f.id}
+                  role="tab"
+                  aria-selected={active}
+                  type="button"
+                  onClick={() => onSelectFilter(f.id)}
+                  className={`min-h-[44px] rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-navy-900 text-white'
+                      : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700'
+                  }`}
+                >
+                  {t(f.labelKey)}
+                  {count > 0 && <span className="ml-1.5 text-xs opacity-70">({count})</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {items.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-end gap-4">
+          <div className={`flex flex-wrap items-end gap-4 ${hideFilterChips ? 'pt-2' : 'mt-3'}`}>
             <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
-            <SortPicker value={sort} onChange={(v) => setSort(v)} />
+            {!preferScoreSort && <SortPicker value={sort} onChange={(v) => setSort(v)} />}
+            {preferScoreSort && (
+              <p className="pb-1 text-xs text-secondary">Sorted by match score (high → low)</p>
+            )}
           </div>
         )}
       </div>

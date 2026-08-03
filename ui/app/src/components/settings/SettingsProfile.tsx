@@ -51,6 +51,14 @@ export function SettingsProfile({ t }: { t: (k: StringKey, fallback?: string) =>
 
   return (
     <Panel title={t('settings.profile')}>
+      <p className="mb-4 text-sm text-secondary">
+        Account identity (name, title, phone). Your résumé, ATS score, export, and match preferences
+        live under{' '}
+        <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
+          Dashboard → CV
+        </a>
+        .
+      </p>
       <div className="space-y-4">
         <div>
           <label htmlFor="settings-name" className="block text-sm font-medium text-gray-700">

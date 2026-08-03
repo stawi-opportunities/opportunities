@@ -348,6 +348,7 @@ export interface Strings {
 
   // ---- Invoice history ----
   'invoice.title': string;
+  'invoice.receiptsTitle': string;
   'invoice.date': string;
   'invoice.amount': string;
   'invoice.status': string;
@@ -949,6 +950,7 @@ const en: Strings = {
   'usage.noData': 'Usage data will appear after your first full week.',
 
   'invoice.title': 'Invoices',
+  'invoice.receiptsTitle': 'Invoices & receipts',
   'invoice.date': 'Date',
   'invoice.amount': 'Amount',
   'invoice.status': 'Status',
