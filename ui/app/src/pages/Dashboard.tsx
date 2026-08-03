@@ -130,16 +130,7 @@ export default function Dashboard() {
   return (
     <PreferenceChatHost>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-        <DashboardHeader
-          plan={plan}
-          status={subscription}
-          onOpenPlanChange={() => setShowPlanChange(true)}
-          onOpenSubscription={() => {
-            setSettingsTab('subscription');
-            navigate('settings');
-          }}
-          t={t}
-        />
+        <DashboardHeader plan={plan} status={subscription} />
         <PendingCheckoutPoller />
         <div className="mt-4 md:hidden">
           <DashboardSidebar
