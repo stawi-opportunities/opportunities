@@ -95,9 +95,9 @@ export function PreferencesPanel() {
   }
 
   return (
-    <Panel title="Match preferences">
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        Opt into the kinds of opportunities you want matched. We'll only run matchers for kinds
+    <Panel title="Match preferences" id="match-preferences">
+      <p className="text-sm text-secondary">
+        Extend how we use your CV: opt into opportunity kinds and filters. We'll only run matchers for kinds
         you've configured.
       </p>
 

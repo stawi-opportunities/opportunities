@@ -1,10 +1,11 @@
 import type { SectionId } from './DashboardSidebar';
 import type { StringKey } from '@/i18n/strings';
 
-const SECTION_LABELS: Record<SectionId, StringKey> = {
+const SECTION_LABELS: Record<string, StringKey> = {
   overview: 'nav.overview',
   feed: 'nav.feed',
   matches: 'nav.matches',
+  cv: 'nav.cv',
   tools: 'nav.tools',
   saved: 'nav.saved',
   applications: 'nav.applications',
@@ -25,8 +26,9 @@ export function DashboardBreadcrumbs({
     { href: '/dashboard/', label: t('dash.breadcrumbDashboard') },
   ];
 
-  if (active !== 'overview') {
-    crumbs.push({ href: `#${active}`, label: t(SECTION_LABELS[active]) });
+  if (active !== 'overview' && active !== 'matches') {
+    const key = SECTION_LABELS[active] ?? 'nav.matches';
+    crumbs.push({ href: `#${active}`, label: t(key) });
   }
 
   return (

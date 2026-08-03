@@ -4,14 +4,15 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 export type SectionId =
   | 'matches'
-  | 'feed'
-  | 'tools'
+  | 'cv'
   | 'saved'
   | 'applications'
+  | 'settings'
+  /** @deprecated → matches */
+  | 'feed'
+  | 'tools'
   | 'preferences'
   | 'billing'
-  | 'settings'
-  /** @deprecated routed to matches */
   | 'overview';
 
 interface Section {
@@ -42,7 +43,7 @@ const SECTIONS: Section[] = [
     labelKey: 'nav.matches',
   },
   {
-    id: 'feed',
+    id: 'cv',
     icon: (
       <svg
         className="h-5 w-5"
@@ -54,30 +55,11 @@ const SECTIONS: Section[] = [
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
-          d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
+          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
         />
       </svg>
     ),
-    labelKey: 'nav.feed',
-  },
-  {
-    id: 'tools',
-    icon: (
-      <svg
-        className="h-5 w-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z"
-        />
-      </svg>
-    ),
-    labelKey: 'nav.tools',
+    labelKey: 'nav.cv',
   },
   {
     id: 'saved',
@@ -118,44 +100,6 @@ const SECTIONS: Section[] = [
     labelKey: 'nav.applications',
   },
   {
-    id: 'preferences',
-    icon: (
-      <svg
-        className="h-5 w-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
-        />
-      </svg>
-    ),
-    labelKey: 'nav.preferences',
-  },
-  {
-    id: 'billing',
-    icon: (
-      <svg
-        className="h-5 w-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z"
-        />
-      </svg>
-    ),
-    labelKey: 'nav.billing',
-  },
-  {
     id: 'settings',
     icon: (
       <svg
@@ -180,6 +124,14 @@ const SECTIONS: Section[] = [
     labelKey: 'nav.settings',
   },
 ];
+
+const LABEL_FOR: Record<string, StringKey> = {
+  matches: 'nav.matches',
+  cv: 'nav.cv',
+  saved: 'nav.saved',
+  applications: 'nav.applications',
+  settings: 'nav.settings',
+};
 
 function SidebarNav({
   active,
@@ -263,9 +215,10 @@ export function DashboardSidebar({
     setDrawerOpen(false);
   };
 
+  const mobileLabelKey = LABEL_FOR[active] ?? 'nav.matches';
+
   return (
     <>
-      {/* Mobile hamburger — visible below md */}
       <button
         type="button"
         className="flex min-h-[44px] items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium text-main hover:bg-surface-hover md:hidden"
@@ -286,29 +239,11 @@ export function DashboardSidebar({
             d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
           />
         </svg>
-        {t(
-          active === 'matches'
-            ? 'nav.matches'
-            : active === 'feed'
-              ? 'nav.feed'
-              : active === 'tools'
-                ? 'nav.tools'
-                : active === 'saved'
-                  ? 'nav.saved'
-                  : active === 'applications'
-                    ? 'nav.applications'
-                    : active === 'preferences'
-                      ? 'nav.preferences'
-                      : active === 'billing'
-                        ? 'nav.billing'
-                        : 'nav.settings'
-        )}
+        {t(mobileLabelKey)}
       </button>
 
-      {/* Mobile drawer overlay */}
       {drawerOpen && <div className="fixed inset-0 z-50 bg-black/30 md:hidden" />}
 
-      {/* Mobile drawer */}
       <div
         ref={drawerRef}
         className={`fixed left-0 top-0 z-50 h-full w-64 max-w-[85vw] transform border-r border-muted bg-nav-bg shadow-xl transition-transform duration-200 ease-in-out md:hidden ${
@@ -329,7 +264,6 @@ export function DashboardSidebar({
               viewBox="0 0 24 24"
               strokeWidth={2}
               stroke="currentColor"
-              aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -340,10 +274,9 @@ export function DashboardSidebar({
         </div>
       </div>
 
-      {/* Desktop sidebar — visible from md up */}
       <div className="hidden md:block">
         <div className="sticky top-[88px]">
-          <SidebarNav active={active} onNavigate={handleNav} t={t} matchCount={matchCount} />
+          <SidebarNav active={active} onNavigate={onNavigate} t={t} matchCount={matchCount} />
         </div>
       </div>
     </>

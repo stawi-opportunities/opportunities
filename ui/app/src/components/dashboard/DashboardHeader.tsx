@@ -6,11 +6,13 @@ export function DashboardHeader({
   plan,
   status,
   onOpenPlanChange,
+  onOpenSubscription,
   t,
 }: {
   plan: PlanId | null;
   status: string;
   onOpenPlanChange?: () => void;
+  onOpenSubscription?: () => void;
   t: (k: StringKey, fallback?: string) => string;
 }) {
   const isFree = !plan || status === 'none';
@@ -35,7 +37,7 @@ export function DashboardHeader({
             type="button"
             onClick={() => {
               if (isFree || !plan) {
-                window.location.hash = 'billing';
+                onOpenSubscription?.();
                 return;
               }
               onOpenPlanChange?.();
