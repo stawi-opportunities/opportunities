@@ -135,53 +135,69 @@ export function SavedJobsPanel() {
     [items, toast]
   );
 
+  // Header always shown when we have a clean shell
+  const header = (
+    <div className="mb-4">
+      <h2 className="text-lg font-semibold text-main">Saved for later</h2>
+      <p className="mt-1 text-sm text-secondary">
+        Bookmarks only — not the same as scored Matches. Star roles from Matches or Browse, then
+        apply when ready. Applied roles also appear under Applications.
+      </p>
+    </div>
+  );
+
   if (hasError) {
     return (
-      <div
-        role="alert"
-        className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
-      >
-        {t('feed.loadError')}
+      <div>
+        {header}
+        <div
+          role="alert"
+          className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+        >
+          {t('feed.loadError')}
+        </div>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="animate-pulse rounded-lg border border-muted bg-surface p-4">
-            <div className="h-4 w-3/4 rounded bg-gray-100 dark:bg-navy-800" />
-            <div className="mt-2 h-3 w-1/2 rounded bg-gray-100 dark:bg-navy-800" />
-            <div className="mt-3 flex gap-2">
-              <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
-              <div className="h-8 w-20 rounded bg-gray-100 dark:bg-navy-800" />
+      <div>
+        {header}
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse rounded-lg border border-muted bg-surface p-4">
+              <div className="h-4 w-3/4 rounded bg-surface-hover" />
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-muted bg-surface p-8 text-center">
-        <p className="text-sm text-gray-600 dark:text-gray-400">{t('feed.empty')}</p>
-        <a
-          href="/jobs/"
-          className="mt-4 inline-block text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
-        >
-          {t('dash.browseJobs')} →
-        </a>
+      <div>
+        {header}
+        <div className="rounded-lg border border-muted bg-surface p-8 text-center">
+          <p className="text-sm text-secondary">
+            No saved roles yet. Star a match to park it here.
+          </p>
+          <a
+            href="/dashboard/#matches"
+            className="mt-4 inline-block text-sm font-medium text-accent-600 hover:text-accent-700"
+          >
+            Back to matches →
+          </a>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        {items.length} {t('feed.opportunities')}
-      </p>
+      {header}
+      <p className="text-sm text-secondary">{items.length} saved</p>
       <ul className="space-y-3">
         {items.map((it) => (
           <OpportunityCard
