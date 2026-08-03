@@ -148,15 +148,31 @@ export interface MeSubscription {
  * (mapping errors to status "none" re-prompted paid users to pay again).
  */
 export async function fetchMeSubscription(): Promise<MeSubscription> {
-  const body = await authRuntime().fetch<MeSubscription>('/matching/me/subscription');
-  return {
+  const normalize = (body: MeSubscription): MeSubscription => ({
     plan: body.plan ?? null,
     status: body.status ?? 'none',
     renews_at: body.renews_at,
     agent: body.agent ?? null,
     queued_matches: body.queued_matches ?? 0,
     delivered_this_week: body.delivered_this_week ?? 0,
-  };
+  });
+  const paths = ['/matching/me/subscription', '/me/subscription', '/matching/api/me/subscription'];
+  let lastErr: unknown;
+  for (const path of paths) {
+    try {
+      return normalize(await authRuntime().fetch<MeSubscription>(path));
+    } catch (err) {
+      lastErr = err;
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code: unknown }).code)
+          : '';
+      const msg = err instanceof Error ? err.message : String(err);
+      if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) continue;
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('subscription lookup failed');
 }
 
 // ΓöÇΓöÇ /me/onboarding ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

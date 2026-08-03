@@ -171,6 +171,7 @@ export default function Dashboard() {
                   queued={sub?.queued_matches ?? null}
                   delivered={sub?.delivered_this_week ?? null}
                   subQueryError={subQ.isError}
+                  subLoading={subQ.isLoading && sub == null}
                   onUpgrade={() => {
                     setSettingsTab('subscription');
                     navigate('settings');
