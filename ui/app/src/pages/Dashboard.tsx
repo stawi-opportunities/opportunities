@@ -10,45 +10,50 @@ import { Button } from '@/components/ui/Button';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { AgentCard } from '@/components/dashboard/AgentCard';
 import { BillingPanel } from '@/components/dashboard/BillingPanel';
-import { PreferencesPanel } from '@/components/dashboard/PreferencesPanel';
 import { SavedJobsPanel } from '@/components/dashboard/SavedJobsPanel';
 import { ApplicationsPanel } from '@/components/dashboard/ApplicationsPanel';
 import { CompletePaymentPanel } from '@/components/dashboard/CompletePaymentPanel';
 import { PendingCheckoutPoller } from '@/components/dashboard/PendingCheckoutPoller';
 import { MatchesPanel } from '@/components/dashboard/MatchesPanel';
-import { ToolsPanel } from '@/components/dashboard/ToolsPanel';
-import { OpportunitiesFeed } from '@/components/OpportunitiesFeed';
+import { CVPanel } from '@/components/dashboard/CVPanel';
 import { DashboardSidebar, type SectionId } from '@/components/dashboard/DashboardSidebar';
 import { PlanChangeModal } from '@/components/dashboard/PlanChangeModal';
 import { CancelSubscriptionModal } from '@/components/dashboard/CancelSubscriptionModal';
-import { SettingsPage } from '@/components/settings/SettingsPage';
+import { SettingsPage, type SettingsTab } from '@/components/settings/SettingsPage';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { PreferenceChatHost } from '@/components/preference-chat';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTheme } from '@/providers/ThemeProvider';
 
-function getSectionFromHash(): SectionId {
-  const hash = window.location.hash.replace('#', '');
-  const valid: SectionId[] = [
-    'matches',
-    'feed',
-    'tools',
-    'saved',
-    'applications',
-    'preferences',
-    'billing',
-    'settings',
-  ];
-  // Legacy #overview ΓåÆ matches
-  if (hash === 'overview' || !hash) return 'matches';
-  return valid.includes(hash as SectionId) ? (hash as SectionId) : 'matches';
+/** Map legacy hashes and query to canonical section + optional settings tab. */
+function resolveRoute(): { section: SectionId; settingsTab?: SettingsTab } {
+  const hash = window.location.hash.replace('#', '').split('?')[0] ?? '';
+  const params = new URLSearchParams(window.location.search);
+
+  if (hash === 'billing' || params.get('tab') === 'subscription') {
+    return { section: 'settings', settingsTab: 'subscription' };
+  }
+  if (hash === 'tools' || hash === 'preferences') {
+    return { section: 'cv' };
+  }
+  if (hash === 'feed' || hash === 'overview' || !hash) {
+    return { section: 'matches' };
+  }
+  const valid: SectionId[] = ['matches', 'cv', 'saved', 'applications', 'settings'];
+  if (valid.includes(hash as SectionId)) {
+    return { section: hash as SectionId };
+  }
+  return { section: 'matches' };
 }
 
 export default function Dashboard() {
   const { hasSession, ready, login } = useAuth();
   const { t } = useI18n();
-  const [activeSection, setActiveSection] = useState<SectionId>(getSectionFromHash);
+  const initial =
+    typeof window !== 'undefined' ? resolveRoute() : { section: 'matches' as SectionId };
+  const [activeSection, setActiveSection] = useState<SectionId>(initial.section);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(initial.settingsTab);
   const [showPlanChange, setShowPlanChange] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
 
@@ -56,25 +61,37 @@ export default function Dashboard() {
 
   const sectionLabels: Record<string, string> = {
     matches: 'Matches',
-    feed: 'Feed',
-    tools: 'Tools',
+    cv: 'CV',
     saved: 'Saved',
     applications: 'Applications',
-    preferences: 'Preferences',
-    billing: 'Billing',
     settings: 'Settings',
   };
   useDocumentTitle(`${sectionLabels[activeSection] ?? 'Dashboard'} | Stawi`);
 
   useEffect(() => {
-    const onHashChange = () => setActiveSection(getSectionFromHash());
+    const onHashChange = () => {
+      const r = resolveRoute();
+      setActiveSection(r.section);
+      setSettingsTab(r.settingsTab);
+    };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
   const navigate = (id: SectionId) => {
-    window.location.hash = id;
-    setActiveSection(id);
+    // Canonicalize legacy ids if anything still routes them.
+    let next: SectionId = id;
+    if (id === 'tools' || id === 'preferences') next = 'cv';
+    if (id === 'billing') next = 'settings';
+    if (id === 'feed' || id === 'overview') next = 'matches';
+
+    if (next === 'settings' && id === 'billing') {
+      setSettingsTab('subscription');
+    } else if (next !== 'settings') {
+      setSettingsTab(undefined);
+    }
+    window.location.hash = next;
+    setActiveSection(next);
   };
 
   const handlePlanChangeSuccess = useCallback(() => {
@@ -96,14 +113,31 @@ export default function Dashboard() {
     sub?.status === 'active' || sub?.status === 'past_due' || sub?.status === 'trial';
   const subscription = sub?.status ?? 'none';
 
+  const subscriptionPanel =
+    isActive && plan ? (
+      <BillingPanel
+        plan={plan}
+        renewsAt={sub?.renews_at}
+        cancelAtPeriodEnd={sub?.cancel_at_period_end}
+        onOpenPlanChange={() => setShowPlanChange(true)}
+        onOpenCancel={() => setShowCancel(true)}
+        t={t}
+      />
+    ) : (
+      <CompletePaymentPanel plan={plan} status={subscription} />
+    );
+
   return (
     <PreferenceChatHost>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-        {' '}
         <DashboardHeader
           plan={plan}
           status={subscription}
           onOpenPlanChange={() => setShowPlanChange(true)}
+          onOpenSubscription={() => {
+            setSettingsTab('subscription');
+            navigate('settings');
+          }}
           t={t}
         />
         <PendingCheckoutPoller />
@@ -130,25 +164,23 @@ export default function Dashboard() {
           <section>
             {activeSection === 'matches' && (
               <ErrorBoundary>
+                {plan === 'managed' && sub?.agent?.email && <AgentCard agent={sub.agent} />}
                 <MatchesPanel
                   plan={plan ?? 'starter'}
                   freeProof={!isActive}
                   queued={sub?.queued_matches ?? null}
                   delivered={sub?.delivered_this_week ?? null}
                   subQueryError={subQ.isError}
-                  onUpgrade={() => navigate('billing')}
+                  onUpgrade={() => {
+                    setSettingsTab('subscription');
+                    navigate('settings');
+                  }}
                 />
               </ErrorBoundary>
             )}
-            {activeSection === 'feed' && (
+            {activeSection === 'cv' && (
               <ErrorBoundary>
-                {plan === 'managed' && sub?.agent?.email && <AgentCard agent={sub.agent} />}
-                <OpportunitiesFeed />
-              </ErrorBoundary>
-            )}
-            {activeSection === 'tools' && (
-              <ErrorBoundary>
-                <ToolsPanel />
+                <CVPanel />
               </ErrorBoundary>
             )}
             {activeSection === 'saved' && (
@@ -161,30 +193,13 @@ export default function Dashboard() {
                 <ApplicationsPanel />
               </ErrorBoundary>
             )}
-            {activeSection === 'preferences' && (
-              <ErrorBoundary>
-                <PreferencesPanel />
-              </ErrorBoundary>
-            )}
-            {activeSection === 'billing' && (
-              <ErrorBoundary>
-                {isActive && plan ? (
-                  <BillingPanel
-                    plan={plan}
-                    renewsAt={sub?.renews_at}
-                    cancelAtPeriodEnd={sub?.cancel_at_period_end}
-                    onOpenPlanChange={() => setShowPlanChange(true)}
-                    onOpenCancel={() => setShowCancel(true)}
-                    t={t}
-                  />
-                ) : (
-                  <CompletePaymentPanel plan={plan} status={subscription} />
-                )}
-              </ErrorBoundary>
-            )}
             {activeSection === 'settings' && (
               <ErrorBoundary>
-                <SettingsPage t={t} />
+                <SettingsPage
+                  t={t}
+                  subscriptionPanel={subscriptionPanel}
+                  initialTab={settingsTab ?? 'profile'}
+                />
               </ErrorBoundary>
             )}
           </section>
@@ -247,7 +262,7 @@ function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {
   return (
     <div className="mx-auto max-w-sm py-16 text-center">
       <h1 className="text-xl font-semibold text-main">Sign in</h1>
-      <p className="mt-2 text-sm text-secondary">Access matches and tools.</p>
+      <p className="mt-2 text-sm text-secondary">Access matches and your CV tools.</p>
       <Button className="mt-6" variant="primary" onClick={() => void onSignIn()}>
         Sign in
       </Button>

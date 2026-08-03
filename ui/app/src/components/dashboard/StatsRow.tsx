@@ -88,7 +88,7 @@ export function StatsRow({ compact }: { compact?: boolean }) {
     {
       label: t('dash.statTotal'),
       value: stats?.total ?? 0,
-      href: '/dashboard/#feed',
+      href: '/dashboard/#matches',
       icon: 'briefcase' as const,
       color: 'blue' as const,
     },

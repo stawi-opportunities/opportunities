@@ -84,7 +84,10 @@ export function MatchesPanel({
         const msg = err instanceof Error ? err.message : String(err);
         if (/no_embedding|embedding/i.test(msg)) {
           if (!silent) {
-            toast('Upload a CV in Preferences so we can match roles to your profile.', 'error');
+            toast(
+              'Upload a CV under Dashboard → CV so we can match roles to your profile.',
+              'error'
+            );
           }
         } else if (!silent) {
           // Free proof is allowed — never claim a paywall on refresh errors.
@@ -118,13 +121,19 @@ export function MatchesPanel({
 
   return (
     <div className="space-y-6">
-      <Panel title="Matches">
+      <div>
+        <h2 className="text-lg font-semibold text-main">Your matches</h2>
+        <p className="mt-1 text-sm text-secondary">
+          Scored roles matched to your CV — open a card to apply, or refresh to find more.
+        </p>
+      </div>
+      <Panel title="This week">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-gray-600 dark:text-gray-300 tabular-nums">
+          <p className="text-sm text-secondary tabular-nums">
             {delivered}
-            {!unlimited && ` / ${cap}`} this week
-            <span className="mx-1.5 text-gray-300">·</span>
-            {queued} queued
+            {!unlimited && ` / ${cap}`} delivered
+            <span className="mx-1.5 text-muted-strong">·</span>
+            {queued} ready to review
             {unlimited && <span className="ml-1 text-accent-700">· unlimited</span>}
           </p>
           <Button
@@ -174,9 +183,9 @@ export function MatchesPanel({
               </p>
             )}
             <p className="mt-2">
-              Upload a CV in{' '}
-              <a href="/dashboard/#preferences" className="underline">
-                Preferences
+              Upload a CV under{' '}
+              <a href="/dashboard/#cv" className="underline">
+                CV
               </a>
               , then hit Find matches.
             </p>

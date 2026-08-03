@@ -27,6 +27,7 @@ import { getTypeMeta } from '@/constants/opportunityTypes';
 import HowToApplySection from '@/components/HowToApplySection';
 import { OpportunitySideChat } from '@/components/OpportunitySideChat';
 import { RelatedOpportunities } from '@/components/RelatedOpportunities';
+import { JobFitPanel } from '@/components/JobFitPanel';
 import { useAuth } from '@/providers/AuthProvider';
 
 const JobBody = lazy(() => import('@/components/bodies/JobBody'));
@@ -224,6 +225,8 @@ export default function OpportunityDetail() {
             slug={snap.slug}
             hasHowToApply={snap.has_how_to_apply}
           />
+
+          <JobFitPanel opportunityId={snap.id} title={snap.title} description={snap.description} />
 
           {canApply && (
             <div className="mt-12 flex justify-center">

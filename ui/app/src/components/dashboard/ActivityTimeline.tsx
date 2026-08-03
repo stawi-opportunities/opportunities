@@ -13,7 +13,7 @@ const entries: TimelineEntry[] = [
     icon: 'dashboard',
     title: 'Welcome to Stawi',
     description: 'Your AI-powered job matching dashboard is ready.',
-    href: '/dashboard/#feed',
+    href: '/dashboard/#matches',
   },
   {
     icon: 'settings',
@@ -23,9 +23,9 @@ const entries: TimelineEntry[] = [
   },
   {
     icon: 'tag',
-    title: 'Set your preferences',
-    description: 'Tell us what kind of opportunities you want.',
-    href: '/dashboard/#preferences',
+    title: 'Upload CV & preferences',
+    description: 'Score your CV and set match preferences in one place.',
+    href: '/dashboard/#cv',
   },
   {
     icon: 'heart',

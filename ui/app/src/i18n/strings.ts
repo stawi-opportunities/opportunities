@@ -25,6 +25,7 @@ export interface Strings {
   'nav.overview': string;
   'nav.feed': string;
   'nav.matches': string;
+  'nav.cv': string;
   'nav.tools': string;
   'nav.saved': string;
   'nav.applications': string;
@@ -450,6 +451,7 @@ export interface Strings {
   'settings.sectionAccount': string;
   'settings.sectionLanguage': string;
   'settings.sectionTheme': string;
+  'settings.sectionSubscription': string;
   'settings.profile': string;
   'settings.name': string;
   'settings.email': string;
@@ -554,6 +556,7 @@ const en: Strings = {
   'nav.overview': 'Overview',
   'nav.feed': 'Feed',
   'nav.matches': 'Matches',
+  'nav.cv': 'CV',
   'nav.tools': 'Tools',
   'nav.saved': 'Saved',
   'nav.applications': 'Applications',
@@ -959,6 +962,7 @@ const en: Strings = {
   'settings.sectionAccount': 'Account',
   'settings.sectionLanguage': 'Language',
   'settings.sectionTheme': 'Theme',
+  'settings.sectionSubscription': 'Subscription',
   'settings.profile': 'Profile',
   'settings.name': 'Full name',
   'settings.email': 'Email address',

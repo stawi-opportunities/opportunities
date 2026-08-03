@@ -31,12 +31,12 @@ export function EmptyFeedState({ filter, t }: Props) {
       {showTryAll && (
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           <a
-            href="/dashboard/#feed"
+            href="/dashboard/#matches?filter=all"
             onClick={(e) => {
               e.preventDefault();
               const url = new URL(window.location.href);
-              url.hash = 'feed';
-              url.searchParams.delete('filter');
+              url.hash = 'matches';
+              url.searchParams.set('filter', 'all');
               window.history.pushState({}, '', url.toString());
               window.dispatchEvent(new HashChangeEvent('hashchange'));
             }}
@@ -78,11 +78,10 @@ export function EmptyFeedState({ filter, t }: Props) {
         </a>
 
         <a
-          href="#preferences"
+          href="/dashboard/#cv"
           onClick={(e) => {
             e.preventDefault();
-            const panel = document.getElementById('match-preferences');
-            if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+            window.location.hash = 'cv';
           }}
           className="rounded-lg border border-muted p-4 text-left transition-colors hover:border-accent-500/40 hover:bg-surface-hover"
         >

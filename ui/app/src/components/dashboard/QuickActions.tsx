@@ -45,8 +45,8 @@ export function QuickActions() {
         }
       : {
           kind: 'link',
-          href: '/dashboard/#preferences',
-          label: t('nav.preferences'),
+          href: '/dashboard/#cv',
+          label: t('nav.cv'),
           description: t('dash.qaPrefsDesc'),
         },
     {
