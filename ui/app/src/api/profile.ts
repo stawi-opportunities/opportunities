@@ -271,13 +271,12 @@ export interface MeSubscription {
 /**
  * GET /me/subscription — auth'd.
  *
- * Throws on network/API failure so callers can distinguish "still loading /
- * transient error" from "genuinely unpaid". Mapping errors to status "none"
- * used to bounce paid users back to onboarding after a flaky request.
+ * Tries gateway paths used in prod (/matching/me/… first). Throws on hard
+ * failure so callers can distinguish unpaid from network errors — but never
+ * invents status "none" from a 5xx (that re-prompted paid users).
  */
 export async function fetchMeSubscription(): Promise<MeSubscription> {
-  const body = await authRuntime().fetch<MeSubscription>('/me/subscription');
-  return {
+  const normalize = (body: MeSubscription): MeSubscription => ({
     plan: body.plan ?? null,
     status: body.status ?? 'none',
     renews_at: body.renews_at,
@@ -285,5 +284,24 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
     agent: body.agent ?? null,
     queued_matches: body.queued_matches ?? 0,
     delivered_this_week: body.delivered_this_week ?? 0,
-  };
+  });
+
+  const paths = ['/matching/me/subscription', '/me/subscription', '/matching/api/me/subscription'];
+  let lastErr: unknown;
+  for (const path of paths) {
+    try {
+      const body = await authRuntime().fetch<MeSubscription>(path);
+      return normalize(body);
+    } catch (err) {
+      lastErr = err;
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code: unknown }).code)
+          : '';
+      const msg = err instanceof Error ? err.message : String(err);
+      if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) continue;
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('subscription lookup failed');
 }

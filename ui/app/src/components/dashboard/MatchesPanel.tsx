@@ -33,20 +33,25 @@ type Mode = 'matches' | 'browse';
 
 /**
  * Matches section: scored shortlist (default) + optional full browse mode.
+ * Never blocks the whole page on subscription metadata — free users always
+ * get a usable empty/proof state + feed.
  */
 export function MatchesPanel({
   plan,
   freeProof = false,
-  queued,
-  delivered,
-  subQueryError,
+  queued: queuedProp,
+  delivered: deliveredProp,
+  subQueryError = false,
+  subLoading = false,
   onUpgrade,
 }: {
   plan: PlanId;
   freeProof?: boolean;
+  /** null while subscription has never loaded; treat as 0 for display. */
   queued: number | null;
   delivered: number | null;
-  subQueryError: boolean;
+  subQueryError?: boolean;
+  subLoading?: boolean;
   onUpgrade?: () => void;
 }) {
   const { push: toast } = useToast();
@@ -58,13 +63,18 @@ export function MatchesPanel({
     return f === 'all' ? 'browse' : 'matches';
   });
 
+  // Counters default to 0 — never fail the page because metadata is missing.
+  const queued = queuedProp ?? 0;
+  const delivered = deliveredProp ?? 0;
+
   const planInfo = planById(plan);
   const unlimited = !freeProof && planInfo.matchesPerWeek === null;
   const cap = freeProof ? 3 : (planInfo.matchesPerWeek ?? 0);
   const progressPct =
-    !unlimited && cap > 0 ? Math.min(100, Math.round(((delivered ?? 0) / cap) * 100)) : 0;
+    !unlimited && cap > 0 ? Math.min(100, Math.round((delivered / cap) * 100)) : 0;
 
   const [lastReason, setLastReason] = useState<string | null>(null);
+  const [autoKickDone, setAutoKickDone] = useState(false);
 
   const feedFilter: OpportunityFilter = mode === 'matches' ? 'matches' : 'all';
 
@@ -96,13 +106,14 @@ export function MatchesPanel({
         setRefreshKey((k) => k + 1);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/no_embedding|embedding/i.test(msg)) {
+        if (/no_embedding|embedding|cv/i.test(msg)) {
           if (!silent) {
             toast(
               'Upload a CV under Dashboard → CV so we can match roles to your profile.',
               'error'
             );
           }
+          setLastReason('need_cv');
         } else if (!silent) {
           toast('Could not refresh matches. Try again in a moment.', 'error');
         }
@@ -113,21 +124,32 @@ export function MatchesPanel({
     [toast]
   );
 
+  // Soft auto-kick once subscription has settled (or failed) and queue looks empty.
   useEffect(() => {
-    if (subQueryError) return;
-    if (queued === null) return;
-    if (queued > 0) return;
+    if (subLoading) return;
+    if (autoKickDone) return;
     if (mode !== 'matches') return;
+    if (queued > 0) {
+      setAutoKickDone(true);
+      return;
+    }
+    setAutoKickDone(true);
     void runRefresh(true);
-  }, [queued, subQueryError, runRefresh, mode]);
+  }, [subLoading, queued, mode, runRefresh, autoKickDone]);
 
-  if (subQueryError || queued === null || delivered === null) {
+  if (subLoading && queuedProp === null && deliveredProp === null) {
     return (
-      <Panel title="Matches">
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          Couldn&apos;t load matches. Try again.
-        </p>
-      </Panel>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold text-main">Your matches</h2>
+          <p className="mt-1 text-sm text-secondary">Loading your shortlist…</p>
+        </div>
+        <div className="animate-pulse space-y-3">
+          <div className="h-24 rounded-lg border border-muted bg-surface" />
+          <div className="h-32 rounded-lg border border-muted bg-surface" />
+          <div className="h-32 rounded-lg border border-muted bg-surface" />
+        </div>
+      </div>
     );
   }
 
@@ -174,6 +196,16 @@ export function MatchesPanel({
         </div>
       </div>
 
+      {subQueryError && (
+        <div
+          role="status"
+          className="rounded-md border border-muted bg-surface-muted px-3 py-2 text-sm text-secondary"
+        >
+          Couldn&apos;t refresh plan counters. You can still browse matches and upload a CV — try
+          reloading if this persists.
+        </div>
+      )}
+
       {mode === 'matches' && (
         <Panel title="This week">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -213,30 +245,63 @@ export function MatchesPanel({
                 <a href="/pricing/" className="font-medium underline">
                   Upgrade
                 </a>
-              )}
+              )}{' '}
+              for more weekly matches.
             </p>
           )}
-          {delivered === 0 && queued === 0 && (
-            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-              <p className="font-medium">No matches yet</p>
-              {lastReason && (
-                <p className="mt-1">
-                  {emptyReasonMessage({
+
+          {queued === 0 && (
+            <div className="mt-4 rounded-md border border-muted bg-surface-muted p-4 text-sm text-main">
+              <p className="font-medium">
+                {lastReason === 'need_cv'
+                  ? 'Add a CV to get scored matches'
+                  : 'No matches in your queue yet'}
+              </p>
+              <p className="mt-1 text-secondary">
+                {lastReason === 'need_cv' ? (
+                  <>
+                    Upload a CV under{' '}
+                    <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
+                      CV
+                    </a>
+                    , then hit Find matches.
+                  </>
+                ) : lastReason ? (
+                  emptyReasonMessage({
                     ok: true,
                     matches_written: 0,
                     opps_scanned: 0,
                     reason: lastReason,
                     proof: freeProof,
-                  })}
-                </p>
-              )}
-              <p className="mt-2">
-                Upload a CV under{' '}
-                <a href="/dashboard/#cv" className="underline">
-                  CV
-                </a>
-                , set match preferences, then hit Find matches.
+                  })
+                ) : (
+                  <>
+                    Start by uploading a CV under{' '}
+                    <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
+                      CV
+                    </a>
+                    , set match preferences, then run Find matches. Or switch to Browse to explore
+                    open roles.
+                  </>
+                )}
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  href="/dashboard/#cv"
+                  className="inline-flex min-h-[40px] items-center rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
+                >
+                  Go to CV
+                </a>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={refreshing}
+                  onClick={() => void runRefresh(false)}
+                >
+                  {refreshing ? 'Searching…' : 'Find matches'}
+                </Button>
+              </div>
             </div>
           )}
         </Panel>
