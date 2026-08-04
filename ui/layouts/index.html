@@ -1,10 +1,10 @@
-{{ define "main" }}
+﻿{{ define "main" }}
 
 {{/* HomeRedirect island: signed-in visitors go straight to /dashboard/. */}}
 <div id="mount-home-redirect"></div>
 
 <section id="home-hero" class="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center bg-page px-4 py-16 sm:py-20">
-  <div class="mx-auto flex w-full max-w-2xl flex-col items-center text-center">
+    <div class="mx-auto flex w-full max-w-2xl flex-col items-center text-center">
 
     <div class="home-hero-photo relative w-[min(72vw,280px)] sm:w-[300px]" aria-hidden="true">
       <img
@@ -26,19 +26,31 @@
       Sign in for personalized matches and connect with employers looking for candidates like you.
     </p>
 
-    {{/* React island: Get Started → OIDC login (same as nav Sign in). */}}
+    {{/* React island: Get Started â†’ OIDC login (same as nav Sign in). */}}
     <div id="mount-home-cta">
       <a
         href="/search/"
         class="mt-8 inline-flex items-center gap-2 rounded-full bg-accent-500 px-8 py-3.5 text-base font-semibold text-navy-950 shadow-sm transition-colors hover:bg-accent-400"
       >
         Browse jobs
-        <span aria-hidden="true">→</span>
+        <span aria-hidden="true">â†’</span>
       </a>
     </div>
 
   </div>
 </section>
+
+{{/* React island: anonymous live sample of real roles, browse before sign-in. */}}
+<div id="mount-home-live-jobs">
+  <section class="mx-auto max-w-4xl px-4 pb-20 pt-4 sm:px-6 lg:px-8">
+    <h2 class="font-display text-3xl font-semibold tracking-tight text-main sm:text-4xl">
+      Fresh opportunities
+    </h2>
+    <p class="mt-2 max-w-xl text-sm text-secondary sm:text-base">
+      A live sample of real roles - browse before you sign in.
+    </p>
+  </section>
+</div>
 
 <style>
   .home-hero-photo {

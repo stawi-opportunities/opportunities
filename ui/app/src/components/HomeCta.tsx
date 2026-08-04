@@ -30,12 +30,19 @@ export default function HomeCta() {
   }
 
   return (
-    <div className="mt-8 flex flex-col items-center gap-3">
+    <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+      <a
+        href="/search/"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-accent-500 px-8 py-3.5 text-base font-semibold text-navy-950 shadow-sm transition-colors hover:bg-accent-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2"
+      >
+        Browse jobs
+        <span aria-hidden="true">→</span>
+      </a>
       <button
         type="button"
         onClick={() => void onGetStarted()}
         disabled={busy || !ready}
-        className="inline-flex items-center gap-2 rounded-full bg-accent-500 px-8 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-accent-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-muted-strong bg-surface px-8 py-3.5 text-base font-semibold text-main shadow-sm transition hover:border-accent-500/50 hover:text-accent-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
       >
         {busy ? 'Signing in…' : 'Get Started'}
         {!busy && <span aria-hidden="true">→</span>}
@@ -52,12 +59,6 @@ export default function HomeCta() {
           </button>
         </p>
       )}
-      <a
-        href="/search/"
-        className="text-sm text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline"
-      >
-        Or browse jobs
-      </a>
     </div>
   );
 }

@@ -441,6 +441,15 @@ export interface Strings {
   'cta.twoMinutesHint': string;
   'cta.getStarted': string;
 
+  // ---- Home live sample ----
+  'home.sampleTitle': string;
+  'home.sampleSubtitle': string;
+  'home.filterAll': string;
+  'home.filterRemote': string;
+  'home.filterOnsite': string;
+  'home.browseAll': string;
+  'home.loading': string;
+
   // ---- Common ----
   'common.comingSoon': string;
 
@@ -588,6 +597,14 @@ const en: Strings = {
   'cta.twoMinutes': 'Two minutes to set up.',
   'cta.twoMinutesHint': 'Upload your CV, tell us what you want, we take it from there.',
   'cta.getStarted': 'Get started',
+
+  'home.sampleTitle': 'Fresh opportunities',
+  'home.sampleSubtitle': 'A live sample of real roles — browse before you sign in.',
+  'home.filterAll': 'All',
+  'home.filterRemote': 'Remote',
+  'home.filterOnsite': 'On-site',
+  'home.browseAll': 'Browse all jobs',
+  'home.loading': 'Loading fresh roles…',
 
   'common.comingSoon': 'Coming soon',
 

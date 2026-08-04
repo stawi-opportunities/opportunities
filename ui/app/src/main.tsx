@@ -16,6 +16,7 @@ const islands: Island[] = [
   { id: 'mount-nav', component: () => import('@/components/Nav') },
   { id: 'mount-home-redirect', component: () => import('@/components/HomeRedirect') },
   { id: 'mount-home-cta', component: () => import('@/components/HomeCta') },
+  { id: 'mount-home-live-jobs', component: () => import('@/components/HomeLiveJobs') },
   { id: 'mount-pricing-login', component: () => import('@/components/PricingLoginCta') },
   // All five opportunity kinds share the same React island; the kind is
   // derived from window.location.pathname inside OpportunityDetail.
