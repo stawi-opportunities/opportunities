@@ -18,6 +18,7 @@ import {
   fieldsToDraft,
   summaryChips,
 } from '@/components/preference-chat';
+import { evaluateProfileReadiness } from '@/utils/profileReadiness';
 
 type Phase = 'chat' | 'plan';
 
@@ -43,12 +44,27 @@ export default function Onboarding() {
     placeholderData: (prev) => prev,
   });
 
+  // Active subscribers only go to dashboard once matching profile is complete.
+  // Incomplete profiles must stay in chat (dashboard redirects here).
   useEffect(() => {
     if (!hasSession) return;
     if (subQ.isLoading) return;
-    if (subQ.data?.status === 'active') {
-      window.location.assign('/dashboard/');
-    }
+    const st = subQ.data?.status;
+    const active = st === 'active' || st === 'past_due' || st === 'trial';
+    if (!active) return;
+    let cancelled = false;
+    (async () => {
+      const [cv, draft] = await Promise.all([fetchMeCV(), fetchOnboardingDraft()]);
+      if (cancelled) return;
+      const readiness = evaluateProfileReadiness(cv, draft.fields);
+      if (readiness.ready) {
+        window.location.assign('/dashboard/');
+      }
+      // else: stay on onboarding chat / plan to finish profile
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [hasSession, subQ.isLoading, subQ.data?.status]);
 
   useEffect(() => {

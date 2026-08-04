@@ -10,6 +10,12 @@ export const QUERY_KEYS = {
   // Subscription status (/me/subscription)
   SUBSCRIPTION: ['me-subscription'] as const,
 
+  // CV + placement readiness (GET /me/cv)
+  ME_CV: ['me-cv'] as const,
+
+  // Onboarding draft (profile gate / resume)
+  ONBOARDING_DRAFT: ['onboarding-draft'] as const,
+
   // Public job search (/api/search)
   SEARCH: (params: Record<string, unknown>) => ['search', params] as const,
 

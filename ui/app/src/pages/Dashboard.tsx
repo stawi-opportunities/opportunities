@@ -25,6 +25,7 @@ import { PreferenceChatHost } from '@/components/preference-chat';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTheme } from '@/providers/ThemeProvider';
+import { useMatchingProfileGate } from '@/hooks/useMatchingProfileGate';
 
 /** Map legacy hashes and query to canonical section + optional settings tab. */
 function resolveRoute(): { section: SectionId; settingsTab?: SettingsTab } {
@@ -58,6 +59,7 @@ export default function Dashboard() {
   const [showCancel, setShowCancel] = useState(false);
 
   const subQ = useSubscription();
+  const profileGate = useMatchingProfileGate();
 
   const sectionLabels: Record<string, string> = {
     matches: 'Matches',
@@ -106,6 +108,10 @@ export default function Dashboard() {
 
   if (!ready) return <Skeleton />;
   if (!hasSession) return <SignedOut onSignIn={login} />;
+  // Incomplete CV / aspirational profile → onboarding chat (matching needs it).
+  if (profileGate.checking) {
+    return <ProfileGateSkeleton />;
+  }
 
   const sub = subQ.data;
   const plan = normalizePlan(sub?.plan ?? null);
@@ -267,6 +273,18 @@ function Skeleton() {
     <div className="mx-auto max-w-6xl animate-pulse px-4 py-8">
       <div className="h-8 w-40 rounded bg-surface-hover" />
       <div className="mt-8 h-64 rounded bg-surface-hover" />
+    </div>
+  );
+}
+
+function ProfileGateSkeleton() {
+  return (
+    <div className="mx-auto max-w-sm px-4 py-16 text-center">
+      <div className="mx-auto h-8 w-48 animate-pulse rounded bg-surface-hover" />
+      <p className="mt-4 text-sm text-secondary">Checking your profile for matching…</p>
+      <p className="mt-2 text-xs text-secondary">
+        If anything is missing, we&apos;ll open the setup chat so we can match the right roles.
+      </p>
     </div>
   );
 }
