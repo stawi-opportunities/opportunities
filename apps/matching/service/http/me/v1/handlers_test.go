@@ -16,6 +16,7 @@ import (
 
 	v1 "github.com/stawi-opportunities/opportunities/apps/matching/service/http/me/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/applications"
+	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 	"github.com/stawi-opportunities/opportunities/tests/integration/testhelpers"
 )
@@ -27,6 +28,8 @@ func setupExtensionEnv(t *testing.T) (*http.ServeMux, *sql.DB, context.Context) 
 	testhelpers.ApplyGreenfieldSchema(t, ctx, db)
 
 	mux := http.NewServeMux()
+	// Header-only auth for integration tests (X-Candidate-ID). Production
+	// main.go always passes NewCandidateAuth(authenticator) instead.
 	v1.Mount(mux, &v1.Deps{
 		DB:               db,
 		Matches:          matching.NewStore(db),
@@ -38,7 +41,7 @@ func setupExtensionEnv(t *testing.T) (*http.ServeMux, *sql.DB, context.Context) 
 		Weights:          matching.DefaultWeights(),
 		Debouncer:        matching.NewMemoryDebouncer(),
 		IdempotencyStore: applications.NewIdempotencyStore(db, time.Hour),
-	}, nil)
+	}, httpmw.NewCandidateAuth(nil))
 	return mux, db, ctx
 }
 

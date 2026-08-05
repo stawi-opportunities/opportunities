@@ -3,6 +3,25 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { OpportunityCard } from '../OpportunityCard';
 import type { FeedItem } from '@/api/candidates';
 
+vi.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({
+    state: 'authenticated',
+    hasSession: true,
+    ready: true,
+    login: vi.fn(),
+    logout: vi.fn(),
+    runtime: {},
+  }),
+}));
+
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({
+    data: { status: 'active', plan: 'pro' },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 const baseItem: FeedItem = {
   opportunity_id: 'opp_1',
   score: 0.82,
@@ -21,7 +40,7 @@ describe('OpportunityCard', () => {
         onApply={vi.fn()}
       />
     );
-    expect(screen.getByText(/82%/i)).toBeInTheDocument();
+    expect(screen.getByTitle(/match score/i)).toHaveTextContent(/82/);
   });
 
   it('omits the match score when score is missing', () => {
