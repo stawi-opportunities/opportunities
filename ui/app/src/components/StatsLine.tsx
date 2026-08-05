@@ -33,7 +33,7 @@ export default function StatsLine({ slug }: { slug: string }) {
   if (stats.views_total === 0 && stats.applies_total === 0) return null;
 
   return (
-    <p className="mt-3 text-xs text-gray-500">
+    <p className="mt-3 text-xs text-secondary">
       <span aria-hidden>👁</span> {fmt(stats.views_total)} {t('stats.views')}
       {' • '}
       <span aria-hidden>✉</span> {fmt(stats.applies_total)} {t('stats.applies')}

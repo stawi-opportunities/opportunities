@@ -31,10 +31,10 @@ export function SearchForm({
       className="w-full"
       role="search"
     >
-      <div className="flex overflow-hidden rounded-xl border border-gray-300 bg-white shadow-sm focus-within:border-navy-900 focus-within:ring-1 focus-within:ring-navy-900">
+      <div className="flex overflow-hidden rounded-xl border border-muted bg-surface shadow-sm focus-within:border-accent-500 focus-within:ring-1 focus-within:ring-accent-500">
         <div className="relative flex min-w-0 flex-1 items-center">
           <svg
-            className="pointer-events-none absolute left-3 h-5 w-5 text-gray-400"
+            className="pointer-events-none absolute left-3 h-5 w-5 text-secondary"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -52,15 +52,12 @@ export function SearchForm({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t('search.searchPlaceholder')}
-            className="w-full bg-transparent py-3 pl-10 pr-3 text-base text-gray-900 placeholder-gray-400 focus:outline-none"
+            className="w-full bg-transparent py-3 pl-10 pr-3 text-base text-main placeholder-secondary focus:outline-none"
             aria-label={t('search.searchJobs')}
           />
         </div>
         <div className="flex p-1.5">
-          <button
-            type="submit"
-            className="min-h-[44px] rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-navy-800"
-          >
+          <button type="submit" className="btn-primary min-h-[44px] px-5">
             {t('search.searchButton')}
           </button>
         </div>

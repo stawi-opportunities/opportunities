@@ -48,7 +48,7 @@ export default function HomeCta() {
         {!busy && <span aria-hidden="true">→</span>}
       </button>
       {error && (
-        <p className="max-w-sm text-center text-sm text-red-600" role="alert">
+        <p className="max-w-sm text-center text-sm text-red-500" role="alert">
           {error}{' '}
           <button
             type="button"

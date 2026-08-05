@@ -8,7 +8,7 @@ interface SpinnerProps {
 export function Spinner({ size = 20, className }: SpinnerProps) {
   return (
     <svg
-      className={clsx('animate-spin text-gray-400', className)}
+      className={clsx('animate-spin text-accent-500', className)}
       width={size}
       height={size}
       viewBox="0 0 24 24"

@@ -72,13 +72,13 @@ function ShardStatusBanner({
     <>
       <p
         role="status"
-        className="mb-4 flex items-center justify-between rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
+        className="mb-4 flex items-center justify-between rounded-md bg-accent-500/10 px-4 py-2 text-sm text-accent-500"
       >
         <span>{message}</span>
         <button
           type="button"
           onClick={() => setDismissed(true)}
-          className="ml-4 text-xs font-medium text-emerald-900 underline hover:text-emerald-950"
+          className="ml-4 text-xs font-medium text-accent-500 underline hover:text-accent-400"
         >
           {t('cta.dismiss')}
         </button>

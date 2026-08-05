@@ -34,7 +34,7 @@ export function FiltersPanel({
           <button
             type="button"
             onClick={onClear}
-            className="hidden text-sm text-gray-600 hover:text-gray-900 md:inline"
+            className="hidden text-sm text-secondary hover:text-main md:inline"
           >
             {t('search.clear')}
           </button>
@@ -97,7 +97,9 @@ function FacetBlock({
   const fmt = labeller ?? ((k: string) => k || '(uncategorised)');
   return (
     <div className="mb-5">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</h3>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-secondary">
+        {label}
+      </h3>
       <ul>
         {entries.slice(0, 8).map((e) => {
           const isSel = selected === e.key;
@@ -107,12 +109,14 @@ function FacetBlock({
                 type="button"
                 aria-pressed={isSel}
                 className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
-                  isSel ? 'bg-navy-50 font-medium text-navy-900' : 'text-gray-700 hover:bg-gray-50'
+                  isSel
+                    ? 'bg-accent-500/10 font-medium text-accent-500'
+                    : 'text-secondary hover:bg-surface-muted'
                 }`}
                 onClick={() => onSelect(isSel ? undefined : e.key)}
               >
                 <span>{fmt(e.key)}</span>
-                <span className={`text-xs ${isSel ? 'text-navy-700' : 'text-gray-400'}`}>
+                <span className={`text-xs ${isSel ? 'text-accent-500' : 'text-secondary'}`}>
                   {e.count.toLocaleString()}
                 </span>
               </button>

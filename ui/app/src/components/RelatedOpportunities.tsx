@@ -82,27 +82,29 @@ export function RelatedOpportunities({
             <li key={r.slug}>
               <a
                 href={hrefFor(r)}
-                className="group flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 hover:shadow-md"
+                className="group flex h-full flex-col rounded-xl border border-muted bg-surface p-4 shadow-sm transition hover:border-accent-500/50 hover:shadow-md"
               >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-sm font-semibold text-slate-900 group-hover:text-indigo-700">
+                    <p className="line-clamp-2 text-sm font-semibold text-main group-hover:text-accent-500">
                       {r.title}
                     </p>
-                    <p className="mt-1 truncate text-xs text-slate-600">
+                    <p className="mt-1 truncate text-xs text-secondary">
                       {r.company || r.issuing_entity || ''}
                     </p>
                   </div>
                   {meta && (
-                    <span className="shrink-0 rounded-full bg-slate-100 p-1.5 text-slate-500">
+                    <span className="shrink-0 rounded-full bg-surface-muted p-1.5 text-secondary">
                       <Icon name={meta.iconName} size={12} />
                     </span>
                   )}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500">
+                <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-xs text-secondary">
                   {locationLine(r) && <span>{locationLine(r)}</span>}
                   {r.remote_type && r.remote_type !== 'onsite' && (
-                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5">{r.remote_type}</span>
+                    <span className="rounded-full bg-surface-muted px-1.5 py-0.5">
+                      {r.remote_type}
+                    </span>
                   )}
                   <DeadlineDate
                     deadline={r.deadline}

@@ -174,24 +174,24 @@ export default function OpportunityDetail() {
           <header className="mt-4 flex items-start gap-4">
             <IssuingEntityAvatar snap={snap} />
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+              <h1 className="text-2xl font-bold text-main sm:text-3xl">
                 {snap.title}
                 {snap.kind && getTypeMeta(snap.kind) && (
-                  <span className="ml-3 inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 align-middle">
+                  <span className="ml-3 inline-flex items-center gap-1.5 rounded-full bg-surface-muted px-3 py-1 text-xs font-medium text-secondary align-middle">
                     <Icon name={getTypeMeta(snap.kind)!.iconName} size={12} />
                     {t(getTypeMeta(snap.kind)!.labelKey)}
                   </span>
                 )}
               </h1>
-              <p className="mt-1 text-sm text-gray-700">
+              <p className="mt-1 text-sm text-main">
                 <span className="font-medium">{snap.issuing_entity}</span>
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-secondary">
                 {snap.anchor_location?.city && <span>{snap.anchor_location.city}</span>}
                 {snap.anchor_location?.region && <span>{snap.anchor_location.region}</span>}
                 {snap.anchor_location?.country && <span>{snap.anchor_location.country}</span>}
                 {snap.remote && (
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
+                  <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs">
                     {t('job.remote')}
                   </span>
                 )}
@@ -406,18 +406,18 @@ function Breadcrumbs({
   t: (k: StringKey, fallback?: string) => string;
 }) {
   return (
-    <nav aria-label="Breadcrumb" className="text-sm text-gray-500">
-      <a href="/" className="hover:text-gray-700">
+    <nav aria-label="Breadcrumb" className="text-sm text-secondary">
+      <a href="/" className="hover:text-main">
         {t('common.home')}
       </a>
       <span className="mx-1.5">/</span>
-      <a href={`/${prefix}/`} className="capitalize hover:text-gray-700">
+      <a href={`/${prefix}/`} className="capitalize hover:text-main">
         {prefix}
       </a>
       {category && (
         <>
           <span className="mx-1.5">/</span>
-          <a href={`/categories/${encodeURIComponent(category)}/`} className="hover:text-gray-700">
+          <a href={`/categories/${encodeURIComponent(category)}/`} className="hover:text-main">
             {categoryLabel(category)}
           </a>
         </>
@@ -436,7 +436,7 @@ function IssuingEntityAvatar({ snap }: { snap: OpportunitySnapshot }) {
       <img
         src={logo}
         alt={`${snap.issuing_entity} logo`}
-        className="h-14 w-14 shrink-0 rounded-lg border border-gray-200 object-contain bg-white"
+        className="h-14 w-14 shrink-0 rounded-lg border border-muted object-contain bg-surface"
         loading="lazy"
       />
     );
@@ -444,7 +444,7 @@ function IssuingEntityAvatar({ snap }: { snap: OpportunitySnapshot }) {
   const initial = (snap.issuing_entity || '?').trim().slice(0, 1).toUpperCase();
   return (
     <div
-      className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-navy-100 text-xl font-semibold text-navy-900"
+      className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-surface-muted text-xl font-semibold text-main"
       aria-hidden="true"
     >
       {initial}
@@ -482,7 +482,7 @@ function ShareButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+      className="inline-flex items-center rounded-md border border-muted bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-surface-muted"
     >
       <svg
         className="mr-1.5 h-4 w-4"
@@ -563,10 +563,10 @@ function Skeleton() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="animate-pulse space-y-3">
-        <div className="h-5 w-32 rounded bg-slate-200" />
-        <div className="h-8 w-2/3 rounded bg-slate-200" />
-        <div className="h-4 w-1/2 rounded bg-slate-200" />
-        <div className="mt-6 h-40 rounded-lg bg-slate-100" />
+        <div className="h-5 w-32 rounded bg-surface-muted" />
+        <div className="h-8 w-2/3 rounded bg-surface-muted" />
+        <div className="h-4 w-1/2 rounded bg-surface-muted" />
+        <div className="mt-6 h-40 rounded-lg bg-surface-muted" />
       </div>
     </div>
   );
@@ -575,9 +575,9 @@ function Skeleton() {
 function BodyFallback() {
   return (
     <div className="mt-8 animate-pulse space-y-3">
-      <div className="h-4 w-full rounded bg-slate-100" />
-      <div className="h-4 w-5/6 rounded bg-slate-100" />
-      <div className="h-4 w-2/3 rounded bg-slate-100" />
+      <div className="h-4 w-full rounded bg-surface-muted" />
+      <div className="h-4 w-5/6 rounded bg-surface-muted" />
+      <div className="h-4 w-2/3 rounded bg-surface-muted" />
     </div>
   );
 }
@@ -593,10 +593,10 @@ function NotFound({
   const browseHref = kind ? `/${pluralForKind(kind)}/` : '/jobs/';
   return (
     <div className="mx-auto max-w-md py-16 text-center">
-      <h1 className="text-2xl font-semibold text-gray-900 capitalize">
+      <h1 className="text-2xl font-semibold text-main capitalize">
         {label} {t('error.notFound')}
       </h1>
-      <p className="mt-2 text-gray-600">{t('error.listingRemoved')}</p>
+      <p className="mt-2 text-secondary">{t('error.listingRemoved')}</p>
       <a href={browseHref} className="btn-primary mt-6">
         {t('cta.browseAll')}
       </a>
@@ -628,8 +628,8 @@ function LoadError({
 }) {
   return (
     <div className="mx-auto max-w-md py-16 text-center">
-      <h1 className="text-xl font-semibold text-gray-900">{t('error.somethingWrong')}</h1>
-      <p className="mt-2 text-gray-600">{t('error.couldNotLoad')}</p>
+      <h1 className="text-xl font-semibold text-main">{t('error.somethingWrong')}</h1>
+      <p className="mt-2 text-secondary">{t('error.couldNotLoad')}</p>
       <button type="button" onClick={onRetry} className="btn-primary mt-6">
         {t('cta.tryAgain')}
       </button>

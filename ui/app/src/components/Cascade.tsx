@@ -129,16 +129,12 @@ export default function Cascade(props: CascadeProps) {
 
   if (q.isLoading && !q.data) return <CascadeSkeleton />;
   if (q.data && q.data.tiers.length === 0)
-    return <p className="mt-8 text-center text-sm text-gray-500">{t('search.noResults')}</p>;
+    return <p className="mt-8 text-center text-sm text-secondary">{t('search.noResults')}</p>;
   if (q.isError || !q.data) {
     return (
       <div className="mt-8 text-center">
-        <p className="mb-3 text-sm text-gray-500">{t('error.feedLoad')}</p>
-        <button
-          type="button"
-          onClick={() => q.refetch()}
-          className="min-h-[44px] rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
-        >
+        <p className="mb-3 text-sm text-secondary">{t('error.feedLoad')}</p>
+        <button type="button" onClick={() => q.refetch()} className="btn-primary min-h-[44px] px-4">
           {t('cta.retry')}
         </button>
       </div>
@@ -232,14 +228,14 @@ function TierSection({
 
   return (
     <section aria-labelledby={`tier-${tier.id}`}>
-      <header className="flex items-baseline justify-between border-b border-gray-200 pb-2">
-        <h2 id={`tier-${tier.id}`} className="text-lg font-semibold text-navy-900">
+      <header className="flex items-baseline justify-between border-b border-muted pb-2">
+        <h2 id={`tier-${tier.id}`} className="text-lg font-semibold text-main">
           {tier.label}
         </h2>
         <TierScopeNote tier={tier} effectiveCountry={effectiveCountry} />
       </header>
 
-      <ul className="mt-3 divide-y divide-gray-200 rounded-lg border border-gray-200">
+      <ul className="mt-3 divide-y divide-muted rounded-lg border border-muted">
         {allJobs.map((j) => (
           <JobRow key={`${tier.id}-${j.id}`} result={j} />
         ))}
@@ -269,7 +265,9 @@ function TierScopeNote({ tier, effectiveCountry }: { tier: FeedTier; effectiveCo
     );
   }
   if (!parts.length) return null;
-  return <span className="text-xs uppercase tracking-wide text-gray-500">{parts.join(' · ')}</span>;
+  return (
+    <span className="text-xs uppercase tracking-wide text-secondary">{parts.join(' · ')}</span>
+  );
 }
 
 // Invisible sentinel + small loading row. Stable IntersectionObserver
@@ -314,11 +312,11 @@ function InfiniteSentinel({ onVisible, busy }: { onVisible: () => void; busy: bo
     <div ref={ref} className="mt-4 flex items-center justify-center py-4" aria-hidden={!busy}>
       {busy ? (
         <div
-          className="flex items-center gap-2 text-sm text-gray-500"
+          className="flex items-center gap-2 text-sm text-secondary"
           role="status"
           aria-live="polite"
         >
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-navy-700" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-strong border-t-accent-500" />
           <LoadingMoreLabel />
         </div>
       ) : (
@@ -343,10 +341,10 @@ function CascadeSkeleton() {
     <div className="mt-2 space-y-10">
       {[0, 1, 2].map((i) => (
         <section key={i}>
-          <div className="h-5 w-40 rounded bg-gray-200" />
-          <ul className="mt-3 space-y-px rounded-lg border border-gray-200">
+          <div className="h-5 w-40 rounded bg-surface-muted" />
+          <ul className="mt-3 space-y-px rounded-lg border border-muted">
             {Array.from({ length: 5 }).map((_, k) => (
-              <li key={k} className="h-20 animate-pulse bg-gray-100" />
+              <li key={k} className="h-20 animate-pulse bg-surface-muted" />
             ))}
           </ul>
         </section>

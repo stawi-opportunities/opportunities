@@ -68,7 +68,7 @@ export default function FlagModal({ slug }: { slug: string }) {
           reset();
           setOpen(true);
         }}
-        className="mt-6 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-red-700"
+        className="mt-6 inline-flex items-center gap-1 text-sm text-secondary hover:text-red-600"
       >
         <span aria-hidden>⚠</span>
         {t('flag.trigger')}
@@ -88,34 +88,30 @@ export default function FlagModal({ slug }: { slug: string }) {
     >
       <div
         ref={dialogRef}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-surface p-6 shadow-xl"
       >
-        <h3 id="flag-modal-title" className="text-lg font-semibold text-gray-900">
+        <h3 id="flag-modal-title" className="text-lg font-semibold text-main">
           {t('flag.title')}
         </h3>
 
         {state.kind === 'ok' ? (
-          <div className="mt-4 space-y-3 text-sm text-gray-700">
+          <div className="mt-4 space-y-3 text-sm text-secondary">
             <p>{t('flag.thankYou')}</p>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded bg-navy-700 px-4 py-2 text-sm font-medium text-white"
-            >
+            <button type="button" onClick={() => setOpen(false)} className="btn-primary px-4 py-2">
               {t('cta.close')}
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
             <div>
-              <label htmlFor="flag-reason" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="flag-reason" className="block text-sm font-medium text-main">
                 {t('flag.reason')}
               </label>
               <select
                 id="flag-reason"
                 value={reason}
                 onChange={(e) => setReason((e.target as HTMLSelectElement).value)}
-                className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 block w-full rounded border border-muted bg-surface px-3 py-2 text-sm text-main"
               >
                 {REASON_KEYS.map((r) => (
                   <option key={r.value} value={r.value}>
@@ -126,7 +122,7 @@ export default function FlagModal({ slug }: { slug: string }) {
             </div>
 
             <div>
-              <label htmlFor="flag-description" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="flag-description" className="block text-sm font-medium text-main">
                 {t('flag.details')}
               </label>
               <textarea
@@ -135,22 +131,22 @@ export default function FlagModal({ slug }: { slug: string }) {
                 onChange={(e) => setDescription((e.target as HTMLTextAreaElement).value)}
                 maxLength={MAX_DESCRIPTION}
                 rows={4}
-                className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 block w-full rounded border border-muted bg-surface px-3 py-2 text-sm text-main"
                 placeholder={t('flag.detailsPlaceholder')}
               />
-              <p className="mt-1 text-right text-xs text-gray-500">
+              <p className="mt-1 text-right text-xs text-secondary">
                 {description.length}/{MAX_DESCRIPTION}
               </p>
             </div>
 
             {state.kind === 'duplicate' && (
-              <p className="text-sm text-amber-700">{t('flag.alreadyFlagged')}</p>
+              <p className="text-sm text-amber-500">{t('flag.alreadyFlagged')}</p>
             )}
             {state.kind === 'unauthorized' && (
-              <p className="text-sm text-red-700">{t('flag.signInRequired')}</p>
+              <p className="text-sm text-red-500">{t('flag.signInRequired')}</p>
             )}
             {state.kind === 'error' && (
-              <p className="text-sm text-red-700">
+              <p className="text-sm text-red-500">
                 {t('error.submitFlag')} {state.message}
               </p>
             )}
@@ -159,14 +155,14 @@ export default function FlagModal({ slug }: { slug: string }) {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700"
+                className="rounded border border-muted px-4 py-2 text-sm text-secondary hover:bg-surface-muted"
               >
                 {t('cta.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={state.kind === 'submitting'}
-                className="rounded bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-red-700"
               >
                 {state.kind === 'submitting' ? t('flag.submitting') : t('flag.submitButton')}
               </button>
