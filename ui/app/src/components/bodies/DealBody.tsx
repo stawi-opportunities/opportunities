@@ -10,9 +10,9 @@ export default function DealBody({ snap }: { snap: OpportunitySnapshot }) {
 
   return (
     <>
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-secondary">
         {typeof discount === 'number' && (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+          <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-xs font-semibold text-accent-500">
             {discount}
             {t('deal.percentOff')}
           </span>
@@ -37,8 +37,8 @@ export default function DealBody({ snap }: { snap: OpportunitySnapshot }) {
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</dt>
-      <dd className={mono ? 'mt-1 font-mono text-sm text-gray-900' : 'mt-1 text-sm text-gray-900'}>
+      <dt className="text-xs font-medium uppercase tracking-wide text-secondary">{label}</dt>
+      <dd className={mono ? 'mt-1 font-mono text-sm text-main' : 'mt-1 text-sm text-main'}>
         {value}
       </dd>
     </div>

@@ -44,11 +44,11 @@ export default function Search() {
         <SearchForm value={params} onChange={(next) => setParams(next)} />
       </header>
 
-      <div className="flex items-center justify-between border-b border-gray-200 pb-3 md:hidden">
+      <div className="flex items-center justify-between border-b border-muted pb-3 md:hidden">
         <button
           type="button"
           onClick={() => setFiltersOpen(true)}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-muted bg-surface px-4 py-2 text-sm font-medium text-secondary shadow-sm"
         >
           <svg
             className="h-4 w-4"
@@ -66,14 +66,16 @@ export default function Search() {
           </svg>
           {t('search.filters')}
           {hasActiveFilters && (
-            <span className="rounded-full bg-navy-900 px-2 py-0.5 text-xs text-white">&bull;</span>
+            <span className="rounded-full bg-accent-500 px-2 py-0.5 text-xs text-white">
+              &bull;
+            </span>
           )}
         </button>
         {hasActiveFilters && (
           <button
             type="button"
             onClick={clearAll}
-            className="text-sm text-gray-600 hover:text-gray-900"
+            className="text-sm text-secondary hover:text-main"
           >
             {t('search.clearAll')}
           </button>
@@ -120,18 +122,18 @@ export default function Search() {
             hasActiveFilters={hasActiveFilters}
             onClear={clearAll}
           />
-          <div className="sticky bottom-0 mt-6 flex gap-3 border-t border-gray-200 bg-white px-4 py-3">
+          <div className="sticky bottom-0 mt-6 flex gap-3 border-t border-muted bg-surface px-4 py-3">
             <button
               type="button"
               onClick={clearAll}
-              className="min-h-[44px] flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700"
+              className="min-h-[44px] flex-1 rounded-md border border-muted bg-surface px-4 py-2 text-sm font-medium text-secondary"
             >
               {t('search.clearAll')}
             </button>
             <button
               type="button"
               onClick={() => setFiltersOpen(false)}
-              className="min-h-[44px] flex-1 rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white"
+              className="btn-primary min-h-[44px] flex-1 px-4"
             >
               {t('search.showResults')}
             </button>
@@ -169,16 +171,16 @@ function MobileDrawer({
     >
       <div
         ref={panelRef}
-        className="mt-auto flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl bg-white animate-slide-up"
+        className="mt-auto flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl bg-surface animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-          <h2 className="text-base font-semibold text-gray-900">{t('search.filters')}</h2>
+        <div className="flex items-center justify-between border-b border-muted px-4 py-3">
+          <h2 className="text-base font-semibold text-main">{t('search.filters')}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('cta.close')}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100"
+            className="rounded p-1 text-secondary hover:bg-surface-muted"
           >
             <svg
               className="h-5 w-5"

@@ -47,16 +47,16 @@ export default function HowToApplySection({
 
   return (
     <section
-      className="mt-10 rounded-lg border border-navy-100 bg-navy-50/40 p-5"
+      className="mt-10 rounded-lg border border-muted bg-surface-muted p-5"
       aria-labelledby="how-to-apply-heading"
     >
-      <h2 id="how-to-apply-heading" className="text-lg font-semibold text-gray-900">
+      <h2 id="how-to-apply-heading" className="text-lg font-semibold text-main">
         {t('job.howToApply')}
       </h2>
 
       {locked ? (
         <div className="mt-3 space-y-3">
-          <p className="text-sm text-gray-600">{t('job.howToApplyLocked')}</p>
+          <p className="text-sm text-secondary">{t('job.howToApplyLocked')}</p>
           <div className="flex flex-wrap gap-2">
             {!authed ? (
               <a href="/login/" className="btn-primary text-sm">
@@ -69,24 +69,20 @@ export default function HowToApplySection({
           </div>
         </div>
       ) : q.isLoading ? (
-        <p className="mt-3 text-sm text-gray-500">{t('common.loading')}</p>
+        <p className="mt-3 text-sm text-secondary">{t('common.loading')}</p>
       ) : q.isError ? (
         <div className="mt-3 space-y-2">
-          <p className="text-sm text-red-600">{t('howToApply.fetchError')}</p>
-          <button
-            type="button"
-            onClick={() => q.refetch()}
-            className="min-h-[44px] rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white"
-          >
+          <p className="text-sm text-red-500">{t('howToApply.fetchError')}</p>
+          <button type="button" onClick={() => q.refetch()} className="btn-primary px-4">
             {t('howToApply.retry')}
           </button>
         </div>
       ) : body ? (
-        <div className="prose prose-slate mt-3 max-w-none whitespace-pre-line text-sm text-gray-800">
+        <div className="prose prose-slate mt-3 max-w-none whitespace-pre-line text-sm text-main dark:prose-invert">
           {body}
         </div>
       ) : (
-        <p className="mt-3 text-sm text-gray-600">{t('job.howToApplyEmpty')}</p>
+        <p className="mt-3 text-sm text-secondary">{t('job.howToApplyEmpty')}</p>
       )}
     </section>
   );

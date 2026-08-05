@@ -12,12 +12,14 @@ export default function FundingBody({ snap }: { snap: OpportunitySnapshot }) {
 
   return (
     <>
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-secondary">
         {focus && (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize">{focus}</span>
+          <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs capitalize">
+            {focus}
+          </span>
         )}
         {grant && (
-          <span className="font-medium text-emerald-700">
+          <span className="font-medium text-accent-500">
             {t('funding.grant')}: {grant}
           </span>
         )}
@@ -41,8 +43,8 @@ export default function FundingBody({ snap }: { snap: OpportunitySnapshot }) {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value}</dd>
+      <dt className="text-xs font-medium uppercase tracking-wide text-secondary">{label}</dt>
+      <dd className="mt-1 text-sm text-main">{value}</dd>
     </div>
   );
 }

@@ -32,14 +32,16 @@ export default function JobBody({ snap }: { snap: OpportunitySnapshot }) {
 
   return (
     <>
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-secondary">
         {employmentType && (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{employmentType}</span>
+          <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs">
+            {employmentType}
+          </span>
         )}
         {seniority && (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{seniority}</span>
+          <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs">{seniority}</span>
         )}
-        {money && <span className="font-medium text-emerald-700">{money}</span>}
+        {money && <span className="font-medium text-accent-500">{money}</span>}
       </div>
 
       {(skillsRequired.length > 0 || skillsNice.length > 0) && (
@@ -49,12 +51,12 @@ export default function JobBody({ snap }: { snap: OpportunitySnapshot }) {
           </h2>
           {skillsRequired.length > 0 && (
             <>
-              <h3 className="text-sm font-semibold text-gray-700">{t('job.skillsRequired')}</h3>
+              <h3 className="text-sm font-semibold text-main">{t('job.skillsRequired')}</h3>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {skillsRequired.map((s) => (
                   <li
                     key={s}
-                    className="rounded border border-navy-200 bg-navy-50 px-3 py-1 text-sm text-navy-900"
+                    className="rounded border border-muted bg-surface-muted px-3 py-1 text-sm text-main"
                   >
                     {s}
                   </li>
@@ -64,12 +66,13 @@ export default function JobBody({ snap }: { snap: OpportunitySnapshot }) {
           )}
           {skillsNice.length > 0 && (
             <>
-              <h3 className="mt-4 text-sm font-semibold text-gray-700">
-                {t('job.skillsNiceToHave')}
-              </h3>
+              <h3 className="mt-4 text-sm font-semibold text-main">{t('job.skillsNiceToHave')}</h3>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {skillsNice.map((s) => (
-                  <li key={s} className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700">
+                  <li
+                    key={s}
+                    className="rounded-full bg-surface-muted px-3 py-1 text-sm text-secondary"
+                  >
                     {s}
                   </li>
                 ))}

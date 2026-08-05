@@ -26,7 +26,7 @@ export default function SkipToContent() {
     <a
       ref={ref}
       href={`#${MAIN_ID}`}
-      className="fixed -top-40 left-4 z-[9999] rounded bg-white px-4 py-2 text-sm font-medium text-navy-700 shadow-lg transition-all duration-200 focus:top-4 focus:outline-none focus:ring-2 focus:ring-navy-500"
+      className="fixed -top-40 left-4 z-[9999] rounded bg-surface px-4 py-2 text-sm font-medium text-main shadow-lg transition-all duration-200 focus:top-4 focus:outline-none focus:ring-2 focus:ring-accent-500"
       onClick={(e) => {
         e.preventDefault();
         const main = document.getElementById(MAIN_ID);

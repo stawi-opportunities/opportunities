@@ -151,15 +151,11 @@ export default function AuthCallback() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
         <div className="w-full max-w-md text-center">
-          <h1 className="text-xl font-semibold text-gray-900">Sign-in didn&apos;t complete</h1>
-          <p className="mt-3 text-sm text-gray-600">{error}</p>
+          <h1 className="text-xl font-semibold text-main">Sign-in didn&apos;t complete</h1>
+          <p className="mt-3 text-sm text-secondary">{error}</p>
           <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             {showContinue ? (
-              <button
-                type="button"
-                onClick={continueToApp}
-                className="inline-flex items-center rounded-md bg-navy-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
-              >
+              <button type="button" onClick={continueToApp} className="btn-primary px-5 py-2.5">
                 Continue to app
               </button>
             ) : (
@@ -170,14 +166,14 @@ export default function AuthCallback() {
                   completionPromise = null;
                   void login();
                 }}
-                className="inline-flex items-center rounded-md bg-navy-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-navy-800"
+                className="btn-primary px-5 py-2.5"
               >
                 Sign in again
               </button>
             )}
             <a
               href="/"
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              className="inline-flex items-center rounded-md border border-muted bg-surface px-5 py-2.5 text-sm font-medium text-secondary shadow-sm hover:bg-surface-muted"
             >
               Back to home
             </a>
@@ -194,7 +190,7 @@ export default function AuthCallback() {
           className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-accent-500 border-t-transparent"
           aria-label="Completing sign in"
         />
-        <p className="mt-4 text-gray-600">Completing sign in…</p>
+        <p className="mt-4 text-secondary">Completing sign in…</p>
       </div>
     </div>
   );

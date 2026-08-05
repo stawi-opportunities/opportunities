@@ -9,11 +9,11 @@
 
 <section class="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
   <header>
-    <p class="text-sm font-semibold uppercase tracking-wide text-accent-600">Jobs in {{ $name }}</p>
-    <h1 class="mt-2 text-3xl font-bold tracking-tight text-navy-900 sm:text-4xl">
+    <p class="text-sm font-semibold uppercase tracking-wide text-accent-500">Jobs in {{ $name }}</p>
+    <h1 class="mt-2 text-3xl font-bold tracking-tight text-main sm:text-4xl">
       The freshest jobs in {{ $name }}
     </h1>
-    <p class="mt-3 max-w-2xl text-base text-gray-700">
+    <p class="mt-3 max-w-2xl text-base text-secondary">
       Local listings first — same-language matches at the top, then
       regional opportunities, then worldwide. Sign in to layer your
       own preferences on top.
@@ -25,10 +25,10 @@
        data-locale-languages="{{ delimit $langs `,` }}"
        class="mt-8">
     <noscript>
-      <div class="rounded-md bg-amber-50 p-4 text-sm text-amber-800">
+      <div class="rounded-md border border-muted bg-surface p-4 text-sm text-secondary">
         JavaScript is required to browse the live feed. The full
         catalogue is crawled at
-        <a class="underline" href="/search/">/search/</a>.
+        <a class="underline text-accent-500" href="/search/">/search/</a>.
       </div>
     </noscript>
   </div>

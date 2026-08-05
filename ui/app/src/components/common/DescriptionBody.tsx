@@ -23,5 +23,11 @@ export default function DescriptionBody({ html, ariaLabel }: { html?: string; ar
     }
   }, [html]);
 
-  return <section ref={ref} className="prose prose-slate mt-8 max-w-none" aria-label={ariaLabel} />;
+  return (
+    <section
+      ref={ref}
+      className="prose prose-slate mt-8 max-w-none dark:prose-invert"
+      aria-label={ariaLabel}
+    />
+  );
 }

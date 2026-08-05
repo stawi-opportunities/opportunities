@@ -45,7 +45,7 @@ export default function JobList() {
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-4">
-            <h1 className="text-3xl font-bold text-gray-900">All jobs</h1>
+            <h1 className="text-3xl font-bold text-main">All jobs</h1>
             <a href="/onboarding/" className="btn-primary hidden sm:inline-flex">
               Create profile
             </a>
@@ -60,10 +60,10 @@ export default function JobList() {
                   onClick={() => toggle(chip)}
                   aria-pressed={on}
                   className={[
-                    'inline-flex items-center rounded-full border px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500',
+                    'inline-flex items-center rounded-full border px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
                     on
-                      ? 'border-navy-900 bg-navy-900 text-white'
-                      : 'border-gray-300 bg-white text-gray-700 hover:border-navy-700 hover:text-navy-900',
+                      ? 'border-accent-500 bg-accent-500/10 text-accent-500'
+                      : 'border-muted-strong bg-surface text-secondary hover:border-accent-500/50 hover:text-main',
                   ].join(' ')}
                 >
                   {chip.label}
@@ -74,7 +74,7 @@ export default function JobList() {
               <button
                 type="button"
                 onClick={() => setActive({})}
-                className="ml-1 text-sm text-gray-500 hover:text-gray-900 underline"
+                className="ml-1 text-sm text-secondary hover:text-main underline"
               >
                 Clear
               </button>
@@ -90,15 +90,15 @@ export default function JobList() {
           </div>
         </div>
         <aside className="hidden w-64 shrink-0 lg:block">
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-800">Filters</h3>
+          <div className="rounded-xl border border-muted bg-surface p-5 shadow-sm">
+            <h3 className="text-sm font-semibold text-main">Filters</h3>
             <div className="mt-4">
               <SortPicker value={sort} onChange={setSort} />
             </div>
             <div className="mt-4 space-y-4">
               {['remote_type', 'employment_type', 'seniority'].map((key) => (
                 <div key={key}>
-                  <label className="block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  <label className="block text-xs font-medium uppercase tracking-wide text-secondary">
                     {key === 'remote_type'
                       ? 'Remote'
                       : key === 'employment_type'
@@ -114,7 +114,7 @@ export default function JobList() {
                           type="button"
                           onClick={() => toggle(c)}
                           aria-pressed={on}
-                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${on ? 'border-accent-600 bg-accent-50 text-accent-700' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-accent-400'}`}
+                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${on ? 'border-accent-500 bg-accent-500/10 text-accent-500' : 'border-muted bg-surface-muted text-secondary hover:border-accent-500/50'}`}
                         >
                           {c.label}
                         </button>
@@ -127,22 +127,19 @@ export default function JobList() {
                 <button
                   type="button"
                   onClick={() => setActive({})}
-                  className="w-full min-h-[44px] rounded-md border border-gray-200 py-1.5 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-900 transition-colors"
+                  className="w-full min-h-[44px] rounded-md border border-muted py-1.5 text-xs font-medium text-secondary hover:border-muted-strong hover:text-main transition-colors"
                 >
                   Clear all filters
                 </button>
               )}
             </div>
           </div>
-          <div className="mt-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-800">Looking for more?</h3>
-            <p className="mt-1 text-xs text-gray-500">
+          <div className="mt-4 rounded-xl border border-muted bg-surface p-5 shadow-sm">
+            <h3 className="text-sm font-semibold text-main">Looking for more?</h3>
+            <p className="mt-1 text-xs text-secondary">
               Use full search for keyword, location, and salary filters.
             </p>
-            <a
-              href="/search/"
-              className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-navy-900 px-4 py-2 text-xs font-semibold text-white hover:bg-navy-800 transition-colors"
-            >
+            <a href="/search/" className="btn-primary mt-3 inline-flex w-full px-4 py-2 text-xs">
               Advanced search →
             </a>
           </div>
