@@ -71,8 +71,16 @@ describe('OpportunitySideChat', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Send$/i }));
 
     await waitFor(() => expect(sendMeChat).toHaveBeenCalled());
-    const firstCall = sendMeChat.mock.calls[0]?.[0] as { message: string };
-    expect(firstCall.message).toMatch(/Production Engineering/);
+    const firstCall = sendMeChat.mock.calls[0]?.[0] as {
+      message: string;
+      context?: string;
+      opportunity?: { slug?: string; title?: string };
+    };
+    // User text stays clean; job context is structured, not inlined into the bubble.
+    expect(firstCall.message).toBe('What jobs are available in Uganda');
+    expect(firstCall.message).not.toMatch(/\[Viewing opportunity/);
+    expect(firstCall.context).toBe('opportunity');
+    expect(firstCall.opportunity?.slug).toBe('production-engineering');
     await waitFor(() =>
       expect(screen.getByText(/Tell me more about your preferences/i)).toBeInTheDocument()
     );
@@ -80,19 +88,47 @@ describe('OpportunitySideChat', () => {
     expect(screen.getAllByText('Production Engineering').length).toBeGreaterThan(0);
   });
 
-  it('restores prior conversation for continuity', async () => {
+  it('does not continue onboarding transcript in a job chat', async () => {
     fetchOnboardingDraft.mockResolvedValue({
       step: 2,
       fields: { target_job_title: 'Engineer' },
       messages: [
-        { role: 'user', content: 'Prior message' },
+        { role: 'user', content: 'Prior onboarding message' },
         { role: 'assistant', content: 'Prior reply from last session' },
       ],
     });
     renderChat();
     await waitFor(() =>
-      expect(screen.getByText(/Prior reply from last session/i)).toBeInTheDocument()
+      expect(screen.getByText(/You're viewing Production Engineering/i)).toBeInTheDocument()
     );
-    expect(screen.getByText(/Prior message/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Prior reply from last session/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Prior onboarding message/i)).not.toBeInTheDocument();
+  });
+
+  it('renders clean user content without viewing chrome', async () => {
+    sendMeChat.mockResolvedValue({
+      reply: 'Got it.',
+      fields: {},
+      missing: ['target_job_title'],
+      ready: false,
+      messages: [
+        {
+          role: 'user',
+          content:
+            '[Viewing opportunity: "Production Engineering" at Meta. slug=production-engineering]\n\nDo I fit this role?',
+        },
+        { role: 'assistant', content: 'Got it.' },
+      ],
+    });
+    renderChat();
+    await waitFor(() =>
+      expect(screen.getByText(/You're viewing Production Engineering/i)).toBeInTheDocument()
+    );
+    fireEvent.change(screen.getByLabelText(/Ask a question about this opportunity/i), {
+      target: { value: 'Do I fit this role?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/i }));
+    await waitFor(() => expect(screen.getByText('Do I fit this role?')).toBeInTheDocument());
+    expect(screen.queryByText(/\[Viewing opportunity/i)).not.toBeInTheDocument();
   });
 });

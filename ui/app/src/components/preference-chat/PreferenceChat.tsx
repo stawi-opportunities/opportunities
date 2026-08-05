@@ -26,6 +26,7 @@ import {
 import { uploadCV } from '@/api/profile';
 import { missingChatFields } from '@/onboarding/chatHeuristic';
 import type { PlanId } from '@/utils/plans';
+import { displayUserContent, filterPlacementMessages } from '@/utils/chatDisplay';
 import { FIELD_LABELS } from './mapFields';
 
 export type PreferenceChatMode = 'intake' | 'refine';
@@ -324,7 +325,7 @@ export function PreferenceChat({
   const greeting = welcome ?? landingTitle(userName, mode);
   const seed = applyCvOnFile(initialFields, cvOnFile);
   const [messages, setMessages] = useState<OnboardingChatMessage[]>(() =>
-    initialMessages?.length ? initialMessages : []
+    initialMessages?.length ? filterPlacementMessages(initialMessages) : []
   );
   const [fields, setFields] = useState<OnboardingChatFields>(seed.fields);
   const [missing, setMissing] = useState<string[]>(() => seed.missing);
@@ -364,7 +365,7 @@ export function PreferenceChat({
       setReady(next.ready);
     }
     if (hasMsgs && initialMessages?.length) {
-      setMessages(initialMessages);
+      setMessages(filterPlacementMessages(initialMessages));
     }
   }, [initialFields, initialMessages, cvOnFile]);
 
@@ -375,7 +376,7 @@ export function PreferenceChat({
     if (!initialMessages?.length) return;
     setMessages((prev) => {
       if (prev.length > 0) return prev;
-      return initialMessages;
+      return filterPlacementMessages(initialMessages);
     });
   }, [initialMessages, sending]);
 
@@ -407,8 +408,9 @@ export function PreferenceChat({
     setError(null);
     setTouched(true);
     const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
-    const display =
-      opts.display || message || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
+    const display = displayUserContent(
+      opts.display || message || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…')
+    );
     setWaitingText(display);
     setMessages((prev) => [...prev, { role: 'user', content: display }]);
     setInput('');
@@ -419,6 +421,7 @@ export function PreferenceChat({
         draft: fields,
         cv_text: opts.cv_text,
         cv_filename: opts.cv_filename,
+        context: 'placement',
       });
       let nextFields = res.fields;
       if (cvOnFile && !nextFields.extra_info?.trim()) {
@@ -439,14 +442,18 @@ export function PreferenceChat({
         setPlacementSummary(res.placement_summary.trim());
       }
       // Prefer full server transcript; never shrink history to a single turn
-      // (local fallback used to return only the last pair).
+      // (local fallback used to return only the last pair). Always strip any
+      // legacy job-view chrome from user bubbles.
       const appended: OnboardingChatMessage[] = [
         ...history,
         { role: 'user', content: display },
         { role: 'assistant', content: res.reply },
       ];
-      const nextMsgs: OnboardingChatMessage[] =
+      let nextMsgs: OnboardingChatMessage[] =
         res.messages && res.messages.length >= appended.length ? res.messages : appended;
+      nextMsgs = filterPlacementMessages(nextMsgs).map((m) =>
+        m.role === 'user' ? { ...m, content: displayUserContent(m.content) } : m
+      );
       setMessages(nextMsgs);
       onFieldsChange?.(nextFields, {
         ready: isReady,
@@ -877,16 +884,15 @@ export function PreferenceChat({
         <div className="flex flex-col gap-5">
           {messages.map((m, i) => {
             if (m.role === 'user') {
-              const cvName = cvFilenameFromContent(m.content);
+              const text = displayUserContent(m.content);
+              const cvName = cvFilenameFromContent(text);
               return (
                 <div key={`u-${i}`} className="flex justify-end">
-                  {/* Meta-style: soft gray pill on the right */}
+                  {/* Soft rounded rect — not rounded-full (avoids oval pills). */}
                   <div
-                    className={`max-w-[min(85%,28rem)] rounded-full px-4 py-2.5 text-[15px] leading-relaxed text-stone-900 dark:text-stone-100 ${
-                      cvName
-                        ? 'rounded-2xl bg-[#f0f2f5] font-medium dark:bg-navy-800'
-                        : 'bg-[#f0f2f5] dark:bg-navy-800'
-                    }`}
+                    className={`max-w-[min(85%,28rem)] rounded-xl bg-[#f0f2f5] px-3.5 py-2 text-[15px] leading-relaxed text-stone-900 dark:bg-navy-800 dark:text-stone-100 ${
+                      text.includes('\n') ? 'whitespace-pre-wrap' : ''
+                    } ${cvName ? 'font-medium' : ''}`}
                   >
                     {cvName ? (
                       <span className="inline-flex items-center gap-2">
@@ -903,7 +909,7 @@ export function PreferenceChat({
                         {cvName}
                       </span>
                     ) : (
-                      m.content
+                      text
                     )}
                   </div>
                 </div>

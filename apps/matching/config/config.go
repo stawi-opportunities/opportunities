@@ -177,10 +177,9 @@ type CandidatesConfig struct {
 	CheckoutPublicBaseURL string `env:"CHECKOUT_PUBLIC_BASE_URL" envDefault:"https://pay.stawi.org"`
 
 	// ChatAgentServiceURI is the platform chat-agent Connect base
-	// (e.g. https://api.stawi.org/chat-agent). When empty, /me/chat uses
-	// the local MeChatHandler only.
+	// (e.g. https://api.stawi.org/chat-agent). Required for /me/chat.
 	ChatAgentServiceURI string `env:"CHAT_AGENT_SERVICE_URI" envDefault:""`
-	// ChatAgentEnabled routes /me/chat through chat-agent when URI is set.
-	// Falls back to local handler on agent errors so SPA stays usable.
+	// ChatAgentEnabled must be true with a non-empty URI. There is no local
+	// MeChatHandler fallback — misconfig returns 503 on /me/chat.
 	ChatAgentEnabled bool `env:"CHAT_AGENT_ENABLED" envDefault:"false"`
 }

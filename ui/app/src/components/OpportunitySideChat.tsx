@@ -1,7 +1,10 @@
 /**
  * Meta-style sticky side chat for opportunity detail pages.
  * Visible as a right rail on xl+; on smaller screens a FAB opens a slide-over.
- * Reuses POST /me/chat so resume + preference context continues across pages.
+ *
+ * Each job gets its own conversation (context=opportunity + slug). Candidate
+ * placement fields/CV seed the agent, but onboarding intake transcript is
+ * never continued here.
  */
 
 import {
@@ -24,6 +27,7 @@ import type { OpportunitySnapshot } from '@/types/snapshot';
 import { profileToChatFields } from '@/components/preference-chat/mapFields';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { useAuth } from '@/providers/AuthProvider';
+import { displayUserContent } from '@/utils/chatDisplay';
 
 function locationLine(snap: OpportunitySnapshot): string {
   const parts = [
@@ -134,7 +138,8 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
 
   const card = opportunityCardFromSnap(snap);
 
-  // Load prior onboarding conversation for continuity.
+  // Seed placement fields/CV only. Job threads start fresh — never continue
+  // onboarding intake history in this rail.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -142,12 +147,7 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
       if (cancelled) return;
       const seeded = profileToChatFields(profileQ.data, draft.fields);
       setFields(seeded);
-      const prior = draft.messages ?? [];
-      if (prior.length > 0) {
-        setMessages(prior);
-      } else {
-        setMessages([{ role: 'assistant', content: buildWelcome(snap) }]);
-      }
+      setMessages([{ role: 'assistant', content: buildWelcome(snap) }]);
       setHydrated(true);
     })();
     return () => {
@@ -165,20 +165,19 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
       const hasCv = Boolean(opts.cv_text?.trim());
       if ((!raw && !hasCv) || sending) return;
 
-      const display =
-        opts.display || raw || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
-
-      // Include opportunity context for the model without cluttering the UI bubble.
-      const contextPrefix = `[Viewing opportunity: "${snap.title}" at ${snap.issuing_entity}${
-        locationLine(snap) ? `, ${locationLine(snap)}` : ''
-      }. slug=${snap.slug}]\n\n`;
-      const apiMessage = hasCv
-        ? `${contextPrefix}${raw || `I've attached my CV (${opts.cv_filename}).`}`
-        : `${contextPrefix}${raw}`;
+      const display = displayUserContent(
+        opts.display || raw || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…')
+      );
+      // Clean user text only — job context goes via opportunity{} + runtime.
+      const apiMessage = hasCv ? raw || `I've attached my CV (${opts.cv_filename}).` : raw;
 
       setSending(true);
       setError(null);
-      const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
+      // Job-local history only (exclude the synthetic welcome from model history
+      // is fine — server uses chat-agent session; client history is fallback).
+      const history = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => (m.role === 'user' ? { ...m, content: displayUserContent(m.content) } : m));
       setMessages((prev) => [...prev, { role: 'user', content: display }]);
       setInput('');
 
@@ -208,8 +207,12 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
           { role: 'user', content: display },
           { role: 'assistant', content: res.reply },
         ];
-        const next =
-          res.messages && res.messages.length >= appended.length ? res.messages : appended;
+        // Prefer server transcript when it has at least this turn pair, but
+        // always show clean user content in the bubble.
+        let next = res.messages && res.messages.length >= appended.length ? res.messages : appended;
+        next = next.map((m) =>
+          m.role === 'user' ? { ...m, content: displayUserContent(m.content) } : m
+        );
         setMessages(next);
         setShowCurrentCard(true);
       } catch (e) {
@@ -310,15 +313,16 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
         {!hydrated && <p className="text-center text-sm text-stone-400">Loading conversation…</p>}
         {messages.map((m, i) => {
           if (m.role === 'user') {
-            const cvName = cvFilenameFromContent(m.content);
+            const text = displayUserContent(m.content);
+            const cvName = cvFilenameFromContent(text);
             return (
               <div key={`u-${i}`} className="flex justify-end">
                 <div
-                  className={`max-w-[90%] rounded-full bg-[#f0f2f5] px-3.5 py-2 text-[13.5px] leading-relaxed text-stone-900 dark:bg-navy-800 dark:text-stone-100 ${
-                    cvName ? 'rounded-2xl font-medium' : ''
-                  }`}
+                  className={`max-w-[90%] rounded-xl bg-[#f0f2f5] px-3.5 py-2 text-[13.5px] leading-relaxed text-stone-900 dark:bg-navy-800 dark:text-stone-100 ${
+                    text.includes('\n') ? 'whitespace-pre-wrap' : ''
+                  } ${cvName ? 'font-medium' : ''}`}
                 >
-                  {cvName ?? m.content}
+                  {cvName ?? text}
                 </div>
               </div>
             );
