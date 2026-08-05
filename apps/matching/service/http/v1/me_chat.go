@@ -23,7 +23,11 @@ type MeChatLLM interface {
 	Complete(ctx context.Context, prompt string) (string, error)
 }
 
-// MeChatDeps wires the shared preference / intake chat turn handler.
+// MeChatDeps wires the local heuristic/LLM chat turn handler.
+//
+// Production always uses MeChatAgentHandler (platform chat-agent). MeChatHandler
+// remains only for unit tests of field assessment / draft persistence helpers.
+// It is not mounted on POST /me/chat.
 type MeChatDeps struct {
 	LLM MeChatLLM // optional
 	// Drafts optionally persists the conversation + extracted fields so
