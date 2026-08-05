@@ -42,6 +42,15 @@ CHAT_AGENT_ENABLED=true
 | CreateSession error | `502 chat_agent_session_failed` |
 | Turn error | `502 chat_agent_turn_failed` |
 
+### Edge + deploy prerequisites
+
+| Requirement | Where |
+|-------------|--------|
+| Edge route `/chat-agent` enabled with live `*.run.app` origin | `cloud.deployment` `edge/cloudflare-api-gateway/config/routes.prod.json` |
+| Matching image pin in AR `ghcr-mirror` | `apps/opportunities-matching/cloudrun/envs/stawi-prod.tfvars` |
+| Auto-mirror missing AR tags from GHCR on apply | `app-tofu` step (needs repo secret `GHCR_TOKEN` with `read:packages` if package is private) |
+| Cloud Run probes | Frame: startup `/readyz`, liveness `/livez` |
+
 ## SPA contracts
 
 ### Placement / onboarding
