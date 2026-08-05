@@ -47,8 +47,8 @@ CHAT_AGENT_ENABLED=true
 | Requirement | Where |
 |-------------|--------|
 | Edge route `/chat-agent` enabled with live `*.run.app` origin | `cloud.deployment` `edge/cloudflare-api-gateway/config/routes.prod.json` |
-| Matching image pin in AR `ghcr-mirror` | `apps/opportunities-matching/cloudrun/envs/stawi-prod.tfvars` |
-| Auto-mirror missing AR tags from GHCR on apply | `app-tofu` step (needs repo secret `GHCR_TOKEN` with `read:packages` if package is private) |
+| Matching image pin (public GHCR) | `ghcr.io/stawi-opportunities/opportunities-matching:<tag>` in matching tfvars |
+| GHCR packages public | Release runs `make-ghcr-public` (or org secret `GHCR_ADMIN_TOKEN`) |
 | Cloud Run probes | Frame: startup `/readyz`, liveness `/livez` |
 
 ## SPA contracts

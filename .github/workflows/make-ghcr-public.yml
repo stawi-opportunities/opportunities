@@ -1,0 +1,95 @@
+name: Make GHCR packages public
+
+# Mark org container packages public so Cloud Run can pull ghcr.io/... directly
+# (no Artifact Registry mirrors). Prefer GHCR_ADMIN_TOKEN (classic PAT with
+# write:packages) if GITHUB_TOKEN cannot change visibility.
+
+on:
+  workflow_call:
+    inputs:
+      packages:
+        description: Comma-separated package names
+        required: false
+        type: string
+        default: "opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker"
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: Comma-separated package names (empty = opportunities-* defaults)
+        required: false
+        default: "opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publicize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve token
+        id: tok
+        env:
+          ADMIN: ${{ secrets.GHCR_ADMIN_TOKEN }}
+          FALLBACK: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -n "${ADMIN}" ]]; then
+            echo "using=GHCR_ADMIN_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "GH_TOKEN=${ADMIN}" >> "$GITHUB_ENV"
+          else
+            echo "using=GITHUB_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "GH_TOKEN=${FALLBACK}" >> "$GITHUB_ENV"
+            echo "::warning::GHCR_ADMIN_TOKEN not set; GITHUB_TOKEN may lack package visibility admin."
+          fi
+
+      - name: Publicize packages
+        env:
+          OWNER: ${{ github.repository_owner }}
+          INPUT_PACKAGES: ${{ inputs.packages || github.event.inputs.packages || 'opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker' }}
+        run: |
+          set -euo pipefail
+          make_public() {
+            local pkg="$1"
+            local enc
+            enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$pkg")
+            local vis
+            vis=$(gh api "orgs/${OWNER}/packages/container/${enc}" --jq .visibility 2>/dev/null || echo missing)
+            if [[ "$vis" == "missing" ]]; then
+              echo "SKIP missing: $pkg"
+              return 0
+            fi
+            if [[ "$vis" == "public" ]]; then
+              echo "OK already public: $pkg"
+              return 0
+            fi
+            echo "publicize $pkg (was $vis)..."
+            # Preferred: package visibility endpoint
+            gh api --method PUT "orgs/${OWNER}/packages/container/${enc}/visibility" \
+              -f visibility=public >/dev/null 2>&1 || true
+            vis=$(gh api "orgs/${OWNER}/packages/container/${enc}" --jq .visibility 2>/dev/null || echo missing)
+            if [[ "$vis" == "public" ]]; then
+              echo "OK public: $pkg"
+              return 0
+            fi
+            # Fallback PATCH package metadata
+            gh api --method PATCH "orgs/${OWNER}/packages/container/${enc}" \
+              -f visibility=public >/dev/null 2>&1 || true
+            vis=$(gh api "orgs/${OWNER}/packages/container/${enc}" --jq .visibility 2>/dev/null || echo missing)
+            if [[ "$vis" == "public" ]]; then
+              echo "OK public: $pkg"
+              return 0
+            fi
+            echo "::error::Failed to publicize $pkg (visibility=$vis). Set GHCR_ADMIN_TOKEN with write:packages as org package admin."
+            return 1
+          }
+
+          FAIL=0
+          IFS=',' read -ra PKGS <<< "${INPUT_PACKAGES}"
+          for pkg in "${PKGS[@]}"; do
+            pkg=$(echo "$pkg" | xargs)
+            [[ -z "$pkg" ]] && continue
+            make_public "$pkg" || FAIL=1
+          done
+          exit "$FAIL"
