@@ -230,8 +230,8 @@ SPA path uses synchronous Turn response for UX; events enable async workers and 
 
 ### Feature flags
 
-- `CHAT_AGENT_URI` — Connect base URL  
-- `CHAT_AGENT_ENABLED` — when false, legacy `MeChatHandler` path  
+- `CHAT_AGENT_URI` / `CHAT_AGENT_SERVICE_URI` — Connect base URL (required)  
+- `CHAT_AGENT_ENABLED` — must be true; no local `MeChatHandler` fallback (503/502 on failure)  
 - Optional shadow mode: dual-call and log field/ready diffs
 
 ### Prompt migration

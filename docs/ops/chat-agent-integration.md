@@ -34,8 +34,13 @@ CHAT_AGENT_ENABLED=true
 # OAuth: matching already requests audience /chat-agent (see cloud.deployment)
 ```
 
-When disabled or URI empty, `/me/chat` uses the local `MeChatHandler` (LLM/heuristic).
-Agent errors also fall back to local so the SPA never hard-fails.
+**Required.** There is no local `MeChatHandler` fallback.
+
+| Failure | Response |
+|---------|----------|
+| `CHAT_AGENT_*` unset / client nil | `503 chat_agent_unavailable` |
+| CreateSession error | `502 chat_agent_session_failed` |
+| Turn error | `502 chat_agent_turn_failed` |
 
 ## SPA contracts
 
@@ -66,6 +71,20 @@ Agent errors also fall back to local so the SPA never hard-fails.
 
 `OpportunitySideChat` sends this automatically. Sessions are keyed per
 candidate + context + opportunity slug so listing-specific threads stay separate.
+
+### Conversation boundaries (important)
+
+| Surface | Transcript | Seed | Persist |
+|---------|------------|------|---------|
+| Placement / onboarding (`context=placement`) | Intake only — collect matching profile fields | Prior intake messages + fields + CV | Full intake transcript + fields |
+| Opportunity side-chat (`context=opportunity`) | **Separate per job** | Candidate fields + CV + job runtime/docs — **not** intake messages | Fields only (never overwrites intake messages) |
+
+Onboarding must never continue a job conversation. Job chats may refine
+placement fields using the candidate’s complete profile, but job Q&A does not
+replace the conversation-grounded intake digest used for matching.
+
+User bubbles always show clean text. Job context is supplied via `opportunity{}`
+/ runtime — never as a `[Viewing opportunity: …]` prefix in the message body.
 
 ## Related jobs
 

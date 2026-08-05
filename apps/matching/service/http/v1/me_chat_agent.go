@@ -1,9 +1,7 @@
 package v1
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -71,11 +69,16 @@ type MeChatAgentDeps struct {
 	ensureOnce sync.Once
 }
 
-// MeChatAgentHandler is POST /me/chat when CHAT_AGENT_ENABLED.
-// SPA contract matches MeChatHandler; opportunity side-chat passes opportunity{}.
-func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.HandlerFunc {
+// MeChatAgentHandler is POST /me/chat — always the platform chat-agent path.
+// There is no local MeChatHandler fallback: misconfiguration or agent errors
+// surface as 503/502 so the SPA fails honestly.
+// Opportunity side-chat passes opportunity{}.
+func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 	if deps == nil || deps.Client == nil {
-		return fallback
+		return func(w http.ResponseWriter, r *http.Request) {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "chat_agent_unavailable",
+				"chat agent is not configured")
+		}
 	}
 	if deps.Sessions == nil {
 		deps.Sessions = &sessionStore{byKey: map[string]string{}}
@@ -149,7 +152,8 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			inline = chatagentclient.OpportunityViewContext()
 		}
 
-		// Load prior draft for seed fields + continuity.
+		// Load prior draft for seed fields. Placement messages are intake-only;
+		// opportunity threads never inherit or overwrite that transcript.
 		stored, _ := loadOnboardingEnvelope(ctx, deps.Drafts, candidateID)
 		priorFields := fieldsFromEnvelope(stored)
 		priorFields = hydrateCapabilities(ctx, MeChatDeps{
@@ -170,6 +174,10 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			})
 		}
 
+		// User-facing message stays clean. Job context is supplied via runtime +
+		// the opportunity document so session transcripts never show chrome.
+		userFacingMsg := stripViewingChrome(msg)
+
 		runtime := map[string]any{}
 		if mode == "opportunity" && in.Opportunity != nil {
 			op := in.Opportunity
@@ -184,23 +192,18 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 					Name: "opportunity", Kind: "listing", Text: truncateRunes(d, 12_000),
 				})
 			}
-			// Soft prompt the model with page context without polluting user bubble.
-			msg = fmt.Sprintf(
-				"[Viewing opportunity: %q at %s%s. slug=%s]\n\n%s",
-				op.Title, op.Entity,
-				func() string {
-					if op.Location == "" {
-						return ""
-					}
-					return ", " + op.Location
-				}(),
-				op.Slug, msg,
-			)
 		}
 
 		sessionKey := candidateID + "|" + contextKey
 		if mode == "opportunity" && in.Opportunity != nil {
 			sessionKey += "|" + in.Opportunity.Slug
+		}
+
+		// Placement: resume intake transcript. Opportunity: seed profile
+		// fields/docs only — never onboarding chat history.
+		var seedMsgs []chatagentclient.ChatMessage
+		if mode != "opportunity" {
+			seedMsgs = historyToAgent(filterPlacementMessages(stored.Messages))
 		}
 
 		sessionID := deps.Sessions.get(sessionKey)
@@ -211,15 +214,14 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 				InlineConfig:     &inline,
 				SeedFields:       seed,
 				Documents:        docs,
-				SeedMessages:     historyToAgent(stored.Messages),
+				SeedMessages:     seedMsgs,
 				Runtime:          runtime,
 				EvaluateEvidence: len(docs) > 0 || len(seed) > 0,
 			})
 			if cerr != nil {
-				log.WithError(cerr).Warn("me/chat: CreateSession failed; falling back to local handler")
-				// Rebuild body for fallback.
-				r.Body = io.NopCloser(bytesReader(body))
-				fallback(w, r)
+				log.WithError(cerr).Error("me/chat: CreateSession failed")
+				httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_session_failed",
+					"could not start chat session")
 				return
 			}
 			sessionID = sess.ID
@@ -239,16 +241,16 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 
 		tres, terr := deps.Client.Turn(ctx, chatagentclient.TurnRequest{
 			SessionID:  sessionID,
-			Message:    msg,
+			Message:    userFacingMsg,
 			Structured: structured,
 			Documents:  turnDocs,
 		})
 		if terr != nil {
-			log.WithError(terr).Warn("me/chat: Turn failed; falling back to local handler")
+			log.WithError(terr).Error("me/chat: Turn failed")
 			// Drop bad session cache so next request recreates.
 			deps.Sessions.set(sessionKey, "")
-			r.Body = io.NopCloser(bytesReader(body))
-			fallback(w, r)
+			httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_turn_failed",
+				"chat agent could not process that message")
 			return
 		}
 
@@ -265,7 +267,7 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 		ready := len(missing) == 0
 		reply := composeReply(tres.Reply, fields, missing, ready)
 
-		// Map agent messages to SPA shape.
+		// Map agent messages to SPA shape; always strip legacy viewing chrome.
 		var messages []onboardingChatMessage
 		if tres.Session != nil {
 			for _, m := range tres.Session.Messages {
@@ -273,23 +275,38 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			}
 		}
 		if len(messages) == 0 {
-			messages = appendChatTurn(sanitizeHistory(in.History), msg, reply)
+			// Opportunity: use client job-thread history only (not placement draft).
+			messages = appendChatTurn(sanitizeHistory(in.History), userFacingMsg, reply)
 		}
+		messages = sanitizeMessagesForClient(messages)
 
-		// Persist placement draft for resume across pages (SPA /me/onboarding).
+		// Placement/onboarding: persist full intake transcript.
+		// Opportunity: update placement fields only — never replace intake messages.
 		if deps.Drafts != nil && candidateID != "" {
-			if err := persistChatSession(ctx, MeChatDeps{Drafts: deps.Drafts}, candidateID, stored, fields, messages, ready); err != nil {
+			persistMsgs := messages
+			persistReady := ready
+			if mode == "opportunity" {
+				persistMsgs = filterPlacementMessages(stored.Messages)
+				// Don't advance wizard step solely from a job side-chat turn.
+				persistReady = false
+			}
+			if err := persistChatSession(ctx, MeChatDeps{Drafts: deps.Drafts}, candidateID, stored, fields, persistMsgs, persistReady); err != nil {
 				log.WithError(err).Warn("me/chat: draft persist failed")
 			}
 		}
 
 		// Placement rebuild remains matching's responsibility.
+		// Opportunity turns may refine fields but must not overwrite the
+		// conversation-grounded intake digest with job-specific Q&A.
 		var placementSummary string
 		placementReady := ready
 		if deps.Placement != nil && candidateID != "" {
-			turns := make([]placement.ChatTurn, 0, len(messages))
-			for _, m := range messages {
-				turns = append(turns, placement.ChatTurn{Role: m.Role, Content: m.Content})
+			var turns []placement.ChatTurn
+			if mode != "opportunity" {
+				turns = make([]placement.ChatTurn, 0, len(messages))
+				for _, m := range messages {
+					turns = append(turns, placement.ChatTurn{Role: m.Role, Content: m.Content})
+				}
 			}
 			res, pErr := deps.Placement.Rebuild(ctx, placement.RebuildInput{
 				CandidateID: candidateID,
@@ -323,8 +340,6 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 		_ = json.NewEncoder(w).Encode(out)
 	}
 }
-
-func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
 
 func fieldsToAgentMap(f onboardingChatFields) map[string]any {
 	m := map[string]any{}
@@ -418,4 +433,85 @@ func historyToAgent(msgs []onboardingChatMessage) []chatagentclient.ChatMessage 
 		out = append(out, chatagentclient.ChatMessage{Role: role, Content: m.Content})
 	}
 	return out
+}
+
+// stripViewingChrome removes the legacy "[Viewing opportunity: …]" prefix that
+// older clients/servers injected into user messages for the model.
+func stripViewingChrome(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "[Viewing opportunity:") {
+		return s
+	}
+	if i := strings.Index(s, "]"); i >= 0 && i+1 < len(s) {
+		return strings.TrimSpace(s[i+1:])
+	}
+	return ""
+}
+
+// isOpportunityThreadNoise identifies turns that belong to job side-chat and
+// must never appear in placement/onboarding intake history.
+func isOpportunityThreadNoise(m onboardingChatMessage) bool {
+	c := strings.TrimSpace(m.Content)
+	if c == "" {
+		return true
+	}
+	if strings.HasPrefix(c, "[Viewing opportunity:") {
+		return true
+	}
+	role := strings.ToLower(strings.TrimSpace(m.Role))
+	if role == "assistant" && strings.HasPrefix(c, "You're viewing ") {
+		return true
+	}
+	return false
+}
+
+// filterPlacementMessages drops job-side-chat chrome so intake transcripts stay
+// focused on matching-profile collection.
+func filterPlacementMessages(msgs []onboardingChatMessage) []onboardingChatMessage {
+	if len(msgs) == 0 {
+		return nil
+	}
+	out := make([]onboardingChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if isOpportunityThreadNoise(m) {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		content := m.Content
+		if role == "user" {
+			content = stripViewingChrome(content)
+			if strings.TrimSpace(content) == "" {
+				continue
+			}
+		}
+		out = append(out, onboardingChatMessage{Role: role, Content: content})
+	}
+	return out
+}
+
+// sanitizeMessagesForClient normalizes roles and strips viewing chrome so SPA
+// bubbles never render model-only prefixes.
+func sanitizeMessagesForClient(msgs []onboardingChatMessage) []onboardingChatMessage {
+	if len(msgs) == 0 {
+		return nil
+	}
+	out := make([]onboardingChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(m.Content)
+		if role == "user" {
+			content = stripViewingChrome(content)
+		}
+		if content == "" {
+			continue
+		}
+		out = append(out, onboardingChatMessage{
+			Role:    role,
+			Content: truncateRunes(content, 12_000),
+		})
+	}
+	return clampChatMessages(out, 80)
 }

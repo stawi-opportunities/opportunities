@@ -18,6 +18,7 @@ import {
   fieldsToDraft,
   summaryChips,
 } from '@/components/preference-chat';
+import { filterPlacementMessages } from '@/utils/chatDisplay';
 import { evaluateProfileReadiness } from '@/utils/profileReadiness';
 
 type Phase = 'chat' | 'plan';
@@ -127,7 +128,8 @@ export default function Onboarding() {
       const draft = await fetchOnboardingDraft();
       if (cancelled) return;
       let f = draftToChatFields(draft.fields);
-      let msgs = draft.messages ?? [];
+      // Onboarding never continues a job conversation — drop side-chat chrome.
+      let msgs = filterPlacementMessages(draft.messages ?? []);
       // Hydrate capabilities from stored CV / placement when draft is thin.
       const cv = await fetchMeCV();
       if (!cancelled && cv?.present) {

@@ -123,6 +123,9 @@ func handleOnboardingGet(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 		}
 	}
 
+	// Never surface job side-chat turns inside placement/onboarding resume.
+	out.Messages = filterPlacementMessages(out.Messages)
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
 }

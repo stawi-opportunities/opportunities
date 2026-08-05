@@ -37,7 +37,7 @@ Requires JWT (OIDC). Gateway may strip a `/matching` prefix.
 |---------|---------|
 | `GET /me/subscription` | Plan / paid status |
 | `GET /me/opportunities` | Unified feed (matches + saved + applications) |
-| `POST /me/chat` | Shared placement chat (prefs + qualifications intake). Body may include `context` (`placement` \| `opportunity`) and `opportunity{…}` for listing side-chat. When `CHAT_AGENT_ENABLED`, matching delegates turns to platform **chat-agent** (`/chat-agent`). |
+| `POST /me/chat` | Shared placement chat (prefs + qualifications intake). Body may include `context` (`placement` \| `opportunity`) and `opportunity{…}` for listing side-chat. Always delegates to platform **chat-agent** (`CHAT_AGENT_*` required; no local fallback — 503/502 on misconfig or agent errors). |
 | `GET/PUT /me/onboarding` | Onboarding draft + message transcript |
 | `PUT /me/cv` | CV → files service + sync placement summary |
 | `GET /me/cv` | File-id ref + qualifications from placement summary |

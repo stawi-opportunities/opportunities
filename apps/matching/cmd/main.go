@@ -610,21 +610,9 @@ func main() {
 	}))
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
-	// POST /me/chat ΓÇö shared preference / intake conversation (onboarding,
-	// dashboard refine, opportunity side-chat all embed the same widget).
-	// Prefer platform chat-agent when configured; local MeChatHandler is
-	// the fallback (and sole path when CHAT_AGENT_SERVICE_URI is empty).
-	var chatLLM httpv1.MeChatLLM
-	if extractor != nil {
-		chatLLM = extractor
-	}
-	localChat := httpv1.MeChatHandler(httpv1.MeChatDeps{
-		LLM:       chatLLM,
-		Drafts:    candidateRepo,
-		Placement: placementSvc,
-		Profiles:  profileCV,
-	})
-	chatHandler := localChat
+	// POST /me/chat — shared preference / intake + opportunity side-chat.
+	// Always platform chat-agent; no local LLM/heuristic fallback.
+	var chatHandler http.HandlerFunc
 	if cfg.ChatAgentEnabled && strings.TrimSpace(cfg.ChatAgentServiceURI) != "" {
 		agentClient := chatagentclient.New(
 			strings.TrimSpace(cfg.ChatAgentServiceURI),
@@ -646,8 +634,11 @@ func main() {
 			Drafts:    candidateRepo,
 			Placement: placementSvc,
 			Profiles:  profileCV,
-		}, localChat)
+		})
 		util.Log(ctx).WithField("uri", cfg.ChatAgentServiceURI).Info("me/chat: using platform chat-agent")
+	} else {
+		util.Log(ctx).Error("me/chat: CHAT_AGENT_ENABLED and CHAT_AGENT_SERVICE_URI are required — no local fallback")
+		chatHandler = httpv1.MeChatAgentHandler(nil)
 	}
 	mux.Handle("POST /me/chat", authMW(chatHandler))
 
