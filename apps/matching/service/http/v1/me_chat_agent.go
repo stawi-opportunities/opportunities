@@ -77,7 +77,7 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 	if deps == nil || deps.Client == nil {
 		return func(w http.ResponseWriter, r *http.Request) {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "chat_agent_unavailable",
-				"chat agent is not configured")
+				"I can't process chat right now — the assistant is not configured on this environment. Please try again later or contact support.")
 		}
 	}
 	if deps.Sessions == nil {
@@ -221,7 +221,7 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 			if cerr != nil {
 				log.WithError(cerr).Error("me/chat: CreateSession failed")
 				httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_session_failed",
-					"could not start chat session")
+					"I couldn't start the assistant session. Your message was not processed — please try again in a moment.")
 				return
 			}
 			sessionID = sess.ID
@@ -250,8 +250,12 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 			// Drop bad session cache so next request recreates.
 			deps.Sessions.set(sessionKey, "")
 			httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_turn_failed",
-				"chat agent could not process that message")
+				"I couldn't process that message with the assistant just now. Nothing was saved from this turn — please try again.")
 			return
+		}
+		// Empty model output is rare; still be honest rather than inventing success.
+		if strings.TrimSpace(tres.Reply) == "" {
+			log.Warn("me/chat: Turn returned empty reply")
 		}
 
 		fields := agentMapToFields(tres.Session.Fields)

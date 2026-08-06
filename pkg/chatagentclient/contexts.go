@@ -11,19 +11,24 @@ const (
 func PlacementIntakeContext() ContextDefinition {
 	return ContextDefinition{
 		ContextKey: ContextPlacementIntake,
-		Purpose: `You are Stawi's placement intake agent for opportunity seekers.
-Collect a placement profile: (A) qualifications from CV/work history and
-(B) preferences (role, level, job types, salary, markets). Incomplete profiles
-produce poor matches. Prefer evidence already provided (CV, prior answers)
-over re-asking.`,
+		Purpose: `You are Stawi's placement intake agent. You lead onboarding — you are not a passive Q&A bot.
+Objective: collect a complete placement profile so we can match real opportunities.
+Required signals (in priority order): target role title, CV/capabilities, job types,
+salary expectation, preferred opportunity countries, experience level.
+You drive the conversation: after every turn, acknowledge what you learned and ask for
+exactly ONE next missing required field with a short why. If the seeker goes off-topic
+or asks meta questions, answer briefly and honestly, then steer back to the next gap.
+Never invent fields. Prefer evidence already provided (CV, prior answers) over re-asking.`,
 		ExtractRules: `Rules:
 1. NEVER invent a job title, country, salary, or LinkedIn.
-2. "actively looking for full-time roles" does NOT set target_job_title.
+2. "actively looking for full-time roles" does NOT set target_job_title — ask for a concrete title.
 3. Prefer ISO country codes when possible (KE, UG, NG, GH, ZA, US, GB).
 4. job_types = employment kinds; map bare "remote" → Full-time.
 5. CV paste/upload → capabilities field; extract title/level/skills when clear.
 6. LinkedIn is optional; never block readiness on it.
-7. salary_min and/or salary_max with currency when stated.`,
+7. salary_min and/or salary_max with currency when stated.
+8. You lead: do not wait for the seeker to invent the agenda. Always close with the next needed detail when incomplete.
+9. If you cannot extract anything useful from a message, say so honestly and restate the next required question.`,
 		Fields: []FieldDef{
 			{Name: "target_job_title", Type: "FIELD_TYPE_STRING", Required: true, Priority: 1,
 				Ask: "What role or job title are you targeting?", Why: "drives semantic match"},
@@ -57,7 +62,11 @@ over re-asking.`,
 			MaxSentences      int32  `json:"max_sentences,omitempty"`
 			AskOneMissingOnly bool   `json:"ask_one_missing_only,omitempty"`
 			CompleteMessage   string `json:"complete_message,omitempty"`
-		}{MaxSentences: 3, AskOneMissingOnly: true, CompleteMessage: "Great — I have what I need. Choose a plan to start matching."},
+		}{
+			MaxSentences:      4,
+			AskOneMissingOnly: true,
+			CompleteMessage:   "Great — I have what I need to match opportunities. Choose a plan to start matching.",
+		},
 	}
 }
 
@@ -73,7 +82,9 @@ and the opportunity document). Help them understand fit, what is missing for
 strong matching, and collect any still-missing placement signals using
 evidence they already shared (CV, prior answers). Do not invent requirements.
 When the opportunity is a clear match for stated prefs, say so briefly.
-Still only ask for the single highest-priority missing REQUIRED field when not ready.`
+You still lead: when required placement signals are missing, answer the seeker's
+question briefly then ask for exactly one highest-priority missing REQUIRED field.
+If you cannot process the message, say so honestly.`
 	def.ExtractRules = PlacementIntakeContext().ExtractRules + `
 
 Opportunity-view extras:

@@ -287,6 +287,7 @@ func TestMeChatHandler_LLMFalseReadyBlockedWhenNotReady(t *testing.T) {
 
 func TestMeChatHandler_LLMThoughtfulReplyKeptWhenNotReady(t *testing.T) {
 	// Meta / clarifying answers must not be replaced with the guided template.
+	// Reply already steers to title so no second ask is appended.
 	llm := stubLLM(`{
 	  "fields": {"target_job_title": "Engineer", "preferred_countries": ["ZA"]},
 	  "reply": "Yes — this is onboarding. We collect your role, experience, salary and markets so matching can score real jobs. What title should we optimise for?"
@@ -300,6 +301,14 @@ func TestMeChatHandler_LLMThoughtfulReplyKeptWhenNotReady(t *testing.T) {
 	require.Contains(t, stringsToLower(reply), "onboarding")
 	require.NotContains(t, reply, "Got it —")
 	require.NotContains(t, reply, "3 more after that")
+}
+
+func TestMeChatAgentHandler_NilClientHonestError(t *testing.T) {
+	h := httpmw.NewCandidateAuth(nil)(v1.MeChatAgentHandler(nil))
+	rec := chatPOST(t, h, `{"message":"hello"}`)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "can't process chat")
+	require.NotContains(t, stringsToLower(rec.Body.String()), "got it")
 }
 
 func TestMeChatHandler_LLMFieldsMergedAndAssessed(t *testing.T) {

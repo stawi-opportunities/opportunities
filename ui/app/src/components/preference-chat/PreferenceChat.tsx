@@ -18,6 +18,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import {
+  chatErrorMessage,
   sendMeChat,
   type OnboardingChatFieldStatus,
   type OnboardingChatFields,
@@ -466,12 +467,14 @@ export function PreferenceChat({
         await onComplete(nextFields, { messages: nextMsgs });
       }
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : 'Something went wrong');
+      const honest = chatErrorMessage(e);
+      setError(honest);
+      // Honest assistant bubble: do not invent a successful guided reply.
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: "I couldn't process that just now. Try again in a moment.",
+          content: honest,
         },
       ]);
     } finally {

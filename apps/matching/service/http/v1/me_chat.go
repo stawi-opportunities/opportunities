@@ -982,10 +982,17 @@ func missingChatFields(f onboardingChatFields) []string {
 	return missingFromStatus(assessFieldStatus(f))
 }
 
-// composeReply prefers a real LLM reply whenever one was produced so the
-// seeker never sees a canned template while the model actually answered.
-// GuidedFollowUp is only a last resort when the model returned nothing, or
-// when it falsely claims readiness while required fields are still missing.
+// composeReply surfaces the model's reply when present, keeps the agent
+// leading toward required fields, and never pretends the model answered
+// when it did not.
+//
+// Policy:
+//   - ready: prefer model text; only use a complete-message template if empty
+//   - not ready + model falsely claims done: honest guided next ask (no fake plan CTA)
+//   - not ready + model replied: keep the model text; if it does not already
+//     steer toward the next missing field, append that next ask so onboarding
+//     stays agent-led
+//   - not ready + empty model: guided next ask (honest structural fallback)
 func composeReply(llmReply string, f onboardingChatFields, missing []string, ready bool) string {
 	llmReply = strings.TrimSpace(llmReply)
 	if ready {
@@ -1012,18 +1019,24 @@ func composeReply(llmReply string, f onboardingChatFields, missing []string, rea
 			title, level, where,
 		)
 	}
-	// Incomplete profile: always surface the model's answer when present so
-	// meta questions ("is this onboarding?", clarifications, corrections)
-	// get a thoughtful reply instead of a repeated guided template.
+	nextKey := ""
+	if len(missing) > 0 {
+		nextKey = missing[0]
+	}
 	if llmReply != "" {
 		if looksLikeFalseReady(llmReply) {
 			// Model claimed completion incorrectly — do not show that claim.
-			// Prefer a short honest correction using the guided next ask.
 			return placement.GuidedFollowUp(toPlacementFields(f))
+		}
+		// Keep thoughtful answers, but ensure we still lead toward the objective.
+		if nextKey != "" && !replyTargetsMissing(llmReply, nextKey) {
+			if ask := nextMissingAsk(nextKey); ask != "" {
+				return strings.TrimSpace(llmReply) + "\n\n" + ask
+			}
 		}
 		return llmReply
 	}
-	// No model text (heuristic-only path or empty agent reply).
+	// Empty model output: be clear we are continuing structured intake.
 	return placement.GuidedFollowUp(toPlacementFields(f))
 }
 
@@ -1034,6 +1047,36 @@ func looksLikeFalseReady(s string) bool {
 		strings.Contains(low, "pick a plan") ||
 		strings.Contains(low, "everything i need") ||
 		strings.Contains(low, "ready to match")
+}
+
+// nextMissingAsk returns the product ask for a required field key.
+func nextMissingAsk(key string) string {
+	if g, ok := placement.FieldGuide[key]; ok && strings.TrimSpace(g.Ask) != "" {
+		return strings.TrimSpace(g.Ask)
+	}
+	return ""
+}
+
+// replyTargetsMissing is a soft check that the reply already steers toward
+// the highest-priority gap (so we do not append a redundant ask).
+func replyTargetsMissing(reply, missingKey string) bool {
+	low := strings.ToLower(reply)
+	switch missingKey {
+	case "target_job_title":
+		return strings.Contains(low, "role") || strings.Contains(low, "title") || strings.Contains(low, "position")
+	case "capabilities":
+		return strings.Contains(low, "cv") || strings.Contains(low, "resume") || strings.Contains(low, "experience")
+	case "job_types":
+		return strings.Contains(low, "full-time") || strings.Contains(low, "job type") || strings.Contains(low, "contract")
+	case "salary_expectation":
+		return strings.Contains(low, "salary") || strings.Contains(low, "pay") || strings.Contains(low, "compensation")
+	case "preferred_countries":
+		return strings.Contains(low, "countr") || strings.Contains(low, "market") || strings.Contains(low, "where") || strings.Contains(low, "location")
+	case "experience_level":
+		return strings.Contains(low, "experience") || strings.Contains(low, "senior") || strings.Contains(low, "level")
+	default:
+		return true
+	}
 }
 
 // ─── Heuristic extraction (full user corpus) ───────────────────────────────

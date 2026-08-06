@@ -96,6 +96,7 @@ func TestMeChatAgentHandler_NilDepsIs503(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	require.Contains(t, rec.Body.String(), "chat_agent_unavailable")
+	require.Contains(t, rec.Body.String(), "can't process chat")
 }
 
 // --- tools ---

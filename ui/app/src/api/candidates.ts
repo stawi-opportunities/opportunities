@@ -324,71 +324,70 @@ export type SendMeChatInput = {
 };
 
 /**
- * POST /matching/me/chat — one conversational turn.
- * Server merges free-text (or pasted CV) into structured fields via AI
- * when inference is configured, otherwise a heuristic parser.
+ * POST /matching/me/chat — one conversational turn via the platform chat-agent.
  *
- * Falls back to a client-side heuristic when the matching binary is older
- * (404) or temporarily unavailable so the embedded chat still works.
+ * Failures surface honestly (no silent client-side canned heuristic). Callers
+ * must show the error to the user so they know the turn was not processed.
  */
 export async function sendMeChat(input: SendMeChatInput): Promise<OnboardingChatResponse> {
-  try {
-    return await authRuntime().fetch<OnboardingChatResponse>('/matching/me/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: input.message,
-        history: input.history ?? [],
-        draft: input.draft ?? {},
-        linkedin: input.linkedin ?? '',
-        cv_text: input.cv_text ?? '',
-        cv_filename: input.cv_filename ?? '',
-        context: input.context ?? 'placement',
-        opportunity: input.opportunity ?? undefined,
-      }),
-      // LLM turns can be slow on free-tier inference.
-      timeoutMs: 90_000,
-    });
-  } catch (err) {
-    // Local fallback when matching hasn't been redeployed yet, or inference
-    // is briefly unavailable. Auth errors still surface to the UI.
-    const code =
-      err && typeof err === 'object' && 'code' in err
-        ? String((err as { code: unknown }).code)
-        : '';
-    const msg = err instanceof Error ? err.message : String(err);
-    const fallbackable =
-      code === 'API_NOT_FOUND' ||
-      code === 'API_SERVER_ERROR' ||
-      code === 'NETWORK_ERROR' ||
-      code === 'NETWORK_TIMEOUT' ||
-      /404|502|503|504|Failed to fetch|not found|timeout/i.test(msg);
-    if (!fallbackable) throw err;
-    const { localChatTurn } = await import('@/onboarding/chatHeuristic');
-    const seed: OnboardingChatFields = { ...(input.draft ?? {}) };
-    if (input.linkedin?.trim()) seed.linkedin = input.linkedin.trim();
-    if (input.cv_text?.trim()) {
-      seed.extra_info = seed.extra_info
-        ? `${seed.extra_info}\n\n${input.cv_text.trim()}`
-        : input.cv_text.trim();
-    }
-    const message =
-      input.message?.trim() ||
-      (input.cv_text
-        ? `I've attached my CV (${input.cv_filename || 'CV'}).`
-        : input.linkedin
-          ? `My LinkedIn is ${input.linkedin}`
-          : '');
-    const res = localChatTurn(message, seed, input.history ?? []);
-    // Best-effort persist so the next page load can resume the same thread.
+  return await authRuntime().fetch<OnboardingChatResponse>('/matching/me/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: input.message,
+      history: input.history ?? [],
+      draft: input.draft ?? {},
+      linkedin: input.linkedin ?? '',
+      cv_text: input.cv_text ?? '',
+      cv_filename: input.cv_filename ?? '',
+      context: input.context ?? 'placement',
+      opportunity: input.opportunity ?? undefined,
+    }),
+    // LLM turns can be slow on free-tier inference.
+    timeoutMs: 90_000,
+  });
+}
+
+/** Extract a human-readable detail from API/auth errors (problem+json or message). */
+export function chatErrorMessage(err: unknown): string {
+  if (!err) return "I couldn't process that message. Please try again.";
+  const anyErr = err as { message?: string; code?: string; body?: string };
+  const raw = typeof anyErr.message === 'string' ? anyErr.message : String(err);
+  // AuthError embeds body snippet: "API 502: {\"detail\":\"...\"}"
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
     try {
-      const { fieldsToDraft } = await import('@/components/preference-chat/mapFields');
-      await saveOnboardingDraft(res.ready ? 2 : 1, fieldsToDraft(res.fields), res.messages);
+      const parsed = JSON.parse(raw.slice(jsonStart)) as { detail?: string; title?: string };
+      if (parsed.detail?.trim()) return parsed.detail.trim();
     } catch {
-      // non-blocking
+      /* ignore */
     }
-    return res;
   }
+  if (anyErr.body) {
+    try {
+      const parsed = JSON.parse(anyErr.body) as { detail?: string };
+      if (parsed.detail?.trim()) return parsed.detail.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (/API_UNAUTHORIZED|401/i.test(raw) || anyErr.code === 'API_UNAUTHORIZED') {
+    return 'Your session expired. Please sign in again to continue onboarding.';
+  }
+  if (/timeout|NETWORK_TIMEOUT/i.test(raw) || anyErr.code === 'NETWORK_TIMEOUT') {
+    return "That took too long — I couldn't finish processing. Please try again.";
+  }
+  if (/Failed to fetch|NETWORK_ERROR/i.test(raw) || anyErr.code === 'NETWORK_ERROR') {
+    return "I can't reach the assistant right now (network error). Check your connection and try again.";
+  }
+  if (/502|503|504|API_SERVER_ERROR|chat_agent/i.test(raw) || anyErr.code === 'API_SERVER_ERROR') {
+    return "I couldn't process that with the assistant just now. Nothing from this turn was saved — please try again.";
+  }
+  // Avoid dumping raw stack-ish messages into the chat bubble.
+  if (raw.length > 220 || /^API \d+:/.test(raw)) {
+    return "I couldn't process that message. Please try again in a moment.";
+  }
+  return raw;
 }
 
 // ── /me/opportunities ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

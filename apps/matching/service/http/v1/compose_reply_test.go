@@ -14,13 +14,27 @@ func TestComposeReply_PrefersLLMWhenNotReady(t *testing.T) {
 		PreferredCountries: []string{"ZA"},
 		ExtraInfo:          "Uploaded CV on file. Resume document stored for matching (experience, education, skills).",
 	}
+	// Meta answer already steers toward role — keep as-is (no append).
 	missing := []string{"target_job_title", "job_types", "salary_expectation", "experience_level"}
-	// Even if missing still has title (edge), LLM meta answer must win.
 	llm := "Yes — this chat is onboarding. I already see a CV and ZA markets; next I need a concrete role title so we can score jobs fairly."
 	got := composeReply(llm, f, missing, false)
 	require.Equal(t, llm, got)
 	require.NotContains(t, got, "Got it —")
 	require.NotContains(t, got, "3 more after that")
+}
+
+func TestComposeReply_AppendsNextAskWhenLLMDoesNotSteer(t *testing.T) {
+	t.Parallel()
+	f := onboardingChatFields{
+		PreferredCountries: []string{"ZA"},
+		ExtraInfo:          "Uploaded CV on file. Resume document stored for matching (experience, education, skills).",
+	}
+	missing := []string{"target_job_title", "job_types"}
+	llm := "Happy to help — tell me more about what you're looking for whenever you're ready."
+	got := composeReply(llm, f, missing, false)
+	require.Contains(t, got, llm)
+	require.Contains(t, got, "What role should we match you to")
+	require.NotContains(t, got, "Got it —")
 }
 
 func TestComposeReply_BlocksFalseReady(t *testing.T) {
