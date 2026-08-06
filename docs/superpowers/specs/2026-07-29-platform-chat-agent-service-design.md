@@ -161,6 +161,18 @@ Precedence: inline non-empty fields > registry > service defaults (reply policy 
 - End-user auth stays on product edge (matching JWT). Matching passes `subject_id` = candidate id.
 - Tenant isolation enforced on every RPC; session access limited to owning tenant + subject.
 
+**Platform peer mesh (normative):** see
+`service-authentication` ADR 0002
+(`docs/adr/0002-product-peer-mesh-not-per-tenant-grants.md`) and
+`docs/ops/chat-agent-integration.md`.
+
+- Chat-agent authorization is on the **matching service account** (recipients +
+  `service_chat_agent` grants), not on each tenant or candidate.
+- New customers need product access only (SPA → matching + partition membership).
+  **Never** per-customer chat-agent migrations or SA grants.
+- Enabling the edge requires **three gates**: deploy requested audience, Hydra
+  `oauth_client_recipients`, SA ReBAC permissions. Deploy env alone is insufficient.
+
 ---
 
 ## Data model (PostgreSQL)
