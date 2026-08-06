@@ -16,6 +16,56 @@ Products only change a **context definition** (fields + purpose). The engine
 always re-evaluates **evidence** already present: seed fields, CV documents,
 prior conversation, and structured inputs.
 
+## Authorization model (do not get this wrong)
+
+**Canonical platform ADR:**
+`service-authentication` →
+[`docs/adr/0002-product-peer-mesh-not-per-tenant-grants.md`](https://github.com/antinvestor/service-authentication/blob/main/docs/adr/0002-product-peer-mesh-not-per-tenant-grants.md)
+
+### BFF path (required for Opportunities)
+
+```text
+Browser (user JWT)  →  matching POST /me/chat
+                     →  chat-agent CreateSession/Turn (matching SA JWT)
+                            subject_id = candidate profile_id (request body)
+```
+
+| Actor | Token at chat-agent | Needs `/chat-agent` on OAuth client? | Needs `chat_agent_*` ReBAC? |
+|-------|---------------------|--------------------------------------|------------------------------|
+| Candidate (SPA) | No — never calls chat-agent | **No** (needs `/matching` only) | **No** SA grants; partition + SPA product access is enough |
+| `opportunities-matching` bot | Yes — S2S `client_credentials` | **Yes** (`oauth_client_recipients`) | **Yes** on platform SA policy (`service_chat_agent`) |
+
+**New customers / tenants:** grant normal product access (partition membership +
+SPA can call matching). **Never** write per-tenant chat-agent audiences or
+`chat_agent_*` grants. Once the **platform** matching SA peer contract is
+correct, every logged-in candidate with matching access can chat.
+
+### Three gates for matching → chat-agent (all required)
+
+| Gate | Config | Wrong if missing |
+|------|--------|------------------|
+| 1. Request audience | `cloud.deployment` matching `requested_audience_paths` includes `/chat-agent` | Token mint omits `aud` |
+| 2. Hydra whitelist | Tenancy `oauth_client_recipients` for client `opportunities-matching` → `https://api.stawi.org/chat-agent` | “audience has not been whitelisted” |
+| 3. ReBAC | Matching SA policy grant `service_chat_agent` + perms used by RPCs (`chat_agent_turn`, and `chat_agent_view` / `chat_agent_manage` if List/UpsertContext) | `permission_denied` after token works |
+
+Deploy env alone is **not** enough. Do not “fix chat for one customer” with SQL.
+
+### Forbidden
+
+- Per-customer / per-tenant migrations for chat-agent access  
+- SPA direct calls to `/chat-agent` without an explicit product decision  
+- Local heuristic LLM fallback when chat-agent is misconfigured (fail closed)  
+- Hand Keto tuples in matching startup  
+
+### Permissions matching uses
+
+| RPC | Permission |
+|-----|------------|
+| `CreateSession`, `Turn`, `EndSession`, `IngestMessage` | `chat_agent_turn` |
+| `GetSession` | `chat_agent_view` **or** `chat_agent_turn` |
+| `UpsertContext` (best-effort register) | `chat_agent_manage` |
+| `GetContext` / `ListContexts` | `chat_agent_view` |
+
 ## Contexts (matching)
 
 | Key | When |
@@ -31,7 +81,7 @@ Both are registered best-effort on first `/me/chat` via `UpsertContext`, with
 ```bash
 CHAT_AGENT_SERVICE_URI=https://api.stawi.org/chat-agent
 CHAT_AGENT_ENABLED=true
-# OAuth: matching already requests audience /chat-agent (see cloud.deployment)
+# Gate 1 only — still need Hydra recipients + SA grants (see Authorization model)
 ```
 
 **Required.** There is no local `MeChatHandler` fallback.
@@ -42,12 +92,18 @@ CHAT_AGENT_ENABLED=true
 | CreateSession error | `502 chat_agent_session_failed` |
 | Turn error | `502 chat_agent_turn_failed` |
 
+S2S client must attach a matching **service-account** token with audience
+`https://api.stawi.org/chat-agent` (Connect interceptors or explicit token
+source). A plain unauthenticated HTTP client will fail at chat-agent auth.
+
 ### Edge + deploy prerequisites
 
 | Requirement | Where |
 |-------------|--------|
 | Edge route `/chat-agent` enabled with live `*.run.app` origin | `cloud.deployment` `edge/cloudflare-api-gateway/config/routes.prod.json` |
 | Matching image pin (public GHCR) | `ghcr.io/stawi-opportunities/opportunities-matching:<tag>` in matching tfvars |
+| Gate 1: `/chat-agent` in matching `requested_audience_paths` | `apps/opportunities-matching/cloudrun/envs/*.tfvars` |
+| Gate 2–3: matching SA recipients + `service_chat_agent` grants | tenancy auth contract / ADR 0002 (platform SA, not per tenant) |
 | GHCR packages public | Release runs `make-ghcr-public` (or org secret `GHCR_ADMIN_TOKEN`) |
 | Cloud Run probes | Frame: startup `/readyz`, liveness `/livez` |
 
@@ -150,12 +206,14 @@ catalog `requestedRecipients` for chat-agent.
 
 ## Deploy checklist
 
-1. Merge `service-profile` feat/chatagent-app + tag release → image + `ship-platform-chat-agent`
+1. Merge `service-profile` chatagent + tag release → image + `ship-platform-chat-agent`
 2. Apply `cloud.deployment` `platform-chat-agent` OpenTofu (Neon + Cloud Run + SM)
 3. Update CF Worker `routes.prod.json` origin to the real `*.run.app` URL
-4. Ship matching with `CHAT_AGENT_*` env (already in `opportunities-matching` tofu)
-5. Smoke:
-   - `POST /chat-agent/chatagent.v1.ChatAgentService/ListContexts`
-   - `POST /matching/me/chat` onboarding turn
-   - Opportunity page: side-chat + related grid
-   - (optional) `IngestChannelMessage` with `CHANNEL_SMS` + notification client live
+4. **Peer contract (platform matching SA — once):** recipients + `service_chat_agent`
+   grants; Hydra re-sync + SA policy applied (ADR 0002). Not per customer.
+5. Ship matching with `CHAT_AGENT_*` env + Gate 1 audiences (tofu)
+6. Smoke:
+   - Matching logs: CreateSession succeeds (no Hydra audience whitelist error)
+   - `POST /matching/me/chat` as a normal candidate (no extra grants)
+   - Opportunity page: side-chat
+   - (optional) `IngestChannelMessage` with notification client live
