@@ -982,13 +982,14 @@ func missingChatFields(f onboardingChatFields) []string {
 	return missingFromStatus(assessFieldStatus(f))
 }
 
-// composeReply prefers the model's conversational reply when it is useful,
-// but never claims readiness if the server still has missing fields.
-// When anything required is missing we always ask for the next gap.
+// composeReply prefers a real LLM reply whenever one was produced so the
+// seeker never sees a canned template while the model actually answered.
+// GuidedFollowUp is only a last resort when the model returned nothing, or
+// when it falsely claims readiness while required fields are still missing.
 func composeReply(llmReply string, f onboardingChatFields, missing []string, ready bool) string {
 	llmReply = strings.TrimSpace(llmReply)
 	if ready {
-		if llmReply != "" && !looksLikeAskingForMore(llmReply) {
+		if llmReply != "" {
 			return llmReply
 		}
 		title := f.TargetJobTitle
@@ -999,32 +1000,31 @@ func composeReply(llmReply string, f onboardingChatFields, missing []string, rea
 		if where == "" {
 			where = f.Country
 		}
+		if where == "" {
+			where = "your markets"
+		}
+		level := f.ExperienceLevel
+		if level == "" {
+			level = "your"
+		}
 		return fmt.Sprintf(
 			"Great — I have what I need for %s (%s) roles in %s. Choose a plan to start matching.",
-			title, f.ExperienceLevel, where,
+			title, level, where,
 		)
 	}
-	// Not ready: model may ask a sensible next question; still prefer our
-	// structured follow-up when the model invents readiness or is vague.
-	if llmReply != "" && looksLikeAskingForMore(llmReply) && !looksLikeFalseReady(llmReply) {
-		// If the model already asks for the top missing field, keep its wording.
-		if replyTargetsMissing(llmReply, missing[0]) {
-			return llmReply
+	// Incomplete profile: always surface the model's answer when present so
+	// meta questions ("is this onboarding?", clarifications, corrections)
+	// get a thoughtful reply instead of a repeated guided template.
+	if llmReply != "" {
+		if looksLikeFalseReady(llmReply) {
+			// Model claimed completion incorrectly — do not show that claim.
+			// Prefer a short honest correction using the guided next ask.
+			return placement.GuidedFollowUp(toPlacementFields(f))
 		}
+		return llmReply
 	}
-	// Guided harness: acknowledge known signals + ask next gap with why.
+	// No model text (heuristic-only path or empty agent reply).
 	return placement.GuidedFollowUp(toPlacementFields(f))
-}
-
-func looksLikeAskingForMore(s string) bool {
-	low := strings.ToLower(s)
-	return strings.Contains(low, "?") ||
-		strings.Contains(low, "which ") ||
-		strings.Contains(low, "what ") ||
-		strings.Contains(low, "where ") ||
-		strings.Contains(low, "could you") ||
-		strings.Contains(low, "can you") ||
-		strings.Contains(low, "please ")
 }
 
 func looksLikeFalseReady(s string) bool {
@@ -1034,28 +1034,6 @@ func looksLikeFalseReady(s string) bool {
 		strings.Contains(low, "pick a plan") ||
 		strings.Contains(low, "everything i need") ||
 		strings.Contains(low, "ready to match")
-}
-
-// replyTargetsMissing is a soft check that the model is asking about the
-// highest-priority gap (so we can keep natural LLM wording).
-func replyTargetsMissing(reply, missingKey string) bool {
-	low := strings.ToLower(reply)
-	switch missingKey {
-	case "target_job_title":
-		return strings.Contains(low, "role") || strings.Contains(low, "title") || strings.Contains(low, "position")
-	case "capabilities":
-		return strings.Contains(low, "cv") || strings.Contains(low, "resume") || strings.Contains(low, "experience")
-	case "job_types":
-		return strings.Contains(low, "full-time") || strings.Contains(low, "job type") || strings.Contains(low, "contract")
-	case "salary_expectation":
-		return strings.Contains(low, "salary") || strings.Contains(low, "pay") || strings.Contains(low, "compensation")
-	case "preferred_countries":
-		return strings.Contains(low, "countr") || strings.Contains(low, "where") || strings.Contains(low, "location")
-	case "experience_level":
-		return strings.Contains(low, "experience") || strings.Contains(low, "senior") || strings.Contains(low, "level")
-	default:
-		return true
-	}
 }
 
 // ─── Heuristic extraction (full user corpus) ───────────────────────────────
