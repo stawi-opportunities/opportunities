@@ -619,6 +619,8 @@ func main() {
 			svc.HTTPClientManager().Client(ctx),
 		)
 		// Prefer authenticated S2S HTTP (OAuth audience /chat-agent) when config allows.
+		// Note: OAuth is on Connect interceptors; chatagentclient is plain HTTP and
+		// must set TokenSource or CreateSession/Turn go unauthenticated.
 		if opts, oerr := apis.ClientOptions(ctx, &cfg, apis.ServiceTarget{
 			Endpoint:  strings.TrimSpace(cfg.ChatAgentServiceURI),
 			ServiceID: servicecatalog.ServiceID("chat-agent"),
@@ -628,6 +630,24 @@ func main() {
 			util.Log(ctx).WithError(berr).Warn("me/chat: chat-agent connect base failed; using plain HTTP client")
 		} else if base != nil && base.Client() != nil {
 			agentClient = chatagentclient.New(base.Endpoint(), base.Client())
+			var ds apis.DialSettings
+			for _, opt := range opts {
+				opt.Apply(&ds)
+			}
+			if ts, terr := connection.NewOAuth2TokenSource(ctx, &ds, base.Client()); terr != nil {
+				util.Log(ctx).WithError(terr).Warn("me/chat: chat-agent OAuth token source unavailable")
+			} else if ts != nil {
+				agentClient.TokenSource = func(c context.Context) (string, error) {
+					tok, err := ts.Token()
+					if err != nil {
+						return "", err
+					}
+					if tok == nil || tok.AccessToken == "" {
+						return "", fmt.Errorf("chat-agent oauth token empty")
+					}
+					return tok.AccessToken, nil
+				}
+			}
 		}
 		chatHandler = httpv1.MeChatAgentHandler(&httpv1.MeChatAgentDeps{
 			Client:    agentClient,
