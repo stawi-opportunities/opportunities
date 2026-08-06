@@ -22,7 +22,14 @@ prior conversation, and structured inputs.
 `service-authentication` →
 [`docs/adr/0002-product-peer-mesh-not-per-tenant-grants.md`](https://github.com/antinvestor/service-authentication/blob/main/docs/adr/0002-product-peer-mesh-not-per-tenant-grants.md)
 
-### BFF path (required for Opportunities)
+### Two valid paths (platform baseline vs product BFF)
+
+**Mode U — user JWT direct (platform baseline):** public SPA clients automatically
+get `/chat-agent` audience; partition **members** have `chat_agent_turn` via OPL.
+A logged-in user can call chat-agent with their own token for personal sessions
+(`subject_id` = self). No SA grants, no per-tenant SQL.
+
+**Mode B — Opportunities BFF (current product wiring for placement + job chat):**
 
 ```text
 Browser (user JWT)  →  matching POST /me/chat
@@ -30,15 +37,15 @@ Browser (user JWT)  →  matching POST /me/chat
                             subject_id = candidate profile_id (request body)
 ```
 
-| Actor | Token at chat-agent | Needs `/chat-agent` on OAuth client? | Needs `chat_agent_*` ReBAC? |
-|-------|---------------------|--------------------------------------|------------------------------|
-| Candidate (SPA) | No — never calls chat-agent | **No** (needs `/matching` only) | **No** SA grants; partition + SPA product access is enough |
-| `opportunities-matching` bot | Yes — S2S `client_credentials` | **Yes** (`oauth_client_recipients`) | **Yes** on platform SA policy (`service_chat_agent`) |
+| Actor | Token at chat-agent | Needs `/chat-agent`? | Needs `chat_agent_*`? |
+|-------|---------------------|----------------------|------------------------|
+| Candidate (SPA) — mode U | User JWT | Auto on public clients | `ROLE_MEMBER` (default) |
+| Candidate (SPA) — mode B | No direct call | `/matching` only | Product access only |
+| `opportunities-matching` bot — mode B | SA JWT | SA recipients + deploy | SA policy grants |
 
-**New customers / tenants:** grant normal product access (partition membership +
-SPA can call matching). **Never** write per-tenant chat-agent audiences or
-`chat_agent_*` grants. Once the **platform** matching SA peer contract is
-correct, every logged-in candidate with matching access can chat.
+**New customers / tenants:** login + partition membership. **Never** write
+per-tenant chat-agent grants. Platform self-service (mode U) works from membership;
+product BFF (mode B) works once the **matching platform SA** peer contract is set.
 
 ### Three gates for matching → chat-agent (all required)
 
