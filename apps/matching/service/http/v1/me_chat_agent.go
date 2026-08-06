@@ -35,7 +35,9 @@ type agentChatRequest struct {
 }
 
 // sessionStore is an in-process cache of chat-agent session ids per
-// (candidate, context_key, opportunity_slug). Durable state lives in chat-agent.
+// (candidate, context_key). Opportunity view uses one shared session for all
+// jobs; the current listing is supplied each turn via documents/runtime.
+// Durable state lives in chat-agent.
 type sessionStore struct {
 	mu    sync.Mutex
 	byKey map[string]string
@@ -179,6 +181,7 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 		userFacingMsg := stripViewingChrome(msg)
 
 		runtime := map[string]any{}
+		var listingDoc *chatagentclient.DocumentEvidence
 		if mode == "opportunity" && in.Opportunity != nil {
 			op := in.Opportunity
 			runtime["opportunity_id"] = op.ID
@@ -187,17 +190,22 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 			runtime["opportunity_entity"] = op.Entity
 			runtime["opportunity_location"] = op.Location
 			runtime["opportunity_kind"] = op.Kind
-			if d := strings.TrimSpace(op.Description); d != "" {
-				docs = append(docs, chatagentclient.DocumentEvidence{
-					Name: "opportunity", Kind: "listing", Text: truncateRunes(d, 12_000),
-				})
+			if u := strings.TrimSpace(op.ApplyURL); u != "" {
+				runtime["opportunity_apply_url"] = u
 			}
+			// Structured listing text so the model can extract title/company/location
+			// and discuss fit without relying on session-seeded docs from an older job.
+			listingDoc = &chatagentclient.DocumentEvidence{
+				Name: "opportunity",
+				Kind: "listing",
+				Text: truncateRunes(formatOpportunityListingDoc(op), 14_000),
+			}
+			docs = append(docs, *listingDoc)
 		}
 
+		// One opportunity-view session per candidate (shared across all job pages).
+		// Current listing is always supplied via runtime + documents on each turn.
 		sessionKey := candidateID + "|" + contextKey
-		if mode == "opportunity" && in.Opportunity != nil {
-			sessionKey += "|" + in.Opportunity.Slug
-		}
 
 		// Placement: resume intake transcript. Opportunity: seed profile
 		// fields/docs only — never onboarding chat history.
@@ -232,11 +240,26 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 		if li := normalizeLinkedIn(in.LinkedIn); li != "" {
 			structured["linkedin"] = li
 		}
+		// Mirror current listing into structured so extractors can bind fields
+		// when the seeker refers to "this job" / "this role".
+		for k, v := range runtime {
+			structured[k] = v
+		}
 
-		turnDocs := docs
-		// Only send new CV on turns that include upload; session already has seed docs.
-		if cvText == "" {
-			turnDocs = nil
+		// Placement: only re-send CV when newly uploaded. Opportunity: always
+		// attach the current listing so multi-job shared sessions stay on-page.
+		var turnDocs []chatagentclient.DocumentEvidence
+		if mode == "opportunity" {
+			if listingDoc != nil {
+				turnDocs = append(turnDocs, *listingDoc)
+			}
+			if cvText != "" {
+				turnDocs = append(turnDocs, chatagentclient.DocumentEvidence{
+					Name: "capabilities", Kind: "cv", Text: truncateRunes(cvText, 80_000),
+				})
+			}
+		} else if cvText != "" {
+			turnDocs = docs
 		}
 
 		tres, terr := deps.Client.Turn(ctx, chatagentclient.TurnRequest{
@@ -340,9 +363,108 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 			PlacementSummary: placementSummary,
 			PlacementReady:   placementReady,
 		}
+		// Surface current listing card for the SPA widget (shared multi-job session).
+		if mode == "opportunity" && in.Opportunity != nil {
+			out.Card = opportunityCardFromContext(in.Opportunity)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
 	}
+}
+
+// formatOpportunityListingDoc builds extractable plain text for the model from
+// the page context the SPA sends (title, company, location, apply URL, body).
+func formatOpportunityListingDoc(op *opportunityChatContext) string {
+	if op == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("CURRENT LISTING (in view on the page)\n")
+	if t := strings.TrimSpace(op.Title); t != "" {
+		b.WriteString("Title: ")
+		b.WriteString(t)
+		b.WriteByte('\n')
+	}
+	if e := strings.TrimSpace(op.Entity); e != "" {
+		b.WriteString("Company/entity: ")
+		b.WriteString(e)
+		b.WriteByte('\n')
+	}
+	if loc := strings.TrimSpace(op.Location); loc != "" {
+		b.WriteString("Location: ")
+		b.WriteString(loc)
+		b.WriteByte('\n')
+	}
+	if k := strings.TrimSpace(op.Kind); k != "" {
+		b.WriteString("Kind: ")
+		b.WriteString(k)
+		b.WriteByte('\n')
+	}
+	if id := strings.TrimSpace(op.ID); id != "" {
+		b.WriteString("ID: ")
+		b.WriteString(id)
+		b.WriteByte('\n')
+	}
+	if s := strings.TrimSpace(op.Slug); s != "" {
+		b.WriteString("Slug: ")
+		b.WriteString(s)
+		b.WriteByte('\n')
+	}
+	if u := strings.TrimSpace(op.ApplyURL); u != "" {
+		b.WriteString("Apply URL: ")
+		b.WriteString(u)
+		b.WriteByte('\n')
+	}
+	if d := strings.TrimSpace(op.Description); d != "" {
+		b.WriteString("\nDescription:\n")
+		b.WriteString(d)
+		b.WriteByte('\n')
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func opportunityCardFromContext(op *opportunityChatContext) *opportunityChatCard {
+	if op == nil || strings.TrimSpace(op.Title) == "" {
+		return nil
+	}
+	card := &opportunityChatCard{
+		Title:         strings.TrimSpace(op.Title),
+		Subtitle:      strings.TrimSpace(strings.Join(nonEmptyJoin(op.Entity, op.Location), " · ")),
+		Href:          listingPath(op.Kind, op.Slug),
+		ApplyURL:      strings.TrimSpace(op.ApplyURL),
+		OpportunityID: strings.TrimSpace(op.ID),
+		Slug:          strings.TrimSpace(op.Slug),
+	}
+	return card
+}
+
+func nonEmptyJoin(parts ...string) []string {
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func listingPath(kind, slug string) string {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return "/"
+	}
+	prefix := "jobs"
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "scholarship", "scholarships":
+		prefix = "scholarships"
+	case "tender", "tenders":
+		prefix = "tenders"
+	case "deal", "deals":
+		prefix = "deals"
+	case "funding":
+		prefix = "funding"
+	}
+	return "/" + prefix + "/" + slug + "/"
 }
 
 func fieldsToAgentMap(f onboardingChatFields) map[string]any {

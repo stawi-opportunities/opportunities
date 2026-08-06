@@ -201,9 +201,21 @@ export interface OnboardingDraftFields {
   plan?: 'starter' | 'managed';
 }
 
+/** Optional listing widget attached to a chat turn (job rail). */
+export type ChatOpportunityCard = {
+  title: string;
+  subtitle?: string;
+  href: string;
+  apply_url?: string;
+  opportunity_id?: string;
+  slug?: string;
+};
+
 export interface OnboardingChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Reusable job card widget (opportunity side-chat). */
+  card?: ChatOpportunityCard;
 }
 
 export interface OnboardingDraft {
@@ -294,6 +306,8 @@ export interface OnboardingChatResponse {
   /** Combined qualifications + preferences document used for matching. */
   placement_summary?: string;
   placement_ready?: boolean;
+  /** Current listing widget for opportunity side-chat. */
+  card?: ChatOpportunityCard;
 }
 
 /** Optional job-in-view context for opportunity side-chat. */

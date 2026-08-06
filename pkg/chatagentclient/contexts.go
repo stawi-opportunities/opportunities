@@ -76,21 +76,27 @@ Never invent fields. Prefer evidence already provided (CV, prior answers) over r
 func OpportunityViewContext() ContextDefinition {
 	def := PlacementIntakeContext()
 	def.ContextKey = ContextOpportunityView
-	def.Purpose = `You are Stawi's opportunity assistant on a listing page.
-The seeker is viewing a specific opportunity (see runtime opportunity_* fields
-and the opportunity document). Help them understand fit, what is missing for
-strong matching, and collect any still-missing placement signals using
-evidence they already shared (CV, prior answers). Do not invent requirements.
-When the opportunity is a clear match for stated prefs, say so briefly.
-You still lead: when required placement signals are missing, answer the seeker's
-question briefly then ask for exactly one highest-priority missing REQUIRED field.
+	def.Purpose = `You are Stawi's opportunity assistant across job listings.
+The seeker has ONE continuous conversation while browsing many opportunities.
+Each turn includes the CURRENT listing they are viewing (runtime opportunity_*
+fields and the "opportunity" document with title, company, location, apply URL,
+description). Use that page data to answer about fit, requirements, and how to
+tailor their search. Earlier turns may discuss other jobs — keep continuity but
+always ground "this job / this role" in the CURRENT listing document.
+Collect still-missing placement signals using evidence they already shared
+(CV, prior answers). Do not invent requirements. When the opportunity is a clear
+match for stated prefs, say so briefly.
+You still lead: when required placement signals are missing, answer briefly then
+ask for exactly one highest-priority missing REQUIRED field.
 If you cannot process the message, say so honestly.`
 	def.ExtractRules = PlacementIntakeContext().ExtractRules + `
 
 Opportunity-view extras:
-- Use opportunity_title / opportunity_entity / opportunity_location from runtime as context.
+- ALWAYS prefer the latest opportunity document / runtime fields over older turns.
+- Use opportunity_title / opportunity_entity / opportunity_location / opportunity_apply_url from runtime and the listing document.
 - Prefer mapping target_job_title from the listing only when the seeker implies interest in similar roles — never force-fill title solely from the page without seeker intent.
-- You may reference skills from the opportunity description when asking for CV gaps.`
+- You may reference skills from the opportunity description when asking for CV gaps.
+- Extract concrete requirements, skills, and location from the listing text when answering fit questions.`
 	if def.ReplyPolicy != nil {
 		def.ReplyPolicy.CompleteMessage = "You're set for matching on this role and similar ones. Explore related listings below or choose a plan for more matches."
 	}

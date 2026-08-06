@@ -101,6 +101,17 @@ type fieldStatus struct {
 	Reason string `json:"reason,omitempty"` // empty when ok
 }
 
+// opportunityChatCard is a reusable listing widget for the SPA (title,
+// company/location subtitle, detail href, apply URL).
+type opportunityChatCard struct {
+	Title         string `json:"title"`
+	Subtitle      string `json:"subtitle,omitempty"`
+	Href          string `json:"href,omitempty"`
+	ApplyURL      string `json:"apply_url,omitempty"`
+	OpportunityID string `json:"opportunity_id,omitempty"`
+	Slug          string `json:"slug,omitempty"`
+}
+
 // onboardingChatResponse is returned after each turn.
 // Ready is ALWAYS computed server-side from validated fields — never trusted
 // from the LLM. Missing is the ordered list of required keys still incomplete.
@@ -118,6 +129,8 @@ type onboardingChatResponse struct {
 	PlacementSummary string `json:"placement_summary,omitempty"`
 	// PlacementReady mirrors summary completeness for UI.
 	PlacementReady bool `json:"placement_ready,omitempty"`
+	// Card is the job-in-view widget for opportunity side-chat (optional).
+	Card *opportunityChatCard `json:"card,omitempty"`
 }
 
 // requiredChatFieldOrder is the priority order for follow-up questions.

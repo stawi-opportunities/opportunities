@@ -44,12 +44,20 @@ function renderChat() {
 describe('OpportunitySideChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     fetchOnboardingDraft.mockResolvedValue({ step: 1, fields: {}, messages: [] });
     sendMeChat.mockResolvedValue({
       reply: 'Tell me more about your preferences.',
       fields: { target_job_title: 'Engineer' },
       missing: [],
       ready: false,
+      card: {
+        title: 'Production Engineering',
+        subtitle: 'Meta · Sunnyvale, US',
+        href: '/jobs/production-engineering/',
+        apply_url: 'https://example.com/apply',
+        slug: 'production-engineering',
+      },
       messages: [
         { role: 'user', content: 'What jobs are available in Uganda' },
         { role: 'assistant', content: 'Tell me more about your preferences.' },
@@ -84,8 +92,47 @@ describe('OpportunitySideChat', () => {
     await waitFor(() =>
       expect(screen.getByText(/Tell me more about your preferences/i)).toBeInTheDocument()
     );
-    // Current listing card surfaces after assistant reply.
+    // Current listing card surfaces after assistant reply (reusable widget).
     expect(screen.getAllByText('Production Engineering').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Apply →/i).length).toBeGreaterThan(0);
+  });
+
+  it('keeps one shared transcript when navigating to another job', async () => {
+    const { rerender } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <OpportunitySideChat snap={snap} />
+      </QueryClientProvider>
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/You're viewing Production Engineering/i)).toBeInTheDocument()
+    );
+    fireEvent.change(screen.getByLabelText(/Ask a question about this opportunity/i), {
+      target: { value: 'Do I fit?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/i }));
+    await waitFor(() => expect(screen.getByText(/Tell me more/i)).toBeInTheDocument());
+
+    const snap2: OpportunitySnapshot = {
+      ...snap,
+      id: 'opp_2',
+      slug: 'project-manager-sa',
+      title: 'Project Manager (IT Infrastructure Rollouts)',
+      issuing_entity: 'HandPicked Recruitment',
+      anchor_location: { country: 'SA' },
+    };
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <OpportunitySideChat snap={snap2} />
+      </QueryClientProvider>
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/You're viewing Project Manager \(IT Infrastructure Rollouts\)/i)
+      ).toBeInTheDocument()
+    );
+    // Prior turn still in the shared session.
+    expect(screen.getByText(/Tell me more about your preferences/i)).toBeInTheDocument();
+    expect(screen.getByText(/Do I fit/i)).toBeInTheDocument();
   });
 
   it('does not continue onboarding transcript in a job chat', async () => {
