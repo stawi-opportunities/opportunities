@@ -276,11 +276,6 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 				"I couldn't process that message with the assistant just now. Nothing was saved from this turn — please try again.")
 			return
 		}
-		// Empty model output is rare; still be honest rather than inventing success.
-		if strings.TrimSpace(tres.Reply) == "" {
-			log.Warn("me/chat: Turn returned empty reply")
-		}
-
 		fields := agentMapToFields(tres.Session.Fields)
 		fields = sanitizeFields(fields)
 		fields = applySafeDefaults(fields)
@@ -293,6 +288,14 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 		missing := missingFromStatus(status)
 		ready := len(missing) == 0
 		reply := composeReply(tres.Reply, fields, missing, ready)
+		// Never show canned guided copy when the model produced nothing.
+		if strings.TrimSpace(reply) == "" {
+			log.Warn("me/chat: Turn returned empty reply after compose")
+			deps.Sessions.set(sessionKey, "")
+			httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_empty_reply",
+				"The assistant could not generate a reply for that turn. Nothing was saved — please try again.")
+			return
+		}
 
 		// Map agent messages to SPA shape; always strip legacy viewing chrome.
 		var messages []onboardingChatMessage

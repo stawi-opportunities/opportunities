@@ -46,7 +46,7 @@ func TestComposeReply_BlocksFalseReady(t *testing.T) {
 	require.NotEmpty(t, got)
 }
 
-func TestComposeReply_EmptyFallsBackToGuided(t *testing.T) {
+func TestComposeReply_EmptyDoesNotInventGuided(t *testing.T) {
 	t.Parallel()
 	f := onboardingChatFields{
 		PreferredCountries: []string{"ZA"},
@@ -54,8 +54,8 @@ func TestComposeReply_EmptyFallsBackToGuided(t *testing.T) {
 	}
 	missing := []string{"target_job_title"}
 	got := composeReply("", f, missing, false)
-	require.Contains(t, got, "Got it —")
-	require.Contains(t, strings.ToLower(got), "role")
+	require.Empty(t, got)
+	require.NotContains(t, got, "Got it —")
 }
 
 func TestComposeReply_ReadyUsesLLM(t *testing.T) {
