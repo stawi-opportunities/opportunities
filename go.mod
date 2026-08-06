@@ -24,7 +24,7 @@ require (
 	github.com/antchfx/htmlquery v1.3.6
 	github.com/antchfx/xmlquery v1.5.1
 	github.com/antchfx/xpath v1.3.8
-	github.com/antinvestor/common/v2 v2.0.3
+	github.com/antinvestor/common/v2 v2.0.4
 	github.com/antinvestor/service-trustage v0.4.4
 	github.com/aws/aws-sdk-go-v2 v1.43.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.31
