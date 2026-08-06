@@ -311,6 +311,12 @@ func MeChatHandler(deps MeChatDeps) http.HandlerFunc {
 		ready := len(missing) == 0
 
 		reply := composeReply(llmReply, merged, missing, ready)
+		// Local MeChatHandler (tests / no platform agent): allow structural
+		// guided ask when no model is wired. Production MeChatAgentHandler
+		// never calls this path and rejects empty model replies with 502.
+		if reply == "" && deps.LLM == nil {
+			reply = placement.GuidedFollowUp(toPlacementFields(merged))
+		}
 
 		// Append this turn and persist so the conversation is always available.
 		nextMessages := appendChatTurn(history, msg, reply)
@@ -995,17 +1001,16 @@ func missingChatFields(f onboardingChatFields) []string {
 	return missingFromStatus(assessFieldStatus(f))
 }
 
-// composeReply surfaces the model's reply when present, keeps the agent
-// leading toward required fields, and never pretends the model answered
-// when it did not.
+// composeReply surfaces the model's reply when present. It never invents
+// canned “Got it — markets…” GuidedFollowUp text when the model failed or
+// returned empty — that must be an honest error from the agent path.
 //
 // Policy:
-//   - ready: prefer model text; only use a complete-message template if empty
-//   - not ready + model falsely claims done: honest guided next ask (no fake plan CTA)
-//   - not ready + model replied: keep the model text; if it does not already
-//     steer toward the next missing field, append that next ask so onboarding
-//     stays agent-led
-//   - not ready + empty model: guided next ask (honest structural fallback)
+//   - ready + model text: use model text
+//   - ready + empty: short complete template (profile already ready)
+//   - not ready + model falsely claims done: drop claim; append next ask only
+//   - not ready + model replied: keep model text; optionally append next ask
+//   - not ready + empty: return empty (handler should have already failed closed)
 func composeReply(llmReply string, f onboardingChatFields, missing []string, ready bool) string {
 	llmReply = strings.TrimSpace(llmReply)
 	if ready {
@@ -1038,10 +1043,13 @@ func composeReply(llmReply string, f onboardingChatFields, missing []string, rea
 	}
 	if llmReply != "" {
 		if looksLikeFalseReady(llmReply) {
-			// Model claimed completion incorrectly — do not show that claim.
-			return placement.GuidedFollowUp(toPlacementFields(f))
+			// Do not show a false "you're ready / pick a plan" claim.
+			if ask := nextMissingAsk(nextKey); ask != "" {
+				return ask
+			}
+			return "I still need a bit more detail before we can match you — what role should we target?"
 		}
-		// Keep thoughtful answers, but ensure we still lead toward the objective.
+		// Keep thoughtful answers; ensure we still lead toward the objective.
 		if nextKey != "" && !replyTargetsMissing(llmReply, nextKey) {
 			if ask := nextMissingAsk(nextKey); ask != "" {
 				return strings.TrimSpace(llmReply) + "\n\n" + ask
@@ -1049,8 +1057,8 @@ func composeReply(llmReply string, f onboardingChatFields, missing []string, rea
 		}
 		return llmReply
 	}
-	// Empty model output: be clear we are continuing structured intake.
-	return placement.GuidedFollowUp(toPlacementFields(f))
+	// Empty model output: never invent GuidedFollowUp canned copy.
+	return ""
 }
 
 func looksLikeFalseReady(s string) bool {
