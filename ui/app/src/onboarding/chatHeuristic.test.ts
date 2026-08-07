@@ -51,7 +51,7 @@ describe('chatHeuristic', () => {
 
   it('treats open/market salary language as salary_expectation complete', () => {
     const res = localChatTurn(
-      "Any reasonable amount is ok with me no hard limits though as high as the market could possibly give me",
+      'Any reasonable amount is ok with me no hard limits though as high as the market could possibly give me',
       {
         target_job_title: 'Senior Software Developer',
         experience_level: 'senior',
