@@ -1,17 +1,6 @@
 import { createCheckout, type CheckoutCreateInput, type CheckoutResponse } from '@/api/billing';
-import { authRuntime } from '@/auth/runtime';
 
 export const PENDING_PROMPT_KEY = 'stawi.billing.pending_prompt_id';
-
-/** Email from OIDC claims for Flutterwave customer_email. */
-export async function checkoutEmailFromAuth(): Promise<string> {
-  try {
-    const claims = await authRuntime().getClaims();
-    return String(claims?.email ?? '').trim();
-  } catch {
-    return '';
-  }
-}
 
 export function stashPendingPrompt(promptId: string | undefined | null): void {
   if (!promptId) return;
@@ -33,9 +22,9 @@ export function clearPendingPrompt(): void {
 /**
  * Start checkout and open hosted pay.stawi.org.
  *
- * Hosted checkout binds payment to **profile contacts**. If the profile has
- * au_name but no Contact rows yet, OIDC email/phone from the authenticated
- * session are sent so checkout can AddContact (not free-text on the pay form).
+ * Hosted checkout binds payment to **profile contacts** from ProfileService
+ * only (email → card; phone → MoMo or card). Do not invent payer contact
+ * details from OIDC claims or free-text that is not on the profile.
  *
  * Navigation priority (strict):
  *   1. Any non-empty redirect_url → pay.stawi.org (always)
@@ -46,13 +35,11 @@ export function clearPendingPrompt(): void {
 export async function startCheckoutAndNavigate(
   input: CheckoutCreateInput
 ): Promise<CheckoutResponse> {
-  // Authenticated claims seed profile contacts when missing (anti-forgery:
-  // value is JWT identity, not a user-typed pay-form field).
-  const email = input.email?.trim() || (await checkoutEmailFromAuth()) || undefined;
-  const phone = input.phone?.trim() || undefined;
+  // Omit invented email/phone — pay.stawi.org loads contacts from the profile.
+  const { email: _e, phone: _p, ...rest } = input;
   let res: CheckoutResponse;
   try {
-    res = await createCheckout({ ...input, email, phone });
+    res = await createCheckout(rest);
   } catch (e) {
     // Already subscribed → send them to the dashboard, not a new pay page.
     const msg = e instanceof Error ? e.message : String(e);

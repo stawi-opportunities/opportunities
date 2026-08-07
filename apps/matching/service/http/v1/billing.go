@@ -1,15 +1,12 @@
 package v1
 
 import (
-	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/pitabwire/frame/v2/security"
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
@@ -121,8 +118,9 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 
 		// Never start a second payment while the candidate is already paid.
 		// Also resolve platform profile_id for checkout (contacts + au_name).
+		// Contact detail is loaded only by checkout via ProfileService.GetById —
+		// do not invent email/phone from JWT or product-local fields.
 		profileID := candidateID
-		candPhone := ""
 		if deps.Candidates != nil {
 			if cand, cerr := deps.Candidates.GetByID(ctx, candidateID); cerr == nil && cand != nil {
 				if cand.Subscription == domain.SubscriptionPaid || cand.Subscription == domain.SubscriptionTrial {
@@ -133,7 +131,6 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 				if p := strings.TrimSpace(cand.ProfileID); p != "" {
 					profileID = p
 				}
-				candPhone = strings.TrimSpace(cand.Phone)
 			}
 		}
 
@@ -154,28 +151,15 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			return
 		}
 
-		// Prefer body hints; fall back to verified OIDC claims / profile phone.
-		// Hosted checkout seeds empty profile Contact rows from these values
-		// (never free-text on pay.stawi.org).
-		email := strings.TrimSpace(in.Email)
-		if email == "" {
-			email = oidcEmailFromContext(ctx)
-		}
-		phone := strings.TrimSpace(in.Phone)
-		if phone == "" {
-			phone = candPhone
-		}
-
 		country := strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 		res, err := deps.Gateway.CreateCheckout(ctx, billing.CheckoutRequest{
 			CandidateID: candidateID,
-			// Hosted checkout calls ProfileService.GetById(profileID) for
-			// contacts[] and properties.au_name (service_authentication name).
+			// Hosted checkout: ProfileService.GetById(profileID) is the only
+			// source of contacts[] and au_name. Email/phone body fields are
+			// ignored for profile-bound pay (anti-forgery / no invented contacts).
 			ProfileID: profileID,
 			Plan:      plan,
 			Country:   country,
-			Email:     email,
-			Phone:     phone,
 		})
 		if errors.Is(err, billing.ErrGatewayUnavailable) {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "billing_unavailable", "payment provider is not configured")
@@ -233,56 +217,6 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			Error:          res.Error,
 		})
 	}
-}
-
-// oidcEmailFromContext reads the email claim from the already-verified JWT
-// payload (AuthenticationClaims does not surface email as a first-class field).
-// Empty when no JWT / claim present.
-func oidcEmailFromContext(ctx context.Context) string {
-	if claims := security.ClaimsFromContext(ctx); claims != nil && claims.Ext != nil {
-		for _, key := range []string{"email", "preferred_username"} {
-			if v, ok := claims.Ext[key].(string); ok {
-				if e := strings.TrimSpace(v); e != "" && strings.Contains(e, "@") {
-					return e
-				}
-			}
-		}
-	}
-	raw := strings.TrimSpace(security.JwtFromContext(ctx))
-	if raw == "" {
-		return ""
-	}
-	parts := strings.Split(raw, ".")
-	if len(parts) < 2 {
-		return ""
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		// Some issuers pad; try standard encoding.
-		payload, err = base64.URLEncoding.DecodeString(parts[1])
-		if err != nil {
-			return ""
-		}
-	}
-	var m map[string]any
-	if err := json.Unmarshal(payload, &m); err != nil {
-		return ""
-	}
-	for _, key := range []string{"email", "preferred_username"} {
-		if v, ok := m[key].(string); ok {
-			if e := strings.TrimSpace(v); e != "" && strings.Contains(e, "@") {
-				return e
-			}
-		}
-	}
-	if ext, ok := m["ext"].(map[string]any); ok {
-		if v, ok := ext["email"].(string); ok {
-			if e := strings.TrimSpace(v); e != "" && strings.Contains(e, "@") {
-				return e
-			}
-		}
-	}
-	return ""
 }
 
 // --- GET /billing/checkout/status (auth'd) -----------------------------
