@@ -517,9 +517,7 @@ export function PreferenceChat({
         let patched = false;
         for (let i = nextMsgs.length - 1; i >= 0; i--) {
           if (nextMsgs[i]?.role === 'assistant') {
-            nextMsgs = nextMsgs.map((m, idx) =>
-              idx === i ? { ...m, content: res.reply } : m
-            );
+            nextMsgs = nextMsgs.map((m, idx) => (idx === i ? { ...m, content: res.reply } : m));
             patched = true;
             break;
           }
