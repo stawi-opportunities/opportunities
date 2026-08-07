@@ -53,6 +53,12 @@ describe('resolvePostLoginPath', () => {
     expect(resolvePostLoginPath('/auth/callback/', 'none')).toBe('/onboarding/');
   });
 
+  it('does not open dashboard without active billing entitlement', () => {
+    expect(resolvePostLoginPath('/', 'past_due')).toBe('/onboarding/');
+    expect(resolvePostLoginPath('/', 'trial')).toBe('/onboarding/');
+    expect(resolvePostLoginPath('/dashboard/', 'cancelled')).toBe('/onboarding/');
+  });
+
   it('preserves onboarding plan query for unpaid users', () => {
     expect(resolvePostLoginPath('/onboarding/?plan=pro', 'none')).toBe('/onboarding/?plan=pro');
   });
