@@ -359,11 +359,19 @@ func FiltersFromFields(f Fields) IndexFilters {
 }
 
 func hasSalary(f Fields) bool {
+	// MKT / OPN = open market rates (set by chat when seeker declines a hard floor).
+	cur := strings.ToUpper(strings.TrimSpace(f.Currency))
+	if cur == "MKT" || cur == "OPN" || cur == "OPEN" {
+		return true
+	}
 	return (f.SalaryMin != nil && *f.SalaryMin > 0) || (f.SalaryMax != nil && *f.SalaryMax > 0)
 }
 
 func formatSalary(f Fields) string {
-	cur := f.Currency
+	cur := strings.ToUpper(strings.TrimSpace(f.Currency))
+	if cur == "MKT" || cur == "OPN" || cur == "OPEN" {
+		return "market rates (open)"
+	}
 	if cur == "" {
 		cur = "USD"
 	}

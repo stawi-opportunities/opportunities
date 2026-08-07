@@ -773,13 +773,14 @@ func sanitizeFields(f onboardingChatFields) onboardingChatFields {
 	out.PreferredLanguages = normalizeLanguages(out.PreferredLanguages)
 	out.JobTypes = normalizeJobTypes(out.JobTypes)
 	out.LinkedIn = normalizeLinkedIn(out.LinkedIn)
-	if out.Currency != "" && len(out.Currency) != 3 {
-		out.Currency = ""
-	}
 	if out.Currency != "" {
-		out.Currency = strings.ToUpper(out.Currency)
+		out.Currency = strings.ToUpper(strings.TrimSpace(out.Currency))
+		// MKT = open / market rates (3-letter sentinel). Other codes must be ISO-like.
+		if out.Currency != salaryOpenCurrency && len(out.Currency) != 3 {
+			out.Currency = ""
+		}
 	}
-	// Drop nonsense salaries.
+	// Drop nonsense salaries (keep MKT open expectation without numeric floor).
 	if out.SalaryMin != nil && *out.SalaryMin <= 0 {
 		out.SalaryMin = nil
 	}
@@ -960,7 +961,14 @@ func looksLikeCV(s string) bool {
 	return false
 }
 
+// salaryOpenCurrency marks “market rates / open / no hard limits” without a
+// numeric floor. Matching treats it as salary_expectation satisfied.
+const salaryOpenCurrency = "MKT"
+
 func hasSalaryExpectation(f onboardingChatFields) bool {
+	if isOpenSalaryCurrency(f.Currency) {
+		return true
+	}
 	if f.SalaryMin != nil && *f.SalaryMin > 0 {
 		return true
 	}
@@ -970,7 +978,49 @@ func hasSalaryExpectation(f onboardingChatFields) bool {
 	return false
 }
 
+func isOpenSalaryCurrency(cur string) bool {
+	c := strings.ToUpper(strings.TrimSpace(cur))
+	return c == salaryOpenCurrency || c == "OPN" || c == "OPEN"
+}
+
+// looksLikeOpenSalary detects flexible compensation language (no numeric range).
+func looksLikeOpenSalary(msg string) bool {
+	low := strings.ToLower(msg)
+	for _, p := range []string{
+		"market rate", "market rates", "market pay", "market salary",
+		"competitive rate", "competitive salary", "competitive pay", "competitive compensation",
+		"no hard limit", "no hard limits", "no limit", "no limits",
+		"any reasonable", "reasonable amount", "open to any",
+		"whatever the market", "as high as the market", "what the market",
+		"open salary", "salary open", "open to market", "negotiable",
+		"flexible salary", "flexible on salary", "flexible compensation",
+		"no minimum", "no maximum", "no max", "no floor",
+	} {
+		if strings.Contains(low, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyOpenSalaryFromText sets MKT currency when the seeker states open/market pay.
+func applyOpenSalaryFromText(f onboardingChatFields, texts ...string) onboardingChatFields {
+	if hasSalaryExpectation(f) {
+		return f
+	}
+	for _, t := range texts {
+		if looksLikeOpenSalary(t) {
+			f.Currency = salaryOpenCurrency
+			return f
+		}
+	}
+	return f
+}
+
 func formatSalary(f onboardingChatFields) string {
+	if isOpenSalaryCurrency(f.Currency) {
+		return "market rates (open)"
+	}
 	cur := f.Currency
 	if cur == "" {
 		cur = "USD"
@@ -1235,11 +1285,13 @@ func heuristicExtract(msg string) onboardingChatFields {
 	// LinkedIn URL or handle.
 	f.LinkedIn = extractLinkedIn(msg)
 
-	// Salary: "$80k", "KES 200000", "80000-120000 USD"
+	// Salary: "$80k", "KES 200000", "80000-120000 USD", or open/market language.
 	if min, max, cur := extractSalary(msg); min != nil || max != nil {
 		f.SalaryMin = min
 		f.SalaryMax = max
 		f.Currency = cur
+	} else if looksLikeOpenSalary(msg) {
+		f.Currency = salaryOpenCurrency
 	}
 
 	f.TargetJobTitle = guessTitle(msg)

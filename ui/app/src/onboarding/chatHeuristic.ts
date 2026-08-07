@@ -76,8 +76,52 @@ function looksLikeCV(s?: string): boolean {
   return false;
 }
 
+/** MKT = open / market rates (matches matching salaryOpenCurrency). */
+function isOpenSalaryCurrency(cur?: string | null): boolean {
+  const c = (cur ?? '').trim().toUpperCase();
+  return c === 'MKT' || c === 'OPN' || c === 'OPEN';
+}
+
 function hasSalary(f: OnboardingChatFields): boolean {
+  if (isOpenSalaryCurrency(f.currency)) return true;
   return (f.salary_min != null && f.salary_min > 0) || (f.salary_max != null && f.salary_max > 0);
+}
+
+/** Flexible pay language without a number still satisfies salary_expectation. */
+export function looksLikeOpenSalary(msg: string): boolean {
+  const low = msg.toLowerCase();
+  const phrases = [
+    'market rate',
+    'market rates',
+    'market pay',
+    'market salary',
+    'competitive rate',
+    'competitive salary',
+    'competitive pay',
+    'competitive compensation',
+    'no hard limit',
+    'no hard limits',
+    'no limit',
+    'no limits',
+    'any reasonable',
+    'reasonable amount',
+    'open to any',
+    'whatever the market',
+    'as high as the market',
+    'what the market',
+    'open salary',
+    'salary open',
+    'open to market',
+    'negotiable',
+    'flexible salary',
+    'flexible on salary',
+    'flexible compensation',
+    'no minimum',
+    'no maximum',
+    'no max',
+    'no floor',
+  ];
+  return phrases.some((p) => low.includes(p));
 }
 
 function questionForMissing(key: string): string {
@@ -100,6 +144,7 @@ function questionForMissing(key: string): string {
 }
 
 function formatSalaryAck(f: OnboardingChatFields): string {
+  if (isOpenSalaryCurrency(f.currency)) return 'market rates (open)';
   const cur = f.currency || 'USD';
   if (f.salary_min != null && f.salary_max != null && f.salary_min !== f.salary_max) {
     return `${cur} ${f.salary_min}–${f.salary_max}`;
@@ -323,7 +368,7 @@ export function heuristicExtract(msg: string): OnboardingChatFields {
   const li = extractLinkedIn(msg);
   if (li) f.linkedin = li;
 
-  // Salary: "$80k", "KES 200000", "80000 USD"
+  // Salary: "$80k", "KES 200000", "80000 USD", or open/market language.
   const sal = msg.match(
     /(?:(USD|EUR|GBP|KES|NGN|ZAR|GHS|AED|INR)\s*)?\$?\s*([\d,]+)\s*([kK])?(?:\s*[-–to]+\s*\$?\s*([\d,]+)\s*([kK])?)?(?:\s*(USD|EUR|GBP|KES|NGN|ZAR|GHS|AED|INR))?/
   );
@@ -336,6 +381,8 @@ export function heuristicExtract(msg: string): OnboardingChatFields {
       f.salary_min = Math.min(n1, n2);
       f.salary_max = Math.max(n1, n2);
     }
+  } else if (looksLikeOpenSalary(msg)) {
+    f.currency = 'MKT';
   }
 
   f.target_job_title = guessTitle(msg);
