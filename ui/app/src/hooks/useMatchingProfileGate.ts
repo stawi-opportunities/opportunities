@@ -10,48 +10,63 @@ import {
   type ProfileReadiness,
 } from '@/utils/profileReadiness';
 
+export type MatchingProfileGateOptions = {
+  /**
+   * When false, CV/draft are not fetched and the gate does not redirect.
+   * Use after subscription is confirmed — unpaid users never load dashboard profile data.
+   */
+  enabled?: boolean;
+};
+
 /**
  * When the signed-in user lacks a complete matching profile (CV + aspirational
  * fields), redirect to onboarding chat before showing the dashboard shell.
+ *
+ * Only runs when `enabled` (default true). Dashboard passes `enabled` only after
+ * subscription is allowed so unpaid users never trigger these loads.
  */
-export function useMatchingProfileGate(): {
+export function useMatchingProfileGate(options: MatchingProfileGateOptions = {}): {
   checking: boolean;
   readiness: ProfileReadiness | null;
 } {
+  const enabled = options.enabled !== false;
   const { hasSession, ready: authReady } = useAuth();
   const [redirecting, setRedirecting] = useState(false);
+  const active = Boolean(enabled && authReady && hasSession);
 
   const cvQ = useQuery({
     queryKey: QUERY_KEYS.ME_CV,
     queryFn: fetchMeCV,
-    enabled: authReady && hasSession,
+    enabled: active,
     staleTime: 30_000,
   });
 
   const draftQ = useQuery({
     queryKey: QUERY_KEYS.ONBOARDING_DRAFT,
     queryFn: fetchOnboardingDraft,
-    enabled: authReady && hasSession,
+    enabled: active,
     staleTime: 30_000,
   });
 
   const settled = cvQ.isFetched && draftQ.isFetched;
-  const loading = Boolean(
-    hasSession && authReady && !settled && (cvQ.isLoading || draftQ.isLoading)
-  );
+  const loading = Boolean(active && !settled && (cvQ.isLoading || draftQ.isLoading));
 
   const readiness =
-    hasSession && settled
+    active && settled
       ? evaluateProfileReadiness(cvQ.data ?? null, draftQ.data?.fields ?? null)
       : null;
 
   useEffect(() => {
-    if (!authReady || !hasSession) return;
+    if (!active) return;
     if (!settled || redirecting) return;
     if (!readiness || readiness.ready) return;
     setRedirecting(true);
     window.location.replace(ONBOARDING_CHAT_PATH);
-  }, [authReady, hasSession, settled, readiness, redirecting]);
+  }, [active, settled, readiness, redirecting]);
+
+  if (!enabled) {
+    return { checking: false, readiness: null };
+  }
 
   return {
     checking: Boolean(

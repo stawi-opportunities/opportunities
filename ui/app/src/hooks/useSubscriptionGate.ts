@@ -17,37 +17,95 @@ export function isBillingReturnPath(
   }
 }
 
-function isPaidStatus(status: string | undefined | null): boolean {
+/** Active, grace (past_due), or trial — may use the dashboard product surface. */
+export function isPaidSubscriptionStatus(status: string | undefined | null): boolean {
   return status === 'active' || status === 'past_due' || status === 'trial';
+}
+
+export type SubscriptionAccess = {
+  /** May render dashboard product UI (paid, or billing return while webhook settles). */
+  allowed: boolean;
+  /** Must not paint dashboard content (loading, unpaid redirect, or verify error). */
+  block: boolean;
+  /** Subscription fetch failed with no cached status. */
+  error: boolean;
+  /** Unpaid status known — redirect to onboarding paywall. */
+  shouldRedirect: boolean;
+};
+
+/**
+ * Pure access decision for the dashboard shell.
+ * Dashboard content must only render when `allowed` is true.
+ */
+export function evaluateSubscriptionAccess(input: {
+  authReady: boolean;
+  hasSession: boolean;
+  billingReturn: boolean;
+  status: string | null | undefined;
+  /** True while first subscription fetch is in flight with no data yet. */
+  loading: boolean;
+  /** True when the subscription query failed and we have no status. */
+  error: boolean;
+}): SubscriptionAccess {
+  const { authReady, hasSession, billingReturn, status, loading, error } = input;
+
+  if (!authReady || !hasSession) {
+    return { allowed: false, block: false, error: false, shouldRedirect: false };
+  }
+
+  if (billingReturn) {
+    return { allowed: true, block: false, error: false, shouldRedirect: false };
+  }
+
+  if (loading) {
+    return { allowed: false, block: true, error: false, shouldRedirect: false };
+  }
+
+  if (error && (status == null || status === '')) {
+    return { allowed: false, block: true, error: true, shouldRedirect: false };
+  }
+
+  if (isPaidSubscriptionStatus(status)) {
+    return { allowed: true, block: false, error: false, shouldRedirect: false };
+  }
+
+  // Known unpaid (none / canceled / empty) — never load dashboard product UI.
+  return { allowed: false, block: true, error: false, shouldRedirect: true };
 }
 
 /**
  * Dashboard access requires an active (or grace) subscription.
  * Unpaid candidates are sent to onboarding paywall — no free-tier dashboard stay.
  * Checkout return URLs (?billing=…) are allowed so webhooks can settle.
+ *
+ * `allowed` is synchronous with query data (no useEffect flash of dashboard UI).
  */
-export function useSubscriptionGate(): { checking: boolean } {
+export function useSubscriptionGate(): SubscriptionAccess & { checking: boolean } {
   const { hasSession, ready: authReady } = useAuth();
   const subQ = useSubscription();
   const [redirecting, setRedirecting] = useState(false);
 
-  useEffect(() => {
-    if (!authReady || !hasSession) return;
-    if (redirecting) return;
-    if (isBillingReturnPath()) return;
-    // Wait for first successful fetch; do not kick on network error (paid users).
-    if (subQ.isLoading && subQ.data == null) return;
-    if (subQ.isError && subQ.data == null) return;
-    if (isPaidStatus(subQ.data?.status)) return;
+  const access = evaluateSubscriptionAccess({
+    authReady,
+    hasSession,
+    billingReturn: isBillingReturnPath(),
+    status: subQ.data?.status,
+    loading: Boolean(subQ.isLoading && subQ.data == null),
+    error: Boolean(subQ.isError && subQ.data == null),
+  });
 
+  useEffect(() => {
+    if (!access.shouldRedirect || redirecting) return;
     setRedirecting(true);
     window.location.replace(ONBOARDING_PATH);
-  }, [authReady, hasSession, redirecting, subQ.isLoading, subQ.isError, subQ.data]);
+  }, [access.shouldRedirect, redirecting]);
 
-  const waitingOnSub =
-    hasSession && authReady && !isBillingReturnPath() && subQ.isLoading && subQ.data == null;
+  const block = access.block || redirecting;
 
   return {
-    checking: Boolean(hasSession && (waitingOnSub || redirecting)),
+    ...access,
+    block,
+    // Alias used by older call sites / tests of “still determining or leaving”.
+    checking: block,
   };
 }

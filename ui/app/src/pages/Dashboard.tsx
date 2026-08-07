@@ -60,8 +60,9 @@ export default function Dashboard() {
   const [showCancel, setShowCancel] = useState(false);
 
   const subQ = useSubscription();
-  const profileGate = useMatchingProfileGate();
+  // Subscription first: never paint product UI or load profile until allowed.
   const subscriptionGate = useSubscriptionGate();
+  const profileGate = useMatchingProfileGate({ enabled: subscriptionGate.allowed });
 
   const sectionLabels: Record<string, string> = {
     matches: 'Matches',
@@ -110,12 +111,23 @@ export default function Dashboard() {
 
   if (!ready) return <Skeleton />;
   if (!hasSession) return <SignedOut onSignIn={login} />;
-  // Incomplete CV / aspirational profile → onboarding chat (matching needs it).
-  if (profileGate.checking) {
+
+  // Paid (or billing return) only — unpaid never loads matches/CV/settings shell.
+  if (!subscriptionGate.allowed) {
+    if (subscriptionGate.error) {
+      return (
+        <SubscriptionVerifyError
+          onRetry={() => {
+            void subQ.refetch();
+          }}
+        />
+      );
+    }
     return <ProfileGateSkeleton />;
   }
-  // Unpaid → onboarding paywall (no free-tier dashboard). Billing return URLs exempt.
-  if (subscriptionGate.checking) {
+
+  // Incomplete CV / aspirational profile → onboarding chat (matching needs it).
+  if (profileGate.checking) {
     return <ProfileGateSkeleton />;
   }
 
@@ -124,7 +136,7 @@ export default function Dashboard() {
   const isActive =
     sub?.status === 'active' || sub?.status === 'past_due' || sub?.status === 'trial';
   const subscription = sub?.status ?? 'none';
-
+  // Billing-return visits may still be unpaid until webhook settles.
   const subscriptionPanel =
     isActive && plan ? (
       <BillingPanel
@@ -287,9 +299,28 @@ function ProfileGateSkeleton() {
   return (
     <div className="mx-auto max-w-sm px-4 py-16 text-center">
       <div className="mx-auto h-8 w-48 animate-pulse rounded bg-surface-hover" />
-      <p className="mt-4 text-sm text-secondary">Checking your profile for matching…</p>
+      <p className="mt-4 text-sm text-secondary">Checking access…</p>
       <p className="mt-2 text-xs text-secondary">
-        If anything is missing, we&apos;ll open the setup chat so we can match the right roles.
+        Verifying your subscription and profile before opening the dashboard.
+      </p>
+    </div>
+  );
+}
+
+function SubscriptionVerifyError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mx-auto max-w-sm px-4 py-16 text-center">
+      <h1 className="text-lg font-semibold text-main">Couldn&apos;t verify subscription</h1>
+      <p className="mt-2 text-sm text-secondary">
+        The dashboard only opens for active plans. Check your connection and try again.
+      </p>
+      <Button className="mt-6" variant="primary" onClick={onRetry}>
+        Retry
+      </Button>
+      <p className="mt-4 text-xs text-secondary">
+        <a href="/onboarding/" className="underline underline-offset-2">
+          Continue setup / subscribe
+        </a>
       </p>
     </div>
   );

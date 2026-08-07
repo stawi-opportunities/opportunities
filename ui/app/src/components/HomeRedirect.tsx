@@ -1,15 +1,20 @@
 import { useEffect } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
+import { useSubscription } from '@/hooks/useSubscription';
+import { isPaidSubscriptionStatus } from '@/hooks/useSubscriptionGate';
 
 /**
- * Marketing homepage (`/`): signed-in users go to `/dashboard/`.
- * Unpaid users are bounced onward by Dashboard itself (→ `/onboarding/`).
+ * Marketing homepage (`/`): signed-in users leave the marketing shell.
+ * - Subscribed → `/dashboard/`
+ * - Unpaid / unknown after load → `/onboarding/` (paywall funnel)
+ * Never park unpaid users on the dashboard island.
  *
  * Uses sticky `hasSession` so a token refresh never un-hides the hero and
  * never cancels a redirect mid-flight (the classic logged-in/out flicker).
  */
 export default function HomeRedirect() {
   const { hasSession, ready, state } = useAuth();
+  const subQ = useSubscription();
 
   useEffect(() => {
     const hero = document.getElementById('home-hero');
@@ -26,8 +31,16 @@ export default function HomeRedirect() {
     }
 
     if (hero) hero.style.display = 'none';
-    window.location.replace('/dashboard/');
-  }, [hasSession, ready, state]);
+
+    // Wait for subscription so we do not bounce unpaid → dashboard → onboarding.
+    if (subQ.isLoading && subQ.data == null) return;
+    if (isPaidSubscriptionStatus(subQ.data?.status)) {
+      window.location.replace('/dashboard/');
+      return;
+    }
+    // Error or unpaid: onboarding owns the paywall / recovery path.
+    window.location.replace('/onboarding/');
+  }, [hasSession, ready, state, subQ.isLoading, subQ.data?.status, subQ.isError]);
 
   return null;
 }

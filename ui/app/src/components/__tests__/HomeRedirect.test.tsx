@@ -6,6 +6,8 @@ import HomeRedirect from '../HomeRedirect';
 let authState: AuthState = 'initializing';
 let hasSession = false;
 let ready = false;
+let subLoading = false;
+let subStatus: string | undefined;
 
 vi.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({
@@ -15,6 +17,14 @@ vi.mock('@/providers/AuthProvider', () => ({
     login: vi.fn(),
     logout: vi.fn(),
     runtime: {},
+  }),
+}));
+
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({
+    isLoading: subLoading,
+    isError: false,
+    data: subStatus != null ? { status: subStatus } : undefined,
   }),
 }));
 
@@ -30,6 +40,8 @@ beforeEach(() => {
   authState = 'initializing';
   hasSession = false;
   ready = false;
+  subLoading = false;
+  subStatus = undefined;
 });
 
 function hero() {
@@ -55,19 +67,41 @@ describe('HomeRedirect', () => {
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
-  it('hides the hero and redirects any signed-in user to /dashboard/', () => {
+  it('waits for subscription before redirecting signed-in users', () => {
     authState = 'authenticated';
     hasSession = true;
     ready = true;
+    subLoading = true;
+    subStatus = undefined;
+    render(<HomeRedirect />);
+    expect(hero().style.display).toBe('none');
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('sends subscribed users to /dashboard/', () => {
+    authState = 'authenticated';
+    hasSession = true;
+    ready = true;
+    subStatus = 'active';
     render(<HomeRedirect />);
     expect(hero().style.display).toBe('none');
     expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
   });
 
-  it('does not flash signed-out during token refresh', () => {
+  it('sends unpaid users to /onboarding/ (not dashboard)', () => {
+    authState = 'authenticated';
+    hasSession = true;
+    ready = true;
+    subStatus = 'none';
+    render(<HomeRedirect />);
+    expect(replaceSpy).toHaveBeenCalledWith('/onboarding/');
+  });
+
+  it('does not flash signed-out during token refresh for paid users', () => {
     authState = 'refreshing';
     hasSession = true;
     ready = true;
+    subStatus = 'active';
     hero().style.display = 'none';
     render(<HomeRedirect />);
     expect(hero().style.display).toBe('none');

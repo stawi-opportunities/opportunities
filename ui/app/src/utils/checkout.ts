@@ -31,10 +31,14 @@ export function clearPendingPrompt(): void {
 }
 
 /**
- * Start checkout and leave the SPA for Flutterwave.
+ * Start checkout and open hosted pay.stawi.org.
+ *
+ * Email/phone are optional hints only — hosted checkout binds payment to
+ * profile contacts (email → card; phone → MoMo or card). Do not invent
+ * free-text payer details that are not on the profile.
  *
  * Navigation priority (strict):
- *   1. Any non-empty redirect_url → Flutterwave pay page (always)
+ *   1. Any non-empty redirect_url → pay.stawi.org (always)
  *   2. paid → dashboard success
  *   3. failed / missing URL → throw so the caller can show the error
  *   4. pending without URL → dashboard poller (last-resort recovery only)
@@ -42,10 +46,13 @@ export function clearPendingPrompt(): void {
 export async function startCheckoutAndNavigate(
   input: CheckoutCreateInput
 ): Promise<CheckoutResponse> {
-  const email = input.email?.trim() || (await checkoutEmailFromAuth());
+  // Prefer explicit body fields; otherwise omit so pay.stawi.org loads
+  // contacts from the profile (no OIDC email forgery path).
+  const email = input.email?.trim() || undefined;
+  const phone = input.phone?.trim() || undefined;
   let res: CheckoutResponse;
   try {
-    res = await createCheckout({ ...input, email: email || undefined });
+    res = await createCheckout({ ...input, email, phone });
   } catch (e) {
     // Already subscribed → send them to the dashboard, not a new pay page.
     const msg = e instanceof Error ? e.message : String(e);
