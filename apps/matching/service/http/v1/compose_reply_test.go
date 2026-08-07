@@ -46,6 +46,37 @@ func TestComposeReply_BlocksFalseReady(t *testing.T) {
 	require.NotEmpty(t, got)
 }
 
+func TestComposeReply_BlocksPlacementProfileCompleteClaim(t *testing.T) {
+	t.Parallel()
+	f := onboardingChatFields{
+		TargetJobTitle:     "Senior Software Developer",
+		PreferredCountries: []string{"UG"},
+		ExtraInfo:          "Uploaded CV on file. Resume document stored for matching (experience, education, skills).",
+		JobTypes:           []string{"Full-time"},
+		ExperienceLevel:    "senior",
+	}
+	missing := []string{"salary_expectation"}
+	llm := "Got it—I've updated your location preference to Uganda for remote Software Developer roles. Your placement profile is complete, and we are ready to match you with suitable opportunities."
+	got := composeReply(llm, f, missing, false)
+	require.NotContains(t, strings.ToLower(got), "profile is complete")
+	require.NotContains(t, strings.ToLower(got), "ready to match")
+	require.Contains(t, strings.ToLower(got), "salary")
+}
+
+func TestApplyComposedReplyToMessages_OverwritesLastAssistant(t *testing.T) {
+	t.Parallel()
+	msgs := []onboardingChatMessage{
+		{Role: "user", Content: "I want remote roles from Uganda"},
+		{Role: "assistant", Content: "Your placement profile is complete!"},
+	}
+	out := applyComposedReplyToMessages(msgs, "What are your salary expectations? (e.g. USD 80k–120k, or KES 200000+)")
+	require.Len(t, out, 2)
+	require.Equal(t, "user", out[0].Role)
+	require.Equal(t, "assistant", out[1].Role)
+	require.Contains(t, out[1].Content, "salary")
+	require.NotContains(t, out[1].Content, "complete")
+}
+
 func TestComposeReply_EmptyDoesNotInventGuided(t *testing.T) {
 	t.Parallel()
 	f := onboardingChatFields{

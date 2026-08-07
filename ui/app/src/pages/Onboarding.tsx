@@ -287,6 +287,10 @@ export default function Onboarding() {
               void saveOnboardingDraft(step, fieldsToDraft(f, plan), meta.messages).catch(
                 () => undefined
               );
+              // Parent-level advance: survives chat remounts and missed autoComplete.
+              if (meta.ready) {
+                void goToPlan(f, meta.messages);
+              }
             }}
             onComplete={(f, meta) => void goToPlan(f, meta?.messages ?? messages)}
           />

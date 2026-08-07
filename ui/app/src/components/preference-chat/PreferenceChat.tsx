@@ -505,11 +505,27 @@ export function PreferenceChat({
         { role: 'user', content: display },
         { role: 'assistant', content: res.reply },
       ];
+      // Prefer server transcript for history length, but always surface the
+      // composed `reply` on the last assistant turn (matching rewrites false
+      // "profile complete" claims when required fields are still missing).
       let nextMsgs: OnboardingChatMessage[] =
         res.messages && res.messages.length >= appended.length ? res.messages : appended;
       nextMsgs = filterPlacementMessages(nextMsgs).map((m) =>
         m.role === 'user' ? { ...m, content: displayUserContent(m.content) } : m
       );
+      if (res.reply?.trim()) {
+        let patched = false;
+        for (let i = nextMsgs.length - 1; i >= 0; i--) {
+          if (nextMsgs[i]?.role === 'assistant') {
+            nextMsgs = nextMsgs.map((m, idx) => (idx === i ? { ...m, content: res.reply } : m));
+            patched = true;
+            break;
+          }
+        }
+        if (!patched) {
+          nextMsgs = [...nextMsgs, { role: 'assistant', content: res.reply }];
+        }
+      }
       setMessages(nextMsgs);
       onFieldsChange?.(nextFields, {
         ready: isReady,
@@ -816,14 +832,14 @@ export function PreferenceChat({
         </p>
       )}
       {showCompleteAction && canComplete && onComplete && (
-        <div className="mt-2 flex justify-center">
+        <div className="mt-3 flex justify-center">
           <button
             type="button"
             onClick={() => void handleComplete()}
             disabled={completing}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50 dark:text-blue-400"
+            className="w-full max-w-md rounded-full bg-navy-900 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-navy-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500"
           >
-            {completing ? 'Saving…' : ctaLabel}
+            {completing ? 'Saving…' : `${ctaLabel} →`}
           </button>
         </div>
       )}

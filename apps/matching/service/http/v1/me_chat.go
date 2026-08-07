@@ -1067,7 +1067,30 @@ func looksLikeFalseReady(s string) bool {
 		strings.Contains(low, "choose a plan") ||
 		strings.Contains(low, "pick a plan") ||
 		strings.Contains(low, "everything i need") ||
-		strings.Contains(low, "ready to match")
+		strings.Contains(low, "ready to match") ||
+		strings.Contains(low, "profile is complete") ||
+		strings.Contains(low, "placement profile is complete") ||
+		strings.Contains(low, "we are ready to match") ||
+		strings.Contains(low, "ready to match you") ||
+		(strings.Contains(low, "profile is complete") && strings.Contains(low, "opportunities"))
+}
+
+// applyComposedReplyToMessages ensures the last assistant turn matches the
+// composed reply (matching may rewrite false-ready LLM claims).
+func applyComposedReplyToMessages(msgs []onboardingChatMessage, reply string) []onboardingChatMessage {
+	reply = strings.TrimSpace(reply)
+	if reply == "" || len(msgs) == 0 {
+		return msgs
+	}
+	out := make([]onboardingChatMessage, len(msgs))
+	copy(out, msgs)
+	for i := len(out) - 1; i >= 0; i-- {
+		if out[i].Role == "assistant" {
+			out[i].Content = reply
+			return out
+		}
+	}
+	return append(out, onboardingChatMessage{Role: "assistant", Content: reply})
 }
 
 // nextMissingAsk returns the product ask for a required field key.
