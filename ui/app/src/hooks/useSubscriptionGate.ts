@@ -4,7 +4,10 @@ import { useAuth } from '@/providers/AuthProvider';
 
 const ONBOARDING_PATH = '/onboarding/';
 
-/** True while Flutterwave return / checkout recovery is in progress on dashboard. */
+/**
+ * Checkout return / recovery on the dashboard URL.
+ * These visits must NOT unlock product UI until /me/subscription is active.
+ */
 export function isBillingReturnPath(
   search = typeof window !== 'undefined' ? window.location.search : ''
 ): boolean {
@@ -17,25 +20,36 @@ export function isBillingReturnPath(
   }
 }
 
-/** Active, grace (past_due), or trial — may use the dashboard product surface. */
+/**
+ * True only when matching billing entitlement is confirmed subscribed.
+ * Source of truth: GET /me/subscription (activated after checkout/webhook).
+ * Backend maps paid + trial → "active". Unpaid is "none" / "cancelled".
+ */
 export function isPaidSubscriptionStatus(status: string | undefined | null): boolean {
-  return status === 'active' || status === 'past_due' || status === 'trial';
+  return status === 'active';
 }
 
 export type SubscriptionAccess = {
-  /** May render dashboard product UI (paid, or billing return while webhook settles). */
+  /** Product dashboard UI (matches, CV, settings) may render. */
   allowed: boolean;
-  /** Must not paint dashboard content (loading, unpaid redirect, or verify error). */
+  /** Must not paint product UI. */
   block: boolean;
   /** Subscription fetch failed with no cached status. */
   error: boolean;
-  /** Unpaid status known — redirect to onboarding paywall. */
+  /** Unpaid and not in payment-confirm flow — send to onboarding. */
   shouldRedirect: boolean;
+  /**
+   * Returned from checkout (?billing=…) but /me/subscription is not active yet.
+   * Stay on a confirmation shell; do not open the product dashboard.
+   */
+  confirmingPayment: boolean;
 };
 
 /**
  * Pure access decision for the dashboard shell.
- * Dashboard content must only render when `allowed` is true.
+ *
+ * Product UI is allowed only when billing entitlement is active.
+ * Checkout return URLs only open a confirmation shell until that is true.
  */
 export function evaluateSubscriptionAccess(input: {
   authReady: boolean;
@@ -50,35 +64,72 @@ export function evaluateSubscriptionAccess(input: {
   const { authReady, hasSession, billingReturn, status, loading, error } = input;
 
   if (!authReady || !hasSession) {
-    return { allowed: false, block: false, error: false, shouldRedirect: false };
-  }
-
-  if (billingReturn) {
-    return { allowed: true, block: false, error: false, shouldRedirect: false };
+    return {
+      allowed: false,
+      block: false,
+      error: false,
+      shouldRedirect: false,
+      confirmingPayment: false,
+    };
   }
 
   if (loading) {
-    return { allowed: false, block: true, error: false, shouldRedirect: false };
+    return {
+      allowed: false,
+      block: true,
+      error: false,
+      shouldRedirect: false,
+      confirmingPayment: false,
+    };
   }
 
   if (error && (status == null || status === '')) {
-    return { allowed: false, block: true, error: true, shouldRedirect: false };
+    return {
+      allowed: false,
+      block: true,
+      error: true,
+      shouldRedirect: false,
+      confirmingPayment: false,
+    };
   }
 
+  // Billing entitlement confirmed — only path into product dashboard.
   if (isPaidSubscriptionStatus(status)) {
-    return { allowed: true, block: false, error: false, shouldRedirect: false };
+    return {
+      allowed: true,
+      block: false,
+      error: false,
+      shouldRedirect: false,
+      confirmingPayment: false,
+    };
   }
 
-  // Known unpaid (none / canceled / empty) — never load dashboard product UI.
-  return { allowed: false, block: true, error: false, shouldRedirect: true };
+  // Checkout return: wait for activation; never paint product UI unpaid.
+  if (billingReturn) {
+    return {
+      allowed: false,
+      block: true,
+      error: false,
+      shouldRedirect: false,
+      confirmingPayment: true,
+    };
+  }
+
+  // Known unpaid — leave dashboard entirely.
+  return {
+    allowed: false,
+    block: true,
+    error: false,
+    shouldRedirect: true,
+    confirmingPayment: false,
+  };
 }
 
 /**
- * Dashboard access requires an active (or grace) subscription.
- * Unpaid candidates are sent to onboarding paywall — no free-tier dashboard stay.
- * Checkout return URLs (?billing=…) are allowed so webhooks can settle.
+ * Dashboard product access requires GET /me/subscription status === "active"
+ * (matching entitlement after billing/checkout activation).
  *
- * `allowed` is synchronous with query data (no useEffect flash of dashboard UI).
+ * Unpaid users → onboarding. Checkout return → confirmation shell only.
  */
 export function useSubscriptionGate(): SubscriptionAccess & { checking: boolean } {
   const { hasSession, ready: authReady } = useAuth();
@@ -105,7 +156,6 @@ export function useSubscriptionGate(): SubscriptionAccess & { checking: boolean 
   return {
     ...access,
     block,
-    // Alias used by older call sites / tests of “still determining or leaving”.
     checking: block,
   };
 }

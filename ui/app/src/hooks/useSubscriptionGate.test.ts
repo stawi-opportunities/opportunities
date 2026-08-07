@@ -20,16 +20,16 @@ describe('isBillingReturnPath', () => {
 });
 
 describe('isPaidSubscriptionStatus', () => {
-  it('treats active, past_due, and trial as paid', () => {
+  it('only treats active as fully subscribed (billing entitlement)', () => {
     expect(isPaidSubscriptionStatus('active')).toBe(true);
-    expect(isPaidSubscriptionStatus('past_due')).toBe(true);
-    expect(isPaidSubscriptionStatus('trial')).toBe(true);
   });
 
-  it('rejects unpaid statuses', () => {
+  it('rejects unpaid and non-confirmed statuses', () => {
     expect(isPaidSubscriptionStatus('none')).toBe(false);
     expect(isPaidSubscriptionStatus('canceled')).toBe(false);
     expect(isPaidSubscriptionStatus('cancelled')).toBe(false);
+    expect(isPaidSubscriptionStatus('past_due')).toBe(false);
+    expect(isPaidSubscriptionStatus('trial')).toBe(false); // API maps trial→active
     expect(isPaidSubscriptionStatus('')).toBe(false);
     expect(isPaidSubscriptionStatus(null)).toBe(false);
     expect(isPaidSubscriptionStatus(undefined)).toBe(false);
@@ -49,53 +49,69 @@ describe('evaluateSubscriptionAccess', () => {
   it('does not block before auth is ready', () => {
     expect(
       evaluateSubscriptionAccess({ ...base, authReady: false, hasSession: true, loading: true })
-    ).toEqual({ allowed: false, block: false, error: false, shouldRedirect: false });
+    ).toMatchObject({ allowed: false, block: false, shouldRedirect: false });
   });
 
   it('blocks while subscription is loading (no dashboard paint)', () => {
-    expect(evaluateSubscriptionAccess({ ...base, loading: true })).toEqual({
+    expect(evaluateSubscriptionAccess({ ...base, loading: true })).toMatchObject({
       allowed: false,
       block: true,
-      error: false,
       shouldRedirect: false,
+      confirmingPayment: false,
     });
   });
 
-  it('allows active subscription', () => {
+  it('allows only when status is active', () => {
     expect(evaluateSubscriptionAccess({ ...base, status: 'active' })).toEqual({
       allowed: true,
       block: false,
       error: false,
       shouldRedirect: false,
+      confirmingPayment: false,
     });
   });
 
   it('redirects unpaid without allowing dashboard', () => {
-    expect(evaluateSubscriptionAccess({ ...base, status: 'none' })).toEqual({
+    expect(evaluateSubscriptionAccess({ ...base, status: 'none' })).toMatchObject({
       allowed: false,
       block: true,
-      error: false,
       shouldRedirect: true,
+      confirmingPayment: false,
     });
-    expect(evaluateSubscriptionAccess({ ...base, status: 'canceled' })).toMatchObject({
+    expect(evaluateSubscriptionAccess({ ...base, status: 'cancelled' })).toMatchObject({
       allowed: false,
-      block: true,
       shouldRedirect: true,
     });
   });
 
-  it('allows billing return even when still unpaid', () => {
+  it('billing return without active status only confirms payment (no product UI)', () => {
     expect(
       evaluateSubscriptionAccess({
         ...base,
         billingReturn: true,
         status: 'none',
       })
-    ).toEqual({ allowed: true, block: false, error: false, shouldRedirect: false });
+    ).toEqual({
+      allowed: false,
+      block: true,
+      error: false,
+      shouldRedirect: false,
+      confirmingPayment: true,
+    });
   });
 
-  it('blocks on verify error without cached status (no free dashboard)', () => {
-    expect(evaluateSubscriptionAccess({ ...base, error: true, status: undefined })).toEqual({
+  it('billing return with active status allows dashboard', () => {
+    expect(
+      evaluateSubscriptionAccess({
+        ...base,
+        billingReturn: true,
+        status: 'active',
+      })
+    ).toMatchObject({ allowed: true, confirmingPayment: false });
+  });
+
+  it('blocks on verify error without cached status', () => {
+    expect(evaluateSubscriptionAccess({ ...base, error: true, status: undefined })).toMatchObject({
       allowed: false,
       block: true,
       error: true,
@@ -103,12 +119,10 @@ describe('evaluateSubscriptionAccess', () => {
     });
   });
 
-  it('uses cached paid status even if a later refetch errors', () => {
-    expect(evaluateSubscriptionAccess({ ...base, error: true, status: 'active' })).toEqual({
+  it('uses cached active status even if a later refetch errors', () => {
+    expect(evaluateSubscriptionAccess({ ...base, error: true, status: 'active' })).toMatchObject({
       allowed: true,
       block: false,
-      error: false,
-      shouldRedirect: false,
     });
   });
 });

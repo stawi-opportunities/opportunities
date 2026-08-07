@@ -1,25 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { pollCheckoutStatus } from '@/api/billing';
+import { fetchMeSubscription } from '@/api/profile';
 import { CelebrationOverlay } from '@/components/dashboard/CelebrationOverlay';
 import { useI18n } from '@/i18n/I18nProvider';
 import { QUERY_KEYS } from '@/constants/queryKeys';
 import { clearPendingPrompt, PENDING_PROMPT_KEY, startCheckoutAndNavigate } from '@/utils/checkout';
 import { Button } from '@/components/ui/Button';
 import { useSubscription } from '@/hooks/useSubscription';
+import { isPaidSubscriptionStatus } from '@/hooks/useSubscriptionGate';
 import { normalizePlan } from '@/utils/plans';
 
 type Phase = 'idle' | 'polling' | 'paid' | 'failed' | 'success';
 
+const ONBOARDING_PATH = '/onboarding/';
+
 /**
- * Dashboard checkout recovery — only three URL modes:
+ * Checkout recovery — waits for billing to confirm payment AND for matching
+ * entitlement (/me/subscription status=active) before treating the user as
+ * subscribed. Product dashboard must not open on ?billing=success alone.
  *
- *   ?billing=success[&prompt_id=]  — return from Flutterwave (step 4→5)
- *   ?billing=pending&prompt_id=    — rare: URL not ready at create time
- *   ?billing=failed                — pay failed; offer retry
- *
- * On success with prompt_id, polls status once-loop to drive activation
- * (webhook may already have run). Then celebrates + refreshes subscription.
+ *   ?billing=success[&prompt_id=]  — return from pay.stawi.org
+ *   ?billing=pending&prompt_id=    — rare: pay URL not ready at create
+ *   ?billing=failed                — pay failed; retry or onboarding
  */
 export function PendingCheckoutPoller() {
   const qc = useQueryClient();
@@ -29,6 +32,20 @@ export function PendingCheckoutPoller() {
   const [error, setError] = useState<string | null>(null);
   const [retryBusy, setRetryBusy] = useState(false);
 
+  // If entitlement already active, nothing to confirm.
+  useEffect(() => {
+    if (isPaidSubscriptionStatus(subQ.data?.status) && phase === 'idle') {
+      // Clean leftover billing query if present.
+      const u = new URL(window.location.href);
+      if (u.searchParams.has('billing')) {
+        u.searchParams.delete('billing');
+        u.searchParams.delete('prompt_id');
+        u.searchParams.delete('session');
+        window.history.replaceState(null, '', u.pathname + u.hash + (u.search || ''));
+      }
+    }
+  }, [subQ.data?.status, phase]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const billing = params.get('billing');
@@ -36,35 +53,50 @@ export function PendingCheckoutPoller() {
     const stashed = readStash();
     const promptId = urlPromptId ?? stashed;
 
-    // ── Return from Flutterwave ─────────────────────────────────────
+    // ── Return from hosted checkout ─────────────────────────────────
     if (billing === 'success') {
       clearPendingPrompt();
-      setPhase('success');
+      setPhase('polling');
       let cancelled = false;
       void (async () => {
-        // Drive activation if webhook is slow (needs prompt_id).
+        // 1) Drive checkout activation if webhook is slow.
         if (promptId) {
           const deadline = Date.now() + 45_000;
           while (!cancelled && Date.now() < deadline) {
             try {
               const res = await pollCheckoutStatus(promptId);
-              if (res.status === 'paid' || res.status === 'failed') break;
+              if (res.status === 'failed') {
+                if (!cancelled) {
+                  setError(res.error || "Payment didn't complete.");
+                  setPhase('failed');
+                }
+                return;
+              }
+              if (res.status === 'paid') break;
             } catch {
               /* keep trying */
             }
             await sleep(2_000);
           }
         }
-        if (!cancelled) {
-          await qc.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTION });
-          // Clean URL so a refresh doesn't re-enter the success poller loop.
-          const u = new URL(window.location.href);
-          if (u.searchParams.has('billing') || u.searchParams.has('prompt_id')) {
-            u.searchParams.delete('billing');
-            u.searchParams.delete('prompt_id');
-            u.searchParams.delete('session');
-            window.history.replaceState(null, '', u.pathname + u.hash + (u.search || ''));
-          }
+        // 2) Wait until matching entitlement is active (billing confirmed).
+        const subOk = await waitForActiveSubscription(qc, () => cancelled);
+        if (cancelled) return;
+        if (!subOk) {
+          setError(
+            'Payment may have succeeded, but subscription is not active yet. Try again or finish setup.'
+          );
+          setPhase('failed');
+          return;
+        }
+        setPhase('success');
+        // Clean URL so refresh doesn't re-enter confirm loop.
+        const u = new URL(window.location.href);
+        if (u.searchParams.has('billing') || u.searchParams.has('prompt_id')) {
+          u.searchParams.delete('billing');
+          u.searchParams.delete('prompt_id');
+          u.searchParams.delete('session');
+          window.history.replaceState(null, '', u.pathname + u.hash + (u.search || ''));
         }
       })();
       return () => {
@@ -74,6 +106,8 @@ export function PendingCheckoutPoller() {
 
     // ── Failed (no fresh prompt) ────────────────────────────────────
     if (billing === 'failed' && !urlPromptId) {
+      setPhase('failed');
+      setError("Payment didn't complete.");
       return;
     }
 
@@ -98,7 +132,15 @@ export function PendingCheckoutPoller() {
         }
         if (res.status === 'paid') {
           clearPendingPrompt();
-          await qc.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTION });
+          const subOk = await waitForActiveSubscription(qc, () => cancelled);
+          if (cancelled) return;
+          if (!subOk) {
+            setError(
+              'Payment received, but subscription is not active yet. Contact support if this persists.'
+            );
+            setPhase('failed');
+            return;
+          }
           setPhase('paid');
           replaceBillingQuery('success', promptId);
           return;
@@ -130,7 +172,7 @@ export function PendingCheckoutPoller() {
   const retry = async () => {
     const plan = normalizePlan(subQ.data?.plan ?? null);
     if (!plan) {
-      window.location.assign('/pricing/');
+      window.location.assign('/onboarding/');
       return;
     }
     setRetryBusy(true);
@@ -145,13 +187,21 @@ export function PendingCheckoutPoller() {
 
   if (phase === 'idle') return null;
   if (phase === 'paid' || phase === 'success') {
-    return <CelebrationOverlay t={t} onDismiss={() => setPhase('idle')} />;
+    // Entitlement is active — full page reload picks up allowed dashboard.
+    return (
+      <CelebrationOverlay
+        t={t}
+        onDismiss={() => {
+          window.location.replace('/dashboard/');
+        }}
+      />
+    );
   }
   if (phase === 'failed') {
     return (
       <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-        <p>{error ?? "Payment didn't complete."} You can retry below.</p>
-        <div className="mt-3">
+        <p>{error ?? "Payment didn't complete."}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
           <Button
             variant="primary"
             size="sm"
@@ -160,6 +210,14 @@ export function PendingCheckoutPoller() {
             onClick={() => void retry()}
           >
             {retryBusy ? 'Opening payment…' : 'Retry payment'}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            onClick={() => window.location.replace(ONBOARDING_PATH)}
+          >
+            Back to setup
           </Button>
         </div>
       </div>
@@ -172,9 +230,34 @@ export function PendingCheckoutPoller() {
       aria-live="polite"
     >
       <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent dark:border-blue-300 dark:border-t-transparent" />
-      Confirming your payment — this usually takes under a minute.
+      Confirming payment with billing — the dashboard opens only when your subscription is active.
     </div>
   );
+}
+
+/** Poll checkout activation + /me/subscription until status is active. */
+async function waitForActiveSubscription(
+  qc: ReturnType<typeof useQueryClient>,
+  isCancelled: () => boolean,
+  maxMs = 60_000
+): Promise<boolean> {
+  const deadline = Date.now() + maxMs;
+  while (!isCancelled() && Date.now() < deadline) {
+    try {
+      await qc.invalidateQueries({ queryKey: QUERY_KEYS.SUBSCRIPTION });
+      const sub = await fetchMeSubscription();
+      if (isPaidSubscriptionStatus(sub.status)) return true;
+    } catch {
+      /* keep trying */
+    }
+    await sleep(2_000);
+  }
+  try {
+    const sub = await fetchMeSubscription();
+    return isPaidSubscriptionStatus(sub.status);
+  } catch {
+    return false;
+  }
 }
 
 function readStash(): string | null {
@@ -198,7 +281,7 @@ function replaceBillingQuery(billing: string, promptId?: string) {
   u.searchParams.set('billing', billing);
   if (promptId) u.searchParams.set('prompt_id', promptId);
   else u.searchParams.delete('prompt_id');
-  window.history.replaceState(null, '', u.toString());
+  window.history.replaceState(null, '', u.pathname + u.search + u.hash);
 }
 
 function sleep(ms: number) {

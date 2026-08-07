@@ -33,7 +33,8 @@ function readPlanFromQuery(): PlanId {
 }
 
 function isPaidStatus(status: string | undefined): boolean {
-  return status === 'active' || status === 'past_due' || status === 'trial';
+  // Must match billing entitlement confirmation (GET /me/subscription → active).
+  return status === 'active';
 }
 
 /**

@@ -112,8 +112,11 @@ export default function Dashboard() {
   if (!ready) return <Skeleton />;
   if (!hasSession) return <SignedOut onSignIn={login} />;
 
-  // Paid (or billing return) only — unpaid never loads matches/CV/settings shell.
+  // Product UI only after billing entitlement is active (GET /me/subscription).
   if (!subscriptionGate.allowed) {
+    if (subscriptionGate.confirmingPayment) {
+      return <PaymentConfirmingShell />;
+    }
     if (subscriptionGate.error) {
       return (
         <SubscriptionVerifyError
@@ -133,10 +136,9 @@ export default function Dashboard() {
 
   const sub = subQ.data;
   const plan = normalizePlan(sub?.plan ?? null);
-  const isActive =
-    sub?.status === 'active' || sub?.status === 'past_due' || sub?.status === 'trial';
+  // Gate already required status === active; keep local flag for panels.
+  const isActive = sub?.status === 'active';
   const subscription = sub?.status ?? 'none';
-  // Billing-return visits may still be unpaid until webhook settles.
   const subscriptionPanel =
     isActive && plan ? (
       <BillingPanel
@@ -301,7 +303,29 @@ function ProfileGateSkeleton() {
       <div className="mx-auto h-8 w-48 animate-pulse rounded bg-surface-hover" />
       <p className="mt-4 text-sm text-secondary">Checking access…</p>
       <p className="mt-2 text-xs text-secondary">
-        Verifying your subscription and profile before opening the dashboard.
+        Confirming your subscription with billing before opening the dashboard.
+      </p>
+    </div>
+  );
+}
+
+/** Checkout return only — polls billing until /me/subscription is active. */
+function PaymentConfirmingShell() {
+  return (
+    <div className="mx-auto max-w-md px-4 py-16 text-center">
+      <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-accent-500 border-t-transparent" />
+      <h1 className="mt-6 text-lg font-semibold text-main">Confirming your subscription</h1>
+      <p className="mt-2 text-sm text-secondary">
+        We&apos;re waiting for billing to activate your plan. This usually takes under a minute. The
+        dashboard opens only after confirmation.
+      </p>
+      <div className="mt-6 text-left">
+        <PendingCheckoutPoller />
+      </div>
+      <p className="mt-8 text-xs text-secondary">
+        <a href="/onboarding/" className="underline underline-offset-2">
+          Back to setup
+        </a>
       </p>
     </div>
   );
@@ -312,7 +336,8 @@ function SubscriptionVerifyError({ onRetry }: { onRetry: () => void }) {
     <div className="mx-auto max-w-sm px-4 py-16 text-center">
       <h1 className="text-lg font-semibold text-main">Couldn&apos;t verify subscription</h1>
       <p className="mt-2 text-sm text-secondary">
-        The dashboard only opens for active plans. Check your connection and try again.
+        The dashboard only opens after billing confirms an active subscription. Check your
+        connection and try again.
       </p>
       <Button className="mt-6" variant="primary" onClick={onRetry}>
         Retry
