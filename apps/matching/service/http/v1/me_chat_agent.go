@@ -298,6 +298,9 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 		}
 
 		// Map agent messages to SPA shape; always strip legacy viewing chrome.
+		// Critical: chat-agent session text is the raw model turn. SPA prefers
+		// `messages` over `reply`, so the last assistant turn must match the
+		// composed reply (false "profile complete" claims rewritten to next ask).
 		var messages []onboardingChatMessage
 		if tres.Session != nil {
 			for _, m := range tres.Session.Messages {
@@ -308,6 +311,7 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 			// Opportunity: use client job-thread history only (not placement draft).
 			messages = appendChatTurn(sanitizeHistory(in.History), userFacingMsg, reply)
 		}
+		messages = applyComposedReplyToMessages(messages, reply)
 		messages = sanitizeMessagesForClient(messages)
 
 		// Placement/onboarding: persist full intake transcript.
