@@ -65,7 +65,7 @@ describe('PreferenceChat', () => {
     expect(screen.queryByText(/I'll guide you through setup/i)).not.toBeInTheDocument();
   });
 
-  it('with cvOnFile does not list capabilities as missing when other fields complete', async () => {
+  it('trusts server ready flag without client-side re-gating', async () => {
     sendMeChat.mockReset();
     sendMeChat.mockResolvedValue({
       reply: 'You are ready for a plan.',
@@ -73,12 +73,12 @@ describe('PreferenceChat', () => {
         target_job_title: 'Engineer',
         experience_level: 'senior',
         job_types: ['Full-time'],
-        salary_min: 90000,
+        salary_expectation: 'USD 90k',
         preferred_countries: ['KE'],
       },
-      missing: ['capabilities'],
-      ready: false,
-      source: 'heuristic',
+      missing: [],
+      ready: true,
+      source: 'llm',
       messages: [
         { role: 'user', content: 'Ready' },
         { role: 'assistant', content: 'You are ready for a plan.' },
@@ -104,7 +104,7 @@ describe('PreferenceChat', () => {
     await waitFor(() => expect(onFieldsChange).toHaveBeenCalled());
     const last = onFieldsChange.mock.calls.at(-1);
     expect(last?.[1]?.ready).toBe(true);
-    expect(last?.[1]?.missing ?? []).not.toContain('capabilities');
+    expect(last?.[1]?.missing ?? []).toEqual([]);
   });
 
   it('sends a turn after proactive opening, shows wait spinner, then reply', async () => {
