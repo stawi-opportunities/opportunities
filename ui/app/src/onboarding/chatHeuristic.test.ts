@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   heuristicExtract,
+  intakeOpeningReply,
   isChatReady,
   localChatTurn,
   mergeChatFields,
@@ -46,6 +47,22 @@ describe('chatHeuristic', () => {
     expect(res.ready).toBe(false);
     expect(res.missing.length).toBeGreaterThan(0);
     expect(res.reply.toLowerCase()).toMatch(/role|cv|looking|work|opportunities/);
+  });
+
+  it('intakeOpeningReply leads with guidance and the first required ask', () => {
+    const reply = intakeOpeningReply({});
+    expect(reply).toMatch(/I'll guide you through setup/i);
+    expect(reply.toLowerCase()).toMatch(/role|match you to/);
+  });
+
+  it('intakeOpeningReply grounds on known fields when partially filled', () => {
+    const reply = intakeOpeningReply({
+      target_job_title: 'Product Manager',
+      extra_info: miniCV,
+    });
+    expect(reply).toMatch(/I'll guide you through setup/i);
+    expect(reply.toLowerCase()).toMatch(/product manager|cv on file|got it/);
+    expect(reply.toLowerCase()).toMatch(/full-time|job|kinds/);
   });
 
   it('processes a rich free-text turn, extracts known fields, and asks for the CV', () => {

@@ -26,6 +26,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useMatchingProfileGate } from '@/hooks/useMatchingProfileGate';
+import { useSubscriptionGate } from '@/hooks/useSubscriptionGate';
 
 /** Map legacy hashes and query to canonical section + optional settings tab. */
 function resolveRoute(): { section: SectionId; settingsTab?: SettingsTab } {
@@ -60,6 +61,7 @@ export default function Dashboard() {
 
   const subQ = useSubscription();
   const profileGate = useMatchingProfileGate();
+  const subscriptionGate = useSubscriptionGate();
 
   const sectionLabels: Record<string, string> = {
     matches: 'Matches',
@@ -110,6 +112,10 @@ export default function Dashboard() {
   if (!hasSession) return <SignedOut onSignIn={login} />;
   // Incomplete CV / aspirational profile → onboarding chat (matching needs it).
   if (profileGate.checking) {
+    return <ProfileGateSkeleton />;
+  }
+  // Unpaid → onboarding paywall (no free-tier dashboard). Billing return URLs exempt.
+  if (subscriptionGate.checking) {
     return <ProfileGateSkeleton />;
   }
 

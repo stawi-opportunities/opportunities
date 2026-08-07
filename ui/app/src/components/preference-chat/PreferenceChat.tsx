@@ -4,7 +4,10 @@
  * Embeddable on onboarding, dashboard refine, and opportunity pages.
  * All turns go through POST /me/chat (sendMeChat).
  *
- * Landing: petal mark, journey title, large card + Upload resume + chips.
+ * Intake (onboarding): proactive — seed an assistant opening that asks for
+ * the next missing required field so the seeker never has to invent the agenda.
+ * Refine / job listing: user may initiate (landing or soft welcome).
+ *
  * Thread: progress header, right user pills, left assistant prose,
  *          slim sticky "Ask a question…" bar.
  */
@@ -25,7 +28,7 @@ import {
   type OnboardingChatMessage,
 } from '@/api/candidates';
 import { uploadCV } from '@/api/profile';
-import { missingChatFields } from '@/onboarding/chatHeuristic';
+import { intakeOpeningReply, missingChatFields } from '@/onboarding/chatHeuristic';
 import type { PlanId } from '@/utils/plans';
 import { displayUserContent, filterPlacementMessages } from '@/utils/chatDisplay';
 import { FIELD_LABELS } from './mapFields';
@@ -325,9 +328,17 @@ export function PreferenceChat({
   void _compact;
   const greeting = welcome ?? landingTitle(userName, mode);
   const seed = applyCvOnFile(initialFields, cvOnFile);
-  const [messages, setMessages] = useState<OnboardingChatMessage[]>(() =>
-    initialMessages?.length ? filterPlacementMessages(initialMessages) : []
-  );
+
+  /** Intake starts with an agent-led opening; refine waits for the user. */
+  function proactiveIntakeMessages(f: OnboardingChatFields): OnboardingChatMessage[] {
+    return [{ role: 'assistant', content: intakeOpeningReply(f) }];
+  }
+
+  const [messages, setMessages] = useState<OnboardingChatMessage[]>(() => {
+    if (initialMessages?.length) return filterPlacementMessages(initialMessages);
+    if (mode === 'intake') return proactiveIntakeMessages(seed.fields);
+    return [];
+  });
   const [fields, setFields] = useState<OnboardingChatFields>(seed.fields);
   const [missing, setMissing] = useState<string[]>(() => seed.missing);
   const [fieldStatus, setFieldStatus] = useState<
@@ -348,6 +359,10 @@ export function PreferenceChat({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
+  /** Persist the proactive opening once so refresh resumes the thread. */
+  const openingPersistedRef = useRef(false);
+  /** Intake: fire onComplete at most once when the profile becomes ready. */
+  const autoCompletedRef = useRef(false);
 
   // Hydrate once from parent (server draft / profile) so past turns resume.
   useEffect(() => {
@@ -356,30 +371,61 @@ export function PreferenceChat({
       Array.isArray(v) ? v.length > 0 : Boolean(v)
     );
     const hasMsgs = Boolean(initialMessages?.length);
-    // Wait until parent finished loading when both still empty on first paint.
-    if (!hasFields && !hasMsgs && !cvOnFile) return;
+    // Intake is always proactive: no need to wait for a user-first message.
+    // Refine still waits for parent draft when both fields and messages are empty.
+    if (mode !== 'intake' && !hasFields && !hasMsgs && !cvOnFile) return;
     seededRef.current = true;
     if (hasFields || cvOnFile) {
       const next = applyCvOnFile(initialFields, cvOnFile);
       setFields(next.fields);
       setMissing(next.missing);
       setReady(next.ready);
+      // If we only had a cold opening (no server history), re-ground the ask
+      // on hydrated fields (e.g. CV already on file → skip capabilities).
+      if (mode === 'intake' && !hasMsgs) {
+        setMessages(proactiveIntakeMessages(next.fields));
+      }
     }
     if (hasMsgs && initialMessages?.length) {
       setMessages(filterPlacementMessages(initialMessages));
+    } else if (mode === 'intake' && !hasMsgs) {
+      // Ensure thread is agent-led even when fields stay empty.
+      setMessages((prev) => (prev.length > 0 ? prev : proactiveIntakeMessages(seed.fields)));
     }
-  }, [initialFields, initialMessages, cvOnFile]);
+  }, [initialFields, initialMessages, cvOnFile, mode]);
 
   // If messages arrive after mount (async draft fetch), adopt them when we
-  // still have no local turns — continuity without clobbering an in-progress send.
+  // still have only a local proactive opening — do not clobber real history
+  // or an in-progress send.
   useEffect(() => {
     if (sending) return;
     if (!initialMessages?.length) return;
     setMessages((prev) => {
-      if (prev.length > 0) return prev;
+      const onlyLocalOpening =
+        prev.length === 1 && prev[0]?.role === 'assistant' && !prev.some((m) => m.role === 'user');
+      if (prev.length > 0 && !onlyLocalOpening) return prev;
       return filterPlacementMessages(initialMessages);
     });
   }, [initialMessages, sending]);
+
+  // Persist intake opening so a refresh restores the agent-led thread.
+  useEffect(() => {
+    if (mode !== 'intake') return;
+    if (openingPersistedRef.current) return;
+    if (messages.length !== 1 || messages[0]?.role !== 'assistant') return;
+    if (initialMessages?.length) {
+      openingPersistedRef.current = true;
+      return;
+    }
+    openingPersistedRef.current = true;
+    onFieldsChange?.(fields, {
+      ready,
+      missing,
+      messages,
+      field_status: fieldStatus,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once for empty-thread opening
+  }, [mode, messages, fields, ready, missing, fieldStatus]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });
@@ -388,7 +434,7 @@ export function PreferenceChat({
   // Any prior transcript (user or assistant) restores the thread — never
   // drop back to the landing screen after the seeker has progressed.
   const hasConversation = messages.length > 0;
-  const ctaLabel = completeLabel ?? (mode === 'intake' ? 'Continue to plans' : 'Apply updates');
+  const ctaLabel = completeLabel ?? (mode === 'intake' ? 'Continue to subscribe' : 'Apply updates');
 
   const doneCount = REQUIRED_KEYS.filter((k) => {
     if (fieldStatus?.[k]) return fieldStatus[k]!.ok;
@@ -463,7 +509,10 @@ export function PreferenceChat({
         field_status: res.field_status,
       });
 
-      if (mode === 'intake' && isReady && onComplete && !showCompleteAction) {
+      // Intake: auto-advance to paywall as soon as required fields are complete
+      // (button remains as a manual fallback via handleComplete).
+      if (mode === 'intake' && isReady && onComplete && !autoCompletedRef.current) {
+        autoCompletedRef.current = true;
         await onComplete(nextFields, { messages: nextMsgs });
       }
     } catch (e) {
@@ -524,16 +573,29 @@ export function PreferenceChat({
           );
         }
         if (up.placement_ready) {
+          const next = applyCvOnFile(fields, true);
+          setFields(next.fields);
+          setMissing(next.missing);
           setReady(true);
           setPendingCV(null);
           setPlacementSummary(up.placement_summary ?? null);
-          setMessages((prev) => [
-            ...prev,
+          const nextMsgs: OnboardingChatMessage[] = [
+            ...messages,
             {
               role: 'assistant',
               content: 'Great — your CV is processed and your profile is ready for matching.',
             },
-          ]);
+          ];
+          setMessages(nextMsgs);
+          onFieldsChange?.(next.fields, {
+            ready: true,
+            missing: [],
+            messages: nextMsgs,
+          });
+          if (mode === 'intake' && onComplete && !autoCompletedRef.current && next.ready) {
+            autoCompletedRef.current = true;
+            void onComplete(next.fields, { messages: nextMsgs });
+          }
           setCvBusy(false);
           return;
         }
