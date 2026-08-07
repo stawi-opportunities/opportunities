@@ -193,8 +193,7 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
     return () => {
       cancelled = true;
     };
-    // Intentionally depend on snap identity + profile seed, not every field.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Depend on snap identity + profile seed, not every field.
   }, [snap.id, snap.slug, profileQ.data]);
 
   useEffect(() => {
@@ -268,8 +267,7 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
           next = res.messages.map((m, i) => {
             const base: OpportunityChatMessage = {
               role: m.role,
-              content:
-                m.role === 'user' ? displayUserContent(m.content) : m.content,
+              content: m.role === 'user' ? displayUserContent(m.content) : m.content,
               card: m.card
                 ? {
                     title: m.card.title,

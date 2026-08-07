@@ -29,20 +29,26 @@ describe('PreferenceChat', () => {
     });
   });
 
-  it('renders Meta-style landing with journey title, upload resume, and chips', () => {
+  it('intake is proactive: agent opens with a guiding question (no landing wait)', () => {
     render(<PreferenceChat mode="intake" userName="Peter" showCompleteAction={false} />);
-    expect(screen.getByText(/Hi Peter, let's start your opportunity journey/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Share what you are looking for and be exact enough/i)
-    ).toBeInTheDocument();
+    // Agent leads immediately — not a passive "share what you want" landing.
+    expect(screen.getByText(/I'll guide you through setup/i)).toBeInTheDocument();
+    expect(screen.getByText(/What role should we match you to/i)).toBeInTheDocument();
+    expect(screen.getByText(/Matching profile/i)).toBeInTheDocument();
+    expect(screen.queryByText(/start your opportunity journey/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Describe the role I want/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Describe what you want/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Upload resume/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Send$/i })).toBeInTheDocument();
-    expect(screen.getByText(/Describe the role I want/i)).toBeInTheDocument();
-    expect(screen.getByText(/Help me find suitable roles/i)).toBeInTheDocument();
   });
 
-  it('restores thread from initialMessages instead of landing', () => {
+  it('refine mode keeps user-initiated landing with chips', () => {
+    render(<PreferenceChat mode="refine" userName="Peter" showCompleteAction={false} />);
+    expect(screen.getByText(/Hi Peter, what should we update/i)).toBeInTheDocument();
+    expect(screen.getByText(/Change role/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Describe what you want/i)).toBeInTheDocument();
+  });
+
+  it('restores thread from initialMessages instead of proactive opening', () => {
     render(
       <PreferenceChat
         mode="intake"
@@ -56,7 +62,7 @@ describe('PreferenceChat', () => {
     );
     expect(screen.getByText(/What salary works for you/i)).toBeInTheDocument();
     expect(screen.getByText(/Matching profile/i)).toBeInTheDocument();
-    expect(screen.queryByText(/start your opportunity journey/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/I'll guide you through setup/i)).not.toBeInTheDocument();
   });
 
   it('with cvOnFile does not list capabilities as missing when other fields complete', async () => {
@@ -101,7 +107,7 @@ describe('PreferenceChat', () => {
     expect(last?.[1]?.missing ?? []).not.toContain('capabilities');
   });
 
-  it('sends a turn, shows wait spinner, then Meta thread layout', async () => {
+  it('sends a turn after proactive opening, shows wait spinner, then reply', async () => {
     let resolveChat!: (v: unknown) => void;
     sendMeChat.mockImplementationOnce(
       () =>
@@ -113,6 +119,9 @@ describe('PreferenceChat', () => {
     render(
       <PreferenceChat mode="intake" onFieldsChange={onFieldsChange} showCompleteAction={false} />
     );
+
+    // Proactive opening already on screen.
+    expect(screen.getByText(/I'll guide you through setup/i)).toBeInTheDocument();
 
     const box = screen.getByLabelText(/Describe what you want/i);
     fireEvent.change(box, { target: { value: 'I am a software engineer' } });
@@ -130,6 +139,7 @@ describe('PreferenceChat', () => {
       ready: false,
       source: 'heuristic',
       messages: [
+        { role: 'assistant', content: "I'll guide you through setup." },
         { role: 'user', content: 'I am a software engineer' },
         { role: 'assistant', content: 'Got it — what country are you in?' },
       ],

@@ -36,8 +36,8 @@ vi.mock('@/api/candidates', () => ({
   submitOnboarding: vi.fn(),
   uploadCV: vi.fn(),
   createCheckout: vi.fn(),
-  fetchOnboardingDraft: vi.fn(() => Promise.resolve({ step: 1, fields: {} })),
-  saveOnboardingDraft: vi.fn(),
+  fetchOnboardingDraft: vi.fn(() => Promise.resolve({ step: 1, fields: {}, messages: [] })),
+  saveOnboardingDraft: vi.fn(() => Promise.resolve()),
   sendMeChat: vi.fn(),
   fetchMeSubscription: vi.fn(() => Promise.resolve({ status: 'none' })),
 }));
