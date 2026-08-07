@@ -483,12 +483,10 @@ export function PreferenceChat({
       if (cvOnFile && !nextFields.extra_info?.trim()) {
         nextFields = applyCvOnFile(nextFields, true).fields;
       }
-      let miss = res.missing?.length ? [...res.missing] : missingChatFields(nextFields);
+      // Server (chat-agent) owns readiness — do not re-gate with client heuristics.
+      const isReady = Boolean(res.ready);
+      let miss = Array.isArray(res.missing) ? [...res.missing] : [];
       if (cvOnFile) miss = miss.filter((k) => k !== 'capabilities');
-      const isReady =
-        typeof res.ready === 'boolean'
-          ? res.ready || (cvOnFile && miss.length === 0)
-          : miss.length === 0;
       if (isReady) miss = [];
       setFields(nextFields);
       setMissing(miss);

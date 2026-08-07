@@ -16,7 +16,9 @@ type Fields struct {
 	JobSearchStatus    string
 	SalaryMin          *float64
 	SalaryMax          *float64
-	Currency           string
+	// SalaryExpectation is AI free-text compensation preference (range or open/market).
+	SalaryExpectation string
+	Currency          string
 	PreferredRegions   []string
 	PreferredCountries []string
 	PreferredTimezones []string
@@ -359,19 +361,24 @@ func FiltersFromFields(f Fields) IndexFilters {
 }
 
 func hasSalary(f Fields) bool {
-	// MKT / OPN = open market rates (set by chat when seeker declines a hard floor).
-	cur := strings.ToUpper(strings.TrimSpace(f.Currency))
-	if cur == "MKT" || cur == "OPN" || cur == "OPEN" {
+	if strings.TrimSpace(f.SalaryExpectation) != "" {
+		return true
+	}
+	// AI may set currency=MKT for open/market rates per extract rules.
+	if strings.EqualFold(strings.TrimSpace(f.Currency), "MKT") {
 		return true
 	}
 	return (f.SalaryMin != nil && *f.SalaryMin > 0) || (f.SalaryMax != nil && *f.SalaryMax > 0)
 }
 
 func formatSalary(f Fields) string {
-	cur := strings.ToUpper(strings.TrimSpace(f.Currency))
-	if cur == "MKT" || cur == "OPN" || cur == "OPEN" {
+	if s := strings.TrimSpace(f.SalaryExpectation); s != "" {
+		return s
+	}
+	if strings.EqualFold(strings.TrimSpace(f.Currency), "MKT") {
 		return "market rates (open)"
 	}
+	cur := strings.ToUpper(strings.TrimSpace(f.Currency))
 	if cur == "" {
 		cur = "USD"
 	}

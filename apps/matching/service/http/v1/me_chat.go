@@ -71,7 +71,10 @@ type onboardingChatFields struct {
 	JobSearchStatus    string   `json:"job_search_status,omitempty"`
 	SalaryMin          *float64 `json:"salary_min,omitempty"`
 	SalaryMax          *float64 `json:"salary_max,omitempty"`
-	Currency           string   `json:"currency,omitempty"`
+	// SalaryExpectation is the AI-extracted free-text salary signal
+	// (numeric paraphrase or open/market/negotiable). Preferred readiness source.
+	SalaryExpectation string   `json:"salary_expectation,omitempty"`
+	Currency          string   `json:"currency,omitempty"`
 	PreferredRegions   []string `json:"preferred_regions,omitempty"`
 	PreferredCountries []string `json:"preferred_countries,omitempty"` // opportunity source countries
 	PreferredTimezones []string `json:"preferred_timezones,omitempty"`
@@ -379,6 +382,7 @@ func toPlacementFields(f onboardingChatFields) placement.Fields {
 		JobSearchStatus:    f.JobSearchStatus,
 		SalaryMin:          f.SalaryMin,
 		SalaryMax:          f.SalaryMax,
+		SalaryExpectation:  f.SalaryExpectation,
 		Currency:           f.Currency,
 		PreferredRegions:   f.PreferredRegions,
 		PreferredCountries: f.PreferredCountries,
@@ -775,12 +779,13 @@ func sanitizeFields(f onboardingChatFields) onboardingChatFields {
 	out.LinkedIn = normalizeLinkedIn(out.LinkedIn)
 	if out.Currency != "" {
 		out.Currency = strings.ToUpper(strings.TrimSpace(out.Currency))
-		// MKT = open / market rates (3-letter sentinel). Other codes must be ISO-like.
-		if out.Currency != salaryOpenCurrency && len(out.Currency) != 3 {
+		// MKT is the AI extract-rule code for open/market rates; else ISO-like.
+		if out.Currency != "MKT" && len(out.Currency) != 3 {
 			out.Currency = ""
 		}
 	}
-	// Drop nonsense salaries (keep MKT open expectation without numeric floor).
+	out.SalaryExpectation = strings.TrimSpace(out.SalaryExpectation)
+	// Drop nonsense salaries.
 	if out.SalaryMin != nil && *out.SalaryMin <= 0 {
 		out.SalaryMin = nil
 	}
@@ -961,64 +966,30 @@ func looksLikeCV(s string) bool {
 	return false
 }
 
-// salaryOpenCurrency marks “market rates / open / no hard limits” without a
-// numeric floor. Matching treats it as salary_expectation satisfied.
-const salaryOpenCurrency = "MKT"
-
 func hasSalaryExpectation(f onboardingChatFields) bool {
-	if isOpenSalaryCurrency(f.Currency) {
+	// AI free-text signal (numeric paraphrase or open/market) is authoritative.
+	if strings.TrimSpace(f.SalaryExpectation) != "" {
 		return true
 	}
+	// AI may also fill numeric min/max without a free-text paraphrase.
 	if f.SalaryMin != nil && *f.SalaryMin > 0 {
 		return true
 	}
 	if f.SalaryMax != nil && *f.SalaryMax > 0 {
 		return true
 	}
-	return false
-}
-
-func isOpenSalaryCurrency(cur string) bool {
-	c := strings.ToUpper(strings.TrimSpace(cur))
-	return c == salaryOpenCurrency || c == "OPN" || c == "OPEN"
-}
-
-// looksLikeOpenSalary detects flexible compensation language (no numeric range).
-func looksLikeOpenSalary(msg string) bool {
-	low := strings.ToLower(msg)
-	for _, p := range []string{
-		"market rate", "market rates", "market pay", "market salary",
-		"competitive rate", "competitive salary", "competitive pay", "competitive compensation",
-		"no hard limit", "no hard limits", "no limit", "no limits",
-		"any reasonable", "reasonable amount", "open to any",
-		"whatever the market", "as high as the market", "what the market",
-		"open salary", "salary open", "open to market", "negotiable",
-		"flexible salary", "flexible on salary", "flexible compensation",
-		"no minimum", "no maximum", "no max", "no floor",
-	} {
-		if strings.Contains(low, p) {
-			return true
-		}
+	// currency=MKT is only valid when the AI explicitly set it (extract rules).
+	if strings.EqualFold(strings.TrimSpace(f.Currency), "MKT") {
+		return true
 	}
 	return false
-}
-
-// applyOpenSalaryFromText sets MKT currency when the seeker states open/market pay.
-func applyOpenSalaryFromText(f onboardingChatFields, texts ...string) onboardingChatFields {
-	if hasSalaryExpectation(f) {
-		return f
-	}
-	for _, t := range texts {
-		if looksLikeOpenSalary(t) {
-			f.Currency = salaryOpenCurrency
-			return f
-		}
-	}
-	return f
 }
 
 func formatSalary(f onboardingChatFields) string {
-	if isOpenSalaryCurrency(f.Currency) {
+	if s := strings.TrimSpace(f.SalaryExpectation); s != "" {
+		return s
+	}
+	if strings.EqualFold(strings.TrimSpace(f.Currency), "MKT") {
 		return "market rates (open)"
 	}
 	cur := f.Currency
@@ -1285,13 +1256,13 @@ func heuristicExtract(msg string) onboardingChatFields {
 	// LinkedIn URL or handle.
 	f.LinkedIn = extractLinkedIn(msg)
 
-	// Salary: "$80k", "KES 200000", "80000-120000 USD", or open/market language.
+	// Salary: "$80k", "KES 200000", "80000-120000 USD" (numeric only — open/market
+	// is the AI extract path via salary_expectation, not phrase lists here).
 	if min, max, cur := extractSalary(msg); min != nil || max != nil {
 		f.SalaryMin = min
 		f.SalaryMax = max
 		f.Currency = cur
-	} else if looksLikeOpenSalary(msg) {
-		f.Currency = salaryOpenCurrency
+		f.SalaryExpectation = formatSalary(f)
 	}
 
 	f.TargetJobTitle = guessTitle(msg)

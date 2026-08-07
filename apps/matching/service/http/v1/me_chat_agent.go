@@ -283,34 +283,36 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 		if cvText != "" && len(cvText) >= len(strings.TrimSpace(fields.ExtraInfo)) {
 			fields.ExtraInfo = truncateRunes(cvText, 8000)
 		}
-		// Flexible pay ("market rates", "no hard limits") must count as salary
-		// expectation — agents often acknowledge it without writing salary_min.
-		salaryTexts := []string{userFacingMsg}
-		for _, h := range in.History {
-			if strings.EqualFold(strings.TrimSpace(h.Role), "user") {
-				salaryTexts = append(salaryTexts, h.Content)
+
+		// AI-owned readiness: trust chat-agent session Ready / Missing / FieldStatus.
+		// Do not re-interpret the seeker's words with product phrase lists.
+		var (
+			status  map[string]fieldStatus
+			missing []string
+			ready   bool
+		)
+		if tres.Session != nil {
+			ready = tres.Session.Ready
+			missing = normalizeAgentMissing(tres.Session.Missing)
+			if len(tres.Session.FieldStatus) > 0 {
+				status = agentFieldStatusToLocal(tres.Session.FieldStatus)
 			}
 		}
-		fields = applyOpenSalaryFromText(fields, salaryTexts...)
-		// Numeric salary from this turn (heuristic) when agent left numbers empty.
-		if !hasSalaryExpectation(fields) {
-			if min, max, cur := extractSalary(userFacingMsg); min != nil || max != nil {
-				fields.SalaryMin = min
-				fields.SalaryMax = max
-				if cur != "" {
-					fields.Currency = cur
-				}
-				fields = sanitizeFields(fields)
-			}
+		// Fill gaps for SPA/placement from mapped fields when agent omitted status.
+		if status == nil {
+			status = assessFieldStatus(fields)
+		}
+		if !ready && len(missing) == 0 {
+			missing = missingFromStatus(status)
+		}
+		if ready {
+			missing = nil
 		}
 
-		status := assessFieldStatus(fields)
-		missing := missingFromStatus(status)
-		ready := len(missing) == 0
-		reply := composeReply(tres.Reply, fields, missing, ready)
-		// Never show canned guided copy when the model produced nothing.
-		if strings.TrimSpace(reply) == "" {
-			log.Warn("me/chat: Turn returned empty reply after compose")
+		// AI reply is authoritative — no local phrase rewrite of the model text.
+		reply := strings.TrimSpace(tres.Reply)
+		if reply == "" {
+			log.Warn("me/chat: Turn returned empty reply")
 			deps.Sessions.set(sessionKey, "")
 			httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_empty_reply",
 				"The assistant could not generate a reply for that turn. Nothing was saved — please try again.")
@@ -318,9 +320,7 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 		}
 
 		// Map agent messages to SPA shape; always strip legacy viewing chrome.
-		// Critical: chat-agent session text is the raw model turn. SPA prefers
-		// `messages` over `reply`, so the last assistant turn must match the
-		// composed reply (false "profile complete" claims rewritten to next ask).
+		// Last assistant turn must match this turn's AI reply (authoritative).
 		var messages []onboardingChatMessage
 		if tres.Session != nil {
 			for _, m := range tres.Session.Messages {
@@ -505,6 +505,9 @@ func fieldsToAgentMap(f onboardingChatFields) map[string]any {
 	if f.JobSearchStatus != "" {
 		m["job_search_status"] = f.JobSearchStatus
 	}
+	if strings.TrimSpace(f.SalaryExpectation) != "" {
+		m["salary_expectation"] = strings.TrimSpace(f.SalaryExpectation)
+	}
 	if f.SalaryMin != nil {
 		m["salary_min"] = *f.SalaryMin
 	}
@@ -553,7 +556,78 @@ func agentMapToFields(m map[string]any) onboardingChatFields {
 			f.ExtraInfo = cap
 		}
 	}
+	// AI free-text salary signal (required field in placement context).
+	if se, ok := m["salary_expectation"].(string); ok {
+		if s := strings.TrimSpace(se); s != "" {
+			f.SalaryExpectation = s
+		}
+	}
+	// If AI only filled numeric min/max, mirror a short expectation string.
+	if strings.TrimSpace(f.SalaryExpectation) == "" && hasSalaryExpectation(f) {
+		f.SalaryExpectation = formatSalary(f)
+	}
 	return f
+}
+
+// normalizeAgentMissing maps chat-agent field names to SPA/matching keys.
+func normalizeAgentMissing(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, k := range in {
+		k = strings.TrimSpace(k)
+		switch k {
+		case "salary_min", "salary_max", "currency":
+			k = "salary_expectation"
+		case "extra_info":
+			k = "capabilities"
+		}
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	return out
+}
+
+func agentFieldStatusToLocal(in map[string]chatagentclient.FieldStatus) map[string]fieldStatus {
+	if len(in) == 0 {
+		return nil
+	}
+	out := map[string]fieldStatus{}
+	var salaryParts []fieldStatus
+	for k, st := range in {
+		key := k
+		switch k {
+		case "salary_min", "salary_max", "currency", "salary_expectation":
+			salaryParts = append(salaryParts, fieldStatus{OK: st.OK, Value: st.Value, Reason: st.Reason})
+			continue
+		case "extra_info":
+			key = "capabilities"
+		}
+		out[key] = fieldStatus{OK: st.OK, Value: st.Value, Reason: st.Reason}
+	}
+	if len(salaryParts) > 0 {
+		ok := false
+		val := ""
+		for _, p := range salaryParts {
+			if p.OK {
+				ok = true
+				if strings.TrimSpace(p.Value) != "" {
+					val = p.Value
+				}
+			}
+		}
+		if ok {
+			out["salary_expectation"] = fieldStatus{OK: true, Value: val}
+		} else {
+			out["salary_expectation"] = fieldStatus{OK: false, Reason: "need salary expectations"}
+		}
+	}
+	return out
 }
 
 func mergeAgentMaps(base, overlay map[string]any) map[string]any {

@@ -26,9 +26,15 @@ Never invent fields. Prefer evidence already provided (CV, prior answers) over r
 4. job_types = employment kinds; map bare "remote" → Full-time.
 5. CV paste/upload → capabilities field; extract title/level/skills when clear.
 6. LinkedIn is optional; never block readiness on it.
-7. salary_min and/or salary_max with currency when stated.
-8. You lead: do not wait for the seeker to invent the agenda. Always close with the next needed detail when incomplete.
-9. If you cannot extract anything useful from a message, say so honestly and restate the next required question.`,
+7. Salary is REQUIRED as a free-text salary_expectation signal you extract:
+   - Numeric range → also set salary_min and/or salary_max (+ currency ISO code when clear).
+   - Flexible/open pay (market rates, negotiable, no hard limits, "whatever the market pays",
+     competitive only, any reasonable amount, etc.) → set salary_expectation to a short
+     paraphrase (e.g. "open / market rates") and set currency to "MKT". That fully satisfies
+     the salary requirement — do not re-ask for a number after that.
+8. You lead: always close with the next missing REQUIRED field when incomplete.
+9. Only claim the profile is complete when every required field is filled from evidence.
+10. If you cannot extract anything useful, say so honestly and restate the next required question.`,
 		Fields: []FieldDef{
 			{Name: "target_job_title", Type: "FIELD_TYPE_STRING", Required: true, Priority: 1,
 				Ask: "What role or job title are you targeting?", Why: "drives semantic match"},
@@ -38,13 +44,16 @@ Never invent fields. Prefer evidence already provided (CV, prior answers) over r
 			{Name: "job_types", Type: "FIELD_TYPE_STRING_LIST", Required: true, Priority: 3,
 				EnumValues: []string{"Full-time", "Part-time", "Contract", "Freelance", "Internship"},
 				Ask:        "Which kinds of roles should we notify you about?"},
+			// AI-owned salary signal (numeric range OR open/market free text).
+			{Name: "salary_expectation", Type: "FIELD_TYPE_STRING", Required: true, Priority: 4,
+				Ask: "What are your salary expectations? A range is ideal; market rates / open / negotiable is fine if you have no hard limits.",
+				Why: "filters and ranking"},
 			{Name: "salary_min", Type: "FIELD_TYPE_NUMBER", Required: false, Priority: 4,
 				Ask: "What is your minimum salary expectation?"},
 			{Name: "salary_max", Type: "FIELD_TYPE_NUMBER", Required: false, Priority: 4,
 				Ask: "What is your maximum salary expectation?"},
-			{Name: "currency", Type: "FIELD_TYPE_STRING", Required: false, Priority: 4},
-			// Readiness for salary uses composite check in matching; required-or in assess is split.
-			// We treat salary via preferred composite in matching after map.
+			{Name: "currency", Type: "FIELD_TYPE_STRING", Required: false, Priority: 4,
+				Ask: "Currency for salary (ISO code, or MKT when open/market rates)"},
 			{Name: "preferred_countries", Type: "FIELD_TYPE_STRING_LIST", Required: true, Priority: 5,
 				Ask: "Which countries should we source opportunities from?"},
 			{Name: "experience_level", Type: "FIELD_TYPE_STRING", Required: true, Priority: 6,
