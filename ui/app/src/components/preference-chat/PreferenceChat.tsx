@@ -424,8 +424,17 @@ export function PreferenceChat({
       messages,
       field_status: fieldStatus,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once for empty-thread opening
-  }, [mode, messages, fields, ready, missing, fieldStatus]);
+    // Fire once for empty-thread opening (openingPersistedRef guards re-entry).
+  }, [
+    mode,
+    messages,
+    fields,
+    ready,
+    missing,
+    fieldStatus,
+    initialMessages?.length,
+    onFieldsChange,
+  ]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });

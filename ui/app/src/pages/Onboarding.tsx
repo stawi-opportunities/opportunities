@@ -362,7 +362,9 @@ export default function Onboarding() {
                     <span className="font-normal opacity-70">/mo</span>
                   </span>
                 </div>
-                <p className={`mt-0.5 text-sm ${selected ? 'text-white/80' : 'text-gray-600 dark:text-stone-400'}`}>
+                <p
+                  className={`mt-0.5 text-sm ${selected ? 'text-white/80' : 'text-gray-600 dark:text-stone-400'}`}
+                >
                   {p.tagline}
                 </p>
               </div>

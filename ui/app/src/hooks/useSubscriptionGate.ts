@@ -5,7 +5,9 @@ import { useAuth } from '@/providers/AuthProvider';
 const ONBOARDING_PATH = '/onboarding/';
 
 /** True while Flutterwave return / checkout recovery is in progress on dashboard. */
-export function isBillingReturnPath(search = typeof window !== 'undefined' ? window.location.search : ''): boolean {
+export function isBillingReturnPath(
+  search = typeof window !== 'undefined' ? window.location.search : ''
+): boolean {
   try {
     const params = new URLSearchParams(search);
     const billing = params.get('billing');

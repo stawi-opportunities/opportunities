@@ -99,7 +99,9 @@ describe('OpportunitySideChat', () => {
 
   it('keeps one shared transcript when navigating to another job', async () => {
     const { rerender } = render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
         <OpportunitySideChat snap={snap} />
       </QueryClientProvider>
     );
@@ -121,7 +123,9 @@ describe('OpportunitySideChat', () => {
       anchor_location: { country: 'SA' },
     };
     rerender(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
         <OpportunitySideChat snap={snap2} />
       </QueryClientProvider>
     );
