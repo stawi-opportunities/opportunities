@@ -283,6 +283,26 @@ func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 		if cvText != "" && len(cvText) >= len(strings.TrimSpace(fields.ExtraInfo)) {
 			fields.ExtraInfo = truncateRunes(cvText, 8000)
 		}
+		// Flexible pay ("market rates", "no hard limits") must count as salary
+		// expectation — agents often acknowledge it without writing salary_min.
+		salaryTexts := []string{userFacingMsg}
+		for _, h := range in.History {
+			if strings.EqualFold(strings.TrimSpace(h.Role), "user") {
+				salaryTexts = append(salaryTexts, h.Content)
+			}
+		}
+		fields = applyOpenSalaryFromText(fields, salaryTexts...)
+		// Numeric salary from this turn (heuristic) when agent left numbers empty.
+		if !hasSalaryExpectation(fields) {
+			if min, max, cur := extractSalary(userFacingMsg); min != nil || max != nil {
+				fields.SalaryMin = min
+				fields.SalaryMax = max
+				if cur != "" {
+					fields.Currency = cur
+				}
+				fields = sanitizeFields(fields)
+			}
+		}
 
 		status := assessFieldStatus(fields)
 		missing := missingFromStatus(status)

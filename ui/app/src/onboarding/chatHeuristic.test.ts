@@ -49,6 +49,22 @@ describe('chatHeuristic', () => {
     expect(res.reply.toLowerCase()).toMatch(/role|cv|looking|work|opportunities/);
   });
 
+  it('treats open/market salary language as salary_expectation complete', () => {
+    const res = localChatTurn(
+      "Any reasonable amount is ok with me no hard limits though as high as the market could possibly give me",
+      {
+        target_job_title: 'Senior Software Developer',
+        experience_level: 'senior',
+        job_types: ['Full-time'],
+        preferred_countries: ['UG'],
+        extra_info: miniCV,
+      }
+    );
+    expect(res.fields.currency).toBe('MKT');
+    expect(res.missing).not.toContain('salary_expectation');
+    expect(res.ready).toBe(true);
+  });
+
   it('intakeOpeningReply leads with guidance and the first required ask', () => {
     const reply = intakeOpeningReply({});
     expect(reply).toMatch(/I'll guide you through setup/i);

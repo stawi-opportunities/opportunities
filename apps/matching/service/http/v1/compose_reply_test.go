@@ -63,6 +63,32 @@ func TestComposeReply_BlocksPlacementProfileCompleteClaim(t *testing.T) {
 	require.Contains(t, strings.ToLower(got), "salary")
 }
 
+func TestOpenSalaryLanguageSatisfiesReadiness(t *testing.T) {
+	t.Parallel()
+	require.True(t, looksLikeOpenSalary("Any reasonable amount is ok with me no hard limits though as high as the market could possibly give me"))
+	require.True(t, looksLikeOpenSalary("I'm open to market rates"))
+	require.False(t, looksLikeOpenSalary("I need remote roles in Uganda"))
+
+	f := onboardingChatFields{
+		TargetJobTitle:     "Senior Software Developer",
+		PreferredCountries: []string{"UG"},
+		JobTypes:           []string{"Full-time"},
+		ExperienceLevel:    "senior",
+		ExtraInfo:          "Uploaded CV on file. Resume document stored for matching (experience, education, skills).",
+	}
+	require.False(t, hasSalaryExpectation(f))
+	f = applyOpenSalaryFromText(f, "Any reasonable amount is ok no hard limits as high as the market")
+	require.True(t, hasSalaryExpectation(f))
+	require.Equal(t, "MKT", f.Currency)
+	require.Equal(t, "market rates (open)", formatSalary(f))
+	// sanitize must keep MKT
+	f = sanitizeFields(f)
+	require.True(t, hasSalaryExpectation(f))
+	st := assessFieldStatus(f)
+	require.True(t, st["salary_expectation"].OK)
+	require.Empty(t, missingFromStatus(st))
+}
+
 func TestApplyComposedReplyToMessages_OverwritesLastAssistant(t *testing.T) {
 	t.Parallel()
 	msgs := []onboardingChatMessage{
