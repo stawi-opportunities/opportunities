@@ -297,7 +297,11 @@ func TestPaymentGateway_HostedCheckoutPreferred(t *testing.T) {
 		PublicSiteURL: "https://opportunities.stawi.org",
 	})
 	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
-		CandidateID: "cand_h", Plan: proPlan(t), Email: "h@b.co", Phone: "254700000000",
+		CandidateID: "cand_h",
+		ProfileID:   "prof_platform_1",
+		Plan:        proPlan(t),
+		Email:       "h@b.co",
+		Phone:       "254700000000",
 	})
 	require.NoError(t, err)
 	require.False(t, fp.sawPrompt, "must not InitiatePrompt when hosted checkout succeeds")
@@ -306,8 +310,25 @@ func TestPaymentGateway_HostedCheckoutPreferred(t *testing.T) {
 	require.True(t, strings.HasPrefix(res.PromptID, "chk_"), "ledger/return/poll key must be minted chk_* order_ref")
 	require.Equal(t, fc.last.OrderRef, res.PromptID, "OrderRef and PromptID must match")
 	require.Equal(t, []string{"card"}, fc.last.Methods)
-	require.Equal(t, "cand_h", fc.last.ProfileID)
+	// Platform profile id is what checkout uses for GetById (contacts + au_name).
+	require.Equal(t, "prof_platform_1", fc.last.ProfileID)
 	require.Contains(t, fc.last.ReturnURL, "billing=success")
+}
+
+func TestPaymentGateway_HostedCheckout_ProfileIDFallsBackToCandidate(t *testing.T) {
+	fc := &fakeCheckout{
+		create: billing.CreateHostedSessionResult{
+			Ref: "sess_x", PageURL: "https://pay.stawi.org/c/sess_x",
+		},
+	}
+	g := billing.NewPaymentGatewayWithCheckout(&fakePayment{}, fc, billing.GatewayOptions{
+		PublicSiteURL: "https://opportunities.stawi.org",
+	})
+	_, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
+		CandidateID: "jwt_sub_as_profile", Plan: proPlan(t),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "jwt_sub_as_profile", fc.last.ProfileID)
 }
 
 type fakeCheckout struct {

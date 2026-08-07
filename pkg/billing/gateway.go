@@ -23,8 +23,13 @@ const RouteFlutterwave Route = "FLUTTERWAVE"
 
 // CheckoutRequest is the input to start a Flutterwave payment.
 type CheckoutRequest struct {
+	// CandidateID is the opportunities candidate row / JWT subject used in the ledger.
 	CandidateID string
-	Plan        Plan
+	// ProfileID is the platform profile id (service-profile). Checkout loads
+	// contacts and properties.au_name via ProfileService.GetById(ProfileID).
+	// When empty, gateways fall back to CandidateID (common when JWT sub is the profile id).
+	ProfileID string
+	Plan      Plan
 	// Country is ledger/analytics only (not used for routing).
 	Country string
 	Email   string

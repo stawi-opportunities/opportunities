@@ -140,10 +140,17 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		methods = nil // all methods for currency
 	}
 
+	// Platform profile id for service-profile GetById (contacts + properties.au_name).
+	profileID := strings.TrimSpace(req.ProfileID)
+	if profileID == "" {
+		profileID = strings.TrimSpace(req.CandidateID)
+	}
+
 	meta := map[string]string{
 		"source":       "opportunities",
 		"plan_id":      string(req.Plan.ID),
 		"candidate_id": req.CandidateID,
+		"profile_id":   profileID,
 		"prompt_id":    sessionID,
 	}
 	if req.Email != "" {
@@ -165,11 +172,12 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		Currency:    req.Plan.Currency,
 		OrderRef:    sessionID,
 		ReturnURL:   returnURL,
-		ProfileID:   req.CandidateID,
-		Email:       req.Email,
-		Phone:       req.Phone,
-		Methods:     methods,
-		Metadata:    meta,
+		// Hosted checkout: ProfileService.GetById(profileID) → contacts + au_name.
+		ProfileID: profileID,
+		Email:     req.Email,
+		Phone:     req.Phone,
+		Methods:   methods,
+		Metadata:  meta,
 	})
 	if err != nil {
 		// Never fall back to naked card InitiatePrompt under OAuth — that path
@@ -254,6 +262,10 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 		return CheckoutResult{}, fmt.Errorf("billing: build prompt extras: %w", err)
 	}
 
+	profileID := strings.TrimSpace(req.ProfileID)
+	if profileID == "" {
+		profileID = strings.TrimSpace(req.CandidateID)
+	}
 	accountRef := "stawi-" + req.CandidateID
 	if len(accountRef) > 40 {
 		accountRef = accountRef[:40]
@@ -264,11 +276,12 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 		Route:  "flutterwave",
 		Amount: amount,
 		Source: commonv1.ContactLink_builder{
-			ProfileId: req.CandidateID,
+			ProfileId: profileID,
 			ContactId: phone,
 			Detail:    sourceDetail,
 		}.Build(),
 		Recipient: commonv1.ContactLink_builder{
+			ProfileId: profileID,
 			ContactId: phone,
 			Detail:    sourceDetail,
 		}.Build(),

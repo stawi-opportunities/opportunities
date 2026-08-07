@@ -33,9 +33,9 @@ export function clearPendingPrompt(): void {
 /**
  * Start checkout and open hosted pay.stawi.org.
  *
- * Email/phone are optional hints only — hosted checkout binds payment to
- * profile contacts (email → card; phone → MoMo or card). Do not invent
- * free-text payer details that are not on the profile.
+ * Hosted checkout binds payment to **profile contacts**. If the profile has
+ * au_name but no Contact rows yet, OIDC email/phone from the authenticated
+ * session are sent so checkout can AddContact (not free-text on the pay form).
  *
  * Navigation priority (strict):
  *   1. Any non-empty redirect_url → pay.stawi.org (always)
@@ -46,9 +46,9 @@ export function clearPendingPrompt(): void {
 export async function startCheckoutAndNavigate(
   input: CheckoutCreateInput
 ): Promise<CheckoutResponse> {
-  // Prefer explicit body fields; otherwise omit so pay.stawi.org loads
-  // contacts from the profile (no OIDC email forgery path).
-  const email = input.email?.trim() || undefined;
+  // Authenticated claims seed profile contacts when missing (anti-forgery:
+  // value is JWT identity, not a user-typed pay-form field).
+  const email = input.email?.trim() || (await checkoutEmailFromAuth()) || undefined;
   const phone = input.phone?.trim() || undefined;
   let res: CheckoutResponse;
   try {
