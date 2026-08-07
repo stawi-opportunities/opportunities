@@ -140,7 +140,7 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		methods = nil // all methods for currency
 	}
 
-	// Platform profile id for service-profile GetById (contacts + properties.au_name).
+	// JWT sub === profile_id → ProfileService.GetById → contacts[].detail.
 	profileID := strings.TrimSpace(req.ProfileID)
 	if profileID == "" {
 		profileID = strings.TrimSpace(req.CandidateID)
@@ -172,7 +172,7 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		Currency:    req.Plan.Currency,
 		OrderRef:    sessionID,
 		ReturnURL:   returnURL,
-		// Hosted checkout: ProfileService.GetById(profileID) → contacts + au_name.
+		// GetById(profileID): contacts[].detail = email/phone; properties.au_name.
 		ProfileID: profileID,
 		Email:     req.Email,
 		Phone:     req.Phone,
