@@ -37,9 +37,10 @@ func TestMeCVHandlerArchivesAndEnqueues(t *testing.T) {
 	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVExtract, 2*time.Second)
 
 	handler := httpmw.NewCandidateAuth(nil)(MeCVHandler(UploadDeps{
-		Svc:     svc,
-		Archive: archive.NewFakeArchive(),
-		Text:    &fakeTextExtractor{out: "resume plain text content long enough to pass"},
+		Svc:       svc,
+		Archive:   archive.NewFakeArchive(),
+		Text:      &fakeTextExtractor{out: "resume plain text content long enough to pass"},
+		Structure: fakeStructure{},
 	}))
 
 	// The auth-runtime upload() helper PUTs a multipart body with the CV
@@ -58,6 +59,16 @@ func TestMeCVHandlerArchivesAndEnqueues(t *testing.T) {
 
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["fully_processed"] != true {
+		t.Fatalf("fully_processed=%v body=%s", body["fully_processed"], rec.Body.String())
+	}
+	if body["structure_source"] != "ai" {
+		t.Fatalf("structure_source=%v", body["structure_source"])
 	}
 
 	deadline := time.Now().Add(3 * time.Second)

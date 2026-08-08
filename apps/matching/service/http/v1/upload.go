@@ -24,6 +24,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/cv"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
+	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/placement"
 )
 
@@ -65,7 +66,7 @@ type UploadDeps struct {
 
 	// MaxBytes caps the size of the uploaded file. 0 → 10 MiB default.
 	MaxBytes int64
-	// StructureTimeout bounds the sync AI extract. 0 → 25s.
+	// StructureTimeout bounds the required sync AI section extract. 0 → 45s.
 	StructureTimeout time.Duration
 }
 
@@ -147,6 +148,7 @@ func uploadResponseMap(candidateID string, result *cvUploadResult) map[string]an
 		"accepted":          true,
 		"ok":                true,
 		"candidate_id":      candidateID,
+		"profile_id":        result.ProfileID,
 		"cv_version":        result.Version,
 		"file_id":           result.FileID,
 		"content_uri":       result.ContentURI,
@@ -159,6 +161,8 @@ func uploadResponseMap(candidateID string, result *cvUploadResult) map[string]an
 		"missing":           result.Missing,
 		"filled_fields":     result.FilledFields,
 		"structure_source":  result.StructureSource,
+		// fully_processed is true only after required sync AI sectioning + merge.
+		"fully_processed": result.FullyProcessed,
 	}
 	if result.EmailHint != "" {
 		out["email_hint"] = result.EmailHint
@@ -178,6 +182,7 @@ type cvUploadInput struct {
 
 type cvUploadResult struct {
 	Version          int
+	ProfileID        string
 	FileID           string
 	ContentURI       string
 	ContentHash      string
@@ -192,10 +197,12 @@ type cvUploadResult struct {
 	FilledFields []string
 	// ProfileFields is the post-merge hub bag (for immediate UI hydration).
 	ProfileFields *candidatestore.ProfileFields
-	// StructureSource: "ai" | "heuristic" | "none"
+	// StructureSource is always "ai" when fully_processed.
 	StructureSource string
-	// EmailHint is contact email found in the CV (platform contact add is best-effort).
+	// EmailHint is contact email found in the CV (AI or heuristic).
 	EmailHint string
+	// FullyProcessed means sync AI sectioning + profile merge completed.
+	FullyProcessed bool
 }
 
 type processErr struct {
@@ -211,19 +218,25 @@ func (e *processErr) Error() string {
 	return e.Message
 }
 
-// processCVUpload (synchronous path for chat + CV hub):
-//  1. Extract plain text from the file
-//  2. Store bytes in the files service (archive fallback; non-fatal if both fail)
-//  3. Save file-id reference on candidate_profiles
-//  4. Structure-extract (AI when configured, else heuristics) and fill missing
-//     profile fields so the user does not re-type sections
-//  5. Merge prefs from chat draft + CV text → placement summary (sync)
-//  6. Persist CV text into onboarding draft so chat readiness works
-//  7. Best-effort enqueue async LLM cv-extract (embedding / scoring pipeline)
+// processCVUpload is the synchronous path for chat + CV hub.
+//
+// A CV is not fully processed until AI sectioning has completed and missing
+// hub fields have been merged. Order:
+//  1. Plain-text extract from file
+//  2. Required sync AI section extract (fail closed if unavailable)
+//  3. Merge only empty profile fields + persist hub bag
+//  4. Store binary with platform profile_id as files accessor_id
+//  5. Placement rebuild + draft persist (sync)
+//  6. Optional async queue for embed/score only (not required for "done")
 func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*cvUploadResult, error) {
 	log := util.Log(ctx)
 
-	// 1. Extract text — required for immediate chat / placement.
+	profileID := notify.ProfileID(ctx, deps.DB, in.CandidateID)
+	if profileID == "" {
+		profileID = in.CandidateID
+	}
+
+	// 1. Plain text — required.
 	text, err := extractText(deps.Text, in.Filename, in.Body)
 	if err != nil {
 		return nil, &processErr{Code: "text_extraction_failed", Message: err.Error(), Err: err}
@@ -233,12 +246,74 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 	}
 	textLen := len([]rune(text))
 
-	// 2. Store binary — files service preferred, archive fallback, then local
-	// content-hash ref so a storage outage never blocks CV text / field fill.
-	ref, storeErr := storeCVBytes(ctx, deps, in)
+	// 2. Required AI sectioning — upload is not complete without this.
+	if deps.Structure == nil {
+		return nil, &processErr{
+			Code:    "structure_unavailable",
+			Message: "AI CV sectioning is not configured; cannot fully process upload",
+		}
+	}
+	timeout := deps.StructureTimeout
+	if timeout <= 0 {
+		timeout = 45 * time.Second
+	}
+	sctx, cancel := context.WithTimeout(ctx, timeout)
+	extracted, sErr := deps.Structure.ExtractCV(sctx, text)
+	cancel()
+	if sErr != nil {
+		return nil, &processErr{
+			Code:    "structure_failed",
+			Message: "AI could not section the CV",
+			Err:     sErr,
+		}
+	}
+	if extracted == nil {
+		return nil, &processErr{
+			Code:    "structure_failed",
+			Message: "AI returned empty CV sections",
+		}
+	}
+
+	// Heuristic contact fills gaps AI may miss (email/phone/name only).
+	contact := cv.ParseContactFromText(text)
+
+	// 3. Merge empty hub fields and persist synchronously.
+	var existing *candidatestore.ProfileFields
+	if deps.DB != nil {
+		var gErr error
+		existing, _, gErr = candidatestore.GetProfileFields(ctx, deps.DB, in.CandidateID)
+		if gErr != nil && !errors.Is(gErr, candidatestore.ErrProfileNotFound) {
+			return nil, &processErr{
+				Code:    "profile_read_failed",
+				Message: "could not load existing profile fields",
+				Err:     gErr,
+			}
+		}
+	}
+	hub, filled := cv.MergeExtractedIntoProfile(existing, extracted, contact)
+	if hub == nil {
+		return nil, &processErr{Code: "structure_failed", Message: "profile merge produced empty result"}
+	}
+	hub.CandidateID = in.CandidateID
+	if deps.DB != nil {
+		if pErr := candidatestore.PutProfileFields(ctx, deps.DB, in.CandidateID, hub); pErr != nil {
+			return nil, &processErr{
+				Code:    "profile_write_failed",
+				Message: "could not save structured CV fields",
+				Err:     pErr,
+			}
+		}
+	}
+	log.WithField("candidate_id", in.CandidateID).
+		WithField("profile_id", profileID).
+		WithField("filled", filled).
+		Info("upload: AI sectioning complete; missing fields filled")
+
+	// 4. Store binary with platform profile_id as accessor_id.
+	ref, storeErr := storeCVBytes(ctx, deps, profileID, in)
 	if storeErr != nil {
-		log.WithError(storeErr).WithField("candidate_id", in.CandidateID).
-			Warn("upload: binary store failed; continuing with text-only path")
+		log.WithError(storeErr).WithField("profile_id", profileID).
+			Warn("upload: binary store failed after AI sectioning; keeping structured fields")
 		sum := sha256.Sum256(in.Body)
 		hash := hex.EncodeToString(sum[:])
 		ref = placement.FileRef{
@@ -248,8 +323,6 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 			Storage:     "local",
 		}
 	}
-
-	// 3. Profile file-id reference (best-effort if profile not created yet).
 	if deps.Profiles != nil && (ref.FileID != "" || ref.ContentURI != "") {
 		if err := deps.Profiles.SetCVFileRef(ctx, in.CandidateID, placement.ProfileCV{
 			FileID:      ref.FileID,
@@ -262,54 +335,7 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		}
 	}
 
-	// 4. Structure extract + fill missing hub fields (name, contact, sections).
-	contact := cv.ParseContactFromText(text)
-	structureSource := "heuristic"
-	var extracted *extraction.CVFields
-	if deps.Structure != nil {
-		timeout := deps.StructureTimeout
-		if timeout <= 0 {
-			timeout = 25 * time.Second
-		}
-		sctx, cancel := context.WithTimeout(ctx, timeout)
-		aiFields, sErr := deps.Structure.ExtractCV(sctx, text)
-		cancel()
-		if sErr != nil {
-			log.WithError(sErr).WithField("candidate_id", in.CandidateID).
-				Warn("upload: AI structure extract failed; using heuristics")
-		} else if aiFields != nil {
-			extracted = aiFields
-			structureSource = "ai"
-		}
-	}
-
-	var filled []string
-	var hub *candidatestore.ProfileFields
-	if deps.DB != nil {
-		existing, _, gErr := candidatestore.GetProfileFields(ctx, deps.DB, in.CandidateID)
-		if gErr != nil && !errors.Is(gErr, candidatestore.ErrProfileNotFound) {
-			log.WithError(gErr).Warn("upload: get profile-fields failed")
-		}
-		hub, filled = cv.MergeExtractedIntoProfile(existing, extracted, contact)
-		if hub != nil {
-			hub.CandidateID = in.CandidateID
-			if pErr := candidatestore.PutProfileFields(ctx, deps.DB, in.CandidateID, hub); pErr != nil {
-				log.WithError(pErr).WithField("candidate_id", in.CandidateID).
-					Warn("upload: put profile-fields after extract failed")
-			} else if len(filled) > 0 {
-				log.WithField("candidate_id", in.CandidateID).
-					WithField("filled", filled).
-					Info("upload: filled missing profile fields from CV")
-			}
-		}
-	} else {
-		hub, filled = cv.MergeExtractedIntoProfile(nil, extracted, contact)
-	}
-	if extracted == nil && len(filled) == 0 && contact.Name == "" && contact.Email == "" && contact.Phone == "" {
-		structureSource = "none"
-	}
-
-	// 5. Placement summary — merge chat preferences + CV text (synchronous).
+	// 5. Placement + draft — sync so matching/chat see the CV immediately.
 	pf := placement.Fields{ExtraInfo: text}
 	var stored onboardingEnvelope
 	if deps.Drafts != nil {
@@ -319,14 +345,11 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 			pf.ExtraInfo = text
 		}
 	}
-	// Prefer structured title when placement fields are still empty.
-	if hub != nil {
-		if pf.TargetJobTitle == "" && hub.TargetJobTitle != "" {
-			pf.TargetJobTitle = hub.TargetJobTitle
-		}
-		if pf.ExperienceLevel == "" && hub.ExperienceLevel != "" {
-			pf.ExperienceLevel = hub.ExperienceLevel
-		}
+	if hub.TargetJobTitle != "" && pf.TargetJobTitle == "" {
+		pf.TargetJobTitle = hub.TargetJobTitle
+	}
+	if hub.ExperienceLevel != "" && pf.ExperienceLevel == "" {
+		pf.ExperienceLevel = hub.ExperienceLevel
 	}
 
 	version := 1
@@ -352,17 +375,14 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		missing = placement.MissingRequired(pf)
 	}
 
-	// 6. Persist CV into onboarding draft so chat field_status sees capabilities.
 	if deps.Drafts != nil {
 		mergedFields := fieldsFromEnvelope(stored)
 		mergedFields.ExtraInfo = truncateRunes(text, 8000)
-		if hub != nil {
-			if mergedFields.TargetJobTitle == "" {
-				mergedFields.TargetJobTitle = hub.TargetJobTitle
-			}
-			if mergedFields.ExperienceLevel == "" {
-				mergedFields.ExperienceLevel = hub.ExperienceLevel
-			}
+		if mergedFields.TargetJobTitle == "" {
+			mergedFields.TargetJobTitle = hub.TargetJobTitle
+		}
+		if mergedFields.ExperienceLevel == "" {
+			mergedFields.ExperienceLevel = hub.ExperienceLevel
 		}
 		chatReady := len(missingFromStatus(assessFieldStatus(mergedFields))) == 0
 		if err := persistChatSession(ctx, MeChatDeps{Drafts: deps.Drafts, Now: nil},
@@ -372,7 +392,7 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		}
 	}
 
-	// 7. Async LLM enrich (embeddings / score pipeline). Non-blocking.
+	// 6. Optional async embed/score pipeline only (not required for fully_processed).
 	if deps.Svc != nil {
 		if err := enqueueCVExtract(ctx, deps.Svc, cvUploadEnqueue{
 			CandidateID:   in.CandidateID,
@@ -388,12 +408,18 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 			Storage:       ref.Storage,
 		}); err != nil {
 			log.WithError(err).WithField("candidate_id", in.CandidateID).
-				Warn("upload: async cv-extract enqueue failed (sync path ok)")
+				Warn("upload: async embed pipeline enqueue failed (sync path fully processed)")
 		}
+	}
+
+	emailHint := strings.TrimSpace(extracted.Email)
+	if emailHint == "" {
+		emailHint = contact.Email
 	}
 
 	return &cvUploadResult{
 		Version:          version,
+		ProfileID:        profileID,
 		FileID:           ref.FileID,
 		ContentURI:       ref.ContentURI,
 		ContentHash:      ref.ContentHash,
@@ -406,14 +432,14 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		Missing:          missing,
 		FilledFields:     filled,
 		ProfileFields:    hub,
-		StructureSource:  structureSource,
-		EmailHint:        contact.Email,
+		StructureSource:  "ai",
+		EmailHint:        emailHint,
+		FullyProcessed:   true,
 	}, nil
 }
 
-// storeCVBytes tries platform files, then R2 archive. Returns an error only
-// when both are unavailable/failing.
-func storeCVBytes(ctx context.Context, deps UploadDeps, in cvUploadInput) (placement.FileRef, error) {
+// storeCVBytes tries platform files (accessor = profileID), then R2 archive.
+func storeCVBytes(ctx context.Context, deps UploadDeps, profileID string, in cvUploadInput) (placement.FileRef, error) {
 	log := util.Log(ctx)
 	files := deps.Files
 	if files == nil && deps.Archive != nil {
@@ -422,15 +448,14 @@ func storeCVBytes(ctx context.Context, deps UploadDeps, in cvUploadInput) (place
 	if files == nil {
 		return placement.FileRef{}, fmt.Errorf("no file store configured")
 	}
-	ref, err := files.Put(ctx, in.CandidateID, in.Filename, in.ContentType, in.Body)
+	ref, err := files.Put(ctx, profileID, in.Filename, in.ContentType, in.Body)
 	if err == nil {
 		return ref, nil
 	}
-	// Fall back to archive when the primary store is not already archive.
 	if deps.Archive != nil {
 		log.WithError(err).Warn("upload: primary store failed; falling back to archive")
 		aref, aerr := (&placement.ArchiveFileStore{Archive: deps.Archive}).Put(
-			ctx, in.CandidateID, in.Filename, in.ContentType, in.Body)
+			ctx, profileID, in.Filename, in.ContentType, in.Body)
 		if aerr == nil {
 			return aref, nil
 		}
@@ -489,6 +514,10 @@ func writeUploadProcessError(w http.ResponseWriter, err error) {
 		http.Error(w, fmt.Sprintf(`{"error":"text extraction: %s"}`, pe.Message), http.StatusUnprocessableEntity)
 	case "empty_cv":
 		http.Error(w, `{"error":"extracted text is empty"}`, http.StatusUnprocessableEntity)
+	case "structure_unavailable", "structure_failed":
+		http.Error(w, fmt.Sprintf(`{"error":%q,"code":%q}`, pe.Message, pe.Code), http.StatusUnprocessableEntity)
+	case "profile_read_failed", "profile_write_failed":
+		http.Error(w, fmt.Sprintf(`{"error":%q,"code":%q}`, pe.Message, pe.Code), http.StatusBadGateway)
 	case "store_failed":
 		http.Error(w, `{"error":"store failed"}`, http.StatusBadGateway)
 	default:

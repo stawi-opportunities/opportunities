@@ -92,10 +92,14 @@ export interface UploadCVResult {
   filled_fields?: string[];
   /** Post-merge hub bag for immediate UI hydration without a second GET. */
   profile_fields?: ProfileFieldsPayload;
-  /** "ai" | "heuristic" | "none" */
+  /** Always "ai" when fully_processed. */
   structure_source?: string;
   /** Email scraped from the CV (for display; platform contact is separate). */
   email_hint?: string;
+  /** True only after required sync AI sectioning + profile merge. */
+  fully_processed?: boolean;
+  /** Platform profile id used as files accessor_id. */
+  profile_id?: string;
 }
 
 export async function uploadCV(file: File): Promise<UploadCVResult> {

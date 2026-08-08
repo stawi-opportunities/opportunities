@@ -153,6 +153,12 @@ func writeMeCVProcessError(w http.ResponseWriter, err error) {
 		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "text_extraction_failed", pe.Message)
 	case "empty_cv":
 		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "empty_cv", pe.Message)
+	case "structure_unavailable":
+		httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "structure_unavailable", pe.Message)
+	case "structure_failed":
+		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "structure_failed", pe.Message)
+	case "profile_read_failed", "profile_write_failed":
+		httpmw.ProblemJSON(w, http.StatusBadGateway, pe.Code, pe.Message)
 	case "store_failed":
 		httpmw.ProblemJSON(w, http.StatusBadGateway, "store_failed", pe.Message)
 	default:

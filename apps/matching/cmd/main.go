@@ -162,9 +162,10 @@ func main() {
 
 	// --- AI extractor ---
 	var extractor *extraction.Extractor
+	infKey := firstCSVToken(cfg.InferenceAPIKey)
 	infBase, infModel, infKey := extraction.ResolveInference(
-		cfg.InferenceProvider, cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey)
-	if infBase != "" {
+		cfg.InferenceProvider, cfg.InferenceBaseURL, cfg.InferenceModel, infKey)
+	if infBase != "" && infKey != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
 			cfg.EmbeddingProvider, cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey)
 		extractor = extraction.New(extraction.Config{
@@ -1085,6 +1086,18 @@ type textExtractor struct{}
 
 func (textExtractor) FromPDF(b []byte) (string, error)  { return extraction.ExtractTextFromPDF(b) }
 func (textExtractor) FromDOCX(b []byte) (string, error) { return extraction.ExtractTextFromDOCX(b) }
+
+// firstCSVToken returns the first non-empty comma-separated token (for
+// multi-key inference secrets shared with chat-agent).
+func firstCSVToken(s string) string {
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			return p
+		}
+	}
+	return ""
+}
 
 type cvExtractorAdapter struct{ e *extraction.Extractor }
 
