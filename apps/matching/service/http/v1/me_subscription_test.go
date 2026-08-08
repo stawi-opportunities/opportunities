@@ -76,6 +76,28 @@ func TestSubscriptionHandler_StatusMapping(t *testing.T) {
 			wantPlanValue: "pro",
 		},
 		{
+			name:          "past_due → past_due (still entitled)",
+			candidate:     &domain.CandidateProfile{Subscription: domain.SubscriptionPastDue, PlanID: "starter"},
+			wantStatus:    "past_due",
+			wantPlanValue: "starter",
+		},
+		{
+			name:          "legacy active string → active",
+			candidate:     &domain.CandidateProfile{Subscription: "active", PlanID: "starter"},
+			wantStatus:    "active",
+			wantPlanValue: "starter",
+		},
+		{
+			name: "subscription_id recovery when tier blank",
+			candidate: &domain.CandidateProfile{
+				Subscription:   "",
+				SubscriptionID: "sub_abc",
+				PlanID:         "starter",
+			},
+			wantStatus:    "active",
+			wantPlanValue: "starter",
+		},
+		{
 			name:          "cancelled → cancelled (plan retained for renewal CTA)",
 			candidate:     &domain.CandidateProfile{Subscription: domain.SubscriptionCancelled, PlanID: "pro"},
 			wantStatus:    "cancelled",

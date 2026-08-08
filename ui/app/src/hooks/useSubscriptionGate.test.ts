@@ -20,15 +20,15 @@ describe('isBillingReturnPath', () => {
 });
 
 describe('isPaidSubscriptionStatus', () => {
-  it('only treats active as fully subscribed (billing entitlement)', () => {
+  it('treats active and past_due as entitled', () => {
     expect(isPaidSubscriptionStatus('active')).toBe(true);
+    expect(isPaidSubscriptionStatus('past_due')).toBe(true);
   });
 
   it('rejects unpaid and non-confirmed statuses', () => {
     expect(isPaidSubscriptionStatus('none')).toBe(false);
     expect(isPaidSubscriptionStatus('canceled')).toBe(false);
     expect(isPaidSubscriptionStatus('cancelled')).toBe(false);
-    expect(isPaidSubscriptionStatus('past_due')).toBe(false);
     expect(isPaidSubscriptionStatus('trial')).toBe(false); // API maps trial→active
     expect(isPaidSubscriptionStatus('')).toBe(false);
     expect(isPaidSubscriptionStatus(null)).toBe(false);
@@ -61,13 +61,17 @@ describe('evaluateSubscriptionAccess', () => {
     });
   });
 
-  it('allows only when status is active', () => {
+  it('allows when status is active or past_due', () => {
     expect(evaluateSubscriptionAccess({ ...base, status: 'active' })).toEqual({
       allowed: true,
       block: false,
       error: false,
       shouldRedirect: false,
       confirmingPayment: false,
+    });
+    expect(evaluateSubscriptionAccess({ ...base, status: 'past_due' })).toMatchObject({
+      allowed: true,
+      shouldRedirect: false,
     });
   });
 

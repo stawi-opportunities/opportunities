@@ -56,8 +56,8 @@ export function resolvePostLoginPath(
   subscriptionStatus: SubscriptionStatus
 ): string {
   const dest = sanitizeReturnTo(returnTo);
-  // Only billing entitlement "active" (GET /me/subscription) opens dashboard.
-  const subscribed = subscriptionStatus === 'active';
+  // Billing entitlement: active or past_due (dunning grace) open dashboard.
+  const subscribed = subscriptionStatus === 'active' || subscriptionStatus === 'past_due';
 
   // Login-to-apply / mid-browse: always restore the listing.
   if (isContentReturnPath(dest)) {

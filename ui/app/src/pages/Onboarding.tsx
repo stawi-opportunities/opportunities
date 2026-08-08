@@ -33,8 +33,8 @@ function readPlanFromQuery(): PlanId {
 }
 
 function isPaidStatus(status: string | undefined): boolean {
-  // Must match billing entitlement confirmation (GET /me/subscription → active).
-  return status === 'active';
+  // Match useSubscriptionGate: active or past_due (still entitled).
+  return status === 'active' || status === 'past_due';
 }
 
 /**
@@ -54,21 +54,13 @@ export default function Onboarding() {
     placeholderData: (prev) => prev,
   });
 
-  // Paid + complete profile → dashboard. Incomplete paid stay to finish chat.
+  // Already subscribed → always leave the paywall funnel. Profile gaps are
+  // finished on the dashboard (CV hub), never by re-paying.
   useEffect(() => {
-    if (!hasSession || subQ.isLoading || !isPaidStatus(subQ.data?.status)) return;
-    let cancelled = false;
-    (async () => {
-      const [cv, draft] = await Promise.all([fetchMeCV(), fetchOnboardingDraft()]);
-      if (cancelled) return;
-      if (evaluateProfileReadiness(cv, draft.fields).ready) {
-        window.location.assign('/dashboard/');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [hasSession, subQ.isLoading, subQ.data?.status]);
+    if (!hasSession || subQ.isLoading || subQ.isError) return;
+    if (!isPaidStatus(subQ.data?.status)) return;
+    window.location.replace('/dashboard/');
+  }, [hasSession, subQ.isLoading, subQ.isError, subQ.data?.status]);
 
   useEffect(() => {
     if (hasSession) {

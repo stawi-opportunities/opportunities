@@ -136,8 +136,8 @@ export default function Dashboard() {
 
   const sub = subQ.data;
   const plan = normalizePlan(sub?.plan ?? null);
-  // Gate already required status === active; keep local flag for panels.
-  const isActive = sub?.status === 'active';
+  // Gate already required entitled status (active | past_due).
+  const isActive = sub?.status === 'active' || sub?.status === 'past_due';
   const subscription = sub?.status ?? 'none';
   const subscriptionPanel =
     isActive && plan ? (
