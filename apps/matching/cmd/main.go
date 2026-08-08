@@ -537,6 +537,10 @@ func main() {
 		Profiles:  profileCV,
 		Placement: placementSvc,
 		Drafts:    candidateRepo,
+		DB:        sqlDB,
+	}
+	if extractor != nil {
+		uploadDeps.Structure = cvExtractorAdapter{extractor}
 	}
 	// Legacy upload/preferences/match paths require auth ΓÇö identity from JWT
 	// subject (or X-Candidate-ID only when OIDC is unset in dev).

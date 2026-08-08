@@ -82,12 +82,20 @@ export interface UploadCVResult {
   file_id?: string;
   content_uri?: string;
   content_hash?: string;
-  /** "files" | "archive" */
+  /** "files" | "archive" | "local" */
   storage?: string;
   /** Combined qualifications + preferences summary after sync rebuild. */
   placement_summary?: string;
   placement_ready?: boolean;
   missing?: string[];
+  /** Profile field keys auto-filled from this upload (empty slots only). */
+  filled_fields?: string[];
+  /** Post-merge hub bag for immediate UI hydration without a second GET. */
+  profile_fields?: ProfileFieldsPayload;
+  /** "ai" | "heuristic" | "none" */
+  structure_source?: string;
+  /** Email scraped from the CV (for display; platform contact is separate). */
+  email_hint?: string;
 }
 
 export async function uploadCV(file: File): Promise<UploadCVResult> {
