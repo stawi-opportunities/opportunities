@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import type { AuthState } from '@stawi/auth-runtime';
 import HomeRedirect from '../HomeRedirect';
+import { __resetSafeNavigateForTests } from '@/utils/safeNavigate';
 
 let authState: AuthState = 'initializing';
 let hasSession = false;
@@ -32,10 +33,18 @@ vi.mock('@/hooks/useSubscription', () => ({
 let replaceSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  __resetSafeNavigateForTests();
   replaceSpy = vi.fn();
   Object.defineProperty(window, 'location', {
     configurable: true,
-    value: { replace: replaceSpy, assign: vi.fn(), href: 'http://localhost/' },
+    value: {
+      replace: replaceSpy,
+      assign: vi.fn(),
+      href: 'http://localhost/',
+      pathname: '/',
+      search: '',
+      hash: '',
+    },
   });
   document.body.innerHTML = '<section id="home-hero"></section>';
   authState = 'initializing';

@@ -21,6 +21,7 @@ import {
 import { filterPlacementMessages } from '@/utils/chatDisplay';
 import { evaluateProfileReadiness, mergeCVIntoFields } from '@/utils/profileReadiness';
 import { isChatReady } from '@/onboarding/chatHeuristic';
+import { safeReplace } from '@/utils/safeNavigate';
 
 type Phase = 'chat' | 'plan';
 
@@ -54,13 +55,14 @@ export default function Onboarding() {
     placeholderData: (prev) => prev,
   });
 
-  // Already subscribed → always leave the paywall funnel. Profile gaps are
-  // finished on the dashboard (CV hub), never by re-paying.
+  // Already subscribed → leave the paywall only. Never re-enter checkout.
+  // Profile gaps are completed on the dashboard (CV hub) — the dashboard
+  // must not send paid users back here (that was a redirect loop).
   useEffect(() => {
-    if (!hasSession || subQ.isLoading || subQ.isError) return;
+    if (!hasSession || subQ.isLoading || subQ.isFetching || subQ.isError) return;
     if (!isPaidStatus(subQ.data?.status)) return;
-    window.location.replace('/dashboard/');
-  }, [hasSession, subQ.isLoading, subQ.isError, subQ.data?.status]);
+    safeReplace('/dashboard/');
+  }, [hasSession, subQ.isLoading, subQ.isFetching, subQ.isError, subQ.data?.status]);
 
   useEffect(() => {
     if (hasSession) {

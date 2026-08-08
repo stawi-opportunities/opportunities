@@ -65,12 +65,16 @@ export function resolvePostLoginPath(
   }
 
   if (subscribed) {
+    // Never send entitled users to onboarding/paywall after login.
     if (dest.startsWith('/dashboard')) return dest;
+    if (dest.startsWith('/onboarding')) return '/dashboard/';
     return '/dashboard/';
   }
 
   if (dest.startsWith('/onboarding')) {
     return dest;
   }
+  // Unpaid: do not open dashboard (subscription gate would bounce them).
+  if (dest.startsWith('/dashboard')) return '/onboarding/';
   return '/onboarding/';
 }

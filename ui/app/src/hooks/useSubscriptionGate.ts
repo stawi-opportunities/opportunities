@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuth } from '@/providers/AuthProvider';
+import { safeReplace } from '@/utils/safeNavigate';
 
 const ONBOARDING_PATH = '/onboarding/';
 
@@ -116,21 +117,34 @@ export function evaluateSubscriptionAccess(input: {
     };
   }
 
-  // Known unpaid — leave dashboard entirely.
+  // Definitive unpaid only — never redirect on unknown/empty mid-fetch.
+  const unpaid = status === 'none' || status === 'cancelled' || status === 'canceled';
+  if (unpaid) {
+    return {
+      allowed: false,
+      block: true,
+      error: false,
+      shouldRedirect: true,
+      confirmingPayment: false,
+    };
+  }
+
+  // Unknown status string: block paint, do not bounce (avoids thrash).
   return {
     allowed: false,
     block: true,
     error: false,
-    shouldRedirect: true,
+    shouldRedirect: false,
     confirmingPayment: false,
   };
 }
 
 /**
- * Dashboard product access requires GET /me/subscription status === "active"
- * (matching entitlement after billing/checkout activation).
+ * Dashboard product access requires an entitled /me/subscription status.
  *
- * Unpaid users → onboarding. Checkout return → confirmation shell only.
+ * Unpaid (none/cancelled) → onboarding once (never cycles with profile gate).
+ * Checkout return → confirmation shell only.
+ * Profile incompleteness is handled in-dashboard — never redirects away.
  */
 export function useSubscriptionGate(): SubscriptionAccess & { checking: boolean } {
   const { hasSession, ready: authReady } = useAuth();
@@ -142,14 +156,16 @@ export function useSubscriptionGate(): SubscriptionAccess & { checking: boolean 
     hasSession,
     billingReturn: isBillingReturnPath(),
     status: subQ.data?.status,
-    loading: Boolean(subQ.isLoading && subQ.data == null),
+    // Treat first fetch and refetch-without-data as loading (no redirect).
+    loading: Boolean(subQ.data == null && (subQ.isLoading || subQ.isFetching || subQ.isPending)),
     error: Boolean(subQ.isError && subQ.data == null),
   });
 
   useEffect(() => {
     if (!access.shouldRedirect || redirecting) return;
     setRedirecting(true);
-    window.location.replace(ONBOARDING_PATH);
+    // Thrash-safe: will not bounce dashboard↔onboarding in a tight loop.
+    safeReplace(ONBOARDING_PATH);
   }, [access.shouldRedirect, redirecting]);
 
   const block = access.block || redirecting;

@@ -2,15 +2,15 @@ import { useEffect } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSubscription } from '@/hooks/useSubscription';
 import { isPaidSubscriptionStatus } from '@/hooks/useSubscriptionGate';
+import { safeReplace } from '@/utils/safeNavigate';
 
 /**
  * Marketing homepage (`/`): signed-in users leave the marketing shell.
  * - Subscribed → `/dashboard/`
- * - Unpaid / unknown after load → `/onboarding/` (paywall funnel)
- * Never park unpaid users on the dashboard island.
+ * - Unpaid after load → `/onboarding/` (paywall funnel)
+ * - API error → `/dashboard/` (retry shell; never paywall)
  *
- * Uses sticky `hasSession` so a token refresh never un-hides the hero and
- * never cancels a redirect mid-flight (the classic logged-in/out flicker).
+ * Uses thrash-safe navigation so we never cycle with onboarding/dashboard.
  */
 export default function HomeRedirect() {
   const { hasSession, ready, state } = useAuth();
@@ -32,21 +32,31 @@ export default function HomeRedirect() {
 
     if (hero) hero.style.display = 'none';
 
-    // Wait for subscription so we do not bounce unpaid → dashboard → onboarding.
-    if (subQ.isLoading && subQ.data == null) return;
+    // Wait for a definitive subscription answer before choosing an island.
+    if (subQ.data == null && (subQ.isLoading || subQ.isFetching || subQ.isPending)) return;
+
     if (isPaidSubscriptionStatus(subQ.data?.status)) {
-      window.location.replace('/dashboard/');
+      safeReplace('/dashboard/');
       return;
     }
-    // Network / API errors must not force a re-subscribe paywall. Send to
-    // dashboard; the subscription gate shows a retry shell instead of checkout.
     if (subQ.isError && subQ.data == null) {
-      window.location.replace('/dashboard/');
+      safeReplace('/dashboard/');
       return;
     }
-    // Confirmed unpaid → onboarding paywall funnel.
-    window.location.replace('/onboarding/');
-  }, [hasSession, ready, state, subQ.isLoading, subQ.data?.status, subQ.isError]);
+    // Definitive unpaid only.
+    if (subQ.data?.status === 'none' || subQ.data?.status === 'cancelled') {
+      safeReplace('/onboarding/');
+    }
+  }, [
+    hasSession,
+    ready,
+    state,
+    subQ.isLoading,
+    subQ.isFetching,
+    subQ.isPending,
+    subQ.data?.status,
+    subQ.isError,
+  ]);
 
   return null;
 }
