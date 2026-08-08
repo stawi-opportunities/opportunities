@@ -53,6 +53,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/placement"
+	"github.com/stawi-opportunities/opportunities/pkg/profilecontacts"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
@@ -495,26 +496,37 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
-	// CV binary ΓåÆ files service (preferred) or R2 archive fallback.
-	// Only a file-id reference is kept on candidate_profiles; extracted text
-	// updates the placement summary synchronously for chat/matching.
+	// Platform clients for files + profile contacts (same OAuth machinery).
+	// ProfileService is the canonical contact store (email / MSISDN).
 	var cvFiles placement.FileStore = &placement.ArchiveFileStore{Archive: arch}
-	if cfg.FileServiceURI != "" {
-		fileClients, fileErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+	var contactDir profilecontacts.Directory = profilecontacts.Nil{}
+	if cfg.FileServiceURI != "" || cfg.ProfileServiceURI != "" {
+		platClients, platErr := services.NewClients(ctx, &cfg, services.ClientConfig{
 			FileURI:    cfg.FileServiceURI,
+			ProfileURI: cfg.ProfileServiceURI,
 			HTTPClient: svc.HTTPClientManager().Client(ctx),
 		})
-		if fileErr != nil {
-			log.WithError(fileErr).Warn("placement: files client init error; CV uploads use R2 archive")
+		if platErr != nil {
+			log.WithError(platErr).Warn("platform: files/profile client init reported an error")
 		}
-		if fileClients != nil && fileClients.Files != nil {
-			cvFiles = &placement.FilesServiceStore{Client: fileClients.Files}
+		if platClients != nil && platClients.Files != nil {
+			cvFiles = &placement.FilesServiceStore{Client: platClients.Files}
 			log.WithField("uri", cfg.FileServiceURI).Info("placement: CV binaries via platform files service")
-		} else {
+		} else if cfg.FileServiceURI != "" {
 			log.Warn("placement: FILE_SERVICE_URI set but files client unavailable ΓÇö using R2 archive")
+		} else {
+			log.Info("placement: FILE_SERVICE_URI unset ΓÇö CV binaries use R2 archive fallback")
+		}
+		if platClients != nil && platClients.Profile != nil {
+			contactDir = profilecontacts.New(platClients.Profile)
+			log.WithField("uri", cfg.ProfileServiceURI).
+				Info("profilecontacts: platform ProfileService enabled for CV contact sync")
+		} else if cfg.ProfileServiceURI != "" {
+			log.Warn("profilecontacts: PROFILE_SERVICE_URI set but client unavailable — CV contacts stay local only")
 		}
 	} else {
 		log.Info("placement: FILE_SERVICE_URI unset ΓÇö CV binaries use R2 archive fallback")
+		log.Info("profilecontacts: PROFILE_SERVICE_URI unset — CV contacts stay local only")
 	}
 
 	// Placement profile (business): qualifications + preferences ΓåÆ summary + vector.
@@ -548,6 +560,7 @@ func main() {
 		Placement: placementSvc,
 		Drafts:    candidateRepo,
 		DB:        sqlDB,
+		Contacts:  contactDir,
 	}
 	if extractor != nil {
 		uploadDeps.Structure = cvExtractorAdapter{extractor}
@@ -1011,6 +1024,7 @@ func main() {
 			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
 			DailyCap:         matching.NewPGDailyCapQuery(sqlDB),
 			DefaultMinScore:  cfg.MatchingMinScore,
+			Contacts:         contactDir, // platform ProfileService — sole contact store
 		}
 		meV1.Mount(mux, extDeps, authMW)
 		// Gateway-visible aliases: SPA calls /matching/me/* (same shape as

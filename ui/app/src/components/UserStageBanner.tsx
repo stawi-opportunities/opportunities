@@ -1,8 +1,9 @@
 import type { UserStageInfo } from '@/utils/userStage';
 
 /**
- * Always-visible stage chip so product and support can see where the user is
- * in the seeker journey (intake / paywall / payment confirm / CV setup / ready).
+ * Always-visible stage chip so product, support, and the user can see
+ * which seeker journey stage is active after user context is resolved
+ * (intake / paywall / payment confirm / CV setup / ready / past due).
  */
 export function UserStageBanner({
   stage,
@@ -20,16 +21,27 @@ export function UserStageBanner({
   return (
     <div
       data-user-stage={stage.stage}
+      data-user-stage-home={stage.homePath}
       role="status"
       aria-live="polite"
-      className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm ${tone.box}`}
+      aria-label={`Current stage: ${stage.label}. ${stage.summary}`}
+      title={`${stage.stage} → ${stage.homePath}`}
+      className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2.5 text-sm shadow-sm ${tone.box}`}
     >
       <span
         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-wide ${tone.chip}`}
       >
         {stage.label}
       </span>
-      {!compact && <span className={`${tone.text}`}>{stage.summary}</span>}
+      {!compact && (
+        <span className={`min-w-0 flex-1 font-medium ${tone.text}`}>{stage.summary}</span>
+      )}
+      <span
+        className="ml-auto hidden font-mono text-[10px] uppercase tracking-wider opacity-60 sm:inline"
+        aria-hidden="true"
+      >
+        {stage.stage}
+      </span>
     </div>
   );
 }

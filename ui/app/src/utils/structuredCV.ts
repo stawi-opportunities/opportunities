@@ -58,8 +58,13 @@ export interface StructuredCV {
 export interface ProfileFieldsPayload {
   candidate_id?: string;
   name?: string;
-  phone?: string;
-  emails?: string[];
+  /**
+   * Write-only: opaque contact strings → ProfileService CreateContact.
+   * Never stored as plaintext on the candidate row.
+   */
+  contact_details?: string[];
+  /** Read-only: standalone CV contact ids from ProfileService. */
+  cv_contact_ids?: string[];
   current_title?: string;
   target_job_title?: string;
   seniority?: string;
@@ -130,15 +135,6 @@ function educationFromText(education: string | undefined): CVEducation[] {
   ];
 }
 
-function splitContactList(raw: string | undefined | null): string[] {
-  if (!raw?.trim()) return [];
-  // Multi-contact joins use · | ; / or newlines — not bare spaces (phones have spaces).
-  return raw
-    .split(/[·|;/\n\r]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 function dedupeContacts(items: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -153,36 +149,32 @@ function dedupeContacts(items: string[]): string[] {
   return out;
 }
 
-/** Build StructuredCV from profile-fields + optional name/phone/emails. */
+/**
+ * Build StructuredCV from profile-fields.
+ * Contact display is UI-only (from platform_contacts / extras) — never from
+ * stored phone/email columns (removed).
+ */
 export function hydrateStructuredCV(
   pf: ProfileFieldsPayload | null | undefined,
   extras?: {
     name?: string;
-    phone?: string;
-    email?: string;
-    emails?: string[];
-    phones?: string[];
+    /** UI-only contact details from platform_contacts after upload. */
+    contact_details?: string[];
   }
 ): StructuredCV {
   const strong = pf?.strong_skills?.length ? pf.strong_skills : (pf?.skills ?? []);
   const location = pf?.preferred_locations?.[0] || pf?.preferred_countries?.[0] || undefined;
 
-  const phones = dedupeContacts([
-    ...(extras?.phones ?? []),
-    ...splitContactList(extras?.phone),
-    ...splitContactList(pf?.phone),
-  ]);
-  const emails = dedupeContacts([
-    ...(extras?.emails ?? []),
-    ...(extras?.email ? [extras.email] : []),
-    ...(pf?.emails ?? []),
-  ]);
+  // Transient display only — not loaded from matching DB.
+  const details = dedupeContacts(extras?.contact_details ?? []);
+  const emails = details.filter((d) => d.includes('@'));
+  const phones = details.filter((d) => !d.includes('@'));
 
   return {
     basics: {
       name: extras?.name?.trim() || pf?.name?.trim() || '',
       headline: pf?.current_title?.trim() || pf?.target_job_title?.trim() || '',
-      email: emails[0] || extras?.email?.trim() || undefined,
+      email: emails[0],
       emails,
       phone: phones[0] || '',
       phones,
@@ -297,11 +289,12 @@ export function structuredCVToProfileFields(doc: StructuredCV): Partial<ProfileF
     : doc.basics.email
       ? [doc.basics.email]
       : [];
+  const contact_details = dedupeContacts([...emails, ...phones]);
 
   return {
     name: doc.basics.name || undefined,
-    phone: phones.length ? phones.join(' · ') : undefined,
-    emails: emails.length ? emails : undefined,
+    // Transient — handler CreateContacts + stores ids only.
+    contact_details: contact_details.length ? contact_details : undefined,
     current_title: doc.basics.headline || undefined,
     bio: doc.summary || undefined,
     strong_skills: doc.skills.strong,

@@ -78,10 +78,8 @@ export default function Onboarding() {
     }
   }
 
-  // Stage drives default phase: paywall vs intake.
-  const [phase, setPhase] = useState<Phase>(() =>
-    userCtx.stage === 'onboarding_paywall' ? 'plan' : 'chat'
-  );
+  // Stage drives default phase: paywall vs intake (single source of truth).
+  const [phase, setPhase] = useState<Phase>('chat');
   const [fields, setFields] = useState<OnboardingChatFields>({});
   const [messages, setMessages] = useState<OnboardingChatMessage[]>([]);
   const [plan, setPlan] = useState<PlanId>(readPlanFromQuery);
@@ -93,12 +91,18 @@ export default function Onboarding() {
   const [chatSession, setChatSession] = useState(0);
   /** Prevent double auto-advance chat → plan. */
   const advancedToPlanRef = useRef(false);
+  /** User explicitly chose "Edit in chat" from the paywall — do not snap back. */
+  const userForcedChatRef = useRef(false);
 
+  // Once stage is known, paywall users land on plan unless they asked to edit chat.
   useEffect(() => {
-    if (userCtx.stage === 'onboarding_paywall' && phase === 'chat' && draftLoaded) {
-      setPhase('plan');
-    }
-  }, [userCtx.stage, phase, draftLoaded]);
+    if (userCtx.resolving || userCtx.stage === 'loading' || !draftLoaded) return;
+    if (userCtx.stage !== 'onboarding_paywall') return;
+    if (userForcedChatRef.current) return;
+    if (phase === 'plan') return;
+    advancedToPlanRef.current = true;
+    setPhase('plan');
+  }, [userCtx.stage, userCtx.resolving, phase, draftLoaded]);
 
   function bumpWizardStep(min: 1 | 2 | 3): 1 | 2 | 3 {
     const next = (wizardStepRef.current > min ? wizardStepRef.current : min) as 1 | 2 | 3;
@@ -160,6 +164,7 @@ export default function Onboarding() {
       setFields(f);
       setMessages(msgs);
       if (phase === 'plan') return;
+      userForcedChatRef.current = false;
       advancedToPlanRef.current = true;
       setPhase('plan');
       const step = bumpWizardStep(2);
@@ -173,6 +178,7 @@ export default function Onboarding() {
   );
 
   function openChat() {
+    userForcedChatRef.current = true;
     advancedToPlanRef.current = false;
     setChatSession((n) => n + 1);
     setPhase('chat');
@@ -264,8 +270,17 @@ export default function Onboarding() {
         className="flex min-h-[min(100dvh,40rem)] flex-col bg-stone-50/80 dark:bg-navy-950"
         data-user-stage={userCtx.stage}
       >
-        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
+        <div className="mx-auto w-full max-w-2xl space-y-3 px-4 pt-4">
           <UserStageBanner stage={userCtx} />
+          <header className="px-0.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+              {userCtx.label}
+            </p>
+            <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
+              Tell us what you want next
+            </h1>
+            <p className="mt-1 text-sm text-gray-600 dark:text-stone-300">{userCtx.summary}</p>
+          </header>
         </div>
         {draftLoaded ? (
           <PreferenceChat

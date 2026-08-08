@@ -58,11 +58,13 @@ type CandidateProfile struct {
 	CVStorageURI  string `gorm:"type:text" json:"-"` // file id
 	CVContentHash string `gorm:"type:varchar(64)" json:"-"`
 
-	// User-visible profile info (managed here for settings UI convenience;
-	// the auth/Frame service is the canonical source for name + email).
-	Name   string `gorm:"type:varchar(255)" json:"name"`
-	Phone  string `gorm:"type:text" json:"phone"` // may hold multiple numbers joined by " · "
-	Emails string `gorm:"type:text" json:"emails,omitempty"`
+	// Display name on the job-seeker product row (not identity login).
+	Name string `gorm:"type:varchar(255)" json:"name"`
+
+	// CVContactIDs are standalone ProfileService contact_ids from the CV
+	// (CreateContact — not attached to the person profile). No phone/email
+	// plaintext is stored here. Checkout/notify use profile-attached contacts only.
+	CVContactIDs pq.StringArray `gorm:"type:text[];not null;default:'{}'" json:"cv_contact_ids,omitempty"`
 
 	// AI-extracted profile fields
 	CurrentTitle    string         `gorm:"type:text" json:"current_title"`

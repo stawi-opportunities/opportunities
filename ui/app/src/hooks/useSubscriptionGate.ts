@@ -6,8 +6,6 @@ import { isBillingReturnPath, isPaidSubscriptionStatus, resolveUserStage } from 
 
 export { isBillingReturnPath, isPaidSubscriptionStatus };
 
-const ONBOARDING_PATH = '/onboarding/';
-
 export type SubscriptionAccess = {
   /** Product dashboard UI (matches, CV, settings) may render. */
   allowed: boolean;
@@ -24,6 +22,8 @@ export type SubscriptionAccess = {
   confirmingPayment: boolean;
   /** Canonical journey stage when fully resolved from subscription alone. */
   stage?: string;
+  /** Stage home path when a redirect is required (from resolveUserStage). */
+  redirectPath?: string;
 };
 
 /**
@@ -71,6 +71,7 @@ export function evaluateSubscriptionAccess(input: {
         shouldRedirect: false,
         confirmingPayment: false,
         stage: info.stage,
+        redirectPath: info.homePath,
       };
     case 'loading':
       return {
@@ -80,6 +81,7 @@ export function evaluateSubscriptionAccess(input: {
         shouldRedirect: false,
         confirmingPayment: false,
         stage: info.stage,
+        redirectPath: info.homePath,
       };
     case 'subscription_error':
       return {
@@ -89,6 +91,7 @@ export function evaluateSubscriptionAccess(input: {
         shouldRedirect: false,
         confirmingPayment: false,
         stage: info.stage,
+        redirectPath: info.homePath,
       };
     case 'confirming_payment':
       return {
@@ -98,6 +101,7 @@ export function evaluateSubscriptionAccess(input: {
         shouldRedirect: false,
         confirmingPayment: true,
         stage: info.stage,
+        redirectPath: info.homePath,
       };
     case 'dashboard_ready':
     case 'dashboard_setup':
@@ -109,6 +113,7 @@ export function evaluateSubscriptionAccess(input: {
         shouldRedirect: false,
         confirmingPayment: false,
         stage: info.stage,
+        redirectPath: info.homePath,
       };
     case 'onboarding_intake':
     case 'onboarding_paywall':
@@ -119,6 +124,7 @@ export function evaluateSubscriptionAccess(input: {
         shouldRedirect: true,
         confirmingPayment: false,
         stage: info.stage,
+        redirectPath: info.homePath,
       };
     default:
       return {
@@ -128,6 +134,7 @@ export function evaluateSubscriptionAccess(input: {
         shouldRedirect: false,
         confirmingPayment: false,
         stage: info.stage,
+        redirectPath: info.homePath,
       };
   }
 }
@@ -153,8 +160,9 @@ export function useSubscriptionGate(): SubscriptionAccess & { checking: boolean 
   useEffect(() => {
     if (!access.shouldRedirect || redirecting) return;
     setRedirecting(true);
-    safeReplace(ONBOARDING_PATH);
-  }, [access.shouldRedirect, redirecting]);
+    // Always stage homePath — unpaid stages resolve to /onboarding/.
+    safeReplace(access.redirectPath ?? '/onboarding/');
+  }, [access.shouldRedirect, access.redirectPath, redirecting]);
 
   const block = access.block || redirecting;
 

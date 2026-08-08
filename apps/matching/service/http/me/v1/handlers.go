@@ -18,6 +18,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
+	"github.com/stawi-opportunities/opportunities/pkg/profilecontacts"
 )
 
 // Deps bundles all dependencies injected into the handler set.
@@ -37,6 +38,9 @@ type Deps struct {
 	// DefaultMinScore floors on-demand gap-fill when the index has no
 	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.45.
 	DefaultMinScore float64
+	// Contacts creates standalone ProfileService contacts for CV details.
+	// Checkout/notify use only profile-attached identity contacts (not these).
+	Contacts profilecontacts.Directory
 
 	Now   func() time.Time
 	NewID func() string
@@ -647,9 +651,23 @@ func profileFields(d *Deps) http.HandlerFunc {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
+		// Resolve contact objects from stored ids (no plaintext on the row).
+		out := map[string]any{}
+		b, _ := json.Marshal(pf)
+		_ = json.Unmarshal(b, &out)
+		if len(pf.CVContactIDs) > 0 && d.Contacts != nil {
+			if found, missing, rErr := d.Contacts.Resolve(r.Context(), pf.CVContactIDs); rErr == nil {
+				if len(found) > 0 {
+					out["platform_contacts"] = found
+				}
+				if len(missing) > 0 {
+					out["missing_contact_ids"] = missing
+				}
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("ETag", etag)
-		_ = json.NewEncoder(w).Encode(pf)
+		_ = json.NewEncoder(w).Encode(out)
 	}
 }
 
@@ -665,6 +683,9 @@ func putProfileFields(d *Deps) http.HandlerFunc {
 			httpmw.ProblemJSON(w, http.StatusBadRequest, "invalid_json", "invalid profile-fields body")
 			return
 		}
+		// Transient contact_details → CreateContact + store IDs only.
+		ensureCVBodyContacts(r.Context(), d, cand, &body)
+		body.ContactDetails = nil
 		if err := candidatestore.PutProfileFields(r.Context(), d.DB, cand, &body); err != nil {
 			if errors.Is(err, candidatestore.ErrProfileNotFound) {
 				httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
@@ -682,9 +703,28 @@ func putProfileFields(d *Deps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("ETag", etag)
 		out := map[string]any{"ok": true}
-		// Flatten profile fields into response for SPA convenience.
 		b, _ := json.Marshal(pf)
 		_ = json.Unmarshal(b, &out)
 		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+func ensureCVBodyContacts(
+	ctx context.Context,
+	d *Deps,
+	candidateID string,
+	body *candidatestore.ProfileFields,
+) {
+	if d == nil || d.Contacts == nil || body == nil {
+		return
+	}
+	details := profilecontacts.CollectDetails(body.ContactDetails)
+	known, _ := candidatestore.GetCVContactIDs(ctx, d.DB, candidateID)
+	if len(details) == 0 && len(known) == 0 {
+		return
+	}
+	refs, _ := d.Contacts.EnsureDetails(ctx, details, known)
+	if ids := profilecontacts.IDs(refs); len(ids) > 0 && d.DB != nil {
+		_ = candidatestore.PutCVContactIDs(ctx, d.DB, candidateID, ids)
 	}
 }

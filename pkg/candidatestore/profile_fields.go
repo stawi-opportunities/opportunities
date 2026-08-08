@@ -17,15 +17,18 @@ import (
 // ErrProfileNotFound surfaces when no candidate_profile row exists.
 var ErrProfileNotFound = errors.New("candidatestore: profile not found")
 
-// ProfileFields is the ATS-autofill + CV hub bag returned by
-// GET /api/me/profile-fields (and accepted by PUT). Field shape mirrors
-// common ATS form fields and LinkedIn-style CV sections.
+// ProfileFields is the ATS/CV hub bag for GET/PUT /me/profile-fields.
+// Contact details are never stored here — only cv_contact_ids (IDs of
+// standalone ProfileService contacts). Transient contact_details on PUT
+// are accepted by the handler and turned into CreateContact calls only.
 type ProfileFields struct {
 	CandidateID string `json:"candidate_id"`
 	Name        string `json:"name,omitempty"`
-	Phone       string `json:"phone,omitempty"`
-	// Emails are CV contact addresses (may be multiple). Login email stays on profile service.
-	Emails           []string         `json:"emails,omitempty"`
+	// ContactDetails is write-only on PUT: opaque strings sent to
+	// ProfileService CreateContact. Never persisted on candidate_profiles.
+	ContactDetails []string `json:"contact_details,omitempty"`
+	// CVContactIDs is read-only on GET: stored platform contact ids.
+	CVContactIDs     []string         `json:"cv_contact_ids,omitempty"`
 	CurrentTitle     string           `json:"current_title,omitempty"`
 	TargetJobTitle   string           `json:"target_job_title,omitempty"`
 	Seniority        string           `json:"seniority,omitempty"`
@@ -55,13 +58,10 @@ type ProfileFields struct {
 	WorkHistory      []map[string]any `json:"work_history,omitempty"`
 }
 
-// GetProfileFields fetches one candidate's profile and returns the
-// ATS-autofill payload + a stable ETag.
+// GetProfileFields fetches one candidate's profile (no phone/email columns).
 func GetProfileFields(ctx context.Context, db *sql.DB, candidateID string) (*ProfileFields, string, error) {
 	const q = `
 SELECT COALESCE(name,''),
-       COALESCE(phone,''),
-       COALESCE(emails,''),
        COALESCE(current_title,''),
        COALESCE(target_job_title,''),
        COALESCE(seniority,''),
@@ -89,13 +89,13 @@ SELECT COALESCE(name,''),
        us_work_auth,
        needs_sponsorship,
        COALESCE(work_history,'[]')::text,
+       COALESCE(cv_contact_ids, ARRAY[]::text[]),
        updated_at,
        cv_scored_at
   FROM candidate_profiles WHERE id = $1 OR profile_id = $1
 `
 	var (
 		pf            ProfileFields
-		emailsRaw     string
 		certsRaw      string
 		preferredRaw  string
 		industriesRaw string
@@ -105,13 +105,14 @@ SELECT COALESCE(name,''),
 		regionsRaw    string
 		timezonesRaw  string
 		workHistRaw   string
+		contactIDs    pq.StringArray
 		usAuth        sql.NullBool
 		needsSpon     sql.NullBool
 		updatedAt     time.Time
 		cvScoredAt    sql.NullTime
 	)
 	err := db.QueryRowContext(ctx, q, candidateID).Scan(
-		&pf.Name, &pf.Phone, &emailsRaw,
+		&pf.Name,
 		&pf.CurrentTitle, &pf.TargetJobTitle, &pf.Seniority, &pf.ExperienceLevel,
 		&pf.YearsExperience,
 		pq.Array(&pf.Skills),
@@ -125,7 +126,9 @@ SELECT COALESCE(name,''),
 		&pf.RemotePref, &pf.JobSearchStatus,
 		&pf.SalaryMin, &pf.SalaryMax, &pf.Currency,
 		&usAuth, &needsSpon,
-		&workHistRaw, &updatedAt, &cvScoredAt,
+		&workHistRaw,
+		&contactIDs,
+		&updatedAt, &cvScoredAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, "", ErrProfileNotFound
@@ -134,7 +137,7 @@ SELECT COALESCE(name,''),
 		return nil, "", fmt.Errorf("candidatestore: profile-fields: %w", err)
 	}
 	pf.CandidateID = candidateID
-	pf.Emails = splitCSV(emailsRaw)
+	pf.CVContactIDs = cleanIDs(contactIDs)
 	pf.Certifications = splitCSV(certsRaw)
 	pf.PreferredRoles = splitCSV(preferredRaw)
 	pf.Industries = splitCSV(industriesRaw)
@@ -159,9 +162,7 @@ SELECT COALESCE(name,''),
 	return &pf, etag, nil
 }
 
-// PutProfileFields updates CV section fields and match preferences on the
-// candidate_profiles row. Only non-nil / non-empty-aware fields are written
-// via a single UPDATE of all hub-managed columns (callers send the full bag).
+// PutProfileFields updates CV hub fields. Never writes phone/email plaintext.
 func PutProfileFields(ctx context.Context, db *sql.DB, candidateID string, pf *ProfileFields) error {
 	if db == nil {
 		return fmt.Errorf("candidatestore: db is nil")
@@ -189,41 +190,37 @@ func PutProfileFields(ctx context.Context, db *sql.DB, candidateID string, pf *P
 	res, err := db.ExecContext(ctx, `
 UPDATE candidate_profiles SET
   name = COALESCE(NULLIF($2, ''), name),
-  phone = COALESCE(NULLIF($3, ''), phone),
-  emails = $4,
-  current_title = $5,
-  target_job_title = $6,
-  seniority = $7,
-  experience_level = $8,
-  years_experience = $9,
-  skills = $10,
-  strong_skills = $11,
-  working_skills = $12,
-  tools_frameworks = $13,
-  certifications = $14,
-  preferred_roles = $15,
-  industries = $16,
-  education = $17,
-  languages = $18,
-  bio = $19,
-  preferred_locations = $20,
-  preferred_countries = $21,
-  preferred_regions = $22,
-  preferred_timezones = $23,
-  remote_preference = $24,
-  job_search_status = $25,
-  salary_min = $26,
-  salary_max = $27,
-  currency = $28,
-  us_work_auth = $29,
-  needs_sponsorship = $30,
-  work_history = $31::jsonb,
+  current_title = $3,
+  target_job_title = $4,
+  seniority = $5,
+  experience_level = $6,
+  years_experience = $7,
+  skills = $8,
+  strong_skills = $9,
+  working_skills = $10,
+  tools_frameworks = $11,
+  certifications = $12,
+  preferred_roles = $13,
+  industries = $14,
+  education = $15,
+  languages = $16,
+  bio = $17,
+  preferred_locations = $18,
+  preferred_countries = $19,
+  preferred_regions = $20,
+  preferred_timezones = $21,
+  remote_preference = $22,
+  job_search_status = $23,
+  salary_min = $24,
+  salary_max = $25,
+  currency = $26,
+  us_work_auth = $27,
+  needs_sponsorship = $28,
+  work_history = $29::jsonb,
   updated_at = NOW()
 WHERE id = $1 OR profile_id = $1`,
 		candidateID,
 		pf.Name,
-		pf.Phone,
-		joinCSV(pf.Emails),
 		pf.CurrentTitle,
 		pf.TargetJobTitle,
 		pf.Seniority,
@@ -276,8 +273,6 @@ func joinCSV(parts []string) string {
 	return strings.Join(out, ", ")
 }
 
-// splitCSV parses a comma-separated value into a deduped, trimmed slice.
-// Empty input → nil.
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil

@@ -26,6 +26,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/placement"
+	"github.com/stawi-opportunities/opportunities/pkg/profilecontacts"
 )
 
 // TextExtractor abstracts plain-text extraction for PDF / DOCX bytes.
@@ -63,6 +64,10 @@ type UploadDeps struct {
 	Structure CVStructureExtractor
 	// DB is used to read/write candidate_profiles hub fields after extract.
 	DB *sql.DB
+	// Contacts creates standalone ProfileService contacts for CV details
+	// (not attached to the person profile). Checkout/notify use only
+	// profile-attached identity contacts via ProfileID.
+	Contacts profilecontacts.Directory
 
 	// MaxBytes caps the size of the uploaded file. 0 → 10 MiB default.
 	MaxBytes int64
@@ -165,14 +170,10 @@ func uploadResponseMap(candidateID string, result *cvUploadResult) map[string]an
 		// fully_processed is true only after required sync AI sectioning + merge.
 		"fully_processed": result.FullyProcessed,
 	}
-	if result.EmailHint != "" {
-		out["email_hint"] = result.EmailHint
-	}
-	if len(result.EmailHints) > 0 {
-		out["email_hints"] = result.EmailHints
-	}
-	if len(result.PhoneHints) > 0 {
-		out["phone_hints"] = result.PhoneHints
+	// Standalone CV contact IDs only — no phone/email plaintext in the response bag.
+	if len(result.PlatformContacts) > 0 {
+		out["platform_contacts"] = result.PlatformContacts
+		out["cv_contact_ids"] = profilecontacts.IDs(result.PlatformContacts)
 	}
 	if result.ProfileFields != nil {
 		out["profile_fields"] = result.ProfileFields
@@ -203,14 +204,13 @@ type cvUploadResult struct {
 	// FilledFields lists profile-field keys auto-filled from this upload.
 	FilledFields []string
 	// ProfileFields is the post-merge hub bag (for immediate UI hydration).
+	// Never includes phone/email plaintext.
 	ProfileFields *candidatestore.ProfileFields
 	// StructureSource is always "ai" when fully_processed.
 	StructureSource string
-	// EmailHint is primary contact email found in the CV (AI or heuristic).
-	EmailHint string
-	// EmailHints / PhoneHints are all contacts found on the CV.
-	EmailHints []string
-	PhoneHints []string
+	// PlatformContacts are standalone CV contact refs (CreateContact IDs).
+	// Not used for checkout/notify — those use profile-attached contacts only.
+	PlatformContacts []profilecontacts.Ref
 	// FullyProcessed means sync AI sectioning + profile merge completed.
 	FullyProcessed bool
 }
@@ -320,6 +320,13 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		WithField("filled", filled).
 		Info("upload: AI sectioning complete; missing fields filled")
 
+	// 3b. Standalone CV contacts (CreateContact) + cv_contact_ids only — no plaintext store.
+	platformContacts := syncCVContacts(ctx, deps, in.CandidateID, extracted, contact)
+	if hub != nil {
+		hub.CVContactIDs = profilecontacts.IDs(platformContacts)
+		hub.ContactDetails = nil
+	}
+
 	// 4. Store binary with platform profile_id as accessor_id.
 	ref, storeErr := storeCVBytes(ctx, deps, profileID, in)
 	if storeErr != nil {
@@ -424,27 +431,6 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		}
 	}
 
-	emailHint := strings.TrimSpace(extracted.Email)
-	if emailHint == "" {
-		emailHint = contact.Email
-	}
-	emailHints := append([]string{}, extracted.Emails...)
-	if len(emailHints) == 0 {
-		emailHints = append([]string{}, contact.Emails...)
-	}
-	phoneHints := append([]string{}, extracted.Phones...)
-	if len(phoneHints) == 0 {
-		phoneHints = append([]string{}, contact.Phones...)
-	}
-	if hub != nil {
-		if len(hub.Emails) > 0 {
-			emailHints = hub.Emails
-		}
-		if hub.Phone != "" && len(phoneHints) == 0 {
-			phoneHints = []string{hub.Phone}
-		}
-	}
-
 	return &cvUploadResult{
 		Version:          version,
 		ProfileID:        profileID,
@@ -461,11 +447,54 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		FilledFields:     filled,
 		ProfileFields:    hub,
 		StructureSource:  "ai",
-		EmailHint:        emailHint,
-		EmailHints:       emailHints,
-		PhoneHints:       phoneHints,
+		PlatformContacts: platformContacts,
 		FullyProcessed:   true,
 	}, nil
+}
+
+// syncCVContacts stores CV-discovered details as standalone ProfileService
+// contacts (CreateContact) and saves contact_ids on the candidate row.
+// Best-effort; never fails the upload. Not for checkout/notify.
+func syncCVContacts(
+	ctx context.Context,
+	deps UploadDeps,
+	candidateID string,
+	extracted *extraction.CVFields,
+	heuristic cv.ParsedContact,
+) []profilecontacts.Ref {
+	if deps.Contacts == nil {
+		return nil
+	}
+	var groups [][]string
+	if extracted != nil {
+		groups = append(groups, extracted.Emails, []string{extracted.Email}, extracted.Phones, []string{extracted.Phone})
+	}
+	groups = append(groups, heuristic.Emails, []string{heuristic.Email}, heuristic.Phones, []string{heuristic.Phone})
+	details := profilecontacts.CollectDetails(groups...)
+
+	var known []string
+	if deps.DB != nil {
+		known, _ = candidatestore.GetCVContactIDs(ctx, deps.DB, candidateID)
+	}
+	if len(details) == 0 && len(known) == 0 {
+		return nil
+	}
+	refs, err := deps.Contacts.EnsureDetails(ctx, details, known)
+	log := util.Log(ctx).WithField("candidate_id", candidateID)
+	if err != nil {
+		log.WithError(err).WithField("contacts", len(refs)).
+			Warn("upload: CV contact store incomplete (CV still processed)")
+	}
+	ids := profilecontacts.IDs(refs)
+	if deps.DB != nil && len(ids) > 0 {
+		if pErr := candidatestore.PutCVContactIDs(ctx, deps.DB, candidateID, ids); pErr != nil {
+			log.WithError(pErr).Warn("upload: could not persist cv_contact_ids")
+		}
+	}
+	if len(refs) > 0 {
+		log.WithField("contact_ids", ids).Info("upload: standalone CV contacts ready")
+	}
+	return refs
 }
 
 // storeCVBytes tries platform files (accessor = profileID), then R2 archive.

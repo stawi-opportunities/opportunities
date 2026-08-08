@@ -161,7 +161,12 @@ export default function Dashboard() {
   return (
     <PreferenceChatHost>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8" data-user-stage={userCtx.stage}>
-        <DashboardHeader plan={plan} status={subscription} stageLabel={userCtx.label} />
+        <DashboardHeader
+          plan={plan}
+          status={subscription}
+          stageLabel={userCtx.label}
+          stageId={userCtx.stage}
+        />
         <div className="mt-3">
           <UserStageBanner stage={userCtx} />
         </div>
@@ -197,6 +202,11 @@ export default function Dashboard() {
                   delivered={sub?.delivered_this_week ?? null}
                   subQueryError={subQ.isError}
                   subLoading={subQ.isLoading && sub == null}
+                  setupMode={
+                    userCtx.stage === 'dashboard_setup' ||
+                    (userCtx.readiness != null && !userCtx.readiness.ready)
+                  }
+                  setupMissing={userCtx.readiness?.missing ?? []}
                   onUpgrade={() => {
                     setSettingsTab('subscription');
                     navigate('settings');
@@ -320,12 +330,15 @@ function ProfileGateSkeleton() {
 /** Checkout return only — polls billing until /me/subscription is active. */
 function PaymentConfirmingShell() {
   return (
-    <div className="mx-auto max-w-md px-4 py-16 text-center">
+    <div className="mx-auto max-w-md px-4 py-16 text-center" data-user-stage="confirming_payment">
       <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-accent-500 border-t-transparent" />
-      <h1 className="mt-6 text-lg font-semibold text-main">Confirming your subscription</h1>
+      <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+        Confirming payment
+      </p>
+      <h1 className="mt-1 text-lg font-semibold text-main">Activating your subscription</h1>
       <p className="mt-2 text-sm text-secondary">
-        We&apos;re waiting for billing to activate your plan. This usually takes under a minute. The
-        dashboard opens only after confirmation.
+        Waiting for billing to activate your plan. This usually takes under a minute. The dashboard
+        opens only after confirmation.
       </p>
       <div className="mt-6 text-left">
         <PendingCheckoutPoller />

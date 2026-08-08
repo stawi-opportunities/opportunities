@@ -37,6 +37,9 @@ export function MatchesPanel({
   subQueryError = false,
   subLoading = false,
   onUpgrade,
+  /** When true (stage dashboard_setup), emphasize CV completion over empty inventory. */
+  setupMode = false,
+  setupMissing = [] as string[],
 }: {
   plan: PlanId;
   freeProof?: boolean;
@@ -45,6 +48,8 @@ export function MatchesPanel({
   subQueryError?: boolean;
   subLoading?: boolean;
   onUpgrade?: () => void;
+  setupMode?: boolean;
+  setupMissing?: string[];
 }) {
   const { push: toast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
@@ -131,10 +136,31 @@ export function MatchesPanel({
       <div>
         <h2 className="text-lg font-semibold text-main">Your matches</h2>
         <p className="mt-1 text-sm text-secondary">
-          Scored against your CV — highest fit first. Use the actions on this page to refresh, open
-          a role, or improve your CV.
+          {setupMode
+            ? 'You are subscribed. Finish your CV and match preferences so we can score roles against you.'
+            : 'Scored against your CV — highest fit first. Use the actions on this page to refresh, open a role, or improve your CV.'}
         </p>
       </div>
+
+      {setupMode && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <p className="font-semibold">Finish setup for better matches</p>
+          <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
+            {setupMissing.length > 0
+              ? `Still needed: ${setupMissing.slice(0, 6).join(', ')}${setupMissing.length > 6 ? '…' : ''}.`
+              : 'Upload a CV and set target role / location preferences under the CV tab.'}
+          </p>
+          <a
+            href="/dashboard/#cv"
+            className="mt-2 inline-flex min-h-[40px] items-center rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
+          >
+            Open CV hub
+          </a>
+        </div>
+      )}
 
       {subQueryError && (
         <div
@@ -192,14 +218,14 @@ export function MatchesPanel({
         {queued === 0 && (
           <div className="mt-4 rounded-md border border-muted bg-surface-muted p-4 text-sm text-main">
             <p className="font-medium">
-              {lastReason === 'need_cv'
+              {setupMode || lastReason === 'need_cv'
                 ? 'Add a CV to get scored matches'
                 : 'No matches in your queue yet'}
             </p>
             <p className="mt-1 text-secondary">
-              {lastReason === 'need_cv' ? (
+              {setupMode || lastReason === 'need_cv' ? (
                 <>
-                  Upload a CV under{' '}
+                  You are not missing a subscription — finish your CV under{' '}
                   <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
                     CV
                   </a>

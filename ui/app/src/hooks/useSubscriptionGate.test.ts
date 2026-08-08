@@ -81,10 +81,28 @@ describe('evaluateSubscriptionAccess', () => {
       block: true,
       shouldRedirect: true,
       confirmingPayment: false,
+      redirectPath: '/onboarding/',
+      stage: 'onboarding_intake',
     });
     expect(evaluateSubscriptionAccess({ ...base, status: 'cancelled' })).toMatchObject({
       allowed: false,
       shouldRedirect: true,
+      redirectPath: '/onboarding/',
+    });
+  });
+
+  it('allows entitled incomplete without redirect (dashboard setup stays)', () => {
+    // profileReady is intentionally omitted at subscription gate — entitled
+    // users always get product access; setup messaging is a presentation concern.
+    expect(evaluateSubscriptionAccess({ ...base, status: 'active' })).toMatchObject({
+      allowed: true,
+      shouldRedirect: false,
+      redirectPath: '/dashboard/',
+    });
+    expect(evaluateSubscriptionAccess({ ...base, status: 'past_due' })).toMatchObject({
+      allowed: true,
+      shouldRedirect: false,
+      redirectPath: '/dashboard/',
     });
   });
 
