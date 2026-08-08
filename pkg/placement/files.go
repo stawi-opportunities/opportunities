@@ -24,8 +24,12 @@ type FileRef struct {
 }
 
 // FileStore stores CV bytes. Production uses the platform files service.
+//
+// profileID is the platform profile id used as files accessor_id (private
+// media ACL). It must not be a product-local candidate surrogate unless
+// that id is also the profile id.
 type FileStore interface {
-	Put(ctx context.Context, candidateID, filename, contentType string, body []byte) (FileRef, error)
+	Put(ctx context.Context, profileID, filename, contentType string, body []byte) (FileRef, error)
 }
 
 // FilesServiceStore uploads via antinvestor FilesService.UploadContent.
@@ -35,12 +39,17 @@ type FilesServiceStore struct {
 }
 
 // Put streams the CV to the files service and returns media id + URI.
-func (s *FilesServiceStore) Put(ctx context.Context, candidateID, filename, contentType string, body []byte) (FileRef, error) {
+// profileID is written to UploadMetadata.accessor_id (required, min 1).
+func (s *FilesServiceStore) Put(ctx context.Context, profileID, filename, contentType string, body []byte) (FileRef, error) {
 	if s == nil || s.Client == nil {
 		return FileRef{}, fmt.Errorf("placement: files client is nil")
 	}
 	if len(body) == 0 {
 		return FileRef{}, fmt.Errorf("placement: empty body")
+	}
+	profileID = strings.TrimSpace(profileID)
+	if profileID == "" {
+		return FileRef{}, fmt.Errorf("placement: profile_id required for files accessor_id")
 	}
 	hash := hashBytes(body)
 	ct := contentType
@@ -53,13 +62,9 @@ func (s *FilesServiceStore) Put(ctx context.Context, candidateID, filename, cont
 	}
 
 	stream := s.Client.UploadContent(ctx)
-	idem := "cv-" + candidateID + "-" + hash[:16]
-	// accessor_id is required (proto min_items=1) — grant the candidate
-	// READER on their own CV so private media is addressable.
-	accessors := []string{}
-	if id := strings.TrimSpace(candidateID); id != "" {
-		accessors = []string{id}
-	}
+	idem := "cv-" + profileID + "-" + hash[:16]
+	// accessor_id = platform profile id (proto min_items=1).
+	accessors := []string{profileID}
 	if err := stream.Send(&filesv1.UploadContentRequest{
 		Data: &filesv1.UploadContentRequest_Metadata{
 			Metadata: &filesv1.UploadMetadata{
@@ -122,8 +127,8 @@ type ArchiveFileStore struct {
 }
 
 // Put archives raw bytes and returns a content-addressed archive key.
-func (s *ArchiveFileStore) Put(ctx context.Context, candidateID, filename, contentType string, body []byte) (FileRef, error) {
-	_ = candidateID
+func (s *ArchiveFileStore) Put(ctx context.Context, profileID, filename, contentType string, body []byte) (FileRef, error) {
+	_ = profileID
 	_ = filename
 	_ = contentType
 	if s == nil || s.Archive == nil {

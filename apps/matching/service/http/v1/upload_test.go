@@ -16,6 +16,7 @@ import (
 
 	"github.com/stawi-opportunities/opportunities/pkg/archive"
 	eventsv1 "github.com/stawi-opportunities/opportunities/pkg/events/v1"
+	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/frametest"
 )
 
@@ -46,6 +47,18 @@ type fakeTextExtractor struct{ out string }
 func (f *fakeTextExtractor) FromPDF(_ []byte) (string, error)  { return f.out, nil }
 func (f *fakeTextExtractor) FromDOCX(_ []byte) (string, error) { return f.out, nil }
 
+type fakeStructure struct{}
+
+func (fakeStructure) ExtractCV(_ context.Context, _ string) (*extraction.CVFields, error) {
+	return &extraction.CVFields{
+		Name:         "Test User",
+		Email:        "test@example.com",
+		Phone:        "+1 555 0100",
+		CurrentTitle: "Engineer",
+		StrongSkills: []string{"Go"},
+	}, nil
+}
+
 func TestUploadHandlerArchivesAndEnqueues(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -64,9 +77,10 @@ func TestUploadHandlerArchivesAndEnqueues(t *testing.T) {
 	frametest.WaitPublisherReady(t, svc, eventsv1.SubjectCVExtract, 2*time.Second)
 
 	deps := UploadDeps{
-		Svc:     svc,
-		Archive: archive.NewFakeArchive(),
-		Text:    &fakeTextExtractor{out: "resume plain text content long enough to pass"},
+		Svc:       svc,
+		Archive:   archive.NewFakeArchive(),
+		Text:      &fakeTextExtractor{out: "resume plain text content long enough to pass"},
+		Structure: fakeStructure{},
 	}
 	handler := UploadHandler(deps)
 

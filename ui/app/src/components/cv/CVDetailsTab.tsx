@@ -128,6 +128,15 @@ export function CVDetailsTab() {
         setDirty(false);
       }
 
+      if (!res.fully_processed) {
+        setUploadPhase('idle');
+        toast(
+          'CV was received but AI sectioning did not finish. Please try again — nothing was left half-done for you to fix manually.',
+          'error'
+        );
+        return;
+      }
+
       setUploadPhase('done');
       if (filled.length > 0) {
         const labels = filled
@@ -136,12 +145,12 @@ export function CVDetailsTab() {
           .join(', ');
         const more = filled.length > 6 ? ` (+${filled.length - 6} more)` : '';
         toast(
-          `CV imported — filled ${filled.length} missing field${filled.length === 1 ? '' : 's'}: ${labels}${more}. Review and tweak if needed.`,
+          `CV fully processed — filled ${filled.length} missing field${filled.length === 1 ? '' : 's'}: ${labels}${more}. Already saved for matching.`,
           'success'
         );
       } else {
         toast(
-          'CV on file. Your profile already had the main details — nothing empty to overwrite. Review sections below.',
+          'CV fully processed. Your profile already had the main details — nothing empty to overwrite.',
           'success'
         );
       }
@@ -152,6 +161,11 @@ export function CVDetailsTab() {
       if (/text_extraction|empty_cv|unsupported/i.test(msg)) {
         toast(
           'We could not read that file. Try a text-based PDF, DOCX, or TXT (not a scanned image).',
+          'error'
+        );
+      } else if (/structure_unavailable|structure_failed/i.test(msg)) {
+        toast(
+          'AI could not finish sectioning your CV. Please retry — we do not leave a half-imported profile for you to complete by hand.',
           'error'
         );
       } else if (/store_failed|502|503|504/i.test(msg)) {
@@ -210,21 +224,22 @@ export function CVDetailsTab() {
     uploadPhase === 'uploading'
       ? 'Uploading file…'
       : uploadPhase === 'reading'
-        ? 'Reading CV and filling empty sections…'
+        ? 'AI is sectioning your CV (this can take up to a minute)…'
         : uploading
           ? 'Working…'
           : present
             ? 'Replace CV file'
-            : 'Upload CV — auto-fill your profile';
+            : 'Upload CV — AI fills empty sections';
 
   return (
     <div className="space-y-6">
       {/* Primary CTA: upload first */}
       <Panel title="Start with your CV" id="cv-upload">
         <p className="text-sm text-secondary">
-          Drop a PDF, Word, or text CV. We extract the text, fill any{' '}
-          <span className="font-medium text-main">empty</span> name, contact, experience, skills,
-          and education fields, and leave your existing edits alone.
+          Drop a PDF, Word, or text CV. Processing is{' '}
+          <span className="font-medium text-main">fully synchronous</span>: we extract text, run AI
+          sectioning, fill empty name/contact/experience/ skills/education fields, and save them
+          before this finishes. Existing saved values are never overwritten.
         </p>
         {present && (
           <p className="mt-2 text-sm">
@@ -274,7 +289,7 @@ export function CVDetailsTab() {
           </Button>
           {uploading && (
             <span className="text-xs text-secondary animate-pulse">
-              This can take up to ~30s while we read and structure your CV.
+              Stay on this page — AI sectioning finishes before we mark the upload done.
             </span>
           )}
         </div>
@@ -478,8 +493,9 @@ export function CVDetailsTab() {
       </div>
 
       <p className="text-xs text-secondary">
-        Manual edits: use <span className="font-medium text-main">Save CV</span> after changing
-        sections. Re-uploading only fills empty fields — it never overwrites what you already saved.
+        After upload, empty sections are already saved for matching. Use{' '}
+        <span className="font-medium text-main">Save CV</span> only for extra manual tweaks.
+        Re-uploading only fills remaining empty fields.
       </p>
     </div>
   );
