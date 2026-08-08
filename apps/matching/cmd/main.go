@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -316,10 +317,17 @@ func main() {
 		// HTTP handler publishes onto SubjectCVExtract; cv-extract fans
 		// out to SubjectCVImprove + SubjectCVEmbed; both terminate by
 		// emitting their domain events.
+		//
+		// Publishers cannot use push:// (Frame subscriber-only scheme).
+		// Production sets CV_EMBED_QUEUE_URL=push:// for the Pub/Sub push
+		// sub; publish uses gcppubsub:// via CV_EMBED_PUBLISH_URL (or derive).
+		extractPub := queuePublisherURL(cfg.CVExtractQueueURL, cfg.CVExtractPublishURL, cfg.GCPProject)
+		improvePub := queuePublisherURL(cfg.CVImproveQueueURL, cfg.CVImprovePublishURL, cfg.GCPProject)
+		embedPub := queuePublisherURL(cfg.CVEmbedQueueURL, cfg.CVEmbedPublishURL, cfg.GCPProject)
 		svc.Init(ctx,
-			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
-			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
-			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, extractPub),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, improvePub),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, embedPub),
 			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
@@ -333,13 +341,14 @@ func main() {
 		// call). The upload handler still needs the cv-extract publisher
 		// registered so POST /candidates/cv/upload doesn't fail; with no
 		// subscriber the message lands and is dropped (or retained for
-		// later replay) ΓÇö explicitly degraded mode.
+		// later replay) - explicitly degraded mode.
+		extractPub := queuePublisherURL(cfg.CVExtractQueueURL, cfg.CVExtractPublishURL, cfg.GCPProject)
 		svc.Init(ctx,
-			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, extractPub),
 			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterEvents(prefMatchH),
 		)
-		log.Warn("candidates: no extractor configured ΓÇö cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
+		log.Warn("candidates: no extractor configured - cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
 
 	// --- Debouncer (shared by Phase-2 and Phase-4 paths) ---
@@ -1097,6 +1106,41 @@ func firstCSVToken(s string) string {
 		}
 	}
 	return ""
+}
+
+// queuePublisherURL picks a Frame-legal publisher URL.
+// Prefer explicit publishURL; otherwise if queueURL is push://topic derive
+// gcppubsub://project/topic using GCP project; otherwise reuse queueURL
+// (mem/nats/gcppubsub are valid for both publish and subscribe).
+func queuePublisherURL(queueURL, publishURL, gcpProject string) string {
+	if p := strings.TrimSpace(publishURL); p != "" {
+		return p
+	}
+	q := strings.TrimSpace(queueURL)
+	if q == "" {
+		return q
+	}
+	u, err := url.Parse(q)
+	if err != nil || u == nil {
+		return q
+	}
+	if !strings.EqualFold(u.Scheme, "push") {
+		return q
+	}
+	topic := strings.TrimSpace(u.Host)
+	if topic == "" {
+		topic = strings.Trim(strings.TrimPrefix(u.Path, "/"), "/")
+	}
+	project := strings.TrimSpace(gcpProject)
+	if project == "" {
+		project = strings.TrimSpace(os.Getenv("GCP_PROJECT"))
+	}
+	if project == "" || topic == "" {
+		// Fall back to in-process so startup does not hard-fail when
+		// project is missing; async cross-instance delivery is degraded.
+		return "mem://" + topic
+	}
+	return "gcppubsub://" + project + "/" + topic
 }
 
 type cvExtractorAdapter struct{ e *extraction.Extractor }

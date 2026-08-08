@@ -61,9 +61,20 @@ type CandidatesConfig struct {
 	// the svc_opportunities_matching stream so per-stage backpressure
 	// + dead-letter behaviour is independent. Empty defaults to the
 	// in-memory driver so local dev / tests work without NATS.
-	CVExtractQueueURL string `env:"CV_EXTRACT_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
-	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
-	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
+	//
+	// Frame rejects push:// as a *publisher* scheme (push is subscriber-
+	// only). When CV_*_QUEUE_URL is push://..., set the matching
+	// CV_*_PUBLISH_URL to gcppubsub://project/topic (or leave empty and
+	// the binary derives gcppubsub from GCP_PROJECT + push host).
+	CVExtractQueueURL   string `env:"CV_EXTRACT_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
+	CVImproveQueueURL   string `env:"CV_IMPROVE_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
+	CVEmbedQueueURL     string `env:"CV_EMBED_QUEUE_URL"     envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
+	CVExtractPublishURL string `env:"CV_EXTRACT_PUBLISH_URL" envDefault:""`
+	CVImprovePublishURL string `env:"CV_IMPROVE_PUBLISH_URL" envDefault:""`
+	CVEmbedPublishURL   string `env:"CV_EMBED_PUBLISH_URL"   envDefault:""`
+	// GCPProject is used to derive gcppubsub:// publish URLs from push://
+	// subscriber URLs when CV_*_PUBLISH_URL is unset.
+	GCPProject string `env:"GCP_PROJECT" envDefault:""`
 
 	// Candidate-embedding queue: cv-embed publishes CandidateEmbeddingV1 here;
 	// the candidate-change consumer drains it for gap-fill + rerank. Dedicated
