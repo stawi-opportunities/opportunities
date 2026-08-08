@@ -11,7 +11,6 @@ import (
 func TestMergeExtractedDoesNotOverwrite(t *testing.T) {
 	existing := &candidatestore.ProfileFields{
 		Name:         "Keep Me",
-		Phone:        "",
 		CurrentTitle: "Engineer",
 	}
 	extracted := &extraction.CVFields{
@@ -24,16 +23,12 @@ func TestMergeExtractedDoesNotOverwrite(t *testing.T) {
 	if merged.Name != "Keep Me" {
 		t.Fatalf("name overwritten: %q", merged.Name)
 	}
-	if merged.Phone != "+1 555 0100" {
-		t.Fatalf("phone not filled: %q", merged.Phone)
-	}
 	if merged.CurrentTitle != "Engineer" {
 		t.Fatalf("title overwritten: %q", merged.CurrentTitle)
 	}
 	if len(merged.StrongSkills) != 2 {
 		t.Fatalf("skills: %#v", merged.StrongSkills)
 	}
-	// name must not appear in filled
 	for _, k := range filled {
 		if k == "name" || k == "current_title" {
 			t.Fatalf("should not report filled %q", k)
@@ -45,7 +40,7 @@ func TestMergeFromHeuristicOnly(t *testing.T) {
 	merged, filled := MergeExtractedIntoProfile(nil, nil, ParsedContact{
 		Name: "Ada Lovelace", Email: "ada@example.com", Phone: "+44 20 7946 0958",
 	})
-	if merged.Name != "Ada Lovelace" || merged.Phone == "" {
+	if merged.Name != "Ada Lovelace" {
 		t.Fatalf("merged=%+v filled=%v", merged, filled)
 	}
 }
@@ -83,12 +78,6 @@ Acme — Staff Engineer
 	merged, filled := MergeExtractedIntoProfileWithText(nil, extracted, contact, raw)
 	if merged.Name != "Jane A. Doe" {
 		t.Fatalf("name=%q", merged.Name)
-	}
-	if !strings.Contains(merged.Phone, "712") || !strings.Contains(merged.Phone, "733") {
-		t.Fatalf("expected multi phone, got %q", merged.Phone)
-	}
-	if len(merged.Emails) < 2 {
-		t.Fatalf("emails=%v", merged.Emails)
 	}
 	if !strings.Contains(merged.Bio, "payments platforms") {
 		t.Fatalf("bio should use summary section, got %q filled=%v", merged.Bio, filled)

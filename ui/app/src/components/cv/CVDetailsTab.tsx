@@ -42,7 +42,6 @@ export function CVDetailsTab() {
   const [uploading, setUploading] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'reading' | 'done'>('idle');
   const [lastFilled, setLastFilled] = useState<string[]>([]);
-  const [emailHint, setEmailHint] = useState<string>('');
   const [dirty, setDirty] = useState(false);
   const [buyingReport, setBuyingReport] = useState(false);
 
@@ -51,11 +50,9 @@ export function CVDetailsTab() {
     try {
       const [pf, meCv] = await Promise.all([fetchProfileFields(), fetchMeCV()]);
       setCvMeta(meCv);
-      const hydrated = hydrateStructuredCV(pf, {
-        name: pf?.name,
-        phone: pf?.phone,
-        emails: pf?.emails,
-      });
+      // Contacts are only contact_ids server-side; UI contact fields start empty
+      // unless the user edits them this session (CreateContact on save).
+      const hydrated = hydrateStructuredCV(pf, { name: pf?.name });
       if (!hydrated.basics.headline && profileQ.data?.current_title) {
         hydrated.basics.headline = profileQ.data.current_title;
       }
@@ -93,22 +90,20 @@ export function CVDetailsTab() {
     setUploading(true);
     setUploadPhase('uploading');
     setLastFilled([]);
-    setEmailHint('');
     try {
       setUploadPhase('reading');
       const res = await uploadCV(file);
       const filled = res.filled_fields ?? [];
       setLastFilled(filled);
-      if (res.email_hint) setEmailHint(res.email_hint);
 
       // Prefer server merge for immediate hydration; fall back to full reload.
       if (res.profile_fields) {
+        const contactDetails = (res.platform_contacts ?? [])
+          .map((c) => c.detail)
+          .filter(Boolean) as string[];
         const hydrated = hydrateStructuredCV(res.profile_fields, {
           name: res.profile_fields.name,
-          phone: res.profile_fields.phone,
-          emails: res.email_hints?.length ? res.email_hints : res.profile_fields.emails,
-          email: res.email_hint,
-          phones: res.phone_hints,
+          contact_details: contactDetails,
         });
         hydrated.source = 'upload';
         hydrated.updated_at = new Date().toISOString();
@@ -280,12 +275,6 @@ export function CVDetailsTab() {
               {lastFilled.map((k) => k.replace(/_/g, ' ')).join(', ')}
             </span>
           </div>
-        )}
-        {emailHint && (
-          <p className="mt-2 text-xs text-secondary">
-            Email found on CV: <span className="font-medium text-main">{emailHint}</span>
-            {doc.basics.emails?.length ? '' : ' — added to your header for review.'}
-          </p>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <input

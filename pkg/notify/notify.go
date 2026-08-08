@@ -39,8 +39,11 @@ type Message struct {
 	// Template is the service-notification template name/id.
 	Template string
 	// ProfileID is the recipient profile (ContactLink.ProfileId). Required.
+	// Notify resolves delivery via the person profile's attached contacts only
+	// — not CV-derived standalone contact_ids.
 	ProfileID string
-	// ContactID optional ContactLink.ContactId when known.
+	// ContactID optional ContactLink.ContactId when known (must be a
+	// profile-attached identity contact, not a CV standalone id).
 	ContactID string
 	// Language optional preferred language code.
 	Language string

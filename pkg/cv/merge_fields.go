@@ -47,7 +47,6 @@ func MergeExtractedIntoProfileWithText(
 		out.Countries = append([]string(nil), out.Countries...)
 		out.Regions = append([]string(nil), out.Regions...)
 		out.Timezones = append([]string(nil), out.Timezones...)
-		out.Emails = append([]string(nil), out.Emails...)
 		if out.WorkHistory != nil {
 			wh := make([]map[string]any, len(out.WorkHistory))
 			copy(wh, out.WorkHistory)
@@ -105,68 +104,17 @@ func MergeExtractedIntoProfileWithText(
 		filled = append(filled, key)
 	}
 
-	// Contact / name: prefer AI, fall back to heuristic.
+	// Name only from AI/heuristic. Contact details (email/phone) are NOT
+	// stored on candidate_profiles — they live exclusively in platform
+	// ProfileService via profilecontacts.Ensure (secure single store).
 	name := ""
-	phone := ""
-	var phones, emails []string
 	if extracted != nil {
 		name = extracted.Name
-		phone = extracted.Phone
-		phones = append([]string{}, extracted.Phones...)
-		if len(phones) == 0 && phone != "" {
-			phones = []string{phone}
-		}
-		emails = append([]string{}, extracted.Emails...)
-		if len(emails) == 0 && extracted.Email != "" {
-			emails = []string{extracted.Email}
-		}
 	}
 	if name == "" {
 		name = contact.Name
 	}
-	if phone == "" {
-		phone = contact.Phone
-	}
-	phones = unionStrings(phones, contact.Phones)
-	if phone != "" {
-		phones = unionStrings([]string{phone}, phones)
-	}
-	emails = unionStrings(emails, contact.Emails)
-	if contact.Email != "" {
-		emails = unionStrings([]string{contact.Email}, emails)
-	}
-
 	fillStr(&out.Name, name, "name")
-
-	// Phones: store all as " · " joined in Phone for display/edit.
-	if len(phones) > 0 {
-		joined := strings.Join(phones, " · ")
-		if strings.TrimSpace(out.Phone) == "" {
-			out.Phone = joined
-			filled = append(filled, "phone")
-		} else {
-			// Expand existing single phone with any new numbers.
-			existingPhones := splitContactList(out.Phone)
-			mergedPhones := unionStrings(existingPhones, phones)
-			if len(mergedPhones) > len(existingPhones) {
-				out.Phone = strings.Join(mergedPhones, " · ")
-				filled = append(filled, "phone")
-			}
-		}
-	}
-
-	if len(emails) > 0 {
-		if len(out.Emails) == 0 {
-			out.Emails = emails
-			filled = append(filled, "emails")
-		} else {
-			before := len(out.Emails)
-			out.Emails = unionStrings(out.Emails, emails)
-			if len(out.Emails) > before {
-				filled = append(filled, "emails")
-			}
-		}
-	}
 
 	// Heuristic section bodies from raw CV text.
 	summarySection := ExtractSummarySection(rawCV)
@@ -359,43 +307,6 @@ func difference(from []string, remove []string) []string {
 		out = append(out, s)
 	}
 	return out
-}
-
-func splitContactList(s string) []string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	// Split on middle-dot, pipe, semicolon, or newlines — not bare spaces
-	// (phone numbers contain spaces).
-	parts := regexpSplitContacts(s)
-	return cleanStrings(parts)
-}
-
-func regexpSplitContacts(s string) []string {
-	// Reuse a simple splitter without importing regexp here again — use FieldsFunc.
-	var parts []string
-	var b strings.Builder
-	flush := func() {
-		p := strings.TrimSpace(b.String())
-		if p != "" {
-			parts = append(parts, p)
-		}
-		b.Reset()
-	}
-	for _, r := range s {
-		switch r {
-		case '·', '|', ';', '\n', '\r', '/':
-			flush()
-		default:
-			b.WriteRune(r)
-		}
-	}
-	flush()
-	if len(parts) == 0 {
-		return []string{s}
-	}
-	return parts
 }
 
 func mapSeniorityToLevel(s string) string {

@@ -76,6 +76,45 @@ describe('resolveUserStage', () => {
     });
     expect(s.stage).toBe('dashboard_past_due');
   });
+
+  it('subscription_error when subscription fetch failed with no status', () => {
+    const s = resolveUserStage({
+      ...base,
+      subscriptionError: true,
+      subscriptionStatus: null,
+    });
+    expect(s.stage).toBe('subscription_error');
+    expect(s.homePath).toBe('/dashboard/');
+    expect(s.onboardingAllowed).toBe(false);
+    expect(s.dashboardAllowed).toBe(true); // error shell on dashboard island
+    expect(s.entitled).toBe(false);
+  });
+
+  it('subscription_error for unknown status (trial, weird) — stable dashboard home', () => {
+    for (const status of ['trial', 'weird', 'pending']) {
+      const s = resolveUserStage({
+        ...base,
+        subscriptionStatus: status,
+        profileReady: null,
+      });
+      expect(s.stage).toBe('subscription_error');
+      expect(s.homePath).toBe('/dashboard/');
+      expect(s.onboardingAllowed).toBe(false);
+      // Must not thrash with postLogin: same status always lands on dashboard.
+    }
+  });
+
+  it('cancelled/canceled map to unpaid onboarding (not subscription_error)', () => {
+    for (const status of ['cancelled', 'canceled']) {
+      const s = resolveUserStage({
+        ...base,
+        subscriptionStatus: status,
+        profileReady: false,
+      });
+      expect(s.stage).toBe('onboarding_intake');
+      expect(s.homePath).toBe('/onboarding/');
+    }
+  });
 });
 
 describe('pathMatchesStageHome', () => {
@@ -83,5 +122,57 @@ describe('pathMatchesStageHome', () => {
     expect(pathMatchesStageHome('/dashboard', '/dashboard/')).toBe(true);
     expect(pathMatchesStageHome('/onboarding/', '/onboarding/')).toBe(true);
     expect(pathMatchesStageHome('/dashboard/', '/onboarding/')).toBe(false);
+  });
+});
+
+describe('stage labels are obvious once resolved', () => {
+  const cases = [
+    {
+      name: 'intake',
+      input: { subscriptionStatus: 'none', profileReady: false },
+      stage: 'onboarding_intake',
+      label: /profile setup/i,
+    },
+    {
+      name: 'paywall',
+      input: { subscriptionStatus: 'none', profileReady: true },
+      stage: 'onboarding_paywall',
+      label: /plan/i,
+    },
+    {
+      name: 'setup',
+      input: { subscriptionStatus: 'active', profileReady: false },
+      stage: 'dashboard_setup',
+      label: /cv/i,
+    },
+    {
+      name: 'ready',
+      input: { subscriptionStatus: 'active', profileReady: true },
+      stage: 'dashboard_ready',
+      label: /matching/i,
+    },
+    {
+      name: 'past due',
+      input: { subscriptionStatus: 'past_due', profileReady: true },
+      stage: 'dashboard_past_due',
+      label: /past due/i,
+    },
+  ] as const;
+
+  it.each(cases)('$name has a distinct human label and stable home', ({ input, stage, label }) => {
+    const s = resolveUserStage({
+      authReady: true,
+      hasSession: true,
+      subscriptionLoading: false,
+      subscriptionError: false,
+      billingReturn: false,
+      profileLoading: false,
+      subscriptionStatus: input.subscriptionStatus,
+      profileReady: input.profileReady,
+    });
+    expect(s.stage).toBe(stage);
+    expect(s.label).toMatch(label);
+    expect(s.summary.length).toBeGreaterThan(10);
+    expect(s.homePath).toMatch(/^\/(onboarding|dashboard)\/$/);
   });
 });

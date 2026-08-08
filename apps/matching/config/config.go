@@ -154,6 +154,10 @@ type CandidatesConfig struct {
 	// CV uploads are stored via the platform files service; when empty,
 	// matching falls back to the product R2 archive bucket.
 	FileServiceURI string `env:"FILE_SERVICE_URI" envDefault:""`
+	// ProfileServiceURI is service-profile (platform person + contacts).
+	// When set, CV-discovered emails/phones are Ensure'd onto the profile
+	// (canonical contact store for checkout, notify, login). Empty skips sync.
+	ProfileServiceURI string `env:"PROFILE_SERVICE_URI" envDefault:""`
 	// NotificationServiceURI is service-notification. Candidate-facing
 	// messages use NotificationService.Send (same client setup as profile).
 	NotificationServiceURI string `env:"NOTIFICATION_SERVICE_URI" envDefault:""`

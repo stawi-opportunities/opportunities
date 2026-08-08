@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isContentReturnPath, resolvePostLoginPath, sanitizeReturnTo } from './postLoginRedirect';
+import { resolveUserStage } from '@/utils/userStage';
 
 describe('sanitizeReturnTo', () => {
   it('defaults empty / invalid to /', () => {
@@ -57,13 +58,46 @@ describe('resolvePostLoginPath', () => {
     expect(resolvePostLoginPath('/', 'past_due')).toBe('/dashboard/');
   });
 
-  it('does not open dashboard without billing entitlement', () => {
-    expect(resolvePostLoginPath('/', 'trial')).toBe('/onboarding/'); // API maps trial→active
+  it('sends known unpaid statuses to onboarding only', () => {
     expect(resolvePostLoginPath('/dashboard/', 'cancelled')).toBe('/onboarding/');
+    expect(resolvePostLoginPath('/dashboard/', 'canceled')).toBe('/onboarding/');
     expect(resolvePostLoginPath('/', 'none')).toBe('/onboarding/');
+  });
+
+  it('sends unknown statuses to dashboard (subscription_error shell, not onboarding thrash)', () => {
+    // Must match resolveUserStage homePath — never /onboarding/ then bounce back.
+    expect(resolvePostLoginPath('/', 'trial')).toBe('/dashboard/');
+    expect(resolvePostLoginPath('/', 'weird')).toBe('/dashboard/');
+    expect(resolvePostLoginPath('/onboarding/', 'trial')).toBe('/dashboard/');
   });
 
   it('preserves onboarding plan query for unpaid users', () => {
     expect(resolvePostLoginPath('/onboarding/?plan=pro', 'none')).toBe('/onboarding/?plan=pro');
+  });
+
+  it('agrees with resolveUserStage.homePath for every common status (no thrash)', () => {
+    const statuses = [
+      'active',
+      'past_due',
+      'none',
+      'cancelled',
+      'canceled',
+      'trial',
+      'weird',
+      'pending',
+    ];
+    for (const status of statuses) {
+      const stage = resolveUserStage({
+        authReady: true,
+        hasSession: true,
+        subscriptionLoading: false,
+        subscriptionError: false,
+        subscriptionStatus: status,
+        billingReturn: false,
+        profileLoading: false,
+        profileReady: null,
+      });
+      expect(resolvePostLoginPath('/', status)).toBe(stage.homePath);
+    }
   });
 });

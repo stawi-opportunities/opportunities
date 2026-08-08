@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -8,6 +8,7 @@ import { QUERY_KEYS } from '@/constants/queryKeys';
 import { evaluateProfileReadiness, type ProfileReadiness } from '@/utils/profileReadiness';
 import {
   isBillingReturnPath,
+  isPaidSubscriptionStatus,
   resolveUserStage,
   type UserStage,
   type UserStageInfo,
@@ -23,10 +24,31 @@ export type UserContext = UserStageInfo & {
 };
 
 /**
+ * Publish the resolved journey stage on <html> so any surface (and support
+ * tooling) can see it without digging into React trees.
+ * Skips while still loading so we do not flash a stale stage.
+ */
+function publishUserStageToDocument(info: UserStageInfo, resolving: boolean): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (resolving || info.stage === 'loading' || info.stage === 'anonymous') {
+    delete root.dataset.userStage;
+    delete root.dataset.userStageLabel;
+    delete root.dataset.userStageHome;
+    return;
+  }
+  root.dataset.userStage = info.stage;
+  root.dataset.userStageLabel = info.label;
+  root.dataset.userStageHome = info.homePath;
+}
+
+/**
  * Builds the seeker user context once session is known.
  *
  * Stage is the single source of truth for which island the user is on
  * (onboarding intake / paywall / payment confirm / dashboard setup / ready).
+ * Once `resolving` is false, stage / label / summary / homePath are stable
+ * and are mirrored onto document.documentElement for global visibility.
  */
 export function useUserContext(options?: { loadProfile?: boolean }): UserContext {
   const loadProfile = options?.loadProfile !== false;
@@ -37,7 +59,7 @@ export function useUserContext(options?: { loadProfile?: boolean }): UserContext
     hasSession && subQ.data == null && (subQ.isLoading || subQ.isFetching || subQ.isPending)
   );
   const subError = Boolean(hasSession && subQ.isError && subQ.data == null);
-  const entitled = subQ.data?.status === 'active' || subQ.data?.status === 'past_due';
+  const entitled = isPaidSubscriptionStatus(subQ.data?.status);
 
   // Profile readiness: always when entitled (dashboard); optional for unpaid
   // so onboarding can distinguish intake vs paywall.
@@ -86,10 +108,17 @@ export function useUserContext(options?: { loadProfile?: boolean }): UserContext
     ]
   );
 
+  const resolving = info.stage === 'loading' || (entitled && profileLoading);
+
+  // Once context is built, stage must be obvious outside React too.
+  useEffect(() => {
+    publishUserStageToDocument(info, resolving);
+  }, [info, resolving]);
+
   return {
     ...info,
     subscriptionStatus: subQ.data?.status ?? null,
     readiness,
-    resolving: info.stage === 'loading' || (entitled && profileLoading),
+    resolving,
   };
 }

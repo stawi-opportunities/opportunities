@@ -23,9 +23,10 @@ export default function HomeCta() {
       if (result.message) setError(result.message);
       setBusy(false);
     }
-    // If ok and still here (FedCM), go to onboarding / dashboard via full load.
+    // If ok and still here (FedCM), land on home so HomeRedirect applies
+    // resolveUserStage (entitled → dashboard, unpaid → onboarding).
     if (result.ok) {
-      window.location.assign('/onboarding/');
+      window.location.assign('/');
     }
   }
 
