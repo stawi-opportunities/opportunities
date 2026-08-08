@@ -36,7 +36,9 @@ export async function startCheckoutAndNavigate(
   input: CheckoutCreateInput
 ): Promise<CheckoutResponse> {
   // Omit invented email/phone — pay.stawi.org loads contacts from the profile.
-  const { email: _e, phone: _p, ...rest } = input;
+  const rest = { ...input };
+  delete rest.email;
+  delete rest.phone;
   let res: CheckoutResponse;
   try {
     res = await createCheckout(rest);
