@@ -1,5 +1,8 @@
 import type { PlanId } from '@/utils/plans';
 import { authRuntime } from '@/auth/runtime';
+import type { ProfileFieldsPayload } from '@/utils/structuredCV';
+
+export type { ProfileFieldsPayload };
 
 // Profile & onboarding API calls — all auth'd via @stawi/auth-runtime.
 // The runtime owns the JWT; every call uses runtime.fetch() or
@@ -172,6 +175,53 @@ export async function updateProfile(payload: ProfilePayload): Promise<{ ok: bool
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+// ── Structured profile fields (CV editor + match preferences) ─────
+
+const PROFILE_FIELDS_PATHS = [
+  '/matching/api/me/profile-fields',
+  '/api/me/profile-fields',
+  '/matching/me/profile-fields',
+  '/me/profile-fields',
+] as const;
+
+/**
+ * GET profile-fields — full ATS/CV + preference bag for the CV hub.
+ */
+export async function fetchProfileFields(): Promise<ProfileFieldsPayload | null> {
+  for (const path of PROFILE_FIELDS_PATHS) {
+    try {
+      return await authRuntime().fetch<ProfileFieldsPayload>(path, { method: 'GET' });
+    } catch (err) {
+      if (isNotFound(err)) continue;
+      // Profile missing is fine for new users; other errors soft-fail to empty UI.
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * PUT profile-fields — save structured CV sections and/or match preferences.
+ */
+export async function updateProfileFields(
+  payload: ProfileFieldsPayload
+): Promise<{ ok: boolean } & ProfileFieldsPayload> {
+  let lastErr: unknown;
+  for (const path of PROFILE_FIELDS_PATHS) {
+    try {
+      return await authRuntime().fetch<{ ok: boolean } & ProfileFieldsPayload>(path, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      lastErr = err;
+      if (!isNotFound(err)) throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('profile-fields unavailable');
 }
 
 /**

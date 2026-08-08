@@ -117,19 +117,12 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 		candidateID := httpmw.CandidateFromContext(ctx)
 
 		// Never start a second payment while the candidate is already paid.
-		// Also resolve platform profile_id for checkout (contacts + au_name).
-		// Contact detail is loaded only by checkout via ProfileService.GetById —
-		// do not invent email/phone from JWT or product-local fields.
-		profileID := candidateID
 		if deps.Candidates != nil {
 			if cand, cerr := deps.Candidates.GetByID(ctx, candidateID); cerr == nil && cand != nil {
 				if cand.Subscription == domain.SubscriptionPaid || cand.Subscription == domain.SubscriptionTrial {
 					httpmw.ProblemJSON(w, http.StatusConflict, "already_subscribed",
 						"you already have an active subscription; manage it under Billing")
 					return
-				}
-				if p := strings.TrimSpace(cand.ProfileID); p != "" {
-					profileID = p
 				}
 			}
 		}
@@ -151,15 +144,15 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			return
 		}
 
+		// Platform invariant: JWT sub === profile_id (CandidateFromContext).
+		// Checkout calls ProfileService.GetById(profile_id); contacts[].detail
+		// holds email/phone. Do not invent contact fields here.
 		country := strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 		res, err := deps.Gateway.CreateCheckout(ctx, billing.CheckoutRequest{
 			CandidateID: candidateID,
-			// Hosted checkout: ProfileService.GetById(profileID) is the only
-			// source of contacts[] and au_name. Email/phone body fields are
-			// ignored for profile-bound pay (anti-forgery / no invented contacts).
-			ProfileID: profileID,
-			Plan:      plan,
-			Country:   country,
+			ProfileID:   candidateID, // JWT sub → ProfileService.GetById
+			Plan:        plan,
+			Country:     country,
 		})
 		if errors.Is(err, billing.ErrGatewayUnavailable) {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "billing_unavailable", "payment provider is not configured")

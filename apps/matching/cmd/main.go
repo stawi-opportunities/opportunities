@@ -591,12 +591,11 @@ func main() {
 	}
 	toolsDeps := httpv1.ToolsDeps{
 		DB:       sqlDB,
-		Scorer:   cvScorer,
 		Embedder: toolsEmbedder,
 		Index:    matchIndexStore,
 	}
-	mux.Handle("POST /me/tools/cv-score", authMW(httpv1.CVScoreHandler(toolsDeps)))
 	mux.Handle("POST /me/tools/job-fit", authMW(httpv1.JobFitHandler(toolsDeps)))
+	// Paid $2 ATS report is registered after billingActivator is built (below).
 
 	// /me/onboarding ΓÇö resumable wizard. Same handler serves GET +
 	// PUT; the underlying repo type implements both interfaces.
@@ -798,6 +797,20 @@ func main() {
 		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
 			checkoutStore = billing.NewStore(sqlDB)
 			billingActivator = billing.NewActivator(checkoutStore, candidateRepo)
+			// $2 one-time CV ATS report vs matched jobs → email HTML attachment.
+			atsReportDeps := httpv1.ATSReportDeps{
+				DB:            sqlDB,
+				Scorer:        cvScorer,
+				Gateway:       billingGateway,
+				Store:         checkoutStore,
+				Matches:       matching.NewStore(sqlDB),
+				Notify:        notificationCli,
+				Template:      cfg.MessageTemplateATSReport,
+				PublicSiteURL: cfg.PublicSiteURL,
+			}
+			billingActivator = billingActivator.WithOneTimeFulfiller(&httpv1.ATSReportFulfiller{Deps: atsReportDeps})
+			mux.Handle("POST /me/tools/ats-report", authMW(httpv1.ATSReportCheckoutHandler(atsReportDeps)))
+			log.Info("billing: ATS report one-time product ($2) enabled")
 		} else {
 			log.WithError(dbErr).Warn("billing: sql.DB unwrap failed; checkout persistence + activation disabled")
 		}
@@ -992,7 +1005,9 @@ func main() {
 		mux.Handle("POST /me/matches/{match_id}/dismiss", authMW(meV1.DismissMatchHandler(extDeps)))
 		mux.Handle("GET /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
 		mux.Handle("PUT /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
-		log.Info("matching: /api/me/* routes + /me/matches/refresh|dismiss + /me/notifications")
+		mux.Handle("GET /me/profile-fields", authMW(meV1.ProfileFieldsHandler(extDeps)))
+		mux.Handle("PUT /me/profile-fields", authMW(meV1.ProfileFieldsHandler(extDeps)))
+		log.Info("matching: /api/me/* routes + /me/matches/refresh|dismiss + /me/notifications + /me/profile-fields")
 	}
 
 	// definitions.changed.v1 broadcast ΓÇö invalidates the loader cache

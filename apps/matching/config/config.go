@@ -155,6 +155,8 @@ type CandidatesConfig struct {
 	MessageTemplateMatchesDigest    string `env:"MESSAGE_TEMPLATE_MATCHES_DIGEST" envDefault:"template.opportunities.matches.digest"`
 	MessageTemplateWeeklyJobsDigest string `env:"MESSAGE_TEMPLATE_WEEKLY_JOBS_DIGEST" envDefault:"template.opportunities.weekly_jobs.digest"`
 	MessageTemplateCVStaleNudge     string `env:"MESSAGE_TEMPLATE_CV_STALE_NUDGE" envDefault:"template.opportunities.cv.stale_nudge"`
+	// MessageTemplateATSReport is the paid $2 CV ATS report email (HTML attachment).
+	MessageTemplateATSReport string `env:"MESSAGE_TEMPLATE_ATS_REPORT" envDefault:"template.opportunities.cv.ats_report"`
 	// BillingWebhookSecret enables HMAC-SHA256 verification of the
 	// service-payment completion webhook (X-Payment-Signature header over
 	// the raw body). Empty disables verification (dev/test only).

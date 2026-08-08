@@ -25,9 +25,9 @@ const RouteFlutterwave Route = "FLUTTERWAVE"
 type CheckoutRequest struct {
 	// CandidateID is the opportunities candidate row / JWT subject used in the ledger.
 	CandidateID string
-	// ProfileID is the platform profile id (service-profile). Checkout loads
-	// contacts and properties.au_name via ProfileService.GetById(ProfileID).
-	// When empty, gateways fall back to CandidateID (common when JWT sub is the profile id).
+	// ProfileID is JWT sub (platform profile id). Checkout calls
+	// ProfileService.GetById(ProfileID): contacts[].detail = email/phone,
+	// properties.au_name = display name. Empty → fall back to CandidateID.
 	ProfileID string
 	Plan      Plan
 	// Country is ledger/analytics only (not used for routing).

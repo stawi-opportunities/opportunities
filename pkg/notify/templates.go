@@ -7,6 +7,7 @@ type Templates struct {
 	MatchesDigest    string
 	WeeklyJobsDigest string
 	CVStaleNudge     string
+	ATSReport        string
 }
 
 // Ready returns the matches-ready template (every-match alert).
@@ -27,4 +28,9 @@ func (t Templates) WeeklyJobs() string {
 // CVStale returns the CV refresh nudge template.
 func (t Templates) CVStale() string {
 	return OrDefault(t.CVStaleNudge, DefaultTemplateCVStaleNudge)
+}
+
+// ATSReportEmail returns the paid CV ATS report email template.
+func (t Templates) ATSReportEmail() string {
+	return OrDefault(t.ATSReport, DefaultTemplateATSReport)
 }

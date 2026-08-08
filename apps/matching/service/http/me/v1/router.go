@@ -38,4 +38,5 @@ func Mount(mux *http.ServeMux, deps *Deps, auth func(http.Handler) http.Handler)
 	mux.Handle("PUT /api/me/notifications", auth(idem("notifications.put", putNotifications(deps))))
 
 	mux.Handle("GET /api/me/profile-fields", auth(profileFields(deps)))
+	mux.Handle("PUT /api/me/profile-fields", auth(idem("profile-fields.put", putProfileFields(deps))))
 }
