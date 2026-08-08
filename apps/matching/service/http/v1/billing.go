@@ -10,7 +10,6 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
-	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
@@ -114,12 +113,14 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		log := util.Log(ctx)
-		candidateID := httpmw.CandidateFromContext(ctx)
+		// JWT sub = platform profile_id (only login identity).
+		profileID := httpmw.CandidateFromContext(ctx)
 
-		// Never start a second payment while the candidate is already paid.
+		// Never start a second payment while the candidate is already entitled.
 		if deps.Candidates != nil {
-			if cand, cerr := deps.Candidates.GetByID(ctx, candidateID); cerr == nil && cand != nil {
-				if cand.Subscription == domain.SubscriptionPaid || cand.Subscription == domain.SubscriptionTrial {
+			if cand, cerr := loadCandidateByProfileID(ctx, deps.Candidates, profileID); cerr == nil && cand != nil {
+				switch statusFromCandidate(cand) {
+				case "active", "past_due":
 					httpmw.ProblemJSON(w, http.StatusConflict, "already_subscribed",
 						"you already have an active subscription; manage it under Billing")
 					return
@@ -149,8 +150,8 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 		// holds email/phone. Do not invent contact fields here.
 		country := strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 		res, err := deps.Gateway.CreateCheckout(ctx, billing.CheckoutRequest{
-			CandidateID: candidateID,
-			ProfileID:   candidateID, // JWT sub → ProfileService.GetById
+			CandidateID: profileID, // ledger / activator key (same as profile_id)
+			ProfileID:   profileID, // JWT sub → ProfileService.GetById
 			Plan:        plan,
 			Country:     country,
 		})
@@ -159,7 +160,7 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			return
 		}
 		if err != nil {
-			log.WithError(err).WithField("candidate_id", candidateID).Error("billing/checkout: gateway create failed")
+			log.WithError(err).WithField("profile_id", profileID).Error("billing/checkout: gateway create failed")
 			httpmw.ProblemJSON(w, http.StatusBadGateway, "checkout_failed", "could not start checkout")
 			return
 		}
@@ -180,7 +181,7 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			}
 			if perr := deps.Store.Create(ctx, billing.Checkout{
 				PromptID:       res.PromptID,
-				CandidateID:    candidateID,
+				CandidateID:    profileID,
 				PlanID:         string(plan.ID),
 				Route:          string(res.Route),
 				Status:         persistStatus,

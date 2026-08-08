@@ -38,7 +38,13 @@ export default function HomeRedirect() {
       window.location.replace('/dashboard/');
       return;
     }
-    // Error or unpaid: onboarding owns the paywall / recovery path.
+    // Network / API errors must not force a re-subscribe paywall. Send to
+    // dashboard; the subscription gate shows a retry shell instead of checkout.
+    if (subQ.isError && subQ.data == null) {
+      window.location.replace('/dashboard/');
+      return;
+    }
+    // Confirmed unpaid → onboarding paywall funnel.
     window.location.replace('/onboarding/');
   }, [hasSession, ready, state, subQ.isLoading, subQ.data?.status, subQ.isError]);
 

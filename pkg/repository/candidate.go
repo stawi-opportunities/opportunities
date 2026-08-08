@@ -39,8 +39,8 @@ func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.C
 	return &c, nil
 }
 
-// GetByProfileID retrieves a candidate profile by external profile ID (JWT sub claim).
-// Returns nil, nil if no record is found.
+// GetByProfileID retrieves a candidate profile by platform profile_id
+// (JWT sub for a logged-in user). Returns nil, nil if no record is found.
 func (r *CandidateRepository) GetByProfileID(ctx context.Context, profileID string) (*domain.CandidateProfile, error) {
 	var c domain.CandidateProfile
 	err := r.db(ctx, true).Where("profile_id = ?", profileID).First(&c).Error
@@ -51,6 +51,25 @@ func (r *CandidateRepository) GetByProfileID(ctx context.Context, profileID stri
 		return nil, err
 	}
 	return &c, nil
+}
+
+// ResolveByProfileID looks up a candidate for a logged-in user.
+// Identity is profile_id (= JWT sub). Prefer the profile_id column; fall
+// back to primary key for older rows that set id = sub but left profile_id
+// empty. There is no separate "auth id".
+func (r *CandidateRepository) ResolveByProfileID(ctx context.Context, profileID string) (*domain.CandidateProfile, error) {
+	if profileID == "" {
+		return nil, nil
+	}
+	c, err := r.GetByProfileID(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	if c != nil {
+		return c, nil
+	}
+	// Legacy: some rows only have id = JWT sub.
+	return r.GetByID(ctx, profileID)
 }
 
 // Update saves all fields of the given candidate profile.
@@ -467,13 +486,14 @@ func (r *CandidateRepository) SetOnboardingDraft(ctx context.Context, id string,
 	if res.RowsAffected == 0 {
 		// Lazy-create the candidate row so the wizard can persist
 		// before the final /candidates/onboard call. The row uses
-		// id as its own profile_id (they're the same value pre-Phase-4
-		// split, set by the auth layer). All other columns get their
-		// NOT NULL DEFAULT values from the schema.
+		// id as its own profile_id (JWT sub). All other columns get
+		// their NOT NULL DEFAULT values from the schema.
 		return r.db(ctx, false).Exec(
-			`INSERT INTO candidate_profiles (id, onboarding_draft) VALUES (?, ?::jsonb)
-			 ON CONFLICT (id) DO UPDATE SET onboarding_draft = EXCLUDED.onboarding_draft`,
-			id, string(draft),
+			`INSERT INTO candidate_profiles (id, profile_id, onboarding_draft) VALUES (?, ?, ?::jsonb)
+			 ON CONFLICT (id) DO UPDATE SET
+			   onboarding_draft = EXCLUDED.onboarding_draft,
+			   profile_id = COALESCE(NULLIF(candidate_profiles.profile_id, ''), EXCLUDED.profile_id)`,
+			id, id, string(draft),
 		).Error
 	}
 	return nil

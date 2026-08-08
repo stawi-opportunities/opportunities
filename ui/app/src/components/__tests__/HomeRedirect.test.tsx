@@ -7,6 +7,7 @@ let authState: AuthState = 'initializing';
 let hasSession = false;
 let ready = false;
 let subLoading = false;
+let subError = false;
 let subStatus: string | undefined;
 
 vi.mock('@/providers/AuthProvider', () => ({
@@ -23,7 +24,7 @@ vi.mock('@/providers/AuthProvider', () => ({
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => ({
     isLoading: subLoading,
-    isError: false,
+    isError: subError,
     data: subStatus != null ? { status: subStatus } : undefined,
   }),
 }));
@@ -41,6 +42,7 @@ beforeEach(() => {
   hasSession = false;
   ready = false;
   subLoading = false;
+  subError = false;
   subStatus = undefined;
 });
 
@@ -95,6 +97,26 @@ describe('HomeRedirect', () => {
     subStatus = 'none';
     render(<HomeRedirect />);
     expect(replaceSpy).toHaveBeenCalledWith('/onboarding/');
+  });
+
+  it('does not send subscribed users to paywall when subscription API errors', () => {
+    authState = 'authenticated';
+    hasSession = true;
+    ready = true;
+    subError = true;
+    subStatus = undefined;
+    render(<HomeRedirect />);
+    expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
+    expect(replaceSpy).not.toHaveBeenCalledWith('/onboarding/');
+  });
+
+  it('sends past_due users to dashboard (still entitled)', () => {
+    authState = 'authenticated';
+    hasSession = true;
+    ready = true;
+    subStatus = 'past_due';
+    render(<HomeRedirect />);
+    expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
   });
 
   it('does not flash signed-out during token refresh for paid users', () => {

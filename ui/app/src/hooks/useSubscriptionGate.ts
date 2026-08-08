@@ -21,12 +21,13 @@ export function isBillingReturnPath(
 }
 
 /**
- * True only when matching billing entitlement is confirmed subscribed.
- * Source of truth: GET /me/subscription (activated after checkout/webhook).
- * Backend maps paid + trial → "active". Unpaid is "none" / "cancelled".
+ * True when matching billing entitlement is confirmed (product access).
+ * Source of truth: GET /me/subscription.
+ * Backend maps paid/trial/(legacy active) → "active"; past_due stays
+ * "past_due" but remains entitled during dunning. Unpaid is "none" / "cancelled".
  */
 export function isPaidSubscriptionStatus(status: string | undefined | null): boolean {
-  return status === 'active';
+  return status === 'active' || status === 'past_due';
 }
 
 export type SubscriptionAccess = {
