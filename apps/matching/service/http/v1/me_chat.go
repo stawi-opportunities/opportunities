@@ -66,15 +66,15 @@ type onboardingChatMessage struct {
 //
 // LinkedIn is optional if the seeker shares it; it is not required.
 type onboardingChatFields struct {
-	TargetJobTitle     string   `json:"target_job_title,omitempty"`
-	ExperienceLevel    string   `json:"experience_level,omitempty"`
-	JobSearchStatus    string   `json:"job_search_status,omitempty"`
-	SalaryMin          *float64 `json:"salary_min,omitempty"`
-	SalaryMax          *float64 `json:"salary_max,omitempty"`
+	TargetJobTitle  string   `json:"target_job_title,omitempty"`
+	ExperienceLevel string   `json:"experience_level,omitempty"`
+	JobSearchStatus string   `json:"job_search_status,omitempty"`
+	SalaryMin       *float64 `json:"salary_min,omitempty"`
+	SalaryMax       *float64 `json:"salary_max,omitempty"`
 	// SalaryExpectation is the AI-extracted free-text salary signal
 	// (numeric paraphrase or open/market/negotiable). Preferred readiness source.
-	SalaryExpectation string   `json:"salary_expectation,omitempty"`
-	Currency          string   `json:"currency,omitempty"`
+	SalaryExpectation  string   `json:"salary_expectation,omitempty"`
+	Currency           string   `json:"currency,omitempty"`
 	PreferredRegions   []string `json:"preferred_regions,omitempty"`
 	PreferredCountries []string `json:"preferred_countries,omitempty"` // opportunity source countries
 	PreferredTimezones []string `json:"preferred_timezones,omitempty"`

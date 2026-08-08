@@ -1217,20 +1217,14 @@ type candidateOnboardAdapter struct {
 	repo *repository.CandidateRepository
 }
 
-func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candidateID string, mutate func(*domain.CandidateProfile)) error {
-	return a.repo.Transaction(ctx, func(txRepo *repository.CandidateRepository) error {
-		// Load (or lazy-create) the candidate row inside the tx so
-		// the read is consistent with the subsequent writes.
-		cand, err := txRepo.GetByID(ctx, candidateID)
+func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, profileID string, mutate func(*domain.CandidateProfile)) (string, error) {
+	var candidateID string
+	err := a.repo.Transaction(ctx, func(txRepo *repository.CandidateRepository) error {
+		// profileID is JWT sub (platform person). Job-seeker row is separate
+		// (candidate_profiles.id product-local, profile_id = JWT sub).
+		cand, err := txRepo.EnsureByProfileID(ctx, profileID)
 		if err != nil {
-			return fmt.Errorf("candidate lookup: %w", err)
-		}
-		if cand == nil {
-			cand = &domain.CandidateProfile{ProfileID: candidateID}
-			cand.ID = candidateID
-			if err := txRepo.Create(ctx, cand); err != nil {
-				return fmt.Errorf("candidate create: %w", err)
-			}
+			return fmt.Errorf("job seeker ensure: %w", err)
 		}
 		mutate(cand)
 		if err := txRepo.Update(ctx, cand); err != nil {
@@ -1238,11 +1232,13 @@ func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candida
 		}
 		// Keep the preference-chat transcript available for later refine.
 		// Wizard step advances to 3; fields stay as a snapshot for resume.
-		if err := preserveChatAfterOnboard(ctx, txRepo, candidateID, cand); err != nil {
+		if err := preserveChatAfterOnboard(ctx, txRepo, cand.ID, cand); err != nil {
 			return fmt.Errorf("preserve chat session: %w", err)
 		}
+		candidateID = cand.ID
 		return nil
 	})
+	return candidateID, err
 }
 
 // preserveChatAfterOnboard writes a completed-session envelope so the
