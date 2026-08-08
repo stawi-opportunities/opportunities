@@ -610,11 +610,29 @@ WHERE id = $1`, cand, digest, body.MatchAlerts, body.WeeklySummary, body.Marketi
 	}
 }
 
-// ---- GET /api/me/profile-fields ----
+// ---- GET+PUT /api/me/profile-fields ----
+
+// ProfileFieldsHandler serves gateway-visible /me/profile-fields (GET+PUT).
+func ProfileFieldsHandler(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			profileFields(d)(w, r)
+		case http.MethodPut:
+			putProfileFields(d)(w, r)
+		default:
+			httpmw.ProblemJSON(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET or PUT")
+		}
+	}
+}
 
 func profileFields(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cand := httpmw.CandidateFromContext(r.Context())
+		if d.DB == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "unavailable", "database not configured")
+			return
+		}
 		pf, etag, err := candidatestore.GetProfileFields(r.Context(), d.DB, cand)
 		if err != nil {
 			if errors.Is(err, candidatestore.ErrProfileNotFound) {
@@ -632,5 +650,41 @@ func profileFields(d *Deps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("ETag", etag)
 		_ = json.NewEncoder(w).Encode(pf)
+	}
+}
+
+func putProfileFields(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cand := httpmw.CandidateFromContext(r.Context())
+		if d.DB == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "unavailable", "database not configured")
+			return
+		}
+		var body candidatestore.ProfileFields
+		if err := json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&body); err != nil {
+			httpmw.ProblemJSON(w, http.StatusBadRequest, "invalid_json", "invalid profile-fields body")
+			return
+		}
+		if err := candidatestore.PutProfileFields(r.Context(), d.DB, cand, &body); err != nil {
+			if errors.Is(err, candidatestore.ErrProfileNotFound) {
+				httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
+				return
+			}
+			ProblemFromError(w, err)
+			return
+		}
+		pf, etag, err := candidatestore.GetProfileFields(r.Context(), d.DB, cand)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("ETag", etag)
+		out := map[string]any{"ok": true}
+		// Flatten profile fields into response for SPA convenience.
+		b, _ := json.Marshal(pf)
+		_ = json.Unmarshal(b, &out)
+		_ = json.NewEncoder(w).Encode(out)
 	}
 }

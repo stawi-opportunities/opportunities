@@ -10,7 +10,6 @@ import (
 
 	"github.com/pitabwire/util"
 
-	"github.com/stawi-opportunities/opportunities/pkg/cv"
 	"github.com/stawi-opportunities/opportunities/pkg/extraction"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
@@ -21,57 +20,13 @@ type ToolsEmbedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-// ToolsDeps wires free career tools (CV ATS score, job fitness).
+// ToolsDeps wires free career tools (job fitness). CV ATS scoring is paid
+// via POST /me/tools/ats-report only — not exposed as free /me/tools/cv-score.
 type ToolsDeps struct {
 	DB       *sql.DB
-	Scorer   *cv.Scorer
 	Embedder ToolsEmbedder
 	// Index supplies the candidate's stored match embedding when present.
 	Index *matching.IndexStore
-}
-
-// CVScoreHandler serves POST /me/tools/cv-score — free for signed-in users.
-// Body: { "target_role": "optional", "cv_text": "optional paste" }.
-func CVScoreHandler(deps ToolsDeps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.Header().Set("Allow", "POST")
-			httpmw.ProblemJSON(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST")
-			return
-		}
-		ctx := r.Context()
-		log := util.Log(ctx)
-		candidateID := httpmw.CandidateFromContext(ctx)
-		if deps.Scorer == nil {
-			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "scorer_unavailable", "CV scorer is not configured")
-			return
-		}
-
-		var in struct {
-			TargetRole string `json:"target_role"`
-			CVText     string `json:"cv_text"`
-		}
-		if r.Body != nil {
-			_ = json.NewDecoder(r.Body).Decode(&in)
-		}
-
-		cvText := strings.TrimSpace(in.CVText)
-		fields := &extraction.CVFields{}
-		if cvText == "" && deps.DB != nil {
-			cvText, fields = loadCVForScore(ctx, deps.DB, candidateID)
-		}
-		if len(cvText) < 40 {
-			httpmw.ProblemJSON(w, http.StatusConflict, "cv_text_required",
-				"upload a CV or paste at least a short resume text to score")
-			return
-		}
-
-		report := deps.Scorer.Score(ctx, cvText, fields, strings.TrimSpace(in.TargetRole))
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(report)
-		log.WithField("candidate_id", candidateID).WithField("score", report.OverallScore).
-			Debug("tools/cv-score: ok")
-	}
 }
 
 // JobFitHandler serves POST /me/tools/job-fit — free fitness score for a role.

@@ -1,25 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { StringKey } from '@/i18n/strings';
-import { SettingsProfile } from './SettingsProfile';
 import { SettingsNotifications } from './SettingsNotifications';
-import { SettingsSecurity } from './SettingsSecurity';
 import { SettingsAccount } from './SettingsAccount';
-import { SettingsTheme } from './SettingsTheme';
 
-export type SettingsTab =
-  | 'profile'
-  | 'notifications'
-  | 'security'
-  | 'account'
-  | 'theme'
-  | 'subscription';
+export type SettingsTab = 'notifications' | 'account' | 'subscription';
 
 const TABS: { id: SettingsTab; key: StringKey }[] = [
-  { id: 'profile', key: 'settings.sectionProfile' },
   { id: 'notifications', key: 'settings.sectionNotifications' },
-  { id: 'security', key: 'settings.sectionSecurity' },
   { id: 'account', key: 'settings.sectionAccount' },
-  { id: 'theme', key: 'settings.sectionTheme' },
   { id: 'subscription', key: 'settings.sectionSubscription' },
 ];
 
@@ -33,7 +21,7 @@ export function SettingsPage({
   subscriptionPanel?: ReactNode;
   initialTab?: SettingsTab;
 }) {
-  const [active, setActive] = useState<SettingsTab>(initialTab ?? 'profile');
+  const [active, setActive] = useState<SettingsTab>(initialTab ?? 'notifications');
 
   useEffect(() => {
     if (initialTab) setActive(initialTab);
@@ -41,16 +29,10 @@ export function SettingsPage({
 
   const section = useMemo(() => {
     switch (active) {
-      case 'profile':
-        return <SettingsProfile t={t} />;
       case 'notifications':
         return <SettingsNotifications t={t} />;
-      case 'security':
-        return <SettingsSecurity t={t} />;
       case 'account':
         return <SettingsAccount t={t} />;
-      case 'theme':
-        return <SettingsTheme t={t} />;
       case 'subscription':
         return subscriptionPanel ?? null;
     }

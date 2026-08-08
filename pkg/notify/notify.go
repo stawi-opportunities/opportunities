@@ -29,6 +29,8 @@ const (
 	DefaultTemplateMatchesDigest    = "template.opportunities.matches.digest"
 	DefaultTemplateWeeklyJobsDigest = "template.opportunities.weekly_jobs.digest"
 	DefaultTemplateCVStaleNudge     = "template.opportunities.cv.stale_nudge"
+	// DefaultTemplateATSReport is the paid $2 CV ATS report email template.
+	DefaultTemplateATSReport = "template.opportunities.cv.ats_report"
 )
 
 // Message is one templated outbound notification — same fields profile uses

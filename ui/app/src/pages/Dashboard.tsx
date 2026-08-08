@@ -216,7 +216,7 @@ export default function Dashboard() {
                 <SettingsPage
                   t={t}
                   subscriptionPanel={subscriptionPanel}
-                  initialTab={settingsTab ?? 'profile'}
+                  initialTab={settingsTab ?? 'notifications'}
                 />
               </ErrorBoundary>
             )}

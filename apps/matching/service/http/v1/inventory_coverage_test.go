@@ -99,21 +99,6 @@ func TestMeChatAgentHandler_NilDepsIs503(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "can't process chat")
 }
 
-// --- tools ---
-
-func TestCVScoreHandler_UnavailableWithoutScorer(t *testing.T) {
-	t.Parallel()
-	h := httpmw.NewCandidateAuth(nil)(v1.CVScoreHandler(v1.ToolsDeps{}))
-	req := httptest.NewRequest(http.MethodPost, "/me/tools/cv-score",
-		strings.NewReader(`{"cv_text":"`+strings.Repeat("experience ", 20)+`"}`))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Candidate-ID", "cand_score")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
-	require.Contains(t, rec.Body.String(), "scorer_unavailable")
-}
-
 // --- apply details ---
 
 type invFakeCandReader struct {

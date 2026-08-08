@@ -24,24 +24,39 @@ type CheckoutStore interface {
 	ListPending(ctx context.Context, limit int) ([]Checkout, error)
 }
 
+// OneTimeFulfiller runs post-payment work for non-subscription products
+// (e.g. ATS report email). Must be idempotent for a given promptID.
+type OneTimeFulfiller interface {
+	FulfillOneTime(ctx context.Context, candidateID, productID, promptID string) error
+}
+
 // Activator resolves a checkout into a candidate subscription. It is the
 // single idempotent path that both the webhook and the reconciler call:
 //
 //  1. mark the checkout row terminal (paid|failed)
-//  2. on paid, flip candidate_profiles.subscription free→paid + set
-//     subscription_id / plan_id (idempotent at the repo layer)
+//  2. on paid subscription plan, flip candidate_profiles.subscription free→paid
+//  3. on paid one-time product, call OneTimeFulfiller (no subscription flip)
 //
 // Calling Activate twice for the same paid checkout is safe: step 1 is an
 // idempotent UPDATE and step 2 no-ops once the candidate already reflects
 // the subscription.
 type Activator struct {
-	store CheckoutStore
-	subs  SubscriptionActivator
+	store   CheckoutStore
+	subs    SubscriptionActivator
+	oneTime OneTimeFulfiller
 }
 
 // NewActivator builds an Activator.
 func NewActivator(store CheckoutStore, subs SubscriptionActivator) *Activator {
 	return &Activator{store: store, subs: subs}
+}
+
+// WithOneTimeFulfiller registers fulfillment for one-time products (ats_report).
+func (a *Activator) WithOneTimeFulfiller(f OneTimeFulfiller) *Activator {
+	if a != nil {
+		a.oneTime = f
+	}
+	return a
 }
 
 // Activate applies a resolved payment status to the checkout identified by
@@ -72,6 +87,20 @@ func (a *Activator) Activate(ctx context.Context, promptID string, status Status
 
 	if status != StatusPaid {
 		log.WithField("status", string(status)).Info("billing: checkout resolved non-paid")
+		return nil
+	}
+
+	// One-time products (ATS report) never flip subscription.
+	if IsOneTimeProduct(PlanID(row.PlanID)) {
+		log.WithField("candidate_id", row.CandidateID).
+			WithField("product_id", row.PlanID).
+			Info("billing: one-time product paid")
+		if a.oneTime != nil {
+			if ferr := a.oneTime.FulfillOneTime(ctx, row.CandidateID, row.PlanID, promptID); ferr != nil {
+				log.WithError(ferr).Error("billing: one-time fulfill failed")
+				return fmt.Errorf("billing: one-time fulfill: %w", ferr)
+			}
+		}
 		return nil
 	}
 

@@ -153,6 +153,10 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		"profile_id":   profileID,
 		"prompt_id":    sessionID,
 	}
+	if IsOneTimeProduct(req.Plan.ID) {
+		meta["product"] = "one_time"
+		meta["product_id"] = string(req.Plan.ID)
+	}
 	if req.Email != "" {
 		meta["email"] = req.Email
 	}
@@ -164,10 +168,24 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 	// ledger prompt_id, SPA poll id, and webhook recovery key. GetSession
 	// resolves chk_* via order_ref (and session.Ref as secondary).
 	returnURL := g.successURL(sessionID)
+	if IsOneTimeProduct(req.Plan.ID) {
+		// Return to CV tab after one-time purchase.
+		returnURL = strings.TrimRight(g.opts.PublicSiteURL, "/") + "/dashboard/#cv?ats_report=" + url.QueryEscape(sessionID)
+	}
+
+	sessionName := "Stawi " + req.Plan.Name
+	sessionDesc := req.Plan.Description
+	if sessionDesc == "" {
+		if IsOneTimeProduct(req.Plan.ID) {
+			sessionDesc = "One-time purchase — " + string(req.Plan.ID)
+		} else {
+			sessionDesc = "Subscription — " + string(req.Plan.ID)
+		}
+	}
 
 	created, err := g.checkout.CreateSession(ctx, CreateHostedSessionRequest{
-		Name:        "Stawi " + string(req.Plan.ID),
-		Description: "Subscription — " + string(req.Plan.ID),
+		Name:        sessionName,
+		Description: sessionDesc,
 		Amount:      amount,
 		Currency:    req.Plan.Currency,
 		OrderRef:    sessionID,

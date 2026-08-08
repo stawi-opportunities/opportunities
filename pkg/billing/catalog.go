@@ -23,6 +23,9 @@ const (
 	// still normalize; entitlements map to Managed (auto-apply + unlimited).
 	PlanPro     PlanID = "pro"
 	PlanManaged PlanID = "managed"
+	// ProductATSReport is a one-time $2 CV ATS report (not a subscription).
+	// Scored against the candidate's matched preference jobs; emailed as HTML.
+	ProductATSReport PlanID = "ats_report"
 )
 
 // Plan is one catalog entry. The amounts are the source of truth the
@@ -44,7 +47,7 @@ type Plan struct {
 	USDCents int `json:"usd_cents"`
 }
 
-// catalog is the sellable catalog (two tiers). Mirrors ui/app/src/utils/plans.ts.
+// catalog is the sellable subscription catalog (two tiers). Mirrors ui/app/src/utils/plans.ts.
 var catalog = []Plan{
 	{
 		ID: PlanStarter, Name: "Starter",
@@ -56,6 +59,43 @@ var catalog = []Plan{
 		Description: "Unlimited AI discovery, priority match alerts, and uncapped match feed.",
 		Interval:    "month", Amount: 200, Currency: "USD", USDCents: 20000,
 	},
+}
+
+// oneTimeProducts are non-subscription purchases (not listed on /billing/plans).
+var oneTimeProducts = []Plan{
+	{
+		ID: ProductATSReport, Name: "CV ATS Report",
+		Description: "Comprehensive ATS score against your matched jobs — emailed as an attachment.",
+		Interval:    "once", Amount: 2, Currency: "USD", USDCents: 200,
+	},
+}
+
+// IsOneTimeProduct reports whether id is a one-shot purchase (not a subscription).
+func IsOneTimeProduct(id PlanID) bool {
+	for _, p := range oneTimeProducts {
+		if p.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ProductByID returns a one-time product or subscription plan by id.
+func ProductByID(id PlanID) (Plan, bool) {
+	if p, ok := PlanByID(id); ok {
+		return p, true
+	}
+	for _, p := range oneTimeProducts {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return Plan{}, false
+}
+
+// ATSReportProduct returns the fixed $2 ATS report product.
+func ATSReportProduct() Plan {
+	return oneTimeProducts[0]
 }
 
 // Catalog returns the plan catalog in display order.
