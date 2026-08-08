@@ -21,9 +21,11 @@ var ErrProfileNotFound = errors.New("candidatestore: profile not found")
 // GET /api/me/profile-fields (and accepted by PUT). Field shape mirrors
 // common ATS form fields and LinkedIn-style CV sections.
 type ProfileFields struct {
-	CandidateID      string           `json:"candidate_id"`
-	Name             string           `json:"name,omitempty"`
-	Phone            string           `json:"phone,omitempty"`
+	CandidateID string `json:"candidate_id"`
+	Name        string `json:"name,omitempty"`
+	Phone       string `json:"phone,omitempty"`
+	// Emails are CV contact addresses (may be multiple). Login email stays on profile service.
+	Emails           []string         `json:"emails,omitempty"`
 	CurrentTitle     string           `json:"current_title,omitempty"`
 	TargetJobTitle   string           `json:"target_job_title,omitempty"`
 	Seniority        string           `json:"seniority,omitempty"`
@@ -59,6 +61,7 @@ func GetProfileFields(ctx context.Context, db *sql.DB, candidateID string) (*Pro
 	const q = `
 SELECT COALESCE(name,''),
        COALESCE(phone,''),
+       COALESCE(emails,''),
        COALESCE(current_title,''),
        COALESCE(target_job_title,''),
        COALESCE(seniority,''),
@@ -92,6 +95,7 @@ SELECT COALESCE(name,''),
 `
 	var (
 		pf            ProfileFields
+		emailsRaw     string
 		certsRaw      string
 		preferredRaw  string
 		industriesRaw string
@@ -107,7 +111,7 @@ SELECT COALESCE(name,''),
 		cvScoredAt    sql.NullTime
 	)
 	err := db.QueryRowContext(ctx, q, candidateID).Scan(
-		&pf.Name, &pf.Phone,
+		&pf.Name, &pf.Phone, &emailsRaw,
 		&pf.CurrentTitle, &pf.TargetJobTitle, &pf.Seniority, &pf.ExperienceLevel,
 		&pf.YearsExperience,
 		pq.Array(&pf.Skills),
@@ -130,6 +134,7 @@ SELECT COALESCE(name,''),
 		return nil, "", fmt.Errorf("candidatestore: profile-fields: %w", err)
 	}
 	pf.CandidateID = candidateID
+	pf.Emails = splitCSV(emailsRaw)
 	pf.Certifications = splitCSV(certsRaw)
 	pf.PreferredRoles = splitCSV(preferredRaw)
 	pf.Industries = splitCSV(industriesRaw)
@@ -185,38 +190,40 @@ func PutProfileFields(ctx context.Context, db *sql.DB, candidateID string, pf *P
 UPDATE candidate_profiles SET
   name = COALESCE(NULLIF($2, ''), name),
   phone = COALESCE(NULLIF($3, ''), phone),
-  current_title = $4,
-  target_job_title = $5,
-  seniority = $6,
-  experience_level = $7,
-  years_experience = $8,
-  skills = $9,
-  strong_skills = $10,
-  working_skills = $11,
-  tools_frameworks = $12,
-  certifications = $13,
-  preferred_roles = $14,
-  industries = $15,
-  education = $16,
-  languages = $17,
-  bio = $18,
-  preferred_locations = $19,
-  preferred_countries = $20,
-  preferred_regions = $21,
-  preferred_timezones = $22,
-  remote_preference = $23,
-  job_search_status = $24,
-  salary_min = $25,
-  salary_max = $26,
-  currency = $27,
-  us_work_auth = $28,
-  needs_sponsorship = $29,
-  work_history = $30::jsonb,
+  emails = $4,
+  current_title = $5,
+  target_job_title = $6,
+  seniority = $7,
+  experience_level = $8,
+  years_experience = $9,
+  skills = $10,
+  strong_skills = $11,
+  working_skills = $12,
+  tools_frameworks = $13,
+  certifications = $14,
+  preferred_roles = $15,
+  industries = $16,
+  education = $17,
+  languages = $18,
+  bio = $19,
+  preferred_locations = $20,
+  preferred_countries = $21,
+  preferred_regions = $22,
+  preferred_timezones = $23,
+  remote_preference = $24,
+  job_search_status = $25,
+  salary_min = $26,
+  salary_max = $27,
+  currency = $28,
+  us_work_auth = $29,
+  needs_sponsorship = $30,
+  work_history = $31::jsonb,
   updated_at = NOW()
 WHERE id = $1`,
 		candidateID,
 		pf.Name,
 		pf.Phone,
+		joinCSV(pf.Emails),
 		pf.CurrentTitle,
 		pf.TargetJobTitle,
 		pf.Seniority,

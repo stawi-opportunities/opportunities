@@ -150,7 +150,21 @@ export function buildCVHtmlDocument(input: CVExportInput): string {
   const title = escapeHtml(input.title?.trim() || name);
   const tpl = input.template ?? 'classic';
   const contact = doc
-    ? [doc.basics.location, doc.basics.phone, doc.basics.email].filter(Boolean).join(' · ')
+    ? [
+        doc.basics.location,
+        ...(doc.basics.phones?.length
+          ? doc.basics.phones
+          : doc.basics.phone
+            ? [doc.basics.phone]
+            : []),
+        ...(doc.basics.emails?.length
+          ? doc.basics.emails
+          : doc.basics.email
+            ? [doc.basics.email]
+            : []),
+      ]
+        .filter(Boolean)
+        .join(' · ')
     : '';
   const main = doc ? sectionHtml(doc) : bodyToHtml(input.bodyText?.trim() || '');
 

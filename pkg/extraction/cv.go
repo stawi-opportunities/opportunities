@@ -13,10 +13,14 @@ import (
 )
 
 // CVFields holds the structured profile fields extracted from a CV.
+// Arrays (emails, phones, skills, certifications, work_history) should be
+// comprehensive — prefer completeness over brevity.
 type CVFields struct {
 	Name               string             `json:"name"`
 	Email              string             `json:"email"`
+	Emails             []string           `json:"emails"`
 	Phone              string             `json:"phone"`
+	Phones             []string           `json:"phones"`
 	Location           string             `json:"location"`
 	CurrentTitle       string             `json:"current_title"`
 	Bio                string             `json:"bio"`
@@ -119,28 +123,55 @@ func ExtractTextFromFile(data []byte, filename string) (string, error) {
 	}
 }
 
-const cvSystemPrompt = `You are a CV/resume data extractor. Output ONLY valid JSON. If a field is not found, use "" for strings, [] for arrays, 0 for numbers.
+const cvSystemPrompt = `You are a meticulous CV/resume data extractor. Output ONLY valid JSON (no markdown fences, no prose).
+If a field is not found use "" for strings, [] for arrays, 0 for numbers.
 
-Extract these fields from the CV text below:
+COMPLETENESS RULES (critical):
+- Prefer the candidate's own wording. Do NOT invent employers, degrees, skills, or certs.
+- Keep work_history summaries FULL: copy every bullet/responsibility/achievement for that role (use newlines between bullets). Do not compress to 1–2 sentences.
+- bio: if the CV has a Summary / Profile / About / Objective section, copy that section VERBATIM (full text). Only synthesize a short bio when no such section exists.
+- skills & certifications: be EXHAUSTIVE — include every skill, tool, library, platform, methodology, and certification mentioned anywhere (skills section, tools line, experience bullets, headers).
+- emails and phones: include EVERY distinct email and phone number on the CV (not just the first).
 
-Personal: name, email, phone, location (city/country)
+Extract these fields:
 
-Profile: current_title (most recent job title), seniority ("intern"/"junior"/"mid"/"senior"/"lead"/"manager"/"director"/"executive"), years_experience (integer estimate), primary_industry, bio (2-3 sentence professional summary you write based on the CV)
+Personal:
+- name: full legal/preferred name as printed (usually top of CV)
+- email: primary email (first or most professional-looking)
+- emails: array of ALL emails found
+- phone: primary phone
+- phones: array of ALL phone numbers found (keep international formatting)
+- location: city/region/country as stated
 
-Skills classification:
-- strong_skills: skills mentioned across multiple roles OR accompanied by depth indicators like "led", "architected", "built", "designed", "owned", "expert"
-- working_skills: skills mentioned only once or in passing
-- tools_frameworks: specific technologies, tools, libraries, frameworks, platforms
+Profile:
+- current_title: most recent or primary job title
+- seniority: one of intern|junior|mid|senior|lead|manager|director|executive
+- years_experience: integer estimate of total professional years
+- primary_industry: main industry if clear
+- bio: see completeness rules above
 
-Other: certifications (array), preferred_roles (array of role types the candidate targets), languages (array with proficiency if stated e.g. "English (native)")
+Skills classification (dedupe, preserve original casing where sensible):
+- strong_skills: core strengths (repeated across roles, "expert", "led", "architected", "owned", listed under primary skills)
+- working_skills: secondary skills / familiar with / mentioned once
+- tools_frameworks: languages, frameworks, databases, cloud, devops, SaaS, libraries, platforms
+- certifications: full names of licenses/certs (e.g. "AWS Solutions Architect – Associate", "PMP", "CPA") — not soft skills
+- preferred_roles: target roles if stated
+- languages: spoken/written languages with proficiency when stated
 
-Education: education (highest degree + institution as a single string)
+Education:
+- education: all degrees/institutions as a multi-line string (one entry per line: Degree, Field — School (years))
 
-Work history: work_history array, each entry: company, title, start_date (YYYY-MM or year), end_date (YYYY-MM, year, or "present"), summary (1-2 sentences)
+Work history:
+- work_history: array ordered most-recent first. Each entry:
+  company, title, start_date (YYYY-MM or year), end_date (YYYY-MM, year, or "present"),
+  summary = FULL role text (all bullets/paragraphs for that job)
 
-Preferences (only if explicitly stated): preferred_locations (array), remote_preference ("remote"/"hybrid"/"onsite"/""), salary_min (number string), salary_max (number string), currency`
+Preferences (only if explicitly stated):
+- preferred_locations, remote_preference (remote|hybrid|onsite|""), salary_min, salary_max, currency (number strings for salary)`
 
-const maxCVChars = 6000
+// maxCVChars bounds model input. Keep high so long CVs are not truncated;
+// Gemini/large-context models handle full resumes.
+const maxCVChars = 100_000
 
 // ExtractCV sends CV plain text to the LLM and returns structured profile fields.
 func (e *Extractor) ExtractCV(ctx context.Context, cvText string) (*CVFields, error) {
@@ -150,7 +181,12 @@ func (e *Extractor) ExtractCV(ctx context.Context, cvText string) (*CVFields, er
 	if err != nil {
 		return nil, fmt.Errorf("cv: %w", err)
 	}
-	return parseCVResponse(content)
+	fields, err := parseCVResponse(content)
+	if err != nil {
+		return nil, err
+	}
+	normalizeCVFields(fields)
+	return fields, nil
 }
 
 // parseCVResponse unmarshals the JSON string produced by the model into CVFields.
@@ -159,9 +195,83 @@ func parseCVResponse(raw string) (*CVFields, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("cv: empty response from model")
 	}
+	// Strip accidental markdown fences.
+	if strings.HasPrefix(raw, "```") {
+		raw = strings.TrimPrefix(raw, "```json")
+		raw = strings.TrimPrefix(raw, "```JSON")
+		raw = strings.TrimPrefix(raw, "```")
+		raw = strings.TrimSuffix(raw, "```")
+		raw = strings.TrimSpace(raw)
+	}
 	var fields CVFields
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 		return nil, fmt.Errorf("cv: unmarshal cv fields: %w", err)
 	}
 	return &fields, nil
+}
+
+// normalizeCVFields dedupes contact arrays and backfills primary email/phone.
+func normalizeCVFields(f *CVFields) {
+	if f == nil {
+		return
+	}
+	f.Name = strings.TrimSpace(f.Name)
+	f.Email = strings.TrimSpace(strings.ToLower(f.Email))
+	f.Phone = strings.TrimSpace(f.Phone)
+	f.Bio = strings.TrimSpace(f.Bio)
+	f.CurrentTitle = strings.TrimSpace(f.CurrentTitle)
+	f.Location = strings.TrimSpace(f.Location)
+	f.Education = strings.TrimSpace(f.Education)
+
+	f.Emails = dedupeFold(append(f.Emails, f.Email), true)
+	f.Phones = dedupeFold(append(f.Phones, f.Phone), false)
+	if f.Email == "" && len(f.Emails) > 0 {
+		f.Email = f.Emails[0]
+	}
+	if f.Phone == "" && len(f.Phones) > 0 {
+		f.Phone = f.Phones[0]
+	}
+
+	f.StrongSkills = dedupeFold(f.StrongSkills, false)
+	f.WorkingSkills = dedupeFold(f.WorkingSkills, false)
+	f.ToolsFrameworks = dedupeFold(f.ToolsFrameworks, false)
+	f.Certifications = dedupeFold(f.Certifications, false)
+	f.Languages = dedupeFold(f.Languages, false)
+	f.PreferredRoles = dedupeFold(f.PreferredRoles, false)
+	f.PreferredLocations = dedupeFold(f.PreferredLocations, false)
+
+	for i := range f.WorkHistory {
+		f.WorkHistory[i].Company = strings.TrimSpace(f.WorkHistory[i].Company)
+		f.WorkHistory[i].Title = strings.TrimSpace(f.WorkHistory[i].Title)
+		f.WorkHistory[i].StartDate = strings.TrimSpace(f.WorkHistory[i].StartDate)
+		f.WorkHistory[i].EndDate = strings.TrimSpace(f.WorkHistory[i].EndDate)
+		f.WorkHistory[i].Summary = strings.TrimSpace(f.WorkHistory[i].Summary)
+	}
+}
+
+func dedupeFold(in []string, lower bool) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if lower {
+			s = strings.ToLower(s)
+		}
+		key := strings.ToLower(s)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

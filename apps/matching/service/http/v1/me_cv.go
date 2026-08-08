@@ -61,7 +61,7 @@ func MeCVGetHandler(deps UploadDeps) http.HandlerFunc {
 			"content_uri":     contentURI,
 			"content_hash":    contentHash,
 			"cv_length":       len([]rune(extracted)),
-			"extracted_text":  truncateRunesForResponse(extracted, 40_000),
+			"extracted_text":  extracted,
 			"placement_ready": ready,
 		})
 	}

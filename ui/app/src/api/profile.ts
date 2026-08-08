@@ -94,8 +94,12 @@ export interface UploadCVResult {
   profile_fields?: ProfileFieldsPayload;
   /** Always "ai" when fully_processed. */
   structure_source?: string;
-  /** Email scraped from the CV (for display; platform contact is separate). */
+  /** Primary email scraped from the CV (for display; platform contact is separate). */
   email_hint?: string;
+  /** All emails found on the CV. */
+  email_hints?: string[];
+  /** All phone numbers found on the CV. */
+  phone_hints?: string[];
   /** True only after required sync AI sectioning + profile merge. */
   fully_processed?: boolean;
   /** Platform profile id used as files accessor_id. */
