@@ -136,20 +136,9 @@ func MeCVHandler(deps UploadDeps) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":                true,
-			"cv_length":         result.TextLength,
-			"filename":          hdr.Filename,
-			"extracted_text":    truncateRunesForResponse(result.ExtractedText, 40_000),
-			"cv_version":        result.Version,
-			"file_id":           result.FileID,
-			"content_uri":       result.ContentURI,
-			"content_hash":      result.ContentHash,
-			"storage":           result.Storage,
-			"placement_summary": result.PlacementSummary,
-			"placement_ready":   result.PlacementReady,
-			"missing":           result.Missing,
-		})
+		resp := uploadResponseMap(candidateID, result)
+		resp["filename"] = hdr.Filename
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 

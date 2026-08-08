@@ -39,6 +39,9 @@ export function CVDetailsTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'reading' | 'done'>('idle');
+  const [lastFilled, setLastFilled] = useState<string[]>([]);
+  const [emailHint, setEmailHint] = useState<string>('');
   const [dirty, setDirty] = useState(false);
   const [buyingReport, setBuyingReport] = useState(false);
 
@@ -86,14 +89,81 @@ export function CVDetailsTab() {
 
   async function onUpload(file: File) {
     setUploading(true);
+    setUploadPhase('uploading');
+    setLastFilled([]);
+    setEmailHint('');
     try {
+      setUploadPhase('reading');
       const res = await uploadCV(file);
-      toast('CV uploaded. Review sections below and save any fixes.', 'success');
-      await load();
-      void res;
-      setDirty(false);
+      const filled = res.filled_fields ?? [];
+      setLastFilled(filled);
+      if (res.email_hint) setEmailHint(res.email_hint);
+
+      // Prefer server merge for immediate hydration; fall back to full reload.
+      if (res.profile_fields) {
+        const hydrated = hydrateStructuredCV(res.profile_fields, {
+          name: res.profile_fields.name,
+          phone: res.profile_fields.phone,
+        });
+        if (res.email_hint && !hydrated.basics.email) {
+          hydrated.basics.email = res.email_hint;
+        }
+        hydrated.source = 'upload';
+        hydrated.updated_at = new Date().toISOString();
+        setDoc(hydrated);
+        setCvMeta({
+          ok: true,
+          present: true,
+          cv_version: res.cv_version,
+          file_id: res.file_id,
+          content_uri: res.content_uri,
+          content_hash: res.content_hash,
+          cv_length: res.cv_length,
+          extracted_text: res.extracted_text,
+          placement_ready: res.placement_ready,
+        });
+        setDirty(false);
+      } else {
+        await load();
+        setDirty(false);
+      }
+
+      setUploadPhase('done');
+      if (filled.length > 0) {
+        const labels = filled
+          .slice(0, 6)
+          .map((k) => k.replace(/_/g, ' '))
+          .join(', ');
+        const more = filled.length > 6 ? ` (+${filled.length - 6} more)` : '';
+        toast(
+          `CV imported — filled ${filled.length} missing field${filled.length === 1 ? '' : 's'}: ${labels}${more}. Review and tweak if needed.`,
+          'success'
+        );
+      } else {
+        toast(
+          'CV on file. Your profile already had the main details — nothing empty to overwrite. Review sections below.',
+          'success'
+        );
+      }
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not upload CV.', 'error');
+      setUploadPhase('idle');
+      const msg = err instanceof Error ? err.message : 'Could not upload CV.';
+      // Surface server problem codes helpfully.
+      if (/text_extraction|empty_cv|unsupported/i.test(msg)) {
+        toast(
+          'We could not read that file. Try a text-based PDF, DOCX, or TXT (not a scanned image).',
+          'error'
+        );
+      } else if (/store_failed|502|503|504/i.test(msg)) {
+        toast(
+          'Upload hit a storage issue. Please retry in a moment — if it persists, contact support.',
+          'error'
+        );
+      } else if (/not authenticated|TOKEN|401/i.test(msg)) {
+        toast('Session expired — sign in again, then re-upload your CV.', 'error');
+      } else {
+        toast(msg || 'Could not upload CV.', 'error');
+      }
     } finally {
       setUploading(false);
     }
@@ -136,8 +206,83 @@ export function CVDetailsTab() {
     return <p className="text-sm text-secondary">Loading CV…</p>;
   }
 
+  const uploadStatusLabel =
+    uploadPhase === 'uploading'
+      ? 'Uploading file…'
+      : uploadPhase === 'reading'
+        ? 'Reading CV and filling empty sections…'
+        : uploading
+          ? 'Working…'
+          : present
+            ? 'Replace CV file'
+            : 'Upload CV — auto-fill your profile';
+
   return (
     <div className="space-y-6">
+      {/* Primary CTA: upload first */}
+      <Panel title="Start with your CV" id="cv-upload">
+        <p className="text-sm text-secondary">
+          Drop a PDF, Word, or text CV. We extract the text, fill any{' '}
+          <span className="font-medium text-main">empty</span> name, contact, experience, skills,
+          and education fields, and leave your existing edits alone.
+        </p>
+        {present && (
+          <p className="mt-2 text-sm">
+            <span className="font-medium text-emerald-700 dark:text-emerald-400">CV on file</span>
+            {cvMeta?.cv_version != null && (
+              <span className="text-secondary"> · version {cvMeta.cv_version}</span>
+            )}
+            {cvMeta?.cv_length != null && cvMeta.cv_length > 0 && (
+              <span className="text-secondary"> · {cvMeta.cv_length.toLocaleString()} chars</span>
+            )}
+          </p>
+        )}
+        {lastFilled.length > 0 && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+            Auto-filled from last upload:{' '}
+            <span className="font-medium">
+              {lastFilled.map((k) => k.replace(/_/g, ' ')).join(', ')}
+            </span>
+          </div>
+        )}
+        {emailHint && (
+          <p className="mt-2 text-xs text-secondary">
+            Email found on CV: <span className="font-medium text-main">{emailHint}</span>
+            {doc.basics.email ? '' : ' — added to your header for review.'}
+          </p>
+        )}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.txt,.rtf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onUpload(f);
+              e.target.value = '';
+            }}
+          />
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploadStatusLabel}
+          </Button>
+          {uploading && (
+            <span className="text-xs text-secondary animate-pulse">
+              This can take up to ~30s while we read and structure your CV.
+            </span>
+          )}
+        </div>
+        <p className="mt-3 text-xs text-secondary">
+          Tip: text-based PDFs and DOCX work best. Scanned image-only PDFs may not extract cleanly.
+        </p>
+      </Panel>
+
       {/* Header / basics */}
       <Panel title="Profile header">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -164,6 +309,12 @@ export function CVDetailsTab() {
             value={doc.basics.phone ?? ''}
             onChange={(v) => patch({ ...doc, basics: { ...doc.basics, phone: v } })}
             placeholder="+254…"
+          />
+          <Field
+            label="Email (from CV)"
+            value={doc.basics.email ?? ''}
+            onChange={(v) => patch({ ...doc, basics: { ...doc.basics, email: v } })}
+            placeholder="you@example.com"
           />
         </div>
       </Panel>
@@ -326,53 +477,10 @@ export function CVDetailsTab() {
         </div>
       </div>
 
-      {/* Upload at bottom */}
-      <Panel title="Upload or replace CV file" id="cv-upload">
-        <p className="text-sm text-secondary">
-          {present ? (
-            <>
-              <span className="font-medium text-emerald-700 dark:text-emerald-400">CV on file</span>
-              {cvMeta?.cv_version != null && (
-                <span className="text-secondary"> · version {cvMeta.cv_version}</span>
-              )}
-              {cvMeta?.cv_length != null && cvMeta.cv_length > 0 && (
-                <span className="text-secondary"> · {cvMeta.cv_length.toLocaleString()} chars</span>
-              )}
-            </>
-          ) : (
-            <span className="text-amber-700 dark:text-amber-300">
-              No file uploaded yet. You can still edit sections manually, or upload a PDF/Word CV to
-              fill them in.
-            </span>
-          )}
-        </p>
-        <p className="mt-2 text-xs text-secondary">
-          Upload extracts text and refreshes sections. Review and save after upload — your manual
-          edits are not silently overwritten once you save.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.doc,.docx,.txt,application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void onUpload(f);
-              e.target.value = '';
-            }}
-          />
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-          >
-            {uploading ? 'Uploading…' : present ? 'Replace CV file' : 'Upload CV file'}
-          </Button>
-        </div>
-      </Panel>
+      <p className="text-xs text-secondary">
+        Manual edits: use <span className="font-medium text-main">Save CV</span> after changing
+        sections. Re-uploading only fills empty fields — it never overwrites what you already saved.
+      </p>
     </div>
   );
 }

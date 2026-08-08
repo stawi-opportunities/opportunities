@@ -133,10 +133,10 @@ export function hydrateStructuredCV(
 
   return {
     basics: {
-      name: extras?.name?.trim() || '',
+      name: extras?.name?.trim() || pf?.name?.trim() || '',
       headline: pf?.current_title?.trim() || pf?.target_job_title?.trim() || '',
-      email: extras?.email,
-      phone: extras?.phone?.trim() || '',
+      email: extras?.email?.trim() || undefined,
+      phone: extras?.phone?.trim() || pf?.phone?.trim() || '',
       location,
     },
     summary: pf?.bio?.trim() || '',

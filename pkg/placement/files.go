@@ -54,6 +54,12 @@ func (s *FilesServiceStore) Put(ctx context.Context, candidateID, filename, cont
 
 	stream := s.Client.UploadContent(ctx)
 	idem := "cv-" + candidateID + "-" + hash[:16]
+	// accessor_id is required (proto min_items=1) — grant the candidate
+	// READER on their own CV so private media is addressable.
+	accessors := []string{}
+	if id := strings.TrimSpace(candidateID); id != "" {
+		accessors = []string{id}
+	}
 	if err := stream.Send(&filesv1.UploadContentRequest{
 		Data: &filesv1.UploadContentRequest_Metadata{
 			Metadata: &filesv1.UploadMetadata{
@@ -61,6 +67,7 @@ func (s *FilesServiceStore) Put(ctx context.Context, candidateID, filename, cont
 				Filename:    path.Base(filename),
 				TotalSize:   int64(len(body)),
 				Visibility:  filesv1.MediaMetadata_VISIBILITY_PRIVATE,
+				AccessorId:  accessors,
 			},
 		},
 		IdempotencyKey: idem,

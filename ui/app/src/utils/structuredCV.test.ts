@@ -23,6 +23,24 @@ describe('structuredCV', () => {
     expect(doc.education[0]!.school).toContain('MIT');
   });
 
+  it('uses profile-fields name and phone when extras omitted', () => {
+    const doc = hydrateStructuredCV({
+      name: 'Ada Lovelace',
+      phone: '+44 20 0000',
+      current_title: 'Analyst',
+      strong_skills: ['Math'],
+    });
+    expect(doc.basics.name).toBe('Ada Lovelace');
+    expect(doc.basics.phone).toBe('+44 20 0000');
+    expect(doc.basics.headline).toBe('Analyst');
+    expect(doc.skills.strong).toEqual(['Math']);
+  });
+
+  it('prefers extras over profile-fields for name', () => {
+    const doc = hydrateStructuredCV({ name: 'From PF' }, { name: 'From Extra' });
+    expect(doc.basics.name).toBe('From Extra');
+  });
+
   it('round-trips to profile fields', () => {
     const doc = hydrateStructuredCV({
       bio: 'Hi',
