@@ -1,0 +1,62 @@
+# Build Hugo+Vite UI and deploy to Cloudflare Pages (opportunities.stawi.org).
+name: Deploy Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: Cloudflare Pages project name
+        type: string
+        default: opportunities
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "Makefile"
+      - ".github/workflows/deploy-pages.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            ui/app/package-lock.json
+            ui/admin/package-lock.json
+
+      - name: Build UI (make ui-build)
+        run: make ui-build
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'c358ea38bde6fd03d13bf87068635230' }}
+          PROJECT_NAME: ${{ github.event.inputs.project_name || 'opportunities' }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN required"
+            exit 1
+          fi
+          if [[ "$PROJECT_NAME" == "opportunities" ]]; then
+            list=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects" || true)
+            for cand in opportunities opportunities-stawi-org stawi-opportunities jobs-stawi-org stawi-jobs; do
+              if echo "$list" | grep -q "\"name\":\"$cand\""; then
+                PROJECT_NAME=$cand
+                break
+              fi
+            done
+            echo "Using Pages project: $PROJECT_NAME"
+          fi
+          npx --yes wrangler@4 pages deploy ui/public \
+            --project-name="$PROJECT_NAME" \
+            --branch=main \
+            --commit-dirty=true
