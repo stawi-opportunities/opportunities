@@ -30,8 +30,14 @@ export interface StructuredCV {
   basics: {
     name: string;
     headline: string;
+    /** Primary email (first of emails[]). */
     email?: string;
+    /** All emails found on the CV. */
+    emails: string[];
+    /** Primary phone (first of phones[]). */
     phone?: string;
+    /** All phone numbers (may be multi). */
+    phones: string[];
     location?: string;
   };
   summary: string;
@@ -53,6 +59,7 @@ export interface ProfileFieldsPayload {
   candidate_id?: string;
   name?: string;
   phone?: string;
+  emails?: string[];
   current_title?: string;
   target_job_title?: string;
   seniority?: string;
@@ -123,20 +130,62 @@ function educationFromText(education: string | undefined): CVEducation[] {
   ];
 }
 
-/** Build StructuredCV from profile-fields + optional name/phone. */
+function splitContactList(raw: string | undefined | null): string[] {
+  if (!raw?.trim()) return [];
+  // Multi-contact joins use · | ; / or newlines — not bare spaces (phones have spaces).
+  return raw
+    .split(/[·|;/\n\r]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function dedupeContacts(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const t = item.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Build StructuredCV from profile-fields + optional name/phone/emails. */
 export function hydrateStructuredCV(
   pf: ProfileFieldsPayload | null | undefined,
-  extras?: { name?: string; phone?: string; email?: string }
+  extras?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    emails?: string[];
+    phones?: string[];
+  }
 ): StructuredCV {
   const strong = pf?.strong_skills?.length ? pf.strong_skills : (pf?.skills ?? []);
   const location = pf?.preferred_locations?.[0] || pf?.preferred_countries?.[0] || undefined;
+
+  const phones = dedupeContacts([
+    ...(extras?.phones ?? []),
+    ...splitContactList(extras?.phone),
+    ...splitContactList(pf?.phone),
+  ]);
+  const emails = dedupeContacts([
+    ...(extras?.emails ?? []),
+    ...(extras?.email ? [extras.email] : []),
+    ...(pf?.emails ?? []),
+  ]);
 
   return {
     basics: {
       name: extras?.name?.trim() || pf?.name?.trim() || '',
       headline: pf?.current_title?.trim() || pf?.target_job_title?.trim() || '',
-      email: extras?.email?.trim() || undefined,
-      phone: extras?.phone?.trim() || pf?.phone?.trim() || '',
+      email: emails[0] || extras?.email?.trim() || undefined,
+      emails,
+      phone: phones[0] || '',
+      phones,
       location,
     },
     summary: pf?.bio?.trim() || '',
@@ -161,7 +210,9 @@ export function structuredCVToPlainText(doc: StructuredCV): string {
 
   if (basics.name) lines.push(basics.name);
   if (basics.headline) lines.push(basics.headline);
-  const contact = [basics.location, basics.phone, basics.email].filter(Boolean).join(' · ');
+  const phones = basics.phones?.length ? basics.phones : basics.phone ? [basics.phone] : [];
+  const emails = basics.emails?.length ? basics.emails : basics.email ? [basics.email] : [];
+  const contact = [basics.location, ...phones, ...emails].filter(Boolean).join(' · ');
   if (contact) lines.push(contact);
   lines.push('');
 
@@ -236,9 +287,21 @@ export function structuredCVToProfileFields(doc: StructuredCV): Partial<ProfileF
     .filter(Boolean)
     .join('\n');
 
+  const phones = doc.basics.phones?.length
+    ? doc.basics.phones
+    : doc.basics.phone
+      ? [doc.basics.phone]
+      : [];
+  const emails = doc.basics.emails?.length
+    ? doc.basics.emails
+    : doc.basics.email
+      ? [doc.basics.email]
+      : [];
+
   return {
     name: doc.basics.name || undefined,
-    phone: doc.basics.phone || undefined,
+    phone: phones.length ? phones.join(' · ') : undefined,
+    emails: emails.length ? emails : undefined,
     current_title: doc.basics.headline || undefined,
     bio: doc.summary || undefined,
     strong_skills: doc.skills.strong,

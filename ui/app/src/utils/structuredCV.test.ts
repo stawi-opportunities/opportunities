@@ -32,8 +32,27 @@ describe('structuredCV', () => {
     });
     expect(doc.basics.name).toBe('Ada Lovelace');
     expect(doc.basics.phone).toBe('+44 20 0000');
+    expect(doc.basics.phones).toEqual(['+44 20 0000']);
     expect(doc.basics.headline).toBe('Analyst');
     expect(doc.skills.strong).toEqual(['Math']);
+  });
+
+  it('hydrates multiple phones and emails', () => {
+    const doc = hydrateStructuredCV(
+      {
+        name: 'Jane',
+        phone: '+254 700 111 222 · +254 733 000 111',
+        emails: ['a@work.com', 'b@home.com'],
+        bio: 'Full about section with plenty of detail about impact and scope.',
+      },
+      { phones: ['+254 700 111 222', '+254 733 000 111'] }
+    );
+    expect(doc.basics.phones.length).toBeGreaterThanOrEqual(2);
+    expect(doc.basics.emails).toEqual(['a@work.com', 'b@home.com']);
+    expect(doc.summary).toMatch(/Full about/);
+    const pf = structuredCVToProfileFields(doc);
+    expect(pf.phone).toContain('·');
+    expect(pf.emails).toHaveLength(2);
   });
 
   it('prefers extras over profile-fields for name', () => {

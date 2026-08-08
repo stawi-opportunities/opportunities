@@ -33,31 +33,31 @@ func detectPriorityFixes(cvText string, fields *extraction.CVFields, family Role
 	lower := strings.ToLower(cvText)
 	if !containsAny(lower, "summary", "professional summary", "about", "profile") {
 		fixes = append(fixes, PriorityFix{
-			ID:       "add-summary",
-			Title:    "Add a 2-line professional summary",
-			Impact:   "high",
-			Category: "ats",
-			Why:      "Recruiters spend 10 seconds scanning a CV; a summary at the top is where that scan lands. Without one, you're asking them to infer the fit.",
+			ID:             "add-summary",
+			Title:          "Add a 2-line professional summary",
+			Impact:         "high",
+			Category:       "ats",
+			Why:            "Recruiters spend 10 seconds scanning a CV; a summary at the top is where that scan lands. Without one, you're asking them to infer the fit.",
 			AutoApplicable: false,
 		})
 	}
 	if !strings.Contains(lower, "skills") {
 		fixes = append(fixes, PriorityFix{
-			ID:       "add-skills-section",
-			Title:    "Add a structured Skills section",
-			Impact:   "high",
-			Category: "ats",
-			Why:      "ATS parsers look for an explicit 'Skills' header — without one, your stack is invisible to automated filtering.",
+			ID:             "add-skills-section",
+			Title:          "Add a structured Skills section",
+			Impact:         "high",
+			Category:       "ats",
+			Why:            "ATS parsers look for an explicit 'Skills' header — without one, your stack is invisible to automated filtering.",
 			AutoApplicable: true,
 		})
 	}
 	if fields != nil && len(fields.WorkHistory) == 0 {
 		fixes = append(fixes, PriorityFix{
-			ID:       "add-work-history",
-			Title:    "Add at least one Experience entry with dates",
-			Impact:   "high",
-			Category: "ats",
-			Why:      "Every ATS parser keys on role title + company + dates. Missing experience entries means the CV fails parsing entirely.",
+			ID:             "add-work-history",
+			Title:          "Add at least one Experience entry with dates",
+			Impact:         "high",
+			Category:       "ats",
+			Why:            "Every ATS parser keys on role title + company + dates. Missing experience entries means the CV fails parsing entirely.",
 			AutoApplicable: false,
 		})
 	}
@@ -67,11 +67,11 @@ func detectPriorityFixes(cvText string, fields *extraction.CVFields, family Role
 		missing := missingKeywords(cvText, family, 6)
 		if len(missing) > 0 {
 			fixes = append(fixes, PriorityFix{
-				ID:       "add-keywords",
-				Title:    fmt.Sprintf("Add missing keywords: %s", strings.Join(missing, ", ")),
-				Impact:   impactForScore(c.Keywords, 50, 70),
-				Category: "keywords",
-				Why:      "ATS filters match on exact keywords from the job family. Missing these is the difference between getting shortlisted and getting filtered.",
+				ID:             "add-keywords",
+				Title:          fmt.Sprintf("Add missing keywords: %s", strings.Join(missing, ", ")),
+				Impact:         impactForScore(c.Keywords, 50, 70),
+				Category:       "keywords",
+				Why:            "ATS filters match on exact keywords from the job family. Missing these is the difference between getting shortlisted and getting filtered.",
 				AutoApplicable: true,
 				Suggestions:    missing,
 			})
@@ -83,21 +83,21 @@ func detectPriorityFixes(cvText string, fields *extraction.CVFields, family Role
 		weakCount := countWeakBullets(fields)
 		if weakCount > 0 {
 			fixes = append(fixes, PriorityFix{
-				ID:       "strengthen-bullets",
-				Title:    fmt.Sprintf("Rewrite %d experience bullet%s for measurable impact", weakCount, plural(weakCount)),
-				Impact:   "high",
-				Category: "impact",
-				Why:      "Bullets that describe work (\"built backend services\") score lower than bullets that describe outcome (\"built services handling 2M requests/min\"). Numbers are the single biggest lever on this score.",
+				ID:             "strengthen-bullets",
+				Title:          fmt.Sprintf("Rewrite %d experience bullet%s for measurable impact", weakCount, plural(weakCount)),
+				Impact:         "high",
+				Category:       "impact",
+				Why:            "Bullets that describe work (\"built backend services\") score lower than bullets that describe outcome (\"built services handling 2M requests/min\"). Numbers are the single biggest lever on this score.",
 				AutoApplicable: false, // metrics need user input
 			})
 		}
 		if countBulletsWithWeakVerb(fields) > 0 {
 			fixes = append(fixes, PriorityFix{
-				ID:       "replace-weak-verbs",
-				Title:    "Replace weak verbs (\"worked on\", \"helped\") with strong action verbs",
-				Impact:   "medium",
-				Category: "impact",
-				Why:      "Recruiter pattern-matching rewards \"built / shipped / led / drove\" and penalises \"worked on / helped / assisted\". Strong verbs make the same experience read as ownership rather than participation.",
+				ID:             "replace-weak-verbs",
+				Title:          "Replace weak verbs (\"worked on\", \"helped\") with strong action verbs",
+				Impact:         "medium",
+				Category:       "impact",
+				Why:            "Recruiter pattern-matching rewards \"built / shipped / led / drove\" and penalises \"worked on / helped / assisted\". Strong verbs make the same experience read as ownership rather than participation.",
 				AutoApplicable: true,
 				Suggestions:    []string{"built", "shipped", "led", "drove", "owned", "delivered", "scaled"},
 			})
@@ -107,11 +107,11 @@ func detectPriorityFixes(cvText string, fields *extraction.CVFields, family Role
 	// ── Role-fit fixes ─────────────────────────────────────────────
 	if c.RoleFit < 60 {
 		fixes = append(fixes, PriorityFix{
-			ID:       "tighten-role-fit",
-			Title:    "Tighten role alignment — your CV reads generally instead of targeting " + string(family),
-			Impact:   "medium",
-			Category: "role_fit",
-			Why:      "The profile embedding sits far from the reference for your target role. Lead with the parts of your experience that match the role; demote unrelated history.",
+			ID:             "tighten-role-fit",
+			Title:          "Tighten role alignment — your CV reads generally instead of targeting " + string(family),
+			Impact:         "medium",
+			Category:       "role_fit",
+			Why:            "The profile embedding sits far from the reference for your target role. Lead with the parts of your experience that match the role; demote unrelated history.",
 			AutoApplicable: false,
 		})
 	}
@@ -120,11 +120,11 @@ func detectPriorityFixes(cvText string, fields *extraction.CVFields, family Role
 	if c.Clarity < 70 {
 		if buzzCount := countBuzzwords(cvText); buzzCount > 0 {
 			fixes = append(fixes, PriorityFix{
-				ID:       "remove-buzzwords",
-				Title:    "Remove buzzwords (\"synergy\", \"rockstar\", etc.)",
-				Impact:   "low",
-				Category: "clarity",
-				Why:      "Buzzwords are recruiter-flag phrases — they signal resume inflation without adding information. Replace them with concrete outcomes.",
+				ID:             "remove-buzzwords",
+				Title:          "Remove buzzwords (\"synergy\", \"rockstar\", etc.)",
+				Impact:         "low",
+				Category:       "clarity",
+				Why:            "Buzzwords are recruiter-flag phrases — they signal resume inflation without adding information. Replace them with concrete outcomes.",
 				AutoApplicable: true,
 			})
 		}

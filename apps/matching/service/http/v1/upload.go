@@ -145,17 +145,18 @@ func UploadHandler(deps UploadDeps) http.HandlerFunc {
 
 func uploadResponseMap(candidateID string, result *cvUploadResult) map[string]any {
 	out := map[string]any{
-		"accepted":          true,
-		"ok":                true,
-		"candidate_id":      candidateID,
-		"profile_id":        result.ProfileID,
-		"cv_version":        result.Version,
-		"file_id":           result.FileID,
-		"content_uri":       result.ContentURI,
-		"content_hash":      result.ContentHash,
-		"storage":           result.Storage,
-		"cv_length":         result.TextLength,
-		"extracted_text":    truncateRunesForResponse(result.ExtractedText, 40_000),
+		"accepted":     true,
+		"ok":           true,
+		"candidate_id": candidateID,
+		"profile_id":   result.ProfileID,
+		"cv_version":   result.Version,
+		"file_id":      result.FileID,
+		"content_uri":  result.ContentURI,
+		"content_hash": result.ContentHash,
+		"storage":      result.Storage,
+		"cv_length":    result.TextLength,
+		// Keep full extracted CV text for the client (no silent truncation).
+		"extracted_text":    result.ExtractedText,
 		"placement_summary": result.PlacementSummary,
 		"placement_ready":   result.PlacementReady,
 		"missing":           result.Missing,
@@ -166,6 +167,12 @@ func uploadResponseMap(candidateID string, result *cvUploadResult) map[string]an
 	}
 	if result.EmailHint != "" {
 		out["email_hint"] = result.EmailHint
+	}
+	if len(result.EmailHints) > 0 {
+		out["email_hints"] = result.EmailHints
+	}
+	if len(result.PhoneHints) > 0 {
+		out["phone_hints"] = result.PhoneHints
 	}
 	if result.ProfileFields != nil {
 		out["profile_fields"] = result.ProfileFields
@@ -199,8 +206,11 @@ type cvUploadResult struct {
 	ProfileFields *candidatestore.ProfileFields
 	// StructureSource is always "ai" when fully_processed.
 	StructureSource string
-	// EmailHint is contact email found in the CV (AI or heuristic).
+	// EmailHint is primary contact email found in the CV (AI or heuristic).
 	EmailHint string
+	// EmailHints / PhoneHints are all contacts found on the CV.
+	EmailHints []string
+	PhoneHints []string
 	// FullyProcessed means sync AI sectioning + profile merge completed.
 	FullyProcessed bool
 }
@@ -255,7 +265,8 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 	}
 	timeout := deps.StructureTimeout
 	if timeout <= 0 {
-		timeout = 45 * time.Second
+		// Long CVs + exhaustive sectioning (full bullets, skills, certs).
+		timeout = 90 * time.Second
 	}
 	sctx, cancel := context.WithTimeout(ctx, timeout)
 	extracted, sErr := deps.Structure.ExtractCV(sctx, text)
@@ -274,7 +285,7 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		}
 	}
 
-	// Heuristic contact fills gaps AI may miss (email/phone/name only).
+	// Heuristic contact + section fill gaps AI may miss.
 	contact := cv.ParseContactFromText(text)
 
 	// 3. Merge empty hub fields and persist synchronously.
@@ -290,7 +301,7 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 			}
 		}
 	}
-	hub, filled := cv.MergeExtractedIntoProfile(existing, extracted, contact)
+	hub, filled := cv.MergeExtractedIntoProfileWithText(existing, extracted, contact, text)
 	if hub == nil {
 		return nil, &processErr{Code: "structure_failed", Message: "profile merge produced empty result"}
 	}
@@ -377,7 +388,8 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 
 	if deps.Drafts != nil {
 		mergedFields := fieldsFromEnvelope(stored)
-		mergedFields.ExtraInfo = truncateRunes(text, 8000)
+		// Keep full CV text for chat/matching — do not truncate.
+		mergedFields.ExtraInfo = text
 		if mergedFields.TargetJobTitle == "" {
 			mergedFields.TargetJobTitle = hub.TargetJobTitle
 		}
@@ -416,6 +428,22 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 	if emailHint == "" {
 		emailHint = contact.Email
 	}
+	emailHints := append([]string{}, extracted.Emails...)
+	if len(emailHints) == 0 {
+		emailHints = append([]string{}, contact.Emails...)
+	}
+	phoneHints := append([]string{}, extracted.Phones...)
+	if len(phoneHints) == 0 {
+		phoneHints = append([]string{}, contact.Phones...)
+	}
+	if hub != nil {
+		if len(hub.Emails) > 0 {
+			emailHints = hub.Emails
+		}
+		if hub.Phone != "" && len(phoneHints) == 0 {
+			phoneHints = []string{hub.Phone}
+		}
+	}
 
 	return &cvUploadResult{
 		Version:          version,
@@ -434,6 +462,8 @@ func processCVUpload(ctx context.Context, deps UploadDeps, in cvUploadInput) (*c
 		ProfileFields:    hub,
 		StructureSource:  "ai",
 		EmailHint:        emailHint,
+		EmailHints:       emailHints,
+		PhoneHints:       phoneHints,
 		FullyProcessed:   true,
 	}, nil
 }
@@ -523,17 +553,6 @@ func writeUploadProcessError(w http.ResponseWriter, err error) {
 	default:
 		http.Error(w, `{"error":"upload failed"}`, http.StatusInternalServerError)
 	}
-}
-
-func truncateRunesForResponse(s string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max])
 }
 
 // errTooLarge signals that the uploaded file exceeded the byte cap.

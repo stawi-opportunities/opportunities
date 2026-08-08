@@ -60,8 +60,9 @@ type CandidateProfile struct {
 
 	// User-visible profile info (managed here for settings UI convenience;
 	// the auth/Frame service is the canonical source for name + email).
-	Name  string `gorm:"type:varchar(255)" json:"name"`
-	Phone string `gorm:"type:varchar(50)" json:"phone"`
+	Name   string `gorm:"type:varchar(255)" json:"name"`
+	Phone  string `gorm:"type:text" json:"phone"` // may hold multiple numbers joined by " · "
+	Emails string `gorm:"type:text" json:"emails,omitempty"`
 
 	// AI-extracted profile fields
 	CurrentTitle    string         `gorm:"type:text" json:"current_title"`

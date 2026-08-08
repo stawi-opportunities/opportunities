@@ -11,6 +11,7 @@ import { purchaseATSReport } from '@/api/tools';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { useToast } from '@/hooks/useToast';
 import { Button } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui/Spinner';
 import { Panel } from '@/components/dashboard/Panel';
 import { usePreferenceChatOptional } from '@/components/preference-chat';
 import {
@@ -53,6 +54,7 @@ export function CVDetailsTab() {
       const hydrated = hydrateStructuredCV(pf, {
         name: pf?.name,
         phone: pf?.phone,
+        emails: pf?.emails,
       });
       if (!hydrated.basics.headline && profileQ.data?.current_title) {
         hydrated.basics.headline = profileQ.data.current_title;
@@ -104,10 +106,10 @@ export function CVDetailsTab() {
         const hydrated = hydrateStructuredCV(res.profile_fields, {
           name: res.profile_fields.name,
           phone: res.profile_fields.phone,
+          emails: res.email_hints?.length ? res.email_hints : res.profile_fields.emails,
+          email: res.email_hint,
+          phones: res.phone_hints,
         });
-        if (res.email_hint && !hydrated.basics.email) {
-          hydrated.basics.email = res.email_hint;
-        }
         hydrated.source = 'upload';
         hydrated.updated_at = new Date().toISOString();
         setDoc(hydrated);
@@ -224,7 +226,7 @@ export function CVDetailsTab() {
     uploadPhase === 'uploading'
       ? 'Uploading file…'
       : uploadPhase === 'reading'
-        ? 'AI is sectioning your CV (this can take up to a minute)…'
+        ? 'AI is sectioning your CV…'
         : uploading
           ? 'Working…'
           : present
@@ -232,14 +234,33 @@ export function CVDetailsTab() {
             : 'Upload CV — AI fills empty sections';
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      {uploading && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-[1px]"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="mx-4 flex max-w-sm flex-col items-center gap-3 rounded-xl border border-muted bg-surface px-6 py-5 shadow-xl">
+            <Spinner size={36} />
+            <p className="text-center text-sm font-medium text-main">{uploadStatusLabel}</p>
+            <p className="text-center text-xs text-secondary">
+              Extracting full text, contacts, experience, skills, and certifications. Stay on this
+              page — processing finishes before we mark the upload done.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Primary CTA: upload first */}
       <Panel title="Start with your CV" id="cv-upload">
         <p className="text-sm text-secondary">
           Drop a PDF, Word, or text CV. Processing is{' '}
-          <span className="font-medium text-main">fully synchronous</span>: we extract text, run AI
-          sectioning, fill empty name/contact/experience/ skills/education fields, and save them
-          before this finishes. Existing saved values are never overwritten.
+          <span className="font-medium text-main">fully synchronous</span>: we extract the complete
+          text, run AI sectioning (name, all contacts, about, full experience bullets, skills,
+          certifications), fill empty fields, and save before this finishes. Existing saved values
+          are never overwritten.
         </p>
         {present && (
           <p className="mt-2 text-sm">
@@ -263,7 +284,7 @@ export function CVDetailsTab() {
         {emailHint && (
           <p className="mt-2 text-xs text-secondary">
             Email found on CV: <span className="font-medium text-main">{emailHint}</span>
-            {doc.basics.email ? '' : ' — added to your header for review.'}
+            {doc.basics.emails?.length ? '' : ' — added to your header for review.'}
           </p>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -285,11 +306,19 @@ export function CVDetailsTab() {
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
           >
-            {uploadStatusLabel}
+            {uploading ? (
+              <span className="inline-flex items-center gap-2">
+                <Spinner size={16} className="text-white" />
+                {uploadStatusLabel}
+              </span>
+            ) : (
+              uploadStatusLabel
+            )}
           </Button>
           {uploading && (
-            <span className="text-xs text-secondary animate-pulse">
-              Stay on this page — AI sectioning finishes before we mark the upload done.
+            <span className="inline-flex items-center gap-2 text-xs text-secondary">
+              <Spinner size={14} />
+              Processing — please wait…
             </span>
           )}
         </div>
@@ -319,17 +348,49 @@ export function CVDetailsTab() {
             onChange={(v) => patch({ ...doc, basics: { ...doc.basics, location: v } })}
             placeholder="City, country"
           />
-          <Field
-            label="Phone"
-            value={doc.basics.phone ?? ''}
-            onChange={(v) => patch({ ...doc, basics: { ...doc.basics, phone: v } })}
-            placeholder="+254…"
+        </div>
+        <div className="mt-3 space-y-3">
+          <ChipEditor
+            label="Phone numbers"
+            values={
+              doc.basics.phones?.length
+                ? doc.basics.phones
+                : doc.basics.phone
+                  ? [doc.basics.phone]
+                  : []
+            }
+            onChange={(phones) =>
+              patch({
+                ...doc,
+                basics: {
+                  ...doc.basics,
+                  phones,
+                  phone: phones[0] || '',
+                },
+              })
+            }
+            placeholder="+254… then Enter"
           />
-          <Field
-            label="Email (from CV)"
-            value={doc.basics.email ?? ''}
-            onChange={(v) => patch({ ...doc, basics: { ...doc.basics, email: v } })}
-            placeholder="you@example.com"
+          <ChipEditor
+            label="Emails (from CV)"
+            values={
+              doc.basics.emails?.length
+                ? doc.basics.emails
+                : doc.basics.email
+                  ? [doc.basics.email]
+                  : []
+            }
+            onChange={(emails) =>
+              patch({
+                ...doc,
+                basics: {
+                  ...doc.basics,
+                  emails,
+                  email: emails[0] || '',
+                },
+              })
+            }
+            placeholder="you@example.com then Enter"
           />
         </div>
       </Panel>
@@ -338,9 +399,9 @@ export function CVDetailsTab() {
         <textarea
           value={doc.summary}
           onChange={(e) => patch({ ...doc, summary: e.target.value })}
-          rows={4}
-          placeholder="Short professional summary — what you do and the impact you drive."
-          className="w-full rounded-md border border-muted bg-surface px-3 py-2 text-sm text-main"
+          rows={10}
+          placeholder="Full professional summary from your CV — paste or edit the complete About / Profile section."
+          className="min-h-[12rem] w-full rounded-md border border-muted bg-surface px-3 py-2 text-sm text-main"
         />
       </Panel>
 
@@ -600,9 +661,9 @@ function ExperienceCard({
         <textarea
           value={entry.description}
           onChange={(e) => onChange({ ...entry, description: e.target.value })}
-          rows={4}
-          placeholder="Impact bullets — outcomes, metrics, stack."
-          className="mt-1 w-full rounded-md border border-muted bg-surface px-3 py-2 text-sm text-main"
+          rows={8}
+          placeholder="Full role description — keep every bullet, outcome, metric, and stack from your CV."
+          className="mt-1 min-h-[10rem] w-full rounded-md border border-muted bg-surface px-3 py-2 text-sm text-main"
         />
       </label>
       <div className="mt-2 flex justify-end">
@@ -664,10 +725,12 @@ function ChipEditor({
   label,
   values,
   onChange,
+  placeholder = 'Type and press Enter',
 }: {
   label: string;
   values: string[];
   onChange: (v: string[]) => void;
+  placeholder?: string;
 }) {
   const [draft, setDraft] = useState('');
   function add() {
@@ -707,7 +770,7 @@ function ChipEditor({
               add();
             }
           }}
-          placeholder="Type and press Enter"
+          placeholder={placeholder}
           className="min-w-0 flex-1 rounded-md border border-muted bg-surface px-3 py-1.5 text-sm text-main"
         />
         <Button type="button" size="sm" variant="secondary" onClick={add}>
