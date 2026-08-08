@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/providers/AuthProvider';
 import { fetchMeCV, submitOnboarding } from '@/api/profile';
 import { PLANS, planById, type PlanId } from '@/utils/plans';
 import { startCheckoutAndNavigate } from '@/utils/checkout';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
-  fetchMeSubscription,
   fetchOnboardingDraft,
   saveOnboardingDraft,
   type OnboardingChatFields,
@@ -22,6 +20,9 @@ import { filterPlacementMessages } from '@/utils/chatDisplay';
 import { evaluateProfileReadiness, mergeCVIntoFields } from '@/utils/profileReadiness';
 import { isChatReady } from '@/onboarding/chatHeuristic';
 import { safeReplace } from '@/utils/safeNavigate';
+import { useUserContext } from '@/hooks/useUserContext';
+import { UserStageBanner } from '@/components/UserStageBanner';
+import { pathMatchesStageHome } from '@/utils/userStage';
 
 type Phase = 'chat' | 'plan';
 
@@ -33,11 +34,6 @@ function readPlanFromQuery(): PlanId {
   return 'starter';
 }
 
-function isPaidStatus(status: string | undefined): boolean {
-  // Match useSubscriptionGate: active or past_due (still entitled).
-  return status === 'active' || status === 'past_due';
-}
-
 /**
  * Funnel: sign-in → intake chat (auto-advances when ready) → compact paywall
  * (one-tap plan → checkout). No free-tier exit; subscription required.
@@ -46,23 +42,15 @@ export default function Onboarding() {
   const { t } = useI18n();
   const { state, hasSession, ready, login } = useAuth();
   const wasAuthenticated = useRef(hasSession);
+  const userCtx = useUserContext({ loadProfile: true });
 
-  const subQ = useQuery({
-    queryKey: ['me-subscription'],
-    queryFn: fetchMeSubscription,
-    enabled: hasSession,
-    staleTime: 60_000,
-    placeholderData: (prev) => prev,
-  });
-
-  // Already subscribed → leave the paywall only. Never re-enter checkout.
-  // Profile gaps are completed on the dashboard (CV hub) — the dashboard
-  // must not send paid users back here (that was a redirect loop).
+  // Canonical stage owns the island: entitled users never stay on paywall.
   useEffect(() => {
-    if (!hasSession || subQ.isLoading || subQ.isFetching || subQ.isError) return;
-    if (!isPaidStatus(subQ.data?.status)) return;
-    safeReplace('/dashboard/');
-  }, [hasSession, subQ.isLoading, subQ.isFetching, subQ.isError, subQ.data?.status]);
+    if (!hasSession || userCtx.resolving || userCtx.stage === 'loading') return;
+    if (userCtx.onboardingAllowed) return;
+    if (pathMatchesStageHome(window.location.pathname, userCtx.homePath)) return;
+    safeReplace(userCtx.homePath);
+  }, [hasSession, userCtx.resolving, userCtx.stage, userCtx.onboardingAllowed, userCtx.homePath]);
 
   useEffect(() => {
     if (hasSession) {
@@ -90,7 +78,10 @@ export default function Onboarding() {
     }
   }
 
-  const [phase, setPhase] = useState<Phase>('chat');
+  // Stage drives default phase: paywall vs intake.
+  const [phase, setPhase] = useState<Phase>(() =>
+    userCtx.stage === 'onboarding_paywall' ? 'plan' : 'chat'
+  );
   const [fields, setFields] = useState<OnboardingChatFields>({});
   const [messages, setMessages] = useState<OnboardingChatMessage[]>([]);
   const [plan, setPlan] = useState<PlanId>(readPlanFromQuery);
@@ -102,6 +93,12 @@ export default function Onboarding() {
   const [chatSession, setChatSession] = useState(0);
   /** Prevent double auto-advance chat → plan. */
   const advancedToPlanRef = useRef(false);
+
+  useEffect(() => {
+    if (userCtx.stage === 'onboarding_paywall' && phase === 'chat' && draftLoaded) {
+      setPhase('plan');
+    }
+  }, [userCtx.stage, phase, draftLoaded]);
 
   function bumpWizardStep(min: 1 | 2 | 3): 1 | 2 | 3 {
     const next = (wizardStepRef.current > min ? wizardStepRef.current : min) as 1 | 2 | 3;
@@ -263,7 +260,13 @@ export default function Onboarding() {
 
   if (phase === 'chat') {
     return (
-      <div className="flex min-h-[min(100dvh,40rem)] flex-col bg-stone-50/80 dark:bg-navy-950">
+      <div
+        className="flex min-h-[min(100dvh,40rem)] flex-col bg-stone-50/80 dark:bg-navy-950"
+        data-user-stage={userCtx.stage}
+      >
+        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
+          <UserStageBanner stage={userCtx} />
+        </div>
         {draftLoaded ? (
           <PreferenceChat
             key={chatSession}
@@ -300,17 +303,21 @@ export default function Onboarding() {
 
   // ── Compact paywall ───────────────────────────────────────────────────
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col px-4 py-10 sm:px-6">
+    <div
+      className="mx-auto flex w-full max-w-lg flex-col px-4 py-10 sm:px-6"
+      data-user-stage={userCtx.stage}
+    >
+      <div className="mb-5">
+        <UserStageBanner stage={userCtx} />
+      </div>
       <header className="mb-6 text-center">
         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-          Profile ready
+          {userCtx.label}
         </p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
           Subscribe to unlock matches
         </h1>
-        <p className="mt-2 text-sm text-gray-600 dark:text-stone-300">
-          One tap opens secure checkout. Cancel anytime from your dashboard.
-        </p>
+        <p className="mt-2 text-sm text-gray-600 dark:text-stone-300">{userCtx.summary}</p>
       </header>
 
       {chips.length > 0 && (

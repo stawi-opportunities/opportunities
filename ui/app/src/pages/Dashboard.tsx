@@ -27,6 +27,8 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useMatchingProfileGate } from '@/hooks/useMatchingProfileGate';
 import { useSubscriptionGate } from '@/hooks/useSubscriptionGate';
+import { useUserContext } from '@/hooks/useUserContext';
+import { UserStageBanner } from '@/components/UserStageBanner';
 
 /** Map legacy hashes and query to canonical section + optional settings tab. */
 function resolveRoute(): { section: SectionId; settingsTab?: SettingsTab } {
@@ -63,6 +65,8 @@ export default function Dashboard() {
   // Subscription first: never paint product UI or load profile until allowed.
   const subscriptionGate = useSubscriptionGate();
   const profileGate = useMatchingProfileGate({ enabled: subscriptionGate.allowed });
+  // Full journey stage (subscription + readiness) for banners / data attributes.
+  const userCtx = useUserContext({ loadProfile: subscriptionGate.allowed });
 
   const sectionLabels: Record<string, string> = {
     matches: 'Matches',
@@ -156,8 +160,11 @@ export default function Dashboard() {
 
   return (
     <PreferenceChatHost>
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-        <DashboardHeader plan={plan} status={subscription} />
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8" data-user-stage={userCtx.stage}>
+        <DashboardHeader plan={plan} status={subscription} stageLabel={userCtx.label} />
+        <div className="mt-3">
+          <UserStageBanner stage={userCtx} />
+        </div>
         <PendingCheckoutPoller />
         <div className="mt-4 md:hidden">
           <DashboardSidebar
