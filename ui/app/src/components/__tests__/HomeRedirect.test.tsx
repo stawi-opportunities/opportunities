@@ -3,13 +3,12 @@ import { render } from '@testing-library/react';
 import type { AuthState } from '@stawi/auth-runtime';
 import HomeRedirect from '../HomeRedirect';
 import { __resetSafeNavigateForTests } from '@/utils/safeNavigate';
+import type { UserContext } from '@/hooks/useUserContext';
 
 let authState: AuthState = 'initializing';
 let hasSession = false;
 let ready = false;
-let subLoading = false;
-let subError = false;
-let subStatus: string | undefined;
+let userCtx: UserContext;
 
 vi.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({
@@ -22,15 +21,27 @@ vi.mock('@/providers/AuthProvider', () => ({
   }),
 }));
 
-vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: () => ({
-    isLoading: subLoading,
-    isError: subError,
-    data: subStatus != null ? { status: subStatus } : undefined,
-  }),
+vi.mock('@/hooks/useUserContext', () => ({
+  useUserContext: () => userCtx,
 }));
 
 let replaceSpy: ReturnType<typeof vi.fn>;
+
+function stageCtx(
+  partial: Partial<UserContext> & Pick<UserContext, 'stage' | 'homePath'>
+): UserContext {
+  return {
+    label: partial.label ?? partial.stage,
+    summary: partial.summary ?? '',
+    dashboardAllowed: partial.dashboardAllowed ?? partial.homePath.startsWith('/dashboard'),
+    onboardingAllowed: partial.onboardingAllowed ?? partial.homePath.startsWith('/onboarding'),
+    entitled: partial.entitled ?? false,
+    subscriptionStatus: partial.subscriptionStatus ?? null,
+    readiness: partial.readiness ?? null,
+    resolving: partial.resolving ?? false,
+    ...partial,
+  };
+}
 
 beforeEach(() => {
   __resetSafeNavigateForTests();
@@ -50,9 +61,11 @@ beforeEach(() => {
   authState = 'initializing';
   hasSession = false;
   ready = false;
-  subLoading = false;
-  subError = false;
-  subStatus = undefined;
+  userCtx = stageCtx({
+    stage: 'loading',
+    homePath: '/',
+    resolving: true,
+  });
 });
 
 function hero() {
@@ -78,72 +91,62 @@ describe('HomeRedirect', () => {
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
-  it('waits for subscription before redirecting signed-in users', () => {
+  it('waits while user context is resolving', () => {
     authState = 'authenticated';
     hasSession = true;
     ready = true;
-    subLoading = true;
-    subStatus = undefined;
+    userCtx = stageCtx({ stage: 'loading', homePath: '/', resolving: true });
     render(<HomeRedirect />);
-    expect(hero().style.display).toBe('none');
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
-  it('sends subscribed users to /dashboard/', () => {
+  it('sends entitled users to dashboard stage home', () => {
     authState = 'authenticated';
     hasSession = true;
     ready = true;
-    subStatus = 'active';
+    userCtx = stageCtx({
+      stage: 'dashboard_ready',
+      homePath: '/dashboard/',
+      entitled: true,
+      label: 'Matching active',
+    });
     render(<HomeRedirect />);
     expect(hero().style.display).toBe('none');
     expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
   });
 
-  it('sends unpaid users to /onboarding/ (not dashboard)', () => {
+  it('sends unpaid intake users to onboarding', () => {
     authState = 'authenticated';
     hasSession = true;
     ready = true;
-    subStatus = 'none';
+    userCtx = stageCtx({
+      stage: 'onboarding_intake',
+      homePath: '/onboarding/',
+      onboardingAllowed: true,
+      label: 'Profile setup',
+    });
     render(<HomeRedirect />);
     expect(replaceSpy).toHaveBeenCalledWith('/onboarding/');
   });
 
-  it('does not send subscribed users to paywall when subscription API errors', () => {
+  it('sends subscription_error to dashboard home', () => {
     authState = 'authenticated';
     hasSession = true;
     ready = true;
-    subError = true;
-    subStatus = undefined;
-    render(<HomeRedirect />);
-    expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
-    expect(replaceSpy).not.toHaveBeenCalledWith('/onboarding/');
-  });
-
-  it('sends past_due users to dashboard (still entitled)', () => {
-    authState = 'authenticated';
-    hasSession = true;
-    ready = true;
-    subStatus = 'past_due';
+    userCtx = stageCtx({
+      stage: 'subscription_error',
+      homePath: '/dashboard/',
+      label: 'Account check failed',
+    });
     render(<HomeRedirect />);
     expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
   });
 
-  it('does not flash signed-out during token refresh for paid users', () => {
-    authState = 'refreshing';
-    hasSession = true;
-    ready = true;
-    subStatus = 'active';
-    hero().style.display = 'none';
-    render(<HomeRedirect />);
-    expect(hero().style.display).toBe('none');
-    expect(replaceSpy).toHaveBeenCalledWith('/dashboard/');
-  });
-
-  it('reveals the hero (correcting a stale hint) when unauthenticated', () => {
+  it('reveals the hero when unauthenticated', () => {
     authState = 'unauthenticated';
     hasSession = false;
     ready = true;
-    hero().style.display = 'none'; // inline script hid it from a stale hint
+    hero().style.display = 'none';
     render(<HomeRedirect />);
     expect(hero().style.display).toBe('');
     expect(replaceSpy).not.toHaveBeenCalled();

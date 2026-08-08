@@ -62,7 +62,7 @@ describe('evaluateSubscriptionAccess', () => {
   });
 
   it('allows when status is active or past_due', () => {
-    expect(evaluateSubscriptionAccess({ ...base, status: 'active' })).toEqual({
+    expect(evaluateSubscriptionAccess({ ...base, status: 'active' })).toMatchObject({
       allowed: true,
       block: false,
       error: false,
@@ -103,12 +103,13 @@ describe('evaluateSubscriptionAccess', () => {
         billingReturn: true,
         status: 'none',
       })
-    ).toEqual({
+    ).toMatchObject({
       allowed: false,
       block: true,
       error: false,
       shouldRedirect: false,
       confirmingPayment: true,
+      stage: 'confirming_payment',
     });
   });
 

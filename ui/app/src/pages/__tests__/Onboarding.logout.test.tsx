@@ -45,6 +45,14 @@ vi.mock('@/api/candidates', () => ({
 vi.mock('@/api/profile', () => ({
   fetchMeCV: vi.fn(() => Promise.resolve(null)),
   submitOnboarding: vi.fn(),
+  fetchMeSubscription: vi.fn(() =>
+    Promise.resolve({
+      plan: null,
+      status: 'none',
+      queued_matches: 0,
+      delivered_this_week: 0,
+    })
+  ),
 }));
 
 function renderOnboarding() {
