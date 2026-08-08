@@ -113,12 +113,16 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		log := util.Log(ctx)
-		// JWT sub = platform profile_id (only login identity).
-		profileID := httpmw.CandidateFromContext(ctx)
+		// JWT sub = platform profile_id (person). Job-seeker is a linked role.
+		profileID := httpmw.ProfileIDFromContext(ctx)
 
-		// Never start a second payment while the candidate is already entitled.
+		// Product-local job-seeker id for ledger/activation (not the profile).
+		candidateID := profileID
 		if deps.Candidates != nil {
 			if cand, cerr := loadCandidateByProfileID(ctx, deps.Candidates, profileID); cerr == nil && cand != nil {
+				if cand.ID != "" {
+					candidateID = cand.ID
+				}
 				switch statusFromCandidate(cand) {
 				case "active", "past_due":
 					httpmw.ProblemJSON(w, http.StatusConflict, "already_subscribed",
@@ -150,8 +154,8 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 		// holds email/phone. Do not invent contact fields here.
 		country := strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 		res, err := deps.Gateway.CreateCheckout(ctx, billing.CheckoutRequest{
-			CandidateID: profileID, // ledger / activator key (same as profile_id)
-			ProfileID:   profileID, // JWT sub → ProfileService.GetById
+			CandidateID: candidateID, // product-local job seeker (activation key)
+			ProfileID:   profileID,   // JWT sub → ProfileService contacts
 			Plan:        plan,
 			Country:     country,
 		})
@@ -160,7 +164,9 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			return
 		}
 		if err != nil {
-			log.WithError(err).WithField("profile_id", profileID).Error("billing/checkout: gateway create failed")
+			log.WithError(err).WithField("profile_id", profileID).
+				WithField("candidate_id", candidateID).
+				Error("billing/checkout: gateway create failed")
 			httpmw.ProblemJSON(w, http.StatusBadGateway, "checkout_failed", "could not start checkout")
 			return
 		}
@@ -181,7 +187,7 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			}
 			if perr := deps.Store.Create(ctx, billing.Checkout{
 				PromptID:       res.PromptID,
-				CandidateID:    profileID,
+				CandidateID:    candidateID,
 				PlanID:         string(plan.ID),
 				Route:          string(res.Route),
 				Status:         persistStatus,

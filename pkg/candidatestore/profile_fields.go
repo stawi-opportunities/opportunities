@@ -91,7 +91,7 @@ SELECT COALESCE(name,''),
        COALESCE(work_history,'[]')::text,
        updated_at,
        cv_scored_at
-  FROM candidate_profiles WHERE id = $1
+  FROM candidate_profiles WHERE id = $1 OR profile_id = $1
 `
 	var (
 		pf            ProfileFields
@@ -219,7 +219,7 @@ UPDATE candidate_profiles SET
   needs_sponsorship = $30,
   work_history = $31::jsonb,
   updated_at = NOW()
-WHERE id = $1`,
+WHERE id = $1 OR profile_id = $1`,
 		candidateID,
 		pf.Name,
 		pf.Phone,

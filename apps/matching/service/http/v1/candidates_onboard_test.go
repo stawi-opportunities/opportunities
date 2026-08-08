@@ -23,21 +23,24 @@ type fakeOnboardStore struct {
 	draftCleared bool
 }
 
-func (f *fakeOnboardStore) OnboardAtomically(_ context.Context, candidateID string, mutate func(*domain.CandidateProfile)) error {
+func (f *fakeOnboardStore) OnboardAtomically(_ context.Context, profileID string, mutate func(*domain.CandidateProfile)) (string, error) {
 	if f.txErr != nil {
-		return f.txErr
+		return "", f.txErr
 	}
-	c := &domain.CandidateProfile{ProfileID: candidateID}
-	c.ID = candidateID
+	// Simulate product-local candidate id distinct from platform profile_id.
+	c := &domain.CandidateProfile{ProfileID: profileID}
+	c.ID = "cand_" + profileID
 	if f.seed != nil {
 		*c = *f.seed
-		c.ProfileID = candidateID
-		c.ID = candidateID
+		c.ProfileID = profileID
+		if c.ID == "" {
+			c.ID = "cand_" + profileID
+		}
 	}
 	mutate(c)
 	f.updatedCand = c
 	f.draftCleared = true
-	return nil
+	return c.ID, nil
 }
 
 type fakeOnboardMatchTrigger struct {
@@ -87,8 +90,8 @@ func TestCandidatesOnboardHandler_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	var resp map[string]string
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "cand_onboard_1", resp["id"])
-	require.Equal(t, "cand_onboard_1", resp["profile_id"])
+	require.Equal(t, "cand_cand_onboard_1", resp["id"])    // product-local job-seeker id
+	require.Equal(t, "cand_onboard_1", resp["profile_id"]) // platform person (JWT sub)
 	require.NotNil(t, store.updatedCand)
 	require.Equal(t, "Backend Engineer", store.updatedCand.TargetJobTitle)
 	require.Equal(t, "mid", store.updatedCand.ExperienceLevel)
@@ -145,7 +148,7 @@ func TestCandidatesOnboardHandler_EmptyTargetJobTitleAccepted(t *testing.T) {
 	require.NotNil(t, store.updatedCand)
 	require.Empty(t, store.updatedCand.TargetJobTitle)
 	require.True(t, trigger.called, "initial match trigger must fire after a successful onboard")
-	require.Equal(t, "cand_onboard_1", trigger.candidateID)
+	require.Equal(t, "cand_cand_onboard_1", trigger.candidateID)
 	require.Equal(t, []string{"job"}, trigger.kinds)
 }
 

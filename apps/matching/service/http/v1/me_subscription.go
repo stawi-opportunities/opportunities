@@ -123,7 +123,8 @@ func SubscriptionHandler(deps SubscriptionDeps) http.HandlerFunc {
 	}
 }
 
-// loadCandidateByProfileID loads the candidate for JWT sub = profile_id.
+// loadCandidateByProfileID loads the job-seeker for a platform profile_id
+// (JWT sub). Prefer ResolveByProfileID; tests may only implement GetByID.
 func loadCandidateByProfileID(ctx context.Context, r CandidateProfileReader, profileID string) (*domain.CandidateProfile, error) {
 	if r == nil {
 		return nil, nil
@@ -131,7 +132,7 @@ func loadCandidateByProfileID(ctx context.Context, r CandidateProfileReader, pro
 	if byProfile, ok := r.(CandidateByProfileID); ok {
 		return byProfile.ResolveByProfileID(ctx, profileID)
 	}
-	// Tests / simple fakes: treat id as profile_id (historical convention).
+	// Fakes that key rows by profile_id for unit tests.
 	return r.GetByID(ctx, profileID)
 }
 
