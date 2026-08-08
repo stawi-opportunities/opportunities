@@ -175,13 +175,13 @@ h2{font-size:1.1rem;margin:1.5rem 0 .5rem;border-bottom:1px solid #e2e8f0;paddin
 .fix{margin:.5rem 0;padding:.75rem;background:#f8fafc;border-radius:8px}
 </style></head><body>`)
 	b.WriteString("<h1>CV ATS Report</h1>")
-	b.WriteString(fmt.Sprintf(`<p class="meta">Generated %s · Stawi Opportunities</p>`,
-		html.EscapeString(r.GeneratedAt.Format(time.RFC1123))))
+	fmt.Fprintf(&b, `<p class="meta">Generated %s · Stawi Opportunities</p>`,
+		html.EscapeString(r.GeneratedAt.Format(time.RFC1123)))
 
 	if r.Overall != nil {
-		b.WriteString(fmt.Sprintf(`<p class="score">%d<span style="font-size:1rem;font-weight:500"> / 100 overall</span></p>`, r.Overall.OverallScore))
+		fmt.Fprintf(&b, `<p class="score">%d<span style="font-size:1rem;font-weight:500"> / 100 overall</span></p>`, r.Overall.OverallScore)
 		if r.Overall.TargetRole != "" {
-			b.WriteString(fmt.Sprintf(`<p class="meta">Target role: %s</p>`, html.EscapeString(r.Overall.TargetRole)))
+			fmt.Fprintf(&b, `<p class="meta">Target role: %s</p>`, html.EscapeString(r.Overall.TargetRole))
 		}
 		c := r.Overall.Components
 		b.WriteString(`<div class="grid">`)
@@ -192,7 +192,7 @@ h2{font-size:1.1rem;margin:1.5rem 0 .5rem;border-bottom:1px solid #e2e8f0;paddin
 			{"ATS", c.ATS}, {"Keywords", c.Keywords}, {"Impact", c.Impact},
 			{"Role fit", c.RoleFit}, {"Clarity", c.Clarity},
 		} {
-			b.WriteString(fmt.Sprintf(`<div class="card"><span>%s</span><strong>%d</strong></div>`, html.EscapeString(row.l), row.n))
+			fmt.Fprintf(&b, `<div class="card"><span>%s</span><strong>%d</strong></div>`, html.EscapeString(row.l), row.n)
 		}
 		b.WriteString(`</div>`)
 
@@ -200,9 +200,9 @@ h2{font-size:1.1rem;margin:1.5rem 0 .5rem;border-bottom:1px solid #e2e8f0;paddin
 			b.WriteString("<h2>Priority improvements</h2>")
 			for _, f := range r.Overall.PriorityFixes {
 				b.WriteString(`<div class="fix">`)
-				b.WriteString(fmt.Sprintf(`<strong>%s</strong> <span class="meta">(%s · %s)</span>`,
-					html.EscapeString(f.Title), html.EscapeString(f.Impact), html.EscapeString(f.Category)))
-				b.WriteString(fmt.Sprintf(`<p>%s</p>`, html.EscapeString(f.Why)))
+				fmt.Fprintf(&b, `<strong>%s</strong> <span class="meta">(%s · %s)</span>`,
+					html.EscapeString(f.Title), html.EscapeString(f.Impact), html.EscapeString(f.Category))
+				fmt.Fprintf(&b, `<p>%s</p>`, html.EscapeString(f.Why))
 				b.WriteString(`</div>`)
 			}
 		}
@@ -210,10 +210,10 @@ h2{font-size:1.1rem;margin:1.5rem 0 .5rem;border-bottom:1px solid #e2e8f0;paddin
 			b.WriteString("<h2>Suggested rewrites</h2>")
 			for _, rw := range r.Overall.Rewrites {
 				b.WriteString(`<div class="fix">`)
-				b.WriteString(fmt.Sprintf(`<p><strong>Before:</strong> %s</p>`, html.EscapeString(rw.Before)))
-				b.WriteString(fmt.Sprintf(`<p><strong>After:</strong> %s</p>`, html.EscapeString(rw.After)))
+				fmt.Fprintf(&b, `<p><strong>Before:</strong> %s</p>`, html.EscapeString(rw.Before))
+				fmt.Fprintf(&b, `<p><strong>After:</strong> %s</p>`, html.EscapeString(rw.After))
 				if rw.Reason != "" {
-					b.WriteString(fmt.Sprintf(`<p class="meta">%s</p>`, html.EscapeString(rw.Reason)))
+					fmt.Fprintf(&b, `<p class="meta">%s</p>`, html.EscapeString(rw.Reason))
 				}
 				b.WriteString(`</div>`)
 			}
@@ -224,20 +224,20 @@ h2{font-size:1.1rem;margin:1.5rem 0 .5rem;border-bottom:1px solid #e2e8f0;paddin
 	if r.JobsScored == 0 {
 		b.WriteString(`<p class="meta">No matched jobs yet — overall CV score only. Complete preferences and wait for matches for a fuller report.</p>`)
 	} else {
-		b.WriteString(fmt.Sprintf(`<p class="meta">Average CV↔job fit: <strong>%d</strong>/100 across %d matches</p>`, r.AvgMatchFit, r.JobsScored))
+		fmt.Fprintf(&b, `<p class="meta">Average CV↔job fit: <strong>%d</strong>/100 across %d matches</p>`, r.AvgMatchFit, r.JobsScored)
 		for _, j := range r.MatchedJobs {
 			b.WriteString(`<div class="job">`)
 			title := j.Title
 			if title == "" {
 				title = "Matched opportunity"
 			}
-			b.WriteString(fmt.Sprintf(`<h3>%s</h3>`, html.EscapeString(title)))
+			fmt.Fprintf(&b, `<h3>%s</h3>`, html.EscapeString(title))
 			if j.Company != "" {
-				b.WriteString(fmt.Sprintf(`<p class="meta">%s</p>`, html.EscapeString(j.Company)))
+				fmt.Fprintf(&b, `<p class="meta">%s</p>`, html.EscapeString(j.Company))
 			}
-			b.WriteString(fmt.Sprintf(`<p>Match engine score: %.0f%% · CV fit: <strong>%d</strong>/100</p>`, j.MatchScore*100, j.FitScore))
+			fmt.Fprintf(&b, `<p>Match engine score: %.0f%% · CV fit: <strong>%d</strong>/100</p>`, j.MatchScore*100, j.FitScore)
 			if len(j.Signals) > 0 {
-				b.WriteString(fmt.Sprintf(`<p class="meta">Overlap: %s</p>`, html.EscapeString(strings.Join(j.Signals, ", "))))
+				fmt.Fprintf(&b, `<p class="meta">Overlap: %s</p>`, html.EscapeString(strings.Join(j.Signals, ", ")))
 			}
 			b.WriteString(`</div>`)
 		}

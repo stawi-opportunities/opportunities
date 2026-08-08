@@ -112,7 +112,10 @@ export function CVDetailsTab() {
         window.location.href = res.redirect_url;
         return;
       }
-      toast(res.message || 'Checkout started — complete payment to receive your report by email.', 'info');
+      toast(
+        res.message || 'Checkout started — complete payment to receive your report by email.',
+        'info'
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/cv_required/i.test(msg)) {
@@ -178,9 +181,7 @@ export function CVDetailsTab() {
       <SectionList
         title="Experience"
         emptyLabel="Add a role"
-        onAdd={() =>
-          patch({ ...doc, experience: [emptyExperience(), ...doc.experience] })
-        }
+        onAdd={() => patch({ ...doc, experience: [emptyExperience(), ...doc.experience] })}
       >
         {doc.experience.map((e, idx) => (
           <ExperienceCard
@@ -257,10 +258,17 @@ export function CVDetailsTab() {
       </Panel>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="primary" disabled={saving || !dirty} onClick={() => void saveDocument()}>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={saving || !dirty}
+          onClick={() => void saveDocument()}
+        >
           {saving ? 'Saving…' : dirty ? 'Save CV' : 'Saved'}
         </Button>
-        {dirty && <span className="text-xs text-amber-700 dark:text-amber-300">Unsaved changes</span>}
+        {dirty && (
+          <span className="text-xs text-amber-700 dark:text-amber-300">Unsaved changes</span>
+        )}
       </div>
 
       {/* Paid ATS report + optional chat assist */}
@@ -310,7 +318,9 @@ export function CVDetailsTab() {
                 Open CV assistant
               </button>
             ) : (
-              <p className="mt-3 text-xs text-secondary">Chat assistant is unavailable on this page.</p>
+              <p className="mt-3 text-xs text-secondary">
+                Chat assistant is unavailable on this page.
+              </p>
             )}
           </Panel>
         </div>
@@ -424,7 +434,11 @@ function ExperienceCard({
   return (
     <div className="rounded-lg border border-muted bg-surface-muted p-3 sm:p-4">
       <div className="grid gap-2 sm:grid-cols-2">
-        <Field label="Title" value={entry.title} onChange={(title) => onChange({ ...entry, title })} />
+        <Field
+          label="Title"
+          value={entry.title}
+          onChange={(title) => onChange({ ...entry, title })}
+        />
         <Field
           label="Company"
           value={entry.company}
@@ -448,7 +462,11 @@ function ExperienceCard({
           type="checkbox"
           checked={Boolean(entry.current)}
           onChange={(e) =>
-            onChange({ ...entry, current: e.target.checked, end: e.target.checked ? '' : entry.end })
+            onChange({
+              ...entry,
+              current: e.target.checked,
+              end: e.target.checked ? '' : entry.end,
+            })
           }
         />
         I currently work here

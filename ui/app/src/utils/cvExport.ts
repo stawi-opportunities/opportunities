@@ -3,10 +3,7 @@
  * PDF v1 = open HTML and use browser print / save as PDF.
  */
 
-import {
-  structuredCVToPlainText,
-  type StructuredCV,
-} from '@/utils/structuredCV';
+import { structuredCVToPlainText, type StructuredCV } from '@/utils/structuredCV';
 
 export type CVTemplateId = 'classic' | 'modern' | 'compact';
 
@@ -155,9 +152,7 @@ export function buildCVHtmlDocument(input: CVExportInput): string {
   const contact = doc
     ? [doc.basics.location, doc.basics.phone, doc.basics.email].filter(Boolean).join(' · ')
     : '';
-  const main = doc
-    ? sectionHtml(doc)
-    : bodyToHtml(input.bodyText?.trim() || '');
+  const main = doc ? sectionHtml(doc) : bodyToHtml(input.bodyText?.trim() || '');
 
   return `<!DOCTYPE html>
 <html lang="en">
