@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  fetchProfileFields,
-  updateProfileFields,
-  type ProfileFieldsPayload,
-} from '@/api/profile';
+import { fetchProfileFields, updateProfileFields, type ProfileFieldsPayload } from '@/api/profile';
 import { PreferencesPanel } from '@/components/dashboard/PreferencesPanel';
 import { Panel } from '@/components/dashboard/Panel';
 import { Button } from '@/components/ui/Button';
@@ -42,7 +38,16 @@ export function CVPreferencesTab() {
     setDirty(true);
   }
 
-  function setCSV(key: 'preferred_countries' | 'preferred_regions' | 'preferred_locations' | 'preferred_roles' | 'languages' | 'preferred_timezones', raw: string) {
+  function setCSV(
+    key:
+      | 'preferred_countries'
+      | 'preferred_regions'
+      | 'preferred_locations'
+      | 'preferred_roles'
+      | 'languages'
+      | 'preferred_timezones',
+    raw: string
+  ) {
     const arr = raw
       .split(/[,;]/)
       .map((s) => s.trim())
@@ -259,7 +264,12 @@ export function CVPreferencesTab() {
       </Panel>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="primary" disabled={saving || !dirty} onClick={() => void save()}>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={saving || !dirty}
+          onClick={() => void save()}
+        >
           {saving ? 'Saving…' : dirty ? 'Save match preferences' : 'Saved'}
         </Button>
       </div>

@@ -129,8 +129,7 @@ export function hydrateStructuredCV(
   extras?: { name?: string; phone?: string; email?: string }
 ): StructuredCV {
   const strong = pf?.strong_skills?.length ? pf.strong_skills : (pf?.skills ?? []);
-  const location =
-    pf?.preferred_locations?.[0] || pf?.preferred_countries?.[0] || undefined;
+  const location = pf?.preferred_locations?.[0] || pf?.preferred_countries?.[0] || undefined;
 
   return {
     basics: {
@@ -305,9 +304,7 @@ export function applyRewriteToDocument(
     }
   }
   if (!applied) {
-    next.summary = next.summary
-      ? `${next.summary.trim()}\n\n${after}`
-      : after;
+    next.summary = next.summary ? `${next.summary.trim()}\n\n${after}` : after;
   }
   next.source = 'manual';
   next.updated_at = new Date().toISOString();
