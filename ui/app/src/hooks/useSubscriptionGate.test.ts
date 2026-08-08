@@ -88,6 +88,14 @@ describe('evaluateSubscriptionAccess', () => {
     });
   });
 
+  it('does not redirect on unknown status (avoids thrash)', () => {
+    expect(evaluateSubscriptionAccess({ ...base, status: 'weird' })).toMatchObject({
+      allowed: false,
+      block: true,
+      shouldRedirect: false,
+    });
+  });
+
   it('billing return without active status only confirms payment (no product UI)', () => {
     expect(
       evaluateSubscriptionAccess({

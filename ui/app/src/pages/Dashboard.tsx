@@ -129,7 +129,8 @@ export default function Dashboard() {
     return <ProfileGateSkeleton />;
   }
 
-  // Incomplete CV / aspirational profile → onboarding chat (matching needs it).
+  // Wait only for profile readiness fetch — incomplete profiles stay here
+  // (CV hub). Never redirect paid users back to onboarding (redirect loop).
   if (profileGate.checking) {
     return <ProfileGateSkeleton />;
   }
