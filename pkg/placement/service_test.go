@@ -100,6 +100,28 @@ func TestRebuild_StrictEmbedRequiresMaterial(t *testing.T) {
 	}
 }
 
+func TestRebuild_StrictEmbedEmptyVectorIsConfiguredError(t *testing.T) {
+	// Mirrors Extractor.Embed when EMBEDDING_BASE_URL is unset: (nil, nil).
+	svc := &Service{
+		Store:    &memStore{},
+		Embedder: stubEmbedder{vec: nil},
+	}
+	_, err := svc.Rebuild(context.Background(), RebuildInput{
+		CandidateID: "c1",
+		Fields: Fields{
+			TargetJobTitle: "Engineer",
+			ExtraInfo:      strings.Repeat("experience education skills backend ", 20),
+		},
+		StrictEmbed: true,
+	})
+	if err == nil {
+		t.Fatal("strict rebuild must fail when embedder returns empty vector")
+	}
+	if !strings.Contains(err.Error(), "embeddings not configured") {
+		t.Fatalf("want embeddings not configured, got %v", err)
+	}
+}
+
 func TestRebuild_ThinExtraInfoStillEmbeds(t *testing.T) {
 	// Skills-only ExtraInfo used to skip embedding (looksLikeCV false + no title).
 	svc := &Service{

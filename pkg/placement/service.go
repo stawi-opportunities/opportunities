@@ -181,6 +181,14 @@ func (s *Service) finishRebuild(ctx context.Context, in RebuildInput, fields Fie
 			}
 			util.Log(ctx).WithError(err).WithField("candidate_id", candidateID).
 				Warn("placement: embed failed (summary still stored)")
+		} else if len(vec) == 0 {
+			// Extractor.Embed returns (nil, nil) when EMBEDDING_* is unset —
+			// do not pretend rebuild succeeded under StrictEmbed.
+			if in.StrictEmbed {
+				return nil, fmt.Errorf("placement: embeddings not configured (empty vector)")
+			}
+			util.Log(ctx).WithField("candidate_id", candidateID).
+				Warn("placement: embed returned empty vector (embeddings not configured)")
 		}
 	} else if s.Index != nil {
 		if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil {
