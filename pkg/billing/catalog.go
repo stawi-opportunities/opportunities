@@ -56,7 +56,7 @@ var catalog = []Plan{
 	},
 	{
 		ID: PlanManaged, Name: "Managed",
-		Description: "Unlimited AI discovery, priority match alerts, and uncapped match feed.",
+		Description: "Priority AI-matched jobs and digests — higher invoke allowance and agent-priority alerts.",
 		Interval:    "month", Amount: 200, Currency: "USD", USDCents: 20000,
 	},
 }
@@ -132,10 +132,12 @@ func NormalizePlan(raw string) (PlanID, bool) {
 // Entitlements are the server-enforced limits for a paid plan.
 // Matches marketing copy in ui/app/src/utils/plans.ts.
 type Entitlements struct {
-	// DailyCap / WeeklyCap bound match generation (candidate_match_indexes).
-	// WeeklyCap 0 means uncapped (managed).
+	// DailyCap / WeeklyCap are legacy match-row caps. Product path sets both to 0
+	// (unlimited rows above min score). Kept for DB column compatibility.
 	DailyCap  int
 	WeeklyCap int
+	// InvokeDailyLimit caps user-initiated MatchInvoke calls per UTC day.
+	InvokeDailyLimit int
 	// AutoApply is reserved for future employer-side automation.
 	// All plans false until a reliable auto-apply product ships.
 	AutoApply bool
@@ -149,14 +151,11 @@ type Entitlements struct {
 func EntitlementsFor(plan PlanID) Entitlements {
 	switch plan {
 	case PlanManaged, PlanPro:
-		// Unlimited discovery + higher daily generation budget.
-		// AutoApply remains false until a real apply automation product ships.
-		return Entitlements{DailyCap: 50, WeeklyCap: 0, AutoApply: false, Priority: "agent"}
+		return Entitlements{DailyCap: 0, WeeklyCap: 0, InvokeDailyLimit: 100, AutoApply: false, Priority: "agent"}
 	case PlanStarter:
-		return Entitlements{DailyCap: 2, WeeklyCap: 5, AutoApply: false, Priority: "standard"}
+		return Entitlements{DailyCap: 0, WeeklyCap: 0, InvokeDailyLimit: 30, AutoApply: false, Priority: "standard"}
 	default:
-		// Free proof: enough matches to prove quality before checkout.
-		return Entitlements{DailyCap: 1, WeeklyCap: 3, AutoApply: false, Priority: "proof"}
+		return Entitlements{DailyCap: 0, WeeklyCap: 0, InvokeDailyLimit: 1, AutoApply: false, Priority: "proof"}
 	}
 }
 
