@@ -14,13 +14,50 @@ describe('structuredCV', () => {
       strong_skills: ['Go'],
       working_skills: ['SQL'],
       work_history: [{ title: 'Dev', company: 'Acme', start_date: '2020', summary: 'Shipped' }],
-      education: 'MIT BS CS',
+      education_history: [
+        { school: 'MIT', degree: 'BSc', field: 'Computer Science', start: '2014', end: '2018' },
+      ],
     });
     expect(doc.basics.headline).toBe('Engineer');
     expect(doc.experience).toHaveLength(1);
     expect(doc.experience[0]!.company).toBe('Acme');
     expect(doc.skills.strong).toContain('Go');
-    expect(doc.education[0]!.school).toContain('MIT');
+    expect(doc.education[0]!.school).toBe('MIT');
+    expect(doc.education[0]!.degree).toBe('BSc');
+  });
+
+  it('does not invent education cards from free-text (AI education_history only)', () => {
+    const doc = hydrateStructuredCV({
+      education: `MSc Data Science — Stanford University (2020–2022)
+BSc Computer Science — University of Nairobi (2014–2018)`,
+    });
+    expect(doc.education).toEqual([]);
+  });
+
+  it('hydrates AI education_history into structured cards', () => {
+    const doc = hydrateStructuredCV({
+      education: 'ignored free text',
+      education_history: [
+        {
+          school: 'MIT',
+          degree: 'BSc',
+          field: 'Computer Science',
+          start: '2014',
+          end: '2018',
+          notes: 'First Class',
+        },
+        { school: 'Stanford', degree: 'MSc', field: 'AI', start: '2019', end: '2021' },
+      ],
+    });
+    expect(doc.education).toHaveLength(2);
+    expect(doc.education[0]!.school).toBe('MIT');
+    expect(doc.education[0]!.degree).toBe('BSc');
+    expect(doc.education[0]!.field).toBe('Computer Science');
+    expect(doc.education[0]!.notes).toBe('First Class');
+    const pf = structuredCVToProfileFields(doc);
+    expect(pf.education_history).toHaveLength(2);
+    expect(pf.education).toMatch(/MIT/);
+    expect(pf.education).not.toBe('ignored free text');
   });
 
   it('uses profile-fields name when extras omitted (no stored phone/email)', () => {

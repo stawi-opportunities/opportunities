@@ -78,6 +78,8 @@ export interface ProfileFieldsPayload {
   preferred_roles?: string[];
   industries?: string[];
   education?: string;
+  /** Structured school/degree rows (preferred over free-text education). */
+  education_history?: Array<Record<string, unknown>>;
   languages?: string[];
   bio?: string;
   preferred_locations?: string[];
@@ -120,19 +122,20 @@ function historyFromMaps(rows: Array<Record<string, unknown>> | undefined): CVEx
   }));
 }
 
-function educationFromText(education: string | undefined): CVEducation[] {
-  const t = education?.trim();
-  if (!t) return [];
-  // Single free-text education → one editable card (LinkedIn-like later multi-entry).
-  return [
-    {
-      id: newId(),
-      school: t,
-      degree: '',
-      field: '',
-      notes: '',
-    },
-  ];
+/** Map AI-structured education_history rows into editable cards (no local parsing). */
+function educationFromMaps(rows: Array<Record<string, unknown>> | undefined): CVEducation[] {
+  if (!rows?.length) return [];
+  return rows
+    .map((r) => ({
+      id: asString(r.id) || newId(),
+      school: asString(r.school ?? r.institution ?? r.university ?? r.college),
+      degree: asString(r.degree ?? r.qualification) || undefined,
+      field: asString(r.field ?? r.major ?? r.concentration) || undefined,
+      start: asString(r.start_date ?? r.start ?? r.from) || undefined,
+      end: asString(r.end_date ?? r.end ?? r.to) || undefined,
+      notes: asString(r.notes ?? r.honors ?? r.description ?? r.summary) || undefined,
+    }))
+    .filter((e) => e.school || e.degree || e.field);
 }
 
 function dedupeContacts(items: string[]): string[] {
@@ -182,7 +185,8 @@ export function hydrateStructuredCV(
     },
     summary: pf?.bio?.trim() || '',
     experience: historyFromMaps(pf?.work_history),
-    education: educationFromText(pf?.education),
+    // Structured cards come only from AI education_history (not free-text parsing).
+    education: educationFromMaps(pf?.education_history),
     skills: {
       strong: [...strong],
       working: [...(pf?.working_skills ?? [])],
@@ -271,11 +275,22 @@ export function structuredCVToProfileFields(doc: StructuredCV): Partial<ProfileF
     summary: e.description,
   }));
 
+  const education_history = doc.education
+    .filter((ed) => ed.school || ed.degree || ed.field)
+    .map((ed) => ({
+      id: ed.id,
+      school: ed.school,
+      degree: ed.degree ?? '',
+      field: ed.field ?? '',
+      start: ed.start ?? '',
+      end: ed.end ?? '',
+      start_date: ed.start ?? '',
+      end_date: ed.end ?? '',
+      notes: ed.notes ?? '',
+    }));
+
   const educationText = doc.education
-    .map((ed) => {
-      const parts = [ed.school, ed.degree, ed.field, ed.notes].filter(Boolean);
-      return parts.join(' — ');
-    })
+    .map((ed) => formatEducationLine(ed))
     .filter(Boolean)
     .join('\n');
 
@@ -304,8 +319,29 @@ export function structuredCVToProfileFields(doc: StructuredCV): Partial<ProfileF
     certifications: doc.certifications,
     languages: doc.languages,
     education: educationText,
+    education_history,
     work_history,
   };
+}
+
+/** Compact one-line summary: "Degree in Field — School (start–end) · notes". */
+function formatEducationLine(ed: CVEducation): string {
+  let deg = '';
+  if (ed.degree && ed.field) {
+    deg = / in /i.test(ed.degree) ? ed.degree : `${ed.degree} in ${ed.field}`;
+  } else {
+    deg = ed.degree || ed.field || '';
+  }
+  let main = '';
+  if (deg && ed.school) main = `${deg} — ${ed.school}`;
+  else if (ed.school) main = ed.school;
+  else if (deg) main = deg;
+  else return (ed.notes ?? '').trim();
+
+  const dates = [ed.start, ed.end].filter(Boolean).join('–');
+  if (dates) main = `${main} (${dates})`;
+  if (ed.notes?.trim()) main = `${main} · ${ed.notes.trim()}`;
+  return main;
 }
 
 export function emptyExperience(): CVExperience {

@@ -28,20 +28,23 @@ type ProfileFields struct {
 	// ProfileService CreateContact. Never persisted on candidate_profiles.
 	ContactDetails []string `json:"contact_details,omitempty"`
 	// CVContactIDs is read-only on GET: stored platform contact ids.
-	CVContactIDs     []string         `json:"cv_contact_ids,omitempty"`
-	CurrentTitle     string           `json:"current_title,omitempty"`
-	TargetJobTitle   string           `json:"target_job_title,omitempty"`
-	Seniority        string           `json:"seniority,omitempty"`
-	ExperienceLevel  string           `json:"experience_level,omitempty"`
-	YearsExperience  int              `json:"years_experience,omitempty"`
-	Skills           []string         `json:"skills,omitempty"`
-	StrongSkills     []string         `json:"strong_skills,omitempty"`
-	WorkingSkills    []string         `json:"working_skills,omitempty"`
-	ToolsFrameworks  []string         `json:"tools_frameworks,omitempty"`
-	Certifications   []string         `json:"certifications,omitempty"`
-	PreferredRoles   []string         `json:"preferred_roles,omitempty"`
-	Industries       []string         `json:"industries,omitempty"`
-	Education        string           `json:"education,omitempty"`
+	CVContactIDs    []string `json:"cv_contact_ids,omitempty"`
+	CurrentTitle    string   `json:"current_title,omitempty"`
+	TargetJobTitle  string   `json:"target_job_title,omitempty"`
+	Seniority       string   `json:"seniority,omitempty"`
+	ExperienceLevel string   `json:"experience_level,omitempty"`
+	YearsExperience int      `json:"years_experience,omitempty"`
+	Skills          []string `json:"skills,omitempty"`
+	StrongSkills    []string `json:"strong_skills,omitempty"`
+	WorkingSkills   []string `json:"working_skills,omitempty"`
+	ToolsFrameworks []string `json:"tools_frameworks,omitempty"`
+	Certifications  []string `json:"certifications,omitempty"`
+	PreferredRoles  []string `json:"preferred_roles,omitempty"`
+	Industries      []string `json:"industries,omitempty"`
+	Education       string   `json:"education,omitempty"`
+	// EducationHistory is structured school/degree rows (most-recent first).
+	// Prefer this over free-text Education when hydrating the CV hub.
+	EducationHistory []map[string]any `json:"education_history,omitempty"`
 	Languages        []string         `json:"languages,omitempty"`
 	Bio              string           `json:"bio,omitempty"`
 	Locations        []string         `json:"preferred_locations,omitempty"`
@@ -75,6 +78,7 @@ SELECT COALESCE(name,''),
        COALESCE(preferred_roles,''),
        COALESCE(industries,''),
        COALESCE(education,''),
+       COALESCE(education_history,'[]')::text,
        COALESCE(languages,''),
        COALESCE(bio,''),
        COALESCE(preferred_locations,''),
@@ -105,6 +109,7 @@ SELECT COALESCE(name,''),
 		regionsRaw    string
 		timezonesRaw  string
 		workHistRaw   string
+		eduHistRaw    string
 		contactIDs    pq.StringArray
 		usAuth        sql.NullBool
 		needsSpon     sql.NullBool
@@ -121,6 +126,7 @@ SELECT COALESCE(name,''),
 		pq.Array(&pf.ToolsFrameworks),
 		&certsRaw,
 		&preferredRaw, &industriesRaw, &pf.Education,
+		&eduHistRaw,
 		&languagesRaw, &pf.Bio,
 		&locationsRaw, &countriesRaw, &regionsRaw, &timezonesRaw,
 		&pf.RemotePref, &pf.JobSearchStatus,
@@ -157,6 +163,9 @@ SELECT COALESCE(name,''),
 	if workHistRaw != "" && workHistRaw != "[]" {
 		_ = json.Unmarshal([]byte(workHistRaw), &pf.WorkHistory)
 	}
+	if eduHistRaw != "" && eduHistRaw != "[]" {
+		_ = json.Unmarshal([]byte(eduHistRaw), &pf.EducationHistory)
+	}
 
 	etag := computeETag(updatedAt, cvScoredAt.Time)
 	return &pf, etag, nil
@@ -181,6 +190,13 @@ func PutProfileFields(ctx context.Context, db *sql.DB, candidateID string, pf *P
 	if pf.WorkHistory == nil {
 		workJSON = []byte("[]")
 	}
+	eduJSON, err := json.Marshal(pf.EducationHistory)
+	if err != nil {
+		return fmt.Errorf("candidatestore: marshal education_history: %w", err)
+	}
+	if pf.EducationHistory == nil {
+		eduJSON = []byte("[]")
+	}
 
 	skills := pf.Skills
 	if len(skills) == 0 {
@@ -203,20 +219,21 @@ UPDATE candidate_profiles SET
   preferred_roles = $13,
   industries = $14,
   education = $15,
-  languages = $16,
-  bio = $17,
-  preferred_locations = $18,
-  preferred_countries = $19,
-  preferred_regions = $20,
-  preferred_timezones = $21,
-  remote_preference = $22,
-  job_search_status = $23,
-  salary_min = $24,
-  salary_max = $25,
-  currency = $26,
-  us_work_auth = $27,
-  needs_sponsorship = $28,
-  work_history = $29::jsonb,
+  education_history = $16::jsonb,
+  languages = $17,
+  bio = $18,
+  preferred_locations = $19,
+  preferred_countries = $20,
+  preferred_regions = $21,
+  preferred_timezones = $22,
+  remote_preference = $23,
+  job_search_status = $24,
+  salary_min = $25,
+  salary_max = $26,
+  currency = $27,
+  us_work_auth = $28,
+  needs_sponsorship = $29,
+  work_history = $30::jsonb,
   updated_at = NOW()
 WHERE id = $1 OR profile_id = $1`,
 		candidateID,
@@ -234,6 +251,7 @@ WHERE id = $1 OR profile_id = $1`,
 		joinCSV(pf.PreferredRoles),
 		joinCSV(pf.Industries),
 		pf.Education,
+		string(eduJSON),
 		joinCSV(pf.Languages),
 		pf.Bio,
 		joinCSV(pf.Locations),

@@ -41,13 +41,16 @@ export function SettingsPage({
   return (
     <div className="space-y-6">
       <div className="border-b border-muted">
-        <nav className="-mb-px flex flex-wrap gap-x-6 gap-y-2" aria-label="Settings sections">
+        <nav
+          className="-mb-px flex gap-1 overflow-x-auto overscroll-x-contain pb-px [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-label="Settings sections"
+        >
           {TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActive(tab.id)}
-              className={`border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
+              className={`min-h-[44px] shrink-0 border-b-2 px-3 text-sm font-medium transition-colors sm:px-4 ${
                 active === tab.id
                   ? 'border-accent-600 text-accent-700'
                   : 'border-transparent text-secondary hover:border-muted hover:text-main'

@@ -30,7 +30,7 @@ export function CVHub() {
       </div>
 
       <nav
-        className="-mb-px flex flex-wrap gap-x-6 gap-y-2 border-b border-muted"
+        className="-mb-px flex gap-1 overflow-x-auto overscroll-x-contain border-b border-muted pb-px [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="CV sections"
       >
         {TABS.map((t) => (
@@ -38,7 +38,7 @@ export function CVHub() {
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
+            className={`min-h-[44px] shrink-0 border-b-2 px-3 text-sm font-medium transition-colors sm:px-4 ${
               tab === t.id
                 ? 'border-accent-600 text-accent-700'
                 : 'border-transparent text-secondary hover:border-muted hover:text-main'

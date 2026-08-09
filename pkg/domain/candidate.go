@@ -67,17 +67,18 @@ type CandidateProfile struct {
 	CVContactIDs pq.StringArray `gorm:"type:text[];not null;default:'{}'" json:"cv_contact_ids,omitempty"`
 
 	// AI-extracted profile fields
-	CurrentTitle    string         `gorm:"type:text" json:"current_title"`
-	Seniority       string         `gorm:"type:varchar(30)" json:"seniority"`
-	YearsExperience int            `gorm:"type:int" json:"years_experience"`
-	Skills          pq.StringArray `gorm:"type:text[]" json:"skills"`
-	StrongSkills    pq.StringArray `gorm:"type:text[]" json:"strong_skills"`
-	WorkingSkills   pq.StringArray `gorm:"type:text[]" json:"working_skills"`
-	ToolsFrameworks pq.StringArray `gorm:"type:text[]" json:"tools_frameworks"`
-	Certifications  string         `gorm:"type:text" json:"certifications"`
-	PreferredRoles  string         `gorm:"type:text" json:"preferred_roles"`
-	Industries      string         `gorm:"type:text" json:"industries"`
-	Education       string         `gorm:"type:text" json:"education"`
+	CurrentTitle     string         `gorm:"type:text" json:"current_title"`
+	Seniority        string         `gorm:"type:varchar(30)" json:"seniority"`
+	YearsExperience  int            `gorm:"type:int" json:"years_experience"`
+	Skills           pq.StringArray `gorm:"type:text[]" json:"skills"`
+	StrongSkills     pq.StringArray `gorm:"type:text[]" json:"strong_skills"`
+	WorkingSkills    pq.StringArray `gorm:"type:text[]" json:"working_skills"`
+	ToolsFrameworks  pq.StringArray `gorm:"type:text[]" json:"tools_frameworks"`
+	Certifications   string         `gorm:"type:text" json:"certifications"`
+	PreferredRoles   string         `gorm:"type:text" json:"preferred_roles"`
+	Industries       string         `gorm:"type:text" json:"industries"`
+	Education        string         `gorm:"type:text" json:"education"`
+	EducationHistory string         `gorm:"type:jsonb;default:'[]'" json:"education_history"`
 
 	// Job preferences
 	PreferredLocations string  `gorm:"type:text" json:"preferred_locations"`

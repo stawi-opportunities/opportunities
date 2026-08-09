@@ -17,6 +17,7 @@ import { PendingCheckoutPoller } from '@/components/dashboard/PendingCheckoutPol
 import { MatchesPanel } from '@/components/dashboard/MatchesPanel';
 import { CVPanel } from '@/components/dashboard/CVPanel';
 import { DashboardSidebar, type SectionId } from '@/components/dashboard/DashboardSidebar';
+import { DashboardMobileNav } from '@/components/dashboard/DashboardMobileNav';
 import { PlanChangeModal } from '@/components/dashboard/PlanChangeModal';
 import { CancelSubscriptionModal } from '@/components/dashboard/CancelSubscriptionModal';
 import { SettingsPage, type SettingsTab } from '@/components/settings/SettingsPage';
@@ -101,6 +102,10 @@ export default function Dashboard() {
     }
     window.location.hash = next;
     setActiveSection(next);
+    // Mobile: jump to content top after tab change (bottom nav).
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handlePlanChangeSuccess = useCallback(() => {
@@ -160,7 +165,10 @@ export default function Dashboard() {
 
   return (
     <PreferenceChatHost>
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8" data-user-stage={userCtx.stage}>
+      <div
+        className="mx-auto max-w-6xl px-4 py-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 md:pb-8 lg:px-8"
+        data-user-stage={userCtx.stage}
+      >
         <DashboardHeader
           plan={plan}
           status={subscription}
@@ -171,15 +179,7 @@ export default function Dashboard() {
           <UserStageBanner stage={userCtx} />
         </div>
         <PendingCheckoutPoller />
-        <div className="mt-4 md:hidden">
-          <DashboardSidebar
-            active={activeSection}
-            onNavigate={navigate}
-            t={t}
-            matchCount={sub?.queued_matches}
-          />
-        </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-[200px_1fr]">
+        <div className="mt-4 grid gap-6 md:mt-6 lg:grid-cols-[200px_1fr]">
           <aside className="hidden md:block">
             <DashboardSidebar
               active={activeSection}
@@ -191,7 +191,7 @@ export default function Dashboard() {
               <ProfileMount />
             </div>
           </aside>
-          <section>
+          <section className="min-w-0">
             {activeSection === 'matches' && (
               <ErrorBoundary>
                 {plan === 'managed' && sub?.agent?.email && <AgentCard agent={sub.agent} />}
@@ -258,6 +258,12 @@ export default function Dashboard() {
             onSuccess={handleCancelSuccess}
           />
         )}
+        <DashboardMobileNav
+          active={activeSection}
+          onNavigate={navigate}
+          t={t}
+          matchCount={sub?.queued_matches}
+        />
       </div>
     </PreferenceChatHost>
   );

@@ -30,6 +30,9 @@
   html {
     scroll-behavior: smooth;
     font-size: 17px;
+    /* Prevent iOS zoom on focus for inputs ≥16px; keep readable on phones. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   @media (prefers-reduced-motion: reduce) {
     html {
@@ -70,6 +73,21 @@
   }
   body {
     @apply bg-page text-main antialiased;
+    /* Avoid accidental horizontal scroll from wide chips/cards on phones. */
+    overflow-x: clip;
+  }
+
+  /* Touch-friendly form controls on small screens (also avoids iOS input zoom). */
+  @media (max-width: 767px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+      font-size: 16px;
+      min-height: 44px;
+    }
+    textarea {
+      min-height: 5.5rem;
+    }
   }
 }
 @layer components {

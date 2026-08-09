@@ -524,24 +524,48 @@ export interface MatchRefreshResult {
 /**
  * POST /matching/me/matches/refresh — re-run reverse-KNN gap-fill for the
  * authenticated paid candidate. Powers "Find matches now" on the dashboard.
+ *
+ * 409 no_embedding is expected when CV embed is still processing — return a
+ * structured result instead of throwing (avoids console error storms on load).
  */
 export async function refreshMyMatches(): Promise<MatchRefreshResult> {
-  try {
-    return await authRuntime().fetch<MatchRefreshResult>('/matching/me/matches/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-      timeoutMs: 60_000,
-    });
-  } catch (err) {
-    if (!isNotFound(err)) throw err;
-    return authRuntime().fetch<MatchRefreshResult>('/matching/api/me/matches/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-      timeoutMs: 60_000,
-    });
+  const paths = ['/matching/me/matches/refresh', '/matching/api/me/matches/refresh'] as const;
+  let lastErr: unknown;
+  for (const path of paths) {
+    try {
+      return await authRuntime().fetch<MatchRefreshResult>(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        timeoutMs: 60_000,
+      });
+    } catch (err) {
+      lastErr = err;
+      if (isNotFound(err)) continue;
+      // No CV embedding yet — expected after upload / for incomplete profiles.
+      if (isConflict(err)) {
+        return {
+          ok: false,
+          matches_written: 0,
+          opps_scanned: 0,
+          reason: 'need_cv',
+        };
+      }
+      throw err;
+    }
   }
+  throw lastErr instanceof Error ? lastErr : new Error('match refresh unavailable');
+}
+
+function isConflict(err: unknown): boolean {
+  const code =
+    err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+  const status =
+    err && typeof err === 'object' && 'status' in err
+      ? Number((err as { status: unknown }).status)
+      : 0;
+  const msg = err instanceof Error ? err.message : String(err);
+  return status === 409 || code === 'API_CONFLICT' || /409|conflict|no_embedding/i.test(msg);
 }
 
 /** POST /matching/me/matches/{match_id}/dismiss — hide weak fits from feed/digests. */

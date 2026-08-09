@@ -1,33 +1,24 @@
 import type { ReactElement } from 'react';
 import type { StringKey } from '@/i18n/strings';
+import type { SectionId } from './DashboardSidebar';
 
-export type SectionId =
-  | 'matches'
-  | 'cv'
-  | 'saved'
-  | 'applications'
-  | 'settings'
-  /** @deprecated → matches */
-  | 'feed'
-  | 'tools'
-  | 'preferences'
-  | 'billing'
-  | 'overview';
-
-interface Section {
+/**
+ * Primary mobile navigation: fixed bottom tab bar (thumb-zone).
+ * Desktop keeps the sidebar; this is md:hidden only.
+ */
+const TABS: {
   id: SectionId;
-  icon: ReactElement;
   labelKey: StringKey;
-  badge?: number | null;
-}
-
-/** Matches → Saved → Applications → CV → Settings */
-const SECTIONS: Section[] = [
+  short: string;
+  icon: ReactElement;
+}[] = [
   {
     id: 'matches',
+    labelKey: 'nav.matches',
+    short: 'Matches',
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-6 w-6"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -40,13 +31,14 @@ const SECTIONS: Section[] = [
         />
       </svg>
     ),
-    labelKey: 'nav.matches',
   },
   {
     id: 'saved',
+    labelKey: 'nav.saved',
+    short: 'Saved',
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-6 w-6"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -59,13 +51,14 @@ const SECTIONS: Section[] = [
         />
       </svg>
     ),
-    labelKey: 'nav.saved',
   },
   {
     id: 'applications',
+    labelKey: 'nav.applications',
+    short: 'Apps',
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-6 w-6"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -78,13 +71,14 @@ const SECTIONS: Section[] = [
         />
       </svg>
     ),
-    labelKey: 'nav.applications',
   },
   {
     id: 'cv',
+    labelKey: 'nav.cv',
+    short: 'CV',
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-6 w-6"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -97,13 +91,14 @@ const SECTIONS: Section[] = [
         />
       </svg>
     ),
-    labelKey: 'nav.cv',
   },
   {
     id: 'settings',
+    labelKey: 'nav.settings',
+    short: 'Settings',
     icon: (
       <svg
-        className="h-5 w-5"
+        className="h-6 w-6"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -121,14 +116,10 @@ const SECTIONS: Section[] = [
         />
       </svg>
     ),
-    labelKey: 'nav.settings',
   },
 ];
 
-/**
- * Desktop sidebar only. Mobile uses DashboardMobileNav (bottom tabs).
- */
-export function DashboardSidebar({
+export function DashboardMobileNav({
   active,
   onNavigate,
   t,
@@ -139,38 +130,44 @@ export function DashboardSidebar({
   t: (k: StringKey, fallback?: string) => string;
   matchCount?: number | null;
 }) {
-  const sections =
-    matchCount != null
-      ? SECTIONS.map((s) => ({ ...s, badge: s.id === 'matches' ? matchCount : null }))
-      : SECTIONS;
-
   return (
-    <div className="sticky top-[88px]">
-      <nav className="space-y-1" aria-label="Dashboard sections">
-        {sections.map((s) => {
-          const isActive = s.id === active;
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-muted bg-nav-bg/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] backdrop-blur-xl md:hidden"
+      aria-label="Primary"
+    >
+      <ul className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-1">
+        {TABS.map((tab) => {
+          const isActive = tab.id === active;
+          const badge =
+            tab.id === 'matches' && matchCount != null && matchCount > 0 ? matchCount : null;
           return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => onNavigate(s.id)}
-              className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
-                isActive
-                  ? 'border border-accent-500/30 bg-accent-500/10 text-white'
-                  : 'text-secondary hover:bg-surface-hover hover:text-main'
-              }`}
-            >
-              <span className={isActive ? 'text-accent-400' : 'text-secondary/60'}>{s.icon}</span>
-              <span>{t(s.labelKey)}</span>
-              {s.badge != null && (
-                <span className="ml-auto inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-700">
-                  {s.badge}
+            <li key={tab.id} className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => onNavigate(tab.id)}
+                aria-current={isActive ? 'page' : undefined}
+                className={`relative flex w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium leading-tight transition-colors sm:text-xs ${
+                  isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'
+                }`}
+              >
+                <span
+                  className={`relative flex h-8 w-8 items-center justify-center rounded-full ${
+                    isActive ? 'bg-accent-500/15' : ''
+                  }`}
+                >
+                  {tab.icon}
+                  {badge != null && (
+                    <span className="absolute -right-1 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[9px] font-bold text-white">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
                 </span>
-              )}
-            </button>
+                <span className="max-w-full truncate">{t(tab.labelKey, tab.short)}</span>
+              </button>
+            </li>
           );
         })}
-      </nav>
-    </div>
+      </ul>
+    </nav>
   );
 }
