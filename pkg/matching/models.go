@@ -130,6 +130,19 @@ type CandidatePlacementProfileRecord struct {
 
 func (CandidatePlacementProfileRecord) TableName() string { return "candidate_placement_profiles" }
 
+// MatchNotificationReceiptRecord records that a match was included in a
+// notification for a channel (email digest). Used to exclude already-sent
+// matches from subsequent digests (top-3 unseen).
+type MatchNotificationReceiptRecord struct {
+	CandidateID   string    `gorm:"primaryKey;type:text;index:match_notification_receipts_cand_sent_idx,priority:1"`
+	MatchID       string    `gorm:"primaryKey;type:text"`
+	Channel       string    `gorm:"primaryKey;type:text;not null;default:email"`
+	OpportunityID string    `gorm:"type:text;not null"`
+	SentAt        time.Time `gorm:"not null;default:now();index:match_notification_receipts_cand_sent_idx,priority:2,sort:desc"`
+}
+
+func (MatchNotificationReceiptRecord) TableName() string { return "match_notification_receipts" }
+
 // Schema returns the ordinary matching tables owned by GORM.
 func Schema() []any {
 	return []any{
@@ -141,5 +154,6 @@ func Schema() []any {
 		&MatchRunEventRecord{},
 		&EngagementEventRecord{},
 		&CandidatePlacementProfileRecord{},
+		&MatchNotificationReceiptRecord{},
 	}
 }

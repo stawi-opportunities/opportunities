@@ -37,9 +37,12 @@ type Deps struct {
 	Debouncer        matching.Debouncer
 	IdempotencyStore *applications.IdempotencyStore
 	// DailyCap enforces plan daily generation limits during gap-fill.
+	// Kept for other paths; refresh uses InvokeCounter instead.
 	DailyCap matching.DailyCapQuery
+	// InvokeCounter optional daily budget for user_refresh MatchInvoke.
+	InvokeCounter matching.InvokeCounter
 	// DefaultMinScore floors on-demand gap-fill when the index has no
-	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.45.
+	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.70.
 	DefaultMinScore float64
 	// Contacts creates standalone ProfileService contacts for CV details.
 	// Checkout/notify use only profile-attached identity contacts (not these).
@@ -60,7 +63,7 @@ func effectiveMinScore(indexScore, defaultScore float64) float64 {
 	if defaultScore > 0 && defaultScore <= 1 {
 		return defaultScore
 	}
-	return 0.45
+	return 0.70
 }
 
 func (d *Deps) now() time.Time {
@@ -476,26 +479,26 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 				"no CV embedding available — upload a CV under Dashboard → CV, then try again")
 			return
 		}
-		// Prefer the index's stored candidate key for gap-fill writes.
+		// Prefer the index's stored candidate key for match writes.
 		gapKey := strings.TrimSpace(idx.CandidateID)
 		if gapKey == "" {
 			gapKey = matchKey
 		}
 
-		minScore := effectiveMinScore(idx.MinScore, d.DefaultMinScore)
-		// Free proof: wider lookback so first match is useful; tight caps.
+		ent := billing.EntitlementsForProfile(sub, planID)
+		if !paid {
+			ent = billing.EntitlementsFor("")
+		}
 		since := time.Now().UTC().Add(-30 * 24 * time.Hour)
-		dailyCap, weeklyCap := idx.DailyCap, idx.WeeklyCap
 		if !paid {
 			since = time.Now().UTC().Add(-90 * 24 * time.Hour)
-			ent := billing.EntitlementsFor(billing.PlanID(planID))
-			// Empty plan → free proof caps (not starter).
-			if strings.TrimSpace(planID) == "" || strings.EqualFold(sub, "free") || sub == "" {
-				ent = billing.EntitlementsFor("")
-			}
-			dailyCap, weeklyCap = ent.DailyCap, ent.WeeklyCap
 		}
-		res, runErr := matching.GapFill(ctx, matching.GapFillInput{
+		minScore := effectiveMinScore(idx.MinScore, d.DefaultMinScore)
+		if minScore < 0.70 && d.DefaultMinScore >= 0.70 {
+			minScore = d.DefaultMinScore
+		}
+
+		res, runErr := matching.MatchInvoke(ctx, matching.InvokeInput{
 			CandidateID:    gapKey,
 			Embedding:      idx.Embedding,
 			Countries:      idx.Countries,
@@ -503,16 +506,17 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			SalaryFloorUSD: idx.SalaryFloorUSD,
 			Since:          since,
 			MinScore:       minScore,
-			DailyCap:       dailyCap,
-			WeeklyCap:      weeklyCap,
-		}, matching.GapFillDeps{
-			KNN:       d.KNN,
-			Store:     d.Matches,
-			EventLog:  d.MatchEvents,
-			Reranker:  d.Reranker,
-			Weights:   d.Weights,
-			DailyCap:  d.DailyCap,
-			WeekCount: d.Matches,
+			Reason:         matching.InvokeUserRefresh,
+			InvokeLimit:    ent.InvokeDailyLimit,
+		}, matching.InvokeDeps{
+			GapFill: matching.GapFillDeps{
+				KNN:      d.KNN,
+				Store:    d.Matches,
+				EventLog: d.MatchEvents,
+				Reranker: d.Reranker,
+				Weights:  d.Weights,
+			},
+			Invokes: d.InvokeCounter,
 		})
 		if runErr != nil {
 			ProblemFromError(w, runErr)
@@ -527,9 +531,7 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			"run_id":           res.RunID,
 			"min_score":        minScore,
 			"reason":           res.Reason,
-			"weekly_used":      res.WeeklyUsed,
-			"weekly_cap":       res.WeeklyCap,
-			"daily_cap":        dailyCap,
+			"invoke_limit":     ent.InvokeDailyLimit,
 			"proof":            !paid,
 		})
 	}

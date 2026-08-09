@@ -11,7 +11,7 @@ func TestDigestMinScore(t *testing.T) {
 	}{
 		{"index wins", 0.62, 0.45, 0.62},
 		{"zero index uses default", 0, 0.45, 0.45},
-		{"both unset → 0.45 floor", 0, 0, 0.45},
+		{"both unset → 0.70 floor", 0, 0, 0.70},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -983,7 +983,6 @@ func main() {
 					EventLog:        matching.NewEventLog(sqlDB),
 					Reranker:        matching.NoopReranker{},
 					Weights:         matching.DefaultWeights(),
-					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
 					Since:           30 * 24 * time.Hour,
 					DefaultMinScore: cfg.MatchingMinScore,
 					DefaultCadence:  cfg.DigestDefaultCadence,
@@ -1023,6 +1022,7 @@ func main() {
 			Debouncer:        deb,
 			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
 			DailyCap:         matching.NewPGDailyCapQuery(sqlDB),
+			InvokeCounter:    &matching.PGInvokeCounter{DB: sqlDB},
 			DefaultMinScore:  cfg.MatchingMinScore,
 			Contacts:         contactDir, // platform ProfileService — sole contact store
 			// Rebuild embedding on-demand when match refresh finds no vector

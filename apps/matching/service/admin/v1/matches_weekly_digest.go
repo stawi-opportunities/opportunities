@@ -43,24 +43,31 @@ type DigestTouch interface {
 	TouchLastDigestAt(ctx context.Context, candidateID string, at time.Time) error
 }
 
+// DigestMatchSource lists top unseen matches and records notification receipts.
+// *matching.Store implements this. Unit tests inject fakes.
+type DigestMatchSource interface {
+	ListTopUnseenMatchesForDigest(ctx context.Context, candidateID, channel string, limit int) ([]matching.DigestMatch, error)
+	InsertNotificationReceipts(ctx context.Context, candidateID, channel string, items []matching.DigestMatch) error
+}
+
 // MatchesWeeklyDigestDeps bundles the collaborators for the match-digest
 // sweep. KNN / Store / EventLog / Reranker / Weights are the same
 // pkg/matching machinery Path C uses so digests produce identical matches.
 type MatchesWeeklyDigestDeps struct {
-	Svc      *frame.Service
-	Active   ActiveCandidateLister
-	Index    CandidateIndexReader
-	KNN      *matching.KNN
-	Store    *matching.Store
+	Svc    *frame.Service
+	Active ActiveCandidateLister
+	Index  CandidateIndexReader
+	KNN    *matching.KNN
+	Store  *matching.Store
+	// Unseen optional override for list/receipts; when nil uses Store.
+	Unseen   DigestMatchSource
 	EventLog *matching.EventLog
 	Reranker matching.Reranker
 	Weights  matching.Weights
-	// DailyCap optional — plan daily generation budget during gap-fill.
-	DailyCap matching.DailyCapQuery
 	// Since bounds the gap-fill look-back window. Defaults to 30 days.
 	Since time.Duration
 	// DefaultMinScore floors gap-fill when the index has no per-candidate
-	// threshold (MATCHING_MIN_SCORE). 0 → 0.45.
+	// threshold (MATCHING_MIN_SCORE). 0 → 0.70.
 	DefaultMinScore float64
 	// DefaultCadence is used when the request body omits cadence.
 	// "auto" (default) honours each user's email_digest + WeeklyWeekday.
@@ -88,11 +95,11 @@ func digestMinScore(indexScore, defaultScore float64) float64 {
 	if defaultScore > 0 && defaultScore <= 1 {
 		return defaultScore
 	}
-	return 0.45
+	return 0.70
 }
 
 type digestRunRequest struct {
-	// Cadence: auto | daily | weekly. Empty → DefaultCadence or auto.
+	// Cadence: auto | daily | weekly | twice_daily. Empty → DefaultCadence or auto.
 	Cadence string `json:"cadence"`
 }
 
@@ -107,16 +114,16 @@ type matchesWeeklyDigestResponse struct {
 
 // MatchesWeeklyDigestHandler serves POST /_admin/matches/weekly_digest —
 // Trustage (or ops) invokes this on a configurable cron. For each entitled
-// subscriber whose notification prefs accept the run cadence it gap-fills
-// matches above the quality threshold and emits candidates.matches.ready.v1
-// for the notification service summary email.
+// subscriber whose notification prefs accept the run cadence it MatchInvokes
+// (reason=digest, no row caps / no invoke budget), then emails the top-3
+// unseen matches (no receipt yet) and records receipts on successful send.
 //
 // Request body (optional):
 //
-//	{"cadence":"auto"|"daily"|"weekly"}
+//	{"cadence":"auto"|"daily"|"twice_daily"|"weekly"}
 //
-// auto (default) sends daily users every run and weekly users only on
-// WeeklyWeekday in Location.
+// auto (default) sends daily users every run, twice_daily users in local
+// windows, and weekly users only on WeeklyWeekday in Location.
 func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 	since := deps.Since
 	if since <= 0 {
@@ -145,6 +152,10 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 	if defaultCadence == "" {
 		defaultCadence = "auto"
 	}
+	unseen := deps.Unseen
+	if unseen == nil {
+		unseen = deps.Store
+	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -172,14 +183,13 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 			return
 		}
 
+		// Quality floor only — no DailyCap / WeekCount row caps on digest invokes.
 		gapDeps := matching.GapFillDeps{
-			KNN:       deps.KNN,
-			Store:     deps.Store,
-			EventLog:  deps.EventLog,
-			Reranker:  reranker,
-			Weights:   weights,
-			DailyCap:  deps.DailyCap,
-			WeekCount: deps.Store,
+			KNN:      deps.KNN,
+			Store:    deps.Store,
+			EventLog: deps.EventLog,
+			Reranker: reranker,
+			Weights:  weights,
 		}
 		now := nowFn().UTC()
 		cutoff := now.Add(-since)
@@ -210,48 +220,64 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 				continue
 			}
 
-			res, runErr := matching.GapFill(ctx, matching.GapFillInput{
-				CandidateID:    m.ID,
-				Embedding:      idx.Embedding,
-				Countries:      idx.Countries,
-				Kinds:          idx.Kinds,
-				SalaryFloorUSD: idx.SalaryFloorUSD,
-				Since:          cutoff,
-				MinScore:       digestMinScore(idx.MinScore, deps.DefaultMinScore),
-				DailyCap:       idx.DailyCap,
-				WeeklyCap:      idx.WeeklyCap,
-			}, gapDeps)
-			if runErr != nil {
-				log.WithError(runErr).WithField("candidate_id", m.ID).
-					Warn("matches-digest: gap-fill failed")
-				resp.Failed++
-				continue
-			}
-
-			// Enrich MatchesReady with top card fields so email templates
-			// don't depend on a second DB hop in the notification service.
-			var rows []eventsv1.MatchRow
-			if deps.Store != nil {
-				if top, lErr := deps.Store.ListTopMatchesForDigest(ctx, m.ID, 10); lErr != nil {
-					log.WithError(lErr).WithField("candidate_id", m.ID).
-						Warn("matches-digest: list top matches failed; emitting batch only")
-				} else {
-					rows = make([]eventsv1.MatchRow, 0, len(top))
-					for _, t := range top {
-						rows = append(rows, eventsv1.MatchRow{
-							CanonicalID: t.OpportunityID,
-							ApplyURL:    t.ApplyURL,
-							Score:       t.Score,
-							Title:       t.Title,
-							Company:     t.Company,
-							Slug:        t.Slug,
-						})
-					}
+			var res matching.GapFillResult
+			// KNN/Store may be nil in unit tests that only exercise prefs/index skips
+			// or inject Unseen fakes for the send path.
+			if deps.KNN != nil && deps.Store != nil {
+				var runErr error
+				res, runErr = matching.MatchInvoke(ctx, matching.InvokeInput{
+					CandidateID:    m.ID,
+					Embedding:      idx.Embedding,
+					Countries:      idx.Countries,
+					Kinds:          idx.Kinds,
+					SalaryFloorUSD: idx.SalaryFloorUSD,
+					Since:          cutoff,
+					MinScore:       digestMinScore(idx.MinScore, deps.DefaultMinScore),
+					Reason:         matching.InvokeDigest,
+					InvokeLimit:    0,
+				}, matching.InvokeDeps{
+					GapFill: gapDeps,
+					Now:     nowFn,
+				})
+				if runErr != nil {
+					log.WithError(runErr).WithField("candidate_id", m.ID).
+						Warn("matches-digest: match invoke failed")
+					resp.Failed++
+					continue
 				}
 			}
 
+			var top []matching.DigestMatch
+			if unseen != nil {
+				var lErr error
+				top, lErr = unseen.ListTopUnseenMatchesForDigest(ctx, m.ID, "email", 3)
+				if lErr != nil {
+					log.WithError(lErr).WithField("candidate_id", m.ID).
+						Warn("matches-digest: list unseen matches failed")
+					resp.Failed++
+					continue
+				}
+			}
+			if len(top) == 0 {
+				resp.Skipped++
+				continue
+			}
+
+			rows := make([]eventsv1.MatchRow, 0, len(top))
+			for _, t := range top {
+				rows = append(rows, eventsv1.MatchRow{
+					CanonicalID: t.OpportunityID,
+					ApplyURL:    t.ApplyURL,
+					Score:       t.Score,
+					Title:       t.Title,
+					Company:     t.Company,
+					Slug:        t.Slug,
+				})
+			}
+
 			// Primary delivery: NotificationService.Send (profile-style).
-			if deps.NotificationCli != nil && len(rows) > 0 {
+			sentOK := false
+			if deps.NotificationCli != nil {
 				profileID := m.ID
 				if deps.ProfileID != nil {
 					profileID = deps.ProfileID(ctx, m.ID)
@@ -268,7 +294,7 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 					})
 				}
 				site := strings.TrimRight(deps.PublicSiteURL, "/")
-				_ = notify.Send(ctx, deps.NotificationCli, notify.Message{
+				sendErr := notify.Send(ctx, deps.NotificationCli, notify.Message{
 					Template:  deps.Templates.Digest(),
 					ProfileID: profileID,
 					Variables: map[string]any{
@@ -279,12 +305,25 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 						"matches":        matchVars,
 					},
 				})
-			} else if deps.NotificationCli == nil {
+				if sendErr != nil {
+					log.WithError(sendErr).WithField("candidate_id", m.ID).
+						Warn("matches-digest: notify send failed")
+					resp.Failed++
+					continue
+				}
+				sentOK = true
+				if unseen != nil {
+					if rErr := unseen.InsertNotificationReceipts(ctx, m.ID, "email", top); rErr != nil {
+						log.WithError(rErr).WithField("candidate_id", m.ID).
+							Warn("matches-digest: insert receipts failed")
+					}
+				}
+			} else {
 				log.WithField("candidate_id", m.ID).
 					Warn("matches-digest: notification client nil — digest not queued")
 			}
 
-			// Domain event for bus consumers / analytics.
+			// Domain event for bus consumers / analytics (even if notify client nil).
 			if deps.Svc != nil {
 				env := eventsv1.NewEnvelope(
 					eventsv1.TopicCandidateMatchesReady,
@@ -299,7 +338,7 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 						Debug("matches-digest: domain event emit failed")
 				}
 			}
-			if deps.Toucher != nil {
+			if deps.Toucher != nil && (sentOK || deps.NotificationCli == nil) {
 				if tErr := deps.Toucher.TouchLastDigestAt(ctx, m.ID, now); tErr != nil {
 					log.WithError(tErr).WithField("candidate_id", m.ID).
 						Debug("matches-digest: touch last_digest_at failed")
