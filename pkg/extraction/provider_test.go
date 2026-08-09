@@ -24,3 +24,16 @@ func TestResolveEmbedding_Google(t *testing.T) {
 		t.Fatalf("google embed: url=%q model=%q key=%q", u, m, k)
 	}
 }
+
+func TestResolveEmbedding_NVIDIA_MultilingualDefault(t *testing.T) {
+	u, m, k := ResolveEmbedding("nvidia", "", "", "nvapi-x")
+	if u != NVIDIABuildBaseURL {
+		t.Fatalf("url: got %q want %q", u, NVIDIABuildBaseURL)
+	}
+	if m != "nvidia/llama-nemotron-embed-1b-v2" {
+		t.Fatalf("model: got %q want multilingual llama-nemotron-embed-1b-v2", m)
+	}
+	if k != "nvapi-x" {
+		t.Fatalf("key: got %q", k)
+	}
+}
