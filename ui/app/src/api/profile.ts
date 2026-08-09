@@ -173,8 +173,10 @@ export interface ProfilePayload {
   phone?: string;
 }
 
+export type DigestCadence = 'twice_daily' | 'daily' | 'weekly' | 'off';
+
 export interface NotificationPrefs {
-  email_digest: 'daily' | 'weekly' | 'off';
+  email_digest: DigestCadence;
   match_alerts: boolean;
   weekly_summary: boolean;
   marketing_emails: boolean;

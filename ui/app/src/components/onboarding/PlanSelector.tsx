@@ -48,14 +48,13 @@ export function PlanSelector({ value, onChange, t }: Props) {
                 </span>
               </span>
               <span className="mt-1 text-sm text-gray-600 dark:text-gray-300">{p.tagline}</span>
-              {p.matchesPerWeek !== null && (
+              {p.matchesPerWeek !== null ? (
                 <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {t('onboard.matchesPerWeek').replace('{count}', String(p.matchesPerWeek))}
                 </span>
-              )}
-              {p.matchesPerWeek === null && (
+              ) : (
                 <span className="mt-1 text-xs font-medium text-accent-700">
-                  Unlimited discovery
+                  70%+ fit · unlimited feed
                 </span>
               )}
               {p.meta.autoApply && (

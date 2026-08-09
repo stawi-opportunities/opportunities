@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { planById, type PlanId } from '@/utils/plans';
+import type { PlanId } from '@/utils/plans';
 import { preferenceMissingLabels } from '@/utils/profileReadiness';
 import { Panel } from './Panel';
 import { OpportunitiesFeed } from '@/components/OpportunitiesFeed';
@@ -8,23 +8,21 @@ import { useToast } from '@/hooks/useToast';
 import { Button } from '@/components/ui/Button';
 
 function emptyReasonMessage(res: MatchRefreshResult): string {
+  // rate_limited is current; weekly_cap / daily_cap are legacy server reasons.
+  if (res.reason === 'rate_limited' || res.reason === 'weekly_cap' || res.reason === 'daily_cap') {
+    return res.proof
+      ? 'Free search used for today. Subscribe for more Find matches, or try again tomorrow.'
+      : 'Search limit reached for today. Try again tomorrow.';
+  }
   switch (res.reason) {
-    case 'weekly_cap':
-      return res.proof
-        ? `Free proof limit reached (${res.weekly_used ?? 0}/${res.weekly_cap ?? 3} this week). Subscribe for more weekly matches.`
-        : `Weekly match limit reached (${res.weekly_used ?? 0}/${res.weekly_cap ?? 5}). Resets on a rolling 7-day window.`;
-    case 'daily_cap':
-      return res.proof
-        ? 'Free proof allows 1 new match per day — try again tomorrow, or subscribe for a higher daily budget.'
-        : 'Daily match generation limit reached. Try again tomorrow or upgrade for a higher budget.';
     case 'no_inventory':
       return 'No recent roles matched your filters yet. Widen locations/roles under CV → Match preferences.';
     case 'below_threshold':
-      return 'Roles were found but none cleared your quality bar. Improve your CV score, then try again.';
+      return 'Roles were found but none scored at 70%+ match quality. Improve your CV or widen preferences, then try again.';
     case 'need_cv':
       return 'Upload a CV under Dashboard → CV so we can score roles against your profile, then run Find matches.';
     default:
-      return 'Match search complete — no new roles above your quality threshold yet. Update preferences under CV, then re-run.';
+      return 'Match search complete — no new roles above your 70% quality floor yet. Update preferences under CV, then re-run.';
   }
 }
 
@@ -55,7 +53,6 @@ function refreshErrorMessage(err: unknown): string {
  * for a missing CV when match is not yet possible (or the server says so).
  */
 export function MatchesPanel({
-  plan,
   freeProof = false,
   queued: queuedProp,
   delivered: deliveredProp,
@@ -67,6 +64,7 @@ export function MatchesPanel({
   /** Preference gaps (salary, countries, …) — soft tip only, never “upload CV”. */
   preferenceMissing = [] as string[],
 }: {
+  /** Kept for parent API compatibility; feed is uncapped for paid plans. */
   plan: PlanId;
   freeProof?: boolean;
   queued: number | null;
@@ -84,11 +82,9 @@ export function MatchesPanel({
   const queued = queuedProp ?? 0;
   const delivered = deliveredProp ?? 0;
 
-  const planInfo = planById(plan);
-  const unlimited = !freeProof && planInfo.matchesPerWeek === null;
-  const cap = freeProof ? 3 : (planInfo.matchesPerWeek ?? 0);
-  const progressPct =
-    !unlimited && cap > 0 ? Math.min(100, Math.round((delivered / cap) * 100)) : 0;
+  // Feed is uncapped above the quality floor for paid plans; free proof is a soft shortlist.
+  // We no longer show weekly used/cap progress — find-matches uses daily fair-use limits.
+  const unlimited = !freeProof;
 
   const [lastReason, setLastReason] = useState<string | null>(null);
   const [autoKickDone, setAutoKickDone] = useState(false);
@@ -216,14 +212,13 @@ export function MatchesPanel({
         </div>
       )}
 
-      <Panel title="This week">
+      <Panel title="Your shortlist">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-secondary tabular-nums">
-            {delivered}
-            {!unlimited && ` / ${cap}`} delivered
+            {delivered} delivered
             <span className="mx-1.5 text-muted-strong">·</span>
             {queued} ready to review
-            {unlimited && <span className="ml-1 text-accent-700">· unlimited</span>}
+            {unlimited && <span className="ml-1 text-accent-700">· 70%+ fit</span>}
           </p>
           <Button
             type="button"
@@ -234,18 +229,10 @@ export function MatchesPanel({
             {refreshing ? 'Searching…' : 'Find matches'}
           </Button>
         </div>
-        {!unlimited && (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
-            <div
-              className="h-full rounded-full bg-accent-500 transition-all"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        )}
 
         {freeProof && (
           <p className="mt-3 text-sm text-secondary">
-            Free shortlist (capped).{' '}
+            Free shortlist (limited Find matches).{' '}
             {onUpgrade ? (
               <button type="button" onClick={onUpgrade} className="font-medium underline">
                 Upgrade
@@ -255,7 +242,7 @@ export function MatchesPanel({
                 Upgrade
               </a>
             )}{' '}
-            for more weekly matches.
+            for unlimited feed matches above 70% fit and more Find-matches allowance.
           </p>
         )}
 

@@ -512,11 +512,18 @@ export interface MatchRefreshResult {
   scored_above_min?: number;
   run_id?: string;
   min_score?: number;
-  /** ok | no_inventory | below_threshold | weekly_cap | daily_cap */
+  /**
+   * ok | no_inventory | below_threshold | rate_limited | need_cv
+   * Legacy: weekly_cap | daily_cap (map to rate_limited copy in UI)
+   */
   reason?: string;
   weekly_used?: number;
+  /** Legacy weekly quota; prefer invoke_limit for fair-use messaging. */
   weekly_cap?: number;
+  /** Legacy daily quota. */
   daily_cap?: number;
+  /** Fair-use Find-matches allowance when rate_limited. */
+  invoke_limit?: number;
   /** True when free-proof entitlements were applied. */
   proof?: boolean;
 }
