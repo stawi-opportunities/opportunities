@@ -20,9 +20,32 @@ function emptyReasonMessage(res: MatchRefreshResult): string {
       return 'No recent roles matched your filters yet. Widen locations/roles under CV → Match preferences.';
     case 'below_threshold':
       return 'Roles were found but none cleared your quality bar. Improve your CV score, then try again.';
+    case 'need_cv':
+      return 'Upload a CV under Dashboard → CV so we can score roles against your profile, then run Find matches.';
     default:
       return 'Match search complete — no new roles above your quality threshold yet. Update your CV or preferences, then re-run.';
   }
+}
+
+/** Prefer server problem detail when refresh fails for a real system error. */
+function refreshErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/embedding_unavailable|could not build match embedding/i.test(raw)) {
+    return 'Match embedding is temporarily unavailable. Your CV is saved — try Find matches again in a moment.';
+  }
+  if (/no_embedding|upload a CV/i.test(raw)) {
+    return 'Upload a CV under Dashboard → CV so we can match roles to your profile.';
+  }
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart)) as { detail?: string; title?: string };
+      if (parsed.detail?.trim()) return parsed.detail.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  return 'Could not refresh matches. Try again in a moment.';
 }
 
 /**
@@ -86,16 +109,15 @@ export function MatchesPanel({
         setRefreshKey((k) => k + 1);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/no_embedding|embedding|cv/i.test(msg)) {
-          if (!silent) {
-            toast(
-              'Upload a CV under Dashboard → CV so we can match roles to your profile.',
-              'error'
-            );
-          }
+        if (/no_embedding|need_cv|upload a CV/i.test(msg)) {
           setLastReason('need_cv');
-        } else if (!silent) {
-          toast('Could not refresh matches. Try again in a moment.', 'error');
+        } else {
+          setLastReason('error');
+        }
+        // Always surface real failures (including silent auto-kick) via lastReason;
+        // toast on user-initiated refresh so system errors are not hidden.
+        if (!silent) {
+          toast(refreshErrorMessage(err), 'error');
         }
       } finally {
         setRefreshing(false);
@@ -231,6 +253,15 @@ export function MatchesPanel({
                     CV
                   </a>
                   , then hit Find matches.
+                </>
+              ) : lastReason === 'error' ? (
+                <>
+                  Match search hit a temporary server problem. Your profile is unchanged — hit Find
+                  matches again. If this keeps happening, re-upload your CV under{' '}
+                  <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
+                    CV
+                  </a>
+                  .
                 </>
               ) : lastReason ? (
                 emptyReasonMessage({

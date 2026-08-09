@@ -454,13 +454,21 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			// Build embedding now from stored CV/placement — do not 409 if we
 			// have material. Async embed after upload can lag or fail quietly.
 			built, bErr := ensureMatchEmbedding(ctx, d, profileID, matchKey)
-			if bErr != nil {
+			if built != nil && len(built.Embedding) > 0 {
+				idx = built
+			} else if bErr != nil {
+				// Surface real failures — never collapse system errors into no_embedding.
 				util.Log(ctx).WithError(bErr).WithField("profile_id", profileID).
 					WithField("match_key", matchKey).
 					Warn("matches/refresh: ensure embedding failed")
-			}
-			if built != nil {
-				idx = built
+				if errors.Is(bErr, errNoMatchMaterial) {
+					httpmw.ProblemJSON(w, http.StatusConflict, "no_embedding",
+						"no CV embedding available — upload a CV under Dashboard → CV, then try again")
+					return
+				}
+				httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "embedding_unavailable",
+					"could not build match embedding from your CV right now — try again in a moment")
+				return
 			}
 		}
 		if idx == nil || len(idx.Embedding) == 0 {
@@ -581,9 +589,13 @@ func loadMatchIndex(ctx context.Context, store *matching.IndexStore, profileID, 
 	return nil, matching.ErrNotFound
 }
 
+// errNoMatchMaterial means the profile has no CV/role text to embed (user action).
+var errNoMatchMaterial = errors.New("no CV or target role to embed")
+
 // ensureMatchEmbedding rebuilds placement persona + vector when missing.
-// Uses CV/placement text already on the profile; fails only when there is
-// nothing meaningful to embed.
+// Uses CV/placement text already on the profile.
+// Returns errNoMatchMaterial when the user has nothing to embed; other errors
+// are system failures (embedder down, placement misconfigured, index write).
 func ensureMatchEmbedding(ctx context.Context, d *Deps, profileID, matchKey string) (*matching.CandidateIndex, error) {
 	if d == nil || d.Placement == nil {
 		return nil, errors.New("placement service not configured")
@@ -594,26 +606,28 @@ func ensureMatchEmbedding(ctx context.Context, d *Deps, profileID, matchKey stri
 	}
 	// Need at least CV corpus or a target role to embed.
 	if strings.TrimSpace(fields.ExtraInfo) == "" && strings.TrimSpace(fields.TargetJobTitle) == "" {
-		return nil, errors.New("no CV or target role to embed")
+		return nil, errNoMatchMaterial
 	}
 	// Rebuild under both keys when they differ so subsequent lookups hit.
+	// StrictEmbed surfaces embedder/index failures instead of soft-failing.
 	keys := uniqueNonEmpty(matchKey, profileID)
-	var last *placement.RebuildResult
 	for _, key := range keys {
-		res, rErr := d.Placement.Rebuild(ctx, placement.RebuildInput{
+		if _, rErr := d.Placement.Rebuild(ctx, placement.RebuildInput{
 			CandidateID: key,
 			Fields:      fields,
-		})
-		if rErr != nil {
+			StrictEmbed: true,
+		}); rErr != nil {
 			return nil, rErr
 		}
-		last = res
 	}
-	if last == nil || !last.Embedded {
-		// Rebuild may store summary without vector when embedder is down.
-		return loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+	idx, lErr := loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+	if lErr != nil && !errors.Is(lErr, matching.ErrNotFound) {
+		return nil, lErr
 	}
-	return loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+	if idx == nil || len(idx.Embedding) == 0 {
+		return nil, errors.New("embedding missing after strict rebuild")
+	}
+	return idx, nil
 }
 
 func loadPlacementFieldsForMatch(ctx context.Context, d *Deps, profileID, matchKey string) (placement.Fields, error) {
@@ -629,6 +643,12 @@ func loadPlacementFieldsForMatch(ctx context.Context, d *Deps, profileID, matchK
 			q = strings.TrimSpace(q)
 			if q != "" && q != "(CV not yet provided)" {
 				f.ExtraInfo = q
+			}
+			// Summary is already the vectorizable persona when quals were empty.
+			if f.ExtraInfo == "" {
+				if s := strings.TrimSpace(doc.SummaryText); s != "" {
+					f.ExtraInfo = s
+				}
 			}
 			if f.ExtraInfo != "" {
 				break

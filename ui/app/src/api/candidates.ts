@@ -523,10 +523,11 @@ export interface MatchRefreshResult {
 
 /**
  * POST /matching/me/matches/refresh — re-run reverse-KNN gap-fill for the
- * authenticated paid candidate. Powers "Find matches now" on the dashboard.
+ * authenticated candidate. Powers "Find matches" on the dashboard.
  *
- * 409 no_embedding is expected when CV embed is still processing — return a
- * structured result instead of throwing (avoids console error storms on load).
+ * Server builds a missing embedding from stored CV when possible.
+ * Only true "no CV material" (409 no_embedding) is returned as a soft result;
+ * system failures (5xx, embedding_unavailable) are thrown so the UI can show them.
  */
 export async function refreshMyMatches(): Promise<MatchRefreshResult> {
   const paths = ['/matching/me/matches/refresh', '/matching/api/me/matches/refresh'] as const;
@@ -542,8 +543,8 @@ export async function refreshMyMatches(): Promise<MatchRefreshResult> {
     } catch (err) {
       lastErr = err;
       if (isNotFound(err)) continue;
-      // No CV embedding yet — expected after upload / for incomplete profiles.
-      if (isConflict(err)) {
+      // Only map genuine no-CV material conflicts — never hide 5xx / embedder failures.
+      if (isNoEmbeddingConflict(err)) {
         return {
           ok: false,
           matches_written: 0,
@@ -557,7 +558,8 @@ export async function refreshMyMatches(): Promise<MatchRefreshResult> {
   throw lastErr instanceof Error ? lastErr : new Error('match refresh unavailable');
 }
 
-function isConflict(err: unknown): boolean {
+/** 409 no_embedding — user must upload a CV. Other 409s and all 5xx rethrow. */
+function isNoEmbeddingConflict(err: unknown): boolean {
   const code =
     err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
   const status =
@@ -565,8 +567,13 @@ function isConflict(err: unknown): boolean {
       ? Number((err as { status: unknown }).status)
       : 0;
   const msg = err instanceof Error ? err.message : String(err);
-  // @stawi/auth-runtime maps 409 → AuthError code API_VALIDATION, message "API 409: …"
-  return status === 409 || code === 'API_CONFLICT' || /409|conflict|no_embedding/i.test(msg);
+  // Prefer problem title/detail when auth-runtime embeds the body.
+  if (/no_embedding/i.test(msg)) return true;
+  if (status === 409 || code === 'API_CONFLICT' || /409|conflict/i.test(msg)) {
+    // Generic 409 without no_embedding is unexpected — do not soft-map.
+    return /no_embedding|no CV embedding|upload a CV/i.test(msg);
+  }
+  return false;
 }
 
 /** POST /matching/me/matches/{match_id}/dismiss — hide weak fits from feed/digests. */
