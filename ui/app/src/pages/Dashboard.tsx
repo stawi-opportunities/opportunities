@@ -202,11 +202,10 @@ export default function Dashboard() {
                   delivered={sub?.delivered_this_week ?? null}
                   subQueryError={subQ.isError}
                   subLoading={subQ.isLoading && sub == null}
-                  setupMode={
-                    userCtx.stage === 'dashboard_setup' ||
-                    (userCtx.readiness != null && !userCtx.readiness.ready)
-                  }
-                  setupMissing={userCtx.readiness?.missing ?? []}
+                  // Matches is match-only: CV upload probes only when no CV.
+                  // Preference gaps (salary, countries) stay on the CV hub.
+                  cvPresent={userCtx.readiness?.matchCapable ?? true}
+                  preferenceMissing={userCtx.readiness?.preferenceMissing ?? []}
                   onUpgrade={() => {
                     setSettingsTab('subscription');
                     navigate('settings');

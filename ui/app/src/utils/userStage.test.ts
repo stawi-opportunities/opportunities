@@ -47,7 +47,7 @@ describe('resolveUserStage', () => {
     expect(s.homePath).toBe('/dashboard/');
   });
 
-  it('dashboard_setup for entitled incomplete profile', () => {
+  it('dashboard_setup for entitled without match-capable profile (no CV)', () => {
     const s = resolveUserStage({
       ...base,
       subscriptionStatus: 'active',
@@ -56,9 +56,12 @@ describe('resolveUserStage', () => {
     expect(s.stage).toBe('dashboard_setup');
     expect(s.homePath).toBe('/dashboard/');
     expect(s.entitled).toBe(true);
+    expect(s.label).toMatch(/CV/i);
+    expect(s.label).not.toMatch(/Finish your CV/i);
   });
 
-  it('dashboard_ready when entitled and profile complete', () => {
+  it('dashboard_ready when entitled and match-capable (CV on file)', () => {
+    // Preference gaps alone must not keep the user in dashboard_setup.
     const s = resolveUserStage({
       ...base,
       subscriptionStatus: 'active',

@@ -46,6 +46,10 @@ type RebuildInput struct {
 	ChatTurns []ChatTurn
 	// Persona configures section budgets (nil → DefaultPersonaConfig).
 	Persona *PersonaConfig
+	// StrictEmbed makes embed/index failures return an error instead of
+	// soft-succeeding with Embedded=false. Use for on-demand match refresh
+	// so callers do not hide system failures as "no CV".
+	StrictEmbed bool
 }
 
 // RebuildResult is returned for API surfaces (chat response).
@@ -65,12 +69,16 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 		return nil, fmt.Errorf("placement: candidate_id required")
 	}
 	fields := in.Fields
-	// If this turn has no CV text, keep prior qualifications from the last summary.
+	// Prefer a full prior CV when the turn only has thin ExtraInfo.
 	if !looksLikeCV(fields.ExtraInfo) && s.Store != nil {
 		if prior, err := s.Store.Get(ctx, in.CandidateID); err == nil && prior != nil {
-			if looksLikeCV(prior.QualificationsText) {
-				// Strip the "## Qualifications" header if present for ExtraInfo reuse.
-				fields.ExtraInfo = stripQualHeader(prior.QualificationsText)
+			priorCV := stripQualHeader(prior.QualificationsText)
+			priorCV = strings.TrimSpace(priorCV)
+			if priorCV == "(CV not yet provided)" {
+				priorCV = ""
+			}
+			if looksLikeCV(priorCV) || (strings.TrimSpace(fields.ExtraInfo) == "" && priorCV != "") {
+				fields.ExtraInfo = priorCV
 			}
 		}
 	}
@@ -93,14 +101,15 @@ func (s *Service) Rebuild(ctx context.Context, in RebuildInput) (*RebuildResult,
 			doc.SummaryText = truncateRunes(doc.SummaryText, cfg.MaxRunes)
 			doc.RerankText = RerankText(matchHeadline(fields), doc.PreferencesText, prior.ConversationDigest, 1800)
 			doc.ContentHash = ContentHash(doc.SummaryText)
-			return s.finishRebuild(ctx, in.CandidateID, fields, doc, cfg)
+			return s.finishRebuild(ctx, in, fields, doc, cfg)
 		}
 	}
 	doc := BuildPersonaDocument(in.CandidateID, fields, turns, cfg)
-	return s.finishRebuild(ctx, in.CandidateID, fields, doc, cfg)
+	return s.finishRebuild(ctx, in, fields, doc, cfg)
 }
 
-func (s *Service) finishRebuild(ctx context.Context, candidateID string, fields Fields, doc Document, cfg PersonaConfig) (*RebuildResult, error) {
+func (s *Service) finishRebuild(ctx context.Context, in RebuildInput, fields Fields, doc Document, cfg PersonaConfig) (*RebuildResult, error) {
+	candidateID := in.CandidateID
 	if doc.CandidateID == "" {
 		doc.CandidateID = candidateID
 	}
@@ -130,94 +139,116 @@ func (s *Service) finishRebuild(ctx context.Context, candidateID string, fields 
 	}
 
 	embedded := false
-	// Embed when we have meaningful signal (role, CV, or conversation intent).
+	// Embed when we have any material for matching (role, CV/skills text, or intent).
+	// Thin ExtraInfo still gets a vector so refresh is not stuck on "no embedding".
 	hasSignal := strings.TrimSpace(fields.TargetJobTitle) != "" ||
-		looksLikeCV(fields.ExtraInfo) ||
+		strings.TrimSpace(fields.ExtraInfo) != "" ||
 		strings.TrimSpace(doc.ConversationDigest) != ""
-	if s.Embedder != nil && hasSignal {
-		text := extraction.EmbedQueryPrefix + doc.SummaryText
-		text = truncateRunes(text, cfg.MaxRunes)
-		// Skip re-embed when index already has this persona (stable rerank text).
-		skipEmbed := false
-		if s.Index != nil {
-			if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil &&
-				len(existing.Embedding) > 0 && existing.RerankText != "" &&
-				existing.RerankText == doc.RerankText {
-				skipEmbed = true
-				embedded = true
-			}
+	if !hasSignal {
+		if in.StrictEmbed {
+			return nil, fmt.Errorf("placement: nothing to embed for candidate %s", candidateID)
 		}
-		var vec []float32
-		var err error
-		if !skipEmbed {
-			vec, err = s.Embedder.Embed(ctx, text)
-			if err != nil {
-				util.Log(ctx).WithError(err).WithField("candidate_id", candidateID).
-					Warn("placement: embed failed (summary still stored)")
-			}
-		} else if s.Index != nil {
-			if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil {
-				vec = existing.Embedding
-			}
+		return &RebuildResult{Document: doc, Version: version, Embedded: false}, nil
+	}
+	if s.Embedder == nil {
+		if in.StrictEmbed {
+			return nil, fmt.Errorf("placement: embedder not configured")
 		}
-		if err == nil && len(vec) > 0 {
+		return &RebuildResult{Document: doc, Version: version, Embedded: false}, nil
+	}
+
+	text := extraction.EmbedQueryPrefix + doc.SummaryText
+	text = truncateRunes(text, cfg.MaxRunes)
+	// Skip re-embed when index already has this persona (stable rerank text).
+	skipEmbed := false
+	if s.Index != nil {
+		if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil &&
+			len(existing.Embedding) > 0 && existing.RerankText != "" &&
+			existing.RerankText == doc.RerankText {
+			skipEmbed = true
 			embedded = true
-			if s.Index != nil {
-				// Free-proof-safe defaults until ActivateSubscription rewrites caps.
-				entDaily, entWeekly := 1, 3
-				ci := matching.CandidateIndex{
-					CandidateID:    candidateID,
-					Embedding:      vec,
-					MinScore:       0.45,
-					DailyCap:       entDaily,
-					WeeklyCap:      entWeekly,
-					Kinds:          filters.Kinds,
-					Countries:      filters.Countries,
-					SalaryFloorUSD: filters.SalaryFloorUSD,
-					RemoteOnly:     filters.RemoteOnly,
-					RerankText:     doc.RerankText,
-					Enabled:        true,
+		}
+	}
+	var vec []float32
+	var err error
+	if !skipEmbed {
+		vec, err = s.Embedder.Embed(ctx, text)
+		if err != nil {
+			if in.StrictEmbed {
+				return nil, fmt.Errorf("placement: embed failed: %w", err)
+			}
+			util.Log(ctx).WithError(err).WithField("candidate_id", candidateID).
+				Warn("placement: embed failed (summary still stored)")
+		}
+	} else if s.Index != nil {
+		if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil {
+			vec = existing.Embedding
+		}
+	}
+	if err == nil && len(vec) > 0 {
+		embedded = true
+		if s.Index != nil {
+			// Free-proof-safe defaults until ActivateSubscription rewrites caps.
+			entDaily, entWeekly := 1, 3
+			ci := matching.CandidateIndex{
+				CandidateID:    candidateID,
+				Embedding:      vec,
+				MinScore:       0.45,
+				DailyCap:       entDaily,
+				WeeklyCap:      entWeekly,
+				Kinds:          filters.Kinds,
+				Countries:      filters.Countries,
+				SalaryFloorUSD: filters.SalaryFloorUSD,
+				RemoteOnly:     filters.RemoteOnly,
+				RerankText:     doc.RerankText,
+				Enabled:        true,
+			}
+			if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil {
+				ci.MinScore = existing.MinScore
+				if existing.DailyCap > 0 {
+					ci.DailyCap = existing.DailyCap
 				}
-				if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil {
-					ci.MinScore = existing.MinScore
-					if existing.DailyCap > 0 {
-						ci.DailyCap = existing.DailyCap
-					}
-					ci.WeeklyCap = existing.WeeklyCap
-					if len(filters.Kinds) == 0 {
-						ci.Kinds = existing.Kinds
-					}
-					if len(filters.Countries) == 0 {
-						ci.Countries = existing.Countries
-					}
-					if filters.SalaryFloorUSD == nil {
-						ci.SalaryFloorUSD = existing.SalaryFloorUSD
-					}
+				ci.WeeklyCap = existing.WeeklyCap
+				if len(filters.Kinds) == 0 {
+					ci.Kinds = existing.Kinds
 				}
-				if uErr := s.Index.Upsert(ctx, ci); uErr != nil {
-					util.Log(ctx).WithError(uErr).WithField("candidate_id", candidateID).
-						Warn("placement: match index upsert failed")
+				if len(filters.Countries) == 0 {
+					ci.Countries = existing.Countries
+				}
+				if filters.SalaryFloorUSD == nil {
+					ci.SalaryFloorUSD = existing.SalaryFloorUSD
 				}
 			}
-			// Path C gap-fill; source=persona protects against thin CV overwrites.
-			if !skipEmbed && s.Svc != nil && s.EmbedQueue != "" {
-				out := eventsv1.CandidateEmbeddingV1{
-					CandidateID:  candidateID,
-					CVVersion:    version,
-					Vector:       vec,
-					ModelVersion: s.ModelVersion,
-					Source:       eventsv1.EmbeddingSourcePersona,
+			if uErr := s.Index.Upsert(ctx, ci); uErr != nil {
+				if in.StrictEmbed {
+					return nil, fmt.Errorf("placement: match index upsert failed: %w", uErr)
 				}
-				env := eventsv1.NewEnvelope(eventsv1.TopicCandidateEmbedding, out)
-				body, mErr := json.Marshal(env)
-				if mErr == nil {
-					if pErr := s.Svc.QueueManager().Publish(ctx, s.EmbedQueue, body, nil); pErr != nil {
-						util.Log(ctx).WithError(pErr).WithField("candidate_id", candidateID).
-							Warn("placement: publish embedding event failed")
-					}
+				util.Log(ctx).WithError(uErr).WithField("candidate_id", candidateID).
+					Warn("placement: match index upsert failed")
+			}
+		}
+		// Path C gap-fill; source=persona protects against thin CV overwrites.
+		if !skipEmbed && s.Svc != nil && s.EmbedQueue != "" {
+			out := eventsv1.CandidateEmbeddingV1{
+				CandidateID:  candidateID,
+				CVVersion:    version,
+				Vector:       vec,
+				ModelVersion: s.ModelVersion,
+				Source:       eventsv1.EmbeddingSourcePersona,
+			}
+			env := eventsv1.NewEnvelope(eventsv1.TopicCandidateEmbedding, out)
+			body, mErr := json.Marshal(env)
+			if mErr == nil {
+				if pErr := s.Svc.QueueManager().Publish(ctx, s.EmbedQueue, body, nil); pErr != nil {
+					util.Log(ctx).WithError(pErr).WithField("candidate_id", candidateID).
+						Warn("placement: publish embedding event failed")
 				}
 			}
 		}
+	}
+
+	if in.StrictEmbed && !embedded {
+		return nil, fmt.Errorf("placement: embedding not available after rebuild")
 	}
 
 	return &RebuildResult{Document: doc, Version: version, Embedded: embedded}, nil

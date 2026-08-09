@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { planById, type PlanId } from '@/utils/plans';
+import { preferenceMissingLabels } from '@/utils/profileReadiness';
 import { Panel } from './Panel';
 import { OpportunitiesFeed } from '@/components/OpportunitiesFeed';
 import { refreshMyMatches, type MatchRefreshResult } from '@/api/candidates';
@@ -20,14 +21,38 @@ function emptyReasonMessage(res: MatchRefreshResult): string {
       return 'No recent roles matched your filters yet. Widen locations/roles under CV → Match preferences.';
     case 'below_threshold':
       return 'Roles were found but none cleared your quality bar. Improve your CV score, then try again.';
+    case 'need_cv':
+      return 'Upload a CV under Dashboard → CV so we can score roles against your profile, then run Find matches.';
     default:
-      return 'Match search complete — no new roles above your quality threshold yet. Update your CV or preferences, then re-run.';
+      return 'Match search complete — no new roles above your quality threshold yet. Update preferences under CV, then re-run.';
   }
 }
 
+/** Prefer server problem detail when refresh fails for a real system error. */
+function refreshErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/embedding_unavailable|could not build match embedding/i.test(raw)) {
+    return 'Match embedding is temporarily unavailable. Your CV is saved — try Find matches again in a moment.';
+  }
+  if (/no_embedding|upload a CV/i.test(raw)) {
+    return 'Upload a CV under Dashboard → CV so we can match roles to your profile.';
+  }
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart)) as { detail?: string; title?: string };
+      if (parsed.detail?.trim()) return parsed.detail.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  return 'Could not refresh matches. Try again in a moment.';
+}
+
 /**
- * Scored shortlist only — no top dual-mode menus.
- * CTAs on this screen (Find matches, Go to CV, Upgrade) drive next steps.
+ * Matches page — scored shortlist + Find matches only.
+ * CV upload / preference editing live on the CV hub; this panel only probes
+ * for a missing CV when match is not yet possible (or the server says so).
  */
 export function MatchesPanel({
   plan,
@@ -37,9 +62,10 @@ export function MatchesPanel({
   subQueryError = false,
   subLoading = false,
   onUpgrade,
-  /** When true (stage dashboard_setup), emphasize CV completion over empty inventory. */
-  setupMode = false,
-  setupMissing = [] as string[],
+  /** CV file or capabilities on file — false only blocks with upload guidance. */
+  cvPresent = true,
+  /** Preference gaps (salary, countries, …) — soft tip only, never “upload CV”. */
+  preferenceMissing = [] as string[],
 }: {
   plan: PlanId;
   freeProof?: boolean;
@@ -48,8 +74,8 @@ export function MatchesPanel({
   subQueryError?: boolean;
   subLoading?: boolean;
   onUpgrade?: () => void;
-  setupMode?: boolean;
-  setupMissing?: string[];
+  cvPresent?: boolean;
+  preferenceMissing?: string[];
 }) {
   const { push: toast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
@@ -66,6 +92,10 @@ export function MatchesPanel({
 
   const [lastReason, setLastReason] = useState<string | null>(null);
   const [autoKickDone, setAutoKickDone] = useState(false);
+
+  // Only treat as “need CV” when we truly lack a CV — not incomplete preferences.
+  const needsCvUpload = !cvPresent || lastReason === 'need_cv';
+  const prefLabels = preferenceMissingLabels(preferenceMissing);
 
   const runRefresh = useCallback(
     async (silent: boolean) => {
@@ -86,16 +116,13 @@ export function MatchesPanel({
         setRefreshKey((k) => k + 1);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/no_embedding|embedding|cv/i.test(msg)) {
-          if (!silent) {
-            toast(
-              'Upload a CV under Dashboard → CV so we can match roles to your profile.',
-              'error'
-            );
-          }
+        if (/no_embedding|need_cv|upload a CV/i.test(msg)) {
           setLastReason('need_cv');
-        } else if (!silent) {
-          toast('Could not refresh matches. Try again in a moment.', 'error');
+        } else {
+          setLastReason('error');
+        }
+        if (!silent) {
+          toast(refreshErrorMessage(err), 'error');
         }
       } finally {
         setRefreshing(false);
@@ -111,16 +138,12 @@ export function MatchesPanel({
       setAutoKickDone(true);
       return;
     }
-    // Do not auto-call refresh while setup is incomplete — server returns
-    // 409 no_embedding (red console) when there is no CV embedding yet.
-    // User can still press "Find matches" once the CV is ready.
-    if (setupMode) {
-      setAutoKickDone(true);
-      return;
-    }
+    // Only auto-kick when we have a CV signal; otherwise Matches would only
+    // get need_cv noise. User can still press Find matches if they know better.
     setAutoKickDone(true);
+    if (!cvPresent) return;
     void runRefresh(true);
-  }, [subLoading, queued, runRefresh, autoKickDone, setupMode]);
+  }, [subLoading, queued, runRefresh, autoKickDone, cvPresent]);
 
   if (subLoading && queuedProp === null && deliveredProp === null) {
     return (
@@ -143,29 +166,43 @@ export function MatchesPanel({
       <div>
         <h2 className="text-lg font-semibold text-main">Your matches</h2>
         <p className="mt-1 text-sm text-secondary">
-          {setupMode
-            ? 'You are subscribed. Finish your CV and match preferences so we can score roles against you.'
-            : 'Scored against your CV — highest fit first. Use the actions on this page to refresh, open a role, or improve your CV.'}
+          Scored against your CV — highest fit first. Use Find matches to refresh, or open a role
+          from the list below.
         </p>
       </div>
 
-      {setupMode && (
+      {/* CV missing only — never show when onboarding already stored a CV. */}
+      {needsCvUpload && (
         <div
           role="status"
           className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
         >
-          <p className="font-semibold">Finish setup for better matches</p>
+          <p className="font-semibold">CV needed for scored matches</p>
           <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
-            {setupMissing.length > 0
-              ? `Still needed: ${setupMissing.slice(0, 6).join(', ')}${setupMissing.length > 6 ? '…' : ''}.`
-              : 'Upload a CV and set target role / location preferences under the CV tab.'}
+            Upload a resume under the CV tab so we can embed your profile and rank roles. Match
+            preferences (location, salary) live there too.
           </p>
           <a
             href="/dashboard/#cv"
             className="mt-2 inline-flex min-h-[40px] items-center rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
           >
-            Open CV hub
+            Open CV tab
           </a>
+        </div>
+      )}
+
+      {/* Preferences only — soft, non-blocking; never “finish your CV”. */}
+      {!needsCvUpload && prefLabels.length > 0 && queued === 0 && (
+        <div
+          role="status"
+          className="rounded-md border border-muted bg-surface-muted px-3 py-2 text-sm text-secondary"
+        >
+          Optional: add {prefLabels.slice(0, 4).join(', ')}
+          {prefLabels.length > 4 ? '…' : ''} under{' '}
+          <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
+            CV → Preferences
+          </a>{' '}
+          for tighter filters. You can still run Find matches now.
         </div>
       )}
 
@@ -191,11 +228,10 @@ export function MatchesPanel({
           <Button
             type="button"
             variant="primary"
-            disabled={refreshing || setupMode}
-            title={setupMode ? 'Finish your CV under the CV tab before finding matches' : undefined}
+            disabled={refreshing}
             onClick={() => void runRefresh(false)}
           >
-            {refreshing ? 'Searching…' : setupMode ? 'Finish CV first' : 'Find matches'}
+            {refreshing ? 'Searching…' : 'Find matches'}
           </Button>
         </div>
         {!unlimited && (
@@ -226,20 +262,27 @@ export function MatchesPanel({
         {queued === 0 && (
           <div className="mt-4 rounded-md border border-muted bg-surface-muted p-4 text-sm text-main">
             <p className="font-medium">
-              {setupMode || lastReason === 'need_cv'
-                ? 'Add a CV to get scored matches'
-                : 'No matches in your queue yet'}
+              {needsCvUpload ? 'Add a CV to get scored matches' : 'No matches in your queue yet'}
             </p>
             <p className="mt-1 text-secondary">
-              {setupMode || lastReason === 'need_cv' ? (
+              {needsCvUpload ? (
                 <>
-                  You are not missing a subscription — finish your CV under{' '}
+                  Upload a resume under{' '}
                   <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
                     CV
                   </a>
                   , then hit Find matches.
                 </>
-              ) : lastReason ? (
+              ) : lastReason === 'error' ? (
+                <>
+                  Match search hit a temporary server problem. Hit Find matches again. If this keeps
+                  happening, check your CV under{' '}
+                  <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
+                    CV
+                  </a>
+                  .
+                </>
+              ) : lastReason && lastReason !== 'need_cv' ? (
                 emptyReasonMessage({
                   ok: true,
                   matches_written: 0,
@@ -249,24 +292,27 @@ export function MatchesPanel({
                 })
               ) : (
                 <>
-                  Start by uploading a CV under{' '}
+                  Press Find matches to score recent roles against your profile. Refine location and
+                  salary anytime under{' '}
                   <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
-                    CV
+                    CV → Preferences
                   </a>
-                  , set match preferences, then run Find matches.
+                  .
                 </>
               )}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <a
-                href="/dashboard/#cv"
-                className="inline-flex min-h-[40px] items-center rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
-              >
-                Go to CV
-              </a>
+              {needsCvUpload ? (
+                <a
+                  href="/dashboard/#cv"
+                  className="inline-flex min-h-[40px] items-center rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
+                >
+                  Go to CV
+                </a>
+              ) : null}
               <Button
                 type="button"
-                variant="secondary"
+                variant={needsCvUpload ? 'secondary' : 'primary'}
                 size="sm"
                 disabled={refreshing}
                 onClick={() => void runRefresh(false)}
