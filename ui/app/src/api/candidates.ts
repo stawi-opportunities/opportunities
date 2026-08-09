@@ -565,6 +565,7 @@ function isConflict(err: unknown): boolean {
       ? Number((err as { status: unknown }).status)
       : 0;
   const msg = err instanceof Error ? err.message : String(err);
+  // @stawi/auth-runtime maps 409 → AuthError code API_VALIDATION, message "API 409: …"
   return status === 409 || code === 'API_CONFLICT' || /409|conflict|no_embedding/i.test(msg);
 }
 
