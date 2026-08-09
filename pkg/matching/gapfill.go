@@ -56,6 +56,8 @@ type GapFillInput struct {
 	// QueryText is the candidate-side text (CV summary / skills) used as the
 	// cross-encoder query. Empty disables reranking for this run.
 	QueryText string
+	// TriggeredBy is written to match_run_events. Defaults to "extension_poll".
+	TriggeredBy string
 }
 
 // GapFill reason codes for product empty-states (honest UX).
@@ -65,6 +67,7 @@ const (
 	GapReasonBelowThreshold = "below_threshold"
 	GapReasonWeeklyCap      = "weekly_cap"
 	GapReasonDailyCap       = "daily_cap"
+	GapReasonRateLimited    = "rate_limited"
 )
 
 // GapFillResult summarises the read-path execution.
@@ -97,11 +100,15 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 	}
 	runID := idgen()
 	startedAt := now()
+	triggeredBy := in.TriggeredBy
+	if triggeredBy == "" {
+		triggeredBy = "extension_poll"
+	}
 	runEvt := MatchRunEvent{
 		RunID:       runID,
 		StartedAt:   startedAt,
 		Path:        PathGap,
-		TriggeredBy: "extension_poll",
+		TriggeredBy: triggeredBy,
 		CandidateID: in.CandidateID,
 	}
 	defer func() { _ = deps.EventLog.WriteMatchRunEvent(ctx, runEvt) }()
