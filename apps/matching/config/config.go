@@ -31,9 +31,11 @@ type CandidatesConfig struct {
 	EmbeddingBaseURL  string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey   string `env:"EMBEDDING_API_KEY"  envDefault:""`
 	EmbeddingModel    string `env:"EMBEDDING_MODEL"    envDefault:""`
-	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
-	// 0 omits it. Must equal EMBEDDING_DIM.
-	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
+	// EmbeddingDimensions pins the embeddings "dimensions" field (Matryoshka
+	// MRL). Multilingual llama-nemotron is native 2048 — pin 1024 to match
+	// opportunities.embedding / candidate_match_indexes vector(1024).
+	// 0 omits the field (native width).
+	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"1024"`
 	// EmbeddingInputType: "passage"/"query" for NVIDIA asymmetric E5; empty omits.
 	EmbeddingInputType string `env:"EMBEDDING_INPUT_TYPE" envDefault:""`
 

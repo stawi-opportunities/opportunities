@@ -22,8 +22,11 @@ const (
 	// NVIDIABuildChatModel is the default instruct model for extraction,
 	// recipe generation, CV parse, and how_to_apply peel.
 	NVIDIABuildChatModel = "meta/llama-3.1-8b-instruct"
-	// NVIDIABuildEmbedModel is the default embedding model (native 1024-d).
-	NVIDIABuildEmbedModel = "nvidia/nv-embedqa-e5-v5"
+	// NVIDIABuildEmbedModel is the default embedding model: multilingual +
+	// cross-lingual QA retrieval (26 languages). Native width is 2048; pin
+	// EMBEDDING_DIMENSIONS=1024 (Matryoshka) to match opportunities.embedding
+	// vector(1024). Replaces English-only nv-embedqa-e5-v5.
+	NVIDIABuildEmbedModel = "nvidia/llama-nemotron-embed-1b-v2"
 
 	// GoogleAIBaseURL is Gemini via Google's OpenAI-compatible surface
 	// (https://ai.google.dev/gemini-api/docs/openai).

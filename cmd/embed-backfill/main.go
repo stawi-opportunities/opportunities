@@ -9,18 +9,21 @@
 // exhausted the retry budget) never self-heals — those rows stay NULL
 // forever. This tool fills the gap deterministically.
 //
-// It is idempotent and resumable: it only touches rows WHERE embedding
-// IS NULL, so re-running after an interruption picks up exactly what's
-// left. It reuses extraction.EmbedInput so the vectors it produces are
-// byte-for-byte comparable with the live handler's.
+// It is idempotent and resumable: by default it only touches rows WHERE
+// embedding IS NULL. Pass -force to re-embed every active opportunity
+// (required after switching embed models, e.g. e5-v5 → multilingual
+// llama-nemotron). Reuses extraction.EmbedInput so vectors match the
+// live worker handler.
 //
 // Usage (point EMBEDDING_BASE_URL/DATABASE_URL at port-forwarded
 // services, or run in-cluster):
 //
 //	DATABASE_URL=postgres://opportunities:...@localhost:5432/opportunities?sslmode=disable \
-//	EMBEDDING_BASE_URL=http://localhost:8080 \
-//	EMBEDDING_MODEL=intfloat/multilingual-e5-small \
-//	go run ./cmd/embed-backfill -concurrency 12
+//	EMBEDDING_BASE_URL=https://integrate.api.nvidia.com \
+//	EMBEDDING_MODEL=nvidia/llama-nemotron-embed-1b-v2 \
+//	EMBEDDING_DIMENSIONS=1024 \
+//	EMBEDDING_API_KEY=nvapi-... \
+//	go run ./cmd/embed-backfill -concurrency 12 -force
 package main
 
 import (
@@ -53,6 +56,7 @@ import (
 func main() {
 	concurrency := flag.Int("concurrency", 12, "parallel embed requests (keep <= TEI max-concurrent-requests * replicas)")
 	batch := flag.Int("batch", 500, "rows fetched per round")
+	force := flag.Bool("force", false, "re-embed all active opportunities (model migration); default only NULL embeddings")
 	stdio := flag.Bool("stdio", false, "stdio mode: read CSV (canonical_id,text) from stdin, "+
 		"write CSV (canonical_id,vector_literal) to stdout, no DB. Use when a direct DB "+
 		"connection is unavailable (drive DB I/O via `kubectl exec psql` COPY instead).")
@@ -65,7 +69,8 @@ func main() {
 		os.Exit(2)
 	}
 	// Pin output width to the pgvector column for Matryoshka models
-	// (Qwen3-Embedding) so the backfill writes column-compatible vectors.
+	// (llama-nemotron native 2048 → 1024) so the backfill writes
+	// column-compatible vectors.
 	embedDims, _ := strconv.Atoi(os.Getenv("EMBEDDING_DIMENSIONS"))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -76,6 +81,7 @@ func main() {
 		EmbeddingAPIKey:     os.Getenv("EMBEDDING_API_KEY"),
 		EmbeddingModel:      embedModel,
 		EmbeddingDimensions: embedDims,
+		EmbeddingInputType:  firstNonEmpty(os.Getenv("EMBEDDING_INPUT_TYPE"), "passage"),
 	})
 
 	if *stdio {
@@ -101,11 +107,18 @@ func main() {
 		fatalf("ping db: %v", err)
 	}
 
+	countSQL := `SELECT count(*) FROM opportunities WHERE status='active' AND hidden=false`
+	if !*force {
+		countSQL += ` AND embedding IS NULL`
+	}
 	var total int
-	_ = db.QueryRowContext(ctx,
-		`SELECT count(*) FROM opportunities WHERE embedding IS NULL AND status='active' AND hidden=false`,
-	).Scan(&total)
-	fmt.Printf("embed-backfill: %d active opportunities with NULL embedding; concurrency=%d\n", total, *concurrency)
+	_ = db.QueryRowContext(ctx, countSQL).Scan(&total)
+	mode := "NULL embeddings only"
+	if *force {
+		mode = "FORCE re-embed all active"
+	}
+	fmt.Printf("embed-backfill: %d active opportunities (%s); concurrency=%d model=%s dims=%d\n",
+		total, mode, *concurrency, embedModel, embedDims)
 
 	var done, failed int64
 	var sampled int64
@@ -127,8 +140,12 @@ func main() {
 		}
 	}()
 
+	// Cursor for force mode: ORDER BY first_seen_at DESC, advance by last ID.
+	var afterSeen time.Time
+	var afterID string
+
 	for ctx.Err() == nil {
-		rows, err := fetchBatch(ctx, db, *batch)
+		rows, err := fetchBatch(ctx, db, *batch, *force, afterSeen, afterID)
 		if err != nil {
 			// Transient connectivity (e.g. a port-forward blip) shouldn't
 			// abort a multi-thousand-row run. Back off and retry — the work
@@ -141,7 +158,7 @@ func main() {
 			continue
 		}
 		if len(rows) == 0 {
-			break // no NULL rows left
+			break // no rows left
 		}
 
 		sem := make(chan struct{}, *concurrency)
@@ -155,7 +172,7 @@ func main() {
 			go func(r oppRow) {
 				defer wg.Done()
 				defer func() { <-sem }()
-				if err := embedOne(ctx, db, ex, r); err != nil {
+				if err := embedOne(ctx, db, ex, r, *force); err != nil {
 					atomic.AddInt64(&failed, 1)
 					if atomic.AddInt64(&sampled, 1) <= 5 {
 						fmt.Printf("  [err] %s: %v\n", r.canonicalID, err)
@@ -170,6 +187,10 @@ func main() {
 			}(r)
 		}
 		wg.Wait()
+		// Advance cursor for force mode (stable page by first_seen_at, id).
+		last := rows[len(rows)-1]
+		afterSeen = last.firstSeenAt
+		afterID = last.canonicalID
 	}
 
 	fmt.Printf("embed-backfill: done. embedded=%d failed=%d elapsed=%s\n",
@@ -177,6 +198,15 @@ func main() {
 	if failed > 0 {
 		os.Exit(1)
 	}
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // runStdio reads CSV records (canonical_id,text) from stdin, embeds each
@@ -239,18 +269,52 @@ type oppRow struct {
 	title         string
 	issuingEntity string
 	description   string
+	firstSeenAt   time.Time
 }
 
-func fetchBatch(ctx context.Context, db *sql.DB, n int) ([]oppRow, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT canonical_id,
-		       COALESCE(title,''),
-		       COALESCE(issuing_entity,''),
-		       COALESCE(attributes->>'description','')
-		FROM opportunities
-		WHERE embedding IS NULL AND status='active' AND hidden=false
-		ORDER BY first_seen_at DESC
-		LIMIT $1`, n)
+func fetchBatch(ctx context.Context, db *sql.DB, n int, force bool, afterSeen time.Time, afterID string) ([]oppRow, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if force {
+		// Keyset pagination so force mode can walk the whole active corpus.
+		if afterID == "" {
+			rows, err = db.QueryContext(ctx, `
+				SELECT canonical_id,
+				       COALESCE(title,''),
+				       COALESCE(issuing_entity,''),
+				       COALESCE(attributes->>'description',''),
+				       first_seen_at
+				FROM opportunities
+				WHERE status='active' AND hidden=false
+				ORDER BY first_seen_at DESC, canonical_id DESC
+				LIMIT $1`, n)
+		} else {
+			rows, err = db.QueryContext(ctx, `
+				SELECT canonical_id,
+				       COALESCE(title,''),
+				       COALESCE(issuing_entity,''),
+				       COALESCE(attributes->>'description',''),
+				       first_seen_at
+				FROM opportunities
+				WHERE status='active' AND hidden=false
+				  AND (first_seen_at, canonical_id) < ($2::timestamptz, $3::text)
+				ORDER BY first_seen_at DESC, canonical_id DESC
+				LIMIT $1`, n, afterSeen, afterID)
+		}
+	} else {
+		rows, err = db.QueryContext(ctx, `
+			SELECT canonical_id,
+			       COALESCE(title,''),
+			       COALESCE(issuing_entity,''),
+			       COALESCE(attributes->>'description',''),
+			       first_seen_at
+			FROM opportunities
+			WHERE embedding IS NULL AND status='active' AND hidden=false
+			ORDER BY first_seen_at DESC, canonical_id DESC
+			LIMIT $1`, n)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +322,7 @@ func fetchBatch(ctx context.Context, db *sql.DB, n int) ([]oppRow, error) {
 	var out []oppRow
 	for rows.Next() {
 		var r oppRow
-		if err := rows.Scan(&r.canonicalID, &r.title, &r.issuingEntity, &r.description); err != nil {
+		if err := rows.Scan(&r.canonicalID, &r.title, &r.issuingEntity, &r.description, &r.firstSeenAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -266,20 +330,19 @@ func fetchBatch(ctx context.Context, db *sql.DB, n int) ([]oppRow, error) {
 	return out, rows.Err()
 }
 
-func embedOne(ctx context.Context, db *sql.DB, ex *extraction.Extractor, r oppRow) error {
+func embedOne(ctx context.Context, db *sql.DB, ex *extraction.Extractor, r oppRow, force bool) error {
 	text := extraction.EmbedInput(r.title, r.issuingEntity, r.description)
 	vec, err := ex.Embed(ctx, text)
 	if err != nil {
 		return err
 	}
 	if len(vec) == 0 {
-		return nil // embedder disabled — nothing to write
+		return fmt.Errorf("empty embedding vector")
 	}
 	lit := vectorLiteral(vec)
 	// Retry the write across transient connectivity blips (e.g. a
 	// port-forward reset) so a momentary outage doesn't waste the embed
-	// we already paid for. Idempotent: the WHERE embedding IS NULL guard
-	// makes a re-applied update a no-op.
+	// we already paid for.
 	var lastErr error
 	for attempt := 0; attempt < 4; attempt++ {
 		if attempt > 0 {
@@ -289,10 +352,18 @@ func embedOne(ctx context.Context, db *sql.DB, ex *extraction.Extractor, r oppRo
 			case <-time.After(time.Duration(attempt) * 500 * time.Millisecond):
 			}
 		}
-		_, lastErr = db.ExecContext(ctx,
-			`UPDATE opportunities SET embedding = $1::vector, updated_at = now()
-			 WHERE canonical_id = $2 AND embedding IS NULL`,
-			lit, r.canonicalID)
+		if force {
+			_, lastErr = db.ExecContext(ctx,
+				`UPDATE opportunities SET embedding = $1::vector, updated_at = now()
+				 WHERE canonical_id = $2`,
+				lit, r.canonicalID)
+		} else {
+			// Idempotent: WHERE embedding IS NULL makes a re-applied update a no-op.
+			_, lastErr = db.ExecContext(ctx,
+				`UPDATE opportunities SET embedding = $1::vector, updated_at = now()
+				 WHERE canonical_id = $2 AND embedding IS NULL`,
+				lit, r.canonicalID)
+		}
 		if lastErr == nil {
 			return nil
 		}

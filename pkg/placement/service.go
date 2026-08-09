@@ -160,8 +160,10 @@ func (s *Service) finishRebuild(ctx context.Context, in RebuildInput, fields Fie
 	text := extraction.EmbedQueryPrefix + doc.SummaryText
 	text = truncateRunes(text, cfg.MaxRunes)
 	// Skip re-embed when index already has this persona (stable rerank text).
+	// Never skip under StrictEmbed — used for match refresh and model migrations
+	// where the stored vector may be from an older embedder (e.g. English-only e5).
 	skipEmbed := false
-	if s.Index != nil {
+	if !in.StrictEmbed && s.Index != nil {
 		if existing, gErr := s.Index.Get(ctx, candidateID); gErr == nil && existing != nil &&
 			len(existing.Embedding) > 0 && existing.RerankText != "" &&
 			existing.RerankText == doc.RerankText {
