@@ -159,11 +159,26 @@ export interface CandidateSummary {
 }
 
 /**
- * GET /me — authed user identity + CandidateProfile row.
+ * Authed candidate summary for feed personalisation / banners.
+ *
+ * Gateway only routes matching under `/matching/*`. There is no bare
+ * `GET /me` on api.stawi.org (that 404s as `no_route`). We load the
+ * structured profile-fields bag and map the fields callers need.
  */
 export async function fetchCandidate(): Promise<CandidateSummary | null> {
-  const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>('/me');
-  return body.candidate ?? null;
+  const pf = await fetchProfileFields();
+  if (!pf) return null;
+  return {
+    profile_id: pf.candidate_id ?? '',
+    status: '',
+    current_title: pf.current_title ?? pf.target_job_title ?? '',
+    preferred_countries: (pf.preferred_countries ?? []).join(','),
+    preferred_regions: (pf.preferred_regions ?? []).join(','),
+    remote_preference: pf.remote_preference ?? '',
+    languages: (pf.languages ?? []).join(';'),
+    plan_id: '',
+    subscription: '',
+  };
 }
 
 // ── Subscription ──────────────────────────────────────────────────
@@ -184,14 +199,14 @@ export interface NotificationPrefs {
 }
 
 /**
- * PUT /me/profile — updates name, title, phone.
+ * PUT profile name/title — via profile-fields (gateway /matching/…).
  */
 export async function updateProfile(payload: ProfilePayload): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me/profile', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+  await updateProfileFields({
+    name: payload.name,
+    current_title: payload.current_title,
   });
+  return { ok: true };
 }
 
 // ── Structured profile fields (CV editor + match preferences) ─────
@@ -241,55 +256,48 @@ export async function updateProfileFields(
   throw lastErr instanceof Error ? lastErr : new Error('profile-fields unavailable');
 }
 
+const NOTIFICATION_PATHS = [
+  '/matching/me/notifications',
+  '/matching/api/me/notifications',
+  '/me/notifications',
+] as const;
+
 /**
- * GET /me/notifications — current digest / alert preferences.
+ * GET notifications — digest / alert preferences (gateway /matching/… first).
  */
 export async function fetchNotificationPrefs(): Promise<NotificationPrefs> {
-  try {
-    return await authRuntime().fetch<NotificationPrefs>('/me/notifications', {
-      method: 'GET',
-    });
-  } catch (err) {
-    // Fallback path if gateway only exposes /matching/api/me/*
-    const code =
-      err && typeof err === 'object' && 'code' in err
-        ? String((err as { code: unknown }).code)
-        : '';
-    const msg = err instanceof Error ? err.message : String(err);
-    if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) {
-      return authRuntime().fetch<NotificationPrefs>('/matching/api/me/notifications', {
-        method: 'GET',
-      });
+  let lastErr: unknown;
+  for (const path of NOTIFICATION_PATHS) {
+    try {
+      return await authRuntime().fetch<NotificationPrefs>(path, { method: 'GET' });
+    } catch (err) {
+      lastErr = err;
+      if (isNotFound(err)) continue;
+      throw err;
     }
-    throw err;
   }
+  throw lastErr instanceof Error ? lastErr : new Error('notifications unavailable');
 }
 
 /**
- * PUT /me/notifications — updates notification preferences (digest schedule).
+ * PUT notifications — digest schedule (gateway /matching/… first).
  */
 export async function updateNotificationPrefs(prefs: NotificationPrefs): Promise<{ ok: boolean }> {
-  try {
-    return await authRuntime().fetch('/me/notifications', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(prefs),
-    });
-  } catch (err) {
-    const code =
-      err && typeof err === 'object' && 'code' in err
-        ? String((err as { code: unknown }).code)
-        : '';
-    const msg = err instanceof Error ? err.message : String(err);
-    if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) {
-      return authRuntime().fetch('/matching/api/me/notifications', {
+  let lastErr: unknown;
+  for (const path of NOTIFICATION_PATHS) {
+    try {
+      return await authRuntime().fetch(path, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(prefs),
       });
+    } catch (err) {
+      lastErr = err;
+      if (isNotFound(err)) continue;
+      throw err;
     }
-    throw err;
   }
+  throw lastErr instanceof Error ? lastErr : new Error('notifications unavailable');
 }
 
 /**

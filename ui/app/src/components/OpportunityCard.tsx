@@ -88,17 +88,17 @@ export function OpportunityCard({
 
   return (
     <li
-      className={`flex flex-col gap-3 rounded-lg border bg-white p-4 sm:flex-row sm:items-start sm:gap-4 dark:bg-navy-900 ${
+      className={`flex flex-col gap-3 rounded-lg border bg-white p-3.5 sm:flex-row sm:items-start sm:gap-4 sm:p-4 dark:bg-navy-900 ${
         isMatched
           ? 'border-l-4 border-l-emerald-500 border-gray-200 dark:border-navy-700'
           : 'border-gray-200 dark:border-navy-700'
       }`}
     >
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-              {title}
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold leading-snug text-gray-900 dark:text-white">
+              <span className="break-words">{title}</span>
               {isNew && (
                 <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                   {t('card.new')}
@@ -150,7 +150,7 @@ export function OpportunityCard({
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-stretch gap-2 sm:items-center">
           {item.application ? (
             <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
               {STATUS_KEYS[item.application.status]
@@ -162,7 +162,7 @@ export function OpportunityCard({
               {active && snapshot?.has_how_to_apply && detailUrl(snapshot) ? (
                 <a
                   href={detailUrl(snapshot)}
-                  className="min-h-[44px] rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800"
+                  className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-md bg-navy-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-navy-800 sm:flex-none"
                 >
                   {t('card.howToApply')}
                 </a>
@@ -171,7 +171,7 @@ export function OpportunityCard({
                   type="button"
                   onClick={() => onApply(item.opportunity_id)}
                   disabled={isPending}
-                  className="min-h-[44px] rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-800 disabled:opacity-50"
+                  className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-md bg-navy-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-navy-800 disabled:opacity-50 sm:flex-none"
                 >
                   {t('cta.apply')}
                 </button>
@@ -184,7 +184,7 @@ export function OpportunityCard({
               onClick={() => onUnstar(item.opportunity_id)}
               aria-label="Remove from saved"
               disabled={isPending}
-              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-amber-300 dark:hover:bg-amber-900/20"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-amber-300 dark:hover:bg-amber-900/20"
             >
               ★ {t('cta.saved')}
             </button>
@@ -194,7 +194,7 @@ export function OpportunityCard({
               onClick={() => onStar(item.opportunity_id)}
               aria-label="Save opportunity"
               disabled={isPending}
-              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-300 dark:hover:bg-navy-800"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-300 dark:hover:bg-navy-800"
             >
               ☆ {t('cta.save')}
             </button>
@@ -206,7 +206,7 @@ export function OpportunityCard({
               aria-label="Dismiss match"
               disabled={isPending}
               title="Hide this match — improves future digests"
-              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-400 dark:hover:bg-navy-800"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-navy-700 dark:bg-navy-900 dark:text-gray-400 dark:hover:bg-navy-800"
             >
               Dismiss
             </button>

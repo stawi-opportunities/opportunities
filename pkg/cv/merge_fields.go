@@ -52,6 +52,11 @@ func MergeExtractedIntoProfileWithText(
 			copy(wh, out.WorkHistory)
 			out.WorkHistory = wh
 		}
+		if out.EducationHistory != nil {
+			eh := make([]map[string]any, len(out.EducationHistory))
+			copy(eh, out.EducationHistory)
+			out.EducationHistory = eh
+		}
 	}
 	filled = make([]string, 0, 24)
 
@@ -116,7 +121,8 @@ func MergeExtractedIntoProfileWithText(
 	}
 	fillStr(&out.Name, name, "name")
 
-	// Heuristic section bodies from raw CV text.
+	// Heuristic section bodies from raw CV text (bio/skills/certs only —
+	// education structure comes from AI education_history, not local parsers).
 	summarySection := ExtractSummarySection(rawCV)
 	skillsSection := ExtractSkillsSection(rawCV)
 	certsSection := ExtractCertificationsSection(rawCV)
@@ -148,8 +154,8 @@ func MergeExtractedIntoProfileWithText(
 	fillStrPreferLonger(&out.Bio, bio, "bio", 40)
 
 	fillStr(&out.Seniority, extracted.Seniority, "seniority")
-	// Education: prefer longer multi-line education.
-	fillStrPreferLonger(&out.Education, extracted.Education, "education", 20)
+	// Education: AI-structured education_history only (no local free-text parse).
+	mergeEducationFromAI(out, extracted, &filled)
 	fillStr(&out.RemotePref, extracted.RemotePreference, "remote_preference")
 	fillStr(&out.Currency, extracted.Currency, "currency")
 
@@ -250,6 +256,112 @@ func MergeExtractedIntoProfileWithText(
 	}
 
 	return out, filled
+}
+
+// mergeEducationFromAI stores structured education from the model only.
+// We do not regex-parse free-text into school/degree — that is the AI's job.
+func mergeEducationFromAI(
+	out *candidatestore.ProfileFields,
+	extracted *extraction.CVFields,
+	filled *[]string,
+) {
+	if out == nil || extracted == nil {
+		return
+	}
+	// Respect user-edited structured history.
+	if len(out.EducationHistory) > 0 {
+		if strings.TrimSpace(out.Education) == "" {
+			if summary := extraction.FormatEducationSummary(mapsToEducationEntries(out.EducationHistory)); summary != "" {
+				out.Education = summary
+				*filled = append(*filled, "education")
+			}
+		}
+		return
+	}
+
+	if len(extracted.EducationHistory) > 0 {
+		out.EducationHistory = educationEntriesToMaps(extracted.EducationHistory)
+		*filled = append(*filled, "education_history")
+		summary := strings.TrimSpace(extracted.Education)
+		if summary == "" {
+			summary = extraction.FormatEducationSummary(extracted.EducationHistory)
+		}
+		if summary != "" {
+			out.Education = summary
+			*filled = append(*filled, "education")
+		}
+		return
+	}
+
+	// Model returned only free-text education (older prompt / incomplete JSON).
+	// Keep the text for search; do not invent structured rows in code.
+	edu := strings.TrimSpace(extracted.Education)
+	if edu == "" {
+		return
+	}
+	if strings.TrimSpace(out.Education) == "" {
+		out.Education = edu
+		*filled = append(*filled, "education")
+	} else if len([]rune(edu)) > len([]rune(out.Education))*2 && len([]rune(edu)) >= 20 {
+		out.Education = edu
+		*filled = append(*filled, "education")
+	}
+}
+
+func educationEntriesToMaps(entries []extraction.EducationEntry) []map[string]any {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(entries))
+	for _, e := range entries {
+		if e.School == "" && e.Degree == "" && e.Field == "" {
+			continue
+		}
+		out = append(out, map[string]any{
+			"school":     e.School,
+			"degree":     e.Degree,
+			"field":      e.Field,
+			"start":      e.StartDate,
+			"end":        e.EndDate,
+			"start_date": e.StartDate,
+			"end_date":   e.EndDate,
+			"notes":      e.Notes,
+		})
+	}
+	return out
+}
+
+func mapsToEducationEntries(rows []map[string]any) []extraction.EducationEntry {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make([]extraction.EducationEntry, 0, len(rows))
+	for _, r := range rows {
+		school, _ := r["school"].(string)
+		degree, _ := r["degree"].(string)
+		field, _ := r["field"].(string)
+		start, _ := r["start_date"].(string)
+		if start == "" {
+			start, _ = r["start"].(string)
+		}
+		end, _ := r["end_date"].(string)
+		if end == "" {
+			end, _ = r["end"].(string)
+		}
+		notes, _ := r["notes"].(string)
+		if strings.TrimSpace(school) == "" && strings.TrimSpace(degree) == "" && strings.TrimSpace(field) == "" {
+			continue
+		}
+		out = append(out, extraction.EducationEntry{
+			School:    strings.TrimSpace(school),
+			Degree:    strings.TrimSpace(degree),
+			Field:     strings.TrimSpace(field),
+			StartDate: strings.TrimSpace(start),
+			EndDate:   strings.TrimSpace(end),
+			Notes:     strings.TrimSpace(notes),
+		})
+	}
+	return out
 }
 
 func cleanStrings(val []string) []string {

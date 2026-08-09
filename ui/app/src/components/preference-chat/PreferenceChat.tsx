@@ -815,7 +815,7 @@ export function PreferenceChat({
           placeholder={missingPlaceholder(missing, mode)}
           disabled={isWaiting || completing}
           readOnly={isWaiting}
-          className="preference-chat-input min-w-0 flex-1 border-0 bg-transparent py-2 text-[15px] text-stone-900 placeholder:text-stone-400 shadow-none outline-none ring-0 focus:border-transparent focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 dark:text-white dark:placeholder:text-stone-500"
+          className="preference-chat-input min-w-0 flex-1 border-0 bg-transparent py-2 text-[16px] text-stone-900 placeholder:text-stone-400 shadow-none outline-none ring-0 focus:border-transparent focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 dark:text-white dark:placeholder:text-stone-500"
           aria-label="Describe what you want"
           aria-busy={isWaiting}
         />

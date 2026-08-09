@@ -701,6 +701,14 @@ function EducationCard({
           placeholder="2015 – 2019"
         />
       </div>
+      <div className="mt-2">
+        <Field
+          label="Notes (GPA, honors, thesis)"
+          value={entry.notes ?? ''}
+          onChange={(notes) => onChange({ ...entry, notes })}
+          placeholder="First Class Honours · GPA 3.8"
+        />
+      </div>
       <div className="mt-2 flex justify-end">
         <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
           Remove
