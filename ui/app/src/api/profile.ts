@@ -49,20 +49,12 @@ export async function submitOnboarding(
   payload: OnboardingPayload
 ): Promise<{ id: string; profile_id: string }> {
   // Prefer the canonical /matching prefix; fall back to legacy top-level path.
-  try {
-    return await authRuntime().fetch('/matching/candidates/onboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    if (!isNotFound(err)) throw err;
-    return authRuntime().fetch('/candidates/onboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  }
+  // Gateway only mounts matching under /matching/* (bare /candidates/* is no_route).
+  return authRuntime().fetch('/matching/candidates/onboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /**
@@ -108,12 +100,7 @@ export interface UploadCVResult {
 }
 
 export async function uploadCV(file: File): Promise<UploadCVResult> {
-  try {
-    return await authRuntime().upload('/matching/me/cv', file);
-  } catch (err) {
-    if (!isNotFound(err)) throw err;
-    return authRuntime().upload('/me/cv', file);
-  }
+  return authRuntime().upload('/matching/me/cv', file);
 }
 
 /** Current CV from files service + placement summary (no separate document index). */
@@ -133,13 +120,8 @@ export interface MeCVDocument {
 export async function fetchMeCV(): Promise<MeCVDocument | null> {
   try {
     return await authRuntime().fetch<MeCVDocument>('/matching/me/cv');
-  } catch (err) {
-    if (!isNotFound(err)) return null;
-    try {
-      return await authRuntime().fetch<MeCVDocument>('/me/cv');
-    } catch {
-      return null;
-    }
+  } catch {
+    return null;
   }
 }
 
@@ -211,11 +193,10 @@ export async function updateProfile(payload: ProfilePayload): Promise<{ ok: bool
 
 // ── Structured profile fields (CV editor + match preferences) ─────
 
+// Only gateway-routed paths. Bare /me/* and /api/me/* return no_route 404s.
 const PROFILE_FIELDS_PATHS = [
-  '/matching/api/me/profile-fields',
-  '/api/me/profile-fields',
   '/matching/me/profile-fields',
-  '/me/profile-fields',
+  '/matching/api/me/profile-fields',
 ] as const;
 
 /**
@@ -259,7 +240,6 @@ export async function updateProfileFields(
 const NOTIFICATION_PATHS = [
   '/matching/me/notifications',
   '/matching/api/me/notifications',
-  '/me/notifications',
 ] as const;
 
 /**
@@ -307,7 +287,9 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me/change-password', {
+  // Account password lives on identity auth — not matching gateway.
+  // Prefer matching alias only if wired; otherwise surface a clear error.
+  return authRuntime().fetch('/matching/me/change-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
@@ -315,17 +297,17 @@ export async function changePassword(
 }
 
 /**
- * POST /me/export-data — request a data-export email.
+ * POST data-export request (matching gateway).
  */
 export async function requestDataExport(): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me/export-data', { method: 'POST' });
+  return authRuntime().fetch('/matching/me/export-data', { method: 'POST' });
 }
 
 /**
- * DELETE /me — permanent account deletion.
+ * DELETE account (matching gateway path when available).
  */
 export async function deleteAccount(reason?: string): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me', {
+  return authRuntime().fetch('/matching/me', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason }),
@@ -361,7 +343,7 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
     delivered_this_week: body.delivered_this_week ?? 0,
   });
 
-  const paths = ['/matching/me/subscription', '/me/subscription', '/matching/api/me/subscription'];
+  const paths = ['/matching/me/subscription', '/matching/api/me/subscription'];
   let lastErr: unknown;
   for (const path of paths) {
     try {

@@ -156,7 +156,7 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
     queued_matches: body.queued_matches ?? 0,
     delivered_this_week: body.delivered_this_week ?? 0,
   });
-  const paths = ['/matching/me/subscription', '/me/subscription', '/matching/api/me/subscription'];
+  const paths = ['/matching/me/subscription', '/matching/api/me/subscription'];
   let lastErr: unknown;
   for (const path of paths) {
     try {
