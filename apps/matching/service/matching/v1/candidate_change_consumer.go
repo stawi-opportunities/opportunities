@@ -132,20 +132,15 @@ func parseRedeliveryHeader(headers map[string]string) int {
 }
 
 func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte) error {
-	candidateID, triggeredBy, vector, err := decodeCandidateChange(c.deps.Topic, payload)
+	candidateID, _, vector, err := decodeCandidateChange(c.deps.Topic, payload)
 	if err != nil {
 		return err
 	}
 
-	change := matching.CandidateChange{
-		CandidateID: candidateID,
-		TriggeredBy: triggeredBy,
-	}
-
 	// Auto-populate / refresh candidate_match_indexes from the embedding event
 	// (folds in what the standalone indexer did) so the index always has a
-	// current vector for fan-out + future preference-change passes. Preserve
-	// any existing prefs; default a brand-new row using plan entitlements.
+	// current vector for fan-out + explicit MatchInvoke. Preserve any existing
+	// prefs; default a brand-new row using plan entitlements.
 	defaultMin := c.deps.DefaultMinScore
 	if defaultMin <= 0 || defaultMin > 1 {
 		defaultMin = 0.70
@@ -195,31 +190,12 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		}
 	}
 
-	idx, err := c.deps.IndexStore.Get(ctx, candidateID)
+	// Validate index presence (optional load). Path C is index-only — do not
+	// auto gap-fill; matching runs only via explicit MatchInvoke paths.
+	_, err = c.deps.IndexStore.Get(ctx, candidateID)
 	switch {
 	case err == nil:
-		change.Embedding = idx.Embedding
-		change.Countries = idx.Countries
-		change.Kinds = idx.Kinds
-		change.SalaryFloorUSD = idx.SalaryFloorUSD
-		change.MinScore = idx.MinScore
-		change.DailyCap = idx.DailyCap
-		change.WeeklyCap = idx.WeeklyCap
-		if change.MinScore <= 0 {
-			change.MinScore = defaultMin
-		}
-	case errors.Is(err, matching.ErrNotFound) && len(vector) > 0:
-		// Race: the index row hasn't been written yet but the embedding event
-		// carries the vector. Run with sensible defaults so the candidate still
-		// gets a gap-fill pass.
-		util.Log(ctx).WithField("candidate_id", candidateID).
-			Debug("candidate_change: no index row yet; using event vector + default prefs")
-		change.Embedding = vector
-		change.MinScore = defaultMin
-		change.Kinds = []string{"job"}
-		ent := planEntitlements(ctx, c.deps.IndexStore, candidateID)
-		change.DailyCap = ent.DailyCap
-		change.WeeklyCap = ent.WeeklyCap
+		// index ready for fan-out / refresh
 	case errors.Is(err, matching.ErrNotFound):
 		util.Log(ctx).WithField("candidate_id", candidateID).
 			Info("candidate_change: no index row yet; skip")
@@ -228,36 +204,9 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 		return fmt.Errorf("matching: candidate change load index %s: %w", candidateID, err)
 	}
 
-	// Cross-encoder query text from candidate_profiles. Soft-fail: on lookup
-	// error or empty result, QueryText stays "" and the reranker no-ops.
-	if c.deps.CandText != nil {
-		qt, qErr := c.deps.CandText.QueryText(ctx, candidateID)
-		if qErr != nil {
-			util.Log(ctx).WithError(qErr).WithField("candidate_id", candidateID).
-				Debug("candidate_change: query-text lookup failed; reranker disabled for this run")
-		} else {
-			change.QueryText = qt
-		}
-	}
-
-	_, err = matching.RunCandidateChange(ctx, change, matching.CandidateChangeDeps{
-		Debouncer: c.deps.Debouncer,
-		GapFill: matching.GapFillDeps{
-			KNN:       c.deps.KNN,
-			Store:     c.deps.Store,
-			EventLog:  c.deps.EventLog,
-			Reranker:  c.deps.Reranker,
-			Weights:   c.deps.Weights,
-			DailyCap:  c.deps.DailyCapQuery,
-			WeekCount: c.deps.Store,
-		},
-	})
-	if errors.Is(err, matching.ErrDebounced) {
-		util.Log(ctx).WithField("candidate_id", candidateID).
-			Info("candidate_change: debounced")
-		return nil
-	}
-	return err
+	util.Log(ctx).WithField("candidate_id", candidateID).
+		Info("candidate_change: index updated; skip auto gap-fill")
+	return nil
 }
 
 // planEntitlements maps subscription + plan_id to caps (free-proof when unpaid).

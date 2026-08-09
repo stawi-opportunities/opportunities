@@ -22,7 +22,18 @@ import (
 	"github.com/stawi-opportunities/opportunities/tests/integration/testhelpers"
 )
 
+type fakeInvokes struct{ n int }
+
+func (f *fakeInvokes) CountUserInvokesToday(_ context.Context, _ string, _ time.Time) (int, error) {
+	return f.n, nil
+}
+
 func setupExtensionEnv(t *testing.T) (*http.ServeMux, *sql.DB, context.Context) {
+	t.Helper()
+	return setupExtensionEnvWith(t, nil)
+}
+
+func setupExtensionEnvWith(t *testing.T, invokes matching.InvokeCounter) (*http.ServeMux, *sql.DB, context.Context) {
 	t.Helper()
 	ctx := context.Background()
 	db := testhelpers.PostgresContainerNoMigrate(t, ctx)
@@ -42,6 +53,7 @@ func setupExtensionEnv(t *testing.T) (*http.ServeMux, *sql.DB, context.Context) 
 		Weights:          matching.DefaultWeights(),
 		Debouncer:        matching.NewMemoryDebouncer(),
 		IdempotencyStore: applications.NewIdempotencyStore(db, time.Hour),
+		InvokeCounter:    invokes,
 	}, httpmw.NewCandidateAuth(nil))
 	return mux, db, ctx
 }
@@ -289,15 +301,19 @@ func TestRefreshMatches_WithEmbeddingRecomputes(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w0.Body.Bytes(), &page0))
 	require.Empty(t, page0.Items, "precondition: no matches before refresh")
 
-	// Refresh → gap-fill writes matches
+	// Refresh → MatchInvoke writes matches (no row caps; quality floor only)
 	w := doMe(t, mux, "POST", "/api/me/matches/refresh", nil, cand, "idem-refresh-ok")
 	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
 	var res map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &res))
 	require.Equal(t, true, res["ok"])
+	require.Equal(t, matching.GapReasonOK, res["reason"])
+	require.Equal(t, float64(30), res["invoke_limit"], "starter invoke daily limit")
 	// At least the close opp should score above min
 	written, _ := res["matches_written"].(float64)
 	require.GreaterOrEqual(t, written, float64(1), "body=%v", res)
+	_, hasWeeklyCap := res["weekly_cap"]
+	require.False(t, hasWeeklyCap, "refresh response must not require weekly_cap")
 
 	// Re-list shows matches
 	w2 := doMe(t, mux, "GET", "/api/me/matches", nil, cand, "")
@@ -307,6 +323,25 @@ func TestRefreshMatches_WithEmbeddingRecomputes(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &page))
 	require.NotEmpty(t, page.Items, "matches must appear after refresh")
+}
+
+func TestRefreshMatches_RateLimited(t *testing.T) {
+	// used >= InvokeDailyLimit → reason rate_limited, no KNN write required
+	mux, db, ctx := setupExtensionEnvWith(t, &fakeInvokes{n: 100})
+	const cand = "u_refresh_rl"
+	seedProfile(t, db, ctx, cand, "paid", "starter") // InvokeDailyLimit=30
+	emb := unitVec1024(0)
+	seedIndex(t, db, ctx, cand, emb, []string{"job"}, []string{"KE"}, 0.1)
+	seedOpp(t, db, ctx, "opp_rl1", emb, "job", "KE")
+
+	w := doMe(t, mux, "POST", "/api/me/matches/refresh", nil, cand, "idem-refresh-rl")
+	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+	var res map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &res))
+	require.Equal(t, true, res["ok"])
+	require.Equal(t, matching.GapReasonRateLimited, res["reason"])
+	require.Equal(t, float64(30), res["invoke_limit"])
+	require.Equal(t, float64(0), res["matches_written"])
 }
 
 func TestNotificationsGetDefaultAndPut(t *testing.T) {
