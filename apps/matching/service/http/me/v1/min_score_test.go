@@ -12,8 +12,8 @@ func TestEffectiveMinScore(t *testing.T) {
 		{"index wins", 0.7, 0.45, 0.7},
 		{"zero index uses default", 0, 0.45, 0.45},
 		{"negative index uses default", -1, 0.5, 0.5},
-		{"both zero → platform floor", 0, 0, 0.45},
-		{"default above 1 ignored", 0, 1.5, 0.45},
+		{"both zero → platform floor", 0, 0, 0.70},
+		{"default above 1 ignored", 0, 1.5, 0.70},
 		{"index above 1 ignored", 1.2, 0.4, 0.4},
 		{"exact 1 ok", 1, 0.45, 1},
 	}

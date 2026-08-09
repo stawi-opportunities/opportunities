@@ -39,7 +39,7 @@ type Deps struct {
 	// DailyCap enforces plan daily generation limits during gap-fill.
 	DailyCap matching.DailyCapQuery
 	// DefaultMinScore floors on-demand gap-fill when the index has no
-	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.45.
+	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.70.
 	DefaultMinScore float64
 	// Contacts creates standalone ProfileService contacts for CV details.
 	// Checkout/notify use only profile-attached identity contacts (not these).
@@ -60,7 +60,7 @@ func effectiveMinScore(indexScore, defaultScore float64) float64 {
 	if defaultScore > 0 && defaultScore <= 1 {
 		return defaultScore
 	}
-	return 0.45
+	return 0.70
 }
 
 func (d *Deps) now() time.Time {

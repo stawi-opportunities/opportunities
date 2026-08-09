@@ -60,7 +60,7 @@ type MatchesWeeklyDigestDeps struct {
 	// Since bounds the gap-fill look-back window. Defaults to 30 days.
 	Since time.Duration
 	// DefaultMinScore floors gap-fill when the index has no per-candidate
-	// threshold (MATCHING_MIN_SCORE). 0 → 0.45.
+	// threshold (MATCHING_MIN_SCORE). 0 → 0.70.
 	DefaultMinScore float64
 	// DefaultCadence is used when the request body omits cadence.
 	// "auto" (default) honours each user's email_digest + WeeklyWeekday.
@@ -88,7 +88,7 @@ func digestMinScore(indexScore, defaultScore float64) float64 {
 	if defaultScore > 0 && defaultScore <= 1 {
 		return defaultScore
 	}
-	return 0.45
+	return 0.70
 }
 
 type digestRunRequest struct {

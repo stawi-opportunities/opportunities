@@ -90,8 +90,8 @@ type CandidateChangeConsumerDeps struct {
 	// Optional: nil disables reranking (QueryText stays "").
 	CandText candidateTextLookup
 	// DefaultMinScore floors automatic match generation (MATCHING_MIN_SCORE).
-	// 0 falls back to 0.45 so paid users still receive quality matches without
-	// starving the queue on a too-high default.
+	// 0 falls back to 0.70 (quality floor) so paid users still receive quality
+	// matches without starving the queue on an invalid default.
 	DefaultMinScore float64
 	// DailyCapQuery enforces plan daily limits during GapFill (optional).
 	DailyCapQuery matching.DailyCapQuery
@@ -149,7 +149,7 @@ func (c *CandidateChangeConsumer) handleOnce(ctx context.Context, payload []byte
 	// any existing prefs; default a brand-new row using plan entitlements.
 	defaultMin := c.deps.DefaultMinScore
 	if defaultMin <= 0 || defaultMin > 1 {
-		defaultMin = 0.45
+		defaultMin = 0.70
 	}
 
 	if len(vector) > 0 {

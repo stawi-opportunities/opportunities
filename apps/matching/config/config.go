@@ -90,8 +90,9 @@ type CandidatesConfig struct {
 	// Default mem:// is for local/dev only.
 	OpportunityFanOutQueueURI  string `env:"OPPORTUNITY_FANOUT_QUEUE_URI"  envDefault:"mem://svc.opportunities.matching.opportunity.fanout.v1"`
 	OpportunityFanOutQueueName string `env:"OPPORTUNITY_FANOUT_QUEUE_NAME" envDefault:"svc.opportunities.matching.opportunity.fanout.v1"`
-	// MatchingFanOutEnabled defaults ON. Set false to stop live Path A.
-	MatchingFanOutEnabled bool `env:"MATCHING_FANOUT_ENABLED" envDefault:"true"`
+	// MatchingFanOutEnabled defaults OFF (product: invoke-only matching).
+	// Set true to re-enable live Path A fan-out as jobs arrive.
+	MatchingFanOutEnabled bool `env:"MATCHING_FANOUT_ENABLED" envDefault:"false"`
 
 	// PlansURL is embedded into the weekly-jobs-digest event so the
 	// notification service's email template doesn't have to assume the
@@ -109,22 +110,35 @@ type CandidatesConfig struct {
 	DigestWeeklyWeekday  string `env:"DIGEST_WEEKLY_WEEKDAY"  envDefault:"monday"`
 	DigestTimezone       string `env:"DIGEST_TIMEZONE"        envDefault:"UTC"`
 
+	// Twice-daily digest local-hour windows (inclusive start, exclusive end
+	// semantics are applied by the digest scheduler in a later task).
+	DigestTwiceDailyMorningStart int `env:"DIGEST_TWICE_DAILY_MORNING_START" envDefault:"8"`
+	DigestTwiceDailyMorningEnd   int `env:"DIGEST_TWICE_DAILY_MORNING_END" envDefault:"10"`
+	DigestTwiceDailyEveningStart int `env:"DIGEST_TWICE_DAILY_EVENING_START" envDefault:"17"`
+	DigestTwiceDailyEveningEnd   int `env:"DIGEST_TWICE_DAILY_EVENING_END" envDefault:"19"`
+
 	// ValkeyURL is the Valkey/Redis connection URL for the distributed debouncer.
 	// When empty (default) the in-memory MemoryDebouncer is used, which is safe
 	// for dev/test but does not survive restarts or span multiple replicas.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
 
-	// Phase-2 continuous matching pipeline. Defaults ON so a paid user
-	// gets gap-fill matches after CV embed without an extra config flip.
+	// MatchingCandidateChangeEnabled: consumer still runs for index updates;
+	// product default is index-only gap-fill (skip of GapFill is a later task).
 	// Set MATCHING_CANDIDATE_CHANGE_ENABLED=false to disable in emergency.
 	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"true"`
 	// MatchingMinScore is the default cosine-combined score floor for new
-	// candidate_match_indexes rows (0–1). Only opportunities scoring at or
-	// above this threshold become matches. Per-candidate rules can raise it.
-	MatchingMinScore           float64 `env:"MATCHING_MIN_SCORE" envDefault:"0.45"`
-	MatchingRerankerEnabled    bool    `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
-	MatchingDLQThreshold       int     `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
-	MatchingDebounceTTLSeconds int     `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
+	// candidate_match_indexes rows (0–1). Default 0.70 quality floor.
+	// Only opportunities scoring at or above this threshold become matches.
+	// Per-candidate rules can raise it.
+	MatchingMinScore float64 `env:"MATCHING_MIN_SCORE" envDefault:"0.70"`
+	// Per-plan monthly invoke (MatchInvoke) limits. Enforced when invoke
+	// matching lands; defaults mirror free / starter / managed entitlements.
+	MatchingInvokeLimitFree    int  `env:"MATCHING_INVOKE_LIMIT_FREE" envDefault:"1"`
+	MatchingInvokeLimitStarter int  `env:"MATCHING_INVOKE_LIMIT_STARTER" envDefault:"30"`
+	MatchingInvokeLimitManaged int  `env:"MATCHING_INVOKE_LIMIT_MANAGED" envDefault:"100"`
+	MatchingRerankerEnabled    bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
+	MatchingDLQThreshold       int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
+	MatchingDebounceTTLSeconds int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
 	// PooledReranker bounds: a cloud cross-encoder over RERANK_TOP_K docs
 	// takes seconds, so the per-call timeout must be generous (the old
 	// hardcoded 1s timed out → reranker silently fell back to bi-encoder).
