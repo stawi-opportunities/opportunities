@@ -304,6 +304,7 @@ LIMIT $` + fmt.Sprint(len(args))
 
 // DigestMatch is a compact row for notification emails.
 type DigestMatch struct {
+	MatchID       string
 	OpportunityID string
 	ApplyURL      string
 	Score         float64

@@ -983,7 +983,6 @@ func main() {
 					EventLog:        matching.NewEventLog(sqlDB),
 					Reranker:        matching.NoopReranker{},
 					Weights:         matching.DefaultWeights(),
-					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
 					Since:           30 * 24 * time.Hour,
 					DefaultMinScore: cfg.MatchingMinScore,
 					DefaultCadence:  cfg.DigestDefaultCadence,
