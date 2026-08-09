@@ -1025,6 +1025,9 @@ func main() {
 			DailyCap:         matching.NewPGDailyCapQuery(sqlDB),
 			DefaultMinScore:  cfg.MatchingMinScore,
 			Contacts:         contactDir, // platform ProfileService — sole contact store
+			// Rebuild embedding on-demand when match refresh finds no vector
+			// (async embed after CV upload can lag or fail silently).
+			Placement: placementSvc,
 		}
 		meV1.Mount(mux, extDeps, authMW)
 		// Gateway-visible aliases: SPA calls /matching/me/* (same shape as

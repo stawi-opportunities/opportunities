@@ -13,11 +13,14 @@ import (
 
 	"github.com/rs/xid"
 
+	"github.com/pitabwire/util"
+
 	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
 	"github.com/stawi-opportunities/opportunities/pkg/profilecontacts"
 )
 
@@ -41,6 +44,9 @@ type Deps struct {
 	// Contacts creates standalone ProfileService contacts for CV details.
 	// Checkout/notify use only profile-attached identity contacts (not these).
 	Contacts profilecontacts.Directory
+	// Placement rebuilds persona + embedding when the match index has no vector
+	// (CV upload may have completed structure but embed lagged/failed).
+	Placement *placement.Service
 
 	Now   func() time.Time
 	NewID func() string
@@ -416,17 +422,16 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
-		cand := httpmw.CandidateFromContext(ctx)
+		// JWT sub is platform profile_id. Match index / matches may be keyed
+		// by product candidate id or profile_id (legacy dual-key era).
+		profileID := httpmw.ProfileIDFromContext(ctx)
 		if d.DB == nil || d.IndexStore == nil || d.KNN == nil || d.Matches == nil {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "matching_unavailable", "match pipeline not configured")
 			return
 		}
-		// Free users get a proof-tier match refresh (capped). Paid/past_due/trial
-		// keep plan caps on the index. Proof is intentional — value before pay.
-		var sub, planID string
-		if err := d.DB.QueryRowContext(ctx,
-			`SELECT COALESCE(subscription,''), COALESCE(plan_id,'') FROM candidate_profiles WHERE id = $1`, cand,
-		).Scan(&sub, &planID); err != nil {
+
+		matchKey, sub, planID, err := resolveMatchIdentity(ctx, d.DB, profileID)
+		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
 				return
@@ -440,12 +445,35 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			paid = true
 		}
 
-		idx, err := d.IndexStore.Get(ctx, cand)
-		if err != nil || idx == nil || len(idx.Embedding) == 0 {
-			httpmw.ProblemJSON(w, http.StatusConflict, "no_embedding",
-				"upload a CV and wait for embedding before refreshing matches")
+		idx, err := loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+		if err != nil && !errors.Is(err, matching.ErrNotFound) {
+			ProblemFromError(w, err)
 			return
 		}
+		if idx == nil || len(idx.Embedding) == 0 {
+			// Build embedding now from stored CV/placement — do not 409 if we
+			// have material. Async embed after upload can lag or fail quietly.
+			built, bErr := ensureMatchEmbedding(ctx, d, profileID, matchKey)
+			if bErr != nil {
+				util.Log(ctx).WithError(bErr).WithField("profile_id", profileID).
+					WithField("match_key", matchKey).
+					Warn("matches/refresh: ensure embedding failed")
+			}
+			if built != nil {
+				idx = built
+			}
+		}
+		if idx == nil || len(idx.Embedding) == 0 {
+			httpmw.ProblemJSON(w, http.StatusConflict, "no_embedding",
+				"no CV embedding available — upload a CV under Dashboard → CV, then try again")
+			return
+		}
+		// Prefer the index's stored candidate key for gap-fill writes.
+		gapKey := strings.TrimSpace(idx.CandidateID)
+		if gapKey == "" {
+			gapKey = matchKey
+		}
+
 		minScore := effectiveMinScore(idx.MinScore, d.DefaultMinScore)
 		// Free proof: wider lookback so first match is useful; tight caps.
 		since := time.Now().UTC().Add(-30 * 24 * time.Hour)
@@ -460,7 +488,7 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			dailyCap, weeklyCap = ent.DailyCap, ent.WeeklyCap
 		}
 		res, runErr := matching.GapFill(ctx, matching.GapFillInput{
-			CandidateID:    cand,
+			CandidateID:    gapKey,
 			Embedding:      idx.Embedding,
 			Countries:      idx.Countries,
 			Kinds:          idx.Kinds,
@@ -497,6 +525,186 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			"proof":            !paid,
 		})
 	}
+}
+
+// resolveMatchIdentity maps JWT profile_id → product candidate id + subscription.
+func resolveMatchIdentity(ctx context.Context, db *sql.DB, profileID string) (matchKey, sub, planID string, err error) {
+	profileID = strings.TrimSpace(profileID)
+	if profileID == "" {
+		return "", "", "", sql.ErrNoRows
+	}
+	var id string
+	err = db.QueryRowContext(ctx, `
+SELECT id, COALESCE(subscription,''), COALESCE(plan_id,'')
+  FROM candidate_profiles
+ WHERE profile_id = $1 OR id = $1
+ ORDER BY CASE WHEN profile_id = $1 THEN 0 ELSE 1 END
+ LIMIT 1`, profileID).Scan(&id, &sub, &planID)
+	if err != nil {
+		return "", "", "", err
+	}
+	// Prefer product-local candidate id for match FKs; fall back to profile_id.
+	matchKey = strings.TrimSpace(id)
+	if matchKey == "" {
+		matchKey = profileID
+	}
+	return matchKey, sub, planID, nil
+}
+
+// loadMatchIndex tries profile_id then candidate id (dual-key safety).
+func loadMatchIndex(ctx context.Context, store *matching.IndexStore, profileID, candidateID string) (*matching.CandidateIndex, error) {
+	if store == nil {
+		return nil, matching.ErrNotFound
+	}
+	seen := map[string]struct{}{}
+	for _, key := range []string{candidateID, profileID} {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		idx, err := store.Get(ctx, key)
+		if err == nil && idx != nil && len(idx.Embedding) > 0 {
+			return idx, nil
+		}
+		if err != nil && !errors.Is(err, matching.ErrNotFound) {
+			return nil, err
+		}
+		// Keep a non-empty row without embedding in case ensure fails later.
+		if err == nil && idx != nil {
+			return idx, nil
+		}
+	}
+	return nil, matching.ErrNotFound
+}
+
+// ensureMatchEmbedding rebuilds placement persona + vector when missing.
+// Uses CV/placement text already on the profile; fails only when there is
+// nothing meaningful to embed.
+func ensureMatchEmbedding(ctx context.Context, d *Deps, profileID, matchKey string) (*matching.CandidateIndex, error) {
+	if d == nil || d.Placement == nil {
+		return nil, errors.New("placement service not configured")
+	}
+	fields, err := loadPlacementFieldsForMatch(ctx, d, profileID, matchKey)
+	if err != nil {
+		return nil, err
+	}
+	// Need at least CV corpus or a target role to embed.
+	if strings.TrimSpace(fields.ExtraInfo) == "" && strings.TrimSpace(fields.TargetJobTitle) == "" {
+		return nil, errors.New("no CV or target role to embed")
+	}
+	// Rebuild under both keys when they differ so subsequent lookups hit.
+	keys := uniqueNonEmpty(matchKey, profileID)
+	var last *placement.RebuildResult
+	for _, key := range keys {
+		res, rErr := d.Placement.Rebuild(ctx, placement.RebuildInput{
+			CandidateID: key,
+			Fields:      fields,
+		})
+		if rErr != nil {
+			return nil, rErr
+		}
+		last = res
+	}
+	if last == nil || !last.Embedded {
+		// Rebuild may store summary without vector when embedder is down.
+		return loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+	}
+	return loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+}
+
+func loadPlacementFieldsForMatch(ctx context.Context, d *Deps, profileID, matchKey string) (placement.Fields, error) {
+	var f placement.Fields
+	// Prefer stored placement qualifications (full CV corpus).
+	if d.Placement != nil && d.Placement.Store != nil {
+		for _, key := range uniqueNonEmpty(matchKey, profileID) {
+			doc, err := d.Placement.Store.Get(ctx, key)
+			if err != nil || doc == nil {
+				continue
+			}
+			q := strings.TrimSpace(strings.TrimPrefix(doc.QualificationsText, "## Qualifications"))
+			q = strings.TrimSpace(q)
+			if q != "" && q != "(CV not yet provided)" {
+				f.ExtraInfo = q
+			}
+			if f.ExtraInfo != "" {
+				break
+			}
+		}
+	}
+	// Overlay structured profile-fields (role, countries, skills as ExtraInfo fallback).
+	if d.DB != nil {
+		for _, key := range uniqueNonEmpty(matchKey, profileID) {
+			pf, _, err := candidatestore.GetProfileFields(ctx, d.DB, key)
+			if err != nil || pf == nil {
+				continue
+			}
+			if f.TargetJobTitle == "" {
+				f.TargetJobTitle = firstNonEmpty(pf.TargetJobTitle, pf.CurrentTitle)
+			}
+			if f.ExperienceLevel == "" {
+				f.ExperienceLevel = firstNonEmpty(pf.ExperienceLevel, pf.Seniority)
+			}
+			if len(f.PreferredCountries) == 0 {
+				f.PreferredCountries = append([]string(nil), pf.Countries...)
+			}
+			if len(f.PreferredRegions) == 0 {
+				f.PreferredRegions = append([]string(nil), pf.Regions...)
+			}
+			if len(f.JobTypes) == 0 && len(pf.PreferredRoles) > 0 {
+				f.JobTypes = append([]string(nil), pf.PreferredRoles...)
+			}
+			if f.ExtraInfo == "" {
+				// Synthesize a short corpus from skills/title when no CV text.
+				var parts []string
+				if t := firstNonEmpty(pf.CurrentTitle, pf.TargetJobTitle); t != "" {
+					parts = append(parts, t)
+				}
+				if len(pf.StrongSkills) > 0 {
+					parts = append(parts, "skills: "+strings.Join(pf.StrongSkills, ", "))
+				} else if len(pf.Skills) > 0 {
+					parts = append(parts, "skills: "+strings.Join(pf.Skills, ", "))
+				}
+				if b := strings.TrimSpace(pf.Bio); b != "" {
+					parts = append(parts, b)
+				}
+				if len(parts) > 0 {
+					f.ExtraInfo = strings.Join(parts, ". ")
+				}
+			}
+			break
+		}
+	}
+	return f, nil
+}
+
+func uniqueNonEmpty(vals ...string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // ---- GET/PUT /api/me/notifications (and /me/notifications) ----

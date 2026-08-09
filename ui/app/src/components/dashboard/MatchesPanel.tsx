@@ -111,16 +111,10 @@ export function MatchesPanel({
       setAutoKickDone(true);
       return;
     }
-    // Do not auto-call refresh while setup is incomplete — server returns
-    // 409 no_embedding (red console) when there is no CV embedding yet.
-    // User can still press "Find matches" once the CV is ready.
-    if (setupMode) {
-      setAutoKickDone(true);
-      return;
-    }
+    // Server ensures embedding from stored CV when possible, then gap-fills.
     setAutoKickDone(true);
     void runRefresh(true);
-  }, [subLoading, queued, runRefresh, autoKickDone, setupMode]);
+  }, [subLoading, queued, runRefresh, autoKickDone]);
 
   if (subLoading && queuedProp === null && deliveredProp === null) {
     return (
@@ -191,11 +185,10 @@ export function MatchesPanel({
           <Button
             type="button"
             variant="primary"
-            disabled={refreshing || setupMode}
-            title={setupMode ? 'Finish your CV under the CV tab before finding matches' : undefined}
+            disabled={refreshing}
             onClick={() => void runRefresh(false)}
           >
-            {refreshing ? 'Searching…' : setupMode ? 'Finish CV first' : 'Find matches'}
+            {refreshing ? 'Searching…' : 'Find matches'}
           </Button>
         </div>
         {!unlimited && (
