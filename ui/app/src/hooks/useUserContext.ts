@@ -95,7 +95,9 @@ export function useUserContext(options?: { loadProfile?: boolean }): UserContext
         subscriptionStatus: subQ.data?.status,
         billingReturn: isBillingReturnPath(),
         profileLoading,
-        profileReady: readiness == null ? null : readiness.ready,
+        // Stage uses match-capable (CV on file), not full prefs — so salary /
+        // countries gaps do not trap the user in “Add your CV” after onboarding.
+        profileReady: readiness == null ? null : readiness.matchCapable,
       }),
     [
       authReady,
@@ -104,7 +106,7 @@ export function useUserContext(options?: { loadProfile?: boolean }): UserContext
       subError,
       subQ.data?.status,
       profileLoading,
-      readiness?.ready,
+      readiness?.matchCapable,
     ]
   );
 

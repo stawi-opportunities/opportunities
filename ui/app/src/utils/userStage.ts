@@ -101,13 +101,13 @@ const LABELS: Record<UserStage, { label: string; summary: string; homePath: stri
     homePath: '/onboarding/',
   },
   dashboard_setup: {
-    label: 'Finish your CV',
-    summary: 'You are subscribed. Complete CV and preferences in the hub.',
+    label: 'Add your CV',
+    summary: 'You are subscribed. Upload a CV under the CV tab so we can score roles.',
     homePath: '/dashboard/',
   },
   dashboard_ready: {
     label: 'Matching active',
-    summary: 'Subscription and profile are ready — browse matches.',
+    summary: 'Subscription ready — browse matches. Refine preferences anytime under CV.',
     homePath: '/dashboard/',
   },
   dashboard_past_due: {

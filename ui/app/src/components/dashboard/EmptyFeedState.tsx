@@ -77,7 +77,7 @@ export function EmptyFeedState({ filter, t }: Props) {
             {t('dash.emptyFeedCompleteProfile')}
           </p>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Finish CV and preferences on the dashboard — no need to re-subscribe.
+            Manage your resume and profile on the CV tab — matching stays on this page.
           </p>
         </a>
 
