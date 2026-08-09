@@ -90,8 +90,7 @@ type CandidateChangeConsumerDeps struct {
 	// Optional: nil disables reranking (QueryText stays "").
 	CandText candidateTextLookup
 	// DefaultMinScore floors automatic match generation (MATCHING_MIN_SCORE).
-	// 0 falls back to 0.70 (quality floor) so paid users still receive quality
-	// matches without starving the queue on an invalid default.
+	// Invalid or out-of-range values fall back to the 0.70 quality floor.
 	DefaultMinScore float64
 	// DailyCapQuery enforces plan daily limits during GapFill (optional).
 	DailyCapQuery matching.DailyCapQuery

@@ -131,7 +131,7 @@ type CandidatesConfig struct {
 	// Only opportunities scoring at or above this threshold become matches.
 	// Per-candidate rules can raise it.
 	MatchingMinScore float64 `env:"MATCHING_MIN_SCORE" envDefault:"0.70"`
-	// Per-plan monthly invoke (MatchInvoke) limits. Enforced when invoke
+	// Per-plan daily UTC invoke (MatchInvoke) limits. Enforced when invoke
 	// matching lands; defaults mirror free / starter / managed entitlements.
 	MatchingInvokeLimitFree    int  `env:"MATCHING_INVOKE_LIMIT_FREE" envDefault:"1"`
 	MatchingInvokeLimitStarter int  `env:"MATCHING_INVOKE_LIMIT_STARTER" envDefault:"30"`
