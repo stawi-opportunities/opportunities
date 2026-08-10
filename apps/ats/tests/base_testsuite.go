@@ -108,6 +108,8 @@ func (s *ATSBaseTestSuite) CreateService(t *testing.T) (context.Context, *Deps) 
 		Publisher:    business.ProjectionPublisher{Projections: projections},
 		Billing:      business.LedgerBillingEmitter{Prefix: "result_hire"},
 		Notify:       business.NotificationNotifier{Outbox: outbox},
+		// Calendar is required — use in-process fake that implements the same port as service_calendar.
+		Calendar: NewFakeInterviewCalendar(),
 	})
 
 	return ctx, &Deps{

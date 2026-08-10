@@ -116,6 +116,8 @@ type Interview struct {
 	Location      string     `gorm:"type:text;not null;default:''" json:"location"`
 	VideoURL      string     `gorm:"type:text;not null;default:''" json:"video_url"`
 	ICSUID        string     `gorm:"type:varchar(80);not null;default:''" json:"ics_uid"`
+	// CalendarBookingID is the service_calendar booking reserved for this interview.
+	CalendarBookingID string `gorm:"type:varchar(50);not null;default:''" json:"calendar_booking_id"`
 }
 
 func (Interview) TableName() string { return "ats_interviews" }

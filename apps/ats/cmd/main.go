@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -139,16 +140,18 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 		log.WithError(err).Warn("ats: notification client unavailable; outbox will retry")
 	}
 
-	var interviewCal business.InterviewCalendar
-	if cfg.CalendarServiceURI != "" {
-		calCli, cerr := setupCalendarClient(ctx, svc, cfg)
-		if cerr != nil {
-			log.WithError(cerr).Warn("ats: calendar client unavailable; local interview slots only")
-		} else if calCli != nil {
-			interviewCal = &business.RemoteInterviewCalendar{Client: calCli}
-			log.Info("ats: service_calendar wired for interview slots/bookings")
-		}
+	if cfg.CalendarServiceURI == "" {
+		return nil, errors.New("ats: CALENDAR_SERVICE_URI is required (service_calendar is the only scheduling plane)")
 	}
+	calCli, cerr := setupCalendarClient(ctx, svc, cfg)
+	if cerr != nil {
+		return nil, fmt.Errorf("ats: calendar client: %w", cerr)
+	}
+	if calCli == nil {
+		return nil, errors.New("ats: calendar client is nil")
+	}
+	interviewCal := &business.RemoteInterviewCalendar{Client: calCli}
+	log.Info("ats: service_calendar required and wired for all interview scheduling")
 
 	biz := business.NewService(business.Deps{
 		Jobs:         repository.NewJobRepository(ctx, dbPool, workMan),

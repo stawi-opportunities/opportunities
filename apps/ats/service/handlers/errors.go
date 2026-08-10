@@ -21,6 +21,8 @@ func mapConnectErr(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, models.ErrForbidden):
 		return connect.NewError(connect.CodePermissionDenied, err)
+	case errors.Is(err, models.ErrUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}

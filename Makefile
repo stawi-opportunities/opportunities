@@ -42,7 +42,10 @@ run-ats-setup:
 	DO_SETUP=true AUTH_REQUIRE_JWT=false go run ./apps/ats/cmd
 
 run-ats:
-	AUTH_REQUIRE_JWT=false ATS_AUTO_SEED=true HTTP_ADDR=:8095 go run ./apps/ats/cmd
+	AUTH_REQUIRE_JWT=false HTTP_ADDR=:8095 \
+	  CALENDAR_SERVICE_URI=$${CALENDAR_SERVICE_URI:-http://127.0.0.1:8096} \
+	  CALENDAR_SERVICE_DIRECT=true \
+	  go run ./apps/ats/cmd
 
 ui-ats-dev:
 	cd ui/ats && npm install --no-audit --no-fund && npm run dev

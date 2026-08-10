@@ -59,8 +59,7 @@ type Deps struct {
 	Billing   BillingEmitter
 	Notify    Notifier
 	AI        AIAssistant
-	// Calendar optional service_calendar client for multi-resource reservation.
-	// When nil, ListSlots/Book use local ATS availability only.
+	// Calendar is required: all availability, slots, and bookings go through service_calendar.
 	Calendar InterviewCalendar
 
 	SlotWindowDays int
@@ -72,8 +71,7 @@ type Service struct {
 }
 
 // NewService constructs business with production-safe default peer ports.
-// Matching defaults to EmptyTalent (no fabricated candidates). Publisher
-// requires Projections when unset; Billing is durable/idempotent by key.
+// Matching defaults to EmptyTalent. Calendar must be set by the process (required for scheduling).
 func NewService(d Deps) *Service {
 	if d.Matching == nil {
 		d.Matching = EmptyTalent{}
@@ -94,6 +92,13 @@ func NewService(d Deps) *Service {
 		d.SlotWindowDays = 14
 	}
 	return &Service{Deps: d}
+}
+
+func (s *Service) requireCalendar() error {
+	if s.Calendar == nil {
+		return fmt.Errorf("%w: calendar service required (set CALENDAR_SERVICE_URI)", models.ErrUnavailable)
+	}
+	return nil
 }
 
 // CreateJobInput is validated job create.
@@ -418,23 +423,28 @@ func (s *Service) SetAvailability(ctx context.Context, in SetAvailabilityInput) 
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireCalendar(); err != nil {
+		return nil, err
+	}
 	tz := in.Timezone
 	if tz == "" {
 		tz = "UTC"
 	}
-	rj, _ := json.Marshal(in.Rules)
-	ej, _ := json.Marshal(in.Exceptions)
+	// Source of truth: service_calendar.
+	if err := s.Calendar.SyncProfileAvailability(ctx, sc.ProfileID, tz, in.Rules, in.Exceptions); err != nil {
+		return nil, err
+	}
+	// Local mirror for dashboard/cache only (not used for slot compute).
+	rj, ej := marshalRules(in.Rules, in.Exceptions)
 	a := &models.Availability{
 		ProfileID: sc.ProfileID, Timezone: tz,
-		RulesJSON: string(rj), ExceptionsJSON: string(ej),
+		RulesJSON: rj, ExceptionsJSON: ej,
 	}
 	a.TenantID = sc.TenantID
 	a.PartitionID = sc.PartitionID
-	if err := s.Availability.UpsertForProfile(ctx, a); err != nil {
-		return nil, err
+	if s.Availability != nil {
+		_ = s.Availability.UpsertForProfile(ctx, a)
 	}
-	// Dual-write to service_calendar when configured (soft-fail).
-	syncAvailabilitySoft(ctx, s.Calendar, sc.ProfileID, tz, in.Rules, in.Exceptions)
 	return a, nil
 }
 
@@ -443,7 +453,21 @@ func (s *Service) GetMyAvailability(ctx context.Context) (*models.Availability, 
 	if err != nil {
 		return nil, err
 	}
-	return s.Availability.GetByProfile(ctx, sc.TenantID, sc.PartitionID, sc.ProfileID)
+	if err := s.requireCalendar(); err != nil {
+		return nil, err
+	}
+	tz, rules, ex, err := s.Calendar.GetProfileAvailability(ctx, sc.ProfileID)
+	if err != nil {
+		return nil, err
+	}
+	rj, ej := marshalRules(rules, ex)
+	a := &models.Availability{
+		ProfileID: sc.ProfileID, Timezone: tz,
+		RulesJSON: rj, ExceptionsJSON: ej,
+	}
+	a.TenantID = sc.TenantID
+	a.PartitionID = sc.PartitionID
+	return a, nil
 }
 
 // ProposeInterviewInput creates a proposed interview.
@@ -494,6 +518,9 @@ func (s *Service) ListSlots(ctx context.Context, interviewID string) ([]models.S
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireCalendar(); err != nil {
+		return nil, err
+	}
 	iv, err := s.Interviews.GetInPartition(ctx, sc.TenantID, sc.PartitionID, interviewID)
 	if err != nil {
 		return nil, err
@@ -506,65 +533,13 @@ func (s *Service) ListSlots(ctx context.Context, interviewID string) ([]models.S
 	if len(panel) == 0 {
 		panel = []string{sc.ProfileID}
 	}
-
-	// Prefer service_calendar multi-resource slots when wired.
-	if s.Calendar != nil {
-		resIDs, err := s.Calendar.EnsurePanelResources(ctx, panel)
-		if err != nil {
-			util.Log(ctx).WithError(err).Warn("ats: calendar ensure resources failed; falling back to local slots")
-		} else if len(resIDs) > 0 {
-			now := time.Now().UTC()
-			winEnd := now.AddDate(0, 0, s.SlotWindowDays)
-			slots, err := s.Calendar.ListPanelSlots(ctx, resIDs, iv.DurationMin, now, winEnd)
-			if err != nil {
-				util.Log(ctx).WithError(err).Warn("ats: calendar ListSlots failed; falling back to local slots")
-			} else {
-				return slots, nil
-			}
-		}
-	}
-
-	rulesBy := map[string][]models.WeekRule{}
-	exBy := map[string][]models.ExceptionDay{}
-	for _, pid := range panel {
-		av, err := s.Availability.GetByProfile(ctx, sc.TenantID, sc.PartitionID, pid)
-		if err != nil {
-			return nil, err
-		}
-		if av == nil || av.RulesJSON == "" || av.RulesJSON == "[]" {
-			return nil, fmt.Errorf("%w: profile %s", models.ErrEmptyAvail, pid)
-		}
-		var rules []models.WeekRule
-		_ = json.Unmarshal([]byte(av.RulesJSON), &rules)
-		var ex []models.ExceptionDay
-		_ = json.Unmarshal([]byte(av.ExceptionsJSON), &ex)
-		rulesBy[pid] = rules
-		exBy[pid] = ex
-	}
-	tzName := "UTC"
-	if len(panel) > 0 {
-		if av, _ := s.Availability.GetByProfile(ctx, sc.TenantID, sc.PartitionID, panel[0]); av != nil && av.Timezone != "" {
-			tzName = av.Timezone
-		}
-	}
-	loc, err := time.LoadLocation(tzName)
-	if err != nil {
-		loc = time.UTC
-	}
-	now := time.Now().In(loc)
-	winEnd := now.AddDate(0, 0, s.SlotWindowDays)
-	scheduled, err := s.Interviews.ListScheduledBusy(ctx, sc.TenantID, sc.PartitionID, now.UTC(), winEnd.UTC())
+	resIDs, err := s.Calendar.EnsurePanelResources(ctx, panel)
 	if err != nil {
 		return nil, err
 	}
-	var busy []models.BusyInterval
-	for _, row := range scheduled {
-		if row.SlotStart == nil || row.SlotEnd == nil {
-			continue
-		}
-		busy = append(busy, models.BusyInterval{Start: *row.SlotStart, End: *row.SlotEnd})
-	}
-	return models.ComputeSlots(loc, rulesBy, exBy, busy, now, winEnd, iv.DurationMin)
+	now := time.Now().UTC()
+	winEnd := now.AddDate(0, 0, s.SlotWindowDays)
+	return s.Calendar.ListPanelSlots(ctx, resIDs, iv.DurationMin, now, winEnd)
 }
 
 // BookInterviewInput selects a slot.
@@ -609,44 +584,38 @@ func (s *Service) BookInterview(ctx context.Context, in BookInterviewInput) (*mo
 	if !ok {
 		return nil, fmt.Errorf("%w: slot not available", models.ErrConflict)
 	}
+	if err := s.requireCalendar(); err != nil {
+		return nil, err
+	}
 	start, end := in.Start, in.End
-	// Reserve on service_calendar when available (conflict → fail book).
-	var calendarBookingID string
-	if s.Calendar != nil {
-		var panel []string
-		_ = json.Unmarshal([]byte(iv.PanelJSON), &panel)
-		if len(panel) == 0 {
-			panel = []string{sc.ProfileID}
+	var panel []string
+	_ = json.Unmarshal([]byte(iv.PanelJSON), &panel)
+	if len(panel) == 0 {
+		panel = []string{sc.ProfileID}
+	}
+	resIDs, err := s.Calendar.EnsurePanelResources(ctx, panel)
+	if err != nil {
+		return nil, err
+	}
+	title := "Interview"
+	if a, _ := s.Applications.GetInPartition(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID); a != nil {
+		if j, _ := s.Jobs.GetInPartition(ctx, sc.TenantID, sc.PartitionID, a.JobID); j != nil {
+			title = "Interview: " + j.Title
 		}
-		resIDs, err := s.Calendar.EnsurePanelResources(ctx, panel)
-		if err != nil {
-			return nil, fmt.Errorf("ats: calendar ensure for book: %w", err)
-		}
-		title := "Interview"
-		if a, _ := s.Applications.GetInPartition(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID); a != nil {
-			if j, _ := s.Jobs.GetInPartition(ctx, sc.TenantID, sc.PartitionID, a.JobID); j != nil {
-				title = "Interview: " + j.Title
-			}
-		}
-		calendarBookingID, err = s.Calendar.BookPanel(ctx, resIDs, start, end, iv.ID, title)
-		if err != nil {
-			return nil, fmt.Errorf("ats: calendar book: %w", err)
-		}
+	}
+	calendarBookingID, err := s.Calendar.BookPanel(ctx, resIDs, start, end, iv.ID, title)
+	if err != nil {
+		return nil, err
 	}
 	iv.SlotStart = &start
 	iv.SlotEnd = &end
 	iv.Status = models.InterviewScheduled
+	iv.CalendarBookingID = calendarBookingID
 	if iv.ICSUID == "" {
 		iv.ICSUID = util.IDString()
 	}
-	// Stash calendar booking id in ICSUID suffix if needed — prefer metadata via ics_uid keep + source_ref in calendar.
-	// Store booking id in video_url? No. Use ics_uid as local uid; calendar has source_ref interview:id.
-	_ = calendarBookingID
-	if _, err := s.Interviews.Update(ctx, iv, "slot_start", "slot_end", "status", "ics_uid"); err != nil {
-		// Best-effort cancel remote reservation if local update fails.
-		if s.Calendar != nil && calendarBookingID != "" {
-			_ = s.Calendar.CancelInterviewBooking(ctx, calendarBookingID)
-		}
+	if _, err := s.Interviews.Update(ctx, iv, "slot_start", "slot_end", "status", "ics_uid", "calendar_booking_id"); err != nil {
+		_ = s.Calendar.CancelInterviewBooking(ctx, calendarBookingID)
 		return nil, err
 	}
 	a, _ := s.Applications.GetInPartition(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID)
@@ -746,9 +715,12 @@ func (s *Service) Dashboard(ctx context.Context) (*models.DashboardDTO, error) {
 	if active == 0 && open > 0 {
 		attention = append(attention, "Add candidates from Stawi talent or by profile_id")
 	}
-	av, _ := s.Availability.GetByProfile(ctx, sc.TenantID, sc.PartitionID, sc.ProfileID)
-	if av == nil || av.RulesJSON == "" || av.RulesJSON == "[]" {
-		attention = append(attention, "Set your interview availability so candidates can book")
+	if s.Calendar != nil {
+		if _, rules, _, err := s.Calendar.GetProfileAvailability(ctx, sc.ProfileID); err != nil || len(rules) == 0 {
+			attention = append(attention, "Set your interview availability so candidates can book")
+		}
+	} else {
+		attention = append(attention, "Calendar service is not configured")
 	}
 	return &models.DashboardDTO{
 		OpenJobs: int(open), ActiveApplications: int(active),

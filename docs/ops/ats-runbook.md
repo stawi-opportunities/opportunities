@@ -30,8 +30,11 @@ export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/ats?sslmode=disa
 # One-shot migrate (setup process)
 DO_SETUP=true DATABASE_URL=$DATABASE_URL go run ./apps/ats/cmd
 
-# Runtime (dev tenancy headers — no SeedDemo)
-AUTH_REQUIRE_JWT=false DATABASE_URL=$DATABASE_URL go run ./apps/ats/cmd
+# Runtime (dev tenancy headers — calendar required)
+# Start service_calendar first (HTTP_ADDR=:8096).
+AUTH_REQUIRE_JWT=false DATABASE_URL=$DATABASE_URL \
+  CALENDAR_SERVICE_URI=http://127.0.0.1:8096 CALENDAR_SERVICE_DIRECT=true \
+  go run ./apps/ats/cmd
 
 # SPA (dev headers when JWT off)
 cd ui/ats && VITE_ATS_DEV_HEADERS=true npm run dev
@@ -57,7 +60,7 @@ Production SPA: `VITE_OIDC_*` + `@stawi/auth-runtime` Bearer via `runtime.fetch`
 | `ATS_MATCHING_DATABASE_URL` | Optional `candidate_profiles` read DB |
 | `ATS_PRODUCT_DATABASE_URL` | Optional dual-write to product opportunities |
 | `ATS_OUTBOX_POLL_SECONDS` | Outbox drain interval (default 15) |
-| `CALENDAR_SERVICE_URI` | Optional `service_calendar` for interview slots/bookings |
+| `CALENDAR_SERVICE_URI` | **Required** — `service_calendar` base URL (only scheduling plane) |
 | `CALENDAR_SERVICE_DIRECT` | `true` for local HTTP without OAuth mesh |
 
 There is **no** SeedDemo RPC or auto-seed. Create jobs and candidates through the real API.

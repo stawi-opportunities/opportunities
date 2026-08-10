@@ -63,21 +63,26 @@ Confirmed bookings enqueue `cal_sync_outbox`; worker drains to providers that ar
 
 ICS always available via `GetBookingICS` without external accounts.
 
-## ATS integration
+## ATS integration (required)
+
+ATS **will not start** without `CALENDAR_SERVICE_URI`. There is no local slot fallback.
 
 ```bash
-# ATS process
+# Calendar first
+AUTH_REQUIRE_JWT=false HTTP_ADDR=:8096 go run ./apps/calendar/cmd
+
+# ATS
 export CALENDAR_SERVICE_URI=http://127.0.0.1:8096
-export CALENDAR_SERVICE_DIRECT=true   # local without OAuth mesh
+export CALENDAR_SERVICE_DIRECT=true
+AUTH_REQUIRE_JWT=false HTTP_ADDR=:8095 go run ./apps/ats/cmd
 ```
 
-When set, ATS:
+ATS always:
 
-1. Dual-writes recruiter availability to calendar resources (`subject=profile`)  
+1. Writes recruiter availability via calendar only (`subject=profile`)  
 2. Lists interview slots via multi-resource `ListSlots`  
 3. Books panel time via `CreateBooking(source=ats, source_ref=interview:…)`  
-
-Falls back to local ATS availability if calendar is down (list) or fails book (error on book when client wired).
+4. Persists `calendar_booking_id` on the interview row
 
 ## Setup vs runtime
 
