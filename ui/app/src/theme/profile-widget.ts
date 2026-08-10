@@ -1,68 +1,101 @@
 // Single source of truth for how the @stawi/profile widget looks
-// inside opportunities.stawi.org. StawiAuth (nav account slot) and the Dashboard's
-// profile popover both import from here so a tweak to the palette /
-// radius / font-stack ripples everywhere the widget mounts.
+// inside opportunities.stawi.org. Site Nav (StawiAuth) mounts the avatar
+// account control; design tokens + CSS live here only.
 //
-// Visual language mirrors the hero "Get started" button on the
-// home page (layouts/index.html): bg-accent-400 with navy-900 text,
-// rounded-md, Inter semibold. Hover goes to accent-300 exactly
-// like the hero.  WCAG contrast is comfortably AAA: navy-900 on
-// accent-400 = 8.9:1, on accent-300 = 11.6:1.
-//
-// The widget renders into a shadow root, which means it cannot read
-// the host page's CSS variables or Tailwind utilities — the override
-// has to travel through mount({ tokens, css }). That trade-off
-// forces us to duplicate the hex values here, but keeps the widget
-// portable across Stawi apps that each have their own design
-// language.
-//
-// Values mirror tailwind.config.js exactly:
-//   accent-400 #45b739  (brand "leaf" green — Get started CTA)
-//   accent-300 #86efac  (hover — same as hero button)
-//   navy-900   #0c1226  (button text)
-//   rounded-md 6px
+// Values mirror tailwind.config.js:
+//   accent-600 #198535 / accent-500 #219c3f / accent-400 #45b739
+//   navy-900   #0c1226
 
 import type { ProfileWidgetTokens } from '@stawi/profile';
 
 const SITE_FONT_STACK = `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
 
 export const profileWidgetTokens: ProfileWidgetTokens = {
-  colorPrimary: '#45b739', // tw accent-400 (Get started green)
-  colorPrimaryHover: '#86efac', // tw accent-300 (lighter hover, matches hero)
-  colorFocusRing: '#45b739',
-  radius: '6px', // tw rounded-md
+  colorPrimary: '#219c3f',
+  colorPrimaryHover: '#45b739',
+  colorFocusRing: '#219c3f',
+  radius: '8px',
   fontHeading: SITE_FONT_STACK,
   fontBody: SITE_FONT_STACK,
-  fontWeightHeading: 600, // tw font-semibold
+  fontWeightHeading: 600,
+  // Circular account trigger — large enough to read the photo.
+  triggerSize: '36px',
+  avatarLargeSize: '72px',
 };
 
-// Shape + size overrides the tokens API doesn't cover. Navy-900 text
-// goes here (the widget's default assumes white text on a dark
-// primary; our primary is light-green so we flip to dark text).
-// Button sized for a nav context — smaller than the hero's px-8 py-4
-// so it doesn't dominate the header bar, but still visibly a CTA.
+// Shadow-DOM overrides: make the authenticated avatar clearly circular
+// and the signed-out CTA compact for the site header.
 export const profileWidgetCSS = `
   .aiw-signin-trigger {
     color: #0c1226;
-    padding: 10px 20px;
-    font-size: 15px;
+    padding: 8px 16px;
+    font-size: 14px;
     line-height: 1.25rem;
     letter-spacing: 0;
-    border-radius: 6px;
+    border-radius: 8px;
     gap: 8px;
     box-shadow: 0 1px 2px rgba(12, 18, 38, 0.08);
   }
   .aiw-signin-trigger:hover {
     color: #0c1226;
-    box-shadow: 0 2px 6px rgba(12, 18, 38, 0.18);
+    box-shadow: 0 2px 6px rgba(12, 18, 38, 0.14);
   }
   .aiw-signin-trigger:focus-visible {
-    outline: 2px solid #45b739;
+    outline: 2px solid #219c3f;
     outline-offset: 2px;
   }
   .aiw-signin-avatar {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     color: inherit;
+  }
+
+  /* Authenticated account control — photo / initials circle */
+  .aiw-trigger {
+    width: var(--aiw-trigger-size, 36px);
+    height: var(--aiw-trigger-size, 36px);
+    min-width: var(--aiw-trigger-size, 36px);
+    min-height: var(--aiw-trigger-size, 36px);
+    border-radius: 9999px;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1.5px solid rgb(226 232 240);
+    background: rgb(241 245 249);
+    cursor: pointer;
+  }
+  .aiw-trigger:hover {
+    border-color: #45b739;
+    box-shadow: 0 0 0 3px rgb(33 156 63 / 0.15);
+  }
+  .aiw-trigger:focus-visible {
+    outline: 2px solid #219c3f;
+    outline-offset: 2px;
+  }
+  .aiw-trigger img,
+  .aiw-trigger picture,
+  .aiw-trigger [data-avatar],
+  .aiw-avatar-overlay img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 9999px;
+    display: block;
+  }
+  .aiw-trigger-initials,
+  .aiw-avatar-initials {
+    width: 100%;
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #0c1226;
+    background: linear-gradient(145deg, #bbf7d0, #86efac);
+    border-radius: 9999px;
   }
 `;
