@@ -14,7 +14,7 @@
 1. **Full employer ATS** that feels like a classic hiring tool (jobs, pipeline, interviews, AI assist, agent-operable API) with **minimal ceremony**.
 2. **Hybrid talent:** Stawi matched candidates are a first-class **source** on the same pipeline objects — not a parallel product flow.
 3. **Mobile-first, API-driven UI** — recruiters complete common tasks in few steps; AI assists aggressively (JD, screen summary, rank, schedule suggest, draft outreach).
-4. **Agents operate the same stack as humans** via OpenAPI, using **user-delegated** identity tokens (no separate org service-account operators in v1).
+4. **Agents operate the same stack as humans** via **Connect RPC** (`ats.v1.AtsService`), using **user-delegated** identity tokens (no separate org service-account operators in v1).
 5. **Reuse platform primitives** — tenancy (`tenant_id` / `partition_id`), identity, profile, files, notification, matching candidates, payment/ledger. Do not invent parallel CRM, RBAC, or org tables.
 6. **Billing tied to results** — charge on hiring outcomes, not seats or “using the board.”
 
