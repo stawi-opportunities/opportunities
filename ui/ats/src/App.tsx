@@ -154,9 +154,29 @@ export function App() {
                   <p className="muted">
                     {iv.candidate_profile_id} · {iv.slot_start ? new Date(iv.slot_start).toLocaleString() : "—"}
                   </p>
-                  <a className="link" href={api.icsUrl(iv.id)} target="_blank" rel="noreferrer">
+                  <button
+                    type="button"
+                    className="link"
+                    style={{ background: "none", border: 0, cursor: "pointer", padding: 0 }}
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          const ics = await api.getICS(iv.id);
+                          const blob = new Blob([ics], { type: "text/calendar" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = "interview.ics";
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : String(e));
+                        }
+                      })()
+                    }
+                  >
                     Download ICS
-                  </a>
+                  </button>
                 </div>
               ))
             )}

@@ -50,6 +50,10 @@ ui-ats-dev:
 test-ats:
 	go test ./apps/ats/... -count=1 -timeout 10m
 
+# Regenerate Connect + protobuf for ATS (requires buf CLI).
+gen-ats:
+	cd apps/ats/proto && buf generate
+
 # One-shot structured crawl into job_ingest_queue (worker drains to opportunities).
 # Examples:
 #   make crawl-once ARGS='-all-apis -max-items 100'

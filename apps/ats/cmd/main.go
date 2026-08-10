@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
 	"os"
 
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/frame/v2/config"
 	"github.com/pitabwire/frame/v2/datastore"
+	"github.com/pitabwire/frame/v2/security"
 	"github.com/pitabwire/frame/v2/setup"
 	"github.com/pitabwire/util"
 
@@ -50,7 +49,6 @@ func main() {
 		return repository.Migrate(mctx, svc.DatastoreManager(), migrationPath)
 	})
 
-	// Setup Job only: migrate, then exit. Runtime never migrates.
 	if frame.ShouldRunSetup(&cfg) {
 		if setupErr := svc.RunSetupForProcess(ctx, &cfg); setupErr != nil {
 			log.WithError(setupErr).Fatal("ats: setup plan failed")
@@ -96,59 +94,31 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 	}
 	workMan := svc.WorkManager()
 
-	jobRepo := repository.NewJobRepository(ctx, dbPool, workMan)
-	appRepo := repository.NewApplicationRepository(ctx, dbPool, workMan)
-	stageRepo := repository.NewStageEventRepository(ctx, dbPool, workMan)
-	availRepo := repository.NewAvailabilityRepository(ctx, dbPool, workMan)
-	interviewRepo := repository.NewInterviewRepository(ctx, dbPool, workMan)
-	hireRepo := repository.NewHireOutcomeRepository(ctx, dbPool, workMan)
-	outboxRepo := repository.NewOutboxRepository(ctx, dbPool, workMan)
-	aiRepo := repository.NewAiRunRepository(ctx, dbPool, workMan)
-
 	biz := business.NewService(business.Deps{
-		Jobs: jobRepo, Applications: appRepo, StageEvents: stageRepo,
-		Availability: availRepo, Interviews: interviewRepo, Hires: hireRepo,
-		Outbox: outboxRepo, AiRuns: aiRepo,
+		Jobs:         repository.NewJobRepository(ctx, dbPool, workMan),
+		Applications: repository.NewApplicationRepository(ctx, dbPool, workMan),
+		StageEvents:  repository.NewStageEventRepository(ctx, dbPool, workMan),
+		Availability: repository.NewAvailabilityRepository(ctx, dbPool, workMan),
+		Interviews:   repository.NewInterviewRepository(ctx, dbPool, workMan),
+		Hires:        repository.NewHireOutcomeRepository(ctx, dbPool, workMan),
+		Outbox:       repository.NewOutboxRepository(ctx, dbPool, workMan),
+		AiRuns:       repository.NewAiRunRepository(ctx, dbPool, workMan),
 	})
 
-	var authMW func(http.Handler) http.Handler
+	var authenticator security.Authenticator
+	allowDev := !cfg.AuthRequireJWT
 	if cfg.AuthRequireJWT {
 		sec := svc.SecurityManager()
 		if sec == nil || sec.GetAuthenticator(ctx) == nil {
 			return nil, errors.New("ats: OIDC authenticator required when AUTH_REQUIRE_JWT=true")
 		}
-		authMW = handlers.TenancyAuth(sec.GetAuthenticator(ctx), false)
-		log.Info("ats: private routes require JWT")
-	} else {
-		authMW = handlers.TenancyAuth(nil, true)
-		log.Warn("ats: AUTH_REQUIRE_JWT=false — tenancy headers allowed (dev only)")
+		authenticator = sec.GetAuthenticator(ctx)
 	}
 
-	api := handlers.NewServer(biz, authMW)
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "service": "ats"})
-	})
-	api.Mount(mux)
-
-	return []frame.Option{frame.WithHTTPHandler(corsMiddleware(mux))}, nil
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = "*"
-		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Profile-ID, X-Tenant-ID, X-Partition-ID, Idempotency-Key")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	mux, err := handlers.NewConnectMux(ctx, biz, authenticator, allowDev)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("ats: Connect API mounted (ats.v1.AtsService)")
+	return []frame.Option{frame.WithHTTPHandler(handlers.CORSMiddleware(mux))}, nil
 }

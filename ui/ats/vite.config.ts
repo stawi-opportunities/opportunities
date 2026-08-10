@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: 5175,
     proxy: {
-      "/v1": "http://127.0.0.1:8095",
+      // Connect procedures: /ats.v1.AtsService/*
+      "/ats.v1.AtsService": "http://127.0.0.1:8095",
       "/healthz": "http://127.0.0.1:8095",
     },
   },

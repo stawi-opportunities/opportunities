@@ -1,4 +1,9 @@
-/** API client — snake_case JSON. Dev headers until identity login is wired. */
+/**
+ * Connect-protocol client for ats.v1.AtsService (JSON).
+ * Type-safe surface matches apps/ats/proto/ats/v1/ats.proto.
+ */
+
+const SERVICE = "/ats.v1.AtsService";
 
 export type Job = {
   id: string;
@@ -60,89 +65,143 @@ export type Availability = {
   exceptions: { date: string; blocked: boolean }[];
 };
 
-const headers = (): HeadersInit => ({
+const tenancyHeaders = (): HeadersInit => ({
   "Content-Type": "application/json",
+  "Connect-Protocol-Version": "1",
   "X-Profile-ID": localStorage.getItem("ats_profile_id") || "dev-recruiter",
   "X-Tenant-ID": localStorage.getItem("ats_tenant_id") || "dev-tenant",
   "X-Partition-ID": localStorage.getItem("ats_partition_id") || "dev-partition",
 });
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { ...headers(), ...(init?.headers || {}) },
+async function rpc<TReq extends object, TRes>(method: string, body: TReq): Promise<TRes> {
+  const res = await fetch(`${SERVICE}/${method}`, {
+    method: "POST",
+    headers: tenancyHeaders(),
+    body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
     let detail = await res.text();
     try {
       const j = JSON.parse(detail);
-      detail = j.detail || j.title || detail;
+      detail = j.message || j.detail || j.title || detail;
     } catch {
-      /* keep text */
+      /* keep */
     }
     throw new Error(detail || `${res.status}`);
   }
-  if (res.status === 204) return undefined as T;
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("text/calendar")) {
-    return (await res.text()) as T;
-  }
-  return res.json() as Promise<T>;
+  if (res.status === 204) return undefined as TRes;
+  return res.json() as Promise<TRes>;
 }
 
 export const api = {
-  dashboard: () => req<Dashboard>("/v1/dashboard"),
-  seed: () => req<{ seeded: boolean }>("/v1/demo/seed", { method: "POST" }),
-  listJobs: () => req<{ jobs: Job[] }>("/v1/jobs"),
-  createJob: (title: string, description: string, location: string) =>
-    req<Job>("/v1/jobs", {
-      method: "POST",
-      body: JSON.stringify({ title, description, location, status: "open" }),
-    }),
-  publishJob: (id: string) => req<Job>(`/v1/jobs/${id}/publish`, { method: "POST" }),
-  unpublishJob: (id: string) => req<Job>(`/v1/jobs/${id}/unpublish`, { method: "POST" }),
-  closeJob: (id: string) => req<Job>(`/v1/jobs/${id}/close`, { method: "POST" }),
-  listApplications: (jobId: string) =>
-    req<{ applications: Application[] }>(`/v1/jobs/${jobId}/applications`),
-  createApplication: (jobId: string, profileId: string, summary?: string) =>
-    req<Application>(`/v1/jobs/${jobId}/applications`, {
-      method: "POST",
-      body: JSON.stringify({ profile_id: profileId, summary }),
-    }),
-  listTalent: (jobId: string) => req<{ talent: TalentHit[] }>(`/v1/jobs/${jobId}/talent`),
-  addTalent: (jobId: string, hit: TalentHit) =>
-    req<Application>(`/v1/jobs/${jobId}/talent`, {
-      method: "POST",
-      body: JSON.stringify(hit),
-    }),
-  advance: (appId: string, toStage: string) =>
-    req<Application>(`/v1/applications/${appId}/advance`, {
-      method: "POST",
-      body: JSON.stringify({ to_stage: toStage }),
-    }),
-  hire: (appId: string) =>
-    req<{ application: Application }>(`/v1/applications/${appId}/hire`, { method: "POST" }),
-  screenSummary: (appId: string) =>
-    req<{ summary: string }>(`/v1/ai/applications/${appId}/screen-summary`, { method: "POST" }),
-  proposeInterview: (appId: string, durationMin = 30) =>
-    req<Interview>(`/v1/applications/${appId}/interviews`, {
-      method: "POST",
-      body: JSON.stringify({ duration_min: durationMin, type: "screen" }),
-    }),
-  listSlots: (interviewId: string) =>
-    req<{ slots: Slot[] }>(`/v1/interviews/${interviewId}/slots`),
-  bookInterview: (interviewId: string, start: string, end: string) =>
-    req<Interview>(`/v1/interviews/${interviewId}/book`, {
-      method: "POST",
-      body: JSON.stringify({ start, end }),
-    }),
-  getAvailability: () => req<Availability | { availability: null }>("/v1/me/availability"),
+  dashboard: async () => {
+    const r = await rpc<Record<string, never>, { dashboard: Dashboard }>("GetDashboard", {});
+    return r.dashboard;
+  },
+  seed: () => rpc<Record<string, never>, { seeded: boolean }>("SeedDemo", {}),
+  listJobs: async (status = "") => {
+    const r = await rpc<{ status: string }, { jobs: Job[] }>("ListJobs", { status });
+    return { jobs: r.jobs || [] };
+  },
+  createJob: async (title: string, description: string, location: string) => {
+    const r = await rpc<object, { job: Job }>("CreateJob", {
+      title,
+      description,
+      location,
+      status: "open",
+    });
+    return r.job;
+  },
+  publishJob: async (id: string) => {
+    const r = await rpc<{ id: string }, { job: Job }>("PublishJob", { id });
+    return r.job;
+  },
+  unpublishJob: async (id: string) => {
+    const r = await rpc<{ id: string }, { job: Job }>("UnpublishJob", { id });
+    return r.job;
+  },
+  closeJob: async (id: string) => {
+    const r = await rpc<{ id: string }, { job: Job }>("CloseJob", { id });
+    return r.job;
+  },
+  listApplications: async (jobId: string) => {
+    const r = await rpc<{ job_id: string }, { applications: Application[] }>("ListApplications", {
+      job_id: jobId,
+    });
+    return { applications: r.applications || [] };
+  },
+  createApplication: async (jobId: string, profileId: string, summary?: string) => {
+    const r = await rpc<object, { application: Application }>("CreateApplication", {
+      job_id: jobId,
+      profile_id: profileId,
+      summary,
+    });
+    return r.application;
+  },
+  listTalent: async (jobId: string) => {
+    const r = await rpc<{ job_id: string; limit: number }, { talent: TalentHit[] }>("ListTalent", {
+      job_id: jobId,
+      limit: 20,
+    });
+    return { talent: r.talent || [] };
+  },
+  addTalent: async (jobId: string, hit: TalentHit) => {
+    const r = await rpc<object, { application: Application }>("AddTalent", {
+      job_id: jobId,
+      hit,
+    });
+    return r.application;
+  },
+  advance: async (appId: string, toStage: string) => {
+    const r = await rpc<object, { application: Application }>("AdvanceApplication", {
+      id: appId,
+      to_stage: toStage,
+    });
+    return r.application;
+  },
+  hire: async (appId: string) => {
+    return rpc<{ id: string }, { application: Application }>("HireApplication", { id: appId });
+  },
+  screenSummary: async (appId: string) => {
+    return rpc<{ application_id: string }, { summary: string }>("ScreenSummary", {
+      application_id: appId,
+    });
+  },
+  proposeInterview: async (appId: string, durationMin = 30) => {
+    const r = await rpc<object, { interview: Interview }>("ProposeInterview", {
+      application_id: appId,
+      duration_min: durationMin,
+      type: "screen",
+    });
+    return r.interview;
+  },
+  listSlots: async (interviewId: string) => {
+    const r = await rpc<{ interview_id: string }, { slots: Slot[] }>("ListInterviewSlots", {
+      interview_id: interviewId,
+    });
+    return { slots: r.slots || [] };
+  },
+  bookInterview: async (interviewId: string, start: string, end: string) => {
+    const r = await rpc<object, { interview: Interview }>("BookInterview", {
+      interview_id: interviewId,
+      start,
+      end,
+    });
+    return r.interview;
+  },
+  getAvailability: () => rpc<Record<string, never>, Availability | { availability: null }>("GetMyAvailability", {}),
   setAvailability: (body: { timezone: string; rules: Availability["rules"] }) =>
-    req<Availability>("/v1/me/availability", {
-      method: "PUT",
-      body: JSON.stringify(body),
-    }),
-  icsUrl: (interviewId: string) => `/v1/interviews/${interviewId}/ics`,
+    rpc<object, { availability: Availability }>("SetMyAvailability", body).then((r) => r.availability),
+  icsUrl: (interviewId: string) => {
+    // ICS via RPC response in production; for download we use GetInterviewICS then blob.
+    return interviewId;
+  },
+  getICS: async (interviewId: string) => {
+    const r = await rpc<{ interview_id: string }, { ics: string }>("GetInterviewICS", {
+      interview_id: interviewId,
+    });
+    return r.ics;
+  },
 };
 
 export const NEXT_STAGE: Record<string, string> = {

@@ -17,7 +17,6 @@ import (
 
 	atsconfig "github.com/stawi-opportunities/opportunities/apps/ats/config"
 	"github.com/stawi-opportunities/opportunities/apps/ats/service/business"
-	"github.com/stawi-opportunities/opportunities/apps/ats/service/handlers"
 	"github.com/stawi-opportunities/opportunities/apps/ats/service/repository"
 )
 
@@ -38,11 +37,10 @@ func (s *ATSBaseTestSuite) SetupSuite() {
 	s.FrameBaseTestSuite.SetupSuite()
 }
 
-// Deps holds wired repositories + business for a test.
+// Deps holds wired business for a test.
 type Deps struct {
-	Svc    *business.Service
-	Server *handlers.Server
-	Frame  *frame.Service
+	Svc   *business.Service
+	Frame *frame.Service
 }
 
 // CreateService builds a Frame service against an isolated randomised Postgres DS.
@@ -100,9 +98,8 @@ func (s *ATSBaseTestSuite) CreateService(t *testing.T) (context.Context, *Deps) 
 	})
 
 	return ctx, &Deps{
-		Svc:    biz,
-		Server: handlers.NewServer(biz, handlers.TenancyAuth(nil, true)),
-		Frame:  svc,
+		Svc:   biz,
+		Frame: svc,
 	}
 }
 

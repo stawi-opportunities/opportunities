@@ -9,7 +9,7 @@ Design: `docs/superpowers/specs/2026-08-10-employer-ats-design.md`
 
 | Layer | Package |
 |-------|---------|
-| Interaction | `service/handlers` (HTTP OpenAPI for SPA/agents; thin) |
+| Interaction | `service/handlers` (**Connect RPC** `ats.v1.AtsService`; thin) |
 | Business | `service/business` |
 | Repository | `service/repository` (`datastore.BaseRepository`) |
 | Models | `service/models` (`data.BaseModel`) |
@@ -61,6 +61,21 @@ go test ./apps/ats/... -count=1   # testcontainers Postgres
 4. Register permission namespace + SPA audience (tenancy)  
 5. Optional later: Connect RPC peer surface over the same `business.Service`
 
-## API
+## API (Connect)
 
-See handlers mount in `service/handlers/server.go` — `/v1/dashboard`, jobs, applications, talent, interviews, availability, hire, AI screen, demo seed.
+Proto: `apps/ats/proto/ats/v1/ats.proto`  
+Generated: `apps/ats/gen/ats/v1` (+ `atsv1connect`)  
+Regenerate: `cd apps/ats/proto && buf generate`
+
+Procedures (JSON Connect):
+
+```
+POST /ats.v1.AtsService/GetDashboard
+POST /ats.v1.AtsService/ListJobs
+POST /ats.v1.AtsService/CreateJob
+…
+```
+
+SPA uses `Connect-Protocol-Version: 1` + JSON body. Agents use generated `atsv1connect.NewAtsServiceClient`.
+
+5. Optional: publish proto to `buf.build` for cross-language clients (Flutter/TS gen).
