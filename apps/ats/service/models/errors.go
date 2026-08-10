@@ -1,4 +1,4 @@
-package ats
+package models
 
 import "errors"
 

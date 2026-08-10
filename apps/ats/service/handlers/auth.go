@@ -1,4 +1,4 @@
-package v1
+package handlers
 
 import (
 	"net/http"
@@ -10,8 +10,8 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
-// TenancyAuth ensures JWT (or dev headers) produce claims with
-// profile_id, tenant_id, and partition_id.
+// TenancyAuth ensures JWT (or dev headers) produce claims with profile_id,
+// tenant_id, and partition_id — aligned with identity/tenancy enrichment.
 func TenancyAuth(authenticator security.Authenticator, allowHeaders bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,6 +25,7 @@ func TenancyAuth(authenticator security.Authenticator, allowHeaders bool) func(h
 					c := &security.AuthenticationClaims{
 						TenantID:    tid,
 						PartitionID: part,
+						ProfileID:   pid,
 						RegisteredClaims: jwt.RegisteredClaims{
 							Subject: pid,
 						},

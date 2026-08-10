@@ -40,7 +40,7 @@
 | Candidate auth | Always **identity / Stawi login** (`sub === profile_id`) |
 | Agents | **User-delegated** only |
 | Workspace | Flat: **partition** under **tenant** = employer workspace; multi-partition membership via tenancy |
-| Implementation | Dedicated `apps/ats` + `ui/ats` SPA — Approach A |
+| Implementation | Dedicated `apps/ats` (service-profile layout: models/repository/business/handlers) + `ui/ats` SPA; Postgres only |
 | Data tenancy fields | Frame `data.BaseModel` (`tenant_id`, `partition_id`, …) — **not** a custom `org_id` |
 | People | **Profile service**; optional link to matching `candidate_profiles` / `candidate_id` |
 | Billing | **Results-based** (e.g. Hired outcome) via payment/ledger |

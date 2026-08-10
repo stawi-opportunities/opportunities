@@ -36,13 +36,19 @@ run-api:
 run-worker:
 	go run ./apps/worker/cmd
 
-# Local employer ATS (sqlite + dev headers + demo seed). No Postgres required.
+# Employer ATS (Postgres via DATABASE_URL). Setup migrate, then runtime.
+# Example: DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/ats?sslmode=disable
+run-ats-setup:
+	DO_SETUP=true AUTH_REQUIRE_JWT=false go run ./apps/ats/cmd
+
 run-ats:
-	AUTH_REQUIRE_JWT=false ATS_AUTO_SEED=true ATS_SQLITE_PATH=data/ats.sqlite \
-		HTTP_ADDR=:8095 go run ./apps/ats/cmd
+	AUTH_REQUIRE_JWT=false ATS_AUTO_SEED=true HTTP_ADDR=:8095 go run ./apps/ats/cmd
 
 ui-ats-dev:
 	cd ui/ats && npm install --no-audit --no-fund && npm run dev
+
+test-ats:
+	go test ./apps/ats/... -count=1 -timeout 10m
 
 # One-shot structured crawl into job_ingest_queue (worker drains to opportunities).
 # Examples:

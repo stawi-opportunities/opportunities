@@ -1,4 +1,4 @@
-package ats
+package models
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 )
 
 // BuildICS returns a minimal VCALENDAR for a scheduled interview.
-func BuildICS(iv *Interview, jobTitle, candidateProfile string, organizerEmail string) string {
+func BuildICS(iv *Interview, jobTitle, candidateProfile, organizerEmail string) string {
 	if iv == nil || iv.SlotStart == nil || iv.SlotEnd == nil {
 		return ""
 	}
@@ -32,12 +32,8 @@ func BuildICS(iv *Interview, jobTitle, candidateProfile string, organizerEmail s
 		organizerEmail = "noreply@stawi.local"
 	}
 	var b strings.Builder
-	b.WriteString("BEGIN:VCALENDAR\r\n")
-	b.WriteString("VERSION:2.0\r\n")
-	b.WriteString("PRODID:-//Stawi//ATS//EN\r\n")
-	b.WriteString("CALSCALE:GREGORIAN\r\n")
-	b.WriteString("METHOD:REQUEST\r\n")
-	b.WriteString("BEGIN:VEVENT\r\n")
+	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Stawi//ATS//EN\r\n")
+	b.WriteString("CALSCALE:GREGORIAN\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n")
 	b.WriteString("UID:" + uid + "\r\n")
 	b.WriteString("DTSTAMP:" + formatICSTime(time.Now().UTC()) + "\r\n")
 	b.WriteString("DTSTART:" + formatICSTime(iv.SlotStart.UTC()) + "\r\n")
@@ -48,9 +44,7 @@ func BuildICS(iv *Interview, jobTitle, candidateProfile string, organizerEmail s
 		b.WriteString("LOCATION:" + icsEscape(loc) + "\r\n")
 	}
 	b.WriteString("ORGANIZER:mailto:" + organizerEmail + "\r\n")
-	b.WriteString("STATUS:CONFIRMED\r\n")
-	b.WriteString("END:VEVENT\r\n")
-	b.WriteString("END:VCALENDAR\r\n")
+	b.WriteString("STATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
 	return b.String()
 }
 

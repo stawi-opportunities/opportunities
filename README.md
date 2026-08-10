@@ -15,7 +15,7 @@ Job and opportunity discovery platform: structured crawl → PostgreSQL → matc
 | `apps/ats` | Employer ATS: jobs, pipeline, interviews (tenancy-scoped) |
 | `ui/ats` | Mobile-first recruiter SPA for `apps/ats` |
 
-**Local ATS (no Postgres):** `make run-ats` then `make ui-ats-dev` — see [docs/ops/ats-runbook.md](docs/ops/ats-runbook.md).
+**Local ATS (Postgres):** set `DATABASE_URL`, `make run-ats-setup`, `make run-ats`, `make ui-ats-dev` — see [docs/ops/ats-runbook.md](docs/ops/ats-runbook.md).
 
 **Production topology:** two Neon projects — product (matching owns) and crawl (crawler owns). Cloud Run hosts `api` + `matching` (+ crawler migrate Job). Cluster hosts crawl jobs (`crawler`, `frontier-worker`, `worker` dual-DB). See [docs/ops/db-boundaries.md](docs/ops/db-boundaries.md).
 

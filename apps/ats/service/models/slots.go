@@ -1,28 +1,28 @@
-package ats
+package models
 
 import (
 	"fmt"
 	"time"
 )
 
-// BusyInterval is a blocked time range (UTC instants).
+// BusyInterval is a blocked time range (UTC).
 type BusyInterval struct {
 	Start time.Time
 	End   time.Time
 }
 
-// Slot is a candidate bookable window (UTC).
+// Slot is a bookable window (UTC).
 type Slot struct {
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
 }
 
-// SlotOverlaps reports whether two half-open intervals [a,b) overlap.
+// SlotOverlaps reports whether two half-open intervals overlap.
 func SlotOverlaps(aStart, aEnd, bStart, bEnd time.Time) bool {
 	return aStart.Before(bEnd) && bStart.Before(aEnd)
 }
 
-// ParseClock parses "HH:MM" into hour and minute.
+// ParseClock parses "HH:MM".
 func ParseClock(s string) (hour, min int, err error) {
 	var h, m int
 	if _, err := fmt.Sscanf(s, "%d:%d", &h, &m); err != nil {
@@ -34,9 +34,7 @@ func ParseClock(s string) (hour, min int, err error) {
 	return h, m, nil
 }
 
-// ComputeSlots returns open slots of durationMin in [windowStart, windowEnd)
-// for the intersection of all panel members' weekly rules, minus exceptions and busy.
-// rulesByProfile must include every panelist; empty rules for a profile yields no slots.
+// ComputeSlots intersects panel weekly rules, minus exceptions and busy intervals.
 func ComputeSlots(
 	loc *time.Location,
 	rulesByProfile map[string][]WeekRule,
@@ -61,13 +59,11 @@ func ComputeSlots(
 	}
 
 	dur := time.Duration(durationMin) * time.Minute
-	// Build per-day free windows in local time, then intersect across profiles.
 	var slots []Slot
 	day := time.Date(windowStart.In(loc).Year(), windowStart.In(loc).Month(), windowStart.In(loc).Day(), 0, 0, 0, 0, loc)
 	endDay := windowEnd.In(loc)
 	for !day.After(endDay) {
 		dayStr := day.Format("2006-01-02")
-		// Intersect free intervals for this local day across all profiles.
 		var free [][2]time.Time
 		first := true
 		blockedDay := false
@@ -110,10 +106,7 @@ func ComputeSlots(
 		for _, iv := range free {
 			for t := iv[0]; t.Add(dur).Before(iv[1]) || t.Add(dur).Equal(iv[1]); t = t.Add(dur) {
 				s, e := t, t.Add(dur)
-				if e.Before(windowStart) || !s.Before(windowEnd) {
-					continue
-				}
-				if s.Before(windowStart) {
+				if e.Before(windowStart) || !s.Before(windowEnd) || s.Before(windowStart) {
 					continue
 				}
 				if busyOverlaps(busy, s, e) {

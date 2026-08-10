@@ -1,8 +1,7 @@
-package ats
+package models
 
 import "fmt"
 
-// Stage keys used by default templates.
 const (
 	StageApplied   = "applied"
 	StageScreen    = "screen"
@@ -19,18 +18,10 @@ func DefaultStages() []string {
 }
 
 var transitions = map[string][]string{
-	StageApplied: {
-		StageScreen, StageRejected, StageWithdrawn,
-	},
-	StageScreen: {
-		StageInterview, StageRejected, StageWithdrawn,
-	},
-	StageInterview: {
-		StageOffer, StageRejected, StageWithdrawn,
-	},
-	StageOffer: {
-		StageHired, StageRejected, StageWithdrawn,
-	},
+	StageApplied:   {StageScreen, StageRejected, StageWithdrawn},
+	StageScreen:    {StageInterview, StageRejected, StageWithdrawn},
+	StageInterview: {StageOffer, StageRejected, StageWithdrawn},
+	StageOffer:     {StageHired, StageRejected, StageWithdrawn},
 	StageHired:     {},
 	StageRejected:  {},
 	StageWithdrawn: {},
@@ -42,7 +33,7 @@ func IsTerminal(stage string) bool {
 	return ok && len(next) == 0
 }
 
-// AllowedNext returns copy of allowed next stages.
+// AllowedNext returns a copy of allowed next stages.
 func AllowedNext(from string) []string {
 	out := transitions[from]
 	cp := make([]string, len(out))

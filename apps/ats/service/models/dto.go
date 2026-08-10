@@ -1,11 +1,11 @@
-package ats
+package models
 
 import (
 	"encoding/json"
 	"time"
 )
 
-// JobDTO is the API-facing job shape (snake_case).
+// JobDTO is the API-facing job shape.
 type JobDTO struct {
 	ID            string     `json:"id"`
 	TenantID      string     `json:"tenant_id"`
@@ -47,8 +47,7 @@ type ApplicationDTO struct {
 	Score       float32   `json:"score,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
-	// JobTitle filled when listing with join context.
-	JobTitle string `json:"job_title,omitempty"`
+	JobTitle    string    `json:"job_title,omitempty"`
 }
 
 func ApplicationToDTO(a *Application) ApplicationDTO {
@@ -75,10 +74,9 @@ type InterviewDTO struct {
 	Location      string     `json:"location,omitempty"`
 	VideoURL      string     `json:"video_url,omitempty"`
 	ICSUID        string     `json:"ics_uid,omitempty"`
-	// Context for Today view
-	JobID       string `json:"job_id,omitempty"`
-	JobTitle    string `json:"job_title,omitempty"`
-	CandidateID string `json:"candidate_profile_id,omitempty"`
+	JobID         string     `json:"job_id,omitempty"`
+	JobTitle      string     `json:"job_title,omitempty"`
+	CandidateID   string     `json:"candidate_profile_id,omitempty"`
 }
 
 func InterviewToDTO(iv *Interview) InterviewDTO {
@@ -95,7 +93,7 @@ func InterviewToDTO(iv *Interview) InterviewDTO {
 	}
 }
 
-// AvailabilityDTO for GET/PUT /v1/me/availability.
+// AvailabilityDTO for GET/PUT availability.
 type AvailabilityDTO struct {
 	ProfileID  string         `json:"profile_id"`
 	Timezone   string         `json:"timezone"`
@@ -150,4 +148,12 @@ type DashboardDTO struct {
 	InterviewsThisWeek int            `json:"interviews_this_week"`
 	UpcomingInterviews []InterviewDTO `json:"upcoming_interviews"`
 	NeedsAttention     []string       `json:"needs_attention"`
+}
+
+// TalentHit is a shortlist entry (no PII copy of profile service).
+type TalentHit struct {
+	ProfileID   string  `json:"profile_id"`
+	CandidateID string  `json:"candidate_id,omitempty"`
+	Score       float32 `json:"score,omitempty"`
+	Summary     string  `json:"summary,omitempty"`
 }
