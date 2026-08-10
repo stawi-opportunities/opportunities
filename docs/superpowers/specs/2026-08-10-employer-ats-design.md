@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-10  
 **Status:** Draft for implementation  
-**Product audience:** Platform catalog `ServiceJobs` (`/jobs`), UI at jobs product surface  
+**Product audience:** Service binary `apps/ats`, UI `ui/ats`; platform audience/permissions registered for ATS  
 **Approach:** Dedicated ATS service + mobile-first SPA in the opportunities monorepo; maximum reuse of platform services under `~/code`
 
 ---
@@ -40,7 +40,7 @@
 | Candidate auth | Always **identity / Stawi login** (`sub === profile_id`) |
 | Agents | **User-delegated** only |
 | Workspace | Flat: **partition** under **tenant** = employer workspace; multi-partition membership via tenancy |
-| Implementation | Dedicated `apps/jobs` + `ui/ats` (jobs SPA) — Approach A |
+| Implementation | Dedicated `apps/ats` + `ui/ats` SPA — Approach A |
 | Data tenancy fields | Frame `data.BaseModel` (`tenant_id`, `partition_id`, …) — **not** a custom `org_id` |
 | People | **Profile service**; optional link to matching `candidate_profiles` / `candidate_id` |
 | Billing | **Results-based** (e.g. Hired outcome) via payment/ledger |
@@ -55,7 +55,7 @@
 |-------|----------------|
 | **Interaction** | `ui/ats` SPA; agents as OpenAPI clients; candidate slot-pick screens (authenticated) |
 | **Control** | JWT claims (`profile_id`, `tenant_id`, `partition_id`); tenancy ReBAC; permission registration |
-| **Execution** | `apps/jobs`: jobs, applications, stages, interviews, availability, AI orchestration, publish/talent adapters, outbox intents |
+| **Execution** | `apps/ats`: jobs, applications, stages, interviews, availability, AI orchestration, publish/talent adapters, outbox intents |
 | **Data** | ATS DB rows with Frame base model; no person PII store |
 | **Integration** | Profile, files, matching, opportunities projection, notification, payment/ledger, LLM |
 
@@ -65,7 +65,7 @@
 Recruiter SPA / Agent
         │  Bearer JWT (user or user-delegated)
         ▼
-   apps/jobs  (OpenAPI, audience /jobs)
+   apps/ats  (OpenAPI; platform audience/permissions for ATS product)
         │
         ├── tenancy/identity  (authn claims, ReBAC check)
         ├── profile           (person, contacts)
@@ -83,7 +83,7 @@ Recruiter SPA / Agent
 2. **No ATS Person CRM table** — people are `profile_id` (+ optional `candidate_id` when on Stawi matching).
 3. **No ATS org_id** — scope is always `tenant_id` + `partition_id` from claims / Frame base model.
 4. **Publish is a projection** — job content SoT is ATS; public board is derived.
-5. **Catalog identity** — implement as platform **Jobs** product (`ServiceJobs` / `/jobs`), not a one-off name that forks auth wiring.
+5. **Service identity** — binary is **`apps/ats`**; register platform audience/permissions for the ATS product (do not invent a parallel auth stack).
 
 ### 3.4 Relationship to opportunities monorepo
 
@@ -348,7 +348,7 @@ Prefer real fixtures for tenancy claims over mocks where platform test harnesses
 8. **Candidates always identity login** — single identity graph.  
 9. **User-delegated agents** — same permissions and audit as the human.  
 10. **Results-based billing** on Hired — not seats.  
-11. **Platform ServiceJobs `/jobs`** — align audiences and permission registration.
+11. **Binary `apps/ats`** — wire platform audiences/permissions for this product.
 
 ---
 
@@ -358,7 +358,7 @@ Resolved during brainstorming; none blocking. Implementation may refine:
 
 - Exact payment SKU and price for hire outcome (product/ops).  
 - Opportunity projection mechanism (direct write vs event to existing writer) — choose during PR1 integration spike against current opportunities APIs.  
-- SPA path name (`ui/ats` vs `ui/jobs`) — product branding only; binary remains `apps/jobs`.
+- Platform catalog slug (`ServiceJobs` vs new `ServiceAts`) for audience URL — decide at deploy wiring; code path is `apps/ats`.
 
 ---
 
@@ -368,7 +368,7 @@ Incremental, each PR independently reviewable. Work on an isolated worktree/bran
 
 | PR | Title | Scope | Depends on |
 |----|-------|--------|------------|
-| **PR1** | Jobs service skeleton + tenancy-scoped Job CRUD | `apps/jobs` boot, Frame base model, migrations, OpenAPI job CRUD, JWT partition enforcement, permission registration stub | — |
+| **PR1** | ATS service skeleton + tenancy-scoped Job CRUD | `apps/ats` boot, Frame base model, migrations, OpenAPI job CRUD, JWT partition enforcement, permission registration stub | — |
 | **PR2** | Applications + stage events | Application model, advance, invariants, list/filter, idempotency | PR1 |
 | **PR3** | Availability + interviews | Slot compute, book/cancel, conflict tests, outbox → notification ICS | PR2 |
 | **PR4** | Stawi talent source | Matching client, talent list, add `source=stawi_match` | PR2 |
