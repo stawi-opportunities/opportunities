@@ -1,14 +1,14 @@
 SHELL := /bin/bash
 
-APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching apps/applications
+APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching apps/applications apps/ats
 
 # Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
 HUGO_VERSION := 0.160.1
 HUGO_BIN     := $(CURDIR)/bin/hugo
 
-.PHONY: deps build test test-integration run-crawler run-api run-worker \
+.PHONY: deps build test test-integration run-crawler run-api run-worker run-ats \
         crawl-once infra-up infra-down \
-        ui-deps ui-build ui-dev \
+        ui-deps ui-build ui-dev ui-ats-dev \
         opportunity-kinds-link
 
 deps:
@@ -35,6 +35,14 @@ run-api:
 
 run-worker:
 	go run ./apps/worker/cmd
+
+# Local employer ATS (sqlite + dev headers + demo seed). No Postgres required.
+run-ats:
+	AUTH_REQUIRE_JWT=false ATS_AUTO_SEED=true ATS_SQLITE_PATH=data/ats.sqlite \
+		HTTP_ADDR=:8095 go run ./apps/ats/cmd
+
+ui-ats-dev:
+	cd ui/ats && npm install --no-audit --no-fund && npm run dev
 
 # One-shot structured crawl into job_ingest_queue (worker drains to opportunities).
 # Examples:

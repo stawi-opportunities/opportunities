@@ -52,13 +52,171 @@ type Service struct {
 func NewService(store *Store) *Service {
 	return &Service{
 		Store:          store,
-		Matching:       NopMatching{},
-		Publisher:      NopPublisher{},
-		Billing:        NopBilling{},
-		Notify:         NopNotifier{},
-		AI:             NopAI{},
+		Matching:       NewDemoTalent(),
+		Publisher:      LocalPublisher{},
+		Billing:        RecordingBilling{},
+		Notify:         OutboxNotifier{Store: store},
+		AI:             HeuristicAI{},
 		SlotWindowDays: 14,
 	}
+}
+
+// UpdateJobInput patches mutable job fields.
+type UpdateJobInput struct {
+	Title       *string
+	Description *string
+	Location    *string
+	Status      *string
+}
+
+func (s *Service) UpdateJob(ctx context.Context, id string, in UpdateJobInput) (*Job, error) {
+	sc, err := ScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	j, err := s.Store.GetJob(ctx, sc.TenantID, sc.PartitionID, id)
+	if err != nil {
+		return nil, err
+	}
+	if j == nil {
+		return nil, ErrNotFound
+	}
+	if in.Title != nil {
+		if *in.Title == "" {
+			return nil, fmt.Errorf("%w: title required", ErrInvalid)
+		}
+		j.Title = *in.Title
+	}
+	if in.Description != nil {
+		j.Description = *in.Description
+	}
+	if in.Location != nil {
+		j.Location = *in.Location
+	}
+	if in.Status != nil {
+		switch *in.Status {
+		case JobStatusDraft, JobStatusOpen, JobStatusClosed:
+			j.Status = *in.Status
+		default:
+			return nil, fmt.Errorf("%w: invalid status", ErrInvalid)
+		}
+	}
+	if err := s.Store.Save(ctx, j); err != nil {
+		return nil, err
+	}
+	return j, nil
+}
+
+func (s *Service) CloseJob(ctx context.Context, id string) (*Job, error) {
+	st := JobStatusClosed
+	return s.UpdateJob(ctx, id, UpdateJobInput{Status: &st})
+}
+
+func (s *Service) Dashboard(ctx context.Context) (*DashboardDTO, error) {
+	sc, err := ScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	open, err := s.Store.CountJobs(ctx, sc.TenantID, sc.PartitionID, JobStatusOpen)
+	if err != nil {
+		return nil, err
+	}
+	active, err := s.Store.CountApplications(ctx, sc.TenantID, sc.PartitionID, AppStatusActive)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	weekEnd := now.AddDate(0, 0, 7)
+	nWeek, err := s.Store.CountInterviewsInRange(ctx, sc.TenantID, sc.PartitionID, now, weekEnd)
+	if err != nil {
+		return nil, err
+	}
+	upcoming, err := s.Store.ListUpcomingInterviews(ctx, sc.TenantID, sc.PartitionID, now, weekEnd, 20)
+	if err != nil {
+		return nil, err
+	}
+	dtos := make([]InterviewDTO, 0, len(upcoming))
+	for i := range upcoming {
+		d := InterviewToDTO(&upcoming[i])
+		if a, _ := s.Store.GetApplication(ctx, sc.TenantID, sc.PartitionID, upcoming[i].ApplicationID); a != nil {
+			d.CandidateID = a.ProfileID
+			d.JobID = a.JobID
+			if j, _ := s.Store.GetJob(ctx, sc.TenantID, sc.PartitionID, a.JobID); j != nil {
+				d.JobTitle = j.Title
+			}
+		}
+		dtos = append(dtos, d)
+	}
+	var attention []string
+	if open == 0 {
+		attention = append(attention, "Create an open job to start hiring")
+	}
+	if active == 0 && open > 0 {
+		attention = append(attention, "Add candidates from Stawi talent or by profile_id")
+	}
+	av, _ := s.Store.GetAvailability(ctx, sc.TenantID, sc.PartitionID, sc.ProfileID)
+	if av == nil || av.RulesJSON == "" || av.RulesJSON == "[]" {
+		attention = append(attention, "Set your interview availability so candidates can book")
+	}
+	return &DashboardDTO{
+		OpenJobs:           int(open),
+		ActiveApplications: int(active),
+		InterviewsThisWeek: int(nWeek),
+		UpcomingInterviews: dtos,
+		NeedsAttention:     attention,
+	}, nil
+}
+
+func (s *Service) ListInterviews(ctx context.Context, applicationID string) ([]Interview, error) {
+	sc, err := ScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.ListInterviewsByApplication(ctx, sc.TenantID, sc.PartitionID, applicationID)
+}
+
+// GetInterviewICS returns ICS text for a scheduled interview (recruiter or candidate).
+func (s *Service) GetInterviewICS(ctx context.Context, interviewID string) (string, error) {
+	sc, err := ScopeFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	iv, err := s.Store.GetInterview(ctx, sc.TenantID, sc.PartitionID, interviewID)
+	if err != nil {
+		return "", err
+	}
+	if iv == nil {
+		return "", ErrNotFound
+	}
+	jobTitle, cand := "", ""
+	if a, _ := s.Store.GetApplication(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID); a != nil {
+		cand = a.ProfileID
+		if j, _ := s.Store.GetJob(ctx, sc.TenantID, sc.PartitionID, a.JobID); j != nil {
+			jobTitle = j.Title
+		}
+	}
+	return BuildICS(iv, jobTitle, cand, ""), nil
+}
+
+// MyApplications lists applications for the acting profile (candidate view).
+func (s *Service) MyApplications(ctx context.Context) ([]ApplicationDTO, error) {
+	sc, err := ScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.Store.ListApplicationsForProfile(ctx, sc.TenantID, sc.PartitionID, sc.ProfileID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ApplicationDTO, 0, len(rows))
+	for i := range rows {
+		d := ApplicationToDTO(&rows[i])
+		if j, _ := s.Store.GetJob(ctx, sc.TenantID, sc.PartitionID, rows[i].JobID); j != nil {
+			d.JobTitle = j.Title
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }
 
 // CreateJobInput is validated job create.
@@ -611,13 +769,8 @@ func (s *Service) BookInterview(ctx context.Context, in BookInterviewInput) (*In
 	}
 	a, _ := s.Store.GetApplication(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID)
 	if a != nil {
+		// Enrich ICS via notifier (writes outbox with ICS body).
 		_ = s.Notify.EnqueueInterviewScheduled(ctx, iv, a)
-		_ = s.Store.CreateOutbox(ctx, &OutboxMessage{
-			Kind:           "interview.scheduled",
-			PayloadJSON:    fmt.Sprintf(`{"interview_id":%q,"application_id":%q}`, iv.ID, a.ID),
-			IdempotencyKey: "interview.scheduled:" + iv.ID,
-			Status:         "pending",
-		})
 	}
 	return iv, nil
 }

@@ -14,4 +14,11 @@ type Config struct {
 
 	// ATSEnabled gates private routes (healthz always on).
 	ATSEnabled bool `env:"ATS_ENABLED" envDefault:"true"`
+
+	// SQLitePath when set uses a local sqlite file instead of Frame DATABASE_URL.
+	// Ideal for `make run-ats` demos without Postgres.
+	SQLitePath string `env:"ATS_SQLITE_PATH" envDefault:""`
+
+	// AutoSeed creates demo job + talent + availability on empty workspace (dev).
+	AutoSeed bool `env:"ATS_AUTO_SEED" envDefault:"false"`
 }

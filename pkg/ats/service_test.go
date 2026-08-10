@@ -17,11 +17,11 @@ func testCtx(t *testing.T, tenant, partition, profile string) context.Context {
 	claims := &security.AuthenticationClaims{
 		TenantID:    tenant,
 		PartitionID: partition,
+		ProfileID:   profile,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: profile,
 		},
 	}
-	// ProfileID may be set via extension; Subject is used as fallback in ScopeFromContext.
 	return claims.ClaimsToContext(context.Background())
 }
 

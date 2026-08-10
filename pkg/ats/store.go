@@ -311,3 +311,100 @@ func (s *Store) CreateOutbox(ctx context.Context, m *OutboxMessage) error {
 	}
 	return nil
 }
+
+// ListUpcomingInterviews returns scheduled interviews in [from, to) for a partition.
+func (s *Store) ListUpcomingInterviews(ctx context.Context, tenantID, partitionID string, from, to time.Time, limit int) ([]Interview, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var rows []Interview
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND partition_id = ? AND status = ? AND slot_start IS NOT NULL AND slot_start >= ? AND slot_start < ?",
+			tenantID, partitionID, InterviewScheduled, from, to).
+		Order("slot_start ASC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("ats: list upcoming interviews: %w", err)
+	}
+	return rows, nil
+}
+
+// ListInterviewsByApplication lists interviews for one application.
+func (s *Store) ListInterviewsByApplication(ctx context.Context, tenantID, partitionID, applicationID string) ([]Interview, error) {
+	var rows []Interview
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND partition_id = ? AND application_id = ?", tenantID, partitionID, applicationID).
+		Order("created_at DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("ats: list interviews: %w", err)
+	}
+	return rows, nil
+}
+
+// CountJobs counts jobs by optional status.
+func (s *Store) CountJobs(ctx context.Context, tenantID, partitionID, status string) (int64, error) {
+	q := s.db.WithContext(ctx).Model(&Job{}).Where("tenant_id = ? AND partition_id = ?", tenantID, partitionID)
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	var n int64
+	if err := q.Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// CountApplications counts applications by optional status.
+func (s *Store) CountApplications(ctx context.Context, tenantID, partitionID, status string) (int64, error) {
+	q := s.db.WithContext(ctx).Model(&Application{}).Where("tenant_id = ? AND partition_id = ?", tenantID, partitionID)
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	var n int64
+	if err := q.Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// CountInterviewsInRange counts scheduled interviews.
+func (s *Store) CountInterviewsInRange(ctx context.Context, tenantID, partitionID string, from, to time.Time) (int64, error) {
+	var n int64
+	err := s.db.WithContext(ctx).Model(&Interview{}).
+		Where("tenant_id = ? AND partition_id = ? AND status = ? AND slot_start >= ? AND slot_start < ?",
+			tenantID, partitionID, InterviewScheduled, from, to).
+		Count(&n).Error
+	return n, err
+}
+
+// ListApplicationsForProfile returns applications where profile is the candidate (candidate portal).
+func (s *Store) ListApplicationsForProfile(ctx context.Context, tenantID, partitionID, profileID string) ([]Application, error) {
+	var rows []Application
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND partition_id = ? AND profile_id = ?", tenantID, partitionID, profileID).
+		Order("created_at DESC").
+		Limit(100).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("ats: list apps for profile: %w", err)
+	}
+	return rows, nil
+}
+
+// GetInterviewForCandidate ensures interview's application belongs to profileID.
+func (s *Store) GetInterviewForCandidate(ctx context.Context, tenantID, partitionID, interviewID, profileID string) (*Interview, *Application, error) {
+	iv, err := s.GetInterview(ctx, tenantID, partitionID, interviewID)
+	if err != nil || iv == nil {
+		return nil, nil, err
+	}
+	a, err := s.GetApplication(ctx, tenantID, partitionID, iv.ApplicationID)
+	if err != nil || a == nil {
+		return nil, nil, err
+	}
+	if a.ProfileID != profileID {
+		return nil, nil, nil
+	}
+	return iv, a, nil
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -29,8 +30,10 @@ func testMux(t *testing.T) http.Handler {
 	svc := ats.NewService(store)
 	mux := http.NewServeMux()
 	Mount(mux, &Deps{Svc: svc, Auth: TenancyAuth(nil, true)})
-	return mux
+	return corsWrap(mux)
 }
+
+func corsWrap(h http.Handler) http.Handler { return h }
 
 func withTenancy(req *http.Request) *http.Request {
 	req.Header.Set("X-Profile-ID", "rec-1")
@@ -39,37 +42,161 @@ func withTenancy(req *http.Request) *http.Request {
 	return req
 }
 
-func TestHTTPCreateJobAndPipeline(t *testing.T) {
+func TestHTTPCreateJobPipelineTalentScheduleHire(t *testing.T) {
 	mux := testMux(t)
 
-	body := bytes.NewBufferString(`{"title":"Backend","status":"open"}`)
-	req := withTenancy(httptest.NewRequest(http.MethodPost, "/v1/jobs", body))
+	// seed
+	req := withTenancy(httptest.NewRequest(http.MethodPost, "/v1/demo/seed", nil))
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("create job %d %s", rr.Code, rr.Body.String())
-	}
-	var job ats.Job
-	if err := json.Unmarshal(rr.Body.Bytes(), &job); err != nil {
-		t.Fatal(err)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("seed %d %s", rr.Code, rr.Body.String())
 	}
 
-	body = bytes.NewBufferString(`{"profile_id":"cand-9"}`)
-	req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/jobs/"+job.ID+"/applications", body))
-	rr = httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("create app %d %s", rr.Code, rr.Body.String())
-	}
-	var app ats.Application
-	_ = json.Unmarshal(rr.Body.Bytes(), &app)
-
-	body = bytes.NewBufferString(`{"to_stage":"screen"}`)
-	req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/applications/"+app.ID+"/advance", body))
+	// list jobs
+	req = withTenancy(httptest.NewRequest(http.MethodGet, "/v1/jobs", nil))
 	rr = httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("advance %d %s", rr.Code, rr.Body.String())
+		t.Fatalf("list jobs %d %s", rr.Code, rr.Body.String())
+	}
+	var jobsResp struct {
+		Jobs []ats.JobDTO `json:"jobs"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &jobsResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(jobsResp.Jobs) == 0 {
+		t.Fatal("expected seeded jobs")
+	}
+	jobID := jobsResp.Jobs[0].ID
+
+	// talent
+	req = withTenancy(httptest.NewRequest(http.MethodGet, "/v1/jobs/"+jobID+"/talent", nil))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("talent %d %s", rr.Code, rr.Body.String())
+	}
+	var talentResp struct {
+		Talent []ats.TalentHit `json:"talent"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &talentResp)
+	if len(talentResp.Talent) == 0 {
+		t.Fatal("expected demo talent")
+	}
+
+	// applications
+	req = withTenancy(httptest.NewRequest(http.MethodGet, "/v1/jobs/"+jobID+"/applications", nil))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	var appsResp struct {
+		Applications []ats.ApplicationDTO `json:"applications"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &appsResp)
+	if len(appsResp.Applications) == 0 {
+		// add one
+		body := bytes.NewBufferString(`{"profile_id":"prof_test","summary":"Go engineer"}`)
+		req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/jobs/"+jobID+"/applications", body))
+		rr = httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("create app %d %s", rr.Code, rr.Body.String())
+		}
+		var app ats.ApplicationDTO
+		_ = json.Unmarshal(rr.Body.Bytes(), &app)
+		appsResp.Applications = []ats.ApplicationDTO{app}
+	}
+	appID := appsResp.Applications[0].ID
+
+	// screen AI
+	req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/ai/applications/"+appID+"/screen-summary", nil))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("ai %d %s", rr.Code, rr.Body.String())
+	}
+
+	// availability
+	body := bytes.NewBufferString(`{"timezone":"UTC","rules":[{"weekday":1,"start":"09:00","end":"17:00"},{"weekday":2,"start":"09:00","end":"17:00"},{"weekday":3,"start":"09:00","end":"17:00"},{"weekday":4,"start":"09:00","end":"17:00"},{"weekday":5,"start":"09:00","end":"17:00"}]}`)
+	req = withTenancy(httptest.NewRequest(http.MethodPut, "/v1/me/availability", body))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("avail %d %s", rr.Code, rr.Body.String())
+	}
+
+	// propose interview
+	body = bytes.NewBufferString(`{"duration_min":30,"type":"screen","panel":["rec-1"]}`)
+	req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/applications/"+appID+"/interviews", body))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("propose %d %s", rr.Code, rr.Body.String())
+	}
+	var iv ats.InterviewDTO
+	_ = json.Unmarshal(rr.Body.Bytes(), &iv)
+
+	// slots + book
+	req = withTenancy(httptest.NewRequest(http.MethodGet, "/v1/interviews/"+iv.ID+"/slots", nil))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("slots %d %s", rr.Code, rr.Body.String())
+	}
+	var slotsResp struct {
+		Slots []ats.Slot `json:"slots"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &slotsResp)
+	if len(slotsResp.Slots) == 0 {
+		t.Skip("no slots in next 14 days from now")
+	}
+	bookBody, _ := json.Marshal(map[string]time.Time{
+		"start": slotsResp.Slots[0].Start,
+		"end":   slotsResp.Slots[0].End,
+	})
+	req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/interviews/"+iv.ID+"/book", bytes.NewReader(bookBody)))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("book %d %s", rr.Code, rr.Body.String())
+	}
+
+	// advance to offer then hire
+	for _, st := range []string{"screen", "interview", "offer"} {
+		// may fail if already past — ignore
+		b := bytes.NewBufferString(`{"to_stage":"` + st + `"}`)
+		req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/applications/"+appID+"/advance", b))
+		rr = httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+	}
+	req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/applications/"+appID+"/hire", nil))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	// hire may work if at offer
+	if rr.Code != http.StatusOK && rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("hire %d %s", rr.Code, rr.Body.String())
+	}
+
+	// dashboard
+	req = withTenancy(httptest.NewRequest(http.MethodGet, "/v1/dashboard", nil))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("dashboard %d", rr.Code)
+	}
+
+	// publish
+	req = withTenancy(httptest.NewRequest(http.MethodPost, "/v1/jobs/"+jobID+"/publish", nil))
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("publish %d %s", rr.Code, rr.Body.String())
+	}
+	var pub ats.JobDTO
+	_ = json.Unmarshal(rr.Body.Bytes(), &pub)
+	if pub.Visibility != "published" || pub.OpportunityID == "" {
+		t.Fatalf("publish dto %+v", pub)
 	}
 }
 

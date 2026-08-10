@@ -32,3 +32,4 @@ ui/static/admin-app/
 /recipe-verify
 /recipe-gen
 .worktrees/
+data/
