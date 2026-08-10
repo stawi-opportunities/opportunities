@@ -9,6 +9,46 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stawi -d stawijobs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional local ATS API (build from monorepo root).
+  # Setup: docker compose run --rm ats-setup
+  # Runtime: docker compose up ats
+  ats-setup:
+    profiles: ["ats"]
+    build:
+      context: ..
+      dockerfile: apps/ats/Dockerfile
+    environment:
+      DO_SETUP: "true"
+      DATABASE_URL: postgres://stawi:stawi@postgres:5432/stawijobs?sslmode=disable
+      ATS_MIGRATION_PATH: /migrations/0001
+      AUTH_REQUIRE_JWT: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  ats:
+    profiles: ["ats"]
+    build:
+      context: ..
+      dockerfile: apps/ats/Dockerfile
+    environment:
+      DATABASE_URL: postgres://stawi:stawi@postgres:5432/stawijobs?sslmode=disable
+      AUTH_REQUIRE_JWT: "false"
+      ATS_MIGRATION_PATH: /migrations/0001
+      # Frame ServerPort
+      SERVER_PORT: "8095"
+    ports:
+      - "8095:8095"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:

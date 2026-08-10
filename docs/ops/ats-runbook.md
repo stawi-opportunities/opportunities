@@ -96,3 +96,15 @@ POST /ats.v1.AtsService/CreateJob
 SPA uses `Connect-Protocol-Version: 1` + JSON body. Agents use generated `atsv1connect.NewAtsServiceClient`.
 
 Publish to `buf.build` when ready for Flutter/TS generated clients across products.
+
+## Deploy
+
+See [ats-deploy-checklist.md](ats-deploy-checklist.md) for SA, setup Job, gateway, and smoke steps.
+
+Local Postgres + ATS containers (optional):
+
+```bash
+make infra-up
+docker compose -f deploy/docker-compose.yml --profile ats run --rm ats-setup
+docker compose -f deploy/docker-compose.yml --profile ats up ats
+```
