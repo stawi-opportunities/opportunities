@@ -24,8 +24,7 @@ service AtsService {
       "ats_availability_manage",
       "ats_ai_use",
       "ats_hire",
-      "ats_publish",
-      "ats_demo_seed"
+      "ats_publish"
     ]
     role_bindings: [
       {
@@ -43,8 +42,7 @@ service AtsService {
           "ats_availability_manage",
           "ats_ai_use",
           "ats_hire",
-          "ats_publish",
-          "ats_demo_seed"
+          "ats_publish"
         ]
       },
       {
@@ -62,12 +60,11 @@ service AtsService {
           "ats_availability_manage",
           "ats_ai_use",
           "ats_hire",
-          "ats_publish",
-          "ats_demo_seed"
+          "ats_publish"
         ]
       },
       {
-        // Recruiters: full hiring workflow except demo seed.
+        // Recruiters: full hiring workflow.
         role: ROLE_OPERATOR
         permissions: [
           "ats_dashboard_view",
@@ -126,8 +123,7 @@ service AtsService {
           "ats_availability_manage",
           "ats_ai_use",
           "ats_hire",
-          "ats_publish",
-          "ats_demo_seed"
+          "ats_publish"
         ]
       }
     ]
@@ -136,10 +132,6 @@ service AtsService {
   rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (common.v1.method_permissions) = {permissions: ["ats_dashboard_view"]};
-  }
-
-  rpc SeedDemo(SeedDemoRequest) returns (SeedDemoResponse) {
-    option (common.v1.method_permissions) = {permissions: ["ats_demo_seed"]};
   }
 
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse) {
@@ -333,11 +325,6 @@ message GetDashboardResponse {
   Dashboard dashboard = 1;
 }
 
-message SeedDemoRequest {}
-message SeedDemoResponse {
-  bool seeded = 1;
-  Dashboard dashboard = 2;
-}
 
 message ListJobsRequest {
   string status = 1;

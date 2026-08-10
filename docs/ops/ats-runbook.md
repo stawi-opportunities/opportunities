@@ -30,11 +30,11 @@ export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/ats?sslmode=disa
 # One-shot migrate (setup process)
 DO_SETUP=true DATABASE_URL=$DATABASE_URL go run ./apps/ats/cmd
 
-# Runtime
+# Runtime (dev tenancy headers — no SeedDemo)
 AUTH_REQUIRE_JWT=false DATABASE_URL=$DATABASE_URL go run ./apps/ats/cmd
 
-# SPA
-make ui-ats-dev
+# SPA (dev headers when JWT off)
+cd ui/ats && VITE_ATS_DEV_HEADERS=true npm run dev
 ```
 
 Or with existing monorepo infra:
@@ -44,7 +44,21 @@ make infra-up
 # create DB/user as needed, then DO_SETUP + run as above
 ```
 
-Dev auth headers (SPA): `X-Profile-ID`, `X-Tenant-ID`, `X-Partition-ID`.
+Dev auth headers (SPA, only with `VITE_ATS_DEV_HEADERS=true`): `X-Profile-ID`, `X-Tenant-ID`, `X-Partition-ID`.  
+Production SPA: `VITE_OIDC_*` + `@stawi/auth-runtime` Bearer via `runtime.fetch`.
+
+### Optional peer env (runtime)
+
+| Env | Purpose |
+|-----|---------|
+| `NOTIFICATION_SERVICE_URI` | Interview email/ICS delivery |
+| `MESSAGE_TEMPLATE_ATS_INTERVIEW_SCHEDULED` | Notify template name |
+| `PUBLIC_SITE_URL` | Deep links in invites |
+| `ATS_MATCHING_DATABASE_URL` | Optional `candidate_profiles` read DB |
+| `ATS_PRODUCT_DATABASE_URL` | Optional dual-write to product opportunities |
+| `ATS_OUTBOX_POLL_SECONDS` | Outbox drain interval (default 15) |
+
+There is **no** SeedDemo RPC or auto-seed. Create jobs and candidates through the real API.
 
 ## Makefile
 
@@ -60,9 +74,13 @@ go test ./apps/ats/... -count=1   # testcontainers Postgres
    - Registers **`service_ats`** permission namespace from proto (`frame.WithPermissionRegistration`)  
 2. Runtime: Postgres only, `AUTH_REQUIRE_JWT=true`, OIDC  
    - Connect interceptors: JWT + claims + **FunctionAccess** (`ATS_ENFORCE_PERMISSIONS` default on)  
-3. Inject real `MatchingTalent` / `OpportunityPublisher` / `BillingEmitter` / `Notifier`  
-4. Deploy: SPA audience path for product API; SA name `service-ats` ↔ namespace `service_ats`  
-5. Grant partition roles (OWNER/ADMIN/OPERATOR/MEMBER/VIEWER) so Keto `granted_*` tuples resolve  
+   - **ProjectionPublisher** (ATS board + optional product dual-write)  
+   - **SQLMatchingTalent** (or empty when tables absent)  
+   - **LedgerBillingEmitter** (`result_hire_{job}_{app}`)  
+   - **NotificationNotifier** + **OutboxWorker** drain  
+   - **Idempotency-Key** on side-effecting RPCs  
+3. Deploy: SPA audience path for product API; SA name `service-ats` ↔ namespace `service_ats`  
+4. Grant partition roles (OWNER/ADMIN/OPERATOR/MEMBER/VIEWER) so Keto `granted_*` tuples resolve  
 
 ### Permission map (summary)
 
@@ -74,7 +92,6 @@ go test ./apps/ats/... -count=1   # testcontainers Postgres
 | `ats_hire` | owner, admin, operator |
 | `ats_interview_manage` | owner, admin, operator, member |
 | `ats_ai_use` | owner, admin, operator, member |
-| `ats_demo_seed` | owner, admin, service (dev) |
 
 Declared in `apps/ats/proto/ats/v1/ats.proto` via `common.v1.service_permissions` + `method_permissions`.
 

@@ -2,9 +2,16 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
+	"time"
 
+	"buf.build/gen/go/antinvestor/notification/connectrpc/go/notification/v1/notificationv1connect"
+	apis "github.com/antinvestor/common/v2"
+	"github.com/antinvestor/common/v2/connection"
+	"github.com/antinvestor/common/v2/servicecatalog"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pitabwire/frame/v2"
 	"github.com/pitabwire/frame/v2/config"
 	"github.com/pitabwire/frame/v2/datastore"
@@ -75,14 +82,9 @@ func applyLocalEnvOverrides(cfg *atsconfig.Config) {
 	if v := os.Getenv("AUTH_REQUIRE_JWT"); v == "false" || v == "0" {
 		cfg.AuthRequireJWT = false
 	}
-	if v := os.Getenv("ATS_AUTO_SEED"); v == "true" || v == "1" {
-		cfg.AutoSeed = true
-	}
 	if v := os.Getenv("ATS_MIGRATION_PATH"); v != "" {
 		cfg.MigrationPath = v
 	}
-	// ATS_ENFORCE_PERMISSIONS=false disables Keto function checks even with JWT
-	// (useful for partial envs). Default: enforce when JWT required.
 	if cfg.ServerPort == "" {
 		if addr := os.Getenv("HTTP_ADDR"); len(addr) > 1 && addr[0] == ':' {
 			cfg.ServerPort = addr[1:]
@@ -100,6 +102,41 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 	}
 	workMan := svc.WorkManager()
 
+	projections := repository.NewJobProjectionRepository(ctx, dbPool, workMan)
+	outbox := repository.NewOutboxRepository(ctx, dbPool, workMan)
+	idem := repository.NewIdempotencyRepository(ctx, dbPool, workMan)
+
+	// Matching talent: optional separate DB, else primary pool SQL (graceful empty).
+	var matching business.MatchingTalent = business.EmptyTalent{}
+	if matchDB, err := openOptionalSQL(ctx, cfg.MatchingDatabaseURL); err != nil {
+		log.WithError(err).Warn("ats: matching DB open failed; talent shortlist empty")
+	} else if matchDB != nil {
+		matching = business.SQLMatchingTalent{DB: matchDB}
+		log.Info("ats: matching talent via ATS_MATCHING_DATABASE_URL")
+	} else if gdb := dbPool.DB(ctx, true); gdb != nil {
+		if sqlDB, err := gdb.DB(); err == nil && sqlDB != nil {
+			matching = business.SQLMatchingTalent{DB: sqlDB}
+			log.Info("ats: matching talent via primary datastore (candidate_profiles when present)")
+		}
+	}
+
+	var productDB *sql.DB
+	if pdb, err := openOptionalSQL(ctx, cfg.ProductDatabaseURL); err != nil {
+		log.WithError(err).Warn("ats: product DB open failed; projection-only publish")
+	} else {
+		productDB = pdb
+	}
+
+	publisher := business.ProjectionPublisher{
+		Projections: projections,
+		ProductDB:   productDB,
+	}
+
+	notifyClient, err := setupNotificationClient(ctx, cfg)
+	if err != nil {
+		log.WithError(err).Warn("ats: notification client unavailable; outbox will retry")
+	}
+
 	biz := business.NewService(business.Deps{
 		Jobs:         repository.NewJobRepository(ctx, dbPool, workMan),
 		Applications: repository.NewApplicationRepository(ctx, dbPool, workMan),
@@ -107,9 +144,33 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 		Availability: repository.NewAvailabilityRepository(ctx, dbPool, workMan),
 		Interviews:   repository.NewInterviewRepository(ctx, dbPool, workMan),
 		Hires:        repository.NewHireOutcomeRepository(ctx, dbPool, workMan),
-		Outbox:       repository.NewOutboxRepository(ctx, dbPool, workMan),
+		Outbox:       outbox,
 		AiRuns:       repository.NewAiRunRepository(ctx, dbPool, workMan),
+		Projections:  projections,
+		Idempotency:  idem,
+		Matching:     matching,
+		Publisher:    publisher,
+		Billing:      business.LedgerBillingEmitter{Prefix: "result_hire"},
+		Notify: business.NotificationNotifier{
+			Outbox:      outbox,
+			Notify:      notifyClient,
+			Template:    cfg.MessageTemplateInterviewScheduled,
+			SiteBaseURL: cfg.PublicSiteURL,
+		},
 	})
+
+	// Background outbox drain (email/ICS).
+	poll := time.Duration(cfg.OutboxPollIntervalSeconds) * time.Second
+	if poll <= 0 {
+		poll = 15 * time.Second
+	}
+	worker := &business.OutboxWorker{
+		Outbox:   outbox,
+		Notify:   notifyClient,
+		Template: cfg.MessageTemplateInterviewScheduled,
+		Interval: poll,
+	}
+	go worker.Run(ctx)
 
 	allowDev := !cfg.AuthRequireJWT
 	var authenticator security.Authenticator
@@ -123,7 +184,6 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 		}
 		authenticator = sec.GetAuthenticator(ctx)
 		authz = sec.GetAuthorizer(ctx)
-		// Enforce unless explicitly disabled.
 		enforcePerms = os.Getenv("ATS_ENFORCE_PERMISSIONS") != "false" &&
 			os.Getenv("ATS_ENFORCE_PERMISSIONS") != "0"
 		if enforcePerms && authz == nil {
@@ -137,10 +197,43 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 		Authorizer:         authz,
 		AllowDevHeaders:    allowDev,
 		EnforcePermissions: enforcePerms,
+		Idempotency:        idem,
 	})
 	if err != nil {
 		return nil, err
 	}
 	log.Info("ats: Connect API mounted (ats.v1.AtsService, namespace service_ats)")
 	return []frame.Option{frame.WithHTTPHandler(handlers.CORSMiddleware(mux))}, nil
+}
+
+func setupNotificationClient(
+	ctx context.Context,
+	cfg *atsconfig.Config,
+) (notificationv1connect.NotificationServiceClient, error) {
+	if cfg.NotificationServiceURI == "" {
+		return nil, nil
+	}
+	return connection.NewServiceClient(ctx, cfg, apis.ServiceTarget{
+		Endpoint:              cfg.NotificationServiceURI,
+		WorkloadAPITargetPath: cfg.NotificationServiceWorkloadAPITargetPath,
+		ServiceID:             servicecatalog.ServiceNotification,
+	}, notificationv1connect.NewNotificationServiceClient)
+}
+
+func openOptionalSQL(ctx context.Context, dsn string) (*sql.DB, error) {
+	if dsn == "" {
+		return nil, nil
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
 }

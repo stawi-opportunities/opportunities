@@ -39,8 +39,11 @@ func (s *ATSBaseTestSuite) SetupSuite() {
 
 // Deps holds wired business for a test.
 type Deps struct {
-	Svc   *business.Service
-	Frame *frame.Service
+	Svc         *business.Service
+	Frame       *frame.Service
+	Projections repository.JobProjectionRepository
+	Outbox      repository.OutboxRepository
+	Idempotency repository.IdempotencyRepository
 }
 
 // CreateService builds a Frame service against an isolated randomised Postgres DS.
@@ -86,6 +89,10 @@ func (s *ATSBaseTestSuite) CreateService(t *testing.T) (context.Context, *Deps) 
 	require.NotNil(t, dbPool)
 	workMan := svc.WorkManager()
 
+	projections := repository.NewJobProjectionRepository(ctx, dbPool, workMan)
+	outbox := repository.NewOutboxRepository(ctx, dbPool, workMan)
+	idem := repository.NewIdempotencyRepository(ctx, dbPool, workMan)
+
 	biz := business.NewService(business.Deps{
 		Jobs:         repository.NewJobRepository(ctx, dbPool, workMan),
 		Applications: repository.NewApplicationRepository(ctx, dbPool, workMan),
@@ -93,13 +100,22 @@ func (s *ATSBaseTestSuite) CreateService(t *testing.T) (context.Context, *Deps) 
 		Availability: repository.NewAvailabilityRepository(ctx, dbPool, workMan),
 		Interviews:   repository.NewInterviewRepository(ctx, dbPool, workMan),
 		Hires:        repository.NewHireOutcomeRepository(ctx, dbPool, workMan),
-		Outbox:       repository.NewOutboxRepository(ctx, dbPool, workMan),
+		Outbox:       outbox,
 		AiRuns:       repository.NewAiRunRepository(ctx, dbPool, workMan),
+		Projections:  projections,
+		Idempotency:  idem,
+		Matching:     business.EmptyTalent{},
+		Publisher:    business.ProjectionPublisher{Projections: projections},
+		Billing:      business.LedgerBillingEmitter{Prefix: "result_hire"},
+		Notify:       business.NotificationNotifier{Outbox: outbox},
 	})
 
 	return ctx, &Deps{
-		Svc:   biz,
-		Frame: svc,
+		Svc:         biz,
+		Frame:       svc,
+		Projections: projections,
+		Outbox:      outbox,
+		Idempotency: idem,
 	}
 }
 

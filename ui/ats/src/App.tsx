@@ -5,12 +5,14 @@ import {
   STAGE_LABEL,
   type Application,
   type Dashboard,
+  type Interview,
   type Job,
   type Slot,
   type TalentHit,
 } from "./api";
+import { authMode, ensureAuthReady, login, logout, type AuthMode } from "./auth";
 
-type Tab = "today" | "jobs" | "pipeline" | "more";
+type Tab = "today" | "jobs" | "pipeline" | "candidate" | "more";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -20,6 +22,7 @@ export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState("");
   const [apps, setApps] = useState<Application[]>([]);
+  const [myApps, setMyApps] = useState<Application[]>([]);
   const [talent, setTalent] = useState<TalentHit[]>([]);
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
@@ -30,7 +33,12 @@ export function App() {
   const [aiText, setAiText] = useState("");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [bookingIv, setBookingIv] = useState("");
+  const [candSlots, setCandSlots] = useState<Slot[]>([]);
+  const [candBookingIv, setCandBookingIv] = useState("");
   const [tz, setTz] = useState("Africa/Nairobi");
+  const [mode, setMode] = useState<AuthMode>(authMode());
+  const [signedIn, setSignedIn] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
   const flash = (msg: string) => {
     setInfo(msg);
@@ -68,20 +76,35 @@ export function App() {
     }
   }, []);
 
+  const refreshMyApps = useCallback(async () => {
+    try {
+      const res = await api.listMyApplications();
+      setMyApps(res.applications || []);
+    } catch {
+      setMyApps([]);
+    }
+  }, []);
+
   useEffect(() => {
     void (async () => {
       setError("");
-      try {
-        await api.seed();
-      } catch {
-        /* seed optional if already filled / auth */
+      const auth = await ensureAuthReady();
+      setMode(auth.mode);
+      setSignedIn(auth.signedIn);
+      setAuthReady(true);
+      if (!auth.signedIn && auth.mode === "oidc") return;
+      if (!auth.signedIn && auth.mode === "none") {
+        setError("Sign in required. Configure OIDC (VITE_OIDC_*) or local VITE_ATS_DEV_HEADERS=true.");
+        return;
       }
       await refreshDash();
       await refreshJobs();
+      await refreshMyApps();
     })();
-  }, [refreshDash, refreshJobs]);
+  }, [refreshDash, refreshJobs, refreshMyApps]);
 
   useEffect(() => {
+    if (!signedIn && mode !== "dev") return;
     void refreshApps(selectedJob);
     if (selectedJob) {
       void api
@@ -89,7 +112,7 @@ export function App() {
         .then((r) => setTalent(r.talent || []))
         .catch(() => setTalent([]));
     }
-  }, [selectedJob, refreshApps]);
+  }, [selectedJob, refreshApps, signedIn, mode]);
 
   const selectedJobObj = useMemo(
     () => jobs.find((j) => j.id === selectedJob),
@@ -106,6 +129,42 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!authReady) {
+    return (
+      <div className="app">
+        <header className="header">
+          <h1>Stawi ATS</h1>
+          <p className="muted">Loading session…</p>
+        </header>
+      </div>
+    );
+  }
+
+  if (!signedIn && mode === "oidc") {
+    return (
+      <div className="app">
+        <header className="header">
+          <h1>Stawi ATS</h1>
+          <p className="muted">Sign in with your Stawi account to hire or book interviews.</p>
+        </header>
+        <main className="main">
+          {error ? <p className="error">{error}</p> : null}
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await login();
+              })
+            }
+          >
+            Sign in with Stawi
+          </button>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -152,7 +211,8 @@ export function App() {
                 <div key={iv.id} className="card">
                   <h3>{iv.job_title || "Interview"}</h3>
                   <p className="muted">
-                    {iv.candidate_profile_id} · {iv.slot_start ? new Date(iv.slot_start).toLocaleString() : "—"}
+                    {iv.candidate_profile_id} ·{" "}
+                    {iv.slot_start ? new Date(iv.slot_start).toLocaleString() : "—"}
                   </p>
                   <button
                     type="button"
@@ -180,20 +240,6 @@ export function App() {
                 </div>
               ))
             )}
-            <button
-              className="btn secondary"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await api.seed();
-                  await refreshDash();
-                  await refreshJobs();
-                  flash("Workspace ready");
-                })
-              }
-            >
-              Reset / seed demo data
-            </button>
           </section>
         )}
 
@@ -201,7 +247,11 @@ export function App() {
           <section>
             <label>
               Title
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Senior Backend Engineer" />
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Senior Backend Engineer"
+              />
             </label>
             <label>
               Location
@@ -209,7 +259,12 @@ export function App() {
             </label>
             <label>
               Description
-              <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What you’ll build…" />
+              <textarea
+                rows={3}
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="What you’ll build…"
+              />
             </label>
             <button
               className="btn"
@@ -304,7 +359,10 @@ export function App() {
             ) : null}
 
             <h2 className="section-title">Stawi talent</h2>
-            <p className="muted">Ranked shortlist — one tap adds to the same pipeline.</p>
+            <p className="muted">Ranked shortlist from live candidate profiles when available.</p>
+            {talent.length === 0 ? (
+              <p className="muted">No talent hits yet — add by profile_id or connect matching DB.</p>
+            ) : null}
             {talent.slice(0, 5).map((t) => (
               <div key={t.profile_id} className="card">
                 <h3>{t.profile_id.replace(/^prof_/, "").replace(/_/g, " ")}</h3>
@@ -442,7 +500,7 @@ export function App() {
                           setSlots([]);
                           setBookingIv("");
                           await refreshDash();
-                          flash("Interview booked — ICS in outbox");
+                          flash("Interview booked — invite enqueued");
                           setTab("today");
                         })
                       }
@@ -467,6 +525,73 @@ export function App() {
                 <button type="button" className="btn sm secondary" onClick={() => setAiText("")}>
                   Dismiss
                 </button>
+              </div>
+            ) : null}
+          </section>
+        )}
+
+        {tab === "candidate" && (
+          <section>
+            <h2 className="section-title">My applications</h2>
+            <p className="muted">Book proposed interviews for roles you are in.</p>
+            <button
+              className="btn secondary"
+              disabled={busy}
+              onClick={() => void run(async () => refreshMyApps())}
+            >
+              Refresh
+            </button>
+            {myApps.length === 0 ? (
+              <p className="muted" style={{ marginTop: "0.75rem" }}>
+                No applications on your profile yet.
+              </p>
+            ) : null}
+            {myApps.map((a) => (
+              <CandidateAppCard
+                key={a.id}
+                app={a}
+                busy={busy}
+                onBook={(ivId, s) =>
+                  void run(async () => {
+                    setCandBookingIv(ivId);
+                    setCandSlots(s);
+                    if (!s.length) setError("No free slots from the panel yet");
+                    else flash("Pick a slot");
+                  })
+                }
+                onError={(msg) => setError(msg)}
+              />
+            ))}
+            {candBookingIv && candSlots.length > 0 ? (
+              <div className="card highlight">
+                <h3>Book your interview</h3>
+                <div className="slot-list">
+                  {candSlots.slice(0, 12).map((s) => (
+                    <button
+                      key={s.start}
+                      type="button"
+                      className="slot"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          await api.bookInterview(candBookingIv, s.start, s.end);
+                          setCandSlots([]);
+                          setCandBookingIv("");
+                          await refreshMyApps();
+                          flash("You are booked — check email/ICS");
+                        })
+                      }
+                    >
+                      {new Date(s.start).toLocaleString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : null}
           </section>
@@ -497,12 +622,25 @@ export function App() {
             >
               Set Mon–Fri 09–12 & 14–17
             </button>
-            <h2 className="section-title">Workspace (dev)</h2>
+            <h2 className="section-title">Account</h2>
             <p className="muted">
-              profile={localStorage.getItem("ats_profile_id") || "dev-recruiter"} · tenant=
-              {localStorage.getItem("ats_tenant_id") || "dev-tenant"}
+              Auth mode: <strong>{mode}</strong>
+              {mode === "dev" ? " (X-Profile / tenant / partition headers)" : ""}
             </p>
-            <p className="muted">Production: identity JWT supplies profile, tenant_id, partition_id.</p>
+            {mode === "oidc" ? (
+              <button
+                className="btn secondary"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await logout();
+                    setSignedIn(false);
+                  })
+                }
+              >
+                Sign out
+              </button>
+            ) : null}
           </section>
         )}
       </main>
@@ -512,14 +650,79 @@ export function App() {
             ["today", "Today"],
             ["jobs", "Jobs"],
             ["pipeline", "Pipeline"],
+            ["candidate", "My apps"],
             ["more", "More"],
           ] as const
         ).map(([id, label]) => (
-          <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
+          <button
+            key={id}
+            type="button"
+            className={tab === id ? "active" : ""}
+            onClick={() => setTab(id)}
+          >
             {label}
           </button>
         ))}
       </nav>
+    </div>
+  );
+}
+
+function CandidateAppCard({
+  app,
+  busy,
+  onBook,
+  onError,
+}: {
+  app: Application;
+  busy: boolean;
+  onBook: (interviewId: string, slots: Slot[]) => void;
+  onError: (msg: string) => void;
+}) {
+  const [interviews, setInterviews] = useState<Interview[]>([]);
+  useEffect(() => {
+    void api
+      .listInterviews(app.id)
+      .then((r) => setInterviews(r.interviews || []))
+      .catch(() => setInterviews([]));
+  }, [app.id]);
+
+  const proposed = interviews.filter((iv) => iv.status === "proposed");
+  const scheduled = interviews.filter((iv) => iv.status === "scheduled");
+
+  return (
+    <div className="card" style={{ marginTop: "0.75rem" }}>
+      <h3>{app.job_title || app.job_id}</h3>
+      <p className="muted">
+        {STAGE_LABEL[app.stage] || app.stage} · {app.status}
+      </p>
+      {scheduled.map((iv) => (
+        <p key={iv.id} className="muted">
+          Booked {iv.slot_start ? new Date(iv.slot_start).toLocaleString() : ""}
+        </p>
+      ))}
+      {proposed.map((iv) => (
+        <button
+          key={iv.id}
+          className="btn sm"
+          disabled={busy}
+          onClick={() =>
+            void (async () => {
+              try {
+                const s = await api.listSlots(iv.id);
+                onBook(iv.id, s.slots || []);
+              } catch (e) {
+                onError(e instanceof Error ? e.message : String(e));
+              }
+            })()
+          }
+        >
+          Choose interview slot
+        </button>
+      ))}
+      {proposed.length === 0 && scheduled.length === 0 ? (
+        <p className="muted">No interview proposed yet.</p>
+      ) : null}
     </div>
   );
 }

@@ -18,6 +18,7 @@ import (
 	atsv1 "github.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1"
 	"github.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1/atsv1connect"
 	"github.com/stawi-opportunities/opportunities/apps/ats/service/business"
+	"github.com/stawi-opportunities/opportunities/apps/ats/service/repository"
 )
 
 // ServiceDescriptor returns the AtsService descriptor for permission registration.
@@ -74,8 +75,10 @@ type ConnectOptions struct {
 	Authorizer      security.Authorizer
 	AllowDevHeaders bool
 	// EnforcePermissions enables FunctionAccessInterceptor (production).
-	// Disabled for local dev so demo headers work without Keto grants.
+	// Disabled for local dev so tenancy headers work without Keto grants.
 	EnforcePermissions bool
+	// Idempotency optional store for Idempotency-Key on side-effecting RPCs.
+	Idempotency repository.IdempotencyRepository
 }
 
 // NewConnectMux mounts AtsService (Connect) + /healthz.
@@ -109,15 +112,29 @@ func NewConnectMux(
 
 func buildInterceptors(ctx context.Context, opts ConnectOptions) ([]connect.Interceptor, error) {
 	log := util.Log(ctx)
+	var chain []connect.Interceptor
+	if opts.Idempotency != nil {
+		// Outer so it wraps auth-settled handlers after claims exist...
+		// For JWT path claims come from DefaultList; idempotency runs inside that.
+		// For dev headers, we put it after DevHeaderClaimsInterceptor.
+		_ = opts.Idempotency
+	}
 	if opts.AllowDevHeaders {
 		log.Warn("ats: Connect using dev tenancy headers; function permissions not enforced")
-		return []connect.Interceptor{DevHeaderClaimsInterceptor{}}, nil
+		chain = append(chain, DevHeaderClaimsInterceptor{})
+		if opts.Idempotency != nil {
+			chain = append(chain, IdempotencyInterceptor{Store: opts.Idempotency})
+		}
+		return chain, nil
 	}
 	if opts.Authenticator == nil {
 		return nil, errors.New("ats: authenticator required when AUTH_REQUIRE_JWT=true")
 	}
 
 	var more []connect.Interceptor
+	if opts.Idempotency != nil {
+		more = append(more, IdempotencyInterceptor{Store: opts.Idempotency})
+	}
 	if opts.EnforcePermissions {
 		if opts.Authorizer == nil {
 			return nil, errors.New("ats: authorizer required when EnforcePermissions=true")

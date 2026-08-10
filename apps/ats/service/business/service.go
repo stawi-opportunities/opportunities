@@ -51,6 +51,8 @@ type Deps struct {
 	Hires        repository.HireOutcomeRepository
 	Outbox       repository.OutboxRepository
 	AiRuns       repository.AiRunRepository
+	Projections  repository.JobProjectionRepository
+	Idempotency  repository.IdempotencyRepository
 
 	Matching  MatchingTalent
 	Publisher OpportunityPublisher
@@ -66,19 +68,21 @@ type Service struct {
 	Deps
 }
 
-// NewService constructs business with default peer ports suitable for local/dev.
+// NewService constructs business with production-safe default peer ports.
+// Matching defaults to EmptyTalent (no fabricated candidates). Publisher
+// requires Projections when unset; Billing is durable/idempotent by key.
 func NewService(d Deps) *Service {
 	if d.Matching == nil {
-		d.Matching = NewDemoTalent()
+		d.Matching = EmptyTalent{}
 	}
 	if d.Publisher == nil {
-		d.Publisher = LocalPublisher{}
+		d.Publisher = ProjectionPublisher{Projections: d.Projections}
 	}
 	if d.Billing == nil {
-		d.Billing = RecordingBilling{}
+		d.Billing = LedgerBillingEmitter{Prefix: "result_hire"}
 	}
 	if d.Notify == nil {
-		d.Notify = OutboxNotifier{Outbox: d.Outbox}
+		d.Notify = NotificationNotifier{Outbox: d.Outbox}
 	}
 	if d.AI == nil {
 		d.AI = HeuristicAI{}
@@ -591,7 +595,13 @@ func (s *Service) BookInterview(ctx context.Context, in BookInterviewInput) (*mo
 	}
 	a, _ := s.Applications.GetInPartition(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID)
 	if a != nil {
-		_ = s.Notify.EnqueueInterviewScheduled(ctx, iv, a)
+		var job *models.Job
+		if j, _ := s.Jobs.GetInPartition(ctx, sc.TenantID, sc.PartitionID, a.JobID); j != nil {
+			job = j
+		}
+		if err := s.Notify.EnqueueInterviewScheduled(ctx, iv, a, job); err != nil {
+			util.Log(ctx).WithError(err).Warn("ats: enqueue interview notification failed")
+		}
 	}
 	return iv, nil
 }
@@ -738,48 +748,4 @@ func (s *Service) MyApplications(ctx context.Context) ([]models.ApplicationDTO, 
 		out = append(out, d)
 	}
 	return out, nil
-}
-
-// SeedDemoWorkspace creates sample data when the partition is empty.
-func SeedDemoWorkspace(ctx context.Context, svc *Service) error {
-	jobs, err := svc.ListJobs(ctx, "")
-	if err != nil {
-		return err
-	}
-	if len(jobs) > 0 {
-		return nil
-	}
-	j, err := svc.CreateJob(ctx, CreateJobInput{
-		Title:       "Senior Backend Engineer (Go)",
-		Description: "Build multi-tenant hiring APIs, Postgres, Cloud Run. Matching, payments, or ATS experience a plus.",
-		Location:    "Nairobi / Remote East Africa",
-		Status:      models.JobStatusOpen,
-	})
-	if err != nil {
-		return fmt.Errorf("seed job: %w", err)
-	}
-	_, err = svc.SetAvailability(ctx, SetAvailabilityInput{
-		Timezone: "Africa/Nairobi",
-		Rules: []models.WeekRule{
-			{Weekday: 1, Start: "09:00", End: "12:00"}, {Weekday: 1, Start: "14:00", End: "17:00"},
-			{Weekday: 2, Start: "09:00", End: "12:00"}, {Weekday: 2, Start: "14:00", End: "17:00"},
-			{Weekday: 3, Start: "09:00", End: "12:00"}, {Weekday: 3, Start: "14:00", End: "17:00"},
-			{Weekday: 4, Start: "09:00", End: "12:00"}, {Weekday: 4, Start: "14:00", End: "17:00"},
-			{Weekday: 5, Start: "09:00", End: "13:00"},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("seed availability: %w", err)
-	}
-	hits, _ := svc.ListTalent(ctx, j.ID, 3)
-	for _, h := range hits {
-		_, _ = svc.AddTalent(ctx, j.ID, h)
-	}
-	_, _ = svc.CreateJob(ctx, CreateJobInput{
-		Title:       "Product Designer — Mobile hiring UX",
-		Description: "Design simple recruiter flows: pipeline, interview scheduling, candidate self-serve.",
-		Location:    "Remote",
-		Status:      models.JobStatusOpen,
-	})
-	return nil
 }

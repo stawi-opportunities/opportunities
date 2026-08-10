@@ -990,94 +990,6 @@ func (x *GetDashboardResponse) GetDashboard() *Dashboard {
 	return nil
 }
 
-type SeedDemoRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SeedDemoRequest) Reset() {
-	*x = SeedDemoRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SeedDemoRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SeedDemoRequest) ProtoMessage() {}
-
-func (x *SeedDemoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SeedDemoRequest.ProtoReflect.Descriptor instead.
-func (*SeedDemoRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{12}
-}
-
-type SeedDemoResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Seeded        bool                   `protobuf:"varint,1,opt,name=seeded,proto3" json:"seeded,omitempty"`
-	Dashboard     *Dashboard             `protobuf:"bytes,2,opt,name=dashboard,proto3" json:"dashboard,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SeedDemoResponse) Reset() {
-	*x = SeedDemoResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SeedDemoResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SeedDemoResponse) ProtoMessage() {}
-
-func (x *SeedDemoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SeedDemoResponse.ProtoReflect.Descriptor instead.
-func (*SeedDemoResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *SeedDemoResponse) GetSeeded() bool {
-	if x != nil {
-		return x.Seeded
-	}
-	return false
-}
-
-func (x *SeedDemoResponse) GetDashboard() *Dashboard {
-	if x != nil {
-		return x.Dashboard
-	}
-	return nil
-}
-
 type ListJobsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
@@ -1087,7 +999,7 @@ type ListJobsRequest struct {
 
 func (x *ListJobsRequest) Reset() {
 	*x = ListJobsRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[14]
+	mi := &file_ats_v1_ats_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1099,7 +1011,7 @@ func (x *ListJobsRequest) String() string {
 func (*ListJobsRequest) ProtoMessage() {}
 
 func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[14]
+	mi := &file_ats_v1_ats_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1112,7 +1024,7 @@ func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListJobsRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{14}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListJobsRequest) GetStatus() string {
@@ -1131,7 +1043,7 @@ type ListJobsResponse struct {
 
 func (x *ListJobsResponse) Reset() {
 	*x = ListJobsResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[15]
+	mi := &file_ats_v1_ats_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1143,7 +1055,7 @@ func (x *ListJobsResponse) String() string {
 func (*ListJobsResponse) ProtoMessage() {}
 
 func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[15]
+	mi := &file_ats_v1_ats_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1156,7 +1068,7 @@ func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
 func (*ListJobsResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{15}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListJobsResponse) GetJobs() []*Job {
@@ -1178,7 +1090,7 @@ type CreateJobRequest struct {
 
 func (x *CreateJobRequest) Reset() {
 	*x = CreateJobRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[16]
+	mi := &file_ats_v1_ats_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1190,7 +1102,7 @@ func (x *CreateJobRequest) String() string {
 func (*CreateJobRequest) ProtoMessage() {}
 
 func (x *CreateJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[16]
+	mi := &file_ats_v1_ats_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1203,7 +1115,7 @@ func (x *CreateJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateJobRequest.ProtoReflect.Descriptor instead.
 func (*CreateJobRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{16}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CreateJobRequest) GetTitle() string {
@@ -1243,7 +1155,7 @@ type CreateJobResponse struct {
 
 func (x *CreateJobResponse) Reset() {
 	*x = CreateJobResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[17]
+	mi := &file_ats_v1_ats_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1255,7 +1167,7 @@ func (x *CreateJobResponse) String() string {
 func (*CreateJobResponse) ProtoMessage() {}
 
 func (x *CreateJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[17]
+	mi := &file_ats_v1_ats_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1268,7 +1180,7 @@ func (x *CreateJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateJobResponse.ProtoReflect.Descriptor instead.
 func (*CreateJobResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{17}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreateJobResponse) GetJob() *Job {
@@ -1287,7 +1199,7 @@ type GetJobRequest struct {
 
 func (x *GetJobRequest) Reset() {
 	*x = GetJobRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[18]
+	mi := &file_ats_v1_ats_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1299,7 +1211,7 @@ func (x *GetJobRequest) String() string {
 func (*GetJobRequest) ProtoMessage() {}
 
 func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[18]
+	mi := &file_ats_v1_ats_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1312,7 +1224,7 @@ func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
 func (*GetJobRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{18}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetJobRequest) GetId() string {
@@ -1331,7 +1243,7 @@ type GetJobResponse struct {
 
 func (x *GetJobResponse) Reset() {
 	*x = GetJobResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[19]
+	mi := &file_ats_v1_ats_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1343,7 +1255,7 @@ func (x *GetJobResponse) String() string {
 func (*GetJobResponse) ProtoMessage() {}
 
 func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[19]
+	mi := &file_ats_v1_ats_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1356,7 +1268,7 @@ func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobResponse.ProtoReflect.Descriptor instead.
 func (*GetJobResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{19}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetJobResponse) GetJob() *Job {
@@ -1379,7 +1291,7 @@ type UpdateJobRequest struct {
 
 func (x *UpdateJobRequest) Reset() {
 	*x = UpdateJobRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[20]
+	mi := &file_ats_v1_ats_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1391,7 +1303,7 @@ func (x *UpdateJobRequest) String() string {
 func (*UpdateJobRequest) ProtoMessage() {}
 
 func (x *UpdateJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[20]
+	mi := &file_ats_v1_ats_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1404,7 +1316,7 @@ func (x *UpdateJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateJobRequest.ProtoReflect.Descriptor instead.
 func (*UpdateJobRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{20}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *UpdateJobRequest) GetId() string {
@@ -1451,7 +1363,7 @@ type UpdateJobResponse struct {
 
 func (x *UpdateJobResponse) Reset() {
 	*x = UpdateJobResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[21]
+	mi := &file_ats_v1_ats_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1463,7 +1375,7 @@ func (x *UpdateJobResponse) String() string {
 func (*UpdateJobResponse) ProtoMessage() {}
 
 func (x *UpdateJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[21]
+	mi := &file_ats_v1_ats_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1476,7 +1388,7 @@ func (x *UpdateJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateJobResponse.ProtoReflect.Descriptor instead.
 func (*UpdateJobResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{21}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UpdateJobResponse) GetJob() *Job {
@@ -1495,7 +1407,7 @@ type CloseJobRequest struct {
 
 func (x *CloseJobRequest) Reset() {
 	*x = CloseJobRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[22]
+	mi := &file_ats_v1_ats_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1507,7 +1419,7 @@ func (x *CloseJobRequest) String() string {
 func (*CloseJobRequest) ProtoMessage() {}
 
 func (x *CloseJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[22]
+	mi := &file_ats_v1_ats_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1520,7 +1432,7 @@ func (x *CloseJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseJobRequest.ProtoReflect.Descriptor instead.
 func (*CloseJobRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{22}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CloseJobRequest) GetId() string {
@@ -1539,7 +1451,7 @@ type CloseJobResponse struct {
 
 func (x *CloseJobResponse) Reset() {
 	*x = CloseJobResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[23]
+	mi := &file_ats_v1_ats_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1551,7 +1463,7 @@ func (x *CloseJobResponse) String() string {
 func (*CloseJobResponse) ProtoMessage() {}
 
 func (x *CloseJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[23]
+	mi := &file_ats_v1_ats_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1564,7 +1476,7 @@ func (x *CloseJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseJobResponse.ProtoReflect.Descriptor instead.
 func (*CloseJobResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{23}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CloseJobResponse) GetJob() *Job {
@@ -1583,7 +1495,7 @@ type PublishJobRequest struct {
 
 func (x *PublishJobRequest) Reset() {
 	*x = PublishJobRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[24]
+	mi := &file_ats_v1_ats_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1595,7 +1507,7 @@ func (x *PublishJobRequest) String() string {
 func (*PublishJobRequest) ProtoMessage() {}
 
 func (x *PublishJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[24]
+	mi := &file_ats_v1_ats_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1608,7 +1520,7 @@ func (x *PublishJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishJobRequest.ProtoReflect.Descriptor instead.
 func (*PublishJobRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{24}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *PublishJobRequest) GetId() string {
@@ -1627,7 +1539,7 @@ type PublishJobResponse struct {
 
 func (x *PublishJobResponse) Reset() {
 	*x = PublishJobResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[25]
+	mi := &file_ats_v1_ats_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1639,7 +1551,7 @@ func (x *PublishJobResponse) String() string {
 func (*PublishJobResponse) ProtoMessage() {}
 
 func (x *PublishJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[25]
+	mi := &file_ats_v1_ats_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1652,7 +1564,7 @@ func (x *PublishJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishJobResponse.ProtoReflect.Descriptor instead.
 func (*PublishJobResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{25}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PublishJobResponse) GetJob() *Job {
@@ -1671,7 +1583,7 @@ type UnpublishJobRequest struct {
 
 func (x *UnpublishJobRequest) Reset() {
 	*x = UnpublishJobRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[26]
+	mi := &file_ats_v1_ats_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1683,7 +1595,7 @@ func (x *UnpublishJobRequest) String() string {
 func (*UnpublishJobRequest) ProtoMessage() {}
 
 func (x *UnpublishJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[26]
+	mi := &file_ats_v1_ats_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1696,7 +1608,7 @@ func (x *UnpublishJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnpublishJobRequest.ProtoReflect.Descriptor instead.
 func (*UnpublishJobRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{26}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UnpublishJobRequest) GetId() string {
@@ -1715,7 +1627,7 @@ type UnpublishJobResponse struct {
 
 func (x *UnpublishJobResponse) Reset() {
 	*x = UnpublishJobResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[27]
+	mi := &file_ats_v1_ats_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1727,7 +1639,7 @@ func (x *UnpublishJobResponse) String() string {
 func (*UnpublishJobResponse) ProtoMessage() {}
 
 func (x *UnpublishJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[27]
+	mi := &file_ats_v1_ats_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1740,7 +1652,7 @@ func (x *UnpublishJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnpublishJobResponse.ProtoReflect.Descriptor instead.
 func (*UnpublishJobResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{27}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UnpublishJobResponse) GetJob() *Job {
@@ -1760,7 +1672,7 @@ type ListApplicationsRequest struct {
 
 func (x *ListApplicationsRequest) Reset() {
 	*x = ListApplicationsRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[28]
+	mi := &file_ats_v1_ats_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1772,7 +1684,7 @@ func (x *ListApplicationsRequest) String() string {
 func (*ListApplicationsRequest) ProtoMessage() {}
 
 func (x *ListApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[28]
+	mi := &file_ats_v1_ats_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1785,7 +1697,7 @@ func (x *ListApplicationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApplicationsRequest.ProtoReflect.Descriptor instead.
 func (*ListApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{28}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListApplicationsRequest) GetJobId() string {
@@ -1811,7 +1723,7 @@ type ListApplicationsResponse struct {
 
 func (x *ListApplicationsResponse) Reset() {
 	*x = ListApplicationsResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[29]
+	mi := &file_ats_v1_ats_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1823,7 +1735,7 @@ func (x *ListApplicationsResponse) String() string {
 func (*ListApplicationsResponse) ProtoMessage() {}
 
 func (x *ListApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[29]
+	mi := &file_ats_v1_ats_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1836,7 +1748,7 @@ func (x *ListApplicationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApplicationsResponse.ProtoReflect.Descriptor instead.
 func (*ListApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{29}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListApplicationsResponse) GetApplications() []*Application {
@@ -1861,7 +1773,7 @@ type CreateApplicationRequest struct {
 
 func (x *CreateApplicationRequest) Reset() {
 	*x = CreateApplicationRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[30]
+	mi := &file_ats_v1_ats_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1873,7 +1785,7 @@ func (x *CreateApplicationRequest) String() string {
 func (*CreateApplicationRequest) ProtoMessage() {}
 
 func (x *CreateApplicationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[30]
+	mi := &file_ats_v1_ats_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1886,7 +1798,7 @@ func (x *CreateApplicationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateApplicationRequest.ProtoReflect.Descriptor instead.
 func (*CreateApplicationRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{30}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CreateApplicationRequest) GetJobId() string {
@@ -1947,7 +1859,7 @@ type CreateApplicationResponse struct {
 
 func (x *CreateApplicationResponse) Reset() {
 	*x = CreateApplicationResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[31]
+	mi := &file_ats_v1_ats_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1959,7 +1871,7 @@ func (x *CreateApplicationResponse) String() string {
 func (*CreateApplicationResponse) ProtoMessage() {}
 
 func (x *CreateApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[31]
+	mi := &file_ats_v1_ats_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1972,7 +1884,7 @@ func (x *CreateApplicationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateApplicationResponse.ProtoReflect.Descriptor instead.
 func (*CreateApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{31}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CreateApplicationResponse) GetApplication() *Application {
@@ -1991,7 +1903,7 @@ type GetApplicationRequest struct {
 
 func (x *GetApplicationRequest) Reset() {
 	*x = GetApplicationRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[32]
+	mi := &file_ats_v1_ats_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2003,7 +1915,7 @@ func (x *GetApplicationRequest) String() string {
 func (*GetApplicationRequest) ProtoMessage() {}
 
 func (x *GetApplicationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[32]
+	mi := &file_ats_v1_ats_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2016,7 +1928,7 @@ func (x *GetApplicationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetApplicationRequest.ProtoReflect.Descriptor instead.
 func (*GetApplicationRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{32}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetApplicationRequest) GetId() string {
@@ -2035,7 +1947,7 @@ type GetApplicationResponse struct {
 
 func (x *GetApplicationResponse) Reset() {
 	*x = GetApplicationResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[33]
+	mi := &file_ats_v1_ats_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2047,7 +1959,7 @@ func (x *GetApplicationResponse) String() string {
 func (*GetApplicationResponse) ProtoMessage() {}
 
 func (x *GetApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[33]
+	mi := &file_ats_v1_ats_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2060,7 +1972,7 @@ func (x *GetApplicationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetApplicationResponse.ProtoReflect.Descriptor instead.
 func (*GetApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{33}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetApplicationResponse) GetApplication() *Application {
@@ -2081,7 +1993,7 @@ type AdvanceApplicationRequest struct {
 
 func (x *AdvanceApplicationRequest) Reset() {
 	*x = AdvanceApplicationRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[34]
+	mi := &file_ats_v1_ats_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2093,7 +2005,7 @@ func (x *AdvanceApplicationRequest) String() string {
 func (*AdvanceApplicationRequest) ProtoMessage() {}
 
 func (x *AdvanceApplicationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[34]
+	mi := &file_ats_v1_ats_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2106,7 +2018,7 @@ func (x *AdvanceApplicationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceApplicationRequest.ProtoReflect.Descriptor instead.
 func (*AdvanceApplicationRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{34}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *AdvanceApplicationRequest) GetId() string {
@@ -2139,7 +2051,7 @@ type AdvanceApplicationResponse struct {
 
 func (x *AdvanceApplicationResponse) Reset() {
 	*x = AdvanceApplicationResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[35]
+	mi := &file_ats_v1_ats_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2151,7 +2063,7 @@ func (x *AdvanceApplicationResponse) String() string {
 func (*AdvanceApplicationResponse) ProtoMessage() {}
 
 func (x *AdvanceApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[35]
+	mi := &file_ats_v1_ats_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2164,7 +2076,7 @@ func (x *AdvanceApplicationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceApplicationResponse.ProtoReflect.Descriptor instead.
 func (*AdvanceApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{35}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *AdvanceApplicationResponse) GetApplication() *Application {
@@ -2183,7 +2095,7 @@ type HireApplicationRequest struct {
 
 func (x *HireApplicationRequest) Reset() {
 	*x = HireApplicationRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[36]
+	mi := &file_ats_v1_ats_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2195,7 +2107,7 @@ func (x *HireApplicationRequest) String() string {
 func (*HireApplicationRequest) ProtoMessage() {}
 
 func (x *HireApplicationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[36]
+	mi := &file_ats_v1_ats_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2208,7 +2120,7 @@ func (x *HireApplicationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HireApplicationRequest.ProtoReflect.Descriptor instead.
 func (*HireApplicationRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{36}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *HireApplicationRequest) GetId() string {
@@ -2228,7 +2140,7 @@ type HireApplicationResponse struct {
 
 func (x *HireApplicationResponse) Reset() {
 	*x = HireApplicationResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[37]
+	mi := &file_ats_v1_ats_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2240,7 +2152,7 @@ func (x *HireApplicationResponse) String() string {
 func (*HireApplicationResponse) ProtoMessage() {}
 
 func (x *HireApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[37]
+	mi := &file_ats_v1_ats_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2253,7 +2165,7 @@ func (x *HireApplicationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HireApplicationResponse.ProtoReflect.Descriptor instead.
 func (*HireApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{37}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *HireApplicationResponse) GetApplication() *Application {
@@ -2280,7 +2192,7 @@ type ListTalentRequest struct {
 
 func (x *ListTalentRequest) Reset() {
 	*x = ListTalentRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[38]
+	mi := &file_ats_v1_ats_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2292,7 +2204,7 @@ func (x *ListTalentRequest) String() string {
 func (*ListTalentRequest) ProtoMessage() {}
 
 func (x *ListTalentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[38]
+	mi := &file_ats_v1_ats_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2305,7 +2217,7 @@ func (x *ListTalentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTalentRequest.ProtoReflect.Descriptor instead.
 func (*ListTalentRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{38}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ListTalentRequest) GetJobId() string {
@@ -2331,7 +2243,7 @@ type ListTalentResponse struct {
 
 func (x *ListTalentResponse) Reset() {
 	*x = ListTalentResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[39]
+	mi := &file_ats_v1_ats_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2343,7 +2255,7 @@ func (x *ListTalentResponse) String() string {
 func (*ListTalentResponse) ProtoMessage() {}
 
 func (x *ListTalentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[39]
+	mi := &file_ats_v1_ats_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2356,7 +2268,7 @@ func (x *ListTalentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTalentResponse.ProtoReflect.Descriptor instead.
 func (*ListTalentResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{39}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ListTalentResponse) GetTalent() []*TalentHit {
@@ -2376,7 +2288,7 @@ type AddTalentRequest struct {
 
 func (x *AddTalentRequest) Reset() {
 	*x = AddTalentRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[40]
+	mi := &file_ats_v1_ats_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2388,7 +2300,7 @@ func (x *AddTalentRequest) String() string {
 func (*AddTalentRequest) ProtoMessage() {}
 
 func (x *AddTalentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[40]
+	mi := &file_ats_v1_ats_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2401,7 +2313,7 @@ func (x *AddTalentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddTalentRequest.ProtoReflect.Descriptor instead.
 func (*AddTalentRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{40}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AddTalentRequest) GetJobId() string {
@@ -2427,7 +2339,7 @@ type AddTalentResponse struct {
 
 func (x *AddTalentResponse) Reset() {
 	*x = AddTalentResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[41]
+	mi := &file_ats_v1_ats_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2439,7 +2351,7 @@ func (x *AddTalentResponse) String() string {
 func (*AddTalentResponse) ProtoMessage() {}
 
 func (x *AddTalentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[41]
+	mi := &file_ats_v1_ats_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2452,7 +2364,7 @@ func (x *AddTalentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddTalentResponse.ProtoReflect.Descriptor instead.
 func (*AddTalentResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{41}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *AddTalentResponse) GetApplication() *Application {
@@ -2471,7 +2383,7 @@ type ListInterviewsRequest struct {
 
 func (x *ListInterviewsRequest) Reset() {
 	*x = ListInterviewsRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[42]
+	mi := &file_ats_v1_ats_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2483,7 +2395,7 @@ func (x *ListInterviewsRequest) String() string {
 func (*ListInterviewsRequest) ProtoMessage() {}
 
 func (x *ListInterviewsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[42]
+	mi := &file_ats_v1_ats_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2496,7 +2408,7 @@ func (x *ListInterviewsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInterviewsRequest.ProtoReflect.Descriptor instead.
 func (*ListInterviewsRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{42}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListInterviewsRequest) GetApplicationId() string {
@@ -2515,7 +2427,7 @@ type ListInterviewsResponse struct {
 
 func (x *ListInterviewsResponse) Reset() {
 	*x = ListInterviewsResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[43]
+	mi := &file_ats_v1_ats_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2527,7 +2439,7 @@ func (x *ListInterviewsResponse) String() string {
 func (*ListInterviewsResponse) ProtoMessage() {}
 
 func (x *ListInterviewsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[43]
+	mi := &file_ats_v1_ats_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2540,7 +2452,7 @@ func (x *ListInterviewsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInterviewsResponse.ProtoReflect.Descriptor instead.
 func (*ListInterviewsResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{43}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ListInterviewsResponse) GetInterviews() []*Interview {
@@ -2564,7 +2476,7 @@ type ProposeInterviewRequest struct {
 
 func (x *ProposeInterviewRequest) Reset() {
 	*x = ProposeInterviewRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[44]
+	mi := &file_ats_v1_ats_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2576,7 +2488,7 @@ func (x *ProposeInterviewRequest) String() string {
 func (*ProposeInterviewRequest) ProtoMessage() {}
 
 func (x *ProposeInterviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[44]
+	mi := &file_ats_v1_ats_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2589,7 +2501,7 @@ func (x *ProposeInterviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProposeInterviewRequest.ProtoReflect.Descriptor instead.
 func (*ProposeInterviewRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{44}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ProposeInterviewRequest) GetApplicationId() string {
@@ -2643,7 +2555,7 @@ type ProposeInterviewResponse struct {
 
 func (x *ProposeInterviewResponse) Reset() {
 	*x = ProposeInterviewResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[45]
+	mi := &file_ats_v1_ats_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2655,7 +2567,7 @@ func (x *ProposeInterviewResponse) String() string {
 func (*ProposeInterviewResponse) ProtoMessage() {}
 
 func (x *ProposeInterviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[45]
+	mi := &file_ats_v1_ats_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2668,7 +2580,7 @@ func (x *ProposeInterviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProposeInterviewResponse.ProtoReflect.Descriptor instead.
 func (*ProposeInterviewResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{45}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ProposeInterviewResponse) GetInterview() *Interview {
@@ -2687,7 +2599,7 @@ type ListInterviewSlotsRequest struct {
 
 func (x *ListInterviewSlotsRequest) Reset() {
 	*x = ListInterviewSlotsRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[46]
+	mi := &file_ats_v1_ats_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2699,7 +2611,7 @@ func (x *ListInterviewSlotsRequest) String() string {
 func (*ListInterviewSlotsRequest) ProtoMessage() {}
 
 func (x *ListInterviewSlotsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[46]
+	mi := &file_ats_v1_ats_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2712,7 +2624,7 @@ func (x *ListInterviewSlotsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInterviewSlotsRequest.ProtoReflect.Descriptor instead.
 func (*ListInterviewSlotsRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{46}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ListInterviewSlotsRequest) GetInterviewId() string {
@@ -2731,7 +2643,7 @@ type ListInterviewSlotsResponse struct {
 
 func (x *ListInterviewSlotsResponse) Reset() {
 	*x = ListInterviewSlotsResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[47]
+	mi := &file_ats_v1_ats_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2743,7 +2655,7 @@ func (x *ListInterviewSlotsResponse) String() string {
 func (*ListInterviewSlotsResponse) ProtoMessage() {}
 
 func (x *ListInterviewSlotsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[47]
+	mi := &file_ats_v1_ats_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2756,7 +2668,7 @@ func (x *ListInterviewSlotsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInterviewSlotsResponse.ProtoReflect.Descriptor instead.
 func (*ListInterviewSlotsResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{47}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ListInterviewSlotsResponse) GetSlots() []*Slot {
@@ -2777,7 +2689,7 @@ type BookInterviewRequest struct {
 
 func (x *BookInterviewRequest) Reset() {
 	*x = BookInterviewRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[48]
+	mi := &file_ats_v1_ats_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2789,7 +2701,7 @@ func (x *BookInterviewRequest) String() string {
 func (*BookInterviewRequest) ProtoMessage() {}
 
 func (x *BookInterviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[48]
+	mi := &file_ats_v1_ats_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2802,7 +2714,7 @@ func (x *BookInterviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BookInterviewRequest.ProtoReflect.Descriptor instead.
 func (*BookInterviewRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{48}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *BookInterviewRequest) GetInterviewId() string {
@@ -2835,7 +2747,7 @@ type BookInterviewResponse struct {
 
 func (x *BookInterviewResponse) Reset() {
 	*x = BookInterviewResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[49]
+	mi := &file_ats_v1_ats_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2847,7 +2759,7 @@ func (x *BookInterviewResponse) String() string {
 func (*BookInterviewResponse) ProtoMessage() {}
 
 func (x *BookInterviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[49]
+	mi := &file_ats_v1_ats_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2860,7 +2772,7 @@ func (x *BookInterviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BookInterviewResponse.ProtoReflect.Descriptor instead.
 func (*BookInterviewResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{49}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *BookInterviewResponse) GetInterview() *Interview {
@@ -2879,7 +2791,7 @@ type GetInterviewICSRequest struct {
 
 func (x *GetInterviewICSRequest) Reset() {
 	*x = GetInterviewICSRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[50]
+	mi := &file_ats_v1_ats_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2891,7 +2803,7 @@ func (x *GetInterviewICSRequest) String() string {
 func (*GetInterviewICSRequest) ProtoMessage() {}
 
 func (x *GetInterviewICSRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[50]
+	mi := &file_ats_v1_ats_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2904,7 +2816,7 @@ func (x *GetInterviewICSRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInterviewICSRequest.ProtoReflect.Descriptor instead.
 func (*GetInterviewICSRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{50}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetInterviewICSRequest) GetInterviewId() string {
@@ -2923,7 +2835,7 @@ type GetInterviewICSResponse struct {
 
 func (x *GetInterviewICSResponse) Reset() {
 	*x = GetInterviewICSResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[51]
+	mi := &file_ats_v1_ats_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2935,7 +2847,7 @@ func (x *GetInterviewICSResponse) String() string {
 func (*GetInterviewICSResponse) ProtoMessage() {}
 
 func (x *GetInterviewICSResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[51]
+	mi := &file_ats_v1_ats_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2948,7 +2860,7 @@ func (x *GetInterviewICSResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInterviewICSResponse.ProtoReflect.Descriptor instead.
 func (*GetInterviewICSResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{51}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *GetInterviewICSResponse) GetIcs() string {
@@ -2966,7 +2878,7 @@ type GetMyAvailabilityRequest struct {
 
 func (x *GetMyAvailabilityRequest) Reset() {
 	*x = GetMyAvailabilityRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[52]
+	mi := &file_ats_v1_ats_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2978,7 +2890,7 @@ func (x *GetMyAvailabilityRequest) String() string {
 func (*GetMyAvailabilityRequest) ProtoMessage() {}
 
 func (x *GetMyAvailabilityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[52]
+	mi := &file_ats_v1_ats_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2991,7 +2903,7 @@ func (x *GetMyAvailabilityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMyAvailabilityRequest.ProtoReflect.Descriptor instead.
 func (*GetMyAvailabilityRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{52}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{50}
 }
 
 type GetMyAvailabilityResponse struct {
@@ -3003,7 +2915,7 @@ type GetMyAvailabilityResponse struct {
 
 func (x *GetMyAvailabilityResponse) Reset() {
 	*x = GetMyAvailabilityResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[53]
+	mi := &file_ats_v1_ats_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3015,7 +2927,7 @@ func (x *GetMyAvailabilityResponse) String() string {
 func (*GetMyAvailabilityResponse) ProtoMessage() {}
 
 func (x *GetMyAvailabilityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[53]
+	mi := &file_ats_v1_ats_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3028,7 +2940,7 @@ func (x *GetMyAvailabilityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMyAvailabilityResponse.ProtoReflect.Descriptor instead.
 func (*GetMyAvailabilityResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{53}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *GetMyAvailabilityResponse) GetAvailability() *Availability {
@@ -3049,7 +2961,7 @@ type SetMyAvailabilityRequest struct {
 
 func (x *SetMyAvailabilityRequest) Reset() {
 	*x = SetMyAvailabilityRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[54]
+	mi := &file_ats_v1_ats_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3061,7 +2973,7 @@ func (x *SetMyAvailabilityRequest) String() string {
 func (*SetMyAvailabilityRequest) ProtoMessage() {}
 
 func (x *SetMyAvailabilityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[54]
+	mi := &file_ats_v1_ats_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3074,7 +2986,7 @@ func (x *SetMyAvailabilityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMyAvailabilityRequest.ProtoReflect.Descriptor instead.
 func (*SetMyAvailabilityRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{54}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *SetMyAvailabilityRequest) GetTimezone() string {
@@ -3107,7 +3019,7 @@ type SetMyAvailabilityResponse struct {
 
 func (x *SetMyAvailabilityResponse) Reset() {
 	*x = SetMyAvailabilityResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[55]
+	mi := &file_ats_v1_ats_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3119,7 +3031,7 @@ func (x *SetMyAvailabilityResponse) String() string {
 func (*SetMyAvailabilityResponse) ProtoMessage() {}
 
 func (x *SetMyAvailabilityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[55]
+	mi := &file_ats_v1_ats_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3132,7 +3044,7 @@ func (x *SetMyAvailabilityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMyAvailabilityResponse.ProtoReflect.Descriptor instead.
 func (*SetMyAvailabilityResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{55}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *SetMyAvailabilityResponse) GetAvailability() *Availability {
@@ -3150,7 +3062,7 @@ type ListMyApplicationsRequest struct {
 
 func (x *ListMyApplicationsRequest) Reset() {
 	*x = ListMyApplicationsRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[56]
+	mi := &file_ats_v1_ats_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3162,7 +3074,7 @@ func (x *ListMyApplicationsRequest) String() string {
 func (*ListMyApplicationsRequest) ProtoMessage() {}
 
 func (x *ListMyApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[56]
+	mi := &file_ats_v1_ats_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3175,7 +3087,7 @@ func (x *ListMyApplicationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMyApplicationsRequest.ProtoReflect.Descriptor instead.
 func (*ListMyApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{56}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{54}
 }
 
 type ListMyApplicationsResponse struct {
@@ -3187,7 +3099,7 @@ type ListMyApplicationsResponse struct {
 
 func (x *ListMyApplicationsResponse) Reset() {
 	*x = ListMyApplicationsResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[57]
+	mi := &file_ats_v1_ats_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3199,7 +3111,7 @@ func (x *ListMyApplicationsResponse) String() string {
 func (*ListMyApplicationsResponse) ProtoMessage() {}
 
 func (x *ListMyApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[57]
+	mi := &file_ats_v1_ats_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3212,7 +3124,7 @@ func (x *ListMyApplicationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMyApplicationsResponse.ProtoReflect.Descriptor instead.
 func (*ListMyApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{57}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ListMyApplicationsResponse) GetApplications() []*Application {
@@ -3231,7 +3143,7 @@ type ScreenSummaryRequest struct {
 
 func (x *ScreenSummaryRequest) Reset() {
 	*x = ScreenSummaryRequest{}
-	mi := &file_ats_v1_ats_proto_msgTypes[58]
+	mi := &file_ats_v1_ats_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3243,7 +3155,7 @@ func (x *ScreenSummaryRequest) String() string {
 func (*ScreenSummaryRequest) ProtoMessage() {}
 
 func (x *ScreenSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[58]
+	mi := &file_ats_v1_ats_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3256,7 +3168,7 @@ func (x *ScreenSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenSummaryRequest.ProtoReflect.Descriptor instead.
 func (*ScreenSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{58}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ScreenSummaryRequest) GetApplicationId() string {
@@ -3275,7 +3187,7 @@ type ScreenSummaryResponse struct {
 
 func (x *ScreenSummaryResponse) Reset() {
 	*x = ScreenSummaryResponse{}
-	mi := &file_ats_v1_ats_proto_msgTypes[59]
+	mi := &file_ats_v1_ats_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3287,7 +3199,7 @@ func (x *ScreenSummaryResponse) String() string {
 func (*ScreenSummaryResponse) ProtoMessage() {}
 
 func (x *ScreenSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ats_v1_ats_proto_msgTypes[59]
+	mi := &file_ats_v1_ats_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3300,7 +3212,7 @@ func (x *ScreenSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenSummaryResponse.ProtoReflect.Descriptor instead.
 func (*ScreenSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_ats_v1_ats_proto_rawDescGZIP(), []int{59}
+	return file_ats_v1_ats_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ScreenSummaryResponse) GetSummary() string {
@@ -3412,11 +3324,7 @@ const file_ats_v1_ats_proto_rawDesc = "" +
 	"\x0fneeds_attention\x18\x05 \x03(\tR\x0eneedsAttention\"\x15\n" +
 	"\x13GetDashboardRequest\"G\n" +
 	"\x14GetDashboardResponse\x12/\n" +
-	"\tdashboard\x18\x01 \x01(\v2\x11.ats.v1.DashboardR\tdashboard\"\x11\n" +
-	"\x0fSeedDemoRequest\"[\n" +
-	"\x10SeedDemoResponse\x12\x16\n" +
-	"\x06seeded\x18\x01 \x01(\bR\x06seeded\x12/\n" +
-	"\tdashboard\x18\x02 \x01(\v2\x11.ats.v1.DashboardR\tdashboard\")\n" +
+	"\tdashboard\x18\x01 \x01(\v2\x11.ats.v1.DashboardR\tdashboard\")\n" +
 	"\x0fListJobsRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\"3\n" +
 	"\x10ListJobsResponse\x12\x1f\n" +
@@ -3544,13 +3452,11 @@ const file_ats_v1_ats_proto_rawDesc = "" +
 	"\x14ScreenSummaryRequest\x12%\n" +
 	"\x0eapplication_id\x18\x01 \x01(\tR\rapplicationId\"1\n" +
 	"\x15ScreenSummaryResponse\x12\x18\n" +
-	"\asummary\x18\x01 \x01(\tR\asummary2\xb4 \n" +
+	"\asummary\x18\x01 \x01(\tR\asummary2\xa4\x1f\n" +
 	"\n" +
 	"AtsService\x12f\n" +
 	"\fGetDashboard\x12\x1b.ats.v1.GetDashboardRequest\x1a\x1c.ats.v1.GetDashboardResponse\"\x1b\x82\xb5\x18\x14\n" +
-	"\x12ats_dashboard_view\x90\x02\x01\x12R\n" +
-	"\bSeedDemo\x12\x17.ats.v1.SeedDemoRequest\x1a\x18.ats.v1.SeedDemoResponse\"\x13\x82\xb5\x18\x0f\n" +
-	"\rats_demo_seed\x12T\n" +
+	"\x12ats_dashboard_view\x90\x02\x01\x12T\n" +
 	"\bListJobs\x12\x17.ats.v1.ListJobsRequest\x1a\x18.ats.v1.ListJobsResponse\"\x15\x82\xb5\x18\x0e\n" +
 	"\fats_job_view\x90\x02\x01\x12V\n" +
 	"\tCreateJob\x12\x18.ats.v1.CreateJobRequest\x1a\x19.ats.v1.CreateJobResponse\"\x14\x82\xb5\x18\x10\n" +
@@ -3600,14 +3506,14 @@ const file_ats_v1_ats_proto_rawDesc = "" +
 	"\x14ats_application_view\x90\x02\x01\x12^\n" +
 	"\rScreenSummary\x12\x1c.ats.v1.ScreenSummaryRequest\x1a\x1d.ats.v1.ScreenSummaryResponse\"\x10\x82\xb5\x18\f\n" +
 	"\n" +
-	"ats_ai_use\x1a\x8a\f\x82\xb5\x18\x85\f\n" +
+	"ats_ai_use\x1a\xce\v\x82\xb5\x18\xc9\v\n" +
 	"\vservice_ats\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
-	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seed\x1a\xfb\x01\b\x01\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
-	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seed\x1a\xfb\x01\b\x02\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
-	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seed\x1a\xec\x01\b\x03\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x1a\xec\x01\b\x01\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x1a\xec\x01\b\x02\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x1a\xec\x01\b\x03\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
 	"ats_ai_use\x12\bats_hire\x12\vats_publish\x1a\xb2\x01\b\x05\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x17ats_availability_manage\x12\n" +
-	"ats_ai_use\x1a_\b\x04\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x14ats_application_view\x12\x12ats_interview_view\x12\x0fats_talent_view\x1a\xfb\x01\b\x06\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
-	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seedB\x97\x01\n" +
+	"ats_ai_use\x1a_\b\x04\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x14ats_application_view\x12\x12ats_interview_view\x12\x0fats_talent_view\x1a\xec\x01\b\x06\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publishB\x97\x01\n" +
 	"\n" +
 	"com.ats.v1B\bAtsProtoP\x01ZFgithub.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1;atsv1\xa2\x02\x03AXX\xaa\x02\x06Ats.V1\xca\x02\x06Ats\\V1\xe2\x02\x12Ats\\V1\\GPBMetadata\xea\x02\aAts::V1b\x06proto3"
 
@@ -3623,7 +3529,7 @@ func file_ats_v1_ats_proto_rawDescGZIP() []byte {
 	return file_ats_v1_ats_proto_rawDescData
 }
 
-var file_ats_v1_ats_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
+var file_ats_v1_ats_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
 var file_ats_v1_ats_proto_goTypes = []any{
 	(*Job)(nil),                        // 0: ats.v1.Job
 	(*Application)(nil),                // 1: ats.v1.Application
@@ -3637,141 +3543,136 @@ var file_ats_v1_ats_proto_goTypes = []any{
 	(*Dashboard)(nil),                  // 9: ats.v1.Dashboard
 	(*GetDashboardRequest)(nil),        // 10: ats.v1.GetDashboardRequest
 	(*GetDashboardResponse)(nil),       // 11: ats.v1.GetDashboardResponse
-	(*SeedDemoRequest)(nil),            // 12: ats.v1.SeedDemoRequest
-	(*SeedDemoResponse)(nil),           // 13: ats.v1.SeedDemoResponse
-	(*ListJobsRequest)(nil),            // 14: ats.v1.ListJobsRequest
-	(*ListJobsResponse)(nil),           // 15: ats.v1.ListJobsResponse
-	(*CreateJobRequest)(nil),           // 16: ats.v1.CreateJobRequest
-	(*CreateJobResponse)(nil),          // 17: ats.v1.CreateJobResponse
-	(*GetJobRequest)(nil),              // 18: ats.v1.GetJobRequest
-	(*GetJobResponse)(nil),             // 19: ats.v1.GetJobResponse
-	(*UpdateJobRequest)(nil),           // 20: ats.v1.UpdateJobRequest
-	(*UpdateJobResponse)(nil),          // 21: ats.v1.UpdateJobResponse
-	(*CloseJobRequest)(nil),            // 22: ats.v1.CloseJobRequest
-	(*CloseJobResponse)(nil),           // 23: ats.v1.CloseJobResponse
-	(*PublishJobRequest)(nil),          // 24: ats.v1.PublishJobRequest
-	(*PublishJobResponse)(nil),         // 25: ats.v1.PublishJobResponse
-	(*UnpublishJobRequest)(nil),        // 26: ats.v1.UnpublishJobRequest
-	(*UnpublishJobResponse)(nil),       // 27: ats.v1.UnpublishJobResponse
-	(*ListApplicationsRequest)(nil),    // 28: ats.v1.ListApplicationsRequest
-	(*ListApplicationsResponse)(nil),   // 29: ats.v1.ListApplicationsResponse
-	(*CreateApplicationRequest)(nil),   // 30: ats.v1.CreateApplicationRequest
-	(*CreateApplicationResponse)(nil),  // 31: ats.v1.CreateApplicationResponse
-	(*GetApplicationRequest)(nil),      // 32: ats.v1.GetApplicationRequest
-	(*GetApplicationResponse)(nil),     // 33: ats.v1.GetApplicationResponse
-	(*AdvanceApplicationRequest)(nil),  // 34: ats.v1.AdvanceApplicationRequest
-	(*AdvanceApplicationResponse)(nil), // 35: ats.v1.AdvanceApplicationResponse
-	(*HireApplicationRequest)(nil),     // 36: ats.v1.HireApplicationRequest
-	(*HireApplicationResponse)(nil),    // 37: ats.v1.HireApplicationResponse
-	(*ListTalentRequest)(nil),          // 38: ats.v1.ListTalentRequest
-	(*ListTalentResponse)(nil),         // 39: ats.v1.ListTalentResponse
-	(*AddTalentRequest)(nil),           // 40: ats.v1.AddTalentRequest
-	(*AddTalentResponse)(nil),          // 41: ats.v1.AddTalentResponse
-	(*ListInterviewsRequest)(nil),      // 42: ats.v1.ListInterviewsRequest
-	(*ListInterviewsResponse)(nil),     // 43: ats.v1.ListInterviewsResponse
-	(*ProposeInterviewRequest)(nil),    // 44: ats.v1.ProposeInterviewRequest
-	(*ProposeInterviewResponse)(nil),   // 45: ats.v1.ProposeInterviewResponse
-	(*ListInterviewSlotsRequest)(nil),  // 46: ats.v1.ListInterviewSlotsRequest
-	(*ListInterviewSlotsResponse)(nil), // 47: ats.v1.ListInterviewSlotsResponse
-	(*BookInterviewRequest)(nil),       // 48: ats.v1.BookInterviewRequest
-	(*BookInterviewResponse)(nil),      // 49: ats.v1.BookInterviewResponse
-	(*GetInterviewICSRequest)(nil),     // 50: ats.v1.GetInterviewICSRequest
-	(*GetInterviewICSResponse)(nil),    // 51: ats.v1.GetInterviewICSResponse
-	(*GetMyAvailabilityRequest)(nil),   // 52: ats.v1.GetMyAvailabilityRequest
-	(*GetMyAvailabilityResponse)(nil),  // 53: ats.v1.GetMyAvailabilityResponse
-	(*SetMyAvailabilityRequest)(nil),   // 54: ats.v1.SetMyAvailabilityRequest
-	(*SetMyAvailabilityResponse)(nil),  // 55: ats.v1.SetMyAvailabilityResponse
-	(*ListMyApplicationsRequest)(nil),  // 56: ats.v1.ListMyApplicationsRequest
-	(*ListMyApplicationsResponse)(nil), // 57: ats.v1.ListMyApplicationsResponse
-	(*ScreenSummaryRequest)(nil),       // 58: ats.v1.ScreenSummaryRequest
-	(*ScreenSummaryResponse)(nil),      // 59: ats.v1.ScreenSummaryResponse
+	(*ListJobsRequest)(nil),            // 12: ats.v1.ListJobsRequest
+	(*ListJobsResponse)(nil),           // 13: ats.v1.ListJobsResponse
+	(*CreateJobRequest)(nil),           // 14: ats.v1.CreateJobRequest
+	(*CreateJobResponse)(nil),          // 15: ats.v1.CreateJobResponse
+	(*GetJobRequest)(nil),              // 16: ats.v1.GetJobRequest
+	(*GetJobResponse)(nil),             // 17: ats.v1.GetJobResponse
+	(*UpdateJobRequest)(nil),           // 18: ats.v1.UpdateJobRequest
+	(*UpdateJobResponse)(nil),          // 19: ats.v1.UpdateJobResponse
+	(*CloseJobRequest)(nil),            // 20: ats.v1.CloseJobRequest
+	(*CloseJobResponse)(nil),           // 21: ats.v1.CloseJobResponse
+	(*PublishJobRequest)(nil),          // 22: ats.v1.PublishJobRequest
+	(*PublishJobResponse)(nil),         // 23: ats.v1.PublishJobResponse
+	(*UnpublishJobRequest)(nil),        // 24: ats.v1.UnpublishJobRequest
+	(*UnpublishJobResponse)(nil),       // 25: ats.v1.UnpublishJobResponse
+	(*ListApplicationsRequest)(nil),    // 26: ats.v1.ListApplicationsRequest
+	(*ListApplicationsResponse)(nil),   // 27: ats.v1.ListApplicationsResponse
+	(*CreateApplicationRequest)(nil),   // 28: ats.v1.CreateApplicationRequest
+	(*CreateApplicationResponse)(nil),  // 29: ats.v1.CreateApplicationResponse
+	(*GetApplicationRequest)(nil),      // 30: ats.v1.GetApplicationRequest
+	(*GetApplicationResponse)(nil),     // 31: ats.v1.GetApplicationResponse
+	(*AdvanceApplicationRequest)(nil),  // 32: ats.v1.AdvanceApplicationRequest
+	(*AdvanceApplicationResponse)(nil), // 33: ats.v1.AdvanceApplicationResponse
+	(*HireApplicationRequest)(nil),     // 34: ats.v1.HireApplicationRequest
+	(*HireApplicationResponse)(nil),    // 35: ats.v1.HireApplicationResponse
+	(*ListTalentRequest)(nil),          // 36: ats.v1.ListTalentRequest
+	(*ListTalentResponse)(nil),         // 37: ats.v1.ListTalentResponse
+	(*AddTalentRequest)(nil),           // 38: ats.v1.AddTalentRequest
+	(*AddTalentResponse)(nil),          // 39: ats.v1.AddTalentResponse
+	(*ListInterviewsRequest)(nil),      // 40: ats.v1.ListInterviewsRequest
+	(*ListInterviewsResponse)(nil),     // 41: ats.v1.ListInterviewsResponse
+	(*ProposeInterviewRequest)(nil),    // 42: ats.v1.ProposeInterviewRequest
+	(*ProposeInterviewResponse)(nil),   // 43: ats.v1.ProposeInterviewResponse
+	(*ListInterviewSlotsRequest)(nil),  // 44: ats.v1.ListInterviewSlotsRequest
+	(*ListInterviewSlotsResponse)(nil), // 45: ats.v1.ListInterviewSlotsResponse
+	(*BookInterviewRequest)(nil),       // 46: ats.v1.BookInterviewRequest
+	(*BookInterviewResponse)(nil),      // 47: ats.v1.BookInterviewResponse
+	(*GetInterviewICSRequest)(nil),     // 48: ats.v1.GetInterviewICSRequest
+	(*GetInterviewICSResponse)(nil),    // 49: ats.v1.GetInterviewICSResponse
+	(*GetMyAvailabilityRequest)(nil),   // 50: ats.v1.GetMyAvailabilityRequest
+	(*GetMyAvailabilityResponse)(nil),  // 51: ats.v1.GetMyAvailabilityResponse
+	(*SetMyAvailabilityRequest)(nil),   // 52: ats.v1.SetMyAvailabilityRequest
+	(*SetMyAvailabilityResponse)(nil),  // 53: ats.v1.SetMyAvailabilityResponse
+	(*ListMyApplicationsRequest)(nil),  // 54: ats.v1.ListMyApplicationsRequest
+	(*ListMyApplicationsResponse)(nil), // 55: ats.v1.ListMyApplicationsResponse
+	(*ScreenSummaryRequest)(nil),       // 56: ats.v1.ScreenSummaryRequest
+	(*ScreenSummaryResponse)(nil),      // 57: ats.v1.ScreenSummaryResponse
 }
 var file_ats_v1_ats_proto_depIdxs = []int32{
 	4,  // 0: ats.v1.Availability.rules:type_name -> ats.v1.WeekRule
 	5,  // 1: ats.v1.Availability.exceptions:type_name -> ats.v1.ExceptionDay
 	2,  // 2: ats.v1.Dashboard.upcoming_interviews:type_name -> ats.v1.Interview
 	9,  // 3: ats.v1.GetDashboardResponse.dashboard:type_name -> ats.v1.Dashboard
-	9,  // 4: ats.v1.SeedDemoResponse.dashboard:type_name -> ats.v1.Dashboard
-	0,  // 5: ats.v1.ListJobsResponse.jobs:type_name -> ats.v1.Job
-	0,  // 6: ats.v1.CreateJobResponse.job:type_name -> ats.v1.Job
-	0,  // 7: ats.v1.GetJobResponse.job:type_name -> ats.v1.Job
-	0,  // 8: ats.v1.UpdateJobResponse.job:type_name -> ats.v1.Job
-	0,  // 9: ats.v1.CloseJobResponse.job:type_name -> ats.v1.Job
-	0,  // 10: ats.v1.PublishJobResponse.job:type_name -> ats.v1.Job
-	0,  // 11: ats.v1.UnpublishJobResponse.job:type_name -> ats.v1.Job
-	1,  // 12: ats.v1.ListApplicationsResponse.applications:type_name -> ats.v1.Application
-	1,  // 13: ats.v1.CreateApplicationResponse.application:type_name -> ats.v1.Application
-	1,  // 14: ats.v1.GetApplicationResponse.application:type_name -> ats.v1.Application
-	1,  // 15: ats.v1.AdvanceApplicationResponse.application:type_name -> ats.v1.Application
-	1,  // 16: ats.v1.HireApplicationResponse.application:type_name -> ats.v1.Application
-	8,  // 17: ats.v1.HireApplicationResponse.hire_outcome:type_name -> ats.v1.HireOutcome
-	3,  // 18: ats.v1.ListTalentResponse.talent:type_name -> ats.v1.TalentHit
-	3,  // 19: ats.v1.AddTalentRequest.hit:type_name -> ats.v1.TalentHit
-	1,  // 20: ats.v1.AddTalentResponse.application:type_name -> ats.v1.Application
-	2,  // 21: ats.v1.ListInterviewsResponse.interviews:type_name -> ats.v1.Interview
-	2,  // 22: ats.v1.ProposeInterviewResponse.interview:type_name -> ats.v1.Interview
-	7,  // 23: ats.v1.ListInterviewSlotsResponse.slots:type_name -> ats.v1.Slot
-	2,  // 24: ats.v1.BookInterviewResponse.interview:type_name -> ats.v1.Interview
-	6,  // 25: ats.v1.GetMyAvailabilityResponse.availability:type_name -> ats.v1.Availability
-	4,  // 26: ats.v1.SetMyAvailabilityRequest.rules:type_name -> ats.v1.WeekRule
-	5,  // 27: ats.v1.SetMyAvailabilityRequest.exceptions:type_name -> ats.v1.ExceptionDay
-	6,  // 28: ats.v1.SetMyAvailabilityResponse.availability:type_name -> ats.v1.Availability
-	1,  // 29: ats.v1.ListMyApplicationsResponse.applications:type_name -> ats.v1.Application
-	10, // 30: ats.v1.AtsService.GetDashboard:input_type -> ats.v1.GetDashboardRequest
-	12, // 31: ats.v1.AtsService.SeedDemo:input_type -> ats.v1.SeedDemoRequest
-	14, // 32: ats.v1.AtsService.ListJobs:input_type -> ats.v1.ListJobsRequest
-	16, // 33: ats.v1.AtsService.CreateJob:input_type -> ats.v1.CreateJobRequest
-	18, // 34: ats.v1.AtsService.GetJob:input_type -> ats.v1.GetJobRequest
-	20, // 35: ats.v1.AtsService.UpdateJob:input_type -> ats.v1.UpdateJobRequest
-	22, // 36: ats.v1.AtsService.CloseJob:input_type -> ats.v1.CloseJobRequest
-	24, // 37: ats.v1.AtsService.PublishJob:input_type -> ats.v1.PublishJobRequest
-	26, // 38: ats.v1.AtsService.UnpublishJob:input_type -> ats.v1.UnpublishJobRequest
-	28, // 39: ats.v1.AtsService.ListApplications:input_type -> ats.v1.ListApplicationsRequest
-	30, // 40: ats.v1.AtsService.CreateApplication:input_type -> ats.v1.CreateApplicationRequest
-	32, // 41: ats.v1.AtsService.GetApplication:input_type -> ats.v1.GetApplicationRequest
-	34, // 42: ats.v1.AtsService.AdvanceApplication:input_type -> ats.v1.AdvanceApplicationRequest
-	36, // 43: ats.v1.AtsService.HireApplication:input_type -> ats.v1.HireApplicationRequest
-	38, // 44: ats.v1.AtsService.ListTalent:input_type -> ats.v1.ListTalentRequest
-	40, // 45: ats.v1.AtsService.AddTalent:input_type -> ats.v1.AddTalentRequest
-	42, // 46: ats.v1.AtsService.ListInterviews:input_type -> ats.v1.ListInterviewsRequest
-	44, // 47: ats.v1.AtsService.ProposeInterview:input_type -> ats.v1.ProposeInterviewRequest
-	46, // 48: ats.v1.AtsService.ListInterviewSlots:input_type -> ats.v1.ListInterviewSlotsRequest
-	48, // 49: ats.v1.AtsService.BookInterview:input_type -> ats.v1.BookInterviewRequest
-	50, // 50: ats.v1.AtsService.GetInterviewICS:input_type -> ats.v1.GetInterviewICSRequest
-	52, // 51: ats.v1.AtsService.GetMyAvailability:input_type -> ats.v1.GetMyAvailabilityRequest
-	54, // 52: ats.v1.AtsService.SetMyAvailability:input_type -> ats.v1.SetMyAvailabilityRequest
-	56, // 53: ats.v1.AtsService.ListMyApplications:input_type -> ats.v1.ListMyApplicationsRequest
-	58, // 54: ats.v1.AtsService.ScreenSummary:input_type -> ats.v1.ScreenSummaryRequest
-	11, // 55: ats.v1.AtsService.GetDashboard:output_type -> ats.v1.GetDashboardResponse
-	13, // 56: ats.v1.AtsService.SeedDemo:output_type -> ats.v1.SeedDemoResponse
-	15, // 57: ats.v1.AtsService.ListJobs:output_type -> ats.v1.ListJobsResponse
-	17, // 58: ats.v1.AtsService.CreateJob:output_type -> ats.v1.CreateJobResponse
-	19, // 59: ats.v1.AtsService.GetJob:output_type -> ats.v1.GetJobResponse
-	21, // 60: ats.v1.AtsService.UpdateJob:output_type -> ats.v1.UpdateJobResponse
-	23, // 61: ats.v1.AtsService.CloseJob:output_type -> ats.v1.CloseJobResponse
-	25, // 62: ats.v1.AtsService.PublishJob:output_type -> ats.v1.PublishJobResponse
-	27, // 63: ats.v1.AtsService.UnpublishJob:output_type -> ats.v1.UnpublishJobResponse
-	29, // 64: ats.v1.AtsService.ListApplications:output_type -> ats.v1.ListApplicationsResponse
-	31, // 65: ats.v1.AtsService.CreateApplication:output_type -> ats.v1.CreateApplicationResponse
-	33, // 66: ats.v1.AtsService.GetApplication:output_type -> ats.v1.GetApplicationResponse
-	35, // 67: ats.v1.AtsService.AdvanceApplication:output_type -> ats.v1.AdvanceApplicationResponse
-	37, // 68: ats.v1.AtsService.HireApplication:output_type -> ats.v1.HireApplicationResponse
-	39, // 69: ats.v1.AtsService.ListTalent:output_type -> ats.v1.ListTalentResponse
-	41, // 70: ats.v1.AtsService.AddTalent:output_type -> ats.v1.AddTalentResponse
-	43, // 71: ats.v1.AtsService.ListInterviews:output_type -> ats.v1.ListInterviewsResponse
-	45, // 72: ats.v1.AtsService.ProposeInterview:output_type -> ats.v1.ProposeInterviewResponse
-	47, // 73: ats.v1.AtsService.ListInterviewSlots:output_type -> ats.v1.ListInterviewSlotsResponse
-	49, // 74: ats.v1.AtsService.BookInterview:output_type -> ats.v1.BookInterviewResponse
-	51, // 75: ats.v1.AtsService.GetInterviewICS:output_type -> ats.v1.GetInterviewICSResponse
-	53, // 76: ats.v1.AtsService.GetMyAvailability:output_type -> ats.v1.GetMyAvailabilityResponse
-	55, // 77: ats.v1.AtsService.SetMyAvailability:output_type -> ats.v1.SetMyAvailabilityResponse
-	57, // 78: ats.v1.AtsService.ListMyApplications:output_type -> ats.v1.ListMyApplicationsResponse
-	59, // 79: ats.v1.AtsService.ScreenSummary:output_type -> ats.v1.ScreenSummaryResponse
-	55, // [55:80] is the sub-list for method output_type
-	30, // [30:55] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	0,  // 4: ats.v1.ListJobsResponse.jobs:type_name -> ats.v1.Job
+	0,  // 5: ats.v1.CreateJobResponse.job:type_name -> ats.v1.Job
+	0,  // 6: ats.v1.GetJobResponse.job:type_name -> ats.v1.Job
+	0,  // 7: ats.v1.UpdateJobResponse.job:type_name -> ats.v1.Job
+	0,  // 8: ats.v1.CloseJobResponse.job:type_name -> ats.v1.Job
+	0,  // 9: ats.v1.PublishJobResponse.job:type_name -> ats.v1.Job
+	0,  // 10: ats.v1.UnpublishJobResponse.job:type_name -> ats.v1.Job
+	1,  // 11: ats.v1.ListApplicationsResponse.applications:type_name -> ats.v1.Application
+	1,  // 12: ats.v1.CreateApplicationResponse.application:type_name -> ats.v1.Application
+	1,  // 13: ats.v1.GetApplicationResponse.application:type_name -> ats.v1.Application
+	1,  // 14: ats.v1.AdvanceApplicationResponse.application:type_name -> ats.v1.Application
+	1,  // 15: ats.v1.HireApplicationResponse.application:type_name -> ats.v1.Application
+	8,  // 16: ats.v1.HireApplicationResponse.hire_outcome:type_name -> ats.v1.HireOutcome
+	3,  // 17: ats.v1.ListTalentResponse.talent:type_name -> ats.v1.TalentHit
+	3,  // 18: ats.v1.AddTalentRequest.hit:type_name -> ats.v1.TalentHit
+	1,  // 19: ats.v1.AddTalentResponse.application:type_name -> ats.v1.Application
+	2,  // 20: ats.v1.ListInterviewsResponse.interviews:type_name -> ats.v1.Interview
+	2,  // 21: ats.v1.ProposeInterviewResponse.interview:type_name -> ats.v1.Interview
+	7,  // 22: ats.v1.ListInterviewSlotsResponse.slots:type_name -> ats.v1.Slot
+	2,  // 23: ats.v1.BookInterviewResponse.interview:type_name -> ats.v1.Interview
+	6,  // 24: ats.v1.GetMyAvailabilityResponse.availability:type_name -> ats.v1.Availability
+	4,  // 25: ats.v1.SetMyAvailabilityRequest.rules:type_name -> ats.v1.WeekRule
+	5,  // 26: ats.v1.SetMyAvailabilityRequest.exceptions:type_name -> ats.v1.ExceptionDay
+	6,  // 27: ats.v1.SetMyAvailabilityResponse.availability:type_name -> ats.v1.Availability
+	1,  // 28: ats.v1.ListMyApplicationsResponse.applications:type_name -> ats.v1.Application
+	10, // 29: ats.v1.AtsService.GetDashboard:input_type -> ats.v1.GetDashboardRequest
+	12, // 30: ats.v1.AtsService.ListJobs:input_type -> ats.v1.ListJobsRequest
+	14, // 31: ats.v1.AtsService.CreateJob:input_type -> ats.v1.CreateJobRequest
+	16, // 32: ats.v1.AtsService.GetJob:input_type -> ats.v1.GetJobRequest
+	18, // 33: ats.v1.AtsService.UpdateJob:input_type -> ats.v1.UpdateJobRequest
+	20, // 34: ats.v1.AtsService.CloseJob:input_type -> ats.v1.CloseJobRequest
+	22, // 35: ats.v1.AtsService.PublishJob:input_type -> ats.v1.PublishJobRequest
+	24, // 36: ats.v1.AtsService.UnpublishJob:input_type -> ats.v1.UnpublishJobRequest
+	26, // 37: ats.v1.AtsService.ListApplications:input_type -> ats.v1.ListApplicationsRequest
+	28, // 38: ats.v1.AtsService.CreateApplication:input_type -> ats.v1.CreateApplicationRequest
+	30, // 39: ats.v1.AtsService.GetApplication:input_type -> ats.v1.GetApplicationRequest
+	32, // 40: ats.v1.AtsService.AdvanceApplication:input_type -> ats.v1.AdvanceApplicationRequest
+	34, // 41: ats.v1.AtsService.HireApplication:input_type -> ats.v1.HireApplicationRequest
+	36, // 42: ats.v1.AtsService.ListTalent:input_type -> ats.v1.ListTalentRequest
+	38, // 43: ats.v1.AtsService.AddTalent:input_type -> ats.v1.AddTalentRequest
+	40, // 44: ats.v1.AtsService.ListInterviews:input_type -> ats.v1.ListInterviewsRequest
+	42, // 45: ats.v1.AtsService.ProposeInterview:input_type -> ats.v1.ProposeInterviewRequest
+	44, // 46: ats.v1.AtsService.ListInterviewSlots:input_type -> ats.v1.ListInterviewSlotsRequest
+	46, // 47: ats.v1.AtsService.BookInterview:input_type -> ats.v1.BookInterviewRequest
+	48, // 48: ats.v1.AtsService.GetInterviewICS:input_type -> ats.v1.GetInterviewICSRequest
+	50, // 49: ats.v1.AtsService.GetMyAvailability:input_type -> ats.v1.GetMyAvailabilityRequest
+	52, // 50: ats.v1.AtsService.SetMyAvailability:input_type -> ats.v1.SetMyAvailabilityRequest
+	54, // 51: ats.v1.AtsService.ListMyApplications:input_type -> ats.v1.ListMyApplicationsRequest
+	56, // 52: ats.v1.AtsService.ScreenSummary:input_type -> ats.v1.ScreenSummaryRequest
+	11, // 53: ats.v1.AtsService.GetDashboard:output_type -> ats.v1.GetDashboardResponse
+	13, // 54: ats.v1.AtsService.ListJobs:output_type -> ats.v1.ListJobsResponse
+	15, // 55: ats.v1.AtsService.CreateJob:output_type -> ats.v1.CreateJobResponse
+	17, // 56: ats.v1.AtsService.GetJob:output_type -> ats.v1.GetJobResponse
+	19, // 57: ats.v1.AtsService.UpdateJob:output_type -> ats.v1.UpdateJobResponse
+	21, // 58: ats.v1.AtsService.CloseJob:output_type -> ats.v1.CloseJobResponse
+	23, // 59: ats.v1.AtsService.PublishJob:output_type -> ats.v1.PublishJobResponse
+	25, // 60: ats.v1.AtsService.UnpublishJob:output_type -> ats.v1.UnpublishJobResponse
+	27, // 61: ats.v1.AtsService.ListApplications:output_type -> ats.v1.ListApplicationsResponse
+	29, // 62: ats.v1.AtsService.CreateApplication:output_type -> ats.v1.CreateApplicationResponse
+	31, // 63: ats.v1.AtsService.GetApplication:output_type -> ats.v1.GetApplicationResponse
+	33, // 64: ats.v1.AtsService.AdvanceApplication:output_type -> ats.v1.AdvanceApplicationResponse
+	35, // 65: ats.v1.AtsService.HireApplication:output_type -> ats.v1.HireApplicationResponse
+	37, // 66: ats.v1.AtsService.ListTalent:output_type -> ats.v1.ListTalentResponse
+	39, // 67: ats.v1.AtsService.AddTalent:output_type -> ats.v1.AddTalentResponse
+	41, // 68: ats.v1.AtsService.ListInterviews:output_type -> ats.v1.ListInterviewsResponse
+	43, // 69: ats.v1.AtsService.ProposeInterview:output_type -> ats.v1.ProposeInterviewResponse
+	45, // 70: ats.v1.AtsService.ListInterviewSlots:output_type -> ats.v1.ListInterviewSlotsResponse
+	47, // 71: ats.v1.AtsService.BookInterview:output_type -> ats.v1.BookInterviewResponse
+	49, // 72: ats.v1.AtsService.GetInterviewICS:output_type -> ats.v1.GetInterviewICSResponse
+	51, // 73: ats.v1.AtsService.GetMyAvailability:output_type -> ats.v1.GetMyAvailabilityResponse
+	53, // 74: ats.v1.AtsService.SetMyAvailability:output_type -> ats.v1.SetMyAvailabilityResponse
+	55, // 75: ats.v1.AtsService.ListMyApplications:output_type -> ats.v1.ListMyApplicationsResponse
+	57, // 76: ats.v1.AtsService.ScreenSummary:output_type -> ats.v1.ScreenSummaryResponse
+	53, // [53:77] is the sub-list for method output_type
+	29, // [29:53] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_ats_v1_ats_proto_init() }
@@ -3779,14 +3680,14 @@ func file_ats_v1_ats_proto_init() {
 	if File_ats_v1_ats_proto != nil {
 		return
 	}
-	file_ats_v1_ats_proto_msgTypes[20].OneofWrappers = []any{}
+	file_ats_v1_ats_proto_msgTypes[18].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ats_v1_ats_proto_rawDesc), len(file_ats_v1_ats_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   60,
+			NumMessages:   58,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

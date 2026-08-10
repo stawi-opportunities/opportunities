@@ -39,9 +39,13 @@ Required env:
 - `AUTH_REQUIRE_JWT=true` (default)
 - `ATS_ENFORCE_PERMISSIONS=true` unless debugging ReBAC (default on when JWT on)
 
-Optional:
+Optional peers (wired in `apps/ats/cmd`):
 
-- Peer clients for matching / opportunities / payment / notification (inject in `business.Deps`)
+- `NOTIFICATION_SERVICE_URI` — interview email/ICS via outbox worker
+- `ATS_MATCHING_DATABASE_URL` — `candidate_profiles` shortlist (else primary DB, graceful empty)
+- `ATS_PRODUCT_DATABASE_URL` — dual-write published jobs to product opportunities
+- `PUBLIC_SITE_URL` — invite deep links
+- No SeedDemo / `ATS_AUTO_SEED` (removed)
 
 ## SPA / gateway
 

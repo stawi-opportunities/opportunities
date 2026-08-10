@@ -178,6 +178,52 @@ func NewOutboxRepository(ctx context.Context, dbPool pool.Pool, workMan workerpo
 	}
 }
 
+func (r *outboxRepository) ListPending(ctx context.Context, limit int) ([]*models.OutboxMessage, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var out []*models.OutboxMessage
+	err := r.Pool().DB(ctx, true).
+		Where("status = ?", models.OutboxPending).
+		Order("created_at ASC").
+		Limit(limit).
+		Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("ats: list pending outbox: %w", err)
+	}
+	return out, nil
+}
+
+func (r *outboxRepository) MarkSent(ctx context.Context, id string) error {
+	res := r.Pool().DB(ctx, false).Model(&models.OutboxMessage{}).
+		Where("id = ? AND status = ?", id, models.OutboxPending).
+		Updates(map[string]any{
+			"status":   models.OutboxSent,
+			"attempts": gorm.Expr("attempts + 1"),
+		})
+	if res.Error != nil {
+		return fmt.Errorf("ats: mark outbox sent: %w", res.Error)
+	}
+	return nil
+}
+
+func (r *outboxRepository) MarkFailed(ctx context.Context, id string, attempts int) error {
+	status := models.OutboxPending
+	if attempts >= 8 {
+		status = models.OutboxFailed
+	}
+	res := r.Pool().DB(ctx, false).Model(&models.OutboxMessage{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":   status,
+			"attempts": attempts,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("ats: mark outbox failed: %w", res.Error)
+	}
+	return nil
+}
+
 type aiRunRepository struct {
 	datastore.BaseRepository[*models.AiRun]
 }

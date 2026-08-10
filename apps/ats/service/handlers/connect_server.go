@@ -30,17 +30,6 @@ func (s *ConnectServer) GetDashboard(ctx context.Context, _ *connect.Request[ats
 	return connect.NewResponse(&atsv1.GetDashboardResponse{Dashboard: dashboardProto(d)}), nil
 }
 
-func (s *ConnectServer) SeedDemo(ctx context.Context, _ *connect.Request[atsv1.SeedDemoRequest]) (*connect.Response[atsv1.SeedDemoResponse], error) {
-	if err := business.SeedDemoWorkspace(ctx, s.svc); err != nil {
-		return nil, mapConnectErr(err)
-	}
-	d, err := s.svc.Dashboard(ctx)
-	if err != nil {
-		return nil, mapConnectErr(err)
-	}
-	return connect.NewResponse(&atsv1.SeedDemoResponse{Seeded: true, Dashboard: dashboardProto(d)}), nil
-}
-
 func (s *ConnectServer) ListJobs(ctx context.Context, req *connect.Request[atsv1.ListJobsRequest]) (*connect.Response[atsv1.ListJobsResponse], error) {
 	jobs, err := s.svc.ListJobs(ctx, req.Msg.GetStatus())
 	if err != nil {

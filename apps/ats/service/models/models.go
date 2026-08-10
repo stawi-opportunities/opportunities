@@ -166,6 +166,40 @@ type AiRun struct {
 
 func (AiRun) TableName() string { return "ats_ai_runs" }
 
+// JobProjection is the published board projection for an ATS job.
+type JobProjection struct {
+	data.BaseModel `gorm:"embedded"`
+
+	JobID         string     `gorm:"type:varchar(50);not null;uniqueIndex:ats_proj_job,priority:1" json:"job_id"`
+	OpportunityID string     `gorm:"type:varchar(80);not null;uniqueIndex" json:"opportunity_id"`
+	Title         string     `gorm:"type:text;not null" json:"title"`
+	Description   string     `gorm:"type:text;not null;default:''" json:"description"`
+	Location      string     `gorm:"type:text;not null;default:''" json:"location"`
+	Status        string     `gorm:"type:varchar(20);not null;default:'published';index" json:"status"` // published|unpublished
+	PublishedAt   *time.Time `json:"published_at,omitempty"`
+}
+
+func (JobProjection) TableName() string { return "ats_job_projections" }
+
+// IdempotencyRecord stores Connect/API idempotency keys.
+type IdempotencyRecord struct {
+	data.BaseModel `gorm:"embedded"`
+
+	Key        string `gorm:"type:varchar(160);not null;uniqueIndex:ats_idem_key,priority:1" json:"key"`
+	Route      string `gorm:"type:varchar(120);not null;uniqueIndex:ats_idem_key,priority:2" json:"route"`
+	Response   string `gorm:"type:text;not null;default:''" json:"response"`
+	StatusCode int    `gorm:"not null;default:0" json:"status_code"`
+}
+
+func (IdempotencyRecord) TableName() string { return "ats_idempotency_keys" }
+
+const (
+	OutboxPending                = "pending"
+	OutboxSent                   = "sent"
+	OutboxFailed                 = "failed"
+	OutboxKindInterviewScheduled = "interview.scheduled"
+)
+
 // Schema returns all ATS models for Frame Migrate / AutoMigrate.
 func Schema() []any {
 	return []any{
@@ -177,5 +211,7 @@ func Schema() []any {
 		&OutboxMessage{},
 		&HireOutcome{},
 		&AiRun{},
+		&JobProjection{},
+		&IdempotencyRecord{},
 	}
 }

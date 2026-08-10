@@ -55,12 +55,28 @@ type HireOutcomeRepository interface {
 	GetByApplication(ctx context.Context, applicationID string) (*models.HireOutcome, error)
 }
 
-// OutboxRepository stores notification intents.
+// OutboxRepository stores notification intents and supports drain.
 type OutboxRepository interface {
 	datastore.BaseRepository[*models.OutboxMessage]
+	ListPending(ctx context.Context, limit int) ([]*models.OutboxMessage, error)
+	MarkSent(ctx context.Context, id string) error
+	MarkFailed(ctx context.Context, id string, attempts int) error
 }
 
 // AiRunRepository stores AI audit rows.
 type AiRunRepository interface {
 	datastore.BaseRepository[*models.AiRun]
+}
+
+// JobProjectionRepository persists published board projections.
+type JobProjectionRepository interface {
+	UpsertPublished(ctx context.Context, p *models.JobProjection) error
+	MarkUnpublished(ctx context.Context, tenantID, partitionID, jobID string) error
+	GetByJob(ctx context.Context, tenantID, partitionID, jobID string) (*models.JobProjection, error)
+}
+
+// IdempotencyRepository stores API idempotency keys for side-effecting RPCs.
+type IdempotencyRepository interface {
+	Get(ctx context.Context, tenantID, key, route string) (*models.IdempotencyRecord, error)
+	Save(ctx context.Context, rec *models.IdempotencyRecord) error
 }

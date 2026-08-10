@@ -24,12 +24,13 @@ func TestConnectSuite(t *testing.T) {
 	suite.Run(t, new(ConnectSuite))
 }
 
-func (s *ConnectSuite) TestConnectListCreateJobAndSeed() {
+func (s *ConnectSuite) TestConnectListCreateJobAndPublish() {
 	t := s.T()
 	ctx, deps := s.CreateService(t)
 
 	mux, err := handlers.NewConnectMux(ctx, deps.Svc, handlers.ConnectOptions{
 		AllowDevHeaders: true,
+		Idempotency:     deps.Idempotency,
 	})
 	require.NoError(t, err)
 	srv := httptest.NewServer(mux)
@@ -46,14 +47,9 @@ func (s *ConnectSuite) TestConnectListCreateJobAndSeed() {
 		}),
 	))
 
-	_ = ctx
-	seedResp, err := cli.SeedDemo(t.Context(), connect.NewRequest(&atsv1.SeedDemoRequest{}))
+	dash, err := cli.GetDashboard(t.Context(), connect.NewRequest(&atsv1.GetDashboardRequest{}))
 	require.NoError(t, err)
-	require.True(t, seedResp.Msg.GetSeeded() || seedResp.Msg.GetDashboard() != nil)
-
-	list, err := cli.ListJobs(t.Context(), connect.NewRequest(&atsv1.ListJobsRequest{}))
-	require.NoError(t, err)
-	require.NotEmpty(t, list.Msg.GetJobs())
+	require.NotNil(t, dash.Msg.GetDashboard())
 
 	create, err := cli.CreateJob(t.Context(), connect.NewRequest(&atsv1.CreateJobRequest{
 		Title: "Connect Role", Description: "typed API", Status: models.JobStatusOpen,
@@ -61,4 +57,20 @@ func (s *ConnectSuite) TestConnectListCreateJobAndSeed() {
 	require.NoError(t, err)
 	require.Equal(t, "Connect Role", create.Msg.GetJob().GetTitle())
 	require.Equal(t, "t1", create.Msg.GetJob().GetTenantId())
+
+	list, err := cli.ListJobs(t.Context(), connect.NewRequest(&atsv1.ListJobsRequest{}))
+	require.NoError(t, err)
+	require.NotEmpty(t, list.Msg.GetJobs())
+
+	pubReq := connect.NewRequest(&atsv1.PublishJobRequest{Id: create.Msg.GetJob().GetId()})
+	pubReq.Header().Set("Idempotency-Key", "pub-1")
+	pub, err := cli.PublishJob(t.Context(), pubReq)
+	require.NoError(t, err)
+	require.Equal(t, models.VisibilityPublished, pub.Msg.GetJob().GetVisibility())
+	require.NotEmpty(t, pub.Msg.GetJob().GetOpportunityId())
+
+	// Second publish with same key should still succeed (domain + interceptor).
+	pub2, err := cli.PublishJob(t.Context(), pubReq)
+	require.NoError(t, err)
+	require.Equal(t, pub.Msg.GetJob().GetOpportunityId(), pub2.Msg.GetJob().GetOpportunityId())
 }

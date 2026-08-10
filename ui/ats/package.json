@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@stawi/auth-runtime": "^1.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

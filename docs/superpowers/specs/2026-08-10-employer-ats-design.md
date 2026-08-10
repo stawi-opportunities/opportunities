@@ -53,7 +53,7 @@
 
 | Plane | Responsibility |
 |-------|----------------|
-| **Interaction** | `ui/ats` SPA; agents as OpenAPI clients; candidate slot-pick screens (authenticated) |
+| **Interaction** | `ui/ats` SPA; agents as Connect clients (`atsv1connect`); candidate slot-pick screens (authenticated) |
 | **Control** | JWT claims (`profile_id`, `tenant_id`, `partition_id`); tenancy ReBAC; permission registration |
 | **Execution** | `apps/ats`: jobs, applications, stages, interviews, availability, AI orchestration, publish/talent adapters, outbox intents |
 | **Data** | ATS DB rows with Frame base model; no person PII store |
@@ -65,7 +65,7 @@
 Recruiter SPA / Agent
         │  Bearer JWT (user or user-delegated)
         ▼
-   apps/ats  (OpenAPI; platform audience/permissions for ATS product)
+   apps/ats  (Connect ats.v1.AtsService; platform audience/permissions service_ats)
         │
         ├── tenancy/identity  (authn claims, ReBAC check)
         ├── profile           (person, contacts)
@@ -189,7 +189,7 @@ Every request:
 
 ### 5.3 Contract rules
 
-1. OpenAPI 3 is the single contract for UI and agents.
+1. Connect protobuf (`apps/ats/proto/ats/v1/ats.proto`) is the single contract for UI and agents.
 2. Errors: `problem+json` with type, title, detail, `correlation_id`.
 3. `Idempotency-Key` required (or strongly enforced) on: book, advance, publish, unpublish, hire, application create.
 4. Cursor pagination; filters by stage, source, status.
@@ -263,7 +263,7 @@ Mobile-first bottom navigation:
 | More | Availability, partition switch, team (tenancy), outcome billing |
 
 - Stack: Vite/React aligned with existing product SPAs; platform UI tokens where available.
-- No server-side business logic in the SPA — OpenAPI client only.
+- No server-side business logic in the SPA — Connect JSON client only.
 - AI actions are contextual on job/application screens.
 
 ### 7.2 Candidate surfaces

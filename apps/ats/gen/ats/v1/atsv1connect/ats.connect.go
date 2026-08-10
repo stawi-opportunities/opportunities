@@ -35,8 +35,6 @@ const (
 const (
 	// AtsServiceGetDashboardProcedure is the fully-qualified name of the AtsService's GetDashboard RPC.
 	AtsServiceGetDashboardProcedure = "/ats.v1.AtsService/GetDashboard"
-	// AtsServiceSeedDemoProcedure is the fully-qualified name of the AtsService's SeedDemo RPC.
-	AtsServiceSeedDemoProcedure = "/ats.v1.AtsService/SeedDemo"
 	// AtsServiceListJobsProcedure is the fully-qualified name of the AtsService's ListJobs RPC.
 	AtsServiceListJobsProcedure = "/ats.v1.AtsService/ListJobs"
 	// AtsServiceCreateJobProcedure is the fully-qualified name of the AtsService's CreateJob RPC.
@@ -102,7 +100,6 @@ const (
 // AtsServiceClient is a client for the ats.v1.AtsService service.
 type AtsServiceClient interface {
 	GetDashboard(context.Context, *connect.Request[v1.GetDashboardRequest]) (*connect.Response[v1.GetDashboardResponse], error)
-	SeedDemo(context.Context, *connect.Request[v1.SeedDemoRequest]) (*connect.Response[v1.SeedDemoResponse], error)
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	CreateJob(context.Context, *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error)
 	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
@@ -145,12 +142,6 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			baseURL+AtsServiceGetDashboardProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("GetDashboard")),
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
-			connect.WithClientOptions(opts...),
-		),
-		seedDemo: connect.NewClient[v1.SeedDemoRequest, v1.SeedDemoResponse](
-			httpClient,
-			baseURL+AtsServiceSeedDemoProcedure,
-			connect.WithSchema(atsServiceMethods.ByName("SeedDemo")),
 			connect.WithClientOptions(opts...),
 		),
 		listJobs: connect.NewClient[v1.ListJobsRequest, v1.ListJobsResponse](
@@ -307,7 +298,6 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 // atsServiceClient implements AtsServiceClient.
 type atsServiceClient struct {
 	getDashboard       *connect.Client[v1.GetDashboardRequest, v1.GetDashboardResponse]
-	seedDemo           *connect.Client[v1.SeedDemoRequest, v1.SeedDemoResponse]
 	listJobs           *connect.Client[v1.ListJobsRequest, v1.ListJobsResponse]
 	createJob          *connect.Client[v1.CreateJobRequest, v1.CreateJobResponse]
 	getJob             *connect.Client[v1.GetJobRequest, v1.GetJobResponse]
@@ -336,11 +326,6 @@ type atsServiceClient struct {
 // GetDashboard calls ats.v1.AtsService.GetDashboard.
 func (c *atsServiceClient) GetDashboard(ctx context.Context, req *connect.Request[v1.GetDashboardRequest]) (*connect.Response[v1.GetDashboardResponse], error) {
 	return c.getDashboard.CallUnary(ctx, req)
-}
-
-// SeedDemo calls ats.v1.AtsService.SeedDemo.
-func (c *atsServiceClient) SeedDemo(ctx context.Context, req *connect.Request[v1.SeedDemoRequest]) (*connect.Response[v1.SeedDemoResponse], error) {
-	return c.seedDemo.CallUnary(ctx, req)
 }
 
 // ListJobs calls ats.v1.AtsService.ListJobs.
@@ -461,7 +446,6 @@ func (c *atsServiceClient) ScreenSummary(ctx context.Context, req *connect.Reque
 // AtsServiceHandler is an implementation of the ats.v1.AtsService service.
 type AtsServiceHandler interface {
 	GetDashboard(context.Context, *connect.Request[v1.GetDashboardRequest]) (*connect.Response[v1.GetDashboardResponse], error)
-	SeedDemo(context.Context, *connect.Request[v1.SeedDemoRequest]) (*connect.Response[v1.SeedDemoResponse], error)
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	CreateJob(context.Context, *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error)
 	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
@@ -500,12 +484,6 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		svc.GetDashboard,
 		connect.WithSchema(atsServiceMethods.ByName("GetDashboard")),
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
-		connect.WithHandlerOptions(opts...),
-	)
-	atsServiceSeedDemoHandler := connect.NewUnaryHandler(
-		AtsServiceSeedDemoProcedure,
-		svc.SeedDemo,
-		connect.WithSchema(atsServiceMethods.ByName("SeedDemo")),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceListJobsHandler := connect.NewUnaryHandler(
@@ -660,8 +638,6 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		switch r.URL.Path {
 		case AtsServiceGetDashboardProcedure:
 			atsServiceGetDashboardHandler.ServeHTTP(w, r)
-		case AtsServiceSeedDemoProcedure:
-			atsServiceSeedDemoHandler.ServeHTTP(w, r)
 		case AtsServiceListJobsProcedure:
 			atsServiceListJobsHandler.ServeHTTP(w, r)
 		case AtsServiceCreateJobProcedure:
@@ -719,10 +695,6 @@ type UnimplementedAtsServiceHandler struct{}
 
 func (UnimplementedAtsServiceHandler) GetDashboard(context.Context, *connect.Request[v1.GetDashboardRequest]) (*connect.Response[v1.GetDashboardResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ats.v1.AtsService.GetDashboard is not implemented"))
-}
-
-func (UnimplementedAtsServiceHandler) SeedDemo(context.Context, *connect.Request[v1.SeedDemoRequest]) (*connect.Response[v1.SeedDemoResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ats.v1.AtsService.SeedDemo is not implemented"))
 }
 
 func (UnimplementedAtsServiceHandler) ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error) {

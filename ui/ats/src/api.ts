@@ -1,7 +1,9 @@
 /**
  * Connect-protocol client for ats.v1.AtsService (JSON).
- * Type-safe surface matches apps/ats/proto/ats/v1/ats.proto.
+ * Auth via authFetchJson (OIDC runtime or local dev headers).
  */
+
+import { authFetchJson } from "./auth";
 
 const SERVICE = "/ats.v1.AtsService";
 
@@ -65,32 +67,27 @@ export type Availability = {
   exceptions: { date: string; blocked: boolean }[];
 };
 
-const tenancyHeaders = (): HeadersInit => ({
-  "Content-Type": "application/json",
-  "Connect-Protocol-Version": "1",
-  "X-Profile-ID": localStorage.getItem("ats_profile_id") || "dev-recruiter",
-  "X-Tenant-ID": localStorage.getItem("ats_tenant_id") || "dev-tenant",
-  "X-Partition-ID": localStorage.getItem("ats_partition_id") || "dev-partition",
-});
+function newIdempotencyKey(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
-async function rpc<TReq extends object, TRes>(method: string, body: TReq): Promise<TRes> {
-  const res = await fetch(`${SERVICE}/${method}`, {
+async function rpc<TReq extends object, TRes>(
+  method: string,
+  body: TReq,
+  opts?: { idempotencyKey?: string },
+): Promise<TRes> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Connect-Protocol-Version": "1",
+  };
+  if (opts?.idempotencyKey) {
+    headers["Idempotency-Key"] = opts.idempotencyKey;
+  }
+  return authFetchJson<TRes>(`${SERVICE}/${method}`, {
     method: "POST",
-    headers: tenancyHeaders(),
+    headers,
     body: JSON.stringify(body ?? {}),
   });
-  if (!res.ok) {
-    let detail = await res.text();
-    try {
-      const j = JSON.parse(detail);
-      detail = j.message || j.detail || j.title || detail;
-    } catch {
-      /* keep */
-    }
-    throw new Error(detail || `${res.status}`);
-  }
-  if (res.status === 204) return undefined as TRes;
-  return res.json() as Promise<TRes>;
 }
 
 export const api = {
@@ -98,26 +95,32 @@ export const api = {
     const r = await rpc<Record<string, never>, { dashboard: Dashboard }>("GetDashboard", {});
     return r.dashboard;
   },
-  seed: () => rpc<Record<string, never>, { seeded: boolean }>("SeedDemo", {}),
   listJobs: async (status = "") => {
     const r = await rpc<{ status: string }, { jobs: Job[] }>("ListJobs", { status });
     return { jobs: r.jobs || [] };
   },
   createJob: async (title: string, description: string, location: string) => {
-    const r = await rpc<object, { job: Job }>("CreateJob", {
-      title,
-      description,
-      location,
-      status: "open",
-    });
+    const r = await rpc<object, { job: Job }>(
+      "CreateJob",
+      { title, description, location, status: "open" },
+      { idempotencyKey: newIdempotencyKey("create_job") },
+    );
     return r.job;
   },
   publishJob: async (id: string) => {
-    const r = await rpc<{ id: string }, { job: Job }>("PublishJob", { id });
+    const r = await rpc<{ id: string }, { job: Job }>(
+      "PublishJob",
+      { id },
+      { idempotencyKey: newIdempotencyKey("publish") },
+    );
     return r.job;
   },
   unpublishJob: async (id: string) => {
-    const r = await rpc<{ id: string }, { job: Job }>("UnpublishJob", { id });
+    const r = await rpc<{ id: string }, { job: Job }>(
+      "UnpublishJob",
+      { id },
+      { idempotencyKey: newIdempotencyKey("unpublish") },
+    );
     return r.job;
   },
   closeJob: async (id: string) => {
@@ -131,11 +134,11 @@ export const api = {
     return { applications: r.applications || [] };
   },
   createApplication: async (jobId: string, profileId: string, summary?: string) => {
-    const r = await rpc<object, { application: Application }>("CreateApplication", {
-      job_id: jobId,
-      profile_id: profileId,
-      summary,
-    });
+    const r = await rpc<object, { application: Application }>(
+      "CreateApplication",
+      { job_id: jobId, profile_id: profileId, summary },
+      { idempotencyKey: newIdempotencyKey("create_app") },
+    );
     return r.application;
   },
   listTalent: async (jobId: string) => {
@@ -146,21 +149,27 @@ export const api = {
     return { talent: r.talent || [] };
   },
   addTalent: async (jobId: string, hit: TalentHit) => {
-    const r = await rpc<object, { application: Application }>("AddTalent", {
-      job_id: jobId,
-      hit,
-    });
+    const r = await rpc<object, { application: Application }>(
+      "AddTalent",
+      { job_id: jobId, hit },
+      { idempotencyKey: newIdempotencyKey("add_talent") },
+    );
     return r.application;
   },
   advance: async (appId: string, toStage: string) => {
-    const r = await rpc<object, { application: Application }>("AdvanceApplication", {
-      id: appId,
-      to_stage: toStage,
-    });
+    const r = await rpc<object, { application: Application }>(
+      "AdvanceApplication",
+      { id: appId, to_stage: toStage },
+      { idempotencyKey: newIdempotencyKey("advance") },
+    );
     return r.application;
   },
   hire: async (appId: string) => {
-    return rpc<{ id: string }, { application: Application }>("HireApplication", { id: appId });
+    return rpc<{ id: string }, { application: Application }>(
+      "HireApplication",
+      { id: appId },
+      { idempotencyKey: newIdempotencyKey("hire") },
+    );
   },
   screenSummary: async (appId: string) => {
     return rpc<{ application_id: string }, { summary: string }>("ScreenSummary", {
@@ -168,12 +177,18 @@ export const api = {
     });
   },
   proposeInterview: async (appId: string, durationMin = 30) => {
-    const r = await rpc<object, { interview: Interview }>("ProposeInterview", {
-      application_id: appId,
-      duration_min: durationMin,
-      type: "screen",
-    });
+    const r = await rpc<object, { interview: Interview }>(
+      "ProposeInterview",
+      { application_id: appId, duration_min: durationMin, type: "screen" },
+      { idempotencyKey: newIdempotencyKey("propose_iv") },
+    );
     return r.interview;
+  },
+  listInterviews: async (applicationId: string) => {
+    const r = await rpc<{ application_id: string }, { interviews: Interview[] }>("ListInterviews", {
+      application_id: applicationId,
+    });
+    return { interviews: r.interviews || [] };
   },
   listSlots: async (interviewId: string) => {
     const r = await rpc<{ interview_id: string }, { slots: Slot[] }>("ListInterviewSlots", {
@@ -182,20 +197,26 @@ export const api = {
     return { slots: r.slots || [] };
   },
   bookInterview: async (interviewId: string, start: string, end: string) => {
-    const r = await rpc<object, { interview: Interview }>("BookInterview", {
-      interview_id: interviewId,
-      start,
-      end,
-    });
+    const r = await rpc<object, { interview: Interview }>(
+      "BookInterview",
+      { interview_id: interviewId, start, end },
+      { idempotencyKey: newIdempotencyKey("book") },
+    );
     return r.interview;
   },
-  getAvailability: () => rpc<Record<string, never>, Availability | { availability: null }>("GetMyAvailability", {}),
-  setAvailability: (body: { timezone: string; rules: Availability["rules"] }) =>
-    rpc<object, { availability: Availability }>("SetMyAvailability", body).then((r) => r.availability),
-  icsUrl: (interviewId: string) => {
-    // ICS via RPC response in production; for download we use GetInterviewICS then blob.
-    return interviewId;
+  listMyApplications: async () => {
+    const r = await rpc<Record<string, never>, { applications: Application[] }>(
+      "ListMyApplications",
+      {},
+    );
+    return { applications: r.applications || [] };
   },
+  getAvailability: () =>
+    rpc<Record<string, never>, Availability | { availability: null }>("GetMyAvailability", {}),
+  setAvailability: (body: { timezone: string; rules: Availability["rules"] }) =>
+    rpc<object, { availability: Availability }>("SetMyAvailability", body, {
+      idempotencyKey: newIdempotencyKey("avail"),
+    }).then((r) => r.availability),
   getICS: async (interviewId: string) => {
     const r = await rpc<{ interview_id: string }, { ics: string }>("GetInterviewICS", {
       interview_id: interviewId,
