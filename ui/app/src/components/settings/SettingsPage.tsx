@@ -39,7 +39,11 @@ export function SettingsPage({
   }, [active, t, subscriptionPanel]);
 
   return (
-    <div className="space-y-6">
+    <div className="ds-stack">
+      <div>
+        <h2 className="ds-section-title">Settings</h2>
+        <p className="ds-section-desc">Notifications, account, and subscription — one place.</p>
+      </div>
       <div className="border-b border-muted">
         <nav
           className="-mb-px flex gap-1 overflow-x-auto overscroll-x-contain pb-px [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -52,8 +56,8 @@ export function SettingsPage({
               onClick={() => setActive(tab.id)}
               className={`min-h-[44px] shrink-0 border-b-2 px-3 text-sm font-medium transition-colors sm:px-4 ${
                 active === tab.id
-                  ? 'border-accent-600 text-accent-700'
-                  : 'border-transparent text-secondary hover:border-muted hover:text-main'
+                  ? 'border-accent-600 text-main'
+                  : 'border-transparent text-secondary hover:text-main'
               }`}
             >
               {t(tab.key)}

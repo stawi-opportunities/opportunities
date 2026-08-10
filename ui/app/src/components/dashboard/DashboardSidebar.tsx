@@ -146,7 +146,7 @@ export function DashboardSidebar({
 
   return (
     <div className="sticky top-[88px]">
-      <nav className="space-y-1" aria-label="Dashboard sections">
+      <nav className="space-y-0.5" aria-label="Dashboard sections">
         {sections.map((s) => {
           const isActive = s.id === active;
           return (
@@ -154,17 +154,22 @@ export function DashboardSidebar({
               key={s.id}
               type="button"
               onClick={() => onNavigate(s.id)}
-              className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                 isActive
-                  ? 'border border-accent-500/30 bg-accent-500/10 text-white'
+                  ? 'bg-accent-500/10 text-main ring-1 ring-inset ring-accent-500/25'
                   : 'text-secondary hover:bg-surface-hover hover:text-main'
               }`}
             >
-              <span className={isActive ? 'text-accent-400' : 'text-secondary/60'}>{s.icon}</span>
-              <span>{t(s.labelKey)}</span>
-              {s.badge != null && (
-                <span className="ml-auto inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-700">
-                  {s.badge}
+              <span
+                className={isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'}
+              >
+                {s.icon}
+              </span>
+              <span className="truncate">{t(s.labelKey)}</span>
+              {s.badge != null && s.badge > 0 && (
+                <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                  {s.badge > 99 ? '99+' : s.badge}
                 </span>
               )}
             </button>

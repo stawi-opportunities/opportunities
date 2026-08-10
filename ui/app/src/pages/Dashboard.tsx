@@ -166,7 +166,7 @@ export default function Dashboard() {
   return (
     <PreferenceChatHost>
       <div
-        className="mx-auto max-w-6xl px-4 py-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 md:pb-8 lg:px-8"
+        className="mx-auto max-w-6xl px-4 py-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-8 md:pb-10 lg:px-8"
         data-user-stage={userCtx.stage}
       >
         <DashboardHeader
@@ -175,11 +175,11 @@ export default function Dashboard() {
           stageLabel={userCtx.label}
           stageId={userCtx.stage}
         />
-        <div className="mt-3">
+        <div className="mt-4 empty:hidden">
           <UserStageBanner stage={userCtx} />
         </div>
         <PendingCheckoutPoller />
-        <div className="mt-4 grid gap-6 md:mt-6 lg:grid-cols-[200px_1fr]">
+        <div className="mt-6 grid gap-8 lg:grid-cols-[13.5rem_1fr] lg:gap-10">
           <aside className="hidden md:block">
             <DashboardSidebar
               active={activeSection}
@@ -187,7 +187,7 @@ export default function Dashboard() {
               t={t}
               matchCount={sub?.queued_matches}
             />
-            <div className="mt-6">
+            <div className="mt-8 border-t border-muted pt-6">
               <ProfileMount />
             </div>
           </aside>
@@ -301,10 +301,12 @@ function ProfileMount() {
 
 function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {
   return (
-    <div className="mx-auto max-w-sm py-16 text-center">
-      <h1 className="text-xl font-semibold text-main">Sign in</h1>
-      <p className="mt-2 text-sm text-secondary">Access matches and your CV tools.</p>
-      <Button className="mt-6" variant="primary" onClick={() => void onSignIn()}>
+    <div className="mx-auto max-w-sm px-4 py-20 text-center">
+      <h1 className="text-2xl font-semibold tracking-tight text-main">Sign in</h1>
+      <p className="mt-2 text-sm leading-relaxed text-secondary">
+        Access your matches, CV tools, and application tracker.
+      </p>
+      <Button className="mt-8" variant="primary" onClick={() => void onSignIn()}>
         Sign in
       </Button>
     </div>
