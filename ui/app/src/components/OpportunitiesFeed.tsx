@@ -404,7 +404,7 @@ export function OpportunitiesFeed({
           <EmptyFeedState filter={filter} t={t} />
         ) : (
           <>
-            <ul className="space-y-3">
+            <ul className="ds-list">
               {filteredItems.map((it) => (
                 <OpportunityCard
                   key={it.match_id || it.opportunity_id}

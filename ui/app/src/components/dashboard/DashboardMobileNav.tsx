@@ -132,10 +132,11 @@ export function DashboardMobileNav({
 }) {
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-muted bg-nav-bg/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-muted bg-nav-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
+      style={{ boxShadow: '0 -1px 0 rgb(var(--color-border) / 0.8)' }}
       aria-label="Primary"
     >
-      <ul className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-1">
+      <ul className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-0.5">
         {TABS.map((tab) => {
           const isActive = tab.id === active;
           const badge =
@@ -147,12 +148,12 @@ export function DashboardMobileNav({
                 onClick={() => onNavigate(tab.id)}
                 aria-current={isActive ? 'page' : undefined}
                 className={`relative flex w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium leading-tight transition-colors sm:text-xs ${
-                  isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'
+                  isActive ? 'text-accent-700 dark:text-accent-400' : 'text-secondary'
                 }`}
               >
                 <span
-                  className={`relative flex h-8 w-8 items-center justify-center rounded-full ${
-                    isActive ? 'bg-accent-500/15' : ''
+                  className={`relative flex h-8 w-8 items-center justify-center rounded-lg ${
+                    isActive ? 'bg-accent-500/12' : ''
                   }`}
                 >
                   {tab.icon}

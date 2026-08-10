@@ -31,3 +31,4 @@ ui/static/admin-app/
 # stray go-run binaries
 /recipe-verify
 /recipe-gen
+.worktrees/
