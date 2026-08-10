@@ -131,3 +131,32 @@ func TestMatchInvoke_DigestSkipsRateLimit(t *testing.T) {
 	require.Len(t, store.ms, 5)
 	require.Equal(t, matching.InvokeDigest, el.runEvents[0].TriggeredBy)
 }
+
+func TestMatchInvoke_SemanticFirstKNNParams(t *testing.T) {
+	t.Parallel()
+	knn := &fakeRevKNN{hits: fiveHighHits()}
+	store := &fakeStore{}
+	el := &fakeEventLog{}
+
+	_, err := matching.MatchInvoke(context.Background(), matching.InvokeInput{
+		CandidateID: "u",
+		Embedding:   unitVec(1024, 0),
+		Countries:   []string{"KE", "UG"},
+		Kinds:       []string{"job"},
+		MinScore:    0.70,
+		Reason:      matching.InvokeUserRefresh,
+	}, matching.InvokeDeps{
+		GapFill: matching.GapFillDeps{
+			KNN: knn, Store: store, EventLog: el,
+			Reranker: matching.NoopReranker{},
+			Weights:  matching.DefaultWeights(),
+		},
+	})
+	require.NoError(t, err)
+	// Soft geo: countries passed for score-time GeoMatch, not hard SQL.
+	require.False(t, knn.last.HardCountries)
+	require.Equal(t, []string{"KE", "UG"}, knn.last.Countries)
+	require.Equal(t, matching.DefaultReverseKNNLimit, knn.last.Limit)
+	require.InDelta(t, matching.DefaultSemanticMaxDistance, knn.last.MaxDistance, 1e-9)
+	require.GreaterOrEqual(t, len(store.ms), 1)
+}

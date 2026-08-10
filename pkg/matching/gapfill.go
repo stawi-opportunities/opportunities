@@ -58,6 +58,16 @@ type GapFillInput struct {
 	QueryText string
 	// TriggeredBy is written to match_run_events. Defaults to "extension_poll".
 	TriggeredBy string
+	// SemanticRecall is reverse-KNN neighbour count. 0 → DefaultReverseKNNLimit.
+	SemanticRecall int
+	// MaxDistance is the cosine-distance ceiling for retrieval.
+	// 0 → DefaultSemanticMaxDistance; negative → no SQL distance cap.
+	MaxDistance float64
+	// HardCountries when true hard-filters country in SQL (legacy).
+	// Default false: geo is soft (Score.GeoMatch only).
+	HardCountries bool
+	// SoftKinds when true skips kind SQL filter even if Kinds is set.
+	SoftKinds bool
 }
 
 // GapFill reason codes for product empty-states (honest UX).
@@ -113,12 +123,26 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 	}
 	defer func() { _ = deps.EventLog.WriteMatchRunEvent(ctx, runEvt) }()
 
+	// Semantic-first retrieval: large KNN over HNSW, soft geo, distance floor.
+	recall := in.SemanticRecall
+	if recall <= 0 {
+		recall = DefaultReverseKNNLimit
+	}
+	maxDist := in.MaxDistance
+	if maxDist == 0 {
+		maxDist = DefaultSemanticMaxDistance
+	} else if maxDist < 0 {
+		maxDist = 0 // ReverseKNN: ≤0 means no distance cap
+	}
 	hits, err := deps.KNN.ReverseKNN(ctx, ReverseKNNParams{
 		CandidateEmbedding: in.Embedding,
 		Kinds:              in.Kinds,
 		Countries:          in.Countries,
+		SoftKinds:          in.SoftKinds,
+		HardCountries:      in.HardCountries,
 		Since:              in.Since,
-		Limit:              100,
+		Limit:              recall,
+		MaxDistance:        maxDist,
 	})
 	if err != nil {
 		runEvt.Status = "error"
@@ -140,8 +164,9 @@ func GapFill(ctx context.Context, in GapFillInput, deps GapFillDeps) (GapFillRes
 			Countries:      in.Countries,
 			SalaryFloorUSD: in.SalaryFloorUSD,
 		}
+		// Cosine comes from pgvector distance (semantic primary signal).
 		oppSig := OpportunitySignal{
-			Embedding:   nil, // gap-fill uses the pgvector distance directly
+			Embedding:   nil,
 			Skills:      nil,
 			Country:     h.Country,
 			FirstSeenAt: h.FirstSeenAt,
