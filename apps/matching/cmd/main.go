@@ -139,6 +139,11 @@ func main() {
 			log.WithError(err).Fatal("migrate failed")
 		}
 		log.Info("migration complete")
+
+		// Ensure service-notification templates exist for this product.
+		// Same setup Job as migrate (DO_DATABASE_MIGRATE=true). Requires
+		// NOTIFICATION_SERVICE_URI so TemplateSave can run against the platform.
+		ensureNotificationTemplates(ctx, &cfg)
 		return
 	}
 
@@ -246,6 +251,14 @@ func main() {
 		MatchesDigest:    cfg.MessageTemplateMatchesDigest,
 		WeeklyJobsDigest: cfg.MessageTemplateWeeklyJobsDigest,
 		CVStaleNudge:     cfg.MessageTemplateCVStaleNudge,
+		ATSReport:        cfg.MessageTemplateATSReport,
+	}
+	// Soft ensure at runtime so a missed setup Job can self-heal without
+	// blocking boot. Setup path still fails hard if ensure fails.
+	if notificationCli != nil {
+		if err := notify.EnsureFromConfig(ctx, notificationCli, notifyTemplates); err != nil {
+			log.WithError(err).Warn("notify: runtime template ensure incomplete (re-run migrate/setup Job)")
+		}
 	}
 	profileIDForCandidate := func(ctx context.Context, candidateID string) string {
 		return notify.ProfileID(ctx, sqlDB, candidateID)
@@ -1406,4 +1419,33 @@ func setupNotificationClient(
 		WorkloadAPITargetPath: cfg.NotificationServiceWorkloadAPITargetPath,
 		ServiceID:             servicecatalog.ServiceNotification,
 	}, notificationv1connect.NewNotificationServiceClient)
+}
+
+// ensureNotificationTemplates creates the opportunities product templates in
+// service-notification if missing. Called from the setup/migrate Job.
+// Fatals when NOTIFICATION_SERVICE_URI is set but ensure fails so digests
+// cannot silently drop. Skips with a warning when URI is empty (local/dev).
+func ensureNotificationTemplates(ctx context.Context, cfg *candidatesconfig.CandidatesConfig) {
+	log := util.Log(ctx)
+	uri := strings.TrimSpace(cfg.NotificationServiceURI)
+	if uri == "" {
+		log.Warn("setup: NOTIFICATION_SERVICE_URI unset — skipping notification template ensure")
+		return
+	}
+	cli, err := setupNotificationClient(ctx, cfg)
+	if err != nil {
+		log.WithError(err).Fatal("setup: notification client for templates")
+	}
+	tpls := notify.Templates{
+		MatchesReady:     cfg.MessageTemplateMatchesReady,
+		MatchesDigest:    cfg.MessageTemplateMatchesDigest,
+		WeeklyJobsDigest: cfg.MessageTemplateWeeklyJobsDigest,
+		CVStaleNudge:     cfg.MessageTemplateCVStaleNudge,
+		ATSReport:        cfg.MessageTemplateATSReport,
+	}
+	if err := notify.EnsureFromConfig(ctx, cli, tpls); err != nil {
+		log.WithError(err).Fatal("setup: ensure notification templates")
+	}
+	log.WithField("templates", notify.RequiredTemplateNames()).
+		Info("setup: notification templates ensured")
 }
