@@ -35,4 +35,12 @@ type Config struct {
 
 	// OutboxPollIntervalSeconds between outbox drain cycles (default 15).
 	OutboxPollIntervalSeconds int `env:"ATS_OUTBOX_POLL_SECONDS" envDefault:"15"`
+
+	// CalendarServiceURI dials service_calendar for panel slots/bookings.
+	// Empty keeps local ATS availability-only scheduling.
+	CalendarServiceURI string `env:"CALENDAR_SERVICE_URI" envDefault:""`
+	// CalendarServiceWorkloadAPITargetPath optional SPIFFE path for mesh.
+	CalendarServiceWorkloadAPITargetPath string `env:"CALENDAR_SERVICE_WORKLOAD_API_TARGET_PATH" envDefault:""`
+	// CalendarDirect when true uses plain HTTP (local/dev) without OAuth mesh.
+	CalendarDirect bool `env:"CALENDAR_SERVICE_DIRECT" envDefault:"false"`
 }

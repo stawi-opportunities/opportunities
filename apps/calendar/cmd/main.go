@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"time"
 
@@ -84,24 +85,39 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *calconfig.Config)
 	}
 	workMan := svc.WorkManager()
 
+	// Timed HTTP client for external calendar APIs (never http.DefaultClient long-lived).
+	httpClient := svc.HTTPClientManager().Client(ctx)
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+
 	providers := business.ProviderRegistry{}
-	// Integration-ready provider slots: enabled when env credentials present.
-	// Hook real Google/Microsoft/CalDAV HTTP adapters via ConfiguredHTTPProvider.ImportFn/ExportFn.
-	providers[models.ProviderGoogle] = business.ConfiguredHTTPProvider{
-		ProviderName: models.ProviderGoogle,
-		Enabled:      cfg.GoogleCalendarEnabled && cfg.GoogleCalendarClientID != "",
+	// Live providers: Ready when env enabled (+ optional client id for OAuth products).
+	// Access tokens live on ExternalConnection.credentials_json per connection.
+	providers[models.ProviderGoogle] = business.GoogleCalendarProvider{
+		HTTP:    httpClient,
+		Enabled: cfg.GoogleCalendarEnabled,
 	}
-	providers[models.ProviderMicrosoft] = business.ConfiguredHTTPProvider{
-		ProviderName: models.ProviderMicrosoft,
-		Enabled:      cfg.MicrosoftCalendarEnabled && cfg.MicrosoftCalendarClientID != "",
+	providers[models.ProviderMicrosoft] = business.MicrosoftCalendarProvider{
+		HTTP:    httpClient,
+		Enabled: cfg.MicrosoftCalendarEnabled,
 	}
-	providers[models.ProviderCalDAV] = business.ConfiguredHTTPProvider{
-		ProviderName: models.ProviderCalDAV,
-		Enabled:      cfg.CalDAVEnabled,
+	providers[models.ProviderCalDAV] = business.CalDAVProvider{
+		HTTP:    httpClient,
+		Enabled: cfg.CalDAVEnabled,
 	}
 	if cfg.EnableMemoryProvider {
 		providers["memory"] = business.NewMemoryProvider()
 		log.Info("calendar: memory external provider enabled")
+	}
+	if cfg.GoogleCalendarEnabled {
+		log.Info("calendar: Google Calendar provider enabled")
+	}
+	if cfg.MicrosoftCalendarEnabled {
+		log.Info("calendar: Microsoft Graph calendar provider enabled")
+	}
+	if cfg.CalDAVEnabled {
+		log.Info("calendar: CalDAV provider enabled")
 	}
 
 	biz := business.NewService(business.Deps{

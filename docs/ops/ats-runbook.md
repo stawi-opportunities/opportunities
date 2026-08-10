@@ -57,6 +57,8 @@ Production SPA: `VITE_OIDC_*` + `@stawi/auth-runtime` Bearer via `runtime.fetch`
 | `ATS_MATCHING_DATABASE_URL` | Optional `candidate_profiles` read DB |
 | `ATS_PRODUCT_DATABASE_URL` | Optional dual-write to product opportunities |
 | `ATS_OUTBOX_POLL_SECONDS` | Outbox drain interval (default 15) |
+| `CALENDAR_SERVICE_URI` | Optional `service_calendar` for interview slots/bookings |
+| `CALENDAR_SERVICE_DIRECT` | `true` for local HTTP without OAuth mesh |
 
 There is **no** SeedDemo RPC or auto-seed. Create jobs and candidates through the real API.
 

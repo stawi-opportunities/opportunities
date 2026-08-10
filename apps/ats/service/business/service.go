@@ -59,6 +59,9 @@ type Deps struct {
 	Billing   BillingEmitter
 	Notify    Notifier
 	AI        AIAssistant
+	// Calendar optional service_calendar client for multi-resource reservation.
+	// When nil, ListSlots/Book use local ATS availability only.
+	Calendar InterviewCalendar
 
 	SlotWindowDays int
 }
@@ -430,6 +433,8 @@ func (s *Service) SetAvailability(ctx context.Context, in SetAvailabilityInput) 
 	if err := s.Availability.UpsertForProfile(ctx, a); err != nil {
 		return nil, err
 	}
+	// Dual-write to service_calendar when configured (soft-fail).
+	syncAvailabilitySoft(ctx, s.Calendar, sc.ProfileID, tz, in.Rules, in.Exceptions)
 	return a, nil
 }
 
@@ -498,6 +503,27 @@ func (s *Service) ListSlots(ctx context.Context, interviewID string) ([]models.S
 	}
 	var panel []string
 	_ = json.Unmarshal([]byte(iv.PanelJSON), &panel)
+	if len(panel) == 0 {
+		panel = []string{sc.ProfileID}
+	}
+
+	// Prefer service_calendar multi-resource slots when wired.
+	if s.Calendar != nil {
+		resIDs, err := s.Calendar.EnsurePanelResources(ctx, panel)
+		if err != nil {
+			util.Log(ctx).WithError(err).Warn("ats: calendar ensure resources failed; falling back to local slots")
+		} else if len(resIDs) > 0 {
+			now := time.Now().UTC()
+			winEnd := now.AddDate(0, 0, s.SlotWindowDays)
+			slots, err := s.Calendar.ListPanelSlots(ctx, resIDs, iv.DurationMin, now, winEnd)
+			if err != nil {
+				util.Log(ctx).WithError(err).Warn("ats: calendar ListSlots failed; falling back to local slots")
+			} else {
+				return slots, nil
+			}
+		}
+	}
+
 	rulesBy := map[string][]models.WeekRule{}
 	exBy := map[string][]models.ExceptionDay{}
 	for _, pid := range panel {
@@ -584,13 +610,43 @@ func (s *Service) BookInterview(ctx context.Context, in BookInterviewInput) (*mo
 		return nil, fmt.Errorf("%w: slot not available", models.ErrConflict)
 	}
 	start, end := in.Start, in.End
+	// Reserve on service_calendar when available (conflict → fail book).
+	var calendarBookingID string
+	if s.Calendar != nil {
+		var panel []string
+		_ = json.Unmarshal([]byte(iv.PanelJSON), &panel)
+		if len(panel) == 0 {
+			panel = []string{sc.ProfileID}
+		}
+		resIDs, err := s.Calendar.EnsurePanelResources(ctx, panel)
+		if err != nil {
+			return nil, fmt.Errorf("ats: calendar ensure for book: %w", err)
+		}
+		title := "Interview"
+		if a, _ := s.Applications.GetInPartition(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID); a != nil {
+			if j, _ := s.Jobs.GetInPartition(ctx, sc.TenantID, sc.PartitionID, a.JobID); j != nil {
+				title = "Interview: " + j.Title
+			}
+		}
+		calendarBookingID, err = s.Calendar.BookPanel(ctx, resIDs, start, end, iv.ID, title)
+		if err != nil {
+			return nil, fmt.Errorf("ats: calendar book: %w", err)
+		}
+	}
 	iv.SlotStart = &start
 	iv.SlotEnd = &end
 	iv.Status = models.InterviewScheduled
 	if iv.ICSUID == "" {
 		iv.ICSUID = util.IDString()
 	}
+	// Stash calendar booking id in ICSUID suffix if needed — prefer metadata via ics_uid keep + source_ref in calendar.
+	// Store booking id in video_url? No. Use ics_uid as local uid; calendar has source_ref interview:id.
+	_ = calendarBookingID
 	if _, err := s.Interviews.Update(ctx, iv, "slot_start", "slot_end", "status", "ics_uid"); err != nil {
+		// Best-effort cancel remote reservation if local update fails.
+		if s.Calendar != nil && calendarBookingID != "" {
+			_ = s.Calendar.CancelInterviewBooking(ctx, calendarBookingID)
+		}
 		return nil, err
 	}
 	a, _ := s.Applications.GetInPartition(ctx, sc.TenantID, sc.PartitionID, iv.ApplicationID)

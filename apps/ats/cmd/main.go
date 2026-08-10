@@ -23,6 +23,8 @@ import (
 	"github.com/stawi-opportunities/opportunities/apps/ats/service/business"
 	"github.com/stawi-opportunities/opportunities/apps/ats/service/handlers"
 	"github.com/stawi-opportunities/opportunities/apps/ats/service/repository"
+	"github.com/stawi-opportunities/opportunities/apps/calendar/gen/calendar/v1/calendarv1connect"
+	"github.com/stawi-opportunities/opportunities/pkg/calendarclient"
 )
 
 func main() {
@@ -137,6 +139,17 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 		log.WithError(err).Warn("ats: notification client unavailable; outbox will retry")
 	}
 
+	var interviewCal business.InterviewCalendar
+	if cfg.CalendarServiceURI != "" {
+		calCli, cerr := setupCalendarClient(ctx, svc, cfg)
+		if cerr != nil {
+			log.WithError(cerr).Warn("ats: calendar client unavailable; local interview slots only")
+		} else if calCli != nil {
+			interviewCal = &business.RemoteInterviewCalendar{Client: calCli}
+			log.Info("ats: service_calendar wired for interview slots/bookings")
+		}
+	}
+
 	biz := business.NewService(business.Deps{
 		Jobs:         repository.NewJobRepository(ctx, dbPool, workMan),
 		Applications: repository.NewApplicationRepository(ctx, dbPool, workMan),
@@ -157,6 +170,7 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 			Template:    cfg.MessageTemplateInterviewScheduled,
 			SiteBaseURL: cfg.PublicSiteURL,
 		},
+		Calendar: interviewCal,
 	})
 
 	// Background outbox drain (email/ICS).
@@ -204,6 +218,32 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 	}
 	log.Info("ats: Connect API mounted (ats.v1.AtsService, namespace service_ats)")
 	return []frame.Option{frame.WithHTTPHandler(handlers.CORSMiddleware(mux))}, nil
+}
+
+func setupCalendarClient(
+	ctx context.Context,
+	svc *frame.Service,
+	cfg *atsconfig.Config,
+) (calendarv1connect.CalendarServiceClient, error) {
+	if cfg.CalendarServiceURI == "" {
+		return nil, nil
+	}
+	// Direct HTTP for local/dev (or until servicecatalog ships ServiceCalendar).
+	if cfg.CalendarDirect || !cfg.AuthRequireJWT {
+		httpClient := svc.HTTPClientManager().Client(ctx)
+		return calendarclient.NewDirectClient(httpClient, cfg.CalendarServiceURI), nil
+	}
+	// Mesh path: use ServiceJobs audience as temporary product peer until
+	// antinvestor/common adds ServiceCalendar (CALENDAR_OAUTH_USE_JOBS_AUDIENCE).
+	// Prefer WithoutAuthentication + direct if dial fails.
+	cli, err := calendarclient.NewClient(ctx, cfg, cfg.CalendarServiceURI, cfg.CalendarServiceWorkloadAPITargetPath)
+	if err != nil {
+		log := util.Log(ctx)
+		log.WithError(err).Warn("ats: calendar mesh dial failed; trying direct HTTP")
+		httpClient := svc.HTTPClientManager().Client(ctx)
+		return calendarclient.NewDirectClient(httpClient, cfg.CalendarServiceURI), nil
+	}
+	return cli, nil
 }
 
 func setupNotificationClient(

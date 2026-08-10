@@ -45,16 +45,39 @@ Flow:
 
 | Env | Purpose |
 |-----|---------|
-| `GOOGLE_CALENDAR_ENABLED` + client id/secret | Enable Google provider slot (wire ImportFn/ExportFn in deploy) |
-| `MICROSOFT_CALENDAR_ENABLED` + client id/secret | Microsoft Graph slot |
-| `CALDAV_ENABLED` | CalDAV slot |
+| `GOOGLE_CALENDAR_ENABLED=true` | Enable Google Calendar API v3 provider |
+| `MICROSOFT_CALENDAR_ENABLED=true` | Enable Microsoft Graph provider |
+| `CALDAV_ENABLED=true` | Enable CalDAV REPORT/PUT/DELETE |
 | `CALENDAR_MEMORY_PROVIDER=true` | In-process provider for tests/dev |
 | `CALENDAR_SYNC_POLL_SECONDS` | Export outbox drain (default 60) |
+
+**Per-connection credentials** (`UpsertExternalConnection.credentials_json`):
+
+```json
+{"access_token":"…"} 
+// CalDAV also: {"base_url":"https://…/cal/","username":"…","password":"…"}
+```
 
 Providers implement `business.ExternalProvider` (import busy, export booking, delete).  
 Confirmed bookings enqueue `cal_sync_outbox`; worker drains to providers that are `Ready()`.
 
 ICS always available via `GetBookingICS` without external accounts.
+
+## ATS integration
+
+```bash
+# ATS process
+export CALENDAR_SERVICE_URI=http://127.0.0.1:8096
+export CALENDAR_SERVICE_DIRECT=true   # local without OAuth mesh
+```
+
+When set, ATS:
+
+1. Dual-writes recruiter availability to calendar resources (`subject=profile`)  
+2. Lists interview slots via multi-resource `ListSlots`  
+3. Books panel time via `CreateBooking(source=ats, source_ref=interview:…)`  
+
+Falls back to local ATS availability if calendar is down (list) or fails book (error on book when client wired).
 
 ## Setup vs runtime
 
