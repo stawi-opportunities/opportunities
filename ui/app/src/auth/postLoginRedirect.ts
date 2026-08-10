@@ -56,7 +56,7 @@ export type SubscriptionStatus = 'active' | 'none' | 'canceled' | 'past_due' | s
 /**
  * Decide where to send the browser after a successful OIDC code exchange.
  *
- * Content return paths (job detail after "Sign in to apply") win for everyone.
+ * Content return paths (job detail after Apply → sign-in) win for everyone.
  * Otherwise uses resolveUserStage.homePath (same island as every other surface).
  */
 export function resolvePostLoginPath(

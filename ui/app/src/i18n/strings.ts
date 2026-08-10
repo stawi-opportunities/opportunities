@@ -576,7 +576,8 @@ const en: Strings = {
   'nav.settings': 'Settings',
 
   'cta.applyNow': 'Apply now',
-  'cta.signInToApply': 'Sign in to apply',
+  // Kept for legacy copy; product CTAs use Apply / Chat and redirect to sign-in.
+  'cta.signInToApply': 'Apply',
   'cta.saveJob': 'Save job',
   'cta.loadMore': 'Load more',
   'cta.subscribe': 'Subscribe',

@@ -3,26 +3,29 @@ import { mount, type MountHandle } from '@stawi/profile';
 import { getConfig } from '@/utils/config';
 import { authRuntime } from '@/auth/runtime';
 import { profileWidgetTokens, profileWidgetCSS } from '@/theme/profile-widget';
+import { useTheme } from '@/providers/ThemeProvider';
 
 /**
- * Mounts @stawi/profile (≥1.3.4) with stawi.opportunities visual tokens.
+ * Site-header account control via @stawi/profile.
  *
- * The widget owns an auth display FSM (no host-side chrome branching):
- *   initializing          → nothing (avoids Sign-in flash during restore)
- *   authenticated|refreshing → avatar + profile popover
- *   unauthenticated|error → Sign-in button
+ * - Unauthenticated → Sign-in button
+ * - Authenticated → circular avatar (picture / Gravatar / initials) + popover
  *
- * We pass the shared auth runtime singleton so the widget's token store
- * and our API client stay in sync.
+ * Profile is only mounted here (not in the dashboard drawer/sidebar).
  */
 export function StawiAuth() {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<MountHandle | null>(null);
+  const { resolved: resolvedTheme } = useTheme();
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    if ((host.shadowRoot || host.childElementCount > 0) && handleRef.current) return;
+
+    // Remount when theme flips so tokens/CSS stay correct.
+    handleRef.current?.unmount();
+    handleRef.current = null;
+    host.replaceChildren();
 
     const cfg = getConfig();
     try {
@@ -33,9 +36,11 @@ export function StawiAuth() {
         clientId: cfg.oidcClientID,
         idpBaseUrl: cfg.oidcIssuer,
         apiBaseUrl: cfg.candidatesAPIURL,
-        theme: 'light',
+        theme: resolvedTheme === 'dark' ? 'dark' : 'light',
         tokens: profileWidgetTokens,
         css: profileWidgetCSS,
+        // Fall back to Gravatar when the profile has no uploaded photo.
+        gravatar: true,
         onLogout: () => {
           window.location.href = '/';
         },
@@ -51,13 +56,15 @@ export function StawiAuth() {
       handleRef.current?.unmount();
       handleRef.current = null;
     };
-  }, []);
+  }, [resolvedTheme]);
 
-  // Host is intentionally empty-sized: while auth is initializing the
-  // widget renders nothing, so we must not reserve a Sign-in-shaped slot.
   return (
-    <div className="relative flex items-center" aria-label="Account" role="region">
-      <div ref={hostRef} />
+    <div
+      className="relative flex min-h-9 min-w-9 items-center justify-end"
+      aria-label="Account"
+      role="region"
+    >
+      <div ref={hostRef} className="flex items-center" />
     </div>
   );
 }

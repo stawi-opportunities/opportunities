@@ -260,7 +260,8 @@ function ApplyLink({
 }) {
   const { hasSession, ready, login } = useAuth();
   const className = large ? 'btn-primary px-8 py-3 text-base' : 'btn-primary';
-  const label = hasSession ? applyCtaLabel(snap.kind, t) : t('cta.signInToApply');
+  // Same label for everyone; anonymous users are sent through sign-in first.
+  const label = applyCtaLabel(snap.kind, t);
 
   const track = () => {
     trackApplyClick({
@@ -294,44 +295,25 @@ function ApplyLink({
     void login();
   };
 
-  // Wait for auth resolve so we don't flash "Apply" before session restore.
+  const onClick = () => {
+    if (!hasSession) {
+      signInThenApply();
+      return;
+    }
+    openEmployer();
+  };
+
+  // Wait for auth resolve so we don't start OIDC mid-session-restore.
   if (!ready) {
     return (
       <span className={`${className} pointer-events-none opacity-60`} aria-busy="true">
-        {t('cta.signInToApply')}
+        {label}
       </span>
     );
   }
 
-  if (!hasSession) {
-    return (
-      <button type="button" onClick={signInThenApply} className={className}>
-        {label}
-        {!large && (
-          <svg
-            className="ml-1.5 h-4 w-4"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M3 4.25A2.25 2.25 0 015.25 2h5.5A2.25 2.25 0 0113 4.25v2a.75.75 0 01-1.5 0v-2a.75.75 0 00-.75-.75h-5.5a.75.75 0 00-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 00.75-.75v-2a.75.75 0 011.5 0v2A2.25 2.25 0 0110.75 18h-5.5A2.25 2.25 0 013 15.75V4.25z"
-              clipRule="evenodd"
-            />
-            <path
-              fillRule="evenodd"
-              d="M6 10a.75.75 0 01.75-.75h9.546l-1.048-.943a.75.75 0 111.004-1.114l2.5 2.25a.75.75 0 010 1.114l-2.5 2.25a.75.75 0 11-1.004-1.114l1.048-.943H6.75A.75.75 0 016 10z"
-              clipRule="evenodd"
-            />
-          </svg>
-        )}
-      </button>
-    );
-  }
-
   return (
-    <button type="button" onClick={openEmployer} className={className}>
+    <button type="button" onClick={onClick} className={className}>
       {label}
       {!large && (
         <svg className="ml-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

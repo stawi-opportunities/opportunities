@@ -90,9 +90,7 @@ export function OpportunityChatCard({ card, className = '' }: Props) {
         <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">{card.subtitle}</p>
       ) : null}
       {applyURL ? (
-        <p className="mt-1.5 text-xs font-medium text-blue-600">
-          {hasSession ? 'Apply →' : 'Sign in to apply →'}
-        </p>
+        <p className="mt-1.5 text-xs font-medium text-blue-600">Apply →</p>
       ) : (
         <p className="mt-1.5 text-xs font-medium text-blue-600">View listing →</p>
       )}

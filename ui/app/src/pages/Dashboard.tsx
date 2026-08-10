@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { mount as mountProfile, type MountHandle } from '@stawi/profile';
-import { authRuntime } from '@/auth/runtime';
-import { profileWidgetTokens, profileWidgetCSS } from '@/theme/profile-widget';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
-import { getConfig } from '@/utils/config';
 import { useSubscription } from '@/hooks/useSubscription';
 import { normalizePlan } from '@/utils/plans';
 import { Button } from '@/components/ui/Button';
@@ -25,7 +21,6 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { PreferenceChatHost } from '@/components/preference-chat';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTheme } from '@/providers/ThemeProvider';
 import { useMatchingProfileGate } from '@/hooks/useMatchingProfileGate';
 import { useSubscriptionGate } from '@/hooks/useSubscriptionGate';
 import { useUserContext } from '@/hooks/useUserContext';
@@ -61,6 +56,7 @@ export default function Dashboard() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(initial.settingsTab);
   const [showPlanChange, setShowPlanChange] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const subQ = useSubscription();
   // Subscription first: never paint product UI or load profile until allowed.
@@ -166,7 +162,7 @@ export default function Dashboard() {
   return (
     <PreferenceChatHost>
       <div
-        className="mx-auto max-w-6xl px-4 py-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-8 md:pb-10 lg:px-8"
+        className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8 md:pb-10 lg:px-8"
         data-user-stage={userCtx.stage}
       >
         <DashboardHeader
@@ -174,6 +170,7 @@ export default function Dashboard() {
           status={subscription}
           stageLabel={userCtx.label}
           stageId={userCtx.stage}
+          onOpenMenu={() => setMenuOpen(true)}
         />
         <div className="mt-4 empty:hidden">
           <UserStageBanner stage={userCtx} />
@@ -187,9 +184,6 @@ export default function Dashboard() {
               t={t}
               matchCount={sub?.queued_matches}
             />
-            <div className="mt-8 border-t border-muted pt-6">
-              <ProfileMount />
-            </div>
           </aside>
           <section className="min-w-0">
             {activeSection === 'matches' && (
@@ -239,9 +233,6 @@ export default function Dashboard() {
             )}
           </section>
         </div>
-        <div className="mt-8 md:hidden">
-          <ProfileMount />
-        </div>
         {showPlanChange && plan && (
           <PlanChangeModal
             currentPlan={plan}
@@ -258,6 +249,8 @@ export default function Dashboard() {
           />
         )}
         <DashboardMobileNav
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
           active={activeSection}
           onNavigate={navigate}
           t={t}
@@ -266,37 +259,6 @@ export default function Dashboard() {
       </div>
     </PreferenceChatHost>
   );
-}
-
-function ProfileMount() {
-  const { resolved: resolvedTheme } = useTheme();
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    let handle: MountHandle | null = null;
-    try {
-      const cfg = getConfig();
-      handle = mountProfile({
-        target: host,
-        runtime: authRuntime(),
-        clientId: cfg.oidcClientID,
-        installationId: cfg.oidcInstallationID,
-        idpBaseUrl: cfg.oidcIssuer,
-        apiBaseUrl: cfg.candidatesAPIURL,
-        theme: resolvedTheme,
-        tokens: profileWidgetTokens,
-        css: profileWidgetCSS,
-        onLogout: () => {
-          window.location.href = '/';
-        },
-      });
-    } catch {
-      // best-effort
-    }
-    return () => handle?.unmount();
-  }, [resolvedTheme]);
-  return <div ref={hostRef} className="min-h-[200px]" />;
 }
 
 function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {

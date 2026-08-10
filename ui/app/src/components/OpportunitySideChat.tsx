@@ -131,7 +131,7 @@ function lastCardSlug(messages: OpportunityChatMessage[]): string | undefined {
 }
 
 export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
-  const { state, hasSession } = useAuth();
+  const { state, hasSession, login } = useAuth();
   const profileQ = useCandidateProfile();
   const [openMobile, setOpenMobile] = useState(false);
   const [messages, setMessages] = useState<OpportunityChatMessage[]>([]);
@@ -425,12 +425,15 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
           </p>
         )}
         {needsAuth ? (
-          <a
-            href="/auth/login/"
-            className="flex items-center justify-center rounded-full border border-navy-800 bg-navy-900 px-4 py-2.5 text-sm font-medium text-white"
+          <button
+            type="button"
+            onClick={() => {
+              void login();
+            }}
+            className="flex w-full items-center justify-center rounded-full border border-navy-800 bg-navy-900 px-4 py-2.5 text-sm font-medium text-white"
           >
-            Sign in to chat
-          </a>
+            Chat
+          </button>
         ) : (
           <form
             onSubmit={onSubmit}

@@ -1,12 +1,12 @@
-import type { ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
 import type { StringKey } from '@/i18n/strings';
 import type { SectionId } from './DashboardSidebar';
 
 /**
- * Primary mobile navigation: fixed bottom tab bar (thumb-zone).
- * Desktop keeps the sidebar; this is md:hidden only.
+ * Mobile navigation drawer (replaces bottom tabs).
+ * Desktop keeps the left sidebar; this is md:hidden only.
  */
-const TABS: {
+const ITEMS: {
   id: SectionId;
   labelKey: StringKey;
   short: string;
@@ -18,7 +18,7 @@ const TABS: {
     short: 'Matches',
     icon: (
       <svg
-        className="h-6 w-6"
+        className="h-5 w-5"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -38,7 +38,7 @@ const TABS: {
     short: 'Saved',
     icon: (
       <svg
-        className="h-6 w-6"
+        className="h-5 w-5"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -55,10 +55,10 @@ const TABS: {
   {
     id: 'applications',
     labelKey: 'nav.applications',
-    short: 'Apps',
+    short: 'Applications',
     icon: (
       <svg
-        className="h-6 w-6"
+        className="h-5 w-5"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -78,7 +78,7 @@ const TABS: {
     short: 'CV',
     icon: (
       <svg
-        className="h-6 w-6"
+        className="h-5 w-5"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -98,7 +98,7 @@ const TABS: {
     short: 'Settings',
     icon: (
       <svg
-        className="h-6 w-6"
+        className="h-5 w-5"
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
@@ -120,55 +120,105 @@ const TABS: {
 ];
 
 export function DashboardMobileNav({
+  open,
+  onClose,
   active,
   onNavigate,
   t,
   matchCount,
 }: {
+  open: boolean;
+  onClose: () => void;
   active: SectionId;
   onNavigate: (id: SectionId) => void;
   t: (k: StringKey, fallback?: string) => string;
   matchCount?: number | null;
 }) {
+  // Lock body scroll while the drawer is open.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  // Escape closes.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
   return (
-    <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-muted bg-nav-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
-      style={{ boxShadow: '0 -1px 0 rgb(var(--color-border) / 0.8)' }}
-      aria-label="Primary"
-    >
-      <ul className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-0.5">
-        {TABS.map((tab) => {
-          const isActive = tab.id === active;
-          const badge =
-            tab.id === 'matches' && matchCount != null && matchCount > 0 ? matchCount : null;
-          return (
-            <li key={tab.id} className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => onNavigate(tab.id)}
-                aria-current={isActive ? 'page' : undefined}
-                className={`relative flex w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium leading-tight transition-colors sm:text-xs ${
-                  isActive ? 'text-accent-700 dark:text-accent-400' : 'text-secondary'
-                }`}
-              >
-                <span
-                  className={`relative flex h-8 w-8 items-center justify-center rounded-lg ${
-                    isActive ? 'bg-accent-500/12' : ''
+    <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+      <button
+        type="button"
+        className="absolute inset-0 bg-navy-950/40 backdrop-blur-[2px]"
+        aria-label="Close menu"
+        onClick={onClose}
+      />
+      <nav
+        className="absolute inset-y-0 left-0 flex w-[min(20rem,88vw)] flex-col bg-surface shadow-[var(--shadow-lift)] animate-slide-down"
+        style={{ animationName: 'none' }}
+      >
+        <div className="flex items-center justify-between border-b border-muted px-4 py-3">
+          <p className="text-sm font-semibold text-main">Menu</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:bg-surface-hover hover:text-main"
+            aria-label="Close menu"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+            </svg>
+          </button>
+        </div>
+        <ul className="flex-1 space-y-0.5 overflow-y-auto p-3">
+          {ITEMS.map((item) => {
+            const isActive = item.id === active;
+            const badge =
+              item.id === 'matches' && matchCount != null && matchCount > 0 ? matchCount : null;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNavigate(item.id);
+                    onClose();
+                  }}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`flex min-h-[48px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-accent-500/10 text-main ring-1 ring-inset ring-accent-500/25'
+                      : 'text-secondary hover:bg-surface-hover hover:text-main'
                   }`}
                 >
-                  {tab.icon}
+                  <span
+                    className={isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="truncate">{t(item.labelKey, item.short)}</span>
                   {badge != null && (
-                    <span className="absolute -right-1 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-600 px-1 text-[9px] font-bold text-white">
+                    <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
                       {badge > 99 ? '99+' : badge}
                     </span>
                   )}
-                </span>
-                <span className="max-w-full truncate">{t(tab.labelKey, tab.short)}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {/* Profile lives in the site nav avatar — never duplicate it in the drawer. */}
+      </nav>
+    </div>
   );
 }

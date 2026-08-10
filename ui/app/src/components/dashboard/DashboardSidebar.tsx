@@ -126,7 +126,8 @@ const SECTIONS: Section[] = [
 ];
 
 /**
- * Desktop sidebar only. Mobile uses DashboardMobileNav (bottom tabs).
+ * Desktop sidebar only. Mobile uses DashboardMobileNav (drawer).
+ * Account avatar lives in the site Nav profile widget — not here.
  */
 export function DashboardSidebar({
   active,
