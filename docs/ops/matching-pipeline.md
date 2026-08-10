@@ -115,6 +115,12 @@ windows work across timezones (see `definitions/trustage/README.md`).
 | `MESSAGE_TEMPLATE_MATCHES_DIGEST` | `template.opportunities.matches.digest` | Paid match digest |
 | `MESSAGE_TEMPLATE_WEEKLY_JOBS_DIGEST` | `template.opportunities.weekly_jobs.digest` | Free jobs summary |
 | `MESSAGE_TEMPLATE_CV_STALE_NUDGE` | `template.opportunities.cv.stale_nudge` | CV freshness |
+| `MESSAGE_TEMPLATE_ATS_REPORT` | `template.opportunities.cv.ats_report` | Paid ATS report email |
+
+**Template registration:** catalog in `pkg/notify/catalog.go`. Setup/migrate Job
+(`DO_DATABASE_MIGRATE=true` + `NOTIFICATION_SERVICE_URI`) runs
+`notify.EnsureFromConfig` so missing templates are created via
+`TemplateSave`. See `definitions/notification-templates/README.md`.
 | `MATCHING_FANOUT_ENABLED` | **`false`** | Path A consumer (invoke-only product default) |
 | `OPPORTUNITY_FANOUT_QUEUE_URI` | mem://… | NATS workqueue for fan-out jobs |
 | `OPPORTUNITY_FANOUT_QUEUE_NAME` | subject | Subject / register ref |
