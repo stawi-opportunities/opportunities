@@ -49,11 +49,14 @@ func main() {
 		return repository.Migrate(mctx, svc.DatastoreManager(), migrationPath)
 	})
 
+	// Setup Job: migrate + permission namespace registration, then exit.
 	if frame.ShouldRunSetup(&cfg) {
+		sd := handlers.ServiceDescriptor()
+		svc.Init(ctx, frame.WithPermissionRegistration(sd))
 		if setupErr := svc.RunSetupForProcess(ctx, &cfg); setupErr != nil {
 			log.WithError(setupErr).Fatal("ats: setup plan failed")
 		}
-		log.Info("ats: setup plan complete — exiting")
+		log.Info("ats: setup plan complete (migrate + permissions) — exiting")
 		return
 	}
 
@@ -61,6 +64,7 @@ func main() {
 	if err != nil {
 		log.WithError(err).Fatal("ats: runtime init")
 	}
+	// Runtime: never register permissions or migrate.
 	svc.Init(ctx, opts...)
 	if err := svc.Run(ctx, ""); err != nil {
 		log.WithError(err).Fatal("ats: could not run server")
@@ -77,6 +81,8 @@ func applyLocalEnvOverrides(cfg *atsconfig.Config) {
 	if v := os.Getenv("ATS_MIGRATION_PATH"); v != "" {
 		cfg.MigrationPath = v
 	}
+	// ATS_ENFORCE_PERMISSIONS=false disables Keto function checks even with JWT
+	// (useful for partial envs). Default: enforce when JWT required.
 	if cfg.ServerPort == "" {
 		if addr := os.Getenv("HTTP_ADDR"); len(addr) > 1 && addr[0] == ':' {
 			cfg.ServerPort = addr[1:]
@@ -105,20 +111,36 @@ func initRuntime(ctx context.Context, svc *frame.Service, cfg *atsconfig.Config)
 		AiRuns:       repository.NewAiRunRepository(ctx, dbPool, workMan),
 	})
 
-	var authenticator security.Authenticator
 	allowDev := !cfg.AuthRequireJWT
+	var authenticator security.Authenticator
+	var authz security.Authorizer
+	enforcePerms := false
+
 	if cfg.AuthRequireJWT {
 		sec := svc.SecurityManager()
 		if sec == nil || sec.GetAuthenticator(ctx) == nil {
 			return nil, errors.New("ats: OIDC authenticator required when AUTH_REQUIRE_JWT=true")
 		}
 		authenticator = sec.GetAuthenticator(ctx)
+		authz = sec.GetAuthorizer(ctx)
+		// Enforce unless explicitly disabled.
+		enforcePerms = os.Getenv("ATS_ENFORCE_PERMISSIONS") != "false" &&
+			os.Getenv("ATS_ENFORCE_PERMISSIONS") != "0"
+		if enforcePerms && authz == nil {
+			log.Warn("ats: authorizer nil — function permissions disabled")
+			enforcePerms = false
+		}
 	}
 
-	mux, err := handlers.NewConnectMux(ctx, biz, authenticator, allowDev)
+	mux, err := handlers.NewConnectMux(ctx, biz, handlers.ConnectOptions{
+		Authenticator:      authenticator,
+		Authorizer:         authz,
+		AllowDevHeaders:    allowDev,
+		EnforcePermissions: enforcePerms,
+	})
 	if err != nil {
 		return nil, err
 	}
-	log.Info("ats: Connect API mounted (ats.v1.AtsService)")
+	log.Info("ats: Connect API mounted (ats.v1.AtsService, namespace service_ats)")
 	return []frame.Option{frame.WithHTTPHandler(handlers.CORSMiddleware(mux))}, nil
 }

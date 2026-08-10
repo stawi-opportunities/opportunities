@@ -28,7 +28,9 @@ func (s *ConnectSuite) TestConnectListCreateJobAndSeed() {
 	t := s.T()
 	ctx, deps := s.CreateService(t)
 
-	mux, err := handlers.NewConnectMux(ctx, deps.Svc, nil, true)
+	mux, err := handlers.NewConnectMux(ctx, deps.Svc, handlers.ConnectOptions{
+		AllowDevHeaders: true,
+	})
 	require.NoError(t, err)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

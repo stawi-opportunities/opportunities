@@ -2,6 +2,8 @@ version: v2
 modules:
   - path: .
     name: buf.build/local/ats
+deps:
+  - buf.build/antinvestor/common
 lint:
   use:
     - STANDARD

@@ -101,11 +101,8 @@ const (
 
 // AtsServiceClient is a client for the ats.v1.AtsService service.
 type AtsServiceClient interface {
-	// Dashboard aggregates open jobs, pipeline, and upcoming interviews.
 	GetDashboard(context.Context, *connect.Request[v1.GetDashboardRequest]) (*connect.Response[v1.GetDashboardResponse], error)
-	// SeedDemo creates sample jobs/talent/availability when the partition is empty (dev).
 	SeedDemo(context.Context, *connect.Request[v1.SeedDemoRequest]) (*connect.Response[v1.SeedDemoResponse], error)
-	// Jobs
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	CreateJob(context.Context, *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error)
 	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
@@ -113,27 +110,22 @@ type AtsServiceClient interface {
 	CloseJob(context.Context, *connect.Request[v1.CloseJobRequest]) (*connect.Response[v1.CloseJobResponse], error)
 	PublishJob(context.Context, *connect.Request[v1.PublishJobRequest]) (*connect.Response[v1.PublishJobResponse], error)
 	UnpublishJob(context.Context, *connect.Request[v1.UnpublishJobRequest]) (*connect.Response[v1.UnpublishJobResponse], error)
-	// Pipeline
 	ListApplications(context.Context, *connect.Request[v1.ListApplicationsRequest]) (*connect.Response[v1.ListApplicationsResponse], error)
 	CreateApplication(context.Context, *connect.Request[v1.CreateApplicationRequest]) (*connect.Response[v1.CreateApplicationResponse], error)
 	GetApplication(context.Context, *connect.Request[v1.GetApplicationRequest]) (*connect.Response[v1.GetApplicationResponse], error)
 	AdvanceApplication(context.Context, *connect.Request[v1.AdvanceApplicationRequest]) (*connect.Response[v1.AdvanceApplicationResponse], error)
 	HireApplication(context.Context, *connect.Request[v1.HireApplicationRequest]) (*connect.Response[v1.HireApplicationResponse], error)
-	// Stawi talent source
 	ListTalent(context.Context, *connect.Request[v1.ListTalentRequest]) (*connect.Response[v1.ListTalentResponse], error)
 	AddTalent(context.Context, *connect.Request[v1.AddTalentRequest]) (*connect.Response[v1.AddTalentResponse], error)
-	// Interviews
 	ListInterviews(context.Context, *connect.Request[v1.ListInterviewsRequest]) (*connect.Response[v1.ListInterviewsResponse], error)
 	ProposeInterview(context.Context, *connect.Request[v1.ProposeInterviewRequest]) (*connect.Response[v1.ProposeInterviewResponse], error)
 	ListInterviewSlots(context.Context, *connect.Request[v1.ListInterviewSlotsRequest]) (*connect.Response[v1.ListInterviewSlotsResponse], error)
 	BookInterview(context.Context, *connect.Request[v1.BookInterviewRequest]) (*connect.Response[v1.BookInterviewResponse], error)
 	GetInterviewICS(context.Context, *connect.Request[v1.GetInterviewICSRequest]) (*connect.Response[v1.GetInterviewICSResponse], error)
-	// Availability (acting profile)
 	GetMyAvailability(context.Context, *connect.Request[v1.GetMyAvailabilityRequest]) (*connect.Response[v1.GetMyAvailabilityResponse], error)
 	SetMyAvailability(context.Context, *connect.Request[v1.SetMyAvailabilityRequest]) (*connect.Response[v1.SetMyAvailabilityResponse], error)
-	// Candidate portal
+	// Candidate self-view of applications (same permission as application view).
 	ListMyApplications(context.Context, *connect.Request[v1.ListMyApplicationsRequest]) (*connect.Response[v1.ListMyApplicationsResponse], error)
-	// AI assist
 	ScreenSummary(context.Context, *connect.Request[v1.ScreenSummaryRequest]) (*connect.Response[v1.ScreenSummaryResponse], error)
 }
 
@@ -152,6 +144,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceGetDashboardProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("GetDashboard")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		seedDemo: connect.NewClient[v1.SeedDemoRequest, v1.SeedDemoResponse](
@@ -164,6 +157,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceListJobsProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("ListJobs")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		createJob: connect.NewClient[v1.CreateJobRequest, v1.CreateJobResponse](
@@ -176,6 +170,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceGetJobProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("GetJob")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		updateJob: connect.NewClient[v1.UpdateJobRequest, v1.UpdateJobResponse](
@@ -206,6 +201,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceListApplicationsProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("ListApplications")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		createApplication: connect.NewClient[v1.CreateApplicationRequest, v1.CreateApplicationResponse](
@@ -218,6 +214,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceGetApplicationProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("GetApplication")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		advanceApplication: connect.NewClient[v1.AdvanceApplicationRequest, v1.AdvanceApplicationResponse](
@@ -236,6 +233,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceListTalentProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("ListTalent")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		addTalent: connect.NewClient[v1.AddTalentRequest, v1.AddTalentResponse](
@@ -248,6 +246,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceListInterviewsProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("ListInterviews")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		proposeInterview: connect.NewClient[v1.ProposeInterviewRequest, v1.ProposeInterviewResponse](
@@ -260,6 +259,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceListInterviewSlotsProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("ListInterviewSlots")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		bookInterview: connect.NewClient[v1.BookInterviewRequest, v1.BookInterviewResponse](
@@ -272,12 +272,14 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceGetInterviewICSProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("GetInterviewICS")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		getMyAvailability: connect.NewClient[v1.GetMyAvailabilityRequest, v1.GetMyAvailabilityResponse](
 			httpClient,
 			baseURL+AtsServiceGetMyAvailabilityProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("GetMyAvailability")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		setMyAvailability: connect.NewClient[v1.SetMyAvailabilityRequest, v1.SetMyAvailabilityResponse](
@@ -290,6 +292,7 @@ func NewAtsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+AtsServiceListMyApplicationsProcedure,
 			connect.WithSchema(atsServiceMethods.ByName("ListMyApplications")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		screenSummary: connect.NewClient[v1.ScreenSummaryRequest, v1.ScreenSummaryResponse](
@@ -457,11 +460,8 @@ func (c *atsServiceClient) ScreenSummary(ctx context.Context, req *connect.Reque
 
 // AtsServiceHandler is an implementation of the ats.v1.AtsService service.
 type AtsServiceHandler interface {
-	// Dashboard aggregates open jobs, pipeline, and upcoming interviews.
 	GetDashboard(context.Context, *connect.Request[v1.GetDashboardRequest]) (*connect.Response[v1.GetDashboardResponse], error)
-	// SeedDemo creates sample jobs/talent/availability when the partition is empty (dev).
 	SeedDemo(context.Context, *connect.Request[v1.SeedDemoRequest]) (*connect.Response[v1.SeedDemoResponse], error)
-	// Jobs
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	CreateJob(context.Context, *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error)
 	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
@@ -469,27 +469,22 @@ type AtsServiceHandler interface {
 	CloseJob(context.Context, *connect.Request[v1.CloseJobRequest]) (*connect.Response[v1.CloseJobResponse], error)
 	PublishJob(context.Context, *connect.Request[v1.PublishJobRequest]) (*connect.Response[v1.PublishJobResponse], error)
 	UnpublishJob(context.Context, *connect.Request[v1.UnpublishJobRequest]) (*connect.Response[v1.UnpublishJobResponse], error)
-	// Pipeline
 	ListApplications(context.Context, *connect.Request[v1.ListApplicationsRequest]) (*connect.Response[v1.ListApplicationsResponse], error)
 	CreateApplication(context.Context, *connect.Request[v1.CreateApplicationRequest]) (*connect.Response[v1.CreateApplicationResponse], error)
 	GetApplication(context.Context, *connect.Request[v1.GetApplicationRequest]) (*connect.Response[v1.GetApplicationResponse], error)
 	AdvanceApplication(context.Context, *connect.Request[v1.AdvanceApplicationRequest]) (*connect.Response[v1.AdvanceApplicationResponse], error)
 	HireApplication(context.Context, *connect.Request[v1.HireApplicationRequest]) (*connect.Response[v1.HireApplicationResponse], error)
-	// Stawi talent source
 	ListTalent(context.Context, *connect.Request[v1.ListTalentRequest]) (*connect.Response[v1.ListTalentResponse], error)
 	AddTalent(context.Context, *connect.Request[v1.AddTalentRequest]) (*connect.Response[v1.AddTalentResponse], error)
-	// Interviews
 	ListInterviews(context.Context, *connect.Request[v1.ListInterviewsRequest]) (*connect.Response[v1.ListInterviewsResponse], error)
 	ProposeInterview(context.Context, *connect.Request[v1.ProposeInterviewRequest]) (*connect.Response[v1.ProposeInterviewResponse], error)
 	ListInterviewSlots(context.Context, *connect.Request[v1.ListInterviewSlotsRequest]) (*connect.Response[v1.ListInterviewSlotsResponse], error)
 	BookInterview(context.Context, *connect.Request[v1.BookInterviewRequest]) (*connect.Response[v1.BookInterviewResponse], error)
 	GetInterviewICS(context.Context, *connect.Request[v1.GetInterviewICSRequest]) (*connect.Response[v1.GetInterviewICSResponse], error)
-	// Availability (acting profile)
 	GetMyAvailability(context.Context, *connect.Request[v1.GetMyAvailabilityRequest]) (*connect.Response[v1.GetMyAvailabilityResponse], error)
 	SetMyAvailability(context.Context, *connect.Request[v1.SetMyAvailabilityRequest]) (*connect.Response[v1.SetMyAvailabilityResponse], error)
-	// Candidate portal
+	// Candidate self-view of applications (same permission as application view).
 	ListMyApplications(context.Context, *connect.Request[v1.ListMyApplicationsRequest]) (*connect.Response[v1.ListMyApplicationsResponse], error)
-	// AI assist
 	ScreenSummary(context.Context, *connect.Request[v1.ScreenSummaryRequest]) (*connect.Response[v1.ScreenSummaryResponse], error)
 }
 
@@ -504,6 +499,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceGetDashboardProcedure,
 		svc.GetDashboard,
 		connect.WithSchema(atsServiceMethods.ByName("GetDashboard")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceSeedDemoHandler := connect.NewUnaryHandler(
@@ -516,6 +512,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceListJobsProcedure,
 		svc.ListJobs,
 		connect.WithSchema(atsServiceMethods.ByName("ListJobs")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceCreateJobHandler := connect.NewUnaryHandler(
@@ -528,6 +525,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceGetJobProcedure,
 		svc.GetJob,
 		connect.WithSchema(atsServiceMethods.ByName("GetJob")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceUpdateJobHandler := connect.NewUnaryHandler(
@@ -558,6 +556,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceListApplicationsProcedure,
 		svc.ListApplications,
 		connect.WithSchema(atsServiceMethods.ByName("ListApplications")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceCreateApplicationHandler := connect.NewUnaryHandler(
@@ -570,6 +569,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceGetApplicationProcedure,
 		svc.GetApplication,
 		connect.WithSchema(atsServiceMethods.ByName("GetApplication")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceAdvanceApplicationHandler := connect.NewUnaryHandler(
@@ -588,6 +588,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceListTalentProcedure,
 		svc.ListTalent,
 		connect.WithSchema(atsServiceMethods.ByName("ListTalent")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceAddTalentHandler := connect.NewUnaryHandler(
@@ -600,6 +601,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceListInterviewsProcedure,
 		svc.ListInterviews,
 		connect.WithSchema(atsServiceMethods.ByName("ListInterviews")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceProposeInterviewHandler := connect.NewUnaryHandler(
@@ -612,6 +614,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceListInterviewSlotsProcedure,
 		svc.ListInterviewSlots,
 		connect.WithSchema(atsServiceMethods.ByName("ListInterviewSlots")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceBookInterviewHandler := connect.NewUnaryHandler(
@@ -624,12 +627,14 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceGetInterviewICSProcedure,
 		svc.GetInterviewICS,
 		connect.WithSchema(atsServiceMethods.ByName("GetInterviewICS")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceGetMyAvailabilityHandler := connect.NewUnaryHandler(
 		AtsServiceGetMyAvailabilityProcedure,
 		svc.GetMyAvailability,
 		connect.WithSchema(atsServiceMethods.ByName("GetMyAvailability")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceSetMyAvailabilityHandler := connect.NewUnaryHandler(
@@ -642,6 +647,7 @@ func NewAtsServiceHandler(svc AtsServiceHandler, opts ...connect.HandlerOption) 
 		AtsServiceListMyApplicationsProcedure,
 		svc.ListMyApplications,
 		connect.WithSchema(atsServiceMethods.ByName("ListMyApplications")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	atsServiceScreenSummaryHandler := connect.NewUnaryHandler(

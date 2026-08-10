@@ -7,6 +7,7 @@
 package atsv1
 
 import (
+	_ "buf.build/gen/go/antinvestor/common/protocolbuffers/go/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -29,10 +30,10 @@ type Job struct {
 	Title         string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
 	Description   string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
 	Location      string                 `protobuf:"bytes,6,opt,name=location,proto3" json:"location,omitempty"`
-	Status        string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`         // draft|open|closed
-	Visibility    string                 `protobuf:"bytes,8,opt,name=visibility,proto3" json:"visibility,omitempty"` // private|published
+	Status        string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
+	Visibility    string                 `protobuf:"bytes,8,opt,name=visibility,proto3" json:"visibility,omitempty"`
 	OpportunityId string                 `protobuf:"bytes,9,opt,name=opportunity_id,json=opportunityId,proto3" json:"opportunity_id,omitempty"`
-	PublishedAt   string                 `protobuf:"bytes,10,opt,name=published_at,json=publishedAt,proto3" json:"published_at,omitempty"` // RFC3339
+	PublishedAt   string                 `protobuf:"bytes,10,opt,name=published_at,json=publishedAt,proto3" json:"published_at,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     string                 `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -511,8 +512,8 @@ func (x *TalentHit) GetSummary() string {
 
 type WeekRule struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Weekday       int32                  `protobuf:"varint,1,opt,name=weekday,proto3" json:"weekday,omitempty"` // 0=Sunday … 6=Saturday
-	Start         string                 `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`      // HH:MM
+	Weekday       int32                  `protobuf:"varint,1,opt,name=weekday,proto3" json:"weekday,omitempty"`
+	Start         string                 `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
 	End           string                 `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -571,7 +572,7 @@ func (x *WeekRule) GetEnd() string {
 
 type ExceptionDay struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"` // YYYY-MM-DD
+	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
 	Blocked       bool                   `protobuf:"varint,2,opt,name=blocked,proto3" json:"blocked,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -691,7 +692,7 @@ func (x *Availability) GetExceptions() []*ExceptionDay {
 
 type Slot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Start         string                 `protobuf:"bytes,1,opt,name=start,proto3" json:"start,omitempty"` // RFC3339
+	Start         string                 `protobuf:"bytes,1,opt,name=start,proto3" json:"start,omitempty"`
 	End           string                 `protobuf:"bytes,2,opt,name=end,proto3" json:"end,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2768,7 +2769,7 @@ func (x *ListInterviewSlotsResponse) GetSlots() []*Slot {
 type BookInterviewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InterviewId   string                 `protobuf:"bytes,1,opt,name=interview_id,json=interviewId,proto3" json:"interview_id,omitempty"`
-	Start         string                 `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"` // RFC3339
+	Start         string                 `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
 	End           string                 `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3313,7 +3314,7 @@ var File_ats_v1_ats_proto protoreflect.FileDescriptor
 
 const file_ats_v1_ats_proto_rawDesc = "" +
 	"\n" +
-	"\x10ats/v1/ats.proto\x12\x06ats.v1\"\xe9\x02\n" +
+	"\x10ats/v1/ats.proto\x12\x06ats.v1\x1a\x1bcommon/v1/permissions.proto\"\xe9\x02\n" +
 	"\x03Job\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12!\n" +
@@ -3543,36 +3544,70 @@ const file_ats_v1_ats_proto_rawDesc = "" +
 	"\x14ScreenSummaryRequest\x12%\n" +
 	"\x0eapplication_id\x18\x01 \x01(\tR\rapplicationId\"1\n" +
 	"\x15ScreenSummaryResponse\x12\x18\n" +
-	"\asummary\x18\x01 \x01(\tR\asummary2\xa1\x0f\n" +
+	"\asummary\x18\x01 \x01(\tR\asummary2\xb4 \n" +
 	"\n" +
-	"AtsService\x12I\n" +
-	"\fGetDashboard\x12\x1b.ats.v1.GetDashboardRequest\x1a\x1c.ats.v1.GetDashboardResponse\x12=\n" +
-	"\bSeedDemo\x12\x17.ats.v1.SeedDemoRequest\x1a\x18.ats.v1.SeedDemoResponse\x12=\n" +
-	"\bListJobs\x12\x17.ats.v1.ListJobsRequest\x1a\x18.ats.v1.ListJobsResponse\x12@\n" +
-	"\tCreateJob\x12\x18.ats.v1.CreateJobRequest\x1a\x19.ats.v1.CreateJobResponse\x127\n" +
-	"\x06GetJob\x12\x15.ats.v1.GetJobRequest\x1a\x16.ats.v1.GetJobResponse\x12@\n" +
-	"\tUpdateJob\x12\x18.ats.v1.UpdateJobRequest\x1a\x19.ats.v1.UpdateJobResponse\x12=\n" +
-	"\bCloseJob\x12\x17.ats.v1.CloseJobRequest\x1a\x18.ats.v1.CloseJobResponse\x12C\n" +
+	"AtsService\x12f\n" +
+	"\fGetDashboard\x12\x1b.ats.v1.GetDashboardRequest\x1a\x1c.ats.v1.GetDashboardResponse\"\x1b\x82\xb5\x18\x14\n" +
+	"\x12ats_dashboard_view\x90\x02\x01\x12R\n" +
+	"\bSeedDemo\x12\x17.ats.v1.SeedDemoRequest\x1a\x18.ats.v1.SeedDemoResponse\"\x13\x82\xb5\x18\x0f\n" +
+	"\rats_demo_seed\x12T\n" +
+	"\bListJobs\x12\x17.ats.v1.ListJobsRequest\x1a\x18.ats.v1.ListJobsResponse\"\x15\x82\xb5\x18\x0e\n" +
+	"\fats_job_view\x90\x02\x01\x12V\n" +
+	"\tCreateJob\x12\x18.ats.v1.CreateJobRequest\x1a\x19.ats.v1.CreateJobResponse\"\x14\x82\xb5\x18\x10\n" +
+	"\x0eats_job_manage\x12N\n" +
+	"\x06GetJob\x12\x15.ats.v1.GetJobRequest\x1a\x16.ats.v1.GetJobResponse\"\x15\x82\xb5\x18\x0e\n" +
+	"\fats_job_view\x90\x02\x01\x12V\n" +
+	"\tUpdateJob\x12\x18.ats.v1.UpdateJobRequest\x1a\x19.ats.v1.UpdateJobResponse\"\x14\x82\xb5\x18\x10\n" +
+	"\x0eats_job_manage\x12S\n" +
+	"\bCloseJob\x12\x17.ats.v1.CloseJobRequest\x1a\x18.ats.v1.CloseJobResponse\"\x14\x82\xb5\x18\x10\n" +
+	"\x0eats_job_manage\x12V\n" +
 	"\n" +
-	"PublishJob\x12\x19.ats.v1.PublishJobRequest\x1a\x1a.ats.v1.PublishJobResponse\x12I\n" +
-	"\fUnpublishJob\x12\x1b.ats.v1.UnpublishJobRequest\x1a\x1c.ats.v1.UnpublishJobResponse\x12U\n" +
-	"\x10ListApplications\x12\x1f.ats.v1.ListApplicationsRequest\x1a .ats.v1.ListApplicationsResponse\x12X\n" +
-	"\x11CreateApplication\x12 .ats.v1.CreateApplicationRequest\x1a!.ats.v1.CreateApplicationResponse\x12O\n" +
-	"\x0eGetApplication\x12\x1d.ats.v1.GetApplicationRequest\x1a\x1e.ats.v1.GetApplicationResponse\x12[\n" +
-	"\x12AdvanceApplication\x12!.ats.v1.AdvanceApplicationRequest\x1a\".ats.v1.AdvanceApplicationResponse\x12R\n" +
-	"\x0fHireApplication\x12\x1e.ats.v1.HireApplicationRequest\x1a\x1f.ats.v1.HireApplicationResponse\x12C\n" +
+	"PublishJob\x12\x19.ats.v1.PublishJobRequest\x1a\x1a.ats.v1.PublishJobResponse\"\x11\x82\xb5\x18\r\n" +
+	"\vats_publish\x12\\\n" +
+	"\fUnpublishJob\x12\x1b.ats.v1.UnpublishJobRequest\x1a\x1c.ats.v1.UnpublishJobResponse\"\x11\x82\xb5\x18\r\n" +
+	"\vats_publish\x12t\n" +
+	"\x10ListApplications\x12\x1f.ats.v1.ListApplicationsRequest\x1a .ats.v1.ListApplicationsResponse\"\x1d\x82\xb5\x18\x16\n" +
+	"\x14ats_application_view\x90\x02\x01\x12v\n" +
+	"\x11CreateApplication\x12 .ats.v1.CreateApplicationRequest\x1a!.ats.v1.CreateApplicationResponse\"\x1c\x82\xb5\x18\x18\n" +
+	"\x16ats_application_manage\x12n\n" +
+	"\x0eGetApplication\x12\x1d.ats.v1.GetApplicationRequest\x1a\x1e.ats.v1.GetApplicationResponse\"\x1d\x82\xb5\x18\x16\n" +
+	"\x14ats_application_view\x90\x02\x01\x12y\n" +
+	"\x12AdvanceApplication\x12!.ats.v1.AdvanceApplicationRequest\x1a\".ats.v1.AdvanceApplicationResponse\"\x1c\x82\xb5\x18\x18\n" +
+	"\x16ats_application_manage\x12b\n" +
+	"\x0fHireApplication\x12\x1e.ats.v1.HireApplicationRequest\x1a\x1f.ats.v1.HireApplicationResponse\"\x0e\x82\xb5\x18\n" +
 	"\n" +
-	"ListTalent\x12\x19.ats.v1.ListTalentRequest\x1a\x1a.ats.v1.ListTalentResponse\x12@\n" +
-	"\tAddTalent\x12\x18.ats.v1.AddTalentRequest\x1a\x19.ats.v1.AddTalentResponse\x12O\n" +
-	"\x0eListInterviews\x12\x1d.ats.v1.ListInterviewsRequest\x1a\x1e.ats.v1.ListInterviewsResponse\x12U\n" +
-	"\x10ProposeInterview\x12\x1f.ats.v1.ProposeInterviewRequest\x1a .ats.v1.ProposeInterviewResponse\x12[\n" +
-	"\x12ListInterviewSlots\x12!.ats.v1.ListInterviewSlotsRequest\x1a\".ats.v1.ListInterviewSlotsResponse\x12L\n" +
-	"\rBookInterview\x12\x1c.ats.v1.BookInterviewRequest\x1a\x1d.ats.v1.BookInterviewResponse\x12R\n" +
-	"\x0fGetInterviewICS\x12\x1e.ats.v1.GetInterviewICSRequest\x1a\x1f.ats.v1.GetInterviewICSResponse\x12X\n" +
-	"\x11GetMyAvailability\x12 .ats.v1.GetMyAvailabilityRequest\x1a!.ats.v1.GetMyAvailabilityResponse\x12X\n" +
-	"\x11SetMyAvailability\x12 .ats.v1.SetMyAvailabilityRequest\x1a!.ats.v1.SetMyAvailabilityResponse\x12[\n" +
-	"\x12ListMyApplications\x12!.ats.v1.ListMyApplicationsRequest\x1a\".ats.v1.ListMyApplicationsResponse\x12L\n" +
-	"\rScreenSummary\x12\x1c.ats.v1.ScreenSummaryRequest\x1a\x1d.ats.v1.ScreenSummaryResponseB\x97\x01\n" +
+	"\bats_hire\x12]\n" +
+	"\n" +
+	"ListTalent\x12\x19.ats.v1.ListTalentRequest\x1a\x1a.ats.v1.ListTalentResponse\"\x18\x82\xb5\x18\x11\n" +
+	"\x0fats_talent_view\x90\x02\x01\x12Y\n" +
+	"\tAddTalent\x12\x18.ats.v1.AddTalentRequest\x1a\x19.ats.v1.AddTalentResponse\"\x17\x82\xb5\x18\x13\n" +
+	"\x11ats_talent_manage\x12l\n" +
+	"\x0eListInterviews\x12\x1d.ats.v1.ListInterviewsRequest\x1a\x1e.ats.v1.ListInterviewsResponse\"\x1b\x82\xb5\x18\x14\n" +
+	"\x12ats_interview_view\x90\x02\x01\x12q\n" +
+	"\x10ProposeInterview\x12\x1f.ats.v1.ProposeInterviewRequest\x1a .ats.v1.ProposeInterviewResponse\"\x1a\x82\xb5\x18\x16\n" +
+	"\x14ats_interview_manage\x12x\n" +
+	"\x12ListInterviewSlots\x12!.ats.v1.ListInterviewSlotsRequest\x1a\".ats.v1.ListInterviewSlotsResponse\"\x1b\x82\xb5\x18\x14\n" +
+	"\x12ats_interview_view\x90\x02\x01\x12h\n" +
+	"\rBookInterview\x12\x1c.ats.v1.BookInterviewRequest\x1a\x1d.ats.v1.BookInterviewResponse\"\x1a\x82\xb5\x18\x16\n" +
+	"\x14ats_interview_manage\x12o\n" +
+	"\x0fGetInterviewICS\x12\x1e.ats.v1.GetInterviewICSRequest\x1a\x1f.ats.v1.GetInterviewICSResponse\"\x1b\x82\xb5\x18\x14\n" +
+	"\x12ats_interview_view\x90\x02\x01\x12z\n" +
+	"\x11GetMyAvailability\x12 .ats.v1.GetMyAvailabilityRequest\x1a!.ats.v1.GetMyAvailabilityResponse\" \x82\xb5\x18\x19\n" +
+	"\x17ats_availability_manage\x90\x02\x01\x12w\n" +
+	"\x11SetMyAvailability\x12 .ats.v1.SetMyAvailabilityRequest\x1a!.ats.v1.SetMyAvailabilityResponse\"\x1d\x82\xb5\x18\x19\n" +
+	"\x17ats_availability_manage\x12z\n" +
+	"\x12ListMyApplications\x12!.ats.v1.ListMyApplicationsRequest\x1a\".ats.v1.ListMyApplicationsResponse\"\x1d\x82\xb5\x18\x16\n" +
+	"\x14ats_application_view\x90\x02\x01\x12^\n" +
+	"\rScreenSummary\x12\x1c.ats.v1.ScreenSummaryRequest\x1a\x1d.ats.v1.ScreenSummaryResponse\"\x10\x82\xb5\x18\f\n" +
+	"\n" +
+	"ats_ai_use\x1a\x8a\f\x82\xb5\x18\x85\f\n" +
+	"\vservice_ats\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seed\x1a\xfb\x01\b\x01\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seed\x1a\xfb\x01\b\x02\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seed\x1a\xec\x01\b\x03\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x1a\xb2\x01\b\x05\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x1a_\b\x04\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x14ats_application_view\x12\x12ats_interview_view\x12\x0fats_talent_view\x1a\xfb\x01\b\x06\x12\x12ats_dashboard_view\x12\fats_job_view\x12\x0eats_job_manage\x12\x14ats_application_view\x12\x16ats_application_manage\x12\x12ats_interview_view\x12\x14ats_interview_manage\x12\x0fats_talent_view\x12\x11ats_talent_manage\x12\x17ats_availability_manage\x12\n" +
+	"ats_ai_use\x12\bats_hire\x12\vats_publish\x12\rats_demo_seedB\x97\x01\n" +
 	"\n" +
 	"com.ats.v1B\bAtsProtoP\x01ZFgithub.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1;atsv1\xa2\x02\x03AXX\xaa\x02\x06Ats.V1\xca\x02\x06Ats\\V1\xe2\x02\x12Ats\\V1\\GPBMetadata\xea\x02\aAts::V1b\x06proto3"
 

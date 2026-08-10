@@ -55,11 +55,28 @@ go test ./apps/ats/... -count=1   # testcontainers Postgres
 
 ## Production
 
-1. Cloud Run setup Job: `argv=["setup"]` / `DO_SETUP=true` with migration path  
-2. Runtime service: Postgres only, `AUTH_REQUIRE_JWT=true`, OIDC  
+1. Cloud Run **setup Job**: `argv=["setup"]` / `DO_SETUP=true`  
+   - Migrates schema  
+   - Registers **`service_ats`** permission namespace from proto (`frame.WithPermissionRegistration`)  
+2. Runtime: Postgres only, `AUTH_REQUIRE_JWT=true`, OIDC  
+   - Connect interceptors: JWT + claims + **FunctionAccess** (`ATS_ENFORCE_PERMISSIONS` default on)  
 3. Inject real `MatchingTalent` / `OpportunityPublisher` / `BillingEmitter` / `Notifier`  
-4. Register permission namespace + SPA audience (tenancy)  
-5. Optional later: Connect RPC peer surface over the same `business.Service`
+4. Deploy: SPA audience path for product API; SA name `service-ats` ↔ namespace `service_ats`  
+5. Grant partition roles (OWNER/ADMIN/OPERATOR/MEMBER/VIEWER) so Keto `granted_*` tuples resolve  
+
+### Permission map (summary)
+
+| Permission | Roles (typical) |
+|------------|-----------------|
+| `ats_dashboard_view` | owner, admin, operator, member, viewer |
+| `ats_job_manage` / `ats_publish` | owner, admin, operator |
+| `ats_application_manage` | owner, admin, operator, member |
+| `ats_hire` | owner, admin, operator |
+| `ats_interview_manage` | owner, admin, operator, member |
+| `ats_ai_use` | owner, admin, operator, member |
+| `ats_demo_seed` | owner, admin, service (dev) |
+
+Declared in `apps/ats/proto/ats/v1/ats.proto` via `common.v1.service_permissions` + `method_permissions`.
 
 ## API (Connect)
 
@@ -78,4 +95,4 @@ POST /ats.v1.AtsService/CreateJob
 
 SPA uses `Connect-Protocol-Version: 1` + JSON body. Agents use generated `atsv1connect.NewAtsServiceClient`.
 
-5. Optional: publish proto to `buf.build` for cross-language clients (Flutter/TS gen).
+Publish to `buf.build` when ready for Flutter/TS generated clients across products.

@@ -7,14 +7,23 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
+	"github.com/antinvestor/common/v2/permissions"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pitabwire/frame/v2/security"
+	"github.com/pitabwire/frame/v2/security/authorizer"
 	connectInterceptors "github.com/pitabwire/frame/v2/security/interceptors/connect"
 	"github.com/pitabwire/util"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
+	atsv1 "github.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1"
 	"github.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1/atsv1connect"
 	"github.com/stawi-opportunities/opportunities/apps/ats/service/business"
 )
+
+// ServiceDescriptor returns the AtsService descriptor for permission registration.
+func ServiceDescriptor() protoreflect.ServiceDescriptor {
+	return atsv1.File_ats_v1_ats_proto.Services().ByName("AtsService")
+}
 
 // DevHeaderClaimsInterceptor injects tenancy claims from X-Profile-ID /
 // X-Tenant-ID / X-Partition-ID when no JWT claims are present (local/dev).
@@ -59,45 +68,78 @@ func injectDevClaims(ctx context.Context, h http.Header) context.Context {
 	return c.ClaimsToContext(ctx)
 }
 
+// ConnectOptions configures auth + ReBAC interceptors.
+type ConnectOptions struct {
+	Authenticator   security.Authenticator
+	Authorizer      security.Authorizer
+	AllowDevHeaders bool
+	// EnforcePermissions enables FunctionAccessInterceptor (production).
+	// Disabled for local dev so demo headers work without Keto grants.
+	EnforcePermissions bool
+}
+
 // NewConnectMux mounts AtsService (Connect) + /healthz.
-// allowDevHeaders=true skips JWT and accepts tenancy headers.
 func NewConnectMux(
 	ctx context.Context,
 	biz *business.Service,
-	authenticator security.Authenticator,
-	allowDevHeaders bool,
+	opts ConnectOptions,
 ) (http.Handler, error) {
 	impl := NewConnectServer(biz)
-	var interceptors []connect.Interceptor
-	if allowDevHeaders {
-		interceptors = append(interceptors, DevHeaderClaimsInterceptor{})
-		util.Log(ctx).Warn("ats: Connect using dev tenancy headers (AUTH_REQUIRE_JWT=false)")
-	} else {
-		if authenticator == nil {
-			return nil, errors.New("ats: authenticator required when AUTH_REQUIRE_JWT=true")
-		}
-		list, err := connectInterceptors.DefaultList(ctx, authenticator)
-		if err != nil {
-			return nil, err
-		}
-		interceptors = list
-		util.Log(ctx).Info("ats: Connect using JWT + default Frame interceptors")
+	interceptors, err := buildInterceptors(ctx, opts)
+	if err != nil {
+		return nil, err
 	}
 
 	path, h := atsv1connect.NewAtsServiceHandler(impl, connect.WithInterceptors(interceptors...))
 	mux := http.NewServeMux()
-	// path is "/ats.v1.AtsService/" — handler routes full procedure paths.
 	mux.Handle(path, h)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":  "ok",
-			"service": "ats",
-			"api":     "connect",
-			"path":    path,
+			"status":              "ok",
+			"service":             "ats",
+			"api":                 "connect",
+			"path":                path,
+			"permissions_enforce": opts.EnforcePermissions,
+			"namespace":           "service_ats",
 		})
 	})
 	return mux, nil
+}
+
+func buildInterceptors(ctx context.Context, opts ConnectOptions) ([]connect.Interceptor, error) {
+	log := util.Log(ctx)
+	if opts.AllowDevHeaders {
+		log.Warn("ats: Connect using dev tenancy headers; function permissions not enforced")
+		return []connect.Interceptor{DevHeaderClaimsInterceptor{}}, nil
+	}
+	if opts.Authenticator == nil {
+		return nil, errors.New("ats: authenticator required when AUTH_REQUIRE_JWT=true")
+	}
+
+	var more []connect.Interceptor
+	if opts.EnforcePermissions {
+		if opts.Authorizer == nil {
+			return nil, errors.New("ats: authorizer required when EnforcePermissions=true")
+		}
+		sd := ServiceDescriptor()
+		ns := permissions.ForService(sd).Namespace
+		if ns == "" {
+			ns = "service_ats"
+		}
+		functionChecker := authorizer.NewFunctionChecker(opts.Authorizer, ns)
+		procMap := permissions.BuildProcedureMap(sd)
+		more = append(more, connectInterceptors.NewFunctionAccessInterceptor(functionChecker, procMap))
+		log.WithField("namespace", ns).WithField("procedures", len(procMap)).
+			Info("ats: Connect function-access interceptor enabled")
+	}
+
+	list, err := connectInterceptors.DefaultList(ctx, opts.Authenticator, more...)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("ats: Connect using JWT + default Frame interceptors")
+	return list, nil
 }
 
 // CORSMiddleware wraps a handler with permissive CORS for the Vite SPA.

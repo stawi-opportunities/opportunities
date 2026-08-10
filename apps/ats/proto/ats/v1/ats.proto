@@ -2,57 +2,235 @@ syntax = "proto3";
 
 package ats.v1;
 
+import "common/v1/permissions.proto";
+
 option go_package = "github.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1;atsv1";
 
-// AtsService is the employer ATS API.
-// Connect path: /ats.v1.AtsService/<Method>
-// SPA and agents share this surface (JSON Connect protocol).
+// AtsService is the employer ATS API (Connect).
+// Namespace service_ats is registered with tenancy on setup for ReBAC.
 service AtsService {
-  // Dashboard aggregates open jobs, pipeline, and upcoming interviews.
-  rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse);
+  option (common.v1.service_permissions) = {
+    namespace: "service_ats"
+    permissions: [
+      "ats_dashboard_view",
+      "ats_job_view",
+      "ats_job_manage",
+      "ats_application_view",
+      "ats_application_manage",
+      "ats_interview_view",
+      "ats_interview_manage",
+      "ats_talent_view",
+      "ats_talent_manage",
+      "ats_availability_manage",
+      "ats_ai_use",
+      "ats_hire",
+      "ats_publish",
+      "ats_demo_seed"
+    ]
+    role_bindings: [
+      {
+        role: ROLE_OWNER
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish",
+          "ats_demo_seed"
+        ]
+      },
+      {
+        role: ROLE_ADMIN
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish",
+          "ats_demo_seed"
+        ]
+      },
+      {
+        // Recruiters: full hiring workflow except demo seed.
+        role: ROLE_OPERATOR
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish"
+        ]
+      },
+      {
+        // Hiring managers / interviewers: view + schedule + availability.
+        role: ROLE_MEMBER
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_availability_manage",
+          "ats_ai_use"
+        ]
+      },
+      {
+        role: ROLE_VIEWER
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_application_view",
+          "ats_interview_view",
+          "ats_talent_view"
+        ]
+      },
+      {
+        // Platform / product bots (S2S) — full surface for automation.
+        role: ROLE_SERVICE
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish",
+          "ats_demo_seed"
+        ]
+      }
+    ]
+  };
 
-  // SeedDemo creates sample jobs/talent/availability when the partition is empty (dev).
-  rpc SeedDemo(SeedDemoRequest) returns (SeedDemoResponse);
+  rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_dashboard_view"]};
+  }
 
-  // Jobs
-  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
-  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
-  rpc GetJob(GetJobRequest) returns (GetJobResponse);
-  rpc UpdateJob(UpdateJobRequest) returns (UpdateJobResponse);
-  rpc CloseJob(CloseJobRequest) returns (CloseJobResponse);
-  rpc PublishJob(PublishJobRequest) returns (PublishJobResponse);
-  rpc UnpublishJob(UnpublishJobRequest) returns (UnpublishJobResponse);
+  rpc SeedDemo(SeedDemoRequest) returns (SeedDemoResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_demo_seed"]};
+  }
 
-  // Pipeline
-  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse);
-  rpc CreateApplication(CreateApplicationRequest) returns (CreateApplicationResponse);
-  rpc GetApplication(GetApplicationRequest) returns (GetApplicationResponse);
-  rpc AdvanceApplication(AdvanceApplicationRequest) returns (AdvanceApplicationResponse);
-  rpc HireApplication(HireApplicationRequest) returns (HireApplicationResponse);
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_job_view"]};
+  }
+  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_job_manage"]};
+  }
+  rpc GetJob(GetJobRequest) returns (GetJobResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_job_view"]};
+  }
+  rpc UpdateJob(UpdateJobRequest) returns (UpdateJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_job_manage"]};
+  }
+  rpc CloseJob(CloseJobRequest) returns (CloseJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_job_manage"]};
+  }
+  rpc PublishJob(PublishJobRequest) returns (PublishJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_publish"]};
+  }
+  rpc UnpublishJob(UnpublishJobRequest) returns (UnpublishJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_publish"]};
+  }
 
-  // Stawi talent source
-  rpc ListTalent(ListTalentRequest) returns (ListTalentResponse);
-  rpc AddTalent(AddTalentRequest) returns (AddTalentResponse);
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_application_view"]};
+  }
+  rpc CreateApplication(CreateApplicationRequest) returns (CreateApplicationResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_application_manage"]};
+  }
+  rpc GetApplication(GetApplicationRequest) returns (GetApplicationResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_application_view"]};
+  }
+  rpc AdvanceApplication(AdvanceApplicationRequest) returns (AdvanceApplicationResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_application_manage"]};
+  }
+  rpc HireApplication(HireApplicationRequest) returns (HireApplicationResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_hire"]};
+  }
 
-  // Interviews
-  rpc ListInterviews(ListInterviewsRequest) returns (ListInterviewsResponse);
-  rpc ProposeInterview(ProposeInterviewRequest) returns (ProposeInterviewResponse);
-  rpc ListInterviewSlots(ListInterviewSlotsRequest) returns (ListInterviewSlotsResponse);
-  rpc BookInterview(BookInterviewRequest) returns (BookInterviewResponse);
-  rpc GetInterviewICS(GetInterviewICSRequest) returns (GetInterviewICSResponse);
+  rpc ListTalent(ListTalentRequest) returns (ListTalentResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_talent_view"]};
+  }
+  rpc AddTalent(AddTalentRequest) returns (AddTalentResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_talent_manage"]};
+  }
 
-  // Availability (acting profile)
-  rpc GetMyAvailability(GetMyAvailabilityRequest) returns (GetMyAvailabilityResponse);
-  rpc SetMyAvailability(SetMyAvailabilityRequest) returns (SetMyAvailabilityResponse);
+  rpc ListInterviews(ListInterviewsRequest) returns (ListInterviewsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_view"]};
+  }
+  rpc ProposeInterview(ProposeInterviewRequest) returns (ProposeInterviewResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_manage"]};
+  }
+  rpc ListInterviewSlots(ListInterviewSlotsRequest) returns (ListInterviewSlotsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_view"]};
+  }
+  rpc BookInterview(BookInterviewRequest) returns (BookInterviewResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_manage"]};
+  }
+  rpc GetInterviewICS(GetInterviewICSRequest) returns (GetInterviewICSResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_view"]};
+  }
 
-  // Candidate portal
-  rpc ListMyApplications(ListMyApplicationsRequest) returns (ListMyApplicationsResponse);
+  rpc GetMyAvailability(GetMyAvailabilityRequest) returns (GetMyAvailabilityResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_availability_manage"]};
+  }
+  rpc SetMyAvailability(SetMyAvailabilityRequest) returns (SetMyAvailabilityResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_availability_manage"]};
+  }
 
-  // AI assist
-  rpc ScreenSummary(ScreenSummaryRequest) returns (ScreenSummaryResponse);
+  // Candidate self-view of applications (same permission as application view).
+  rpc ListMyApplications(ListMyApplicationsRequest) returns (ListMyApplicationsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_application_view"]};
+  }
+
+  rpc ScreenSummary(ScreenSummaryRequest) returns (ScreenSummaryResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_ai_use"]};
+  }
 }
 
-// --- Domain messages ---
+// --- Domain messages (unchanged contract) ---
 
 message Job {
   string id = 1;
@@ -61,10 +239,10 @@ message Job {
   string title = 4;
   string description = 5;
   string location = 6;
-  string status = 7;      // draft|open|closed
-  string visibility = 8;  // private|published
+  string status = 7;
+  string visibility = 8;
   string opportunity_id = 9;
-  string published_at = 10; // RFC3339
+  string published_at = 10;
   string created_at = 11;
   string updated_at = 12;
 }
@@ -110,13 +288,13 @@ message TalentHit {
 }
 
 message WeekRule {
-  int32 weekday = 1; // 0=Sunday … 6=Saturday
-  string start = 2;  // HH:MM
+  int32 weekday = 1;
+  string start = 2;
   string end = 3;
 }
 
 message ExceptionDay {
-  string date = 1; // YYYY-MM-DD
+  string date = 1;
   bool blocked = 2;
 }
 
@@ -128,7 +306,7 @@ message Availability {
 }
 
 message Slot {
-  string start = 1; // RFC3339
+  string start = 1;
   string end = 2;
 }
 
@@ -149,8 +327,6 @@ message Dashboard {
   repeated Interview upcoming_interviews = 4;
   repeated string needs_attention = 5;
 }
-
-// --- RPCs ---
 
 message GetDashboardRequest {}
 message GetDashboardResponse {
@@ -308,7 +484,7 @@ message ListInterviewSlotsResponse {
 
 message BookInterviewRequest {
   string interview_id = 1;
-  string start = 2; // RFC3339
+  string start = 2;
   string end = 3;
 }
 message BookInterviewResponse {
