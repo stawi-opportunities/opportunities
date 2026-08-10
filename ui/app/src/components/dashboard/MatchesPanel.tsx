@@ -163,7 +163,8 @@ export function MatchesPanel({
         <div className="min-w-0">
           <h2 className="ds-section-title">Matches</h2>
           <p className="ds-section-desc">
-            Highest fit first. Refresh when you want a new shortlist — only roles at 70%+ appear.
+            Active matches ranked by fit score (best first), using your profile index. Paginated —
+            load more when you need the next page. Only 70%+ open roles appear.
           </p>
         </div>
         <Button
@@ -305,7 +306,13 @@ export function MatchesPanel({
         </Panel>
       )}
 
-      <OpportunitiesFeed key={refreshKey} initialFilter="matches" preferScoreSort hideFilterChips />
+      <OpportunitiesFeed
+        key={refreshKey}
+        initialFilter="matches"
+        preferScoreSort
+        hideFilterChips
+        pageSize={15}
+      />
     </div>
   );
 }

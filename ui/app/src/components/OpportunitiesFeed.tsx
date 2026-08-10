@@ -108,13 +108,16 @@ export function OpportunitiesFeed({
   initialFilter,
   preferScoreSort = false,
   hideFilterChips = false,
+  pageSize = 20,
 }: {
   /** When set (e.g. matches section), prefer this over the URL on first paint. */
   initialFilter?: OpportunityFilter;
-  /** Sort client-side by match score descending (matches view). */
+  /** Sort by match score descending (matches view). Server already ranks score DESC. */
   preferScoreSort?: boolean;
   /** Hide all/matches/starred/applied chips when parent owns mode. */
   hideFilterChips?: boolean;
+  /** Page size for cursor pagination (matches shortlist defaults smaller). */
+  pageSize?: number;
 } = {}) {
   const { t } = useI18n();
   const { push: toast } = useToast();
@@ -173,7 +176,14 @@ export function OpportunitiesFeed({
       setLoading(true);
       setHasError(false);
       try {
-        const page = await fetchOpportunities({ filter: f, cursor, sort });
+        // Matches: server ranks by fit score DESC (rerank-aware). Other filters
+        // may pass recency-oriented sort for UI only (API ranks score-first still).
+        const page = await fetchOpportunities({
+          filter: f,
+          cursor,
+          limit: pageSize,
+          sort: preferScoreSort || f === 'matches' ? 'score' : sort,
+        });
         setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
         setNextCursor(page.next_cursor);
         // Seed cards from feed join immediately — no public API hop required.
@@ -188,12 +198,12 @@ export function OpportunitiesFeed({
         setLoading(false);
       }
     },
-    [sort]
+    [sort, pageSize, preferScoreSort]
   );
 
   useEffect(() => {
     void load(filter);
-  }, [filter, sort, load]);
+  }, [filter, sort, load, preferScoreSort, pageSize]);
 
   // Optional enrichment: when feed lacked title/slug, resolve by id (API accepts slug or canonical_id).
   useEffect(() => {
@@ -366,7 +376,9 @@ export function OpportunitiesFeed({
             <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
             {!preferScoreSort && <SortPicker value={sort} onChange={(v) => setSort(v)} />}
             {preferScoreSort && (
-              <p className="pb-1 text-xs text-secondary">Sorted by match score (high → low)</p>
+              <p className="pb-1 text-xs font-medium text-accent-700 dark:text-accent-400">
+                Best fit first · 70%+ match · paginated
+              </p>
             )}
           </div>
         )}
@@ -418,15 +430,16 @@ export function OpportunitiesFeed({
                 />
               ))}
             </ul>
-            <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
-              <span>
-                {filteredItems.length} {t('feed.opportunities')}
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-secondary">
+              <span className="tabular-nums">
+                {filteredItems.length} shown
+                {preferScoreSort ? ' · highest match % first' : ''}
               </span>
               {nextCursor && (
                 <button
                   type="button"
                   onClick={() => void load(filter, nextCursor)}
-                  className="min-h-[44px] rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-navy-600 dark:bg-navy-800 dark:text-gray-300 dark:hover:bg-navy-700"
+                  className="min-h-[44px] rounded-lg border border-muted-strong bg-surface px-4 py-2 text-sm font-medium text-main hover:bg-surface-hover"
                   disabled={loading}
                 >
                   {loading ? t('common.loading') : t('cta.loadMore')}

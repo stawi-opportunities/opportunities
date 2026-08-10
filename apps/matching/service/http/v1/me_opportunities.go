@@ -77,7 +77,11 @@ func OpportunitiesHandler(deps OpportunitiesDeps) http.HandlerFunc {
 		candidateID := httpmw.CandidateFromContext(ctx)
 
 		filter := parseFilter(r.URL.Query().Get("filter"))
+		// Matches shortlist: smaller pages, always ranked by fit score.
 		limit := 20
+		if filter == matching.FilterMatches {
+			limit = 15
+		}
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 100 {
 				limit = n
@@ -89,6 +93,8 @@ func OpportunitiesHandler(deps OpportunitiesDeps) http.HandlerFunc {
 			Filter:      filter,
 			Cursor:      r.URL.Query().Get("cursor"),
 			Limit:       limit,
+			// Quality floor for scored matches feed (ignored for other filters).
+			MinScore: 0.70,
 		})
 		if err != nil {
 			log.WithError(err).WithField("candidate_id", candidateID).WithField("filter", string(filter)).
