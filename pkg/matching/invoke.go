@@ -26,6 +26,12 @@ type InvokeInput struct {
 	Reason         string // user_refresh | digest | onboard_seed
 	// InvokeLimit when > 0 and Reason is user-facing, enforces daily invoke budget.
 	InvokeLimit int
+	// SemanticRecall / MaxDistance / HardCountries control reverse-KNN.
+	// Zero SemanticRecall and MaxDistance use package defaults (semantic-first).
+	// HardCountries defaults false (soft geo).
+	SemanticRecall int
+	MaxDistance    float64
+	HardCountries  bool
 }
 
 // InvokeDeps extends GapFill with optional invoke counting.
@@ -78,6 +84,8 @@ func MatchInvoke(ctx context.Context, in InvokeInput, deps InvokeDeps) (GapFillR
 	}
 
 	// Force unlimited match rows — quality floor only.
+	// Semantic-first: soft geo, large HNSW recall, distance cutoff.
+	// Zero MaxDistance/SemanticRecall let GapFill apply package defaults.
 	return GapFill(ctx, GapFillInput{
 		CandidateID:    in.CandidateID,
 		Embedding:      in.Embedding,
@@ -91,5 +99,8 @@ func MatchInvoke(ctx context.Context, in InvokeInput, deps InvokeDeps) (GapFillR
 		WeeklyCap:      0,
 		QueryText:      in.QueryText,
 		TriggeredBy:    reason,
+		SemanticRecall: in.SemanticRecall,
+		MaxDistance:    in.MaxDistance,
+		HardCountries:  in.HardCountries,
 	}, deps.GapFill)
 }

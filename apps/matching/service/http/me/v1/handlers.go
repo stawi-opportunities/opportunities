@@ -44,6 +44,11 @@ type Deps struct {
 	// DefaultMinScore floors on-demand gap-fill when the index has no
 	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.70.
 	DefaultMinScore float64
+	// Semantic-first reverse-KNN knobs (MATCHING_SEMANTIC_* / MATCHING_HARD_GEO).
+	// Zero SemanticRecall / MaxDistance → package defaults (250 / 0.90).
+	SemanticRecall int
+	MaxDistance    float64
+	HardCountries  bool
 	// Contacts creates standalone ProfileService contacts for CV details.
 	// Checkout/notify use only profile-attached identity contacts (not these).
 	Contacts profilecontacts.Directory
@@ -508,6 +513,9 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			MinScore:       minScore,
 			Reason:         matching.InvokeUserRefresh,
 			InvokeLimit:    ent.InvokeDailyLimit,
+			SemanticRecall: d.SemanticRecall,
+			MaxDistance:    d.MaxDistance,
+			HardCountries:  d.HardCountries,
 		}, matching.InvokeDeps{
 			GapFill: matching.GapFillDeps{
 				KNN:      d.KNN,

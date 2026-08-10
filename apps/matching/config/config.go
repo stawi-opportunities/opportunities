@@ -131,6 +131,15 @@ type CandidatesConfig struct {
 	// Only opportunities scoring at or above this threshold become matches.
 	// Per-candidate rules can raise it.
 	MatchingMinScore float64 `env:"MATCHING_MIN_SCORE" envDefault:"0.70"`
+	// Semantic-first reverse-KNN knobs (MatchInvoke / GapFill).
+	// MATCHING_SEMANTIC_RECALL: HNSW neighbour count (default 250).
+	// MATCHING_SEMANTIC_MAX_DISTANCE: cosine distance ceiling 0–2 (default 0.90).
+	//   Set to a negative value to disable the SQL distance cap.
+	// MATCHING_HARD_GEO: when true, country is a SQL filter (legacy). Default
+	//   false — geo stays soft so retrieval maximises semantic recall.
+	MatchingSemanticRecall      int     `env:"MATCHING_SEMANTIC_RECALL"       envDefault:"250"`
+	MatchingSemanticMaxDistance float64 `env:"MATCHING_SEMANTIC_MAX_DISTANCE" envDefault:"0.90"`
+	MatchingHardGeo             bool    `env:"MATCHING_HARD_GEO"              envDefault:"false"`
 	// Per-plan daily UTC invoke (MatchInvoke) limits. Enforced when invoke
 	// matching lands; defaults mirror free / starter / managed entitlements.
 	MatchingInvokeLimitFree    int  `env:"MATCHING_INVOKE_LIMIT_FREE" envDefault:"1"`

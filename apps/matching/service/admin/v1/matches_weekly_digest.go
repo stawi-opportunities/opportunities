@@ -69,6 +69,10 @@ type MatchesWeeklyDigestDeps struct {
 	// DefaultMinScore floors gap-fill when the index has no per-candidate
 	// threshold (MATCHING_MIN_SCORE). 0 → 0.70.
 	DefaultMinScore float64
+	// Semantic-first reverse-KNN knobs (MATCHING_SEMANTIC_* / MATCHING_HARD_GEO).
+	SemanticRecall int
+	MaxDistance    float64
+	HardCountries  bool
 	// DefaultCadence is used when the request body omits cadence.
 	// "auto" (default) honours each user's email_digest + WeeklyWeekday.
 	DefaultCadence string
@@ -235,6 +239,9 @@ func MatchesWeeklyDigestHandler(deps MatchesWeeklyDigestDeps) http.HandlerFunc {
 					MinScore:       digestMinScore(idx.MinScore, deps.DefaultMinScore),
 					Reason:         matching.InvokeDigest,
 					InvokeLimit:    0,
+					SemanticRecall: deps.SemanticRecall,
+					MaxDistance:    deps.MaxDistance,
+					HardCountries:  deps.HardCountries,
 				}, matching.InvokeDeps{
 					GapFill: gapDeps,
 					Now:     nowFn,

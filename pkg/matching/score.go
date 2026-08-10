@@ -20,14 +20,15 @@ type Weights struct {
 	Stale  float64 // p1 (subtracted)
 }
 
-// DefaultWeights are the starting weights. Tuned in env, not in code.
+// DefaultWeights prioritise semantic (embedding) similarity. Soft geo/skills/
+// salary nudge ranking; they must not drown cosine fit. Tunable via env.
 func DefaultWeights() Weights {
 	return Weights{
-		Cosine: 0.60,
-		Skills: 0.15,
-		Geo:    0.15,
-		Salary: 0.10,
-		Stale:  0.10,
+		Cosine: 0.82, // semantic primary signal (pgvector / persona↔job)
+		Skills: 0.08,
+		Geo:    0.06, // soft preference — hard country filters are off by default
+		Salary: 0.04,
+		Stale:  0.05,
 	}
 }
 

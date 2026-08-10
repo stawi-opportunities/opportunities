@@ -88,12 +88,27 @@ func (k *KNN) FanOutKNN(ctx context.Context, p FanOutKNNParams) ([]CandidateHit,
 	return out, rows.Err()
 }
 
+// ReverseKNNParams configures semantic (pgvector) opportunity retrieval for a
+// candidate embedding. Retrieval is semantic-first: ORDER BY embedding distance
+// uses the opportunities HNSW index. Hard country filters only when
+// HardCountries is true; kinds hard-filter by default when Kinds is non-empty
+// (product scopes job vs scholarship) unless SoftKinds is set.
 type ReverseKNNParams struct {
 	CandidateEmbedding []float32
 	Kinds              []string
 	Countries          []string
-	Since              time.Time
-	Limit              int
+	// SoftKinds when true skips the kind SQL filter even if Kinds is set.
+	// Default false: kind is hard-scoped when Kinds is non-empty.
+	SoftKinds bool
+	// HardCountries when true applies countries as a SQL filter (legacy).
+	// Default false: countries still influence Score.GeoMatch after retrieval.
+	HardCountries bool
+	Since         time.Time
+	// Limit is the semantic recall size (nearest neighbours). Default 250.
+	Limit int
+	// MaxDistance is pgvector cosine distance ceiling (0–2). ≤0 = no cap.
+	// Typical semantic cutoff ~0.85–1.0 (similarity ≳ 0.5–0.575).
+	MaxDistance float64
 }
 
 type OppHit struct {
@@ -107,6 +122,9 @@ type OppHit struct {
 	Text string
 }
 
+// reverseKNNSQL is semantic-first: ORDER BY embedding distance uses the
+// opportunities HNSW index (vector_cosine_ops). Hard filters only drop
+// inactive / non-embedded rows and optional kind/country/distance caps.
 const reverseKNNSQL = `
 SELECT canonical_id,
        embedding <=> $1::vector AS distance,
@@ -119,20 +137,37 @@ WHERE status = 'active'
   AND hidden = false
   AND embedding IS NOT NULL
   AND first_seen_at > $2
-  AND ( cardinality($3::text[]) = 0 OR kind = ANY($3) )
-  AND ( cardinality($4::text[]) = 0 OR country IS NULL OR country = ANY($4) )
+  AND ( NOT $3::bool OR cardinality($4::text[]) = 0 OR kind = ANY($4) )
+  AND ( NOT $5::bool OR cardinality($6::text[]) = 0 OR country IS NULL OR country = ANY($6) )
+  AND ( $7::float8 <= 0 OR (embedding <=> $1::vector) <= $7::float8 )
 ORDER BY embedding <=> $1::vector
-LIMIT $5
+LIMIT $8
 `
+
+// DefaultReverseKNNLimit is the default semantic recall size for MatchInvoke /
+// GapFill (larger than the old 100 so HNSW surfaces more true neighbours).
+const DefaultReverseKNNLimit = 250
+
+// DefaultSemanticMaxDistance is the default cosine-distance ceiling applied
+// during reverse-KNN. Cosine similarity ≳ 1 − 0.90/2 = 0.55. ≤0 in
+// ReverseKNNParams means "no SQL distance cap".
+const DefaultSemanticMaxDistance = 0.90
 
 func (k *KNN) ReverseKNN(ctx context.Context, p ReverseKNNParams) ([]OppHit, error) {
 	limit := p.Limit
 	if limit <= 0 {
-		limit = 100
+		limit = DefaultReverseKNNLimit
 	}
+	// Semantic-first defaults: kind scopes product surface; country is soft
+	// (score-time GeoMatch) unless HardCountries is set.
+	hardKinds := len(p.Kinds) > 0 && !p.SoftKinds
+	hardCountries := p.HardCountries
+
 	rows, err := k.db.QueryContext(ctx, reverseKNNSQL,
 		vectorLiteral(p.CandidateEmbedding), p.Since,
-		pq.Array(p.Kinds), pq.Array(p.Countries), limit)
+		hardKinds, pq.Array(p.Kinds),
+		hardCountries, pq.Array(p.Countries),
+		p.MaxDistance, limit)
 	if err != nil {
 		return nil, fmt.Errorf("matching: reverse knn: %w", err)
 	}

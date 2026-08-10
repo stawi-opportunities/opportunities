@@ -10,9 +10,13 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
 )
 
-type fakeRevKNN struct{ hits []matching.OppHit }
+type fakeRevKNN struct {
+	hits []matching.OppHit
+	last matching.ReverseKNNParams
+}
 
-func (f *fakeRevKNN) ReverseKNN(_ context.Context, _ matching.ReverseKNNParams) ([]matching.OppHit, error) {
+func (f *fakeRevKNN) ReverseKNN(_ context.Context, p matching.ReverseKNNParams) ([]matching.OppHit, error) {
+	f.last = p
 	return f.hits, nil
 }
 
@@ -27,8 +31,8 @@ func TestGapFill_FiltersBelowMinScore(t *testing.T) {
 		CandidateID: "u",
 		Embedding:   unitVec(1024, 0),
 		Since:       time.Now().Add(-time.Hour),
-		// With neutral skills/geo/salary, floor total ≈ 0.40 + 0.6·cos.
-		// MinScore 0.45 rejects pure-orthogonal neighbors (cos≈0).
+		// Neutral non-cosine terms ≈ 0.18; high cosine clears MinScore,
+		// pure-orthogonal neighbours (cos≈0) do not.
 		MinScore: 0.45,
 	}, matching.GapFillDeps{
 		KNN: knn, Store: store, EventLog: el,
@@ -89,4 +93,77 @@ func TestGapFill_NoInventoryReason(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, matching.GapReasonNoInventory, res.Reason)
 	require.Equal(t, 0, res.MatchesWritten)
+}
+
+func TestGapFill_SemanticFirstDefaults(t *testing.T) {
+	t.Parallel()
+	knn := &fakeRevKNN{hits: nil}
+	store := &fakeStore{}
+	el := &fakeEventLog{}
+	_, err := matching.GapFill(context.Background(), matching.GapFillInput{
+		CandidateID: "u",
+		Embedding:   unitVec(1024, 0),
+		Countries:   []string{"KE"},
+		Kinds:       []string{"job"},
+		Since:       time.Now().Add(-time.Hour),
+		MinScore:    0.70,
+		// Leave SemanticRecall / MaxDistance / HardCountries zero → defaults.
+	}, matching.GapFillDeps{
+		KNN: knn, Store: store, EventLog: el,
+		Reranker: matching.NoopReranker{},
+		Weights:  matching.DefaultWeights(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, matching.DefaultReverseKNNLimit, knn.last.Limit)
+	require.InDelta(t, matching.DefaultSemanticMaxDistance, knn.last.MaxDistance, 1e-9)
+	require.False(t, knn.last.HardCountries, "geo must be soft by default")
+	require.False(t, knn.last.SoftKinds)
+	require.Equal(t, []string{"job"}, knn.last.Kinds)
+	require.Equal(t, []string{"KE"}, knn.last.Countries)
+}
+
+func TestGapFill_SemanticOverrides(t *testing.T) {
+	t.Parallel()
+	knn := &fakeRevKNN{hits: nil}
+	store := &fakeStore{}
+	el := &fakeEventLog{}
+	_, err := matching.GapFill(context.Background(), matching.GapFillInput{
+		CandidateID:    "u",
+		Embedding:      unitVec(1024, 0),
+		Since:          time.Now().Add(-time.Hour),
+		MinScore:       0.70,
+		SemanticRecall: 400,
+		MaxDistance:    0.75,
+		HardCountries:  true,
+		SoftKinds:      true,
+	}, matching.GapFillDeps{
+		KNN: knn, Store: store, EventLog: el,
+		Reranker: matching.NoopReranker{},
+		Weights:  matching.DefaultWeights(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, 400, knn.last.Limit)
+	require.InDelta(t, 0.75, knn.last.MaxDistance, 1e-9)
+	require.True(t, knn.last.HardCountries)
+	require.True(t, knn.last.SoftKinds)
+}
+
+func TestGapFill_NegativeMaxDistanceDisablesCap(t *testing.T) {
+	t.Parallel()
+	knn := &fakeRevKNN{hits: nil}
+	store := &fakeStore{}
+	el := &fakeEventLog{}
+	_, err := matching.GapFill(context.Background(), matching.GapFillInput{
+		CandidateID: "u",
+		Embedding:   unitVec(1024, 0),
+		Since:       time.Now().Add(-time.Hour),
+		MinScore:    0.70,
+		MaxDistance: -1,
+	}, matching.GapFillDeps{
+		KNN: knn, Store: store, EventLog: el,
+		Reranker: matching.NoopReranker{},
+		Weights:  matching.DefaultWeights(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, 0.0, knn.last.MaxDistance, "negative MaxDistance → no SQL cap")
 }

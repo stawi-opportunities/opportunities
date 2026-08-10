@@ -998,6 +998,9 @@ func main() {
 					Weights:         matching.DefaultWeights(),
 					Since:           30 * 24 * time.Hour,
 					DefaultMinScore: cfg.MatchingMinScore,
+					SemanticRecall:  cfg.MatchingSemanticRecall,
+					MaxDistance:     cfg.MatchingSemanticMaxDistance,
+					HardCountries:   cfg.MatchingHardGeo,
 					DefaultCadence:  cfg.DigestDefaultCadence,
 					WeeklyWeekday:   digestWeekday,
 					Location:        digestLoc,
@@ -1037,6 +1040,9 @@ func main() {
 			DailyCap:         matching.NewPGDailyCapQuery(sqlDB),
 			InvokeCounter:    &matching.PGInvokeCounter{DB: sqlDB},
 			DefaultMinScore:  cfg.MatchingMinScore,
+			SemanticRecall:   cfg.MatchingSemanticRecall,
+			MaxDistance:      cfg.MatchingSemanticMaxDistance,
+			HardCountries:    cfg.MatchingHardGeo,
 			Contacts:         contactDir, // platform ProfileService — sole contact store
 			// Rebuild embedding on-demand when match refresh finds no vector
 			// (async embed after CV upload can lag or fail silently).

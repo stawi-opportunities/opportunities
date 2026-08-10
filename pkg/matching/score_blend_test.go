@@ -36,3 +36,20 @@ func TestBlendFromCosine_MatchesWeightScale(t *testing.T) {
 		t.Fatalf("zero cos: got %v want %v", got0, want0)
 	}
 }
+
+func TestDefaultWeights_SemanticPrimary(t *testing.T) {
+	t.Parallel()
+	w := matching.DefaultWeights()
+	// Cosine must dominate so ranking is embedding-driven.
+	if w.Cosine < 0.75 {
+		t.Fatalf("cosine weight too low for semantic-first: %v", w.Cosine)
+	}
+	nonSemantic := w.Skills + w.Geo + w.Salary
+	if w.Cosine <= nonSemantic {
+		t.Fatalf("cosine (%v) must exceed skills+geo+salary (%v)", w.Cosine, nonSemantic)
+	}
+	// Soft geo: geo weight should be a light preference, not a hard gate.
+	if w.Geo >= 0.15 {
+		t.Fatalf("geo weight should stay soft (<0.15), got %v", w.Geo)
+	}
+}
