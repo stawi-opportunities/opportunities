@@ -330,7 +330,7 @@ Prefer real fixtures for tenancy claims over mocks where platform test harnesses
 
 ## 12. Extensibility
 
-- Calendar connect later: subtract busy from slot compute; still keep built-in availability as baseline.
+- Calendar: prefer `apps/calendar` (`service_calendar`) for multi-resource bookings and external sync; ATS may keep local availability as fallback until fully adapted.
 - Service-account org agents later: same API, different claim shape — do not bake user-only assumptions into domain, only into v1 auth policy.
 - Teams/departments later: tenancy hierarchy or partition properties — not ATS-side org trees in v1.
 

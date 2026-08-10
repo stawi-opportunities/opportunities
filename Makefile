@@ -1,12 +1,12 @@
 SHELL := /bin/bash
 
-APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching apps/applications apps/ats
+APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching apps/applications apps/ats apps/calendar
 
 # Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
 HUGO_VERSION := 0.160.1
 HUGO_BIN     := $(CURDIR)/bin/hugo
 
-.PHONY: deps build test test-integration run-crawler run-api run-worker run-ats \
+.PHONY: deps build test test-integration run-crawler run-api run-worker run-ats run-calendar test-calendar gen-calendar \
         crawl-once infra-up infra-down \
         ui-deps ui-build ui-dev ui-ats-dev \
         opportunity-kinds-link
@@ -49,6 +49,18 @@ ui-ats-dev:
 
 test-ats:
 	go test ./apps/ats/... -count=1 -timeout 10m
+
+run-calendar-setup:
+	DO_SETUP=true AUTH_REQUIRE_JWT=false go run ./apps/calendar/cmd
+
+run-calendar:
+	AUTH_REQUIRE_JWT=false HTTP_ADDR=:8096 go run ./apps/calendar/cmd
+
+test-calendar:
+	go test ./apps/calendar/... -count=1 -timeout 10m
+
+gen-calendar:
+	cd apps/calendar/proto && buf generate
 
 # Regenerate Connect + protobuf for ATS (requires buf CLI).
 gen-ats:
