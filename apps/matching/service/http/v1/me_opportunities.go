@@ -87,14 +87,30 @@ func OpportunitiesHandler(deps OpportunitiesDeps) http.HandlerFunc {
 				limit = n
 			}
 		}
+		// Quality floor for scored matches only (ignored for other filters).
+		// Clients may raise min_score to tighten the shortlist; never below 0.70.
+		var minScore float64
+		if filter == matching.FilterMatches {
+			minScore = 0.70
+			if raw := r.URL.Query().Get("min_score"); raw != "" {
+				if v, err := strconv.ParseFloat(raw, 64); err == nil {
+					minScore = v
+				}
+			}
+			if minScore < 0.70 {
+				minScore = 0.70
+			}
+			if minScore > 1 {
+				minScore = 1
+			}
+		}
 
 		page, err := deps.Store.ListOpportunitiesForCandidate(ctx, matching.ListOpportunitiesParams{
 			CandidateID: candidateID,
 			Filter:      filter,
 			Cursor:      r.URL.Query().Get("cursor"),
 			Limit:       limit,
-			// Quality floor for scored matches feed (ignored for other filters).
-			MinScore: 0.70,
+			MinScore:    minScore,
 		})
 		if err != nil {
 			log.WithError(err).WithField("candidate_id", candidateID).WithField("filter", string(filter)).

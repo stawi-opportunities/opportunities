@@ -7,10 +7,11 @@ import type { SectionId } from './DashboardSidebar';
  * Desktop keeps the left sidebar; this is md:hidden only.
  */
 const ITEMS: {
-  id: SectionId;
+  id: SectionId | 'jobs';
   labelKey: StringKey;
   short: string;
   icon: ReactElement;
+  href?: string;
 }[] = [
   {
     id: 'matches',
@@ -28,6 +29,27 @@ const ITEMS: {
           strokeLinecap="round"
           strokeLinejoin="round"
           d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'jobs',
+    href: '/jobs/',
+    labelKey: 'nav.allJobs',
+    short: 'All Jobs',
+    icon: (
+      <svg
+        className="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 2.652V7.204a2.25 2.25 0 0 0-1.88-2.222c-1.392-.22-2.824-.36-4.28-.415m-8.64 0c-1.456.055-2.888.196-4.28.415A2.25 2.25 0 0 0 3 7.204v1.286c0 .224.033.444.096.652m7.5 0a48.667 48.667 0 0 0-7.5 0m7.5 0V5.232c0-.41.328-.746.736-.79A48.11 48.11 0 0 1 12 4.5c1.255 0 2.492.066 3.714.194a.75.75 0 0 1 .736.79V8.5m-7.5 0h7.5"
         />
       </svg>
     ),
@@ -186,27 +208,53 @@ export function DashboardMobileNav({
             const isActive = item.id === active;
             const badge =
               item.id === 'matches' && matchCount != null && matchCount > 0 ? matchCount : null;
+            const className = `flex min-h-[48px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-accent-500/10 text-main ring-1 ring-inset ring-accent-500/25'
+                : 'text-secondary hover:bg-surface-hover hover:text-main'
+            }`;
+            const icon = (
+              <span
+                className={isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'}
+              >
+                {item.icon}
+              </span>
+            );
+            const label = <span className="truncate">{t(item.labelKey, item.short)}</span>;
+
+            if (item.href) {
+              return (
+                <li key={item.id}>
+                  <a href={item.href} className={className} onClick={onClose}>
+                    {icon}
+                    {label}
+                    <span className="ml-auto text-secondary/60" aria-hidden="true">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                          fillRule="evenodd"
+                          d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </span>
+                  </a>
+                </li>
+              );
+            }
+
             return (
               <li key={item.id}>
                 <button
                   type="button"
                   onClick={() => {
-                    onNavigate(item.id);
+                    onNavigate(item.id as SectionId);
                     onClose();
                   }}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`flex min-h-[48px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-accent-500/10 text-main ring-1 ring-inset ring-accent-500/25'
-                      : 'text-secondary hover:bg-surface-hover hover:text-main'
-                  }`}
+                  className={className}
                 >
-                  <span
-                    className={isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="truncate">{t(item.labelKey, item.short)}</span>
+                  {icon}
+                  {label}
                   {badge != null && (
                     <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
                       {badge > 99 ? '99+' : badge}

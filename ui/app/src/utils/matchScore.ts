@@ -3,6 +3,42 @@
  * Backend may send 0–1 cosine/similarity or already 0–100.
  */
 
+/** Default / floor quality threshold for the matches shortlist (percent). */
+export const DEFAULT_MIN_FIT_PERCENT = 70;
+/** Tightest slider value — beyond this almost nothing remains. */
+export const MAX_MIN_FIT_PERCENT = 95;
+export const MIN_FIT_STORAGE_KEY = 'matches.min_fit_percent';
+
+export function clampMinFitPercent(n: number): number {
+  if (!Number.isFinite(n)) return DEFAULT_MIN_FIT_PERCENT;
+  return Math.min(MAX_MIN_FIT_PERCENT, Math.max(DEFAULT_MIN_FIT_PERCENT, Math.round(n)));
+}
+
+/** Convert a UI percent (70–95) to the 0–1 score the API expects. */
+export function minFitPercentToScore(percent: number): number {
+  return clampMinFitPercent(percent) / 100;
+}
+
+export function readStoredMinFitPercent(): number {
+  if (typeof window === 'undefined') return DEFAULT_MIN_FIT_PERCENT;
+  try {
+    const raw = window.localStorage.getItem(MIN_FIT_STORAGE_KEY);
+    if (raw == null) return DEFAULT_MIN_FIT_PERCENT;
+    return clampMinFitPercent(Number(raw));
+  } catch {
+    return DEFAULT_MIN_FIT_PERCENT;
+  }
+}
+
+export function writeStoredMinFitPercent(percent: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(MIN_FIT_STORAGE_KEY, String(clampMinFitPercent(percent)));
+  } catch {
+    /* private mode / quota — ignore */
+  }
+}
+
 export function scoreToPercent(score: number | null | undefined): number | null {
   if (score == null || Number.isNaN(score)) return null;
   if (score < 0) return 0;

@@ -107,3 +107,29 @@ func TestOpportunitiesHandler_StoreErrorIs502(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 }
+
+func TestOpportunitiesHandler_MinScoreQuery(t *testing.T) {
+	t.Parallel()
+	store := &fakeFeedStore{}
+	h := httpmw.NewCandidateAuth(nil)(v1.OpportunitiesHandler(v1.OpportunitiesDeps{Store: store}))
+
+	cases := []struct {
+		query string
+		want  float64
+	}{
+		{"filter=matches", 0.70},
+		{"filter=matches&min_score=0.85", 0.85},
+		{"filter=matches&min_score=0.5", 0.70}, // floor
+		{"filter=matches&min_score=1.5", 1.0},  // cap
+		{"filter=matches&min_score=bogus", 0.70},
+		{"filter=starred&min_score=0.9", 0}, // non-matches ignore
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/me/opportunities?"+tc.query, nil)
+		req.Header.Set("X-Candidate-ID", "cand_y")
+		h.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, "query=%q", tc.query)
+		require.InDelta(t, tc.want, store.lastArgs.MinScore, 1e-9, "query=%q", tc.query)
+	}
+}

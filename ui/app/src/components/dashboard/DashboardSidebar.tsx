@@ -15,13 +15,15 @@ export type SectionId =
   | 'overview';
 
 interface Section {
-  id: SectionId;
+  id: SectionId | 'jobs';
   icon: ReactElement;
   labelKey: StringKey;
   badge?: number | null;
+  /** When set, renders as a link out of the dashboard (e.g. full job catalog). */
+  href?: string;
 }
 
-/** Matches → Saved → Applications → CV → Settings */
+/** Matches → All jobs → Saved → Applications → CV → Settings */
 const SECTIONS: Section[] = [
   {
     id: 'matches',
@@ -41,6 +43,26 @@ const SECTIONS: Section[] = [
       </svg>
     ),
     labelKey: 'nav.matches',
+  },
+  {
+    id: 'jobs',
+    href: '/jobs/',
+    icon: (
+      <svg
+        className="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 2.652V7.204a2.25 2.25 0 0 0-1.88-2.222c-1.392-.22-2.824-.36-4.28-.415m-8.64 0c-1.456.055-2.888.196-4.28.415A2.25 2.25 0 0 0 3 7.204v1.286c0 .224.033.444.096.652m7.5 0a48.667 48.667 0 0 0-7.5 0m7.5 0V5.232c0-.41.328-.746.736-.79A48.11 48.11 0 0 1 12 4.5c1.255 0 2.492.066 3.714.194a.75.75 0 0 1 .736.79V8.5m-7.5 0h7.5"
+        />
+      </svg>
+    ),
+    labelKey: 'nav.allJobs',
   },
   {
     id: 'saved',
@@ -145,34 +167,60 @@ export function DashboardSidebar({
       ? SECTIONS.map((s) => ({ ...s, badge: s.id === 'matches' ? matchCount : null }))
       : SECTIONS;
 
+  const itemClass = (isActive: boolean) =>
+    `flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-accent-500/10 text-main ring-1 ring-inset ring-accent-500/25'
+        : 'text-secondary hover:bg-surface-hover hover:text-main'
+    }`;
+
   return (
     <div className="sticky top-[88px]">
       <nav className="space-y-0.5" aria-label="Dashboard sections">
         {sections.map((s) => {
           const isActive = s.id === active;
+          const icon = (
+            <span className={isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'}>
+              {s.icon}
+            </span>
+          );
+          const label = <span className="truncate">{t(s.labelKey)}</span>;
+          const badge =
+            s.badge != null && s.badge > 0 ? (
+              <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                {s.badge > 99 ? '99+' : s.badge}
+              </span>
+            ) : null;
+
+          if (s.href) {
+            return (
+              <a key={s.id} href={s.href} className={itemClass(false)}>
+                {icon}
+                {label}
+                <span className="ml-auto text-secondary/60" aria-hidden="true">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </span>
+              </a>
+            );
+          }
+
           return (
             <button
               key={s.id}
               type="button"
-              onClick={() => onNavigate(s.id)}
+              onClick={() => onNavigate(s.id as SectionId)}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-accent-500/10 text-main ring-1 ring-inset ring-accent-500/25'
-                  : 'text-secondary hover:bg-surface-hover hover:text-main'
-              }`}
+              className={itemClass(isActive)}
             >
-              <span
-                className={isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'}
-              >
-                {s.icon}
-              </span>
-              <span className="truncate">{t(s.labelKey)}</span>
-              {s.badge != null && s.badge > 0 && (
-                <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
-                  {s.badge > 99 ? '99+' : s.badge}
-                </span>
-              )}
+              {icon}
+              {label}
+              {badge}
             </button>
           );
         })}
