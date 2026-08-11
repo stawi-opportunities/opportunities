@@ -29,6 +29,15 @@ const baseItem: FeedItem = {
   created_at: '2026-05-23T10:00:00Z',
 };
 
+const listingSnapshot = {
+  title: 'Senior Engineer',
+  company: 'Acme',
+  location: 'Nairobi',
+  kind: 'job',
+  slug: 'senior-engineer-acme',
+  id: 'opp_1',
+};
+
 describe('OpportunityCard', () => {
   it('renders the match score when present', () => {
     render(
@@ -121,5 +130,49 @@ describe('OpportunityCard', () => {
     );
     expect(screen.queryByRole('button', { name: /^apply$/i })).not.toBeInTheDocument();
     expect(screen.getByText(/applied/i)).toBeInTheDocument();
+  });
+
+  it('triage mode shows only Save and Dismiss, links body to listing', () => {
+    const onStar = vi.fn();
+    const onDismiss = vi.fn();
+    const item: FeedItem = { ...baseItem, match_id: 'match_1' };
+    render(
+      <OpportunityCard
+        item={item}
+        snapshot={listingSnapshot}
+        onStar={onStar}
+        onUnstar={vi.fn()}
+        onDismiss={onDismiss}
+        actionsMode="triage"
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^apply$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /view listing: senior engineer/i })).toHaveAttribute(
+      'href',
+      '/jobs/senior-engineer-acme/'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /save opportunity/i }));
+    expect(onStar).toHaveBeenCalledWith('opp_1');
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss match/i }));
+    expect(onDismiss).toHaveBeenCalledWith('match_1', 'opp_1');
+  });
+
+  it('triage mode without slug has no listing link', () => {
+    const item: FeedItem = { ...baseItem, match_id: 'match_1' };
+    render(
+      <OpportunityCard
+        item={item}
+        snapshot={{ title: 'No slug role', kind: 'job' }}
+        onStar={vi.fn()}
+        onUnstar={vi.fn()}
+        onDismiss={vi.fn()}
+        actionsMode="triage"
+      />
+    );
+    expect(screen.queryByRole('link', { name: /view listing/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save opportunity/i })).toBeInTheDocument();
   });
 });

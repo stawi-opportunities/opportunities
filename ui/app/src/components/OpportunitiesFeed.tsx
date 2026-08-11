@@ -22,7 +22,12 @@ import { useToast } from '@/hooks/useToast';
 import { SortPicker } from '@/components/ui/SortPicker';
 import type { SearchParams } from '@/types/search';
 import { openApplyAndTrack } from '@/utils/apply';
-import { compareScoreDesc } from '@/utils/matchScore';
+import {
+  compareScoreDesc,
+  DEFAULT_MIN_FIT_PERCENT,
+  minFitPercentToScore,
+  scoreToPercent,
+} from '@/utils/matchScore';
 
 const FILTER_KEYS: { id: OpportunityFilter; labelKey: StringKey }[] = [
   { id: 'all', labelKey: 'feed.all' },
@@ -109,15 +114,18 @@ export function OpportunitiesFeed({
   preferScoreSort = false,
   hideFilterChips = false,
   pageSize = 20,
+  minFitPercent = DEFAULT_MIN_FIT_PERCENT,
 }: {
   /** When set (e.g. matches section), prefer this over the URL on first paint. */
   initialFilter?: OpportunityFilter;
   /** Sort by match score descending (matches view). Server already ranks score DESC. */
   preferScoreSort?: boolean;
-  /** Hide all/matches/starred/applied chips when parent owns mode. */
+  /** Hide all/matches/starred/applied chips when parent owns mode. Also hides kind/remote chips. */
   hideFilterChips?: boolean;
   /** Page size for cursor pagination (matches shortlist defaults smaller). */
   pageSize?: number;
+  /** Minimum match fit % for the matches shortlist (70–95). */
+  minFitPercent?: number;
 } = {}) {
   const { t } = useI18n();
   const { push: toast } = useToast();
@@ -133,6 +141,9 @@ export function OpportunitiesFeed({
   const [pendingItems, setPendingItems] = useState<Set<string>>(new Set());
   const [snapshots, setSnapshots] = useState<Record<string, OpportunitySnapshot | null>>({});
 
+  const isMatchesView = filter === 'matches' || preferScoreSort;
+  const minScore = minFitPercentToScore(minFitPercent);
+
   const counts = useMemo(
     () => ({
       all: items.length,
@@ -145,31 +156,49 @@ export function OpportunitiesFeed({
 
   const filteredItems = useMemo(() => {
     let result = items;
-    if (feedFilters.remote === true) {
+    // Client-side tighten: hide rows below the slider even if already loaded.
+    if (isMatchesView && minFitPercent > DEFAULT_MIN_FIT_PERCENT) {
       result = result.filter((it) => {
-        if (it.remote) return true;
-        const snap = snapshots[it.opportunity_id];
-        return snap?.location?.toLowerCase().includes('remote') ?? false;
-      });
-    } else if (feedFilters.remote === false) {
-      result = result.filter((it) => {
-        if (it.remote) return false;
-        const snap = snapshots[it.opportunity_id];
-        return snap ? !snap.location?.toLowerCase().includes('remote') : true;
+        const pct = scoreToPercent(it.score);
+        return pct != null && pct >= minFitPercent;
       });
     }
-    if (feedFilters.kind) {
-      result = result.filter((it) => {
-        if (it.kind) return it.kind === feedFilters.kind;
-        const snap = snapshots[it.opportunity_id];
-        return snap?.kind === feedFilters.kind;
-      });
+    // Kind/remote chips only on mixed feeds (jobs-only matches view skips them).
+    if (!hideFilterChips) {
+      if (feedFilters.remote === true) {
+        result = result.filter((it) => {
+          if (it.remote) return true;
+          const snap = snapshots[it.opportunity_id];
+          return snap?.location?.toLowerCase().includes('remote') ?? false;
+        });
+      } else if (feedFilters.remote === false) {
+        result = result.filter((it) => {
+          if (it.remote) return false;
+          const snap = snapshots[it.opportunity_id];
+          return snap ? !snap.location?.toLowerCase().includes('remote') : true;
+        });
+      }
+      if (feedFilters.kind) {
+        result = result.filter((it) => {
+          if (it.kind) return it.kind === feedFilters.kind;
+          const snap = snapshots[it.opportunity_id];
+          return snap?.kind === feedFilters.kind;
+        });
+      }
     }
     if (preferScoreSort) {
       result = [...result].sort((a, b) => compareScoreDesc(a.score, b.score));
     }
     return result;
-  }, [items, snapshots, feedFilters, preferScoreSort]);
+  }, [
+    items,
+    snapshots,
+    feedFilters,
+    preferScoreSort,
+    hideFilterChips,
+    isMatchesView,
+    minFitPercent,
+  ]);
 
   const load = useCallback(
     async (f: OpportunityFilter, cursor?: string) => {
@@ -183,6 +212,7 @@ export function OpportunitiesFeed({
           cursor,
           limit: pageSize,
           sort: preferScoreSort || f === 'matches' ? 'score' : sort,
+          minScore: f === 'matches' || preferScoreSort ? minScore : undefined,
         });
         setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
         setNextCursor(page.next_cursor);
@@ -198,12 +228,12 @@ export function OpportunitiesFeed({
         setLoading(false);
       }
     },
-    [sort, pageSize, preferScoreSort]
+    [sort, pageSize, preferScoreSort, minScore]
   );
 
   useEffect(() => {
     void load(filter);
-  }, [filter, sort, load, preferScoreSort, pageSize]);
+  }, [filter, sort, load, preferScoreSort, pageSize, minScore]);
 
   // Optional enrichment: when feed lacked title/slug, resolve by id (API accepts slug or canonical_id).
   useEffect(() => {
@@ -371,16 +401,16 @@ export function OpportunitiesFeed({
           </div>
         )}
 
-        {items.length > 0 && (
-          <div className={`flex flex-wrap items-end gap-4 ${hideFilterChips ? 'pt-2' : 'mt-3'}`}>
+        {items.length > 0 && !hideFilterChips && (
+          <div className="mt-3 flex flex-wrap items-end gap-4">
             <FilterChips filters={feedFilters} onChange={setFeedFilters} t={t} />
             {!preferScoreSort && <SortPicker value={sort} onChange={(v) => setSort(v)} />}
-            {preferScoreSort && (
-              <p className="pb-1 text-xs font-medium text-accent-700 dark:text-accent-400">
-                Best fit first · 70%+ match · paginated
-              </p>
-            )}
           </div>
+        )}
+        {items.length > 0 && preferScoreSort && !hideFilterChips && (
+          <p className="mt-2 pb-1 text-xs font-medium text-accent-700 dark:text-accent-400">
+            Best fit first · {minFitPercent}%+ match · paginated
+          </p>
         )}
       </div>
 
@@ -426,6 +456,7 @@ export function OpportunitiesFeed({
                   onUnstar={onUnstar}
                   onApply={onApply}
                   onDismiss={filter === 'matches' || (it.score ?? 0) > 0 ? onDismiss : undefined}
+                  actionsMode={filter === 'matches' ? 'triage' : 'full'}
                   isPending={pendingItems.has(it.opportunity_id)}
                 />
               ))}
@@ -433,7 +464,7 @@ export function OpportunitiesFeed({
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-secondary">
               <span className="tabular-nums">
                 {filteredItems.length} shown
-                {preferScoreSort ? ' · highest match % first' : ''}
+                {preferScoreSort ? ` · ${minFitPercent}%+ fit · highest first` : ''}
               </span>
               {nextCursor && (
                 <button

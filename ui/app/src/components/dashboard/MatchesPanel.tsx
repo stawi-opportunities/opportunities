@@ -3,9 +3,15 @@ import type { PlanId } from '@/utils/plans';
 import { preferenceMissingLabels } from '@/utils/profileReadiness';
 import { Panel } from './Panel';
 import { OpportunitiesFeed } from '@/components/OpportunitiesFeed';
+import { FitThresholdSlider } from '@/components/dashboard/FitThresholdSlider';
 import { refreshMyMatches, type MatchRefreshResult } from '@/api/candidates';
 import { useToast } from '@/hooks/useToast';
 import { Button } from '@/components/ui/Button';
+import {
+  DEFAULT_MIN_FIT_PERCENT,
+  readStoredMinFitPercent,
+  writeStoredMinFitPercent,
+} from '@/utils/matchScore';
 
 function emptyReasonMessage(res: MatchRefreshResult): string {
   // rate_limited is current; weekly_cap / daily_cap are legacy server reasons.
@@ -78,13 +84,20 @@ export function MatchesPanel({
   const { push: toast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [minFitPercent, setMinFitPercent] = useState(DEFAULT_MIN_FIT_PERCENT);
+
+  // Hydrate slider from localStorage after mount (SSR-safe).
+  useEffect(() => {
+    setMinFitPercent(readStoredMinFitPercent());
+  }, []);
+
+  const onMinFitChange = useCallback((pct: number) => {
+    setMinFitPercent(pct);
+    writeStoredMinFitPercent(pct);
+  }, []);
 
   const queued = queuedProp ?? 0;
   const delivered = deliveredProp ?? 0;
-
-  // Feed is uncapped above the quality floor for paid plans; free proof is a soft shortlist.
-  // We no longer show weekly used/cap progress — find-matches uses daily fair-use limits.
-  const unlimited = !freeProof;
 
   const [lastReason, setLastReason] = useState<string | null>(null);
   const [autoKickDone, setAutoKickDone] = useState(false);
@@ -163,8 +176,8 @@ export function MatchesPanel({
         <div className="min-w-0">
           <h2 className="ds-section-title">Matches</h2>
           <p className="ds-section-desc">
-            Active matches ranked by fit score (best first), using your profile index. Paginated —
-            load more when you need the next page. Only 70%+ open roles appear.
+            Active job matches ranked by fit score (best first). Raise the minimum fit to tighten
+            the shortlist; load more when you need the next page.
           </p>
         </div>
         <Button
@@ -177,17 +190,17 @@ export function MatchesPanel({
         </Button>
       </div>
 
-      <p className="ds-meta -mt-2">
-        {queued} ready
-        <span className="mx-1.5 text-secondary/50">·</span>
-        {delivered} delivered
-        {unlimited && (
-          <>
-            <span className="mx-1.5 text-secondary/50">·</span>
-            <span className="text-accent-700 dark:text-accent-400">70%+ fit</span>
-          </>
-        )}
-      </p>
+      <div className="ds-meta -mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span>
+          {queued} ready
+          <span className="mx-1.5 text-secondary/50">·</span>
+          {delivered} delivered
+        </span>
+        <span className="hidden text-secondary/50 sm:inline" aria-hidden="true">
+          ·
+        </span>
+        <FitThresholdSlider value={minFitPercent} onChange={onMinFitChange} compact />
+      </div>
 
       {needsCvUpload && (
         <div role="status" className="ds-callout-warn">
@@ -312,6 +325,7 @@ export function MatchesPanel({
         preferScoreSort
         hideFilterChips
         pageSize={15}
+        minFitPercent={minFitPercent}
       />
     </div>
   );
