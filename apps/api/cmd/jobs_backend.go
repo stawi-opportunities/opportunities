@@ -97,6 +97,7 @@ type JobsBackend interface {
 		filter []map[string]any,
 		sort string,
 		limit int,
+		offset int,
 		aggs map[string]any,
 	) ([]job, int, map[string]map[string]int, error)
 }
@@ -490,8 +491,10 @@ func (p *jobsPostgres) Facets(ctx context.Context) (map[string]map[string]int, e
 // Search runs a full-text query + filters + facets in one pass.
 // Empty q falls back to the listing path.
 // Non-empty q (SEARCH_BACKEND=lakebase_text, default):
-//   filter: search_tsv @@ websearch_to_tsquery
-//   rank:   lakebase_bm25 (<@>) when available, else ts_rank (tests / no extension)
+//
+//	filter: search_tsv @@ websearch_to_tsquery
+//	rank:   lakebase_bm25 (<@>) when available, else ts_rank (tests / no extension)
+//
 // plain: ILIKE substring fallback.
 // pg_search / ParadeDB is not used.
 func (p *jobsPostgres) Search(
@@ -500,11 +503,15 @@ func (p *jobsPostgres) Search(
 	filter []map[string]any,
 	sort string,
 	limit int,
+	offset int,
 	_ map[string]any,
 ) ([]job, int, map[string]map[string]int, error) {
 	db, err := p.sqlDB(ctx, true)
 	if err != nil {
 		return nil, 0, nil, err
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	q = strings.TrimSpace(q)
 	where, args := postgresWhere(filter)
@@ -529,20 +536,22 @@ func (p *jobsPostgres) Search(
 				` OR description ILIKE $` + intToStr(likeIdx) +
 				` OR issuing_entity ILIKE $` + intToStr(likeIdx) + `)`
 		}
-		args = append(args, limit)
-		limitIdx := len(args)
+		args = append(args, limit, offset)
+		limitIdx := len(args) - 1
+		offsetIdx := len(args)
 		query := `SELECT ` + selectColumns + `
 		         FROM opportunities
 		         WHERE ` + activePred() + where + ` ` + windowed + `
 		         ORDER BY ` + orderBy + `
-		         LIMIT $` + intToStr(limitIdx)
+		         LIMIT $` + intToStr(limitIdx) + ` OFFSET $` + intToStr(offsetIdx)
 		rows, err = db.QueryContext(ctx, query, args...)
 	} else {
 		// lakebase_text path: always filter on search_tsv (standard tsvector).
 		args = append(args, q)
 		qIdx := len(args)
-		args = append(args, limit)
-		limitIdx := len(args)
+		args = append(args, limit, offset)
+		limitIdx := len(args) - 1
+		offsetIdx := len(args)
 
 		// Prefer lakebase_bm25 ranking; fall back to ts_rank if extension/index missing.
 		useLakebaseRank := p.lakebaseBM25Available(ctx, db)
@@ -584,7 +593,7 @@ func (p *jobsPostgres) Search(
 		          WHERE search_tsv @@ websearch_to_tsquery('english', $` + intToStr(qIdx) + `)
 		            AND ` + activePred() + where + ` ` + windowed + `
 		          ORDER BY ` + orderBy + `
-		          LIMIT $` + intToStr(limitIdx)
+		          LIMIT $` + intToStr(limitIdx) + ` OFFSET $` + intToStr(offsetIdx)
 		rows, err = db.QueryContext(ctx, query, args...)
 	}
 	if err != nil {
