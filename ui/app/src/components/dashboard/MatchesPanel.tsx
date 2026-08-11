@@ -190,17 +190,15 @@ export function MatchesPanel({
         </Button>
       </div>
 
-      <div className="ds-meta -mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span>
-          {queued} ready
-          <span className="mx-1.5 text-secondary/50">·</span>
-          {delivered} delivered
-        </span>
-        <span className="hidden text-secondary/50 sm:inline" aria-hidden="true">
-          ·
-        </span>
-        <FitThresholdSlider value={minFitPercent} onChange={onMinFitChange} compact />
-      </div>
+      <p className="ds-meta -mt-2">
+        {queued} ready
+        <span className="mx-1.5 text-secondary/50">·</span>
+        {delivered} delivered
+        <span className="mx-1.5 text-secondary/50">·</span>
+        <span className="text-accent-700 dark:text-accent-400">{minFitPercent}%+ fit</span>
+      </p>
+
+      <FitThresholdSlider value={minFitPercent} onChange={onMinFitChange} />
 
       {needsCvUpload && (
         <div role="status" className="ds-callout-warn">
