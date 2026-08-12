@@ -113,6 +113,13 @@ ui-build: $(HUGO_BIN)
 	cd ui/admin && npm ci --prefer-offline --no-audit --no-fund
 	cd ui/app   && npm run build
 	cd ui/admin && npm run build
+	cd ui/ats   && npm ci --prefer-offline --no-audit --no-fund
+	cd ui/ats   && VITE_OIDC_ISSUER=https://oauth2.stawi.org \
+		VITE_OIDC_CLIENT_ID=d7is2kspf2t7cl19qlp0 \
+		VITE_OIDC_INSTALLATION_ID=d7gi6lkpf2t67dlsqreg \
+		VITE_OIDC_REDIRECT_URI=https://opportunities.stawi.org/ats/auth/callback/ \
+		VITE_API_BASE_URL=https://api.stawi.org/ats \
+		npm run build
 	cd ui       && npm run css:build
 	cd ui       && $(HUGO_BIN) --minify
 
