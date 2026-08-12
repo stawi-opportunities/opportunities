@@ -120,6 +120,10 @@ ui-build: $(HUGO_BIN)
 		VITE_OIDC_REDIRECT_URI=https://opportunities.stawi.org/ats/auth/callback/ \
 		VITE_API_BASE_URL=https://api.stawi.org/ats \
 		npm run build
+	# CF Pages serves existing files before _redirects. Nested /ats/* paths
+	# 404 unless a real file exists; OIDC lands on /ats/auth/callback/.
+	mkdir -p ui/static/ats/auth/callback
+	cp ui/static/ats/index.html ui/static/ats/auth/callback/index.html
 	cd ui       && npm run css:build
 	cd ui       && $(HUGO_BIN) --minify
 
