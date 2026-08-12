@@ -39,6 +39,12 @@ Required env:
 - `AUTH_REQUIRE_JWT=true` (default)
 - `ATS_ENFORCE_PERMISSIONS=true` unless debugging ReBAC (default on when JWT on)
 
+Required peer:
+
+- `CALENDAR_SERVICE_URI=https://api.stawi.org/calendar` — **platform-calendar**
+  (`service_calendar`). ATS will not start without this. Calendar is a
+  platform service, not an opportunities-* app.
+
 Optional peers (wired in `apps/ats/cmd`):
 
 - `NOTIFICATION_SERVICE_URI` — interview email/ICS via outbox worker
@@ -89,8 +95,8 @@ curl -sS -X POST https://…/ats.v1.AtsService/GetDashboard \
 
 ## Out of band (other repos)
 
-- `cloud.deployment` / colony: Cloud Run service + setup Job  
-- `service-authentication` auth-contract: SA policy rows if required  
+- `cloud.deployment`: `platform-calendar` (shared booking plane) then `opportunities-ats`  
+- `service-authentication` auth-contract: SA policy rows if required (`service-calendar`, ATS SA)  
 - DNS / gateway HTTPRoute for SPA host  
 
 This repo ships code + runbooks; cluster manifests live in the deployments repo.
