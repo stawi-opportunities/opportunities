@@ -30,7 +30,9 @@ export function getAuthRuntime(): AuthRuntime | null {
   const installationId = env("VITE_OIDC_INSTALLATION_ID") || clientId;
   const redirectUri =
     env("VITE_OIDC_REDIRECT_URI") ||
-    (typeof window !== "undefined" ? `${window.location.origin}/auth/callback/` : "");
+    (typeof window !== "undefined"
+      ? `${window.location.origin}${import.meta.env.BASE_URL}auth/callback/`
+      : "");
   runtime = createAuthRuntime({
     clientId,
     installationId,
