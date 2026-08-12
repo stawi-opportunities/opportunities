@@ -45,6 +45,10 @@ export interface SearchResponse {
   results: SearchResult[];
   has_more: boolean;
   cursor_next: string;
+  /** Total matching rows (for page X of Y). */
+  total?: number;
+  limit?: number;
+  offset?: number;
   facets: Facets;
   sort: 'relevance' | 'recent' | 'closing_soon' | 'quality' | 'salary_high';
 }

@@ -76,6 +76,7 @@ export interface Strings {
   'deadline.applyBy': string;
   'deadline.posted': string;
   'deadline.closed': string;
+  'deadline.expired': string;
   'deadline.closingSoon': string;
 
   // ---- Expired messages ----
@@ -629,7 +630,8 @@ const en: Strings = {
   'deadline.expires': 'Expires',
   'deadline.applyBy': 'Apply by',
   'deadline.posted': 'Posted',
-  'deadline.closed': 'Closed',
+  'deadline.closed': 'Expired',
+  'deadline.expired': 'Expired',
   'deadline.closingSoon': 'Closing soon',
 
   'expired.scholarship': 'This scholarship is no longer accepting applications.',

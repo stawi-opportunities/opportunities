@@ -54,7 +54,7 @@ describe('daysUntil / urgency', () => {
 
 describe('formatDeadlineShort / relative', () => {
   it('formats short labels', () => {
-    expect(formatDeadlineShort('2026-07-10T00:00:00Z', NOW)).toBe('Closed');
+    expect(formatDeadlineShort('2026-07-10T00:00:00Z', NOW)).toBe('Expired');
     expect(formatDeadlineShort('2026-07-15T00:00:00Z', NOW)).toBe('Today');
     expect(formatDeadlineShort('2026-07-16T00:00:00Z', NOW)).toBe('1d left');
     expect(formatDeadlineShort('2026-07-20T00:00:00Z', NOW)).toBe('5d left');

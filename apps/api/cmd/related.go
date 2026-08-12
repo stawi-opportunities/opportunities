@@ -50,7 +50,7 @@ func relatedHandler(jm JobsBackend) http.HandlerFunc {
 		}
 		var hits []job
 		if q != "" {
-			rows, _, _, sErr := jm.Search(req.Context(), q, filter, "posted_at", fetchLimit, nil)
+			rows, _, _, sErr := jm.Search(req.Context(), q, filter, "posted_at", fetchLimit, 0, nil)
 			if sErr != nil {
 				// Soft-fail to filtered list without text query.
 				rows, sErr = jm.SearchFiltered(req.Context(), filter, fetchLimit, "posted_at")

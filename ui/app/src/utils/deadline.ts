@@ -113,7 +113,7 @@ export function formatDeadlineRelative(iso: string, now = Date.now()): string {
 export function formatDeadlineShort(iso: string, now = Date.now()): string {
   const days = daysUntil(iso, now);
   if (days === null) return '';
-  if (days < 0) return 'Closed';
+  if (days < 0) return 'Expired';
   if (days === 0) return 'Today';
   if (days === 1) return '1d left';
   if (days <= 14) return `${days}d left`;
@@ -167,7 +167,7 @@ const DEFAULT_LABELS: Required<PrimaryDateLabels> = {
   closes: 'Closes',
   expires: 'Expires',
   posted: 'Posted',
-  closed: 'Closed',
+  closed: 'Expired',
 };
 
 /**
