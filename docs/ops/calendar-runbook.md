@@ -29,9 +29,13 @@ AUTH_REQUIRE_JWT=false DATABASE_URL=$DATABASE_URL HTTP_ADDR=:8096 \
 ## Product integration
 
 ```bash
-CALENDAR_SERVICE_URI=https://…   # peer dial
+CALENDAR_SERVICE_URI=https://api.stawi.org/calendar   # platform-calendar
 # Audience path: /calendar (see pkg/calendarclient)
 ```
+
+Production deploy is **`platform-calendar`** in `cloud.deployment` (GCP
+`stawi-platform`, platform Neon). Do not ship this binary as an
+`opportunities-*` Cloud Run app.
 
 Flow:
 
