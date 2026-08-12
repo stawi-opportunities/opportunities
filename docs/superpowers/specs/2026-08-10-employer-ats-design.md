@@ -14,7 +14,7 @@
 1. **Full employer ATS** that feels like a classic hiring tool (jobs, pipeline, interviews, AI assist, agent-operable API) with **minimal ceremony**.
 2. **Hybrid talent:** Stawi matched candidates are a first-class **source** on the same pipeline objects — not a parallel product flow.
 3. **Mobile-first, API-driven UI** — recruiters complete common tasks in few steps; AI assists aggressively (JD, screen summary, rank, schedule suggest, draft outreach).
-4. **Agents operate the same stack as humans** via OpenAPI, using **user-delegated** identity tokens (no separate org service-account operators in v1).
+4. **Agents operate the same stack as humans** via **Connect RPC** (`ats.v1.AtsService`), using **user-delegated** identity tokens (no separate org service-account operators in v1).
 5. **Reuse platform primitives** — tenancy (`tenant_id` / `partition_id`), identity, profile, files, notification, matching candidates, payment/ledger. Do not invent parallel CRM, RBAC, or org tables.
 6. **Billing tied to results** — charge on hiring outcomes, not seats or “using the board.”
 
@@ -40,7 +40,7 @@
 | Candidate auth | Always **identity / Stawi login** (`sub === profile_id`) |
 | Agents | **User-delegated** only |
 | Workspace | Flat: **partition** under **tenant** = employer workspace; multi-partition membership via tenancy |
-| Implementation | Dedicated `apps/ats` + `ui/ats` SPA — Approach A |
+| Implementation | Dedicated `apps/ats` (service-profile layout: models/repository/business/handlers) + `ui/ats` SPA; Postgres only |
 | Data tenancy fields | Frame `data.BaseModel` (`tenant_id`, `partition_id`, …) — **not** a custom `org_id` |
 | People | **Profile service**; optional link to matching `candidate_profiles` / `candidate_id` |
 | Billing | **Results-based** (e.g. Hired outcome) via payment/ledger |
@@ -53,7 +53,7 @@
 
 | Plane | Responsibility |
 |-------|----------------|
-| **Interaction** | `ui/ats` SPA; agents as OpenAPI clients; candidate slot-pick screens (authenticated) |
+| **Interaction** | `ui/ats` SPA; agents as Connect clients (`atsv1connect`); candidate slot-pick screens (authenticated) |
 | **Control** | JWT claims (`profile_id`, `tenant_id`, `partition_id`); tenancy ReBAC; permission registration |
 | **Execution** | `apps/ats`: jobs, applications, stages, interviews, availability, AI orchestration, publish/talent adapters, outbox intents |
 | **Data** | ATS DB rows with Frame base model; no person PII store |
@@ -65,7 +65,7 @@
 Recruiter SPA / Agent
         │  Bearer JWT (user or user-delegated)
         ▼
-   apps/ats  (OpenAPI; platform audience/permissions for ATS product)
+   apps/ats  (Connect ats.v1.AtsService; platform audience/permissions service_ats)
         │
         ├── tenancy/identity  (authn claims, ReBAC check)
         ├── profile           (person, contacts)
@@ -189,7 +189,7 @@ Every request:
 
 ### 5.3 Contract rules
 
-1. OpenAPI 3 is the single contract for UI and agents.
+1. Connect protobuf (`apps/ats/proto/ats/v1/ats.proto`) is the single contract for UI and agents.
 2. Errors: `problem+json` with type, title, detail, `correlation_id`.
 3. `Idempotency-Key` required (or strongly enforced) on: book, advance, publish, unpublish, hire, application create.
 4. Cursor pagination; filters by stage, source, status.
@@ -263,7 +263,7 @@ Mobile-first bottom navigation:
 | More | Availability, partition switch, team (tenancy), outcome billing |
 
 - Stack: Vite/React aligned with existing product SPAs; platform UI tokens where available.
-- No server-side business logic in the SPA — OpenAPI client only.
+- No server-side business logic in the SPA — Connect JSON client only.
 - AI actions are contextual on job/application screens.
 
 ### 7.2 Candidate surfaces
@@ -330,7 +330,7 @@ Prefer real fixtures for tenancy claims over mocks where platform test harnesses
 
 ## 12. Extensibility
 
-- Calendar connect later: subtract busy from slot compute; still keep built-in availability as baseline.
+- Calendar: prefer `apps/calendar` (`service_calendar`) for multi-resource bookings and external sync; ATS may keep local availability as fallback until fully adapted.
 - Service-account org agents later: same API, different claim shape — do not bake user-only assumptions into domain, only into v1 auth policy.
 - Teams/departments later: tenancy hierarchy or partition properties — not ATS-side org trees in v1.
 

@@ -1,0 +1,512 @@
+syntax = "proto3";
+
+package ats.v1;
+
+import "common/v1/permissions.proto";
+
+option go_package = "github.com/stawi-opportunities/opportunities/apps/ats/gen/ats/v1;atsv1";
+
+// AtsService is the employer ATS API (Connect).
+// Namespace service_ats is registered with tenancy on setup for ReBAC.
+service AtsService {
+  option (common.v1.service_permissions) = {
+    namespace: "service_ats"
+    permissions: [
+      "ats_dashboard_view",
+      "ats_job_view",
+      "ats_job_manage",
+      "ats_application_view",
+      "ats_application_manage",
+      "ats_interview_view",
+      "ats_interview_manage",
+      "ats_talent_view",
+      "ats_talent_manage",
+      "ats_availability_manage",
+      "ats_ai_use",
+      "ats_hire",
+      "ats_publish"
+    ]
+    role_bindings: [
+      {
+        role: ROLE_OWNER
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish"
+        ]
+      },
+      {
+        role: ROLE_ADMIN
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish"
+        ]
+      },
+      {
+        // Recruiters: full hiring workflow.
+        role: ROLE_OPERATOR
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish"
+        ]
+      },
+      {
+        // Hiring managers / interviewers: view + schedule + availability.
+        role: ROLE_MEMBER
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_availability_manage",
+          "ats_ai_use"
+        ]
+      },
+      {
+        role: ROLE_VIEWER
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_application_view",
+          "ats_interview_view",
+          "ats_talent_view"
+        ]
+      },
+      {
+        // Platform / product bots (S2S) — full surface for automation.
+        role: ROLE_SERVICE
+        permissions: [
+          "ats_dashboard_view",
+          "ats_job_view",
+          "ats_job_manage",
+          "ats_application_view",
+          "ats_application_manage",
+          "ats_interview_view",
+          "ats_interview_manage",
+          "ats_talent_view",
+          "ats_talent_manage",
+          "ats_availability_manage",
+          "ats_ai_use",
+          "ats_hire",
+          "ats_publish"
+        ]
+      }
+    ]
+  };
+
+  rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_dashboard_view"]};
+  }
+
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_job_view"]};
+  }
+  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_job_manage"]};
+  }
+  rpc GetJob(GetJobRequest) returns (GetJobResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_job_view"]};
+  }
+  rpc UpdateJob(UpdateJobRequest) returns (UpdateJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_job_manage"]};
+  }
+  rpc CloseJob(CloseJobRequest) returns (CloseJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_job_manage"]};
+  }
+  rpc PublishJob(PublishJobRequest) returns (PublishJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_publish"]};
+  }
+  rpc UnpublishJob(UnpublishJobRequest) returns (UnpublishJobResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_publish"]};
+  }
+
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_application_view"]};
+  }
+  rpc CreateApplication(CreateApplicationRequest) returns (CreateApplicationResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_application_manage"]};
+  }
+  rpc GetApplication(GetApplicationRequest) returns (GetApplicationResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_application_view"]};
+  }
+  rpc AdvanceApplication(AdvanceApplicationRequest) returns (AdvanceApplicationResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_application_manage"]};
+  }
+  rpc HireApplication(HireApplicationRequest) returns (HireApplicationResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_hire"]};
+  }
+
+  rpc ListTalent(ListTalentRequest) returns (ListTalentResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_talent_view"]};
+  }
+  rpc AddTalent(AddTalentRequest) returns (AddTalentResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_talent_manage"]};
+  }
+
+  rpc ListInterviews(ListInterviewsRequest) returns (ListInterviewsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_view"]};
+  }
+  rpc ProposeInterview(ProposeInterviewRequest) returns (ProposeInterviewResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_manage"]};
+  }
+  rpc ListInterviewSlots(ListInterviewSlotsRequest) returns (ListInterviewSlotsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_view"]};
+  }
+  rpc BookInterview(BookInterviewRequest) returns (BookInterviewResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_manage"]};
+  }
+  rpc GetInterviewICS(GetInterviewICSRequest) returns (GetInterviewICSResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_interview_view"]};
+  }
+
+  rpc GetMyAvailability(GetMyAvailabilityRequest) returns (GetMyAvailabilityResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_availability_manage"]};
+  }
+  rpc SetMyAvailability(SetMyAvailabilityRequest) returns (SetMyAvailabilityResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_availability_manage"]};
+  }
+
+  // Candidate self-view of applications (same permission as application view).
+  rpc ListMyApplications(ListMyApplicationsRequest) returns (ListMyApplicationsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["ats_application_view"]};
+  }
+
+  rpc ScreenSummary(ScreenSummaryRequest) returns (ScreenSummaryResponse) {
+    option (common.v1.method_permissions) = {permissions: ["ats_ai_use"]};
+  }
+}
+
+// --- Domain messages (unchanged contract) ---
+
+message Job {
+  string id = 1;
+  string tenant_id = 2;
+  string partition_id = 3;
+  string title = 4;
+  string description = 5;
+  string location = 6;
+  string status = 7;
+  string visibility = 8;
+  string opportunity_id = 9;
+  string published_at = 10;
+  string created_at = 11;
+  string updated_at = 12;
+}
+
+message Application {
+  string id = 1;
+  string job_id = 2;
+  string profile_id = 3;
+  string candidate_id = 4;
+  string stage = 5;
+  string source = 6;
+  string source_ref = 7;
+  string status = 8;
+  string summary = 9;
+  float score = 10;
+  string created_at = 11;
+  string updated_at = 12;
+  string job_title = 13;
+}
+
+message Interview {
+  string id = 1;
+  string application_id = 2;
+  string type = 3;
+  int32 duration_min = 4;
+  repeated string panel = 5;
+  string status = 6;
+  string slot_start = 7;
+  string slot_end = 8;
+  string location = 9;
+  string video_url = 10;
+  string ics_uid = 11;
+  string job_id = 12;
+  string job_title = 13;
+  string candidate_profile_id = 14;
+}
+
+message TalentHit {
+  string profile_id = 1;
+  string candidate_id = 2;
+  float score = 3;
+  string summary = 4;
+}
+
+message WeekRule {
+  int32 weekday = 1;
+  string start = 2;
+  string end = 3;
+}
+
+message ExceptionDay {
+  string date = 1;
+  bool blocked = 2;
+}
+
+message Availability {
+  string profile_id = 1;
+  string timezone = 2;
+  repeated WeekRule rules = 3;
+  repeated ExceptionDay exceptions = 4;
+}
+
+message Slot {
+  string start = 1;
+  string end = 2;
+}
+
+message HireOutcome {
+  string id = 1;
+  string application_id = 2;
+  string job_id = 3;
+  string profile_id = 4;
+  string billing_ref = 5;
+  string idempotency_key = 6;
+  string created_at = 7;
+}
+
+message Dashboard {
+  int32 open_jobs = 1;
+  int32 active_applications = 2;
+  int32 interviews_this_week = 3;
+  repeated Interview upcoming_interviews = 4;
+  repeated string needs_attention = 5;
+}
+
+message GetDashboardRequest {}
+message GetDashboardResponse {
+  Dashboard dashboard = 1;
+}
+
+
+message ListJobsRequest {
+  string status = 1;
+}
+message ListJobsResponse {
+  repeated Job jobs = 1;
+}
+
+message CreateJobRequest {
+  string title = 1;
+  string description = 2;
+  string location = 3;
+  string status = 4;
+}
+message CreateJobResponse {
+  Job job = 1;
+}
+
+message GetJobRequest {
+  string id = 1;
+}
+message GetJobResponse {
+  Job job = 1;
+}
+
+message UpdateJobRequest {
+  string id = 1;
+  optional string title = 2;
+  optional string description = 3;
+  optional string location = 4;
+  optional string status = 5;
+}
+message UpdateJobResponse {
+  Job job = 1;
+}
+
+message CloseJobRequest {
+  string id = 1;
+}
+message CloseJobResponse {
+  Job job = 1;
+}
+
+message PublishJobRequest {
+  string id = 1;
+}
+message PublishJobResponse {
+  Job job = 1;
+}
+
+message UnpublishJobRequest {
+  string id = 1;
+}
+message UnpublishJobResponse {
+  Job job = 1;
+}
+
+message ListApplicationsRequest {
+  string job_id = 1;
+  string stage = 2;
+}
+message ListApplicationsResponse {
+  repeated Application applications = 1;
+}
+
+message CreateApplicationRequest {
+  string job_id = 1;
+  string profile_id = 2;
+  string candidate_id = 3;
+  string source = 4;
+  string source_ref = 5;
+  string summary = 6;
+  float score = 7;
+}
+message CreateApplicationResponse {
+  Application application = 1;
+}
+
+message GetApplicationRequest {
+  string id = 1;
+}
+message GetApplicationResponse {
+  Application application = 1;
+}
+
+message AdvanceApplicationRequest {
+  string id = 1;
+  string to_stage = 2;
+  string note = 3;
+}
+message AdvanceApplicationResponse {
+  Application application = 1;
+}
+
+message HireApplicationRequest {
+  string id = 1;
+}
+message HireApplicationResponse {
+  Application application = 1;
+  HireOutcome hire_outcome = 2;
+}
+
+message ListTalentRequest {
+  string job_id = 1;
+  int32 limit = 2;
+}
+message ListTalentResponse {
+  repeated TalentHit talent = 1;
+}
+
+message AddTalentRequest {
+  string job_id = 1;
+  TalentHit hit = 2;
+}
+message AddTalentResponse {
+  Application application = 1;
+}
+
+message ListInterviewsRequest {
+  string application_id = 1;
+}
+message ListInterviewsResponse {
+  repeated Interview interviews = 1;
+}
+
+message ProposeInterviewRequest {
+  string application_id = 1;
+  string type = 2;
+  int32 duration_min = 3;
+  repeated string panel = 4;
+  string location = 5;
+  string video_url = 6;
+}
+message ProposeInterviewResponse {
+  Interview interview = 1;
+}
+
+message ListInterviewSlotsRequest {
+  string interview_id = 1;
+}
+message ListInterviewSlotsResponse {
+  repeated Slot slots = 1;
+}
+
+message BookInterviewRequest {
+  string interview_id = 1;
+  string start = 2;
+  string end = 3;
+}
+message BookInterviewResponse {
+  Interview interview = 1;
+}
+
+message GetInterviewICSRequest {
+  string interview_id = 1;
+}
+message GetInterviewICSResponse {
+  string ics = 1;
+}
+
+message GetMyAvailabilityRequest {}
+message GetMyAvailabilityResponse {
+  Availability availability = 1;
+}
+
+message SetMyAvailabilityRequest {
+  string timezone = 1;
+  repeated WeekRule rules = 2;
+  repeated ExceptionDay exceptions = 3;
+}
+message SetMyAvailabilityResponse {
+  Availability availability = 1;
+}
+
+message ListMyApplicationsRequest {}
+message ListMyApplicationsResponse {
+  repeated Application applications = 1;
+}
+
+message ScreenSummaryRequest {
+  string application_id = 1;
+}
+message ScreenSummaryResponse {
+  string summary = 1;
+}

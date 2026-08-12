@@ -1,0 +1,347 @@
+syntax = "proto3";
+
+package calendar.v1;
+
+import "common/v1/permissions.proto";
+
+option go_package = "github.com/stawi-opportunities/opportunities/apps/calendar/gen/calendar/v1;calendarv1";
+
+// CalendarService is the resource booking and availability plane.
+// Book people, rooms, equipment, property units, or any registered resource.
+// Namespace service_calendar is registered on setup for ReBAC.
+service CalendarService {
+  option (common.v1.service_permissions) = {
+    namespace: "service_calendar"
+    permissions: [
+      "calendar_resource_view",
+      "calendar_resource_manage",
+      "calendar_availability_manage",
+      "calendar_slot_view",
+      "calendar_booking_view",
+      "calendar_booking_manage",
+      "calendar_sync_manage"
+    ]
+    role_bindings: [
+      {
+        role: ROLE_OWNER
+        permissions: [
+          "calendar_resource_view",
+          "calendar_resource_manage",
+          "calendar_availability_manage",
+          "calendar_slot_view",
+          "calendar_booking_view",
+          "calendar_booking_manage",
+          "calendar_sync_manage"
+        ]
+      },
+      {
+        role: ROLE_ADMIN
+        permissions: [
+          "calendar_resource_view",
+          "calendar_resource_manage",
+          "calendar_availability_manage",
+          "calendar_slot_view",
+          "calendar_booking_view",
+          "calendar_booking_manage",
+          "calendar_sync_manage"
+        ]
+      },
+      {
+        role: ROLE_OPERATOR
+        permissions: [
+          "calendar_resource_view",
+          "calendar_resource_manage",
+          "calendar_availability_manage",
+          "calendar_slot_view",
+          "calendar_booking_view",
+          "calendar_booking_manage",
+          "calendar_sync_manage"
+        ]
+      },
+      {
+        role: ROLE_MEMBER
+        permissions: [
+          "calendar_resource_view",
+          "calendar_availability_manage",
+          "calendar_slot_view",
+          "calendar_booking_view",
+          "calendar_booking_manage"
+        ]
+      },
+      {
+        role: ROLE_VIEWER
+        permissions: [
+          "calendar_resource_view",
+          "calendar_slot_view",
+          "calendar_booking_view"
+        ]
+      },
+      {
+        role: ROLE_SERVICE
+        permissions: [
+          "calendar_resource_view",
+          "calendar_resource_manage",
+          "calendar_availability_manage",
+          "calendar_slot_view",
+          "calendar_booking_view",
+          "calendar_booking_manage",
+          "calendar_sync_manage"
+        ]
+      }
+    ]
+  };
+
+  rpc EnsureResource(EnsureResourceRequest) returns (EnsureResourceResponse) {
+    option (common.v1.method_permissions) = {permissions: ["calendar_resource_manage"]};
+  }
+  rpc GetResource(GetResourceRequest) returns (GetResourceResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["calendar_resource_view"]};
+  }
+  rpc ListResources(ListResourcesRequest) returns (ListResourcesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["calendar_resource_view"]};
+  }
+
+  rpc SetAvailability(SetAvailabilityRequest) returns (SetAvailabilityResponse) {
+    option (common.v1.method_permissions) = {permissions: ["calendar_availability_manage"]};
+  }
+  rpc GetAvailability(GetAvailabilityRequest) returns (GetAvailabilityResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["calendar_resource_view"]};
+  }
+
+  rpc ListSlots(ListSlotsRequest) returns (ListSlotsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["calendar_slot_view"]};
+  }
+  rpc ListBusy(ListBusyRequest) returns (ListBusyResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["calendar_slot_view"]};
+  }
+
+  rpc CreateBooking(CreateBookingRequest) returns (CreateBookingResponse) {
+    option (common.v1.method_permissions) = {permissions: ["calendar_booking_manage"]};
+  }
+  rpc ConfirmBooking(ConfirmBookingRequest) returns (ConfirmBookingResponse) {
+    option (common.v1.method_permissions) = {permissions: ["calendar_booking_manage"]};
+  }
+  rpc CancelBooking(CancelBookingRequest) returns (CancelBookingResponse) {
+    option (common.v1.method_permissions) = {permissions: ["calendar_booking_manage"]};
+  }
+  rpc GetBooking(GetBookingRequest) returns (GetBookingResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["calendar_booking_view"]};
+  }
+  rpc GetBookingICS(GetBookingICSRequest) returns (GetBookingICSResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (common.v1.method_permissions) = {permissions: ["calendar_booking_view"]};
+  }
+
+  rpc UpsertExternalConnection(UpsertExternalConnectionRequest) returns (UpsertExternalConnectionResponse) {
+    option (common.v1.method_permissions) = {permissions: ["calendar_sync_manage"]};
+  }
+  rpc TriggerSync(TriggerSyncRequest) returns (TriggerSyncResponse) {
+    option (common.v1.method_permissions) = {permissions: ["calendar_sync_manage"]};
+  }
+}
+
+message Resource {
+  string id = 1;
+  string tenant_id = 2;
+  string partition_id = 3;
+  // Open type: person, room, equipment, property, vehicle, service_window, custom:…
+  string type = 4;
+  // Opaque subject kind: profile, external, inventory, property, …
+  string subject_kind = 5;
+  string subject_id = 6;
+  string display_name = 7;
+  string timezone = 8;
+  // Concurrent booking capacity (1 = exclusive).
+  int32 capacity = 9;
+  string status = 10; // active | disabled
+  string metadata_json = 11;
+}
+
+message WeekRule {
+  int32 weekday = 1; // 0=Sunday … 6=Saturday
+  string start = 2;  // HH:MM
+  string end = 3;
+}
+
+message ExceptionDay {
+  string date = 1; // YYYY-MM-DD
+  bool blocked = 2;
+}
+
+message Availability {
+  string resource_id = 1;
+  string timezone = 2;
+  repeated WeekRule rules = 3;
+  repeated ExceptionDay exceptions = 4;
+}
+
+message Slot {
+  string start = 1; // RFC3339
+  string end = 2;
+}
+
+message BusyInterval {
+  string resource_id = 1;
+  string start = 2;
+  string end = 3;
+  string source = 4; // booking | external:google | manual | …
+  string note = 5;
+}
+
+message BookingLine {
+  string resource_id = 1;
+  int32 quantity = 2; // default 1
+  string external_event_id = 3;
+}
+
+message Booking {
+  string id = 1;
+  string tenant_id = 2;
+  string partition_id = 3;
+  string status = 4; // hold | confirmed | canceled
+  string start = 5;
+  string end = 6;
+  string source = 7;
+  string source_ref = 8;
+  string organizer_profile_id = 9;
+  string title = 10;
+  string description = 11;
+  string location = 12;
+  string idempotency_key = 13;
+  string ics_uid = 14;
+  string hold_expires_at = 15;
+  repeated BookingLine lines = 16;
+  string metadata_json = 17;
+}
+
+message ExternalConnection {
+  string id = 1;
+  string resource_id = 2;
+  // google | microsoft | caldav | …
+  string provider = 3;
+  string external_calendar_id = 4;
+  bool import_busy = 5;
+  bool export_bookings = 6;
+  string status = 7; // active | disabled | error
+  string last_sync_at = 8;
+  string last_error = 9;
+}
+
+// --- Resources ---
+
+message EnsureResourceRequest {
+  string type = 1;
+  string subject_kind = 2;
+  string subject_id = 3;
+  string display_name = 4;
+  string timezone = 5;
+  int32 capacity = 6;
+  string metadata_json = 7;
+}
+message EnsureResourceResponse { Resource resource = 1; }
+
+message GetResourceRequest { string id = 1; }
+message GetResourceResponse { Resource resource = 1; }
+
+message ListResourcesRequest {
+  string type = 1;
+  string subject_kind = 2;
+  string subject_id = 3;
+  int32 limit = 4;
+}
+message ListResourcesResponse { repeated Resource resources = 1; }
+
+// --- Availability ---
+
+message SetAvailabilityRequest {
+  string resource_id = 1;
+  string timezone = 2;
+  repeated WeekRule rules = 3;
+  repeated ExceptionDay exceptions = 4;
+}
+message SetAvailabilityResponse { Availability availability = 1; }
+
+message GetAvailabilityRequest { string resource_id = 1; }
+message GetAvailabilityResponse { Availability availability = 1; }
+
+// --- Slots / busy ---
+
+message ListSlotsRequest {
+  repeated string resource_ids = 1;
+  int32 duration_min = 2;
+  string window_start = 3; // RFC3339; default now
+  string window_end = 4;   // RFC3339; default now+14d
+}
+message ListSlotsResponse { repeated Slot slots = 1; }
+
+message ListBusyRequest {
+  repeated string resource_ids = 1;
+  string window_start = 2;
+  string window_end = 3;
+}
+message ListBusyResponse { repeated BusyInterval intervals = 1; }
+
+// --- Bookings ---
+
+message CreateBookingRequest {
+  repeated BookingLine lines = 1;
+  string start = 2;
+  string end = 3;
+  // hold | confirmed (default confirmed)
+  string status = 4;
+  int32 hold_ttl_seconds = 5;
+  string source = 6;
+  string source_ref = 7;
+  string organizer_profile_id = 8;
+  string title = 9;
+  string description = 10;
+  string location = 11;
+  string idempotency_key = 12;
+  string metadata_json = 13;
+}
+message CreateBookingResponse { Booking booking = 1; }
+
+message ConfirmBookingRequest { string id = 1; }
+message ConfirmBookingResponse { Booking booking = 1; }
+
+message CancelBookingRequest {
+  string id = 1;
+  string reason = 2;
+}
+message CancelBookingResponse { Booking booking = 1; }
+
+message GetBookingRequest { string id = 1; }
+message GetBookingResponse { Booking booking = 1; }
+
+message GetBookingICSRequest { string id = 1; }
+message GetBookingICSResponse { string ics = 1; }
+
+// --- External sync ---
+
+message UpsertExternalConnectionRequest {
+  string resource_id = 1;
+  string provider = 2;
+  string external_calendar_id = 3;
+  // Opaque credentials JSON (tokens); stored encrypted at rest by ops key when configured.
+  string credentials_json = 4;
+  bool import_busy = 5;
+  bool export_bookings = 6;
+}
+message UpsertExternalConnectionResponse { ExternalConnection connection = 1; }
+
+message TriggerSyncRequest {
+  string connection_id = 1; // empty = all active in partition
+  bool import_busy = 2;
+  bool export_pending = 3;
+}
+message TriggerSyncResponse {
+  int32 imported_blocks = 1;
+  int32 exported_bookings = 2;
+  int32 errors = 3;
+}

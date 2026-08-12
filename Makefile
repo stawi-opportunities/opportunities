@@ -1,14 +1,14 @@
 SHELL := /bin/bash
 
-APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching apps/applications
+APP_DIRS := apps/crawler apps/api apps/worker apps/frontier-worker apps/matching apps/applications apps/ats apps/calendar
 
 # Pinned Hugo extended for reproducible builds (CF Pages ships an old one).
 HUGO_VERSION := 0.160.1
 HUGO_BIN     := $(CURDIR)/bin/hugo
 
-.PHONY: deps build test test-integration run-crawler run-api run-worker \
+.PHONY: deps build test test-integration run-crawler run-api run-worker run-ats run-calendar test-calendar gen-calendar \
         crawl-once infra-up infra-down \
-        ui-deps ui-build ui-dev \
+        ui-deps ui-build ui-dev ui-ats-dev \
         opportunity-kinds-link
 
 deps:
@@ -35,6 +35,39 @@ run-api:
 
 run-worker:
 	go run ./apps/worker/cmd
+
+# Employer ATS (Postgres via DATABASE_URL). Setup migrate, then runtime.
+# Example: DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/ats?sslmode=disable
+run-ats-setup:
+	DO_SETUP=true AUTH_REQUIRE_JWT=false go run ./apps/ats/cmd
+
+run-ats:
+	AUTH_REQUIRE_JWT=false HTTP_ADDR=:8095 \
+	  CALENDAR_SERVICE_URI=$${CALENDAR_SERVICE_URI:-http://127.0.0.1:8096} \
+	  CALENDAR_SERVICE_DIRECT=true \
+	  go run ./apps/ats/cmd
+
+ui-ats-dev:
+	cd ui/ats && npm install --no-audit --no-fund && npm run dev
+
+test-ats:
+	go test ./apps/ats/... -count=1 -timeout 10m
+
+run-calendar-setup:
+	DO_SETUP=true AUTH_REQUIRE_JWT=false go run ./apps/calendar/cmd
+
+run-calendar:
+	AUTH_REQUIRE_JWT=false HTTP_ADDR=:8096 go run ./apps/calendar/cmd
+
+test-calendar:
+	go test ./apps/calendar/... -count=1 -timeout 10m
+
+gen-calendar:
+	cd apps/calendar/proto && buf generate
+
+# Regenerate Connect + protobuf for ATS (requires buf CLI).
+gen-ats:
+	cd apps/ats/proto && buf generate
 
 # One-shot structured crawl into job_ingest_queue (worker drains to opportunities).
 # Examples:

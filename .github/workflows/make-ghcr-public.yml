@@ -11,13 +11,13 @@ on:
         description: Comma-separated package names
         required: false
         type: string
-        default: "opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker"
+        default: "opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker,opportunities-ats,opportunities-calendar"
   workflow_dispatch:
     inputs:
       packages:
         description: Comma-separated package names (empty = opportunities-* defaults)
         required: false
-        default: "opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker"
+        default: "opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker,opportunities-ats,opportunities-calendar"
   release:
     types: [published]
 
@@ -47,7 +47,7 @@ jobs:
       - name: Publicize packages
         env:
           OWNER: ${{ github.repository_owner }}
-          INPUT_PACKAGES: ${{ inputs.packages || github.event.inputs.packages || 'opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker' }}
+          INPUT_PACKAGES: ${{ inputs.packages || github.event.inputs.packages || 'opportunities-matching,opportunities-api,opportunities-crawler,opportunities-worker,opportunities-frontier-worker,opportunities-ats,opportunities-calendar' }}
         run: |
           set -euo pipefail
           make_public() {
