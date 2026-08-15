@@ -450,6 +450,10 @@ export interface Strings {
   'home.filterOnsite': string;
   'home.browseAll': string;
   'home.loading': string;
+  'home.statsLabel': string;
+  'home.statsJobs': string;
+  'home.statsCompanies': string;
+  'home.statsCountries': string;
 
   // ---- Common ----
   'common.comingSoon': string;
@@ -608,6 +612,10 @@ const en: Strings = {
   'home.filterOnsite': 'On-site',
   'home.browseAll': 'Browse all jobs',
   'home.loading': 'Loading fresh roles…',
+  'home.statsLabel': 'Live today',
+  'home.statsJobs': 'open opportunities',
+  'home.statsCompanies': 'companies hiring',
+  'home.statsCountries': 'countries covered',
 
   'common.comingSoon': 'Coming soon',
 
