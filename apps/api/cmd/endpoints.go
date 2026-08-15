@@ -71,6 +71,18 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 		}
 
 		limit := parseLimit(qs.Get("limit"), 20, 50)
+		offset := 0
+		if v := strings.TrimSpace(qs.Get("offset")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+		// cursor is the next offset as a decimal string (SPA page navigation).
+		if cur := strings.TrimSpace(qs.Get("cursor")); cur != "" {
+			if n, err := strconv.Atoi(cur); err == nil && n >= 0 {
+				offset = n
+			}
+		}
 
 		boolQ := map[string]any{"filter": filter}
 		if q != "" {
@@ -101,7 +113,7 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 			"degree_level":    map[string]any{"terms": map[string]any{"field": "degree_level", "size": 8}},
 		}
 		_ = boolQ // composed into the backend Search via filter slice below
-		hits, total, rawFacets, err := jm.Search(ctx, q, filter, sort, limit, aggs)
+		hits, total, rawFacets, err := jm.Search(ctx, q, filter, sort, limit, offset, aggs)
 		if err != nil {
 			http.Error(w, `{"error":"search failed: `+err.Error()+`"}`, http.StatusBadGateway)
 			return
@@ -109,10 +121,11 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 
 		decorated := embedCounters(ctx, ct, hits, registryCategoryLabel(reg))
 		facets := shapeFacetsForSPA(rawFacets)
-		hasMore := len(hits) < total
+		nextOffset := offset + len(hits)
+		hasMore := nextOffset < total
 		cursorNext := ""
 		if hasMore {
-			cursorNext = strconv.Itoa(limit)
+			cursorNext = strconv.Itoa(nextOffset)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -121,6 +134,8 @@ func searchHandler(jm JobsBackend, reg *opportunity.Registry, ct *counters.Count
 			"results":     decorated,
 			"facets":      facets,
 			"total":       total,
+			"limit":       limit,
+			"offset":      offset,
 			"sort":        sort,
 			"has_more":    hasMore,
 			"cursor_next": cursorNext,

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -39,8 +40,8 @@ func (r *CandidateRepository) GetByID(ctx context.Context, id string) (*domain.C
 	return &c, nil
 }
 
-// GetByProfileID retrieves a candidate profile by external profile ID (JWT sub claim).
-// Returns nil, nil if no record is found.
+// GetByProfileID retrieves a candidate profile by platform profile_id
+// (JWT sub for a logged-in user). Returns nil, nil if no record is found.
 func (r *CandidateRepository) GetByProfileID(ctx context.Context, profileID string) (*domain.CandidateProfile, error) {
 	var c domain.CandidateProfile
 	err := r.db(ctx, true).Where("profile_id = ?", profileID).First(&c).Error
@@ -51,6 +52,67 @@ func (r *CandidateRepository) GetByProfileID(ctx context.Context, profileID stri
 		return nil, err
 	}
 	return &c, nil
+}
+
+// ResolveByProfileID looks up the job-seeker candidate for a platform
+// profile. profile_id is JWT sub (person). candidate_profiles.id is a
+// separate product-local job-seeker id — the same profile may also act
+// as a hiring manager without a candidate row (or with other roles).
+//
+// Lookup order: profile_id column, then legacy rows where id was wrongly
+// set equal to the JWT sub.
+func (r *CandidateRepository) ResolveByProfileID(ctx context.Context, profileID string) (*domain.CandidateProfile, error) {
+	if profileID == "" {
+		return nil, nil
+	}
+	c, err := r.GetByProfileID(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	if c != nil {
+		return c, nil
+	}
+	// Legacy rows created before id/profile_id were separated.
+	c, err = r.GetByID(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	if c != nil && strings.TrimSpace(c.ProfileID) == "" {
+		_ = r.db(ctx, false).Model(&domain.CandidateProfile{}).
+			Where("id = ?", c.ID).
+			Update("profile_id", profileID).Error
+		c.ProfileID = profileID
+	}
+	return c, nil
+}
+
+// EnsureByProfileID returns the job-seeker candidate for this platform
+// profile, creating one if needed. New rows get a product-local xid as
+// id and profile_id = JWT sub. Never invents a second row when one
+// already exists for the profile.
+func (r *CandidateRepository) EnsureByProfileID(ctx context.Context, profileID string) (*domain.CandidateProfile, error) {
+	if profileID == "" {
+		return nil, fmt.Errorf("repository: profile_id required")
+	}
+	c, err := r.ResolveByProfileID(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	if c != nil {
+		return c, nil
+	}
+	// id left empty → BaseModel.BeforeCreate assigns xid (product-local).
+	c = &domain.CandidateProfile{
+		ProfileID: profileID,
+	}
+	if err := r.Create(ctx, c); err != nil {
+		// Race: another request created the row — re-resolve.
+		if existing, rerr := r.ResolveByProfileID(ctx, profileID); rerr == nil && existing != nil {
+			return existing, nil
+		}
+		return nil, fmt.Errorf("repository: create job seeker for profile %s: %w", profileID, err)
+	}
+	return c, nil
 }
 
 // Update saves all fields of the given candidate profile.
@@ -174,8 +236,9 @@ func (r *CandidateRepository) ActivateSubscription(ctx context.Context, candidat
 	updates["auto_apply"] = false
 	res := r.db(ctx, false).
 		Model(&domain.CandidateProfile{}).
-		Where("id = ? AND NOT (subscription = ? AND subscription_id = ? AND cancel_at_period_end = ?)",
-			candidateID, domain.SubscriptionPaid, subID, false).
+		// Activation may key on product candidate_id or legacy profile_id=sub.
+		Where("(id = ? OR profile_id = ?) AND NOT (subscription = ? AND subscription_id = ? AND cancel_at_period_end = ?)",
+			candidateID, candidateID, domain.SubscriptionPaid, subID, false).
 		Updates(updates)
 	if res.Error != nil {
 		return false, res.Error
@@ -435,12 +498,15 @@ func (r *CandidateRepository) ListInactiveSince(ctx context.Context, cutoff time
 // onboarding handler treats "no draft" identically to "candidate
 // doesn't exist yet"; a fresh user has the same empty wizard either
 // way.
+// GetOnboardingDraft returns the draft for a job-seeker row.
+// id may be candidate_profiles.id or platform profile_id (JWT sub).
 func (r *CandidateRepository) GetOnboardingDraft(ctx context.Context, id string) ([]byte, error) {
 	var result struct {
 		OnboardingDraft []byte `gorm:"column:onboarding_draft"`
 	}
 	err := r.db(ctx, true).
-		Raw(`SELECT onboarding_draft FROM candidate_profiles WHERE id = ? LIMIT 1`, id).
+		Raw(`SELECT onboarding_draft FROM candidate_profiles
+		     WHERE id = ? OR profile_id = ? LIMIT 1`, id, id).
 		Scan(&result).Error
 	if err != nil {
 		return nil, err
@@ -451,40 +517,35 @@ func (r *CandidateRepository) GetOnboardingDraft(ctx context.Context, id string)
 	return result.OnboardingDraft, nil
 }
 
-// SetOnboardingDraft writes the wizard draft. The body is opaque to
-// the repository; the matching service owns the schema. The candidate
-// row must already exist — sign-in creates one before the wizard
-// mounts (see [POST /candidates/onboard] for the canonical row
-// creation path; a draft-only candidate is created lazily by
-// SetOnboardingDraft via an UPDATE that hits zero rows then INSERTs
-// the bare minimum).
-func (r *CandidateRepository) SetOnboardingDraft(ctx context.Context, id string, draft []byte) error {
+// SetOnboardingDraft writes the wizard draft for the job-seeker linked
+// to this platform profile_id (or legacy candidate id). Ensures a
+// product-local candidate row exists (id ≠ profile_id for new rows).
+func (r *CandidateRepository) SetOnboardingDraft(ctx context.Context, profileOrCandidateID string, draft []byte) error {
+	cand, err := r.EnsureByProfileID(ctx, profileOrCandidateID)
+	if err != nil {
+		// If caller passed a product candidate id that is not a profile_id,
+		// EnsureByProfileID may create a wrong row — try resolve as id first.
+		if byID, idErr := r.GetByID(ctx, profileOrCandidateID); idErr == nil && byID != nil {
+			cand = byID
+		} else {
+			return err
+		}
+	}
 	res := r.db(ctx, false).
-		Exec(`UPDATE candidate_profiles SET onboarding_draft = ?::jsonb WHERE id = ?`, string(draft), id)
+		Exec(`UPDATE candidate_profiles SET onboarding_draft = ?::jsonb, updated_at = NOW() WHERE id = ?`,
+			string(draft), cand.ID)
 	if res.Error != nil {
 		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		// Lazy-create the candidate row so the wizard can persist
-		// before the final /candidates/onboard call. The row uses
-		// id as its own profile_id (they're the same value pre-Phase-4
-		// split, set by the auth layer). All other columns get their
-		// NOT NULL DEFAULT values from the schema.
-		return r.db(ctx, false).Exec(
-			`INSERT INTO candidate_profiles (id, onboarding_draft) VALUES (?, ?::jsonb)
-			 ON CONFLICT (id) DO UPDATE SET onboarding_draft = EXCLUDED.onboarding_draft`,
-			id, string(draft),
-		).Error
 	}
 	return nil
 }
 
-// ClearOnboardingDraft resets the draft to '{}'. Called inside the
-// same transaction as POST /candidates/onboard so a successful submit
-// atomically promotes the draft into the canonical profile columns.
+// ClearOnboardingDraft resets the draft to '{}'. id may be candidate id
+// or profile_id.
 func (r *CandidateRepository) ClearOnboardingDraft(ctx context.Context, id string) error {
 	return r.db(ctx, false).
-		Exec(`UPDATE candidate_profiles SET onboarding_draft = '{}'::jsonb WHERE id = ?`, id).Error
+		Exec(`UPDATE candidate_profiles SET onboarding_draft = '{}'::jsonb, updated_at = NOW()
+		      WHERE id = ? OR profile_id = ?`, id, id).Error
 }
 
 // Transaction runs fn inside a single database transaction. The

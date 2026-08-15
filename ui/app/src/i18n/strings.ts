@@ -76,6 +76,7 @@ export interface Strings {
   'deadline.applyBy': string;
   'deadline.posted': string;
   'deadline.closed': string;
+  'deadline.expired': string;
   'deadline.closingSoon': string;
 
   // ---- Expired messages ----
@@ -477,6 +478,7 @@ export interface Strings {
   'settings.notifications': string;
   'settings.emailDigest': string;
   'settings.emailDigestHint': string;
+  'settings.twiceDaily': string;
   'settings.daily': string;
   'settings.weekly': string;
   'settings.off': string;
@@ -575,7 +577,8 @@ const en: Strings = {
   'nav.settings': 'Settings',
 
   'cta.applyNow': 'Apply now',
-  'cta.signInToApply': 'Sign in to apply',
+  // Kept for legacy copy; product CTAs use Apply / Chat and redirect to sign-in.
+  'cta.signInToApply': 'Apply',
   'cta.saveJob': 'Save job',
   'cta.loadMore': 'Load more',
   'cta.subscribe': 'Subscribe',
@@ -627,7 +630,8 @@ const en: Strings = {
   'deadline.expires': 'Expires',
   'deadline.applyBy': 'Apply by',
   'deadline.posted': 'Posted',
-  'deadline.closed': 'Closed',
+  'deadline.closed': 'Expired',
+  'deadline.expired': 'Expired',
   'deadline.closingSoon': 'Closing soon',
 
   'expired.scholarship': 'This scholarship is no longer accepting applications.',
@@ -775,7 +779,7 @@ const en: Strings = {
     "Tell us what you're looking for so we can surface the most relevant roles.",
   'onboard.preferencesHint': "We'll filter out roles that don't match your location and timezone.",
   'onboard.choosePlanHint':
-    'You can upgrade or cancel any time. All plans include weekly matches to your inbox.',
+    'You can upgrade or cancel any time. All plans include AI matches at 70%+ fit and email digests.',
   'onboard.targetJobTitle': 'Target job title',
   'onboard.targetJobTitlePlaceholder': 'e.g. Senior Software Engineer',
   'onboard.experienceLevel': 'Experience level',
@@ -820,7 +824,7 @@ const en: Strings = {
   'onboard.country': 'Country',
   'onboard.countryPlaceholder': 'e.g. Kenya',
   'onboard.planUpgradeHint':
-    'You can upgrade or cancel any time. All plans include weekly matches to your inbox.',
+    'You can upgrade or cancel any time. All plans include AI matches at 70%+ fit and email digests.',
   'onboard.matchesPerWeek': 'Up to {count} matches per week',
   'onboard.includesAgent': 'Includes a dedicated agent',
   'onboard.agreeTermsLabel': 'I agree to the',
@@ -997,7 +1001,8 @@ const en: Strings = {
   'settings.notifications': 'Notifications',
   'settings.emailDigest': 'Email digest frequency',
   'settings.emailDigestHint':
-    'How often we email your match or jobs summary. Daily users get every run; weekly users get the summary on the configured weekly day (default Monday).',
+    'How often we email your top new fits (up to 3 per digest). Twice daily and daily run on schedule; weekly users get the summary on the configured day (default Monday).',
+  'settings.twiceDaily': 'Twice daily',
   'settings.daily': 'Daily',
   'settings.weekly': 'Weekly',
   'settings.off': 'Off',

@@ -10,7 +10,6 @@ import (
 	"github.com/pitabwire/util"
 
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
-	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 )
 
@@ -114,12 +113,18 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		log := util.Log(ctx)
-		candidateID := httpmw.CandidateFromContext(ctx)
+		// JWT sub = platform profile_id (person). Job-seeker is a linked role.
+		profileID := httpmw.ProfileIDFromContext(ctx)
 
-		// Never start a second payment while the candidate is already paid.
+		// Product-local job-seeker id for ledger/activation (not the profile).
+		candidateID := profileID
 		if deps.Candidates != nil {
-			if cand, cerr := deps.Candidates.GetByID(ctx, candidateID); cerr == nil && cand != nil {
-				if cand.Subscription == domain.SubscriptionPaid || cand.Subscription == domain.SubscriptionTrial {
+			if cand, cerr := loadCandidateByProfileID(ctx, deps.Candidates, profileID); cerr == nil && cand != nil {
+				if cand.ID != "" {
+					candidateID = cand.ID
+				}
+				switch statusFromCandidate(cand) {
+				case "active", "past_due":
 					httpmw.ProblemJSON(w, http.StatusConflict, "already_subscribed",
 						"you already have an active subscription; manage it under Billing")
 					return
@@ -144,20 +149,24 @@ func CheckoutHandler(deps CheckoutDeps) http.HandlerFunc {
 			return
 		}
 
+		// Platform invariant: JWT sub === profile_id (CandidateFromContext).
+		// Checkout calls ProfileService.GetById(profile_id); contacts[].detail
+		// holds email/phone. Do not invent contact fields here.
 		country := strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 		res, err := deps.Gateway.CreateCheckout(ctx, billing.CheckoutRequest{
-			CandidateID: candidateID,
+			CandidateID: candidateID, // product-local job seeker (activation key)
+			ProfileID:   profileID,   // JWT sub → ProfileService contacts
 			Plan:        plan,
 			Country:     country,
-			Email:       in.Email,
-			Phone:       in.Phone,
 		})
 		if errors.Is(err, billing.ErrGatewayUnavailable) {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "billing_unavailable", "payment provider is not configured")
 			return
 		}
 		if err != nil {
-			log.WithError(err).WithField("candidate_id", candidateID).Error("billing/checkout: gateway create failed")
+			log.WithError(err).WithField("profile_id", profileID).
+				WithField("candidate_id", candidateID).
+				Error("billing/checkout: gateway create failed")
 			httpmw.ProblemJSON(w, http.StatusBadGateway, "checkout_failed", "could not start checkout")
 			return
 		}

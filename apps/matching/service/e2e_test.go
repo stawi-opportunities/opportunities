@@ -177,9 +177,10 @@ func TestCandidatesE2EUploadToEmbedding(t *testing.T) {
 
 	// --- POST /candidates/cv/upload ---
 	uploadHandler := httpv1.UploadHandler(httpv1.UploadDeps{
-		Svc:     svc,
-		Archive: archive.NewFakeArchive(),
-		Text:    &fakeText{text: "resume plain text long enough to be usable"},
+		Svc:       svc,
+		Archive:   archive.NewFakeArchive(),
+		Text:      &fakeText{text: "resume plain text long enough to be usable"},
+		Structure: &fakeExtractor{fields: &extraction.CVFields{Name: "Jane", Bio: "backend engineer"}},
 	})
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)

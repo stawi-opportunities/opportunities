@@ -1,17 +1,6 @@
 import { createCheckout, type CheckoutCreateInput, type CheckoutResponse } from '@/api/billing';
-import { authRuntime } from '@/auth/runtime';
 
 export const PENDING_PROMPT_KEY = 'stawi.billing.pending_prompt_id';
-
-/** Email from OIDC claims for Flutterwave customer_email. */
-export async function checkoutEmailFromAuth(): Promise<string> {
-  try {
-    const claims = await authRuntime().getClaims();
-    return String(claims?.email ?? '').trim();
-  } catch {
-    return '';
-  }
-}
 
 export function stashPendingPrompt(promptId: string | undefined | null): void {
   if (!promptId) return;
@@ -31,10 +20,14 @@ export function clearPendingPrompt(): void {
 }
 
 /**
- * Start checkout and leave the SPA for Flutterwave.
+ * Start checkout and open hosted pay.stawi.org.
+ *
+ * Hosted checkout binds payment to **profile contacts** from ProfileService
+ * only (email → card; phone → MoMo or card). Do not invent payer contact
+ * details from OIDC claims or free-text that is not on the profile.
  *
  * Navigation priority (strict):
- *   1. Any non-empty redirect_url → Flutterwave pay page (always)
+ *   1. Any non-empty redirect_url → pay.stawi.org (always)
  *   2. paid → dashboard success
  *   3. failed / missing URL → throw so the caller can show the error
  *   4. pending without URL → dashboard poller (last-resort recovery only)
@@ -42,10 +35,13 @@ export function clearPendingPrompt(): void {
 export async function startCheckoutAndNavigate(
   input: CheckoutCreateInput
 ): Promise<CheckoutResponse> {
-  const email = input.email?.trim() || (await checkoutEmailFromAuth());
+  // Omit invented email/phone — pay.stawi.org loads contacts from the profile.
+  const rest = { ...input };
+  delete rest.email;
+  delete rest.phone;
   let res: CheckoutResponse;
   try {
-    res = await createCheckout({ ...input, email: email || undefined });
+    res = await createCheckout(rest);
   } catch (e) {
     // Already subscribed → send them to the dashboard, not a new pay page.
     const msg = e instanceof Error ? e.message : String(e);

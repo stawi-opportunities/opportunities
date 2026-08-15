@@ -46,7 +46,7 @@ export function PreferenceChatDialog({
       setApplyError(null);
       if (persistPreferences && mode === 'refine') {
         const job = chatFieldsToJobPreferences(fields);
-        await authRuntime().fetch('/candidates/preferences', {
+        await authRuntime().fetch('/matching/candidates/preferences', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ opt_ins: { job } }),

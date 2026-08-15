@@ -5,3 +5,9 @@ on:
 jobs:
   docker:
     uses: antinvestor/common/.github/workflows/docker-release.yml@main
+
+  # Cloud Run pins ghcr.io/stawi-opportunities/* directly (no AR mirror).
+  publicize:
+    needs: docker
+    uses: ./.github/workflows/make-ghcr-public.yml
+    secrets: inherit

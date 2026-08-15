@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { mount as mountProfile, type MountHandle } from '@stawi/profile';
-import { authRuntime } from '@/auth/runtime';
-import { profileWidgetTokens, profileWidgetCSS } from '@/theme/profile-widget';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
-import { getConfig } from '@/utils/config';
 import { useSubscription } from '@/hooks/useSubscription';
 import { normalizePlan } from '@/utils/plans';
 import { Button } from '@/components/ui/Button';
@@ -17,6 +13,7 @@ import { PendingCheckoutPoller } from '@/components/dashboard/PendingCheckoutPol
 import { MatchesPanel } from '@/components/dashboard/MatchesPanel';
 import { CVPanel } from '@/components/dashboard/CVPanel';
 import { DashboardSidebar, type SectionId } from '@/components/dashboard/DashboardSidebar';
+import { DashboardMobileNav } from '@/components/dashboard/DashboardMobileNav';
 import { PlanChangeModal } from '@/components/dashboard/PlanChangeModal';
 import { CancelSubscriptionModal } from '@/components/dashboard/CancelSubscriptionModal';
 import { SettingsPage, type SettingsTab } from '@/components/settings/SettingsPage';
@@ -24,8 +21,10 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { PreferenceChatHost } from '@/components/preference-chat';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTheme } from '@/providers/ThemeProvider';
 import { useMatchingProfileGate } from '@/hooks/useMatchingProfileGate';
+import { useSubscriptionGate } from '@/hooks/useSubscriptionGate';
+import { useUserContext } from '@/hooks/useUserContext';
+import { UserStageBanner } from '@/components/UserStageBanner';
 
 /** Map legacy hashes and query to canonical section + optional settings tab. */
 function resolveRoute(): { section: SectionId; settingsTab?: SettingsTab } {
@@ -57,16 +56,21 @@ export default function Dashboard() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(initial.settingsTab);
   const [showPlanChange, setShowPlanChange] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
-  const [showSkipBanner, setShowSkipBanner] = useState(() => {
+const [showSkipBanner, setShowSkipBanner] = useState(() => {
     try {
       return sessionStorage.getItem('stawi.onboardingSkipped') === '1';
     } catch {
       return false;
     }
   });
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const subQ = useSubscription();
-  const profileGate = useMatchingProfileGate();
+  // Subscription first: never paint product UI or load profile until allowed.
+  const subscriptionGate = useSubscriptionGate();
+  const profileGate = useMatchingProfileGate({ enabled: subscriptionGate.allowed });
+  // Full journey stage (subscription + readiness) for banners / data attributes.
+  const userCtx = useUserContext({ loadProfile: subscriptionGate.allowed });
 
   const sectionLabels: Record<string, string> = {
     matches: 'Matches',
@@ -101,6 +105,10 @@ export default function Dashboard() {
     }
     window.location.hash = next;
     setActiveSection(next);
+    // Mobile: jump to content top after tab change (bottom nav).
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handlePlanChangeSuccess = useCallback(() => {
@@ -124,17 +132,35 @@ export default function Dashboard() {
 
   if (!ready) return <Skeleton />;
   if (!hasSession) return <SignedOut onSignIn={login} />;
-  // Incomplete CV / aspirational profile → onboarding chat (matching needs it).
+
+  // Product UI only after billing entitlement is active (GET /me/subscription).
+  if (!subscriptionGate.allowed) {
+    if (subscriptionGate.confirmingPayment) {
+      return <PaymentConfirmingShell />;
+    }
+    if (subscriptionGate.error) {
+      return (
+        <SubscriptionVerifyError
+          onRetry={() => {
+            void subQ.refetch();
+          }}
+        />
+      );
+    }
+    return <ProfileGateSkeleton />;
+  }
+
+  // Wait only for profile readiness fetch — incomplete profiles stay here
+  // (CV hub). Never redirect paid users back to onboarding (redirect loop).
   if (profileGate.checking) {
     return <ProfileGateSkeleton />;
   }
 
   const sub = subQ.data;
   const plan = normalizePlan(sub?.plan ?? null);
-  const isActive =
-    sub?.status === 'active' || sub?.status === 'past_due' || sub?.status === 'trial';
+  // Gate already required entitled status (active | past_due).
+  const isActive = sub?.status === 'active' || sub?.status === 'past_due';
   const subscription = sub?.status ?? 'none';
-
   const subscriptionPanel =
     isActive && plan ? (
       <BillingPanel
@@ -151,9 +177,20 @@ export default function Dashboard() {
 
   return (
     <PreferenceChatHost>
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-        <DashboardHeader plan={plan} status={subscription} />
-        <PendingCheckoutPoller />
+<div
+        className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8 md:pb-10 lg:px-8"
+        data-user-stage={userCtx.stage}
+      >
+        <DashboardHeader
+          plan={plan}
+          status={subscription}
+          stageLabel={userCtx.label}
+          stageId={userCtx.stage}
+          onOpenMenu={() => setMenuOpen(true)}
+        />
+        <div className="mt-4 empty:hidden">
+          <UserStageBanner stage={userCtx} />
+        </div>
         {showSkipBanner && !isActive && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent-500/30 bg-accent-500/10 px-4 py-3">
             <p className="text-sm text-main">
@@ -181,15 +218,10 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-        <div className="mt-4 md:hidden">
-          <DashboardSidebar
-            active={activeSection}
-            onNavigate={navigate}
-            t={t}
-            matchCount={sub?.queued_matches}
-          />
+        <PendingCheckoutPoller />
         </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-[200px_1fr]">
+        <PendingCheckoutPoller />
+        <div className="mt-6 grid gap-8 lg:grid-cols-[13.5rem_1fr] lg:gap-10">
           <aside className="hidden md:block">
             <DashboardSidebar
               active={activeSection}
@@ -197,11 +229,8 @@ export default function Dashboard() {
               t={t}
               matchCount={sub?.queued_matches}
             />
-            <div className="mt-6">
-              <ProfileMount />
-            </div>
           </aside>
-          <section>
+          <section className="min-w-0">
             {activeSection === 'matches' && (
               <ErrorBoundary>
                 {plan === 'managed' && sub?.agent?.email && <AgentCard agent={sub.agent} />}
@@ -212,6 +241,10 @@ export default function Dashboard() {
                   delivered={sub?.delivered_this_week ?? null}
                   subQueryError={subQ.isError}
                   subLoading={subQ.isLoading && sub == null}
+                  // Matches is match-only: CV upload probes only when no CV.
+                  // Preference gaps (salary, countries) stay on the CV hub.
+                  cvPresent={userCtx.readiness?.matchCapable ?? true}
+                  preferenceMissing={userCtx.readiness?.preferenceMissing ?? []}
                   onUpgrade={() => {
                     setSettingsTab('subscription');
                     navigate('settings');
@@ -239,14 +272,11 @@ export default function Dashboard() {
                 <SettingsPage
                   t={t}
                   subscriptionPanel={subscriptionPanel}
-                  initialTab={settingsTab ?? 'profile'}
+                  initialTab={settingsTab ?? 'notifications'}
                 />
               </ErrorBoundary>
             )}
           </section>
-        </div>
-        <div className="mt-8 md:hidden">
-          <ProfileMount />
         </div>
         {showPlanChange && plan && (
           <PlanChangeModal
@@ -263,48 +293,27 @@ export default function Dashboard() {
             onSuccess={handleCancelSuccess}
           />
         )}
+        <DashboardMobileNav
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          active={activeSection}
+          onNavigate={navigate}
+          t={t}
+          matchCount={sub?.queued_matches}
+        />
       </div>
     </PreferenceChatHost>
   );
 }
 
-function ProfileMount() {
-  const { resolved: resolvedTheme } = useTheme();
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    let handle: MountHandle | null = null;
-    try {
-      const cfg = getConfig();
-      handle = mountProfile({
-        target: host,
-        runtime: authRuntime(),
-        clientId: cfg.oidcClientID,
-        installationId: cfg.oidcInstallationID,
-        idpBaseUrl: cfg.oidcIssuer,
-        apiBaseUrl: cfg.candidatesAPIURL,
-        theme: resolvedTheme,
-        tokens: profileWidgetTokens,
-        css: profileWidgetCSS,
-        onLogout: () => {
-          window.location.href = '/';
-        },
-      });
-    } catch {
-      // best-effort
-    }
-    return () => handle?.unmount();
-  }, [resolvedTheme]);
-  return <div ref={hostRef} className="min-h-[200px]" />;
-}
-
 function SignedOut({ onSignIn }: { onSignIn: () => Promise<void> }) {
   return (
-    <div className="mx-auto max-w-sm py-16 text-center">
-      <h1 className="text-xl font-semibold text-main">Sign in</h1>
-      <p className="mt-2 text-sm text-secondary">Access matches and your CV tools.</p>
-      <Button className="mt-6" variant="primary" onClick={() => void onSignIn()}>
+    <div className="mx-auto max-w-sm px-4 py-20 text-center">
+      <h1 className="text-2xl font-semibold tracking-tight text-main">Sign in</h1>
+      <p className="mt-2 text-sm leading-relaxed text-secondary">
+        Access your matches, CV tools, and application tracker.
+      </p>
+      <Button className="mt-8" variant="primary" onClick={() => void onSignIn()}>
         Sign in
       </Button>
     </div>
@@ -324,9 +333,54 @@ function ProfileGateSkeleton() {
   return (
     <div className="mx-auto max-w-sm px-4 py-16 text-center">
       <div className="mx-auto h-8 w-48 animate-pulse rounded bg-surface-hover" />
-      <p className="mt-4 text-sm text-secondary">Checking your profile for matching…</p>
+      <p className="mt-4 text-sm text-secondary">Checking access…</p>
       <p className="mt-2 text-xs text-secondary">
-        If anything is missing, we&apos;ll open the setup chat so we can match the right roles.
+        Confirming your subscription with billing before opening the dashboard.
+      </p>
+    </div>
+  );
+}
+
+/** Checkout return only — polls billing until /me/subscription is active. */
+function PaymentConfirmingShell() {
+  return (
+    <div className="mx-auto max-w-md px-4 py-16 text-center" data-user-stage="confirming_payment">
+      <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-accent-500 border-t-transparent" />
+      <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+        Confirming payment
+      </p>
+      <h1 className="mt-1 text-lg font-semibold text-main">Activating your subscription</h1>
+      <p className="mt-2 text-sm text-secondary">
+        Waiting for billing to activate your plan. This usually takes under a minute. The dashboard
+        opens only after confirmation.
+      </p>
+      <div className="mt-6 text-left">
+        <PendingCheckoutPoller />
+      </div>
+      <p className="mt-8 text-xs text-secondary">
+        <a href="/onboarding/" className="underline underline-offset-2">
+          Back to setup
+        </a>
+      </p>
+    </div>
+  );
+}
+
+function SubscriptionVerifyError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mx-auto max-w-sm px-4 py-16 text-center">
+      <h1 className="text-lg font-semibold text-main">Couldn&apos;t verify subscription</h1>
+      <p className="mt-2 text-sm text-secondary">
+        The dashboard only opens after billing confirms an active subscription. Check your
+        connection and try again.
+      </p>
+      <Button className="mt-6" variant="primary" onClick={onRetry}>
+        Retry
+      </Button>
+      <p className="mt-4 text-xs text-secondary">
+        <a href="/onboarding/" className="underline underline-offset-2">
+          Continue setup / subscribe
+        </a>
       </p>
     </div>
   );

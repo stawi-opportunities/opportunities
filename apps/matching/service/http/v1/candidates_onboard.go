@@ -18,7 +18,9 @@ import (
 // in the same transaction. Implemented in production by a thin
 // adapter over CandidateRepository.Transaction.
 type CandidatesOnboardStore interface {
-	OnboardAtomically(ctx context.Context, candidateID string, mutate func(*domain.CandidateProfile)) error
+	// OnboardAtomically applies mutate to the job-seeker for profileID
+	// (JWT sub) and returns the product-local candidate_id.
+	OnboardAtomically(ctx context.Context, profileID string, mutate func(*domain.CandidateProfile)) (candidateID string, err error)
 }
 
 // OnboardMatchTrigger fires the candidate-change / preference-update
@@ -84,7 +86,8 @@ func CandidatesOnboardHandler(deps CandidatesOnboardDeps) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		log := util.Log(ctx)
-		candidateID := httpmw.CandidateFromContext(ctx)
+		// JWT sub = platform profile_id (person). Job-seeker candidate_id is separate.
+		profileID := httpmw.ProfileIDFromContext(ctx)
 
 		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if err != nil {
@@ -116,7 +119,8 @@ func CandidatesOnboardHandler(deps CandidatesOnboardDeps) http.HandlerFunc {
 			return
 		}
 
-		err = deps.Store.OnboardAtomically(ctx, candidateID, func(c *domain.CandidateProfile) {
+		candidateID, err := deps.Store.OnboardAtomically(ctx, profileID, func(c *domain.CandidateProfile) {
+			c.ProfileID = profileID
 			c.TargetJobTitle = in.TargetJobTitle
 			c.ExperienceLevel = in.ExperienceLevel
 			c.JobSearchStatus = in.JobSearchStatus
@@ -153,27 +157,29 @@ func CandidatesOnboardHandler(deps CandidatesOnboardDeps) http.HandlerFunc {
 			}
 		})
 		if err != nil {
-			log.WithError(err).WithField("candidate_id", candidateID).
+			log.WithError(err).WithField("profile_id", profileID).
 				Error("candidates/onboard: transaction failed")
 			httpmw.ProblemJSON(w, http.StatusBadGateway,
 				"onboard_failed", "could not save onboarding data")
 			return
 		}
+		if candidateID == "" {
+			candidateID = profileID // legacy safety
+		}
 
-		// Best-effort: kick off an initial match pass so a candidate who
-		// set preferences gets gap-fill matches even before/without a CV.
-		// Non-fatal — a failure here must not fail the onboard response.
+		// Initial match uses product-local candidate_id.
 		if deps.Match != nil {
 			if err := deps.Match.TriggerInitialMatch(ctx, candidateID, in.JobTypes); err != nil {
 				log.WithError(err).WithField("candidate_id", candidateID).
+					WithField("profile_id", profileID).
 					Warn("candidates/onboard: initial match trigger failed (non-fatal)")
 			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"id":         candidateID,
-			"profile_id": candidateID,
+			"id":         candidateID, // product-local job-seeker id
+			"profile_id": profileID,   // platform person (JWT sub)
 		})
 	}
 }

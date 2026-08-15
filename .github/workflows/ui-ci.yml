@@ -41,3 +41,13 @@ jobs:
         run: |
           cd ui/app
           npx prettier --check "**/*.{ts,tsx,js,json,md}"
+
+      - name: Install dependencies (ui/ats)
+        run: |
+          cd ui/ats
+          npm ci
+
+      - name: Typecheck ATS
+        run: |
+          cd ui/ats
+          npx tsc -b --noEmit

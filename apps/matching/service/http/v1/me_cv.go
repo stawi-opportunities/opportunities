@@ -61,7 +61,7 @@ func MeCVGetHandler(deps UploadDeps) http.HandlerFunc {
 			"content_uri":     contentURI,
 			"content_hash":    contentHash,
 			"cv_length":       len([]rune(extracted)),
-			"extracted_text":  truncateRunesForResponse(extracted, 40_000),
+			"extracted_text":  extracted,
 			"placement_ready": ready,
 		})
 	}
@@ -136,20 +136,9 @@ func MeCVHandler(deps UploadDeps) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":                true,
-			"cv_length":         result.TextLength,
-			"filename":          hdr.Filename,
-			"extracted_text":    truncateRunesForResponse(result.ExtractedText, 40_000),
-			"cv_version":        result.Version,
-			"file_id":           result.FileID,
-			"content_uri":       result.ContentURI,
-			"content_hash":      result.ContentHash,
-			"storage":           result.Storage,
-			"placement_summary": result.PlacementSummary,
-			"placement_ready":   result.PlacementReady,
-			"missing":           result.Missing,
-		})
+		resp := uploadResponseMap(candidateID, result)
+		resp["filename"] = hdr.Filename
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -164,6 +153,12 @@ func writeMeCVProcessError(w http.ResponseWriter, err error) {
 		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "text_extraction_failed", pe.Message)
 	case "empty_cv":
 		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "empty_cv", pe.Message)
+	case "structure_unavailable":
+		httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "structure_unavailable", pe.Message)
+	case "structure_failed":
+		httpmw.ProblemJSON(w, http.StatusUnprocessableEntity, "structure_failed", pe.Message)
+	case "profile_read_failed", "profile_write_failed":
+		httpmw.ProblemJSON(w, http.StatusBadGateway, pe.Code, pe.Message)
 	case "store_failed":
 		httpmw.ProblemJSON(w, http.StatusBadGateway, "store_failed", pe.Message)
 	default:

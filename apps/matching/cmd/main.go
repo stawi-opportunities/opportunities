@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -52,6 +53,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/notify"
 	"github.com/stawi-opportunities/opportunities/pkg/opportunity"
 	"github.com/stawi-opportunities/opportunities/pkg/placement"
+	"github.com/stawi-opportunities/opportunities/pkg/profilecontacts"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
@@ -137,6 +139,11 @@ func main() {
 			log.WithError(err).Fatal("migrate failed")
 		}
 		log.Info("migration complete")
+
+		// Ensure service-notification templates exist for this product.
+		// Same setup Job as migrate (DO_DATABASE_MIGRATE=true). Requires
+		// NOTIFICATION_SERVICE_URI so TemplateSave can run against the platform.
+		ensureNotificationTemplates(ctx, &cfg)
 		return
 	}
 
@@ -162,9 +169,10 @@ func main() {
 
 	// --- AI extractor ---
 	var extractor *extraction.Extractor
+	infKey := firstCSVToken(cfg.InferenceAPIKey)
 	infBase, infModel, infKey := extraction.ResolveInference(
-		cfg.InferenceProvider, cfg.InferenceBaseURL, cfg.InferenceModel, cfg.InferenceAPIKey)
-	if infBase != "" {
+		cfg.InferenceProvider, cfg.InferenceBaseURL, cfg.InferenceModel, infKey)
+	if infBase != "" && infKey != "" {
 		embBase, embModel, embKey := extraction.ResolveEmbedding(
 			cfg.EmbeddingProvider, cfg.EmbeddingBaseURL, cfg.EmbeddingModel, cfg.EmbeddingAPIKey)
 		extractor = extraction.New(extraction.Config{
@@ -243,6 +251,14 @@ func main() {
 		MatchesDigest:    cfg.MessageTemplateMatchesDigest,
 		WeeklyJobsDigest: cfg.MessageTemplateWeeklyJobsDigest,
 		CVStaleNudge:     cfg.MessageTemplateCVStaleNudge,
+		ATSReport:        cfg.MessageTemplateATSReport,
+	}
+	// Soft ensure at runtime so a missed setup Job can self-heal without
+	// blocking boot. Setup path still fails hard if ensure fails.
+	if notificationCli != nil {
+		if err := notify.EnsureFromConfig(ctx, notificationCli, notifyTemplates); err != nil {
+			log.WithError(err).Warn("notify: runtime template ensure incomplete (re-run migrate/setup Job)")
+		}
 	}
 	profileIDForCandidate := func(ctx context.Context, candidateID string) string {
 		return notify.ProfileID(ctx, sqlDB, candidateID)
@@ -315,10 +331,17 @@ func main() {
 		// HTTP handler publishes onto SubjectCVExtract; cv-extract fans
 		// out to SubjectCVImprove + SubjectCVEmbed; both terminate by
 		// emitting their domain events.
+		//
+		// Publishers cannot use push:// (Frame subscriber-only scheme).
+		// Production sets CV_EMBED_QUEUE_URL=push:// for the Pub/Sub push
+		// sub; publish uses gcppubsub:// via CV_EMBED_PUBLISH_URL (or derive).
+		extractPub := queuePublisherURL(cfg.CVExtractQueueURL, cfg.CVExtractPublishURL, cfg.GCPProject)
+		improvePub := queuePublisherURL(cfg.CVImproveQueueURL, cfg.CVImprovePublishURL, cfg.GCPProject)
+		embedPub := queuePublisherURL(cfg.CVEmbedQueueURL, cfg.CVEmbedPublishURL, cfg.GCPProject)
 		svc.Init(ctx,
-			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
-			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL),
-			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, cfg.CVEmbedQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, extractPub),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVImprove, improvePub),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVEmbed, embedPub),
 			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL, extractH),
 			frame.WithRegisterSubscriber(eventsv1.SubjectCVImprove, cfg.CVImproveQueueURL, improveH),
@@ -332,13 +355,14 @@ func main() {
 		// call). The upload handler still needs the cv-extract publisher
 		// registered so POST /candidates/cv/upload doesn't fail; with no
 		// subscriber the message lands and is dropped (or retained for
-		// later replay) ΓÇö explicitly degraded mode.
+		// later replay) - explicitly degraded mode.
+		extractPub := queuePublisherURL(cfg.CVExtractQueueURL, cfg.CVExtractPublishURL, cfg.GCPProject)
 		svc.Init(ctx,
-			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, cfg.CVExtractQueueURL),
+			frame.WithRegisterPublisher(eventsv1.SubjectCVExtract, extractPub),
 			frame.WithRegisterPublisher(cfg.CandidateEmbeddingQueueName, cfg.CandidateEmbeddingQueueURI),
 			frame.WithRegisterEvents(prefMatchH),
 		)
-		log.Warn("candidates: no extractor configured ΓÇö cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
+		log.Warn("candidates: no extractor configured - cv-extract/improve/embed subscribers disabled; uploads will archive + enqueue but not enrich")
 	}
 
 	// --- Debouncer (shared by Phase-2 and Phase-4 paths) ---
@@ -485,26 +509,37 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string][]string{"enabled_kinds": kinds})
 	})
-	// CV binary ΓåÆ files service (preferred) or R2 archive fallback.
-	// Only a file-id reference is kept on candidate_profiles; extracted text
-	// updates the placement summary synchronously for chat/matching.
+	// Platform clients for files + profile contacts (same OAuth machinery).
+	// ProfileService is the canonical contact store (email / MSISDN).
 	var cvFiles placement.FileStore = &placement.ArchiveFileStore{Archive: arch}
-	if cfg.FileServiceURI != "" {
-		fileClients, fileErr := services.NewClients(ctx, &cfg, services.ClientConfig{
+	var contactDir profilecontacts.Directory = profilecontacts.Nil{}
+	if cfg.FileServiceURI != "" || cfg.ProfileServiceURI != "" {
+		platClients, platErr := services.NewClients(ctx, &cfg, services.ClientConfig{
 			FileURI:    cfg.FileServiceURI,
+			ProfileURI: cfg.ProfileServiceURI,
 			HTTPClient: svc.HTTPClientManager().Client(ctx),
 		})
-		if fileErr != nil {
-			log.WithError(fileErr).Warn("placement: files client init error; CV uploads use R2 archive")
+		if platErr != nil {
+			log.WithError(platErr).Warn("platform: files/profile client init reported an error")
 		}
-		if fileClients != nil && fileClients.Files != nil {
-			cvFiles = &placement.FilesServiceStore{Client: fileClients.Files}
+		if platClients != nil && platClients.Files != nil {
+			cvFiles = &placement.FilesServiceStore{Client: platClients.Files}
 			log.WithField("uri", cfg.FileServiceURI).Info("placement: CV binaries via platform files service")
-		} else {
+		} else if cfg.FileServiceURI != "" {
 			log.Warn("placement: FILE_SERVICE_URI set but files client unavailable ΓÇö using R2 archive")
+		} else {
+			log.Info("placement: FILE_SERVICE_URI unset ΓÇö CV binaries use R2 archive fallback")
+		}
+		if platClients != nil && platClients.Profile != nil {
+			contactDir = profilecontacts.New(platClients.Profile)
+			log.WithField("uri", cfg.ProfileServiceURI).
+				Info("profilecontacts: platform ProfileService enabled for CV contact sync")
+		} else if cfg.ProfileServiceURI != "" {
+			log.Warn("profilecontacts: PROFILE_SERVICE_URI set but client unavailable — CV contacts stay local only")
 		}
 	} else {
 		log.Info("placement: FILE_SERVICE_URI unset ΓÇö CV binaries use R2 archive fallback")
+		log.Info("profilecontacts: PROFILE_SERVICE_URI unset — CV contacts stay local only")
 	}
 
 	// Placement profile (business): qualifications + preferences ΓåÆ summary + vector.
@@ -537,6 +572,11 @@ func main() {
 		Profiles:  profileCV,
 		Placement: placementSvc,
 		Drafts:    candidateRepo,
+		DB:        sqlDB,
+		Contacts:  contactDir,
+	}
+	if extractor != nil {
+		uploadDeps.Structure = cvExtractorAdapter{extractor}
 	}
 	// Legacy upload/preferences/match paths require auth ΓÇö identity from JWT
 	// subject (or X-Candidate-ID only when OIDC is unset in dev).
@@ -591,12 +631,11 @@ func main() {
 	}
 	toolsDeps := httpv1.ToolsDeps{
 		DB:       sqlDB,
-		Scorer:   cvScorer,
 		Embedder: toolsEmbedder,
 		Index:    matchIndexStore,
 	}
-	mux.Handle("POST /me/tools/cv-score", authMW(httpv1.CVScoreHandler(toolsDeps)))
 	mux.Handle("POST /me/tools/job-fit", authMW(httpv1.JobFitHandler(toolsDeps)))
+	// Paid $2 ATS report is registered after billingActivator is built (below).
 
 	// /me/onboarding ΓÇö resumable wizard. Same handler serves GET +
 	// PUT; the underlying repo type implements both interfaces.
@@ -610,27 +649,17 @@ func main() {
 	}))
 	mux.Handle("GET /me/onboarding", onboardingHandler)
 	mux.Handle("PUT /me/onboarding", onboardingHandler)
-	// POST /me/chat ΓÇö shared preference / intake conversation (onboarding,
-	// dashboard refine, opportunity side-chat all embed the same widget).
-	// Prefer platform chat-agent when configured; local MeChatHandler is
-	// the fallback (and sole path when CHAT_AGENT_SERVICE_URI is empty).
-	var chatLLM httpv1.MeChatLLM
-	if extractor != nil {
-		chatLLM = extractor
-	}
-	localChat := httpv1.MeChatHandler(httpv1.MeChatDeps{
-		LLM:       chatLLM,
-		Drafts:    candidateRepo,
-		Placement: placementSvc,
-		Profiles:  profileCV,
-	})
-	chatHandler := localChat
+	// POST /me/chat — shared preference / intake + opportunity side-chat.
+	// Always platform chat-agent; no local LLM/heuristic fallback.
+	var chatHandler http.HandlerFunc
 	if cfg.ChatAgentEnabled && strings.TrimSpace(cfg.ChatAgentServiceURI) != "" {
 		agentClient := chatagentclient.New(
 			strings.TrimSpace(cfg.ChatAgentServiceURI),
 			svc.HTTPClientManager().Client(ctx),
 		)
 		// Prefer authenticated S2S HTTP (OAuth audience /chat-agent) when config allows.
+		// Note: OAuth is on Connect interceptors; chatagentclient is plain HTTP and
+		// must set TokenSource or CreateSession/Turn go unauthenticated.
 		if opts, oerr := apis.ClientOptions(ctx, &cfg, apis.ServiceTarget{
 			Endpoint:  strings.TrimSpace(cfg.ChatAgentServiceURI),
 			ServiceID: servicecatalog.ServiceID("chat-agent"),
@@ -640,14 +669,35 @@ func main() {
 			util.Log(ctx).WithError(berr).Warn("me/chat: chat-agent connect base failed; using plain HTTP client")
 		} else if base != nil && base.Client() != nil {
 			agentClient = chatagentclient.New(base.Endpoint(), base.Client())
+			var ds apis.DialSettings
+			for _, opt := range opts {
+				opt.Apply(&ds)
+			}
+			if ts, terr := connection.NewOAuth2TokenSource(ctx, &ds, base.Client()); terr != nil {
+				util.Log(ctx).WithError(terr).Warn("me/chat: chat-agent OAuth token source unavailable")
+			} else if ts != nil {
+				agentClient.TokenSource = func(c context.Context) (string, error) {
+					tok, err := ts.Token()
+					if err != nil {
+						return "", err
+					}
+					if tok == nil || tok.AccessToken == "" {
+						return "", fmt.Errorf("chat-agent oauth token empty")
+					}
+					return tok.AccessToken, nil
+				}
+			}
 		}
 		chatHandler = httpv1.MeChatAgentHandler(&httpv1.MeChatAgentDeps{
 			Client:    agentClient,
 			Drafts:    candidateRepo,
 			Placement: placementSvc,
 			Profiles:  profileCV,
-		}, localChat)
+		})
 		util.Log(ctx).WithField("uri", cfg.ChatAgentServiceURI).Info("me/chat: using platform chat-agent")
+	} else {
+		util.Log(ctx).Error("me/chat: CHAT_AGENT_ENABLED and CHAT_AGENT_SERVICE_URI are required — no local fallback")
+		chatHandler = httpv1.MeChatAgentHandler(nil)
 	}
 	mux.Handle("POST /me/chat", authMW(chatHandler))
 
@@ -787,6 +837,20 @@ func main() {
 		if sqlDB, dbErr := gdb.DB(); dbErr == nil {
 			checkoutStore = billing.NewStore(sqlDB)
 			billingActivator = billing.NewActivator(checkoutStore, candidateRepo)
+			// $2 one-time CV ATS report vs matched jobs → email HTML attachment.
+			atsReportDeps := httpv1.ATSReportDeps{
+				DB:            sqlDB,
+				Scorer:        cvScorer,
+				Gateway:       billingGateway,
+				Store:         checkoutStore,
+				Matches:       matching.NewStore(sqlDB),
+				Notify:        notificationCli,
+				Template:      cfg.MessageTemplateATSReport,
+				PublicSiteURL: cfg.PublicSiteURL,
+			}
+			billingActivator = billingActivator.WithOneTimeFulfiller(&httpv1.ATSReportFulfiller{Deps: atsReportDeps})
+			mux.Handle("POST /me/tools/ats-report", authMW(httpv1.ATSReportCheckoutHandler(atsReportDeps)))
+			log.Info("billing: ATS report one-time product ($2) enabled")
 		} else {
 			log.WithError(dbErr).Warn("billing: sql.DB unwrap failed; checkout persistence + activation disabled")
 		}
@@ -932,9 +996,11 @@ func main() {
 					EventLog:        matching.NewEventLog(sqlDB),
 					Reranker:        matching.NoopReranker{},
 					Weights:         matching.DefaultWeights(),
-					DailyCap:        matching.NewPGDailyCapQuery(sqlDB),
 					Since:           30 * 24 * time.Hour,
 					DefaultMinScore: cfg.MatchingMinScore,
+					SemanticRecall:  cfg.MatchingSemanticRecall,
+					MaxDistance:     cfg.MatchingSemanticMaxDistance,
+					HardCountries:   cfg.MatchingHardGeo,
 					DefaultCadence:  cfg.DigestDefaultCadence,
 					WeeklyWeekday:   digestWeekday,
 					Location:        digestLoc,
@@ -972,7 +1038,15 @@ func main() {
 			Debouncer:        deb,
 			IdempotencyStore: applications.NewIdempotencyStore(sqlDB, 24*time.Hour),
 			DailyCap:         matching.NewPGDailyCapQuery(sqlDB),
+			InvokeCounter:    &matching.PGInvokeCounter{DB: sqlDB},
 			DefaultMinScore:  cfg.MatchingMinScore,
+			SemanticRecall:   cfg.MatchingSemanticRecall,
+			MaxDistance:      cfg.MatchingSemanticMaxDistance,
+			HardCountries:    cfg.MatchingHardGeo,
+			Contacts:         contactDir, // platform ProfileService — sole contact store
+			// Rebuild embedding on-demand when match refresh finds no vector
+			// (async embed after CV upload can lag or fail silently).
+			Placement: placementSvc,
 		}
 		meV1.Mount(mux, extDeps, authMW)
 		// Gateway-visible aliases: SPA calls /matching/me/* (same shape as
@@ -981,7 +1055,9 @@ func main() {
 		mux.Handle("POST /me/matches/{match_id}/dismiss", authMW(meV1.DismissMatchHandler(extDeps)))
 		mux.Handle("GET /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
 		mux.Handle("PUT /me/notifications", authMW(meV1.NotificationsHandler(extDeps)))
-		log.Info("matching: /api/me/* routes + /me/matches/refresh|dismiss + /me/notifications")
+		mux.Handle("GET /me/profile-fields", authMW(meV1.ProfileFieldsHandler(extDeps)))
+		mux.Handle("PUT /me/profile-fields", authMW(meV1.ProfileFieldsHandler(extDeps)))
+		log.Info("matching: /api/me/* routes + /me/matches/refresh|dismiss + /me/notifications + /me/profile-fields")
 	}
 
 	// definitions.changed.v1 broadcast ΓÇö invalidates the loader cache
@@ -1055,6 +1131,53 @@ type textExtractor struct{}
 
 func (textExtractor) FromPDF(b []byte) (string, error)  { return extraction.ExtractTextFromPDF(b) }
 func (textExtractor) FromDOCX(b []byte) (string, error) { return extraction.ExtractTextFromDOCX(b) }
+
+// firstCSVToken returns the first non-empty comma-separated token (for
+// multi-key inference secrets shared with chat-agent).
+func firstCSVToken(s string) string {
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+// queuePublisherURL picks a Frame-legal publisher URL.
+// Prefer explicit publishURL; otherwise if queueURL is push://topic derive
+// gcppubsub://project/topic using GCP project; otherwise reuse queueURL
+// (mem/nats/gcppubsub are valid for both publish and subscribe).
+func queuePublisherURL(queueURL, publishURL, gcpProject string) string {
+	if p := strings.TrimSpace(publishURL); p != "" {
+		return p
+	}
+	q := strings.TrimSpace(queueURL)
+	if q == "" {
+		return q
+	}
+	u, err := url.Parse(q)
+	if err != nil || u == nil {
+		return q
+	}
+	if !strings.EqualFold(u.Scheme, "push") {
+		return q
+	}
+	topic := strings.TrimSpace(u.Host)
+	if topic == "" {
+		topic = strings.Trim(strings.TrimPrefix(u.Path, "/"), "/")
+	}
+	project := strings.TrimSpace(gcpProject)
+	if project == "" {
+		project = strings.TrimSpace(os.Getenv("GCP_PROJECT"))
+	}
+	if project == "" || topic == "" {
+		// Fall back to in-process so startup does not hard-fail when
+		// project is missing; async cross-instance delivery is degraded.
+		return "mem://" + topic
+	}
+	return "gcppubsub://" + project + "/" + topic
+}
 
 type cvExtractorAdapter struct{ e *extraction.Extractor }
 
@@ -1130,20 +1253,14 @@ type candidateOnboardAdapter struct {
 	repo *repository.CandidateRepository
 }
 
-func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candidateID string, mutate func(*domain.CandidateProfile)) error {
-	return a.repo.Transaction(ctx, func(txRepo *repository.CandidateRepository) error {
-		// Load (or lazy-create) the candidate row inside the tx so
-		// the read is consistent with the subsequent writes.
-		cand, err := txRepo.GetByID(ctx, candidateID)
+func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, profileID string, mutate func(*domain.CandidateProfile)) (string, error) {
+	var candidateID string
+	err := a.repo.Transaction(ctx, func(txRepo *repository.CandidateRepository) error {
+		// profileID is JWT sub (platform person). Job-seeker row is separate
+		// (candidate_profiles.id product-local, profile_id = JWT sub).
+		cand, err := txRepo.EnsureByProfileID(ctx, profileID)
 		if err != nil {
-			return fmt.Errorf("candidate lookup: %w", err)
-		}
-		if cand == nil {
-			cand = &domain.CandidateProfile{ProfileID: candidateID}
-			cand.ID = candidateID
-			if err := txRepo.Create(ctx, cand); err != nil {
-				return fmt.Errorf("candidate create: %w", err)
-			}
+			return fmt.Errorf("job seeker ensure: %w", err)
 		}
 		mutate(cand)
 		if err := txRepo.Update(ctx, cand); err != nil {
@@ -1151,11 +1268,13 @@ func (a *candidateOnboardAdapter) OnboardAtomically(ctx context.Context, candida
 		}
 		// Keep the preference-chat transcript available for later refine.
 		// Wizard step advances to 3; fields stay as a snapshot for resume.
-		if err := preserveChatAfterOnboard(ctx, txRepo, candidateID, cand); err != nil {
+		if err := preserveChatAfterOnboard(ctx, txRepo, cand.ID, cand); err != nil {
 			return fmt.Errorf("preserve chat session: %w", err)
 		}
+		candidateID = cand.ID
 		return nil
 	})
+	return candidateID, err
 }
 
 // preserveChatAfterOnboard writes a completed-session envelope so the
@@ -1306,4 +1425,33 @@ func setupNotificationClient(
 		WorkloadAPITargetPath: cfg.NotificationServiceWorkloadAPITargetPath,
 		ServiceID:             servicecatalog.ServiceNotification,
 	}, notificationv1connect.NewNotificationServiceClient)
+}
+
+// ensureNotificationTemplates creates the opportunities product templates in
+// service-notification if missing. Called from the setup/migrate Job.
+// Fatals when NOTIFICATION_SERVICE_URI is set but ensure fails so digests
+// cannot silently drop. Skips with a warning when URI is empty (local/dev).
+func ensureNotificationTemplates(ctx context.Context, cfg *candidatesconfig.CandidatesConfig) {
+	log := util.Log(ctx)
+	uri := strings.TrimSpace(cfg.NotificationServiceURI)
+	if uri == "" {
+		log.Warn("setup: NOTIFICATION_SERVICE_URI unset — skipping notification template ensure")
+		return
+	}
+	cli, err := setupNotificationClient(ctx, cfg)
+	if err != nil {
+		log.WithError(err).Fatal("setup: notification client for templates")
+	}
+	tpls := notify.Templates{
+		MatchesReady:     cfg.MessageTemplateMatchesReady,
+		MatchesDigest:    cfg.MessageTemplateMatchesDigest,
+		WeeklyJobsDigest: cfg.MessageTemplateWeeklyJobsDigest,
+		CVStaleNudge:     cfg.MessageTemplateCVStaleNudge,
+		ATSReport:        cfg.MessageTemplateATSReport,
+	}
+	if err := notify.EnsureFromConfig(ctx, cli, tpls); err != nil {
+		log.WithError(err).Fatal("setup: ensure notification templates")
+	}
+	log.WithField("templates", notify.RequiredTemplateNames()).
+		Info("setup: notification templates ensured")
 }

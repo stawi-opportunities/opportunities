@@ -56,10 +56,10 @@ func (s *Scorer) Score(ctx context.Context, cvText string, fields *extraction.CV
 	family := DetectRoleFamily(role)
 
 	report := &CVStrengthReport{
-		TargetRole: role,
-		RoleFamily: string(family),
+		TargetRole:  role,
+		RoleFamily:  string(family),
 		GeneratedAt: time.Now().UTC(),
-		CVVersion:  versionHash(cvText),
+		CVVersion:   versionHash(cvText),
 	}
 
 	report.Components.ATS = scoreATS(cvText, fields)

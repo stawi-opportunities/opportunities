@@ -97,7 +97,8 @@ async function runCompletion(): Promise<CompletionResult> {
         window.location.replace(resolvePostLoginPath('/', sub.status));
         return { ok: true };
       } catch {
-        window.location.replace('/onboarding/');
+        // Do not force paywall when subscription lookup fails.
+        window.location.replace('/dashboard/');
         return { ok: true };
       }
     }
@@ -140,7 +141,8 @@ export default function AuthCallback() {
         const sub = await fetchMeSubscription();
         window.location.replace(resolvePostLoginPath('/', sub.status));
       } catch {
-        window.location.replace('/onboarding/');
+        // Subscription API flaky — never bounce a signed-in user to paywall.
+        window.location.replace('/dashboard/');
       }
     })();
   };

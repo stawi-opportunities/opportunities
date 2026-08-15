@@ -11,7 +11,11 @@ export interface Plan {
   /** Monthly price in USD major units (10 = US$10). Never treat as cents. */
   price: number;
   tagline: string;
-  /** Matches queued per week. `null` = unlimited discovery. */
+  /**
+   * Legacy weekly match quota for comparison tables.
+   * `null` for both tiers — feed is uncapped above the quality floor; find-matches
+   * uses fair-use / daily invoke limits instead of a weekly cap.
+   */
   matchesPerWeek: number | null;
   /** Feature bullets shown in the pricing card. */
   features: string[];
@@ -35,13 +39,13 @@ export const PLANS: Plan[] = [
     name: 'Starter',
     price: 10,
     tagline: 'AI-matched jobs and digests. You review and apply yourself.',
-    matchesPerWeek: 5,
+    matchesPerWeek: null,
     features: [
-      'CV upload — we learn what fits',
-      'Up to 5 AI matches per week',
-      'Email digests on your schedule',
+      'AI matches scored at 70%+ fit',
+      'Unlimited matches in your dashboard feed (above quality floor)',
+      'Email digests daily, twice daily, or weekly — up to 3 top new fits',
+      'Find matches anytime (fair-use)',
       'Dashboard match feed + external apply links',
-      'Match score so you see why roles rank',
     ],
     meta: {
       queuePriority: 'standard',
@@ -56,12 +60,12 @@ export const PLANS: Plan[] = [
     id: 'managed',
     name: 'Managed',
     price: 200,
-    tagline: 'Unlimited discovery, priority alerts, and the full match feed.',
+    tagline: 'Priority alerts, higher Find-matches allowance, full uncapped feed.',
     matchesPerWeek: null,
     features: [
-      'Unlimited AI discovery (no weekly cap)',
-      'Priority match alerts when strong roles open',
-      'Same live match dashboard as Starter, uncapped',
+      'Same 70%+ quality floor — full uncapped match feed',
+      'Higher Find-matches allowance',
+      'Priority digests when strong roles open',
       'Faster gap-fill when you refresh matches',
       'Email digests with your top fits',
     ],

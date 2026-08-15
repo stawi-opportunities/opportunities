@@ -1,43 +1,76 @@
 import { useCallback, useEffect, useState } from 'react';
-import { planById, type PlanId } from '@/utils/plans';
+import type { PlanId } from '@/utils/plans';
+import { preferenceMissingLabels } from '@/utils/profileReadiness';
 import { Panel } from './Panel';
 import { OpportunitiesFeed } from '@/components/OpportunitiesFeed';
+import { FitThresholdSlider } from '@/components/dashboard/FitThresholdSlider';
 import { refreshMyMatches, type MatchRefreshResult } from '@/api/candidates';
 import { useToast } from '@/hooks/useToast';
 import { Button } from '@/components/ui/Button';
+import {
+  DEFAULT_MIN_FIT_PERCENT,
+  readStoredMinFitPercent,
+  writeStoredMinFitPercent,
+} from '@/utils/matchScore';
 
 function emptyReasonMessage(res: MatchRefreshResult): string {
+  // rate_limited is current; weekly_cap / daily_cap are legacy server reasons.
+  if (res.reason === 'rate_limited' || res.reason === 'weekly_cap' || res.reason === 'daily_cap') {
+    return res.proof
+      ? 'Free search used for today. Subscribe for more Find matches, or try again tomorrow.'
+      : 'Search limit reached for today. Try again tomorrow.';
+  }
   switch (res.reason) {
-    case 'weekly_cap':
-      return res.proof
-        ? `Free proof limit reached (${res.weekly_used ?? 0}/${res.weekly_cap ?? 3} this week). Subscribe for more weekly matches.`
-        : `Weekly match limit reached (${res.weekly_used ?? 0}/${res.weekly_cap ?? 5}). Resets on a rolling 7-day window.`;
-    case 'daily_cap':
-      return res.proof
-        ? 'Free proof allows 1 new match per day — try again tomorrow, or subscribe for a higher daily budget.'
-        : 'Daily match generation limit reached. Try again tomorrow or upgrade for a higher budget.';
     case 'no_inventory':
       return 'No recent roles matched your filters yet. Widen locations/roles under CV → Match preferences.';
     case 'below_threshold':
-      return 'Roles were found but none cleared your quality bar. Improve your CV score, then try again.';
+      return 'Roles were found but none scored at 70%+ match quality. Improve your CV or widen preferences, then try again.';
+    case 'need_cv':
+      return 'Upload a CV under Dashboard → CV so we can score roles against your profile, then run Find matches.';
     default:
-      return 'Match search complete — no new roles above your quality threshold yet. Update your CV or preferences, then re-run.';
+      return 'Match search complete — no new roles above your 70% quality floor yet. Update preferences under CV, then re-run.';
   }
 }
 
+/** Prefer server problem detail when refresh fails for a real system error. */
+function refreshErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/embedding_unavailable|could not build match embedding/i.test(raw)) {
+    return 'Match embedding is temporarily unavailable. Your CV is saved — try Find matches again in a moment.';
+  }
+  if (/no_embedding|upload a CV/i.test(raw)) {
+    return 'Upload a CV under Dashboard → CV so we can match roles to your profile.';
+  }
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart)) as { detail?: string; title?: string };
+      if (parsed.detail?.trim()) return parsed.detail.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  return 'Could not refresh matches. Try again in a moment.';
+}
+
 /**
- * Scored shortlist only — no top dual-mode menus.
- * CTAs on this screen (Find matches, Go to CV, Upgrade) drive next steps.
+ * Matches page — scored shortlist + Find matches only.
+ * CV upload / preference editing live on the CV hub; this panel only probes
+ * for a missing CV when match is not yet possible (or the server says so).
  */
 export function MatchesPanel({
-  plan,
   freeProof = false,
   queued: queuedProp,
   delivered: deliveredProp,
   subQueryError = false,
   subLoading = false,
   onUpgrade,
+  /** CV file or capabilities on file — false only blocks with upload guidance. */
+  cvPresent = true,
+  /** Preference gaps (salary, countries, …) — soft tip only, never “upload CV”. */
+  preferenceMissing = [] as string[],
 }: {
+  /** Kept for parent API compatibility; feed is uncapped for paid plans. */
   plan: PlanId;
   freeProof?: boolean;
   queued: number | null;
@@ -45,22 +78,33 @@ export function MatchesPanel({
   subQueryError?: boolean;
   subLoading?: boolean;
   onUpgrade?: () => void;
+  cvPresent?: boolean;
+  preferenceMissing?: string[];
 }) {
   const { push: toast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [minFitPercent, setMinFitPercent] = useState(DEFAULT_MIN_FIT_PERCENT);
+
+  // Hydrate slider from localStorage after mount (SSR-safe).
+  useEffect(() => {
+    setMinFitPercent(readStoredMinFitPercent());
+  }, []);
+
+  const onMinFitChange = useCallback((pct: number) => {
+    setMinFitPercent(pct);
+    writeStoredMinFitPercent(pct);
+  }, []);
 
   const queued = queuedProp ?? 0;
   const delivered = deliveredProp ?? 0;
 
-  const planInfo = planById(plan);
-  const unlimited = !freeProof && planInfo.matchesPerWeek === null;
-  const cap = freeProof ? 3 : (planInfo.matchesPerWeek ?? 0);
-  const progressPct =
-    !unlimited && cap > 0 ? Math.min(100, Math.round((delivered / cap) * 100)) : 0;
-
   const [lastReason, setLastReason] = useState<string | null>(null);
   const [autoKickDone, setAutoKickDone] = useState(false);
+
+  // Only treat as “need CV” when we truly lack a CV — not incomplete preferences.
+  const needsCvUpload = !cvPresent || lastReason === 'need_cv';
+  const prefLabels = preferenceMissingLabels(preferenceMissing);
 
   const runRefresh = useCallback(
     async (silent: boolean) => {
@@ -81,16 +125,13 @@ export function MatchesPanel({
         setRefreshKey((k) => k + 1);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/no_embedding|embedding|cv/i.test(msg)) {
-          if (!silent) {
-            toast(
-              'Upload a CV under Dashboard → CV so we can match roles to your profile.',
-              'error'
-            );
-          }
+        if (/no_embedding|need_cv|upload a CV/i.test(msg)) {
           setLastReason('need_cv');
-        } else if (!silent) {
-          toast('Could not refresh matches. Try again in a moment.', 'error');
+        } else {
+          setLastReason('error');
+        }
+        if (!silent) {
+          toast(refreshErrorMessage(err), 'error');
         }
       } finally {
         setRefreshing(false);
@@ -106,150 +147,184 @@ export function MatchesPanel({
       setAutoKickDone(true);
       return;
     }
+    // Only auto-kick when we have a CV signal; otherwise Matches would only
+    // get need_cv noise. User can still press Find matches if they know better.
     setAutoKickDone(true);
+    if (!cvPresent) return;
     void runRefresh(true);
-  }, [subLoading, queued, runRefresh, autoKickDone]);
+  }, [subLoading, queued, runRefresh, autoKickDone, cvPresent]);
 
   if (subLoading && queuedProp === null && deliveredProp === null) {
     return (
-      <div className="space-y-6">
+      <div className="ds-stack">
         <div>
-          <h2 className="text-lg font-semibold text-main">Your matches</h2>
-          <p className="mt-1 text-sm text-secondary">Loading your shortlist…</p>
+          <h2 className="ds-section-title">Matches</h2>
+          <p className="ds-section-desc">Loading your shortlist…</p>
         </div>
         <div className="animate-pulse space-y-3">
-          <div className="h-24 rounded-lg border border-muted bg-surface" />
-          <div className="h-32 rounded-lg border border-muted bg-surface" />
-          <div className="h-32 rounded-lg border border-muted bg-surface" />
+          <div className="h-20 rounded-xl border border-muted bg-surface" />
+          <div className="h-28 rounded-xl border border-muted bg-surface" />
+          <div className="h-28 rounded-xl border border-muted bg-surface" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-main">Your matches</h2>
-        <p className="mt-1 text-sm text-secondary">
-          Scored against your CV — highest fit first. Use the actions on this page to refresh, open
-          a role, or improve your CV.
-        </p>
+    <div className="ds-stack">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="ds-section-title">Matches</h2>
+          <p className="ds-section-desc">
+            Active job matches ranked by fit score (best first). Raise the minimum fit to tighten
+            the shortlist; load more when you need the next page.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={refreshing}
+          onClick={() => void runRefresh(false)}
+        >
+          {refreshing ? 'Searching…' : 'Find matches'}
+        </Button>
       </div>
 
-      {subQueryError && (
-        <div
-          role="status"
-          className="rounded-md border border-muted bg-surface-muted px-3 py-2 text-sm text-secondary"
-        >
-          Couldn&apos;t refresh plan counters. You can still use this page — try reloading if this
-          persists.
+      <p className="ds-meta -mt-2">
+        {queued} ready
+        <span className="mx-1.5 text-secondary/50">·</span>
+        {delivered} delivered
+        <span className="mx-1.5 text-secondary/50">·</span>
+        <span className="text-accent-700 dark:text-accent-400">{minFitPercent}%+ fit</span>
+      </p>
+
+      <FitThresholdSlider value={minFitPercent} onChange={onMinFitChange} />
+
+      {needsCvUpload && (
+        <div role="status" className="ds-callout-warn">
+          <p className="font-semibold text-main">CV needed for scored matches</p>
+          <p className="mt-1 leading-relaxed">
+            Upload a resume under CV so we can rank roles. Preferences (location, salary) live there
+            too.
+          </p>
+          <Button as="a" href="/dashboard/#cv" size="sm" className="mt-3">
+            Open CV
+          </Button>
         </div>
       )}
 
-      <Panel title="This week">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-secondary tabular-nums">
-            {delivered}
-            {!unlimited && ` / ${cap}`} delivered
-            <span className="mx-1.5 text-muted-strong">·</span>
-            {queued} ready to review
-            {unlimited && <span className="ml-1 text-accent-700">· unlimited</span>}
-          </p>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={refreshing}
-            onClick={() => void runRefresh(false)}
+      {!needsCvUpload && prefLabels.length > 0 && queued === 0 && (
+        <p role="status" className="ds-callout">
+          Optional: add {prefLabels.slice(0, 3).join(', ')}
+          {prefLabels.length > 3 ? '…' : ''} under{' '}
+          <a
+            href="/dashboard/#cv"
+            className="font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
           >
-            {refreshing ? 'Searching…' : 'Find matches'}
-          </Button>
-        </div>
-        {!unlimited && (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
-            <div
-              className="h-full rounded-full bg-accent-500 transition-all"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        )}
+            CV → Preferences
+          </a>
+          .
+        </p>
+      )}
 
-        {freeProof && (
-          <p className="mt-3 text-sm text-secondary">
-            Free shortlist (capped).{' '}
-            {onUpgrade ? (
-              <button type="button" onClick={onUpgrade} className="font-medium underline">
-                Upgrade
-              </button>
+      {subQueryError && (
+        <p role="status" className="ds-callout">
+          Couldn&apos;t refresh plan status. You can still use this page.
+        </p>
+      )}
+
+      {freeProof && (
+        <p className="ds-callout">
+          Free shortlist (limited Find matches).{' '}
+          {onUpgrade ? (
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
+            >
+              Upgrade
+            </button>
+          ) : (
+            <a
+              href="/pricing/"
+              className="font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
+            >
+              Upgrade
+            </a>
+          )}{' '}
+          for full feed and more searches.
+        </p>
+      )}
+
+      {queued === 0 && (
+        <Panel title={needsCvUpload ? 'Add a CV to get scored matches' : 'No matches yet'}>
+          <p className="text-sm leading-relaxed text-secondary">
+            {needsCvUpload ? (
+              <>
+                Upload a resume under{' '}
+                <a
+                  href="/dashboard/#cv"
+                  className="font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
+                >
+                  CV
+                </a>
+                , then hit Find matches.
+              </>
+            ) : lastReason === 'error' ? (
+              <>Match search hit a temporary problem. Try Find matches again.</>
+            ) : lastReason && lastReason !== 'need_cv' ? (
+              emptyReasonMessage({
+                ok: true,
+                matches_written: 0,
+                opps_scanned: 0,
+                reason: lastReason,
+                proof: freeProof,
+              })
             ) : (
-              <a href="/pricing/" className="font-medium underline">
-                Upgrade
-              </a>
-            )}{' '}
-            for more weekly matches.
+              <>
+                Press Find matches to score recent roles. Refine filters anytime under{' '}
+                <a
+                  href="/dashboard/#cv"
+                  className="font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
+                >
+                  CV → Preferences
+                </a>
+                .
+              </>
+            )}
           </p>
-        )}
-
-        {queued === 0 && (
-          <div className="mt-4 rounded-md border border-muted bg-surface-muted p-4 text-sm text-main">
-            <p className="font-medium">
-              {lastReason === 'need_cv'
-                ? 'Add a CV to get scored matches'
-                : 'No matches in your queue yet'}
-            </p>
-            <p className="mt-1 text-secondary">
-              {lastReason === 'need_cv' ? (
-                <>
-                  Upload a CV under{' '}
-                  <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
-                    CV
-                  </a>
-                  , then hit Find matches.
-                </>
-              ) : lastReason ? (
-                emptyReasonMessage({
-                  ok: true,
-                  matches_written: 0,
-                  opps_scanned: 0,
-                  reason: lastReason,
-                  proof: freeProof,
-                })
-              ) : (
-                <>
-                  Start by uploading a CV under{' '}
-                  <a href="/dashboard/#cv" className="font-medium text-accent-600 underline">
-                    CV
-                  </a>
-                  , set match preferences, then run Find matches.
-                </>
-              )}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <a
-                href="/dashboard/#cv"
-                className="inline-flex min-h-[40px] items-center rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800"
-              >
+          <div className="mt-4 flex flex-wrap gap-2">
+            {needsCvUpload ? (
+              <Button as="a" href="/dashboard/#cv" size="sm">
                 Go to CV
-              </a>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={refreshing}
-                onClick={() => void runRefresh(false)}
-              >
-                {refreshing ? 'Searching…' : 'Find matches'}
               </Button>
-              {freeProof && onUpgrade && (
-                <Button type="button" variant="secondary" size="sm" onClick={onUpgrade}>
-                  View plans
-                </Button>
-              )}
-            </div>
+            ) : null}
+            <Button
+              type="button"
+              variant={needsCvUpload ? 'secondary' : 'primary'}
+              size="sm"
+              disabled={refreshing}
+              onClick={() => void runRefresh(false)}
+            >
+              {refreshing ? 'Searching…' : 'Find matches'}
+            </Button>
+            {freeProof && onUpgrade && (
+              <Button type="button" variant="secondary" size="sm" onClick={onUpgrade}>
+                View plans
+              </Button>
+            )}
           </div>
-        )}
-      </Panel>
+        </Panel>
+      )}
 
-      <OpportunitiesFeed key={refreshKey} initialFilter="matches" preferScoreSort hideFilterChips />
+      <OpportunitiesFeed
+        key={refreshKey}
+        initialFilter="matches"
+        preferScoreSort
+        hideFilterChips
+        pageSize={15}
+        minFitPercent={minFitPercent}
+      />
     </div>
   );
 }

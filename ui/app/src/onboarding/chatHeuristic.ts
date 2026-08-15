@@ -77,6 +77,12 @@ function looksLikeCV(s?: string): boolean {
 }
 
 function hasSalary(f: OnboardingChatFields): boolean {
+  // AI free-text salary signal or numeric range (server/agent is authoritative in prod).
+  if (typeof (f as { salary_expectation?: string }).salary_expectation === 'string') {
+    const se = (f as { salary_expectation?: string }).salary_expectation?.trim();
+    if (se) return true;
+  }
+  if ((f.currency ?? '').trim().toUpperCase() === 'MKT') return true;
   return (f.salary_min != null && f.salary_min > 0) || (f.salary_max != null && f.salary_max > 0);
 }
 
@@ -100,6 +106,9 @@ function questionForMissing(key: string): string {
 }
 
 function formatSalaryAck(f: OnboardingChatFields): string {
+  const se = (f as { salary_expectation?: string }).salary_expectation?.trim();
+  if (se) return se;
+  if ((f.currency ?? '').trim().toUpperCase() === 'MKT') return 'market rates (open)';
   const cur = f.currency || 'USD';
   if (f.salary_min != null && f.salary_max != null && f.salary_min !== f.salary_max) {
     return `${cur} ${f.salary_min}–${f.salary_max}`;
@@ -144,8 +153,8 @@ export function followUpReply(f: OnboardingChatFields): string {
   if (miss.length === 0) {
     const ack = acknowledgeKnown(f);
     return ack
-      ? `${ack} Your placement profile looks complete. Choose a plan to start matching.`
-      : 'Thanks — I have everything I need to match opportunities. Choose a plan to start.';
+      ? `${ack} Your placement profile looks complete. Choose a plan to subscribe and start matching.`
+      : 'Thanks — I have everything I need to match opportunities. Choose a plan to subscribe.';
   }
   const next = questionForMissing(miss[0]!);
   const why = FIELD_WHY[miss[0]!] ? ` ${FIELD_WHY[miss[0]!]}` : '';
@@ -160,6 +169,20 @@ export function followUpReply(f: OnboardingChatFields): string {
     return `${ack} ${next}${why} (${miss.length - 1} more after that.)`;
   }
   return `${ack} ${next}${why}`;
+}
+
+/**
+ * First assistant turn when the seeker lands on onboarding with an empty thread.
+ * Agent leads — never wait for the user to invent the agenda (unlike job listing chat).
+ */
+export function intakeOpeningReply(f: OnboardingChatFields): string {
+  const miss = missingChatFields(f);
+  if (miss.length === 0) {
+    return followUpReply(f);
+  }
+  const intro =
+    "I'll guide you through setup so we can match real opportunities — one step at a time.";
+  return `${intro}\n\n${followUpReply(f)}`;
 }
 
 export function mergeChatFields(
@@ -309,7 +332,8 @@ export function heuristicExtract(msg: string): OnboardingChatFields {
   const li = extractLinkedIn(msg);
   if (li) f.linkedin = li;
 
-  // Salary: "$80k", "KES 200000", "80000 USD"
+  // Salary: numeric patterns only. Open/market free-text is the AI extract path
+  // (salary_expectation) — not re-parsed with local phrase lists here.
   const sal = msg.match(
     /(?:(USD|EUR|GBP|KES|NGN|ZAR|GHS|AED|INR)\s*)?\$?\s*([\d,]+)\s*([kK])?(?:\s*[-–to]+\s*\$?\s*([\d,]+)\s*([kK])?)?(?:\s*(USD|EUR|GBP|KES|NGN|ZAR|GHS|AED|INR))?/
   );

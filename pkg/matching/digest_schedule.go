@@ -7,17 +7,20 @@ import (
 
 // Digest cadence values stored on candidate_profiles.email_digest.
 const (
-	DigestDaily  = "daily"
-	DigestWeekly = "weekly"
-	DigestOff    = "off"
+	DigestDaily      = "daily"
+	DigestTwiceDaily = "twice_daily"
+	DigestWeekly     = "weekly"
+	DigestOff        = "off"
 )
 
-// NormalizeDigestCadence maps free-form input to daily|weekly|off.
+// NormalizeDigestCadence maps free-form input to daily|twice_daily|weekly|off.
 // Empty / unknown defaults to weekly (product default for paid subscribers).
 func NormalizeDigestCadence(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case DigestDaily:
 		return DigestDaily
+	case DigestTwiceDaily, "twice-daily", "bidaily":
+		return DigestTwiceDaily
 	case DigestOff, "none", "disabled":
 		return DigestOff
 	case DigestWeekly, "":
@@ -45,11 +48,13 @@ func DefaultDigestPrefs() DigestPrefs {
 }
 
 // ShouldSendDigest reports whether this profile should receive a summary on
-// this run. cadence is the run mode: "daily", "weekly", or "auto".
+// this run. cadence is the run mode: "daily", "twice_daily", "weekly", or "auto".
 //
-//	auto   — honour email_digest; weekly only fires on weeklyWeekday in loc
-//	daily  — only daily subscribers
-//	weekly — only weekly subscribers (ignore weekday)
+//	auto         — honour email_digest; weekly only fires on weeklyWeekday in loc;
+//	               twice_daily only fires when local hour is in [8,10) or [17,19)
+//	daily        — only daily subscribers
+//	twice_daily  — only twice_daily subscribers
+//	weekly       — only weekly subscribers (ignore weekday)
 func ShouldSendDigest(prefs DigestPrefs, cadence string, now time.Time, loc *time.Location, weeklyWeekday time.Weekday) bool {
 	if !prefs.WeeklySummary {
 		return false
@@ -70,17 +75,24 @@ func ShouldSendDigest(prefs DigestPrefs, cadence string, now time.Time, loc *tim
 	switch mode {
 	case DigestDaily:
 		return freq == DigestDaily
+	case DigestTwiceDaily:
+		return freq == DigestTwiceDaily
 	case DigestWeekly:
 		return freq == DigestWeekly
 	default: // auto
-		if freq == DigestDaily {
-			return true
-		}
-		// weekly
 		if loc == nil {
 			loc = time.UTC
 		}
-		return now.In(loc).Weekday() == weeklyWeekday
+		local := now.In(loc)
+		if freq == DigestDaily {
+			return true
+		}
+		if freq == DigestTwiceDaily {
+			h := local.Hour()
+			return (h >= 8 && h < 10) || (h >= 17 && h < 19)
+		}
+		// weekly
+		return local.Weekday() == weeklyWeekday
 	}
 }
 

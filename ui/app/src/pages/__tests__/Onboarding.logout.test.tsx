@@ -36,8 +36,8 @@ vi.mock('@/api/candidates', () => ({
   submitOnboarding: vi.fn(),
   uploadCV: vi.fn(),
   createCheckout: vi.fn(),
-  fetchOnboardingDraft: vi.fn(() => Promise.resolve({ step: 1, fields: {} })),
-  saveOnboardingDraft: vi.fn(),
+  fetchOnboardingDraft: vi.fn(() => Promise.resolve({ step: 1, fields: {}, messages: [] })),
+  saveOnboardingDraft: vi.fn(() => Promise.resolve()),
   sendMeChat: vi.fn(),
   fetchMeSubscription: vi.fn(() => Promise.resolve({ status: 'none' })),
 }));
@@ -45,6 +45,14 @@ vi.mock('@/api/candidates', () => ({
 vi.mock('@/api/profile', () => ({
   fetchMeCV: vi.fn(() => Promise.resolve(null)),
   submitOnboarding: vi.fn(),
+  fetchMeSubscription: vi.fn(() =>
+    Promise.resolve({
+      plan: null,
+      status: 'none',
+      queued_matches: 0,
+      delivered_this_week: 0,
+    })
+  ),
 }));
 
 function renderOnboarding() {

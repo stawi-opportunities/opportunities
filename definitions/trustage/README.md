@@ -9,16 +9,26 @@ reconciliation, crawl-run/watchdog recovery, source health and quality, and
 recipe backfill (for deterministic extraction recipes — not crawl-time AI
 stubs). Candidate workflows cover CV freshness and **configurable** match/job digests.
 
+**Matching is invoke-only** — match generation runs via explicit `MatchInvoke`
+(user refresh and digest paths), not continuous fan-out. Paid digests send at
+most **top-3 unseen** matches per fire (notification receipts suppress repeats).
+
 ### Digest schedules (summaries to users)
 
 | Definition | Default cron (UTC) | Audience |
 |------------|--------------------|----------|
-| `candidates-matches-weekly-digest.json` | `0 9 * * *` daily | Paid / past_due / trial |
+| `candidates-matches-weekly-digest.json` | `0 * * * *` hourly | Paid / past_due / trial |
 | `candidates-weekly-jobs-digest.json` | `0 8 * * *` daily | Unpaid (re-engagement) |
+
+Match digest cron is **hourly** so `DIGEST_TIMEZONE` **twice_daily** windows
+(local hours `[8,10)` and `[17,19)`) work for all zones; the matching service
+filters recipients server-side. A narrower cron (e.g. `30 8,17 * * *` UTC-only)
+misses evening windows when user TZ ≠ UTC.
 
 **Wall-clock schedule** — edit each definition’s `schedules[].cron_expr` and
 `timezone` (synced into Trustage by the crawler migration job). Examples:
 
+- Hourly (preferred for multi-zone twice_daily): `"cron_expr": "0 * * * *"`
 - Daily 09:00 Nairobi: `"cron_expr": "0 9 * * *"`, `"timezone": "Africa/Nairobi"`
 - Weekly Mondays only: `"cron_expr": "0 9 * * 1"`
 
@@ -26,13 +36,15 @@ stubs). Candidate workflows cover CV freshness and **configurable** match/job di
 
 | Env | Default | Meaning |
 |-----|---------|---------|
-| `DIGEST_DEFAULT_CADENCE` | `auto` | `auto` / `daily` / `weekly` request mode |
+| `DIGEST_DEFAULT_CADENCE` | `auto` | `auto` / `twice_daily` / `daily` / `weekly` request mode |
 | `DIGEST_WEEKLY_WEEKDAY` | `monday` | Under `auto`, weekly users fire only on this weekday |
-| `DIGEST_TIMEZONE` | `UTC` | Weekday evaluation zone |
+| `DIGEST_TIMEZONE` | `UTC` | Local zone for weekday + twice_daily windows |
 
-Users set **daily / weekly / off** under Settings → Notifications
-(`PUT /me/notifications`). Weekly summary toggle and email channel also gate
-delivery. Optional body `{"cadence":"weekly"}` forces a weekly-only sweep.
+Paid match digest cadence (`email_digest`): **`off` \| `twice_daily` \| `daily` \| `weekly`**.
+
+Users set cadence under Settings → Notifications (`PUT /me/notifications`).
+Weekly summary toggle and email channel also gate delivery. Optional body
+`{"cadence":"weekly"}` (or `twice_daily` / `daily`) forces that mode for one sweep.
 
 ### Billing (automatic recurring + settlement)
 

@@ -304,6 +304,7 @@ LIMIT $` + fmt.Sprint(len(args))
 
 // DigestMatch is a compact row for notification emails.
 type DigestMatch struct {
+	MatchID       string
 	OpportunityID string
 	ApplyURL      string
 	Score         float64
@@ -507,6 +508,9 @@ type ListOpportunitiesParams struct {
 	Filter      FeedFilter
 	Cursor      string
 	Limit       int
+	// MinScore floors FilterMatches rows (effective score). 0 → 0.70 for matches.
+	// Ignored for starred/applied/all (those surfaces are not score-first shortlists).
+	MinScore float64
 }
 
 // ListOpportunitiesPage is the result envelope for the unified feed.
@@ -522,13 +526,14 @@ type ListOpportunitiesPage struct {
 // determines the base set:
 //
 //	FilterAll      — union of matches (excluding overflow) ∪ starred ∪ applied
-//	FilterMatches  — matches only (excluding overflow); annotated with starred + application
+//	FilterMatches  — active matches only (not overflow/dismissed), score≥MinScore,
+//	                 ranked by COALESCE(rerank_score,score) DESC; open opportunities only
 //	FilterStarred  — starred only; annotated with score (if matched) + application
 //	FilterApplied  — applied only; annotated with score + starred
 //
-// Pagination via the existing pageCursor pattern (score-desc,
-// created-at-desc, opportunity-id-asc) so the ordering is fully
-// deterministic and cursor-resumable.
+// Pagination via pageCursor (score-desc, created-at-desc, opportunity-id-asc)
+// so ordering is fully deterministic and cursor-resumable. Prefer partial
+// index candidate_matches_active_score_idx for FilterMatches.
 func (s *Store) ListOpportunitiesForCandidate(ctx context.Context, p ListOpportunitiesParams) (ListOpportunitiesPage, error) {
 	limit := p.Limit
 	if limit <= 0 {
@@ -540,19 +545,32 @@ func (s *Store) ListOpportunitiesForCandidate(ctx context.Context, p ListOpportu
 
 	// Active matches exclude overflow (cap) and dismissed (user hide).
 	const matchActive = `status NOT IN ('overflow','dismissed')`
+	// Effective fit score prefers cross-encoder rerank when present.
+	const effScore = `COALESCE(rerank_score, score)`
+
+	minScore := p.MinScore
+	if p.Filter == FilterMatches && minScore <= 0 {
+		minScore = 0.70
+	}
 
 	var baseCTE string
+	// args always start with candidate_id; matches also binds min_score as $2.
+	args := []any{p.CandidateID}
 	switch p.Filter {
 	case FilterMatches:
+		args = append(args, minScore)
 		baseCTE = `
 WITH base AS (
-  SELECT match_id, opportunity_id, score, created_at FROM candidate_matches
-  WHERE candidate_id = $1 AND ` + matchActive + `
+  SELECT match_id, opportunity_id, ` + effScore + ` AS score, created_at
+  FROM candidate_matches
+  WHERE candidate_id = $1
+    AND ` + matchActive + `
+    AND ` + effScore + ` >= $2
 )`
 	case FilterStarred:
 		baseCTE = `
 WITH base AS (
-  SELECT m.match_id, s.opportunity_id, COALESCE(m.score, 0) AS score, s.created_at
+  SELECT m.match_id, s.opportunity_id, COALESCE(m.rerank_score, m.score, 0) AS score, s.created_at
   FROM candidate_saved_jobs s
   LEFT JOIN candidate_matches m
     ON m.candidate_id = s.candidate_id AND m.opportunity_id = s.opportunity_id AND m.` + matchActive + `
@@ -561,7 +579,7 @@ WITH base AS (
 	case FilterApplied:
 		baseCTE = `
 WITH base AS (
-  SELECT m.match_id, a.opportunity_id, COALESCE(m.score, 0) AS score, COALESCE(a.submitted_at, a.created_at) AS created_at
+  SELECT m.match_id, a.opportunity_id, COALESCE(m.rerank_score, m.score, 0) AS score, COALESCE(a.submitted_at, a.created_at) AS created_at
   FROM applications a
   LEFT JOIN candidate_matches m
     ON m.candidate_id = a.candidate_id AND m.opportunity_id = a.opportunity_id AND m.` + matchActive + `
@@ -572,7 +590,7 @@ WITH base AS (
 WITH base AS (
   SELECT DISTINCT ON (opportunity_id) match_id, opportunity_id, score, created_at
   FROM (
-    SELECT match_id, opportunity_id, score, created_at FROM candidate_matches
+    SELECT match_id, opportunity_id, ` + effScore + ` AS score, created_at FROM candidate_matches
       WHERE candidate_id = $1 AND ` + matchActive + `
     UNION ALL
     SELECT m.match_id, s.opportunity_id, 0 AS score, s.created_at
@@ -591,7 +609,6 @@ WITH base AS (
 )`
 	}
 
-	args := []any{p.CandidateID}
 	cursorWhere := ""
 	if p.Cursor != "" {
 		cur, err := decodeCursor(p.Cursor)
@@ -599,7 +616,15 @@ WITH base AS (
 			return ListOpportunitiesPage{}, fmt.Errorf("matching: cursor: %w", err)
 		}
 		args = append(args, cur.Score, cur.CreatedAt, cur.MatchID)
-		cursorWhere = " AND (b.score, b.created_at, b.opportunity_id) < ($2, $3::timestamptz, $4)"
+		// Matches bind min_score as $2 → cursor starts at $3; otherwise $2.
+		scorePH, createdPH, idPH := 2, 3, 4
+		if p.Filter == FilterMatches {
+			scorePH, createdPH, idPH = 3, 4, 5
+		}
+		cursorWhere = fmt.Sprintf(
+			" AND (b.score, b.created_at, b.opportunity_id) < ($%d, $%d::timestamptz, $%d)",
+			scorePH, createdPH, idPH,
+		)
 	}
 	args = append(args, limit+1)
 
@@ -617,6 +642,8 @@ SELECT b.match_id, b.opportunity_id, b.score, b.created_at,
        (COALESCE(o.how_to_apply, '') <> '') AS has_how_to_apply
 FROM base b
 JOIN opportunities o ON o.canonical_id = b.opportunity_id
+  AND COALESCE(o.status, 'active') = 'active'
+  AND COALESCE(o.hidden, false) = false
 LEFT JOIN candidate_saved_jobs s
   ON s.candidate_id = $1 AND s.opportunity_id = b.opportunity_id
 LEFT JOIN applications a

@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "name": "opportunities.candidates.matches.weekly-digest",
-  "description": "Configurable match summary for entitled subscribers (paid|past_due|trial). Fires on the cron below; matching filters recipients by email_digest (daily|weekly|off), DIGEST_WEEKLY_WEEKDAY, and DIGEST_TIMEZONE. Gap-fills above MATCHING_MIN_SCORE and emits candidates.matches.ready.v1 for the notification service. Free users use weekly-jobs-digest.",
+  "description": "Configurable match summary for entitled subscribers (paid|past_due|trial). Cron fires hourly so DIGEST_TIMEZONE twice_daily windows ([8,10) and [17,19) local) work for all zones; matching applies server-side filter by email_digest (off|twice_daily|daily|weekly), DIGEST_WEEKLY_WEEKDAY, and DIGEST_TIMEZONE. Matching is invoke-only (MatchInvoke on digest/user refresh). Sends top-3 unseen matches (notification receipts) above MATCHING_MIN_SCORE and emits candidates.matches.ready.v1. Free users use weekly-jobs-digest.",
   "input": {},
   "config": {},
   "timeout": "30m",
@@ -38,8 +38,8 @@
   ],
   "schedules": [
     {
-      "name": "opportunities.candidates.matches.digest.daily",
-      "cron_expr": "0 9 * * *",
+      "name": "opportunities.candidates.matches.digest.hourly",
+      "cron_expr": "0 * * * *",
       "timezone": "UTC"
     }
   ]

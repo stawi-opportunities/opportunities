@@ -1,7 +1,10 @@
 /**
  * Meta-style sticky side chat for opportunity detail pages.
  * Visible as a right rail on xl+; on smaller screens a FAB opens a slide-over.
- * Reuses POST /me/chat so resume + preference context continues across pages.
+ *
+ * One shared conversation across all job listings (not per-job sessions).
+ * The current page listing is always sent as structured context for the LLM,
+ * and a reusable job card widget is shown when referencing a post.
  */
 
 import {
@@ -14,16 +17,27 @@ import {
   type KeyboardEvent,
 } from 'react';
 import {
+  chatErrorMessage,
   fetchOnboardingDraft,
   sendMeChat,
   type OnboardingChatFields,
-  type OnboardingChatMessage,
 } from '@/api/candidates';
 import { uploadCV } from '@/api/profile';
 import type { OpportunitySnapshot } from '@/types/snapshot';
 import { profileToChatFields } from '@/components/preference-chat/mapFields';
+import {
+  OpportunityChatCard,
+  opportunityCardFromSnap,
+  type OpportunityChatCardData,
+} from '@/components/chat/OpportunityChatCard';
+import {
+  loadOpportunityChat,
+  saveOpportunityChat,
+  type OpportunityChatMessage,
+} from '@/components/chat/opportunityChatStorage';
 import { useCandidateProfile } from '@/hooks/useCandidateProfile';
 import { useAuth } from '@/providers/AuthProvider';
+import { displayUserContent } from '@/utils/chatDisplay';
 
 function locationLine(snap: OpportunitySnapshot): string {
   const parts = [
@@ -44,15 +58,6 @@ function buildWelcome(snap: OpportunitySnapshot): string {
     `. Ask anything about this opportunity, your fit, or how to tailor your search. ` +
     `Upload a resume for more personalized guidance.`
   ).replace(/\*\*/g, '');
-}
-
-function opportunityCardFromSnap(snap: OpportunitySnapshot) {
-  return {
-    title: snap.title,
-    subtitle: [snap.issuing_entity, locationLine(snap)].filter(Boolean).join(' · '),
-    href: typeof window !== 'undefined' ? window.location.pathname : `/${snap.slug}/`,
-    apply_url: snap.apply_url,
-  };
 }
 
 function cvFilenameFromContent(content: string): string | null {
@@ -117,43 +122,79 @@ function SendSpinner() {
   );
 }
 
+function lastCardSlug(messages: OpportunityChatMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const s = messages[i]?.card?.slug;
+    if (s) return s;
+  }
+  return undefined;
+}
+
 export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
   const { state, hasSession, login } = useAuth();
   const profileQ = useCandidateProfile();
   const [openMobile, setOpenMobile] = useState(false);
-  const [messages, setMessages] = useState<OnboardingChatMessage[]>([]);
+  const [messages, setMessages] = useState<OpportunityChatMessage[]>([]);
   const [fields, setFields] = useState<OnboardingChatFields>({});
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const [showCurrentCard, setShowCurrentCard] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastSnapSlug = useRef<string | null>(null);
 
-  const card = opportunityCardFromSnap(snap);
+  const card: OpportunityChatCardData = opportunityCardFromSnap(snap);
 
-  // Load prior onboarding conversation for continuity.
+  // Shared multi-job session: restore transcript once; when the listing changes,
+  // append a "you're viewing …" turn with the job card — do not wipe history.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const draft = await fetchOnboardingDraft();
       if (cancelled) return;
       const seeded = profileToChatFields(profileQ.data, draft.fields);
-      setFields(seeded);
-      const prior = draft.messages ?? [];
-      if (prior.length > 0) {
-        setMessages(prior);
-      } else {
-        setMessages([{ role: 'assistant', content: buildWelcome(snap) }]);
+      const stored = loadOpportunityChat();
+      const baseFields = { ...(stored?.fields ?? {}), ...seeded };
+
+      setFields(baseFields);
+
+      if (!stored?.messages?.length) {
+        const welcome: OpportunityChatMessage = {
+          role: 'assistant',
+          content: buildWelcome(snap),
+          card,
+        };
+        setMessages([welcome]);
+        saveOpportunityChat({ messages: [welcome], fields: baseFields, updated_at: '' });
+        lastSnapSlug.current = snap.slug;
+        setHydrated(true);
+        return;
       }
+
+      let nextMsgs = stored.messages;
+      // New listing in the shared thread → introduce it with the reusable card.
+      if (lastCardSlug(nextMsgs) !== snap.slug && lastSnapSlug.current !== snap.slug) {
+        nextMsgs = [
+          ...nextMsgs,
+          {
+            role: 'assistant',
+            content: buildWelcome(snap),
+            card,
+          },
+        ];
+        saveOpportunityChat({ messages: nextMsgs, fields: baseFields, updated_at: '' });
+      }
+      setMessages(nextMsgs);
+      lastSnapSlug.current = snap.slug;
       setHydrated(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [snap.id, snap.slug, snap.title, snap.issuing_entity, profileQ.data]);
+    // Depend on snap identity + profile seed, not every field.
+  }, [snap.id, snap.slug, profileQ.data]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });
@@ -165,20 +206,20 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
       const hasCv = Boolean(opts.cv_text?.trim());
       if ((!raw && !hasCv) || sending) return;
 
-      const display =
-        opts.display || raw || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
-
-      // Include opportunity context for the model without cluttering the UI bubble.
-      const contextPrefix = `[Viewing opportunity: "${snap.title}" at ${snap.issuing_entity}${
-        locationLine(snap) ? `, ${locationLine(snap)}` : ''
-      }. slug=${snap.slug}]\n\n`;
-      const apiMessage = hasCv
-        ? `${contextPrefix}${raw || `I've attached my CV (${opts.cv_filename}).`}`
-        : `${contextPrefix}${raw}`;
+      const display = displayUserContent(
+        opts.display || raw || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…')
+      );
+      const apiMessage = hasCv ? raw || `I've attached my CV (${opts.cv_filename}).` : raw;
 
       setSending(true);
       setError(null);
-      const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
+      const history = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) =>
+          m.role === 'user'
+            ? { role: m.role, content: displayUserContent(m.content) }
+            : { role: m.role, content: m.content }
+        );
       setMessages((prev) => [...prev, { role: 'user', content: display }]);
       setInput('');
 
@@ -203,30 +244,67 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
           },
         });
         setFields(res.fields);
-        const appended: OnboardingChatMessage[] = [
-          ...history,
+        const replyCard: OpportunityChatCardData | undefined = res.card
+          ? {
+              title: res.card.title,
+              subtitle: res.card.subtitle,
+              href: res.card.href || card.href,
+              apply_url: res.card.apply_url,
+              opportunity_id: res.card.opportunity_id,
+              slug: res.card.slug || snap.slug,
+            }
+          : card;
+
+        const appended: OpportunityChatMessage[] = [
+          ...messages.filter((m) => m.role === 'user' || m.role === 'assistant'),
           { role: 'user', content: display },
-          { role: 'assistant', content: res.reply },
+          { role: 'assistant', content: res.reply, card: replyCard },
         ];
-        const next =
-          res.messages && res.messages.length >= appended.length ? res.messages : appended;
+
+        // Prefer server transcript for text, then re-attach cards for job widgets.
+        let next: OpportunityChatMessage[];
+        if (res.messages && res.messages.length >= appended.length) {
+          next = res.messages.map((m, i) => {
+            const base: OpportunityChatMessage = {
+              role: m.role,
+              content: m.role === 'user' ? displayUserContent(m.content) : m.content,
+              card: m.card
+                ? {
+                    title: m.card.title,
+                    subtitle: m.card.subtitle,
+                    href: m.card.href,
+                    apply_url: m.card.apply_url,
+                    opportunity_id: m.card.opportunity_id,
+                    slug: m.card.slug,
+                  }
+                : undefined,
+            };
+            // Last assistant turn always shows the current listing card.
+            if (i === res.messages!.length - 1 && m.role === 'assistant' && !base.card) {
+              base.card = replyCard;
+            }
+            return base;
+          });
+        } else {
+          next = appended;
+        }
+
         setMessages(next);
-        setShowCurrentCard(true);
+        saveOpportunityChat({ messages: next, fields: res.fields, updated_at: '' });
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Something went wrong');
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: "I couldn't process that just now. Try again in a moment.",
-          },
-        ]);
+        const honest = chatErrorMessage(e);
+        setError(honest);
+        setMessages((prev) => {
+          const next = [...prev, { role: 'assistant' as const, content: honest }];
+          saveOpportunityChat({ messages: next, fields, updated_at: '' });
+          return next;
+        });
       } finally {
         setSending(false);
         inputRef.current?.focus();
       }
     },
-    [fields, messages, sending, snap]
+    [fields, messages, sending, snap, card]
   );
 
   async function onPickCV(e: ChangeEvent<HTMLInputElement>) {
@@ -244,15 +322,20 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
         text = up.extracted_text ?? '';
         if (!text.trim()) throw new Error('Could not read that file. Try PDF, DOCX, or TXT.');
         if (up.placement_ready) {
-          setMessages((prev) => [
-            ...prev,
-            { role: 'user', content: `Attached CV: ${file.name}` },
-            {
-              role: 'assistant',
-              content:
-                'Your CV is processed and your profile is ready for matching. What would you like to refine?',
-            },
-          ]);
+          setMessages((prev) => {
+            const next: OpportunityChatMessage[] = [
+              ...prev,
+              { role: 'user', content: `Attached CV: ${file.name}` },
+              {
+                role: 'assistant',
+                content:
+                  'Your CV is processed and your profile is ready for matching. What would you like to know about this role?',
+                card,
+              },
+            ];
+            saveOpportunityChat({ messages: next, fields, updated_at: '' });
+            return next;
+          });
           setSending(false);
           return;
         }
@@ -282,16 +365,10 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
     }
   }
 
-  // Only prompt sign-in when definitively signed out (not during init/refresh).
   const needsAuth = !hasSession && state === 'unauthenticated';
 
-  /**
-   * Panel chrome: intentional outer outline + inner padding so the chat reads
-   * as a distinct card (Meta-style rail), separate from the listing.
-   */
   const panel = (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Header */}
       <div className="flex shrink-0 flex-col items-center gap-2 px-5 pb-3 pt-5">
         <PetalMark />
         <p className="max-w-[17.5rem] text-center text-[11px] leading-relaxed text-stone-400">
@@ -300,7 +377,6 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
         </p>
       </div>
 
-      {/* Transcript — Meta Careers: gray user pill, plain assistant text, white canvas */}
       <div
         className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-white px-5 py-4 dark:bg-navy-900"
         role="log"
@@ -310,15 +386,16 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
         {!hydrated && <p className="text-center text-sm text-stone-400">Loading conversation…</p>}
         {messages.map((m, i) => {
           if (m.role === 'user') {
-            const cvName = cvFilenameFromContent(m.content);
+            const text = displayUserContent(m.content);
+            const cvName = cvFilenameFromContent(text);
             return (
               <div key={`u-${i}`} className="flex justify-end">
                 <div
-                  className={`max-w-[90%] rounded-full bg-[#f0f2f5] px-3.5 py-2 text-[13.5px] leading-relaxed text-stone-900 dark:bg-navy-800 dark:text-stone-100 ${
-                    cvName ? 'rounded-2xl font-medium' : ''
-                  }`}
+                  className={`max-w-[90%] rounded-xl bg-[#f0f2f5] px-3.5 py-2 text-[13.5px] leading-relaxed text-stone-900 dark:bg-navy-800 dark:text-stone-100 ${
+                    text.includes('\n') ? 'whitespace-pre-wrap' : ''
+                  } ${cvName ? 'font-medium' : ''}`}
                 >
-                  {cvName ?? m.content}
+                  {cvName ?? text}
                 </div>
               </div>
             );
@@ -328,42 +405,7 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
               <div className="whitespace-pre-wrap text-[13.5px] leading-[1.65] text-stone-900 dark:text-stone-100">
                 {m.content}
               </div>
-              {showCurrentCard && i === messages.length - 1 && (
-                <a
-                  // Never deep-link apply_url for signed-out users — apply requires login.
-                  href={
-                    hasSession && card.apply_url
-                      ? card.apply_url
-                      : card.apply_url
-                        ? `${card.href}${card.href.includes('?') ? '&' : '?'}apply=1`
-                        : card.href
-                  }
-                  target={hasSession && card.apply_url ? '_blank' : undefined}
-                  rel={hasSession && card.apply_url ? 'noopener noreferrer' : undefined}
-                  onClick={(e) => {
-                    if (hasSession || !card.apply_url) return;
-                    // Signed out: stay on listing with apply intent, then OIDC.
-                    e.preventDefault();
-                    try {
-                      const url = new URL(window.location.href);
-                      url.searchParams.set('apply', '1');
-                      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
-                    } catch {
-                      /* ignore */
-                    }
-                    void login();
-                  }}
-                  className="block rounded-xl border border-stone-200 bg-white px-3.5 py-3 shadow-sm transition hover:border-blue-300 hover:shadow"
-                >
-                  <p className="text-sm font-semibold text-stone-900">{card.title}</p>
-                  <p className="mt-0.5 text-xs text-stone-500">{card.subtitle}</p>
-                  {card.apply_url && (
-                    <p className="mt-1.5 text-xs font-medium text-blue-600">
-                      {hasSession ? 'Apply →' : 'Sign in to apply →'}
-                    </p>
-                  )}
-                </a>
-              )}
+              {m.card ? <OpportunityChatCard card={m.card} /> : null}
             </div>
           );
         })}
@@ -376,7 +418,6 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer — clear outline + margin so the input is an obvious affordance */}
       <div className="shrink-0 border-t border-stone-100 bg-stone-50/50 px-4 pb-4 pt-3 dark:border-navy-800 dark:bg-navy-900/40">
         {error && (
           <p className="mb-2 text-center text-xs text-red-600" role="alert">
@@ -384,12 +425,15 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
           </p>
         )}
         {needsAuth ? (
-          <a
-            href="/auth/login/"
-            className="flex items-center justify-center rounded-full border border-navy-800 bg-navy-900 px-4 py-2.5 text-sm font-medium text-white"
+          <button
+            type="button"
+            onClick={() => {
+              void login();
+            }}
+            className="flex w-full items-center justify-center rounded-full border border-navy-800 bg-navy-900 px-4 py-2.5 text-sm font-medium text-white"
           >
-            Sign in to chat
-          </a>
+            Chat
+          </button>
         ) : (
           <form
             onSubmit={onSubmit}
@@ -446,7 +490,7 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
                   <path
                     d="M12 19V5M5 12l7-7 7 7"
                     stroke="currentColor"
-                    strokeWidth="2.2"
+                    strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
@@ -461,43 +505,35 @@ export function OpportunitySideChat({ snap }: { snap: OpportunitySnapshot }) {
 
   return (
     <>
-      {/* Desktop: sticky side rail — outer outline defines the chat card */}
-      <aside
-        className="hidden xl:flex xl:w-[min(100%,24rem)] xl:shrink-0 xl:flex-col xl:pl-2"
-        aria-label="Opportunity assistant"
-      >
-        <div className="sticky top-20 flex h-[calc(100dvh-6.5rem)] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-navy-600 dark:bg-navy-900 dark:shadow-black/20">
-          {panel}
-        </div>
+      {/* Desktop rail */}
+      <aside className="hidden xl:flex xl:h-[min(100vh-6rem,720px)] xl:w-[22rem] xl:shrink-0 xl:flex-col xl:overflow-hidden xl:rounded-2xl xl:border xl:border-stone-200 xl:bg-white xl:shadow-sm dark:xl:border-navy-700 dark:xl:bg-navy-900">
+        {panel}
       </aside>
 
-      {/* Mobile / tablet: FAB + slide-over with same outlined shell */}
+      {/* Mobile FAB + drawer */}
       <div className="xl:hidden">
         <button
           type="button"
           onClick={() => setOpenMobile(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-blue-700 bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/25"
+          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg"
+          aria-label="Open job assistant"
         >
           <PetalMark />
-          Ask AI
         </button>
         {openMobile && (
-          <div className="fixed inset-0 z-50 flex flex-col bg-black/30" role="dialog" aria-modal>
+          <div className="fixed inset-0 z-50 flex flex-col bg-black/40" role="dialog" aria-modal>
             <button
               type="button"
-              className="flex-1"
-              aria-label="Close assistant"
+              className="min-h-[20%] flex-1"
+              aria-label="Close"
               onClick={() => setOpenMobile(false)}
             />
-            <div className="mx-3 mb-3 flex h-[min(88dvh,40rem)] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl dark:border-navy-600 dark:bg-navy-900">
-              <div className="flex items-center justify-between border-b border-stone-100 px-4 py-2.5 dark:border-navy-700">
-                <span className="text-sm font-medium text-stone-700 dark:text-stone-200">
-                  Assistant
-                </span>
+            <div className="flex h-[80vh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl dark:bg-navy-900">
+              <div className="flex justify-end px-3 pt-2">
                 <button
                   type="button"
+                  className="rounded-full px-3 py-1 text-sm text-stone-500"
                   onClick={() => setOpenMobile(false)}
-                  className="rounded-full px-3 py-1 text-sm text-stone-500 hover:bg-stone-50 dark:hover:bg-navy-800"
                 >
                   Close
                 </button>

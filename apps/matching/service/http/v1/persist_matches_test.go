@@ -30,7 +30,9 @@ func TestPersistMatchResult_WeeklyCapOverflow(t *testing.T) {
 			{CanonicalID: "o3", Score: 0.7},
 		},
 	}
-	caps := CapsFromEntitlements(billing.EntitlementsFor(""), 2, 0) // free weekly 3, already 2 used → 1 new
+	// Explicit legacy row caps (product entitlements now set WeeklyCap=0).
+	// weekly 3, already 2 used → 1 new.
+	caps := PersistCaps{WeeklyCap: 3, WeekUsed: 2}
 	require.NoError(t, PersistMatchResult(context.Background(), store, res, "test", &caps))
 	require.Len(t, store.ms, 3)
 	// Highest score first should be new; rest overflow.
@@ -50,7 +52,9 @@ func TestPersistMatchResult_UncappedWeekly(t *testing.T) {
 			{CanonicalID: "o2", Score: 0.4},
 		},
 	}
+	// Product path: all plans set DailyCap/WeeklyCap to 0 (unlimited rows).
 	caps := CapsFromEntitlements(billing.EntitlementsFor(billing.PlanManaged), 0, 0)
+	require.Equal(t, 0, caps.WeeklyCap)
 	require.NoError(t, PersistMatchResult(context.Background(), store, res, "test", &caps))
 	require.Equal(t, matching.StatusNew, store.ms[0].Status)
 	require.Equal(t, matching.StatusNew, store.ms[1].Status)
@@ -59,9 +63,11 @@ func TestPersistMatchResult_UncappedWeekly(t *testing.T) {
 func TestEntitlementsForProfile_FreeDespitePlanID(t *testing.T) {
 	t.Parallel()
 	ent := billing.EntitlementsForProfile("free", "starter")
-	require.Equal(t, 1, ent.DailyCap)
-	require.Equal(t, 3, ent.WeeklyCap)
+	require.Equal(t, 0, ent.DailyCap)
+	require.Equal(t, 0, ent.WeeklyCap)
+	require.Equal(t, 1, ent.InvokeDailyLimit)
 	ent2 := billing.EntitlementsForProfile("paid", "starter")
-	require.Equal(t, 2, ent2.DailyCap)
-	require.Equal(t, 5, ent2.WeeklyCap)
+	require.Equal(t, 0, ent2.DailyCap)
+	require.Equal(t, 0, ent2.WeeklyCap)
+	require.Equal(t, 30, ent2.InvokeDailyLimit)
 }

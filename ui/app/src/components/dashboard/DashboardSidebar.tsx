@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import type { StringKey } from '@/i18n/strings';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 export type SectionId =
   | 'matches'
@@ -16,13 +15,15 @@ export type SectionId =
   | 'overview';
 
 interface Section {
-  id: SectionId;
+  id: SectionId | 'jobs';
   icon: ReactElement;
   labelKey: StringKey;
   badge?: number | null;
+  /** When set, renders as a link out of the dashboard (e.g. full job catalog). */
+  href?: string;
 }
 
-/** Matches → Saved → Applications → CV → Settings */
+/** Matches → All jobs → Saved → Applications → CV → Settings */
 const SECTIONS: Section[] = [
   {
     id: 'matches',
@@ -42,6 +43,26 @@ const SECTIONS: Section[] = [
       </svg>
     ),
     labelKey: 'nav.matches',
+  },
+  {
+    id: 'jobs',
+    href: '/jobs/',
+    icon: (
+      <svg
+        className="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 2.652V7.204a2.25 2.25 0 0 0-1.88-2.222c-1.392-.22-2.824-.36-4.28-.415m-8.64 0c-1.456.055-2.888.196-4.28.415A2.25 2.25 0 0 0 3 7.204v1.286c0 .224.033.444.096.652m7.5 0a48.667 48.667 0 0 0-7.5 0m7.5 0V5.232c0-.41.328-.746.736-.79A48.11 48.11 0 0 1 12 4.5c1.255 0 2.492.066 3.714.194a.75.75 0 0 1 .736.79V8.5m-7.5 0h7.5"
+        />
+      </svg>
+    ),
+    labelKey: 'nav.allJobs',
   },
   {
     id: 'saved',
@@ -126,15 +147,11 @@ const SECTIONS: Section[] = [
   },
 ];
 
-const LABEL_FOR: Record<string, StringKey> = {
-  matches: 'nav.matches',
-  cv: 'nav.cv',
-  saved: 'nav.saved',
-  applications: 'nav.applications',
-  settings: 'nav.settings',
-};
-
-function SidebarNav({
+/**
+ * Desktop sidebar only. Mobile uses DashboardMobileNav (drawer).
+ * Account avatar lives in the site Nav profile widget — not here.
+ */
+export function DashboardSidebar({
   active,
   onNavigate,
   t,
@@ -149,137 +166,65 @@ function SidebarNav({
     matchCount != null
       ? SECTIONS.map((s) => ({ ...s, badge: s.id === 'matches' ? matchCount : null }))
       : SECTIONS;
+
+  const itemClass = (isActive: boolean) =>
+    `flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-accent-500/10 text-main ring-1 ring-inset ring-accent-500/25'
+        : 'text-secondary hover:bg-surface-hover hover:text-main'
+    }`;
+
   return (
-    <nav className="space-y-1" aria-label="Dashboard sections">
-      {sections.map((s) => {
-        const isActive = s.id === active;
-        return (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => onNavigate(s.id)}
-            className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
-              isActive
-                ? 'border border-accent-500/30 bg-accent-500/10 text-white'
-                : 'text-secondary hover:bg-surface-hover hover:text-main'
-            }`}
-          >
-            <span className={isActive ? 'text-accent-400' : 'text-secondary/60'}>{s.icon}</span>
-            <span>{t(s.labelKey)}</span>
-            {s.badge != null && (
-              <span className="ml-auto inline-flex items-center rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-700">
-                {s.badge}
+    <div className="sticky top-[88px]">
+      <nav className="space-y-0.5" aria-label="Dashboard sections">
+        {sections.map((s) => {
+          const isActive = s.id === active;
+          const icon = (
+            <span className={isActive ? 'text-accent-600 dark:text-accent-400' : 'text-secondary'}>
+              {s.icon}
+            </span>
+          );
+          const label = <span className="truncate">{t(s.labelKey)}</span>;
+          const badge =
+            s.badge != null && s.badge > 0 ? (
+              <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                {s.badge > 99 ? '99+' : s.badge}
               </span>
-            )}
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
+            ) : null;
 
-export function DashboardSidebar({
-  active,
-  onNavigate,
-  t,
-  matchCount,
-}: {
-  active: SectionId;
-  onNavigate: (id: SectionId) => void;
-  t: (k: StringKey, fallback?: string) => string;
-  matchCount?: number | null;
-}) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const drawerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(drawerRef, drawerOpen, () => setDrawerOpen(false));
+          if (s.href) {
+            return (
+              <a key={s.id} href={s.href} className={itemClass(false)}>
+                {icon}
+                {label}
+                <span className="ml-auto text-secondary/60" aria-hidden="true">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </span>
+              </a>
+            );
+          }
 
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const close = (e: PointerEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        setDrawerOpen(false);
-      }
-    };
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setDrawerOpen(false);
-    document.addEventListener('pointerdown', close);
-    document.addEventListener('keydown', esc);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('pointerdown', close);
-      document.removeEventListener('keydown', esc);
-      document.body.style.overflow = '';
-    };
-  }, [drawerOpen]);
-
-  const handleNav = (id: SectionId) => {
-    onNavigate(id);
-    setDrawerOpen(false);
-  };
-
-  const mobileLabelKey = LABEL_FOR[active] ?? 'nav.matches';
-
-  return (
-    <>
-      <button
-        type="button"
-        className="flex min-h-[44px] items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium text-main hover:bg-surface-hover md:hidden"
-        aria-label="Open dashboard navigation"
-        aria-expanded={drawerOpen}
-        onClick={() => setDrawerOpen((o) => !o)}
-      >
-        <svg
-          className="h-5 w-5"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-          />
-        </svg>
-        {t(mobileLabelKey)}
-      </button>
-
-      {drawerOpen && <div className="fixed inset-0 z-50 bg-black/30 md:hidden" />}
-
-      <div
-        ref={drawerRef}
-        className={`fixed left-0 top-0 z-50 h-full w-64 max-w-[85vw] transform border-r border-muted bg-nav-bg shadow-xl transition-transform duration-200 ease-in-out md:hidden ${
-          drawerOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-muted px-4 py-4">
-          <span className="text-sm font-semibold text-main">{t('nav.dashboard')}</span>
-          <button
-            type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-md text-secondary hover:bg-surface-hover hover:text-main"
-            aria-label="Close dashboard navigation"
-            onClick={() => setDrawerOpen(false)}
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onNavigate(s.id as SectionId)}
+              aria-current={isActive ? 'page' : undefined}
+              className={itemClass(isActive)}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="px-3 py-4">
-          <SidebarNav active={active} onNavigate={handleNav} t={t} matchCount={matchCount} />
-        </div>
-      </div>
-
-      <div className="hidden md:block">
-        <div className="sticky top-[88px]">
-          <SidebarNav active={active} onNavigate={onNavigate} t={t} matchCount={matchCount} />
-        </div>
-      </div>
-    </>
+              {icon}
+              {label}
+              {badge}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
   );
 }

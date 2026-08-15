@@ -1,9 +1,7 @@
 package v1
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -37,7 +35,9 @@ type agentChatRequest struct {
 }
 
 // sessionStore is an in-process cache of chat-agent session ids per
-// (candidate, context_key, opportunity_slug). Durable state lives in chat-agent.
+// (candidate, context_key). Opportunity view uses one shared session for all
+// jobs; the current listing is supplied each turn via documents/runtime.
+// Durable state lives in chat-agent.
 type sessionStore struct {
 	mu    sync.Mutex
 	byKey map[string]string
@@ -71,11 +71,16 @@ type MeChatAgentDeps struct {
 	ensureOnce sync.Once
 }
 
-// MeChatAgentHandler is POST /me/chat when CHAT_AGENT_ENABLED.
-// SPA contract matches MeChatHandler; opportunity side-chat passes opportunity{}.
-func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.HandlerFunc {
+// MeChatAgentHandler is POST /me/chat — always the platform chat-agent path.
+// There is no local MeChatHandler fallback: misconfiguration or agent errors
+// surface as 503/502 so the SPA fails honestly.
+// Opportunity side-chat passes opportunity{}.
+func MeChatAgentHandler(deps *MeChatAgentDeps) http.HandlerFunc {
 	if deps == nil || deps.Client == nil {
-		return fallback
+		return func(w http.ResponseWriter, r *http.Request) {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "chat_agent_unavailable",
+				"I can't process chat right now — the assistant is not configured on this environment. Please try again later or contact support.")
+		}
 	}
 	if deps.Sessions == nil {
 		deps.Sessions = &sessionStore{byKey: map[string]string{}}
@@ -149,7 +154,8 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			inline = chatagentclient.OpportunityViewContext()
 		}
 
-		// Load prior draft for seed fields + continuity.
+		// Load prior draft for seed fields. Placement messages are intake-only;
+		// opportunity threads never inherit or overwrite that transcript.
 		stored, _ := loadOnboardingEnvelope(ctx, deps.Drafts, candidateID)
 		priorFields := fieldsFromEnvelope(stored)
 		priorFields = hydrateCapabilities(ctx, MeChatDeps{
@@ -170,7 +176,12 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			})
 		}
 
+		// User-facing message stays clean. Job context is supplied via runtime +
+		// the opportunity document so session transcripts never show chrome.
+		userFacingMsg := stripViewingChrome(msg)
+
 		runtime := map[string]any{}
+		var listingDoc *chatagentclient.DocumentEvidence
 		if mode == "opportunity" && in.Opportunity != nil {
 			op := in.Opportunity
 			runtime["opportunity_id"] = op.ID
@@ -179,28 +190,28 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			runtime["opportunity_entity"] = op.Entity
 			runtime["opportunity_location"] = op.Location
 			runtime["opportunity_kind"] = op.Kind
-			if d := strings.TrimSpace(op.Description); d != "" {
-				docs = append(docs, chatagentclient.DocumentEvidence{
-					Name: "opportunity", Kind: "listing", Text: truncateRunes(d, 12_000),
-				})
+			if u := strings.TrimSpace(op.ApplyURL); u != "" {
+				runtime["opportunity_apply_url"] = u
 			}
-			// Soft prompt the model with page context without polluting user bubble.
-			msg = fmt.Sprintf(
-				"[Viewing opportunity: %q at %s%s. slug=%s]\n\n%s",
-				op.Title, op.Entity,
-				func() string {
-					if op.Location == "" {
-						return ""
-					}
-					return ", " + op.Location
-				}(),
-				op.Slug, msg,
-			)
+			// Structured listing text so the model can extract title/company/location
+			// and discuss fit without relying on session-seeded docs from an older job.
+			listingDoc = &chatagentclient.DocumentEvidence{
+				Name: "opportunity",
+				Kind: "listing",
+				Text: truncateRunes(formatOpportunityListingDoc(op), 14_000),
+			}
+			docs = append(docs, *listingDoc)
 		}
 
+		// One opportunity-view session per candidate (shared across all job pages).
+		// Current listing is always supplied via runtime + documents on each turn.
 		sessionKey := candidateID + "|" + contextKey
-		if mode == "opportunity" && in.Opportunity != nil {
-			sessionKey += "|" + in.Opportunity.Slug
+
+		// Placement: resume intake transcript. Opportunity: seed profile
+		// fields/docs only — never onboarding chat history.
+		var seedMsgs []chatagentclient.ChatMessage
+		if mode != "opportunity" {
+			seedMsgs = historyToAgent(filterPlacementMessages(stored.Messages))
 		}
 
 		sessionID := deps.Sessions.get(sessionKey)
@@ -211,15 +222,14 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 				InlineConfig:     &inline,
 				SeedFields:       seed,
 				Documents:        docs,
-				SeedMessages:     historyToAgent(stored.Messages),
+				SeedMessages:     seedMsgs,
 				Runtime:          runtime,
 				EvaluateEvidence: len(docs) > 0 || len(seed) > 0,
 			})
 			if cerr != nil {
-				log.WithError(cerr).Warn("me/chat: CreateSession failed; falling back to local handler")
-				// Rebuild body for fallback.
-				r.Body = io.NopCloser(bytesReader(body))
-				fallback(w, r)
+				log.WithError(cerr).Error("me/chat: CreateSession failed")
+				httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_session_failed",
+					"I couldn't start the assistant session. Your message was not processed — please try again in a moment.")
 				return
 			}
 			sessionID = sess.ID
@@ -230,28 +240,42 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 		if li := normalizeLinkedIn(in.LinkedIn); li != "" {
 			structured["linkedin"] = li
 		}
+		// Mirror current listing into structured so extractors can bind fields
+		// when the seeker refers to "this job" / "this role".
+		for k, v := range runtime {
+			structured[k] = v
+		}
 
-		turnDocs := docs
-		// Only send new CV on turns that include upload; session already has seed docs.
-		if cvText == "" {
-			turnDocs = nil
+		// Placement: only re-send CV when newly uploaded. Opportunity: always
+		// attach the current listing so multi-job shared sessions stay on-page.
+		var turnDocs []chatagentclient.DocumentEvidence
+		if mode == "opportunity" {
+			if listingDoc != nil {
+				turnDocs = append(turnDocs, *listingDoc)
+			}
+			if cvText != "" {
+				turnDocs = append(turnDocs, chatagentclient.DocumentEvidence{
+					Name: "capabilities", Kind: "cv", Text: truncateRunes(cvText, 80_000),
+				})
+			}
+		} else if cvText != "" {
+			turnDocs = docs
 		}
 
 		tres, terr := deps.Client.Turn(ctx, chatagentclient.TurnRequest{
 			SessionID:  sessionID,
-			Message:    msg,
+			Message:    userFacingMsg,
 			Structured: structured,
 			Documents:  turnDocs,
 		})
 		if terr != nil {
-			log.WithError(terr).Warn("me/chat: Turn failed; falling back to local handler")
+			log.WithError(terr).Error("me/chat: Turn failed")
 			// Drop bad session cache so next request recreates.
 			deps.Sessions.set(sessionKey, "")
-			r.Body = io.NopCloser(bytesReader(body))
-			fallback(w, r)
+			httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_turn_failed",
+				"I couldn't process that message with the assistant just now. Nothing was saved from this turn — please try again.")
 			return
 		}
-
 		fields := agentMapToFields(tres.Session.Fields)
 		fields = sanitizeFields(fields)
 		fields = applySafeDefaults(fields)
@@ -260,12 +284,43 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			fields.ExtraInfo = truncateRunes(cvText, 8000)
 		}
 
-		status := assessFieldStatus(fields)
-		missing := missingFromStatus(status)
-		ready := len(missing) == 0
-		reply := composeReply(tres.Reply, fields, missing, ready)
+		// AI-owned readiness: trust chat-agent session Ready / Missing / FieldStatus.
+		// Do not re-interpret the seeker's words with product phrase lists.
+		var (
+			status  map[string]fieldStatus
+			missing []string
+			ready   bool
+		)
+		if tres.Session != nil {
+			ready = tres.Session.Ready
+			missing = normalizeAgentMissing(tres.Session.Missing)
+			if len(tres.Session.FieldStatus) > 0 {
+				status = agentFieldStatusToLocal(tres.Session.FieldStatus)
+			}
+		}
+		// Fill gaps for SPA/placement from mapped fields when agent omitted status.
+		if status == nil {
+			status = assessFieldStatus(fields)
+		}
+		if !ready && len(missing) == 0 {
+			missing = missingFromStatus(status)
+		}
+		if ready {
+			missing = nil
+		}
 
-		// Map agent messages to SPA shape.
+		// AI reply is authoritative — no local phrase rewrite of the model text.
+		reply := strings.TrimSpace(tres.Reply)
+		if reply == "" {
+			log.Warn("me/chat: Turn returned empty reply")
+			deps.Sessions.set(sessionKey, "")
+			httpmw.ProblemJSON(w, http.StatusBadGateway, "chat_agent_empty_reply",
+				"The assistant could not generate a reply for that turn. Nothing was saved — please try again.")
+			return
+		}
+
+		// Map agent messages to SPA shape; always strip legacy viewing chrome.
+		// Last assistant turn must match this turn's AI reply (authoritative).
 		var messages []onboardingChatMessage
 		if tres.Session != nil {
 			for _, m := range tres.Session.Messages {
@@ -273,23 +328,39 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			}
 		}
 		if len(messages) == 0 {
-			messages = appendChatTurn(sanitizeHistory(in.History), msg, reply)
+			// Opportunity: use client job-thread history only (not placement draft).
+			messages = appendChatTurn(sanitizeHistory(in.History), userFacingMsg, reply)
 		}
+		messages = applyComposedReplyToMessages(messages, reply)
+		messages = sanitizeMessagesForClient(messages)
 
-		// Persist placement draft for resume across pages (SPA /me/onboarding).
+		// Placement/onboarding: persist full intake transcript.
+		// Opportunity: update placement fields only — never replace intake messages.
 		if deps.Drafts != nil && candidateID != "" {
-			if err := persistChatSession(ctx, MeChatDeps{Drafts: deps.Drafts}, candidateID, stored, fields, messages, ready); err != nil {
+			persistMsgs := messages
+			persistReady := ready
+			if mode == "opportunity" {
+				persistMsgs = filterPlacementMessages(stored.Messages)
+				// Don't advance wizard step solely from a job side-chat turn.
+				persistReady = false
+			}
+			if err := persistChatSession(ctx, MeChatDeps{Drafts: deps.Drafts}, candidateID, stored, fields, persistMsgs, persistReady); err != nil {
 				log.WithError(err).Warn("me/chat: draft persist failed")
 			}
 		}
 
 		// Placement rebuild remains matching's responsibility.
+		// Opportunity turns may refine fields but must not overwrite the
+		// conversation-grounded intake digest with job-specific Q&A.
 		var placementSummary string
 		placementReady := ready
 		if deps.Placement != nil && candidateID != "" {
-			turns := make([]placement.ChatTurn, 0, len(messages))
-			for _, m := range messages {
-				turns = append(turns, placement.ChatTurn{Role: m.Role, Content: m.Content})
+			var turns []placement.ChatTurn
+			if mode != "opportunity" {
+				turns = make([]placement.ChatTurn, 0, len(messages))
+				for _, m := range messages {
+					turns = append(turns, placement.ChatTurn{Role: m.Role, Content: m.Content})
+				}
 			}
 			res, pErr := deps.Placement.Rebuild(ctx, placement.RebuildInput{
 				CandidateID: candidateID,
@@ -319,12 +390,109 @@ func MeChatAgentHandler(deps *MeChatAgentDeps, fallback http.HandlerFunc) http.H
 			PlacementSummary: placementSummary,
 			PlacementReady:   placementReady,
 		}
+		// Surface current listing card for the SPA widget (shared multi-job session).
+		if mode == "opportunity" && in.Opportunity != nil {
+			out.Card = opportunityCardFromContext(in.Opportunity)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
 	}
 }
 
-func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
+// formatOpportunityListingDoc builds extractable plain text for the model from
+// the page context the SPA sends (title, company, location, apply URL, body).
+func formatOpportunityListingDoc(op *opportunityChatContext) string {
+	if op == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("CURRENT LISTING (in view on the page)\n")
+	if t := strings.TrimSpace(op.Title); t != "" {
+		b.WriteString("Title: ")
+		b.WriteString(t)
+		b.WriteByte('\n')
+	}
+	if e := strings.TrimSpace(op.Entity); e != "" {
+		b.WriteString("Company/entity: ")
+		b.WriteString(e)
+		b.WriteByte('\n')
+	}
+	if loc := strings.TrimSpace(op.Location); loc != "" {
+		b.WriteString("Location: ")
+		b.WriteString(loc)
+		b.WriteByte('\n')
+	}
+	if k := strings.TrimSpace(op.Kind); k != "" {
+		b.WriteString("Kind: ")
+		b.WriteString(k)
+		b.WriteByte('\n')
+	}
+	if id := strings.TrimSpace(op.ID); id != "" {
+		b.WriteString("ID: ")
+		b.WriteString(id)
+		b.WriteByte('\n')
+	}
+	if s := strings.TrimSpace(op.Slug); s != "" {
+		b.WriteString("Slug: ")
+		b.WriteString(s)
+		b.WriteByte('\n')
+	}
+	if u := strings.TrimSpace(op.ApplyURL); u != "" {
+		b.WriteString("Apply URL: ")
+		b.WriteString(u)
+		b.WriteByte('\n')
+	}
+	if d := strings.TrimSpace(op.Description); d != "" {
+		b.WriteString("\nDescription:\n")
+		b.WriteString(d)
+		b.WriteByte('\n')
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func opportunityCardFromContext(op *opportunityChatContext) *opportunityChatCard {
+	if op == nil || strings.TrimSpace(op.Title) == "" {
+		return nil
+	}
+	card := &opportunityChatCard{
+		Title:         strings.TrimSpace(op.Title),
+		Subtitle:      strings.TrimSpace(strings.Join(nonEmptyJoin(op.Entity, op.Location), " · ")),
+		Href:          listingPath(op.Kind, op.Slug),
+		ApplyURL:      strings.TrimSpace(op.ApplyURL),
+		OpportunityID: strings.TrimSpace(op.ID),
+		Slug:          strings.TrimSpace(op.Slug),
+	}
+	return card
+}
+
+func nonEmptyJoin(parts ...string) []string {
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func listingPath(kind, slug string) string {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return "/"
+	}
+	prefix := "jobs"
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "scholarship", "scholarships":
+		prefix = "scholarships"
+	case "tender", "tenders":
+		prefix = "tenders"
+	case "deal", "deals":
+		prefix = "deals"
+	case "funding":
+		prefix = "funding"
+	}
+	return "/" + prefix + "/" + slug + "/"
+}
 
 func fieldsToAgentMap(f onboardingChatFields) map[string]any {
 	m := map[string]any{}
@@ -336,6 +504,9 @@ func fieldsToAgentMap(f onboardingChatFields) map[string]any {
 	}
 	if f.JobSearchStatus != "" {
 		m["job_search_status"] = f.JobSearchStatus
+	}
+	if strings.TrimSpace(f.SalaryExpectation) != "" {
+		m["salary_expectation"] = strings.TrimSpace(f.SalaryExpectation)
 	}
 	if f.SalaryMin != nil {
 		m["salary_min"] = *f.SalaryMin
@@ -385,7 +556,78 @@ func agentMapToFields(m map[string]any) onboardingChatFields {
 			f.ExtraInfo = cap
 		}
 	}
+	// AI free-text salary signal (required field in placement context).
+	if se, ok := m["salary_expectation"].(string); ok {
+		if s := strings.TrimSpace(se); s != "" {
+			f.SalaryExpectation = s
+		}
+	}
+	// If AI only filled numeric min/max, mirror a short expectation string.
+	if strings.TrimSpace(f.SalaryExpectation) == "" && hasSalaryExpectation(f) {
+		f.SalaryExpectation = formatSalary(f)
+	}
 	return f
+}
+
+// normalizeAgentMissing maps chat-agent field names to SPA/matching keys.
+func normalizeAgentMissing(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, k := range in {
+		k = strings.TrimSpace(k)
+		switch k {
+		case "salary_min", "salary_max", "currency":
+			k = "salary_expectation"
+		case "extra_info":
+			k = "capabilities"
+		}
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	return out
+}
+
+func agentFieldStatusToLocal(in map[string]chatagentclient.FieldStatus) map[string]fieldStatus {
+	if len(in) == 0 {
+		return nil
+	}
+	out := map[string]fieldStatus{}
+	var salaryParts []fieldStatus
+	for k, st := range in {
+		key := k
+		switch k {
+		case "salary_min", "salary_max", "currency", "salary_expectation":
+			salaryParts = append(salaryParts, fieldStatus{OK: st.OK, Value: st.Value, Reason: st.Reason})
+			continue
+		case "extra_info":
+			key = "capabilities"
+		}
+		out[key] = fieldStatus{OK: st.OK, Value: st.Value, Reason: st.Reason}
+	}
+	if len(salaryParts) > 0 {
+		ok := false
+		val := ""
+		for _, p := range salaryParts {
+			if p.OK {
+				ok = true
+				if strings.TrimSpace(p.Value) != "" {
+					val = p.Value
+				}
+			}
+		}
+		if ok {
+			out["salary_expectation"] = fieldStatus{OK: true, Value: val}
+		} else {
+			out["salary_expectation"] = fieldStatus{OK: false, Reason: "need salary expectations"}
+		}
+	}
+	return out
 }
 
 func mergeAgentMaps(base, overlay map[string]any) map[string]any {
@@ -418,4 +660,85 @@ func historyToAgent(msgs []onboardingChatMessage) []chatagentclient.ChatMessage 
 		out = append(out, chatagentclient.ChatMessage{Role: role, Content: m.Content})
 	}
 	return out
+}
+
+// stripViewingChrome removes the legacy "[Viewing opportunity: …]" prefix that
+// older clients/servers injected into user messages for the model.
+func stripViewingChrome(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "[Viewing opportunity:") {
+		return s
+	}
+	if i := strings.Index(s, "]"); i >= 0 && i+1 < len(s) {
+		return strings.TrimSpace(s[i+1:])
+	}
+	return ""
+}
+
+// isOpportunityThreadNoise identifies turns that belong to job side-chat and
+// must never appear in placement/onboarding intake history.
+func isOpportunityThreadNoise(m onboardingChatMessage) bool {
+	c := strings.TrimSpace(m.Content)
+	if c == "" {
+		return true
+	}
+	if strings.HasPrefix(c, "[Viewing opportunity:") {
+		return true
+	}
+	role := strings.ToLower(strings.TrimSpace(m.Role))
+	if role == "assistant" && strings.HasPrefix(c, "You're viewing ") {
+		return true
+	}
+	return false
+}
+
+// filterPlacementMessages drops job-side-chat chrome so intake transcripts stay
+// focused on matching-profile collection.
+func filterPlacementMessages(msgs []onboardingChatMessage) []onboardingChatMessage {
+	if len(msgs) == 0 {
+		return nil
+	}
+	out := make([]onboardingChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if isOpportunityThreadNoise(m) {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		content := m.Content
+		if role == "user" {
+			content = stripViewingChrome(content)
+			if strings.TrimSpace(content) == "" {
+				continue
+			}
+		}
+		out = append(out, onboardingChatMessage{Role: role, Content: content})
+	}
+	return out
+}
+
+// sanitizeMessagesForClient normalizes roles and strips viewing chrome so SPA
+// bubbles never render model-only prefixes.
+func sanitizeMessagesForClient(msgs []onboardingChatMessage) []onboardingChatMessage {
+	if len(msgs) == 0 {
+		return nil
+	}
+	out := make([]onboardingChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(m.Content)
+		if role == "user" {
+			content = stripViewingChrome(content)
+		}
+		if content == "" {
+			continue
+		}
+		out = append(out, onboardingChatMessage{
+			Role:    role,
+			Content: truncateRunes(content, 12_000),
+		})
+	}
+	return clampChatMessages(out, 80)
 }

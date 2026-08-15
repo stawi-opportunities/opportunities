@@ -3,6 +3,25 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { OpportunitiesFeed } from '../OpportunitiesFeed';
 import * as api from '@/api/candidates';
 
+vi.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({
+    state: 'authenticated',
+    hasSession: true,
+    ready: true,
+    login: vi.fn(),
+    logout: vi.fn(),
+    runtime: {},
+  }),
+}));
+
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({
+    data: { status: 'active', plan: 'pro' },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 vi.mock('@/api/candidates', async () => {
   return {
     fetchOpportunities: vi.fn(),

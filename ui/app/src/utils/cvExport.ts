@@ -1,7 +1,9 @@
 /**
- * Build a printable HTML document from CV plain text + optional meta.
+ * Build a printable HTML document from CV plain text or StructuredCV.
  * PDF v1 = open HTML and use browser print / save as PDF.
  */
+
+import { structuredCVToPlainText, type StructuredCV } from '@/utils/structuredCV';
 
 export type CVTemplateId = 'classic' | 'modern' | 'compact';
 
@@ -9,7 +11,9 @@ export interface CVExportInput {
   title?: string;
   candidateName?: string;
   targetRole?: string;
-  bodyText: string;
+  /** Plain body (legacy). Prefer `document` when available. */
+  bodyText?: string;
+  document?: StructuredCV;
   generatedAt?: Date;
   template?: CVTemplateId;
 }
@@ -92,14 +96,77 @@ function templateCSS(id: CVTemplateId): string {
   }
 }
 
+function sectionHtml(doc: StructuredCV): string {
+  const parts: string[] = [];
+  if (doc.summary.trim()) {
+    parts.push(`<h2>Summary</h2>${bodyToHtml(doc.summary)}`);
+  }
+  if (doc.experience.length) {
+    parts.push('<h2>Experience</h2>');
+    for (const e of doc.experience) {
+      const dates = [e.start, e.current ? 'Present' : e.end].filter(Boolean).join(' – ');
+      parts.push(
+        `<h3>${escapeHtml(e.title)}${e.company ? ` · ${escapeHtml(e.company)}` : ''}</h3>`
+      );
+      if (dates || e.location) {
+        parts.push(
+          `<p class="meta-line">${escapeHtml([dates, e.location].filter(Boolean).join(' · '))}</p>`
+        );
+      }
+      if (e.description.trim()) parts.push(bodyToHtml(e.description));
+    }
+  }
+  if (doc.education.length) {
+    parts.push('<h2>Education</h2>');
+    for (const ed of doc.education) {
+      const deg = [ed.degree, ed.field].filter(Boolean).join(', ');
+      parts.push(`<h3>${escapeHtml(ed.school)}${deg ? ` — ${escapeHtml(deg)}` : ''}</h3>`);
+      const dates = [ed.start, ed.end].filter(Boolean).join(' – ');
+      if (dates) parts.push(`<p class="meta-line">${escapeHtml(dates)}</p>`);
+      if (ed.notes?.trim()) parts.push(bodyToHtml(ed.notes));
+    }
+  }
+  const skills = [...doc.skills.strong, ...doc.skills.working, ...doc.skills.tools].filter(Boolean);
+  if (skills.length) {
+    parts.push(`<h2>Skills</h2><p>${escapeHtml(skills.join(' · '))}</p>`);
+  }
+  if (doc.certifications.length) {
+    parts.push(`<h2>Certifications</h2><p>${escapeHtml(doc.certifications.join(' · '))}</p>`);
+  }
+  if (doc.languages.length) {
+    parts.push(`<h2>Languages</h2><p>${escapeHtml(doc.languages.join(' · '))}</p>`);
+  }
+  return parts.join('\n') || bodyToHtml(structuredCVToPlainText(doc));
+}
+
 export function buildCVHtmlDocument(input: CVExportInput): string {
   const when = (input.generatedAt ?? new Date()).toISOString().slice(0, 10);
-  const name = escapeHtml(input.candidateName?.trim() || 'Curriculum Vitae');
-  const role = input.targetRole?.trim()
-    ? `<p class="role">${escapeHtml(input.targetRole.trim())}</p>`
-    : '';
+  const doc = input.document;
+  const name = escapeHtml(
+    input.candidateName?.trim() || doc?.basics.name?.trim() || 'Curriculum Vitae'
+  );
+  const roleText = input.targetRole?.trim() || doc?.basics.headline?.trim() || '';
+  const role = roleText ? `<p class="role">${escapeHtml(roleText)}</p>` : '';
   const title = escapeHtml(input.title?.trim() || name);
   const tpl = input.template ?? 'classic';
+  const contact = doc
+    ? [
+        doc.basics.location,
+        ...(doc.basics.phones?.length
+          ? doc.basics.phones
+          : doc.basics.phone
+            ? [doc.basics.phone]
+            : []),
+        ...(doc.basics.emails?.length
+          ? doc.basics.emails
+          : doc.basics.email
+            ? [doc.basics.email]
+            : []),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+  const main = doc ? sectionHtml(doc) : bodyToHtml(input.bodyText?.trim() || '');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -110,6 +177,9 @@ export function buildCVHtmlDocument(input: CVExportInput): string {
   <style>
     :root { color-scheme: light; }
     ${templateCSS(tpl)}
+    h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; margin: 1.25rem 0 0.5rem; border-bottom: 1px solid #cbd5e1; padding-bottom: 0.25rem; }
+    h3 { font-size: 1rem; margin: 0.75rem 0 0.15rem; font-weight: 600; }
+    .meta-line { font-size: 0.8rem; color: #64748b; margin: 0 0 0.35rem; }
     @media print {
       body { padding: 0; max-width: none; }
       .no-print { display: none !important; }
@@ -120,10 +190,11 @@ export function buildCVHtmlDocument(input: CVExportInput): string {
   <header>
     <h1>${name}</h1>
     ${role}
+    ${contact ? `<p class="meta">${escapeHtml(contact)}</p>` : ''}
     <p class="meta">Exported ${when} · Stawi · ${tpl}</p>
   </header>
   <main>
-    ${bodyToHtml(input.bodyText)}
+    ${main}
   </main>
   <p class="no-print meta" style="margin-top:2rem">
     Tip: use your browser Print → Save as PDF for a PDF copy.

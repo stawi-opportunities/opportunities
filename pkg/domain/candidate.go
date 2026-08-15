@@ -58,23 +58,27 @@ type CandidateProfile struct {
 	CVStorageURI  string `gorm:"type:text" json:"-"` // file id
 	CVContentHash string `gorm:"type:varchar(64)" json:"-"`
 
-	// User-visible profile info (managed here for settings UI convenience;
-	// the auth/Frame service is the canonical source for name + email).
-	Name  string `gorm:"type:varchar(255)" json:"name"`
-	Phone string `gorm:"type:varchar(50)" json:"phone"`
+	// Display name on the job-seeker product row (not identity login).
+	Name string `gorm:"type:varchar(255)" json:"name"`
+
+	// CVContactIDs are standalone ProfileService contact_ids from the CV
+	// (CreateContact — not attached to the person profile). No phone/email
+	// plaintext is stored here. Checkout/notify use profile-attached contacts only.
+	CVContactIDs pq.StringArray `gorm:"type:text[];not null;default:'{}'" json:"cv_contact_ids,omitempty"`
 
 	// AI-extracted profile fields
-	CurrentTitle    string         `gorm:"type:text" json:"current_title"`
-	Seniority       string         `gorm:"type:varchar(30)" json:"seniority"`
-	YearsExperience int            `gorm:"type:int" json:"years_experience"`
-	Skills          pq.StringArray `gorm:"type:text[]" json:"skills"`
-	StrongSkills    pq.StringArray `gorm:"type:text[]" json:"strong_skills"`
-	WorkingSkills   pq.StringArray `gorm:"type:text[]" json:"working_skills"`
-	ToolsFrameworks pq.StringArray `gorm:"type:text[]" json:"tools_frameworks"`
-	Certifications  string         `gorm:"type:text" json:"certifications"`
-	PreferredRoles  string         `gorm:"type:text" json:"preferred_roles"`
-	Industries      string         `gorm:"type:text" json:"industries"`
-	Education       string         `gorm:"type:text" json:"education"`
+	CurrentTitle     string         `gorm:"type:text" json:"current_title"`
+	Seniority        string         `gorm:"type:varchar(30)" json:"seniority"`
+	YearsExperience  int            `gorm:"type:int" json:"years_experience"`
+	Skills           pq.StringArray `gorm:"type:text[]" json:"skills"`
+	StrongSkills     pq.StringArray `gorm:"type:text[]" json:"strong_skills"`
+	WorkingSkills    pq.StringArray `gorm:"type:text[]" json:"working_skills"`
+	ToolsFrameworks  pq.StringArray `gorm:"type:text[]" json:"tools_frameworks"`
+	Certifications   string         `gorm:"type:text" json:"certifications"`
+	PreferredRoles   string         `gorm:"type:text" json:"preferred_roles"`
+	Industries       string         `gorm:"type:text" json:"industries"`
+	Education        string         `gorm:"type:text" json:"education"`
+	EducationHistory string         `gorm:"type:jsonb;default:'[]'" json:"education_history"`
 
 	// Job preferences
 	PreferredLocations string  `gorm:"type:text" json:"preferred_locations"`

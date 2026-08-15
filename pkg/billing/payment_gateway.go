@@ -140,11 +140,22 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 		methods = nil // all methods for currency
 	}
 
+	// JWT sub === profile_id → ProfileService.GetById → contacts[].detail.
+	profileID := strings.TrimSpace(req.ProfileID)
+	if profileID == "" {
+		profileID = strings.TrimSpace(req.CandidateID)
+	}
+
 	meta := map[string]string{
 		"source":       "opportunities",
 		"plan_id":      string(req.Plan.ID),
 		"candidate_id": req.CandidateID,
+		"profile_id":   profileID,
 		"prompt_id":    sessionID,
+	}
+	if IsOneTimeProduct(req.Plan.ID) {
+		meta["product"] = "one_time"
+		meta["product_id"] = string(req.Plan.ID)
 	}
 	if req.Email != "" {
 		meta["email"] = req.Email
@@ -157,19 +168,34 @@ func (g *paymentGateway) createHostedCheckout(ctx context.Context, req CheckoutR
 	// ledger prompt_id, SPA poll id, and webhook recovery key. GetSession
 	// resolves chk_* via order_ref (and session.Ref as secondary).
 	returnURL := g.successURL(sessionID)
+	if IsOneTimeProduct(req.Plan.ID) {
+		// Return to CV tab after one-time purchase.
+		returnURL = strings.TrimRight(g.opts.PublicSiteURL, "/") + "/dashboard/#cv?ats_report=" + url.QueryEscape(sessionID)
+	}
+
+	sessionName := "Stawi " + req.Plan.Name
+	sessionDesc := req.Plan.Description
+	if sessionDesc == "" {
+		if IsOneTimeProduct(req.Plan.ID) {
+			sessionDesc = "One-time purchase — " + string(req.Plan.ID)
+		} else {
+			sessionDesc = "Subscription — " + string(req.Plan.ID)
+		}
+	}
 
 	created, err := g.checkout.CreateSession(ctx, CreateHostedSessionRequest{
-		Name:        "Stawi " + string(req.Plan.ID),
-		Description: "Subscription — " + string(req.Plan.ID),
+		Name:        sessionName,
+		Description: sessionDesc,
 		Amount:      amount,
 		Currency:    req.Plan.Currency,
 		OrderRef:    sessionID,
 		ReturnURL:   returnURL,
-		ProfileID:   req.CandidateID,
-		Email:       req.Email,
-		Phone:       req.Phone,
-		Methods:     methods,
-		Metadata:    meta,
+		// GetById(profileID): contacts[].detail = email/phone; properties.au_name.
+		ProfileID: profileID,
+		Email:     req.Email,
+		Phone:     req.Phone,
+		Methods:   methods,
+		Metadata:  meta,
 	})
 	if err != nil {
 		// Never fall back to naked card InitiatePrompt under OAuth — that path
@@ -254,6 +280,10 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 		return CheckoutResult{}, fmt.Errorf("billing: build prompt extras: %w", err)
 	}
 
+	profileID := strings.TrimSpace(req.ProfileID)
+	if profileID == "" {
+		profileID = strings.TrimSpace(req.CandidateID)
+	}
 	accountRef := "stawi-" + req.CandidateID
 	if len(accountRef) > 40 {
 		accountRef = accountRef[:40]
@@ -264,11 +294,12 @@ func (g *paymentGateway) initiateFlutterwave(ctx context.Context, req CheckoutRe
 		Route:  "flutterwave",
 		Amount: amount,
 		Source: commonv1.ContactLink_builder{
-			ProfileId: req.CandidateID,
+			ProfileId: profileID,
 			ContactId: phone,
 			Detail:    sourceDetail,
 		}.Build(),
 		Recipient: commonv1.ContactLink_builder{
+			ProfileId: profileID,
 			ContactId: phone,
 			Detail:    sourceDetail,
 		}.Build(),

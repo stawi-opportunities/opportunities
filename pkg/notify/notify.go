@@ -29,6 +29,8 @@ const (
 	DefaultTemplateMatchesDigest    = "template.opportunities.matches.digest"
 	DefaultTemplateWeeklyJobsDigest = "template.opportunities.weekly_jobs.digest"
 	DefaultTemplateCVStaleNudge     = "template.opportunities.cv.stale_nudge"
+	// DefaultTemplateATSReport is the paid $2 CV ATS report email template.
+	DefaultTemplateATSReport = "template.opportunities.cv.ats_report"
 )
 
 // Message is one templated outbound notification — same fields profile uses
@@ -37,8 +39,11 @@ type Message struct {
 	// Template is the service-notification template name/id.
 	Template string
 	// ProfileID is the recipient profile (ContactLink.ProfileId). Required.
+	// Notify resolves delivery via the person profile's attached contacts only
+	// — not CV-derived standalone contact_ids.
 	ProfileID string
-	// ContactID optional ContactLink.ContactId when known.
+	// ContactID optional ContactLink.ContactId when known (must be a
+	// profile-attached identity contact, not a CV standalone id).
 	ContactID string
 	// Language optional preferred language code.
 	Language string

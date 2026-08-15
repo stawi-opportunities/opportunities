@@ -34,12 +34,17 @@ type MeAgent struct {
 	Email string `json:"email"`
 }
 
-// CandidateProfileReader is the subset of repository.CandidateRepository
-// the subscription handler needs. Defined here as an interface so the
-// handler is testable against an in-memory fake without dragging GORM
-// into the test binary.
+// CandidateProfileReader loads a candidate for the logged-in profile.
+// GetByID is kept for tests; production readers implement
+// CandidateByProfileID (profile_id = JWT sub).
 type CandidateProfileReader interface {
 	GetByID(ctx context.Context, id string) (*domain.CandidateProfile, error)
+}
+
+// CandidateByProfileID resolves a candidate by platform profile_id
+// (JWT sub). Preferred over GetByID for live traffic.
+type CandidateByProfileID interface {
+	ResolveByProfileID(ctx context.Context, profileID string) (*domain.CandidateProfile, error)
 }
 
 // MatchSummarizer returns the dashboard's queued/delivered counters for
@@ -63,20 +68,21 @@ type SubscriptionDeps struct {
 // currently-authenticated candidate.
 //
 //	GET /me/subscription
-//	X-Candidate-ID: <candidate primary-key>
+//	JWT sub = platform profile_id
 //	→ 200 { plan, status, queued_matches, delivered_this_week, ... }
 //
-// Wrap with httpmw.CandidateAuth before mounting. The wrapper is
-// what populates the candidate identity into the request context.
+// Wrap with httpmw.CandidateAuth before mounting. The wrapper puts the
+// JWT subject (profile_id) into the request context.
 func SubscriptionHandler(deps SubscriptionDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := util.Log(ctx)
-		candidateID := httpmw.CandidateFromContext(ctx)
+		// JWT sub is the platform profile_id — the only login identity.
+		profileID := httpmw.CandidateFromContext(ctx)
 
-		cand, err := deps.Candidates.GetByID(ctx, candidateID)
+		cand, err := loadCandidateByProfileID(ctx, deps.Candidates, profileID)
 		if err != nil {
-			log.WithError(err).WithField("candidate_id", candidateID).
+			log.WithError(err).WithField("profile_id", profileID).
 				Error("me/subscription: candidate lookup failed")
 			httpmw.ProblemJSON(w, http.StatusBadGateway,
 				"candidate_lookup_failed", "could not load candidate profile")
@@ -93,13 +99,18 @@ func SubscriptionHandler(deps SubscriptionDeps) http.HandlerFunc {
 			resp.RenewsAt = &s
 		}
 		if deps.Matches != nil {
-			queued, delivered, sumErr := deps.Matches.SubscriptionSummary(ctx, candidateID)
+			// Match FKs use candidate row id (often equal to profile_id).
+			matchKey := profileID
+			if cand != nil && strings.TrimSpace(cand.ID) != "" {
+				matchKey = cand.ID
+			}
+			queued, delivered, sumErr := deps.Matches.SubscriptionSummary(ctx, matchKey)
 			if sumErr != nil {
 				// Degrade to zeroes rather than 5xx. The dashboard
 				// already renders a graceful state when counts are 0
 				// and a wedged metrics query shouldn't take the whole
 				// subscription panel down.
-				log.WithError(sumErr).WithField("candidate_id", candidateID).
+				log.WithError(sumErr).WithField("profile_id", profileID).
 					Warn("me/subscription: summary query failed; returning zero counts")
 			} else {
 				resp.QueuedMatches = queued
@@ -110,6 +121,19 @@ func SubscriptionHandler(deps SubscriptionDeps) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	}
+}
+
+// loadCandidateByProfileID loads the job-seeker for a platform profile_id
+// (JWT sub). Prefer ResolveByProfileID; tests may only implement GetByID.
+func loadCandidateByProfileID(ctx context.Context, r CandidateProfileReader, profileID string) (*domain.CandidateProfile, error) {
+	if r == nil {
+		return nil, nil
+	}
+	if byProfile, ok := r.(CandidateByProfileID); ok {
+		return byProfile.ResolveByProfileID(ctx, profileID)
+	}
+	// Fakes that key rows by profile_id for unit tests.
+	return r.GetByID(ctx, profileID)
 }
 
 // planValue maps the persisted PlanID to the dashboard's nullable
@@ -128,20 +152,31 @@ func planValue(c *domain.CandidateProfile) *string {
 }
 
 // statusFromCandidate flattens the candidate's SubscriptionTier (which
-// also encodes the trial vs. paid distinction) into the four-state
-// enum the dashboard understands. Paid with cancel_at_period_end stays
-// "active" until the period ends (access until then).
+// also encodes the trial vs. paid distinction) into the dashboard enum.
+//
+// Entitled (product access): paid, trial, past_due (dunning grace), and
+// legacy rows that stored "active" instead of "paid". Soft-cancel keeps
+// subscription=paid until period end, so cancel_at_period_end still maps
+// to "active" here.
 func statusFromCandidate(c *domain.CandidateProfile) string {
 	if c == nil {
 		return "none"
 	}
-	switch c.Subscription {
-	case domain.SubscriptionPaid, domain.SubscriptionTrial:
-		// Soft-cancel still has access until period end.
+	switch strings.ToLower(strings.TrimSpace(string(c.Subscription))) {
+	case string(domain.SubscriptionPaid), string(domain.SubscriptionTrial), "active":
 		return "active"
-	case domain.SubscriptionCancelled:
+	case string(domain.SubscriptionPastDue):
+		// Still entitled during dunning — dashboard shows update-payment UX.
+		return "past_due"
+	case string(domain.SubscriptionCancelled), "canceled":
+		// Hard-cancelled (period already ended). Soft-cancel keeps tier=paid.
 		return "cancelled"
-	default: // SubscriptionFree, unknown
+	default:
+		// Recovery: non-empty subscription_id after a webhook race still
+		// means billing activated them — never send them back to paywall.
+		if strings.TrimSpace(c.SubscriptionID) != "" {
+			return "active"
+		}
 		return "none"
 	}
 }

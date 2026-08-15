@@ -4,7 +4,10 @@
  * Embeddable on onboarding, dashboard refine, and opportunity pages.
  * All turns go through POST /me/chat (sendMeChat).
  *
- * Landing: petal mark, journey title, large card + Upload resume + chips.
+ * Intake (onboarding): proactive — seed an assistant opening that asks for
+ * the next missing required field so the seeker never has to invent the agenda.
+ * Refine / job listing: user may initiate (landing or soft welcome).
+ *
  * Thread: progress header, right user pills, left assistant prose,
  *          slim sticky "Ask a question…" bar.
  */
@@ -18,14 +21,16 @@ import {
   type KeyboardEvent,
 } from 'react';
 import {
+  chatErrorMessage,
   sendMeChat,
   type OnboardingChatFieldStatus,
   type OnboardingChatFields,
   type OnboardingChatMessage,
 } from '@/api/candidates';
 import { uploadCV } from '@/api/profile';
-import { missingChatFields } from '@/onboarding/chatHeuristic';
+import { intakeOpeningReply, missingChatFields } from '@/onboarding/chatHeuristic';
 import type { PlanId } from '@/utils/plans';
+import { displayUserContent, filterPlacementMessages } from '@/utils/chatDisplay';
 import { FIELD_LABELS } from './mapFields';
 
 export type PreferenceChatMode = 'intake' | 'refine';
@@ -323,9 +328,17 @@ export function PreferenceChat({
   void _compact;
   const greeting = welcome ?? landingTitle(userName, mode);
   const seed = applyCvOnFile(initialFields, cvOnFile);
-  const [messages, setMessages] = useState<OnboardingChatMessage[]>(() =>
-    initialMessages?.length ? initialMessages : []
-  );
+
+  /** Intake starts with an agent-led opening; refine waits for the user. */
+  function proactiveIntakeMessages(f: OnboardingChatFields): OnboardingChatMessage[] {
+    return [{ role: 'assistant', content: intakeOpeningReply(f) }];
+  }
+
+  const [messages, setMessages] = useState<OnboardingChatMessage[]>(() => {
+    if (initialMessages?.length) return filterPlacementMessages(initialMessages);
+    if (mode === 'intake') return proactiveIntakeMessages(seed.fields);
+    return [];
+  });
   const [fields, setFields] = useState<OnboardingChatFields>(seed.fields);
   const [missing, setMissing] = useState<string[]>(() => seed.missing);
   const [fieldStatus, setFieldStatus] = useState<
@@ -346,6 +359,10 @@ export function PreferenceChat({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
+  /** Persist the proactive opening once so refresh resumes the thread. */
+  const openingPersistedRef = useRef(false);
+  /** Intake: fire onComplete at most once when the profile becomes ready. */
+  const autoCompletedRef = useRef(false);
 
   // Hydrate once from parent (server draft / profile) so past turns resume.
   useEffect(() => {
@@ -354,30 +371,70 @@ export function PreferenceChat({
       Array.isArray(v) ? v.length > 0 : Boolean(v)
     );
     const hasMsgs = Boolean(initialMessages?.length);
-    // Wait until parent finished loading when both still empty on first paint.
-    if (!hasFields && !hasMsgs && !cvOnFile) return;
+    // Intake is always proactive: no need to wait for a user-first message.
+    // Refine still waits for parent draft when both fields and messages are empty.
+    if (mode !== 'intake' && !hasFields && !hasMsgs && !cvOnFile) return;
     seededRef.current = true;
     if (hasFields || cvOnFile) {
       const next = applyCvOnFile(initialFields, cvOnFile);
       setFields(next.fields);
       setMissing(next.missing);
       setReady(next.ready);
+      // If we only had a cold opening (no server history), re-ground the ask
+      // on hydrated fields (e.g. CV already on file → skip capabilities).
+      if (mode === 'intake' && !hasMsgs) {
+        setMessages(proactiveIntakeMessages(next.fields));
+      }
     }
     if (hasMsgs && initialMessages?.length) {
-      setMessages(initialMessages);
+      setMessages(filterPlacementMessages(initialMessages));
+    } else if (mode === 'intake' && !hasMsgs) {
+      // Ensure thread is agent-led even when fields stay empty.
+      setMessages((prev) => (prev.length > 0 ? prev : proactiveIntakeMessages(seed.fields)));
     }
-  }, [initialFields, initialMessages, cvOnFile]);
+  }, [initialFields, initialMessages, cvOnFile, mode]);
 
   // If messages arrive after mount (async draft fetch), adopt them when we
-  // still have no local turns — continuity without clobbering an in-progress send.
+  // still have only a local proactive opening — do not clobber real history
+  // or an in-progress send.
   useEffect(() => {
     if (sending) return;
     if (!initialMessages?.length) return;
     setMessages((prev) => {
-      if (prev.length > 0) return prev;
-      return initialMessages;
+      const onlyLocalOpening =
+        prev.length === 1 && prev[0]?.role === 'assistant' && !prev.some((m) => m.role === 'user');
+      if (prev.length > 0 && !onlyLocalOpening) return prev;
+      return filterPlacementMessages(initialMessages);
     });
   }, [initialMessages, sending]);
+
+  // Persist intake opening so a refresh restores the agent-led thread.
+  useEffect(() => {
+    if (mode !== 'intake') return;
+    if (openingPersistedRef.current) return;
+    if (messages.length !== 1 || messages[0]?.role !== 'assistant') return;
+    if (initialMessages?.length) {
+      openingPersistedRef.current = true;
+      return;
+    }
+    openingPersistedRef.current = true;
+    onFieldsChange?.(fields, {
+      ready,
+      missing,
+      messages,
+      field_status: fieldStatus,
+    });
+    // Fire once for empty-thread opening (openingPersistedRef guards re-entry).
+  }, [
+    mode,
+    messages,
+    fields,
+    ready,
+    missing,
+    fieldStatus,
+    initialMessages?.length,
+    onFieldsChange,
+  ]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });
@@ -386,7 +443,7 @@ export function PreferenceChat({
   // Any prior transcript (user or assistant) restores the thread — never
   // drop back to the landing screen after the seeker has progressed.
   const hasConversation = messages.length > 0;
-  const ctaLabel = completeLabel ?? (mode === 'intake' ? 'Continue to plans' : 'Apply updates');
+  const ctaLabel = completeLabel ?? (mode === 'intake' ? 'Continue to subscribe' : 'Apply updates');
 
   const doneCount = REQUIRED_KEYS.filter((k) => {
     if (fieldStatus?.[k]) return fieldStatus[k]!.ok;
@@ -407,8 +464,9 @@ export function PreferenceChat({
     setError(null);
     setTouched(true);
     const history = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
-    const display =
-      opts.display || message || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…');
+    const display = displayUserContent(
+      opts.display || message || (opts.cv_filename ? `Attached CV: ${opts.cv_filename}` : '…')
+    );
     setWaitingText(display);
     setMessages((prev) => [...prev, { role: 'user', content: display }]);
     setInput('');
@@ -419,17 +477,16 @@ export function PreferenceChat({
         draft: fields,
         cv_text: opts.cv_text,
         cv_filename: opts.cv_filename,
+        context: 'placement',
       });
       let nextFields = res.fields;
       if (cvOnFile && !nextFields.extra_info?.trim()) {
         nextFields = applyCvOnFile(nextFields, true).fields;
       }
-      let miss = res.missing?.length ? [...res.missing] : missingChatFields(nextFields);
+      // Server (chat-agent) owns readiness — do not re-gate with client heuristics.
+      const isReady = Boolean(res.ready);
+      let miss = Array.isArray(res.missing) ? [...res.missing] : [];
       if (cvOnFile) miss = miss.filter((k) => k !== 'capabilities');
-      const isReady =
-        typeof res.ready === 'boolean'
-          ? res.ready || (cvOnFile && miss.length === 0)
-          : miss.length === 0;
       if (isReady) miss = [];
       setFields(nextFields);
       setMissing(miss);
@@ -439,14 +496,34 @@ export function PreferenceChat({
         setPlacementSummary(res.placement_summary.trim());
       }
       // Prefer full server transcript; never shrink history to a single turn
-      // (local fallback used to return only the last pair).
+      // (local fallback used to return only the last pair). Always strip any
+      // legacy job-view chrome from user bubbles.
       const appended: OnboardingChatMessage[] = [
         ...history,
         { role: 'user', content: display },
         { role: 'assistant', content: res.reply },
       ];
-      const nextMsgs: OnboardingChatMessage[] =
+      // Prefer server transcript for history length, but always surface the
+      // composed `reply` on the last assistant turn (matching rewrites false
+      // "profile complete" claims when required fields are still missing).
+      let nextMsgs: OnboardingChatMessage[] =
         res.messages && res.messages.length >= appended.length ? res.messages : appended;
+      nextMsgs = filterPlacementMessages(nextMsgs).map((m) =>
+        m.role === 'user' ? { ...m, content: displayUserContent(m.content) } : m
+      );
+      if (res.reply?.trim()) {
+        let patched = false;
+        for (let i = nextMsgs.length - 1; i >= 0; i--) {
+          if (nextMsgs[i]?.role === 'assistant') {
+            nextMsgs = nextMsgs.map((m, idx) => (idx === i ? { ...m, content: res.reply } : m));
+            patched = true;
+            break;
+          }
+        }
+        if (!patched) {
+          nextMsgs = [...nextMsgs, { role: 'assistant', content: res.reply }];
+        }
+      }
       setMessages(nextMsgs);
       onFieldsChange?.(nextFields, {
         ready: isReady,
@@ -455,16 +532,21 @@ export function PreferenceChat({
         field_status: res.field_status,
       });
 
-      if (mode === 'intake' && isReady && onComplete && !showCompleteAction) {
+      // Intake: auto-advance to paywall as soon as required fields are complete
+      // (button remains as a manual fallback via handleComplete).
+      if (mode === 'intake' && isReady && onComplete && !autoCompletedRef.current) {
+        autoCompletedRef.current = true;
         await onComplete(nextFields, { messages: nextMsgs });
       }
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : 'Something went wrong');
+      const honest = chatErrorMessage(e);
+      setError(honest);
+      // Honest assistant bubble: do not invent a successful guided reply.
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: "I couldn't process that just now. Try again in a moment.",
+          content: honest,
         },
       ]);
     } finally {
@@ -514,16 +596,29 @@ export function PreferenceChat({
           );
         }
         if (up.placement_ready) {
+          const next = applyCvOnFile(fields, true);
+          setFields(next.fields);
+          setMissing(next.missing);
           setReady(true);
           setPendingCV(null);
           setPlacementSummary(up.placement_summary ?? null);
-          setMessages((prev) => [
-            ...prev,
+          const nextMsgs: OnboardingChatMessage[] = [
+            ...messages,
             {
               role: 'assistant',
               content: 'Great — your CV is processed and your profile is ready for matching.',
             },
-          ]);
+          ];
+          setMessages(nextMsgs);
+          onFieldsChange?.(next.fields, {
+            ready: true,
+            missing: [],
+            messages: nextMsgs,
+          });
+          if (mode === 'intake' && onComplete && !autoCompletedRef.current && next.ready) {
+            autoCompletedRef.current = true;
+            void onComplete(next.fields, { messages: nextMsgs });
+          }
           setCvBusy(false);
           return;
         }
@@ -720,7 +815,7 @@ export function PreferenceChat({
           placeholder={missingPlaceholder(missing, mode)}
           disabled={isWaiting || completing}
           readOnly={isWaiting}
-          className="preference-chat-input min-w-0 flex-1 border-0 bg-transparent py-2 text-[15px] text-stone-900 placeholder:text-stone-400 shadow-none outline-none ring-0 focus:border-transparent focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 dark:text-white dark:placeholder:text-stone-500"
+          className="preference-chat-input min-w-0 flex-1 border-0 bg-transparent py-2 text-[16px] text-stone-900 placeholder:text-stone-400 shadow-none outline-none ring-0 focus:border-transparent focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 dark:text-white dark:placeholder:text-stone-500"
           aria-label="Describe what you want"
           aria-busy={isWaiting}
         />
@@ -735,14 +830,14 @@ export function PreferenceChat({
         </p>
       )}
       {showCompleteAction && canComplete && onComplete && (
-        <div className="mt-2 flex justify-center">
+        <div className="mt-3 flex justify-center">
           <button
             type="button"
             onClick={() => void handleComplete()}
             disabled={completing}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50 dark:text-blue-400"
+            className="w-full max-w-md rounded-full bg-navy-900 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-navy-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500"
           >
-            {completing ? 'Saving…' : ctaLabel}
+            {completing ? 'Saving…' : `${ctaLabel} →`}
           </button>
         </div>
       )}
@@ -877,16 +972,15 @@ export function PreferenceChat({
         <div className="flex flex-col gap-5">
           {messages.map((m, i) => {
             if (m.role === 'user') {
-              const cvName = cvFilenameFromContent(m.content);
+              const text = displayUserContent(m.content);
+              const cvName = cvFilenameFromContent(text);
               return (
                 <div key={`u-${i}`} className="flex justify-end">
-                  {/* Meta-style: soft gray pill on the right */}
+                  {/* Soft rounded rect — not rounded-full (avoids oval pills). */}
                   <div
-                    className={`max-w-[min(85%,28rem)] rounded-full px-4 py-2.5 text-[15px] leading-relaxed text-stone-900 dark:text-stone-100 ${
-                      cvName
-                        ? 'rounded-2xl bg-[#f0f2f5] font-medium dark:bg-navy-800'
-                        : 'bg-[#f0f2f5] dark:bg-navy-800'
-                    }`}
+                    className={`max-w-[min(85%,28rem)] rounded-xl bg-[#f0f2f5] px-3.5 py-2 text-[15px] leading-relaxed text-stone-900 dark:bg-navy-800 dark:text-stone-100 ${
+                      text.includes('\n') ? 'whitespace-pre-wrap' : ''
+                    } ${cvName ? 'font-medium' : ''}`}
                   >
                     {cvName ? (
                       <span className="inline-flex items-center gap-2">
@@ -903,7 +997,7 @@ export function PreferenceChat({
                         {cvName}
                       </span>
                     ) : (
-                      m.content
+                      text
                     )}
                   </div>
                 </div>

@@ -23,7 +23,11 @@ type MeChatLLM interface {
 	Complete(ctx context.Context, prompt string) (string, error)
 }
 
-// MeChatDeps wires the shared preference / intake chat turn handler.
+// MeChatDeps wires the local heuristic/LLM chat turn handler.
+//
+// Production always uses MeChatAgentHandler (platform chat-agent). MeChatHandler
+// remains only for unit tests of field assessment / draft persistence helpers.
+// It is not mounted on POST /me/chat.
 type MeChatDeps struct {
 	LLM MeChatLLM // optional
 	// Drafts optionally persists the conversation + extracted fields so
@@ -62,11 +66,14 @@ type onboardingChatMessage struct {
 //
 // LinkedIn is optional if the seeker shares it; it is not required.
 type onboardingChatFields struct {
-	TargetJobTitle     string   `json:"target_job_title,omitempty"`
-	ExperienceLevel    string   `json:"experience_level,omitempty"`
-	JobSearchStatus    string   `json:"job_search_status,omitempty"`
-	SalaryMin          *float64 `json:"salary_min,omitempty"`
-	SalaryMax          *float64 `json:"salary_max,omitempty"`
+	TargetJobTitle  string   `json:"target_job_title,omitempty"`
+	ExperienceLevel string   `json:"experience_level,omitempty"`
+	JobSearchStatus string   `json:"job_search_status,omitempty"`
+	SalaryMin       *float64 `json:"salary_min,omitempty"`
+	SalaryMax       *float64 `json:"salary_max,omitempty"`
+	// SalaryExpectation is the AI-extracted free-text salary signal
+	// (numeric paraphrase or open/market/negotiable). Preferred readiness source.
+	SalaryExpectation  string   `json:"salary_expectation,omitempty"`
 	Currency           string   `json:"currency,omitempty"`
 	PreferredRegions   []string `json:"preferred_regions,omitempty"`
 	PreferredCountries []string `json:"preferred_countries,omitempty"` // opportunity source countries
@@ -97,6 +104,17 @@ type fieldStatus struct {
 	Reason string `json:"reason,omitempty"` // empty when ok
 }
 
+// opportunityChatCard is a reusable listing widget for the SPA (title,
+// company/location subtitle, detail href, apply URL).
+type opportunityChatCard struct {
+	Title         string `json:"title"`
+	Subtitle      string `json:"subtitle,omitempty"`
+	Href          string `json:"href,omitempty"`
+	ApplyURL      string `json:"apply_url,omitempty"`
+	OpportunityID string `json:"opportunity_id,omitempty"`
+	Slug          string `json:"slug,omitempty"`
+}
+
 // onboardingChatResponse is returned after each turn.
 // Ready is ALWAYS computed server-side from validated fields — never trusted
 // from the LLM. Missing is the ordered list of required keys still incomplete.
@@ -114,6 +132,8 @@ type onboardingChatResponse struct {
 	PlacementSummary string `json:"placement_summary,omitempty"`
 	// PlacementReady mirrors summary completeness for UI.
 	PlacementReady bool `json:"placement_ready,omitempty"`
+	// Card is the job-in-view widget for opportunity side-chat (optional).
+	Card *opportunityChatCard `json:"card,omitempty"`
 }
 
 // requiredChatFieldOrder is the priority order for follow-up questions.
@@ -294,6 +314,12 @@ func MeChatHandler(deps MeChatDeps) http.HandlerFunc {
 		ready := len(missing) == 0
 
 		reply := composeReply(llmReply, merged, missing, ready)
+		// Local MeChatHandler (tests / no platform agent): allow structural
+		// guided ask when no model is wired. Production MeChatAgentHandler
+		// never calls this path and rejects empty model replies with 502.
+		if reply == "" && deps.LLM == nil {
+			reply = placement.GuidedFollowUp(toPlacementFields(merged))
+		}
 
 		// Append this turn and persist so the conversation is always available.
 		nextMessages := appendChatTurn(history, msg, reply)
@@ -356,6 +382,7 @@ func toPlacementFields(f onboardingChatFields) placement.Fields {
 		JobSearchStatus:    f.JobSearchStatus,
 		SalaryMin:          f.SalaryMin,
 		SalaryMax:          f.SalaryMax,
+		SalaryExpectation:  f.SalaryExpectation,
 		Currency:           f.Currency,
 		PreferredRegions:   f.PreferredRegions,
 		PreferredCountries: f.PreferredCountries,
@@ -750,12 +777,14 @@ func sanitizeFields(f onboardingChatFields) onboardingChatFields {
 	out.PreferredLanguages = normalizeLanguages(out.PreferredLanguages)
 	out.JobTypes = normalizeJobTypes(out.JobTypes)
 	out.LinkedIn = normalizeLinkedIn(out.LinkedIn)
-	if out.Currency != "" && len(out.Currency) != 3 {
-		out.Currency = ""
-	}
 	if out.Currency != "" {
-		out.Currency = strings.ToUpper(out.Currency)
+		out.Currency = strings.ToUpper(strings.TrimSpace(out.Currency))
+		// MKT is the AI extract-rule code for open/market rates; else ISO-like.
+		if out.Currency != "MKT" && len(out.Currency) != 3 {
+			out.Currency = ""
+		}
 	}
+	out.SalaryExpectation = strings.TrimSpace(out.SalaryExpectation)
 	// Drop nonsense salaries.
 	if out.SalaryMin != nil && *out.SalaryMin <= 0 {
 		out.SalaryMin = nil
@@ -938,16 +967,31 @@ func looksLikeCV(s string) bool {
 }
 
 func hasSalaryExpectation(f onboardingChatFields) bool {
+	// AI free-text signal (numeric paraphrase or open/market) is authoritative.
+	if strings.TrimSpace(f.SalaryExpectation) != "" {
+		return true
+	}
+	// AI may also fill numeric min/max without a free-text paraphrase.
 	if f.SalaryMin != nil && *f.SalaryMin > 0 {
 		return true
 	}
 	if f.SalaryMax != nil && *f.SalaryMax > 0 {
 		return true
 	}
+	// currency=MKT is only valid when the AI explicitly set it (extract rules).
+	if strings.EqualFold(strings.TrimSpace(f.Currency), "MKT") {
+		return true
+	}
 	return false
 }
 
 func formatSalary(f onboardingChatFields) string {
+	if s := strings.TrimSpace(f.SalaryExpectation); s != "" {
+		return s
+	}
+	if strings.EqualFold(strings.TrimSpace(f.Currency), "MKT") {
+		return "market rates (open)"
+	}
 	cur := f.Currency
 	if cur == "" {
 		cur = "USD"
@@ -978,13 +1022,20 @@ func missingChatFields(f onboardingChatFields) []string {
 	return missingFromStatus(assessFieldStatus(f))
 }
 
-// composeReply prefers the model's conversational reply when it is useful,
-// but never claims readiness if the server still has missing fields.
-// When anything required is missing we always ask for the next gap.
+// composeReply surfaces the model's reply when present. It never invents
+// canned “Got it — markets…” GuidedFollowUp text when the model failed or
+// returned empty — that must be an honest error from the agent path.
+//
+// Policy:
+//   - ready + model text: use model text
+//   - ready + empty: short complete template (profile already ready)
+//   - not ready + model falsely claims done: drop claim; append next ask only
+//   - not ready + model replied: keep model text; optionally append next ask
+//   - not ready + empty: return empty (handler should have already failed closed)
 func composeReply(llmReply string, f onboardingChatFields, missing []string, ready bool) string {
 	llmReply = strings.TrimSpace(llmReply)
 	if ready {
-		if llmReply != "" && !looksLikeAskingForMore(llmReply) {
+		if llmReply != "" {
 			return llmReply
 		}
 		title := f.TargetJobTitle
@@ -995,32 +1046,40 @@ func composeReply(llmReply string, f onboardingChatFields, missing []string, rea
 		if where == "" {
 			where = f.Country
 		}
+		if where == "" {
+			where = "your markets"
+		}
+		level := f.ExperienceLevel
+		if level == "" {
+			level = "your"
+		}
 		return fmt.Sprintf(
 			"Great — I have what I need for %s (%s) roles in %s. Choose a plan to start matching.",
-			title, f.ExperienceLevel, where,
+			title, level, where,
 		)
 	}
-	// Not ready: model may ask a sensible next question; still prefer our
-	// structured follow-up when the model invents readiness or is vague.
-	if llmReply != "" && looksLikeAskingForMore(llmReply) && !looksLikeFalseReady(llmReply) {
-		// If the model already asks for the top missing field, keep its wording.
-		if replyTargetsMissing(llmReply, missing[0]) {
-			return llmReply
-		}
+	nextKey := ""
+	if len(missing) > 0 {
+		nextKey = missing[0]
 	}
-	// Guided harness: acknowledge known signals + ask next gap with why.
-	return placement.GuidedFollowUp(toPlacementFields(f))
-}
-
-func looksLikeAskingForMore(s string) bool {
-	low := strings.ToLower(s)
-	return strings.Contains(low, "?") ||
-		strings.Contains(low, "which ") ||
-		strings.Contains(low, "what ") ||
-		strings.Contains(low, "where ") ||
-		strings.Contains(low, "could you") ||
-		strings.Contains(low, "can you") ||
-		strings.Contains(low, "please ")
+	if llmReply != "" {
+		if looksLikeFalseReady(llmReply) {
+			// Do not show a false "you're ready / pick a plan" claim.
+			if ask := nextMissingAsk(nextKey); ask != "" {
+				return ask
+			}
+			return "I still need a bit more detail before we can match you — what role should we target?"
+		}
+		// Keep thoughtful answers; ensure we still lead toward the objective.
+		if nextKey != "" && !replyTargetsMissing(llmReply, nextKey) {
+			if ask := nextMissingAsk(nextKey); ask != "" {
+				return strings.TrimSpace(llmReply) + "\n\n" + ask
+			}
+		}
+		return llmReply
+	}
+	// Empty model output: never invent GuidedFollowUp canned copy.
+	return ""
 }
 
 func looksLikeFalseReady(s string) bool {
@@ -1029,11 +1088,42 @@ func looksLikeFalseReady(s string) bool {
 		strings.Contains(low, "choose a plan") ||
 		strings.Contains(low, "pick a plan") ||
 		strings.Contains(low, "everything i need") ||
-		strings.Contains(low, "ready to match")
+		strings.Contains(low, "ready to match") ||
+		strings.Contains(low, "profile is complete") ||
+		strings.Contains(low, "placement profile is complete") ||
+		strings.Contains(low, "we are ready to match") ||
+		strings.Contains(low, "ready to match you") ||
+		(strings.Contains(low, "profile is complete") && strings.Contains(low, "opportunities"))
 }
 
-// replyTargetsMissing is a soft check that the model is asking about the
-// highest-priority gap (so we can keep natural LLM wording).
+// applyComposedReplyToMessages ensures the last assistant turn matches the
+// composed reply (matching may rewrite false-ready LLM claims).
+func applyComposedReplyToMessages(msgs []onboardingChatMessage, reply string) []onboardingChatMessage {
+	reply = strings.TrimSpace(reply)
+	if reply == "" || len(msgs) == 0 {
+		return msgs
+	}
+	out := make([]onboardingChatMessage, len(msgs))
+	copy(out, msgs)
+	for i := len(out) - 1; i >= 0; i-- {
+		if out[i].Role == "assistant" {
+			out[i].Content = reply
+			return out
+		}
+	}
+	return append(out, onboardingChatMessage{Role: "assistant", Content: reply})
+}
+
+// nextMissingAsk returns the product ask for a required field key.
+func nextMissingAsk(key string) string {
+	if g, ok := placement.FieldGuide[key]; ok && strings.TrimSpace(g.Ask) != "" {
+		return strings.TrimSpace(g.Ask)
+	}
+	return ""
+}
+
+// replyTargetsMissing is a soft check that the reply already steers toward
+// the highest-priority gap (so we do not append a redundant ask).
 func replyTargetsMissing(reply, missingKey string) bool {
 	low := strings.ToLower(reply)
 	switch missingKey {
@@ -1046,7 +1136,7 @@ func replyTargetsMissing(reply, missingKey string) bool {
 	case "salary_expectation":
 		return strings.Contains(low, "salary") || strings.Contains(low, "pay") || strings.Contains(low, "compensation")
 	case "preferred_countries":
-		return strings.Contains(low, "countr") || strings.Contains(low, "where") || strings.Contains(low, "location")
+		return strings.Contains(low, "countr") || strings.Contains(low, "market") || strings.Contains(low, "where") || strings.Contains(low, "location")
 	case "experience_level":
 		return strings.Contains(low, "experience") || strings.Contains(low, "senior") || strings.Contains(low, "level")
 	default:
@@ -1166,11 +1256,13 @@ func heuristicExtract(msg string) onboardingChatFields {
 	// LinkedIn URL or handle.
 	f.LinkedIn = extractLinkedIn(msg)
 
-	// Salary: "$80k", "KES 200000", "80000-120000 USD"
+	// Salary: "$80k", "KES 200000", "80000-120000 USD" (numeric only — open/market
+	// is the AI extract path via salary_expectation, not phrase lists here).
 	if min, max, cur := extractSalary(msg); min != nil || max != nil {
 		f.SalaryMin = min
 		f.SalaryMax = max
 		f.Currency = cur
+		f.SalaryExpectation = formatSalary(f)
 	}
 
 	f.TargetJobTitle = guessTitle(msg)

@@ -272,7 +272,7 @@ func TestMeChatHandler_ExtractsAndAsksForMissing(t *testing.T) {
 		"reply should acknowledge known data: %s", reply)
 }
 
-func TestMeChatHandler_LLMReplyOverriddenWhenNotReady(t *testing.T) {
+func TestMeChatHandler_LLMFalseReadyBlockedWhenNotReady(t *testing.T) {
 	llm := stubLLM(`{"fields":{"target_job_title":"Nurse"},"reply":"You're all set to pick a plan!"}`)
 	h := httpmw.NewCandidateAuth(nil)(v1.MeChatHandler(v1.MeChatDeps{LLM: llm}))
 	rec := chatPOST(t, h, `{"message":"I want nursing jobs"}`)
@@ -282,6 +282,33 @@ func TestMeChatHandler_LLMReplyOverriddenWhenNotReady(t *testing.T) {
 	require.Equal(t, false, out["ready"])
 	reply, _ := out["reply"].(string)
 	require.NotContains(t, stringsToLower(reply), "pick a plan")
+	require.NotEmpty(t, reply)
+}
+
+func TestMeChatHandler_LLMThoughtfulReplyKeptWhenNotReady(t *testing.T) {
+	// Meta / clarifying answers must not be replaced with the guided template.
+	// Reply already steers to title so no second ask is appended.
+	llm := stubLLM(`{
+	  "fields": {"target_job_title": "Engineer", "preferred_countries": ["ZA"]},
+	  "reply": "Yes — this is onboarding. We collect your role, experience, salary and markets so matching can score real jobs. What title should we optimise for?"
+	}`)
+	h := httpmw.NewCandidateAuth(nil)(v1.MeChatHandler(v1.MeChatDeps{LLM: llm}))
+	rec := chatPOST(t, h, `{"message":"This is onboarding right?"}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	reply, _ := out["reply"].(string)
+	require.Contains(t, stringsToLower(reply), "onboarding")
+	require.NotContains(t, reply, "Got it —")
+	require.NotContains(t, reply, "3 more after that")
+}
+
+func TestMeChatAgentHandler_NilClientHonestError(t *testing.T) {
+	h := httpmw.NewCandidateAuth(nil)(v1.MeChatAgentHandler(nil))
+	rec := chatPOST(t, h, `{"message":"hello"}`)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "can't process chat")
+	require.NotContains(t, stringsToLower(rec.Body.String()), "got it")
 }
 
 func TestMeChatHandler_LLMFieldsMergedAndAssessed(t *testing.T) {

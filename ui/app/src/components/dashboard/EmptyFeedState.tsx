@@ -56,7 +56,11 @@ export function EmptyFeedState({ filter, t }: Props) {
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <a
-          href="/onboarding/"
+          href="/dashboard/#cv"
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.hash = 'cv';
+          }}
           className="rounded-lg border border-muted p-4 text-left transition-colors hover:border-accent-500/40 hover:bg-surface-hover"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
@@ -73,7 +77,7 @@ export function EmptyFeedState({ filter, t }: Props) {
             {t('dash.emptyFeedCompleteProfile')}
           </p>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            {t('onboard.aboutYouHint')}
+            Manage your resume and profile on the CV tab — matching stays on this page.
           </p>
         </a>
 

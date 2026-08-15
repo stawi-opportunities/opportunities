@@ -12,6 +12,11 @@
 /jobs/             /jobs/             200
 /jobs/*            /job/              200
 
+# Employer ATS SPA (Vite build in static/ats).
+/ats               /ats/              301
+/ats/              /ats/index.html    200
+/ats/*             /ats/index.html    200
+
 # Non-job kinds are not marketed — send browsers to job search.
 /scholarships/     /search/           301
 /scholarships/*    /search/           301

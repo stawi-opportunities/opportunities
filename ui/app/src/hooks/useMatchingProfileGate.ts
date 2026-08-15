@@ -1,62 +1,65 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchMeCV } from '@/api/profile';
 import { fetchOnboardingDraft } from '@/api/candidates';
 import { useAuth } from '@/providers/AuthProvider';
 import { QUERY_KEYS } from '@/constants/queryKeys';
-import {
-  evaluateProfileReadiness,
-  ONBOARDING_CHAT_PATH,
-  type ProfileReadiness,
-} from '@/utils/profileReadiness';
+import { evaluateProfileReadiness, type ProfileReadiness } from '@/utils/profileReadiness';
+
+export type MatchingProfileGateOptions = {
+  /**
+   * When false, CV/draft are not fetched.
+   * Dashboard enables this only after subscription is allowed.
+   */
+  enabled?: boolean;
+};
 
 /**
- * When the signed-in user lacks a complete matching profile (CV + aspirational
- * fields), redirect to onboarding chat before showing the dashboard shell.
+ * Reports whether the signed-in user has a complete matching profile
+ * (CV + aspirational fields). Does **not** hard-navigate.
+ *
+ * Hard redirects caused a loop:
+ *   onboarding (paid → dashboard) ↔ dashboard (incomplete → onboarding)
+ *
+ * Incomplete profiles stay on the dashboard (CV hub / chat refine).
+ * Unpaid users are routed only by the subscription gate.
  */
-export function useMatchingProfileGate(): {
+export function useMatchingProfileGate(options: MatchingProfileGateOptions = {}): {
   checking: boolean;
   readiness: ProfileReadiness | null;
 } {
+  const enabled = options.enabled !== false;
   const { hasSession, ready: authReady } = useAuth();
-  const [redirecting, setRedirecting] = useState(false);
+  const active = Boolean(enabled && authReady && hasSession);
 
   const cvQ = useQuery({
     queryKey: QUERY_KEYS.ME_CV,
     queryFn: fetchMeCV,
-    enabled: authReady && hasSession,
+    enabled: active,
     staleTime: 30_000,
   });
 
   const draftQ = useQuery({
     queryKey: QUERY_KEYS.ONBOARDING_DRAFT,
     queryFn: fetchOnboardingDraft,
-    enabled: authReady && hasSession,
+    enabled: active,
     staleTime: 30_000,
   });
 
   const settled = cvQ.isFetched && draftQ.isFetched;
-  const loading = Boolean(
-    hasSession && authReady && !settled && (cvQ.isLoading || draftQ.isLoading)
-  );
+  const loading = Boolean(active && !settled && (cvQ.isLoading || draftQ.isLoading));
 
   const readiness =
-    hasSession && settled
+    active && settled
       ? evaluateProfileReadiness(cvQ.data ?? null, draftQ.data?.fields ?? null)
       : null;
 
-  useEffect(() => {
-    if (!authReady || !hasSession) return;
-    if (!settled || redirecting) return;
-    if (!readiness || readiness.ready) return;
-    setRedirecting(true);
-    window.location.replace(ONBOARDING_CHAT_PATH);
-  }, [authReady, hasSession, settled, readiness, redirecting]);
+  if (!enabled) {
+    return { checking: false, readiness: null };
+  }
 
   return {
-    checking: Boolean(
-      hasSession && (loading || redirecting || (readiness != null && !readiness.ready))
-    ),
+    // Only block paint while first load is in flight — never for "not ready".
+    checking: Boolean(hasSession && loading),
     readiness,
   };
 }

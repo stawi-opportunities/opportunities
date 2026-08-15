@@ -13,11 +13,15 @@ import (
 
 	"github.com/rs/xid"
 
+	"github.com/pitabwire/util"
+
 	"github.com/stawi-opportunities/opportunities/pkg/applications"
 	"github.com/stawi-opportunities/opportunities/pkg/billing"
 	"github.com/stawi-opportunities/opportunities/pkg/candidatestore"
 	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/matching"
+	"github.com/stawi-opportunities/opportunities/pkg/placement"
+	"github.com/stawi-opportunities/opportunities/pkg/profilecontacts"
 )
 
 // Deps bundles all dependencies injected into the handler set.
@@ -33,10 +37,24 @@ type Deps struct {
 	Debouncer        matching.Debouncer
 	IdempotencyStore *applications.IdempotencyStore
 	// DailyCap enforces plan daily generation limits during gap-fill.
+	// Kept for other paths; refresh uses InvokeCounter instead.
 	DailyCap matching.DailyCapQuery
+	// InvokeCounter optional daily budget for user_refresh MatchInvoke.
+	InvokeCounter matching.InvokeCounter
 	// DefaultMinScore floors on-demand gap-fill when the index has no
-	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.45.
+	// per-candidate threshold (MATCHING_MIN_SCORE). 0 → 0.70.
 	DefaultMinScore float64
+	// Semantic-first reverse-KNN knobs (MATCHING_SEMANTIC_* / MATCHING_HARD_GEO).
+	// Zero SemanticRecall / MaxDistance → package defaults (250 / 0.90).
+	SemanticRecall int
+	MaxDistance    float64
+	HardCountries  bool
+	// Contacts creates standalone ProfileService contacts for CV details.
+	// Checkout/notify use only profile-attached identity contacts (not these).
+	Contacts profilecontacts.Directory
+	// Placement rebuilds persona + embedding when the match index has no vector
+	// (CV upload may have completed structure but embed lagged/failed).
+	Placement *placement.Service
 
 	Now   func() time.Time
 	NewID func() string
@@ -50,7 +68,7 @@ func effectiveMinScore(indexScore, defaultScore float64) float64 {
 	if defaultScore > 0 && defaultScore <= 1 {
 		return defaultScore
 	}
-	return 0.45
+	return 0.70
 }
 
 func (d *Deps) now() time.Time {
@@ -412,17 +430,16 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
-		cand := httpmw.CandidateFromContext(ctx)
+		// JWT sub is platform profile_id. Match index / matches may be keyed
+		// by product candidate id or profile_id (legacy dual-key era).
+		profileID := httpmw.ProfileIDFromContext(ctx)
 		if d.DB == nil || d.IndexStore == nil || d.KNN == nil || d.Matches == nil {
 			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "matching_unavailable", "match pipeline not configured")
 			return
 		}
-		// Free users get a proof-tier match refresh (capped). Paid/past_due/trial
-		// keep plan caps on the index. Proof is intentional — value before pay.
-		var sub, planID string
-		if err := d.DB.QueryRowContext(ctx,
-			`SELECT COALESCE(subscription,''), COALESCE(plan_id,'') FROM candidate_profiles WHERE id = $1`, cand,
-		).Scan(&sub, &planID); err != nil {
+
+		matchKey, sub, planID, err := resolveMatchIdentity(ctx, d.DB, profileID)
+		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
 				return
@@ -436,43 +453,78 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			paid = true
 		}
 
-		idx, err := d.IndexStore.Get(ctx, cand)
-		if err != nil || idx == nil || len(idx.Embedding) == 0 {
-			httpmw.ProblemJSON(w, http.StatusConflict, "no_embedding",
-				"upload a CV and wait for embedding before refreshing matches")
+		idx, err := loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+		if err != nil && !errors.Is(err, matching.ErrNotFound) {
+			ProblemFromError(w, err)
 			return
 		}
-		minScore := effectiveMinScore(idx.MinScore, d.DefaultMinScore)
-		// Free proof: wider lookback so first match is useful; tight caps.
+		if idx == nil || len(idx.Embedding) == 0 {
+			// Build embedding now from stored CV/placement — do not 409 if we
+			// have material. Async embed after upload can lag or fail quietly.
+			built, bErr := ensureMatchEmbedding(ctx, d, profileID, matchKey)
+			if built != nil && len(built.Embedding) > 0 {
+				idx = built
+			} else if bErr != nil {
+				// Surface real failures — never collapse system errors into no_embedding.
+				util.Log(ctx).WithError(bErr).WithField("profile_id", profileID).
+					WithField("match_key", matchKey).
+					Warn("matches/refresh: ensure embedding failed")
+				if errors.Is(bErr, errNoMatchMaterial) {
+					httpmw.ProblemJSON(w, http.StatusConflict, "no_embedding",
+						"no CV embedding available — upload a CV under Dashboard → CV, then try again")
+					return
+				}
+				httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "embedding_unavailable",
+					"could not build match embedding from your CV right now — try again in a moment")
+				return
+			}
+		}
+		if idx == nil || len(idx.Embedding) == 0 {
+			httpmw.ProblemJSON(w, http.StatusConflict, "no_embedding",
+				"no CV embedding available — upload a CV under Dashboard → CV, then try again")
+			return
+		}
+		// Prefer the index's stored candidate key for match writes.
+		gapKey := strings.TrimSpace(idx.CandidateID)
+		if gapKey == "" {
+			gapKey = matchKey
+		}
+
+		ent := billing.EntitlementsForProfile(sub, planID)
+		if !paid {
+			ent = billing.EntitlementsFor("")
+		}
 		since := time.Now().UTC().Add(-30 * 24 * time.Hour)
-		dailyCap, weeklyCap := idx.DailyCap, idx.WeeklyCap
 		if !paid {
 			since = time.Now().UTC().Add(-90 * 24 * time.Hour)
-			ent := billing.EntitlementsFor(billing.PlanID(planID))
-			// Empty plan → free proof caps (not starter).
-			if strings.TrimSpace(planID) == "" || strings.EqualFold(sub, "free") || sub == "" {
-				ent = billing.EntitlementsFor("")
-			}
-			dailyCap, weeklyCap = ent.DailyCap, ent.WeeklyCap
 		}
-		res, runErr := matching.GapFill(ctx, matching.GapFillInput{
-			CandidateID:    cand,
+		minScore := effectiveMinScore(idx.MinScore, d.DefaultMinScore)
+		if minScore < 0.70 && d.DefaultMinScore >= 0.70 {
+			minScore = d.DefaultMinScore
+		}
+
+		res, runErr := matching.MatchInvoke(ctx, matching.InvokeInput{
+			CandidateID:    gapKey,
 			Embedding:      idx.Embedding,
 			Countries:      idx.Countries,
 			Kinds:          idx.Kinds,
 			SalaryFloorUSD: idx.SalaryFloorUSD,
 			Since:          since,
 			MinScore:       minScore,
-			DailyCap:       dailyCap,
-			WeeklyCap:      weeklyCap,
-		}, matching.GapFillDeps{
-			KNN:       d.KNN,
-			Store:     d.Matches,
-			EventLog:  d.MatchEvents,
-			Reranker:  d.Reranker,
-			Weights:   d.Weights,
-			DailyCap:  d.DailyCap,
-			WeekCount: d.Matches,
+			Reason:         matching.InvokeUserRefresh,
+			InvokeLimit:    ent.InvokeDailyLimit,
+			SemanticRecall: d.SemanticRecall,
+			MaxDistance:    d.MaxDistance,
+			HardCountries:  d.HardCountries,
+		}, matching.InvokeDeps{
+			GapFill: matching.GapFillDeps{
+				KNN:      d.KNN,
+				Store:    d.Matches,
+				EventLog: d.MatchEvents,
+				Reranker: d.Reranker,
+				Weights:  d.Weights,
+			},
+			Invokes: d.InvokeCounter,
 		})
 		if runErr != nil {
 			ProblemFromError(w, runErr)
@@ -487,12 +539,202 @@ func refreshMatches(d *Deps) http.HandlerFunc {
 			"run_id":           res.RunID,
 			"min_score":        minScore,
 			"reason":           res.Reason,
-			"weekly_used":      res.WeeklyUsed,
-			"weekly_cap":       res.WeeklyCap,
-			"daily_cap":        dailyCap,
+			"invoke_limit":     ent.InvokeDailyLimit,
 			"proof":            !paid,
 		})
 	}
+}
+
+// resolveMatchIdentity maps JWT profile_id → product candidate id + subscription.
+func resolveMatchIdentity(ctx context.Context, db *sql.DB, profileID string) (matchKey, sub, planID string, err error) {
+	profileID = strings.TrimSpace(profileID)
+	if profileID == "" {
+		return "", "", "", sql.ErrNoRows
+	}
+	var id string
+	err = db.QueryRowContext(ctx, `
+SELECT id, COALESCE(subscription,''), COALESCE(plan_id,'')
+  FROM candidate_profiles
+ WHERE profile_id = $1 OR id = $1
+ ORDER BY CASE WHEN profile_id = $1 THEN 0 ELSE 1 END
+ LIMIT 1`, profileID).Scan(&id, &sub, &planID)
+	if err != nil {
+		return "", "", "", err
+	}
+	// Prefer product-local candidate id for match FKs; fall back to profile_id.
+	matchKey = strings.TrimSpace(id)
+	if matchKey == "" {
+		matchKey = profileID
+	}
+	return matchKey, sub, planID, nil
+}
+
+// loadMatchIndex tries profile_id then candidate id (dual-key safety).
+func loadMatchIndex(ctx context.Context, store *matching.IndexStore, profileID, candidateID string) (*matching.CandidateIndex, error) {
+	if store == nil {
+		return nil, matching.ErrNotFound
+	}
+	seen := map[string]struct{}{}
+	for _, key := range []string{candidateID, profileID} {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		idx, err := store.Get(ctx, key)
+		if err == nil && idx != nil && len(idx.Embedding) > 0 {
+			return idx, nil
+		}
+		if err != nil && !errors.Is(err, matching.ErrNotFound) {
+			return nil, err
+		}
+		// Keep a non-empty row without embedding in case ensure fails later.
+		if err == nil && idx != nil {
+			return idx, nil
+		}
+	}
+	return nil, matching.ErrNotFound
+}
+
+// errNoMatchMaterial means the profile has no CV/role text to embed (user action).
+var errNoMatchMaterial = errors.New("no CV or target role to embed")
+
+// ensureMatchEmbedding rebuilds placement persona + vector when missing.
+// Uses CV/placement text already on the profile.
+// Returns errNoMatchMaterial when the user has nothing to embed; other errors
+// are system failures (embedder down, placement misconfigured, index write).
+func ensureMatchEmbedding(ctx context.Context, d *Deps, profileID, matchKey string) (*matching.CandidateIndex, error) {
+	if d == nil || d.Placement == nil {
+		return nil, errors.New("placement service not configured")
+	}
+	fields, err := loadPlacementFieldsForMatch(ctx, d, profileID, matchKey)
+	if err != nil {
+		return nil, err
+	}
+	// Need at least CV corpus or a target role to embed.
+	if strings.TrimSpace(fields.ExtraInfo) == "" && strings.TrimSpace(fields.TargetJobTitle) == "" {
+		return nil, errNoMatchMaterial
+	}
+	// Rebuild under both keys when they differ so subsequent lookups hit.
+	// StrictEmbed surfaces embedder/index failures instead of soft-failing.
+	keys := uniqueNonEmpty(matchKey, profileID)
+	for _, key := range keys {
+		if _, rErr := d.Placement.Rebuild(ctx, placement.RebuildInput{
+			CandidateID: key,
+			Fields:      fields,
+			StrictEmbed: true,
+		}); rErr != nil {
+			return nil, rErr
+		}
+	}
+	idx, lErr := loadMatchIndex(ctx, d.IndexStore, profileID, matchKey)
+	if lErr != nil && !errors.Is(lErr, matching.ErrNotFound) {
+		return nil, lErr
+	}
+	if idx == nil || len(idx.Embedding) == 0 {
+		return nil, errors.New("embedding missing after strict rebuild")
+	}
+	return idx, nil
+}
+
+func loadPlacementFieldsForMatch(ctx context.Context, d *Deps, profileID, matchKey string) (placement.Fields, error) {
+	var f placement.Fields
+	// Prefer stored placement qualifications (full CV corpus).
+	if d.Placement != nil && d.Placement.Store != nil {
+		for _, key := range uniqueNonEmpty(matchKey, profileID) {
+			doc, err := d.Placement.Store.Get(ctx, key)
+			if err != nil || doc == nil {
+				continue
+			}
+			q := strings.TrimSpace(strings.TrimPrefix(doc.QualificationsText, "## Qualifications"))
+			q = strings.TrimSpace(q)
+			if q != "" && q != "(CV not yet provided)" {
+				f.ExtraInfo = q
+			}
+			// Summary is already the vectorizable persona when quals were empty.
+			if f.ExtraInfo == "" {
+				if s := strings.TrimSpace(doc.SummaryText); s != "" {
+					f.ExtraInfo = s
+				}
+			}
+			if f.ExtraInfo != "" {
+				break
+			}
+		}
+	}
+	// Overlay structured profile-fields (role, countries, skills as ExtraInfo fallback).
+	if d.DB != nil {
+		for _, key := range uniqueNonEmpty(matchKey, profileID) {
+			pf, _, err := candidatestore.GetProfileFields(ctx, d.DB, key)
+			if err != nil || pf == nil {
+				continue
+			}
+			if f.TargetJobTitle == "" {
+				f.TargetJobTitle = firstNonEmpty(pf.TargetJobTitle, pf.CurrentTitle)
+			}
+			if f.ExperienceLevel == "" {
+				f.ExperienceLevel = firstNonEmpty(pf.ExperienceLevel, pf.Seniority)
+			}
+			if len(f.PreferredCountries) == 0 {
+				f.PreferredCountries = append([]string(nil), pf.Countries...)
+			}
+			if len(f.PreferredRegions) == 0 {
+				f.PreferredRegions = append([]string(nil), pf.Regions...)
+			}
+			if len(f.JobTypes) == 0 && len(pf.PreferredRoles) > 0 {
+				f.JobTypes = append([]string(nil), pf.PreferredRoles...)
+			}
+			if f.ExtraInfo == "" {
+				// Synthesize a short corpus from skills/title when no CV text.
+				var parts []string
+				if t := firstNonEmpty(pf.CurrentTitle, pf.TargetJobTitle); t != "" {
+					parts = append(parts, t)
+				}
+				if len(pf.StrongSkills) > 0 {
+					parts = append(parts, "skills: "+strings.Join(pf.StrongSkills, ", "))
+				} else if len(pf.Skills) > 0 {
+					parts = append(parts, "skills: "+strings.Join(pf.Skills, ", "))
+				}
+				if b := strings.TrimSpace(pf.Bio); b != "" {
+					parts = append(parts, b)
+				}
+				if len(parts) > 0 {
+					f.ExtraInfo = strings.Join(parts, ". ")
+				}
+			}
+			break
+		}
+	}
+	return f, nil
+}
+
+func uniqueNonEmpty(vals ...string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // ---- GET/PUT /api/me/notifications (and /me/notifications) ----
@@ -610,11 +852,29 @@ WHERE id = $1`, cand, digest, body.MatchAlerts, body.WeeklySummary, body.Marketi
 	}
 }
 
-// ---- GET /api/me/profile-fields ----
+// ---- GET+PUT /api/me/profile-fields ----
+
+// ProfileFieldsHandler serves gateway-visible /me/profile-fields (GET+PUT).
+func ProfileFieldsHandler(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			profileFields(d)(w, r)
+		case http.MethodPut:
+			putProfileFields(d)(w, r)
+		default:
+			httpmw.ProblemJSON(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET or PUT")
+		}
+	}
+}
 
 func profileFields(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cand := httpmw.CandidateFromContext(r.Context())
+		if d.DB == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "unavailable", "database not configured")
+			return
+		}
 		pf, etag, err := candidatestore.GetProfileFields(r.Context(), d.DB, cand)
 		if err != nil {
 			if errors.Is(err, candidatestore.ErrProfileNotFound) {
@@ -629,8 +889,80 @@ func profileFields(d *Deps) http.HandlerFunc {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
+		// Resolve contact objects from stored ids (no plaintext on the row).
+		out := map[string]any{}
+		b, _ := json.Marshal(pf)
+		_ = json.Unmarshal(b, &out)
+		if len(pf.CVContactIDs) > 0 && d.Contacts != nil {
+			if found, missing, rErr := d.Contacts.Resolve(r.Context(), pf.CVContactIDs); rErr == nil {
+				if len(found) > 0 {
+					out["platform_contacts"] = found
+				}
+				if len(missing) > 0 {
+					out["missing_contact_ids"] = missing
+				}
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("ETag", etag)
-		_ = json.NewEncoder(w).Encode(pf)
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+func putProfileFields(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cand := httpmw.CandidateFromContext(r.Context())
+		if d.DB == nil {
+			httpmw.ProblemJSON(w, http.StatusServiceUnavailable, "unavailable", "database not configured")
+			return
+		}
+		var body candidatestore.ProfileFields
+		if err := json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&body); err != nil {
+			httpmw.ProblemJSON(w, http.StatusBadRequest, "invalid_json", "invalid profile-fields body")
+			return
+		}
+		// Transient contact_details → CreateContact + store IDs only.
+		ensureCVBodyContacts(r.Context(), d, cand, &body)
+		body.ContactDetails = nil
+		if err := candidatestore.PutProfileFields(r.Context(), d.DB, cand, &body); err != nil {
+			if errors.Is(err, candidatestore.ErrProfileNotFound) {
+				httpmw.ProblemJSON(w, http.StatusNotFound, "not_found", "profile not found")
+				return
+			}
+			ProblemFromError(w, err)
+			return
+		}
+		pf, etag, err := candidatestore.GetProfileFields(r.Context(), d.DB, cand)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("ETag", etag)
+		out := map[string]any{"ok": true}
+		b, _ := json.Marshal(pf)
+		_ = json.Unmarshal(b, &out)
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+func ensureCVBodyContacts(
+	ctx context.Context,
+	d *Deps,
+	candidateID string,
+	body *candidatestore.ProfileFields,
+) {
+	if d == nil || d.Contacts == nil || body == nil {
+		return
+	}
+	details := profilecontacts.CollectDetails(body.ContactDetails)
+	known, _ := candidatestore.GetCVContactIDs(ctx, d.DB, candidateID)
+	if len(details) == 0 && len(known) == 0 {
+		return
+	}
+	refs, _ := d.Contacts.EnsureDetails(ctx, details, known)
+	if ids := profilecontacts.IDs(refs); len(ids) > 0 && d.DB != nil {
+		_ = candidatestore.PutCVContactIDs(ctx, d.DB, candidateID, ids)
 	}
 }

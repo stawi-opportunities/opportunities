@@ -9,8 +9,9 @@ import (
 // Mount registers every Phase-4 extension-facing route under /api/me/*.
 // Mutating routes are wrapped in Idempotency. The `auth` wrapper is
 // supplied by the caller so production can layer JWT verification
-// (httpmw.NewCandidateAuth(authenticator)) while tests can pass the
-// header-only httpmw.CandidateAuth.
+// (httpmw.NewCandidateAuth(authenticator)) while tests pass
+// httpmw.NewCandidateAuth(nil) for X-Candidate-ID header auth.
+// A nil auth defaults to NewCandidateAuth(nil) (header-allow for tests).
 func Mount(mux *http.ServeMux, deps *Deps, auth func(http.Handler) http.Handler) {
 	idem := func(group string, h http.Handler) http.Handler {
 		return httpmw.Idempotency(httpmw.IdempotencyConfig{
@@ -18,7 +19,7 @@ func Mount(mux *http.ServeMux, deps *Deps, auth func(http.Handler) http.Handler)
 		}, h)
 	}
 	if auth == nil {
-		auth = httpmw.CandidateAuth
+		auth = httpmw.NewCandidateAuth(nil)
 	}
 
 	mux.Handle("GET /api/me", auth(meHandler(deps)))
@@ -37,4 +38,5 @@ func Mount(mux *http.ServeMux, deps *Deps, auth func(http.Handler) http.Handler)
 	mux.Handle("PUT /api/me/notifications", auth(idem("notifications.put", putNotifications(deps))))
 
 	mux.Handle("GET /api/me/profile-fields", auth(profileFields(deps)))
+	mux.Handle("PUT /api/me/profile-fields", auth(idem("profile-fields.put", putProfileFields(deps))))
 }

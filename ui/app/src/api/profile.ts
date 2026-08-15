@@ -1,5 +1,8 @@
 import type { PlanId } from '@/utils/plans';
 import { authRuntime } from '@/auth/runtime';
+import type { ProfileFieldsPayload } from '@/utils/structuredCV';
+
+export type { ProfileFieldsPayload };
 
 // Profile & onboarding API calls — all auth'd via @stawi/auth-runtime.
 // The runtime owns the JWT; every call uses runtime.fetch() or
@@ -46,20 +49,12 @@ export async function submitOnboarding(
   payload: OnboardingPayload
 ): Promise<{ id: string; profile_id: string }> {
   // Prefer the canonical /matching prefix; fall back to legacy top-level path.
-  try {
-    return await authRuntime().fetch('/matching/candidates/onboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    if (!isNotFound(err)) throw err;
-    return authRuntime().fetch('/candidates/onboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  }
+  // Gateway only mounts matching under /matching/* (bare /candidates/* is no_route).
+  return authRuntime().fetch('/matching/candidates/onboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /**
@@ -79,21 +74,33 @@ export interface UploadCVResult {
   file_id?: string;
   content_uri?: string;
   content_hash?: string;
-  /** "files" | "archive" */
+  /** "files" | "archive" | "local" */
   storage?: string;
   /** Combined qualifications + preferences summary after sync rebuild. */
   placement_summary?: string;
   placement_ready?: boolean;
   missing?: string[];
+  /** Profile field keys auto-filled from this upload (empty slots only). */
+  filled_fields?: string[];
+  /** Post-merge hub bag for immediate UI hydration without a second GET. */
+  profile_fields?: ProfileFieldsPayload;
+  /** Always "ai" when fully_processed. */
+  structure_source?: string;
+  /**
+   * Standalone CV contacts (CreateContact). Not for checkout/notify.
+   * Identity contacts stay on the person profile.
+   */
+  platform_contacts?: { id: string; detail: string }[];
+  /** Stored contact ids on the candidate row. */
+  cv_contact_ids?: string[];
+  /** True only after required sync AI sectioning + profile merge. */
+  fully_processed?: boolean;
+  /** Platform profile id used as files accessor_id. */
+  profile_id?: string;
 }
 
 export async function uploadCV(file: File): Promise<UploadCVResult> {
-  try {
-    return await authRuntime().upload('/matching/me/cv', file);
-  } catch (err) {
-    if (!isNotFound(err)) throw err;
-    return authRuntime().upload('/me/cv', file);
-  }
+  return authRuntime().upload('/matching/me/cv', file);
 }
 
 /** Current CV from files service + placement summary (no separate document index). */
@@ -113,13 +120,8 @@ export interface MeCVDocument {
 export async function fetchMeCV(): Promise<MeCVDocument | null> {
   try {
     return await authRuntime().fetch<MeCVDocument>('/matching/me/cv');
-  } catch (err) {
-    if (!isNotFound(err)) return null;
-    try {
-      return await authRuntime().fetch<MeCVDocument>('/me/cv');
-    } catch {
-      return null;
-    }
+  } catch {
+    return null;
   }
 }
 
@@ -139,11 +141,26 @@ export interface CandidateSummary {
 }
 
 /**
- * GET /me — authed user identity + CandidateProfile row.
+ * Authed candidate summary for feed personalisation / banners.
+ *
+ * Gateway only routes matching under `/matching/*`. There is no bare
+ * `GET /me` on api.stawi.org (that 404s as `no_route`). We load the
+ * structured profile-fields bag and map the fields callers need.
  */
 export async function fetchCandidate(): Promise<CandidateSummary | null> {
-  const body = await authRuntime().fetch<{ candidate?: CandidateSummary | null }>('/me');
-  return body.candidate ?? null;
+  const pf = await fetchProfileFields();
+  if (!pf) return null;
+  return {
+    profile_id: pf.candidate_id ?? '',
+    status: '',
+    current_title: pf.current_title ?? pf.target_job_title ?? '',
+    preferred_countries: (pf.preferred_countries ?? []).join(','),
+    preferred_regions: (pf.preferred_regions ?? []).join(','),
+    remote_preference: pf.remote_preference ?? '',
+    languages: (pf.languages ?? []).join(';'),
+    plan_id: '',
+    subscription: '',
+  };
 }
 
 // ── Subscription ──────────────────────────────────────────────────
@@ -156,73 +173,113 @@ export interface ProfilePayload {
   phone?: string;
 }
 
+export type DigestCadence = 'twice_daily' | 'daily' | 'weekly' | 'off';
+
 export interface NotificationPrefs {
-  email_digest: 'daily' | 'weekly' | 'off';
+  email_digest: DigestCadence;
   match_alerts: boolean;
   weekly_summary: boolean;
   marketing_emails: boolean;
 }
 
 /**
- * PUT /me/profile — updates name, title, phone.
+ * PUT profile name/title — via profile-fields (gateway /matching/…).
  */
 export async function updateProfile(payload: ProfilePayload): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me/profile', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+  await updateProfileFields({
+    name: payload.name,
+    current_title: payload.current_title,
   });
+  return { ok: true };
+}
+
+// ── Structured profile fields (CV editor + match preferences) ─────
+
+// Only gateway-routed paths. Bare /me/* and /api/me/* return no_route 404s.
+const PROFILE_FIELDS_PATHS = [
+  '/matching/me/profile-fields',
+  '/matching/api/me/profile-fields',
+] as const;
+
+/**
+ * GET profile-fields — full ATS/CV + preference bag for the CV hub.
+ */
+export async function fetchProfileFields(): Promise<ProfileFieldsPayload | null> {
+  for (const path of PROFILE_FIELDS_PATHS) {
+    try {
+      return await authRuntime().fetch<ProfileFieldsPayload>(path, { method: 'GET' });
+    } catch (err) {
+      if (isNotFound(err)) continue;
+      // Profile missing is fine for new users; other errors soft-fail to empty UI.
+      return null;
+    }
+  }
+  return null;
 }
 
 /**
- * GET /me/notifications — current digest / alert preferences.
+ * PUT profile-fields — save structured CV sections and/or match preferences.
+ */
+export async function updateProfileFields(
+  payload: ProfileFieldsPayload
+): Promise<{ ok: boolean } & ProfileFieldsPayload> {
+  let lastErr: unknown;
+  for (const path of PROFILE_FIELDS_PATHS) {
+    try {
+      return await authRuntime().fetch<{ ok: boolean } & ProfileFieldsPayload>(path, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      lastErr = err;
+      if (!isNotFound(err)) throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('profile-fields unavailable');
+}
+
+const NOTIFICATION_PATHS = [
+  '/matching/me/notifications',
+  '/matching/api/me/notifications',
+] as const;
+
+/**
+ * GET notifications — digest / alert preferences (gateway /matching/… first).
  */
 export async function fetchNotificationPrefs(): Promise<NotificationPrefs> {
-  try {
-    return await authRuntime().fetch<NotificationPrefs>('/me/notifications', {
-      method: 'GET',
-    });
-  } catch (err) {
-    // Fallback path if gateway only exposes /matching/api/me/*
-    const code =
-      err && typeof err === 'object' && 'code' in err
-        ? String((err as { code: unknown }).code)
-        : '';
-    const msg = err instanceof Error ? err.message : String(err);
-    if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) {
-      return authRuntime().fetch<NotificationPrefs>('/matching/api/me/notifications', {
-        method: 'GET',
-      });
+  let lastErr: unknown;
+  for (const path of NOTIFICATION_PATHS) {
+    try {
+      return await authRuntime().fetch<NotificationPrefs>(path, { method: 'GET' });
+    } catch (err) {
+      lastErr = err;
+      if (isNotFound(err)) continue;
+      throw err;
     }
-    throw err;
   }
+  throw lastErr instanceof Error ? lastErr : new Error('notifications unavailable');
 }
 
 /**
- * PUT /me/notifications — updates notification preferences (digest schedule).
+ * PUT notifications — digest schedule (gateway /matching/… first).
  */
 export async function updateNotificationPrefs(prefs: NotificationPrefs): Promise<{ ok: boolean }> {
-  try {
-    return await authRuntime().fetch('/me/notifications', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(prefs),
-    });
-  } catch (err) {
-    const code =
-      err && typeof err === 'object' && 'code' in err
-        ? String((err as { code: unknown }).code)
-        : '';
-    const msg = err instanceof Error ? err.message : String(err);
-    if (code === 'API_NOT_FOUND' || /404|not found/i.test(msg)) {
-      return authRuntime().fetch('/matching/api/me/notifications', {
+  let lastErr: unknown;
+  for (const path of NOTIFICATION_PATHS) {
+    try {
+      return await authRuntime().fetch(path, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(prefs),
       });
+    } catch (err) {
+      lastErr = err;
+      if (isNotFound(err)) continue;
+      throw err;
     }
-    throw err;
   }
+  throw lastErr instanceof Error ? lastErr : new Error('notifications unavailable');
 }
 
 /**
@@ -232,7 +289,9 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me/change-password', {
+  // Account password lives on identity auth — not matching gateway.
+  // Prefer matching alias only if wired; otherwise surface a clear error.
+  return authRuntime().fetch('/matching/me/change-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
@@ -240,17 +299,17 @@ export async function changePassword(
 }
 
 /**
- * POST /me/export-data — request a data-export email.
+ * POST data-export request (matching gateway).
  */
 export async function requestDataExport(): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me/export-data', { method: 'POST' });
+  return authRuntime().fetch('/matching/me/export-data', { method: 'POST' });
 }
 
 /**
- * DELETE /me — permanent account deletion.
+ * DELETE account (matching gateway path when available).
  */
 export async function deleteAccount(reason?: string): Promise<{ ok: boolean }> {
-  return authRuntime().fetch('/me', {
+  return authRuntime().fetch('/matching/me', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason }),
@@ -286,7 +345,7 @@ export async function fetchMeSubscription(): Promise<MeSubscription> {
     delivered_this_week: body.delivered_this_week ?? 0,
   });
 
-  const paths = ['/matching/me/subscription', '/me/subscription', '/matching/api/me/subscription'];
+  const paths = ['/matching/me/subscription', '/matching/api/me/subscription'];
   let lastErr: unknown;
   for (const path of paths) {
     try {

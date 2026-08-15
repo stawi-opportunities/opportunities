@@ -297,7 +297,11 @@ func TestPaymentGateway_HostedCheckoutPreferred(t *testing.T) {
 		PublicSiteURL: "https://opportunities.stawi.org",
 	})
 	res, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
-		CandidateID: "cand_h", Plan: proPlan(t), Email: "h@b.co", Phone: "254700000000",
+		CandidateID: "cand_h",
+		ProfileID:   "prof_platform_1",
+		Plan:        proPlan(t),
+		Email:       "h@b.co",
+		Phone:       "254700000000",
 	})
 	require.NoError(t, err)
 	require.False(t, fp.sawPrompt, "must not InitiatePrompt when hosted checkout succeeds")
@@ -306,8 +310,25 @@ func TestPaymentGateway_HostedCheckoutPreferred(t *testing.T) {
 	require.True(t, strings.HasPrefix(res.PromptID, "chk_"), "ledger/return/poll key must be minted chk_* order_ref")
 	require.Equal(t, fc.last.OrderRef, res.PromptID, "OrderRef and PromptID must match")
 	require.Equal(t, []string{"card"}, fc.last.Methods)
-	require.Equal(t, "cand_h", fc.last.ProfileID)
+	// Platform profile id is what checkout uses for GetById (contacts + au_name).
+	require.Equal(t, "prof_platform_1", fc.last.ProfileID)
 	require.Contains(t, fc.last.ReturnURL, "billing=success")
+}
+
+func TestPaymentGateway_HostedCheckout_ProfileIDFallsBackToCandidate(t *testing.T) {
+	fc := &fakeCheckout{
+		create: billing.CreateHostedSessionResult{
+			Ref: "sess_x", PageURL: "https://pay.stawi.org/c/sess_x",
+		},
+	}
+	g := billing.NewPaymentGatewayWithCheckout(&fakePayment{}, fc, billing.GatewayOptions{
+		PublicSiteURL: "https://opportunities.stawi.org",
+	})
+	_, err := g.CreateCheckout(context.Background(), billing.CheckoutRequest{
+		CandidateID: "jwt_sub_as_profile", Plan: proPlan(t),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "jwt_sub_as_profile", fc.last.ProfileID)
 }
 
 type fakeCheckout struct {
@@ -330,23 +351,28 @@ func (f *fakeCheckout) GetSession(_ context.Context, ref string) (billing.Hosted
 
 func TestEntitlementsFor(t *testing.T) {
 	starter := billing.EntitlementsFor(billing.PlanStarter)
-	require.Equal(t, 5, starter.WeeklyCap)
+	require.Equal(t, 30, starter.InvokeDailyLimit)
+	require.Equal(t, 0, starter.DailyCap)
+	require.Equal(t, 0, starter.WeeklyCap)
 	require.False(t, starter.AutoApply)
 
-	// Legacy pro inherits managed entitlements (unlimited weekly).
+	// Legacy pro inherits managed entitlements (invoke limit, unlimited rows).
 	// AutoApply stays false until real apply automation ships.
 	pro := billing.EntitlementsFor(billing.PlanPro)
+	require.Equal(t, 100, pro.InvokeDailyLimit)
 	require.Equal(t, 0, pro.WeeklyCap)
 	require.False(t, pro.AutoApply)
 
 	managed := billing.EntitlementsFor(billing.PlanManaged)
+	require.Equal(t, 100, managed.InvokeDailyLimit)
 	require.Equal(t, 0, managed.WeeklyCap)
 	require.False(t, managed.AutoApply)
 
-	// Unknown / free → proof caps (value before pay)
+	// Unknown / free → proof invoke limit (value before pay); unlimited match rows.
 	unknown := billing.EntitlementsFor(billing.PlanID("free"))
-	require.Equal(t, 3, unknown.WeeklyCap)
-	require.Equal(t, 1, unknown.DailyCap)
+	require.Equal(t, 1, unknown.InvokeDailyLimit)
+	require.Equal(t, 0, unknown.DailyCap)
+	require.Equal(t, 0, unknown.WeeklyCap)
 	require.False(t, unknown.AutoApply)
 }
 

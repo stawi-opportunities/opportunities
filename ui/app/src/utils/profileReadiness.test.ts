@@ -43,6 +43,43 @@ describe('evaluateProfileReadiness', () => {
     expect(r.cvPresent).toBe(true);
     expect(r.chatReady).toBe(true);
     expect(r.ready).toBe(true);
+    expect(r.matchCapable).toBe(true);
+    expect(r.preferenceMissing).toEqual([]);
+  });
+
+  it('is matchCapable with CV even when preferences incomplete', () => {
+    // After onboarding upload: CV on file, salary/countries may still lag.
+    // Matches must not treat this as “finish your CV”.
+    const r = evaluateProfileReadiness(
+      {
+        ok: true,
+        present: true,
+        placement_ready: false,
+        extracted_text: longCV,
+      },
+      {
+        target_job_title: 'Backend Engineer',
+        job_types: ['Full-time'],
+        experience_level: 'senior',
+        // no salary, no preferred_countries
+      }
+    );
+    expect(r.cvPresent).toBe(true);
+    expect(r.ready).toBe(false);
+    expect(r.matchCapable).toBe(true);
+    expect(r.preferenceMissing).toEqual(
+      expect.arrayContaining(['salary_expectation', 'preferred_countries'])
+    );
+    expect(r.preferenceMissing).not.toContain('capabilities');
+    expect(r.missing).not.toContain('capabilities');
+  });
+
+  it('is not matchCapable without CV or capabilities', () => {
+    const r = evaluateProfileReadiness({ ok: true, present: false }, {
+      target_job_title: 'PM',
+    } as never);
+    expect(r.matchCapable).toBe(false);
+    expect(r.cvPresent).toBe(false);
   });
 
   it('merges CV text into fields', () => {

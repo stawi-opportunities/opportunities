@@ -16,10 +16,10 @@ buf.build/gen/go/antinvestor/payment/connectrpc/go v1.20.0-20260709214338-d7f951
 buf.build/gen/go/antinvestor/payment/connectrpc/go v1.20.0-20260709214338-d7f951ea5a6e.1/go.mod h1:DvCmTxeTB87FIyDNE+wnpIcL/wKGC8GCyfMESZhW9DQ=
 buf.build/gen/go/antinvestor/payment/protocolbuffers/go v1.36.11-20260709214338-d7f951ea5a6e.1 h1:NNRjZWpzL2/eUN4+74/RJ1DOHKhBeuYCRUuAFgRuDcs=
 buf.build/gen/go/antinvestor/payment/protocolbuffers/go v1.36.11-20260709214338-d7f951ea5a6e.1/go.mod h1:FpDvxCvzDgtf8SX1wyD0EbnoZM3MDQqNjaRrAUyXszg=
-buf.build/gen/go/antinvestor/profile/connectrpc/go v1.20.0-20260709214326-6f6e8857a1e6.1 h1:yIket4DZFX+LMrCAqd6+wXJwiu5Ai7bnXlP2bobj+Xk=
-buf.build/gen/go/antinvestor/profile/connectrpc/go v1.20.0-20260709214326-6f6e8857a1e6.1/go.mod h1:GyzR0zeCo1Y8R0QNgYo/vY10+HWnVAKWHzS0S+sbZVo=
-buf.build/gen/go/antinvestor/profile/protocolbuffers/go v1.36.11-20260709214326-6f6e8857a1e6.1 h1:dwzZBZGJ5dG4Q5kCUk91UCvWf7Kwv/YTvajVCPM69NU=
-buf.build/gen/go/antinvestor/profile/protocolbuffers/go v1.36.11-20260709214326-6f6e8857a1e6.1/go.mod h1:HJyYRw13LRm0HWyGy2/yKqTpMzA2PDNKDeGigVkJH2A=
+buf.build/gen/go/antinvestor/profile/connectrpc/go v1.20.0-20260808183321-0adca9497d3a.1 h1:QQSgzUuIl1J6sn/1m8mW+XlNJzWQry1Rlj3hCgz+n/8=
+buf.build/gen/go/antinvestor/profile/connectrpc/go v1.20.0-20260808183321-0adca9497d3a.1/go.mod h1:pN/Xz82xGUGvCAdbRTz7hAiBmEJLqW8sVa7bfRrq2ck=
+buf.build/gen/go/antinvestor/profile/protocolbuffers/go v1.36.11-20260808183321-0adca9497d3a.1 h1:rOkpFCczyITiSDqav4hPmbet3ZkbfhRREoHP0Dkn1zk=
+buf.build/gen/go/antinvestor/profile/protocolbuffers/go v1.36.11-20260808183321-0adca9497d3a.1/go.mod h1:HJyYRw13LRm0HWyGy2/yKqTpMzA2PDNKDeGigVkJH2A=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260709200747-435963d16310.1 h1:fXh8CsdNpjRr8R5vFdqtIxPt/Lno2IIJlYOdZBIZn0w=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260709200747-435963d16310.1/go.mod h1:tvtbpgaVXZX4g6Pn+AnzFycuRK3MOz5HJfEGeEllXYM=
 buf.build/gen/go/gnostic/gnostic/protocolbuffers/go v1.36.11-20230414000709-087bc8072ce4.1 h1:t8f+WWZ5WNrZaP5zrpWD8f1tKU7eelJMbIAT9FRX558=
@@ -81,8 +81,8 @@ github.com/antchfx/xmlquery v1.5.1/go.mod h1:bVqnl7TaDXSReKINrhZz+2E/PbCu2tUahb+
 github.com/antchfx/xpath v1.3.6/go.mod h1:i54GszH55fYfBmoZXapTHN8T8tkcHfRgLyVwwqzXNcs=
 github.com/antchfx/xpath v1.3.8 h1:RQlkLaJDKk1Ew1H6CUPUTKM+IQxm+6HTyOgcrfqOU9c=
 github.com/antchfx/xpath v1.3.8/go.mod h1:i54GszH55fYfBmoZXapTHN8T8tkcHfRgLyVwwqzXNcs=
-github.com/antinvestor/common/v2 v2.0.2 h1:rCzB9F5d+gdr5qxv+DRyP8MseAQOfRKdaP0Hv1tnyQ0=
-github.com/antinvestor/common/v2 v2.0.2/go.mod h1:Be91T/fGXdU96sMZFB/usI2TUv711K6FTcj4cS/rltw=
+github.com/antinvestor/common/v2 v2.0.4 h1:2pN/e2R5vhfJdFFbsm3MN3sg1pfbYtLO7gcBIPLxSSg=
+github.com/antinvestor/common/v2 v2.0.4/go.mod h1:V1On2jfKsMUbMv3LdAD33sMmLAO1WX7PNREWoJ6lSTE=
 github.com/antinvestor/service-trustage v0.4.4 h1:I3s4xCxLP90bCR+h3vSnlB8rG02//82EztqG9kEXO5w=
 github.com/antinvestor/service-trustage v0.4.4/go.mod h1:Q3rQfIEwJ0gJzywXXCdF+4f7CNdvKc3nlv3rdqv6KYY=
 github.com/antithesishq/antithesis-sdk-go v0.7.0-default-no-op h1:Z/MZK75wC/NSrkgqeNIa7jexam9uWzhLmFTSCPI/kn0=

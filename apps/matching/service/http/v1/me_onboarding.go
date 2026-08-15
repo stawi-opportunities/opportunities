@@ -68,7 +68,8 @@ type onboardingEnvelope struct {
 
 // OnboardingHandler dispatches GET and PUT on the same path. Wrap
 // with httpmw.CandidateAuth before mounting; the wrapper populates
-// the candidate ID into the request context.
+// platform profile_id (JWT sub) into the request context. Draft store
+// resolves profile_id → job-seeker candidate row.
 func OnboardingHandler(deps OnboardingDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -87,11 +88,11 @@ func OnboardingHandler(deps OnboardingDeps) http.HandlerFunc {
 func handleOnboardingGet(deps OnboardingDeps, w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := util.Log(ctx)
-	candidateID := httpmw.CandidateFromContext(ctx)
+	profileID := httpmw.ProfileIDFromContext(ctx)
 
-	raw, err := deps.Drafts.GetOnboardingDraft(ctx, candidateID)
+	raw, err := deps.Drafts.GetOnboardingDraft(ctx, profileID)
 	if err != nil {
-		log.WithError(err).WithField("candidate_id", candidateID).
+		log.WithError(err).WithField("profile_id", profileID).
 			Error("me/onboarding: draft lookup failed")
 		httpmw.ProblemJSON(w, http.StatusBadGateway,
 			"draft_lookup_failed", "could not load onboarding draft")
@@ -105,7 +106,7 @@ func handleOnboardingGet(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 		if err := json.Unmarshal(raw, &out); err != nil {
 			// Stored draft is corrupt — treat as empty rather than
 			// 500 the client. The next PUT will overwrite it.
-			log.WithError(err).WithField("candidate_id", candidateID).
+			log.WithError(err).WithField("profile_id", profileID).
 				Warn("me/onboarding: stored draft is malformed; returning default envelope")
 			out = onboardingEnvelope{Step: 1, Fields: json.RawMessage(`{}`)}
 		}
@@ -116,12 +117,15 @@ func handleOnboardingGet(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 	fields = hydrateCapabilities(ctx, MeChatDeps{
 		Placement: deps.Placement,
 		Profiles:  deps.Profiles,
-	}, candidateID, fields)
+	}, profileID, fields)
 	if hasCapabilities(fields) {
 		if b, mErr := json.Marshal(fields); mErr == nil {
 			out.Fields = mergeRawFields(out.Fields, b)
 		}
 	}
+
+	// Never surface job side-chat turns inside placement/onboarding resume.
+	out.Messages = filterPlacementMessages(out.Messages)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
@@ -130,7 +134,7 @@ func handleOnboardingGet(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 func handleOnboardingPut(deps OnboardingDeps, w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := util.Log(ctx)
-	candidateID := httpmw.CandidateFromContext(ctx)
+	profileID := httpmw.ProfileIDFromContext(ctx)
 
 	// Larger limit: fields + multi-turn chat transcript.
 	body, err := io.ReadAll(io.LimitReader(r.Body, 256*1024))
@@ -155,9 +159,9 @@ func handleOnboardingPut(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 	}
 
 	// Load prior once for messages + monotonic step.
-	prior, priorErr := loadOnboardingEnvelope(ctx, deps.Drafts, candidateID)
+	prior, priorErr := loadOnboardingEnvelope(ctx, deps.Drafts, profileID)
 	if priorErr != nil {
-		log.WithError(priorErr).WithField("candidate_id", candidateID).
+		log.WithError(priorErr).WithField("profile_id", profileID).
 			Warn("me/onboarding: prior load failed; continuing with request body")
 	}
 	// Never regress plan/payment stage — clients mid-chat may still POST step=1.
@@ -179,8 +183,8 @@ func handleOnboardingPut(deps OnboardingDeps, w http.ResponseWriter, r *http.Req
 			"internal", "could not serialise draft envelope")
 		return
 	}
-	if err := deps.Drafts.SetOnboardingDraft(ctx, candidateID, out); err != nil {
-		log.WithError(err).WithField("candidate_id", candidateID).
+	if err := deps.Drafts.SetOnboardingDraft(ctx, profileID, out); err != nil {
+		log.WithError(err).WithField("profile_id", profileID).
 			Error("me/onboarding: draft persist failed")
 		httpmw.ProblemJSON(w, http.StatusBadGateway,
 			"draft_persist_failed", "could not save onboarding draft")

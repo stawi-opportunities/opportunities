@@ -31,9 +31,11 @@ type CandidatesConfig struct {
 	EmbeddingBaseURL  string `env:"EMBEDDING_BASE_URL" envDefault:""`
 	EmbeddingAPIKey   string `env:"EMBEDDING_API_KEY"  envDefault:""`
 	EmbeddingModel    string `env:"EMBEDDING_MODEL"    envDefault:""`
-	// EmbeddingDimensions pins the embeddings "dimensions" field (Qwen3 MRL);
-	// 0 omits it. Must equal EMBEDDING_DIM.
-	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"0"`
+	// EmbeddingDimensions pins the embeddings "dimensions" field (Matryoshka
+	// MRL). Multilingual llama-nemotron is native 2048 — pin 1024 to match
+	// opportunities.embedding / candidate_match_indexes vector(1024).
+	// 0 omits the field (native width).
+	EmbeddingDimensions int `env:"EMBEDDING_DIMENSIONS" envDefault:"1024"`
 	// EmbeddingInputType: "passage"/"query" for NVIDIA asymmetric E5; empty omits.
 	EmbeddingInputType string `env:"EMBEDDING_INPUT_TYPE" envDefault:""`
 
@@ -61,9 +63,20 @@ type CandidatesConfig struct {
 	// the svc_opportunities_matching stream so per-stage backpressure
 	// + dead-letter behaviour is independent. Empty defaults to the
 	// in-memory driver so local dev / tests work without NATS.
-	CVExtractQueueURL string `env:"CV_EXTRACT_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
-	CVImproveQueueURL string `env:"CV_IMPROVE_QUEUE_URL" envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
-	CVEmbedQueueURL   string `env:"CV_EMBED_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
+	//
+	// Frame rejects push:// as a *publisher* scheme (push is subscriber-
+	// only). When CV_*_QUEUE_URL is push://..., set the matching
+	// CV_*_PUBLISH_URL to gcppubsub://project/topic (or leave empty and
+	// the binary derives gcppubsub from GCP_PROJECT + push host).
+	CVExtractQueueURL   string `env:"CV_EXTRACT_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.extract.v1"`
+	CVImproveQueueURL   string `env:"CV_IMPROVE_QUEUE_URL"   envDefault:"mem://svc.opportunities.matching.cv.improve.v1"`
+	CVEmbedQueueURL     string `env:"CV_EMBED_QUEUE_URL"     envDefault:"mem://svc.opportunities.matching.cv.embed.v1"`
+	CVExtractPublishURL string `env:"CV_EXTRACT_PUBLISH_URL" envDefault:""`
+	CVImprovePublishURL string `env:"CV_IMPROVE_PUBLISH_URL" envDefault:""`
+	CVEmbedPublishURL   string `env:"CV_EMBED_PUBLISH_URL"   envDefault:""`
+	// GCPProject is used to derive gcppubsub:// publish URLs from push://
+	// subscriber URLs when CV_*_PUBLISH_URL is unset.
+	GCPProject string `env:"GCP_PROJECT" envDefault:""`
 
 	// Candidate-embedding queue: cv-embed publishes CandidateEmbeddingV1 here;
 	// the candidate-change consumer drains it for gap-fill + rerank. Dedicated
@@ -77,8 +90,9 @@ type CandidatesConfig struct {
 	// Default mem:// is for local/dev only.
 	OpportunityFanOutQueueURI  string `env:"OPPORTUNITY_FANOUT_QUEUE_URI"  envDefault:"mem://svc.opportunities.matching.opportunity.fanout.v1"`
 	OpportunityFanOutQueueName string `env:"OPPORTUNITY_FANOUT_QUEUE_NAME" envDefault:"svc.opportunities.matching.opportunity.fanout.v1"`
-	// MatchingFanOutEnabled defaults ON. Set false to stop live Path A.
-	MatchingFanOutEnabled bool `env:"MATCHING_FANOUT_ENABLED" envDefault:"true"`
+	// MatchingFanOutEnabled defaults OFF (product: invoke-only matching).
+	// Set true to re-enable live Path A fan-out as jobs arrive.
+	MatchingFanOutEnabled bool `env:"MATCHING_FANOUT_ENABLED" envDefault:"false"`
 
 	// PlansURL is embedded into the weekly-jobs-digest event so the
 	// notification service's email template doesn't have to assume the
@@ -96,22 +110,44 @@ type CandidatesConfig struct {
 	DigestWeeklyWeekday  string `env:"DIGEST_WEEKLY_WEEKDAY"  envDefault:"monday"`
 	DigestTimezone       string `env:"DIGEST_TIMEZONE"        envDefault:"UTC"`
 
+	// Twice-daily digest local-hour windows (inclusive start, exclusive end
+	// semantics are applied by the digest scheduler in a later task).
+	DigestTwiceDailyMorningStart int `env:"DIGEST_TWICE_DAILY_MORNING_START" envDefault:"8"`
+	DigestTwiceDailyMorningEnd   int `env:"DIGEST_TWICE_DAILY_MORNING_END" envDefault:"10"`
+	DigestTwiceDailyEveningStart int `env:"DIGEST_TWICE_DAILY_EVENING_START" envDefault:"17"`
+	DigestTwiceDailyEveningEnd   int `env:"DIGEST_TWICE_DAILY_EVENING_END" envDefault:"19"`
+
 	// ValkeyURL is the Valkey/Redis connection URL for the distributed debouncer.
 	// When empty (default) the in-memory MemoryDebouncer is used, which is safe
 	// for dev/test but does not survive restarts or span multiple replicas.
 	ValkeyURL string `env:"VALKEY_URL" envDefault:""`
 
-	// Phase-2 continuous matching pipeline. Defaults ON so a paid user
-	// gets gap-fill matches after CV embed without an extra config flip.
+	// MatchingCandidateChangeEnabled: consumer still runs for index updates;
+	// product default is index-only gap-fill (skip of GapFill is a later task).
 	// Set MATCHING_CANDIDATE_CHANGE_ENABLED=false to disable in emergency.
 	MatchingCandidateChangeEnabled bool `env:"MATCHING_CANDIDATE_CHANGE_ENABLED" envDefault:"true"`
 	// MatchingMinScore is the default cosine-combined score floor for new
-	// candidate_match_indexes rows (0–1). Only opportunities scoring at or
-	// above this threshold become matches. Per-candidate rules can raise it.
-	MatchingMinScore           float64 `env:"MATCHING_MIN_SCORE" envDefault:"0.45"`
-	MatchingRerankerEnabled    bool    `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
-	MatchingDLQThreshold       int     `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
-	MatchingDebounceTTLSeconds int     `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
+	// candidate_match_indexes rows (0–1). Default 0.70 quality floor.
+	// Only opportunities scoring at or above this threshold become matches.
+	// Per-candidate rules can raise it.
+	MatchingMinScore float64 `env:"MATCHING_MIN_SCORE" envDefault:"0.70"`
+	// Semantic-first reverse-KNN knobs (MatchInvoke / GapFill).
+	// MATCHING_SEMANTIC_RECALL: HNSW neighbour count (default 250).
+	// MATCHING_SEMANTIC_MAX_DISTANCE: cosine distance ceiling 0–2 (default 0.90).
+	//   Set to a negative value to disable the SQL distance cap.
+	// MATCHING_HARD_GEO: when true, country is a SQL filter (legacy). Default
+	//   false — geo stays soft so retrieval maximises semantic recall.
+	MatchingSemanticRecall      int     `env:"MATCHING_SEMANTIC_RECALL"       envDefault:"250"`
+	MatchingSemanticMaxDistance float64 `env:"MATCHING_SEMANTIC_MAX_DISTANCE" envDefault:"0.90"`
+	MatchingHardGeo             bool    `env:"MATCHING_HARD_GEO"              envDefault:"false"`
+	// Per-plan daily UTC invoke (MatchInvoke) limits. Enforced when invoke
+	// matching lands; defaults mirror free / starter / managed entitlements.
+	MatchingInvokeLimitFree    int  `env:"MATCHING_INVOKE_LIMIT_FREE" envDefault:"1"`
+	MatchingInvokeLimitStarter int  `env:"MATCHING_INVOKE_LIMIT_STARTER" envDefault:"30"`
+	MatchingInvokeLimitManaged int  `env:"MATCHING_INVOKE_LIMIT_MANAGED" envDefault:"100"`
+	MatchingRerankerEnabled    bool `env:"MATCHING_RERANKER_ENABLED"         envDefault:"false"`
+	MatchingDLQThreshold       int  `env:"MATCHING_DLQ_THRESHOLD"            envDefault:"5"`
+	MatchingDebounceTTLSeconds int  `env:"MATCHING_DEBOUNCE_TTL_SECONDS"     envDefault:"60"`
 	// PooledReranker bounds: a cloud cross-encoder over RERANK_TOP_K docs
 	// takes seconds, so the per-call timeout must be generous (the old
 	// hardcoded 1s timed out → reranker silently fell back to bi-encoder).
@@ -143,6 +179,10 @@ type CandidatesConfig struct {
 	// CV uploads are stored via the platform files service; when empty,
 	// matching falls back to the product R2 archive bucket.
 	FileServiceURI string `env:"FILE_SERVICE_URI" envDefault:""`
+	// ProfileServiceURI is service-profile (platform person + contacts).
+	// When set, CV-discovered emails/phones are Ensure'd onto the profile
+	// (canonical contact store for checkout, notify, login). Empty skips sync.
+	ProfileServiceURI string `env:"PROFILE_SERVICE_URI" envDefault:""`
 	// NotificationServiceURI is service-notification. Candidate-facing
 	// messages use NotificationService.Send (same client setup as profile).
 	NotificationServiceURI string `env:"NOTIFICATION_SERVICE_URI" envDefault:""`
@@ -155,6 +195,8 @@ type CandidatesConfig struct {
 	MessageTemplateMatchesDigest    string `env:"MESSAGE_TEMPLATE_MATCHES_DIGEST" envDefault:"template.opportunities.matches.digest"`
 	MessageTemplateWeeklyJobsDigest string `env:"MESSAGE_TEMPLATE_WEEKLY_JOBS_DIGEST" envDefault:"template.opportunities.weekly_jobs.digest"`
 	MessageTemplateCVStaleNudge     string `env:"MESSAGE_TEMPLATE_CV_STALE_NUDGE" envDefault:"template.opportunities.cv.stale_nudge"`
+	// MessageTemplateATSReport is the paid $2 CV ATS report email (HTML attachment).
+	MessageTemplateATSReport string `env:"MESSAGE_TEMPLATE_ATS_REPORT" envDefault:"template.opportunities.cv.ats_report"`
 	// BillingWebhookSecret enables HMAC-SHA256 verification of the
 	// service-payment completion webhook (X-Payment-Signature header over
 	// the raw body). Empty disables verification (dev/test only).
@@ -177,10 +219,9 @@ type CandidatesConfig struct {
 	CheckoutPublicBaseURL string `env:"CHECKOUT_PUBLIC_BASE_URL" envDefault:"https://pay.stawi.org"`
 
 	// ChatAgentServiceURI is the platform chat-agent Connect base
-	// (e.g. https://api.stawi.org/chat-agent). When empty, /me/chat uses
-	// the local MeChatHandler only.
+	// (e.g. https://api.stawi.org/chat-agent). Required for /me/chat.
 	ChatAgentServiceURI string `env:"CHAT_AGENT_SERVICE_URI" envDefault:""`
-	// ChatAgentEnabled routes /me/chat through chat-agent when URI is set.
-	// Falls back to local handler on agent errors so SPA stays usable.
+	// ChatAgentEnabled must be true with a non-empty URI. There is no local
+	// MeChatHandler fallback — misconfig returns 503 on /me/chat.
 	ChatAgentEnabled bool `env:"CHAT_AGENT_ENABLED" envDefault:"false"`
 }

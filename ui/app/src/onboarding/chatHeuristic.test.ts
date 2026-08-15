@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   heuristicExtract,
+  intakeOpeningReply,
   isChatReady,
   localChatTurn,
   mergeChatFields,
@@ -46,6 +47,38 @@ describe('chatHeuristic', () => {
     expect(res.ready).toBe(false);
     expect(res.missing.length).toBeGreaterThan(0);
     expect(res.reply.toLowerCase()).toMatch(/role|cv|looking|work|opportunities/);
+  });
+
+  it('treats AI salary_expectation free-text as salary complete', () => {
+    // Production readiness for open/market pay is AI-extracted salary_expectation
+    // on the server — not local phrase lists. Local heuristic honors the field
+    // when already present on the draft (as matching maps agent → fields).
+    const draft = {
+      target_job_title: 'Senior Software Developer',
+      experience_level: 'senior',
+      job_types: ['Full-time' as const],
+      preferred_countries: ['UG'],
+      extra_info: miniCV,
+      salary_expectation: 'open / market rates',
+    };
+    expect(missingChatFields(draft as never)).not.toContain('salary_expectation');
+    expect(isChatReady(draft as never)).toBe(true);
+  });
+
+  it('intakeOpeningReply leads with guidance and the first required ask', () => {
+    const reply = intakeOpeningReply({});
+    expect(reply).toMatch(/I'll guide you through setup/i);
+    expect(reply.toLowerCase()).toMatch(/role|match you to/);
+  });
+
+  it('intakeOpeningReply grounds on known fields when partially filled', () => {
+    const reply = intakeOpeningReply({
+      target_job_title: 'Product Manager',
+      extra_info: miniCV,
+    });
+    expect(reply).toMatch(/I'll guide you through setup/i);
+    expect(reply.toLowerCase()).toMatch(/product manager|cv on file|got it/);
+    expect(reply.toLowerCase()).toMatch(/full-time|job|kinds/);
   });
 
   it('processes a rich free-text turn, extracts known fields, and asks for the CV', () => {

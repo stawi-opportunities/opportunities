@@ -9,10 +9,14 @@ import { Panel } from '@/components/dashboard/Panel';
 import { useToast } from '@/hooks/useToast';
 import type { StringKey } from '@/i18n/strings';
 
+type DigestCadence = 'twice_daily' | 'daily' | 'weekly' | 'off';
+
+const DIGEST_VALUES: DigestCadence[] = ['twice_daily', 'daily', 'weekly', 'off'];
+
 export function SettingsNotifications({ t }: { t: (k: StringKey, fallback?: string) => string }) {
   const { push } = useToast();
 
-  const [digest, setDigest] = useState<'daily' | 'weekly' | 'off'>('weekly');
+  const [digest, setDigest] = useState<DigestCadence>('weekly');
   const [matchAlerts, setMatchAlerts] = useState(false);
   const [weeklySummary, setWeeklySummary] = useState(true);
   const [marketing, setMarketing] = useState(false);
@@ -27,8 +31,8 @@ export function SettingsNotifications({ t }: { t: (k: StringKey, fallback?: stri
   useEffect(() => {
     if (!prefsQuery.data || loaded) return;
     const d = prefsQuery.data;
-    if (d.email_digest === 'daily' || d.email_digest === 'weekly' || d.email_digest === 'off') {
-      setDigest(d.email_digest);
+    if (DIGEST_VALUES.includes(d.email_digest as DigestCadence)) {
+      setDigest(d.email_digest as DigestCadence);
     }
     setMatchAlerts(!!d.match_alerts);
     setWeeklySummary(!!d.weekly_summary);
@@ -51,7 +55,8 @@ export function SettingsNotifications({ t }: { t: (k: StringKey, fallback?: stri
     });
   }, [digest, matchAlerts, weeklySummary, marketing, mutation]);
 
-  const DIGEST_OPTIONS: { value: 'daily' | 'weekly' | 'off'; labelKey: StringKey }[] = [
+  const DIGEST_OPTIONS: { value: DigestCadence; labelKey: StringKey }[] = [
+    { value: 'twice_daily', labelKey: 'settings.twiceDaily' },
     { value: 'daily', labelKey: 'settings.daily' },
     { value: 'weekly', labelKey: 'settings.weekly' },
     { value: 'off', labelKey: 'settings.off' },

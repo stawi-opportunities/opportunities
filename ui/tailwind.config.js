@@ -55,8 +55,13 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+        // Product UI: Inter for clarity. Marketing display stays Playfair where used.
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
         display: ['"Playfair Display"', "Georgia", "Times New Roman", "serif"],
+      },
+      borderRadius: {
+        lg: "var(--radius-lg)",
+        xl: "var(--radius-xl)",
       },
       animation: {
         'fade-in': 'fadeIn 150ms ease-out',
