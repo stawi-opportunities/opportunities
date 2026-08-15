@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stawi — Homepage Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+  /* ─── Design read ───────────────────────────────────────────────
+     Landing (consumer marketplace, trust-first) · Africa job-seeker
+     audience · charcoal + accent-green language · Inter + Playfair
+     brand system. Dials: VARIANCE 7 / MOTION 6 / DENSITY 4.
+     ──────────────────────────────────────────────────────────── */
+
+  :root {
+    --bg: #090b10;
+    --bg-soft: #0b0e15;
+    --surface: #131620;
+    --surface-hover: #171b27;
+    --surface-muted: #1a1f2e;
+    --border: #1e2331;
+    --border-strong: #2a3142;
+    --text: #e6e8ee;
+    --text-secondary: #8a91a3;
+    --text-muted: #5b6272;
+    --accent: #45b739;
+    --accent-hover: #3da32f;
+    --accent-dim: rgba(69, 183, 57, 0.12);
+    --accent-ring: rgba(69, 183, 57, 0.5);
+    --accent-soft: #219c3f;
+    --navy: #0c1226;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  html[data-theme="light"] {
+    --bg: #f8fafc;
+    --bg-soft: #f1f5f9;
+    --surface: #ffffff;
+    --surface-hover: #f8fafc;
+    --surface-muted: #f1f5f9;
+    --border: #e5e7eb;
+    --border-strong: #cbd5e1;
+    --text: #1f2937;
+    --text-secondary: #5b6472;
+    --text-muted: #94a3b8;
+    --accent: #219c3f;
+    --accent-hover: #1a8736;
+    --accent-dim: rgba(33, 156, 63, 0.10);
+    --accent-ring: rgba(33, 156, 63, 0.4);
+    --accent-soft: #45b739;
+    --navy: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    transition: background 200ms ease, color 200ms ease;
+  }
+  ::selection { background: var(--accent-dim); }
+  img { max-width: 100%; display: block; }
+  a { color: inherit; text-decoration: none; }
+
+  /* ─── Demo chrome (not part of the design) ─── */
+  .demo-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 8px 16px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .demo-bar .pill {
+    padding: 2px 10px; border: 1px solid var(--border-strong);
+    border-radius: 999px; background: var(--surface-muted);
+    color: var(--text-secondary); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .demo-bar button {
+    font: inherit; cursor: pointer; border: 1px solid var(--border-strong);
+    background: var(--surface-muted); color: var(--text);
+    border-radius: 999px; padding: 4px 14px; font-size: 12px; font-weight: 600;
+    transition: border-color 150ms ease;
+  }
+  .demo-bar button:hover { border-color: var(--accent); }
+  .demo-bar button.on { border-color: var(--accent); color: var(--accent); }
+
+  /* ─── Nav ─── */
+  .nav {
+    position: sticky; top: 32px; z-index: 40;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .nav-inner {
+    max-width: 1200px; margin: 0 auto; height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+  }
+  .nav .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.02em; }
+  .nav .logo .mark {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), #2c7d24);
+    display: grid; place-items: center; color: var(--navy); font-size: 15px; font-weight: 900;
+  }
+  .nav .links { display: flex; align-items: center; gap: 26px; color: var(--text-secondary); font-size: 15px; font-weight: 500; }
+  .nav .links a { transition: color 150ms ease; }
+  .nav .links a:hover, .nav .links a.on { color: var(--text); }
+  .nav .signin {
+    font: inherit; cursor: pointer;
+    border: 1px solid var(--border-strong); background: var(--surface);
+    color: var(--text); border-radius: 999px; padding: 8px 20px;
+    font-size: 14px; font-weight: 600; transition: border-color 150ms ease, color 150ms ease;
+  }
+  .nav .signin:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ─── Hero (value-first, fits viewport, ≤2-line H1, ≤20-word sub) ─── */
+  .hero {
+    max-width: 1200px; margin: 0 auto;
+    min-height: calc(100vh - 96px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 72px 24px 48px; text-align: center;
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border: 1px solid var(--accent-ring);
+    background: var(--accent-dim); color: var(--accent);
+    border-radius: 999px; font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--accent-ring); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 var(--accent-ring); }
+    70% { box-shadow: 0 0 0 7px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  h1.hero-title {
+    margin: 28px 0 0;
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2.75rem, 8vw, 4.75rem);
+    font-weight: 600; line-height: 1.08; letter-spacing: -0.02em;
+    max-width: 15ch;
+  }
+  h1.hero-title em { font-style: italic; color: var(--accent); }
+  .hero-sub {
+    margin: 22px auto 0; max-width: 540px;
+    font-size: clamp(1rem, 2.4vw, 1.125rem);
+    color: var(--text-secondary); line-height: 1.65;
+  }
+  .hero-sub strong { color: var(--text); font-weight: 600; }
+  .cta-row {
+    margin-top: 32px; display: flex; flex-wrap: wrap;
+    align-items: center; justify-content: center; gap: 14px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    min-height: 50px; border-radius: 999px; padding: 0 30px;
+    font-size: 16px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    transition: transform 150ms var(--ease), box-shadow 150ms ease, background 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+  .btn:active { transform: translateY(1px) scale(0.99); }
+  .btn-primary { background: var(--accent); color: var(--navy); box-shadow: 0 8px 22px -8px var(--accent-ring); }
+  .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 10px 26px -8px var(--accent-ring); }
+  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .arrow { transition: transform 150ms var(--ease); }
+  .btn-primary:hover .arrow, .btn-secondary:hover .arrow { transform: translateX(3px); }
+
+  /* ─── Stats band (live, count-up) ─── */
+  .stats-band {
+    max-width: 900px; margin: 0 auto 0; padding: 30px 24px;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(3, 1fr);
+  }
+  .stat { text-align: center; padding: 4px 12px; position: relative; }
+  .stat + .stat::before {
+    content: ""; position: absolute; left: 0; top: 12%; bottom: 12%;
+    width: 1px; background: var(--border);
+  }
+  .stat .num { font-size: clamp(1.75rem, 4vw, 2.4rem); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat .num .plus { color: var(--accent); }
+  .stat .label { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+  .stat .live {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted);
+  }
+  .stat .live .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+
+  /* ─── Opportunity kinds (bento, real product fact: 5 kinds) ─── */
+  .section {
+    max-width: 1200px; margin: 0 auto; padding: 96px 24px;
+  }
+  .section-head { max-width: 640px; }
+  .section-head h2 {
+    margin: 0; font-family: 'Playfair Display', serif;
+    font-size: clamp(1.9rem, 4vw, 2.6rem); font-weight: 600;
+    letter-spacing: -0.015em; line-height: 1.15;
+  }
+  .section-head p { margin: 14px 0 0; color: var(--text-secondary); font-size: 16px; line-height: 1.65; }
+  .kinds-grid {
+    margin-top: 48px; display: grid; gap: 16px;
+    grid-template-columns: repeat(12, 1fr);
+  }
+  .kind {
+    grid-column: span 4; position: relative;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); padding: 26px;
+    transition: transform 200ms var(--ease), border-color 200ms ease, background 200ms ease;
+    overflow: hidden;
+  }
+  .kind::after {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0; transition: opacity 200ms ease;
+  }
+  .kind:hover { transform: translateY(-4px); border-color: var(--accent-ring); background: var(--surface-hover); }
+  .kind:hover::after { opacity: 1; }
+  .kind:nth-child(1) { grid-column: span 6; }
+  .kind:nth-child(2) { grid-column: span 6; }
+  .kind .icon {
+    width: 40px; height: 40px; border-radius: var(--radius-sm);
+    background: var(--accent-dim); color: var(--accent);
+    display: grid; place-items: center;
+  }
+  .kind h3 { margin: 18px 0 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .kind p { margin: 8px 0 0; font-size: 14px; color: var(--text-secondary); line-height: 1.55; }
+  .kind .count {
+    margin-top: 16px; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+  }
+  .kind .count b { color: var(--accent); font-weight: 700; }
+
+  /* ─── Live sample (list rows, matches the real JobRow) ─── */
+  .live-wrap { max-width: 900px; margin: 0 auto; }
+  .list-head {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .list-head .right { display: flex; align-items: center; gap: 12px; }
+  .chip {
+    font: inherit; cursor: pointer; border: 1px solid var(--border-strong);
+    background: var(--surface); color: var(--text-secondary);
+    border-radius: 999px; padding: 7px 16px; font-size: 13px; font-weight: 600;
+    transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+  .chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .list {
+    margin-top: 28px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); overflow: hidden;
+  }
+  .row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 18px 22px; border-bottom: 1px solid var(--border);
+    transition: background 150ms ease;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row:hover { background: var(--surface-hover); }
+  .row .av {
+    width: 42px; height: 42px; border-radius: var(--radius-sm); flex-shrink: 0;
+    background: var(--surface-muted); color: var(--text);
+    display: grid; place-items: center; font-size: 14px; font-weight: 700;
+  }
+  .row .meta { min-width: 0; flex: 1; }
+  .row .title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .title .badge {
+    display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    background: var(--accent-dim); color: var(--accent);
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; vertical-align: 2px;
+  }
+  .row .sub { margin-top: 3px; font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .sub span { margin-left: 10px; }
+  .row .sub .money { color: var(--accent-soft); }
+  html[data-theme="dark"] .row .sub .money { color: var(--accent); }
+  .row .deadline { flex-shrink: 0; font-size: 12px; color: var(--text-muted); }
+  .row .go { flex-shrink: 0; color: var(--text-muted); transition: color 150ms ease, transform 150ms var(--ease); }
+  .row:hover .go { color: var(--accent); transform: translateX(3px); }
+
+  /* ─── How it works (3 steps) ─── */
+  .steps { margin-top: 48px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .step {
+    border-top: 2px solid var(--border-strong); padding: 20px 4px 0;
+  }
+  .step .n { font-size: 13px; font-weight: 800; color: var(--accent); letter-spacing: 0.06em; }
+  .step h3 { margin: 10px 0 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .step p { margin: 8px 0 0; font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+  /* ─── Why Stawi (differentiators, no zigzag repetition) ─── */
+  .why-grid { margin-top: 48px; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; }
+  .why-card {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); padding: 30px;
+  }
+  .why-card.tall { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+  .why-card .kicker { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+  .why-card h3 { margin: 12px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+  .why-card p { margin: 10px 0 0; font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+  .why-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 18px; }
+  .why-list li { display: flex; gap: 14px; align-items: flex-start; }
+  .why-list .tick {
+    width: 26px; height: 26px; border-radius: 999px; flex-shrink: 0;
+    background: var(--accent-dim); color: var(--accent);
+    display: grid; place-items: center; margin-top: 2px;
+  }
+  .why-list .lbl { font-weight: 600; font-size: 15px; color: var(--text); }
+  .why-list .dsc { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* ─── Pricing (real product facts: Starter $10 / Managed $200) ─── */
+  .pricing-grid { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 860px; }
+  .plan {
+    position: relative; border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px);
+    background: var(--surface); padding: 34px 30px;
+  }
+  .plan.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 20px 50px -20px var(--accent-ring); }
+  .plan .tag { position: absolute; top: -12px; left: 30px; padding: 4px 12px; border-radius: 999px; background: var(--accent); color: var(--navy); font-size: 12px; font-weight: 700; }
+  .plan .name { font-size: 15px; font-weight: 700; }
+  .plan .price { margin-top: 16px; display: flex; align-items: baseline; gap: 6px; }
+  .plan .price .usd { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+  .plan .price .usd small { font-size: 20px; font-weight: 600; color: var(--text-secondary); }
+  .plan .price .per { font-size: 14px; color: var(--text-muted); }
+  .plan .tagline { margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.55; }
+  .plan ul { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .plan ul li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--text-secondary); }
+  .plan ul li::before {
+    content: ""; width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0;
+    border-radius: 999px; background: var(--accent-dim);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2345b739' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: center;
+  }
+  html[data-theme="light"] .plan ul li::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23219c3f' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E"); }
+  .plan .btn { margin-top: 26px; width: 100%; justify-content: center; }
+  .plan.hl .btn-primary { background: var(--accent); color: var(--navy); }
+
+  /* ─── CTA band ─── */
+  .cta-band {
+    max-width: 1200px; margin: 0 auto; padding: 0 24px 96px;
+  }
+  .cta-inner {
+    border: 1px solid var(--border); border-radius: calc(var(--radius) + 8px);
+    background:
+      radial-gradient(120% 160% at 20% 0%, var(--accent-dim) 0%, transparent 45%),
+      var(--surface);
+    padding: 72px 32px; text-align: center;
+  }
+  .cta-inner h2 {
+    margin: 0; font-family: 'Playfair Display', serif;
+    font-size: clamp(1.9rem, 4.5vw, 2.8rem); font-weight: 600; letter-spacing: -0.015em; line-height: 1.12;
+  }
+  .cta-inner p { margin: 14px auto 0; max-width: 460px; color: var(--text-secondary); font-size: 16px; }
+  .cta-inner .cta-row { margin-top: 28px; }
+
+  /* ─── Footer ─── */
+  .footer { border-top: 1px solid var(--border); padding: 40px 24px 56px; }
+  .footer-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  .footer .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.02em; }
+  .footer .logo .mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), #2c7d24);
+    display: grid; place-items: center; color: var(--navy); font-size: 13px; font-weight: 900;
+  }
+  .footer .links { display: flex; gap: 22px; color: var(--text-muted); font-size: 13px; flex-wrap: wrap; }
+  .footer .links a:hover { color: var(--text); }
+  .footer .copy { width: 100%; margin-top: 18px; font-size: 12px; color: var(--text-muted); }
+
+  /* ─── Reveal on scroll ─── */
+  [data-reveal] {
+    opacity: 0; transform: translateY(20px);
+    transition: opacity 600ms var(--ease), transform 600ms var(--ease);
+  }
+  [data-reveal].in { opacity: 1; transform: translateY(0); }
+
+  @media (max-width: 860px) {
+    .nav .links { display: none; }
+    .stats-band { grid-template-columns: 1fr; gap: 24px; }
+    .stat + .stat::before { display: none; }
+    .kinds-grid { grid-template-columns: 1fr 1fr; }
+    .kind, .kind:nth-child(n) { grid-column: span 1; }
+    .steps, .why-grid, .pricing-grid { grid-template-columns: 1fr; }
+    .section { padding: 72px 24px; }
+    .hero { min-height: calc(100vh - 96px); }
+  }
+  @media (max-width: 520px) {
+    .kinds-grid { grid-template-columns: 1fr; }
+    .row .deadline, .row .go { display: none; }
+    .demo-bar .pill { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .eyebrow .dot, .stat .live .dot { animation: none; }
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    .btn, .kind, .row, .arrow, .go { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <span class="pill">HOMEPAGE DEMO</span>
+  <span>Anti-slop redesign · applies the design skills' recommendations</span>
+  <span>
+    <button type="button" class="on" data-theme-btn="dark">Dark</button>
+    <button type="button" data-theme-btn="light">Light</button>
+  </span>
+</div>
+
+<!-- ─── Nav ─── -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="logo" href="#">
+      <span class="mark">S</span>
+      <span>Stawi</span>
+    </a>
+    <nav class="links" aria-label="Main">
+      <a href="#live" class="on">Browse</a>
+      <a href="#kinds">Opportunities</a>
+      <a href="#why">Why Stawi</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+    <button class="signin" type="button">Sign in</button>
+  </div>
+</header>
+
+<main>
+  <!-- ─── Hero: value-first, single message ─── -->
+  <section class="hero" aria-labelledby="hero-title">
+    <span class="eyebrow" data-reveal><span class="dot"></span> AI-matched opportunities across Africa</span>
+
+    <h1 class="hero-title" id="hero-title" data-reveal style="transition-delay:60ms">
+      Find the opportunity that <em>fits you</em>
+    </h1>
+
+    <p class="hero-sub" data-reveal style="transition-delay:120ms">
+      Jobs and tenders from <strong>40+</strong> countries —
+      ranked by how well they fit you, before you sign in.
+    </p>
+
+    <div class="cta-row" data-reveal style="transition-delay:180ms">
+      <a class="btn btn-primary" href="#live">
+        Browse opportunities
+        <span class="arrow" aria-hidden="true">→</span>
+      </a>
+      <a class="btn btn-secondary" href="#why">
+        How matching works
+        <span class="arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ─── Stats band: live from /api/stats, count-up ─── -->
+  <section class="stats-band" aria-label="Live platform stats" data-reveal>
+    <div class="stat">
+      <div class="num"><span class="count" data-count="25000">0</span><span class="plus">+</span></div>
+      <div class="label">Live opportunities</div>
+      <div class="live"><span class="dot"></span> Live from API</div>
+    </div>
+    <div class="stat">
+      <div class="num"><span class="count" data-count="3200">0</span><span class="plus">+</span></div>
+      <div class="label">Employers &amp; issuers</div>
+      <div class="live"><span class="dot"></span> Live from API</div>
+    </div>
+    <div class="stat">
+      <div class="num"><span class="count" data-count="40">0</span><span class="plus">+</span></div>
+      <div class="label">Countries covered</div>
+      <div class="live"><span class="dot"></span> Live from API</div>
+    </div>
+  </section>
+
+  <!-- ─── Opportunity kinds (real product fact) ─── -->
+  <section class="section" id="kinds" aria-labelledby="kinds-title">
+    <div class="section-head" data-reveal>
+      <h2 id="kinds-title">Two ways to move forward</h2>
+      <p>Jobs you apply to, or tenders you can bid on — every kind of open opportunity gathered in one scored feed.</p>
+    </div>
+
+    <div class="kinds-grid">
+      <a class="kind" href="#" data-reveal style="transition-delay:0ms">
+        <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2a1 1 0 0 0-1 1v1H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3V3a1 1 0 1 0-2 0v1H9V3a1 1 0 0 0-1-1Z"/><path d="M3 10h18"/></svg></div>
+        <h3>Jobs</h3>
+        <p>Full-time, part-time and remote roles — scored against your CV, not just keyword-matched.</p>
+        <span class="count">open roles <b>now</b></span>
+      </a>
+      <a class="kind" href="#" data-reveal style="transition-delay:60ms">
+        <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3>Tenders</h3>
+        <p>Government and corporate bids you can actually win, sized to small and solo vendors.</p>
+        <span class="count">active bids <b>now</b></span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ─── Live sample of real roles (list rows, like the real JobRow) ─── -->
+  <section class="section" id="live" aria-labelledby="live-title" style="padding-top:0">
+    <div class="live-wrap">
+      <div class="list-head" data-reveal>
+        <div class="section-head">
+          <h2 id="live-title">Fresh remote roles</h2>
+          <p>A live sample of real remote jobs — browse before you sign in.</p>
+        </div>
+        <div class="right">
+          <button class="chip" type="button" data-filter="all">All</button>
+          <button class="chip on" type="button" data-filter="remote">Remote</button>
+          <a class="btn btn-secondary" href="#" style="min-height:44px;padding:0 22px;font-size:14px">
+            Browse all <span class="arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="list" data-reveal style="transition-delay:80ms" aria-label="Sample opportunities">
+        <div class="row" data-remote="1">
+          <div class="av">N</div>
+          <div class="meta">
+            <div class="title">Senior Product Designer (Remote)<span class="badge">Featured</span></div>
+            <div class="sub">Nairobi Labs · Nairobi, KE<span>Design</span><span class="money">US$2,500–3,800/mo</span></div>
+          </div>
+          <div class="deadline">Apply by Jun 14</div>
+          <span class="go" aria-hidden="true">→</span>
+        </div>
+        <div class="row" data-remote="1">
+          <div class="av">A</div>
+          <div class="meta">
+            <div class="title">Frontend Engineer (Remote)</div>
+            <div class="sub">Amani Pay · Lagos, NG<span>Programming</span><span class="money">US$1,800–2,600/mo</span></div>
+          </div>
+          <div class="deadline">Apply by Jun 18</div>
+          <span class="go" aria-hidden="true">→</span>
+        </div>
+        <div class="row" data-remote="1">
+          <div class="av">G</div>
+          <div class="meta">
+            <div class="title">Customer Support Lead (Remote)</div>
+            <div class="sub">Greenlight Fintech · Accra, GH<span>Customer Support</span><span class="money">US$900–1,300/mo</span></div>
+          </div>
+          <div class="deadline">Rolling</div>
+          <span class="go" aria-hidden="true">→</span>
+        </div>
+        <div class="row" data-remote="1">
+          <div class="av">K</div>
+          <div class="meta">
+            <div class="title">Data Analyst — Agriculture (Remote)</div>
+            <div class="sub">Kilimo Solutions · Dar es Salaam, TZ<span>Data</span><span class="money">US$1,100–1,600/mo</span></div>
+          </div>
+          <div class="deadline">Apply by Jun 22</div>
+          <span class="go" aria-hidden="true">→</span>
+        </div>
+        <div class="row" data-remote="1">
+          <div class="av">B</div>
+          <div class="meta">
+            <div class="title">DevOps Engineer (Remote)</div>
+            <div class="sub">Bridge Cloud · Kigali, RW<span>DevOps</span><span class="money">US$2,000–2,900/mo</span></div>
+          </div>
+          <div class="deadline">Apply by Jun 20</div>
+          <span class="go" aria-hidden="true">→</span>
+        </div>
+        <div class="row" data-remote="1">
+          <div class="av">M</div>
+          <div class="meta">
+            <div class="title">Marketing Manager — Fintech (Remote)</div>
+            <div class="sub">Mkoa Bank · Kampala, UG<span>Marketing</span><span class="money">US$1,200–1,700/mo</span></div>
+          </div>
+          <div class="deadline">Apply by Jun 16</div>
+          <span class="go" aria-hidden="true">→</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── How it works ─── -->
+  <section class="section" aria-labelledby="how-title">
+    <div class="section-head" data-reveal>
+      <h2 id="how-title">From browse to match in three steps</h2>
+    </div>
+    <div class="steps">
+      <div class="step" data-reveal>
+        <div class="n">01</div>
+        <h3>Tell Stawi what fits</h3>
+        <p>Upload your CV or answer a few quick questions. Your profile becomes the matching baseline — no endless forms.</p>
+      </div>
+      <div class="step" data-reveal style="transition-delay:80ms">
+        <div class="n">02</div>
+        <h3>Get scored matches</h3>
+        <p>Every opportunity is ranked against your profile, with a visible match score so you see why it ranks the way it does.</p>
+      </div>
+      <div class="step" data-reveal style="transition-delay:160ms">
+        <div class="n">03</div>
+        <h3>Apply, bid, or apply for funding</h3>
+        <p>Go direct to the source — external apply links, tender documents, scholarship portals — tracked in your dashboard.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Why Stawi (asymmetric, no zigzag) ─── -->
+  <section class="section" id="why" aria-labelledby="why-title" style="padding-top:0">
+    <div class="why-grid">
+      <div class="why-card tall" data-reveal>
+        <span class="kicker">Why Stawi</span>
+        <h3 id="why-title">Built for Africa, not exported to it</h3>
+        <p>Most platforms list jobs abroad and force a currency, a bank account, and a visa reality that doesn't fit. Stawi starts with what works here — mobile money, local pay, deadlines that matter.</p>
+      </div>
+      <div class="why-card" data-reveal style="transition-delay:80ms">
+        <ul class="why-list">
+          <li>
+            <span class="tick"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span>
+            <div><div class="lbl">You're scored as a candidate</div><div class="dsc">Employers see a ranked shortlist, not a wall of identical CVs.</div></div>
+          </li>
+          <li>
+            <span class="tick"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span>
+            <div><div class="lbl">Pay the way you pay</div><div class="dsc">Subscriptions bill in USD via card or mobile money — no regional lockout.</div></div>
+          </li>
+          <li>
+            <span class="tick"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span>
+            <div><div class="lbl">No ghost listings</div><div class="dsc">Opportunities are checked and time-boxed. Deadlines are visible up front.</div></div>
+          </li>
+          <li>
+            <span class="tick"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span>
+            <div><div class="lbl">Browse before you sign up</div><div class="dsc">A live sample of real roles is public — prove there's something for you first.</div></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Pricing (real product facts) ─── -->
+  <section class="section" id="pricing" aria-labelledby="pricing-title" style="padding-top:0">
+    <div class="section-head" data-reveal>
+      <h2 id="pricing-title">Simple, honest pricing</h2>
+      <p>Two tiers. No hidden per-apply fees. Billed in USD — pay with card or mobile money.</p>
+    </div>
+
+    <div class="pricing-grid">
+      <div class="plan" data-reveal>
+        <div class="name">Starter</div>
+        <div class="price">
+          <div class="usd"><small>$</small>10</div>
+          <span class="per">/ month</span>
+        </div>
+        <p class="tagline">AI-matched jobs and digests. You review and apply yourself.</p>
+        <ul>
+          <li>CV upload — we learn what fits</li>
+          <li>Up to 5 AI matches per week</li>
+          <li>Email digests on your schedule</li>
+          <li>Dashboard match feed + external apply links</li>
+          <li>Match score so you see why roles rank</li>
+        </ul>
+        <a class="btn btn-secondary" href="#">Choose Starter</a>
+      </div>
+      <div class="plan hl" data-reveal style="transition-delay:80ms">
+        <span class="tag">Most popular</span>
+        <div class="name">Managed</div>
+        <div class="price">
+          <div class="usd"><small>$</small>200</div>
+          <span class="per">/ month</span>
+        </div>
+        <p class="tagline">Unlimited discovery, priority alerts, and the full match feed.</p>
+        <ul>
+          <li>Unlimited AI discovery (no weekly cap)</li>
+          <li>Priority match alerts when strong roles open</li>
+          <li>Same live match dashboard as Starter, uncapped</li>
+          <li>Faster gap-fill when you refresh matches</li>
+          <li>Email digests with your top fits</li>
+        </ul>
+        <a class="btn btn-primary" href="#">Choose Managed</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── CTA band ─── -->
+  <section class="cta-band" aria-labelledby="cta-title">
+    <div class="cta-inner" data-reveal>
+      <h2 id="cta-title">Your next opportunity is probably already here.</h2>
+      <p>Browse the live sample free, then get matched to the rest in minutes.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#">
+          Get matched in 2 minutes
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <a class="logo" href="#">
+      <span class="mark">S</span>
+      <span>Stawi</span>
+    </a>
+    <nav class="links" aria-label="Footer">
+      <a href="#">Jobs</a>
+      <a href="#">Tenders</a>
+      <a href="#">Pricing</a>
+    </nav>
+    <div class="copy">Stawi homepage demo · applies the design skills' recommendations on top of the live site's real tokens · sample data only</div>
+  </div>
+</footer>
+
+<script>
+  // ── Theme toggle (preview only) ──
+  document.querySelectorAll('[data-theme-btn]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var theme = btn.getAttribute('data-theme-btn');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelectorAll('[data-theme-btn]').forEach(function (b) {
+        b.classList.toggle('on', b === btn);
+      });
+    });
+  });
+
+  // ── Count-up (mirrors intended behaviour of the real HomeStatsBand) ──
+  function fmt(n) {
+    if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
+    return String(Math.round(n));
+  }
+  function animateCount(el) {
+    var target = parseInt(el.getAttribute('data-count'), 10);
+    var dur = 1200;
+    var start = performance.now();
+    function frame(now) {
+      var p = Math.min(1, (now - start) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(target * eased);
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('.count').forEach(function (el) {
+    if (reduced) el.textContent = fmt(parseInt(el.getAttribute('data-count'), 10));
+    else animateCount(el);
+  });
+
+  // ── Reveal on scroll (IntersectionObserver, not window scroll) ──
+  if ('IntersectionObserver' in window && !reduced) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('[data-reveal]').forEach(function (el) { io.observe(el); });
+  } else {
+    document.querySelectorAll('[data-reveal]').forEach(function (el) { el.classList.add('in'); });
+  }
+
+  // ── Sample filter chips (preview only) ──
+  document.querySelectorAll('[data-filter]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      document.querySelectorAll('[data-filter]').forEach(function (c) { c.classList.toggle('on', c === chip); });
+      var mode = chip.getAttribute('data-filter');
+      document.querySelectorAll('.row').forEach(function (row) {
+        var show = mode === 'all' || (mode === 'remote' && row.getAttribute('data-remote') === '1');
+        row.style.display = show ? 'flex' : 'none';
+      });
+    });
+  });
+</script>
+</body>
+</html>

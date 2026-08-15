@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stawi — Hero + Stats Band Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #090b10;
+    --surface: #131620;
+    --surface-hover: #171b27;
+    --surface-muted: #1a1f2e;
+    --border: #1e2331;
+    --border-strong: #2a3142;
+    --text: #e6e8ee;
+    --text-secondary: #8a91a3;
+    --text-muted: #5b6272;
+    --accent: #45b739;
+    --accent-hover: #3da32f;
+    --accent-dim: rgba(69, 183, 57, 0.12);
+    --accent-ring: rgba(69, 183, 57, 0.5);
+  }
+  html[data-theme="light"] {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-hover: #f1f4f8;
+    --surface-muted: #f3f5f9;
+    --border: #e5e7eb;
+    --border-strong: #d1d5db;
+    --text: #1f2937;
+    --text-secondary: #6b7280;
+    --text-muted: #9aa1ad;
+    --accent: #219c3f;
+    --accent-hover: #1a8736;
+    --accent-dim: rgba(33, 156, 63, 0.10);
+    --accent-ring: rgba(33, 156, 63, 0.4);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    transition: background 200ms ease, color 200ms ease;
+  }
+  ::selection { background: var(--accent-dim); }
+
+  /* ---- Demo chrome (not part of the design) ---- */
+  .demo-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .demo-bar .pill {
+    padding: 2px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .demo-bar button {
+    font: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-muted);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: border-color 150ms ease;
+  }
+  .demo-bar button:hover { border-color: var(--accent); }
+
+  /* ---- Nav mock ---- */
+  .nav {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 24px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .nav .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.02em; }
+  .nav .logo .mark {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), #2c7d24);
+    display: grid; place-items: center; color: #0c1226; font-size: 15px; font-weight: 900;
+  }
+  .nav .links { display: flex; align-items: center; gap: 26px; color: var(--text-secondary); font-size: 15px; font-weight: 500; }
+  .nav .links span { cursor: default; }
+  .nav .links span:hover { color: var(--text); }
+  .nav .signin {
+    font: inherit; cursor: pointer;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 14px; font-weight: 600;
+  }
+  .nav .signin:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- Hero ---- */
+  .hero {
+    min-height: calc(100vh - 96px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 56px 24px 40px;
+    text-align: center;
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--accent-ring);
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-radius: 999px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--accent-ring); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 var(--accent-ring); }
+    70% { box-shadow: 0 0 0 7px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  h1 {
+    margin: 28px 0 0;
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2.75rem, 8vw, 4.5rem);
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    max-width: 16ch;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .sub {
+    margin: 20px auto 0;
+    max-width: 560px;
+    font-size: clamp(1rem, 2.4vw, 1.125rem);
+    color: var(--text-secondary);
+    line-height: 1.65;
+  }
+  .cta-row {
+    margin-top: 32px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    min-height: 48px;
+    border-radius: 999px;
+    padding: 0 30px;
+    font-size: 16px; font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease, border-color 150ms ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary {
+    background: var(--accent);
+    color: #0c1226;
+    box-shadow: 0 8px 22px -8px var(--accent-ring);
+  }
+  .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 10px 26px -8px var(--accent-ring); }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .arrow { transition: transform 150ms ease; }
+  .btn-primary:hover .arrow { transform: translateX(3px); }
+  .trust {
+    margin-top: 22px;
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text-muted);
+  }
+  .trust svg { color: var(--accent); }
+
+  /* ---- Stats band ---- */
+  .stats-band {
+    max-width: 900px;
+    margin: 24px auto 0;
+    padding: 28px 24px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .stat { text-align: center; padding: 8px 12px; position: relative; }
+  .stat + .stat::before {
+    content: ""; position: absolute; left: 0; top: 16%; bottom: 16%;
+    width: 1px; background: var(--border);
+  }
+  .stat .num {
+    font-size: clamp(1.75rem, 4vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .stat .num .plus { color: var(--accent); }
+  .stat .label { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+  .stat .live {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .stat .live .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  /* ---- Teaser for the section below (context) ---- */
+  .teaser {
+    max-width: 820px; margin: 0 auto; padding: 72px 24px 120px;
+  }
+  .teaser h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem; font-weight: 600; letter-spacing: -0.01em; margin: 0;
+  }
+  .teaser p { margin: 10px 0 0; color: var(--text-secondary); font-size: 15px; }
+  .skeleton { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; }
+  .skeleton .row {
+    height: 64px; border-radius: 12px;
+    background: linear-gradient(90deg, var(--surface-muted) 25%, var(--surface-hover) 37%, var(--surface-muted) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+    border: 1px solid var(--border);
+  }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 24px 48px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .tabs { display: flex; justify-content: center; gap: 8px; margin-bottom: 28px; }
+  .tabs button {
+    font: inherit; cursor: pointer; font-size: 12px; font-weight: 600;
+    padding: 6px 14px; border-radius: 999px;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary);
+  }
+  .tabs button.on { border-color: var(--accent); color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .nav .links { display: none; }
+    .stats-band { grid-template-columns: 1fr; gap: 22px; }
+    .stat + .stat::before { display: none; }
+    .stat { padding: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .eyebrow .dot, .skeleton .row { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <span class="pill">DESIGN PREVIEW</span>
+  <span>Hero copy + stats band — not yet on the live site</span>
+  <div class="tabs" style="margin:0">
+    <button type="button" class="on" data-theme-btn="dark">Dark</button>
+    <button type="button" data-theme-btn="light">Light</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="logo">
+    <span class="mark">S</span>
+    <span>Stawi</span>
+  </div>
+  <nav class="links">
+    <span>Browse</span>
+    <span>Jobs</span>
+    <span>Scholarships</span>
+    <span>Funding</span>
+    <span>Pricing</span>
+  </nav>
+  <button class="signin" type="button">Sign in</button>
+</header>
+
+<main>
+  <section class="hero">
+    <span class="eyebrow"><span class="dot"></span> AI-matched opportunities across Africa</span>
+
+    <h1>Find the opportunity that <em>fits you</em></h1>
+
+    <p class="sub">
+      Jobs, scholarships, tenders, funding and deals from <strong>40+</strong> countries —
+      ranked by how well they fit you, before you ever sign in.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#">
+        Browse opportunities
+        <span class="arrow" aria-hidden="true">→</span>
+      </a>
+      <a class="btn btn-secondary" href="#">
+        Get matched in 2 minutes
+        <span class="arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
+
+    <div class="trust">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+      No spam. No ghost listings. Every match scored against your profile.
+    </div>
+  </section>
+
+  <section class="stats-band" aria-label="Live platform stats">
+    <div class="stat">
+      <div class="num"><span class="count" data-count="25000">0</span><span class="plus">+</span></div>
+      <div class="label">Live opportunities</div>
+      <div class="live"><span class="dot"></span> Live from API</div>
+    </div>
+    <div class="stat">
+      <div class="num"><span class="count" data-count="3200">0</span><span class="plus">+</span></div>
+      <div class="label">Employers &amp; issuers</div>
+      <div class="live"><span class="dot"></span> Live from API</div>
+    </div>
+    <div class="stat">
+      <div class="num"><span class="count" data-count="40">0</span><span class="plus">+</span></div>
+      <div class="label">Countries covered</div>
+      <div class="live"><span class="dot"></span> Live from API</div>
+    </div>
+  </section>
+
+  <section class="teaser">
+    <h2>Fresh opportunities</h2>
+    <p>A live sample of real roles — browse before you sign in.</p>
+    <div class="skeleton" aria-hidden="true">
+      <div class="row"></div>
+      <div class="row"></div>
+      <div class="row"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Stawi design preview · hero copy + stats band · built with the site's real tokens (charcoal + accent green, Inter / Playfair)
+</footer>
+
+<script>
+  // Theme toggle (preview only)
+  document.querySelectorAll('[data-theme-btn]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var theme = btn.getAttribute('data-theme-btn');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelectorAll('[data-theme-btn]').forEach(function (b) {
+        b.classList.toggle('on', b === btn);
+      });
+    });
+  });
+
+  // Count-up animation (mirrors the intended count-up in the real component)
+  function animate(el) {
+    var target = parseInt(el.getAttribute('data-count'), 10);
+    var dur = 1200;
+    var start = performance.now();
+    function fmt(n) {
+      if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
+      return String(Math.round(n));
+    }
+    function frame(now) {
+      var p = Math.min(1, (now - start) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(target * eased);
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('.count').forEach(function (el) {
+    if (reduced) { el.textContent = fmtStatic(el); } else { animate(el); }
+  });
+  function fmtStatic(el) {
+    var target = parseInt(el.getAttribute('data-count'), 10);
+    return target >= 1000 ? (target / 1000).toFixed(0) + 'k' : String(target);
+  }
+</script>
+</body>
+</html>

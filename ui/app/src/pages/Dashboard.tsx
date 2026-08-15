@@ -57,6 +57,13 @@ export default function Dashboard() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(initial.settingsTab);
   const [showPlanChange, setShowPlanChange] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const [showSkipBanner, setShowSkipBanner] = useState(() => {
+    try {
+      return sessionStorage.getItem('stawi.onboardingSkipped') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const subQ = useSubscription();
   const profileGate = useMatchingProfileGate();
@@ -106,6 +113,15 @@ export default function Dashboard() {
     subQ.refetch();
   }, [subQ]);
 
+  const dismissSkipBanner = () => {
+    setShowSkipBanner(false);
+    try {
+      sessionStorage.removeItem('stawi.onboardingSkipped');
+    } catch {
+      // non-critical
+    }
+  };
+
   if (!ready) return <Skeleton />;
   if (!hasSession) return <SignedOut onSignIn={login} />;
   // Incomplete CV / aspirational profile → onboarding chat (matching needs it).
@@ -138,6 +154,33 @@ export default function Dashboard() {
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <DashboardHeader plan={plan} status={subscription} />
         <PendingCheckoutPoller />
+        {showSkipBanner && !isActive && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent-500/30 bg-accent-500/10 px-4 py-3">
+            <p className="text-sm text-main">
+              <span className="font-semibold">Free mode.</span> Subscribe to unlock AI-matched jobs
+              and weekly digests.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsTab('subscription');
+                  navigate('settings');
+                }}
+                className="rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition-colors hover:bg-accent-400"
+              >
+                View plans
+              </button>
+              <button
+                type="button"
+                onClick={dismissSkipBanner}
+                className="text-sm font-medium text-secondary underline-offset-2 hover:text-main hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
         <div className="mt-4 md:hidden">
           <DashboardSidebar
             active={activeSection}
