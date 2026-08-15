@@ -229,6 +229,48 @@ export default function Onboarding() {
     }
   }
 
+  /** Exit without paying: save the profile and go browse opportunities publicly. */
+  async function skipForNow() {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const step = bumpWizardStep(2);
+      await saveOnboardingDraft(step, fieldsToDraft(fields, plan), messages).catch(() => undefined);
+      await submitOnboarding(profilePayload(plan)).catch(() => undefined);
+      try {
+        sessionStorage.setItem('stawi.onboardingSkipped', '1');
+      } catch {
+        // non-critical
+      }
+      window.location.assign('/search/');
+    } catch (e) {
+      setSubmitError(e instanceof Error && e.message ? e.message : t('error.somethingWrong'));
+      setSubmitting(false);
+    }
+  }
+
+  /** Keep answers but exit onboarding entirely — no subscription, back to the site. */
+  async function saveAndExit() {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const step = bumpWizardStep(2);
+      await saveOnboardingDraft(step, fieldsToDraft(fields, plan), messages).catch(() => undefined);
+      await submitOnboarding(profilePayload(plan)).catch(() => undefined);
+      try {
+        sessionStorage.removeItem('stawi.onboardingSkipped');
+      } catch {
+        // non-critical
+      }
+      window.location.assign('/');
+    } catch (e) {
+      setSubmitError(e instanceof Error && e.message ? e.message : t('error.somethingWrong'));
+      setSubmitting(false);
+    }
+  }
+
   if (!ready) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-400">
@@ -421,6 +463,33 @@ export default function Onboarding() {
         . Selected: <strong>{planById(plan).name}</strong> — you can switch by tapping the other
         plan.
       </p>
+
+      <div className="mt-6 border-t border-stone-200 pt-4 dark:border-navy-700">
+        <p className="text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-stone-400">
+          Not ready to subscribe?
+        </p>
+        <div className="mt-3 flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-6">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void skipForNow()}
+            className="text-sm font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline disabled:opacity-50 dark:text-stone-300 dark:hover:text-white"
+          >
+            Skip for now — explore without matching
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void saveAndExit()}
+            className="text-sm font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline disabled:opacity-50 dark:text-stone-300 dark:hover:text-white"
+          >
+            Save my answers &amp; exit
+          </button>
+        </div>
+        <p className="mt-2 text-center text-xs text-gray-500 dark:text-stone-400">
+          Your profile is saved either way — you can subscribe later from your account.
+        </p>
+      </div>
     </div>
   );
 }
