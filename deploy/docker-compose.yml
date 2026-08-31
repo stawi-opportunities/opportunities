@@ -1,9 +1,9 @@
 services:
   postgres:
-    # timescaledb-ha only because pre-2026-08-31 migrations unconditionally
-    # CREATE EXTENSION timescaledb on replay; the 20260831 removal migrations
-    # drop it again, so the running schema is plain PostgreSQL + pgvector.
-    image: timescale/timescaledb-ha:pg16
+    # Plain PostgreSQL + pgvector: historical migrations soft-fail their
+    # CREATE EXTENSION timescaledb, so replaying full history no longer needs
+    # the timescaledb-ha image. The schema only requires the vector extension.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: stawi
       POSTGRES_PASSWORD: stawi

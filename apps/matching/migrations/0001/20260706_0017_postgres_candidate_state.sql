@@ -6,7 +6,15 @@ DO $mig$
 DECLARE
   ent_ok boolean := true;
 BEGIN
-    EXECUTE 'CREATE EXTENSION IF NOT EXISTS timescaledb';
+    -- Soft-fail like the crawler capability SQL: plain PostgreSQL has no
+    -- timescaledb and 20260831_0032 removes it again anyway. The frame
+    -- migrator tracks migrations by filename only (no checksum), so this
+    -- edit does not affect databases that already applied the file.
+    BEGIN
+      EXECUTE 'CREATE EXTENSION IF NOT EXISTS timescaledb';
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'timescaledb extension skipped: %', SQLERRM;
+    END;
     EXECUTE 'CREATE EXTENSION IF NOT EXISTS vector';
 
     EXECUTE 'ALTER TABLE candidate_match_indexes
