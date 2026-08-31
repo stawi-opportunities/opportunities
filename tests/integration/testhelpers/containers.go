@@ -100,11 +100,11 @@ func ValkeyContainer(t *testing.T, ctx context.Context) string {
 }
 
 // PostgresContainerNoMigrate boots PostgreSQL 16 + pgvector and returns a
-// connected *sql.DB without applying any migrations. The timescaledb-ha image
-// is kept only because historical capability migrations (pre-2026-08-31)
-// unconditionally CREATE EXTENSION timescaledb when replayed; the
-// 20260831 removal migrations convert everything back to plain tables and
-// drop the extension, so the final schema is plain PostgreSQL + pgvector.
+// connected *sql.DB without applying any migrations. Historical capability
+// migrations soft-fail their CREATE EXTENSION timescaledb on plain PostgreSQL
+// and the 20260831 removal migrations are a no-op without the extension, so
+// the plain pgvector image replays the full history cleanly; the schema needs
+// only the vector extension (embedding columns + HNSW indexes).
 // Full-text uses search_tsv (lakebase_text path); lakebase_bm25 is not on this
 // image so API ranking falls back to ts_rank. pg_search is not used.
 //
@@ -114,7 +114,7 @@ func PostgresContainerNoMigrate(t *testing.T, ctx context.Context) *sql.DB {
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "timescale/timescaledb-ha:pg16",
+		Image:        "pgvector/pgvector:pg16",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "test",
@@ -217,8 +217,7 @@ func repoRoot(t *testing.T) string {
 
 // PostgresContainer boots PostgreSQL 16 + pgvector (see
 // PostgresContainerNoMigrate for the image choice) and applies the greenfield
-// GORM + capability schema — the end state is plain PostgreSQL: the removal
-// migrations drop timescaledb again.
+// GORM + capability schema — the end state is plain PostgreSQL + pgvector.
 // Returns a *sql.DB connected to the freshly migrated database.
 //
 // Use this in any integration suite that needs a clean DB with the
