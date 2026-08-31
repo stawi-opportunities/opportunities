@@ -7,7 +7,7 @@ How data is stored, why each shape exists, and whether it is fit for production.
 | Kind of data | Store as | Why |
 |--------------|----------|-----|
 | Current truth (mutable) | Ordinary PostgreSQL table | Updates, leases, soft hide |
-| Time-ordered audit / telemetry | TimescaleDB hypertable (append-only) | Partition, compress, retain |
+| Time-ordered audit / telemetry | Plain PostgreSQL table (append-only, trigger-guarded) | Simple, portable; revisit pg_partman if volume warrants |
 | Large opaque blobs | Cloudflare R2 | Cheap, content-addressable or keyed |
 | Hot path control (debounce, 24h counters) | Valkey (optional) | Low latency, TTL |
 | Control / wake-up signals | NATS JetStream | Not source of truth for work |
@@ -24,19 +24,19 @@ How data is stored, why each shape exists, and whether it is fit for production.
                                │ boot / admin        │ loader
                                ▼                     ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                     PostgreSQL + Timescale + pgvector              │
+│                        PostgreSQL + pgvector                       │
 │                                                                  │
 │  CRAWL          sources, source_recipes, crawl_runs, crawl_jobs  │
 │                 url_frontier, host_state                         │
-│  INGEST         job_ingest_queue ──► job_ingest_events (HT)      │
+│  INGEST         job_ingest_queue ──► job_ingest_events (AO)      │
 │  SERVE          opportunity_identities, opportunities,           │
 │                 opportunity_sources, companies, flags            │
 │  CANDIDATE      candidate_profiles, preferences, match_rules     │
 │  MATCH          candidate_match_indexes (HNSW), candidate_matches│
-│                 candidate_match_events (HT), match_run_events    │
-│                 engagement_events (HT), saved_jobs               │
+│                 candidate_match_events (AO), match_run_events    │
+│                 engagement_events (AO), saved_jobs               │
 │  APPLY          applications, notes, attachments, reminders      │
-│                 application_events (HT), idempotency_keys        │
+│                 application_events (AO), idempotency_keys        │
 │  BILLING        candidate_checkouts (+ profile subscription cols)│
 └──────────────────────────────────────────────────────────────────┘
          ▲ claim/lease              │ search / KNN
@@ -55,11 +55,11 @@ How data is stored, why each shape exists, and whether it is fit for production.
 | **`sources`** | OLTP | Registry: type, URL, status, health, recipe JSON, frontier flag | Strong unique `(type, base_url)`; status gates schedules | Hot row; recipe dual-stored with `source_recipes` (TX-synced) |
 | **`source_recipes`** | OLTP | Recipe version history | Partial unique one `active` per source | Append history; only active used on hot path |
 | **`crawl_runs`** | OLTP | Resumable cursor + lease | Partial unique one active run/source | Single-flight prevents pile-up |
-| **`crawl_jobs`** | Hypertable 1d | Execution ledger | Idempotency `(key, scheduled_at)`; **90d retain**, compress 14d | Time-partitioned audit — correct |
+| **`crawl_jobs`** | OLTP ledger | Execution ledger | Idempotency `(key, scheduled_at)`; no automatic retention — plan a janitor/pg_partman if volume warrants | Time-keyed audit |
 | **`url_frontier`** | OLTP queue | Detail URLs under politeness | UK `canonical_url_hash`; SKIP LOCKED | Per-host fairness via `host_state` |
 | **`host_state`** | OLTP | Per-host rate window | PK host | Tiny |
 
-**Verdict:** Solid. Queue + lease + hypertable history is the right split.
+**Verdict:** Solid. Queue + lease + append-only history is the right split.
 
 **Watch:** `crawl_signals` MV must be refreshed (function exists; ensure Trustage/cron calls `refresh_crawl_signals`).
 
@@ -70,7 +70,7 @@ How data is stored, why each shape exists, and whether it is fit for production.
 | Store | Type | Role | Robustness | Efficiency |
 |-------|------|------|------------|------------|
 | **`job_ingest_queue`** | Mutable queue | Durable work after extract | UK `idempotency_key` + `variant_id`; claim + lease indexes; cleanup job 30d/90d | Pending has **no TTL** (correct for durability); capacity gates stop crawl |
-| **`job_ingest_events`** | Hypertable 1d | Append-only audit | Append-only triggers; **90d retain**, compress 7d | Good |
+| **`job_ingest_events`** | Append-only | Append-only audit | Append-only triggers; no automatic retention/compression | Good |
 
 **Idempotency:** `crawlJobID:hardKey` or `frontier:urlID:hardKey` — safe redelivery.
 
@@ -114,9 +114,9 @@ How data is stored, why each shape exists, and whether it is fit for production.
 | **`candidate_match_indexes`** | OLTP + **HNSW** | Fan-out vectors + caps | HNSW WHERE enabled | Correct ANN for fan-out |
 | **`candidate_matches`** | OLTP | Current pairs | UK pair; score/status indexes | Score-monotonic upsert protects terminals |
 | **`candidate_preferences` / `match_rules`** | OLTP | Prefs / rules JSON | PK candidate | Small |
-| **`candidate_match_events`** | Hypertable | Ledger | 365d retain, compress, CAGG daily | Daily cap uses CAGG + raw tail — good |
-| **`match_run_events`** | Hypertable | Run telemetry | **90d retain + compress** | Ops only |
-| **`engagement_events`** | Hypertable | Beacons | 180d retain, CAGG hourly | Good |
+| **`candidate_match_events`** | Append-only | Ledger | Trigger-guarded; no automatic retention | Daily cap counts directly from the table — good |
+| **`match_run_events`** | Append-only | Run telemetry | Trigger-guarded; no automatic retention | Ops only |
+| **`engagement_events`** | Append-only | Beacons | Trigger-guarded; no automatic retention | Good |
 | **`candidate_saved_jobs`** | OLTP | Stars | Composite PK | Fine |
 
 **Valkey debounce** (`matching:debounce:{id}`): multi-pod; SETNX preferred over Exists+Set when tightening races.
@@ -131,7 +131,7 @@ How data is stored, why each shape exists, and whether it is fit for production.
 |-------|------|------|------------|------------|
 | **`applications`** | OLTP | Tracker state machine | UK pair | Correct |
 | **notes / reminders / attachments** | OLTP | Subresources | Soft-delete notes/attachments | Fine |
-| **`application_events`** | Hypertable | Audit | Compress; **no retention** (legal/audit) | OK if intentional |
+| **`application_events`** | Append-only | Audit | Trigger-guarded; **no retention** (legal/audit) | OK if intentional |
 | **`idempotency_keys`** | OLTP | HTTP replay | TTL columns; need purge job scheduled | Schedule Purge if not already |
 | **R2 attachments** | Blob | Files | Prefixed keys; soft-delete may orphan blobs | Add lifecycle or GC |
 
@@ -169,7 +169,7 @@ External payment/billing services are SoT for rails; local row is product entitl
 | Layer | Score | Comment |
 |-------|-------|---------|
 | Ingest queue + worker TX | **Excellent** | Lease, SKIP LOCKED, idempotent, single TX merge |
-| Event hypertables + retention | **Excellent** | Clear policies; append-only guards |
+| Append-only event tables | **Good** | Append-only guards; no automatic retention — revisit pg_partman if volume warrants |
 | Identity merge | **Good** | hard_key; apply-URL identity reduces collisions |
 | Opportunity serving indexes | **Good** | Facet partials + HNSW for embeddings |
 | Candidate match index | **Excellent** | HNSW + caps denormalized |
@@ -184,7 +184,7 @@ External payment/billing services are SoT for rails; local row is product entitl
 ## 10. What we hardened in capability SQL
 
 1. **`opportunities` HNSW** on non-null embeddings (active rows) — required for efficient reverse KNN / search.  
-2. **`match_run_events` retention 90d + compression** — ops telemetry should not grow forever.
+2. **Append-only guards on event ledgers** — no UPDATE/DELETE/TRUNCATE. Automatic retention was dropped with TimescaleDB; event telemetry growth needs a janitor or pg_partman when volume warrants.
 
 Both migrations are idempotent (`IF NOT EXISTS` / `if_not_exists`).
 
@@ -197,7 +197,7 @@ Both migrations are idempotent (`IF NOT EXISTS` / `if_not_exists`).
 | P1 | Confirm `refresh_crawl_signals` on a schedule | Adaptive freshness / admin health |
 | P1 | Drop or stop migrating `candidate_applications` | Dual schema risk |
 | P2 | R2 lifecycle for soft-deleted application attachments | Cost + privacy |
-| P2 | Valkey: TTL or migrate view totals to PG CAGG | Unbounded keys |
+| P2 | Valkey: TTL or migrate view totals to PG aggregates | Unbounded keys |
 | P2 | Archive/hide-delete path for opportunities not seen in N months | Disk |
 | P3 | Debounce SETNX | Multi-pod races |
 
@@ -213,4 +213,4 @@ Both migrations are idempotent (`IF NOT EXISTS` / `if_not_exists`).
 6. **CRM** — `applications` + attachment blobs  
 7. **Money** — checkouts + profile subscription fields  
 
-Each level uses the right durability class. The main efficiency wins left are **ANN on jobs** (done in migration), **telemetry retention** (done for match runs), and **janitors** for legacy tables / blobs / counters.
+Each level uses the right durability class. The main efficiency wins left are **ANN on jobs** (done in migration), **event-table retention** (janitor or pg_partman when volume warrants), and **janitors** for legacy tables / blobs / counters.

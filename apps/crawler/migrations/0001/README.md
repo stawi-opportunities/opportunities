@@ -3,7 +3,7 @@
 PostgreSQL (Neon) is the durable store for crawl control and ingest queues.
 
 GORM models own ordinary tables. SQL is reserved for capabilities GORM cannot
-express (partial indexes, optional Timescale hypertables, append-only triggers).
+express (partial indexes, append-only triggers, materialized views).
 
 **Owned here (crawl plane):**
 
@@ -15,4 +15,5 @@ express (partial indexes, optional Timescale hypertables, append-only triggers).
 **Not owned here:** product catalog (`opportunities`, candidates, matching).
 Those migrate via `apps/matching` against product Neon.
 
-Timescale compression / retention / `add_job` are soft-failed on Neon Apache-2.
+TimescaleDB was removed on 2026-08-31 (`20260831_0023_remove_timescaledb.sql`);
+older files reference it behind soft-fail guards and no-op without it.

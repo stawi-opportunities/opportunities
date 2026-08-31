@@ -70,8 +70,8 @@ Failures use bounded exponential retry, then `dead`.
 
 After the iterator exhausts, lineage not seen since the run started becomes inactive. An opportunity is hidden only when it has no active source.
 
-## TimescaleDB
+## Storage
 
-`job_ingest_events` is append-only (daily chunks, compression, retention). Mutable queue and serving tables are ordinary PostgreSQL.
+`job_ingest_events` is a plain append-only PostgreSQL table (no automatic retention or compression; revisit with pg_partman if volume warrants). Mutable queue and serving tables are ordinary PostgreSQL.
 
 Raw HTTP bodies are parsed in memory and discarded. Only queue payloads, canonical rows, lineage, and operational events persist.

@@ -27,8 +27,7 @@ type FanOutDeps struct {
 	NewID    func() string // ID factory; defaults to xid-style hex
 	// DailyCap is the optional query for today's per-candidate match count.
 	// When nil (or unconfigured), the cap check is skipped — useful for
-	// tests and for the bootstrap phase before the continuous aggregate
-	// has any data.
+	// tests and for the bootstrap phase before any events exist.
 	DailyCap DailyCapQuery
 	// WeekCount optional — when set, enforces remaining weekly budget like GapFill.
 	WeekCount weekMatchCounter
@@ -181,7 +180,7 @@ func FanOut(ctx context.Context, in FanOutInput, deps FanOutDeps) (FanOutResult,
 		runEvt.RerankerStatus = "skipped"
 	}
 
-	// 4. Cap enforcement: daily (events CAGG) + weekly remaining (match rows).
+	// 4. Cap enforcement: daily (events table) + weekly remaining (match rows).
 	matches := make([]Match, 0, len(scoredHits))
 	overflowCount := 0
 	overflowEventKinds := map[string]EventKind{}

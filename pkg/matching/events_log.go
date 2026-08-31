@@ -59,7 +59,7 @@ type MatchRunEvent struct {
 	Data              map[string]any
 }
 
-// EventLog writes to the two hypertables. Append-only — no UPDATE path.
+// EventLog writes to the two append-only event tables — no UPDATE path.
 type EventLog struct {
 	db *sql.DB
 }

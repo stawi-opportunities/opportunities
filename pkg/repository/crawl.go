@@ -11,7 +11,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
 )
 
-// CrawlRepository manages the TimescaleDB-backed crawl job lifecycle.
+// CrawlRepository manages the Postgres-backed crawl job lifecycle.
 type CrawlRepository struct {
 	db func(ctx context.Context, readOnly bool) *gorm.DB
 }
@@ -22,7 +22,7 @@ func NewCrawlRepository(db func(ctx context.Context, readOnly bool) *gorm.DB) *C
 }
 
 // Create inserts a new crawl job record. Populates ID + ScheduledAt if either
-// is zero — frame's BaseModel.BeforeCreate hook is absent on the hypertable
+// is zero — frame's BaseModel.BeforeCreate hook is absent on this composite-key
 // model, so the repo carries that responsibility.
 func (r *CrawlRepository) Create(ctx context.Context, job *domain.CrawlJob) error {
 	if job.ID == "" {

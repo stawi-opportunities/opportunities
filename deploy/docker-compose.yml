@@ -1,5 +1,8 @@
 services:
   postgres:
+    # timescaledb-ha only because pre-2026-08-31 migrations unconditionally
+    # CREATE EXTENSION timescaledb on replay; the 20260831 removal migrations
+    # drop it again, so the running schema is plain PostgreSQL + pgvector.
     image: timescale/timescaledb-ha:pg16
     environment:
       POSTGRES_USER: stawi

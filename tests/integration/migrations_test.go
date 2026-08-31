@@ -22,44 +22,41 @@ func TestGreenfieldSchemaAppliesCleanly(t *testing.T) {
 	db := testhelpers.PostgresContainerNoMigrate(t, ctx)
 	testhelpers.ApplyGreenfieldSchema(t, ctx, db)
 
-	// Hypertables registered with Timescale.
+	// Event tables are plain append-only Postgres tables with guard triggers.
 	for _, name := range []string{
 		"candidate_match_events",
 		"application_events",
 		"engagement_events",
 		"match_run_events",
 	} {
-		var count int
+		var exists bool
 		err := db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.tables
+				WHERE table_schema = 'public' AND table_name = $1
+			)
+		`, name).Scan(&exists)
+		require.NoError(t, err, "check %s exists", name)
+		require.True(t, exists, "%s should exist", name)
+
+		var triggers int
+		err = db.QueryRowContext(ctx, `
 			SELECT count(*)
-			FROM timescaledb_information.hypertables
-			WHERE hypertable_name = $1
-		`, name).Scan(&count)
-		require.NoError(t, err, "query hypertables for %s", name)
-		require.Equal(t, 1, count, "%s should be a hypertable", name)
+			FROM pg_trigger
+			WHERE tgrelid = $1::regclass
+			  AND tgname IN ($1 || '_append_only', $1 || '_no_truncate')
+		`, name).Scan(&triggers)
+		require.NoError(t, err, "query triggers for %s", name)
+		require.Equal(t, 2, triggers, "%s should have append-only + no-truncate triggers", name)
 	}
 
-	// Retention policy on candidate_match_events.
-	var retentionDays int
-	err := db.QueryRowContext(ctx, `
-		SELECT EXTRACT(DAY FROM (config->>'drop_after')::INTERVAL)::INT
-		FROM timescaledb_information.jobs
-		WHERE proc_name = 'policy_retention'
-		  AND hypertable_name = 'candidate_match_events'
-	`).Scan(&retentionDays)
+	// TimescaleDB is gone.
+	var hasTimescale bool
+	err := db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb')`,
+	).Scan(&hasTimescale)
 	require.NoError(t, err)
-	require.Equal(t, 365, retentionDays)
-
-	// Compression policy on application_events.
-	var compressDays int
-	err = db.QueryRowContext(ctx, `
-		SELECT EXTRACT(DAY FROM (config->>'compress_after')::INTERVAL)::INT
-		FROM timescaledb_information.jobs
-		WHERE proc_name = 'policy_compression'
-		  AND hypertable_name = 'application_events'
-	`).Scan(&compressDays)
-	require.NoError(t, err)
-	require.Equal(t, 14, compressDays)
+	require.False(t, hasTimescale, "timescaledb extension should not be installed")
 
 	// OLTP tables present.
 	for _, name := range []string{
@@ -122,10 +119,10 @@ func TestGreenfieldSchemaAppliesCleanly(t *testing.T) {
 		)`).Scan(&matchPairIndex))
 	require.True(t, matchPairIndex, "(candidate_id, opportunity_id) UNIQUE should exist")
 
-	// Continuous aggregates from 0015.
+	// The old continuous aggregates are gone (removed with TimescaleDB).
 	err = db.QueryRowContext(ctx,
 		`SELECT count(*) FROM pg_class
      WHERE relname IN ('candidate_match_events_daily', 'engagement_events_hourly')`).Scan(&cnt)
 	require.NoError(t, err)
-	require.Equal(t, 2, cnt, "both continuous aggregates should exist post-0015")
+	require.Equal(t, 0, cnt, "continuous aggregates should not exist post-0032")
 }

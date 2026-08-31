@@ -1,6 +1,6 @@
 # PostgreSQL disaster recovery
 
-Restore the PostgreSQL/TimescaleDB cluster from its managed backup and replay
+Restore the PostgreSQL cluster from its managed backup and replay
 WAL to the selected recovery point. Then:
 
 1. Start API and migration owners.
