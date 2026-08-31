@@ -50,7 +50,7 @@ type Event struct {
 	Data          map[string]any
 }
 
-// EventLog is an append-only writer for the application_events hypertable.
+// EventLog is an append-only writer for the application_events table.
 type EventLog struct{ db *sql.DB }
 
 // NewEventLog wraps the given handle.

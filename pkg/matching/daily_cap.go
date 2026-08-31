@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// PGDailyCapQuery reads candidate_match_events_daily for today's count.
+// PGDailyCapQuery counts today's generated matches from candidate_match_events.
 type PGDailyCapQuery struct {
 	db *sql.DB
 }
@@ -16,25 +16,16 @@ func NewPGDailyCapQuery(db *sql.DB) *PGDailyCapQuery {
 }
 
 // TodayCount returns the number of generated matches written today for
-// the candidate. Uses the continuous aggregate when available; falls
-// back to the raw hypertable when the CAGG hasn't refreshed yet.
+// the candidate, counted directly from the append-only events table.
+// "Today" is the current UTC day, matching the alignment of the daily
+// buckets this query historically read.
 func (q *PGDailyCapQuery) TodayCount(ctx context.Context, candidateID string) (int, error) {
-	// Continuous aggregates lag by up to the refresh interval (5 min).
-	// Read the CAGG and UNION the recent-tail from the raw hypertable
-	// so the count is always current.
 	const sql_ = `
-SELECT
-    COALESCE(SUM(matches_generated), 0)
-  + (
-        SELECT count(*)
-          FROM candidate_match_events
-         WHERE candidate_id = $1
-           AND kind = 'generated'
-           AND occurred_at > (now() - INTERVAL '10 minutes')
-    ) AS used
-  FROM candidate_match_events_daily
+SELECT count(*)
+  FROM candidate_match_events
  WHERE candidate_id = $1
-   AND day = time_bucket(INTERVAL '1 day', now())
+   AND kind = 'generated'
+   AND occurred_at >= date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc'
 `
 	var n int
 	if err := q.db.QueryRowContext(ctx, sql_, candidateID).Scan(&n); err != nil {

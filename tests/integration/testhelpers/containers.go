@@ -99,8 +99,12 @@ func ValkeyContainer(t *testing.T, ctx context.Context) string {
 	return fmt.Sprintf("redis://%s:%s", host, port.Port())
 }
 
-// PostgresContainerNoMigrate boots TimescaleDB + pgvector (the official ha image
-// ships both) and returns a connected *sql.DB without applying any migrations.
+// PostgresContainerNoMigrate boots PostgreSQL 16 + pgvector and returns a
+// connected *sql.DB without applying any migrations. The timescaledb-ha image
+// is kept only because historical capability migrations (pre-2026-08-31)
+// unconditionally CREATE EXTENSION timescaledb when replayed; the
+// 20260831 removal migrations convert everything back to plain tables and
+// drop the extension, so the final schema is plain PostgreSQL + pgvector.
 // Full-text uses search_tsv (lakebase_text path); lakebase_bm25 is not on this
 // image so API ranking falls back to ts_rank. pg_search is not used.
 //
@@ -170,8 +174,8 @@ func ApplyCapabilitySQLDir(t *testing.T, ctx context.Context, db *sql.DB, dir st
 
 // ApplyGreenfieldSchema mirrors production migration jobs: GORM creates
 // ordinary PostgreSQL tables, then the app-specific capability SQL enables
-// TimescaleDB hypertables, pgvector indexes, search_tsv (lakebase_text /
-// ts_rank path — no pg_search), append-only triggers, and partial indexes.
+// pgvector indexes, search_tsv (lakebase_text / ts_rank path — no pg_search),
+// append-only triggers, and partial indexes.
 func ApplyGreenfieldSchema(t *testing.T, ctx context.Context, db *sql.DB) {
 	t.Helper()
 	g, err := gorm.Open(postgres.New(postgres.Config{Conn: db}), &gorm.Config{})
@@ -211,8 +215,10 @@ func repoRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
 }
 
-// PostgresContainer boots TimescaleDB + pgvector (the official ha image
-// ships both) and applies the greenfield GORM + capability schema.
+// PostgresContainer boots PostgreSQL 16 + pgvector (see
+// PostgresContainerNoMigrate for the image choice) and applies the greenfield
+// GORM + capability schema — the end state is plain PostgreSQL: the removal
+// migrations drop timescaledb again.
 // Returns a *sql.DB connected to the freshly migrated database.
 //
 // Use this in any integration suite that needs a clean DB with the

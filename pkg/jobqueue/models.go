@@ -90,8 +90,9 @@ type OpportunitySourceRecord struct {
 
 func (OpportunitySourceRecord) TableName() string { return "opportunity_sources" }
 
-// IngestEventRecord is converted to an append-only TimescaleDB hypertable by
-// the SQL capability migration after GORM creates its ordinary table shape.
+// IngestEventRecord is an append-only Postgres ledger table; the SQL
+// capability migration adds the append-only triggers after GORM creates
+// its ordinary table shape.
 type IngestEventRecord struct {
 	EventID    string          `gorm:"primaryKey;type:varchar(20)"`
 	OccurredAt time.Time       `gorm:"primaryKey;not null;default:now()"`

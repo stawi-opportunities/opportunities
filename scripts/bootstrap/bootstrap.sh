@@ -23,7 +23,7 @@ echo "[1/4] Seed Vault secrets"
 
 echo ""
 echo "[2/2] Deploy services with DO_DATABASE_MIGRATE=true"
-echo "    The crawler owns the PostgreSQL/TimescaleDB job schema."
+echo "    The crawler owns the PostgreSQL job schema."
 echo "    The matching service owns candidate and application schema."
 echo "    Wait for both migrations to complete before scaling workers."
 

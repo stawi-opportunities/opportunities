@@ -33,15 +33,27 @@ func TestPostgresPipelineMigration(t *testing.T) {
 		&jobqueue.OpportunitySourceRecord{},
 		&jobqueue.IngestEventRecord{},
 	))
-	sql, err := os.ReadFile("../../apps/crawler/migrations/0001/20260706_0140_postgres_job_pipeline.sql")
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, string(sql))
-	require.NoError(t, err)
+	for _, file := range []string{
+		"../../apps/crawler/migrations/0001/20260706_0140_postgres_job_pipeline.sql",
+		"../../apps/crawler/migrations/0001/20260831_0023_remove_timescaledb.sql",
+	} {
+		sql, err := os.ReadFile(file)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, string(sql))
+		require.NoError(t, err, "apply %s", file)
+	}
 
-	var hypertable bool
+	// job_ingest_events is a plain append-only table; timescaledb is gone.
+	var hasTimescale bool
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT EXISTS(
-		SELECT 1 FROM timescaledb_information.hypertables WHERE hypertable_name='job_ingest_events')`).Scan(&hypertable))
-	require.True(t, hypertable)
+		SELECT 1 FROM pg_extension WHERE extname='timescaledb')`).Scan(&hasTimescale))
+	require.False(t, hasTimescale, "timescaledb extension should not be installed")
+
+	var triggers int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM pg_trigger
+		WHERE tgrelid = 'job_ingest_events'::regclass
+		  AND tgname IN ('job_ingest_events_append_only','job_ingest_events_no_truncate')`).Scan(&triggers))
+	require.Equal(t, 2, triggers, "append-only triggers should exist")
 
 	_, err = db.ExecContext(ctx, `INSERT INTO job_ingest_events
 		(event_id,ingest_id,variant_id,source_id,event_type,attempt) VALUES ('e1','i1','v1','s1','enqueued',0)`)

@@ -1,6 +1,6 @@
 # Environment bootstrap
 
-The opportunities platform uses PostgreSQL with TimescaleDB for job data.
+The opportunities platform uses PostgreSQL for job data.
 
 1. Copy `vault-seeds.env.example` to the ignored `vault-seeds.env` and supply
    the R2 credentials used only by definitions and candidate documents.

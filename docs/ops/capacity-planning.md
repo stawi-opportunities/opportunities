@@ -21,6 +21,6 @@ Worker throughput must exceed sustained crawl production. PostgreSQL enforces a 
 
 Structured extract paths (JSON APIs, schema.org JSON-LD) are CPU/network bound and predictable. Recipe generation (optional LLM) is offline/ops and should not share the hot crawl path's SLO.
 
-## Timescale
+## Event storage
 
-Retention and compression apply to append-only ingestion events. The mutable leased queue remains a regular PostgreSQL table.
+Append-only ingestion events accumulate in plain PostgreSQL tables — there is no automatic retention or compression. Revisit partitioning/retention with pg_partman if volume warrants. The mutable leased queue remains a regular PostgreSQL table.

@@ -103,8 +103,8 @@ func main() {
 	// Handle database migration if configured (colony Helm chart sets
 	// DO_DATABASE_MIGRATE=true for the pre-install migration job).
 	// GORM owns ordinary schema. The few SQL files only enable database
-	// capabilities GORM cannot express: extensions, Timescale policies,
-	// append-only triggers, partial indexes, and materialized views.
+	// capabilities GORM cannot express: extensions, append-only triggers,
+	// partial indexes, and materialized views.
 	if cfg.DoDatabaseMigrate() {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")

@@ -43,9 +43,8 @@ func TestPGDailyCapQuery_CountsTodayOnly(t *testing.T) {
 
 	n, err := q.TodayCount(ctx, candidateID)
 	require.NoError(t, err)
-	// Should see today's 3 (via the recent-tail UNION). The CAGG may
-	// still be empty since refresh runs every 5 minutes.
-	require.GreaterOrEqual(t, n, 3)
+	// Should see exactly today's 3, counted straight from the events table.
+	require.Equal(t, 3, n)
 }
 
 func TestFanOut_DailyCapOverflowsBeyondLimit(t *testing.T) {

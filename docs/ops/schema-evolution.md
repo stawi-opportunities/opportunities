@@ -6,7 +6,8 @@ queue). Matching owns **product Neon** tables (catalog, candidates,
 applications, matching, billing cache). Separate Neon projects — never share.
 See [db-boundaries.md](./db-boundaries.md).
 
-Use ordinary PostgreSQL tables for mutable state. Use a TimescaleDB hypertable
-only for time-ordered operational history, and enforce append-only behavior for
-immutable event ledgers. Every migration must be idempotent and integration
-tested against the production TimescaleDB major version.
+Use ordinary PostgreSQL tables for mutable state. Time-ordered operational
+history lives in plain append-only tables with trigger guards (partitioning
+via pg_partman can be revisited if volume warrants). Every migration must be
+idempotent and integration tested against the production PostgreSQL major
+version.

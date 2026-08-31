@@ -242,8 +242,8 @@ func (Source) TableName() string { return "sources" }
 
 // CrawlJob records a single crawl execution against a source.
 //
-// GORM owns the table shape and composite keys. The capability migration
-// converts it to a TimescaleDB hypertable partitioned by scheduled_at.
+// GORM owns the table shape and composite keys; the capability migration
+// adds the (idempotency_key, scheduled_at) and source/time indexes.
 type CrawlJob struct {
 	ID             string         `gorm:"primaryKey;column:id;type:varchar(20)" json:"id"`
 	ScheduledAt    time.Time      `gorm:"primaryKey;column:scheduled_at;not null;uniqueIndex:crawl_jobs_idempotency_idx,priority:2" json:"scheduled_at"`
