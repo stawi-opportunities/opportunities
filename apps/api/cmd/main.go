@@ -331,7 +331,16 @@ func main() {
 	mux.HandleFunc("OPTIONS /opportunities/{slug}/apply", corsBeaconPreflight)
 	mux.HandleFunc("POST /opportunities/{slug}/apply", applyBeaconHandler(analyticsClient, countersClient))
 
-	srv := &http.Server{Addr: cfg.ServerPort, Handler: mux}
+	// Bound slow clients (slowloris). No WriteTimeout: some admin handlers
+	// run long and Cloud Run already caps request duration.
+	srv := &http.Server{
+		Addr:              cfg.ServerPort,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 	go func() {
 		log.WithField("port", cfg.ServerPort).Info("API server listening")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

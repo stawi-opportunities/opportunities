@@ -35,8 +35,9 @@ func main() {
 
 	cfg, err := config.FromEnv[atsconfig.Config]()
 	if err != nil {
-		log.WithError(err).Warn("ats: FromEnv incomplete; using defaults + process env")
-		cfg = atsconfig.Config{}
+		// Never fall back to a zero Config: it drops envDefault values such as
+		// AUTH_REQUIRE_JWT=true and would silently enable header auth.
+		log.WithError(err).Fatal("ats: invalid configuration")
 	}
 	if cfg.Name() == "" {
 		cfg.ServiceName = serviceName

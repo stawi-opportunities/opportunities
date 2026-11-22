@@ -423,23 +423,24 @@ func main() {
 	// Auth: shared secret (Trustage / machine) and/or JWT via Frame authenticator.
 	// RequireAdmin accepts X-Admin-Token before JWT so Trustage crons work
 	// without an admin-role JWT.
-	var adminHandler http.Handler = adminMux
 	var authenticator security.Authenticator
 	if secMgr := svc.SecurityManager(); secMgr != nil {
 		authenticator = secMgr.GetAuthenticator(ctx)
 	}
-	if authenticator != nil || cfg.AdminToken != "" {
-		adminHandler = httpmw.RequireAdmin(httpmw.AdminAuthConfig{
-			Authenticator: authenticator,
-			SharedSecret:  cfg.AdminToken,
-		}, adminMux)
-		if cfg.AdminToken != "" {
-			log.Info("admin endpoints protected with JWT and/or ADMIN_TOKEN")
-		} else {
-			log.Info("admin endpoints protected with JWT authentication")
-		}
-	} else {
-		log.Warn("no SecurityManager authenticator or ADMIN_TOKEN — admin endpoints are UNPROTECTED")
+	// Always wrapped: with neither an authenticator nor ADMIN_TOKEN,
+	// RequireAdmin rejects every request (fail closed) instead of serving
+	// stop/pause/backfill to anyone.
+	adminHandler := httpmw.RequireAdmin(httpmw.AdminAuthConfig{
+		Authenticator: authenticator,
+		SharedSecret:  cfg.AdminToken,
+	}, adminMux)
+	switch {
+	case authenticator == nil && cfg.AdminToken == "":
+		log.Error("no SecurityManager authenticator or ADMIN_TOKEN — admin endpoints reject all requests")
+	case cfg.AdminToken != "":
+		log.Info("admin endpoints protected with JWT and/or ADMIN_TOKEN")
+	default:
+		log.Info("admin endpoints protected with JWT authentication")
 	}
 
 	// ensureSchedule / removeSchedule are nil-safe no-ops when scheduling is
