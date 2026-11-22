@@ -41,9 +41,23 @@ func (r *fakeSourceHealthRepo) GetByID(_ context.Context, id string) (*domain.So
 	return &domain.Source{BaseModel: domain.BaseModel{ID: id}, CrawlIntervalSec: 60, HealthScore: 1.0}, nil
 }
 
-func (r *fakeSourceHealthRepo) SetStatus(_ context.Context, id string, status domain.SourceStatus) error {
-	r.statuses[id] = status
-	return nil
+// TransitionStatus is a real compare-and-set against the fake's current
+// status (statuses map, else the shaped src, else active).
+func (r *fakeSourceHealthRepo) TransitionStatus(_ context.Context, id string, from []domain.SourceStatus, to domain.SourceStatus) (bool, error) {
+	cur, ok := r.statuses[id]
+	if !ok {
+		cur = domain.SourceActive
+		if r.src != nil && r.src.Status != "" {
+			cur = r.src.Status
+		}
+	}
+	for _, f := range from {
+		if f == cur {
+			r.statuses[id] = to
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (r *fakeSourceHealthRepo) RecordSuccess(_ context.Context, id string, _ float64) error {
 	r.success = append(r.success, id)
@@ -184,5 +198,48 @@ func TestPageCompletedRecoveredSourcePromotedToActive(t *testing.T) {
 
 	if repo.statuses["s6"] != domain.SourceActive {
 		t.Fatalf("recovered source not promoted; statuses=%v", repo.statuses)
+	}
+}
+
+func TestPageCompletedSourceNotEligibleIsNotAFailure(t *testing.T) {
+	repo := newFakeHealthRepo()
+	repo.src = &domain.Source{Status: domain.SourceDisabled, ConsecutiveFailures: 4, CrawlIntervalSec: 60, HealthScore: 0.5}
+	h := NewPageCompletedHandler(repo)
+
+	runPageCompleted(t, h, eventsv1.CrawlPageCompletedV1{SourceID: "src-stopped", ErrorCode: "source_not_eligible"})
+
+	if len(repo.failure) != 0 || len(repo.success) != 0 {
+		t.Fatalf("health bookkeeping ran: failure=%v success=%v", repo.failure, repo.success)
+	}
+	if _, changed := repo.statuses["src-stopped"]; changed {
+		t.Fatalf("status changed to %q", repo.statuses["src-stopped"])
+	}
+	if _, touched := repo.nextSeen["src-stopped"]; touched {
+		t.Fatal("next_crawl_at rescheduled for a refused source")
+	}
+}
+
+func TestPageCompletedFailureNeverOverwritesStoppedSource(t *testing.T) {
+	repo := newFakeHealthRepo()
+	// A real crawl failure lands for a source the operator just stopped.
+	repo.src = &domain.Source{Status: domain.SourceDisabled, ConsecutiveFailures: 10, CrawlIntervalSec: 60, HealthScore: 0.5}
+	h := NewPageCompletedHandler(repo)
+
+	runPageCompleted(t, h, eventsv1.CrawlPageCompletedV1{SourceID: "src-stopped", ErrorCode: "iterator_failed"})
+
+	if st, changed := repo.statuses["src-stopped"]; changed {
+		t.Fatalf("stopped source was moved to %q", st)
+	}
+}
+
+func runPageCompleted(t *testing.T, h *PageCompletedHandler, p eventsv1.CrawlPageCompletedV1) {
+	t.Helper()
+	raw, err := json.Marshal(eventsv1.NewEnvelope(eventsv1.TopicCrawlPageCompleted, p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rm := json.RawMessage(raw)
+	if err := h.Execute(context.Background(), &rm); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
 }

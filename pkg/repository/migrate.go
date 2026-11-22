@@ -37,6 +37,7 @@ func migratePool(ctx context.Context, dbPool pool.Pool, migrationsDirPath string
 		&domain.CrawlRun{},
 		&jobqueue.QueueRecord{},
 		&jobqueue.IngestEventRecord{},
+		&jobqueue.CatalogCommandRecord{},
 	}
 	models = append(models, frontier.Schema()...)
 	if err := dbPool.Migrate(ctx, migrationsDirPath, models...); err != nil {

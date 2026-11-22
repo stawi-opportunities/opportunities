@@ -192,6 +192,7 @@ func ApplyGreenfieldSchema(t *testing.T, ctx context.Context, db *sql.DB) {
 		&jobqueue.OpportunityIdentityRecord{},
 		&jobqueue.OpportunitySourceRecord{},
 		&jobqueue.IngestEventRecord{},
+		&jobqueue.CatalogCommandRecord{},
 		&domain.CandidateProfile{},
 		&domain.CandidateApplication{},
 		&domain.OpportunityFlag{},

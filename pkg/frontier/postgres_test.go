@@ -15,6 +15,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	"github.com/stawi-opportunities/opportunities/pkg/domain"
 	"github.com/stawi-opportunities/opportunities/pkg/frontier"
 	"github.com/stawi-opportunities/opportunities/tests/integration/testhelpers"
 )
@@ -29,6 +30,8 @@ func setupFrontierDB(t *testing.T) (frontier.PoolFn, context.Context) {
 	g, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, g.AutoMigrate(frontier.Schema()...))
+	// Dequeue skips URLs of stopped sources, so it reads sources.status.
+	require.NoError(t, g.AutoMigrate(&domain.Source{}))
 	// canonical_url_hash unique index is the dedup safeguard the
 	// SQL migration ships. AutoMigrate doesn't replicate the
 	// index from tags here, so the test fixture creates it
@@ -306,4 +309,74 @@ func TestHostOf(t *testing.T) {
 	for _, tc := range cases {
 		require.Equal(t, tc.want, frontier.HostOf(tc.in), tc.in)
 	}
+}
+
+func TestDequeue_SkipsStoppedSources(t *testing.T) {
+	pool, ctx := setupFrontierDB(t)
+	f := frontier.NewPostgresFrontier(pool)
+	g := pool(ctx, false)
+	for id, status := range map[string]domain.SourceStatus{"live": domain.SourceActive, "stopped": domain.SourceDisabled} {
+		require.NoError(t, g.Create(&domain.Source{
+			BaseModel: domain.BaseModel{ID: id}, Type: domain.SourceGenericHTML,
+			BaseURL: "https://" + id + ".example.com", Status: status,
+		}).Error)
+	}
+	mustEnqueue(t, f, ctx,
+		// Same host: the stopped URL has the higher priority and must be skipped.
+		frontier.URL{CanonicalURL: "https://shared.example.com/stopped", SourceID: "stopped", Priority: 0.9},
+		frontier.URL{CanonicalURL: "https://shared.example.com/live", SourceID: "live", Priority: 0.1},
+		// A host whose only pending URL belongs to the stopped source.
+		frontier.URL{CanonicalURL: "https://only-stopped.example.com/x", SourceID: "stopped", Priority: 0.9},
+	)
+
+	out, err := f.Dequeue(ctx, 10, "worker-1")
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, "https://shared.example.com/live", out[0].CanonicalURL)
+
+	// Restarting the source makes its untouched URLs claimable again.
+	require.NoError(t, g.Exec(`UPDATE sources SET status='active' WHERE id='stopped'`).Error)
+	require.NoError(t, g.Exec(`UPDATE host_state SET next_eligible_at=NULL, concurrency_now=0`).Error)
+	out, err = f.Dequeue(ctx, 10, "worker-2")
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+	for _, u := range out {
+		require.Equal(t, "stopped", u.SourceID)
+		require.Equal(t, 1, u.Attempts, "skipped URLs were never claimed while stopped")
+	}
+}
+
+func TestParkAndUnparkSource(t *testing.T) {
+	pool, ctx := setupFrontierDB(t)
+	f := frontier.NewPostgresFrontier(pool)
+	g := pool(ctx, false)
+	mustEnqueue(t, f, ctx,
+		frontier.URL{CanonicalURL: "https://a.example.com/1", SourceID: "stopped", Priority: 0.5},
+		frontier.URL{CanonicalURL: "https://b.example.com/2", SourceID: "stopped", Priority: 0.5},
+		frontier.URL{CanonicalURL: "https://c.example.com/3", SourceID: "other", Priority: 0.5},
+	)
+	require.NoError(t, g.Exec(`UPDATE url_frontier SET state='done' WHERE canonical_url LIKE 'https://b.%'`).Error)
+
+	n, err := f.ParkSource(ctx, "stopped")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n, "only pending rows are parked; done stays done")
+	states := map[string]string{}
+	rows, err := g.Raw(`SELECT canonical_url, state FROM url_frontier`).Rows()
+	require.NoError(t, err)
+	for rows.Next() {
+		var u, st string
+		require.NoError(t, rows.Scan(&u, &st))
+		states[u] = st
+	}
+	require.NoError(t, rows.Close())
+	require.Equal(t, "parked", states["https://a.example.com/1"])
+	require.Equal(t, "done", states["https://b.example.com/2"])
+	require.Equal(t, "pending", states["https://c.example.com/3"])
+
+	n, err = f.UnparkSource(ctx, "stopped")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n)
+	var st string
+	require.NoError(t, g.Raw(`SELECT state FROM url_frontier WHERE canonical_url='https://a.example.com/1'`).Scan(&st).Error)
+	require.Equal(t, "pending", st)
 }

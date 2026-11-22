@@ -37,8 +37,11 @@ type SourceGetter interface {
 // SourceStatusSetter lets the handler pause a source it can't crawl (no
 // connector and no recipe). Satisfied by *repository.SourceRepository.
 type SourceStatusSetter interface {
-	SetStatus(ctx context.Context, id string, status domain.SourceStatus) error
+	TransitionStatus(ctx context.Context, id string, from []domain.SourceStatus, to domain.SourceStatus) (bool, error)
 }
+
+// crawlingStatuses are the states an automatic pause may move a source out of.
+var crawlingStatuses = []domain.SourceStatus{domain.SourceActive, domain.SourceDegraded}
 
 // CrawlRunStore is the crawl_runs state-machine slice the handler drives
 // (satisfied by *repository.CrawlRunRepository). It is an interface so the
@@ -63,9 +66,9 @@ type CrawlRequestDeps struct {
 	// connector and no recipe (e.g. an individual ATS board whose connector was
 	// migrated to an aggregate recipe). nil disables auto-pause.
 	StatusSetter SourceStatusSetter
-	Registry   *connectors.Registry
-	Kinds      *opportunity.Registry // opportunity-kind registry; required by Verify
-	Normalizer *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
+	Registry     *connectors.Registry
+	Kinds        *opportunity.Registry // opportunity-kind registry; required by Verify
+	Normalizer   *normalize.Normalizer // nil → fall back to raw ExternalToVariant (no geocoder)
 	// HowToApply peels application instructions via inference after Accept.
 	// nil skips peeling (connector-supplied HowToApply still works).
 	HowToApply crawlaccept.HowToApplyPeeler
@@ -292,7 +295,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 			log.WithField("source_type", src.Type).
 				Warn("crawl.request: engine requires a recipe; none installed")
 			if h.deps.StatusSetter != nil {
-				_ = h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused)
+				_, _ = h.deps.StatusSetter.TransitionStatus(ctx, src.ID, crawlingStatuses, domain.SourcePaused)
 			}
 			h.emitCompleted(ctx, eventsv1.CrawlPageCompletedV1{
 				RequestID: req.RequestID,
@@ -305,7 +308,7 @@ func (h *CrawlRequestHandler) Execute(ctx context.Context, payload any) error {
 		c, ok := h.deps.Registry.Get(src.Type)
 		if !ok {
 			if h.deps.StatusSetter != nil {
-				if perr := h.deps.StatusSetter.SetStatus(ctx, src.ID, domain.SourcePaused); perr != nil {
+				if _, perr := h.deps.StatusSetter.TransitionStatus(ctx, src.ID, crawlingStatuses, domain.SourcePaused); perr != nil {
 					log.WithError(perr).Warn("crawl.request: auto-pause of engine-less source failed")
 				} else {
 					log.WithField("source_type", src.Type).

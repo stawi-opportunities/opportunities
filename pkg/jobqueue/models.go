@@ -105,3 +105,25 @@ type IngestEventRecord struct {
 }
 
 func (IngestEventRecord) TableName() string { return "job_ingest_events" }
+
+// CatalogCommandRecord is a crawl-plane request for a change to the product
+// catalog. The crawler cannot reach the product database, so it records the
+// intent here and the dual-DB worker applies it (see catalog.go).
+type CatalogCommandRecord struct {
+	ID             string     `gorm:"primaryKey;type:varchar(20)"`
+	Kind           string     `gorm:"type:varchar(32);not null;check:catalog_commands_kind_valid,kind IN ('deactivate_source')"`
+	SourceID       string     `gorm:"type:varchar(20);not null;index"`
+	Reason         string     `gorm:"type:text;not null;default:''"`
+	Followup       bool       `gorm:"not null;default:false"`
+	Status         string     `gorm:"type:varchar(16);not null;default:pending;index:idx_catalog_commands_claimable,priority:1;check:catalog_commands_status_valid,status IN ('pending','processing','done','superseded','dead')"`
+	Attempt        int        `gorm:"not null;default:0"`
+	AvailableAt    time.Time  `gorm:"not null;default:now();index:idx_catalog_commands_claimable,priority:2"`
+	LeaseExpiresAt *time.Time `gorm:"type:timestamptz"`
+	ClaimedBy      *string    `gorm:"type:text"`
+	LastError      *string    `gorm:"type:text"`
+	CreatedAt      time.Time  `gorm:"not null;default:now()"`
+	UpdatedAt      time.Time  `gorm:"not null;default:now()"`
+	ProcessedAt    *time.Time `gorm:"type:timestamptz"`
+}
+
+func (CatalogCommandRecord) TableName() string { return "catalog_commands" }
