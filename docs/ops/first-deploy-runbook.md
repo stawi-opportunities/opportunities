@@ -4,7 +4,7 @@ Production topology: **two Neon projects** + cluster crawl jobs.
 See [db-boundaries.md](./db-boundaries.md).
 
 1. Provision **product Neon** via Cloud Run `opportunities-matching` (`DO_SETUP` / migrate).
-2. Provision **crawl Neon** via Cloud Run `opportunities-crawler` (`DO_DATABASE_MIGRATE`).
+2. Provision **crawl Neon** via Cloud Run `opportunities-crawler` (setup Job: `DO_SETUP=true` or argv `setup`; legacy `DO_DATABASE_MIGRATE=true` still honoured).
 3. Deploy **api** (Cloud Run) sharing the **product** Neon secret.
 4. Seed cluster secrets:
    - `crawl-neon-credentials-opportunities` ← crawl Neon URL

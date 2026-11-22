@@ -2,7 +2,7 @@
 
 These templates are registered in **service-notification** under stable ids.
 The matching service **ensures** they exist during setup/migrate
-(`DO_DATABASE_MIGRATE=true`) via `notify.EnsureFromConfig`.
+(`DO_SETUP=true`) via `notify.EnsureFromConfig`.
 
 | Template id | Env override | Used by |
 |-------------|--------------|---------|
@@ -17,7 +17,7 @@ Source of truth for bodies: `pkg/notify/catalog.go` (subject / html / text Go te
 ## Setup
 
 1. Deploy matching with `NOTIFICATION_SERVICE_URI` (and SPIFFE path if used).
-2. Run the migrate/setup Job (`DO_DATABASE_MIGRATE=true`).
+2. Run the migrate/setup Job (`DO_SETUP=true`).
 3. Logs should include `setup: notification templates ensured`.
 
 Runtime also soft-ensures on boot (warn-only if incomplete).
