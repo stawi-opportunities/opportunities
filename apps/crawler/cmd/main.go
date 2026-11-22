@@ -154,9 +154,9 @@ func main() {
 	// audiences (Hydra returns invalid_client). Use a plain stdlib
 	// client; the connector retry/backoff loop in pkg/connectors/httpx
 	// already provides resilience.
-	httpDoer := &http.Client{
-		Timeout: time.Duration(cfg.HTTPTimeoutSec) * time.Second,
-	}
+	// Public-only: crawl URLs come from scraped/third-party data, so the
+	// client refuses loopback, private and metadata addresses (SSRF).
+	httpDoer := httpx.NewPublicClient(time.Duration(cfg.HTTPTimeoutSec) * time.Second)
 	// Unblocker fallback: route blocked requests (WAF/anti-bot 403s on HTML job
 	// boards) through scrape.do or a residential-unblocker proxy, while requests
 	// that succeed directly (most JSON APIs) stay off the paid path.

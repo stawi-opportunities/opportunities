@@ -97,9 +97,9 @@ func main() {
 	// Fetcher — plain stdlib client; the per-URL fetch path is
 	// short-lived and doesn't need Frame's OAuth wrapping (target
 	// hosts are public job boards).
-	httpDoer := &http.Client{
-		Timeout: time.Duration(cfg.HTTPTimeoutSec) * time.Second,
-	}
+	// Public-only: crawl URLs come from scraped/third-party data, so the
+	// client refuses loopback, private and metadata addresses (SSRF).
+	httpDoer := httpx.NewPublicClient(time.Duration(cfg.HTTPTimeoutSec) * time.Second)
 	// Unblocker fallback — identical wiring to apps/crawler: blocked
 	// requests retry through scrape.do / the proxy, direct successes
 	// never pay for it.
