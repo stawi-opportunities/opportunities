@@ -745,6 +745,13 @@ func main() {
 		}))
 		log.WithField("interval", interval.String()).Info("crawler: internal-overdue via Frame BackgroundConsumer")
 	}
+	if cfg.RetentionInterval > 0 {
+		interval := cfg.RetentionInterval
+		initOpts = append(initOpts, frame.WithBackgroundConsumer(func(bgCtx context.Context) error {
+			return service.RunRetentionLoop(bgCtx, dbFn, repository.DefaultRetentionPolicy(), interval)
+		}))
+		log.WithField("interval", interval.String()).Info("crawler: crawl retention via Frame BackgroundConsumer")
+	}
 
 	svc.Init(ctx, initOpts...)
 

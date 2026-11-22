@@ -164,6 +164,13 @@ type CrawlerConfig struct {
 	// Default 15m matches definitions/trustage/source-crawl-overdue.json.
 	InternalOverdueInterval time.Duration `env:"INTERNAL_OVERDUE_INTERVAL" envDefault:"15m"`
 
+	// RetentionInterval runs the crawl-plane retention sweep in-process
+	// (queue, ingest events, crawl jobs/runs, frontier, catalog commands —
+	// windows in repository.DefaultRetentionPolicy). In-process because
+	// these tables are never cleaned otherwise: the TimescaleDB jobs never
+	// ran on Neon. Zero disables.
+	RetentionInterval time.Duration `env:"RETENTION_INTERVAL" envDefault:"1h"`
+
 	// AdminToken is a shared secret accepted via X-Admin-Token (or Bearer)
 	// for machine callers such as Trustage crons. Empty = JWT-only.
 	AdminToken string `env:"ADMIN_TOKEN" envDefault:""`
