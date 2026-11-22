@@ -18,6 +18,22 @@ type CheckoutRecord struct {
 	UpdatedAt      time.Time `gorm:"not null;default:now()"`
 	// ActivatedAt marks a paid checkout whose entitlement was granted.
 	ActivatedAt *time.Time `gorm:"type:timestamptz;index:idx_candidate_checkouts_paid_unactivated,where:status = 'paid' AND activated_at IS NULL"`
+	// ActivationClaimedAt is the lease taken before granting the entitlement,
+	// so concurrent webhook / status-poll / reconciler calls cannot both run
+	// the side effects (subscription flip, one-time report email).
+	ActivationClaimedAt *time.Time `gorm:"type:timestamptz"`
+	// ActivationAttempts counts claims; retries stop at MaxActivationAttempts.
+	ActivationAttempts int `gorm:"not null;default:0"`
+	// NextActivationAt is the backoff gate for the next reconciler retry.
+	NextActivationAt *time.Time `gorm:"type:timestamptz"`
+	// ActivationError is the last activation failure, for operators.
+	ActivationError string `gorm:"type:text;not null;default:''"`
+	// PaidAt is when the checkout moved to paid (first time); "newer
+	// purchase" decisions compare payment time, not checkout creation.
+	PaidAt *time.Time `gorm:"type:timestamptz"`
+	// ActivationOutcome: applied | superseded (a newer purchase was already
+	// active; review for refund) | already_held.
+	ActivationOutcome string `gorm:"type:text;not null;default:''"`
 }
 
 func (CheckoutRecord) TableName() string { return "candidate_checkouts" }

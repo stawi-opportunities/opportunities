@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"time"
 
 	"github.com/pitabwire/util"
 )
@@ -48,6 +49,11 @@ type ReconcileResult struct {
 	Failed        int   `json:"failed"`
 	Errors        int   `json:"errors"`
 	Cancellations int64 `json:"cancellations_finalized"`
+	// StuckActivations: paid checkouts that exhausted activation retries.
+	StuckActivations int64 `json:"stuck_activations"`
+	// SupersededLast24h: paid checkouts not applied because a later purchase
+	// was already active — money taken, nothing granted; review for refund.
+	SupersededLast24h int64 `json:"superseded_last_24h"`
 }
 
 // Run sweeps pending checkouts once. Per-checkout errors are logged and
@@ -107,6 +113,26 @@ func (r *Reconciler) Run(ctx context.Context) (ReconcileResult, error) {
 			continue
 		}
 		res.Activated++
+	}
+
+	stuck, err := r.store.CountStuckActivations(ctx)
+	if err != nil {
+		res.Errors++
+		log.WithError(err).Warn("billing: reconcile: count stuck activations failed")
+	} else if stuck > 0 {
+		res.StuckActivations = stuck
+		log.WithField("stuck_activations", stuck).
+			Error("billing: paid checkouts exhausted activation retries — users paid without entitlement; investigate activation_error")
+	}
+
+	superseded, err := r.store.CountSupersededSince(ctx, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		res.Errors++
+		log.WithError(err).Warn("billing: reconcile: count superseded failed")
+	} else if superseded > 0 {
+		res.SupersededLast24h = superseded
+		log.WithField("superseded_last_24h", superseded).
+			Error("billing: paid checkouts superseded by a later purchase — review for refund (activation_outcome='superseded')")
 	}
 
 	if r.finalizer != nil {

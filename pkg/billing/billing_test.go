@@ -388,7 +388,13 @@ func TestNopGateway(t *testing.T) {
 // --- activator (idempotent flip) --------------------------------------
 
 type fakeStore struct {
-	rows map[string]billing.Checkout
+	rows       map[string]billing.Checkout
+	claims     map[string]bool
+	attempts   int
+	released   int
+	stuck      int64
+	superseded int64
+	outcomes   map[string]string
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]billing.Checkout{}} }
@@ -419,14 +425,71 @@ func (s *fakeStore) ResolveStatus(_ context.Context, id string, status billing.S
 	return c, true, nil
 }
 
-func (s *fakeStore) MarkActivated(_ context.Context, id string) error {
+func (s *fakeStore) MarkActivated(_ context.Context, id, outcome string) error {
 	c := s.rows[id]
 	if c.ActivatedAt == nil {
 		now := time.Now()
 		c.ActivatedAt = &now
 	}
 	s.rows[id] = c
+	if s.outcomes == nil {
+		s.outcomes = map[string]string{}
+	}
+	if s.outcomes[id] == "" {
+		s.outcomes[id] = outcome
+	}
+	delete(s.claims, id)
 	return nil
+}
+
+// ClaimActivation mirrors Store.ClaimActivation: paid, unactivated, no claim.
+func (s *fakeStore) ClaimActivation(_ context.Context, id string) (billing.ActivationClaim, bool, error) {
+	if s.claims == nil {
+		s.claims = map[string]bool{}
+	}
+	c := s.rows[id]
+	if c.Status != billing.StatusPaid || c.ActivatedAt != nil || s.claims[id] {
+		return billing.ActivationClaim{}, false, nil
+	}
+	s.claims[id] = true
+	s.attempts++
+	return billing.ActivationClaim{At: time.Now()}, true, nil
+}
+
+func (s *fakeStore) ReleaseActivation(_ context.Context, id string, _ billing.ActivationClaim, _ error) error {
+	delete(s.claims, id)
+	s.released++
+	return nil
+}
+
+// HasNewerActivatedSubscription mirrors the store: another subscription
+// checkout activated (not superseded) after c was paid.
+func (s *fakeStore) HasNewerActivatedSubscription(_ context.Context, c billing.Checkout) (bool, error) {
+	paidAt := c.CreatedAt
+	if c.PaidAt != nil {
+		paidAt = *c.PaidAt
+	}
+	for _, o := range s.rows {
+		if o.CandidateID == c.CandidateID && o.PromptID != c.PromptID && o.ActivatedAt != nil &&
+			s.outcomes[o.PromptID] != billing.OutcomeSuperseded &&
+			newerPaid(o).After(paidAt) && !billing.IsOneTimeProduct(billing.PlanID(o.PlanID)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func newerPaid(o billing.Checkout) time.Time {
+	if o.PaidAt != nil {
+		return *o.PaidAt
+	}
+	return *o.ActivatedAt
+}
+
+func (s *fakeStore) CountStuckActivations(context.Context) (int64, error) { return s.stuck, nil }
+
+func (s *fakeStore) CountSupersededSince(context.Context, time.Time) (int64, error) {
+	return s.superseded, nil
 }
 
 func (s *fakeStore) ListPending(_ context.Context, limit int) ([]billing.Checkout, error) {
@@ -453,11 +516,16 @@ func (s *fakeStore) list(limit int, keep func(billing.Checkout) bool) []billing.
 }
 
 type fakeActivator struct {
+	holds   string // subscription id the candidate already holds
 	calls   int
 	changed bool
 	lastSub string
 	lastCID string
 	err     error
+}
+
+func (a *fakeActivator) HoldsSubscription(_ context.Context, _ string, subID string) (bool, error) {
+	return subID != "" && subID == a.holds, nil
 }
 
 func (a *fakeActivator) ActivateSubscription(_ context.Context, candidateID, subID, _ string) (bool, error) {
@@ -533,6 +601,152 @@ func TestActivator_RetriesActivationThatFailedAfterPaid(t *testing.T) {
 	require.NoError(t, act.Activate(context.Background(), "chk_r", billing.StatusPaid, "s", ""))
 	require.Equal(t, 2, subs.calls)
 	require.NotNil(t, store.rows["chk_r"].ActivatedAt)
+}
+
+func TestActivator_ClaimHeldElsewhereRunsNoSideEffects(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["chk"] = billing.Checkout{PromptID: "chk", CandidateID: "c", PlanID: "pro", Status: billing.StatusPaid}
+	store.claims = map[string]bool{"chk": true} // e.g. the status poll is mid-activation
+	subs := &fakeActivator{changed: true}
+	act := billing.NewActivator(store, subs)
+
+	require.NoError(t, act.Activate(context.Background(), "chk", billing.StatusPaid, "s", ""))
+	require.Equal(t, 0, subs.calls)
+	require.Nil(t, store.rows["chk"].ActivatedAt, "the claim holder records activation, not us")
+}
+
+func TestActivator_OneTimeFulfilledOnceAcrossDuplicateCalls(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["rep"] = billing.Checkout{PromptID: "rep", CandidateID: "c", PlanID: string(billing.ProductATSReport), Status: billing.StatusPending}
+	ful := &countingFulfiller{}
+	act := billing.NewActivator(store, &fakeActivator{}).WithOneTimeFulfiller(ful)
+
+	for i := 0; i < 3; i++ { // status poll, webhook, reconciler
+		require.NoError(t, act.Activate(context.Background(), "rep", billing.StatusPaid, "", ""))
+	}
+	require.Equal(t, 1, ful.calls)
+}
+
+func TestActivator_OlderCheckoutDoesNotDowngradeNewerPlan(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	now := time.Now()
+	paidOld := now.Add(-2 * time.Hour) // starter paid, activation failed
+	store.rows["old"] = billing.Checkout{PromptID: "old", CandidateID: "c", PlanID: "starter", Status: billing.StatusPaid, CreatedAt: now.Add(-3 * time.Hour), PaidAt: &paidOld}
+	store.rows["new"] = billing.Checkout{PromptID: "new", CandidateID: "c", PlanID: "pro", Status: billing.StatusPaid, CreatedAt: now.Add(-time.Hour), ActivatedAt: &now}
+	subs := &fakeActivator{changed: true}
+	act := billing.NewActivator(store, subs)
+
+	require.NoError(t, act.Activate(context.Background(), "old", billing.StatusPaid, "sub-old", ""))
+	require.Equal(t, 0, subs.calls, "starter must not overwrite the pro plan bought after it")
+	require.NotNil(t, store.rows["old"].ActivatedAt, "handled; not retried forever")
+	require.Equal(t, billing.OutcomeSuperseded, store.outcomes["old"], "visible for refund review")
+}
+
+// Reviewer scenario: the user abandons a Pro checkout, buys Starter, then pays
+// the old Pro link. Pro was paid last, so it must be applied.
+func TestActivator_PayingAnOlderCheckoutLinkLastStillApplies(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	now := time.Now()
+	starterActivated := now.Add(-time.Hour)
+	store.rows["pro"] = billing.Checkout{PromptID: "pro", CandidateID: "c", PlanID: "pro", Status: billing.StatusPending, CreatedAt: now.Add(-48 * time.Hour)}
+	store.rows["starter"] = billing.Checkout{PromptID: "starter", CandidateID: "c", PlanID: "starter", Status: billing.StatusPaid, CreatedAt: now.Add(-2 * time.Hour), ActivatedAt: &starterActivated}
+	paidNow := now
+	row := store.rows["pro"]
+	row.PaidAt = &paidNow
+	store.rows["pro"] = row
+	subs := &fakeActivator{changed: true}
+	act := billing.NewActivator(store, subs)
+
+	require.NoError(t, act.Activate(context.Background(), "pro", billing.StatusPaid, "sub-pro", ""))
+	require.Equal(t, 1, subs.calls)
+	require.Equal(t, billing.OutcomeApplied, store.outcomes["pro"])
+}
+
+// The status poll passes its HTTP request context; a disconnect after the
+// side effects must not leave the activation unrecorded.
+func TestActivator_CancelledCallerContextStillRecordsActivation(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["rep"] = billing.Checkout{PromptID: "rep", CandidateID: "c", PlanID: string(billing.ProductATSReport), Status: billing.StatusPaid}
+	ctx, cancel := context.WithCancel(context.Background())
+	ful := &cancellingFulfiller{cancel: cancel}
+	act := billing.NewActivator(store, &fakeActivator{}).WithOneTimeFulfiller(ful)
+
+	require.NoError(t, act.Activate(ctx, "rep", billing.StatusPaid, "", ""))
+	require.NotNil(t, store.rows["rep"].ActivatedAt)
+	require.NoError(t, ful.sawCtxErr, "fulfilment ran on a context detached from the caller")
+}
+
+type cancellingFulfiller struct {
+	cancel    context.CancelFunc
+	sawCtxErr error
+}
+
+func (f *cancellingFulfiller) FulfillOneTime(ctx context.Context, _, _, _ string) error {
+	f.cancel() // the browser disconnects mid-request
+	f.sawCtxErr = ctx.Err()
+	return nil
+}
+
+func TestActivator_NewerOneTimePurchaseDoesNotBlockSubscription(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	now := time.Now()
+	store.rows["sub"] = billing.Checkout{PromptID: "sub", CandidateID: "c", PlanID: "pro", Status: billing.StatusPending, CreatedAt: now.Add(-time.Hour)}
+	store.rows["rep"] = billing.Checkout{PromptID: "rep", CandidateID: "c", PlanID: string(billing.ProductATSReport), Status: billing.StatusPaid, CreatedAt: now, ActivatedAt: &now}
+	subs := &fakeActivator{changed: true}
+	act := billing.NewActivator(store, subs)
+
+	require.NoError(t, act.Activate(context.Background(), "sub", billing.StatusPaid, "s", ""))
+	require.Equal(t, 1, subs.calls)
+}
+
+func TestActivator_RetrySkipsWhenSubscriptionAlreadyHeld(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	// Paid by the previous release, which never recorded activated_at.
+	store.rows["chk"] = billing.Checkout{PromptID: "chk", CandidateID: "c", PlanID: "pro", Status: billing.StatusPaid, SubscriptionID: "sub-1"}
+	subs := &fakeActivator{changed: true, holds: "sub-1"}
+	act := billing.NewActivator(store, subs)
+
+	require.NoError(t, act.Activate(context.Background(), "chk", billing.StatusPaid, "", ""))
+	require.Equal(t, 0, subs.calls, "re-activating would clear a later cancellation")
+	require.NotNil(t, store.rows["chk"].ActivatedAt)
+}
+
+func TestActivator_FailureReleasesClaimForRetry(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["chk"] = billing.Checkout{PromptID: "chk", CandidateID: "c", PlanID: "pro", Status: billing.StatusPending}
+	subs := &fakeActivator{err: errors.New("db blip")}
+	act := billing.NewActivator(store, subs)
+
+	require.Error(t, act.Activate(context.Background(), "chk", billing.StatusPaid, "s", ""))
+	require.Equal(t, 1, store.released)
+	require.False(t, store.claims["chk"], "claim released so a retry can run")
+}
+
+func TestReconciler_ReportsStuckAndSupersededActivations(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.stuck = 2
+	store.superseded = 1
+	rec := billing.NewReconciler(store, &fakeGateway{}, billing.NewActivator(store, &fakeActivator{}), 10)
+	res, err := rec.Run(context.Background())
+	require.NoError(t, err)
+	require.EqualValues(t, 2, res.StuckActivations)
+	require.EqualValues(t, 1, res.SupersededLast24h)
+}
+
+type countingFulfiller struct{ calls int }
+
+func (f *countingFulfiller) FulfillOneTime(context.Context, string, string, string) error {
+	f.calls++
+	return nil
 }
 
 func TestReconciler_RetriesPaidButUnactivated(t *testing.T) {

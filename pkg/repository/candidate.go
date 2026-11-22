@@ -252,6 +252,20 @@ WHERE candidate_id = ?`, daily, weekly, candidateID).Error
 	return res.RowsAffected > 0, nil
 }
 
+// HoldsSubscription reports whether the candidate (by id or legacy
+// profile_id) is currently paid on exactly subID.
+func (r *CandidateRepository) HoldsSubscription(ctx context.Context, candidateID, subID string) (bool, error) {
+	if subID == "" {
+		return false, nil
+	}
+	var n int64
+	err := r.db(ctx, false).Model(&domain.CandidateProfile{}).
+		Where("(id = ? OR profile_id = ?) AND subscription = ? AND subscription_id = ?",
+			candidateID, candidateID, domain.SubscriptionPaid, subID).
+		Count(&n).Error
+	return n > 0, err
+}
+
 // planCaps maps plan_id → daily/weekly match caps (Starter-safe defaults).
 // Managed (and legacy pro) = unlimited weekly discovery.
 func planCaps(planID string) (daily, weekly int) {

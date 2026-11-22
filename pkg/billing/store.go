@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // ErrNotFound is returned when a checkout row doesn't exist.
@@ -29,6 +31,8 @@ type Checkout struct {
 	// ActivatedAt is set once the paid checkout's entitlement was granted.
 	// nil on a paid row means activation failed and must be retried.
 	ActivatedAt *time.Time
+	// PaidAt is when the checkout first moved to paid.
+	PaidAt *time.Time
 }
 
 // Store is the raw-SQL persistence for candidate_checkouts. Same style as
@@ -68,7 +72,7 @@ func (s *Store) GetByPromptID(ctx context.Context, promptID string) (Checkout, e
 	const q = `
 SELECT prompt_id, candidate_id, plan_id, route, status, subscription_id,
        amount_cents, currency, country, redirect_url, error, created_at, updated_at,
-       activated_at
+       activated_at, paid_at
 FROM candidate_checkouts
 WHERE prompt_id = $1
 `
@@ -101,13 +105,14 @@ UPDATE candidate_checkouts
 SET status = $2,
     subscription_id = CASE WHEN $3 <> '' THEN $3 ELSE subscription_id END,
     error = $4,
+    paid_at = CASE WHEN $2 = 'paid' THEN COALESCE(paid_at, now()) ELSE paid_at END,
     updated_at = now()
 WHERE prompt_id = $1
   AND (status IN ('pending', 'redirect') OR (status = 'failed' AND $2 = 'paid'))
   AND $2 IN ('paid', 'failed')
 RETURNING prompt_id, candidate_id, plan_id, route, status, subscription_id,
           amount_cents, currency, country, redirect_url, error, created_at, updated_at,
-          activated_at
+          activated_at, paid_at
 `
 	row, err := s.scanOne(s.db.QueryRowContext(ctx, q, promptID, string(status), subscriptionID, errMsg))
 	if err == nil {
@@ -124,14 +129,154 @@ RETURNING prompt_id, candidate_id, plan_id, route, status, subscription_id,
 	return cur, false, nil
 }
 
-// MarkActivated records that the paid checkout's entitlement was granted.
-// Idempotent: the first timestamp wins.
-func (s *Store) MarkActivated(ctx context.Context, promptID string) error {
-	const q = `UPDATE candidate_checkouts SET activated_at = now() WHERE prompt_id = $1 AND activated_at IS NULL`
-	if _, err := s.db.ExecContext(ctx, q, promptID); err != nil {
+// MaxActivationAttempts bounds how often a paid checkout's activation is
+// claimed before the reconciler stops retrying it (it is then counted as
+// stuck for operators).
+const MaxActivationAttempts = 10
+
+// ActivationLease is how long an activation claim is honoured before another
+// caller may take over (a crashed or hung activator).
+const ActivationLease = 10 * time.Minute
+
+// ActivationClaim is the token of an activation claim (its timestamp);
+// release is fenced on it so a holder that outlived its lease cannot clear a
+// newer holder's claim.
+type ActivationClaim struct{ At time.Time }
+
+// ClaimActivation takes the exclusive right to grant a paid checkout's
+// entitlement. ok=false means it is already activated, another caller holds a
+// live claim, it is waiting out a retry backoff, or it exhausted its
+// attempts — the caller must not run side effects.
+func (s *Store) ClaimActivation(ctx context.Context, promptID string) (ActivationClaim, bool, error) {
+	const q = `
+UPDATE candidate_checkouts
+SET activation_claimed_at = clock_timestamp(),
+    activation_attempts = activation_attempts + 1,
+    updated_at = now()
+WHERE prompt_id = $1
+  AND status = 'paid'
+  AND activated_at IS NULL
+  AND activation_attempts < $3
+  AND (next_activation_at IS NULL OR next_activation_at <= now())
+  AND (activation_claimed_at IS NULL OR activation_claimed_at < now() - make_interval(secs => $2))
+RETURNING activation_claimed_at
+`
+	var at time.Time
+	err := s.db.QueryRowContext(ctx, q, promptID, ActivationLease.Seconds(), MaxActivationAttempts).Scan(&at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ActivationClaim{}, false, nil
+	}
+	if err != nil {
+		return ActivationClaim{}, false, fmt.Errorf("billing: claim activation: %w", err)
+	}
+	return ActivationClaim{At: at}, true, nil
+}
+
+// ReleaseActivation gives up a claim after a failed activation and schedules
+// the next retry with exponential backoff (30s doubling, capped at 6h).
+func (s *Store) ReleaseActivation(ctx context.Context, promptID string, claim ActivationClaim, cause error) error {
+	msg := ""
+	if cause != nil {
+		msg = cause.Error()
+	}
+	if len(msg) > 2000 {
+		msg = msg[:2000]
+	}
+	const q = `
+UPDATE candidate_checkouts
+SET activation_claimed_at = NULL,
+    next_activation_at = now() + make_interval(secs => LEAST(30 * power(2, GREATEST(activation_attempts - 1, 0)), 21600)),
+    activation_error = $2,
+    updated_at = now()
+WHERE prompt_id = $1 AND activated_at IS NULL AND activation_claimed_at = $3
+`
+	if _, err := s.db.ExecContext(ctx, q, promptID, msg, claim.At); err != nil {
+		return fmt.Errorf("billing: release activation: %w", err)
+	}
+	return nil
+}
+
+// Activation outcomes recorded by MarkActivated.
+const (
+	OutcomeApplied     = "applied"
+	OutcomeSuperseded  = "superseded"
+	OutcomeAlreadyHeld = "already_held"
+)
+
+// MarkActivated records that the paid checkout was handled (outcome) and
+// clears the claim. Idempotent: the first timestamp and outcome win.
+func (s *Store) MarkActivated(ctx context.Context, promptID, outcome string) error {
+	const q = `
+UPDATE candidate_checkouts
+SET activated_at = COALESCE(activated_at, now()),
+    activation_outcome = CASE WHEN activation_outcome = '' THEN $2 ELSE activation_outcome END,
+    activation_claimed_at = NULL,
+    activation_error = '',
+    updated_at = now()
+WHERE prompt_id = $1`
+	if _, err := s.db.ExecContext(ctx, q, promptID, outcome); err != nil {
 		return fmt.Errorf("billing: mark activated: %w", err)
 	}
 	return nil
+}
+
+// HasNewerActivatedSubscription reports whether another subscription checkout
+// of the candidate that was paid after c is already active — i.e. the user's
+// later purchase is live, so applying c (paid earlier) would overwrite it.
+// Payment order decides on both sides (not checkout creation, and not
+// activation order, which retries can reverse). paid_at is when we learned
+// of the payment (the provider reports no payment time); rows without it
+// fall back to their activation time.
+func (s *Store) HasNewerActivatedSubscription(ctx context.Context, c Checkout) (bool, error) {
+	oneTime := make([]string, 0, len(oneTimeProducts))
+	for _, p := range oneTimeProducts {
+		oneTime = append(oneTime, string(p.ID))
+	}
+	paidAt := c.CreatedAt
+	if c.PaidAt != nil {
+		paidAt = *c.PaidAt
+	}
+	const q = `
+SELECT EXISTS (
+  SELECT 1 FROM candidate_checkouts n
+  WHERE n.candidate_id = $1
+    AND n.prompt_id <> $2
+    AND n.activated_at IS NOT NULL
+    AND n.activation_outcome <> 'superseded'
+    AND COALESCE(n.paid_at, n.activated_at) > $3
+    AND NOT (n.plan_id = ANY($4::text[]))
+)`
+	var newer bool
+	if err := s.db.QueryRowContext(ctx, q, c.CandidateID, c.PromptID, paidAt, pq.Array(oneTime)).Scan(&newer); err != nil {
+		return false, fmt.Errorf("billing: newer activated subscription: %w", err)
+	}
+	return newer, nil
+}
+
+// CountSupersededSince counts paid checkouts not applied because a newer
+// purchase was already active (money taken, nothing granted) since t.
+func (s *Store) CountSupersededSince(ctx context.Context, t time.Time) (int64, error) {
+	const q = `
+SELECT count(*) FROM candidate_checkouts
+WHERE status = 'paid' AND activation_outcome = 'superseded' AND activated_at >= $1`
+	var n int64
+	if err := s.db.QueryRowContext(ctx, q, t).Scan(&n); err != nil {
+		return 0, fmt.Errorf("billing: count superseded: %w", err)
+	}
+	return n, nil
+}
+
+// CountStuckActivations counts paid checkouts whose activation exhausted its
+// retries. Non-zero needs an operator (paying user without entitlement).
+func (s *Store) CountStuckActivations(ctx context.Context) (int64, error) {
+	const q = `
+SELECT count(*) FROM candidate_checkouts
+WHERE status = 'paid' AND activated_at IS NULL AND activation_attempts >= $1`
+	var n int64
+	if err := s.db.QueryRowContext(ctx, q, MaxActivationAttempts).Scan(&n); err != nil {
+		return 0, fmt.Errorf("billing: count stuck activations: %w", err)
+	}
+	return n, nil
 }
 
 // ListByCandidate returns recent checkouts for history (newest first).
@@ -142,7 +287,7 @@ func (s *Store) ListByCandidate(ctx context.Context, candidateID string, limit i
 	const q = `
 SELECT prompt_id, candidate_id, plan_id, route, status, subscription_id,
        amount_cents, currency, country, redirect_url, error, created_at, updated_at,
-       activated_at
+       activated_at, paid_at
 FROM candidate_checkouts
 WHERE candidate_id = $1
 ORDER BY created_at DESC
@@ -173,7 +318,7 @@ func (s *Store) ListPending(ctx context.Context, limit int) ([]Checkout, error) 
 	const q = `
 SELECT prompt_id, candidate_id, plan_id, route, status, subscription_id,
        amount_cents, currency, country, redirect_url, error, created_at, updated_at,
-       activated_at
+       activated_at, paid_at
 FROM candidate_checkouts
 WHERE status = 'pending'
 ORDER BY created_at ASC
@@ -198,19 +343,23 @@ LIMIT $1
 	return out, nil
 }
 
-// ListPaidUnactivated returns paid checkouts whose activation never completed,
-// oldest first, so the reconciler can retry granting the entitlement.
+// ListPaidUnactivated returns paid checkouts whose activation never completed
+// and is due for a retry (under the attempt limit, past its backoff, no live
+// claim), most overdue first.
 func (s *Store) ListPaidUnactivated(ctx context.Context, limit int) ([]Checkout, error) {
 	const q = `
 SELECT prompt_id, candidate_id, plan_id, route, status, subscription_id,
        amount_cents, currency, country, redirect_url, error, created_at, updated_at,
-       activated_at
+       activated_at, paid_at
 FROM candidate_checkouts
 WHERE status = 'paid' AND activated_at IS NULL
-ORDER BY created_at ASC
+  AND activation_attempts < $2
+  AND (next_activation_at IS NULL OR next_activation_at <= now())
+  AND (activation_claimed_at IS NULL OR activation_claimed_at < now() - make_interval(secs => $3))
+ORDER BY COALESCE(next_activation_at, created_at) ASC
 LIMIT $1
 `
-	rows, err := s.db.QueryContext(ctx, q, limit)
+	rows, err := s.db.QueryContext(ctx, q, limit, MaxActivationAttempts, ActivationLease.Seconds())
 	if err != nil {
 		return nil, fmt.Errorf("billing: list paid unactivated: %w", err)
 	}
@@ -248,7 +397,7 @@ func scanRow(row rowScanner) (Checkout, error) {
 	err := row.Scan(
 		&c.PromptID, &c.CandidateID, &c.PlanID, &c.Route, &status, &c.SubscriptionID,
 		&c.AmountCents, &c.Currency, &c.Country, &c.RedirectURL, &c.Error, &c.CreatedAt, &c.UpdatedAt,
-		&c.ActivatedAt,
+		&c.ActivatedAt, &c.PaidAt,
 	)
 	c.Status = Status(status)
 	return c, err
