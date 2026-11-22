@@ -23,7 +23,9 @@ type SourceHealthRepo interface {
 	RecordFailure(ctx context.Context, id string, newHealth float64, consecutive int) error
 	FlagNeedsTuning(ctx context.Context, id string, flag bool) error
 	UpdateNextCrawl(ctx context.Context, id string, next, verified time.Time, health float64) error
-	SetStatus(ctx context.Context, id string, status domain.SourceStatus) error
+	// TransitionStatus is compare-and-set: it only moves a source whose
+	// current status is in from, so it never overwrites an operator stop.
+	TransitionStatus(ctx context.Context, id string, from []domain.SourceStatus, to domain.SourceStatus) (bool, error)
 }
 
 // DegradeAfterFailures is the consecutive-failure count at which an
@@ -118,6 +120,14 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 		rejectRate = float64(p.JobsRejected) / float64(p.JobsFound)
 	}
 
+	// source_not_eligible is the crawler refusing a source that is not
+	// crawlable (stopped, paused, pending...), not a failure of the source:
+	// recording it would decay health and could demote/overwrite status.
+	if p.ErrorCode == "source_not_eligible" {
+		log.WithField("status", src.Status).Debug("page-completed: source not eligible; no health bookkeeping")
+		return nil
+	}
+
 	switch {
 	case p.ErrorCode != "":
 		// Connection/iterator failure — circuit-breaker style decay.
@@ -138,8 +148,9 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 			telemetry.RecordSourceHealthEvent("degraded")
 			log.WithField("consecutive_failures", consecutive).
 				Error("page-completed: source demoted to degraded after persistent failures")
-			if err := h.repo.SetStatus(ctx, src.ID, domain.SourceDegraded); err != nil {
-				log.WithError(err).Warn("page-completed: SetStatus(degraded) failed")
+			if _, err := h.repo.TransitionStatus(ctx, src.ID,
+				[]domain.SourceStatus{domain.SourceActive}, domain.SourceDegraded); err != nil {
+				log.WithError(err).Warn("page-completed: degrade transition failed")
 			}
 		}
 		// Phase 4 deliberately does not apply exponential backoff on
@@ -176,8 +187,9 @@ func (h *PageCompletedHandler) Execute(ctx context.Context, payload any) error {
 		if src.Status == domain.SourceDegraded && newHealth >= 0.8 {
 			telemetry.RecordSourceHealthEvent("recovered")
 			log.Info("page-completed: degraded source recovered; promoting to active")
-			if err := h.repo.SetStatus(ctx, src.ID, domain.SourceActive); err != nil {
-				log.WithError(err).Warn("page-completed: SetStatus(active) failed")
+			if _, err := h.repo.TransitionStatus(ctx, src.ID,
+				[]domain.SourceStatus{domain.SourceDegraded}, domain.SourceActive); err != nil {
+				log.WithError(err).Warn("page-completed: recover transition failed")
 			}
 		}
 		if err := h.repo.UpdateNextCrawl(ctx, src.ID, next, now, newHealth); err != nil {

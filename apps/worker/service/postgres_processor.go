@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -121,7 +122,7 @@ func (p *PostgresProcessor) drain(ctx context.Context) error {
 	// Fallback: sequential (tests without a full Frame service).
 	for _, item := range items {
 		if processErr := p.process(ctx, item); processErr != nil {
-			if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil {
+			if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil && !errors.Is(retryErr, jobqueue.ErrLostLease) {
 				util.Log(ctx).WithError(retryErr).WithField("ingest_id", item.ID).
 					Error("postgres worker: retry persistence failed")
 			}
@@ -143,7 +144,7 @@ func (p *PostgresProcessor) drainWithPool(ctx context.Context, pool poolSubmitte
 		submitErr := pool.Submit(ctx, func() {
 			defer wg.Done()
 			if processErr := p.process(ctx, item); processErr != nil {
-				if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil {
+				if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil && !errors.Is(retryErr, jobqueue.ErrLostLease) {
 					util.Log(ctx).WithError(retryErr).WithField("ingest_id", item.ID).
 						Error("postgres worker: retry persistence failed")
 				}
@@ -154,7 +155,7 @@ func (p *PostgresProcessor) drainWithPool(ctx context.Context, pool poolSubmitte
 			// is not abandoned until lease expiry.
 			wg.Done()
 			if processErr := p.process(ctx, item); processErr != nil {
-				if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil {
+				if retryErr := p.store.Retry(ctx, item, processErr, p.maxAttempts); retryErr != nil && !errors.Is(retryErr, jobqueue.ErrLostLease) {
 					util.Log(ctx).WithError(retryErr).WithField("ingest_id", item.ID).
 						Error("postgres worker: retry persistence failed")
 				}
@@ -166,6 +167,22 @@ func (p *PostgresProcessor) drainWithPool(ctx context.Context, pool poolSubmitte
 }
 
 func (p *PostgresProcessor) process(ctx context.Context, item jobqueue.Item) error {
+	// An operator-stopped source must not put listings back into the
+	// catalog: drop its queued work instead of merging it. A lookup error is
+	// returned so the item is retried rather than merged blind.
+	stopped, err := p.store.SourceStopped(ctx, item.SourceID)
+	if err != nil {
+		return err
+	}
+	if stopped {
+		if discardErr := p.store.Discard(ctx, item, "source stopped"); discardErr != nil {
+			return discardErr
+		}
+		util.Log(ctx).WithField("ingest_id", item.ID).WithField("source_id", item.SourceID).
+			Info("postgres worker: discarded item of stopped source")
+		return nil
+	}
+
 	var env eventsv1.Envelope[eventsv1.VariantIngestedV1]
 	if err := json.Unmarshal(item.Payload, &env); err != nil {
 		return fmt.Errorf("decode variant: %w", err)
@@ -200,6 +217,10 @@ func (p *PostgresProcessor) process(ctx context.Context, item jobqueue.Item) err
 	c.PostedAt = attrTime(a, "posted_at")
 	c.Deadline = attrTime(a, "deadline")
 	canonicalID, err := p.store.Complete(ctx, item, c)
+	// The catalog write may have committed even if the ack failed. If the
+	// source was stopped meanwhile (e.g. this worker stalled past its lease
+	// while the stop's deactivation ran), hide its listings again.
+	p.reapplyStopIfNeeded(ctx, item)
 	if err != nil {
 		return err
 	}
@@ -228,6 +249,27 @@ func (p *PostgresProcessor) process(ctx context.Context, item jobqueue.Item) err
 		}
 	}
 	return nil
+}
+
+// reapplyStopIfNeeded queues a fresh deactivation when the item's source is
+// stopped, after a catalog write that may have re-shown its listings.
+func (p *PostgresProcessor) reapplyStopIfNeeded(ctx context.Context, item jobqueue.Item) {
+	stopped, err := p.store.SourceStopped(ctx, item.SourceID)
+	if err != nil {
+		util.Log(ctx).WithError(err).WithField("source_id", item.SourceID).
+			Warn("postgres worker: post-write stopped-source check failed")
+		return
+	}
+	if !stopped {
+		return
+	}
+	if err := p.store.RequestSourceDeactivation(ctx, item.SourceID, "source stopped (re-applied after late ingest)"); err != nil {
+		util.Log(ctx).WithError(err).WithField("source_id", item.SourceID).
+			Error("postgres worker: re-queueing stopped-source deactivation failed")
+		return
+	}
+	util.Log(ctx).WithField("source_id", item.SourceID).WithField("ingest_id", item.ID).
+		Warn("postgres worker: wrote catalog for a source stopped meanwhile; deactivation re-queued")
 }
 
 func attrString(a map[string]any, key string) string {

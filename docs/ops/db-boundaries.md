@@ -15,7 +15,7 @@ Do **not** use one Neon project for both planes.
 ### Crawl Neon (crawler)
 
 - Control: `sources`, `source_recipes`, `crawl_runs`, `host_state`
-- Work: `url_frontier`, `job_ingest_queue`
+- Work: `url_frontier`, `job_ingest_queue`, `catalog_commands`
 - Audit: `crawl_jobs`, `job_ingest_events`
 
 ### Product Neon (matching)
@@ -46,13 +46,35 @@ crawler/frontier → job_ingest_queue (crawl Neon)
    - Catalog merge on product Neon  
    - `pkg/jobqueue.Store.WithProductDB`
 
-2. **Pub/Sub fan-out / embed**  
+2. **Catalog commands** (`catalog_commands`, crawl Neon)  
+   - The crawler cannot reach product Neon, so catalog changes it decides
+     on are recorded as commands and applied by the dual-DB worker.
+   - `deactivate_source`: written by the crawler `POST /admin/sources/stop`.
+     The worker skips it (`superseded`) if the source was restarted, defers
+     it while any ingest item of the source is `processing`, then hides the
+     source's listings on product Neon (listings another active source still
+     carries stay visible).
+   - While a source is stopped, the worker discards its queued ingest items
+     (`rejected`, event `discarded`); its pending frontier URLs are `parked`
+     and Dequeue skips any URL of a stopped source. `/admin/sources/enable`
+     unparks them and ingest resumes normally.
+   - A stop is never undone automatically: failure/health bookkeeping,
+     verification, seed reloads and source discovery only change the status
+     of sources in the states they manage, never `disabled`.
+   - Late writers: queue acks/retries/discards are fenced on the claim owner;
+     after every catalog write the worker re-checks the source and re-queues
+     the deactivation if it was stopped meanwhile; each applied deactivation
+     also schedules one follow-up sweep 10 minutes later.
+   - Alerting: the worker ERROR-logs `catalog commands: backlog` when a
+     command is `dead` or has been pending over 30 minutes.
+
+3. **Pub/Sub fan-out / embed**  
    - `MATCHING_FANOUT_QUEUE_URL=gcppubsub://stawi-opportunities/opportunities-fanout`  
    - `WORKER_EMBED_QUEUE_URL=gcppubsub://stawi-opportunities/opportunities-worker-embed`  
    - `WORKER_EMBED_SUBSCRIBE_URL=gcppubsub://stawi-opportunities/opportunities-worker-embed-pull`  
    - ADC via `GOOGLE_APPLICATION_CREDENTIALS` (cluster) or Cloud Run SA
 
-3. **Public HTTP**  
+4. **Public HTTP**  
    - Search/detail: Cloud Run `opportunities-api` (`/opportunities`)  
    - Candidate product: Cloud Run `opportunities-matching` (`/matching`)
 

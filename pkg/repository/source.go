@@ -52,7 +52,9 @@ func (r *SourceRepository) Upsert(ctx context.Context, s *domain.Source) error {
 	}
 	// Seed-declared pause/pending is authoritative (hostile boards, etc.).
 	// Never force status back to active from seeds.
-	if s.Status == domain.SourcePaused || s.Status == domain.SourcePending {
+	// An operator stop always wins over seed state.
+	if (s.Status == domain.SourcePaused || s.Status == domain.SourcePending) &&
+		existing.Status != domain.SourceDisabled {
 		fields["status"] = s.Status
 	}
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", existing.ID).Updates(fields).Error
@@ -84,7 +86,7 @@ func (r *SourceRepository) SaveVerificationReport(ctx context.Context, id string
 	updates := map[string]any{
 		"verification_report": report,
 		"last_verified_at":    at,
-		"status":              status,
+		"status":              gorm.Expr("CASE WHEN status = ? THEN status ELSE ? END", domain.SourceDisabled, status),
 	}
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Updates(updates).Error
 }
@@ -95,10 +97,27 @@ func (r *SourceRepository) SetStatus(ctx context.Context, id string, status doma
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Update("status", status).Error
 }
 
+// TransitionStatus moves a source to `to` only if its current status is one
+// of `from` (compare-and-set). Automatic transitions must use this so they
+// never overwrite a concurrent operator decision such as a stop. Reports
+// whether the row changed.
+func (r *SourceRepository) TransitionStatus(ctx context.Context, id string, from []domain.SourceStatus, to domain.SourceStatus) (bool, error) {
+	if len(from) == 0 {
+		return false, nil
+	}
+	res := r.db(ctx, false).Model(&domain.Source{}).
+		Where("id = ? AND status IN ?", id, from).
+		Update("status", to)
+	return res.RowsAffected > 0, res.Error
+}
+
 // Approve flips a verified source to active. Records the operator and
 // timestamp.
 func (r *SourceRepository) Approve(ctx context.Context, id, operator string, at time.Time) error {
-	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).
+	// Compare-and-set: only a verified source is approved. Both callers
+	// (operator approve, system auto-approve after verification) require
+	// verified; the guard keeps a concurrent operator stop from being undone.
+	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ? AND status = ?", id, domain.SourceVerified).
 		Updates(map[string]any{
 			"status":      domain.SourceActive,
 			"approved_at": at,
@@ -263,7 +282,7 @@ func (r *SourceRepository) UpdateCrawlCursor(ctx context.Context, id string, cur
 func (r *SourceRepository) MarkBlocked(ctx context.Context, id string) error {
 	return r.db(ctx, false).
 		Model(&domain.Source{}).
-		Where("id = ?", id).
+		Where("id = ? AND status <> ?", id, domain.SourceDisabled).
 		Updates(map[string]interface{}{
 			"status":       domain.SourceBlocked,
 			"health_score": 0.0,
@@ -311,10 +330,18 @@ func (r *SourceRepository) RecordFailure(ctx context.Context, id string, healthS
 		"health_score":         healthScore,
 		"consecutive_failures": consecutiveFailures,
 	}
+	// Only a crawling source (active/degraded) is demoted. Anything else —
+	// notably an operator-stopped (disabled) source — keeps its status, so
+	// failure bookkeeping can never undo an operator decision.
+	var target domain.SourceStatus
 	if consecutiveFailures >= 5 {
-		updates["status"] = domain.SourcePaused
+		target = domain.SourcePaused
 	} else if consecutiveFailures >= 3 {
-		updates["status"] = domain.SourceDegraded
+		target = domain.SourceDegraded
+	}
+	if target != "" {
+		updates["status"] = gorm.Expr("CASE WHEN status IN (?, ?) THEN ? ELSE status END",
+			domain.SourceActive, domain.SourceDegraded, target)
 	}
 	return r.db(ctx, false).Model(&domain.Source{}).Where("id = ?", id).Updates(updates).Error
 }

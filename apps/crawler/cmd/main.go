@@ -516,6 +516,12 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, opErr.Error()), http.StatusInternalServerError)
 			return
 		}
+		// Return URLs parked by a stop to the dequeue set.
+		if n, parkErr := urlFrontier.UnparkSource(r.Context(), id); parkErr != nil {
+			log.WithError(parkErr).WithField("source_id", id).Warn("source-enable: unparking frontier URLs failed")
+		} else if n > 0 {
+			log.WithField("source_id", id).WithField("urls", n).Info("source-enable: frontier URLs unparked")
+		}
 		ensureSchedule(r.Context(), id)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "status": "active"})
@@ -549,20 +555,32 @@ func main() {
 		}
 		removeSchedule(r.Context(), id)
 
-		if err := ingestQueue.DeactivateSource(r.Context(), id, "source stopped: "+reason); err != nil {
-			log.WithError(err).WithField("source_id", id).Error("source-stop: opportunity deactivation failed")
-			http.Error(w, `{"error":"source stopped but opportunity deactivation failed; retry request"}`, http.StatusInternalServerError)
+		// The crawler cannot reach the product DB that holds the catalog:
+		// record the deactivation; the dual-DB worker hides the listings
+		// once in-flight ingest for the source has drained.
+		if err := ingestQueue.RequestSourceDeactivation(r.Context(), id, "source stopped: "+reason); err != nil {
+			log.WithError(err).WithField("source_id", id).Error("source-stop: queueing opportunity deactivation failed")
+			http.Error(w, `{"error":"source stopped but queueing opportunity deactivation failed; retry request"}`, http.StatusInternalServerError)
 			return
+		}
+		// Take the source's pending URLs out of the dequeue set. Best
+		// effort: Dequeue also skips URLs of stopped sources.
+		if n, parkErr := urlFrontier.ParkSource(r.Context(), id); parkErr != nil {
+			log.WithError(parkErr).WithField("source_id", id).Warn("source-stop: parking frontier URLs failed")
+		} else if n > 0 {
+			log.WithField("source_id", id).WithField("urls", n).Info("source-stop: frontier URLs parked")
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":         true,
-			"id":         id,
-			"status":     "stopped",
-			"operator":   operator,
-			"reason":     reason,
-			"stopped_at": now,
+			"ok":     true,
+			"id":     id,
+			"status": "stopped",
+			// Listings are hidden asynchronously by the worker.
+			"deactivation": "queued",
+			"operator":     operator,
+			"reason":       reason,
+			"stopped_at":   now,
 		})
 	})
 

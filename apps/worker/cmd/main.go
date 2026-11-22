@@ -63,6 +63,7 @@ func main() {
 	} else {
 		util.Log(ctx).Warn("worker: PRODUCT_DATABASE_URL unset — single-DB mode (dev only)")
 	}
+	store = store.WithIngestLease(cfg.PostgresLease)
 	processor := workersvc.NewPostgresProcessor(store, "",
 		cfg.PostgresBatchSize, cfg.PostgresConcurrency, cfg.PostgresPollInterval,
 		cfg.PostgresLease, cfg.PostgresMaxAttempts,
@@ -70,8 +71,13 @@ func main() {
 
 	// BackgroundConsumer is registered at Init so Frame starts it inside
 	// Run() under managed lifecycle (never a bare go processor.Run).
+	// Catalog commands (e.g. hide a stopped source's listings) are written
+	// by the crawler, which cannot reach the product DB; the worker applies
+	// them.
+	commands := workersvc.NewCatalogCommandRunner(store, 0)
 	initOpts := []frame.Option{
 		frame.WithBackgroundConsumer(processor.Run),
+		frame.WithBackgroundConsumer(commands.Run),
 	}
 
 	// Optional durable embed + fan-out via Pub/Sub. Never register a GCP

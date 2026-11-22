@@ -20,6 +20,9 @@ type Store struct {
 	db         DBFunc
 	productDB  DBFunc // optional product SoT (Neon); nil → same as db
 	maxPending int64
+	// ingestLease is the worker's claim lease (WithIngestLease); it sizes the
+	// post-deactivation follow-up sweep.
+	ingestLease time.Duration
 }
 
 func New(db DBFunc) *Store { return &Store{db: db} }
@@ -54,10 +57,14 @@ func NewProducer(db DBFunc, maxPending int64) *Store {
 
 var ErrCapacity = errors.New("jobqueue: pending capacity exhausted")
 
+// ErrLostLease means the item's lease expired and another worker reclaimed
+// it; this worker's result must be dropped.
+var ErrLostLease = errors.New("jobqueue: lease lost to another worker")
+
 type EnqueueRequest struct {
 	VariantID, SourceID, CrawlRunID, CrawlJobID string
-	IdempotencyKey                                 string
-	Payload                                        []byte
+	IdempotencyKey                              string
+	Payload                                     []byte
 }
 
 // Enqueue durably records work. A repeated crawl-page delivery is idempotent.
@@ -119,8 +126,11 @@ func (s *Store) RecordRejected(ctx context.Context, variantID, sourceID string, 
 
 type Item struct {
 	ID, VariantID, SourceID, CrawlRunID, CrawlJobID string
-	Payload                                              []byte
-	Attempt                                              int
+	// ClaimedBy is the lease owner; acks, retries and discards are fenced on
+	// it so a worker whose lease expired cannot resolve someone else's claim.
+	ClaimedBy string
+	Payload   []byte
+	Attempt   int
 }
 
 // Claim leases disjoint work across replicas and reclaims expired leases.
@@ -145,7 +155,7 @@ func (s *Store) Claim(ctx context.Context, owner string, limit int, lease time.D
 	FROM picked WHERE q.id=picked.id
 	RETURNING q.id, q.variant_id, q.source_id,
 		COALESCE(q.crawl_run_id,''), COALESCE(q.crawl_job_id,''),
-		q.payload::text AS payload, q.attempt`, limit, lease.Seconds(), owner).Scan(&rows).Error
+		q.claimed_by, q.payload::text AS payload, q.attempt`, limit, lease.Seconds(), owner).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("claim jobs: %w", err)
 	}
@@ -169,9 +179,11 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 }
 
 // DeactivateSource removes one source's lineage and hides canonicals that no
-// longer have any active source behind them.
+// longer have any active source behind them. Catalog tables live on the
+// product database; the crawler (crawl DB only) must use
+// RequestSourceDeactivation instead.
 func (s *Store) DeactivateSource(ctx context.Context, sourceID, reason string) error {
-	return s.db(ctx, false).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return s.product()(ctx, false).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(`UPDATE opportunity_sources SET active=false WHERE source_id=?`, sourceID).Error; err != nil {
 			return err
 		}
@@ -321,7 +333,7 @@ func (s *Store) Complete(ctx context.Context, item Item, c Canonical) (string, e
 	ackCrawl := func(tx *gorm.DB) error {
 		result := tx.Exec(`UPDATE job_ingest_queue SET status='processed', processed_at=now(),
 			lease_expires_at=NULL, claimed_by=NULL, last_error=NULL, updated_at=now()
-			WHERE id=? AND status='processing'`, item.ID)
+			WHERE id=? AND status='processing' AND claimed_by=?`, item.ID, item.ClaimedBy)
 		if result.Error != nil || result.RowsAffected != 1 {
 			return fmt.Errorf("complete queue item: affected=%d: %w", result.RowsAffected, result.Error)
 		}
@@ -376,10 +388,15 @@ func (s *Store) Retry(ctx context.Context, item Item, cause error, maxAttempts i
 		msg = msg[:2000]
 	}
 	return s.db(ctx, false).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(`UPDATE job_ingest_queue SET status=?, available_at=now()+make_interval(secs=>?),
-			lease_expires_at=NULL, claimed_by=NULL, last_error=?, updated_at=now() WHERE id=?`,
-			state, delay, msg, item.ID).Error; err != nil {
-			return err
+		res := tx.Exec(`UPDATE job_ingest_queue SET status=?, available_at=now()+make_interval(secs=>?),
+			lease_expires_at=NULL, claimed_by=NULL, last_error=?, updated_at=now()
+			WHERE id=? AND status='processing' AND claimed_by=?`,
+			state, delay, msg, item.ID, item.ClaimedBy)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return ErrLostLease
 		}
 		details, _ := json.Marshal(map[string]string{"error": msg})
 		return appendEvent(tx, item.ID, item.VariantID, item.SourceID, event, item.Attempt, string(details))

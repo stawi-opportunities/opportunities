@@ -279,6 +279,10 @@ func (f *PostgresFrontier) Enqueue(ctx context.Context, urls []URL) ([]EnqueueRe
 // when SKIP LOCKED is involved. Splitting the lock acquisition
 // into two queries keeps SKIP LOCKED honest and avoids the
 // "DISTINCT ON ignores SKIP LOCKED" trap.
+// URLs of operator-stopped sources (sources.status = disabled) are never
+// claimed. The stop parks the source's pending URLs (ParkSource) so they
+// leave this index; the NOT EXISTS guard covers URLs enqueued while stopped.
+// Enable unparks them (UnparkSource).
 const dequeueLockHostsSQL = `
 SELECT h.host
 FROM   host_state h
@@ -289,12 +293,14 @@ WHERE  (h.next_eligible_at IS NULL OR h.next_eligible_at <= now())
         WHERE f.host = h.host
           AND f.state = 'pending'
           AND (f.next_attempt_at IS NULL OR f.next_attempt_at <= now())
+          AND NOT EXISTS (SELECT 1 FROM sources s WHERE s.id = f.source_id AND s.status = 'disabled')
        )
 ORDER BY (
     SELECT max(f.priority) FROM url_frontier f
      WHERE f.host = h.host
        AND f.state = 'pending'
        AND (f.next_attempt_at IS NULL OR f.next_attempt_at <= now())
+       AND NOT EXISTS (SELECT 1 FROM sources s WHERE s.id = f.source_id AND s.status = 'disabled')
    ) DESC NULLS LAST
 LIMIT  ?
 FOR UPDATE OF h SKIP LOCKED
@@ -307,6 +313,7 @@ FROM   url_frontier f
 WHERE  f.host = ?
   AND  f.state = 'pending'
   AND  (f.next_attempt_at IS NULL OR f.next_attempt_at <= now())
+  AND  NOT EXISTS (SELECT 1 FROM sources s WHERE s.id = f.source_id AND s.status = 'disabled')
 ORDER BY f.priority DESC, f.enqueued_at ASC
 LIMIT  1
 FOR UPDATE OF f SKIP LOCKED
@@ -463,6 +470,24 @@ func (f *PostgresFrontier) Dequeue(ctx context.Context, n int, workerID string) 
 		return nil, err
 	}
 	return out, nil
+}
+
+// ParkSource moves a stopped source's pending URLs to parked, taking them out
+// of the pending-only dequeue index. Returns the number parked.
+func (f *PostgresFrontier) ParkSource(ctx context.Context, sourceID string) (int64, error) {
+	res := f.db(ctx, false).Model(&row{}).
+		Where("source_id = ? AND state = ?", sourceID, string(StatePending)).
+		Update("state", string(StateParked))
+	return res.RowsAffected, res.Error
+}
+
+// UnparkSource returns a restarted source's parked URLs to pending. Parked is
+// only ever set by ParkSource, so every parked row of the source is ours.
+func (f *PostgresFrontier) UnparkSource(ctx context.Context, sourceID string) (int64, error) {
+	res := f.db(ctx, false).Model(&row{}).
+		Where("source_id = ? AND state = ?", sourceID, string(StateParked)).
+		Update("state", string(StatePending))
+	return res.RowsAffected, res.Error
 }
 
 // Complete marks the URL done + bumps the per-host success
