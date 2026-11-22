@@ -369,8 +369,10 @@ func hashIP(req *http.Request) string {
 	return hex.EncodeToString(sum[:12])
 }
 
-// profileIDFromJWT extracts the sub claim from a Bearer token without
-// verification. Verification happens at the gateway layer.
+// profileIDFromJWT extracts the sub claim from a Bearer token WITHOUT
+// verifying it (the edge gateway does not verify tokens either). Anyone can
+// forge this value: use it only for analytics or audit-log attribution, never
+// for an authorization or trust decision — use httpmw.NewCandidateAuth.
 func profileIDFromJWT(req *http.Request) string {
 	auth := req.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {

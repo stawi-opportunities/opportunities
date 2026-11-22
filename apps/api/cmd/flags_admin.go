@@ -23,10 +23,12 @@ import (
 	"github.com/pitabwire/frame/v2"
 	fconfig "github.com/pitabwire/frame/v2/config"
 	"github.com/pitabwire/frame/v2/datastore"
+	"github.com/pitabwire/frame/v2/security"
 	"github.com/pitabwire/util"
 	"gorm.io/gorm"
 
 	"github.com/stawi-opportunities/opportunities/pkg/domain"
+	"github.com/stawi-opportunities/opportunities/pkg/httpmw"
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 )
 
@@ -119,8 +121,16 @@ func registerFlagsAdmin(ctx context.Context, mux *http.ServeMux, jm JobsBackend)
 		hider:      postgresOpportunityHider{db: pool.DB},
 	}
 
-	// Public endpoint — auth required (JWT in Authorization header).
-	mux.HandleFunc("POST /opportunities/{slug}/flag", a.handleUserFlag)
+	// Public endpoint — a verified JWT is required. The edge gateway does
+	// not verify tokens, so the signature check must happen here.
+	var authenticator security.Authenticator
+	if secMgr := svc.SecurityManager(); secMgr != nil {
+		authenticator = secMgr.GetAuthenticator(ctx)
+	}
+	if authenticator == nil {
+		log.Error("flags admin: no OIDC authenticator configured; POST /opportunities/{slug}/flag will return 503")
+	}
+	mux.Handle("POST /opportunities/{slug}/flag", userFlagRoute(authenticator, http.HandlerFunc(a.handleUserFlag)))
 
 	// Admin endpoints — Bearer token enforced via requireAdmin.
 	mux.HandleFunc("GET /admin/flags", requireAdmin(a.handleListUnresolved))
@@ -143,12 +153,7 @@ type userFlagRequest struct {
 // flag from the same user, returns 409. On the third+ unresolved scam
 // flag for the slug, emits OpportunityAutoFlaggedV1 (best-effort).
 func (a *flagsAdmin) handleUserFlag(w http.ResponseWriter, r *http.Request) {
-	profileID := profileIDFromJWT(r)
-	if profileID == "" {
-		writeError(w, http.StatusUnauthorized, "unauthorized",
-			"flagging requires an authenticated profile_id")
-		return
-	}
+	profileID := httpmw.ProfileIDFromContext(r.Context())
 	slug := r.PathValue("slug")
 	if slug == "" {
 		writeError(w, http.StatusBadRequest, "missing_slug", "slug is required")
@@ -474,3 +479,16 @@ func logFlagAction(r *http.Request, action, flagID, slug string) {
 
 // Compile-time assertion: jobsPostgres implements the lookup interface.
 var _ jobsLookup = (*jobsPostgres)(nil)
+
+// userFlagRoute wraps the flag handler with JWT verification. Flags can
+// auto-hide listings, so an unverified "sub" must never be trusted: with no
+// authenticator the route fails closed instead of falling back to headers.
+func userFlagRoute(authenticator security.Authenticator, next http.Handler) http.Handler {
+	if authenticator == nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeError(w, http.StatusServiceUnavailable, "auth_unavailable",
+				"flagging is unavailable: authentication is not configured")
+		})
+	}
+	return httpmw.NewCandidateAuth(authenticator)(next)
+}
