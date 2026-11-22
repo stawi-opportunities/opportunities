@@ -967,9 +967,13 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+// maxJSONBodyBytes caps every JSON request body the api decodes.
+const maxJSONBodyBytes = 1 << 20
+
 func decodeJSON(r *http.Request, dst any) error {
-	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
-	dec := json.NewDecoder(r.Body)
+	body := http.MaxBytesReader(nil, r.Body, maxJSONBodyBytes)
+	defer func() { _, _ = io.Copy(io.Discard, body); _ = body.Close() }()
+	dec := json.NewDecoder(body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		return err

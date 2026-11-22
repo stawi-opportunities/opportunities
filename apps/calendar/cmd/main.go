@@ -28,8 +28,9 @@ func main() {
 
 	cfg, err := config.FromEnv[calconfig.Config]()
 	if err != nil {
-		log.WithError(err).Warn("calendar: FromEnv incomplete; using defaults")
-		cfg = calconfig.Config{}
+		// Never fall back to a zero Config: it drops envDefault values such as
+		// AUTH_REQUIRE_JWT=true and would silently enable header auth.
+		log.WithError(err).Fatal("calendar: invalid configuration")
 	}
 	if cfg.Name() == "" {
 		cfg.ServiceName = serviceName
