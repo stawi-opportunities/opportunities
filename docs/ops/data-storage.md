@@ -55,13 +55,15 @@ How data is stored, why each shape exists, and whether it is fit for production.
 | **`sources`** | OLTP | Registry: type, URL, status, health, recipe JSON, frontier flag | Strong unique `(type, base_url)`; status gates schedules | Hot row; recipe dual-stored with `source_recipes` (TX-synced) |
 | **`source_recipes`** | OLTP | Recipe version history | Partial unique one `active` per source | Append history; only active used on hot path |
 | **`crawl_runs`** | OLTP | Resumable cursor + lease | Partial unique one active run/source | Single-flight prevents pile-up |
-| **`crawl_jobs`** | OLTP ledger | Execution ledger | Idempotency `(key, scheduled_at)`; no automatic retention — plan a janitor/pg_partman if volume warrants | Time-keyed audit |
+| **`crawl_jobs`** | OLTP ledger | Execution ledger | Idempotency `(key, scheduled_at)`; succeeded/failed rows deleted after 90d (crawl retention sweep) | Time-keyed audit |
 | **`url_frontier`** | OLTP queue | Detail URLs under politeness | UK `canonical_url_hash`; SKIP LOCKED | Per-host fairness via `host_state` |
 | **`host_state`** | OLTP | Per-host rate window | PK host | Tiny |
 
 **Verdict:** Solid. Queue + lease + append-only history is the right split.
 
-**Watch:** `crawl_signals` MV must be refreshed (function exists; ensure Trustage/cron calls `refresh_crawl_signals`).
+**Retention:** the crawler's in-process sweep (`RETENTION_INTERVAL`, default 1h; `pkg/repository/retention.go`) deletes in batches: `crawl_jobs` succeeded/failed and `crawl_runs` completed/failed after 90d, `url_frontier` done/failed after 90d (a URL re-discovered after that is fetched again), `catalog_commands` done/superseded after 30d (dead commands are kept: they drive the worker's backlog alert). Active, paused, pending and parked rows are never deleted. Scans are bounded by the time-ordered xid primary keys (`id < xid(cutoff)`), so no extra index is needed; the first sweep runs 1–10 min after start, then hourly.
+
+**Watch:** `crawl_signals` MV is still not refreshed by anything (`refresh_crawl_signals` exists; no schedule calls it).
 
 ---
 
@@ -69,8 +71,8 @@ How data is stored, why each shape exists, and whether it is fit for production.
 
 | Store | Type | Role | Robustness | Efficiency |
 |-------|------|------|------------|------------|
-| **`job_ingest_queue`** | Mutable queue | Durable work after extract | UK `idempotency_key` + `variant_id`; claim + lease indexes; cleanup job 30d/90d | Pending has **no TTL** (correct for durability); capacity gates stop crawl |
-| **`job_ingest_events`** | Append-only | Append-only audit | Append-only triggers; no automatic retention/compression | Good |
+| **`job_ingest_queue`** | Mutable queue | Durable work after extract | UK `idempotency_key` + `variant_id`; claim + lease indexes; crawl retention sweep deletes processed after 30d, dead/rejected after 90d | Pending has **no TTL** (correct for durability); capacity gates stop crawl |
+| **`job_ingest_events`** | Append-only | Append-only audit | Append-only trigger (`ingest_events_guard`): no UPDATE/TRUNCATE; DELETE only for rows >90d inside the retention sweep (`SET LOCAL stawi.retention_sweep='on'`) | Sweep bounded by xid `event_id` |
 
 **Idempotency:** `crawlJobID:hardKey` or `frontier:urlID:hardKey` — safe redelivery.
 
@@ -184,7 +186,7 @@ External payment/billing services are SoT for rails; local row is product entitl
 ## 10. What we hardened in capability SQL
 
 1. **`opportunities` HNSW** on non-null embeddings (active rows) — required for efficient reverse KNN / search.  
-2. **Append-only guards on event ledgers** — no UPDATE/DELETE/TRUNCATE. Automatic retention was dropped with TimescaleDB; event telemetry growth needs a janitor or pg_partman when volume warrants.
+2. **Append-only guards on event ledgers** — no UPDATE/DELETE/TRUNCATE. Automatic retention was dropped with TimescaleDB. The crawl ledger `job_ingest_events` is pruned after 90d by the crawler's retention sweep through its own guard (`ingest_events_guard`, migration 0024); matching's ledgers keep the strict shared `append_only_guard` and still need a janitor or pg_partman when volume warrants.
 
 Both migrations are idempotent (`IF NOT EXISTS` / `if_not_exists`).
 
