@@ -16,6 +16,8 @@ type CheckoutRecord struct {
 	Error          string    `gorm:"type:text;not null;default:''"`
 	CreatedAt      time.Time `gorm:"not null;default:now();index:idx_candidate_checkouts_candidate_created,priority:2,sort:desc;index:idx_candidate_checkouts_status,priority:2,where:status = 'pending'"`
 	UpdatedAt      time.Time `gorm:"not null;default:now()"`
+	// ActivatedAt marks a paid checkout whose entitlement was granted.
+	ActivatedAt *time.Time `gorm:"type:timestamptz;index:idx_candidate_checkouts_paid_unactivated,where:status = 'paid' AND activated_at IS NULL"`
 }
 
 func (CheckoutRecord) TableName() string { return "candidate_checkouts" }

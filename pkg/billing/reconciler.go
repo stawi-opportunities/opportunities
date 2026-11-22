@@ -91,6 +91,24 @@ func (r *Reconciler) Run(ctx context.Context) (ReconcileResult, error) {
 		}
 	}
 
+	// Paid checkouts whose activation failed (DB blip after the ledger
+	// write) would otherwise leave a paying user on free forever.
+	unactivated, err := r.store.ListPaidUnactivated(ctx, r.batch)
+	if err != nil {
+		res.Errors++
+		log.WithError(err).Warn("billing: reconcile: list paid-unactivated failed")
+	}
+	for _, c := range unactivated {
+		res.Examined++
+		if actErr := r.activator.Activate(ctx, c.PromptID, StatusPaid, c.SubscriptionID, ""); actErr != nil {
+			res.Errors++
+			log.WithError(actErr).WithField("prompt_id", c.PromptID).
+				Warn("billing: reconcile: activation retry failed")
+			continue
+		}
+		res.Activated++
+	}
+
 	if r.finalizer != nil {
 		n, finErr := r.finalizer.FinalizeExpiredCancellations(ctx, r.batch)
 		if finErr != nil {

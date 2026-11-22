@@ -20,8 +20,10 @@ type SubscriptionActivator interface {
 // *Store satisfies it.
 type CheckoutStore interface {
 	GetByPromptID(ctx context.Context, promptID string) (Checkout, error)
-	UpdateStatus(ctx context.Context, promptID string, status Status, subscriptionID, errMsg string) (Checkout, error)
+	ResolveStatus(ctx context.Context, promptID string, status Status, subscriptionID, errMsg string) (Checkout, bool, error)
+	MarkActivated(ctx context.Context, promptID string) error
 	ListPending(ctx context.Context, limit int) ([]Checkout, error)
+	ListPaidUnactivated(ctx context.Context, limit int) ([]Checkout, error)
 }
 
 // OneTimeFulfiller runs post-payment work for non-subscription products
@@ -33,13 +35,14 @@ type OneTimeFulfiller interface {
 // Activator resolves a checkout into a candidate subscription. It is the
 // single idempotent path that both the webhook and the reconciler call:
 //
-//  1. mark the checkout row terminal (paid|failed)
+//  1. move the checkout row to paid|failed (forward-only; see CanTransition)
 //  2. on paid subscription plan, flip candidate_profiles.subscription free→paid
 //  3. on paid one-time product, call OneTimeFulfiller (no subscription flip)
+//  4. record activated_at
 //
-// Calling Activate twice for the same paid checkout is safe: step 1 is an
-// idempotent UPDATE and step 2 no-ops once the candidate already reflects
-// the subscription.
+// A notification for an already-resolved checkout is ignored, so replayed or
+// late webhooks cannot re-grant access. The one exception is a paid checkout
+// with no activated_at: its earlier activation failed, so it is retried.
 type Activator struct {
 	store   CheckoutStore
 	subs    SubscriptionActivator
@@ -73,7 +76,7 @@ func (a *Activator) Activate(ctx context.Context, promptID string, status Status
 		return nil // pending/redirect carry no activation
 	}
 
-	row, err := a.store.UpdateStatus(ctx, promptID, status, subscriptionID, errMsg)
+	row, changed, err := a.store.ResolveStatus(ctx, promptID, status, subscriptionID, errMsg)
 	if errors.Is(err, ErrNotFound) {
 		// A webhook for a checkout we never recorded (or a different
 		// service's prompt). Not our row — ignore rather than error so a
@@ -83,6 +86,14 @@ func (a *Activator) Activate(ctx context.Context, promptID string, status Status
 	}
 	if err != nil {
 		return fmt.Errorf("billing: activate update status: %w", err)
+	}
+
+	retry := !changed && row.Status == StatusPaid && status == StatusPaid && row.ActivatedAt == nil
+	if !changed && !retry {
+		log.WithField("current_status", string(row.Status)).
+			WithField("notified_status", string(status)).
+			Info("billing: checkout already resolved; ignoring duplicate or out-of-order notification")
+		return nil
 	}
 
 	if status != StatusPaid {
@@ -101,20 +112,28 @@ func (a *Activator) Activate(ctx context.Context, promptID string, status Status
 				return fmt.Errorf("billing: one-time fulfill: %w", ferr)
 			}
 		}
-		return nil
+		return a.markActivated(ctx, promptID)
 	}
 
 	subID := subscriptionID
 	if subID == "" {
 		subID = row.SubscriptionID
 	}
-	changed, err := a.subs.ActivateSubscription(ctx, row.CandidateID, subID, row.PlanID)
+	subChanged, err := a.subs.ActivateSubscription(ctx, row.CandidateID, subID, row.PlanID)
 	if err != nil {
 		return fmt.Errorf("billing: activate subscription: %w", err)
 	}
 	log.WithField("candidate_id", row.CandidateID).
 		WithField("plan_id", row.PlanID).
-		WithField("changed", changed).
+		WithField("changed", subChanged).
+		WithField("retry", retry).
 		Info("billing: subscription activated")
+	return a.markActivated(ctx, promptID)
+}
+
+func (a *Activator) markActivated(ctx context.Context, promptID string) error {
+	if err := a.store.MarkActivated(ctx, promptID); err != nil {
+		return fmt.Errorf("billing: activate: %w", err)
+	}
 	return nil
 }

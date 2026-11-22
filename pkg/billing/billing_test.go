@@ -401,10 +401,14 @@ func (s *fakeStore) GetByPromptID(_ context.Context, id string) (billing.Checkou
 	return c, nil
 }
 
-func (s *fakeStore) UpdateStatus(_ context.Context, id string, status billing.Status, subID, errMsg string) (billing.Checkout, error) {
+// ResolveStatus mirrors Store.ResolveStatus's transition rules.
+func (s *fakeStore) ResolveStatus(_ context.Context, id string, status billing.Status, subID, errMsg string) (billing.Checkout, bool, error) {
 	c, ok := s.rows[id]
 	if !ok {
-		return billing.Checkout{}, billing.ErrNotFound
+		return billing.Checkout{}, false, billing.ErrNotFound
+	}
+	if !billing.CanTransition(c.Status, status) {
+		return c, false, nil
 	}
 	c.Status = status
 	if subID != "" {
@@ -412,20 +416,40 @@ func (s *fakeStore) UpdateStatus(_ context.Context, id string, status billing.St
 	}
 	c.Error = errMsg
 	s.rows[id] = c
-	return c, nil
+	return c, true, nil
+}
+
+func (s *fakeStore) MarkActivated(_ context.Context, id string) error {
+	c := s.rows[id]
+	if c.ActivatedAt == nil {
+		now := time.Now()
+		c.ActivatedAt = &now
+	}
+	s.rows[id] = c
+	return nil
 }
 
 func (s *fakeStore) ListPending(_ context.Context, limit int) ([]billing.Checkout, error) {
+	return s.list(limit, func(c billing.Checkout) bool { return c.Status == billing.StatusPending }), nil
+}
+
+func (s *fakeStore) ListPaidUnactivated(_ context.Context, limit int) ([]billing.Checkout, error) {
+	return s.list(limit, func(c billing.Checkout) bool {
+		return c.Status == billing.StatusPaid && c.ActivatedAt == nil
+	}), nil
+}
+
+func (s *fakeStore) list(limit int, keep func(billing.Checkout) bool) []billing.Checkout {
 	out := []billing.Checkout{}
 	for _, c := range s.rows {
-		if c.Status == billing.StatusPending {
+		if keep(c) {
 			out = append(out, c)
 			if len(out) >= limit {
 				break
 			}
 		}
 	}
-	return out, nil
+	return out
 }
 
 type fakeActivator struct {
@@ -462,9 +486,68 @@ func TestActivator_PaidFlipsCandidateOnce(t *testing.T) {
 	require.Equal(t, "cand_x", subs.lastCID)
 	require.Equal(t, "sub-77", subs.lastSub)
 
-	// Re-fire (double webhook): still safe, no error.
+	require.NotNil(t, store.rows["chk_1"].ActivatedAt)
+
+	// Re-fire (double webhook or replayed body): no second grant.
 	require.NoError(t, act.Activate(context.Background(), "chk_1", billing.StatusPaid, "sub-77", ""))
+	require.Equal(t, 1, subs.calls)
+}
+
+func TestActivator_LateFailedDoesNotOverwritePaid(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["chk_p"] = billing.Checkout{PromptID: "chk_p", CandidateID: "cand", PlanID: "pro", Status: billing.StatusPending}
+	subs := &fakeActivator{changed: true}
+	act := billing.NewActivator(store, subs)
+
+	require.NoError(t, act.Activate(context.Background(), "chk_p", billing.StatusPaid, "s", ""))
+	require.NoError(t, act.Activate(context.Background(), "chk_p", billing.StatusFailed, "", "late failure"))
+	require.Equal(t, billing.StatusPaid, store.rows["chk_p"].Status)
+	require.Empty(t, store.rows["chk_p"].Error)
+}
+
+func TestActivator_PaidAfterFailedIsHonoured(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["chk_f"] = billing.Checkout{PromptID: "chk_f", CandidateID: "cand", PlanID: "pro", Status: billing.StatusFailed}
+	subs := &fakeActivator{changed: true}
+	act := billing.NewActivator(store, subs)
+
+	require.NoError(t, act.Activate(context.Background(), "chk_f", billing.StatusPaid, "s", ""))
+	require.Equal(t, billing.StatusPaid, store.rows["chk_f"].Status)
+	require.Equal(t, 1, subs.calls)
+}
+
+func TestActivator_RetriesActivationThatFailedAfterPaid(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["chk_r"] = billing.Checkout{PromptID: "chk_r", CandidateID: "cand", PlanID: "pro", Status: billing.StatusPending}
+	subs := &fakeActivator{changed: true, err: errors.New("db blip")}
+	act := billing.NewActivator(store, subs)
+
+	require.Error(t, act.Activate(context.Background(), "chk_r", billing.StatusPaid, "s", ""))
+	require.Equal(t, billing.StatusPaid, store.rows["chk_r"].Status)
+	require.Nil(t, store.rows["chk_r"].ActivatedAt)
+
+	subs.err = nil
+	require.NoError(t, act.Activate(context.Background(), "chk_r", billing.StatusPaid, "s", ""))
 	require.Equal(t, 2, subs.calls)
+	require.NotNil(t, store.rows["chk_r"].ActivatedAt)
+}
+
+func TestReconciler_RetriesPaidButUnactivated(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	store.rows["u"] = billing.Checkout{PromptID: "u", CandidateID: "c1", PlanID: "pro", Status: billing.StatusPaid}
+	subs := &fakeActivator{changed: true}
+	act := billing.NewActivator(store, subs)
+	rec := billing.NewReconciler(store, &fakeGateway{}, act, 100)
+
+	res, err := rec.Run(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, res.Activated)
+	require.Equal(t, 1, subs.calls)
+	require.NotNil(t, store.rows["u"].ActivatedAt)
 }
 
 func TestActivator_FailedRecordsNoFlip(t *testing.T) {
