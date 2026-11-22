@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pitabwire/util"
 )
@@ -14,6 +15,9 @@ import (
 // changed, so the activator can log idempotent re-fires distinctly.
 type SubscriptionActivator interface {
 	ActivateSubscription(ctx context.Context, candidateID, subscriptionID, planID string) (changed bool, err error)
+	// HoldsSubscription reports whether the candidate is already paid on
+	// exactly this subscription id (an earlier activation took effect).
+	HoldsSubscription(ctx context.Context, candidateID, subscriptionID string) (bool, error)
 }
 
 // CheckoutStore is the persistence surface the activator + reconciler need.
@@ -21,9 +25,14 @@ type SubscriptionActivator interface {
 type CheckoutStore interface {
 	GetByPromptID(ctx context.Context, promptID string) (Checkout, error)
 	ResolveStatus(ctx context.Context, promptID string, status Status, subscriptionID, errMsg string) (Checkout, bool, error)
-	MarkActivated(ctx context.Context, promptID string) error
+	ClaimActivation(ctx context.Context, promptID string) (ActivationClaim, bool, error)
+	ReleaseActivation(ctx context.Context, promptID string, claim ActivationClaim, cause error) error
+	MarkActivated(ctx context.Context, promptID, outcome string) error
+	HasNewerActivatedSubscription(ctx context.Context, c Checkout) (bool, error)
 	ListPending(ctx context.Context, limit int) ([]Checkout, error)
 	ListPaidUnactivated(ctx context.Context, limit int) ([]Checkout, error)
+	CountStuckActivations(ctx context.Context) (int64, error)
+	CountSupersededSince(ctx context.Context, t time.Time) (int64, error)
 }
 
 // OneTimeFulfiller runs post-payment work for non-subscription products
@@ -36,9 +45,14 @@ type OneTimeFulfiller interface {
 // single idempotent path that both the webhook and the reconciler call:
 //
 //  1. move the checkout row to paid|failed (forward-only; see CanTransition)
-//  2. on paid subscription plan, flip candidate_profiles.subscription free→paid
-//  3. on paid one-time product, call OneTimeFulfiller (no subscription flip)
-//  4. record activated_at
+//  2. claim the activation (ClaimActivation) so concurrent webhook,
+//     status-poll and reconciler calls run the side effects at most once
+//  3. on paid subscription plan, flip candidate_profiles.subscription free→paid
+//     — unless a newer subscription checkout is already active (an older
+//     payment must not downgrade it) or, on a retry, the candidate already
+//     holds this subscription
+//  4. on paid one-time product, call OneTimeFulfiller (no subscription flip)
+//  5. record activated_at; on failure release the claim with backoff
 //
 // A notification for an already-resolved checkout is ignored, so replayed or
 // late webhooks cannot re-grant access. The one exception is a paid checkout
@@ -101,39 +115,100 @@ func (a *Activator) Activate(ctx context.Context, promptID string, status Status
 		return nil
 	}
 
+	// Once claimed, finish regardless of the caller: the status poll passes
+	// its HTTP request context, and a browser that disconnects after the
+	// report email was sent must not leave the claim unrecorded (the next
+	// retry would send it again).
+	actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), activationTimeout)
+	defer cancel()
+
+	claim, claimed, err := a.store.ClaimActivation(actx, promptID)
+	if err != nil {
+		return fmt.Errorf("billing: activate: %w", err)
+	}
+	if !claimed {
+		log.Info("billing: activation done, in progress elsewhere, backing off or exhausted; skipping")
+		return nil
+	}
+	outcome, err := a.grant(actx, row, subscriptionID, retry)
+	if err != nil {
+		if relErr := a.store.ReleaseActivation(actx, promptID, claim, err); relErr != nil {
+			log.WithError(relErr).Error("billing: release activation claim failed")
+		}
+		return err
+	}
+	if err := a.store.MarkActivated(actx, promptID, outcome); err != nil {
+		return fmt.Errorf("billing: activate: %w", err)
+	}
+	return nil
+}
+
+// activationTimeout bounds one activation (one-time fulfilment scores a CV
+// and sends an email). Kept well under ActivationLease so a claim is never
+// taken over while its holder is still within its own deadline.
+const activationTimeout = 2 * time.Minute
+
+// grant runs the entitlement side effects for a claimed, paid checkout and
+// returns the outcome to record.
+//
+// One-time products are at-least-once: if the process dies after the
+// fulfilment but before MarkActivated, the claim expires and the reconciler
+// fulfils again (a second report email). Subscriptions are protected by
+// HoldsSubscription on retry.
+func (a *Activator) grant(ctx context.Context, row Checkout, subscriptionID string, retry bool) (string, error) {
+	log := util.Log(ctx).WithField("prompt_id", row.PromptID).WithField("candidate_id", row.CandidateID)
+
 	// One-time products (ATS report) never flip subscription.
 	if IsOneTimeProduct(PlanID(row.PlanID)) {
-		log.WithField("candidate_id", row.CandidateID).
-			WithField("product_id", row.PlanID).
-			Info("billing: one-time product paid")
+		log.WithField("product_id", row.PlanID).Info("billing: one-time product paid")
 		if a.oneTime != nil {
-			if ferr := a.oneTime.FulfillOneTime(ctx, row.CandidateID, row.PlanID, promptID); ferr != nil {
+			if ferr := a.oneTime.FulfillOneTime(ctx, row.CandidateID, row.PlanID, row.PromptID); ferr != nil {
 				log.WithError(ferr).Error("billing: one-time fulfill failed")
-				return fmt.Errorf("billing: one-time fulfill: %w", ferr)
+				return "", fmt.Errorf("billing: one-time fulfill: %w", ferr)
 			}
 		}
-		return a.markActivated(ctx, promptID)
+		return OutcomeApplied, nil
 	}
 
 	subID := subscriptionID
 	if subID == "" {
 		subID = row.SubscriptionID
 	}
+
+	newer, err := a.store.HasNewerActivatedSubscription(ctx, row)
+	if err != nil {
+		return "", fmt.Errorf("billing: activate: %w", err)
+	}
+	if newer {
+		// The user paid again on a newer checkout that is already live;
+		// applying this older plan would overwrite it. Money was still
+		// taken for this checkout, so flag it for refund review.
+		log.WithField("plan_id", row.PlanID).WithField("subscription_id", subID).
+			Error("billing: paid checkout superseded by a later active purchase; not applied — review for refund")
+		return OutcomeSuperseded, nil
+	}
+
+	if retry && subID != "" {
+		holds, hErr := a.subs.HoldsSubscription(ctx, row.CandidateID, subID)
+		if hErr != nil {
+			return "", fmt.Errorf("billing: activate: %w", hErr)
+		}
+		if holds {
+			// The earlier activation took effect (e.g. done by a previous
+			// release that did not record activated_at). Re-running it would
+			// clear a cancellation the user made since.
+			log.WithField("subscription_id", subID).Info("billing: subscription already active; recording activation only")
+			return OutcomeAlreadyHeld, nil
+		}
+	}
+
 	subChanged, err := a.subs.ActivateSubscription(ctx, row.CandidateID, subID, row.PlanID)
 	if err != nil {
-		return fmt.Errorf("billing: activate subscription: %w", err)
+		return "", fmt.Errorf("billing: activate subscription: %w", err)
 	}
-	log.WithField("candidate_id", row.CandidateID).
-		WithField("plan_id", row.PlanID).
+	log.WithField("plan_id", row.PlanID).
 		WithField("changed", subChanged).
 		WithField("retry", retry).
 		Info("billing: subscription activated")
-	return a.markActivated(ctx, promptID)
-}
-
-func (a *Activator) markActivated(ctx context.Context, promptID string) error {
-	if err := a.store.MarkActivated(ctx, promptID); err != nil {
-		return fmt.Errorf("billing: activate: %w", err)
-	}
-	return nil
+	return OutcomeApplied, nil
 }

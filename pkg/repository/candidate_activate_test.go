@@ -57,3 +57,35 @@ func TestActivateSubscription_FlipsFreeToPaidIdempotently(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, changed, "second identical activation should not change the row")
 }
+
+func TestHoldsSubscription(t *testing.T) {
+	g, sqlDB, ctx := setupCandidateDB(t)
+	_, err := sqlDB.ExecContext(ctx, `
+		ALTER TABLE candidate_profiles
+			ADD COLUMN IF NOT EXISTS profile_id      TEXT,
+			ADD COLUMN IF NOT EXISTS subscription    TEXT NOT NULL DEFAULT 'free',
+			ADD COLUMN IF NOT EXISTS subscription_id TEXT NOT NULL DEFAULT '',
+			ADD COLUMN IF NOT EXISTS deleted_at      TIMESTAMPTZ`)
+	require.NoError(t, err)
+	_, err = sqlDB.ExecContext(ctx, `INSERT INTO candidate_profiles (id, profile_id, subscription, subscription_id) VALUES
+		('cand_paid', 'prof_paid', 'paid', 'sub_1'),
+		('cand_lapsed', 'prof_lapsed', 'free', 'sub_2')`)
+	require.NoError(t, err)
+	repo := repository.NewCandidateRepository(func(_ context.Context, _ bool) *gorm.DB { return g })
+
+	for _, tc := range []struct {
+		cand, sub string
+		want      bool
+	}{
+		{"cand_paid", "sub_1", true},
+		{"prof_paid", "sub_1", true}, // legacy profile_id key
+		{"cand_paid", "sub_other", false},
+		{"cand_lapsed", "sub_2", false}, // same id but no longer paid
+		{"cand_paid", "", false},
+		{"missing", "sub_1", false},
+	} {
+		got, err := repo.HoldsSubscription(ctx, tc.cand, tc.sub)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, got, "%s/%s", tc.cand, tc.sub)
+	}
+}
