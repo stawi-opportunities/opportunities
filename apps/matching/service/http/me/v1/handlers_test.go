@@ -283,6 +283,18 @@ func TestRefreshMatches_NoEmbeddingIs409(t *testing.T) {
 	require.Contains(t, w.Body.String(), "no_embedding")
 }
 
+// A user who has something to embed must not be told to upload a CV when the
+// embedder is the problem: that is a retryable 503, not a 409.
+func TestRefreshMatches_EmbedderUnavailableIs503(t *testing.T) {
+	mux, db, ctx := setupExtensionEnv(t) // no placement service wired
+	seedProfile(t, db, ctx, "u_refresh_noembedder", "paid", "starter")
+	_, err := db.ExecContext(ctx, `UPDATE candidate_profiles SET target_job_title='Backend Engineer' WHERE id=$1`, "u_refresh_noembedder")
+	require.NoError(t, err)
+	w := doMe(t, mux, "POST", "/api/me/matches/refresh", nil, "u_refresh_noembedder", "idem-refresh-noembedder")
+	require.Equal(t, http.StatusServiceUnavailable, w.Code, "body=%s", w.Body.String())
+	require.Contains(t, w.Body.String(), "embedding_unavailable")
+}
+
 func TestRefreshMatches_WithEmbeddingRecomputes(t *testing.T) {
 	mux, db, ctx := setupExtensionEnv(t)
 	const cand = "u_refresh_ok"
