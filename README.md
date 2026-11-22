@@ -43,7 +43,7 @@ See [docs/ops/crawl-framework.md](docs/ops/crawl-framework.md) and [docs/ops/cra
 ```bash
 make infra-up          # Postgres (+ pgvector)
 make deps
-# Run migrations via crawler/matching with DO_DATABASE_MIGRATE=true (see first-deploy runbook)
+# Run migrations via crawler/matching in setup mode — `DO_SETUP=true` or argv `setup` (see first-deploy runbook)
 make run-crawler       # after workers are up
 make run-worker
 make run-api

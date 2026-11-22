@@ -57,6 +57,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/savedjobs"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
+	"github.com/stawi-opportunities/opportunities/pkg/setupmode"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
@@ -116,11 +117,11 @@ func main() {
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	dbFn := pool.DB
 
-	// Handle database migration if configured (colony Helm chart sets
-	// DO_DATABASE_MIGRATE=true for the pre-install migration Job). GORM owns
+	// Handle database migration in setup mode (argv setup/migrate, DO_SETUP,
+	// DO_MIGRATION, or legacy DO_DATABASE_MIGRATE — see pkg/setupmode). GORM owns
 	// ordinary tables; capability SQL adds pgvector support. The job exits after
 	// migration instead of starting the service.
-	if cfg.DoDatabaseMigrate() {
+	if setupmode.ShouldMigrate(&cfg) {
 		// Product Neon schema: catalog serving tables + candidate/matching/billing.
 		// Do NOT AutoMigrate crawl queue tables here (those stay on cluster CNPG).
 		models := []any{
@@ -141,7 +142,7 @@ func main() {
 		log.Info("migration complete")
 
 		// Ensure service-notification templates exist for this product.
-		// Same setup Job as migrate (DO_DATABASE_MIGRATE=true). Requires
+		// Same setup Job as migrate. Requires
 		// NOTIFICATION_SERVICE_URI so TemplateSave can run against the platform.
 		ensureNotificationTemplates(ctx, &cfg)
 		return

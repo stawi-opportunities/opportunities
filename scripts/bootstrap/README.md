@@ -5,7 +5,7 @@ The opportunities platform uses PostgreSQL for job data.
 1. Copy `vault-seeds.env.example` to the ignored `vault-seeds.env` and supply
    the R2 credentials used only by definitions and candidate documents.
 2. Run `./scripts/bootstrap/bootstrap.sh`.
-3. Deploy crawler and matching with `DO_DATABASE_MIGRATE=true` and wait for
+3. Deploy crawler and matching in setup mode (`DO_SETUP=true`) and wait for
    their migrations to finish.
 4. Start worker replicas, then enable crawl schedules.
 

@@ -36,6 +36,7 @@ import (
 	"github.com/stawi-opportunities/opportunities/pkg/repository"
 	"github.com/stawi-opportunities/opportunities/pkg/seeds"
 	"github.com/stawi-opportunities/opportunities/pkg/services"
+	"github.com/stawi-opportunities/opportunities/pkg/setupmode"
 	"github.com/stawi-opportunities/opportunities/pkg/telemetry"
 )
 
@@ -100,12 +101,12 @@ func main() {
 	pool := svc.DatastoreManager().GetPool(ctx, datastore.DefaultPoolName)
 	dbFn := pool.DB
 
-	// Handle database migration if configured (colony Helm chart sets
-	// DO_DATABASE_MIGRATE=true for the pre-install migration job).
+	// Handle database migration in setup mode (argv setup/migrate, DO_SETUP,
+	// DO_MIGRATION, or legacy DO_DATABASE_MIGRATE — see pkg/setupmode).
 	// GORM owns ordinary schema. The few SQL files only enable database
 	// capabilities GORM cannot express: extensions, append-only triggers,
 	// partial indexes, and materialized views.
-	if cfg.DoDatabaseMigrate() {
+	if setupmode.ShouldMigrate(&cfg) {
 		if err := repository.Migrate(ctx, svc.DatastoreManager(), cfg.GetDatabaseMigrationPath()); err != nil {
 			log.WithError(err).Fatal("database migration failed")
 		}
