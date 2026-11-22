@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { authRuntime } from '@/auth/runtime';
+import { submitFlag, type FlagReason } from '@/api/flags';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { StringKey } from '@/i18n/strings';
@@ -42,17 +42,19 @@ export default function FlagModal({ slug }: { slug: string }) {
     if (state.kind === 'submitting') return;
     setState({ kind: 'submitting' });
     try {
-      await authRuntime().fetch(`/opportunities/${encodeURIComponent(slug)}/flag`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason, description: description.trim() }),
-      });
+      await submitFlag(slug, { reason: reason as FlagReason, description });
       setState({ kind: 'ok' });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('409') || message.toLowerCase().includes('already_flagged')) {
         setState({ kind: 'duplicate' });
-      } else if (message.includes('401') || message.toLowerCase().includes('unauthorized')) {
+      } else if (
+        message.includes('401') ||
+        message.includes('403') ||
+        message.toLowerCase().includes('unauthorized')
+      ) {
+        // 403: the api rejects a token it cannot verify (expired, or
+        // issued without the opportunities audience) — sign in again.
         setState({ kind: 'unauthorized' });
       } else {
         setState({ kind: 'error', message });

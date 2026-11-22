@@ -20,12 +20,23 @@ export interface FlagResponse {
 }
 
 /**
+ * Path of the flag endpoint relative to the auth runtime's base URL
+ * (https://api.stawi.org). The edge gateway strips the `/opportunities`
+ * route prefix before forwarding to the opportunities api, whose own route
+ * is `/opportunities/{slug}/flag` — so the public path carries the prefix
+ * twice, exactly like the view/apply beacons under `apiURL`.
+ */
+export function flagPath(slug: string): string {
+  return `/opportunities/opportunities/${encodeURIComponent(slug)}/flag`;
+}
+
+/**
  * POST /opportunities/{slug}/flag — auth'd. Throws on non-2xx;
- * callers should handle 409 (already_flagged) and 401 (unauthorized)
- * as distinct UI states.
+ * callers should handle 409 (already_flagged) and 401/403 (sign in
+ * again: missing, expired or wrong-audience token) as distinct UI states.
  */
 export async function submitFlag(slug: string, payload: FlagPayload): Promise<FlagResponse> {
-  return authRuntime().fetch(`/opportunities/${encodeURIComponent(slug)}/flag`, {
+  return authRuntime().fetch(flagPath(slug), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
