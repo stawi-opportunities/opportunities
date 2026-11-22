@@ -607,16 +607,21 @@ var errNoMatchMaterial = errors.New("no CV or target role to embed")
 // Returns errNoMatchMaterial when the user has nothing to embed; other errors
 // are system failures (embedder down, placement misconfigured, index write).
 func ensureMatchEmbedding(ctx context.Context, d *Deps, profileID, matchKey string) (*matching.CandidateIndex, error) {
-	if d == nil || d.Placement == nil {
-		return nil, errors.New("placement service not configured")
+	if d == nil {
+		return nil, errors.New("matching deps not configured")
 	}
 	fields, err := loadPlacementFieldsForMatch(ctx, d, profileID, matchKey)
 	if err != nil {
 		return nil, err
 	}
-	// Need at least CV corpus or a target role to embed.
+	// Need at least CV corpus or a target role to embed. Checked before the
+	// placement dependency: a user with nothing to embed must be told to
+	// upload a CV (409) even while the embedder is unavailable.
 	if strings.TrimSpace(fields.ExtraInfo) == "" && strings.TrimSpace(fields.TargetJobTitle) == "" {
 		return nil, errNoMatchMaterial
+	}
+	if d.Placement == nil {
+		return nil, errors.New("placement service not configured")
 	}
 	// Rebuild under both keys when they differ so subsequent lookups hit.
 	// StrictEmbed surfaces embedder/index failures instead of soft-failing.
