@@ -4,6 +4,8 @@ package integration_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -125,4 +127,48 @@ func TestGreenfieldSchemaAppliesCleanly(t *testing.T) {
      WHERE relname IN ('candidate_match_events_daily', 'engagement_events_hourly')`).Scan(&cnt)
 	require.NoError(t, err)
 	require.Equal(t, 0, cnt, "continuous aggregates should not exist post-0032")
+}
+
+// 0028 must not destroy CV contact data on a database where it is still
+// pending (production's migrate Job did not run for months): the legacy
+// columns are archived, inserts that no longer mention them keep working,
+// and re-running is a no-op.
+func TestLegacyContactColumnsAreArchivedNotDropped(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	db := testhelpers.PostgresContainerNoMigrate(t, ctx)
+	testhelpers.ApplyGreenfieldSchema(t, ctx, db)
+
+	// Recreate the pre-0028 production shape with data in it (the greenfield
+	// replay above already ran 0028, so remove its archive columns first).
+	_, err := db.ExecContext(ctx, `
+		ALTER TABLE candidate_profiles DROP COLUMN IF EXISTS legacy_phone_unmigrated;
+		ALTER TABLE candidate_profiles DROP COLUMN IF EXISTS legacy_emails_unmigrated;
+		ALTER TABLE candidate_profiles ADD COLUMN phone text NOT NULL DEFAULT '';
+		ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS emails text NOT NULL DEFAULT '';
+		INSERT INTO candidate_profiles (id, phone, emails) VALUES ('cand-1', '+254700000001', 'a@x.test,b@x.test');`)
+	require.NoError(t, err)
+
+	path := filepath.Join("..", "..", "apps", "matching", "migrations", "0001", "20260808_0028_drop_legacy_contact_columns.sql")
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	for i := 0; i < 2; i++ { // idempotent
+		_, err = db.ExecContext(ctx, string(body))
+		require.NoError(t, err, "run %d", i+1)
+	}
+
+	var phone, emails string
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT legacy_phone_unmigrated, legacy_emails_unmigrated FROM candidate_profiles WHERE id='cand-1'`).Scan(&phone, &emails))
+	require.Equal(t, "+254700000001", phone)
+	require.Equal(t, "a@x.test,b@x.test", emails)
+
+	var stillThere int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM information_schema.columns
+		WHERE table_name='candidate_profiles' AND column_name IN ('phone','emails')`).Scan(&stillThere))
+	require.Zero(t, stillThere, "application-facing columns are gone")
+
+	// Current code inserts without the legacy columns.
+	_, err = db.ExecContext(ctx, `INSERT INTO candidate_profiles (id) VALUES ('cand-2')`)
+	require.NoError(t, err)
 }
